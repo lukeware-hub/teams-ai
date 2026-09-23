@@ -980,6 +980,34 @@ describe('unconfirmedIntents', () => {
     expect(pending.map((e) => e.intentId)).toEqual(['merge-t1']);
   });
 });
+
+describe('EventStore crash recovery', () => {
+  it('reclaims a lock left by a dead process and repairs the torn tail', async () => {
+    const first = await open();
+    await first.append({ type: 'A' });
+    // Simulate a crash: torn tail and a lock file whose owner is gone.
+    await fs.appendFile(file, '{"seq":2,"type":"PARTI');
+    await fs.writeFile(`${file}.lock`, '999999');
+    opened.splice(opened.indexOf(first), 1);
+    const reopened = await open();
+    expect((await reopened.append({ type: 'B' })).seq).toBe(2);
+  });
+
+  it('releases the lock when open fails on a corrupt log', async () => {
+    await writeLines(rawEvent(1), 'garbage\n', rawEvent(3));
+    await expect(EventStore.open({ file, runId: 'run-1', specHash: HASH })).rejects.toThrow(EventLogCorruptError);
+    await expect(EventStore.open({ file, runId: 'run-1', specHash: HASH })).rejects.toThrow(EventLogCorruptError);
+  });
+
+  it('closes itself after a failed append so the next open repairs the log', async () => {
+    const store = await open();
+    await store.append({ type: 'A' });
+    const failing = { ...store, file: path.join(dir, 'missing-dir', 'x', 'events.ndjson') } as unknown as EventStore;
+    Object.setPrototypeOf(failing, EventStore.prototype);
+    await expect(failing.append({ type: 'B' })).rejects.toThrow();
+    await expect(failing.append({ type: 'C' })).rejects.toThrow(/closed/);
+  });
+});
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1092,6 +1120,35 @@ export function unconfirmedIntents(events: readonly StoredEvent[]): StoredEvent[
   return events.filter((e) => e.kind === 'intent' && !confirmed.has(e.intentId));
 }
 
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code !== 'ESRCH';
+  }
+}
+
+/** Takes the exclusive lock; a lock whose owner process is gone is reclaimed. */
+async function acquireLock(file: string, lockFile: string): Promise<void> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const handle = await fs.open(lockFile, 'wx');
+      await handle.writeFile(String(process.pid));
+      await handle.close();
+      return;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      const owner = Number.parseInt(await fs.readFile(lockFile, 'utf8').catch(() => ''), 10);
+      if (attempt === 0 && Number.isInteger(owner) && owner !== process.pid && !processAlive(owner)) {
+        await fs.rm(lockFile, { force: true });
+        continue;
+      }
+      throw new EventLogLockedError(`${file} is already open (lock: ${lockFile}, pid ${owner})`);
+    }
+  }
+}
+
 export class EventStore {
   private seq: number;
   private queue: Promise<unknown> = Promise.resolve();
@@ -1116,18 +1173,15 @@ export class EventStore {
   }): Promise<EventStore> {
     await fs.mkdir(path.dirname(opts.file), { recursive: true });
     const lockFile = `${opts.file}.lock`;
+    await acquireLock(opts.file, lockFile);
+    let events: StoredEvent[];
     try {
-      const handle = await fs.open(lockFile, 'wx');
-      await handle.writeFile(String(process.pid));
-      await handle.close();
+      await repairEventLog(opts.file);
+      events = await loadEvents(opts.file);
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
-        throw new EventLogLockedError(`${opts.file} is already open (lock: ${lockFile})`);
-      }
+      await fs.rm(lockFile, { force: true });
       throw err;
     }
-    await repairEventLog(opts.file);
-    const events = await loadEvents(opts.file);
     return new EventStore(
       opts.file,
       lockFile,
@@ -1155,12 +1209,20 @@ export class EventStore {
         ...(input.intentId ? { intentId: input.intentId } : {}),
         data: input.data ?? {},
       };
-      const handle = await fs.open(this.file, 'a');
+      const line = Buffer.from(`${JSON.stringify(event)}\n`);
       try {
-        await handle.write(`${JSON.stringify(event)}\n`);
-        await handle.datasync();
-      } finally {
-        await handle.close();
+        const handle = await fs.open(this.file, 'a');
+        try {
+          const { bytesWritten } = await handle.write(line);
+          if (bytesWritten !== line.length) throw new Error(`short write: ${bytesWritten}/${line.length} bytes`);
+          await handle.datasync();
+        } finally {
+          await handle.close();
+        }
+      } catch (err) {
+        // The on-disk tail is now unknown; force a reopen, which repairs it.
+        this.closed = true;
+        throw err;
       }
       this.seq = event.seq;
       return event;
@@ -1190,7 +1252,7 @@ export class EventStore {
 - [ ] **Step 4: Run tests and typecheck**
 
 Run: `npx vitest run test/store/event-store.test.ts && npm run typecheck`
-Expected: 16 tests PASS; typecheck exits 0.
+Expected: 19 tests PASS; typecheck exits 0.
 
 - [ ] **Step 5: Commit**
 
@@ -1506,6 +1568,17 @@ describe('replan', () => {
     expect(() => reduceEvents([planned('T1-a'), replan('T1-a', makePlanTask({ id: 'T3-r' }), makePlanTask({ id: 'T3-r' }))])).toThrow(ReplanError);
   });
 });
+
+describe('run status precedence', () => {
+  it('keeps draining across a pause and resume', () => {
+    const state = reduceEvents([
+      { type: RunEvent.RunBudgetExhausted, data: {} },
+      { type: RunEvent.RunPaused, data: { reason: 'quota' } },
+      { type: RunEvent.RunResumed, data: {} },
+    ]);
+    expect(state.status).toBe('draining');
+  });
+});
 ```
 
 - [ ] **Step 6: Run test to verify it fails**
@@ -1611,7 +1684,9 @@ export function applyEvent(state: RunState, event: ReducibleEvent): void {
       return;
     }
     case RunEvent.RunPaused: {
-      state.status = `paused:${PausedData.parse(event.data).reason}`;
+      const reason = PausedData.parse(event.data).reason;
+      // Draining is terminal for scheduling; a pause must not let a resume undo it.
+      if (state.status !== 'draining') state.status = `paused:${reason}`;
       return;
     }
     case RunEvent.RunResumed: {
@@ -1691,7 +1766,7 @@ function replan(state: RunState, { taskId, replacements }: { taskId: string; rep
 - [ ] **Step 8: Run tests and typecheck**
 
 Run: `npx vitest run test/pipeline && npm run typecheck`
-Expected: 21 tests PASS; typecheck exits 0.
+Expected: 22 tests PASS; typecheck exits 0.
 
 - [ ] **Step 9: Commit**
 
@@ -1715,7 +1790,7 @@ git commit -m "feat: add task state machine and run-state reducer with replan" -
   - `DEFAULT_MAX_PARALLEL = 3`
   - `nextRunnable(state: RunState, maxParallel?: number): string[]` — returns `[]` unless `state.status === 'running'` (paused or draining runs start nothing); the caller performs `planned → ready → implementing`
   - `tasksToBlock(state: RunState): string[]` — waiting tasks whose dependency is blocked, superseded or unknown (transitively)
-  - `type RunProgress = 'running' | 'complete' | 'deadlocked'`, `runProgress(state: RunState, maxParallel?: number): RunProgress` — a paused run reports `running`, never `deadlocked`
+  - `type RunProgress = 'running' | 'complete' | 'deadlocked' | 'drained'`, `runProgress(state: RunState, maxParallel?: number): RunProgress` — a paused run reports `running`, never `deadlocked`; a draining run with nothing in flight reports `drained` (go to the report)
 
 Overlap is conservative: two path lists overlap when the static (non-glob) prefix of one entry is an ancestor-or-equal of the other's. Over-reporting only reduces parallelism; it never lets overlapping tasks run together.
 
@@ -1957,6 +2032,15 @@ describe('runProgress', () => {
     expect(runProgress(cycle, 3)).toBe('deadlocked');
   });
 });
+
+describe('runProgress while draining', () => {
+  it('reports drained once nothing is active, so the run can go to the report', () => {
+    const idle = withStatus(runState(runtime({ id: 'T1-a' }), runtime({ id: 'T2-b' }, 'merged')), 'draining');
+    expect(runProgress(idle, 3)).toBe('drained');
+    const busy = withStatus(runState(runtime({ id: 'T1-a' }, 'implementing')), 'draining');
+    expect(runProgress(busy, 3)).toBe('running');
+  });
+});
 ```
 
 - [ ] **Step 6: Run test to verify it fails**
@@ -1974,7 +2058,8 @@ import { ACTIVE_STATES, TERMINAL_STATES } from '../pipeline/task-state.js';
 
 export const DEFAULT_MAX_PARALLEL = 3;
 
-export type RunProgress = 'running' | 'complete' | 'deadlocked';
+/** `drained`: the run budget is exhausted and nothing is in flight; go to the report. */
+export type RunProgress = 'running' | 'complete' | 'deadlocked' | 'drained';
 
 function ordered(state: RunState): TaskRuntime[] {
   return state.order.map((id) => state.tasks.get(id)).filter((t): t is TaskRuntime => t !== undefined);
@@ -2039,6 +2124,7 @@ export function runProgress(state: RunState, maxParallel: number = DEFAULT_MAX_P
   const tasks = ordered(state);
   if (tasks.every((t) => TERMINAL_STATES.has(t.state))) return 'complete';
   if (tasks.some((t) => ACTIVE_STATES.has(t.state))) return 'running';
+  if (state.status === 'draining') return 'drained';
   if (state.status !== 'running') return 'running';
   if (tasksToBlock(state).length > 0) return 'running';
   return nextRunnable(state, maxParallel).length > 0 ? 'running' : 'deadlocked';
@@ -2048,7 +2134,7 @@ export function runProgress(state: RunState, maxParallel: number = DEFAULT_MAX_P
 - [ ] **Step 8: Run tests and typecheck**
 
 Run: `npx vitest run test/core test/scheduler && npm run typecheck`
-Expected: 31 tests PASS (ids 7, paths 9, scheduler 15); typecheck exits 0.
+Expected: 32 tests PASS (ids 7, paths 9, scheduler 16); typecheck exits 0.
 
 - [ ] **Step 9: Commit**
 
@@ -3154,6 +3240,21 @@ describe('verifyClaimedEvidence', () => {
     expect(verifyClaimedEvidence([{ id: 'AC-002', status: 'not-covered', evidence: [] }], results)).toEqual([]);
   });
 });
+
+describe('verifyClaimedEvidence against uncited failures', () => {
+  it('rejects a passed claim when another test tagged with the criterion failed', () => {
+    const results = [result('[AC-001] ok', 'passed', ['AC-001']), result('[AC-001] bad', 'failed', ['AC-001'])];
+    expect(verifyClaimedEvidence([{ id: 'AC-001', status: 'passed', evidence: ['t::[AC-001] ok'] }], results)).toEqual([
+      'AC-001: claimed passed but t::[AC-001] bad is failed',
+    ]);
+  });
+
+  it('rejects a cited test id that is ambiguous in the report', () => {
+    const results = [result('[AC-001] t', 'failed', ['AC-001']), result('[AC-001] t', 'passed', ['AC-001'])];
+    const errors = verifyClaimedEvidence([{ id: 'AC-001', status: 'passed', evidence: ['t::[AC-001] t'] }], results);
+    expect(errors).toContain('AC-001: cited test id is ambiguous in the JUnit report: t::[AC-001] t');
+  });
+});
 ```
 
 - [ ] **Step 6: Run test to verify it fails**
@@ -3225,21 +3326,27 @@ export interface EvidenceClaim {
  * with the criterion and have passed. Agents never mark evidence passed on their own.
  */
 export function verifyClaimedEvidence(claims: readonly EvidenceClaim[], results: readonly TestResult[]): string[] {
-  const byId = new Map(results.map((r) => [r.id, r]));
+  const byId = new Map<string, TestResult[]>();
+  for (const r of results) byId.set(r.id, [...(byId.get(r.id) ?? []), r]);
   const errors: string[] = [];
   for (const claim of claims) {
     for (const testId of claim.evidence) {
-      const result = byId.get(testId);
-      if (!result) {
+      const matches = byId.get(testId) ?? [];
+      if (matches.length === 0) {
         errors.push(`${claim.id}: cited test not found in JUnit report: ${testId}`);
         continue;
       }
+      if (matches.length > 1) errors.push(`${claim.id}: cited test id is ambiguous in the JUnit report: ${testId}`);
+      const result = matches[0]!;
       if (!result.acIds.includes(claim.id)) errors.push(`${claim.id}: cited test is not tagged with this criterion: ${testId}`);
-      if (claim.status === 'passed' && result.status !== 'passed') {
-        errors.push(`${claim.id}: claimed passed but ${testId} is ${result.status}`);
+    }
+    if (claim.status === 'passed') {
+      if (claim.evidence.length === 0) errors.push(`${claim.id}: claimed passed without evidence`);
+      // Any non-skipped test tagged with the criterion that failed contradicts the claim, cited or not.
+      for (const r of results) {
+        if (r.status === 'failed' && r.acIds.includes(claim.id)) errors.push(`${claim.id}: claimed passed but ${r.id} is ${r.status}`);
       }
     }
-    if (claim.status === 'passed' && claim.evidence.length === 0) errors.push(`${claim.id}: claimed passed without evidence`);
   }
   return errors;
 }
@@ -3248,7 +3355,7 @@ export function verifyClaimedEvidence(claims: readonly EvidenceClaim[], results:
 - [ ] **Step 8: Run tests and typecheck**
 
 Run: `npx vitest run test/evidence && npm run typecheck`
-Expected: 22 tests PASS; typecheck exits 0.
+Expected: 24 tests PASS; typecheck exits 0.
 
 - [ ] **Step 9: Commit**
 
@@ -3426,7 +3533,7 @@ Expected: 12 tests PASS; typecheck exits 0.
 - [ ] **Step 5: Run the full suite**
 
 Run: `npm test && npm run typecheck`
-Expected: 14 test files, 151 tests PASS; typecheck exits 0.
+Expected: 14 test files, 158 tests PASS; typecheck exits 0.
 
 - [ ] **Step 6: Commit**
 
