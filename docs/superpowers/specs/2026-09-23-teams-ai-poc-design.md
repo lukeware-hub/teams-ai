@@ -29,7 +29,10 @@ Using a reference spec (a small TODO REST API with 4–5 acceptance criteria):
 - Every acceptance criterion has `passed` evidence in JUnit output.
 - Successful deploy to both `docker-local` and `kind`, with green acceptance smoke tests against the running service.
 - Zero duplicate PRs; `main` stays green after every merge.
-- Two runs: baseline (Claude only) and mixed (OmniRoute for Test/DevOps), compared on tokens, retries, wall time and blocked tasks.
+- Three runs compared on tokens, retries, wall time, blocked tasks and escalation rate:
+  1. Baseline — Claude only, System 1 layer disabled.
+  2. Mixed — OmniRoute for Test/DevOps, System 1 disabled.
+  3. Full — OmniRoute for Test/DevOps, System 1 layer enabled (see 10A).
 
 ### 1.4 Non-goals
 
@@ -58,6 +61,7 @@ Using a reference spec (a small TODO REST API with 4–5 acceptance criteria):
 | Models | Per-role, configurable: `opus` for SM/PO/Dev, `sonnet` for Test/DevOps (Claude subscription). |
 | Free LLMs | OmniRoute gateway, per-role provider profile; POC uses it for Test, DevOps and report steps with a pinned model. |
 | Knowledge | Structured JSON contract (lookup by ID) + graphify code graph + BM25 text retrieval (SQLite FTS5). |
+| Fast decisions | System One–style decision layer (Choice / Score / Noul) on a local 7–9B model via llama.cpp with logprobs; low confidence escalates to Claude agents. |
 
 ## 3. Architecture
 
@@ -81,6 +85,7 @@ teams-ai/
 │  ├─ knowledge/            context pack builder, graphify wrapper, FTS5 retrieval
 │  ├─ deploy/               DeployTarget interface + docker-local, kind adapters
 │  ├─ budget/               token accounting, budgets, concurrency governor, quota breaker
+│  ├─ decide/               System 1 decision layer: choice/score/noul, backends, policies, calibration
 │  ├─ store/                state.json + events.ndjson persistence
 │  └─ api/                  REST + SSE
 ├─ web/                     React + Vite UI
@@ -108,6 +113,7 @@ teams-ai/
 - **knowledge** — Builds the per-step context pack from the JSON contract (by ID), graphify queries and FTS5 retrieval.
 - **deploy** — `DeployTarget` interface: `validate()`, `apply()`, `verify()` (readiness + healthcheck), `smoke()`, `rollback()`, `destroy()`. Adapter selected by `project.deploy.target`.
 - **budget** — Reads usage from each step result, aggregates per role/phase/task/attempt, enforces budgets, runs the global concurrency semaphore and the quota circuit breaker.
+- **decide** — Fast typed decisions (see 10A). Input `{decisionId, state, questions}`; output per question `{value, probabilities, confidence, backend, escalated}`. Callers never know which backend answered.
 - **store** — Append-only `events.ndjson` plus a derived `state.json` snapshot. Rebuilds state by replay on boot.
 - **api / web** — The UI reads state and events. Its only writes are Gate 1 inputs (documents, answers, tasks, stack constraint, secret values, "Start") and validation actions ("Report problem", "Complete spec").
 
@@ -215,7 +221,7 @@ The "Start" button is enabled only when all items pass.
 2. PO and SM each run a refinement step returning `{checklist, questions[], docPatch}`.
 3. The orchestrator merges both agents' questions into one queue, deduplicates, and orders blocking questions first. The UI shows one question at a time, labeled with the asking role.
 4. Each answer is routed to the agent that asked; the resulting `docPatch` is applied to the documentation and shown as a diff.
-5. A full readiness re-evaluation runs when the queue empties (not after every answer), to limit token use.
+5. A full readiness re-evaluation runs when the queue empties (not after every answer), to limit token use. With the System 1 layer enabled, checklist items are first evaluated as individual Noul questions and only failed or low-confidence items reach PO/SM (10A.5, decisions 2–4).
 6. When the checklist is fully green, the UI shows the final documentation and `spec.json`. The human clicks "Start".
 7. "Start" freezes the spec (`specVersion`, `specHash`). Every subsequent event carries the hash. Changes after this point require a new refinement cycle after the run ends.
 
@@ -251,7 +257,8 @@ For each task:
    4. Push; create PR if none exists for the branch (`gh pr list --head`); body includes summary, ACs and gate results.
    5. `gh pr merge --squash --match-head-commit <sha>`; skip if already merged.
    6. Release lock; run `graphify update` on `main`; remove worktree.
-6. Each return to Dev is one attempt. After 3 failed attempts, SM replans once (split or change the task; the new tasks re-enter the loop). If that fails, the task and its dependents become `blocked`.
+6. Gate failures are triaged first (10A.5, decision 1); only `code`/`dependency` failures return to Dev. Before review, PR risk selects the review profile (decision 5). From attempt 2 onward, attempt progress may trigger early replan (decision 6).
+7. Each return to Dev is one attempt. After 3 failed attempts, SM replans once (split or change the task; the new tasks re-enter the loop). If that fails, the task and its dependents become `blocked`.
 
 ### Phase 4 — Integrated verification
 Test runs the full suite plus all acceptance tests on `main`. Failures make SM create fix tasks (one round only), which go through Phase 3.
@@ -328,6 +335,65 @@ The Claude subscription imposes usage windows rather than per-token billing; tok
 - The model that actually served a request is taken from OmniRoute logs (`X-OmniRoute-Decision`), since the CLI does not expose response headers.
 - Run 1 (baseline) uses Claude for all roles; run 2 switches Test and DevOps (and the report step) to OmniRoute.
 
+## 10A. System 1 decision layer
+
+Inspired by TypeSafe's System One models (Jev): instead of asking a text-generating agent for a judgment, ask **atomic typed questions** against a state and get **probabilities** back, then combine answers with thresholds in code. Jev itself is a hosted, paid, early-access API, so the POC emulates the concept locally and for free. A `typesafe-jev` backend may be added later.
+
+### 10A.1 Primitives
+
+| Primitive | Question | Returns |
+|---|---|---|
+| `choice(state, instructions, options)` | Pick one option from a fixed set (2–10) | `value`, `probabilities` per option, `confidence` |
+| `score(state, instructions, levels)` | Position on an ordered scale (2–10 levels) | `value` (may fall between levels), `probabilities` per level, `confidence` |
+| `noul(state, statement, criteria?)` | Is this statement true? | `value` = P(yes) in [0, 1] |
+
+- Several questions against the same state are sent in one call and evaluated independently (no cross-question context).
+- `confidence`: for Choice, the calibrated probability of the selected option; for Score, derived from the spread of the level distribution (1 − normalized entropy); for Noul, `value` itself carries the certainty.
+- Questions must be atomic ("a judgment an expert makes in seconds"). Multi-factor judgments are decomposed into several questions and combined in code.
+
+### 10A.2 Local backend (`local-logprobs`)
+
+- **Runtime:** llama.cpp server built with CUDA, running in WSL2 on the RTX 3060 Ti (8 GB VRAM). Parallel slots (`-np`) with continuous batching; one server shared by all decisions.
+- **Model:** a 7–9B instruct model quantized to Q4_K_M or Q5_K_M (~5 GB), leaving room for an 8–16k-token KV cache. 14B-class models do not fit fully in 8 GB and are excluded. The concrete model is selected by the decision eval (10A.6), not fixed in this spec.
+- **Type safety:** grammar-constrained decoding restricts the single answer token to valid labels, so the output can never be outside the defined type.
+- **Probabilities from one forward pass:**
+  - Choice: options are labeled `A`…`J`; read the next-token logprobs restricted to those labels and renormalize.
+  - Noul: P(`yes`) / (P(`yes`) + P(`no`)).
+  - Score: levels are labeled `0`…`9`; `value` = Σ i · pᵢ.
+- **Parallel questions:** the state is sent as a shared prompt prefix (prompt cache); each question is a short suffix, so N questions cost roughly one state evaluation.
+- **State size cap:** states are truncated or summarized by the caller (e.g. diff stats + changed symbols instead of a full diff) to stay within the context budget.
+
+### 10A.3 Escalation backend (`claude-escalate`)
+
+When local confidence is below the decision's threshold, or the local backend is unavailable, the same question is answered by a Claude agent step (`claude -p --json-schema`) with a schema matching the primitive. System 2 answers carry no calibrated probabilities; they are recorded with `confidence: null` and treated as final.
+
+### 10A.4 Calibration
+
+Raw LLM token probabilities are typically overconfident. The pipeline produces its own ground truth, so each decision is logged together with its later real outcome (e.g. triage said `infra` → did the re-run pass without code changes?). After enough runs, per-decision calibration (temperature scaling or isotonic regression) is fitted and thresholds are tuned. Until then, conservative initial thresholds apply.
+
+### 10A.5 Decisions in the POC
+
+Rule: **deterministic rules first, System 1 second, System 2 on low confidence.** System 1 may route, prioritize and triage; it may **never** waive a gate, approve a review, or mark evidence as passed.
+
+| # | Decision | Primitive | Where | Action | Escalates to |
+|---|---|---|---|---|---|
+| 1 | Gate failure triage: `code` / `flaky-test` / `infra` / `environment` / `dependency` | Choice | Phase 3, after a failed gate not resolved by rules (exit codes, OOM 137, Docker daemon and network error patterns) | `infra`/`environment`: retry with backoff, no attempt consumed (max 3 per gate, then treated as `code`); `flaky-test`: re-run once; `code`/`dependency`: back to Dev | Test |
+| 2 | Readiness per checklist item (one Noul per AC and per checklist item) | Noul | Gate 1 | Only failed or low-confidence items are sent to PO/SM to generate questions | PO / SM |
+| 3 | Question deduplication (one Noul per question pair) | Noul | Gate 1 queue | Merge duplicates | SM |
+| 4 | Contradiction with history (one Noul per retrieved chunk vs the new spec) | Noul | Gate 1, after FTS5 retrieval | Contradiction → PO asks the human | PO |
+| 5 | PR risk: `trivial` … `high` | Score | Phase 3, before review | Selects review profile (quick / standard / deep: more context, graphify impact radius); review is never skipped | Test |
+| 6 | Attempt progress: `diverging` / `stalled` / `converging` | Score | Phase 3, from attempt 2 onward | `stalled` or `diverging` triggers early replan instead of spending remaining attempts | SM |
+| 7 | Validation report routing: `bug-existing-ac` / `new-requirement` / `environment` / `unclear` | Choice | After human validation report | Sets the continuation mode of the spec; `unclear` → PO asks the human | PO |
+| 8 | CLI error classification: `usage-limit` / `auth-expired` / `network` / `invalid-output` / `other` | Choice | Runner, when rules do not match | Feeds the quota breaker and pause states | — (falls back to `other` → generic retry) |
+
+Each decision has a config entry `{enabled, threshold, backend, escalateTo}`. With the layer disabled (runs 1 and 2), every decision goes straight to its System 2 path or deterministic default.
+
+### 10A.6 Decision evals
+
+- A labeled fixture set per decision (initially hand-built from recorded runs, then grown from logged outcomes).
+- Metrics per decision and model: accuracy, Brier score, expected calibration error (ECE), escalation rate at the configured threshold, latency.
+- Used to select the local model and to set thresholds.
+
 ## 11. Web UI
 
 Fastify serves REST + SSE, bound to `127.0.0.1`, no authentication. SSE supports `Last-Event-ID` with replay from `events.ndjson`.
@@ -351,6 +417,8 @@ Fastify serves REST + SSE, bound to `127.0.0.1`, no authentication. SSE supports
 | Usage quota exhausted | Global `paused:quota`, automatic resume | No |
 | OmniRoute unavailable | Fall back to Claude profile for that role | No |
 | Docker / GitHub / network transient error | Backoff on idempotent operation | No |
+| Local System 1 backend unavailable | All decisions escalate to System 2 | No |
+| Gate failure triaged as `infra`/`environment` | Retry with backoff, max 3 per gate, then treated as `code` | No (until the cap) |
 | Claude login expired in WSL | `paused:auth`, UI notice; resumes after `claude login` | No |
 | Orchestrator crash | Replay + reconcile (7.3) | No |
 | Deploy failure | Rollback, fix via PR, up to 3 deploy attempts; then `deploy-failed` in report | Separate counter |
@@ -364,7 +432,8 @@ Raw agent streams are stored per step in `runs/<runId>/steps/<stepId>.ndjson`. W
 2. **Runner contract:** a fake `claude` binary (via `CLAUDE_BIN`) replays recorded stream-json fixtures — success, invalid JSON, quota error, timeout, oversized output. A record mode captures real outputs to create fixtures.
 3. **Integration (on demand):** git controller against a local bare repository and a fake `gh` (create PR twice, merge twice → idempotent); deploy adapters against real Docker and kind with a "hello" fixture app exposing a healthcheck and a smoke test.
 4. **Agent evals (on demand, consume tokens):** small set of context packs per role; outputs must pass schema and semantic validation; pass rate tracked per role and provider.
-5. **Golden run:** see 1.3.
+5. **Decision evals (on demand, local, free):** see 10A.6. Unit tests for the decide layer use a fake backend returning fixed distributions to test thresholds, escalation and disabled mode.
+6. **Golden run:** see 1.3.
 
 ## 14. Security model
 
@@ -379,7 +448,8 @@ Raw agent streams are stored per step in `runs/<runId>/steps/<stepId>.ndjson`. W
 - Ubuntu distribution on WSL2 (currently only `docker-desktop` exists).
 - Docker Desktop with WSL integration enabled for that distribution.
 - Inside Ubuntu: Node LTS, Claude Code CLI (logged in), `gh` (authenticated), `kind`, `kubectl`, `gitleaks`, `osv-scanner`, `graphify`.
-- OmniRoute container (pinned version) for run 2.
+- OmniRoute container (pinned version) for runs 2 and 3.
+- NVIDIA driver with CUDA support for WSL2; llama.cpp server built with CUDA inside Ubuntu; a 7–9B GGUF model (Q4_K_M/Q5_K_M) for the System 1 layer.
 - teams-ai and `~/.teams-ai/` located on the Linux filesystem, not under `/mnt/c`.
 
 ## 16. Open items to verify during implementation
@@ -389,3 +459,5 @@ Raw agent streams are stored per step in `runs/<runId>/steps/<stepId>.ndjson`. W
 - Format of usage-limit errors in stream-json, to parse reset times.
 - `--json-schema` reliability with non-Claude models through OmniRoute.
 - graphify language coverage for likely product stacks.
+- llama.cpp server logprobs API shape for restricted-label next-token probabilities, and prompt-cache reuse across parallel slots.
+- Which 7–9B model gives the best accuracy/ECE on the decision evals within 8 GB VRAM, alongside Docker and kind on the same host.
