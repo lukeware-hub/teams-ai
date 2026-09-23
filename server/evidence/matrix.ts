@@ -58,21 +58,27 @@ export interface EvidenceClaim {
  * with the criterion and have passed. Agents never mark evidence passed on their own.
  */
 export function verifyClaimedEvidence(claims: readonly EvidenceClaim[], results: readonly TestResult[]): string[] {
-  const byId = new Map(results.map((r) => [r.id, r]));
+  const byId = new Map<string, TestResult[]>();
+  for (const r of results) byId.set(r.id, [...(byId.get(r.id) ?? []), r]);
   const errors: string[] = [];
   for (const claim of claims) {
     for (const testId of claim.evidence) {
-      const result = byId.get(testId);
-      if (!result) {
+      const matches = byId.get(testId) ?? [];
+      if (matches.length === 0) {
         errors.push(`${claim.id}: cited test not found in JUnit report: ${testId}`);
         continue;
       }
+      if (matches.length > 1) errors.push(`${claim.id}: cited test id is ambiguous in the JUnit report: ${testId}`);
+      const result = matches[0]!;
       if (!result.acIds.includes(claim.id)) errors.push(`${claim.id}: cited test is not tagged with this criterion: ${testId}`);
-      if (claim.status === 'passed' && result.status !== 'passed') {
-        errors.push(`${claim.id}: claimed passed but ${testId} is ${result.status}`);
+    }
+    if (claim.status === 'passed') {
+      if (claim.evidence.length === 0) errors.push(`${claim.id}: claimed passed without evidence`);
+      // Any non-skipped test tagged with the criterion that failed contradicts the claim, cited or not.
+      for (const r of results) {
+        if (r.status === 'failed' && r.acIds.includes(claim.id)) errors.push(`${claim.id}: claimed passed but ${r.id} is ${r.status}`);
       }
     }
-    if (claim.status === 'passed' && claim.evidence.length === 0) errors.push(`${claim.id}: claimed passed without evidence`);
   }
   return errors;
 }

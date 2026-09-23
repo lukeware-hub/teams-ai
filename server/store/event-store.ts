@@ -99,6 +99,35 @@ export function unconfirmedIntents(events: readonly StoredEvent[]): StoredEvent[
   return events.filter((e) => e.kind === 'intent' && !confirmed.has(e.intentId));
 }
 
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code !== 'ESRCH';
+  }
+}
+
+/** Takes the exclusive lock; a lock whose owner process is gone is reclaimed. */
+async function acquireLock(file: string, lockFile: string): Promise<void> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const handle = await fs.open(lockFile, 'wx');
+      await handle.writeFile(String(process.pid));
+      await handle.close();
+      return;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      const owner = Number.parseInt(await fs.readFile(lockFile, 'utf8').catch(() => ''), 10);
+      if (attempt === 0 && Number.isInteger(owner) && owner !== process.pid && !processAlive(owner)) {
+        await fs.rm(lockFile, { force: true });
+        continue;
+      }
+      throw new EventLogLockedError(`${file} is already open (lock: ${lockFile}, pid ${owner})`);
+    }
+  }
+}
+
 export class EventStore {
   private seq: number;
   private queue: Promise<unknown> = Promise.resolve();
@@ -123,18 +152,15 @@ export class EventStore {
   }): Promise<EventStore> {
     await fs.mkdir(path.dirname(opts.file), { recursive: true });
     const lockFile = `${opts.file}.lock`;
+    await acquireLock(opts.file, lockFile);
+    let events: StoredEvent[];
     try {
-      const handle = await fs.open(lockFile, 'wx');
-      await handle.writeFile(String(process.pid));
-      await handle.close();
+      await repairEventLog(opts.file);
+      events = await loadEvents(opts.file);
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
-        throw new EventLogLockedError(`${opts.file} is already open (lock: ${lockFile})`);
-      }
+      await fs.rm(lockFile, { force: true });
       throw err;
     }
-    await repairEventLog(opts.file);
-    const events = await loadEvents(opts.file);
     return new EventStore(
       opts.file,
       lockFile,
@@ -162,12 +188,20 @@ export class EventStore {
         ...(input.intentId ? { intentId: input.intentId } : {}),
         data: input.data ?? {},
       };
-      const handle = await fs.open(this.file, 'a');
+      const line = Buffer.from(`${JSON.stringify(event)}\n`);
       try {
-        await handle.write(`${JSON.stringify(event)}\n`);
-        await handle.datasync();
-      } finally {
-        await handle.close();
+        const handle = await fs.open(this.file, 'a');
+        try {
+          const { bytesWritten } = await handle.write(line);
+          if (bytesWritten !== line.length) throw new Error(`short write: ${bytesWritten}/${line.length} bytes`);
+          await handle.datasync();
+        } finally {
+          await handle.close();
+        }
+      } catch (err) {
+        // The on-disk tail is now unknown; force a reopen, which repairs it.
+        this.closed = true;
+        throw err;
       }
       this.seq = event.seq;
       return event;

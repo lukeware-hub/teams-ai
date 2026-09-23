@@ -157,3 +157,31 @@ describe('unconfirmedIntents', () => {
     expect(pending.map((e) => e.intentId)).toEqual(['merge-t1']);
   });
 });
+
+describe('EventStore crash recovery', () => {
+  it('reclaims a lock left by a dead process and repairs the torn tail', async () => {
+    const first = await open();
+    await first.append({ type: 'A' });
+    // Simulate a crash: torn tail and a lock file whose owner is gone.
+    await fs.appendFile(file, '{"seq":2,"type":"PARTI');
+    await fs.writeFile(`${file}.lock`, '999999');
+    opened.splice(opened.indexOf(first), 1);
+    const reopened = await open();
+    expect((await reopened.append({ type: 'B' })).seq).toBe(2);
+  });
+
+  it('releases the lock when open fails on a corrupt log', async () => {
+    await writeLines(rawEvent(1), 'garbage\n', rawEvent(3));
+    await expect(EventStore.open({ file, runId: 'run-1', specHash: HASH })).rejects.toThrow(EventLogCorruptError);
+    await expect(EventStore.open({ file, runId: 'run-1', specHash: HASH })).rejects.toThrow(EventLogCorruptError);
+  });
+
+  it('closes itself after a failed append so the next open repairs the log', async () => {
+    const store = await open();
+    await store.append({ type: 'A' });
+    const failing = { ...store, file: path.join(dir, 'missing-dir', 'x', 'events.ndjson') } as unknown as EventStore;
+    Object.setPrototypeOf(failing, EventStore.prototype);
+    await expect(failing.append({ type: 'B' })).rejects.toThrow();
+    await expect(failing.append({ type: 'C' })).rejects.toThrow(/closed/);
+  });
+});

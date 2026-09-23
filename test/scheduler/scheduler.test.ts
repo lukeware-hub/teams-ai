@@ -102,3 +102,12 @@ describe('runProgress', () => {
     expect(runProgress(cycle, 3)).toBe('deadlocked');
   });
 });
+
+describe('runProgress while draining', () => {
+  it('reports drained once nothing is active, so the run can go to the report', () => {
+    const idle = withStatus(runState(runtime({ id: 'T1-a' }), runtime({ id: 'T2-b' }, 'merged')), 'draining');
+    expect(runProgress(idle, 3)).toBe('drained');
+    const busy = withStatus(runState(runtime({ id: 'T1-a' }, 'implementing')), 'draining');
+    expect(runProgress(busy, 3)).toBe('running');
+  });
+});

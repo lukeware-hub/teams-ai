@@ -108,3 +108,18 @@ describe('verifyClaimedEvidence', () => {
     expect(verifyClaimedEvidence([{ id: 'AC-002', status: 'not-covered', evidence: [] }], results)).toEqual([]);
   });
 });
+
+describe('verifyClaimedEvidence against uncited failures', () => {
+  it('rejects a passed claim when another test tagged with the criterion failed', () => {
+    const results = [result('[AC-001] ok', 'passed', ['AC-001']), result('[AC-001] bad', 'failed', ['AC-001'])];
+    expect(verifyClaimedEvidence([{ id: 'AC-001', status: 'passed', evidence: ['t::[AC-001] ok'] }], results)).toEqual([
+      'AC-001: claimed passed but t::[AC-001] bad is failed',
+    ]);
+  });
+
+  it('rejects a cited test id that is ambiguous in the report', () => {
+    const results = [result('[AC-001] t', 'failed', ['AC-001']), result('[AC-001] t', 'passed', ['AC-001'])];
+    const errors = verifyClaimedEvidence([{ id: 'AC-001', status: 'passed', evidence: ['t::[AC-001] t'] }], results);
+    expect(errors).toContain('AC-001: cited test id is ambiguous in the JUnit report: t::[AC-001] t');
+  });
+});

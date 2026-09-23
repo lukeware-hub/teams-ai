@@ -4,7 +4,8 @@ import { ACTIVE_STATES, TERMINAL_STATES } from '../pipeline/task-state.js';
 
 export const DEFAULT_MAX_PARALLEL = 3;
 
-export type RunProgress = 'running' | 'complete' | 'deadlocked';
+/** `drained`: the run budget is exhausted and nothing is in flight; go to the report. */
+export type RunProgress = 'running' | 'complete' | 'deadlocked' | 'drained';
 
 function ordered(state: RunState): TaskRuntime[] {
   return state.order.map((id) => state.tasks.get(id)).filter((t): t is TaskRuntime => t !== undefined);
@@ -69,6 +70,7 @@ export function runProgress(state: RunState, maxParallel: number = DEFAULT_MAX_P
   const tasks = ordered(state);
   if (tasks.every((t) => TERMINAL_STATES.has(t.state))) return 'complete';
   if (tasks.some((t) => ACTIVE_STATES.has(t.state))) return 'running';
+  if (state.status === 'draining') return 'drained';
   if (state.status !== 'running') return 'running';
   if (tasksToBlock(state).length > 0) return 'running';
   return nextRunnable(state, maxParallel).length > 0 ? 'running' : 'deadlocked';

@@ -123,3 +123,14 @@ describe('replan', () => {
     expect(() => reduceEvents([planned('T1-a'), replan('T1-a', makePlanTask({ id: 'T3-r' }), makePlanTask({ id: 'T3-r' }))])).toThrow(ReplanError);
   });
 });
+
+describe('run status precedence', () => {
+  it('keeps draining across a pause and resume', () => {
+    const state = reduceEvents([
+      { type: RunEvent.RunBudgetExhausted, data: {} },
+      { type: RunEvent.RunPaused, data: { reason: 'quota' } },
+      { type: RunEvent.RunResumed, data: {} },
+    ]);
+    expect(state.status).toBe('draining');
+  });
+});

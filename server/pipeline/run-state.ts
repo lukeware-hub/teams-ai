@@ -92,7 +92,9 @@ export function applyEvent(state: RunState, event: ReducibleEvent): void {
       return;
     }
     case RunEvent.RunPaused: {
-      state.status = `paused:${PausedData.parse(event.data).reason}`;
+      const reason = PausedData.parse(event.data).reason;
+      // Draining is terminal for scheduling; a pause must not let a resume undo it.
+      if (state.status !== 'draining') state.status = `paused:${reason}`;
       return;
     }
     case RunEvent.RunResumed: {
