@@ -1,4 +1,86 @@
-import type { PlanTask } from '../contracts/plan.js';
+import type { Plan, PlanTask } from '../contracts/plan.js';
+import type { Spec } from '../contracts/spec.js';
+
+export const SCAFFOLD_TASK_ID = 'T0-scaffold';
+
+/** Blocking gates every POC plan must define (spec §4.3); `typecheck` only when the stack has one. */
+export const REQUIRED_BLOCKING_GATES = ['format', 'lint', 'unit-test', 'build', 'secret-scan'] as const;
+
+export interface PlanCheckOptions {
+  firstSpec: boolean;
+}
+
+export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): string[] {
+  const errors: string[] = [];
+
+  if (spec.specHash === null) errors.push('spec is not frozen');
+  else if (plan.specHash !== spec.specHash) {
+    errors.push(`plan specHash ${plan.specHash} does not match spec ${spec.specHash}`);
+  }
+  if (plan.specId !== spec.specId) errors.push(`plan specId ${plan.specId} does not match spec ${spec.specId}`);
+
+  const ids = new Set<string>();
+  let duplicates = false;
+  for (const task of plan.tasks) {
+    if (ids.has(task.id)) {
+      errors.push(`duplicate task id ${task.id}`);
+      duplicates = true;
+    }
+    ids.add(task.id);
+  }
+
+  const acIds = new Set(spec.acceptanceCriteria.map((ac) => ac.id));
+  const covered = new Set<string>();
+  for (const task of plan.tasks) {
+    for (const dep of task.dependsOn) {
+      if (dep === task.id) errors.push(`task ${task.id} depends on itself`);
+      else if (!ids.has(dep)) errors.push(`task ${task.id} depends on unknown task ${dep}`);
+    }
+    for (const ref of task.criteriaRefs) {
+      if (!acIds.has(ref)) errors.push(`task ${task.id} references unknown acceptance criterion ${ref}`);
+      covered.add(ref);
+    }
+  }
+  for (const ac of acIds) {
+    if (!covered.has(ac)) errors.push(`acceptance criterion ${ac} is not covered by any task`);
+  }
+
+  // With duplicate ids the graph is ambiguous; the duplicate error already blocks the plan.
+  if (!duplicates) {
+    const cycle = findCycle(plan.tasks);
+    if (cycle) errors.push(`dependency cycle: ${cycle.join(' -> ')}`);
+  }
+
+  const scaffold = plan.tasks.find((t) => t.id === SCAFFOLD_TASK_ID);
+  if (opts.firstSpec) {
+    if (!scaffold) errors.push(`first spec requires task ${SCAFFOLD_TASK_ID}`);
+    else {
+      if (scaffold.dependsOn.length > 0) errors.push(`${SCAFFOLD_TASK_ID} must not depend on other tasks`);
+      const byId = new Map(plan.tasks.map((t) => [t.id, t]));
+      for (const task of plan.tasks) {
+        if (task.id === SCAFFOLD_TASK_ID) continue;
+        if (!reaches(task.id, SCAFFOLD_TASK_ID, byId)) {
+          errors.push(`task ${task.id} must depend on ${SCAFFOLD_TASK_ID}`);
+        }
+      }
+    }
+    if (!plan.tasks.some((t) => t.owner === 'devops')) {
+      errors.push('first spec requires a deploy-infrastructure task owned by devops');
+    }
+  } else if (scaffold) {
+    errors.push(`${SCAFFOLD_TASK_ID} is only allowed on the first spec`);
+  }
+
+  const blocking = new Set(plan.gates.filter((g) => g.blocking).map((g) => g.name));
+  for (const name of REQUIRED_BLOCKING_GATES) {
+    if (!blocking.has(name)) errors.push(`missing blocking gate ${name}`);
+  }
+  if (plan.commands.typecheck && !blocking.has('typecheck')) {
+    errors.push('missing blocking gate typecheck (commands.typecheck is defined)');
+  }
+
+  return errors;
+}
 
 export function findCycle(tasks: readonly PlanTask[]): string[] | null {
   const byId = new Map<string, PlanTask>();
@@ -29,4 +111,17 @@ export function findCycle(tasks: readonly PlanTask[]): string[] | null {
     }
   }
   return null;
+}
+
+function reaches(from: string, target: string, byId: ReadonlyMap<string, PlanTask>): boolean {
+  const seen = new Set<string>();
+  const pending = [...(byId.get(from)?.dependsOn ?? [])];
+  while (pending.length > 0) {
+    const id = pending.pop()!;
+    if (id === target) return true;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    pending.push(...(byId.get(id)?.dependsOn ?? []));
+  }
+  return false;
 }
