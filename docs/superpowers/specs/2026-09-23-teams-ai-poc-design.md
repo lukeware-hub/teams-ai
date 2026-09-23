@@ -188,7 +188,7 @@ All contract files live in the product repository under `docs/` and are versione
 
 ### 4.4 Frozen files
 
-After the plan phase, the files that define `commands` and `gates` (and the build/test configuration they reference) are **frozen**. A task PR that modifies them is rejected automatically. This prevents an agent from weakening its own gates (e.g. `"test": "exit 0"`).
+After the plan phase, the files that define `commands` and `gates` (and the build/test configuration they reference) are **frozen**; `plan.frozenPaths` lists them as globs. A task PR that modifies them is rejected automatically. The only exception is `T0-scaffold` on the first spec, which creates these files; they are frozen from the moment it merges. This prevents an agent from weakening its own gates (e.g. `"test": "exit 0"`).
 
 ### 4.5 Evidence rules
 
@@ -275,7 +275,7 @@ The human checks the service and runs exploratory tests. "Report problem" opens 
 ## 7. State machine, persistence and idempotency
 
 ### 7.1 Task states
-`planned → ready → implementing → validating → reviewing → rebasing → merging → merged`, plus `blocked`. Run-level states include `paused:quota` and `paused:auth`.
+`planned → ready → implementing → validating → reviewing → rebasing → merging → merged`, plus terminal `blocked` and `superseded` (a task replaced by a replan; its dependents are rewired to the replacement tasks). Run-level states include `paused:quota` and `paused:auth`.
 
 ### 7.2 Events
 Examples: `RUN_STARTED`, `PHASE_STARTED`, `TASK_READY`, `TASK_STARTED`, `DEV_COMMITTED`, `GATE_FAILED`, `GATE_PASSED`, `REVIEW_CHANGES`, `REVIEW_APPROVED`, `MERGE_LOCK_ACQUIRED`, `PR_CREATED`, `PR_MERGED`, `TASK_BLOCKED`, `REPLAN_STARTED`, `DEPLOY_APPLIED`, `DEPLOY_VERIFIED`, `ROLLBACK_DONE`, `RUN_PAUSED`, `RUN_RESUMED`, `REPORT_READY`.
