@@ -32,7 +32,8 @@ The spec covers several independent subsystems, so it is implemented as a series
 - No network, LLM or subprocess calls anywhere in this plan.
 - All code, comments, commit messages and docs in English.
 - IDs: slugs match `^[a-z0-9]+(?:-[a-z0-9]+)*$`; task IDs match `^T\d+(?:-[a-z0-9]+)*$`; AC IDs match `^AC-\d{3}$`; ADR IDs match `^ADR-\d{3}$`; hashes match `^sha256:[0-9a-f]{64}$`.
-- Retry defaults from the spec: 3 attempts per task, 1 replan, 3 infra retries per gate, 2 schema retries per step, 1 flaky re-run per gate, `maxParallel` 3.
+- Retry defaults from the spec: 3 attempts per task, 1 replan, 3 infra retries per gate, 2 schema retries per step, 1 flaky re-run per gate, `maxParallel` 3 (`DEFAULT_MAX_PARALLEL`).
+- Task order within Plan 1: Task 4 imports `findCycle` from Task 7's `server/validators/plan.ts`; either implement Task 7 Step 11 before Task 4 Step 7 or create the file with `findCycle` alone at that point.
 - Commit messages end with:
   ```
   Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
@@ -44,7 +45,9 @@ The spec covers several independent subsystems, so it is implemented as a series
 2. **Agent-reported paths** with backslashes, a `./` prefix, trailing slashes or bare directory names (`src/auth`) — must match globs the way a person expects: `src/auth` covers `src/auth/login.ts` (tests in Tasks 5 and 9).
 3. **JUnit variants** — a single root `<testsuite>`, nested suites, `<skipped/>` cases and an empty report; skipped never counts as evidence and zero tests fails the gate (tests in Task 8).
 4. **AC tag variants in test names** — `[ac-003]` counts as `AC-003`; `[AC-3]` does not count (tests in Task 8).
-5. **Replan with dependents** — dependents of a superseded task must wait for its replacements, and a replacement that depends on the superseded task is rejected (tests in Task 4).
+5. **Replan with dependents** — dependents of a superseded task must wait for its replacements; a replacement that depends on the superseded task or closes a cycle is rejected without mutating state (tests in Task 4).
+6. **Two writers on one event log** (a stale orchestrator and a fresh one) — the second must be refused, not silently interleave `seq` (test in Task 3).
+7. **Test agent claims `passed` for a criterion whose test failed or does not exist** — the orchestrator must reject the review (tests in Task 8).
 
 ---
 
@@ -93,8 +96,10 @@ test/**/*.test.ts                 one test file per module
   - `assertTaskId(value: string): string`
   - `repoName(projectId: string): string`
   - `taskBranch(specId: string, taskId: string): string`
-  - `attemptId(runId: string, taskId: string, attempt: number): string`
-  - `stepId(runId: string, seq: number): string`
+  - `attemptId(taskId: string, attempt: number): string` — relative to the run (`runs/<runId>/attempts/<attemptId>`); never contains `/`
+  - `stepId(seq: number): string` — relative to the run (`runs/<runId>/steps/<stepId>.ndjson`); never contains `/`
+
+Branch names keep the task id verbatim (`task/spec-001-T3-auth`) so a branch maps back to its task without a lookup.
 
 - [ ] **Step 1: Create project files**
 
@@ -105,11 +110,24 @@ test/**/*.test.ts                 one test file per module
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.12" },
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "fast-xml-parser": "5.11.1",
+    "picomatch": "4.0.7",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.4",
+    "@types/picomatch": "4.0.3",
+    "typescript": "5.9.3",
+    "vitest": "5.0.1"
   }
 }
 ```
@@ -192,8 +210,8 @@ describe('ids', () => {
     expect(repoName('todo-api')).toBe('todo-api');
   });
 
-  it('builds a deterministic lowercase task branch', () => {
-    expect(taskBranch('spec-001', 'T3-auth')).toBe('task/spec-001-t3-auth');
+  it('builds a deterministic task branch that keeps the task id verbatim', () => {
+    expect(taskBranch('spec-001', 'T3-auth')).toBe('task/spec-001-T3-auth');
   });
 
   it('rejects malformed task ids', () => {
@@ -201,13 +219,14 @@ describe('ids', () => {
   });
 
   it('builds attempt ids and rejects non-positive attempts', () => {
-    expect(attemptId('run-1', 'T1-create', 2)).toBe('run-1/T1-create/a2');
-    expect(() => attemptId('run-1', 'T1-create', 0)).toThrow(InvalidIdError);
+    expect(attemptId('T1-create', 2)).toBe('T1-create-a2');
+    expect(() => attemptId('T1-create', 0)).toThrow(InvalidIdError);
   });
 
-  it('zero-pads step ids', () => {
-    expect(stepId('run-1', 7)).toBe('run-1/s00007');
-    expect(() => stepId('run-1', 0)).toThrow(InvalidIdError);
+  it('zero-pads step ids and never contains a path separator', () => {
+    expect(stepId(7)).toBe('s00007');
+    expect(stepId(7)).not.toContain('/');
+    expect(() => stepId(0)).toThrow(InvalidIdError);
   });
 });
 ```
@@ -253,18 +272,21 @@ export function repoName(projectId: string): string {
   return assertSlug(projectId, 'projectId');
 }
 
+/** Branch name keeps the task id verbatim so it can be mapped back without a lookup. */
 export function taskBranch(specId: string, taskId: string): string {
-  return `task/${assertSlug(specId, 'specId')}-${assertTaskId(taskId).toLowerCase()}`;
+  return `task/${assertSlug(specId, 'specId')}-${assertTaskId(taskId)}`;
 }
 
-export function attemptId(runId: string, taskId: string, attempt: number): string {
+/** Relative to the run: runs/<runId>/attempts/<attemptId>. */
+export function attemptId(taskId: string, attempt: number): string {
   assertPositiveInteger(attempt, 'attempt');
-  return `${assertSlug(runId, 'runId')}/${assertTaskId(taskId)}/a${attempt}`;
+  return `${assertTaskId(taskId)}-a${attempt}`;
 }
 
-export function stepId(runId: string, seq: number): string {
+/** Relative to the run: runs/<runId>/steps/<stepId>.ndjson. */
+export function stepId(seq: number): string {
   assertPositiveInteger(seq, 'seq');
-  return `${assertSlug(runId, 'runId')}/s${String(seq).padStart(5, '0')}`;
+  return `s${String(seq).padStart(5, '0')}`;
 }
 ```
 
@@ -294,9 +316,11 @@ git commit -m "feat: scaffold project and add deterministic ids" -m "Co-Authored
 - Produces:
   - `HASH_PATTERN: RegExp`, `canonicalJson(value: unknown): string`, `sha256(text: string): string` (returns `sha256:<hex>`)
   - `Project` (zod schema and type), `DeployTarget`
-  - `AC_ID: RegExp`, `AcceptanceCriterion`, `Spec` (zod schema and type), `SpecStatus`, `computeSpecHash(spec: Spec): string`, `freezeSpec(spec: Spec): Spec`, `class SpecFrozenError extends Error`
+  - `AC_ID: RegExp`, `AcceptanceCriterion`, `Spec` (zod schema and type), `SpecStatus`, `computeSpecHash(spec: Spec): string` (parses before hashing, so defaults such as `smoke=false` always count), `freezeSpec(spec: Spec): Spec`, `class SpecFrozenError extends Error`
   - `ADR_ID: RegExp`, `Gate`, `PlanTask`, `Plan` (zod schemas and types)
-  - Fixtures: `makeProject(overrides?)`, `makeSpec(overrides?)`, `makeFrozenSpec(overrides?)`, `makePlanTask(overrides & { id })`, `makePlan(spec, overrides?)`
+  - Fixtures: `makeProject(overrides?)`, `makeSpec(overrides?)`, `makeFrozenSpec(overrides?)`, `makePlanTask(overrides & { id })`, `makePlan(spec, overrides?)`, `REQUIRED_GATES` (the seven POC gates)
+
+Human-defined tasks (`Spec.tasks`) carry only title and description; the SM derives dependencies in the plan, where they are validated.
 
 - [ ] **Step 1: Write the contract modules needed by the fixtures**
 
@@ -380,6 +404,7 @@ export const ExternalDependency = z.object({
   secretNames: z.array(z.string().regex(/^[A-Z][A-Z0-9_]*$/)),
 });
 
+/** Human-defined tasks carry no dependencies; the SM derives them in the plan. */
 export const HumanTask = z.object({
   title: z.string().min(1),
   description: z.string().min(1),
@@ -440,9 +465,11 @@ const HASHED_FIELDS = [
   'tasks',
 ] as const;
 
+/** Hashes the parsed form, so defaults (e.g. smoke=false) are always included. */
 export function computeSpecHash(spec: Spec): string {
+  const parsed = Spec.parse(spec);
   const content: Record<string, unknown> = {};
-  for (const field of HASHED_FIELDS) content[field] = spec[field];
+  for (const field of HASHED_FIELDS) content[field] = parsed[field];
   return sha256(canonicalJson(content));
 }
 
@@ -584,6 +611,17 @@ export function makePlanTask(overrides: Partial<PlanTask> & { id: string }): Pla
   });
 }
 
+/** The gate set every POC plan must carry (spec §4.3). */
+export const REQUIRED_GATES = [
+  { name: 'format', command: 'npm run format:check', blocking: true },
+  { name: 'lint', command: 'npm run lint', blocking: true },
+  { name: 'typecheck', command: 'npm run typecheck', blocking: true },
+  { name: 'unit-test', command: 'npm test', blocking: true },
+  { name: 'build', command: 'npm run build', blocking: true },
+  { name: 'secret-scan', command: 'gitleaks detect --no-git -s .', blocking: true },
+  { name: 'dependency-scan', command: 'osv-scanner .', blocking: false },
+];
+
 export function makePlan(spec: Spec, overrides: Partial<Plan> = {}): Plan {
   if (spec.specHash === null) throw new Error('makePlan requires a frozen spec');
   return Plan.parse({
@@ -602,11 +640,7 @@ export function makePlan(spec: Spec, overrides: Partial<Plan> = {}): Plan {
       healthcheck: 'curl -fsS http://localhost:3000/health',
     },
     junitPath: 'reports/junit.xml',
-    gates: [
-      { name: 'lint', command: 'npm run lint', blocking: true },
-      { name: 'unit-test', command: 'npm test', blocking: true },
-      { name: 'dependency-scan', command: 'osv-scanner .', blocking: false },
-    ],
+    gates: REQUIRED_GATES,
     frozenPaths: ['package.json', 'package-lock.json', 'vitest.config.ts'],
     tasks: [
       makePlanTask({
@@ -777,9 +811,10 @@ git commit -m "feat: add project, spec and plan contracts with spec hashing" -m 
   - `type EventKind = 'fact' | 'intent' | 'confirm'`
   - `interface EventInput { type: string; kind?: EventKind; intentId?: string; data?: Record<string, unknown> }`
   - `interface StoredEvent { seq: number; at: string; runId: string; specHash: string; type: string; kind: EventKind; intentId?: string; data: Record<string, unknown> }`
-  - `class EventLogCorruptError extends Error`
-  - `class EventStore { static open(opts: { file: string; runId: string; specHash: string; clock?: () => Date }): Promise<EventStore>; append(input: EventInput): Promise<StoredEvent>; readAll(): Promise<StoredEvent[]> }`
-  - `loadEvents(file: string): Promise<StoredEvent[]>` (truncates a torn tail)
+  - `class EventLogCorruptError extends Error`, `class EventLogLockedError extends Error`
+  - `class EventStore { static open(opts: { file: string; runId: string; specHash: string; clock?: () => Date }): Promise<EventStore>; append(input: EventInput): Promise<StoredEvent>; readAll(): Promise<StoredEvent[]>; close(): Promise<void> }` — `open` takes an exclusive `<file>.lock` (a second opener gets `EventLogLockedError`) and repairs the log; `close` releases the lock
+  - `loadEvents(file: string): Promise<StoredEvent[]>` — pure read, throws on any corruption
+  - `repairEventLog(file: string): Promise<number>` — drops a torn or unreadable last line and returns the bytes removed; corruption before the last line is not repaired
   - `unconfirmedIntents(events: readonly StoredEvent[]): StoredEvent[]`
 
 - [ ] **Step 1: Write the failing test**
@@ -792,8 +827,10 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   EventLogCorruptError,
+  EventLogLockedError,
   EventStore,
   loadEvents,
+  repairEventLog,
   unconfirmedIntents,
 } from '../../server/store/event-store.js';
 
@@ -802,6 +839,7 @@ const fixedClock = () => new Date('2026-09-23T12:00:00.000Z');
 
 let dir: string;
 let file: string;
+const opened: EventStore[] = [];
 
 beforeEach(async () => {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-events-'));
@@ -809,12 +847,23 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  await Promise.all(opened.splice(0).map((s) => s.close()));
   await fs.rm(dir, { recursive: true, force: true });
 });
 
-function open() {
-  return EventStore.open({ file, runId: 'run-1', specHash: HASH, clock: fixedClock });
+async function open() {
+  const store = await EventStore.open({ file, runId: 'run-1', specHash: HASH, clock: fixedClock });
+  opened.push(store);
+  return store;
 }
+
+async function writeLines(...lines: string[]) {
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, lines.join(''));
+}
+
+const rawEvent = (seq: number, type = 'A') =>
+  `${JSON.stringify({ seq, at: 'x', runId: 'run-1', specHash: HASH, type, kind: 'fact', data: {} })}\n`;
 
 describe('EventStore', () => {
   it('assigns sequential seq numbers and persists events', async () => {
@@ -827,10 +876,23 @@ describe('EventStore', () => {
     expect((await loadEvents(file)).map((e) => e.type)).toEqual(['RUN_STARTED', 'TASK_READY']);
   });
 
-  it('continues numbering after reopening', async () => {
-    await (await open()).append({ type: 'A' });
+  it('continues numbering after close and reopen', async () => {
+    const first = await open();
+    await first.append({ type: 'A' });
+    await first.close();
     const reopened = await open();
     expect((await reopened.append({ type: 'B' })).seq).toBe(2);
+  });
+
+  it('refuses a second writer on the same log', async () => {
+    await open();
+    await expect(EventStore.open({ file, runId: 'run-1', specHash: HASH })).rejects.toThrow(EventLogLockedError);
+  });
+
+  it('refuses appends after close', async () => {
+    const store = await open();
+    await store.close();
+    await expect(store.append({ type: 'A' })).rejects.toThrow(/closed/);
   });
 
   it('serializes concurrent appends without gaps', async () => {
@@ -841,7 +903,9 @@ describe('EventStore', () => {
   });
 
   it('drops a torn tail left by a crash and keeps appending', async () => {
-    await (await open()).append({ type: 'A' });
+    const first = await open();
+    await first.append({ type: 'A' });
+    await first.close();
     await fs.appendFile(file, '{"seq":2,"type":"PARTI');
     const reopened = await open();
     const next = await reopened.append({ type: 'B' });
@@ -849,27 +913,60 @@ describe('EventStore', () => {
     expect((await loadEvents(file)).map((e) => e.type)).toEqual(['A', 'B']);
   });
 
-  it('rejects a corrupt line in the middle of the log', async () => {
-    await fs.mkdir(path.dirname(file), { recursive: true });
-    await fs.writeFile(file, 'not json\n{"seq":1}\n');
-    await expect(loadEvents(file)).rejects.toThrow(EventLogCorruptError);
-  });
-
-  it('rejects non-contiguous seq numbers', async () => {
-    await fs.mkdir(path.dirname(file), { recursive: true });
-    const event = { at: 'x', runId: 'run-1', specHash: HASH, type: 'A', kind: 'fact', data: {} };
-    await fs.writeFile(file, `${JSON.stringify({ ...event, seq: 1 })}\n${JSON.stringify({ ...event, seq: 3 })}\n`);
-    await expect(loadEvents(file)).rejects.toThrow(EventLogCorruptError);
-  });
-
-  it('returns an empty list for a missing log', async () => {
-    expect(await loadEvents(path.join(dir, 'missing.ndjson'))).toEqual([]);
+  it('drops a complete but unreadable last line', async () => {
+    await writeLines(rawEvent(1), `${'\0'.repeat(40)}\n`);
+    const removed = await repairEventLog(file);
+    expect(removed).toBe(41);
+    expect((await loadEvents(file)).map((e) => e.seq)).toEqual([1]);
   });
 
   it('requires an intentId for intent and confirm events', async () => {
     const store = await open();
     await expect(store.append({ type: 'PR_CREATE', kind: 'intent' })).rejects.toThrow(/intentId/);
     expect((await store.append({ type: 'AFTER' })).seq).toBe(1);
+  });
+});
+
+describe('loadEvents', () => {
+  it('rejects a corrupt first line', async () => {
+    await writeLines('not json\n', rawEvent(1));
+    await expect(loadEvents(file)).rejects.toThrow(EventLogCorruptError);
+  });
+
+  it('rejects a line that is not an object with a seq', async () => {
+    await writeLines('null\n', rawEvent(1));
+    await expect(loadEvents(file)).rejects.toThrow(EventLogCorruptError);
+    await writeLines('42\n');
+    await expect(loadEvents(file)).rejects.toThrow(EventLogCorruptError);
+  });
+
+  it('rejects non-contiguous seq numbers', async () => {
+    await writeLines(rawEvent(1), rawEvent(3));
+    await expect(loadEvents(file)).rejects.toThrow(EventLogCorruptError);
+  });
+
+  it('does not truncate the file', async () => {
+    await writeLines(rawEvent(1), '{"seq":2,"type":"PARTI');
+    await expect(loadEvents(file)).rejects.toThrow(EventLogCorruptError);
+    expect((await fs.readFile(file, 'utf8')).endsWith('PARTI')).toBe(true);
+  });
+
+  it('returns an empty list for a missing log', async () => {
+    expect(await loadEvents(path.join(dir, 'missing.ndjson'))).toEqual([]);
+  });
+});
+
+describe('repairEventLog', () => {
+  it('does not repair corruption before the last line', async () => {
+    await writeLines(rawEvent(1), 'garbage\n', rawEvent(3));
+    expect(await repairEventLog(file)).toBe(0);
+    await expect(loadEvents(file)).rejects.toThrow(EventLogCorruptError);
+  });
+
+  it('is a no-op on a clean or missing log', async () => {
+    expect(await repairEventLog(file)).toBe(0);
+    await writeLines(rawEvent(1));
+    expect(await repairEventLog(file)).toBe(0);
   });
 });
 
@@ -918,6 +1015,20 @@ export interface StoredEvent {
 }
 
 export class EventLogCorruptError extends Error {}
+export class EventLogLockedError extends Error {}
+
+function parseLine(line: string, lineNumber: number): StoredEvent {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    throw new EventLogCorruptError(`corrupt event at line ${lineNumber}`);
+  }
+  if (parsed === null || typeof parsed !== 'object' || !Number.isInteger((parsed as StoredEvent).seq)) {
+    throw new EventLogCorruptError(`corrupt event at line ${lineNumber}`);
+  }
+  return parsed as StoredEvent;
+}
 
 function parseEventLog(text: string): StoredEvent[] {
   const events: StoredEvent[] = [];
@@ -925,11 +1036,7 @@ function parseEventLog(text: string): StoredEvent[] {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     if (line.trim() === '') continue;
-    try {
-      events.push(JSON.parse(line) as StoredEvent);
-    } catch {
-      throw new EventLogCorruptError(`corrupt event at line ${i + 1}`);
-    }
+    events.push(parseLine(line, i + 1));
   }
   events.forEach((event, index) => {
     if (event.seq !== index + 1) {
@@ -939,21 +1046,45 @@ function parseEventLog(text: string): StoredEvent[] {
   return events;
 }
 
+/** Pure read: throws on any corruption. Use repairEventLog first after a crash. */
 export async function loadEvents(file: string): Promise<StoredEvent[]> {
-  let text: string;
   try {
-    text = await fs.readFile(file, 'utf8');
+    return parseEventLog(await fs.readFile(file, 'utf8'));
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw err;
   }
-  if (text.length > 0 && !text.endsWith('\n')) {
-    // A crash during append leaves a partial last line; every complete event ends with '\n'.
-    const complete = text.slice(0, text.lastIndexOf('\n') + 1);
-    await fs.truncate(file, Buffer.byteLength(complete));
-    text = complete;
+}
+
+/**
+ * Drops a torn tail left by a crash: a last line without '\n', or a last line
+ * that is complete but unreadable (zero-filled after power loss). Corruption
+ * anywhere before the last line is not repairable and is reported.
+ * Returns the number of bytes removed.
+ */
+export async function repairEventLog(file: string): Promise<number> {
+  let text: string;
+  try {
+    text = await fs.readFile(file, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return 0;
+    throw err;
   }
-  return parseEventLog(text);
+  if (text.length === 0) return 0;
+
+  let complete = text.endsWith('\n') ? text : text.slice(0, text.lastIndexOf('\n') + 1);
+  const lines = complete.split('\n').filter((l) => l.trim() !== '');
+  const last = lines.at(-1);
+  if (last !== undefined) {
+    try {
+      parseLine(last, lines.length);
+    } catch {
+      complete = complete.slice(0, complete.lastIndexOf(`${last}\n`));
+    }
+  }
+  if (complete.length === text.length) return 0;
+  await fs.truncate(file, Buffer.byteLength(complete));
+  return Buffer.byteLength(text) - Buffer.byteLength(complete);
 }
 
 export function unconfirmedIntents(events: readonly StoredEvent[]): StoredEvent[] {
@@ -964,9 +1095,11 @@ export function unconfirmedIntents(events: readonly StoredEvent[]): StoredEvent[
 export class EventStore {
   private seq: number;
   private queue: Promise<unknown> = Promise.resolve();
+  private closed = false;
 
   private constructor(
     private readonly file: string,
+    private readonly lockFile: string,
     private readonly runId: string,
     private readonly specHash: string,
     private readonly clock: () => Date,
@@ -982,9 +1115,22 @@ export class EventStore {
     clock?: () => Date;
   }): Promise<EventStore> {
     await fs.mkdir(path.dirname(opts.file), { recursive: true });
+    const lockFile = `${opts.file}.lock`;
+    try {
+      const handle = await fs.open(lockFile, 'wx');
+      await handle.writeFile(String(process.pid));
+      await handle.close();
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new EventLogLockedError(`${opts.file} is already open (lock: ${lockFile})`);
+      }
+      throw err;
+    }
+    await repairEventLog(opts.file);
     const events = await loadEvents(opts.file);
     return new EventStore(
       opts.file,
+      lockFile,
       opts.runId,
       opts.specHash,
       opts.clock ?? (() => new Date()),
@@ -994,6 +1140,7 @@ export class EventStore {
 
   append(input: EventInput): Promise<StoredEvent> {
     return this.enqueue(async () => {
+      if (this.closed) throw new Error('event store is closed');
       const kind = input.kind ?? 'fact';
       if (kind !== 'fact' && !input.intentId) {
         throw new Error(`${kind} events require an intentId`);
@@ -1024,6 +1171,14 @@ export class EventStore {
     return this.enqueue(() => loadEvents(this.file));
   }
 
+  async close(): Promise<void> {
+    await this.enqueue(async () => {
+      if (this.closed) return;
+      this.closed = true;
+      await fs.rm(this.lockFile, { force: true });
+    });
+  }
+
   private enqueue<T>(work: () => Promise<T>): Promise<T> {
     const result = this.queue.then(work, work);
     this.queue = result.catch(() => undefined);
@@ -1035,7 +1190,7 @@ export class EventStore {
 - [ ] **Step 4: Run tests and typecheck**
 
 Run: `npx vitest run test/store/event-store.test.ts && npm run typecheck`
-Expected: 9 tests PASS; typecheck exits 0.
+Expected: 16 tests PASS; typecheck exits 0.
 
 - [ ] **Step 5: Commit**
 
@@ -1059,14 +1214,15 @@ git commit -m "feat: add append-only event store with torn-tail recovery" -m "Co
   - `TASK_STATES`, `type TaskState`, `TERMINAL_STATES: ReadonlySet<TaskState>`, `ACTIVE_STATES: ReadonlySet<TaskState>`
   - `canTransition(from: TaskState, to: TaskState): boolean`, `assertTransition(from, to): void`, `class InvalidTransitionError extends Error`
   - `interface TaskRuntime { def: PlanTask; state: TaskState; attempts: number; replanned: boolean; infraRetries: Record<string, number>; flakyRetries: Record<string, number>; replacedBy: string[] }`
-  - `interface RunState { tasks: Map<string, TaskRuntime>; order: string[] }`
-  - `RunEvent` constants: `TaskPlanned`, `TaskStateChanged`, `AttemptConsumed`, `InfraRetry`, `FlakyRetry`, `TaskReplanned`
+  - `RUN_STATUSES`, `type RunStatus = 'running' | 'paused:quota' | 'paused:auth' | 'draining'`
+  - `interface RunState { status: RunStatus; tasks: Map<string, TaskRuntime>; order: string[] }`, `emptyRunState(): RunState`
+  - `RunEvent` constants: `TaskPlanned`, `TaskStateChanged`, `AttemptConsumed`, `InfraRetry`, `FlakyRetry`, `TaskReplanned`, `RunPaused` (`{reason: 'quota' | 'auth'}`), `RunResumed`, `RunBudgetExhausted` (sets `draining`, which `RunResumed` does not undo)
   - `interface ReducibleEvent { type: string; data: Record<string, unknown> }`
   - `reduceEvents(events: Iterable<ReducibleEvent>): RunState`, `applyEvent(state: RunState, event: ReducibleEvent): void`
   - `class UnknownTaskError extends Error`, `class DuplicateTaskError extends Error`, `class ReplanError extends Error`
-  - Fixtures: `runtime(def: Partial<PlanTask> & { id: string }, state?: TaskState, extra?: Partial<TaskRuntime>): TaskRuntime`, `runState(...tasks: TaskRuntime[]): RunState`
+  - Fixtures: `runtime(def: Partial<PlanTask> & { id: string }, state?: TaskState, extra?: Partial<TaskRuntime>): TaskRuntime`, `runState(...tasks: TaskRuntime[]): RunState`, `withStatus(state, status): RunState`
 
-The spec's state list gains `superseded`: a task replaced by a replan is terminal and its dependents are rewired to the replacements.
+Replan semantics (spec §7.1): the replaced task becomes `superseded`, its dependents are rewired to the replacements (deduplicated), and the whole replan is validated before any mutation — duplicate ids, a replacement depending on the replaced task, or a resulting dependency cycle reject it and leave the state untouched. `run-state.ts` imports `findCycle` from `server/validators/plan.ts` (Task 7); implement Task 7 Step 11's `findCycle` first, or create that file with only `findCycle` and fill in the rest in Task 7.
 
 - [ ] **Step 1: Write the failing state-machine test**
 
@@ -1189,7 +1345,7 @@ Expected: 7 tests PASS.
 `test/fixtures/run-state.ts`:
 ```ts
 import type { PlanTask } from '../../server/contracts/plan.js';
-import type { RunState, TaskRuntime } from '../../server/pipeline/run-state.js';
+import type { RunState, RunStatus, TaskRuntime } from '../../server/pipeline/run-state.js';
 import type { TaskState } from '../../server/pipeline/task-state.js';
 import { makePlanTask } from './contracts.js';
 
@@ -1212,9 +1368,14 @@ export function runtime(
 
 export function runState(...tasks: TaskRuntime[]): RunState {
   return {
+    status: 'running',
     tasks: new Map(tasks.map((t) => [t.def.id, t])),
     order: tasks.map((t) => t.def.id),
   };
+}
+
+export function withStatus(state: RunState, status: RunStatus): RunState {
+  return { ...state, status };
 }
 ```
 
@@ -1240,10 +1401,15 @@ const moved = (taskId: string, to: string): ReducibleEvent => ({
   type: RunEvent.TaskStateChanged,
   data: { taskId, to },
 });
+const replan = (taskId: string, ...replacements: ReturnType<typeof makePlanTask>[]): ReducibleEvent => ({
+  type: RunEvent.TaskReplanned,
+  data: { taskId, replacements },
+});
 
 describe('reduceEvents', () => {
-  it('builds tasks in plan order with initial counters', () => {
+  it('starts running and builds tasks in plan order with initial counters', () => {
     const state = reduceEvents([planned('T1-a'), planned('T2-b')]);
+    expect(state.status).toBe('running');
     expect(state.order).toEqual(['T1-a', 'T2-b']);
     expect(state.tasks.get('T1-a')).toMatchObject({ state: 'planned', attempts: 0, replanned: false });
   });
@@ -1278,17 +1444,22 @@ describe('reduceEvents', () => {
     expect(state.tasks.size).toBe(1);
   });
 
+  it('tracks run pauses, resumes and budget drain', () => {
+    const paused = reduceEvents([{ type: RunEvent.RunPaused, data: { reason: 'quota' } }]);
+    expect(paused.status).toBe('paused:quota');
+    const resumed = reduceEvents([{ type: RunEvent.RunPaused, data: { reason: 'auth' } }, { type: RunEvent.RunResumed, data: {} }]);
+    expect(resumed.status).toBe('running');
+    const draining = reduceEvents([{ type: RunEvent.RunBudgetExhausted, data: {} }, { type: RunEvent.RunResumed, data: {} }]);
+    expect(draining.status).toBe('draining');
+  });
+});
+
+describe('replan', () => {
   it('supersedes a replanned task and rewires its dependents', () => {
     const state = reduceEvents([
       planned('T1-a'),
       planned('T2-b', ['T1-a']),
-      {
-        type: RunEvent.TaskReplanned,
-        data: {
-          taskId: 'T1-a',
-          replacements: [makePlanTask({ id: 'T4-a1' }), makePlanTask({ id: 'T5-a2', dependsOn: ['T4-a1'] })],
-        },
-      },
+      replan('T1-a', makePlanTask({ id: 'T4-a1' }), makePlanTask({ id: 'T5-a2', dependsOn: ['T4-a1'] })),
     ]);
     expect(state.tasks.get('T1-a')).toMatchObject({ state: 'superseded', replacedBy: ['T4-a1', 'T5-a2'] });
     expect(state.tasks.get('T4-a1')!.replanned).toBe(true);
@@ -1296,34 +1467,43 @@ describe('reduceEvents', () => {
     expect(state.order).toEqual(['T1-a', 'T2-b', 'T4-a1', 'T5-a2']);
   });
 
+  it('does not duplicate a dependency already listed by the dependent', () => {
+    const state = reduceEvents([planned('T1-a'), planned('T4-r'), planned('T2-b', ['T1-a', 'T4-r']), replan('T1-a', makePlanTask({ id: 'T5-r2' }))]);
+    expect(state.tasks.get('T2-b')!.def.dependsOn).toEqual(['T4-r', 'T5-r2']);
+  });
+
   it('rejects a replacement that depends on the task it replaces', () => {
-    expect(() =>
-      reduceEvents([
-        planned('T1-a'),
-        {
-          type: RunEvent.TaskReplanned,
-          data: { taskId: 'T1-a', replacements: [makePlanTask({ id: 'T4-a1', dependsOn: ['T1-a'] })] },
-        },
-      ]),
-    ).toThrow(ReplanError);
+    expect(() => reduceEvents([planned('T1-a'), replan('T1-a', makePlanTask({ id: 'T4-a1', dependsOn: ['T1-a'] }))])).toThrow(ReplanError);
   });
 
   it('rejects replanning a task that came from a replan', () => {
-    const replan = (taskId: string, id: string): ReducibleEvent => ({
-      type: RunEvent.TaskReplanned,
-      data: { taskId, replacements: [makePlanTask({ id })] },
-    });
-    expect(() => reduceEvents([planned('T1-a'), replan('T1-a', 'T4-a1'), replan('T4-a1', 'T5-a2')])).toThrow(ReplanError);
+    expect(() =>
+      reduceEvents([planned('T1-a'), replan('T1-a', makePlanTask({ id: 'T4-a1' })), replan('T4-a1', makePlanTask({ id: 'T5-a2' }))]),
+    ).toThrow(ReplanError);
   });
 
   it('rejects replanning a terminal task', () => {
+    expect(() => reduceEvents([planned('T1-a'), moved('T1-a', 'blocked'), replan('T1-a', makePlanTask({ id: 'T4-a1' }))])).toThrow(ReplanError);
+  });
+
+  it('rejects a replan that would create a cycle through a dependent', () => {
     expect(() =>
-      reduceEvents([
-        planned('T1-a'),
-        moved('T1-a', 'blocked'),
-        { type: RunEvent.TaskReplanned, data: { taskId: 'T1-a', replacements: [makePlanTask({ id: 'T4-a1' })] } },
-      ]),
-    ).toThrow(ReplanError);
+      reduceEvents([planned('T1-a'), planned('T2-c', ['T1-a']), replan('T1-a', makePlanTask({ id: 'T3-r', dependsOn: ['T2-c'] }))]),
+    ).toThrow(/cycle/);
+  });
+
+  it('leaves the state untouched when a replacement id already exists', () => {
+    const events = [planned('T1-a'), planned('T2-b')];
+    const before = reduceEvents(events);
+    expect(() => reduceEvents([...events, replan('T1-a', makePlanTask({ id: 'T3-r1' }), makePlanTask({ id: 'T2-b' }))])).toThrow(DuplicateTaskError);
+    const after = reduceEvents(events);
+    expect(after.order).toEqual(before.order);
+    expect(after.tasks.get('T1-a')!.state).toBe('planned');
+    expect(after.tasks.has('T3-r1')).toBe(false);
+  });
+
+  it('rejects duplicate ids inside the replacement list', () => {
+    expect(() => reduceEvents([planned('T1-a'), replan('T1-a', makePlanTask({ id: 'T3-r' }), makePlanTask({ id: 'T3-r' }))])).toThrow(ReplanError);
   });
 });
 ```
@@ -1339,6 +1519,7 @@ Expected: FAIL — cannot resolve `../../server/pipeline/run-state.js`.
 ```ts
 import { z } from 'zod';
 import { PlanTask } from '../contracts/plan.js';
+import { findCycle } from '../validators/plan.js';
 import { TASK_STATES, TERMINAL_STATES, assertTransition, type TaskState } from './task-state.js';
 
 export interface TaskRuntime {
@@ -1351,7 +1532,11 @@ export interface TaskRuntime {
   replacedBy: string[];
 }
 
+export const RUN_STATUSES = ['running', 'paused:quota', 'paused:auth', 'draining'] as const;
+export type RunStatus = (typeof RUN_STATUSES)[number];
+
 export interface RunState {
+  status: RunStatus;
   tasks: Map<string, TaskRuntime>;
   order: string[];
 }
@@ -1368,6 +1553,9 @@ export const RunEvent = {
   InfraRetry: 'INFRA_RETRY',
   FlakyRetry: 'FLAKY_RETRY',
   TaskReplanned: 'TASK_REPLANNED',
+  RunPaused: 'RUN_PAUSED',
+  RunResumed: 'RUN_RESUMED',
+  RunBudgetExhausted: 'RUN_BUDGET_EXHAUSTED',
 } as const;
 
 export class UnknownTaskError extends Error {}
@@ -1379,9 +1567,14 @@ const StateChangedData = z.object({ taskId: z.string(), to: z.enum(TASK_STATES) 
 const TaskRefData = z.object({ taskId: z.string() });
 const GateRetryData = z.object({ taskId: z.string(), gate: z.string().min(1) });
 const ReplannedData = z.object({ taskId: z.string(), replacements: z.array(PlanTask).min(1) });
+const PausedData = z.object({ reason: z.enum(['quota', 'auth']) });
+
+export function emptyRunState(): RunState {
+  return { status: 'running', tasks: new Map(), order: [] };
+}
 
 export function reduceEvents(events: Iterable<ReducibleEvent>): RunState {
-  const state: RunState = { tasks: new Map(), order: [] };
+  const state = emptyRunState();
   for (const event of events) applyEvent(state, event);
   return state;
 }
@@ -1415,6 +1608,18 @@ export function applyEvent(state: RunState, event: ReducibleEvent): void {
     }
     case RunEvent.TaskReplanned: {
       replan(state, ReplannedData.parse(event.data));
+      return;
+    }
+    case RunEvent.RunPaused: {
+      state.status = `paused:${PausedData.parse(event.data).reason}`;
+      return;
+    }
+    case RunEvent.RunResumed: {
+      if (state.status !== 'draining') state.status = 'running';
+      return;
+    }
+    case RunEvent.RunBudgetExhausted: {
+      state.status = 'draining';
       return;
     }
     default:
@@ -1451,26 +1656,42 @@ function replan(state: RunState, { taskId, replacements }: { taskId: string; rep
   if (original.replanned) throw new ReplanError(`task ${taskId} was produced by a replan and cannot be replanned`);
   if (TERMINAL_STATES.has(original.state)) throw new ReplanError(`task ${taskId} is ${original.state}`);
   assertTransition(original.state, 'superseded');
+
+  // Validate everything before mutating, so a rejected replan leaves the state untouched.
+  const ids = replacements.map((r) => r.id);
+  if (new Set(ids).size !== ids.length) throw new ReplanError('replacement ids must be unique');
   for (const replacement of replacements) {
+    if (state.tasks.has(replacement.id)) throw new DuplicateTaskError(`task ${replacement.id} already exists`);
     if (replacement.dependsOn.includes(taskId)) {
       throw new ReplanError(`replacement ${replacement.id} depends on the task it replaces`);
     }
   }
-  const ids = replacements.map((r) => r.id);
+  const rewired = new Map<string, PlanTask>();
+  for (const task of state.tasks.values()) {
+    if (task.def.id === taskId || !task.def.dependsOn.includes(taskId)) continue;
+    rewired.set(task.def.id, {
+      ...task.def,
+      dependsOn: [...new Set([...task.def.dependsOn.filter((d) => d !== taskId), ...ids])],
+    });
+  }
+  const futureDefs = [
+    ...[...state.tasks.values()].filter((t) => t.def.id !== taskId).map((t) => rewired.get(t.def.id) ?? t.def),
+    ...replacements,
+  ];
+  const cycle = findCycle(futureDefs);
+  if (cycle) throw new ReplanError(`replan would create a dependency cycle: ${cycle.join(' -> ')}`);
+
   for (const replacement of replacements) addTask(state, replacement, true);
   original.state = 'superseded';
   original.replacedBy = ids;
-  for (const task of state.tasks.values()) {
-    if (ids.includes(task.def.id) || !task.def.dependsOn.includes(taskId)) continue;
-    task.def = { ...task.def, dependsOn: [...task.def.dependsOn.filter((d) => d !== taskId), ...ids] };
-  }
+  for (const [id, def] of rewired) getTask(state, id).def = def;
 }
 ```
 
 - [ ] **Step 8: Run tests and typecheck**
 
 Run: `npx vitest run test/pipeline && npm run typecheck`
-Expected: 16 tests PASS; typecheck exits 0.
+Expected: 21 tests PASS; typecheck exits 0.
 
 - [ ] **Step 9: Commit**
 
@@ -1491,9 +1712,10 @@ git commit -m "feat: add task state machine and run-state reducer with replan" -
 - Consumes: `RunState`, `TaskRuntime` (Task 4); `ACTIVE_STATES`, `TERMINAL_STATES` (Task 4); fixtures `runtime`, `runState` (Task 4).
 - Produces:
   - `normalizePath(p: string): string`, `hasGlobChars(p: string): boolean`, `staticPrefix(glob: string): string`, `pathsOverlap(a: readonly string[], b: readonly string[]): boolean`
-  - `nextRunnable(state: RunState, maxParallel: number): string[]`
-  - `tasksToBlock(state: RunState): string[]`
-  - `type RunProgress = 'running' | 'complete' | 'deadlocked'`, `runProgress(state: RunState, maxParallel: number): RunProgress`
+  - `DEFAULT_MAX_PARALLEL = 3`
+  - `nextRunnable(state: RunState, maxParallel?: number): string[]` — returns `[]` unless `state.status === 'running'` (paused or draining runs start nothing); the caller performs `planned → ready → implementing`
+  - `tasksToBlock(state: RunState): string[]` — waiting tasks whose dependency is blocked, superseded or unknown (transitively)
+  - `type RunProgress = 'running' | 'complete' | 'deadlocked'`, `runProgress(state: RunState, maxParallel?: number): RunProgress` — a paused run reports `running`, never `deadlocked`
 
 Overlap is conservative: two path lists overlap when the static (non-glob) prefix of one entry is an ancestor-or-equal of the other's. Over-reporting only reduces parallelism; it never lets overlapping tasks run together.
 
@@ -1510,13 +1732,26 @@ describe('normalizePath', () => {
     expect(normalizePath('./src//user/')).toBe('src/user');
     expect(normalizePath('package.json')).toBe('package.json');
   });
+
+  it('collapses inner ./ segments and strips a leading slash', () => {
+    expect(normalizePath('src/./a.ts')).toBe('src/a.ts');
+    expect(normalizePath('/src/a.ts')).toBe('src/a.ts');
+  });
+
+  it('maps the repository root to the empty string', () => {
+    expect(normalizePath('.')).toBe('');
+    expect(normalizePath('./')).toBe('');
+    expect(normalizePath('')).toBe('');
+  });
 });
 
 describe('hasGlobChars', () => {
-  it('detects glob syntax', () => {
+  it('detects glob syntax but not parentheses or plus signs', () => {
     expect(hasGlobChars('src/**')).toBe(true);
     expect(hasGlobChars('src/{a,b}.ts')).toBe(true);
     expect(hasGlobChars('src/auth')).toBe(false);
+    expect(hasGlobChars('app/(auth)/page.tsx')).toBe(false);
+    expect(hasGlobChars('src/c++/x.cc')).toBe(false);
   });
 });
 
@@ -1526,6 +1761,7 @@ describe('staticPrefix', () => {
     expect(staticPrefix('src/*.ts')).toBe('src');
     expect(staticPrefix('**/*.md')).toBe('');
     expect(staticPrefix('Dockerfile')).toBe('Dockerfile');
+    expect(staticPrefix('app/(auth)/**')).toBe('app/(auth)');
   });
 });
 
@@ -1541,12 +1777,15 @@ describe('pathsOverlap', () => {
     expect(pathsOverlap(['src/a.ts'], ['src/a.ts.bak'])).toBe(false);
   });
 
-  it('treats root-level globs as overlapping everything', () => {
+  it('treats root-level globs and the repository root as overlapping everything', () => {
     expect(pathsOverlap(['**/*.md'], ['src/user/**'])).toBe(true);
+    expect(pathsOverlap(['.'], ['src/user/**'])).toBe(true);
   });
 
   it('normalizes agent-style paths before comparing', () => {
     expect(pathsOverlap(['.\\src\\auth\\'], ['src/auth/**'])).toBe(true);
+    expect(pathsOverlap(['src/./a.ts'], ['src/a.ts'])).toBe(true);
+    expect(pathsOverlap(['/src/a.ts'], ['src/a.ts'])).toBe(true);
   });
 });
 ```
@@ -1560,12 +1799,16 @@ Expected: FAIL — cannot resolve `../../server/core/paths.js`.
 
 `server/core/paths.ts`:
 ```ts
-const GLOB_CHARS = /[*?[\]{}()!+@]/;
+import path from 'node:path';
+
+/** Only true glob metacharacters; parentheses and `+@!` are valid in ordinary file names. */
+const GLOB_CHARS = /[*?[\]{}]/;
 
 export function normalizePath(p: string): string {
-  let out = p.replace(/\\/g, '/').replace(/\/{2,}/g, '/');
-  while (out.startsWith('./')) out = out.slice(2);
+  let out = path.posix.normalize(p.replace(/\\/g, '/'));
+  while (out.startsWith('/')) out = out.slice(1);
   if (out.length > 1 && out.endsWith('/')) out = out.slice(0, -1);
+  if (out === '.' || out === '') return '';
   return out;
 }
 
@@ -1574,8 +1817,10 @@ export function hasGlobChars(p: string): boolean {
 }
 
 export function staticPrefix(glob: string): string {
+  const normalized = normalizePath(glob);
+  if (normalized === '') return '';
   const fixed: string[] = [];
-  for (const segment of normalizePath(glob).split('/')) {
+  for (const segment of normalized.split('/')) {
     if (hasGlobChars(segment)) break;
     fixed.push(segment);
   }
@@ -1602,20 +1847,21 @@ export function pathsOverlap(a: readonly string[], b: readonly string[]): boolea
 - [ ] **Step 4: Run the paths test**
 
 Run: `npx vitest run test/core/paths.test.ts`
-Expected: 7 tests PASS.
+Expected: 9 tests PASS.
 
 - [ ] **Step 5: Write the failing scheduler test**
 
 `test/scheduler/scheduler.test.ts`:
 ```ts
 import { describe, expect, it } from 'vitest';
-import { nextRunnable, runProgress, tasksToBlock } from '../../server/scheduler/scheduler.js';
-import { runState, runtime } from '../fixtures/run-state.js';
+import { DEFAULT_MAX_PARALLEL, nextRunnable, runProgress, tasksToBlock } from '../../server/scheduler/scheduler.js';
+import { runState, runtime, withStatus } from '../fixtures/run-state.js';
 
 describe('nextRunnable', () => {
-  it('starts independent tasks up to maxParallel', () => {
+  it('defaults to three parallel tasks', () => {
+    expect(DEFAULT_MAX_PARALLEL).toBe(3);
     const state = runState(runtime({ id: 'T1-a' }), runtime({ id: 'T2-b' }), runtime({ id: 'T3-c' }), runtime({ id: 'T4-d' }));
-    expect(nextRunnable(state, 3)).toEqual(['T1-a', 'T2-b', 'T3-c']);
+    expect(nextRunnable(state)).toEqual(['T1-a', 'T2-b', 'T3-c']);
   });
 
   it('waits until every dependency is merged', () => {
@@ -1650,6 +1896,13 @@ describe('nextRunnable', () => {
     expect(nextRunnable(state, 3)).toEqual([]);
   });
 
+  it('starts nothing while the run is paused or draining', () => {
+    const state = runState(runtime({ id: 'T1-a' }));
+    expect(nextRunnable(withStatus(state, 'paused:quota'), 3)).toEqual([]);
+    expect(nextRunnable(withStatus(state, 'paused:auth'), 3)).toEqual([]);
+    expect(nextRunnable(withStatus(state, 'draining'), 3)).toEqual([]);
+  });
+
   it('rejects a non-positive maxParallel', () => {
     expect(() => nextRunnable(runState(runtime({ id: 'T1-a' })), 0)).toThrow(RangeError);
   });
@@ -1669,6 +1922,11 @@ describe('tasksToBlock', () => {
   it('blocks tasks that depend on unknown tasks', () => {
     expect(tasksToBlock(runState(runtime({ id: 'T2-b', dependsOn: ['T9-missing'] })))).toEqual(['T2-b']);
   });
+
+  it('blocks tasks that still depend on a superseded task', () => {
+    const state = runState(runtime({ id: 'T1-a' }, 'superseded', { replacedBy: ['T3-r'] }), runtime({ id: 'T3-r' }), runtime({ id: 'T2-b', dependsOn: ['T1-a'] }));
+    expect(tasksToBlock(state)).toEqual(['T2-b']);
+  });
 });
 
 describe('runProgress', () => {
@@ -1680,6 +1938,18 @@ describe('runProgress', () => {
   it('is running while work is active or startable', () => {
     expect(runProgress(runState(runtime({ id: 'T1-a' }, 'implementing')), 3)).toBe('running');
     expect(runProgress(runState(runtime({ id: 'T1-a' })), 3)).toBe('running');
+  });
+
+  it('is running while paused, so the pause is not mistaken for a deadlock', () => {
+    expect(runProgress(withStatus(runState(runtime({ id: 'T1-a' })), 'paused:quota'), 3)).toBe('running');
+  });
+
+  it('ends the run when everything left depends on blocked tasks', () => {
+    const state = runState(runtime({ id: 'T1-a' }, 'blocked'), runtime({ id: 'T2-b', dependsOn: ['T1-a'] }));
+    const toBlock = tasksToBlock(state);
+    expect(toBlock).toEqual(['T2-b']);
+    for (const id of toBlock) state.tasks.get(id)!.state = 'blocked';
+    expect(runProgress(state, 3)).toBe('complete');
   });
 
   it('is deadlocked when nothing can ever start', () => {
@@ -1702,6 +1972,8 @@ import { pathsOverlap } from '../core/paths.js';
 import type { RunState, TaskRuntime } from '../pipeline/run-state.js';
 import { ACTIVE_STATES, TERMINAL_STATES } from '../pipeline/task-state.js';
 
+export const DEFAULT_MAX_PARALLEL = 3;
+
 export type RunProgress = 'running' | 'complete' | 'deadlocked';
 
 function ordered(state: RunState): TaskRuntime[] {
@@ -1712,10 +1984,16 @@ function isWaiting(task: TaskRuntime): boolean {
   return task.state === 'planned' || task.state === 'ready';
 }
 
-export function nextRunnable(state: RunState, maxParallel: number): string[] {
+/**
+ * Tasks that may start now. The caller moves each one through
+ * `planned -> ready -> implementing` (or `ready -> implementing`) itself.
+ * Returns nothing while the run is paused or draining.
+ */
+export function nextRunnable(state: RunState, maxParallel: number = DEFAULT_MAX_PARALLEL): string[] {
   if (!Number.isInteger(maxParallel) || maxParallel < 1) {
     throw new RangeError(`maxParallel must be a positive integer, got ${maxParallel}`);
   }
+  if (state.status !== 'running') return [];
   const tasks = ordered(state);
   const active = tasks.filter((t) => ACTIVE_STATES.has(t.state));
   const claimed = active.map((t) => t.def.affectedPaths);
@@ -1734,17 +2012,21 @@ export function nextRunnable(state: RunState, maxParallel: number): string[] {
   return picked;
 }
 
+/** Waiting tasks that can never start: a dependency is blocked, superseded or unknown. */
 export function tasksToBlock(state: RunState): string[] {
-  const blocked = new Set(ordered(state).filter((t) => t.state === 'blocked').map((t) => t.def.id));
+  const doomedIds = new Set(
+    ordered(state)
+      .filter((t) => t.state === 'blocked' || t.state === 'superseded')
+      .map((t) => t.def.id),
+  );
   const added: string[] = [];
   let changed = true;
   while (changed) {
     changed = false;
     for (const task of ordered(state)) {
-      if (!isWaiting(task) || blocked.has(task.def.id)) continue;
-      const doomed = task.def.dependsOn.some((d) => blocked.has(d) || !state.tasks.has(d));
-      if (doomed) {
-        blocked.add(task.def.id);
+      if (!isWaiting(task) || doomedIds.has(task.def.id)) continue;
+      if (task.def.dependsOn.some((d) => doomedIds.has(d) || !state.tasks.has(d))) {
+        doomedIds.add(task.def.id);
         added.push(task.def.id);
         changed = true;
       }
@@ -1753,10 +2035,11 @@ export function tasksToBlock(state: RunState): string[] {
   return added;
 }
 
-export function runProgress(state: RunState, maxParallel: number): RunProgress {
+export function runProgress(state: RunState, maxParallel: number = DEFAULT_MAX_PARALLEL): RunProgress {
   const tasks = ordered(state);
   if (tasks.every((t) => TERMINAL_STATES.has(t.state))) return 'complete';
   if (tasks.some((t) => ACTIVE_STATES.has(t.state))) return 'running';
+  if (state.status !== 'running') return 'running';
   if (tasksToBlock(state).length > 0) return 'running';
   return nextRunnable(state, maxParallel).length > 0 ? 'running' : 'deadlocked';
 }
@@ -1765,7 +2048,7 @@ export function runProgress(state: RunState, maxParallel: number): RunProgress {
 - [ ] **Step 8: Run tests and typecheck**
 
 Run: `npx vitest run test/core test/scheduler && npm run typecheck`
-Expected: all tests PASS (ids, paths, scheduler); typecheck exits 0.
+Expected: 31 tests PASS (ids 7, paths 9, scheduler 15); typecheck exits 0.
 
 - [ ] **Step 9: Commit**
 
@@ -1785,14 +2068,16 @@ git commit -m "feat: add dependency and path-aware task scheduler" -m "Co-Author
 **Interfaces:**
 - Consumes: `TaskRuntime` (Task 4); fixture `runtime` (Task 4).
 - Produces:
-  - `type FailureKind = 'code' | 'dependency' | 'timeout' | 'review-changes' | 'rebase-conflict' | 'schema' | 'infra' | 'environment' | 'flaky-test' | 'compaction' | 'spec-gap' | 'quota' | 'auth'`
+  - `type FailureKind = 'code' | 'dependency' | 'timeout' | 'budget' | 'review-changes' | 'rebase-conflict' | 'schema' | 'infra' | 'environment' | 'flaky-test' | 'compaction' | 'spec-gap' | 'quota' | 'auth'`
   - `interface Failure { kind: FailureKind; gate?: string; schemaRetriesUsed?: number }`
   - `interface PolicyConfig { maxAttempts: number; maxInfraRetriesPerGate: number; maxFlakyRetriesPerGate: number; maxSchemaRetriesPerStep: number }`, `DEFAULT_POLICY: PolicyConfig`
   - `type PolicyAction = 'retry-dev' | 'rerun-gate' | 'rerun-step' | 'replan' | 'block' | 'pause-quota' | 'pause-auth' | 'route-spec-gap'`
   - `interface PolicyDecision { action: PolicyAction; consumeAttempt: boolean }`
   - `decideOnFailure(failure: Failure, task: TaskRuntime, cfg?: PolicyConfig): PolicyDecision`
 
-The caller turns the decision into events (`ATTEMPT_CONSUMED`, `INFRA_RETRY`, `FLAKY_RETRY`, `TASK_REPLANNED`, state changes). The policy itself is pure.
+The caller turns the decision into events (`ATTEMPT_CONSUMED`, `INFRA_RETRY`, `FLAKY_RETRY`, `TASK_REPLANNED`, `RUN_PAUSED`, state changes). The policy itself is pure.
+
+Attempt budget: a task gets 3 dev attempts, then one replan. Replacement tasks start with a fresh budget of 3 attempts but can never be replanned, so they block when it is spent (spec §6 step 7).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1821,8 +2106,13 @@ describe('decideOnFailure', () => {
     expect(decideOnFailure({ kind: 'code' }, task({ attempts: 2, replanned: true }))).toEqual({ action: 'block', consumeAttempt: true });
   });
 
-  it('treats review changes, rebase conflicts, timeouts and dependency errors as attempts', () => {
-    for (const kind of ['review-changes', 'rebase-conflict', 'timeout', 'dependency'] as const) {
+  it('gives a replacement task a fresh attempt budget but never a second replan', () => {
+    expect(decideOnFailure({ kind: 'code' }, task({ attempts: 0, replanned: true })).action).toBe('retry-dev');
+    expect(decideOnFailure({ kind: 'code' }, task({ attempts: 2, replanned: true })).action).toBe('block');
+  });
+
+  it('treats review changes, rebase conflicts, timeouts, budget and dependency errors as attempts', () => {
+    for (const kind of ['review-changes', 'rebase-conflict', 'timeout', 'budget', 'dependency'] as const) {
       expect(decideOnFailure({ kind }, task()).consumeAttempt).toBe(true);
     }
   });
@@ -1851,6 +2141,8 @@ describe('decideOnFailure', () => {
 
   it('requires a gate for gate-scoped failures', () => {
     expect(() => decideOnFailure({ kind: 'infra' }, task())).toThrow(/gate/);
+    expect(() => decideOnFailure({ kind: 'environment' }, task())).toThrow(/gate/);
+    expect(() => decideOnFailure({ kind: 'flaky-test' }, task())).toThrow(/gate/);
   });
 
   it('re-runs the step on schema failures up to the limit, then consumes an attempt', () => {
@@ -1887,6 +2179,7 @@ export type FailureKind =
   | 'code'
   | 'dependency'
   | 'timeout'
+  | 'budget'
   | 'review-changes'
   | 'rebase-conflict'
   | 'schema'
@@ -1933,6 +2226,11 @@ export interface PolicyDecision {
   consumeAttempt: boolean;
 }
 
+/**
+ * Attempt budget: a task gets `maxAttempts` dev attempts. When they are spent the
+ * task is replanned once; replacement tasks start with a fresh attempt budget
+ * but can never be replanned again, so they block when their budget is spent.
+ */
 export function decideOnFailure(
   failure: Failure,
   task: TaskRuntime,
@@ -1966,6 +2264,7 @@ export function decideOnFailure(
     case 'code':
     case 'dependency':
     case 'timeout':
+    case 'budget':
     case 'review-changes':
     case 'rebase-conflict':
       return attemptFailure(task, cfg);
@@ -1991,7 +2290,7 @@ function attemptFailure(task: TaskRuntime, cfg: PolicyConfig): PolicyDecision {
 - [ ] **Step 4: Run tests and typecheck**
 
 Run: `npx vitest run test/scheduler/retry-policy.test.ts && npm run typecheck`
-Expected: 10 tests PASS; typecheck exits 0.
+Expected: 11 tests PASS; typecheck exits 0.
 
 - [ ] **Step 5: Commit**
 
@@ -2017,7 +2316,9 @@ git commit -m "feat: add failure retry policy" -m "Co-Authored-By: Claude Opus 5
   - `unresolvedReferences(refs: References, ctx: RefContext): string[]`
   - `interface OutputCheckOptions<T> { expectedSpecHash: string; refs?: (value: T) => References; refContext?: RefContext; semantic?: ReadonlyArray<(value: T) => string[]> }`
   - `validateAgentOutput<T extends { specHash: string }>(schema: z.ZodType<T>, raw: unknown, opts: OutputCheckOptions<T>): Validation<T>`
-  - `interface PlanCheckOptions { firstSpec: boolean }`, `validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): string[]`, `findCycle(tasks: readonly PlanTask[]): string[] | null`, `SCAFFOLD_TASK_ID = 'T0-scaffold'`
+  - `interface PlanCheckOptions { firstSpec: boolean }`, `validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): string[]`, `findCycle(tasks: readonly PlanTask[]): string[] | null`, `SCAFFOLD_TASK_ID = 'T0-scaffold'`, `REQUIRED_BLOCKING_GATES = ['format', 'lint', 'unit-test', 'build', 'secret-scan']` (`typecheck` also required when `commands.typecheck` is set)
+
+`validatePlan` also enforces: on the first spec, `T0-scaffold` present with no dependencies and reachable from every task, plus at least one `devops`-owned task; after the first spec, no `T0-scaffold`; cycle detection is skipped when ids are duplicated (the duplicate error already blocks the plan).
 
 - [ ] **Step 1: Write the result type and failing references test**
 
@@ -2235,10 +2536,11 @@ Expected: 4 tests PASS.
 import { describe, expect, it } from 'vitest';
 import type { Plan } from '../../server/contracts/plan.js';
 import { findCycle, validatePlan } from '../../server/validators/plan.js';
-import { makeFrozenSpec, makePlan, makePlanTask } from '../fixtures/contracts.js';
+import { REQUIRED_GATES, makeFrozenSpec, makePlan, makePlanTask } from '../fixtures/contracts.js';
 
 const spec = makeFrozenSpec();
 const withTasks = (tasks: Plan['tasks']): Plan => ({ ...makePlan(spec), tasks });
+const devops = makePlanTask({ id: 'T9-infra', owner: 'devops', dependsOn: ['T0-scaffold'] });
 
 describe('validatePlan', () => {
   it('accepts the fixture plan', () => {
@@ -2263,33 +2565,40 @@ describe('validatePlan', () => {
         makePlanTask({ id: 'T1-a', criteriaRefs: ['AC-001', 'AC-002'], dependsOn: ['T0-scaffold', 'T1-a'] }),
         makePlanTask({ id: 'T1-a', dependsOn: ['T0-scaffold'] }),
         makePlanTask({ id: 'T2-b', dependsOn: ['T0-scaffold', 'T9-ghost'] }),
+        devops,
       ]),
       spec,
       { firstSpec: true },
     );
     expect(errors).toEqual(
-      expect.arrayContaining([
-        'duplicate task id T1-a',
-        'task T1-a depends on itself',
-        'task T2-b depends on unknown task T9-ghost',
-      ]),
+      expect.arrayContaining(['duplicate task id T1-a', 'task T1-a depends on itself', 'task T2-b depends on unknown task T9-ghost']),
     );
+  });
+
+  it('skips cycle detection when ids are duplicated', () => {
+    const errors = validatePlan(
+      withTasks([
+        makePlanTask({ id: 'T0-scaffold' }),
+        makePlanTask({ id: 'T1-a', criteriaRefs: ['AC-001', 'AC-002'], dependsOn: ['T0-scaffold', 'T2-b'] }),
+        makePlanTask({ id: 'T2-b', dependsOn: ['T1-a'] }),
+        makePlanTask({ id: 'T2-b', dependsOn: ['T0-scaffold'] }),
+        devops,
+      ]),
+      spec,
+      { firstSpec: true },
+    );
+    expect(errors).toContain('duplicate task id T2-b');
+    expect(errors.some((e) => e.startsWith('dependency cycle'))).toBe(false);
   });
 
   it('reports uncovered and unknown acceptance criteria', () => {
     const errors = validatePlan(
-      withTasks([
-        makePlanTask({ id: 'T0-scaffold' }),
-        makePlanTask({ id: 'T1-a', criteriaRefs: ['AC-001', 'AC-099'], dependsOn: ['T0-scaffold'] }),
-      ]),
+      withTasks([makePlanTask({ id: 'T0-scaffold' }), makePlanTask({ id: 'T1-a', criteriaRefs: ['AC-001', 'AC-099'], dependsOn: ['T0-scaffold'] }), devops]),
       spec,
       { firstSpec: true },
     );
     expect(errors).toEqual(
-      expect.arrayContaining([
-        'task T1-a references unknown acceptance criterion AC-099',
-        'acceptance criterion AC-002 is not covered by any task',
-      ]),
+      expect.arrayContaining(['task T1-a references unknown acceptance criterion AC-099', 'acceptance criterion AC-002 is not covered by any task']),
     );
   });
 
@@ -2300,6 +2609,7 @@ describe('validatePlan', () => {
         makePlanTask({ id: 'T1-a', criteriaRefs: ['AC-001', 'AC-002'], dependsOn: ['T0-scaffold', 'T3-c'] }),
         makePlanTask({ id: 'T2-b', dependsOn: ['T1-a'] }),
         makePlanTask({ id: 'T3-c', dependsOn: ['T2-b'] }),
+        devops,
       ]),
       spec,
       { firstSpec: true },
@@ -2308,11 +2618,7 @@ describe('validatePlan', () => {
   });
 
   it('requires a scaffold task on the first spec that every task depends on', () => {
-    const missing = validatePlan(
-      withTasks([makePlanTask({ id: 'T1-a', criteriaRefs: ['AC-001', 'AC-002'] })]),
-      spec,
-      { firstSpec: true },
-    );
+    const missing = validatePlan(withTasks([makePlanTask({ id: 'T1-a', criteriaRefs: ['AC-001', 'AC-002'] }), devops]), spec, { firstSpec: true });
     expect(missing).toContain('first spec requires task T0-scaffold');
 
     const detached = validatePlan(
@@ -2320,11 +2626,25 @@ describe('validatePlan', () => {
         makePlanTask({ id: 'T0-scaffold' }),
         makePlanTask({ id: 'T1-a', criteriaRefs: ['AC-001', 'AC-002'], dependsOn: ['T0-scaffold'] }),
         makePlanTask({ id: 'T2-b' }),
+        devops,
       ]),
       spec,
       { firstSpec: true },
     );
     expect(detached).toContain('task T2-b must depend on T0-scaffold');
+  });
+
+  it('rejects a scaffold task with dependencies', () => {
+    const errors = validatePlan(
+      withTasks([
+        makePlanTask({ id: 'T0-scaffold', dependsOn: ['T1-a'] }),
+        makePlanTask({ id: 'T1-a', criteriaRefs: ['AC-001', 'AC-002'] }),
+        devops,
+      ]),
+      spec,
+      { firstSpec: true },
+    );
+    expect(errors).toContain('T0-scaffold must not depend on other tasks');
   });
 
   it('accepts a transitive dependency on the scaffold task', () => {
@@ -2333,6 +2653,7 @@ describe('validatePlan', () => {
         makePlanTask({ id: 'T0-scaffold' }),
         makePlanTask({ id: 'T1-a', criteriaRefs: ['AC-001'], dependsOn: ['T0-scaffold'] }),
         makePlanTask({ id: 'T2-b', criteriaRefs: ['AC-002'], dependsOn: ['T1-a'] }),
+        devops,
       ]),
       spec,
       { firstSpec: true },
@@ -2340,24 +2661,50 @@ describe('validatePlan', () => {
     expect(errors).toEqual([]);
   });
 
-  it('does not require a scaffold task after the first spec', () => {
+  it('requires a devops-owned infrastructure task on the first spec', () => {
     const errors = validatePlan(
-      withTasks([makePlanTask({ id: 'T1-a', criteriaRefs: ['AC-001', 'AC-002'] })]),
+      withTasks([makePlanTask({ id: 'T0-scaffold' }), makePlanTask({ id: 'T1-a', criteriaRefs: ['AC-001', 'AC-002'], dependsOn: ['T0-scaffold'] })]),
       spec,
-      { firstSpec: false },
+      { firstSpec: true },
     );
-    expect(errors).toEqual([]);
+    expect(errors).toContain('first spec requires a deploy-infrastructure task owned by devops');
   });
 
-  it('requires at least one blocking gate', () => {
-    const plan = { ...makePlan(spec), gates: [{ name: 'dependency-scan', command: 'osv-scanner .', blocking: false }] };
-    expect(validatePlan(plan, spec, { firstSpec: true })).toContain('plan must define at least one blocking gate');
+  it('forbids the scaffold task after the first spec and needs no devops task', () => {
+    expect(validatePlan(withTasks([makePlanTask({ id: 'T1-a', criteriaRefs: ['AC-001', 'AC-002'] })]), spec, { firstSpec: false })).toEqual([]);
+    expect(
+      validatePlan(withTasks([makePlanTask({ id: 'T0-scaffold' }), makePlanTask({ id: 'T1-a', criteriaRefs: ['AC-001', 'AC-002'] })]), spec, { firstSpec: false }),
+    ).toContain('T0-scaffold is only allowed on the first spec');
+  });
+
+  it('requires every mandatory blocking gate', () => {
+    const plan = { ...makePlan(spec), gates: REQUIRED_GATES.filter((g) => g.name !== 'secret-scan' && g.name !== 'build') };
+    const errors = validatePlan(plan, spec, { firstSpec: true });
+    expect(errors).toEqual(expect.arrayContaining(['missing blocking gate build', 'missing blocking gate secret-scan']));
+  });
+
+  it('treats a non-blocking mandatory gate as missing', () => {
+    const plan = { ...makePlan(spec), gates: REQUIRED_GATES.map((g) => (g.name === 'lint' ? { ...g, blocking: false } : g)) };
+    expect(validatePlan(plan, spec, { firstSpec: true })).toContain('missing blocking gate lint');
+  });
+
+  it('requires a typecheck gate only when the stack has a typecheck command', () => {
+    const noTypecheckGate = { ...makePlan(spec), gates: REQUIRED_GATES.filter((g) => g.name !== 'typecheck') };
+    expect(validatePlan(noTypecheckGate, spec, { firstSpec: true })).toContain('missing blocking gate typecheck (commands.typecheck is defined)');
+    const { typecheck: _omit, ...commands } = noTypecheckGate.commands;
+    expect(validatePlan({ ...noTypecheckGate, commands }, spec, { firstSpec: true })).toEqual([]);
   });
 });
 
 describe('findCycle', () => {
   it('returns null for an acyclic graph', () => {
     expect(findCycle([makePlanTask({ id: 'T1-a' }), makePlanTask({ id: 'T2-b', dependsOn: ['T1-a'] })])).toBeNull();
+  });
+
+  it('uses the first occurrence when ids repeat', () => {
+    expect(
+      findCycle([makePlanTask({ id: 'T1-a', dependsOn: ['T2-b'] }), makePlanTask({ id: 'T2-b', dependsOn: ['T1-a'] }), makePlanTask({ id: 'T2-b' })]),
+    ).toEqual(['T1-a', 'T2-b', 'T1-a']);
   });
 });
 ```
@@ -2376,6 +2723,9 @@ import type { Spec } from '../contracts/spec.js';
 
 export const SCAFFOLD_TASK_ID = 'T0-scaffold';
 
+/** Blocking gates every POC plan must define (spec §4.3); `typecheck` only when the stack has one. */
+export const REQUIRED_BLOCKING_GATES = ['format', 'lint', 'unit-test', 'build', 'secret-scan'] as const;
+
 export interface PlanCheckOptions {
   firstSpec: boolean;
 }
@@ -2390,8 +2740,12 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
   if (plan.specId !== spec.specId) errors.push(`plan specId ${plan.specId} does not match spec ${spec.specId}`);
 
   const ids = new Set<string>();
+  let duplicates = false;
   for (const task of plan.tasks) {
-    if (ids.has(task.id)) errors.push(`duplicate task id ${task.id}`);
+    if (ids.has(task.id)) {
+      errors.push(`duplicate task id ${task.id}`);
+      duplicates = true;
+    }
     ids.add(task.id);
   }
 
@@ -2411,12 +2765,17 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
     if (!covered.has(ac)) errors.push(`acceptance criterion ${ac} is not covered by any task`);
   }
 
-  const cycle = findCycle(plan.tasks);
-  if (cycle) errors.push(`dependency cycle: ${cycle.join(' -> ')}`);
+  // With duplicate ids the graph is ambiguous; the duplicate error already blocks the plan.
+  if (!duplicates) {
+    const cycle = findCycle(plan.tasks);
+    if (cycle) errors.push(`dependency cycle: ${cycle.join(' -> ')}`);
+  }
 
+  const scaffold = plan.tasks.find((t) => t.id === SCAFFOLD_TASK_ID);
   if (opts.firstSpec) {
-    if (!ids.has(SCAFFOLD_TASK_ID)) errors.push(`first spec requires task ${SCAFFOLD_TASK_ID}`);
+    if (!scaffold) errors.push(`first spec requires task ${SCAFFOLD_TASK_ID}`);
     else {
+      if (scaffold.dependsOn.length > 0) errors.push(`${SCAFFOLD_TASK_ID} must not depend on other tasks`);
       const byId = new Map(plan.tasks.map((t) => [t.id, t]));
       for (const task of plan.tasks) {
         if (task.id === SCAFFOLD_TASK_ID) continue;
@@ -2425,15 +2784,27 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
         }
       }
     }
+    if (!plan.tasks.some((t) => t.owner === 'devops')) {
+      errors.push('first spec requires a deploy-infrastructure task owned by devops');
+    }
+  } else if (scaffold) {
+    errors.push(`${SCAFFOLD_TASK_ID} is only allowed on the first spec`);
   }
 
-  if (!plan.gates.some((g) => g.blocking)) errors.push('plan must define at least one blocking gate');
+  const blocking = new Set(plan.gates.filter((g) => g.blocking).map((g) => g.name));
+  for (const name of REQUIRED_BLOCKING_GATES) {
+    if (!blocking.has(name)) errors.push(`missing blocking gate ${name}`);
+  }
+  if (plan.commands.typecheck && !blocking.has('typecheck')) {
+    errors.push('missing blocking gate typecheck (commands.typecheck is defined)');
+  }
 
   return errors;
 }
 
 export function findCycle(tasks: readonly PlanTask[]): string[] | null {
-  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const byId = new Map<string, PlanTask>();
+  for (const task of tasks) if (!byId.has(task.id)) byId.set(task.id, task);
   const color = new Map<string, 'visiting' | 'done'>();
   const stack: string[] = [];
 
@@ -2479,7 +2850,7 @@ function reaches(from: string, target: string, byId: ReadonlyMap<string, PlanTas
 - [ ] **Step 12: Run tests and typecheck**
 
 Run: `npx vitest run test/validators && npm run typecheck`
-Expected: 18 tests PASS; typecheck exits 0.
+Expected: 24 tests PASS; typecheck exits 0.
 
 - [ ] **Step 13: Commit**
 
@@ -2500,7 +2871,7 @@ git commit -m "feat: add reference, agent output and plan validators" -m "Co-Aut
 - Consumes: `Spec` (Task 2), `PlanTask` (Task 2), `TaskState` (Task 4); fixtures `makeFrozenSpec`, `makePlanTask` (Task 2).
 - Produces:
   - `type TestStatus = 'passed' | 'failed' | 'skipped'`
-  - `interface TestResult { id: string; name: string; classname: string; status: TestStatus; acIds: string[] }` (`id` is `<classname>::<name>`)
+  - `interface TestResult { id: string; name: string; classname: string; status: TestStatus; acIds: string[] }` (`id` is `<classname>::<name>`; a missing classname falls back to the enclosing suite name so ids never collide across suites)
   - `class JUnitParseError extends Error`
   - `extractAcIds(text: string): string[]`, `parseJUnit(xml: string): TestResult[]`
   - `type EvidenceStatus = 'passed' | 'failed' | 'missing' | 'blocked'`
@@ -2509,6 +2880,7 @@ git commit -m "feat: add reference, agent output and plan validators" -m "Co-Aut
   - `buildEvidenceMatrix(spec: Spec, tasks: Iterable<EvidenceTask>, results: readonly TestResult[]): EvidenceRow[]`
   - `evidenceGate(results: readonly TestResult[]): string[]`
   - `readyForValidation(rows: readonly EvidenceRow[]): boolean`
+  - `interface EvidenceClaim { id: string; status: 'passed' | 'failed' | 'not-covered'; evidence: string[] }`, `verifyClaimedEvidence(claims: readonly EvidenceClaim[], results: readonly TestResult[]): string[]` — cross-checks the Test agent's review against the real JUnit results (spec §6 step 4)
 
 - [ ] **Step 1: Write the failing JUnit test**
 
@@ -2559,6 +2931,16 @@ describe('parseJUnit', () => {
     expect(parseJUnit(xml).map((r) => r.acIds)).toEqual([['AC-003']]);
   });
 
+  it('collects testcases from nested testsuites containers', () => {
+    const xml = '<testsuites><testsuites><testsuite name="s"><testcase classname="c" name="[AC-001] deep"/></testsuite></testsuites></testsuites>';
+    expect(parseJUnit(xml)).toHaveLength(1);
+  });
+
+  it('falls back to the suite name when classname is missing, so ids do not collide', () => {
+    const xml = '<testsuites><testsuite name="s1"><testcase name="[AC-001] t"/></testsuite><testsuite name="s2"><testcase name="[AC-001] t"><failure/></testcase></testsuite></testsuites>';
+    expect(parseJUnit(xml).map((r) => r.id)).toEqual(['s1::[AC-001] t', 's2::[AC-001] t']);
+  });
+
   it('reads AC tags from the classname too', () => {
     const xml = '<testsuite name="s"><testcase classname="[AC-004] suite" name="case"/></testsuite>';
     expect(parseJUnit(xml)[0]!.acIds).toEqual(['AC-004']);
@@ -2588,6 +2970,7 @@ import { XMLParser, XMLValidator } from 'fast-xml-parser';
 export type TestStatus = 'passed' | 'failed' | 'skipped';
 
 export interface TestResult {
+  /** `<classname>::<name>`; classname falls back to the enclosing suite name. */
   id: string;
   name: string;
   classname: string;
@@ -2616,9 +2999,16 @@ function asNodes(value: unknown): XmlNode[] {
   return (Array.isArray(value) ? value : [value]).map(asNode);
 }
 
-function collectCases(suite: XmlNode, out: XmlNode[]): void {
-  out.push(...asNodes(suite.testcase));
-  for (const child of asNodes(suite.testsuite)) collectCases(child, out);
+interface RawCase {
+  node: XmlNode;
+  suiteName: string;
+}
+
+function collectCases(container: XmlNode, suiteName: string, out: RawCase[]): void {
+  const ownName = typeof container.name === 'string' && container.name !== '' ? container.name : suiteName;
+  for (const node of asNodes(container.testcase)) out.push({ node, suiteName: ownName });
+  for (const child of asNodes(container.testsuite)) collectCases(child, ownName, out);
+  for (const child of asNodes(container.testsuites)) collectCases(child, ownName, out);
 }
 
 export function parseJUnit(xml: string): TestResult[] {
@@ -2629,18 +3019,16 @@ export function parseJUnit(xml: string): TestResult[] {
   const parser = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: '',
-    isArray: (name) => name === 'testsuite' || name === 'testcase',
+    isArray: (name) => name === 'testsuites' || name === 'testsuite' || name === 'testcase',
   });
-  const root = asNode(parser.parse(xml));
-  const cases: XmlNode[] = [];
-  for (const suite of asNodes(asNode(root.testsuites).testsuite)) collectCases(suite, cases);
-  for (const suite of asNodes(root.testsuite)) collectCases(suite, cases);
+  const cases: RawCase[] = [];
+  collectCases(asNode(parser.parse(xml)), '', cases);
 
-  return cases.map((testcase) => {
-    const name = String(testcase.name ?? '');
-    const classname = String(testcase.classname ?? '');
+  return cases.map(({ node, suiteName }) => {
+    const name = String(node.name ?? '');
+    const classname = typeof node.classname === 'string' && node.classname !== '' ? node.classname : suiteName;
     const status: TestStatus =
-      'failure' in testcase || 'error' in testcase ? 'failed' : 'skipped' in testcase ? 'skipped' : 'passed';
+      'failure' in node || 'error' in node ? 'failed' : 'skipped' in node ? 'skipped' : 'passed';
     const acIds = status === 'skipped' ? [] : extractAcIds(`${classname} ${name}`);
     return { id: `${classname}::${name}`, name, classname, status, acIds };
   });
@@ -2650,7 +3038,7 @@ export function parseJUnit(xml: string): TestResult[] {
 - [ ] **Step 4: Run the JUnit test**
 
 Run: `npx vitest run test/evidence/junit.test.ts`
-Expected: 8 tests PASS.
+Expected: 10 tests PASS.
 
 - [ ] **Step 5: Write the failing matrix test**
 
@@ -2658,7 +3046,7 @@ Expected: 8 tests PASS.
 ```ts
 import { describe, expect, it } from 'vitest';
 import type { TestResult } from '../../server/evidence/junit.js';
-import { buildEvidenceMatrix, evidenceGate, readyForValidation } from '../../server/evidence/matrix.js';
+import { buildEvidenceMatrix, evidenceGate, readyForValidation, verifyClaimedEvidence } from '../../server/evidence/matrix.js';
 import type { TaskState } from '../../server/pipeline/task-state.js';
 import { makeFrozenSpec, makePlanTask } from '../fixtures/contracts.js';
 
@@ -2731,6 +3119,41 @@ describe('readyForValidation', () => {
     expect(readyForValidation([{ criterion: 'AC-001', tasks: [], tests: [], status: 'missing' }])).toBe(false);
   });
 });
+
+describe('verifyClaimedEvidence', () => {
+  const results = [result('[AC-001] a', 'passed', ['AC-001']), result('[AC-002] b', 'failed', ['AC-002'])];
+
+  it('accepts a passed claim backed by a passing tagged test', () => {
+    expect(verifyClaimedEvidence([{ id: 'AC-001', status: 'passed', evidence: ['t::[AC-001] a'] }], results)).toEqual([]);
+  });
+
+  it('rejects a passed claim whose test failed', () => {
+    expect(verifyClaimedEvidence([{ id: 'AC-002', status: 'passed', evidence: ['t::[AC-002] b'] }], results)).toEqual([
+      'AC-002: claimed passed but t::[AC-002] b is failed',
+    ]);
+  });
+
+  it('rejects unknown tests, untagged tests and passed claims without evidence', () => {
+    expect(
+      verifyClaimedEvidence(
+        [
+          { id: 'AC-001', status: 'passed', evidence: ['t::ghost'] },
+          { id: 'AC-002', status: 'failed', evidence: ['t::[AC-001] a'] },
+          { id: 'AC-001', status: 'passed', evidence: [] },
+        ],
+        results,
+      ),
+    ).toEqual([
+      'AC-001: cited test not found in JUnit report: t::ghost',
+      'AC-002: cited test is not tagged with this criterion: t::[AC-001] a',
+      'AC-001: claimed passed without evidence',
+    ]);
+  });
+
+  it('accepts a not-covered claim with no evidence', () => {
+    expect(verifyClaimedEvidence([{ id: 'AC-002', status: 'not-covered', evidence: [] }], results)).toEqual([]);
+  });
+});
 ```
 
 - [ ] **Step 6: Run test to verify it fails**
@@ -2788,12 +3211,44 @@ export function evidenceGate(results: readonly TestResult[]): string[] {
 export function readyForValidation(rows: readonly EvidenceRow[]): boolean {
   return rows.every((r) => r.status === 'passed' || r.status === 'blocked');
 }
+
+/** What the Test agent claims about one acceptance criterion in its review. */
+export interface EvidenceClaim {
+  id: string;
+  status: 'passed' | 'failed' | 'not-covered';
+  evidence: string[];
+}
+
+/**
+ * Cross-checks the Test agent's claims against the real JUnit results. A claim of
+ * `passed` needs at least one cited test, every cited test must exist, be tagged
+ * with the criterion and have passed. Agents never mark evidence passed on their own.
+ */
+export function verifyClaimedEvidence(claims: readonly EvidenceClaim[], results: readonly TestResult[]): string[] {
+  const byId = new Map(results.map((r) => [r.id, r]));
+  const errors: string[] = [];
+  for (const claim of claims) {
+    for (const testId of claim.evidence) {
+      const result = byId.get(testId);
+      if (!result) {
+        errors.push(`${claim.id}: cited test not found in JUnit report: ${testId}`);
+        continue;
+      }
+      if (!result.acIds.includes(claim.id)) errors.push(`${claim.id}: cited test is not tagged with this criterion: ${testId}`);
+      if (claim.status === 'passed' && result.status !== 'passed') {
+        errors.push(`${claim.id}: claimed passed but ${testId} is ${result.status}`);
+      }
+    }
+    if (claim.status === 'passed' && claim.evidence.length === 0) errors.push(`${claim.id}: claimed passed without evidence`);
+  }
+  return errors;
+}
 ```
 
 - [ ] **Step 8: Run tests and typecheck**
 
 Run: `npx vitest run test/evidence && npm run typecheck`
-Expected: 16 tests PASS; typecheck exits 0.
+Expected: 22 tests PASS; typecheck exits 0.
 
 - [ ] **Step 9: Commit**
 
@@ -2817,7 +3272,7 @@ git commit -m "feat: add JUnit evidence parser and acceptance criteria matrix" -
   - `interface ScopeResult { ok: boolean; errors: string[]; frozenTouched: string[]; outOfScope: string[] }`
   - `checkScope(input: ScopeInput): ScopeResult`
 
-`allowFrozen` is set by the caller only for `T0-scaffold` on the first spec (spec §4.4). A bare path without glob characters matches both the exact file and everything below it.
+`allowFrozen` is set by the caller only for `T0-scaffold` on the first spec (spec §4.4). A bare path without glob characters matches both the exact file and everything below it; parentheses, `+`, `@` and `!` in bare paths are matched literally (picomatch 4 has no `escape` helper, so the guard escapes them itself). The repository root (`.`, `./`, empty) means everything.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2883,6 +3338,20 @@ describe('checkScope', () => {
     expect(checkScope({ ...base, affectedPaths: ['src/todos/create'], changedFiles: ['src/todos/create/deep/x.ts'] }).ok).toBe(true);
     expect(checkScope({ ...base, affectedPaths: ['src/todos/create/'], changedFiles: ['src/todos/create/x.ts'] }).ok).toBe(true);
   });
+
+  it('matches directories with parentheses or plus signs literally', () => {
+    expect(checkScope({ ...base, affectedPaths: ['app/(auth)'], changedFiles: ['app/(auth)/page.tsx'] }).ok).toBe(true);
+    expect(checkScope({ ...base, affectedPaths: ['src/c++'], changedFiles: ['src/c++/x.cc'] }).ok).toBe(true);
+  });
+
+  it('treats the repository root as covering everything instead of crashing', () => {
+    expect(checkScope({ ...base, affectedPaths: ['./'], changedFiles: ['anything/at/all.ts'] }).ok).toBe(true);
+    expect(checkScope({ ...base, affectedPaths: ['.'], changedFiles: ['x.ts'] }).ok).toBe(true);
+  });
+
+  it('matches a leading-slash frozen glob', () => {
+    expect(checkScope({ ...base, frozenPaths: ['/package.json'], changedFiles: ['package.json'] }).frozenTouched).toEqual(['package.json']);
+  });
 });
 ```
 
@@ -2914,10 +3383,19 @@ export interface ScopeResult {
   outOfScope: string[];
 }
 
+/** Escapes characters picomatch would otherwise read as extglob or negation syntax. */
+function escapeLiteral(p: string): string {
+  return p.replace(/[()+@!]/g, (c) => `\\${c}`);
+}
+
 function matcher(globs: readonly string[]): (file: string) => boolean {
   const patterns = globs.flatMap((raw) => {
     const glob = normalizePath(raw);
-    return hasGlobChars(glob) ? [glob] : [glob, `${glob}/**`];
+    if (glob === '') return ['**'];
+    if (hasGlobChars(glob)) return [glob];
+    // A bare path covers the file itself and everything below it.
+    const literal = escapeLiteral(glob);
+    return [literal, `${literal}/**`];
   });
   if (patterns.length === 0) return () => false;
   return picomatch(patterns, { dot: true });
@@ -2926,7 +3404,7 @@ function matcher(globs: readonly string[]): (file: string) => boolean {
 export function checkScope(input: ScopeInput): ScopeResult {
   const isFrozen = input.allowFrozen ? () => false : matcher(input.frozenPaths);
   const inScope = matcher(input.affectedPaths);
-  const files = [...new Set(input.changedFiles.map(normalizePath))];
+  const files = [...new Set(input.changedFiles.map(normalizePath))].filter((f) => f !== '');
 
   const frozenTouched = files.filter((f) => isFrozen(f));
   const outOfScope = files.filter((f) => !isFrozen(f) && !inScope(f));
@@ -2943,12 +3421,12 @@ export function checkScope(input: ScopeInput): ScopeResult {
 - [ ] **Step 4: Run tests and typecheck**
 
 Run: `npx vitest run test/validators/diff-guard.test.ts && npm run typecheck`
-Expected: 9 tests PASS; typecheck exits 0.
+Expected: 12 tests PASS; typecheck exits 0.
 
 - [ ] **Step 5: Run the full suite**
 
 Run: `npm test && npm run typecheck`
-Expected: 14 test files, 117 tests PASS; typecheck exits 0.
+Expected: 14 test files, 151 tests PASS; typecheck exits 0.
 
 - [ ] **Step 6: Commit**
 
