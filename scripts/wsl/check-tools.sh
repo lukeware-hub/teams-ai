@@ -15,7 +15,7 @@ version_of() {
     kubectl) kubectl version --client -o json 2>/dev/null | sed -n 's/.*"gitVersion": *"\([^"]*\)".*/\1/p' | head -1 ;;
     gitleaks) gitleaks version 2>/dev/null ;;
     osv-scanner) osv-scanner --version 2>/dev/null | head -1 | awk '{print $NF}' ;;
-    graphify) pip show graphifyy 2>/dev/null | awk '/^Version:/{print $2}' ;;
+    graphify) pipx list --short 2>/dev/null | awk '/^graphifyy /{print $2}' ;;
     nvidia-smi) nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1 ;;
     llama-server) llama-server --version 2>&1 | head -1 ;;
     *) echo "" ;;

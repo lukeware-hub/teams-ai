@@ -222,7 +222,7 @@ version_of() {
     kubectl) kubectl version --client -o json 2>/dev/null | sed -n 's/.*"gitVersion": *"\([^"]*\)".*/\1/p' | head -1 ;;
     gitleaks) gitleaks version 2>/dev/null ;;
     osv-scanner) osv-scanner --version 2>/dev/null | head -1 | awk '{print $NF}' ;;
-    graphify) pip show graphifyy 2>/dev/null | awk '/^Version:/{print $2}' ;;
+    graphify) pipx list --short 2>/dev/null | awk '/^graphifyy /{print $2}' ;;
     nvidia-smi) nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1 ;;
     llama-server) llama-server --version 2>&1 | head -1 ;;
     *) echo "" ;;
@@ -268,6 +268,16 @@ fi
 source "$NVM_DIR/nvm.sh"
 nvm install 22 >/dev/null
 nvm alias default 22 >/dev/null
+# Login shells (bash -lc, how the orchestrator spawns processes) read ~/.profile, not ~/.bashrc;
+# nvm must load there and before the Windows interop PATH so Linux node/claude win.
+if ! grep -q "nvm for non-interactive login shells" "$HOME/.profile" 2>/dev/null; then
+  cat >> "$HOME/.profile" <<'PROFILE'
+
+# nvm for non-interactive login shells (orchestrator uses bash -lc)
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+PROFILE
+fi
 
 echo "== claude code cli"
 command -v claude >/dev/null 2>&1 || npm install -g @anthropic-ai/claude-code

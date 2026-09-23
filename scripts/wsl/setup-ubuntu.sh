@@ -18,6 +18,16 @@ fi
 source "$NVM_DIR/nvm.sh"
 nvm install 22 >/dev/null
 nvm alias default 22 >/dev/null
+# Login shells (bash -lc, how the orchestrator spawns processes) read ~/.profile, not ~/.bashrc;
+# nvm must load there and before the Windows interop PATH so Linux node/claude win.
+if ! grep -q "nvm for non-interactive login shells" "$HOME/.profile" 2>/dev/null; then
+  cat >> "$HOME/.profile" <<'PROFILE'
+
+# nvm for non-interactive login shells (orchestrator uses bash -lc)
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+PROFILE
+fi
 
 echo "== claude code cli"
 command -v claude >/dev/null 2>&1 || npm install -g @anthropic-ai/claude-code
