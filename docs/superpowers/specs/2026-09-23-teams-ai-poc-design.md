@@ -247,7 +247,7 @@ The scheduler selects runnable tasks: all `dependsOn` merged, no `affectedPaths`
 
 For each task:
 1. Orchestrator creates worktree `task/<specId>-<taskId>` from current `main`.
-2. **Dev** implements and writes unit tests; returns `{summary, commitMessage}`. Orchestrator commits.
+2. **Dev** implements and writes unit tests; returns `{status: "done" | "spec-gap", specHash, summary, commitMessage, scopeJustification?, question?}`. On `done` the orchestrator commits; on `spec-gap` the question goes to SM (9A.4).
 3. **Orchestrator** runs blocking gates in a container. Failure returns the delta (failed tests from JUnit, truncated log tail) to Dev.
 4. **Test** receives the diff plus graphify `affected` output for changed symbols (graph updated on the worktree), reviews against ACs and tech spec, may add acceptance tests, returns `{decision, criteria[{id, status, evidence[]}], findings[]}`. The orchestrator verifies the claimed evidence against the JUnit report. `changes` returns findings to Dev.
 5. **Merge queue** (serialized by a mutex; only the orchestrator writes `main`):
@@ -267,7 +267,7 @@ Test runs the full suite plus all acceptance tests on `main`. Failures make SM c
 DevOps provides deployment intent (manifests and `deployment.json`, already merged via the infrastructure task). The orchestrator runs `validate → apply → readiness → healthcheck → smoke [AC-* with smoke=true]` against the service URL. On failure: rollback to the previous image tag (`kubectl rollout undo` for kind, previous tag for compose), then DevOps fixes via a PR through the merge queue; up to 3 deploy attempts. If exhausted, the run ends with `deploy-failed` in the report.
 
 ### Phase 6 — Report
-SM produces the report: delivered tasks, blocked tasks with reasons, service URL, evidence matrix, token usage, and an exploratory test script derived from the ACs. The spec moves to `awaiting-validation`.
+SM produces the report: delivered tasks, blocked tasks with reasons, service URL, evidence matrix, assumptions log, token usage, and an exploratory test script derived from the ACs. The spec moves to `awaiting-validation`.
 
 ### Validation (human)
 The human checks the service and runs exploratory tests. "Report problem" opens Gate 1 in "continue spec" mode with the report prefilled; "Complete spec" sets `done`.
@@ -322,6 +322,35 @@ The Claude subscription imposes usage windows rather than per-token billing; tok
    - Community labeling (LLM) is skipped (`--no-label`).
    - Fallback: if the stack's language has poor graphify extraction coverage, the context pack falls back to grep-based lookup.
 3. **Text retrieval (RAG).** A `retrieve(query)` interface backed by BM25 over SQLite FTS5, indexing `docs/`, ADRs and refinement Q&A history. Used by PO/SM during refinement to detect contradictions with prior decisions, and by Dev to pull relevant ADRs. Embeddings are added only if BM25 is shown to miss relevant material.
+
+## 9A. Context integrity and hallucination control
+
+Root causes addressed: **ambiguity** (agents invent when the spec has gaps) and **long context** (sessions compact and lose details). Agents are never expected to remember the spec; every step is given the right slice and every claim is checked against real artifacts.
+
+### 9A.1 Prevent — no reliance on agent memory
+- Gate 1 removes ambiguity before any autonomous work (5.1).
+- Fresh session per step with a context pack rebuilt from the frozen `spec.json` (ACs addressed by ID), principles and ADRs.
+- Tasks are sized to fit a single step budget; exceeding the turn cap triggers replan into smaller tasks.
+- **Compaction detection:** if the stream shows auto-compaction inside a step, the step is marked suspect, its output is discarded, and the task is replanned smaller.
+- **Task handoff:** the context pack of a task includes the merged summaries of its `dependsOn` tasks plus a graphify query over the code already merged to `main`. Merged code is the source of truth, not agent recollection.
+
+### 9A.2 Anchor — every output cites things that exist
+- **`specHash` echo:** every agent output returns the `specHash` it received; a mismatch rejects the output.
+- **Reference validation:** every cited identifier must resolve — AC and task IDs in the spec/plan, file paths in the diff or repository, test names in the JUnit report, ADR IDs in `docs/`. Any unresolved reference rejects the output (schema-retry path, 12).
+- Mandatory traceability AC → tech spec → task → test → result (4.5).
+
+### 9A.3 Catch — independent verification
+- Real gates (compile, typecheck, tests) catch invented APIs and imports; gates are frozen (4.4).
+- The Test agent sees only the spec slice, the diff and the impact radius — never the Dev agent's reasoning — to avoid confirmation bias.
+- **Scope guard:**
+  - Deterministic: a diff touching files outside the task's declared `affectedPaths` requires a `scopeJustification` in the Dev output; missing justification rejects the output.
+  - System 1: decision 9 (10A.5) asks one Noul per out-of-scope item ("does the diff implement this?") and one for "does the diff contain changes not required by any referenced AC?". High values force the `deep` review profile.
+- Integrated verification (Phase 4) catches cross-task drift and requires a complete evidence matrix.
+
+### 9A.4 Escape hatch — "spec gap" is a valid answer
+- The Dev output allows `status: "spec-gap"` with the unanswered question, instead of improvising.
+- The orchestrator routes it to SM, which decides using principles and ADRs, and records the decision in an **assumptions log** (`docs/specs/<id>/assumptions.md`, one entry per decision with task, question, decision and rationale). The task resumes with the explicit decision in its context pack. A spec gap does not consume a task attempt.
+- Agents never ask the human mid-run. Assumptions are listed on the Validation screen and in the report, so the human validates them together with the exploratory test; a wrong assumption is reported and flows back to Gate 1.
 
 ## 10. Provider profiles and OmniRoute
 
@@ -385,6 +414,7 @@ Rule: **deterministic rules first, System 1 second, System 2 on low confidence.*
 | 6 | Attempt progress: `diverging` / `stalled` / `converging` | Score | Phase 3, from attempt 2 onward | `stalled` or `diverging` triggers early replan instead of spending remaining attempts | SM |
 | 7 | Validation report routing: `bug-existing-ac` / `new-requirement` / `environment` / `unclear` | Choice | After human validation report | Sets the continuation mode of the spec; `unclear` → PO asks the human | PO |
 | 8 | CLI error classification: `usage-limit` / `auth-expired` / `network` / `invalid-output` / `other` | Choice | Runner, when rules do not match | Feeds the quota breaker and pause states | — (falls back to `other` → generic retry) |
+| 9 | Scope drift: one Noul per out-of-scope item, one for changes not required by referenced ACs | Noul | Phase 3, before review | High values force the `deep` review profile (9A.3) | Test |
 
 Each decision has a config entry `{enabled, threshold, backend, escalateTo}`. With the layer disabled (runs 1 and 2), every decision goes straight to its System 2 path or deterministic default.
 
@@ -401,7 +431,7 @@ Fastify serves REST + SSE, bound to `127.0.0.1`, no authentication. SSE supports
 1. **Projects** — list of projects/specs with status; "New project", "New spec", "Continue spec".
 2. **Refinement** (the only editable screen) — document input, optional stack constraint and tasks; chat showing one question at a time labeled PO/SM; live side panel with readiness checklist, documentation diff preview, `spec.json` preview and SM-derived tasks (accept or adjust); secrets panel listing required names with present/missing status, value entry writes directly to the secrets file and is never displayed back; "Start" enabled only when the checklist is green.
 3. **Execution** (read-only) — phase timeline; task DAG colored by state with parallel tasks side by side and merge-queue lock holder; task detail with attempts, gate results, review findings, PR link and live agent log; token usage per phase/task/agent/provider with `paused until HH:MM` display; live evidence matrix.
-4. **Validation** — service URL, healthcheck and smoke results; exploratory test script as a checklist; blocked tasks with reasons; "Report problem" (opens Refinement in continue mode, prefilled); "Complete spec".
+4. **Validation** — service URL, healthcheck and smoke results; exploratory test script as a checklist; assumptions made by agents during the run (from the assumptions log); blocked tasks with reasons; "Report problem" (opens Refinement in continue mode, prefilled); "Complete spec".
 
 ## 12. Error handling
 
@@ -417,6 +447,9 @@ Fastify serves REST + SSE, bound to `127.0.0.1`, no authentication. SSE supports
 | Usage quota exhausted | Global `paused:quota`, automatic resume | No |
 | OmniRoute unavailable | Fall back to Claude profile for that role | No |
 | Docker / GitHub / network transient error | Backoff on idempotent operation | No |
+| Output with `specHash` mismatch or unresolved reference | Same as schema failure (re-run up to 2 times) | Only after those 2 |
+| Auto-compaction detected inside a step | Discard output, replan task smaller | No |
+| Dev returns `spec-gap` | SM decides and logs assumption; task resumes | No |
 | Local System 1 backend unavailable | All decisions escalate to System 2 | No |
 | Gate failure triaged as `infra`/`environment` | Retry with backoff, max 3 per gate, then treated as `code` | No (until the cap) |
 | Claude login expired in WSL | `paused:auth`, UI notice; resumes after `claude login` | No |
@@ -428,7 +461,7 @@ Raw agent streams are stored per step in `runs/<runId>/steps/<stepId>.ndjson`. W
 
 ## 13. Testing strategy (for teams-ai itself)
 
-1. **Unit (Vitest, every commit, no LLM):** scheduler (DAG, `maxParallel`, path overlap, deadlock, retry→replan→blocked); validators (valid/invalid fixture per output type); pipeline transitions and replay (kill at each state, verify resume); evidence parser (zero tests, AC without test, failing test, malformed XML); merge queue under simulated concurrency with `main` advancing; budget and circuit breaker with a fake clock; frozen-file rejection; context pack builder.
+1. **Unit (Vitest, every commit, no LLM):** scheduler (DAG, `maxParallel`, path overlap, deadlock, retry→replan→blocked); validators (valid/invalid fixture per output type); pipeline transitions and replay (kill at each state, verify resume); evidence parser (zero tests, AC without test, failing test, malformed XML); merge queue under simulated concurrency with `main` advancing; budget and circuit breaker with a fake clock; frozen-file rejection; context pack builder (including dependency handoff summaries); `specHash` echo mismatch; reference validation (unknown AC/task/file/test/ADR); scope guard (files outside `affectedPaths` without justification); spec-gap routing and assumptions log; compaction-detected step handling.
 2. **Runner contract:** a fake `claude` binary (via `CLAUDE_BIN`) replays recorded stream-json fixtures — success, invalid JSON, quota error, timeout, oversized output. A record mode captures real outputs to create fixtures.
 3. **Integration (on demand):** git controller against a local bare repository and a fake `gh` (create PR twice, merge twice → idempotent); deploy adapters against real Docker and kind with a "hello" fixture app exposing a healthcheck and a smoke test.
 4. **Agent evals (on demand, consume tokens):** small set of context packs per role; outputs must pass schema and semantic validation; pass rate tracked per role and provider.
@@ -457,6 +490,7 @@ Raw agent streams are stored per step in `runs/<runId>/steps/<stepId>.ndjson`. W
 - Exact behavior of `--setting-sources project` regarding user plugins and hooks; confirm with a baseline empty-call token measurement.
 - Availability of a turn cap flag (`--max-turns` is not listed in `--help` for CLI 2.1.280); the runner's own cap is the primary mechanism regardless.
 - Format of usage-limit errors in stream-json, to parse reset times.
+- How auto-compaction surfaces in stream-json events, for compaction detection (9A.1).
 - `--json-schema` reliability with non-Claude models through OmniRoute.
 - graphify language coverage for likely product stacks.
 - llama.cpp server logprobs API shape for restricted-label next-token probabilities, and prompt-cache reuse across parallel slots.
