@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-const SECRET_NAME = /^[A-Z][A-Z0-9_]*$/;
+export const SECRET_NAME = /^[A-Z][A-Z0-9_]*$/;
 
 /**
  * Spec §10/§14: `~/.teams-ai/secrets/<NAME>` holds one secret per file. Only upper-case names are
@@ -22,4 +22,23 @@ export async function loadSecrets(dir: string): Promise<Record<string, string>> 
     out[e.name] = (await fs.readFile(path.join(dir, e.name), 'utf8')).trim();
   }
   return out;
+}
+
+/**
+ * Spec (onboarding) §4: one file per secret, mode 0600 in a 0700 directory, written through a temp
+ * file and rename so a crash never leaves a half-written token. The value is trimmed (editors add a
+ * newline) and must be a single line; `loadSecrets` reads it back unchanged.
+ */
+export async function writeSecret(dir: string, name: string, value: string): Promise<void> {
+  if (!SECRET_NAME.test(name)) throw new RangeError(`secret name must match ${SECRET_NAME}: ${name}`);
+  const trimmed = value.trim();
+  if (trimmed === '') throw new RangeError(`secret ${name} is empty`);
+  if (/[\r\n]/.test(trimmed)) throw new RangeError(`secret ${name} must be a single line`);
+  await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+  await fs.chmod(dir, 0o700).catch(() => undefined);
+  const target = path.join(dir, name);
+  const tmp = path.join(dir, `.${name}.${process.pid}.tmp`);
+  await fs.writeFile(tmp, trimmed, { mode: 0o600 });
+  await fs.chmod(tmp, 0o600).catch(() => undefined);
+  await fs.rename(tmp, target);
 }
