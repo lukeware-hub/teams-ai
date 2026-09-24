@@ -14,6 +14,7 @@ import { buildContextPack, type CodeContext, type ContextPackInput, type Handoff
 import type { Hit } from '../knowledge/retrieval.js';
 import type { runStep as runStepFn, StepDeps, StepOutcome, StepRequest } from '../runner/step.js';
 import type { RefContext } from '../validators/references.js';
+import { REQUIRED_BLOCKING_GATES, SCAFFOLD_TASK_ID } from '../validators/plan.js';
 import { OrchEvent, type Journal } from './events.js';
 
 export interface PackBase {
@@ -97,13 +98,33 @@ export function coveragePack(base: PackBase, opts: { techSpecText: string }): Co
   return { ...common(base, 'coverage', 'po'), criteria: base.spec.acceptanceCriteria, objectives: base.spec.objectives, techSpecExcerpt: opts.techSpecText };
 }
 
+/** The validator's rules, stated before the SM plans; learning them by rejection costs a step each time. */
+export function planRules(firstSpec: boolean): string {
+  const lines = [
+    'Plan rules (the orchestrator rejects a plan that breaks any of them):',
+    `- gates must include these blocking gates: ${REQUIRED_BLOCKING_GATES.join(', ')} (plus a blocking typecheck gate when commands.typecheck exists)`,
+    '- every acceptance criterion is covered by at least one task (criteriaRefs); every task has at least one criterion or is infrastructure',
+    '- dependsOn forms a DAG; affectedPaths are repository-relative paths or globs; tasks small enough for one agent step',
+  ];
+  if (firstSpec) {
+    lines.push(
+      `- first spec of the project: a task with id ${SCAFFOLD_TASK_ID} (owner dev, no dependsOn) creates the project skeleton, build, test and gate configuration; every other task depends on it directly or indirectly`,
+      '- first spec of the project: one deploy-infrastructure task owned by devops (Dockerfile, manifests, deployment.json)',
+    );
+  } else {
+    lines.push(`- ${SCAFFOLD_TASK_ID} is only allowed on the first spec of a project`);
+  }
+  return lines.join('\n');
+}
+
 export function planPack(
   base: PackBase,
-  opts: { techSpecText: string; godNodes: ReadonlyArray<{ label: string; edges: number }>; feedback: string | null },
+  opts: { techSpecText: string; godNodes: ReadonlyArray<{ label: string; edges: number }>; feedback: string | null; firstSpec?: boolean },
 ): ContextPackInput {
   const human = (base.spec.tasks ?? []).map((t) => `- ${t.title}: ${t.description}`);
   const nodes = opts.godNodes.map((n) => `- ${n.label} (${n.edges} edges)`);
   const parts = [
+    planRules(opts.firstSpec ?? false),
     human.length > 0 ? `Human-defined tasks (derive dependencies, keep them):\n${human.join('\n')}` : '',
     nodes.length > 0 ? `Central modules of the current code (graph god-nodes):\n${nodes.join('\n')}` : '',
     opts.feedback ?? '',

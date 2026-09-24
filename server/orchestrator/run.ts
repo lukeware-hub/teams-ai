@@ -63,6 +63,11 @@ export type ExecuteResult = RunResult | 'paused:auth';
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/** `uid:gid` of this process on POSIX hosts; undefined on Windows, where Docker Desktop maps ownership itself. */
+export function containerUser(): string | undefined {
+  return typeof process.getuid === 'function' && typeof process.getgid === 'function' ? `${process.getuid()}:${process.getgid()}` : undefined;
+}
+
 /** Spec (orchestrator) §2.2: one tick loop, runners return through the journal. */
 export class Run {
   readonly accounting = new Accounting();
@@ -207,7 +212,19 @@ export class Run {
     const plan = this.plan!;
     return runGates(
       plan.gates.filter((g) => g.blocking),
-      { worktree, image: plan.gateImage, junitPath: plan.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-${branch.replace(/\//g, '__')}` },
+      {
+        worktree,
+        image: plan.gateImage,
+        junitPath: plan.junitPath,
+        cpus: 2,
+        memory: '2g',
+        timeoutMs: 15 * 60_000,
+        secrets: this.deps.secrets,
+        containerName: `teams-ai-${this.runId}-${branch.replace(/\//g, '__')}`,
+        // Files the gate writes into the bind-mounted worktree (the JUnit report) must stay owned by the
+        // orchestrator user, or the next attempt cannot remove them (EACCES on the first live run).
+        user: containerUser(),
+      },
       { exec: this.deps.exec, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null), removeFile: (p) => fs.rm(p, { force: true }) },
     );
   };

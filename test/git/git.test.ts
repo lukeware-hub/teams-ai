@@ -61,6 +61,15 @@ describe('commitAll', () => {
     expect(sha).not.toBeNull();
     expect((await git(repo, ['show', '--name-only', '--format=', 'HEAD'])).split('\n')).toEqual(['src/ok.ts']);
   });
+
+  it('commits when an excluded path is also ignored by the repository .gitignore (live-run finding)', async () => {
+    await write(repo, '.gitignore', 'reports/\nnode_modules/\n');
+    await write(repo, 'reports/junit.xml', '<testsuite/>');
+    await write(repo, 'src/ok.ts', 'ok');
+    const sha = await commitAll(repo, 'feat: ok');
+    expect(sha).not.toBeNull();
+    expect((await git(repo, ['show', '--name-only', '--format=', 'HEAD'])).split('\n').sort()).toEqual(['.gitignore', 'src/ok.ts']);
+  });
 });
 
 describe('worktrees', () => {

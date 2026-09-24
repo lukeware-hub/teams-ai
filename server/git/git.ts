@@ -118,7 +118,13 @@ export async function commitAll(
   exec: Exec = execCommand,
 ): Promise<string | null> {
   const exclude = opts.exclude ?? DEFAULT_COMMIT_EXCLUDES;
-  await git(dir, ['add', '-A', '--', '.', ...exclude.map((p) => `:(exclude,glob)${p}`)], exec);
+  // Stage everything, then drop the excluded paths from the index. An `:(exclude)` pathspec that
+  // names a path the repository's own .gitignore already ignores makes `git add` exit 1
+  // ("paths are ignored by one of your .gitignore files"), which the first live run hit.
+  await git(dir, ['add', '-A', '--', '.'], exec);
+  if (exclude.length > 0) {
+    await git(dir, ['rm', '-r', '-q', '--cached', '--ignore-unmatch', '--', ...exclude.map((p) => `:(glob)${p}`)], exec);
+  }
   const staged = await run(dir, ['diff', '--cached', '--quiet'], exec);
   if (staged.exitCode === 0) return null;
   await git(dir, ['commit', '-q', '-m', message], exec);

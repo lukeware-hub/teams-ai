@@ -35,7 +35,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
     const out: StepOutcome<OutputOf<'plan'>> = await deps.runAgent<'plan'>({
       kind: 'plan',
       role: 'sm',
-      pack: planPack(deps.packBase(), { techSpecText, godNodes: await deps.godNodes(), feedback }),
+      pack: planPack(deps.packBase(), { techSpecText, godNodes: await deps.godNodes(), feedback, firstSpec: deps.firstSpec }),
       cwd: worktree,
       phase: 'phase2',
       taskId: null,

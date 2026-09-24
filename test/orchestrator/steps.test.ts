@@ -105,6 +105,16 @@ describe('packs', () => {
     expect(p.feedback).toContain('server/app.ts');
   });
 
+  it('plan pack states the validator rules up front so the SM does not learn them by rejection', () => {
+    const first = planPack(base, { techSpecText: '# t', godNodes: [], feedback: null, firstSpec: true });
+    expect(first.feedback).toContain('T0-scaffold');
+    expect(first.feedback).toContain('devops');
+    for (const gate of ['format', 'lint', 'unit-test', 'build', 'secret-scan']) expect(first.feedback).toContain(gate);
+    const later = planPack(base, { techSpecText: '# t', godNodes: [], feedback: null, firstSpec: false });
+    expect(later.feedback).not.toContain('creates the project skeleton');
+    expect(later.feedback).toContain('secret-scan');
+  });
+
   it('output contract states the JSON schema of the kind', () => {
     expect(outputContract('dev')).toContain('"specHash"');
     expect(outputContract('dev')).toContain('commitMessage');
