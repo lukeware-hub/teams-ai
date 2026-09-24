@@ -101,10 +101,21 @@ describe('execCommand', () => {
     expect(Date.now() - started).toBeLessThan(3_000);
   });
 
-  it('truncates output beyond the limit and flags it', async () => {
-    const r = await node('process.stdout.write("x".repeat(5000))', { outputLimit: 1000 });
+  it('keeps the tail of the output when truncating, so the decisive last lines survive', async () => {
+    const r = await node('process.stdout.write("x".repeat(5000) + "no space left on device")', { outputLimit: 1000 });
     expect(r.stdout.length).toBe(1000);
+    expect(r.stdout.endsWith('no space left on device')).toBe(true);
     expect(r.truncated).toBe(true);
+  });
+
+  it('kills the whole process group on timeout even when a grandchild ignores SIGTERM', async () => {
+    const started = Date.now();
+    const r = await node(
+      'const {spawn}=require("child_process"); spawn(process.execPath,["-e","process.on(\\"SIGTERM\\",()=>{}); setInterval(()=>{},1000)"],{stdio:"inherit"}); setInterval(()=>{},1000)',
+      { timeoutMs: 300 },
+    );
+    expect(r.timedOut).toBe(true);
+    expect(Date.now() - started).toBeLessThan(5_000);
   });
 
   it('throws CommandError when the binary does not exist', async () => {
@@ -139,6 +150,7 @@ Expected: FAIL — cannot resolve `../../server/exec/command.js`.
 `server/exec/command.ts`:
 ```ts
 import { spawn } from 'node:child_process';
+import { StringDecoder } from 'node:string_decoder';
 
 export interface CommandSpec {
   bin: string;
@@ -166,12 +178,57 @@ export class CommandError extends Error {}
 
 const DEFAULT_LIMIT = 1024 * 1024;
 
-/** Variables every tool needs to start; nothing else from the host leaks into a command (spec §14). */
+/**
+ * Variables every tool needs to start; nothing else from the host leaks into a command (spec §14).
+ * This executor runs orchestrator tools (git, gh, docker, kubectl) — never agents — so the
+ * credential locations under HOME are reachable by design.
+ */
+export const BASE_ENV_KEYS: readonly string[] = [
+  'PATH',
+  'HOME',
+  'TEMP',
+  'TMP',
+  'TMPDIR',
+  'SystemRoot',
+  'USERPROFILE',
+  'LANG',
+  'LC_ALL',
+  'TERM',
+  'SSH_AUTH_SOCK',
+  'XDG_CONFIG_HOME',
+  'DOCKER_HOST',
+  'DOCKER_CONTEXT',
+  'DOCKER_CONFIG',
+  'KUBECONFIG',
+  'DBUS_SESSION_BUS_ADDRESS',
+];
+
 function baseEnv(): Record<string, string> {
-  const keep = ['PATH', 'HOME', 'TEMP', 'TMP', 'TMPDIR', 'SystemRoot', 'USERPROFILE', 'LANG', 'LC_ALL', 'TERM'];
   const env: Record<string, string> = {};
-  for (const k of keep) if (typeof process.env[k] === 'string') env[k] = process.env[k]!;
+  for (const k of BASE_ENV_KEYS) if (typeof process.env[k] === 'string') env[k] = process.env[k]!;
   return env;
+}
+
+/** Keeps the *tail* of a stream: the decisive line ("no space left on device", the failing test) is at the end. */
+class TailBuffer {
+  private text = '';
+  truncated = false;
+  private readonly decoder = new StringDecoder('utf8');
+  constructor(private readonly limit: number) {}
+  push(chunk: Buffer): void {
+    const next = this.text + this.decoder.write(chunk);
+    if (next.length > this.limit) {
+      this.truncated = true;
+      this.text = next.slice(-this.limit);
+    } else {
+      this.text = next;
+    }
+  }
+  end(): string {
+    const rest = this.decoder.end();
+    if (rest) this.push(Buffer.alloc(0)), (this.text = (this.text + rest).slice(-this.limit));
+    return this.text;
+  }
 }
 
 export const execCommand: Exec = (spec) =>
@@ -187,54 +244,48 @@ export const execCommand: Exec = (spec) =>
       detached: posix,
     });
 
-    let stdout = '';
-    let stderr = '';
-    let truncated = false;
+    const out = new TailBuffer(limit);
+    const err = new TailBuffer(limit);
     let timedOut = false;
     let settled = false;
 
-    const collect = (current: string, chunk: Buffer) => {
-      if (current.length >= limit) {
-        truncated = true;
-        return current;
-      }
-      const next = current + chunk.toString('utf8');
-      if (next.length > limit) {
-        truncated = true;
-        return next.slice(0, limit);
-      }
-      return next;
-    };
-    child.stdout!.on('data', (c: Buffer) => (stdout = collect(stdout, c)));
-    child.stderr!.on('data', (c: Buffer) => (stderr = collect(stderr, c)));
+    child.stdout!.on('data', (c: Buffer) => out.push(c));
+    child.stderr!.on('data', (c: Buffer) => err.push(c));
 
+    // Signals go to the whole process group so grandchildren (npm → node, docker CLI → nothing) die too.
     const signal = (sig: NodeJS.Signals) => {
       try {
         if (posix && child.pid) process.kill(-child.pid, sig);
         else child.kill(sig);
       } catch {
-        /* gone */
+        /* ESRCH: already gone */
       }
     };
     const timer = setTimeout(() => {
       timedOut = true;
       signal('SIGTERM');
-      setTimeout(() => {
-        if (child.exitCode === null && child.signalCode === null) signal('SIGKILL');
-      }, 1_000).unref();
+      setTimeout(() => signal('SIGKILL'), 1_000).unref();
     }, spec.timeoutMs);
 
-    child.on('error', (err) => {
+    child.on('error', (e) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      reject(new CommandError(`cannot run ${spec.bin}: ${err.message}`));
+      reject(new CommandError(`cannot run ${spec.bin}: ${e.message}`));
     });
     child.on('close', (code, sig) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve({ exitCode: code, signal: sig, stdout, stderr, timedOut, durationMs: Date.now() - started, truncated });
+      resolve({
+        exitCode: code,
+        signal: sig,
+        stdout: out.end(),
+        stderr: err.end(),
+        timedOut,
+        durationMs: Date.now() - started,
+        truncated: out.truncated || err.truncated,
+      });
     });
 
     child.stdin!.on('error', () => {
@@ -282,7 +333,7 @@ export class FakeExec {
 - [ ] **Step 4: Run tests and typecheck**
 
 Run: `npx vitest run test/exec/command.test.ts && npm run typecheck`
-Expected: 7 tests PASS; typecheck exits 0.
+Expected: 8 tests PASS; typecheck exits 0.
 
 - [ ] **Step 5: Commit**
 
@@ -322,6 +373,19 @@ import { AC_ID } from './spec.js';
 
 export const ADR_ID = /^ADR-\d{3}$/;
 
+/**
+ * A path or glob relative to the repository root, as an agent may declare it. Rejected: absolute
+ * paths and drive letters, `..` segments (escape the worktree), and picomatch extglob/negation
+ * syntax (`!(...)`, `@(...)`, leading `!`) that would widen a scope guard match.
+ */
+export const RepoPath = z
+  .string()
+  .min(1)
+  .refine((p) => !/^([/\\]|[A-Za-z]:)/.test(p), { message: 'must be relative to the repository root' })
+  .refine((p) => !p.split(/[/\\]/).includes('..'), { message: 'must not contain ".." segments' })
+  .refine((p) => !/^!|[!@+?*]\(/.test(p), { message: 'extglob and negation patterns are not allowed' })
+  .refine((p) => !/[\0\r\n]/.test(p), { message: 'control characters are not allowed' });
+
 export const Gate = z.object({
   name: z.string().regex(ID_PATTERNS.SLUG),
   command: z.string().min(1),
@@ -350,7 +414,7 @@ export const PlanTask = z.object({
   description: z.string().min(1),
   criteriaRefs: z.array(z.string().regex(AC_ID)),
   dependsOn: z.array(z.string().regex(ID_PATTERNS.TASK_ID)),
-  affectedPaths: z.array(z.string().min(1)).min(1),
+  affectedPaths: z.array(RepoPath).min(1),
   owner: z.enum(['dev', 'devops']),
 });
 export type PlanTask = z.infer<typeof PlanTask>;
@@ -363,15 +427,15 @@ export const Plan = z.object({
   commands: Commands,
   /** Toolchain image every gate runs in (from the stack ADR), e.g. node:22-bookworm. */
   gateImage: z.string().min(1),
-  junitPath: z.string().min(1),
+  junitPath: RepoPath,
   gates: z.array(Gate).min(1),
-  frozenPaths: z.array(z.string().min(1)).min(1),
+  frozenPaths: z.array(RepoPath).min(1),
   tasks: z.array(PlanTask).min(1),
   deploy: z.object({
     image: z.string().min(1),
     port: z.number().int().min(1).max(65535),
     healthcheckPath: z.string().startsWith('/'),
-    manifests: z.array(z.string().min(1)),
+    manifests: z.array(RepoPath),
   }),
 });
 export type Plan = z.infer<typeof Plan>;
@@ -515,7 +579,7 @@ Expected: every existing test still PASSES (the plan validator's required-gate c
 import { describe, expect, it } from 'vitest';
 import type { Gate } from '../../server/contracts/plan.js';
 import { Gate as GateSchema } from '../../server/contracts/plan.js';
-import { classifyGate, dockerArgs, runGate, runGates, type GateContext } from '../../server/exec/gate-runner.js';
+import { classifyGate, dockerArgs, runGate, runGates, type GateContext, type GateDeps } from '../../server/exec/gate-runner.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
 
 const ctx: GateContext = {
@@ -526,29 +590,64 @@ const ctx: GateContext = {
   memory: '2g',
   timeoutMs: 600_000,
   secrets: { NPM_TOKEN: 'npm_x', DATABASE_URL: 'postgres://x' },
+  containerName: 'gate-T1-create-a1',
+  user: '1000:1000',
 };
 const gate = (over: Partial<Gate> & { name: string; command: string }): Gate => GateSchema.parse({ blocking: true, ...over });
 const JUNIT = '<testsuite name="s"><testcase classname="c" name="[AC-001] ok"/><testcase classname="c" name="[AC-002] bad"><failure/></testcase></testsuite>';
-const files = (map: Record<string, string>) => async (p: string) => map[p.replace(/\\/g, '/')] ?? null;
+
+function files(map: Record<string, string>) {
+  const store = new Map(Object.entries(map));
+  const removed: string[] = [];
+  const deps: Pick<GateDeps, 'readFile' | 'removeFile'> = {
+    readFile: async (p) => store.get(p.replace(/\\/g, '/')) ?? null,
+    removeFile: async (p) => {
+      removed.push(p.replace(/\\/g, '/'));
+      store.delete(p.replace(/\\/g, '/'));
+    },
+  };
+  return { deps, store, removed };
+}
 
 describe('dockerArgs', () => {
-  it('runs the command offline in a disposable container with limits and the worktree mounted', () => {
-    const args = dockerArgs(gate({ name: 'unit-test', command: 'npm test' }), ctx);
-    expect(args.slice(0, 2)).toEqual(['run', '--rm']);
-    expect(args).toEqual(expect.arrayContaining(['--network', 'none', '--cpus', '2', '--memory', '2g', '-v', `${ctx.worktree}:/work`, '-w', '/work', 'node:22-bookworm']));
+  it('runs the command offline in a named, init-managed, non-root container with limits and read-only .git', () => {
+    const { args, env } = dockerArgs(gate({ name: 'unit-test', command: 'npm test' }), ctx);
+    expect(args.slice(0, 3)).toEqual(['run', '--rm', '--init']);
+    expect(args).toEqual(
+      expect.arrayContaining([
+        '--name', 'gate-T1-create-a1-unit-test',
+        '--network', 'none',
+        '--cpus', '2',
+        '--memory', '2g',
+        '--user', '1000:1000',
+        '-e', 'HOME=/tmp',
+        '--mount', `type=bind,source=${ctx.worktree},target=/work`,
+        '--mount', `type=bind,source=${ctx.worktree}/.git,target=/work/.git,readonly`,
+        '-w', '/work',
+        'node:22-bookworm',
+      ]),
+    );
     expect(args.slice(-3)).toEqual(['sh', '-lc', 'npm test']);
     expect(args.join(' ')).not.toContain('npm_x');
+    expect(env).toEqual({});
   });
 
-  it('gives egress gates a bridge network and injects only the declared secrets', () => {
-    const args = dockerArgs(gate({ name: 'install', command: 'npm ci', network: 'egress', secrets: ['NPM_TOKEN'] }), ctx);
+  it('gives egress gates a bridge network and passes declared secrets by name, values through the environment', () => {
+    const { args, env } = dockerArgs(gate({ name: 'install', command: 'npm ci', network: 'egress', secrets: ['NPM_TOKEN'] }), ctx);
     expect(args[args.indexOf('--network') + 1]).toBe('bridge');
-    expect(args).toEqual(expect.arrayContaining(['-e', 'NPM_TOKEN=npm_x']));
-    expect(args.join(' ')).not.toContain('DATABASE_URL');
+    expect(args).toEqual(expect.arrayContaining(['-e', 'NPM_TOKEN']));
+    expect(args.join(' ')).not.toContain('npm_x');
+    expect(env).toEqual({ NPM_TOKEN: 'npm_x' });
+    expect(env).not.toHaveProperty('DATABASE_URL');
   });
 
   it('fails loudly when a declared secret is missing', () => {
     expect(() => dockerArgs(gate({ name: 'x', command: 'y', secrets: ['MISSING'] }), ctx)).toThrow(/MISSING/);
+  });
+
+  it('omits --user when no user is configured', () => {
+    const { args } = dockerArgs(gate({ name: 'x', command: 'y' }), { ...ctx, user: undefined });
+    expect(args).not.toContain('--user');
   });
 });
 
@@ -560,44 +659,72 @@ describe('classifyGate', () => {
     expect(classifyGate({ exitCode: null, timedOut: true, stderrTail: '' })).toBe('infra');
   });
 
-  it('treats an ordinary non-zero exit as code', () => {
+  it('does not mistake a test\'s own ENOENT or heap message for infra', () => {
+    expect(classifyGate({ exitCode: 1, timedOut: false, stderrTail: "Error: ENOENT: no such file or directory, open 'fixtures/x.json'" })).toBe('code');
+    expect(classifyGate({ exitCode: 1, timedOut: false, stderrTail: 'FATAL ERROR: JavaScript heap out of memory' })).toBe('code');
     expect(classifyGate({ exitCode: 1, timedOut: false, stderrTail: '3 tests failed' })).toBe('code');
   });
 });
 
 describe('runGate', () => {
-  it('passes on exit 0 and picks up the JUnit report', async () => {
-    const fake = new FakeExec().onArgs('docker', ['run'], () => ({ stdout: 'ok' }));
-    const r = await runGate(gate({ name: 'unit-test', command: 'npm test' }), ctx, { exec: fake.exec, readFile: files({ '/home/u/ws/worktrees/T1-create/reports/junit.xml': JUNIT }) });
+  it('passes on exit 0, removes a stale report first and picks up the fresh JUnit report', async () => {
+    const report = '/home/u/ws/worktrees/T1-create/reports/junit.xml';
+    const f = files({ [report]: '<testsuite name="stale"><testcase classname="c" name="[AC-009] stale"/></testsuite>' });
+    const fake = new FakeExec().onArgs('docker', ['run'], () => {
+      f.store.set(report, JUNIT); // the gate writes a fresh report
+      return { stdout: 'ok' };
+    });
+    const r = await runGate(gate({ name: 'unit-test', command: 'npm test' }), ctx, { exec: fake.exec, ...f.deps });
+    expect(f.removed).toEqual([report]);
     expect(r).toMatchObject({ name: 'unit-test', passed: true, exitCode: 0, failure: null });
     expect(r.junit).toHaveLength(2);
     expect(r.junit![1]!.status).toBe('failed');
+    const run = fake.calls.find((c) => c.args[0] === 'run')!;
+    expect(run.env).toEqual({});
   });
 
-  it('reports a code failure with output tails when the command exits non-zero', async () => {
-    const fake = new FakeExec().onArgs('docker', ['run'], () => ({ exitCode: 1, stdout: 'x'.repeat(10_000), stderr: 'FAIL src/a.test.ts' }));
-    const r = await runGate(gate({ name: 'unit-test', command: 'npm test' }), ctx, { exec: fake.exec, readFile: files({}) });
+  it('reports a code failure with the tail of the output when the command exits non-zero', async () => {
+    const f = files({});
+    const fake = new FakeExec().onArgs('docker', ['run'], () => ({ exitCode: 1, stdout: 'x'.repeat(10_000) + 'THE END', stderr: 'FAIL src/a.test.ts' }));
+    const r = await runGate(gate({ name: 'unit-test', command: 'npm test' }), ctx, { exec: fake.exec, ...f.deps });
     expect(r.passed).toBe(false);
     expect(r.failure).toBe('code');
     expect(r.stdoutTail.length).toBe(4000);
+    expect(r.stdoutTail.endsWith('THE END')).toBe(true);
     expect(r.junit).toBeNull();
   });
 
   it('reports infra when the container is OOM-killed', async () => {
+    const f = files({});
     const fake = new FakeExec().onArgs('docker', ['run'], () => ({ exitCode: 137 }));
-    const r = await runGate(gate({ name: 'build', command: 'npm run build' }), ctx, { exec: fake.exec, readFile: files({}) });
+    const r = await runGate(gate({ name: 'build', command: 'npm run build' }), ctx, { exec: fake.exec, ...f.deps });
     expect(r.failure).toBe('infra');
   });
 
+  it('force-removes the named container after a timeout so nothing keeps running', async () => {
+    const f = files({});
+    const fake = new FakeExec().onArgs('docker', ['run'], () => ({ exitCode: null, timedOut: true }));
+    const r = await runGate(gate({ name: 'unit-test', command: 'npm test' }), ctx, { exec: fake.exec, ...f.deps });
+    expect(r.failure).toBe('infra');
+    expect(fake.lines('docker')).toContain('rm -f gate-T1-create-a1-unit-test');
+  });
+
   it('reports infra when docker itself cannot be spawned', async () => {
+    const f = files({});
     const r = await runGate(gate({ name: 'build', command: 'npm run build' }), ctx, {
       exec: async () => {
         throw new Error('cannot run docker: spawn docker ENOENT');
       },
-      readFile: files({}),
+      ...f.deps,
     });
     expect(r).toMatchObject({ passed: false, failure: 'infra' });
     expect(r.stderrTail).toMatch(/ENOENT/);
+  });
+
+  it('rejects a junitPath that escapes the worktree', async () => {
+    const f = files({});
+    const fake = new FakeExec();
+    await expect(runGate(gate({ name: 'unit-test', command: 'npm test' }), { ...ctx, junitPath: '../outside.xml' }, { exec: fake.exec, ...f.deps })).rejects.toThrow(/junitPath/);
   });
 });
 
@@ -610,15 +737,17 @@ describe('runGates', () => {
   ];
 
   it('stops at the first blocking failure and skips the rest', async () => {
+    const f = files({});
     const fake = new FakeExec().on((s) => s.args.includes('npm test'), () => ({ exitCode: 1, stderr: 'boom' }));
-    const out = await runGates(gates, ctx, { exec: fake.exec, readFile: files({}) });
+    const out = await runGates(gates, ctx, { exec: fake.exec, ...f.deps });
     expect(out.results.map((r) => r.name)).toEqual(['lint', 'unit-test']);
     expect(out.blockingFailure?.name).toBe('unit-test');
   });
 
   it('runs every gate when only a non-blocking one fails', async () => {
+    const f = files({});
     const fake = new FakeExec().on((s) => s.args.includes('osv-scanner .'), () => ({ exitCode: 2, stdout: 'vuln' }));
-    const out = await runGates(gates, ctx, { exec: fake.exec, readFile: files({}) });
+    const out = await runGates(gates, ctx, { exec: fake.exec, ...f.deps });
     expect(out.results.map((r) => r.passed)).toEqual([true, true, false, true]);
     expect(out.blockingFailure).toBeNull();
   });
@@ -648,6 +777,10 @@ export interface GateContext {
   timeoutMs: number;
   /** Secret values available to this run; a gate receives only the names it declares. */
   secrets: Record<string, string>;
+  /** Prefix for the container name (deterministic per attempt) so a timed-out container can be removed. */
+  containerName: string;
+  /** `uid:gid` to run as, so files created in the bind-mounted worktree stay owned by the orchestrator user. */
+  user?: string;
   containerWorkdir?: string;
 }
 
@@ -666,38 +799,58 @@ export interface GateResult {
 
 export const TAIL_CHARS = 4000;
 
+/** Only messages the Docker CLI / daemon produce; a test's own ENOENT or heap message is the Dev's problem. */
 export const INFRA_PATTERNS: readonly RegExp[] = [
   /Cannot connect to the Docker daemon/i,
   /docker: (command )?not found/i,
+  /spawn docker ENOENT/,
   /no space left on device/i,
-  /ENOENT/,
   /error during connect/i,
-  /OOMKilled|Out of memory/i,
+  /OOMKilled/,
 ];
 
-export function dockerArgs(gate: Gate, ctx: GateContext): string[] {
+export interface DockerInvocation {
+  args: string[];
+  /** Secret values, passed through the environment (`-e NAME` inherits), never on the command line. */
+  env: Record<string, string>;
+}
+
+export function dockerArgs(gate: Gate, ctx: GateContext): DockerInvocation {
   const workdir = ctx.containerWorkdir ?? '/work';
+  const source = ctx.worktree.replace(/\\/g, '/');
   const args = [
     'run',
     '--rm',
+    '--init',
+    '--name',
+    `${ctx.containerName}-${gate.name}`,
     '--network',
     gate.network === 'egress' ? 'bridge' : 'none',
     '--cpus',
     String(ctx.cpus),
     '--memory',
     ctx.memory,
-    '-v',
-    `${ctx.worktree}:${workdir}`,
+  ];
+  if (ctx.user) args.push('--user', ctx.user, '-e', 'HOME=/tmp');
+  args.push(
+    '--mount',
+    `type=bind,source=${source},target=${workdir}`,
+    // The worktree's .git (a file pointing at the main repo) must never be writable from inside
+    // the gate: a rewritten gitdir/hooks path would run on the host at the next git command.
+    '--mount',
+    `type=bind,source=${source}/.git,target=${workdir}/.git,readonly`,
     '-w',
     workdir,
-  ];
+  );
+  const env: Record<string, string> = {};
   for (const name of gate.secrets) {
     const value = ctx.secrets[name];
     if (value === undefined) throw new Error(`gate ${gate.name} declares secret ${name} but it is not available`);
-    args.push('-e', `${name}=${value}`);
+    args.push('-e', name);
+    env[name] = value;
   }
   args.push(ctx.image, 'sh', '-lc', gate.command);
-  return args;
+  return { args, env };
 }
 
 export function classifyGate(r: Pick<GateResult, 'exitCode' | 'timedOut' | 'stderrTail'>): 'infra' | 'code' {
@@ -712,24 +865,41 @@ const tail = (s: string) => (s.length > TAIL_CHARS ? s.slice(-TAIL_CHARS) : s);
 export interface GateDeps {
   exec: Exec;
   readFile: (absolutePath: string) => Promise<string | null>;
+  removeFile: (absolutePath: string) => Promise<void>;
+}
+
+function junitFile(ctx: GateContext): string {
+  const root = ctx.worktree.replace(/\\/g, '/');
+  const file = path.posix.normalize(path.posix.join(root, ctx.junitPath.replace(/\\/g, '/')));
+  if (!file.startsWith(`${root}/`)) throw new Error(`junitPath escapes the worktree: ${ctx.junitPath}`);
+  return file;
 }
 
 export async function runGate(gate: Gate, ctx: GateContext, deps: GateDeps): Promise<GateResult> {
   const started = Date.now();
+  const report = junitFile(ctx);
+  // A stale report from a previous attempt must never be mistaken for this gate's evidence.
+  await deps.removeFile(report);
+
   let base: Omit<GateResult, 'name' | 'blocking' | 'passed' | 'junit' | 'failure'>;
+  const invocation = dockerArgs(gate, ctx);
   try {
-    const r = await deps.exec({ bin: 'docker', args: dockerArgs(gate, ctx), timeoutMs: ctx.timeoutMs });
+    const r = await deps.exec({ bin: 'docker', args: invocation.args, env: invocation.env, timeoutMs: ctx.timeoutMs });
     base = { exitCode: r.exitCode, timedOut: r.timedOut, durationMs: r.durationMs, stdoutTail: tail(r.stdout), stderrTail: tail(r.stderr) };
+    if (r.timedOut) {
+      // SIGTERM reaches the docker CLI, not PID 1 in the container; make sure nothing keeps running.
+      await deps.exec({ bin: 'docker', args: ['rm', '-f', `${ctx.containerName}-${gate.name}`], timeoutMs: 60_000 }).catch(() => undefined);
+    }
   } catch (err) {
     base = { exitCode: null, timedOut: false, durationMs: Date.now() - started, stdoutTail: '', stderrTail: tail((err as Error).message) };
     return { name: gate.name, blocking: gate.blocking, passed: false, junit: null, failure: 'infra', ...base };
   }
   const passed = base.exitCode === 0 && !base.timedOut;
   let junit: TestResult[] | null = null;
-  const report = await deps.readFile(path.posix.join(ctx.worktree.replace(/\\/g, '/'), ctx.junitPath));
-  if (report) {
+  const xml = await deps.readFile(report);
+  if (xml) {
     try {
-      junit = parseJUnit(report);
+      junit = parseJUnit(xml);
     } catch {
       junit = null;
     }
@@ -755,7 +925,7 @@ export async function runGates(
 - [ ] **Step 5: Run tests and typecheck**
 
 Run: `npx vitest run test/exec && npm run typecheck`
-Expected: 18 tests PASS (command 7, gate-runner 11); typecheck exits 0.
+Expected: 22 tests PASS (command 8, gate-runner 14); typecheck exits 0.
 
 - [ ] **Step 6: Commit**
 
@@ -794,7 +964,20 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { changedFiles, commitAll, createWorktree, fetch, git, headSha, push, rebaseOnto, removeWorktree } from '../../server/git/git.js';
+import {
+  DEFAULT_COMMIT_EXCLUDES,
+  GitError,
+  changedFiles,
+  commitAll,
+  createWorktree,
+  fetch,
+  git,
+  headSha,
+  push,
+  rebaseOnto,
+  remoteMainSha,
+  removeWorktree,
+} from '../../server/git/git.js';
 
 let root: string;
 let origin: string;
@@ -829,6 +1012,17 @@ describe('commitAll', () => {
     expect(await git(repo, ['log', '-1', '--format=%an <%ae> %s'])).toBe('teams-ai <teams-ai@localhost> feat: a');
     expect(await commitAll(repo, 'nothing')).toBeNull();
   });
+
+  it('never stages secrets, dependency trees or gate reports', async () => {
+    await write(repo, '.env', 'SECRET=1');
+    await write(repo, '.env.local', 'SECRET=2');
+    await write(repo, 'node_modules/x/index.js', '');
+    await write(repo, 'reports/junit.xml', '<testsuite/>');
+    await write(repo, 'src/ok.ts', 'ok');
+    const sha = await commitAll(repo, 'feat: ok', { exclude: [...DEFAULT_COMMIT_EXCLUDES, 'reports/junit.xml'] });
+    expect(sha).not.toBeNull();
+    expect((await git(repo, ['show', '--name-only', '--format=', 'HEAD'])).split('\n')).toEqual(['src/ok.ts']);
+  });
 });
 
 describe('worktrees', () => {
@@ -842,6 +1036,14 @@ describe('worktrees', () => {
     await removeWorktree(repo, wt); // no error when absent
     await expect(fs.access(wt)).rejects.toThrow();
   });
+
+  it('recreates a worktree whose directory vanished (stale registration)', async () => {
+    const wt = path.join(root, 'wt-gone');
+    await createWorktree(repo, wt, 'task/gone', 'main');
+    await fs.rm(wt, { recursive: true, force: true });
+    await createWorktree(repo, wt, 'task/gone', 'main');
+    expect(await git(wt, ['branch', '--show-current'])).toBe('task/gone');
+  });
 });
 
 describe('changedFiles and rebase', () => {
@@ -854,7 +1056,7 @@ describe('changedFiles and rebase', () => {
     await write(repo, 'src/b.ts', 'b');
     await commitAll(repo, 'feat: b');
     const result = await rebaseOnto(wt, 'main');
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, baseSha: await headSha(repo) });
     expect(await changedFiles(wt, 'main')).toEqual(['src/a.ts']);
     expect(await git(wt, ['log', '--format=%s', 'main..HEAD'])).toBe('feat: a');
   });
@@ -871,9 +1073,20 @@ describe('changedFiles and rebase', () => {
     expect(await git(wt, ['status', '--porcelain'])).toBe('');
     expect(await fs.readFile(path.join(wt, 'README.md'), 'utf8')).toBe('from task\n');
   });
+
+  it('throws GitError (infra) when the rebase fails for a reason that is not a conflict', async () => {
+    const wt = path.join(root, 'wt');
+    await createWorktree(repo, wt, 'task/x', 'main');
+    await write(wt, 'src/a.ts', 'a');
+    await commitAll(wt, 'feat: a');
+    await write(repo, 'reports/junit.xml', 'tracked-on-main');
+    await commitAll(repo, 'chore: track report', { exclude: [] });
+    await write(wt, 'reports/junit.xml', 'untracked-in-worktree'); // would be overwritten by the rebase
+    await expect(rebaseOnto(wt, 'main')).rejects.toThrow(GitError);
+  });
 });
 
-describe('push and fetch', () => {
+describe('push, fetch and remote main', () => {
   it('pushes a branch to origin with force-with-lease and fetch sees it', async () => {
     const wt = path.join(root, 'wt');
     await createWorktree(repo, wt, 'task/y', 'main');
@@ -883,6 +1096,15 @@ describe('push and fetch', () => {
     expect(await git(origin, ['rev-parse', 'task/y'])).toBe(sha);
     await fetch(repo);
     expect(await git(repo, ['rev-parse', 'origin/task/y'])).toBe(sha);
+  });
+
+  it('reads the remote main sha', async () => {
+    expect(await remoteMainSha(repo)).toBe(await headSha(repo));
+    await write(repo, 'z.txt', 'z');
+    const local = await commitAll(repo, 'feat: z');
+    expect(await remoteMainSha(repo)).not.toBe(local);
+    await push(repo, 'main');
+    expect(await remoteMainSha(repo)).toBe(local);
   });
 });
 ```
@@ -912,8 +1134,19 @@ export const GIT_IDENTITY: Record<string, string> = {
   GIT_CONFIG_PARAMETERS: "'core.autocrlf=false'",
 };
 
+/**
+ * Repository content that must never reach a commit: secrets, dependency trees and gate artifacts.
+ * The caller adds the plan's junitPath. Pathspecs use the exclude magic so `add -A` stays otherwise complete.
+ */
+export const DEFAULT_COMMIT_EXCLUDES: readonly string[] = ['.env', '.env.*', '**/.env', '**/.env.*', 'node_modules', '**/node_modules', 'reports/junit.xml'];
+
+/** Hardening applied to every git command: hooks and fsmonitor from a (possibly agent-written) config never execute. */
+const SAFE_CONFIG = ['-c', 'core.fsmonitor=', '-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false'];
+
+const TIMEOUT = 120_000;
+
 /** Canonical form for comparing paths git prints (long, forward slashes) with paths we were given. */
-async function canonical(p: string): Promise<string> {
+function canonical(p: string): string {
   let real = p;
   try {
     real = realpathSync.native(p); // expands Windows 8.3 short names too
@@ -924,10 +1157,8 @@ async function canonical(p: string): Promise<string> {
   return process.platform === 'win32' ? s.toLowerCase() : s;
 }
 
-const TIMEOUT = 120_000;
-
 async function run(cwd: string, args: readonly string[], exec: Exec) {
-  return exec({ bin: 'git', args, cwd, env: GIT_IDENTITY, timeoutMs: TIMEOUT });
+  return exec({ bin: 'git', args: [...SAFE_CONFIG, ...args], cwd, env: GIT_IDENTITY, timeoutMs: TIMEOUT });
 }
 
 export async function git(cwd: string, args: readonly string[], exec: Exec = execCommand): Promise<string> {
@@ -940,9 +1171,11 @@ export const headSha = (cwd: string, exec: Exec = execCommand) => git(cwd, ['rev
 export const currentBranch = (cwd: string, exec: Exec = execCommand) => git(cwd, ['branch', '--show-current'], exec);
 
 export async function createWorktree(repo: string, dir: string, branch: string, base: string, exec: Exec = execCommand): Promise<void> {
+  // Drop registrations whose directory vanished (crash, manual cleanup) before deciding anything.
+  await git(repo, ['worktree', 'prune'], exec);
   const list = await git(repo, ['worktree', 'list', '--porcelain'], exec);
-  const wanted = await canonical(dir);
-  const listed = await Promise.all(list.split('\n').filter((l) => l.startsWith('worktree ')).map((l) => canonical(l.slice(9))));
+  const wanted = canonical(dir);
+  const listed = list.split('\n').filter((l) => l.startsWith('worktree ')).map((l) => canonical(l.slice(9)));
   if (listed.includes(wanted)) {
     if ((await currentBranch(dir, exec)) === branch) return;
     throw new GitError(`worktree ${dir} exists on another branch`);
@@ -958,8 +1191,14 @@ export async function removeWorktree(repo: string, dir: string, exec: Exec = exe
   await git(repo, ['worktree', 'prune'], exec);
 }
 
-export async function commitAll(dir: string, message: string, exec: Exec = execCommand): Promise<string | null> {
-  await git(dir, ['add', '-A'], exec);
+export async function commitAll(
+  dir: string,
+  message: string,
+  opts: { exclude?: readonly string[] } = {},
+  exec: Exec = execCommand,
+): Promise<string | null> {
+  const exclude = opts.exclude ?? DEFAULT_COMMIT_EXCLUDES;
+  await git(dir, ['add', '-A', '--', '.', ...exclude.map((p) => `:(exclude,glob)${p}`)], exec);
   const staged = await run(dir, ['diff', '--cached', '--quiet'], exec);
   if (staged.exitCode === 0) return null;
   await git(dir, ['commit', '-q', '-m', message], exec);
@@ -971,12 +1210,27 @@ export async function changedFiles(dir: string, base: string, exec: Exec = execC
   return out === '' ? [] : out.split('\n');
 }
 
-export async function rebaseOnto(dir: string, base: string, exec: Exec = execCommand): Promise<{ ok: true } | { ok: false; conflicts: string[] }> {
+/**
+ * Rebases the worktree onto `base`. Conflicts abort the rebase and are returned as `ok: false`
+ * with the files; any other failure (untracked files in the way, a rebase already in progress,
+ * a failed abort) is infrastructure and throws GitError, so the Dev is not charged an attempt.
+ */
+export async function rebaseOnto(
+  dir: string,
+  base: string,
+  exec: Exec = execCommand,
+): Promise<{ ok: true; baseSha: string } | { ok: false; conflicts: string[] }> {
+  const baseSha = await git(dir, ['rev-parse', base], exec);
   const r = await run(dir, ['rebase', base], exec);
-  if (r.exitCode === 0) return { ok: true };
+  if (r.exitCode === 0) return { ok: true, baseSha };
   const unmerged = await git(dir, ['diff', '--name-only', '--diff-filter=U'], exec).catch(() => '');
-  await run(dir, ['rebase', '--abort'], exec);
-  return { ok: false, conflicts: unmerged === '' ? [] : unmerged.split('\n') };
+  const conflicts = unmerged === '' ? [] : unmerged.split('\n');
+  const abort = await run(dir, ['rebase', '--abort'], exec);
+  if (conflicts.length === 0) {
+    throw new GitError(`git rebase ${base} failed without conflicts: ${r.stderr.trim() || r.stdout.trim()}`);
+  }
+  if (abort.exitCode !== 0) throw new GitError(`git rebase --abort failed: ${abort.stderr.trim()}`);
+  return { ok: false, conflicts };
 }
 
 export async function push(dir: string, branch: string, exec: Exec = execCommand): Promise<void> {
@@ -986,12 +1240,20 @@ export async function push(dir: string, branch: string, exec: Exec = execCommand
 export async function fetch(repo: string, exec: Exec = execCommand): Promise<void> {
   await git(repo, ['fetch', '-q', '--prune', 'origin'], exec);
 }
+
+/** The sha of `main` on the remote right now — compared with the rebase base before merging. */
+export async function remoteMainSha(repo: string, exec: Exec = execCommand, branch = 'main'): Promise<string> {
+  const out = await git(repo, ['ls-remote', 'origin', `refs/heads/${branch}`], exec);
+  const sha = out.split(/\s+/)[0];
+  if (!sha) throw new GitError(`origin has no branch ${branch}`);
+  return sha;
+}
 ```
 
 - [ ] **Step 4: Run tests and typecheck**
 
 Run: `npx vitest run test/git/git.test.ts && npm run typecheck`
-Expected: 5 tests PASS; typecheck exits 0.
+Expected: 8 tests PASS; typecheck exits 0.
 
 - [ ] **Step 5: Commit**
 
@@ -1026,38 +1288,59 @@ git commit -m "feat: add git controller with worktrees, rebase and push" -m "Co-
 `test/git/github.test.ts`:
 ```ts
 import { describe, expect, it } from 'vitest';
-import { GitHubError, ensurePr, ensureRepo, mergePr, prState } from '../../server/git/github.js';
+import { GitHubError, ensurePr, ensureRepo, findMergedPr, mergePr, prState } from '../../server/git/github.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
 
 const cwd = '/home/u/ws/repo';
 
 describe('ensureRepo', () => {
-  it('returns the existing repository without creating', async () => {
-    const fake = new FakeExec().onArgs('gh', ['repo', 'view'], () => ({ stdout: '{"nameWithOwner":"acme/todo-api","url":"https://github.com/acme/todo-api"}' }));
+  it('returns the existing repository and makes sure origin and main exist on it', async () => {
+    const fake = new FakeExec()
+      .onArgs('gh', ['repo', 'view'], () => ({ stdout: '{"nameWithOwner":"acme/todo-api","url":"https://github.com/acme/todo-api"}' }))
+      .onArgs('git', ['remote', 'get-url'], () => ({ stdout: 'https://github.com/acme/todo-api.git' }))
+      .onArgs('git', ['ls-remote'], () => ({ stdout: 'abc\trefs/heads/main' }));
     const r = await ensureRepo({ owner: 'acme', name: 'todo-api', private: true, cwd }, fake.exec);
     expect(r).toEqual({ fullName: 'acme/todo-api', url: 'https://github.com/acme/todo-api', created: false });
     expect(fake.lines('gh').some((l) => l.startsWith('repo create'))).toBe(false);
+    expect(fake.lines('git').some((l) => l.startsWith('push'))).toBe(false);
   });
 
-  it('creates a private repository when missing', async () => {
+  it('reconciles a half-created repository: adds origin and pushes main when missing', async () => {
     const fake = new FakeExec()
-      .onArgs('gh', ['repo', 'view'], () => ({ exitCode: 1, stderr: 'GraphQL: Could not resolve to a Repository' }))
+      .onArgs('gh', ['repo', 'view'], () => ({ stdout: '{"nameWithOwner":"acme/todo-api","url":"https://github.com/acme/todo-api"}' }))
+      .onArgs('git', ['remote', 'get-url'], () => ({ exitCode: 2, stderr: 'error: No such remote' }))
+      .onArgs('git', ['ls-remote'], () => ({ stdout: '' }));
+    await ensureRepo({ owner: 'acme', name: 'todo-api', private: true, cwd }, fake.exec);
+    expect(fake.lines('git')).toEqual(expect.arrayContaining(['remote add origin https://github.com/acme/todo-api.git', 'push -u origin main']));
+  });
+
+  it('creates a private repository only when GitHub says it does not exist', async () => {
+    const fake = new FakeExec()
+      .onArgs('gh', ['repo', 'view'], () => ({ exitCode: 1, stderr: 'GraphQL: Could not resolve to a Repository with the name' }))
       .onArgs('gh', ['repo', 'create'], () => ({ stdout: 'https://github.com/acme/todo-api\n' }));
     const r = await ensureRepo({ owner: 'acme', name: 'todo-api', private: true, cwd }, fake.exec);
     expect(r).toEqual({ fullName: 'acme/todo-api', url: 'https://github.com/acme/todo-api', created: true });
     expect(fake.lines('gh')[1]).toBe('repo create acme/todo-api --private --source . --remote origin --push');
   });
 
+  it('does not create when repo view fails for another reason', async () => {
+    const fake = new FakeExec().onArgs('gh', ['repo', 'view'], () => ({ exitCode: 1, stderr: 'HTTP 401: Bad credentials' }));
+    await expect(ensureRepo({ owner: 'acme', name: 'todo-api', private: true, cwd }, fake.exec)).rejects.toThrow(GitHubError);
+    expect(fake.lines('gh').some((l) => l.startsWith('repo create'))).toBe(false);
+  });
+
   it('uses the authenticated user when no owner is given', async () => {
     const fake = new FakeExec()
       .onArgs('gh', ['api', 'user'], () => ({ stdout: '{"login":"me"}' }))
-      .onArgs('gh', ['repo', 'view'], () => ({ stdout: '{"nameWithOwner":"me/todo-api","url":"u"}' }));
+      .onArgs('gh', ['repo', 'view'], () => ({ stdout: '{"nameWithOwner":"me/todo-api","url":"u"}' }))
+      .onArgs('git', ['remote', 'get-url'], () => ({ stdout: 'u.git' }))
+      .onArgs('git', ['ls-remote'], () => ({ stdout: 'abc\trefs/heads/main' }));
     const r = await ensureRepo({ name: 'todo-api', private: true, cwd }, fake.exec);
     expect(r.fullName).toBe('me/todo-api');
   });
 });
 
-describe('ensurePr', () => {
+describe('ensurePr and findMergedPr', () => {
   const input = { cwd, head: 'task/spec-001-T1-a', base: 'main', title: 'T1', body: 'body' };
 
   it('reuses an open PR for the head branch', async () => {
@@ -1077,9 +1360,22 @@ describe('ensurePr', () => {
     expect(create.stdin).toBe('body');
   });
 
+  it('rejects an unparseable PR url instead of returning NaN', async () => {
+    const fake = new FakeExec().onArgs('gh', ['pr', 'list'], () => ({ stdout: '[]' })).onArgs('gh', ['pr', 'create'], () => ({ stdout: 'Warning: something\n' }));
+    await expect(ensurePr(input, fake.exec)).rejects.toThrow(/PR number/);
+  });
+
   it('throws when gh fails', async () => {
     const fake = new FakeExec().onArgs('gh', ['pr', 'list'], () => ({ exitCode: 1, stderr: 'not logged in' }));
     await expect(ensurePr(input, fake.exec)).rejects.toThrow(GitHubError);
+  });
+
+  it('finds a merged PR for the head branch', async () => {
+    const fake = new FakeExec().onArgs('gh', ['pr', 'list'], () => ({ stdout: '[{"number":44,"state":"MERGED"},{"number":45,"state":"CLOSED"}]' }));
+    expect(await findMergedPr({ cwd, head: input.head, base: 'main' }, fake.exec)).toBe(44);
+    expect(fake.lines('gh')[0]).toContain('--state all');
+    const none = new FakeExec().onArgs('gh', ['pr', 'list'], () => ({ stdout: '[{"number":45,"state":"CLOSED"}]' }));
+    expect(await findMergedPr({ cwd, head: input.head, base: 'main' }, none.exec)).toBeNull();
   });
 });
 
@@ -1131,8 +1427,7 @@ export class GitHubError extends Error {}
 const TIMEOUT = 120_000;
 
 async function gh(cwd: string, args: readonly string[], exec: Exec, stdin?: string) {
-  const r = await exec({ bin: 'gh', args, cwd, timeoutMs: TIMEOUT, stdin, env: { GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' } });
-  return r;
+  return exec({ bin: 'gh', args, cwd, timeoutMs: TIMEOUT, stdin, env: { GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' } });
 }
 
 async function ghJson<T>(cwd: string, args: readonly string[], exec: Exec): Promise<T> {
@@ -1145,8 +1440,18 @@ async function ghJson<T>(cwd: string, args: readonly string[], exec: Exec): Prom
   }
 }
 
-const prNumber = (url: string) => Number(url.trim().match(/\/pull\/(\d+)/)?.[1]);
+function prNumber(url: string): number {
+  const n = Number(url.trim().match(/\/pull\/(\d+)/)?.[1]);
+  if (!Number.isInteger(n) || n < 1) throw new GitHubError(`could not read the PR number from gh output: ${url.trim().slice(0, 200)}`);
+  return n;
+}
 
+const NOT_FOUND = /Could not resolve to a Repository|HTTP 404/i;
+
+/**
+ * Idempotent repository bootstrap (spec §7.4). A half-finished `gh repo create --push` (remote
+ * created, origin missing or main never pushed) is reconciled instead of reported as "exists".
+ */
 export async function ensureRepo(
   input: { owner?: string; name: string; private: boolean; cwd: string },
   exec: Exec,
@@ -1156,11 +1461,28 @@ export async function ensureRepo(
   const view = await gh(input.cwd, ['repo', 'view', fullName, '--json', 'nameWithOwner,url'], exec);
   if (view.exitCode === 0) {
     const json = JSON.parse(view.stdout) as { nameWithOwner: string; url: string };
+    await reconcileRemote(input.cwd, json.url, exec);
     return { fullName: json.nameWithOwner, url: json.url, created: false };
   }
+  if (!NOT_FOUND.test(view.stderr)) throw new GitHubError(`gh repo view failed: ${view.stderr.trim()}`);
   const create = await gh(input.cwd, ['repo', 'create', fullName, input.private ? '--private' : '--public', '--source', '.', '--remote', 'origin', '--push'], exec);
   if (create.exitCode !== 0) throw new GitHubError(`gh repo create failed: ${create.stderr.trim()}`);
   return { fullName, url: create.stdout.trim(), created: true };
+}
+
+async function reconcileRemote(cwd: string, url: string, exec: Exec): Promise<void> {
+  const git = (args: string[]) => exec({ bin: 'git', args, cwd, timeoutMs: TIMEOUT, env: { GIT_TERMINAL_PROMPT: '0' } });
+  const remote = await git(['remote', 'get-url', 'origin']);
+  if (remote.exitCode !== 0) {
+    const add = await git(['remote', 'add', 'origin', `${url}.git`]);
+    if (add.exitCode !== 0) throw new GitHubError(`git remote add origin failed: ${add.stderr.trim()}`);
+  }
+  const main = await git(['ls-remote', 'origin', 'refs/heads/main']);
+  if (main.exitCode !== 0) throw new GitHubError(`git ls-remote failed: ${main.stderr.trim()}`);
+  if (main.stdout.trim() === '') {
+    const push = await git(['push', '-u', 'origin', 'main']);
+    if (push.exitCode !== 0) throw new GitHubError(`git push main failed: ${push.stderr.trim()}`);
+  }
 }
 
 export async function ensurePr(
@@ -1177,6 +1499,16 @@ export async function ensurePr(
   if (create.exitCode !== 0) throw new GitHubError(`gh pr create failed: ${create.stderr.trim()}`);
   const url = create.stdout.trim().split('\n').pop() ?? '';
   return { number: prNumber(url), url, created: true };
+}
+
+/** A PR for this head branch that already merged — the merge queue short-circuits on it (crash between merge and confirm). */
+export async function findMergedPr(input: { cwd: string; head: string; base: string }, exec: Exec): Promise<number | null> {
+  const all = await ghJson<Array<{ number: number; state: string }>>(
+    input.cwd,
+    ['pr', 'list', '--head', input.head, '--base', input.base, '--state', 'all', '--json', 'number,state'],
+    exec,
+  );
+  return all.find((p) => p.state === 'MERGED')?.number ?? null;
 }
 
 export async function prState(input: { cwd: string; number: number }, exec: Exec): Promise<{ state: 'OPEN' | 'MERGED' | 'CLOSED'; headSha: string }> {
@@ -1199,7 +1531,7 @@ export async function mergePr(input: { cwd: string; number: number; headSha: str
 - [ ] **Step 4: Run the github test**
 
 Run: `npx vitest run test/git/github.test.ts`
-Expected: 10 tests PASS.
+Expected: 14 tests PASS.
 
 - [ ] **Step 5: Write the failing merge-queue test**
 
@@ -1212,10 +1544,12 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 
 function steps(over: Partial<MergeSteps> = {}, log: string[] = [], tag = ''): MergeSteps {
   return {
-    rebase: async () => (log.push(`${tag}rebase`), { ok: true }),
+    alreadyMerged: async () => (log.push(`${tag}check`), null),
+    rebase: async () => (log.push(`${tag}rebase`), { ok: true, baseSha: 'main1' }),
     gates: async () => (log.push(`${tag}gates`), { ok: true }),
     push: async () => void log.push(`${tag}push`),
     ensurePr: async () => (log.push(`${tag}pr`), { number: 7 }),
+    remoteMainSha: async () => (log.push(`${tag}main`), 'main1'),
     merge: async () => (log.push(`${tag}merge`), { merged: true }),
     afterMerge: async () => void log.push(`${tag}after`),
     ...over,
@@ -1227,8 +1561,15 @@ describe('MergeQueue', () => {
     const log: string[] = [];
     const q = new MergeQueue();
     expect(await q.enqueue('T1', steps({}, log))).toEqual({ ok: true, pr: 7 });
-    expect(log).toEqual(['rebase', 'gates', 'push', 'pr', 'merge', 'after']);
+    expect(log).toEqual(['check', 'rebase', 'gates', 'push', 'pr', 'main', 'merge', 'after']);
     expect(q.holder).toBeNull();
+  });
+
+  it('short-circuits when the PR was already merged (crash between merge and confirm)', async () => {
+    const log: string[] = [];
+    const q = new MergeQueue();
+    expect(await q.enqueue('T1', steps({ alreadyMerged: async () => 12 }, log))).toEqual({ ok: true, pr: 12, already: true });
+    expect(log).toEqual([]);
   });
 
   it('serializes tasks: the second waits for the first to finish', async () => {
@@ -1248,12 +1589,25 @@ describe('MergeQueue', () => {
     expect(log.indexOf('b:rebase')).toBeGreaterThan(log.indexOf('a:after'));
   });
 
+  it('returns the same promise when a task is enqueued twice', async () => {
+    const q = new MergeQueue();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const log: string[] = [];
+    const a = q.enqueue('T1', steps({ gates: async () => (await gate, { ok: true }) }, log));
+    const b = q.enqueue('T1', steps({}, log));
+    expect(b).toBe(a);
+    release();
+    await a;
+    expect(log.filter((l) => l === 'merge')).toHaveLength(1);
+  });
+
   it('stops at a rebase conflict and reports the files', async () => {
     const log: string[] = [];
     const q = new MergeQueue();
     const r = await q.enqueue('T1', steps({ rebase: async () => ({ ok: false, conflicts: ['src/a.ts'] }) }, log));
     expect(r).toEqual({ ok: false, stage: 'rebase', conflicts: ['src/a.ts'] });
-    expect(log).toEqual([]);
+    expect(log).toEqual(['check']);
   });
 
   it('stops when the gates fail after the rebase', async () => {
@@ -1262,11 +1616,25 @@ describe('MergeQueue', () => {
     expect(r).toEqual({ ok: false, stage: 'gates', detail: 'unit-test failed' });
   });
 
-  it('reports a refused merge (main moved) without forcing and releases the lock', async () => {
+  it('refuses to merge when main moved after the rebase, without calling merge', async () => {
+    const log: string[] = [];
+    const q = new MergeQueue();
+    const r = await q.enqueue('T1', steps({ remoteMainSha: async () => 'main2' }, log));
+    expect(r).toEqual({ ok: false, stage: 'merge', detail: 'main moved: rebased on main1, remote is main2' });
+    expect(log).not.toContain('merge');
+  });
+
+  it('reports a refused merge (head moved) without forcing and releases the lock', async () => {
     const q = new MergeQueue();
     const r = await q.enqueue('T1', steps({ merge: async () => ({ merged: false, reason: 'head moved' }) }));
     expect(r).toEqual({ ok: false, stage: 'merge', detail: 'head moved' });
     expect(q.holder).toBeNull();
+  });
+
+  it('keeps a merged PR as success when afterMerge fails, carrying a warning', async () => {
+    const q = new MergeQueue();
+    const r = await q.enqueue('T1', steps({ afterMerge: async () => { throw new Error('graphify failed'); } }));
+    expect(r).toEqual({ ok: true, pr: 7, warning: 'afterMerge: graphify failed' });
   });
 
   it('turns a thrown step into that stage failure and keeps serving the queue', async () => {
@@ -1290,25 +1658,34 @@ Expected: FAIL — cannot resolve `../../server/git/merge-queue.js`.
 export type MergeStage = 'rebase' | 'gates' | 'push' | 'pr' | 'merge';
 
 export interface MergeSteps {
-  rebase(): Promise<{ ok: boolean; conflicts?: string[] }>;
+  /** PR number if this branch already merged (crash between merge and confirm); the queue then does nothing. */
+  alreadyMerged(): Promise<number | null>;
+  /** Rebase onto the current main; `baseSha` is the main commit the branch now sits on. */
+  rebase(): Promise<{ ok: boolean; conflicts?: string[]; baseSha?: string }>;
   gates(): Promise<{ ok: boolean; detail?: string }>;
   push(): Promise<void>;
   ensurePr(): Promise<{ number: number }>;
+  /** Sha of main on the remote right before merging; must equal `baseSha` or the merge is refused. */
+  remoteMainSha(): Promise<string>;
   merge(number: number): Promise<{ merged: boolean; reason?: string }>;
   afterMerge?(): Promise<void>;
 }
 
-export type MergeOutcome = { ok: true; pr: number } | { ok: false; stage: MergeStage; conflicts?: string[]; detail?: string };
+export type MergeOutcome =
+  | { ok: true; pr: number; already?: true; warning?: string }
+  | { ok: false; stage: MergeStage; conflicts?: string[]; detail?: string };
 
 /**
  * Only the orchestrator writes `main`, one task at a time (spec §6 step 5): rebase on the current
- * main, re-run the gates, push, ensure the PR, merge guarded by the head commit. Development stays
- * parallel; merging is serial, so the head that was tested is the head that merges.
+ * main, re-run the gates, push, ensure the PR, check main did not move, merge guarded by the head
+ * commit. `--match-head-commit` only pins the PR head, so the main check is what guarantees that
+ * the combination that merges is the one the gates ran on.
  */
 export class MergeQueue {
   private chain: Promise<unknown> = Promise.resolve();
   private current: string | null = null;
   private readonly pending: string[] = [];
+  private readonly inflight = new Map<string, Promise<MergeOutcome>>();
 
   get holder(): string | null {
     return this.current;
@@ -1319,6 +1696,8 @@ export class MergeQueue {
   }
 
   enqueue(taskId: string, steps: MergeSteps): Promise<MergeOutcome> {
+    const existing = this.inflight.get(taskId);
+    if (existing) return existing;
     this.pending.push(taskId);
     const run = async () => {
       this.pending.splice(this.pending.indexOf(taskId), 1);
@@ -1327,16 +1706,20 @@ export class MergeQueue {
         return await this.execute(steps);
       } finally {
         this.current = null;
+        this.inflight.delete(taskId);
       }
     };
     const result = this.chain.then(run, run);
     this.chain = result.catch(() => undefined);
+    this.inflight.set(taskId, result);
     return result;
   }
 
   private async execute(steps: MergeSteps): Promise<MergeOutcome> {
     let stage: MergeStage = 'rebase';
     try {
+      const merged = await steps.alreadyMerged();
+      if (merged !== null) return { ok: true, pr: merged, already: true };
       const rebase = await steps.rebase();
       if (!rebase.ok) return { ok: false, stage, conflicts: rebase.conflicts ?? [] };
       stage = 'gates';
@@ -1347,9 +1730,18 @@ export class MergeQueue {
       stage = 'pr';
       const pr = await steps.ensurePr();
       stage = 'merge';
+      const remote = await steps.remoteMainSha();
+      if (rebase.baseSha !== undefined && remote !== rebase.baseSha) {
+        return { ok: false, stage, detail: `main moved: rebased on ${rebase.baseSha}, remote is ${remote}` };
+      }
       const merge = await steps.merge(pr.number);
       if (!merge.merged) return { ok: false, stage, detail: merge.reason };
-      await steps.afterMerge?.();
+      // The PR is in main now; a failing follow-up (graph update, cleanup) must not look like a failed merge.
+      try {
+        await steps.afterMerge?.();
+      } catch (err) {
+        return { ok: true, pr: pr.number, warning: `afterMerge: ${(err as Error).message}` };
+      }
       return { ok: true, pr: pr.number };
     } catch (err) {
       return { ok: false, stage, detail: (err as Error).message };
@@ -1361,7 +1753,7 @@ export class MergeQueue {
 - [ ] **Step 8: Run tests and typecheck**
 
 Run: `npx vitest run test/git && npm run typecheck`
-Expected: 21 tests PASS (git 5, github 10, merge-queue 6); typecheck exits 0.
+Expected: 32 tests PASS (git 8, github 14, merge-queue 10); typecheck exits 0.
 
 - [ ] **Step 9: Commit**
 
@@ -1427,9 +1819,8 @@ describe('waitHealthy', () => {
 });
 
 describe('DockerLocalTarget', () => {
-  it('builds, replaces the container, remembers the previous image and verifies', async () => {
-    const fake = new FakeExec()
-      .onArgs('docker', ['inspect'], () => ({ stdout: 'todo-api:spec-001-old0000\n' }));
+  it('builds, parks the old container, runs the new one bound to localhost with secrets in the environment, verifies', async () => {
+    const fake = new FakeExec().onArgs('docker', ['inspect'], () => ({ stdout: 'todo-api:spec-001-old0000\n' }));
     const t = new DockerLocalTarget({ exec: fake.exec, get: okGet, secrets });
     expect(await t.validate(intent)).toEqual([]);
     await t.build(intent);
@@ -1437,16 +1828,35 @@ describe('DockerLocalTarget', () => {
     expect(previous).toBe('todo-api:spec-001-old0000');
     const lines = fake.lines('docker');
     expect(lines[0]).toBe('build -t todo-api:spec-001-abc1234 /home/u/ws/repo');
-    expect(lines).toContain('rm -f teams-ai-todo-api');
+    expect(lines).toContain('rename teams-ai-todo-api teams-ai-todo-api-prev');
     const run = fake.calls.find((c) => c.args[0] === 'run')!;
-    expect(run.args).toEqual(expect.arrayContaining(['-d', '--name', 'teams-ai-todo-api', '-p', '3000:3000', '-e', 'DATABASE_URL=postgres://x', 'todo-api:spec-001-abc1234']));
+    expect(run.args).toEqual(expect.arrayContaining(['-d', '--name', 'teams-ai-todo-api', '-p', '127.0.0.1:3000:3000', '-e', 'DATABASE_URL', 'todo-api:spec-001-abc1234']));
+    expect(run.args.join(' ')).not.toContain('postgres://x');
+    expect(run.env).toEqual({ DATABASE_URL: 'postgres://x' });
+    expect(lines).toContain('rm -f teams-ai-todo-api-prev');
     expect(await t.verify(intent)).toMatchObject({ healthy: true });
+    expect(await t.currentImage(intent)).toBe('todo-api:spec-001-old0000');
+  });
+
+  it('restores the parked container when docker run fails, then rethrows', async () => {
+    const fake = new FakeExec()
+      .onArgs('docker', ['inspect'], () => ({ stdout: 'todo-api:old\n' }))
+      .onArgs('docker', ['run'], () => ({ exitCode: 125, stderr: 'port is already allocated' }));
+    const t = new DockerLocalTarget({ exec: fake.exec, get: okGet, secrets });
+    await expect(t.apply(intent)).rejects.toThrow(/port is already allocated/);
+    const lines = fake.lines('docker');
+    const runAt = fake.calls.findIndex((c) => c.args[0] === 'run');
+    const after = fake.calls.slice(runAt + 1).map((c) => c.args.join(' '));
+    expect(after).toEqual(expect.arrayContaining(['rename teams-ai-todo-api-prev teams-ai-todo-api', 'start teams-ai-todo-api']));
+    expect(after).not.toContain('rm -f teams-ai-todo-api-prev');
+    expect(lines).toContain('rename teams-ai-todo-api teams-ai-todo-api-prev');
   });
 
   it('reports no previous image when nothing was running', async () => {
     const fake = new FakeExec().onArgs('docker', ['inspect'], () => ({ exitCode: 1, stderr: 'No such object' }));
     const t = new DockerLocalTarget({ exec: fake.exec, get: okGet, secrets });
     expect((await t.apply(intent)).previous).toBeNull();
+    expect(fake.lines('docker')).not.toContain('rename teams-ai-todo-api teams-ai-todo-api-prev');
   });
 
   it('rolls back by running the previous image and validates missing secrets', async () => {
@@ -1461,32 +1871,65 @@ describe('DockerLocalTarget', () => {
 
 describe('KindTarget', () => {
   const manifest = 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: todo-api\nspec:\n  template:\n    spec:\n      containers:\n      - name: app\n        image: {{IMAGE}}\n';
+  const mk = (fake: FakeExec, over: Partial<ConstructorParameters<typeof KindTarget>[0]> = {}) =>
+    new KindTarget({ exec: fake.exec, secrets, cluster: 'teams-ai', readFile: async () => manifest, sleep: async () => undefined, ...over });
 
-  it('loads the image, renders and applies manifests, remembers the previous image', async () => {
-    const fake = new FakeExec().onArgs('kubectl', ['get', 'deploy'], () => ({ stdout: 'todo-api:spec-001-old0000' }));
-    const t = new KindTarget({ exec: fake.exec, secrets, cluster: 'teams-ai', readFile: async () => manifest });
+  it('loads the image, renders and applies manifests in the kind context, remembers the previous image', async () => {
+    const fake = new FakeExec().onArgs('kubectl', ['--context', 'kind-teams-ai', 'get', 'deploy'], () => ({ stdout: 'todo-api:spec-001-old0000' }));
+    const t = mk(fake);
     await t.build(intent);
     const { previous } = await t.apply(intent);
     expect(previous).toBe('todo-api:spec-001-old0000');
     expect(fake.lines('kind')).toEqual(['load docker-image todo-api:spec-001-abc1234 --name teams-ai']);
-    // The first 'apply -f -' is the Secret (from the dry-run output); the manifests come last.
-    const apply = fake.calls.filter((c) => c.bin === 'kubectl' && c.args[0] === 'apply').pop()!;
-    expect(apply.args).toEqual(['apply', '-f', '-']);
+    for (const call of fake.calls.filter((c) => c.bin === 'kubectl')) expect(call.args.slice(0, 2)).toEqual(['--context', 'kind-teams-ai']);
+    const apply = fake.calls.filter((c) => c.bin === 'kubectl' && c.args[2] === 'apply').pop()!;
+    expect(apply.args.slice(2)).toEqual(['apply', '-f', '-']);
     expect(apply.stdin).toContain('image: todo-api:spec-001-abc1234');
     expect(apply.stdin).not.toContain('{{IMAGE}}');
-    const secret = fake.calls.find((c) => c.bin === 'kubectl' && c.args[0] === 'create')!;
+    const secret = fake.calls.find((c) => c.bin === 'kubectl' && c.args[2] === 'create')!;
     expect(secret.args.join(' ')).toContain('secret generic todo-api-secrets');
     expect(secret.args.join(' ')).not.toContain('postgres://x');
     expect(secret.stdin).toContain('postgres://x');
+    expect(await t.currentImage(intent)).toBe('todo-api:spec-001-old0000');
   });
 
   it('verifies with rollout status and an in-cluster probe, and rolls back with rollout undo', async () => {
-    const fake = new FakeExec().onArgs('kubectl', ['run'], () => ({ stdout: '200' }));
-    const t = new KindTarget({ exec: fake.exec, secrets, cluster: 'teams-ai', readFile: async () => manifest });
+    const fake = new FakeExec().onArgs('kubectl', ['--context', 'kind-teams-ai', 'run'], () => ({ stdout: '200pod "probe-x" deleted' }));
+    const t = mk(fake);
     expect(await t.verify(intent)).toMatchObject({ healthy: true });
-    expect(fake.lines('kubectl')[0]).toBe('rollout status deployment/todo-api --timeout=120s');
+    expect(fake.lines('kubectl')[0]).toBe('--context kind-teams-ai rollout status deployment/todo-api --timeout=120s');
     await t.rollback(intent, 'todo-api:spec-001-old0000');
-    expect(fake.lines('kubectl')).toContain('rollout undo deployment/todo-api');
+    expect(fake.lines('kubectl')).toContain('--context kind-teams-ai rollout undo deployment/todo-api');
+  });
+
+  it('reads the status code even when kubectl appends pod deletion and warning text', async () => {
+    const fake = new FakeExec().onArgs('kubectl', ['--context', 'kind-teams-ai', 'run'], () => ({
+      stdout: '200pod "probe-1790247850989" deleted from default namespace\n',
+      stderr: "warning: couldn't attach to pod/probe-1790247850989, falling back to streaming logs",
+    }));
+    expect(await mk(fake, { secrets: {} }).verify({ ...intent, secretNames: [] })).toEqual({ healthy: true, detail: 'HTTP 200 in-cluster after 1 attempts' });
+  });
+
+  it('retries the in-cluster probe while kube-proxy has not programmed the Service yet', async () => {
+    let n = 0;
+    const fake = new FakeExec().onArgs('kubectl', ['--context', 'kind-teams-ai', 'run'], () => ({ stdout: `${++n < 3 ? '000' : '200'}pod "probe-x" deleted` }));
+    const t = mk(fake, { secrets: {} });
+    expect(await t.verify({ ...intent, secretNames: [] })).toEqual({ healthy: true, detail: 'HTTP 200 in-cluster after 3 attempts' });
+    expect(fake.calls.filter((c) => c.bin === 'kubectl' && c.args[2] === 'run')).toHaveLength(3);
+  });
+
+  it('gives up after the configured attempts and treats 503 as unhealthy', async () => {
+    const fake = new FakeExec().onArgs('kubectl', ['--context', 'kind-teams-ai', 'run'], () => ({ stdout: '503pod deleted' }));
+    const r = await mk(fake, { secrets: {}, probeAttempts: 4 }).verify({ ...intent, secretNames: [] });
+    expect(r.healthy).toBe(false);
+    expect(fake.calls.filter((c) => c.bin === 'kubectl' && c.args[2] === 'run')).toHaveLength(4);
+  });
+
+  it('validates a manifest that requires the Secret when no secret names are given', async () => {
+    const fake = new FakeExec();
+    const strict = manifest + '        envFrom:\n        - secretRef:\n            name: todo-api-secrets\n';
+    const t = new KindTarget({ exec: fake.exec, secrets: {}, cluster: 'teams-ai', readFile: async () => strict, sleep: async () => undefined });
+    expect(await t.validate({ ...intent, secretNames: [] })).toEqual(['manifest references Secret todo-api-secrets but the intent declares no secrets']);
   });
 });
 
@@ -1498,6 +1941,7 @@ describe('runDeployment', () => {
       build: async () => void log.push('build'),
       apply: async () => (log.push('apply'), { previous: 'img:old' }),
       verify: async () => (log.push('verify'), { healthy: true, detail: 'ok' }),
+      currentImage: async () => (log.push('image'), 'img:old'),
       rollback: async () => void log.push('rollback'),
       destroy: async () => void log.push('destroy'),
       ...over,
@@ -1519,16 +1963,17 @@ describe('runDeployment', () => {
     expect(log).toEqual([]);
   });
 
-  it('rolls back when the smoke suite fails after a healthy deploy and confirms the old version is healthy', async () => {
+  it('rolls back when the smoke suite fails and confirms the old image is healthy and running', async () => {
     const log: string[] = [];
-    let verifies = 0;
-    const r = await runDeployment(
-      target({ verify: async () => (log.push('verify'), { healthy: true, detail: `v${++verifies}` }) }, log),
-      intent,
-      { smoke: async () => ({ ok: false, detail: '[AC-001] failed' }), baseUrl: 'u' },
-    );
+    const r = await runDeployment(target({}, log), intent, { smoke: async () => ({ ok: false, detail: '[AC-001] failed' }), baseUrl: 'u' });
     expect(r).toEqual({ ok: false, stage: 'smoke', detail: '[AC-001] failed', rolledBack: true, rollbackHealthy: true });
-    expect(log).toEqual(['validate', 'build', 'apply', 'verify', 'rollback', 'verify']);
+    expect(log).toEqual(['validate', 'build', 'apply', 'verify', 'rollback', 'verify', 'image']);
+  });
+
+  it('reports rollbackHealthy=false when a different image is running after the rollback', async () => {
+    const r = await runDeployment(target({ currentImage: async () => 'img:other' }), intent, { smoke: async () => ({ ok: false, detail: 'x' }), baseUrl: 'u' });
+    expect(r).toMatchObject({ ok: false, stage: 'smoke', rolledBack: true, rollbackHealthy: false });
+    if (!r.ok) expect(r.detail).toContain('img:other');
   });
 
   it('reports an unhealthy deploy with no rollback when there was no previous version', async () => {
@@ -1539,24 +1984,14 @@ describe('runDeployment', () => {
     );
     expect(r).toEqual({ ok: false, stage: 'verify', detail: 'timeout', rolledBack: false, rollbackHealthy: null });
   });
-});
 
-describe('KindTarget probe parsing', () => {
-  it('reads the status code even when kubectl appends pod deletion and warning text', async () => {
-    const fake = new FakeExec().onArgs('kubectl', ['run'], () => ({
-      stdout: '200pod "probe-1790247850989" deleted from default namespace\n',
-      stderr: 'warning: couldn\'t attach to pod/probe-1790247850989, falling back to streaming logs',
-    }));
-    const t = new KindTarget({ exec: fake.exec, secrets: {}, cluster: 'teams-ai', readFile: async () => '' });
-    expect(await t.verify({ ...intent, secretNames: [] })).toEqual({ healthy: true, detail: 'HTTP 200 in-cluster' });
-  });
-
-  it('treats a 503 or missing code as unhealthy', async () => {
-    const fake = new FakeExec().onArgs('kubectl', ['run'], () => ({ stdout: '503pod "probe-1" deleted' }));
-    const t = new KindTarget({ exec: fake.exec, secrets: {}, cluster: 'teams-ai', readFile: async () => '' });
-    expect((await t.verify({ ...intent, secretNames: [] })).healthy).toBe(false);
-    const none = new FakeExec().onArgs('kubectl', ['run'], () => ({ stdout: 'error: timed out' }));
-    expect((await new KindTarget({ exec: none.exec, secrets: {}, cluster: 'teams-ai', readFile: async () => '' }).verify({ ...intent, secretNames: [] })).healthy).toBe(false);
+  it('turns a throwing rollback into a result instead of a rejection', async () => {
+    const r = await runDeployment(
+      target({ verify: async () => ({ healthy: false, detail: 'down' }), rollback: async () => { throw new Error('docker run failed'); } }),
+      intent,
+      { smoke: smokeOk, baseUrl: 'u' },
+    );
+    expect(r).toEqual({ ok: false, stage: 'verify', detail: 'down; rollback failed: docker run failed', rolledBack: false, rollbackHealthy: false });
   });
 });
 ```
@@ -1588,6 +2023,8 @@ export interface DeployTarget {
   build(intent: DeploymentIntent): Promise<void>;
   apply(intent: DeploymentIntent): Promise<{ previous: string | null }>;
   verify(intent: DeploymentIntent): Promise<{ healthy: boolean; detail: string }>;
+  /** Image reference currently serving the project, or null when nothing runs. */
+  currentImage(intent: DeploymentIntent): Promise<string | null>;
   rollback(intent: DeploymentIntent, previous: string): Promise<void>;
   destroy(intent: DeploymentIntent): Promise<void>;
 }
@@ -1616,7 +2053,7 @@ export async function waitHealthy(
 ): Promise<{ healthy: boolean; detail: string }> {
   const deadline = Date.now() + opts.timeoutMs;
   let attempts = 0;
-  let last: string = 'no response';
+  let last = 'no response';
   do {
     attempts += 1;
     const r = await get(url, Math.min(opts.intervalMs * 5, 5_000));
@@ -1631,8 +2068,9 @@ export const imageRef = (intent: DeploymentIntent) => `${intent.image}:${intent.
 
 /**
  * Spec Phase 5: validate → build → apply → verify → smoke. Any failure after apply rolls back to the
- * previous version (when one exists) and re-verifies, so the environment is healthy before the
- * failure is reported and the fix goes through a PR.
+ * previous version (when one exists), re-verifies health and confirms the previous image is the one
+ * running, so the environment is known-good before the failure is reported and the fix goes through a PR.
+ * Nothing here rejects: every path ends in a DeployResult.
  */
 export async function runDeployment(
   target: DeployTarget,
@@ -1654,11 +2092,28 @@ export async function runDeployment(
   }
   const fail = async (stage: DeployStage, detail: string): Promise<DeployResult> => {
     if (!previous) return { ok: false, stage, detail, rolledBack: false, rollbackHealthy: null };
-    await target.rollback(intent, previous);
-    const back = await target.verify(intent);
-    return { ok: false, stage, detail, rolledBack: true, rollbackHealthy: back.healthy };
+    try {
+      await target.rollback(intent, previous);
+    } catch (err) {
+      return { ok: false, stage, detail: `${detail}; rollback failed: ${(err as Error).message}`, rolledBack: false, rollbackHealthy: false };
+    }
+    try {
+      const back = await target.verify(intent);
+      const running = await target.currentImage(intent);
+      if (running !== previous) {
+        return { ok: false, stage, detail: `${detail}; after rollback ${running ?? 'nothing'} is running instead of ${previous}`, rolledBack: true, rollbackHealthy: false };
+      }
+      return { ok: false, stage, detail, rolledBack: true, rollbackHealthy: back.healthy };
+    } catch (err) {
+      return { ok: false, stage, detail: `${detail}; rollback verify failed: ${(err as Error).message}`, rolledBack: true, rollbackHealthy: false };
+    }
   };
-  const health = await target.verify(intent);
+  let health: { healthy: boolean; detail: string };
+  try {
+    health = await target.verify(intent);
+  } catch (err) {
+    return fail('verify', (err as Error).message);
+  }
   if (!health.healthy) return fail('verify', health.detail);
   const smoke = await deps.smoke(deps.baseUrl);
   if (!smoke.ok) return fail('smoke', smoke.detail);
@@ -1688,27 +2143,59 @@ export class DockerLocalTarget implements DeployTarget {
     return `http://127.0.0.1:${intent.port}`;
   }
 
+  private docker(args: string[], env?: Record<string, string>, timeoutMs = 120_000) {
+    return this.deps.exec({ bin: 'docker', args, env, timeoutMs });
+  }
+
   async validate(intent: DeploymentIntent): Promise<string[]> {
     return intent.secretNames.filter((n) => this.deps.secrets[n] === undefined).map((n) => `missing secret ${n}`);
   }
 
   async build(intent: DeploymentIntent): Promise<void> {
-    const r = await this.deps.exec({ bin: 'docker', args: ['build', '-t', imageRef(intent), intent.contextDir], timeoutMs: TIMEOUT });
+    const r = await this.docker(['build', '-t', imageRef(intent), intent.contextDir], undefined, TIMEOUT);
     if (r.exitCode !== 0) throw new Error(`docker build failed: ${r.stderr.slice(-2000)}`);
   }
 
+  async currentImage(intent: DeploymentIntent): Promise<string | null> {
+    const r = await this.docker(['inspect', '--format', '{{.Config.Image}}', this.container(intent)], undefined, 60_000);
+    return r.exitCode === 0 && r.stdout.trim() !== '' ? r.stdout.trim() : null;
+  }
+
+  /**
+   * Starts `image` as the project container. The running container is parked under a `-prev` name
+   * first and only removed once the new one is up; if `docker run` fails the parked one is put back,
+   * so a failed apply never leaves the environment empty.
+   */
   private async run(intent: DeploymentIntent, image: string): Promise<void> {
-    await this.deps.exec({ bin: 'docker', args: ['rm', '-f', this.container(intent)], timeoutMs: 60_000 });
-    const args = ['run', '-d', '--name', this.container(intent), '--restart', 'unless-stopped', '-p', `${intent.port}:${intent.port}`];
-    for (const n of intent.secretNames) args.push('-e', `${n}=${this.deps.secrets[n]}`);
+    const name = this.container(intent);
+    const prev = `${name}-prev`;
+    const exists = (await this.docker(['inspect', '--format', '{{.Id}}', name], undefined, 60_000)).exitCode === 0;
+    let parked = false;
+    if (exists) {
+      await this.docker(['rm', '-f', prev], undefined, 60_000); // a stale park from an interrupted apply
+      parked = (await this.docker(['rename', name, prev], undefined, 60_000)).exitCode === 0;
+    }
+    const args = ['run', '-d', '--name', name, '--restart', 'unless-stopped', '-p', `127.0.0.1:${intent.port}:${intent.port}`];
+    const env: Record<string, string> = {};
+    for (const n of intent.secretNames) {
+      args.push('-e', n);
+      env[n] = this.deps.secrets[n]!;
+    }
     args.push(image);
-    const r = await this.deps.exec({ bin: 'docker', args, timeoutMs: 120_000 });
-    if (r.exitCode !== 0) throw new Error(`docker run failed: ${r.stderr.slice(-2000)}`);
+    const r = await this.docker(args, env);
+    if (r.exitCode !== 0) {
+      await this.docker(['rm', '-f', name], undefined, 60_000);
+      if (parked) {
+        await this.docker(['rename', prev, name], undefined, 60_000);
+        await this.docker(['start', name], undefined, 60_000);
+      }
+      throw new Error(`docker run failed: ${r.stderr.slice(-2000)}`);
+    }
+    if (parked) await this.docker(['rm', '-f', prev], undefined, 60_000);
   }
 
   async apply(intent: DeploymentIntent): Promise<{ previous: string | null }> {
-    const inspect = await this.deps.exec({ bin: 'docker', args: ['inspect', '--format', '{{.Config.Image}}', this.container(intent)], timeoutMs: 60_000 });
-    const previous = inspect.exitCode === 0 && inspect.stdout.trim() !== '' ? inspect.stdout.trim() : null;
+    const previous = await this.currentImage(intent);
     await this.run(intent, imageRef(intent));
     return { previous: previous === imageRef(intent) ? null : previous };
   }
@@ -1722,7 +2209,7 @@ export class DockerLocalTarget implements DeployTarget {
   }
 
   async destroy(intent: DeploymentIntent): Promise<void> {
-    await this.deps.exec({ bin: 'docker', args: ['rm', '-f', this.container(intent)], timeoutMs: 60_000 });
+    await this.docker(['rm', '-f', this.container(intent), `${this.container(intent)}-prev`], undefined, 60_000);
   }
 }
 ```
@@ -1737,25 +2224,51 @@ import { imageRef, type DeploymentIntent, type DeployTarget } from './target.js'
 
 const TIMEOUT = 600_000;
 
+export interface KindDeps {
+  exec: Exec;
+  secrets: Record<string, string>;
+  cluster: string;
+  readFile: (absolutePath: string) => Promise<string>;
+  /** Injected for tests; the probe waits between attempts while kube-proxy programs the Service. */
+  sleep?: (ms: number) => Promise<void>;
+  probeAttempts?: number;
+  probeIntervalMs?: number;
+}
+
 /**
- * kind adapter: the image is loaded into the cluster node, manifests are rendered ({{IMAGE}}) and
- * applied on stdin, secrets become one Kubernetes Secret created from stdin (never on argv), and
- * health is probed from inside the cluster so no port mapping is required.
+ * kind adapter: every kubectl call is pinned to the kind context, the image is loaded into the
+ * cluster node, manifests are rendered ({{IMAGE}}) and applied on stdin, secrets become one
+ * Kubernetes Secret created from stdin (never on argv), and health is probed from inside the
+ * cluster (retrying: right after `apply`, kube-proxy may not have programmed the Service yet).
  */
 export class KindTarget implements DeployTarget {
   readonly name = 'kind' as const;
+  private readonly sleep: (ms: number) => Promise<void>;
+  private readonly attempts: number;
+  private readonly interval: number;
 
-  constructor(
-    private readonly deps: { exec: Exec; secrets: Record<string, string>; cluster: string; readFile: (absolutePath: string) => Promise<string> },
-  ) {}
+  constructor(private readonly deps: KindDeps) {
+    this.sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+    this.attempts = deps.probeAttempts ?? 12;
+    this.interval = deps.probeIntervalMs ?? 5_000;
+  }
+
+  private secretName(intent: DeploymentIntent) {
+    return `${intent.projectId}-secrets`;
+  }
 
   private async kubectl(args: readonly string[], stdin?: string) {
-    return this.deps.exec({ bin: 'kubectl', args, timeoutMs: TIMEOUT, stdin });
+    return this.deps.exec({ bin: 'kubectl', args: ['--context', `kind-${this.deps.cluster}`, ...args], timeoutMs: TIMEOUT, stdin });
   }
 
   async validate(intent: DeploymentIntent): Promise<string[]> {
     const errors = intent.secretNames.filter((n) => this.deps.secrets[n] === undefined).map((n) => `missing secret ${n}`);
     if (intent.manifests.length === 0) errors.push('kind target requires at least one manifest');
+    if (intent.secretNames.length === 0) {
+      const rendered = await this.render(intent, imageRef(intent)).catch(() => '');
+      const ref = new RegExp(`name:\\s*${this.secretName(intent)}\\b(?![\\s\\S]{0,80}optional:\\s*true)`);
+      if (ref.test(rendered)) errors.push(`manifest references Secret ${this.secretName(intent)} but the intent declares no secrets`);
+    }
     return errors;
   }
 
@@ -1774,17 +2287,24 @@ export class KindTarget implements DeployTarget {
 
   private async applySecret(intent: DeploymentIntent): Promise<void> {
     if (intent.secretNames.length === 0) return;
+    for (const n of intent.secretNames) {
+      if (/[\r\n]/.test(this.deps.secrets[n] ?? '')) throw new Error(`secret ${n} contains a line break, which the env-file format cannot carry`);
+    }
     const env = intent.secretNames.map((n) => `${n}=${this.deps.secrets[n]}`).join('\n');
     // `--from-env-file=/dev/stdin` keeps values off the command line; --dry-run + apply makes it idempotent.
-    const dry = await this.kubectl(['create', 'secret', 'generic', `${intent.projectId}-secrets`, '--from-env-file=/dev/stdin', '--dry-run=client', '-o', 'yaml'], env);
+    const dry = await this.kubectl(['create', 'secret', 'generic', this.secretName(intent), '--from-env-file=/dev/stdin', '--dry-run=client', '-o', 'yaml'], env);
     if (dry.exitCode !== 0) throw new Error(`kubectl create secret failed: ${dry.stderr.slice(-2000)}`);
     const apply = await this.kubectl(['apply', '-f', '-'], dry.stdout);
     if (apply.exitCode !== 0) throw new Error(`kubectl apply secret failed: ${apply.stderr.slice(-2000)}`);
   }
 
+  async currentImage(intent: DeploymentIntent): Promise<string | null> {
+    const r = await this.kubectl(['get', 'deploy', intent.projectId, '-o', 'jsonpath={.spec.template.spec.containers[0].image}']);
+    return r.exitCode === 0 && r.stdout.trim() !== '' ? r.stdout.trim() : null;
+  }
+
   async apply(intent: DeploymentIntent): Promise<{ previous: string | null }> {
-    const current = await this.kubectl(['get', 'deploy', intent.projectId, '-o', 'jsonpath={.spec.template.spec.containers[0].image}']);
-    const previous = current.exitCode === 0 && current.stdout.trim() !== '' ? current.stdout.trim() : null;
+    const previous = await this.currentImage(intent);
     await this.applySecret(intent);
     const r = await this.kubectl(['apply', '-f', '-'], await this.render(intent, imageRef(intent)));
     if (r.exitCode !== 0) throw new Error(`kubectl apply failed: ${r.stderr.slice(-2000)}`);
@@ -1794,34 +2314,43 @@ export class KindTarget implements DeployTarget {
   async verify(intent: DeploymentIntent): Promise<{ healthy: boolean; detail: string }> {
     const rollout = await this.kubectl(['rollout', 'status', `deployment/${intent.projectId}`, '--timeout=120s']);
     if (rollout.exitCode !== 0) return { healthy: false, detail: `rollout: ${rollout.stderr.trim() || rollout.stdout.trim()}` };
-    const probe = await this.kubectl([
-      'run',
-      `probe-${Date.now()}`,
-      '--rm',
-      '-i',
-      '--restart=Never',
-      '--image=curlimages/curl:8.10.1',
-      '--',
-      'curl',
-      '-s',
-      '-o',
-      '/dev/null',
-      '-w',
-      '%{http_code}',
-      `http://${intent.projectId}:${intent.port}${intent.healthcheckPath}`,
-    ]);
-    // `kubectl run --rm -i` prints the curl output first, then "pod ... deleted"; the code is the leading 3 digits.
-    const code = Number(probe.stdout.trim().match(/^(\d{3})/)?.[1]);
-    return code >= 200 && code < 300 ? { healthy: true, detail: `HTTP ${code} in-cluster` } : { healthy: false, detail: `probe: ${probe.stdout.trim()} ${probe.stderr.trim()}`.trim() };
+    let last = '';
+    for (let attempt = 1; attempt <= this.attempts; attempt++) {
+      const probe = await this.kubectl([
+        'run',
+        `probe-${intent.projectId}-${Date.now()}-${attempt}`,
+        '--rm',
+        '-i',
+        '--restart=Never',
+        '--image=curlimages/curl:8.10.1',
+        '--',
+        'curl',
+        '-s',
+        '-o',
+        '/dev/null',
+        '-w',
+        '%{http_code}',
+        `http://${intent.projectId}:${intent.port}${intent.healthcheckPath}`,
+      ]);
+      // `kubectl run --rm -i` prints the curl output first, then "pod ... deleted"; the code is the leading 3 digits.
+      const code = Number(probe.stdout.trim().match(/^(\d{3})/)?.[1]);
+      if (code >= 200 && code < 300) return { healthy: true, detail: `HTTP ${code} in-cluster after ${attempt} attempts` };
+      last = `probe: ${probe.stdout.trim()} ${probe.stderr.trim()}`.trim().slice(0, 300);
+      if (attempt < this.attempts) await this.sleep(this.interval);
+    }
+    return { healthy: false, detail: `${last} (${this.attempts} attempts)` };
   }
 
   async rollback(intent: DeploymentIntent, _previous: string): Promise<void> {
     const r = await this.kubectl(['rollout', 'undo', `deployment/${intent.projectId}`]);
     if (r.exitCode !== 0) throw new Error(`rollout undo failed: ${r.stderr.slice(-2000)}`);
+    const wait = await this.kubectl(['rollout', 'status', `deployment/${intent.projectId}`, '--timeout=120s']);
+    if (wait.exitCode !== 0) throw new Error(`rollback did not become ready: ${wait.stderr.slice(-2000)}`);
   }
 
   async destroy(intent: DeploymentIntent): Promise<void> {
     await this.kubectl(['delete', '-f', '-', '--ignore-not-found'], await this.render(intent, imageRef(intent)));
+    await this.kubectl(['delete', 'secret', this.secretName(intent), '--ignore-not-found']);
   }
 }
 ```
@@ -1829,7 +2358,7 @@ export class KindTarget implements DeployTarget {
 - [ ] **Step 6: Run tests and typecheck**
 
 Run: `npx vitest run test/deploy && npm run typecheck`
-Expected: 13 tests PASS; typecheck exits 0.
+Expected: 17 tests PASS; typecheck exits 0.
 
 - [ ] **Step 7: Commit**
 
@@ -1993,8 +2522,18 @@ const gates = [
 ];
 const g = await runGates(
   gates,
-  { worktree: work, image: 'node:22-bookworm', junitPath: 'reports/junit.xml', cpus: 2, memory: '1g', timeoutMs: 600_000, secrets: {} },
-  { exec: execCommand, readFile: async (p) => fs.readFile(p, 'utf8').catch(() => null) },
+  {
+    worktree: work,
+    image: 'node:22-bookworm',
+    junitPath: 'reports/junit.xml',
+    cpus: 2,
+    memory: '1g',
+    timeoutMs: 600_000,
+    secrets: {},
+    containerName: `gate-it-${Date.now()}`,
+    user: process.getuid && process.getgid ? `${process.getuid()}:${process.getgid()}` : undefined,
+  },
+  { exec: execCommand, readFile: async (p) => fs.readFile(p, 'utf8').catch(() => null), removeFile: async (p) => fs.rm(p, { force: true }) },
 );
 for (const r of g.results) console.log(`  ${r.name}: passed=${r.passed} exit=${r.exitCode} failure=${r.failure} junit=${r.junit?.length ?? 'none'}`);
 
