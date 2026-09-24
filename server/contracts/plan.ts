@@ -9,6 +9,10 @@ export const Gate = z.object({
   name: z.string().regex(ID_PATTERNS.SLUG),
   command: z.string().min(1),
   blocking: z.boolean(),
+  /** Gates run offline unless they must fetch (install, dependency scan). */
+  network: z.enum(['none', 'egress']).default('none'),
+  /** Secret names injected as environment variables into this gate's container only. */
+  secrets: z.array(z.string().regex(/^[A-Z][A-Z0-9_]*$/)).default([]),
 });
 export type Gate = z.infer<typeof Gate>;
 
@@ -40,6 +44,8 @@ export const Plan = z.object({
   stack: z.string().min(1),
   adrRefs: z.array(z.string().regex(ADR_ID)),
   commands: Commands,
+  /** Toolchain image every gate runs in (from the stack ADR), e.g. node:22-bookworm. */
+  gateImage: z.string().min(1),
   junitPath: z.string().min(1),
   gates: z.array(Gate).min(1),
   frozenPaths: z.array(z.string().min(1)).min(1),

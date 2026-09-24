@@ -1,4 +1,4 @@
-import { Plan, PlanTask } from '../../server/contracts/plan.js';
+import { Gate, Plan, PlanTask } from '../../server/contracts/plan.js';
 import { Project } from '../../server/contracts/project.js';
 import { Spec, freezeSpec } from '../../server/contracts/spec.js';
 
@@ -61,16 +61,17 @@ export function makePlanTask(overrides: Partial<PlanTask> & { id: string }): Pla
   });
 }
 
-/** The gate set every POC plan must carry (spec §4.3). */
-export const REQUIRED_GATES = [
+/** The gate set every POC plan must carry (spec §4.3); parsed so defaults (network, secrets) are present. */
+export const REQUIRED_GATES: Gate[] = [
+  { name: 'install', command: 'npm ci', blocking: true, network: 'egress' as const },
   { name: 'format', command: 'npm run format:check', blocking: true },
   { name: 'lint', command: 'npm run lint', blocking: true },
   { name: 'typecheck', command: 'npm run typecheck', blocking: true },
   { name: 'unit-test', command: 'npm test', blocking: true },
   { name: 'build', command: 'npm run build', blocking: true },
   { name: 'secret-scan', command: 'gitleaks detect --no-git -s .', blocking: true },
-  { name: 'dependency-scan', command: 'osv-scanner .', blocking: false },
-];
+  { name: 'dependency-scan', command: 'osv-scanner .', blocking: false, network: 'egress' as const },
+].map((g) => Gate.parse(g));
 
 export function makePlan(spec: Spec, overrides: Partial<Plan> = {}): Plan {
   if (spec.specHash === null) throw new Error('makePlan requires a frozen spec');
@@ -89,6 +90,7 @@ export function makePlan(spec: Spec, overrides: Partial<Plan> = {}): Plan {
       run: 'npm start',
       healthcheck: 'curl -fsS http://localhost:3000/health',
     },
+    gateImage: 'node:22-bookworm',
     junitPath: 'reports/junit.xml',
     gates: REQUIRED_GATES,
     frozenPaths: ['package.json', 'package-lock.json', 'vitest.config.ts'],
