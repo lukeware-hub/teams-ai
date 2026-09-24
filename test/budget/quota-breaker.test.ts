@@ -37,6 +37,13 @@ describe('QuotaBreaker', () => {
     expect(b.state()).toEqual({ status: 'paused', until: FIVE_H_RESET, reason: 'window' });
   });
 
+  it('does not pause on allowed_warning while the windows stay under the threshold', () => {
+    const { b } = breaker();
+    b.observe(info({ status: 'allowed_warning', fiveHourUtilization: 0.8 }));
+    expect(b.canStart()).toBe(true);
+    expect(b.state()).toEqual({ status: 'closed' });
+  });
+
   it('pauses on a rejected status even with low utilization, using the top-level reset', () => {
     const { b } = breaker();
     b.observe(info({ status: 'rejected', fiveHourUtilization: 0.2 }));

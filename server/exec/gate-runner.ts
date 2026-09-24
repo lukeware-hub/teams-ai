@@ -1,5 +1,6 @@
 import path from 'node:path';
 import type { Gate } from '../contracts/plan.js';
+import { redactSecrets } from '../core/redact.js';
 import { parseJUnit, type TestResult } from '../evidence/junit.js';
 import type { Exec } from './command.js';
 
@@ -117,16 +118,19 @@ export async function runGate(gate: Gate, ctx: GateContext, deps: GateDeps): Pro
   await deps.removeFile(report);
 
   let base: Omit<GateResult, 'name' | 'blocking' | 'passed' | 'junit' | 'failure'>;
+  // Tails reach the event store and UI; secret values injected into the container never do.
+  const secretValues = Object.values(ctx.secrets);
+  const clean = (s: string) => redactSecrets(tail(s), secretValues);
   const invocation = dockerArgs(gate, ctx);
   try {
     const r = await deps.exec({ bin: 'docker', args: invocation.args, env: invocation.env, timeoutMs: ctx.timeoutMs });
-    base = { exitCode: r.exitCode, timedOut: r.timedOut, durationMs: r.durationMs, stdoutTail: tail(r.stdout), stderrTail: tail(r.stderr) };
+    base = { exitCode: r.exitCode, timedOut: r.timedOut, durationMs: r.durationMs, stdoutTail: clean(r.stdout), stderrTail: clean(r.stderr) };
     if (r.timedOut) {
       // SIGTERM reaches the docker CLI, not PID 1 in the container; make sure nothing keeps running.
       await deps.exec({ bin: 'docker', args: ['rm', '-f', `${ctx.containerName}-${gate.name}`], timeoutMs: 60_000 }).catch(() => undefined);
     }
   } catch (err) {
-    base = { exitCode: null, timedOut: false, durationMs: Date.now() - started, stdoutTail: '', stderrTail: tail((err as Error).message) };
+    base = { exitCode: null, timedOut: false, durationMs: Date.now() - started, stdoutTail: '', stderrTail: clean((err as Error).message) };
     return { name: gate.name, blocking: gate.blocking, passed: false, junit: null, failure: 'infra', ...base };
   }
   const passed = base.exitCode === 0 && !base.timedOut;

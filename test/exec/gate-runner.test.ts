@@ -89,6 +89,15 @@ describe('classifyGate', () => {
 });
 
 describe('runGate', () => {
+  it('redacts secret values from the output tails', async () => {
+    const f = files({});
+    const fake = new FakeExec().onArgs('docker', ['run'], () => ({ exitCode: 1, stderr: 'auth failed for postgres://x with token npm_x' }));
+    const r = await runGate(gate({ name: 'unit-test', command: 'npm test' }), ctx, { exec: fake.exec, ...f.deps });
+    expect(r.stderrTail).not.toContain('npm_x');
+    expect(r.stderrTail).not.toContain('postgres://x');
+    expect(r.stderrTail).toContain('[REDACTED]');
+  });
+
   it('passes on exit 0, removes a stale report first and picks up the fresh JUnit report', async () => {
     const report = '/home/u/ws/worktrees/T1-create/reports/junit.xml';
     const f = files({ [report]: '<testsuite name="stale"><testcase classname="c" name="[AC-009] stale"/></testsuite>' });

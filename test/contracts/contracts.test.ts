@@ -97,4 +97,18 @@ describe('Plan', () => {
     const bad = { ...plan, tasks: [{ ...plan.tasks[0], id: 'scaffold' }] };
     expect(Plan.safeParse(bad).success).toBe(false);
   });
+
+  it('rejects paths that escape the repository or widen a glob match', () => {
+    const plan = makePlan(freezeSpec(makeSpec()));
+    const withPath = (p: string) => ({ ...plan, tasks: [{ ...plan.tasks[1]!, affectedPaths: [p] }, ...plan.tasks.slice(2)] });
+    for (const bad of ['../other/**', 'src/../../x', '/etc/passwd', 'C:/work/x', '\\\\server\\share', '!src/**', 'src/!(gates)/**', 'src/@(a|b).ts']) {
+      expect(Plan.safeParse(withPath(bad)).success, bad).toBe(false);
+    }
+    for (const ok of ['src/**', 'src/todos/create/**', 'package.json', 'deploy/k8s.yaml', 'a (copy).ts', '**/*.md']) {
+      expect(Plan.safeParse(withPath(ok)).success, ok).toBe(true);
+    }
+    expect(Plan.safeParse({ ...plan, frozenPaths: ['../package.json'] }).success).toBe(false);
+    expect(Plan.safeParse({ ...plan, junitPath: '/tmp/junit.xml' }).success).toBe(false);
+    expect(Plan.safeParse({ ...plan, deploy: { ...plan.deploy, manifests: ['../../secrets.yaml'] } }).success).toBe(false);
+  });
 });

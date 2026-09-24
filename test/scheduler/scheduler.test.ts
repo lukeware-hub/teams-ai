@@ -97,6 +97,13 @@ describe('runProgress', () => {
     expect(runProgress(state, 3)).toBe('complete');
   });
 
+  it('counts tasks doomed by a blocked dependency as blocked before the caller applies them', () => {
+    const state = runState(runtime({ id: 'T1-a' }, 'blocked'), runtime({ id: 'T2-b', dependsOn: ['T1-a'] }));
+    expect(runProgress(state, 3)).toBe('complete');
+    const withWork = runState(runtime({ id: 'T1-a' }, 'blocked'), runtime({ id: 'T2-b', dependsOn: ['T1-a'] }), runtime({ id: 'T3-c' }));
+    expect(runProgress(withWork, 3)).toBe('running');
+  });
+
   it('is deadlocked when nothing can ever start', () => {
     const cycle = runState(runtime({ id: 'T1-a', dependsOn: ['T2-b'] }), runtime({ id: 'T2-b', dependsOn: ['T1-a'] }));
     expect(runProgress(cycle, 3)).toBe('deadlocked');

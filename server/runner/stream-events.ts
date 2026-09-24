@@ -60,6 +60,14 @@ export function extractJsonObject(text: string | null): Record<string, unknown> 
   }
 }
 
+/**
+ * `allowed_warning` is still allowed: the CLI emits it on a successful step when a window is high.
+ * Only a status that actually refused the request counts as rejected (spec §8.7).
+ */
+export function isRateLimitRejected(status: string): boolean {
+  return status !== 'allowed' && status !== 'allowed_warning';
+}
+
 export interface RateLimitInfo {
   status: string;
   /** Top-level reset of the window the CLI is reporting on (epoch seconds). */

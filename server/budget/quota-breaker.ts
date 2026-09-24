@@ -1,4 +1,4 @@
-import type { RateLimitInfo } from '../runner/stream-events.js';
+import { isRateLimitRejected, type RateLimitInfo } from '../runner/stream-events.js';
 
 export interface BreakerConfig {
   /** Window utilization at or above which the orchestrator stops starting steps. */
@@ -43,7 +43,7 @@ export class QuotaBreaker {
     if (!info) return;
     this.tick();
     const exhausted = this.exhaustedResets(info);
-    if (info.status !== 'allowed') {
+    if (isRateLimitRejected(info.status)) {
       const reset = exhausted[0] ?? this.topLevelReset(info);
       this.pauseUntil(reset ?? this.nextProbe(), reset ? 'rejected' : 'probe');
       return;

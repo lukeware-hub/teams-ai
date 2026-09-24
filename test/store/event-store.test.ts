@@ -117,6 +117,13 @@ describe('loadEvents', () => {
     await expect(loadEvents(file)).rejects.toThrow(EventLogCorruptError);
   });
 
+  it('rejects an event missing stored fields or with an unknown kind', async () => {
+    await writeLines('{"seq":1,"type":"A"}\n');
+    await expect(loadEvents(file)).rejects.toThrow(EventLogCorruptError);
+    await writeLines(rawEvent(1).replace('"kind":"fact"', '"kind":"guess"'));
+    await expect(loadEvents(file)).rejects.toThrow(EventLogCorruptError);
+  });
+
   it('rejects non-contiguous seq numbers', async () => {
     await writeLines(rawEvent(1), rawEvent(3));
     await expect(loadEvents(file)).rejects.toThrow(EventLogCorruptError);
@@ -176,12 +183,28 @@ describe('EventStore crash recovery', () => {
     await expect(EventStore.open({ file, runId: 'run-1', specHash: HASH })).rejects.toThrow(EventLogCorruptError);
   });
 
-  it('closes itself after a failed append so the next open repairs the log', async () => {
+  it('closes itself and releases the lock after a failed append so the same process can reopen', async () => {
     const store = await open();
     await store.append({ type: 'A' });
     const failing = { ...store, file: path.join(dir, 'missing-dir', 'x', 'events.ndjson') } as unknown as EventStore;
     Object.setPrototypeOf(failing, EventStore.prototype);
     await expect(failing.append({ type: 'B' })).rejects.toThrow();
     await expect(failing.append({ type: 'C' })).rejects.toThrow(/closed/);
+    opened.splice(opened.indexOf(store), 1);
+    const reopened = await open();
+    expect((await reopened.append({ type: 'B' })).seq).toBe(2);
+  });
+
+  it('drops a torn tail that still parses as JSON but lacks the stored fields', async () => {
+    await writeLines(rawEvent(1), '{"seq":2}\n');
+    expect(await repairEventLog(file)).toBe(10);
+    expect((await loadEvents(file)).map((e) => e.seq)).toEqual([1]);
+  });
+
+  it('repairs an unreadable last line that has whitespace around it', async () => {
+    await writeLines(rawEvent(1), `  ${'\0'.repeat(10)}  \n\n`);
+    await repairEventLog(file);
+    expect((await loadEvents(file)).map((e) => e.seq)).toEqual([1]);
+    expect(await fs.readFile(file, 'utf8')).toBe(rawEvent(1));
   });
 });

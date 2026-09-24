@@ -66,12 +66,16 @@ export function tasksToBlock(state: RunState): string[] {
   return added;
 }
 
+/**
+ * Tasks that `tasksToBlock` would block are counted as blocked here, so the answer does not
+ * depend on the caller having applied them yet (otherwise the run could report `running` forever).
+ */
 export function runProgress(state: RunState, maxParallel: number = DEFAULT_MAX_PARALLEL): RunProgress {
-  const tasks = ordered(state);
-  if (tasks.every((t) => TERMINAL_STATES.has(t.state))) return 'complete';
-  if (tasks.some((t) => ACTIVE_STATES.has(t.state))) return 'running';
+  const doomed = new Set(tasksToBlock(state));
+  const effective = ordered(state).map((t) => (doomed.has(t.def.id) ? 'blocked' : t.state));
+  if (effective.every((s) => TERMINAL_STATES.has(s))) return 'complete';
+  if (effective.some((s) => ACTIVE_STATES.has(s))) return 'running';
   if (state.status === 'draining') return 'drained';
   if (state.status !== 'running') return 'running';
-  if (tasksToBlock(state).length > 0) return 'running';
   return nextRunnable(state, maxParallel).length > 0 ? 'running' : 'deadlocked';
 }

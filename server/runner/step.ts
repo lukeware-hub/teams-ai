@@ -10,7 +10,8 @@ import type { RefContext, References } from '../validators/references.js';
 import { buildInvocation, ensureTrusted } from './invocation.js';
 import { preflightSandbox, runProcess, type ProcessCaps, type RawStepResult, type RunnerBinary } from './process-runner.js';
 import { writeRoleSettings, type RoleSettingsInput } from './role-settings.js';
-import type { ResultSummary } from './stream-events.js';
+import { isRateLimitRejected, type ResultSummary } from './stream-events.js';
+import { redactSecrets } from '../core/redact.js';
 
 export interface StepRequest {
   kind: StepKind;
@@ -69,7 +70,7 @@ export function classifyFailure(raw: RawStepResult): FailureKind | null {
   if (s.apiErrorStatus === 429) return 'quota';
   if (s.apiErrorStatus === 401 || s.apiErrorStatus === 403) return 'auth';
   if (s.apiErrorStatus === null) {
-    if ((s.rateLimit && s.rateLimit.status !== 'allowed') || QUOTA_TEXT.test(text)) return 'quota';
+    if ((s.rateLimit && isRateLimitRejected(s.rateLimit.status)) || QUOTA_TEXT.test(text)) return 'quota';
     if (AUTH_TEXT.test(text)) return 'auth';
   }
   return 'code';
@@ -155,7 +156,10 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
 
   const failure = classifyFailure(raw);
   if (failure) {
-    return { ok: false, failure, errors: [raw.summary.resultText ?? raw.stderr.slice(0, 500)], summary: raw.summary, sandboxDisabled: raw.sandboxDisabled };
+    // Agent-controlled text and CLI stderr flow into the event store and UI: never with credentials.
+    const known = req.omniroute ? [req.omniroute.token] : [];
+    const message = redactSecrets(raw.summary.resultText ?? raw.stderr.slice(0, 500), known);
+    return { ok: false, failure, errors: [message], summary: raw.summary, sandboxDisabled: raw.sandboxDisabled };
   }
 
   const schema = OUTPUT_SCHEMAS[req.kind];
