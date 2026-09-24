@@ -456,6 +456,10 @@ Each decision has the config entry described in 10A.0. Delivery order: **phase 1
 - Metrics per decision and model: accuracy, Brier score, expected calibration error (ECE), escalation rate at the configured threshold, latency.
 - Used to select the local model and to set thresholds.
 
+### 10A.7 Agent-authored questions (phase 4, not designed yet)
+
+Today every question is authored in code by the orchestrator. A later phase may expose the `decide` module to agent steps as a tool ("ask a typed question about this state"), so an agent can offload its own quick judgments to System 1 instead of reasoning them out in tokens. Structured instructions (`Entry`) are already supported for that. Open points for its own spec section: per-step budget of questions, which roles may ask, how agent-authored questions are logged and evaluated, and how confidential projects are handled.
+
 ## 11. Web UI
 
 Fastify serves REST + SSE, bound to `127.0.0.1`, no authentication. SSE supports `Last-Event-ID` with replay from `events.ndjson`.
