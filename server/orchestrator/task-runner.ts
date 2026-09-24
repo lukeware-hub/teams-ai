@@ -10,7 +10,7 @@ import { taskBranch } from '../core/ids.js';
 import type { DecideContext, Decider } from '../decide/decider.js';
 import { assessAttemptProgress } from '../decide/decisions/attempt-progress.js';
 import { triageGateFailure } from '../decide/decisions/gate-triage.js';
-import { chooseModelTier, type Effort, type ModelTier } from '../decide/decisions/model-tier.js';
+import { chooseModelTier, type Effort, type ModelTier, type ModelTierResult } from '../decide/decisions/model-tier.js';
 import { REVIEW_PROFILE_DEPTH, choosePrRisk } from '../decide/decisions/pr-risk.js';
 import type { Role } from '../config/config.js';
 import type { TestResult } from '../evidence/junit.js';
@@ -84,6 +84,8 @@ export class TaskRunner {
   private specGapRounds = 0;
   private junit: TestResult[] = [];
   private mergeRefusals = 0;
+  private tierAttempt = 0;
+  private tierChoice: ModelTierResult | null = null;
   private readonly maxSpecGapRounds: number;
 
   constructor(
@@ -111,9 +113,17 @@ export class TaskRunner {
 
   /** Spec 10A.5 decisions 10/11: model tier and effort for one step; empty when unanswered or off-profile. */
   private async stepOverrides(role: Role, attempt: number): Promise<{ model?: string; effort?: Effort }> {
-    const chosen = await chooseModelTier(this.task.def, attempt, this.deps.decider, this.ctx);
-    const model = chosen.tier ? this.deps.tierModel(role, chosen.tier) : null;
-    return { ...(model ? { model } : {}), ...(chosen.effort ? { effort: chosen.effort } : {}) };
+    // One decision per attempt serves both the Dev and the Test step (in-memory; a resume decides again).
+    if (this.tierAttempt !== attempt) {
+      this.tierChoice = await chooseModelTier(this.task.def, attempt, this.deps.decider, this.ctx);
+      this.tierAttempt = attempt;
+    }
+    const chosen = this.tierChoice!;
+    if (!chosen.tier || !chosen.effort) return {};
+    const model = this.deps.tierModel(role, chosen.tier);
+    // An off-profile role (OmniRoute pin) keeps its model and gets no --effort: the flag is Claude Code's.
+    if (model === null) return {};
+    return { model, effort: chosen.effort };
   }
 
   private get ctx(): DecideContext {
@@ -155,8 +165,13 @@ export class TaskRunner {
     await this.deps.journal.fact(RunEvent.TaskStateChanged, { taskId: this.taskId, to });
   }
 
-  private feedback(text: string): Promise<unknown> {
-    return this.deps.journal.fact(OrchEvent.Feedback, { taskId: this.taskId, text });
+  /** `attempt: true` marks the delta that closed a Dev attempt (spec 10A.5 decision 6 reads only those). */
+  private feedback(text: string, opts: { attempt?: boolean } = {}): Promise<unknown> {
+    return this.deps.journal.fact(OrchEvent.Feedback, { taskId: this.taskId, text, ...(opts.attempt ? { attempt: true } : {}) });
+  }
+
+  private attemptDeltas(): string[] {
+    return this.deps.journal.events.filter((e) => e.type === OrchEvent.Feedback && e.data.taskId === this.taskId && e.data.attempt === true).map((e) => String(e.data.text));
   }
 
   private async ensureWorktree(): Promise<void> {
@@ -372,18 +387,19 @@ export class TaskRunner {
         // instead of spending the remaining attempts; a replacement task is never replanned again.
         const next = this.task.attempts + 2;
         if (next >= 3 && !this.task.replanned) {
-          const history = this.deps.journal.events.filter((e) => e.type === OrchEvent.Feedback && e.data.taskId === this.taskId).map((e) => String(e.data.text));
-          const { progress, source } = await assessAttemptProgress(this.task.def, next, [...history, text], this.deps.decider, this.ctx);
+          const { progress, source } = await assessAttemptProgress(this.task.def, next, [...this.attemptDeltas(), text], this.deps.decider, this.ctx);
           if (progress !== 'converging') {
-            await this.feedback(`${text}
-
-Attempt progress judged ${progress} (${source}); replanning early.`);
-            return this.replan();
+            await this.feedback(`${text}\n\nAttempt progress judged ${progress} (${source}); replanning early.`, { attempt: true });
+            await this.deps.journal.fact(RunEvent.AttemptConsumed, { taskId: this.taskId });
+            // A System 1 verdict may route to the SM but never end the task: if the SM cannot replan, retry as usual.
+            if (await this.replan({ early: true })) return;
+            await this.transition('implementing');
+            return;
           }
         }
         // State first, attempt second: a crash in between under-counts one attempt and never charges an
         // interrupted step twice (spec §6 "an interrupted LLM step is re-run and not counted").
-        await this.feedback(text);
+        await this.feedback(text, { attempt: true });
         await this.transition('implementing');
         await this.deps.journal.fact(RunEvent.AttemptConsumed, { taskId: this.taskId });
         return;
@@ -396,8 +412,9 @@ Attempt progress judged ${progress} (${source}); replanning early.`);
         await this.feedback(text);
         return;
       case 'replan':
-        await this.feedback(text);
-        return this.replan();
+        await this.feedback(text, { attempt: true });
+        await this.replan();
+        return;
       case 'block':
         return this.block(text);
       case 'pause-quota':
@@ -411,20 +428,31 @@ Attempt progress judged ${progress} (${source}); replanning early.`);
     }
   }
 
-  private async replan(): Promise<void> {
+  /** Returns false only for an early replan the SM could not produce; the policy path blocks instead. */
+  private async replan(opts: { early?: boolean } = {}): Promise<boolean> {
     const history = this.deps.journal.events.filter((e) => e.type === OrchEvent.Feedback && e.data.taskId === this.taskId).map((e) => String(e.data.text));
     const outcome = await this.deps.runAgent<'replan'>({ kind: 'replan', role: 'sm', pack: replanPack(this.deps.packBase(), this.task.def, { history, boundaries: await this.deps.boundaries() }), cwd: this.deps.ws.repo, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts });
     if (!outcome.ok) {
-      if (outcome.failure === 'quota' || outcome.failure === 'auth') return this.fail(outcome.failure, outcome.errors.join('\n'));
-      return this.block(`replan failed: ${outcome.errors.join('; ')}`);
+      if (outcome.failure === 'quota' || outcome.failure === 'auth') {
+        await this.fail(outcome.failure, outcome.errors.join('\n'));
+        return true;
+      }
+      if (opts.early) return false;
+      await this.block(`replan failed: ${outcome.errors.join('; ')}`);
+      return true;
     }
     const value = outcome.value as ReplanOutput;
     // Validate before the journal reduces the replan: a bad replacement would be rejected by the reducer
     // after it was written, corrupting the log. Structural checks only; AC coverage of the whole plan is
     // not the replan's concern (spec §4.6: the replacements cover the original task's criteria).
     const errors = this.replanErrors(value.replacements);
-    if (errors.length > 0) return this.block(`replan rejected: ${errors.join('; ')}`);
+    if (errors.length > 0) {
+      if (opts.early) return false;
+      await this.block(`replan rejected: ${errors.join('; ')}`);
+      return true;
+    }
     await this.deps.journal.fact(RunEvent.TaskReplanned, { taskId: this.taskId, replacements: value.replacements });
+    return true;
   }
 
   private replanErrors(replacements: readonly PlanTask[]): string[] {

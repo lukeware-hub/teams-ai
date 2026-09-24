@@ -410,7 +410,7 @@ describe('TaskRunner: model tier', () => {
     const r = new TaskRunner('T1', deps({ decider: tierDecider, tierModel: () => null }));
     await r.advance();
     expect(agentCalls[0]!.model).toBeUndefined();
-    expect(agentCalls[0]!.effort).toBe('low');
+    expect(agentCalls[0]!.effort).toBeUndefined();
   });
 
   it('with the decision off nothing is set', async () => {
@@ -418,5 +418,55 @@ describe('TaskRunner: model tier', () => {
     await r.advance();
     expect(agentCalls[0]!.model).toBeUndefined();
     expect(agentCalls[0]!.effort).toBeUndefined();
+  });
+});
+
+describe('TaskRunner: final review fixes', () => {
+  const failingGates = async () => { const f = gate('unit-test', { passed: false, exitCode: 1, stderrTail: 'boom', failure: 'code' as const }); return { results: [f], blockingFailure: f }; };
+  const stalledRecording = () => {
+    const states: string[] = [];
+    return { states, decide: async (id: string, state: string) => { if (id === 'attempt-progress') { states.push(state); return { answered: true as const, backend: 'jev' as const, escalated: false, answers: { progress: { type: 'score' as const, value: 1, probabilities: {}, confidence: 0.9 } } }; } return { answered: false as const, reason: 'disabled' as const }; } };
+  };
+  const replacement = makePlanTask({ id: 'T1-a', criteriaRefs: ['AC-001'], affectedPaths: ['src'], dependsOn: [] });
+
+  it('attempt progress history holds only the deltas that consumed an attempt, not schema retries', async () => {
+    let devCalls = 0;
+    const agent: Agent = async (req) => {
+      if (req.kind === 'replan') return ok({ specHash: HASH, replacements: [replacement] });
+      devCalls += 1;
+      if (devCalls === 1) return failed('schema', 'SCHEMA-RETRY-TEXT');
+      return devDone()(req);
+    };
+    const d = stalledRecording();
+    const r = new TaskRunner('T1', deps({ agent, gates: failingGates, decider: d }));
+    for (let i = 0; i < 5; i++) await r.advance();
+    expect(d.states).toHaveLength(1);
+    expect(d.states[0]).not.toContain('SCHEMA-RETRY-TEXT');
+    expect(d.states[0]).toContain('Gate unit-test failed');
+  });
+
+  it('early replan consumes the failed attempt', async () => {
+    const agent: Agent = async (req) => (req.kind === 'replan' ? ok({ specHash: HASH, replacements: [replacement] }) : devDone()(req));
+    const r = new TaskRunner('T1', deps({ agent, gates: failingGates, decider: stalledRecording() }));
+    for (let i = 0; i < 4; i++) await r.advance();
+    expect(state()).toMatchObject({ state: 'superseded', attempts: 2 });
+  });
+
+  it('a failed early replan falls back to the normal retry instead of blocking', async () => {
+    const agent: Agent = async (req) => (req.kind === 'replan' ? failed('code', 'sm broke') : devDone()(req));
+    const r = new TaskRunner('T1', deps({ agent, gates: failingGates, decider: stalledRecording() }));
+    for (let i = 0; i < 4; i++) await r.advance();
+    expect(state()).toMatchObject({ state: 'implementing', attempts: 2 });
+    expect(journal.events.find((e) => e.type === OrchEvent.TaskBlocked)).toBeUndefined();
+  });
+
+  it('model tier: effort is not applied when the role is off the claude profile, and one decision serves dev and review', async () => {
+    const calls: string[] = [];
+    const tierDecider = { decide: async (id: string) => { calls.push(id); return id === 'model-tier' ? { answered: true as const, backend: 'jev' as const, escalated: false, answers: { tier: { type: 'choice' as const, value: 'small', probabilities: { small: 0.9 }, confidence: 0.9 }, effort: { type: 'score' as const, value: 0, probabilities: {}, confidence: 0.9 } } } : { answered: false as const, reason: 'disabled' as const }; } };
+    const agent: Agent = async (req) => (req.kind === 'review' ? approve() : devDone()(req));
+    const r = new TaskRunner('T1', deps({ agent, decider: tierDecider, tierModel: () => null }));
+    await r.advance(); await r.advance(); await r.advance();
+    expect(agentCalls.map((c) => [c.kind, c.model, c.effort])).toEqual([['dev', undefined, undefined], ['review', undefined, undefined]]);
+    expect(calls.filter((id) => id === 'model-tier')).toHaveLength(1);
   });
 });
