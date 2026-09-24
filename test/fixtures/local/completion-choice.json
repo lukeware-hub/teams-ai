@@ -1,0 +1,19 @@
+{
+  "content": "B",
+  "model": "/models/qwen2.5-7b-instruct-q4_k_m.gguf",
+  "tokens_evaluated": 412,
+  "tokens_predicted": 1,
+  "completion_probabilities": [
+    {
+      "id": 33,
+      "logprob": -0.223,
+      "token": "B",
+      "top_logprobs": [
+        { "id": 33, "logprob": -0.223, "token": "B" },
+        { "id": 32, "logprob": -1.897, "token": "A" },
+        { "id": 34, "logprob": -3.507, "token": "C" },
+        { "id": 198, "logprob": -9.2, "token": "\n" }
+      ]
+    }
+  ]
+}

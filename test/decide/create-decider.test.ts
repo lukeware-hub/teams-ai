@@ -95,6 +95,34 @@ describe('createDecider', () => {
     expect(accounting.records()[0]).toMatchObject({ provider: 'openrouter', model: 'typesafe/jev-1.13-20260917', costUsd: 0.0000126, usage: { inputTokens: 300, outputTokens: 20 } });
   });
 
+  it('with local enabled a confidential project skips Jev, answers from llama.cpp and books it under local at zero cost', async () => {
+    const accounting = new Accounting();
+    const completion = {
+      model: 'q.gguf',
+      tokens_evaluated: 200,
+      tokens_predicted: 1,
+      completion_probabilities: [{ id: 1, logprob: -0.05, token: 'B', top_logprobs: [{ id: 1, logprob: -0.05, token: 'B' }, { id: 2, logprob: -3.0, token: 'A' }] }],
+    };
+    const urls: string[] = [];
+    const d = createDecider({
+      cfg: loadConfig({ decisions: { enabled: true, local: { enabled: true, baseUrl: 'http://127.0.0.1:9999' } } }),
+      secrets: { OPENROUTER_API_KEY: KEY },
+      accounting,
+      runEscalation: async () => {
+        throw new Error('must not escalate');
+      },
+      fetch: (async (url: string | URL | Request) => {
+        urls.push(String(url));
+        return new Response(JSON.stringify(completion), { status: 200 });
+      }) as typeof fetch,
+    });
+    const out = await d.decide('gate-triage', 'S', questions, { confidential: true });
+    expect(out).toMatchObject({ answered: true, backend: 'local', answers: { kind: { type: 'choice', value: 'infra' } } });
+    expect(urls).toEqual(['http://127.0.0.1:9999/completion']);
+    expect(accounting.records()).toHaveLength(1);
+    expect(accounting.records()[0]).toMatchObject({ provider: 'local', model: 'q.gguf', costUsd: 0, usage: { inputTokens: 200, outputTokens: 1 } });
+  });
+
   it('books nothing when the layer is disabled', async () => {
     const accounting = new Accounting();
     const d = createDecider({

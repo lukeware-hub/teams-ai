@@ -119,6 +119,15 @@ export const Config = z.object({
           backoffMs: positive.default(500),
         })
         .prefault({}),
+      /** Spec 10A.2a: a llama.cpp server on this host; off until one is running, then the chain's free middle step. */
+      local: z
+        .object({
+          enabled: z.boolean().default(false),
+          baseUrl: z.string().url().default('http://127.0.0.1:8080'),
+          timeoutMs: positive.default(30_000),
+          nProbs: positive.default(20),
+        })
+        .prefault({}),
       perDecision: PerDecisionSchema.prefault({}),
     })
     .prefault({}),

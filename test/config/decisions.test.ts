@@ -38,6 +38,11 @@ describe('decisions config', () => {
     expect(DEFAULT_CONFIG.decisions.perDecision['model-tier']).toMatchObject({ chain: ['jev', 'local'] });
   });
 
+  it('local backend is off by default and points at a llama.cpp server on this host', () => {
+    expect(DEFAULT_CONFIG.decisions.local).toEqual({ enabled: false, baseUrl: 'http://127.0.0.1:8080', timeoutMs: 30_000, nProbs: 20 });
+    expect(() => loadConfig({ decisions: { local: { baseUrl: 'not a url' } } })).toThrow(ConfigError);
+  });
+
   it('model tiers default to haiku / sonnet / opus and must be non-empty', () => {
     expect(DEFAULT_CONFIG.decisions.modelTiers).toEqual({ small: 'haiku', medium: 'sonnet', large: 'opus' });
     expect(() => loadConfig({ decisions: { modelTiers: { small: '' } } })).toThrow(ConfigError);

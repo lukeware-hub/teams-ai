@@ -42,9 +42,12 @@ Ordered by what unblocks what. Spec references are to `docs/superpowers/specs/20
   config mention it.
 - **Decision 7 (validation report routing) — blocked on the validation flow.** No post-human-validation step
   exists in `server/orchestrator/` (spec UI screen 4 "Validation").
-- **`local-logprobs` backend (spec §10A.2a, phase 2) — stub only.** `server/decide/local-stub.ts` always reports
-  unavailable; `create-decider.ts:26` wires the stub. Without it every low-confidence or Jev-unavailable decision
-  goes straight to Claude escalation.
+- **`local-logprobs` backend (spec §10A.2a, phase 2) — client built, server not set up.**
+  `server/decide/local-logprobs.ts` talks to a llama.cpp server (`/completion`, one grammar-constrained token per
+  question, probabilities from `top_logprobs`); `createDecider` wires it when `decisions.local.enabled` is true,
+  the stub otherwise. Still to do on the host: build llama.cpp with CUDA in WSL2, download a 7–9B instruct GGUF
+  (suggested start: Qwen2.5-7B-Instruct Q4_K_M), start `llama-server -np 4 -c 8192`, run a real smoke, then let
+  the evals pick the model and the `local` threshold.
 - **Decision evals (spec §10A.6) — not built.** Labeled fixtures are meant to grow from `DECISION_MADE` journal
   records; the eval harness (accuracy, Brier, ECE, escalation rate, latency per decision and model) does not exist.
   Depends on having enough journal records, i.e. run 3.

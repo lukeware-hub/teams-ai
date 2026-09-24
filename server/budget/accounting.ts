@@ -9,7 +9,7 @@ export interface UsageRecord {
   taskId: string | null;
   attempt: number;
   stepKind: StepKind;
-  provider: 'claude' | 'omniroute' | 'openrouter';
+  provider: 'claude' | 'omniroute' | 'openrouter' | 'local';
   model: string;
   usage: Usage;
   costUsd: number | null;
