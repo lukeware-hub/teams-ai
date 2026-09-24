@@ -12,6 +12,9 @@ import { KnowledgeIndex } from './knowledge/retrieval.js';
 import { Run, type ExecuteResult, type RunDeps } from './orchestrator/run.js';
 import { expandHome, stateFile, workspacePaths } from './orchestrator/workspace.js';
 import { runStep } from './runner/step.js';
+import { startApi } from './api/server.js';
+import { onboardingRoutes } from './api/onboarding-routes.js';
+import { hasScript, spawnScriptPty } from './onboarding/pty.js';
 
 export interface CliIo {
   argv: string[];
@@ -23,7 +26,25 @@ export interface CliIo {
 const USAGE = `Usage:
   teams-ai run    --project <dir> [--spec <id>] [--max-parallel N] [--dry-run]
   teams-ai resume --project <dir> --run <runId>
-  teams-ai status --project <dir> --run <runId> [--json]`;
+  teams-ai status --project <dir> --run <runId> [--json]
+  teams-ai ui     [--port N]            start the local web UI (onboarding, status)`;
+
+export interface UiHooks {
+  startUi?: (port: number) => Promise<{ port: number; close(): Promise<void> }>;
+  waitForSignal?: () => Promise<void>;
+}
+
+async function startUiReal(port: number, io: CliIo): Promise<{ port: number; close(): Promise<void> }> {
+  if (!(await hasScript(io.env))) throw new Error('the web UI needs util-linux `script` on PATH (apt install bsdutils)');
+  const cfg = loadConfig(await fs.readFile(path.join(expandHome('~/.teams-ai'), 'config.json'), 'utf8').then(JSON.parse).catch(() => ({})));
+  const staticDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'web', 'dist');
+  const hasDist = await fs.access(path.join(staticDir, 'index.html')).then(() => true, () => false);
+  if (!hasDist) io.stderr('web/dist not found: run `npm run web:build` (or `npm run web:dev` for the Vite dev server with /api proxied)');
+  return startApi(
+    { routes: onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr }), staticDir: hasDist ? staticDir : null, log: io.stderr },
+    port,
+  );
+}
 
 function flags(argv: string[]): Record<string, string | true> {
   const out: Record<string, string | true> = {};
@@ -111,16 +132,25 @@ const defaultFactory = (deps: RunDeps, runId?: string): Promise<Run> => (runId ?
  * `factory` is the seam tests use to substitute the Run; with a custom factory the dependency
  * loading is best-effort (a missing project on disk yields `null` deps), since the factory owns them.
  */
-export async function main(io: CliIo, factory: (deps: RunDeps, runId?: string) => Promise<Run> = defaultFactory): Promise<number> {
+export async function main(io: CliIo, factory: (deps: RunDeps, runId?: string) => Promise<Run> = defaultFactory, hooks: UiHooks = {}): Promise<number> {
   const [command, ...rest] = io.argv;
   const f = flags(rest);
   const projectDir = typeof f.project === 'string' ? f.project : null;
-  if (!command || !['run', 'resume', 'status'].includes(command) || !projectDir) {
+  if (!command || !['run', 'resume', 'status', 'ui'].includes(command) || (!projectDir && command !== 'ui')) {
     io.stderr(USAGE);
     if (command && !projectDir) io.stderr('--project <dir> is required');
     return 2;
   }
   try {
+    if (command === 'ui') {
+      const port = typeof f.port === 'string' ? Number(f.port) : 8787;
+      const server = await (hooks.startUi ?? ((p) => startUiReal(p, io)))(port);
+      io.stderr(`Open http://localhost:${server.port}/onboarding`);
+      await (hooks.waitForSignal ?? (() => new Promise<void>((resolve) => { process.once('SIGINT', () => resolve()); process.once('SIGTERM', () => resolve()); })))();
+      await server.close();
+      return 0;
+    }
+    if (!projectDir) return 2; // unreachable: the guard above admits a missing --project only for `ui`
     if (command === 'status') {
       const cfg = loadConfig({});
       const project = await readJson(path.join(projectDir, 'docs', 'project.json'), (v) => Project.parse(v));
