@@ -355,9 +355,9 @@ git commit -m "feat: add heading-aware chunker and FTS5 knowledge index" -m "Co-
   - `interface GraphNode { label: string; file: string | null; line: number | null }`
   - `interface AffectedNode extends GraphNode { relation: string }`
   - `interface GraphCoverage { extracted: number; failed: number; nodes: number; links: number; ratio: number }` — in AST mode graphify leaves `extracted_sources`/`failed_sources` empty, so `extracted` = distinct tracked code files present in the graph, `failed` = tracked code files absent, `ratio = extracted / tracked code files` (`git ls-files` filtered by `CODE_EXTENSIONS`); the LLM-extractor lists are used when present
-  - `class Graphify { constructor(deps: { exec: Exec; readFile: (p: string) => Promise<string | null> }); update(repoDir: string, outDir: string): Promise<GraphCoverage>; query(outDir: string, question: string, budgetTokens: number): Promise<{ nodes: GraphNode[]; truncated: boolean; text: string }>; affected(outDir: string, symbol: string, depth: number): Promise<AffectedNode[]>; godNodes(outDir: string, top: number): Promise<Array<{ label: string; edges: number }>>; coverage(outDir: string): Promise<GraphCoverage> }`
+  - `class Graphify { constructor(deps: { exec: Exec; readFile: (p: string) => Promise<string | null> }); update(repoDir: string, outDir: string): Promise<GraphCoverage>; query(outDir: string, question: string, budgetTokens: number): Promise<{ nodes: GraphNode[]; truncated: boolean; text: string }>; affected(outDir: string, symbol: string, depth: number): Promise<AffectedNode[]>; godNodes(outDir: string, top: number): Promise<Array<{ label: string; edges: number }>>; coverage(outDir: string, trackedFiles: readonly string[]): Promise<GraphCoverage>; trackedFiles(repoDir: string): Promise<string[]> }` — `update` is serialized per repository
   - `parseQuery(text: string)`, `parseAffected(text: string)`, `parseGodNodes(text: string)` — pure, exported for tests
-  - `grepFallback(repoDir: string, terms: readonly string[], exec: Exec, opts?: { maxHits?: number }): Promise<Array<{ file: string; line: number; text: string }>>` — `git grep -n -I -i -e <t> [-e <t>...]` restricted to tracked files
+  - `grepFallback(repoDir: string, terms: readonly string[], exec: Exec, opts?: { maxHits?: number }): Promise<Array<{ file: string; line: number; text: string }>>` — `git grep -n -I -i -z -e <t> [-e <t>...]` restricted to tracked files (NUL-terminated paths, so `:` in a file name is safe)
   - `MIN_COVERAGE = 0.5` — below this the context pack uses grep instead of the graph (spec §9 fallback)
 
 The `outDir` is outside the repository (`workspaces/<p>/graph/`, spec §9). graphify writes `graphify-out/` next to the path it scans (verified in WSL), so `update` runs inside the repository and then moves `graphify-out/` to `outDir`; the read commands receive `--graph <outDir>/graphify-out/graph.json` explicitly. Plan 6 adds `graphify-out/` to the worktree's `.git/info/exclude`.
@@ -474,9 +474,9 @@ describe('Graphify', () => {
 
   it('reports zero coverage when graph.json is missing or has no sources', async () => {
     const g = new Graphify({ exec: new FakeExec().exec, readFile: files({}) });
-    expect(await g.coverage('/ws/graph')).toEqual({ extracted: 0, failed: 0, nodes: 0, links: 0, ratio: 0 });
+    expect(await g.coverage('/ws/graph', ['src/a.ts'])).toEqual({ extracted: 0, failed: 0, nodes: 0, links: 0, ratio: 0 });
     const empty = new Graphify({ exec: new FakeExec().exec, readFile: files({ '/ws/graph/graphify-out/graph.json': '{"nodes":[],"links":[],"extracted_sources":[],"failed_sources":[]}' }) });
-    expect((await empty.coverage('/ws/graph')).ratio).toBe(0);
+    expect((await empty.coverage('/ws/graph', ['src/a.ts'])).ratio).toBe(0);
     expect(MIN_COVERAGE).toBe(0.5);
   });
 
@@ -505,19 +505,19 @@ describe('Graphify', () => {
 
 describe('grepFallback', () => {
   it('searches tracked files case-insensitively and parses file:line:text', async () => {
-    const fake = new FakeExec().onArgs('git', ['grep'], () => ({ stdout: 'src/a.ts:12:const discount = 5;\nsrc/b.ts:3:// Discount rules\n' }));
+    const fake = new FakeExec().onArgs('git', ['grep'], () => ({ stdout: 'src/a.ts\u000012:const discount = 5;\nsrc/b.ts\u00003:// Discount rules\n' }));
     const hits = await grepFallback('/ws/repo', ['discount', 'vip'], fake.exec);
     expect(hits).toEqual([
       { file: 'src/a.ts', line: 12, text: 'const discount = 5;' },
       { file: 'src/b.ts', line: 3, text: '// Discount rules' },
     ]);
-    expect(fake.calls[0]).toMatchObject({ bin: 'git', cwd: '/ws/repo', args: ['grep', '-n', '-I', '-i', '-e', 'discount', '-e', 'vip', '--', '.'] });
+    expect(fake.calls[0]).toMatchObject({ bin: 'git', cwd: '/ws/repo', args: ['grep', '-n', '-I', '-i', '-z', '-e', 'discount', '-e', 'vip', '--', '.'] });
   });
 
   it('caps hits and tolerates exit code 1 (no match)', async () => {
     const fake = new FakeExec().onArgs('git', ['grep'], () => ({ exitCode: 1 }));
     expect(await grepFallback('/ws/repo', ['zzz'], fake.exec)).toEqual([]);
-    const many = new FakeExec().onArgs('git', ['grep'], () => ({ stdout: Array.from({ length: 50 }, (_, i) => `f.ts:${i + 1}:x`).join('\n') }));
+    const many = new FakeExec().onArgs('git', ['grep'], () => ({ stdout: Array.from({ length: 50 }, (_, i) => `f.ts\u0000${i + 1}:x`).join('\n') }));
     expect(await grepFallback('/ws/repo', ['x'], many.exec, { maxHits: 5 })).toHaveLength(5);
   });
 });
@@ -549,6 +549,36 @@ describe('coverage from AST graphs', () => {
     const fake = new FakeExec().onArgs('git', ['ls-files'], () => ({ stdout: 'src/a.ts\nsrc/b.ts\ndocs/x.md\nimg.png\n' }));
     const g = new Graphify({ exec: fake.exec, readFile: files({ '/ws/graph/graphify-out/graph.json': astGraph }), moveDir: async () => undefined });
     expect((await g.update('/ws/repo', '/ws/graph')).ratio).toBe(1);
+  });
+});
+
+describe('grepFallback with odd file names', () => {
+  it('uses NUL-separated paths so a colon in a file name cannot shift the fields', async () => {
+    const fake = new FakeExec().onArgs('git', ['grep'], () => ({ stdout: 'weird:5:file.ts\u000020:other text\n' }));
+    expect(await grepFallback('/ws/repo', ['x'], fake.exec)).toEqual([{ file: 'weird:5:file.ts', line: 20, text: 'other text' }]);
+  });
+});
+
+describe('Graphify.update concurrency', () => {
+  it('serializes updates of the same repository so a second run never overwrites a graph being moved', async () => {
+    const order: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const fake = new FakeExec()
+      .onArgs('graphify', ['update'], async () => {
+        order.push('graphify');
+        if (order.filter((o) => o === 'graphify').length === 1) await gate;
+        return {};
+      })
+      .onArgs('git', ['ls-files'], () => ({ stdout: '' }));
+    const g = new Graphify({ exec: fake.exec, readFile: async () => null, moveDir: async () => void order.push('move') });
+    const first = g.update('/ws/repo', '/ws/graph');
+    const second = g.update('/ws/repo', '/ws/graph');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(order).toEqual(['graphify']);
+    release();
+    await Promise.all([first, second]);
+    expect(order).toEqual(['graphify', 'move', 'graphify', 'move']);
   });
 });
 ```
@@ -646,6 +676,8 @@ async function defaultMoveDir(from: string, to: string): Promise<void> {
 /** Thin wrapper over the graphify CLI; no LLM-backed feature is ever invoked. */
 export class Graphify {
   private readonly moveDir: (from: string, to: string) => Promise<void>;
+  /** One update at a time per repository: graphify writes a fixed graphify-out/ path inside it. */
+  private readonly updates = new Map<string, Promise<unknown>>();
 
   constructor(private readonly deps: GraphifyDeps) {
     this.moveDir = deps.moveDir ?? defaultMoveDir;
@@ -669,15 +701,22 @@ export class Graphify {
    * path it scans, so the run happens inside the repository and the output is moved to `outDir`;
    * the graph never lives in the repository (and Plan 6 excludes `graphify-out/` via .git/info/exclude).
    */
-  async update(repoDir: string, outDir: string): Promise<GraphCoverage> {
-    await this.run(['update', '.', '--no-cluster'], repoDir);
-    const produced = path.join(repoDir, 'graphify-out');
-    try {
-      await this.moveDir(produced, path.join(outDir, 'graphify-out'));
-    } catch {
-      /* nothing produced (unsupported repo) → coverage 0 below */
-    }
-    return this.coverage(outDir, await this.trackedFiles(repoDir));
+  update(repoDir: string, outDir: string): Promise<GraphCoverage> {
+    const key = path.resolve(repoDir);
+    const work = async () => {
+      await this.run(['update', '.', '--no-cluster'], repoDir);
+      const produced = path.join(repoDir, 'graphify-out');
+      try {
+        await this.moveDir(produced, path.join(outDir, 'graphify-out'));
+      } catch {
+        /* nothing produced (unsupported repo) → coverage 0 below */
+      }
+      return this.coverage(outDir, await this.trackedFiles(repoDir));
+    };
+    const previous = this.updates.get(key) ?? Promise.resolve();
+    const result = previous.then(work, work);
+    this.updates.set(key, result.catch(() => undefined));
+    return result;
   }
 
   /**
@@ -686,7 +725,7 @@ export class Graphify {
    * the distinct code files present in the graph over the tracked code files of the repository
    * (`extracted` = covered files, `failed` = tracked code files absent from the graph).
    */
-  async coverage(outDir: string, trackedFiles?: readonly string[]): Promise<GraphCoverage> {
+  async coverage(outDir: string, trackedFiles: readonly string[]): Promise<GraphCoverage> {
     const empty = { extracted: 0, failed: 0, nodes: 0, links: 0, ratio: 0 };
     const raw = await this.deps.readFile(this.graphPath(outDir));
     if (!raw) return empty;
@@ -704,7 +743,6 @@ export class Graphify {
       return { extracted, failed, nodes, links, ratio: extracted / (extracted + failed) };
     }
     const inGraph = new Set((g.nodes ?? []).map((n) => n.source_file).filter((f): f is string => !!f && isCodeFile(f)));
-    if (!trackedFiles) return { extracted: inGraph.size, failed: 0, nodes, links, ratio: inGraph.size > 0 ? 1 : 0 };
     const tracked = trackedFiles.filter(isCodeFile);
     const covered = tracked.filter((f) => inGraph.has(f)).length;
     return { extracted: covered, failed: tracked.length - covered, nodes, links, ratio: tracked.length === 0 ? 0 : covered / tracked.length };
@@ -741,15 +779,18 @@ export async function grepFallback(
   exec: Exec,
   opts: { maxHits?: number } = {},
 ): Promise<Array<{ file: string; line: number; text: string }>> {
-  const args = ['grep', '-n', '-I', '-i'];
+  // -z terminates the path with NUL, so a ':' inside a file name cannot shift the fields.
+  const args = ['grep', '-n', '-I', '-i', '-z'];
   for (const t of terms) args.push('-e', t);
   args.push('--', '.');
   const r = await exec({ bin: 'git', args, cwd: repoDir, timeoutMs: 60_000 });
   if (r.exitCode !== 0) return [];
   const hits: Array<{ file: string; line: number; text: string }> = [];
   for (const line of r.stdout.split('\n')) {
-    const m = line.match(/^(.+?):(\d+):(.*)$/);
-    if (m) hits.push({ file: m[1]!, line: Number(m[2]), text: m[3]! });
+    const nul = line.indexOf('\0');
+    if (nul === -1) continue;
+    const m = line.slice(nul + 1).match(/^(\d+):(.*)$/);
+    if (m) hits.push({ file: line.slice(0, nul), line: Number(m[1]), text: m[2]! });
     if (hits.length >= (opts.maxHits ?? 40)) break;
   }
   return hits;
@@ -759,7 +800,7 @@ export async function grepFallback(
 - [ ] **Step 5: Run tests and typecheck**
 
 Run: `npx vitest run test/knowledge/graphify.test.ts && npm run typecheck`
-Expected: 12 tests PASS; typecheck exits 0.
+Expected: 14 tests PASS; typecheck exits 0.
 
 - [ ] **Step 6: Commit**
 
@@ -1118,43 +1159,46 @@ const repo = path.resolve(process.argv[2] ?? '.');
 const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-graph-'));
 const g = new Graphify({ exec: execCommand, readFile: async (p) => fs.readFile(p, 'utf8').catch(() => null) });
 
-console.log('== graphify update');
-const cov = await g.update(repo, outDir);
-console.log('  coverage', JSON.stringify(cov));
-console.log('  god nodes', JSON.stringify(await g.godNodes(outDir, 5)));
-const q = await g.query(outDir, 'how is a step result summarized', 600);
-console.log(`  query: ${q.nodes.length} nodes, truncated=${q.truncated}`);
-const aff = await g.affected(outDir, 'summarizeStream', 1);
-console.log(`  affected: ${aff.length}`, aff.slice(0, 3));
-const code = cov.ratio >= MIN_COVERAGE ? { source: 'graph' as const, nodes: q.nodes.slice(0, 8), affected: aff, truncated: q.truncated } : { source: 'grep' as const, grep: await grepFallback(repo, ['summarizeStream'], execCommand) };
+try {
+  console.log('== graphify update');
+  const cov = await g.update(repo, outDir);
+  console.log('  coverage', JSON.stringify(cov));
+  console.log('  god nodes', JSON.stringify(await g.godNodes(outDir, 5)));
+  const q = await g.query(outDir, 'how is a step result summarized', 600);
+  console.log(`  query: ${q.nodes.length} nodes, truncated=${q.truncated}`);
+  const aff = await g.affected(outDir, 'summarizeStream', 1);
+  console.log(`  affected: ${aff.length}`, aff.slice(0, 3));
+  const code = cov.ratio >= MIN_COVERAGE ? { source: 'graph' as const, nodes: q.nodes.slice(0, 8), affected: aff, truncated: q.truncated } : { source: 'grep' as const, grep: await grepFallback(repo, ['summarizeStream'], execCommand) };
 
-console.log('== retrieval over docs/');
-const idx = KnowledgeIndex.open(':memory:');
-const docsDir = path.join(repo, 'docs');
-const walk = async (dir: string): Promise<string[]> => (await fs.readdir(dir, { withFileTypes: true })).flatMap((e) => (e.isDirectory() ? [] : [path.join(dir, e.name)]));
-let files: string[] = [];
-for (const d of ['superpowers/specs', 'superpowers/spikes']) files = files.concat(await walk(path.join(docsDir, d)).catch(() => []));
-for (const f of files.filter((f) => f.endsWith('.md'))) idx.index({ id: path.relative(repo, f), kind: f.includes('/specs/') ? 'spec' : 'other', title: path.basename(f), text: await fs.readFile(f, 'utf8') });
-console.log(`  indexed ${idx.count()} chunks from ${files.length} files`);
-for (const query of ['quota breaker rate limit reset', 'sandbox bubblewrap socat', 'merge queue head commit']) {
-  const hits = idx.search(query, { k: 2 });
-  console.log(`  "${query}" →`, hits.map((h) => `${h.title}${h.heading ? ' › ' + h.heading : ''} (${h.score.toFixed(2)})`));
+  console.log('== retrieval over docs/');
+  const idx = KnowledgeIndex.open(':memory:');
+  const docsDir = path.join(repo, 'docs');
+  const walk = async (dir: string): Promise<string[]> => (await fs.readdir(dir, { withFileTypes: true })).flatMap((e) => (e.isDirectory() ? [] : [path.join(dir, e.name)]));
+  let files: string[] = [];
+  for (const d of ['superpowers/specs', 'superpowers/spikes']) files = files.concat(await walk(path.join(docsDir, d)).catch(() => []));
+  for (const f of files.filter((f) => f.endsWith('.md'))) idx.index({ id: path.relative(repo, f), kind: f.includes('/specs/') ? 'spec' : 'other', title: path.basename(f), text: await fs.readFile(f, 'utf8') });
+  console.log(`  indexed ${idx.count()} chunks from ${files.length} files`);
+  for (const query of ['quota breaker rate limit reset', 'sandbox bubblewrap socat', 'merge queue head commit']) {
+    const hits = idx.search(query, { k: 2 });
+    console.log(`  "${query}" →`, hits.map((h) => `${h.title}${h.heading ? ' › ' + h.heading : ''} (${h.score.toFixed(2)})`));
+  }
+
+  const pack = buildContextPack({
+    kind: 'dev',
+    role: 'dev',
+    specHash: `sha256:${'a'.repeat(64)}`,
+    principles: ['Every acceptance test carries its [AC-xxx] tag'],
+    outputContract: 'Return the dev output JSON.',
+    criteria: [],
+    code,
+    retrieval: idx.search('quota breaker', { k: 2 }),
+    budgetTokens: 3000,
+  });
+  console.log(`== pack: ${pack.tokens} tokens, sections ${pack.sections.join(',')}, dropped ${pack.dropped.join(',') || 'none'}`);
+  idx.close();
+} finally {
+  await fs.rm(outDir, { recursive: true, force: true });
 }
-
-const pack = buildContextPack({
-  kind: 'dev',
-  role: 'dev',
-  specHash: `sha256:${'a'.repeat(64)}`,
-  principles: ['Every acceptance test carries its [AC-xxx] tag'],
-  outputContract: 'Return the dev output JSON.',
-  criteria: [],
-  code,
-  retrieval: idx.search('quota breaker', { k: 2 }),
-  budgetTokens: 3000,
-});
-console.log(`== pack: ${pack.tokens} tokens, sections ${pack.sections.join(',')}, dropped ${pack.dropped.join(',') || 'none'}`);
-idx.close();
-await fs.rm(outDir, { recursive: true, force: true });
 ```
 
 Run: `npm run typecheck`
