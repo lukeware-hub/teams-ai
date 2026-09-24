@@ -54,6 +54,8 @@ export interface RunDeps {
   /** Test hook: the journal throws CrashInjected right after appending a matching intent. */
   crashAfterIntent?: (intentId: string) => boolean;
   maxParallel?: number;
+  /** Claude Code's trust file; tests point it into a temp dir so they never touch the real ~/.claude.json. */
+  claudeJsonPath?: string;
 }
 
 export type ExecuteResult = RunResult | 'paused:auth';
@@ -174,7 +176,7 @@ export class Run {
       binary: this.deps.binary,
       caps: cfg.budgets.step,
       accounting: this.accounting,
-      claudeJsonPath: expandHome('~/.claude.json'),
+      claudeJsonPath: this.deps.claudeJsonPath ?? expandHome('~/.claude.json'),
       settingsDir: path.posix.join(runDir(ws, this.runId), 'settings'),
       workspacesRoot: ws.root,
       network: { allowedDomains: ['registry.npmjs.org', ...(cfg.omniroute.enabled ? ['localhost'] : [])] },

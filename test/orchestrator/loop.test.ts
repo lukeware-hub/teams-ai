@@ -67,6 +67,7 @@ function deps(scenario: Scenario, over: Partial<RunDeps> = {}): RunDeps {
     graphify: null, knowledge: null, secrets: {},
     log: () => {},
     maxParallel: 1,
+    claudeJsonPath: path.join(remote.root, '.claude.json'),
     ...over,
   };
 }
