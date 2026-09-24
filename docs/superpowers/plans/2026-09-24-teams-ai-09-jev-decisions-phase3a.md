@@ -1,6 +1,6 @@
 # teams-ai Plan 9 — Jev Decisions Phase 3a Implementation Plan
 
-**Status: partially implemented — see "Out of scope (deliberately)" below.** `server/decide/decisions/` (attempt-progress, gate-triage, model-tier, pr-risk) exists with matching tests, wired into `server/orchestrator/`. Decisions 2–4, 7, 9, 12 are not wired (depend on refine/validation flows not yet in the orchestrator); Evals (spec 10A.6) are not built; `decisions.enabled` still defaults to `false` (operator must flip it). Filename renamed from `2026-09-24-jev-decisions-phase3a.md` to fit the 01..08 plan numbering as plan 9.
+**Status: partially implemented — see "Out of scope (deliberately)" below.** `server/decide/decisions/` (attempt-progress, gate-triage, model-tier, pr-risk, scope-drift) exists with matching tests, wired into `server/orchestrator/`. Decision 9 (scope drift) was added after this plan: high drift forces the deep review profile at `task-runner.review()`. Decisions 2–4, 7, 12 are not wired (depend on refine/validation flows and a multi-candidate SM contract not yet in the orchestrator); Evals (spec 10A.6) are not built; `decisions.enabled` still defaults to `false` (operator must flip it). Filename renamed from `2026-09-24-jev-decisions-phase3a.md` to fit the 01..08 plan numbering as plan 9.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

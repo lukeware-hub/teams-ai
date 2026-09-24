@@ -12,6 +12,7 @@ import { assessAttemptProgress } from '../decide/decisions/attempt-progress.js';
 import { triageGateFailure } from '../decide/decisions/gate-triage.js';
 import { chooseModelTier, type Effort, type ModelTier, type ModelTierResult } from '../decide/decisions/model-tier.js';
 import { REVIEW_PROFILE_DEPTH, choosePrRisk } from '../decide/decisions/pr-risk.js';
+import { assessScopeDrift } from '../decide/decisions/scope-drift.js';
 import type { Role } from '../config/config.js';
 import type { TestResult } from '../evidence/junit.js';
 import { verifyClaimedEvidence } from '../evidence/matrix.js';
@@ -86,6 +87,7 @@ export class TaskRunner {
   private mergeRefusals = 0;
   private tierAttempt = 0;
   private tierChoice: ModelTierResult | null = null;
+  private scopeJustification: string | undefined;
   private readonly maxSpecGapRounds: number;
 
   constructor(
@@ -226,6 +228,7 @@ export class TaskRunner {
     const touched = (await porcelainNames(this.worktree, this.deps.exec)).filter((f) => f !== this.deps.plan.junitPath);
     const scope = checkScope({ changedFiles: touched, affectedPaths: task.def.affectedPaths, frozenPaths: this.deps.plan.frozenPaths, scopeJustification: value.scopeJustification, allowFrozen: this.deps.firstSpec && this.taskId === 'T0-scaffold' });
     if (!scope.ok) return this.fail('review-changes', `Scope violation:\n${scope.errors.join('\n')}`);
+    this.scopeJustification = value.scopeJustification;
     // baseSha lets reconcile tell "committed, then crashed" from "crashed before committing" (spec §6).
     const baseSha = await git(this.worktree, ['rev-parse', 'HEAD'], this.deps.exec);
     await this.deps.journal.intent(Intent.Commit, commitKey, { taskId: this.taskId, worktree: this.worktree, message: value.commitMessage, baseSha });
@@ -297,10 +300,15 @@ export class TaskRunner {
     const diffStat = await git(this.worktree, ['diff', '--stat', 'origin/main...HEAD'], this.deps.exec);
     // Spec 10A.5 decision 5: risk picks the review profile (context depth); the review itself always runs.
     const risk = await choosePrRisk(this.task.def, { changedFiles: changed, diffStat }, this.deps.decider, this.ctx);
-    await this.deps.journal.fact(OrchEvent.ReviewProfileChosen, { taskId: this.taskId, risk: risk.risk, profile: risk.profile, source: risk.source });
-    const depth = REVIEW_PROFILE_DEPTH[risk.profile];
+    // Spec 10A.5 decision 9: high scope drift forces the deep profile; it never blocks the task.
+    const outOfScope = checkScope({ changedFiles: changed, affectedPaths: this.task.def.affectedPaths, frozenPaths: this.deps.plan.frozenPaths, scopeJustification: this.scopeJustification, allowFrozen: true }).outOfScope;
+    const drift = await assessScopeDrift(this.task.def, { changedFiles: changed, outOfScope, scopeJustification: this.scopeJustification, diffStat }, this.deps.decider, this.ctx);
+    await this.deps.journal.fact(OrchEvent.ScopeDriftScored, { taskId: this.taskId, drift: drift.drift, unrequired: drift.unrequired, source: drift.source });
+    const profile = drift.drift === 'high' ? 'deep' : risk.profile;
+    await this.deps.journal.fact(OrchEvent.ReviewProfileChosen, { taskId: this.taskId, risk: risk.risk, profile, source: risk.source, forcedBy: profile === risk.profile ? null : 'scope-drift' });
+    const depth = REVIEW_PROFILE_DEPTH[profile];
     const code: CodeContext = depth === 0 ? { source: 'none' } : await this.deps.impact(this.worktree, this.branch, changed, depth);
-    const pack = reviewPack(this.deps.packBase(), this.task.def, { diffStat, changedFiles: changed, code, profile: risk.profile });
+    const pack = reviewPack(this.deps.packBase(), this.task.def, { diffStat, changedFiles: changed, code, profile });
     const outcome = await this.deps.runAgent<'review'>({
       kind: 'review',
       role: 'test',

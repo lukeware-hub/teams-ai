@@ -17,6 +17,7 @@ export const OrchEvent = {
   ReviewApproved: 'REVIEW_APPROVED',
   ReviewChanges: 'REVIEW_CHANGES',
   ReviewProfileChosen: 'REVIEW_PROFILE_CHOSEN',
+  ScopeDriftScored: 'SCOPE_DRIFT_SCORED',
   SpecGapAnswered: 'SPEC_GAP_ANSWERED',
   DecisionMade: 'DECISION_MADE',
   MergeLockAcquired: 'MERGE_LOCK_ACQUIRED',

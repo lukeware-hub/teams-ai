@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { DecisionOutcome } from '../../server/decide/types.js';
 import { execCommand } from '../../server/exec/command.js';
 import type { GateResult } from '../../server/exec/gate-runner.js';
 import { git, headSha } from '../../server/git/git.js';
@@ -384,6 +385,24 @@ describe('TaskRunner: review profile', () => {
     await r.advance(); await r.advance(); await r.advance();
     expect(depths).toEqual([]);
     expect(agentCalls.find((c) => c.kind === 'review')!.pack.code).toEqual({ source: 'none' });
+  });
+
+  it('high scope drift forces the deep profile over a trivial risk and never blocks the task', async () => {
+    const depths: number[] = [];
+    const decider = {
+      decide: async (id: string): Promise<DecisionOutcome> => {
+        if (id === 'pr-risk') return { answered: true as const, backend: 'jev' as const, escalated: false, answers: { risk: { type: 'score' as const, value: 0, probabilities: {}, confidence: 0.9 } } };
+        if (id === 'scope-drift') return { answered: true as const, backend: 'jev' as const, escalated: false, answers: { unrequired: { type: 'noul' as const, value: 0.9, probabilities: { yes: 0.9, no: 0.1 }, confidence: 0.9 } } };
+        return { answered: false as const, reason: 'disabled' as const };
+      },
+    };
+    const r = new TaskRunner('T1', deps({ agent, decider, impact: async (_w, _b, _c, depth) => { depths.push(depth); return { source: 'none' }; } }));
+    await r.advance(); await r.advance(); await r.advance();
+    expect(depths).toEqual([3]);
+    expect(journal.events.find((e) => e.type === OrchEvent.ScopeDriftScored)!.data).toMatchObject({ taskId: 'T1', drift: 'high', unrequired: [], source: 'jev' });
+    expect(journal.events.find((e) => e.type === OrchEvent.ReviewProfileChosen)!.data).toMatchObject({ risk: 'trivial', profile: 'deep', forcedBy: 'scope-drift' });
+    expect(agentCalls.find((c) => c.kind === 'review')!.pack.feedback).toContain('Review profile: deep');
+    expect(r.task.state).not.toBe('blocked');
   });
 });
 

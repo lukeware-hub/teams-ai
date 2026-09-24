@@ -25,13 +25,29 @@ decision layer and plan 7's orchestrator.
 
 ## Outstanding work
 
-- **`decisions.enabled` is `false` by default** (`server/config/config.ts:108`) — the System 1 decision layer
-  (plan 5) and the phase-3a decisions (plan 9) exist and are wired, but do not run in a live orchestrator run
-  until an operator flips this flag.
-- **Plan 9 — decisions 2–4, 7, 9, 12 not wired.** They depend on refine/validation flows not yet built into
-  `server/orchestrator/`.
-- **Plan 9 — Evals (spec §10A.6) not built.** Labeled fixtures are meant to grow from `DECISION_MADE` journal
-  records these decisions now produce, but the eval harness itself does not exist yet.
+Ordered by what unblocks what. Spec references are to `docs/superpowers/specs/2026-09-23-teams-ai-poc-design.md`.
+
+- **Golden run comparison (spec §1.3) — only run 1 done.** Plan 7 records one live baseline run on hello-app
+  (`hello-001-r1`, decisions off, $3.33). Run 2 (OmniRoute for Test/DevOps, decisions off) and run 3 (decisions
+  on) have not been executed. `decisions.enabled` defaulting to `false` (`server/config/config.ts:108`) is by
+  design for runs 1–2 — it is not a bug; run 3 flips it per run, not in the default.
+- **Decision 8 (CLI error classification) — deterministic rules only.** `classifyFailure`
+  (`server/runner/step.ts:69`) falls through to `code`; the spec says System 1 runs "when rules do not match" with
+  default `other`. Low value until a real run shows misclassified failures; leave for after run 3.
+- **Decision 12 (rank candidate plans) — blocked on the SM contract.** `server/contracts/plan.ts` and
+  `server/agents/outputs.ts` have no notion of multiple candidate plans; the SM authors exactly one. Needs a
+  contract change first.
+- **Decisions 2–4 (Gate 1 readiness, question dedup, contradiction) — blocked on the refinement flow.** No
+  Gate 1 / refinement loop exists in `server/orchestrator/` (spec UI screen 2 "Refinement"); only contracts and
+  config mention it.
+- **Decision 7 (validation report routing) — blocked on the validation flow.** No post-human-validation step
+  exists in `server/orchestrator/` (spec UI screen 4 "Validation").
+- **`local-logprobs` backend (spec §10A.2a, phase 2) — stub only.** `server/decide/local-stub.ts` always reports
+  unavailable; `create-decider.ts:26` wires the stub. Without it every low-confidence or Jev-unavailable decision
+  goes straight to Claude escalation.
+- **Decision evals (spec §10A.6) — not built.** Labeled fixtures are meant to grow from `DECISION_MADE` journal
+  records; the eval harness (accuracy, Brier, ECE, escalation rate, latency per decision and model) does not exist.
+  Depends on having enough journal records, i.e. run 3.
 - **Plan 8 — two live-verification items still open** (see the plan's `## Findings` section):
   1. A real `claude auth login` transcript (URL line, paste-prompt wording, time to `loggedIn`) has not been
      recorded on a fresh host / after `claude auth logout` — the live run tested a host that was already logged in.
