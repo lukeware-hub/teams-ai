@@ -84,3 +84,67 @@ describe('projects', () => {
     expect((await fetch(`${base()}/api/projects/nobody/runs`)).status).toBe(404);
   });
 });
+
+describe('start, resume, stop', () => {
+  it('starts a run: computes the next id, spawns the CLI, waits for the journal, writes the pid', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), { type: 'RUN_FINISHED', data: { result: 'complete' } }], state('running'));
+    onSpawn = async (runId) => {
+      await writeRun(runs, runId, [started(runId)], state('running'));
+    };
+    const r = await post('/api/projects/hello-app/specs/hello-001/runs');
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ runId: 'hello-001-r2' });
+    expect(spawns[0]!.args).toEqual(['cli', 'run', '--project', HELLO, '--spec', 'hello-001', '--run-id', 'hello-001-r2']);
+    expect(spawns[0]!.logFile).toBe(path.join(runs, 'hello-001-r2', 'ui.log'));
+    expect(await fs.readFile(path.join(runs, 'hello-001-r2', 'pid'), 'utf8')).toBe('5001');
+    const rows = await (await fetch(`${base()}/api/projects/hello-app/runs`)).json();
+    expect(rows[0]).toMatchObject({ runId: 'hello-001-r2', status: 'running', stoppable: true });
+  });
+
+  it('refuses to start while the spec has an active run, or for an unknown spec', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 900);
+    alive.add(900);
+    expect((await post('/api/projects/hello-app/specs/hello-001/runs')).status).toBe(409);
+    expect((await post('/api/projects/hello-app/specs/nope/runs')).status).toBe(404);
+    expect(spawns).toHaveLength(0);
+  });
+
+  it('reports 500 with the log tail when the child never writes a journal', async () => {
+    onSpawn = async (runId) => {
+      await fs.mkdir(path.join(runs, runId), { recursive: true });
+      await fs.writeFile(path.join(runs, runId, 'ui.log'), 'preconditions failed:\n- claude is not logged in\n');
+      alive.clear();
+    };
+    const r = await post('/api/projects/hello-app/specs/hello-001/runs');
+    expect(r.status).toBe(500);
+    expect((await r.json()).error).toContain('claude is not logged in');
+  }, 15_000);
+
+  it('resume is allowed only for paused:auth or interrupted runs', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('paused:auth'));
+    await writeRun(runs, 'hello-001-r2', [started('hello-001-r2'), { type: 'RUN_FINISHED', data: { result: 'complete' } }], state('running'));
+    await writeRun(runs, 'hello-001-r3', [started('hello-001-r3')], state('running'), 901);
+    onSpawn = async () => {};
+    const ok = await post('/api/runs/hello-001-r1/resume');
+    expect(ok.status).toBe(200);
+    expect(spawns[0]!.args).toEqual(['cli', 'resume', '--project', HELLO, '--run', 'hello-001-r1']);
+    expect(await fs.readFile(path.join(runs, 'hello-001-r1', 'pid'), 'utf8')).toBe('5001');
+    expect((await post('/api/runs/hello-001-r2/resume')).status).toBe(409);
+    const interrupted = await post('/api/runs/hello-001-r3/resume'); // pid 901 is dead
+    expect(interrupted.status).toBe(200);
+    expect((await post('/api/runs/missing/resume')).status).toBe(404);
+    expect((await post('/api/runs/..%2Fx/resume')).status).toBe(400);
+  });
+
+  it('stop signals the group and removes the pid; 409 without a live pid', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 950);
+    alive.add(950);
+    const r = await post('/api/runs/hello-001-r1/stop');
+    expect(await r.json()).toEqual({ stopped: true, how: 'terminated' });
+    expect(signals).toContainEqual([-950, 'SIGTERM']);
+    await expect(fs.access(path.join(runs, 'hello-001-r1', 'pid'))).rejects.toThrow();
+    expect((await post('/api/runs/hello-001-r1/stop')).status).toBe(409);
+    await writeRun(runs, 'hello-001-r2', [started('hello-001-r2')], state('running'));
+    expect((await post('/api/runs/hello-001-r2/stop')).status).toBe(409);
+  });
+});

@@ -59,7 +59,7 @@ export function stepDir(ws: Workspace, runId: string, seq: number): string {
 }
 
 /** `<specId>-r<n>`, n = 1 + the highest existing run number for that spec. */
-export async function nextRunId(ws: Workspace, specId: string): Promise<string> {
+export async function nextRunId(ws: Pick<Workspace, 'runs'>, specId: string): Promise<string> {
   let names: string[] = [];
   try {
     names = await fs.readdir(ws.runs);
