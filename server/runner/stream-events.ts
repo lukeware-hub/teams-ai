@@ -40,6 +40,14 @@ export interface Usage {
   cacheWriteTokens: number;
 }
 
+export interface RateLimitInfo {
+  status: string;
+  fiveHourUtilization: number | null;
+  fiveHourResetsAt: number | null;
+  sevenDayUtilization: number | null;
+  sevenDayResetsAt: number | null;
+}
+
 export interface ResultSummary {
   found: boolean;
   isError: boolean;
@@ -50,6 +58,12 @@ export interface ResultSummary {
   usage: Usage;
   sessionId: string | null;
   resultText: string | null;
+  /** Parsed --json-schema output (CLI 2.1.281 puts it in result.structured_output). */
+  structuredOutput: unknown | null;
+  /** e.g. "completed", "rapid_refill_breaker"; the CLI may report is_error=true with subtype "success". */
+  terminalReason: string | null;
+  /** Latest rate_limit_event in the stream (subscription usage windows). */
+  rateLimit: RateLimitInfo | null;
   compactions: number;
 }
 
@@ -63,6 +77,8 @@ const ResultEvent = z
     result: z.string().optional(),
     session_id: z.string().optional(),
     total_cost_usd: z.number().optional(),
+    structured_output: z.unknown().optional(),
+    terminal_reason: z.string().nullable().optional(),
     usage: z
       .object({
         input_tokens: z.number().optional(),
@@ -77,9 +93,42 @@ const ResultEvent = z
 
 const ZERO_USAGE: Usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
 
+const RateLimitEvent = z
+  .object({
+    type: z.literal('rate_limit_event'),
+    rate_limit_info: z
+      .object({
+        status: z.string(),
+        unifiedWindows: z
+          .object({
+            five_hour: z.object({ utilization: z.number().optional(), resetsAt: z.number().optional() }).optional(),
+            seven_day: z.object({ utilization: z.number().optional(), resetsAt: z.number().optional() }).optional(),
+          })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+function latestRateLimit(events: readonly StreamEvent[]): RateLimitInfo | null {
+  const raw = [...events].reverse().find((e) => e.type === 'rate_limit_event');
+  const parsed = raw ? RateLimitEvent.safeParse(raw) : null;
+  if (!parsed || !parsed.success) return null;
+  const info = parsed.data.rate_limit_info;
+  return {
+    status: info.status,
+    fiveHourUtilization: info.unifiedWindows?.five_hour?.utilization ?? null,
+    fiveHourResetsAt: info.unifiedWindows?.five_hour?.resetsAt ?? null,
+    sevenDayUtilization: info.unifiedWindows?.seven_day?.utilization ?? null,
+    sevenDayResetsAt: info.unifiedWindows?.seven_day?.resetsAt ?? null,
+  };
+}
+
 export function summarizeStream(parsed: ParsedStream): ResultSummary {
   const compactions = parsed.events.filter((e) => e.type === 'system' && e.subtype === 'compact_boundary').length;
   const sessionId = parsed.events.find((e) => typeof e.session_id === 'string')?.session_id ?? null;
+  const rateLimit = latestRateLimit(parsed.events);
   const raw = [...parsed.events].reverse().find((e) => e.type === 'result');
   const result = raw ? ResultEvent.safeParse(raw) : null;
   if (!result || !result.success) {
@@ -93,6 +142,9 @@ export function summarizeStream(parsed: ParsedStream): ResultSummary {
       usage: ZERO_USAGE,
       sessionId,
       resultText: null,
+      structuredOutput: null,
+      terminalReason: null,
+      rateLimit,
       compactions,
     };
   }
@@ -112,6 +164,9 @@ export function summarizeStream(parsed: ParsedStream): ResultSummary {
     },
     sessionId: r.session_id ?? sessionId,
     resultText: r.result ?? null,
+    structuredOutput: r.structured_output ?? null,
+    terminalReason: r.terminal_reason ?? null,
+    rateLimit,
     compactions,
   };
 }
