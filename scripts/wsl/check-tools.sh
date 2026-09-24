@@ -28,7 +28,8 @@ printf '{"host":{"kernel":"%s","distro":"%s","onLinuxFs":%s},"tools":[' \
   "$(uname -r)" "${WSL_DISTRO_NAME:-unknown}" \
   "$( [[ "$(pwd -P)" == /mnt/* ]] && echo false || echo true )"
 for t in "${tools[@]}"; do
-  if command -v "$t" >/dev/null 2>&1; then present=true; v="$(version_of "$t" || true)"; else present=false; v=""; fi
+  # Only Linux binaries count: Windows interop exposes /mnt/c/... tools (kubectl.exe, npm.cmd) that the orchestrator must not use.
+  if p="$(command -v "$t" 2>/dev/null)" && [[ "$p" != /mnt/* ]]; then present=true; v="$(version_of "$t" || true)"; else present=false; v=""; fi
   [[ $first -eq 1 ]] || printf ','
   first=0
   if [[ -n "$v" ]]; then printf '{"name":"%s","present":%s,"version":"%s"}' "$t" "$present" "${v//\"/}"
