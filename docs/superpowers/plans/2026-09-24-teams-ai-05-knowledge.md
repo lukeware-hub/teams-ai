@@ -360,7 +360,7 @@ git commit -m "feat: add heading-aware chunker and FTS5 knowledge index" -m "Co-
   - `grepFallback(repoDir: string, terms: readonly string[], exec: Exec, opts?: { maxHits?: number }): Promise<Array<{ file: string; line: number; text: string }>>` — `git grep -n -I -i -e <t> [-e <t>...]` restricted to tracked files
   - `MIN_COVERAGE = 0.5` — below this the context pack uses grep instead of the graph (spec §9 fallback)
 
-The `outDir` is outside the repository (`workspaces/<p>/graph/`, spec §9); graphify writes `graphify-out/` inside the directory it is run in, so `update` runs with `cwd = outDir` on a path argument pointing at the repo and passes `--graph` explicitly to the read commands.
+The `outDir` is outside the repository (`workspaces/<p>/graph/`, spec §9). graphify writes `graphify-out/` next to the path it scans (verified in WSL), so `update` runs inside the repository and then moves `graphify-out/` to `outDir`; the read commands receive `--graph <outDir>/graphify-out/graph.json` explicitly. Plan 6 adds `graphify-out/` to the worktree's `.git/info/exclude`.
 
 - [ ] **Step 1: Write the fixtures (recorded from graphify 0.9.67 on this repository)**
 
@@ -457,11 +457,18 @@ describe('parsers', () => {
 describe('Graphify', () => {
   const files = (map: Record<string, string>) => async (p: string) => map[p.replace(/\\/g, '/')] ?? null;
 
-  it('runs update without LLM features and reports coverage from graph.json', async () => {
+  it('runs update inside the repo, then moves graphify-out outside it and reports coverage', async () => {
     const fake = new FakeExec();
-    const g = new Graphify({ exec: fake.exec, readFile: files({ '/ws/graph/graphify-out/graph.json': fx('graph.json') }) });
+    const moves: Array<[string, string]> = [];
+    const g = new Graphify({
+      exec: fake.exec,
+      readFile: files({ '/ws/graph/graphify-out/graph.json': fx('graph.json') }),
+      moveDir: async (from, to) => void moves.push([from.replace(/\\/g, '/'), to.replace(/\\/g, '/')]),
+    });
     const cov = await g.update('/ws/repo', '/ws/graph');
-    expect(fake.calls[0]).toMatchObject({ bin: 'graphify', args: ['update', '/ws/repo', '--no-cluster'], cwd: '/ws/graph' });
+    // graphify writes graphify-out/ next to the path it scans; the graph must not live in the repository (spec §9).
+    expect(fake.calls[0]).toMatchObject({ bin: 'graphify', args: ['update', '.', '--no-cluster'], cwd: '/ws/repo' });
+    expect(moves).toEqual([['/ws/repo/graphify-out', '/ws/graph/graphify-out']]);
     expect(cov).toEqual({ extracted: 3, failed: 1, nodes: 2, links: 1, ratio: 0.75 });
   });
 
@@ -584,9 +591,27 @@ export function parseGodNodes(text: string): Array<{ label: string; edges: numbe
   return out;
 }
 
+export interface GraphifyDeps {
+  exec: Exec;
+  readFile: (absolutePath: string) => Promise<string | null>;
+  /** Moves a directory (replacing the destination); defaults to fs.rename with a prior rm. */
+  moveDir?: (from: string, to: string) => Promise<void>;
+}
+
+async function defaultMoveDir(from: string, to: string): Promise<void> {
+  const fs = await import('node:fs/promises');
+  await fs.rm(to, { recursive: true, force: true });
+  await fs.mkdir(path.dirname(to), { recursive: true });
+  await fs.rename(from, to);
+}
+
 /** Thin wrapper over the graphify CLI; no LLM-backed feature is ever invoked. */
 export class Graphify {
-  constructor(private readonly deps: { exec: Exec; readFile: (absolutePath: string) => Promise<string | null> }) {}
+  private readonly moveDir: (from: string, to: string) => Promise<void>;
+
+  constructor(private readonly deps: GraphifyDeps) {
+    this.moveDir = deps.moveDir ?? defaultMoveDir;
+  }
 
   private graphPath(outDir: string) {
     return path.posix.join(outDir.replace(/\\/g, '/'), 'graphify-out', 'graph.json');
@@ -601,9 +626,19 @@ export class Graphify {
     }
   }
 
-  /** AST-only rebuild after a merge (spec §9 layer 2); the graph lives outside the repository. */
+  /**
+   * AST-only rebuild after a merge (spec §9 layer 2). graphify writes `graphify-out/` next to the
+   * path it scans, so the run happens inside the repository and the output is moved to `outDir`;
+   * the graph never lives in the repository (and Plan 6 excludes `graphify-out/` via .git/info/exclude).
+   */
   async update(repoDir: string, outDir: string): Promise<GraphCoverage> {
-    await this.run(['update', repoDir, '--no-cluster'], outDir);
+    await this.run(['update', '.', '--no-cluster'], repoDir);
+    const produced = path.join(repoDir, 'graphify-out');
+    try {
+      await this.moveDir(produced, path.join(outDir, 'graphify-out'));
+    } catch {
+      /* nothing produced (unsupported repo) → coverage 0 below */
+    }
     return this.coverage(outDir);
   }
 
