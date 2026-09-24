@@ -1,0 +1,56 @@
+import path from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { ALWAYS_DENIED, AgentFileError, ROLE_TOOL_POLICY, loadAgents, parseAgentFile } from '../../server/agents/registry.js';
+
+const AGENTS_DIR = path.resolve('.claude/agents');
+
+describe('parseAgentFile', () => {
+  it('parses frontmatter and body', () => {
+    const def = parseAgentFile(`---\nname: dev\ndescription: Developer.\nmodel: opus\ntools: Read, Edit, Bash\n---\n\nEcho the specHash.\n`, 'dev');
+    expect(def).toEqual({ role: 'dev', description: 'Developer.', model: 'opus', tools: ['Read', 'Edit', 'Bash'], body: 'Echo the specHash.' });
+  });
+
+  it('rejects a name that does not match the expected role', () => {
+    expect(() => parseAgentFile(`---\nname: po\ndescription: x\nmodel: opus\ntools: Read\n---\nb`, 'dev')).toThrow(AgentFileError);
+  });
+
+  it('rejects missing frontmatter fields', () => {
+    expect(() => parseAgentFile(`---\nname: dev\nmodel: opus\ntools: Read\n---\nb`, 'dev')).toThrow(/description/);
+  });
+
+  it('rejects a tool outside the role policy', () => {
+    expect(() => parseAgentFile(`---\nname: devops\ndescription: x\nmodel: sonnet\ntools: Read, Bash\n---\nb`, 'devops')).toThrow(/Bash/);
+    expect(() => parseAgentFile(`---\nname: sm\ndescription: x\nmodel: opus\ntools: Read, Edit\n---\nb`, 'sm')).toThrow(/Edit/);
+  });
+
+  it('rejects an always-denied pattern even for roles that may use Bash', () => {
+    expect(() => parseAgentFile(`---\nname: dev\ndescription: x\nmodel: opus\ntools: Read, Bash(gh:*)\n---\nb`, 'dev')).toThrow(/gh/);
+  });
+
+  it('rejects a body that does not mention specHash', () => {
+    expect(() => parseAgentFile(`---\nname: dev\ndescription: x\nmodel: opus\ntools: Read\n---\nNo hash rule here.`, 'dev')).toThrow(/specHash/);
+  });
+});
+
+describe('loadAgents', () => {
+  it('loads all five role files from .claude/agents', async () => {
+    const agents = await loadAgents(AGENTS_DIR);
+    expect(Object.keys(agents).sort()).toEqual(['dev', 'devops', 'po', 'sm', 'test']);
+    expect(agents.dev.tools).toContain('Bash');
+    expect(agents.devops.tools).not.toContain('Bash');
+    expect(agents.sm.model).toBe('opus');
+    expect(agents.test.model).toBe('sonnet');
+  });
+
+  it('every role file respects its policy and the always-denied list', async () => {
+    const agents = await loadAgents(AGENTS_DIR);
+    for (const def of Object.values(agents)) {
+      for (const tool of def.tools) expect(ROLE_TOOL_POLICY[def.role].allowed).toContain(tool);
+      for (const denied of ALWAYS_DENIED) expect(def.tools).not.toContain(denied);
+    }
+  });
+
+  it('fails when a role file is missing', async () => {
+    await expect(loadAgents(path.resolve('test/fixtures/no-such-dir'))).rejects.toThrow(AgentFileError);
+  });
+});
