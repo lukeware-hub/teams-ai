@@ -331,7 +331,7 @@ export class KnowledgeIndex {
 - [ ] **Step 5: Run tests and typecheck**
 
 Run: `npx vitest run test/knowledge/retrieval.test.ts && npm run typecheck`
-Expected: 10 tests PASS; typecheck exits 0. (An `ExperimentalWarning: SQLite` line on stderr is expected.) If `snippet()` returns an empty string for the top hit because the match is in the `heading` column, change the snippet column index from `1` to `-1` (all columns) and keep the assertion.
+Expected: 9 tests PASS; typecheck exits 0. (An `ExperimentalWarning: SQLite` line on stderr is expected.) If `snippet()` returns an empty string for the top hit because the match is in the `heading` column, change the snippet column index from `1` to `-1` (all columns) and keep the assertion.
 
 - [ ] **Step 6: Commit**
 
