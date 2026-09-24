@@ -1,0 +1,143 @@
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { loadAgents } from './agents/registry.js';
+import { loadConfig, type Config } from './config/config.js';
+import { Project } from './contracts/project.js';
+import { Spec } from './contracts/spec.js';
+import { loadSecrets } from './core/secrets.js';
+import { execCommand, type Exec } from './exec/command.js';
+import { Graphify } from './knowledge/graphify.js';
+import { KnowledgeIndex } from './knowledge/retrieval.js';
+import { Run, type ExecuteResult, type RunDeps } from './orchestrator/run.js';
+import { expandHome, stateFile, workspacePaths } from './orchestrator/workspace.js';
+import { runStep } from './runner/step.js';
+
+export interface CliIo {
+  argv: string[];
+  env: NodeJS.ProcessEnv;
+  stdout: (s: string) => void;
+  stderr: (s: string) => void;
+}
+
+const USAGE = `Usage:
+  teams-ai run    --project <dir> [--spec <id>] [--max-parallel N] [--dry-run]
+  teams-ai resume --project <dir> --run <runId>
+  teams-ai status --project <dir> --run <runId> [--json]`;
+
+function flags(argv: string[]): Record<string, string | true> {
+  const out: Record<string, string | true> = {};
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (!a.startsWith('--')) continue;
+    const next = argv[i + 1];
+    if (next !== undefined && !next.startsWith('--')) {
+      out[a.slice(2)] = next;
+      i++;
+    } else out[a.slice(2)] = true;
+  }
+  return out;
+}
+
+export function exitCode(result: ExecuteResult): number {
+  if (result === 'complete') return 0;
+  if (result === 'drained') return 3;
+  return 2;
+}
+
+async function readJson<T>(file: string, parse: (v: unknown) => T): Promise<T> {
+  return parse(JSON.parse(await fs.readFile(file, 'utf8')));
+}
+
+async function preconditions(exec: Exec, repo: string, specId: string): Promise<string[]> {
+  const errors: string[] = [];
+  const check = async (label: string, spec: Parameters<Exec>[0], test?: (stdout: string) => boolean) => {
+    const r = await exec(spec).catch(() => null);
+    if (!r || r.exitCode !== 0 || (test && !test(r.stdout))) errors.push(label);
+  };
+  await check('repo/ is not a git clone with origin', { bin: 'git', args: ['-C', repo, 'ls-remote', '--exit-code', 'origin', 'refs/heads/main'], timeoutMs: 60_000 });
+  await check('main lacks docs/project.json', { bin: 'git', args: ['-C', repo, 'cat-file', '-e', 'origin/main:docs/project.json'], timeoutMs: 10_000 });
+  await check(`main lacks docs/specs/${specId}/spec.json`, { bin: 'git', args: ['-C', repo, 'cat-file', '-e', `origin/main:docs/specs/${specId}/spec.json`], timeoutMs: 10_000 });
+  await check('claude is not logged in', { bin: 'claude', args: ['auth', 'status', '--json'], timeoutMs: 30_000 }, (out) => /"loggedIn":\s*true/.test(out));
+  await check('gh is not logged in', { bin: 'gh', args: ['auth', 'status'], timeoutMs: 30_000 });
+  await check('docker daemon is not reachable', { bin: 'docker', args: ['version'], timeoutMs: 30_000 });
+  return errors;
+}
+
+export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: string | undefined, opts: { dryRun: boolean; maxParallel?: number }): Promise<RunDeps> {
+  const cfgFile = path.join(expandHome('~/.teams-ai'), 'config.json');
+  const cfg: Config = loadConfig(await fs.readFile(cfgFile, 'utf8').then(JSON.parse).catch(() => ({})));
+  const project = await readJson(path.join(projectDir, 'docs', 'project.json'), (v) => Project.parse(v));
+  const specId = specIdArg ?? (await fs.readdir(path.join(projectDir, 'docs', 'specs'))).sort().at(-1);
+  if (!specId) throw new Error('no spec found under docs/specs and no --spec given');
+  const spec = await readJson(path.join(projectDir, 'docs', 'specs', specId, 'spec.json'), (v) => Spec.parse(v));
+  if (spec.status !== 'running' || !spec.specHash) throw new Error(`spec ${specId} is not frozen (status ${spec.status}); finish Gate 1 first`);
+  const ws = workspacePaths(cfg, project.projectId);
+  const secrets = await loadSecrets(expandHome(cfg.paths.secrets));
+  const exec = execCommand;
+  const ghExec: Exec = (s) => execCommand({ ...s, env: { ...(s.env ?? {}), ...(secrets.GITHUB_TOKEN ? { GH_TOKEN: secrets.GITHUB_TOKEN } : {}) } });
+  const errors = await preconditions(exec, ws.repo, specId);
+  if (errors.length > 0) throw new Error(`preconditions failed:\n- ${errors.join('\n- ')}`);
+  const agents = await loadAgents(path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '.claude', 'agents'));
+  const graphify = new Graphify({ exec, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null) });
+  const knowledge = KnowledgeIndex.open(ws.knowledgeDb);
+  const firstSpec = (await fs.readdir(path.join(projectDir, 'docs', 'specs'))).length === 1;
+  let binary: RunDeps['binary'] = { bin: io.env.CLAUDE_BIN ?? 'claude', prefixArgs: [], env: {}, requireSandboxTools: process.platform === 'linux' };
+  let step = runStep;
+  if (opts.dryRun) {
+    const { Scenario } = await import('../test/fixtures/fake-claude/scenario.js');
+    const scenario = new Scenario(path.join(os.tmpdir(), 'teams-ai-dry-run'));
+    binary = { bin: process.execPath, prefixArgs: [path.resolve('test/fixtures/fake-claude/fake-claude.mjs')], env: {}, requireSandboxTools: false };
+    step = scenario.wrap(runStep);
+    io.stderr('dry run: every agent step answers from the fake claude scenario (set steps in code before use)');
+  }
+  return { cfg, ws, project, spec, firstSpec, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel };
+}
+
+const defaultFactory = (deps: RunDeps, runId?: string): Promise<Run> => (runId ? Run.resume(deps, runId) : Run.create(deps));
+
+/**
+ * `factory` is the seam tests use to substitute the Run; with a custom factory the dependency
+ * loading is best-effort (a missing project on disk yields `null` deps), since the factory owns them.
+ */
+export async function main(io: CliIo, factory: (deps: RunDeps, runId?: string) => Promise<Run> = defaultFactory): Promise<number> {
+  const [command, ...rest] = io.argv;
+  const f = flags(rest);
+  const projectDir = typeof f.project === 'string' ? f.project : null;
+  if (!command || !['run', 'resume', 'status'].includes(command) || !projectDir) {
+    io.stderr(USAGE);
+    if (command && !projectDir) io.stderr('--project <dir> is required');
+    return 2;
+  }
+  try {
+    if (command === 'status') {
+      const cfg = loadConfig({});
+      const project = await readJson(path.join(projectDir, 'docs', 'project.json'), (v) => Project.parse(v));
+      const file = stateFile(workspacePaths(cfg, project.projectId), String(f.run));
+      const state = JSON.parse(await fs.readFile(file, 'utf8')) as { status: string; tasks: Array<{ id: string; state: string; attempts: number }>; tokens: Record<string, number> };
+      if (f.json) io.stdout(JSON.stringify(state, null, 2));
+      else {
+        io.stdout(`run ${String(f.run)}: ${state.status}`);
+        for (const t of state.tasks) io.stdout(`  ${t.id.padEnd(16)} ${t.state.padEnd(13)} attempts=${t.attempts}`);
+        io.stdout(`tokens: in=${state.tokens.inputTokens} out=${state.tokens.outputTokens} cost=$${state.tokens.costUsd}`);
+      }
+      return 0;
+    }
+    const load = loadRunDeps(io, projectDir, typeof f.spec === 'string' ? f.spec : undefined, { dryRun: f['dry-run'] === true, maxParallel: typeof f['max-parallel'] === 'string' ? Number(f['max-parallel']) : undefined });
+    const deps = factory === defaultFactory ? await load : await load.catch(() => null as unknown as RunDeps);
+    const run = await factory(deps, command === 'resume' ? String(f.run) : undefined);
+    io.stderr(`run ${run.runId} started`);
+    const result = await run.execute();
+    await run.close();
+    if (result === 'paused:auth') io.stderr('run paused: claude auth expired; run "claude auth login" and resume');
+    else io.stderr(`run ${run.runId} finished: ${result}`);
+    return exitCode(result);
+  } catch (err) {
+    io.stderr((err as Error).message);
+    return 2;
+  }
+}
+
+if (process.argv[1] && /cli\.(ts|js)$/.test(process.argv[1])) {
+  main({ argv: process.argv.slice(2), env: process.env, stdout: (s) => process.stdout.write(`${s}\n`), stderr: (s) => process.stderr.write(`${s}\n`) }).then((code) => process.exit(code));
+}
