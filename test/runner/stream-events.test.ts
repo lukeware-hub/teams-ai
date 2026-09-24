@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { parseStreamJson, summarizeStream } from '../../server/runner/stream-events.js';
+import { extractJsonObject, parseStreamJson, summarizeStream } from '../../server/runner/stream-events.js';
 
 const fixture = (name: string) => readFileSync(new URL(`../fixtures/stream/${name}.ndjson`, import.meta.url), 'utf8');
 
@@ -37,7 +37,8 @@ describe('summarizeStream', () => {
       usage: { inputTokens: 1200, outputTokens: 210, cacheReadTokens: 9000, cacheWriteTokens: 300 },
       sessionId: 's-1',
       resultText: '{"specHash":"sha256:aa","status":"done"}',
-      structuredOutput: null,
+      structuredOutput: { specHash: 'sha256:aa', status: 'done' },
+      structuredSource: 'text',
       terminalReason: null,
       rateLimit: null,
       compactions: 0,
@@ -89,9 +90,45 @@ describe('summarizeStream against real CLI 2.1.281 recordings', () => {
   });
 
   it('returns null structured output and rate limit when absent', () => {
-    const summary = summarizeStream(parseStreamJson(fixture('success')));
+    const summary = summarizeStream(parseStreamJson(fixture('error-max-turns')));
     expect(summary.structuredOutput).toBeNull();
     expect(summary.rateLimit).toBeNull();
     expect(summary.terminalReason).toBeNull();
+  });
+});
+
+describe('extractJsonObject', () => {
+  it('parses a bare JSON object', () => {
+    expect(extractJsonObject('{"a":1}')).toEqual({ a: 1 });
+  });
+
+  it('strips markdown fences around the object', () => {
+    expect(extractJsonObject('```json\n{\n  "status": "done"\n}\n```')).toEqual({ status: 'done' });
+    expect(extractJsonObject('Here you go:\n```\n{"x":[1,2]}\n```\nDone.')).toEqual({ x: [1, 2] });
+  });
+
+  it('returns null for prose, arrays and invalid JSON', () => {
+    expect(extractJsonObject('OK')).toBeNull();
+    expect(extractJsonObject('[1,2]')).toBeNull();
+    expect(extractJsonObject('{"a":')).toBeNull();
+    expect(extractJsonObject(null)).toBeNull();
+  });
+});
+
+describe('summarizeStream structured output fallback', () => {
+  it('falls back to a JSON object in the result text when structured_output is absent', () => {
+    const summary = summarizeStream(parseStreamJson('{"type":"result","subtype":"success","is_error":false,"result":"```json\\n{\\"status\\":\\"done\\"}\\n```"}\n'));
+    expect(summary.structuredOutput).toEqual({ status: 'done' });
+    expect(summary.structuredSource).toBe('text');
+  });
+
+  it('reports the source as structured when the CLI provided it', () => {
+    const summary = summarizeStream(parseStreamJson(fixture('real-json-schema')));
+    expect(summary.structuredSource).toBe('structured_output');
+  });
+
+  it('reports no source when neither is present', () => {
+    expect(summarizeStream(parseStreamJson(fixture('success'))).structuredSource).toBe('text');
+    expect(summarizeStream(parseStreamJson('{"type":"result","subtype":"success","is_error":false,"result":"OK"}\n')).structuredSource).toBeNull();
   });
 });

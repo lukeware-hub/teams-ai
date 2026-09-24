@@ -40,6 +40,26 @@ export interface Usage {
   cacheWriteTokens: number;
 }
 
+/**
+ * Extracts a single JSON object from agent text, tolerating markdown fences and surrounding prose.
+ * The CLI does not always populate structured_output (observed with --agents + --json-schema),
+ * so the runner falls back to the text; validation still runs on the parsed object.
+ */
+export function extractJsonObject(text: string | null): Record<string, unknown> | null {
+  if (!text) return null;
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const candidate = (fenced ? fenced[1] : text).trim();
+  const start = candidate.indexOf('{');
+  const end = candidate.lastIndexOf('}');
+  if (start === -1 || end === -1 || end < start) return null;
+  try {
+    const value: unknown = JSON.parse(candidate.slice(start, end + 1));
+    return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface RateLimitInfo {
   status: string;
   fiveHourUtilization: number | null;
@@ -60,6 +80,8 @@ export interface ResultSummary {
   resultText: string | null;
   /** Parsed --json-schema output (CLI 2.1.281 puts it in result.structured_output). */
   structuredOutput: unknown | null;
+  /** Where structuredOutput came from; null when the result had neither. */
+  structuredSource: 'structured_output' | 'text' | null;
   /** e.g. "completed", "rapid_refill_breaker"; the CLI may report is_error=true with subtype "success". */
   terminalReason: string | null;
   /** Latest rate_limit_event in the stream (subscription usage windows). */
@@ -143,12 +165,16 @@ export function summarizeStream(parsed: ParsedStream): ResultSummary {
       sessionId,
       resultText: null,
       structuredOutput: null,
+      structuredSource: null,
       terminalReason: null,
       rateLimit,
       compactions,
     };
   }
   const r = result.data;
+  const fromText = r.structured_output === undefined ? extractJsonObject(r.result ?? null) : null;
+  const structuredOutput = r.structured_output ?? fromText;
+  const structuredSource = r.structured_output !== undefined ? 'structured_output' : fromText ? 'text' : null;
   return {
     found: true,
     isError: r.is_error ?? r.subtype !== 'success',
@@ -164,7 +190,8 @@ export function summarizeStream(parsed: ParsedStream): ResultSummary {
     },
     sessionId: r.session_id ?? sessionId,
     resultText: r.result ?? null,
-    structuredOutput: r.structured_output ?? null,
+    structuredOutput: structuredOutput ?? null,
+    structuredSource,
     terminalReason: r.terminal_reason ?? null,
     rateLimit,
     compactions,
