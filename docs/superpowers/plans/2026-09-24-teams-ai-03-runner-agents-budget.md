@@ -1500,6 +1500,485 @@ git commit -m "feat: add process runner with turn/time caps and fake claude bina
 
 ---
 
+### Task 4b: stream-events extensions (Plan 2 module, modified here)
+
+**Files:**
+- Modify: `server/runner/stream-events.ts` (full replacement below)
+- Modify: `test/runner/stream-events.test.ts` (full replacement below)
+
+**Interfaces:**
+- Produces (additions): `extractJsonObject(text)`, `ResultSummary.structuredSource`, `ResultSummary.apiErrorStatus`, `RateLimitInfo.resetsAt`, partial usage and turn count from `assistant` messages (by distinct `message.id`) when the stream has no `result`.
+
+Why: the real-CLI smoke showed `structured_output` missing with `--agents` (fenced JSON in the text instead), the review showed killed steps recording zero usage, and quota/auth classification needs `api_error_status`.
+
+- [ ] **Step 1: Add the fixtures and replace the test file**
+
+`test/fixtures/stream/real-turns.ndjson` (three assistant content blocks sharing one message id, then a result with `num_turns: 1`):
+```
+{"type":"system","subtype":"init","session_id":"s-t","model":"claude-sonnet-5"}
+{"type":"assistant","message":{"id":"msg_01A","role":"assistant","content":[{"type":"text","text":"thinking about it"}],"usage":{"input_tokens":5,"output_tokens":10,"cache_read_input_tokens":100,"cache_creation_input_tokens":20}},"session_id":"s-t"}
+{"type":"assistant","message":{"id":"msg_01A","role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"a"}}],"usage":{"input_tokens":5,"output_tokens":10,"cache_read_input_tokens":100,"cache_creation_input_tokens":20}},"session_id":"s-t"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"}]},"session_id":"s-t"}
+{"type":"assistant","message":{"id":"msg_01A","role":"assistant","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":5,"output_tokens":10,"cache_read_input_tokens":100,"cache_creation_input_tokens":20}},"session_id":"s-t"}
+{"type":"result","subtype":"success","is_error":false,"duration_ms":9,"num_turns":1,"result":"done","session_id":"s-t","total_cost_usd":0.001,"usage":{"input_tokens":5,"output_tokens":10,"cache_read_input_tokens":100,"cache_creation_input_tokens":20}}
+```
+
+`test/fixtures/stream/killed-partial.ndjson` (no result line; usage must be summed by distinct message id):
+```
+{"type":"system","subtype":"init","session_id":"s-p"}
+{"type":"assistant","message":{"id":"msg_P1","role":"assistant","content":[{"type":"text","text":"a"}],"usage":{"input_tokens":10,"output_tokens":20,"cache_read_input_tokens":1000,"cache_creation_input_tokens":300}},"session_id":"s-p"}
+{"type":"assistant","message":{"id":"msg_P1","role":"assistant","content":[{"type":"tool_use","id":"t","name":"Read","input":{}}],"usage":{"input_tokens":10,"output_tokens":20,"cache_read_input_tokens":1000,"cache_creation_input_tokens":300}},"session_id":"s-p"}
+{"type":"assistant","message":{"id":"msg_P2","role":"assistant","content":[{"type":"text","text":"b"}],"usage":{"input_tokens":12,"output_tokens":30,"cache_read_input_tokens":1300,"cache_creation_input_tokens":0}},"session_id":"s-p"}
+```
+
+`test/runner/stream-events.test.ts`:
+```ts
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+import { extractJsonObject, parseStreamJson, summarizeStream } from '../../server/runner/stream-events.js';
+
+const fixture = (name: string) => readFileSync(new URL(`../fixtures/stream/${name}.ndjson`, import.meta.url), 'utf8');
+
+describe('parseStreamJson', () => {
+  it('parses one event per line', () => {
+    const parsed = parseStreamJson(fixture('success'));
+    expect(parsed.events.map((e) => e.type)).toEqual(['system', 'assistant', 'result']);
+    expect(parsed.malformed).toEqual([]);
+  });
+
+  it('keeps going past non-JSON lines and a truncated tail, reporting them', () => {
+    const parsed = parseStreamJson(fixture('noisy'));
+    expect(parsed.events.map((e) => e.type)).toEqual(['system', 'result']);
+    expect(parsed.malformed.map((m) => m.line)).toEqual([1, 4]);
+  });
+
+  it('rejects a JSON line without a string type as malformed', () => {
+    const parsed = parseStreamJson('{"foo":1}\n{"type":"result","subtype":"success"}\n');
+    expect(parsed.malformed).toHaveLength(1);
+    expect(parsed.events).toHaveLength(1);
+  });
+});
+
+describe('summarizeStream', () => {
+  it('extracts usage, cost, turns and the result text from a success', () => {
+    const summary = summarizeStream(parseStreamJson(fixture('success')));
+    expect(summary).toEqual({
+      found: true,
+      isError: false,
+      subtype: 'success',
+      numTurns: 3,
+      durationMs: 4210,
+      costUsd: 0.0421,
+      usage: { inputTokens: 1200, outputTokens: 210, cacheReadTokens: 9000, cacheWriteTokens: 300 },
+      sessionId: 's-1',
+      resultText: '{"specHash":"sha256:aa","status":"done"}',
+      structuredOutput: { specHash: 'sha256:aa', status: 'done' },
+      structuredSource: 'text',
+      terminalReason: null,
+      apiErrorStatus: null,
+      rateLimit: null,
+      compactions: 0,
+    });
+  });
+
+  it('reports an error result with zeroed usage and counts compactions', () => {
+    const summary = summarizeStream(parseStreamJson(fixture('error-max-turns')));
+    expect(summary).toMatchObject({
+      found: true,
+      isError: true,
+      subtype: 'error_max_turns',
+      numTurns: 25,
+      costUsd: null,
+      usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+      resultText: null,
+      compactions: 1,
+    });
+  });
+
+  it('reports found=false when the stream ended before a result (killed process)', () => {
+    const summary = summarizeStream(parseStreamJson('{"type":"system","subtype":"init","session_id":"s-9"}\n'));
+    expect(summary).toMatchObject({ found: false, isError: true, subtype: null, sessionId: 's-9', numTurns: 0 });
+  });
+});
+
+describe('summarizeStream against real CLI 2.1.281 recordings', () => {
+  it('trusts is_error over a success subtype (compaction breaker)', () => {
+    const summary = summarizeStream(parseStreamJson(fixture('real-compaction-breaker')));
+    expect(summary).toMatchObject({ found: true, isError: true, subtype: 'success', terminalReason: 'rapid_refill_breaker', compactions: 3 });
+    expect(summary.usage.cacheWriteTokens).toBeGreaterThan(200000);
+  });
+
+  it('exposes structured_output from a --json-schema run', () => {
+    const summary = summarizeStream(parseStreamJson(fixture('real-json-schema')));
+    expect(summary.structuredOutput).toEqual({ specHash: 'sha256:aa', status: 'done' });
+    expect(summary.terminalReason).toBe('completed');
+  });
+
+  it('reports the latest rate limit window utilization and reset times', () => {
+    const summary = summarizeStream(parseStreamJson(fixture('real-json-schema')));
+    expect(summary.rateLimit).toEqual({
+      status: 'allowed',
+      resetsAt: 1790259600,
+      fiveHourUtilization: 0,
+      fiveHourResetsAt: 1790259600,
+      sevenDayUtilization: 0.64,
+      sevenDayResetsAt: 1790424000,
+    });
+  });
+
+  it('returns null structured output and rate limit when absent', () => {
+    const summary = summarizeStream(parseStreamJson(fixture('error-max-turns')));
+    expect(summary.structuredOutput).toBeNull();
+    expect(summary.rateLimit).toBeNull();
+    expect(summary.terminalReason).toBeNull();
+  });
+});
+
+describe('extractJsonObject', () => {
+  it('parses a bare JSON object', () => {
+    expect(extractJsonObject('{"a":1}')).toEqual({ a: 1 });
+  });
+
+  it('strips markdown fences around the object', () => {
+    expect(extractJsonObject('```json\n{\n  "status": "done"\n}\n```')).toEqual({ status: 'done' });
+    expect(extractJsonObject('Here you go:\n```\n{"x":[1,2]}\n```\nDone.')).toEqual({ x: [1, 2] });
+  });
+
+  it('returns null for prose, arrays and invalid JSON', () => {
+    expect(extractJsonObject('OK')).toBeNull();
+    expect(extractJsonObject('[1,2]')).toBeNull();
+    expect(extractJsonObject('{"a":')).toBeNull();
+    expect(extractJsonObject(null)).toBeNull();
+  });
+});
+
+describe('summarizeStream structured output fallback', () => {
+  it('falls back to a JSON object in the result text when structured_output is absent', () => {
+    const summary = summarizeStream(parseStreamJson('{"type":"result","subtype":"success","is_error":false,"result":"```json\\n{\\"status\\":\\"done\\"}\\n```"}\n'));
+    expect(summary.structuredOutput).toEqual({ status: 'done' });
+    expect(summary.structuredSource).toBe('text');
+  });
+
+  it('reports the source as structured when the CLI provided it', () => {
+    const summary = summarizeStream(parseStreamJson(fixture('real-json-schema')));
+    expect(summary.structuredSource).toBe('structured_output');
+  });
+
+  it('reports no source when neither is present', () => {
+    expect(summarizeStream(parseStreamJson(fixture('success'))).structuredSource).toBe('text');
+    expect(summarizeStream(parseStreamJson('{"type":"result","subtype":"success","is_error":false,"result":"OK"}\n')).structuredSource).toBeNull();
+  });
+});
+
+describe('summarizeStream partial usage and API error status', () => {
+  it('sums assistant usage by distinct message id when the stream has no result', () => {
+    const summary = summarizeStream(parseStreamJson(fixture('killed-partial')));
+    expect(summary.found).toBe(false);
+    expect(summary.usage).toEqual({ inputTokens: 22, outputTokens: 50, cacheReadTokens: 2300, cacheWriteTokens: 300 });
+    expect(summary.numTurns).toBe(2);
+  });
+
+  it('exposes api_error_status and the top-level rate limit resetsAt', () => {
+    const text = [
+      '{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1790259600,"unifiedWindows":{"five_hour":{"utilization":1,"resetsAt":1790259600}}}}',
+      '{"type":"result","subtype":"error","is_error":true,"api_error_status":429,"result":"rate limited"}',
+    ].join('\n');
+    const summary = summarizeStream(parseStreamJson(text));
+    expect(summary.apiErrorStatus).toBe(429);
+    expect(summary.rateLimit?.resetsAt).toBe(1790259600);
+  });
+
+  it('reports null api_error_status when the CLI sends null or nothing', () => {
+    expect(summarizeStream(parseStreamJson('{"type":"result","subtype":"success","is_error":false,"api_error_status":null,"result":"OK"}\n')).apiErrorStatus).toBeNull();
+    expect(summarizeStream(parseStreamJson(fixture('success'))).apiErrorStatus).toBeNull();
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify the new tests fail**
+
+Run: `npx vitest run test/runner/stream-events.test.ts`
+Expected: FAIL — `extractJsonObject is not a function` and missing `structuredSource`/`apiErrorStatus`.
+
+- [ ] **Step 3: Replace the module**
+
+`server/runner/stream-events.ts`:
+```ts
+import { z } from 'zod';
+
+export const StreamEvent = z
+  .object({
+    type: z.string().min(1),
+    subtype: z.string().optional(),
+    session_id: z.string().optional(),
+  })
+  .passthrough();
+export type StreamEvent = z.infer<typeof StreamEvent>;
+
+export interface ParsedStream {
+  events: StreamEvent[];
+  malformed: Array<{ line: number; text: string }>;
+}
+
+export function parseStreamJson(text: string): ParsedStream {
+  const events: StreamEvent[] = [];
+  const malformed: Array<{ line: number; text: string }> = [];
+  text.split('\n').forEach((raw, index) => {
+    if (raw.trim() === '') return;
+    let value: unknown;
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      malformed.push({ line: index + 1, text: raw.slice(0, 200) });
+      return;
+    }
+    const parsed = StreamEvent.safeParse(value);
+    if (parsed.success) events.push(parsed.data);
+    else malformed.push({ line: index + 1, text: raw.slice(0, 200) });
+  });
+  return { events, malformed };
+}
+
+export interface Usage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+}
+
+/**
+ * Extracts a single JSON object from agent text, tolerating markdown fences and surrounding prose.
+ * The CLI does not always populate structured_output (observed with --agents + --json-schema),
+ * so the runner falls back to the text; validation still runs on the parsed object.
+ */
+export function extractJsonObject(text: string | null): Record<string, unknown> | null {
+  if (!text) return null;
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const candidate = (fenced ? fenced[1] : text).trim();
+  const start = candidate.indexOf('{');
+  const end = candidate.lastIndexOf('}');
+  if (start === -1 || end === -1 || end < start) return null;
+  try {
+    const value: unknown = JSON.parse(candidate.slice(start, end + 1));
+    return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+export interface RateLimitInfo {
+  status: string;
+  /** Top-level reset of the window the CLI is reporting on (epoch seconds). */
+  resetsAt: number | null;
+  fiveHourUtilization: number | null;
+  fiveHourResetsAt: number | null;
+  sevenDayUtilization: number | null;
+  sevenDayResetsAt: number | null;
+}
+
+export interface ResultSummary {
+  found: boolean;
+  isError: boolean;
+  subtype: string | null;
+  numTurns: number;
+  durationMs: number;
+  costUsd: number | null;
+  usage: Usage;
+  sessionId: string | null;
+  resultText: string | null;
+  /** Parsed --json-schema output (CLI 2.1.281 puts it in result.structured_output). */
+  structuredOutput: unknown | null;
+  /** Where structuredOutput came from; null when the result had neither. */
+  structuredSource: 'structured_output' | 'text' | null;
+  /** e.g. "completed", "rapid_refill_breaker"; the CLI may report is_error=true with subtype "success". */
+  terminalReason: string | null;
+  /** HTTP status of the failing API call when the CLI reports one (401 auth, 429 quota). */
+  apiErrorStatus: number | null;
+  /** Latest rate_limit_event in the stream (subscription usage windows). */
+  rateLimit: RateLimitInfo | null;
+  compactions: number;
+}
+
+const ResultEvent = z
+  .object({
+    type: z.literal('result'),
+    subtype: z.string().optional(),
+    is_error: z.boolean().optional(),
+    duration_ms: z.number().optional(),
+    num_turns: z.number().optional(),
+    result: z.string().optional(),
+    session_id: z.string().optional(),
+    total_cost_usd: z.number().optional(),
+    structured_output: z.unknown().optional(),
+    terminal_reason: z.string().nullable().optional(),
+    api_error_status: z.number().nullable().optional(),
+    usage: z
+      .object({
+        input_tokens: z.number().optional(),
+        output_tokens: z.number().optional(),
+        cache_read_input_tokens: z.number().optional(),
+        cache_creation_input_tokens: z.number().optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+const ZERO_USAGE: Usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+
+const RateLimitEvent = z
+  .object({
+    type: z.literal('rate_limit_event'),
+    rate_limit_info: z
+      .object({
+        status: z.string(),
+        resetsAt: z.number().optional(),
+        unifiedWindows: z
+          .object({
+            five_hour: z.object({ utilization: z.number().optional(), resetsAt: z.number().optional() }).optional(),
+            seven_day: z.object({ utilization: z.number().optional(), resetsAt: z.number().optional() }).optional(),
+          })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+const AssistantUsage = z
+  .object({
+    type: z.literal('assistant'),
+    message: z
+      .object({
+        id: z.string().optional(),
+        usage: z
+          .object({
+            input_tokens: z.number().optional(),
+            output_tokens: z.number().optional(),
+            cache_read_input_tokens: z.number().optional(),
+            cache_creation_input_tokens: z.number().optional(),
+          })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+/** Usage of a killed step: assistant messages carry usage per message id (one entry per content block). */
+function partialUsage(events: readonly StreamEvent[]): { usage: Usage; turns: number } {
+  const seen = new Map<string, Usage>();
+  let anonymous = 0;
+  for (const e of events) {
+    const parsed = AssistantUsage.safeParse(e);
+    if (!parsed.success) continue;
+    const id = parsed.data.message.id ?? `anon-${anonymous++}`;
+    const u = parsed.data.message.usage;
+    if (!u) {
+      if (!seen.has(id)) seen.set(id, { ...ZERO_USAGE });
+      continue;
+    }
+    seen.set(id, {
+      inputTokens: u.input_tokens ?? 0,
+      outputTokens: u.output_tokens ?? 0,
+      cacheReadTokens: u.cache_read_input_tokens ?? 0,
+      cacheWriteTokens: u.cache_creation_input_tokens ?? 0,
+    });
+  }
+  const usage = { ...ZERO_USAGE };
+  for (const u of seen.values()) {
+    usage.inputTokens += u.inputTokens;
+    usage.outputTokens += u.outputTokens;
+    usage.cacheReadTokens += u.cacheReadTokens;
+    usage.cacheWriteTokens += u.cacheWriteTokens;
+  }
+  return { usage, turns: seen.size };
+}
+
+function latestRateLimit(events: readonly StreamEvent[]): RateLimitInfo | null {
+  const raw = [...events].reverse().find((e) => e.type === 'rate_limit_event');
+  const parsed = raw ? RateLimitEvent.safeParse(raw) : null;
+  if (!parsed || !parsed.success) return null;
+  const info = parsed.data.rate_limit_info;
+  return {
+    status: info.status,
+    resetsAt: info.resetsAt ?? null,
+    fiveHourUtilization: info.unifiedWindows?.five_hour?.utilization ?? null,
+    fiveHourResetsAt: info.unifiedWindows?.five_hour?.resetsAt ?? null,
+    sevenDayUtilization: info.unifiedWindows?.seven_day?.utilization ?? null,
+    sevenDayResetsAt: info.unifiedWindows?.seven_day?.resetsAt ?? null,
+  };
+}
+
+export function summarizeStream(parsed: ParsedStream): ResultSummary {
+  const compactions = parsed.events.filter((e) => e.type === 'system' && e.subtype === 'compact_boundary').length;
+  const sessionId = parsed.events.find((e) => typeof e.session_id === 'string')?.session_id ?? null;
+  const rateLimit = latestRateLimit(parsed.events);
+  const raw = [...parsed.events].reverse().find((e) => e.type === 'result');
+  const result = raw ? ResultEvent.safeParse(raw) : null;
+  if (!result || !result.success) {
+    const partial = partialUsage(parsed.events);
+    return {
+      found: false,
+      isError: true,
+      subtype: null,
+      numTurns: partial.turns,
+      durationMs: 0,
+      costUsd: null,
+      usage: partial.usage,
+      sessionId,
+      resultText: null,
+      structuredOutput: null,
+      structuredSource: null,
+      terminalReason: null,
+      apiErrorStatus: null,
+      rateLimit,
+      compactions,
+    };
+  }
+  const r = result.data;
+  const fromText = r.structured_output === undefined ? extractJsonObject(r.result ?? null) : null;
+  const structuredOutput = r.structured_output ?? fromText;
+  const structuredSource = r.structured_output !== undefined ? 'structured_output' : fromText ? 'text' : null;
+  return {
+    found: true,
+    isError: r.is_error ?? r.subtype !== 'success',
+    subtype: r.subtype ?? null,
+    numTurns: r.num_turns ?? 0,
+    durationMs: r.duration_ms ?? 0,
+    costUsd: r.total_cost_usd ?? null,
+    usage: {
+      inputTokens: r.usage?.input_tokens ?? 0,
+      outputTokens: r.usage?.output_tokens ?? 0,
+      cacheReadTokens: r.usage?.cache_read_input_tokens ?? 0,
+      cacheWriteTokens: r.usage?.cache_creation_input_tokens ?? 0,
+    },
+    sessionId: r.session_id ?? sessionId,
+    resultText: r.result ?? null,
+    structuredOutput: structuredOutput ?? null,
+    structuredSource,
+    terminalReason: r.terminal_reason ?? null,
+    apiErrorStatus: r.api_error_status ?? null,
+    rateLimit,
+    compactions,
+  };
+}
+```
+
+- [ ] **Step 4: Run tests and typecheck**
+
+Run: `npx vitest run test/runner/stream-events.test.ts && npm run typecheck`
+Expected: 19 tests PASS; typecheck exits 0.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add server/runner/stream-events.ts test/runner/stream-events.test.ts test/fixtures/stream
+git commit -m "feat: extend stream summary with text fallback, partial usage and api status" -m "Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
+
+---
+
 ### Task 5: Budget accounting and `runStep`
 
 **Files:**
