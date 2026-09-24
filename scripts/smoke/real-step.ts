@@ -36,10 +36,27 @@ const outcome = await runStep(
     accounting,
     claudeJsonPath: path.join(os.homedir(), '.claude.json'),
     onEvent: (line) => {
-      if (line.includes('"type":"result"') || line.includes('rate_limit_event')) console.error(line.slice(0, 200));
+      if (line.includes('"type":"result"') || line.includes('rate_limit_event')) console.error(line);
     },
   },
 );
 breaker.observe(outcome.summary.rateLimit);
-console.log(JSON.stringify({ provider, model, ok: outcome.ok, failure: outcome.ok ? null : outcome.failure, errors: outcome.ok ? [] : outcome.errors.slice(0, 3), usage: accounting.total(), breaker: breaker.state() }, null, 2));
+console.log(
+  JSON.stringify(
+    {
+      provider,
+      model,
+      ok: outcome.ok,
+      failure: outcome.ok ? null : outcome.failure,
+      errors: outcome.ok ? [] : outcome.errors.slice(0, 3),
+      resultText: outcome.summary.resultText?.slice(0, 800) ?? null,
+      structuredOutput: outcome.summary.structuredOutput,
+      numTurns: outcome.summary.numTurns,
+      usage: accounting.total(),
+      breaker: breaker.state(),
+    },
+    null,
+    2,
+  ),
+);
 await fs.rm(cwd, { recursive: true, force: true });
