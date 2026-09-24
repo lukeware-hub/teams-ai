@@ -2399,3 +2399,14 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Review Focus mapping.** 1 → Task 4 "writes the pasted code plus newline to the pty and never emits it". 2 → Task 6 "a rejected secret value never appears in the response body or the log". 3 → Task 6 "binds 127.0.0.1 and refuses a foreign Host header". 4 → Task 4 "cancel kills the process and starting a new session kills the live one". 5 → Task 4 "a process that exits before printing a URL goes straight to verifying".
 
 **Ambiguities resolved.** The spec's "success line" for Claude is unknown (spec §10 item 1); the session does not depend on it: process exit always leads to `verifying` and the probe decides. `sendCode` moves the session to `verifying` immediately (the CLI gives no further prompt to wait for). The gh auto-Enter is sent once both the code and the URL were seen, as the CLI prints them in that order. Web tests live in `web/` with their own Vitest so the root suite keeps its `node` environment.
+
+## Findings (live run, 2026-09-24, WSL Ubuntu, util-linux 2.39.3)
+
+Run: `npm run web:build && npm run ui -- --port 8787` in WSL, page opened from the Windows browser at `http://localhost:8787/onboarding`.
+
+1. Claude card: the host was already logged in (`claude auth status --json` → `loggedIn: true`), so the probe went green without a login session. The live `claude auth login` transcript (URL line, paste prompt wording, seconds until `loggedIn`) is still to be recorded on a fresh host or after `claude auth logout`.
+2. gh card: green from the existing login (`gh auth status` → account `lukeware70X7`). The auto-Enter behaviour of the device flow is covered by the fake CLI test only; the real flow is still to be walked once.
+3. Owner card: `PUT /github-owner` answered `diego-dm-morais (User)` and `github (Organization)`; `-bad` → 400 `owner is not a GitHub login`. The file `~/.teams-ai/config.json` was created with only `github.owner`.
+4. Token card: green, `diego-dm-morais · scopes: admin:enterprise, …, repo, user, workflow, …`; `~/.teams-ai/secrets` is `700`, both files `600`. `PUT /secrets/FOO` → 404, empty value → 400.
+5. Key card: green, `typesafe/jev-1.13-20260917 · $0.000011844` (one Noul).
+6. No transcript regex changed; no `node-pty` needed (the fake-CLI pty tests pass in WSL with `script -qfec`). Status endpoint took 666 ms for all five probes. Foreign `Host` → 403. Fixes made on the way: `kill` must SIGKILL the detached process group (`script` exits 0 on SIGTERM); the timeout path bumps the session generation before killing (a green probe otherwise turned a timeout into `done`); Node `fetch` drops the `Host` header, so that test uses `node:http`; `vite.config.ts` needs `defineConfig` from `vitest/config`; the server must be started detached (`setsid`) when launched from a non-interactive WSL shell.
