@@ -52,7 +52,10 @@ export async function computeItem(d: StatusDeps, name: ItemName): Promise<Item> 
 }
 
 export async function computeStatus(d: StatusDeps): Promise<Status> {
-  const entries = await Promise.all(ITEM_NAMES.map(async (name) => [name, await computeItem(d, name)] as const));
+  // Spec (onboarding) §8: a probe that blows up keeps only its item red; the other four still report.
+  const entries = await Promise.all(
+    ITEM_NAMES.map(async (name) => [name, await computeItem(d, name).catch((err: Error) => ({ ok: false, detail: err.message }))] as const),
+  );
   const items = Object.fromEntries(entries) as Record<ItemName, Item>;
   return { items, allOk: ITEM_NAMES.every((n) => items[n].ok) };
 }

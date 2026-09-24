@@ -31,6 +31,19 @@ describe('status', () => {
     expect(s.items.githubOwner.detail).toContain('not set');
   });
 
+  it('keeps the other items when one probe throws instead of answering', async () => {
+    home = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-home-'));
+    const red = new FakeExec().on(() => true, () => ({ exitCode: 1, stderr: 'not configured' }));
+    const exec: typeof red.exec = (spec) => {
+      if (spec.bin === 'claude') throw new Error('spawn claude EACCES'); // synchronous throw, not a rejected promise
+      return red.exec(spec);
+    };
+    const s = await computeStatus({ exec, fetch: (async () => new Response('', { status: 500 })) as typeof fetch, home, secretsDir: path.join(home, 'secrets') });
+    expect(s.items.claude).toEqual({ ok: false, detail: 'spawn claude EACCES' });
+    expect(Object.keys(s.items)).toHaveLength(5);
+    expect(s.items.githubOwner.detail).toContain('not set');
+  });
+
   it('turns green when every probe answers and exposes hints, not values', async () => {
     home = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-home-'));
     const secretsDir = path.join(home, 'secrets');
