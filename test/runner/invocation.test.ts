@@ -134,3 +134,19 @@ describe('ensureTrusted', () => {
     expect(json.projects['/home/u/ws/wt']).toEqual({ allowedTools: ['Bash'], hasTrustDialogAccepted: true });
   });
 });
+
+describe('agent definition injection', () => {
+  it('passes the agent definition inline via --agents so it does not depend on the cwd', () => {
+    const inv = buildInvocation(
+      { ...base, agentDefinition: { description: 'Developer.', model: 'opus', tools: ['Read', 'Edit'], body: 'Echo the specHash.' } },
+      hostEnv,
+    );
+    const json = JSON.parse(inv.args[inv.args.indexOf('--agents') + 1]!);
+    expect(json).toEqual({ dev: { description: 'Developer.', prompt: 'Echo the specHash.', tools: ['Read', 'Edit'], model: 'opus' } });
+    expect(inv.args.indexOf('--agents')).toBeGreaterThan(inv.args.indexOf('--agent'));
+  });
+
+  it('omits --agents when no definition is given', () => {
+    expect(buildInvocation(base, hostEnv).args).not.toContain('--agents');
+  });
+});

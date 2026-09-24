@@ -32,6 +32,11 @@ export interface InvocationInput {
   sessionId?: string;
   resume?: boolean;
   omniroute?: { baseUrl: string; token: string; compactWindow?: number };
+  /**
+   * Inline agent definition (`--agents` JSON). Agents in `.claude/agents` are loaded from the
+   * process cwd, which is the product worktree, so the orchestrator ships the role definition itself.
+   */
+  agentDefinition?: { description: string; model: string; tools: readonly string[]; body: string };
 }
 
 export interface Invocation {
@@ -53,7 +58,15 @@ export function sanitizeEnv(hostEnv: NodeJS.ProcessEnv): Record<string, string> 
 
 export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessEnv = process.env): Invocation {
   if (input.prompt.trim() === '') throw new InvocationError('prompt must not be empty');
-  const args: string[] = ['-p', input.prompt, '--agent', input.role, ...ISOLATION_FLAGS];
+  const args: string[] = ['-p', input.prompt, '--agent', input.role];
+  if (input.agentDefinition) {
+    const def = input.agentDefinition;
+    args.push(
+      '--agents',
+      JSON.stringify({ [input.role]: { description: def.description, prompt: def.body, tools: [...def.tools], model: def.model } }),
+    );
+  }
+  args.push(...ISOLATION_FLAGS);
   args.push('--model', input.model);
   args.push('--json-schema', JSON.stringify(input.jsonSchema));
   args.push('--tools', input.tools.join(','));

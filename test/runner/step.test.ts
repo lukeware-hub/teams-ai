@@ -154,3 +154,14 @@ describe('classifyFailure', () => {
     expect(classifyFailure(raw({}, '{"type":"result","subtype":"success","is_error":false,"result":"{}"}'))).toBeNull();
   });
 });
+
+describe('runStep agent injection', () => {
+  it('sends the role agent definition inline so a bare worktree still has the agent', async () => {
+    const capture = path.join(dir, 'capture.json');
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
+    await runStep(request(), deps);
+    const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
+    const agents = JSON.parse(captured.argv[captured.argv.indexOf('--agents') + 1]);
+    expect(agents.dev).toMatchObject({ prompt: devAgent.body, tools: devAgent.tools, model: devAgent.model });
+  });
+});

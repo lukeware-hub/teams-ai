@@ -75,6 +75,7 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
       sessionId: req.sessionId,
       resume: req.resume,
       omniroute: req.omniroute,
+      agentDefinition: req.agent,
     },
     deps.hostEnv ?? process.env,
   );
