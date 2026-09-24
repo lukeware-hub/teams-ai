@@ -74,8 +74,19 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   if (spec.status !== 'running' || !spec.specHash) throw new Error(`spec ${specId} is not frozen (status ${spec.status}); finish Gate 1 first`);
   const ws = workspacePaths(cfg, project.projectId);
   const secrets = await loadSecrets(expandHome(cfg.paths.secrets));
-  const exec = execCommand;
-  const ghExec: Exec = (s) => execCommand({ ...s, env: { ...(s.env ?? {}), ...(secrets.GITHUB_TOKEN ? { GH_TOKEN: secrets.GITHUB_TOKEN } : {}) } });
+  // The orchestrator authenticates to GitHub as the token's user (spec §10 GITHUB_TOKEN), for `gh` and for
+  // git over HTTPS alike; the interactive `gh auth login` may belong to a different account. The helper reads
+  // the token from the environment, so it never appears on a command line or in a remote URL.
+  const gitAuth: Record<string, string> = secrets.GITHUB_TOKEN
+    ? {
+        GH_TOKEN: secrets.GITHUB_TOKEN,
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: 'credential.helper',
+        GIT_CONFIG_VALUE_0: '!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f',
+      }
+    : {};
+  const exec: Exec = (s) => execCommand(s.bin === 'git' ? { ...s, env: { ...(s.env ?? {}), ...gitAuth } } : s);
+  const ghExec: Exec = (s) => execCommand({ ...s, env: { ...(s.env ?? {}), ...gitAuth } });
   const errors = await preconditions(exec, ws.repo, specId);
   if (errors.length > 0) throw new Error(`preconditions failed:\n- ${errors.join('\n- ')}`);
   const agents = await loadAgents(path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '.claude', 'agents'));
