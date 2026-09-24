@@ -35,8 +35,12 @@ describe('output contracts', () => {
       findings: [],
     });
     expect(ok.success).toBe(true);
-    const bad = ReviewOutput.safeParse({ specHash: HASH, decision: 'changes', criteria: [], findings: [] });
-    expect(bad.success).toBe(false);
+    // Infrastructure tasks carry no acceptance criteria; the review then judges the diff alone (live-run finding:
+    // a required criterion made the reviewer invent "AC-000").
+    const none = ReviewOutput.safeParse({ specHash: HASH, decision: 'approve', criteria: [], findings: [] });
+    expect(none.success).toBe(true);
+    const bad = ReviewOutput.safeParse({ specHash: HASH, decision: 'changes', criteria: [{ id: 'AC-000', status: 'passed', evidence: [] }], findings: [] });
+    expect(bad.success).toBe(true); // ids are validated against the spec by the reference check, not the schema
   });
 
   it('refine output lists questions with a blocking flag and a checklist', () => {

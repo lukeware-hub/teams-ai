@@ -63,7 +63,8 @@ export const DevOutput = z.discriminatedUnion('status', [
 export const ReviewOutput = z.object({
   specHash,
   decision: z.enum(['approve', 'changes']),
-  criteria: z.array(z.object({ id: acId, status: z.enum(['passed', 'failed', 'not-covered']), evidence: z.array(z.string()) })).min(1),
+  /** Empty for tasks without acceptance criteria (scaffold, infrastructure): the review judges the diff alone. */
+  criteria: z.array(z.object({ id: acId, status: z.enum(['passed', 'failed', 'not-covered']), evidence: z.array(z.string()) })),
   findings: z.array(
     z.object({
       file: z.string().min(1),
