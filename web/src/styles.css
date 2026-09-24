@@ -1,0 +1,16 @@
+:root { font-family: system-ui, sans-serif; color: #1a1a1a; background: #fafafa; }
+main { max-width: 720px; margin: 2rem auto; padding: 0 1rem; display: grid; gap: 1rem; }
+.card { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; background: #fff; }
+.card header { display: flex; align-items: center; gap: 0.5rem; }
+.card h2 { font-size: 1.1rem; margin: 0; flex: 1; }
+.dot { width: 0.75rem; height: 0.75rem; border-radius: 50%; background: #999; }
+.card-ok .dot { background: #2e9e4f; }
+.card-todo .dot { background: #d33; }
+.detail { color: #555; margin: 0.5rem 0; }
+.controls, form { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+input { flex: 1; min-width: 12rem; padding: 0.4rem; }
+button { padding: 0.4rem 0.8rem; }
+.error { color: #b00; }
+.output { background: #111; color: #ddd; padding: 0.5rem; max-height: 12rem; overflow: auto; font-size: 0.8rem; }
+.hint { color: #777; }
+.compact .card { padding: 0.5rem 1rem; }
