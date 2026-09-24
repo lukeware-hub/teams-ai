@@ -1,0 +1,79 @@
+import { spawn as nodeSpawn } from 'node:child_process';
+import { openSync } from 'node:fs';
+import path from 'node:path';
+
+export interface SpawnArgs {
+  bin: string;
+  args: string[];
+  cwd: string;
+  logFile: string;
+}
+
+export interface RunControlDeps {
+  spawn: (a: SpawnArgs) => { pid: number };
+  /** `process.kill` semantics: false when the process does not exist. Negative pid = process group. */
+  kill: (pid: number, signal: NodeJS.Signals | 0) => boolean;
+  sleep: (ms: number) => Promise<void>;
+  cliEntry: () => { bin: string; prefix: string[] };
+  repoRoot: string;
+}
+
+export interface RunTarget {
+  projectDir: string;
+  specId: string;
+  runId: string;
+  mode: 'run' | 'resume';
+  /** Where ui.log goes; the caller passes the run directory once it exists. */
+  logFile?: string;
+}
+
+const POLL_MS = 250;
+
+export function runCommand(deps: RunControlDeps, o: RunTarget): SpawnArgs {
+  const { bin, prefix } = deps.cliEntry();
+  const args = o.mode === 'run' ? ['run', '--project', o.projectDir, '--spec', o.specId, '--run-id', o.runId] : ['resume', '--project', o.projectDir, '--run', o.runId];
+  return { bin, args: [...prefix, ...args], cwd: deps.repoRoot, logFile: o.logFile ?? 'ui.log' };
+}
+
+export function spawnRun(deps: RunControlDeps, o: RunTarget): { pid: number } {
+  return deps.spawn(runCommand(deps, o));
+}
+
+export function isAlive(deps: RunControlDeps, pid: number): boolean {
+  return deps.kill(pid, 0);
+}
+
+/** Spec (run API) §5: SIGTERM to the group, poll, then SIGKILL. */
+export async function stop(deps: RunControlDeps, pid: number, timeoutMs = 15_000): Promise<'terminated' | 'killed' | 'gone'> {
+  if (!deps.kill(-pid, 'SIGTERM')) return 'gone';
+  for (let waited = 0; waited < timeoutMs; waited += POLL_MS) {
+    await deps.sleep(POLL_MS);
+    if (!isAlive(deps, pid)) return 'terminated';
+  }
+  deps.kill(-pid, 'SIGKILL');
+  return 'killed';
+}
+
+export function defaultRunControl(repoRoot: string): RunControlDeps {
+  return {
+    spawn: (a) => {
+      const log = openSync(a.logFile, 'a');
+      const child = nodeSpawn(a.bin, a.args, { cwd: a.cwd, detached: true, stdio: ['ignore', log, log] });
+      child.unref();
+      if (child.pid === undefined) throw new Error('spawn returned no pid');
+      return { pid: child.pid };
+    },
+    kill: (pid, signal) => {
+      try {
+        process.kill(pid, signal);
+        return true;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ESRCH') return false;
+        throw err;
+      }
+    },
+    sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+    cliEntry: () => ({ bin: process.execPath, prefix: [path.join(repoRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs'), path.join(repoRoot, 'server', 'cli.ts')] }),
+    repoRoot,
+  };
+}
