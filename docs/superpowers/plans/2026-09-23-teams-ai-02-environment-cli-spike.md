@@ -257,7 +257,7 @@ need_sudo() { if [[ $EUID -ne 0 ]]; then sudo "$@"; else "$@"; fi; }
 
 echo "== apt base"
 need_sudo apt-get update -y
-need_sudo apt-get install -y curl git unzip ca-certificates gnupg python3 python3-pip pipx build-essential cmake
+need_sudo apt-get install -y curl git unzip ca-certificates gnupg python3 python3-pip pipx build-essential cmake bubblewrap socat  # bubblewrap+socat: Claude Code sandbox dependencies
 
 echo "== node 22 via nvm"
 export NVM_DIR="$HOME/.nvm"
