@@ -1,0 +1,58 @@
+import { loadSecrets } from '../core/secrets.js';
+import { readUserConfig } from './config-store.js';
+import { claudeStatus, ghOwner, ghStatus, ghToken, openrouterKey, type ProbeDeps } from './probes.js';
+
+export type ItemName = 'claude' | 'githubOwner' | 'ghLogin' | 'githubToken' | 'openrouterKey';
+export const ITEM_NAMES: readonly ItemName[] = ['claude', 'githubOwner', 'ghLogin', 'githubToken', 'openrouterKey'];
+
+export interface Item {
+  ok: boolean;
+  detail: string;
+  secret?: { set: boolean; hint: string };
+}
+
+export interface Status {
+  items: Record<ItemName, Item>;
+  allOk: boolean;
+}
+
+export interface StatusDeps extends ProbeDeps {
+  home?: string;
+  secretsDir: string;
+}
+
+export function hint(value: string): string {
+  return value.length >= 8 ? value.slice(-4) : '****';
+}
+
+/** Spec (onboarding) §4: every item is recomputed live; nothing is cached as "onboarded". */
+export async function computeItem(d: StatusDeps, name: ItemName): Promise<Item> {
+  const secrets = await loadSecrets(d.secretsDir);
+  switch (name) {
+    case 'claude':
+      return claudeStatus(d);
+    case 'ghLogin':
+      return ghStatus(d);
+    case 'githubOwner': {
+      const owner = (await readUserConfig(d.home)).cfg.github.owner;
+      if (!owner) return { ok: false, detail: 'GitHub owner not set' };
+      return ghOwner(d, owner, secrets.GITHUB_TOKEN ?? null);
+    }
+    case 'githubToken': {
+      const token = secrets.GITHUB_TOKEN;
+      if (!token) return { ok: false, detail: 'GITHUB_TOKEN not set', secret: { set: false, hint: '' } };
+      return { ...(await ghToken(d, token)), secret: { set: true, hint: hint(token) } };
+    }
+    case 'openrouterKey': {
+      const key = secrets.OPENROUTER_API_KEY;
+      if (!key) return { ok: false, detail: 'OPENROUTER_API_KEY not set', secret: { set: false, hint: '' } };
+      return { ...(await openrouterKey(d, key)), secret: { set: true, hint: hint(key) } };
+    }
+  }
+}
+
+export async function computeStatus(d: StatusDeps): Promise<Status> {
+  const entries = await Promise.all(ITEM_NAMES.map(async (name) => [name, await computeItem(d, name)] as const));
+  const items = Object.fromEntries(entries) as Record<ItemName, Item>;
+  return { items, allOk: ITEM_NAMES.every((n) => items[n].ok) };
+}
