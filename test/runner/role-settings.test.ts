@@ -27,8 +27,21 @@ describe('buildRoleSettings', () => {
       expect.arrayContaining(['Bash(npm:*)', 'Bash(npx:*)', 'Bash(node:*)', 'Bash(git status:*)', 'Bash(git diff:*)']),
     );
     expect(buildRoleSettings('test', { allowedDomains: [] }).permissions.allow).toContain('Bash(npm:*)');
-    expect(buildRoleSettings('devops', { allowedDomains: [] }).permissions.allow).toEqual([]);
+    expect(buildRoleSettings('devops', { allowedDomains: [] }).permissions.allow).not.toContain('Bash(npm:*)');
     expect(buildRoleSettings('sm', { allowedDomains: [] }).permissions.allow).toEqual([]);
+  });
+
+  it('grants the file editing tools to editing roles, since dontAsk denies anything not allowed', () => {
+    // Found by the first live run: the Dev answered techSpecPath "NOT_WRITTEN:..." because Write was denied.
+    for (const role of ['dev', 'test', 'devops'] as const) {
+      const allow = buildRoleSettings(role, { allowedDomains: [] }).permissions.allow;
+      expect(allow).toEqual(expect.arrayContaining(['Edit', 'Write', 'MultiEdit']));
+    }
+    for (const role of ['sm', 'po'] as const) {
+      const allow = buildRoleSettings(role, { allowedDomains: [] }).permissions.allow;
+      expect(allow).not.toContain('Write');
+      expect(allow).not.toContain('Edit');
+    }
   });
 
   it('adds extra allow rules from the plan commands without touching the deny list', () => {

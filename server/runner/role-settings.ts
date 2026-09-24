@@ -21,12 +21,18 @@ export const PROTECTED_READ_PATHS: readonly string[] = [
   '~/.claude/.credentials.json',
 ];
 
+/**
+ * `--permission-mode dontAsk` denies every tool that is not allowed here, so editing roles must be
+ * granted the file tools explicitly (the first live run's Dev could not write the tech spec).
+ */
+const EDIT_TOOLS = ['Edit', 'Write', 'MultiEdit'] as const;
+const SUITE_BASH = ['Bash(npm:*)', 'Bash(npx:*)', 'Bash(node:*)', 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(ls:*)', 'Bash(cat:*)'] as const;
 const ROLE_ALLOW: Record<Role, readonly string[]> = {
   sm: [],
   po: [],
-  dev: ['Bash(npm:*)', 'Bash(npx:*)', 'Bash(node:*)', 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(ls:*)', 'Bash(cat:*)'],
-  test: ['Bash(npm:*)', 'Bash(npx:*)', 'Bash(node:*)', 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(ls:*)', 'Bash(cat:*)'],
-  devops: [],
+  dev: [...EDIT_TOOLS, ...SUITE_BASH],
+  test: [...EDIT_TOOLS, ...SUITE_BASH],
+  devops: [...EDIT_TOOLS],
 };
 
 export interface RoleSettingsInput {
