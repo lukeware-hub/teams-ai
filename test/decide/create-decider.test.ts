@@ -61,7 +61,7 @@ describe('createDecider', () => {
     expect(records).toHaveLength(1);
   });
 
-  it('without a key the chain skips jev as missing and escalates to Claude, booked under claude', async () => {
+  it('without a key the chain skips jev as missing and escalates to Claude; the Claude step books its own usage, so nothing is added here', async () => {
     const accounting = new Accounting();
     const d = createDecider({
       cfg: loadConfig({ decisions: { enabled: true } }),
@@ -75,7 +75,24 @@ describe('createDecider', () => {
     });
     const out = await d.decide('gate-triage', 'S', questions, { confidential: false });
     expect(out).toMatchObject({ answered: true, backend: 'claude', escalated: true });
-    expect(accounting.records()[0]).toMatchObject({ role: 'system1', provider: 'claude', costUsd: 0.01 });
+    expect(accounting.records()).toHaveLength(0);
+  });
+
+  it('books a low-confidence Jev answer under openrouter even when Claude gives the final answer', async () => {
+    const accounting = new Accounting();
+    const lowBody = { ...jevBody, answers: { kind: { type: 'choice', choice: 'infra', probabilities: { code: 0.45, infra: 0.55 }, confidence: 0.55 } } };
+    const d = createDecider({
+      cfg: loadConfig({ decisions: { enabled: true } }),
+      secrets: { OPENROUTER_API_KEY: KEY },
+      accounting,
+      runEscalation: async () => ({ ok: true, value: { specHash: HASH, answers: { kind: { type: 'choice', value: 'code' } } }, summary }),
+      fetch: (async () => new Response(JSON.stringify(lowBody), { status: 200 })) as typeof fetch,
+      sleep: async () => {},
+    });
+    const out = await d.decide('gate-triage', 'S', questions, { confidential: false });
+    expect(out).toMatchObject({ answered: true, backend: 'claude' });
+    expect(accounting.records()).toHaveLength(1);
+    expect(accounting.records()[0]).toMatchObject({ provider: 'openrouter', model: 'typesafe/jev-1.13-20260917', costUsd: 0.0000126, usage: { inputTokens: 300, outputTokens: 20 } });
   });
 
   it('books nothing when the layer is disabled', async () => {

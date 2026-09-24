@@ -46,17 +46,20 @@ export function createDecider(deps: CreateDeciderDeps): Decider {
     knownSecrets: () => Object.values(deps.secrets),
     clock: deps.clock,
     onDecision: (record) => {
-      if (record.usage.inputTokens + record.usage.outputTokens > 0) {
+      // Spec 10A.2: Jev cost is booked here, per attempt, even when Claude gave the final answer.
+      // A Claude escalation is a runStep, which already books its own usage; booking it again would double it.
+      for (const attempt of record.attempts) {
+        if (attempt.backend === 'claude' || !attempt.usage) continue;
         deps.accounting.record({
           role: 'system1',
           phase: 'decide',
           taskId: null,
           attempt: 0,
           stepKind: 'decide',
-          provider: record.backend === 'claude' ? 'claude' : 'openrouter',
-          model: record.model ?? 'unknown',
-          usage: { inputTokens: record.usage.inputTokens, outputTokens: record.usage.outputTokens, cacheReadTokens: 0, cacheWriteTokens: 0 },
-          costUsd: record.usage.costUsd,
+          provider: 'openrouter',
+          model: attempt.model ?? 'unknown',
+          usage: { inputTokens: attempt.usage.inputTokens, outputTokens: attempt.usage.outputTokens, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          costUsd: attempt.usage.costUsd,
           durationMs: record.durationMs,
           numTurns: 0,
           at: record.at,

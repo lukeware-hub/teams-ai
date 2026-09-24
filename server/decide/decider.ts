@@ -5,6 +5,7 @@ import {
   type BackendName,
   type BackendResult,
   type BackendUsage,
+  type DecisionAttempt,
   type DecisionBackend,
   type DecisionConfig,
   type DecisionId,
@@ -60,10 +61,12 @@ export class Decider {
   async decide(id: DecisionId, rawState: string, questions: Questions, ctx: DecideContext): Promise<DecisionOutcome> {
     const started = this.clock();
     const cfg = this.deps.config(id);
-    const redacted = redactSecrets(rawState, this.deps.knownSecrets?.() ?? []);
+    const known = this.deps.knownSecrets?.() ?? [];
+    const redacted = redactSecrets(rawState, known);
     const { state, truncated } = capState(redacted);
-    const attempts: DecisionRecord['attempts'] = [];
+    const attempts: DecisionAttempt[] = [];
     let usage = ZERO_USAGE;
+    const skipped = (backend: BackendName, outcome: AttemptOutcome): DecisionAttempt => ({ backend, outcome, confidence: null, model: null, usage: null, message: null });
 
     const emit = (outcome: DecisionOutcome, backend: BackendName | null, model: string | null) => {
       this.deps.onDecision?.({
@@ -86,12 +89,12 @@ export class Decider {
 
     for (const name of cfg.chain) {
       if (name === 'jev' && ctx.confidential) {
-        attempts.push({ backend: name, outcome: 'skipped-confidential', confidence: null });
+        attempts.push(skipped(name, 'skipped-confidential'));
         continue;
       }
       const backend = this.deps.backends[name];
       if (!backend) {
-        attempts.push({ backend: name, outcome: 'missing-backend', confidence: null });
+        attempts.push(skipped(name, 'missing-backend'));
         continue;
       }
       let result: BackendResult;
@@ -101,20 +104,28 @@ export class Decider {
         result = { ok: false, reason: 'unavailable', message: (err as Error).message };
       }
       if (!result.ok) {
-        attempts.push({ backend: name, outcome: result.reason as AttemptOutcome, confidence: null });
+        attempts.push({ ...skipped(name, result.reason), message: redactSecrets(result.message, known) });
         continue;
       }
       usage = addUsage(usage, result.usage);
+      const answered = (outcome: AttemptOutcome, confidence: number | null): DecisionAttempt => ({
+        backend: name,
+        outcome,
+        confidence,
+        model: result.model,
+        usage: result.usage,
+        message: null,
+      });
       if (name === 'claude') {
-        attempts.push({ backend: name, outcome: 'answered', confidence: null });
+        attempts.push(answered('answered', null));
         return emit({ answered: true, answers: result.answers, backend: name, escalated: true }, name, result.model);
       }
       const confidence = minConfidence(result.answers);
       if (confidence >= cfg.thresholds[name]) {
-        attempts.push({ backend: name, outcome: 'answered', confidence });
+        attempts.push(answered('answered', confidence));
         return emit({ answered: true, answers: result.answers, backend: name, escalated: false }, name, result.model);
       }
-      attempts.push({ backend: name, outcome: 'low-confidence', confidence });
+      attempts.push(answered('low-confidence', confidence));
     }
     return emit({ answered: false, reason: 'exhausted' }, null, null);
   }

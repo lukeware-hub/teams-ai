@@ -94,7 +94,7 @@ Task order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8. Task 2 depends on Task 
   export type AttemptOutcome = 'answered' | 'low-confidence' | 'unavailable' | 'invalid' | 'skipped-confidential' | 'missing-backend';
   export interface DecisionRecord {
     decisionId: DecisionId; backend: BackendName | null; model: string | null; escalated: boolean;
-    answers: Answers | null; attempts: Array<{ backend: BackendName; outcome: AttemptOutcome; confidence: number | null }>;
+    answers: Answers | null; attempts: DecisionAttempt[];  // { backend, outcome, confidence, model, usage, message } — usage per answered attempt, redacted failure message per failed one
     usage: BackendUsage; stateChars: number; stateTruncated: boolean; durationMs: number; at: string;
   }
   export type DecisionOutcome =
@@ -263,7 +263,7 @@ export interface DecisionRecord {
   model: string | null;
   escalated: boolean;
   answers: Answers | null;
-  attempts: Array<{ backend: BackendName; outcome: AttemptOutcome; confidence: number | null }>;
+  attempts: DecisionAttempt[];  // { backend, outcome, confidence, model, usage, message } — usage per answered attempt, redacted failure message per failed one
   usage: BackendUsage;
   stateChars: number;
   stateTruncated: boolean;
@@ -1680,7 +1680,7 @@ git commit -m "feat(decide): Claude escalation backend and the decide step kind"
   ```
 - `triageGateFailure` rules (spec 10A.5 row 1, deterministic first): throws if `result.passed`; `result.failure === 'infra'` → `{ kind: 'infra', source: 'rule' }` without calling the decider; otherwise calls `decider.decide('gate-triage', gateTriageState(gate, result), gateTriageQuestions(), ctx)`; answered → `{ kind: answers.kind.value, source: backend }`; not answered → `{ kind: 'code', source: 'default' }`.
 - `gateTriageState` includes: gate name, command, `network`, exit code, timed out flag, duration, JUnit summary (`passed/failed/error/skipped` counts and up to 5 failed test ids) or "no JUnit report", then `stderr (tail)` and `stdout (tail)` sections. The secret values were already redacted by the gate runner; the decider redacts again with `knownSecrets`.
-- `createDecider`: builds `jev` only when `secrets.OPENROUTER_API_KEY` is a non-empty string (otherwise the chain records `missing-backend`), `local` = `LocalStubBackend`, `claude` = `ClaudeEscalateBackend(runEscalation)`; `config: (id) => resolveDecision(cfg, id)`; `knownSecrets: () => Object.values(secrets)`; `onDecision` records to accounting when `record.usage.inputTokens + outputTokens > 0` as `{ role: 'system1', phase: 'decide', taskId: null, attempt: 0, stepKind: 'decide', provider: record.backend === 'claude' ? 'claude' : 'openrouter', model: record.model ?? 'unknown', usage: {inputTokens, outputTokens, cacheReadTokens: 0, cacheWriteTokens: 0}, costUsd: record.usage.costUsd, durationMs: record.durationMs, numTurns: 0, at: record.at }`, then forwards the record to `deps.onDecision`.
+- `createDecider`: builds `jev` only when `secrets.OPENROUTER_API_KEY` is a non-empty string (otherwise the chain records `missing-backend`), `local` = `LocalStubBackend`, `claude` = `ClaudeEscalateBackend(runEscalation)`; `config: (id) => resolveDecision(cfg, id)`; `knownSecrets: () => Object.values(secrets)`; `onDecision` books one `UsageRecord` per attempt that has `usage` and whose backend is not `claude` (a Claude escalation is a `runStep`, which already books its own usage), as `{ role: 'system1', phase: 'decide', taskId: null, attempt: 0, stepKind: 'decide', provider: 'openrouter', model: attempt.model ?? 'unknown', usage: {inputTokens, outputTokens, cacheReadTokens: 0, cacheWriteTokens: 0}, costUsd: attempt.usage.costUsd, durationMs: record.durationMs, numTurns: 0, at: record.at }`, then forwards the record to `deps.onDecision`. (Review fix: the original per-record booking double-counted Claude and attributed a low-confidence Jev call to the final backend.)
 
 - [ ] **Step 1: Write the failing triage test**
 

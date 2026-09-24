@@ -89,6 +89,16 @@ export interface DecisionConfig {
 
 export type AttemptOutcome = 'answered' | 'low-confidence' | 'unavailable' | 'invalid' | 'skipped-confidential' | 'missing-backend';
 
+export interface DecisionAttempt {
+  backend: BackendName;
+  outcome: AttemptOutcome;
+  confidence: number | null;
+  model: string | null;
+  usage: BackendUsage | null;
+  /** Redacted failure reason from the backend, for diagnosis (spec 10A.0 logging). */
+  message: string | null;
+}
+
 /** One line per decision in the event store; later joined with the real outcome (spec 10A.4). */
 export interface DecisionRecord {
   decisionId: DecisionId;
@@ -96,7 +106,9 @@ export interface DecisionRecord {
   model: string | null;
   escalated: boolean;
   answers: Answers | null;
-  attempts: Array<{ backend: BackendName; outcome: AttemptOutcome; confidence: number | null }>;
+  /** One entry per backend visited; `usage` is set when the backend answered (even below threshold), `message` when it failed. */
+  attempts: DecisionAttempt[];
+  /** Sum of every attempt's usage. */
   usage: BackendUsage;
   stateChars: number;
   stateTruncated: boolean;

@@ -33,7 +33,7 @@ describe('Decider', () => {
       backend: 'jev',
       model: 'typesafe/jev-1.13',
       escalated: false,
-      attempts: [{ backend: 'jev', outcome: 'answered', confidence: 0.85 }],
+      attempts: [{ backend: 'jev', outcome: 'answered', confidence: 0.85, model: 'typesafe/jev-1.13', usage: { inputTokens: 100, outputTokens: 10, costUsd: 0.00001 }, message: null }],
       usage: { inputTokens: 100, outputTokens: 10, costUsd: 0.00001 },
       stateTruncated: false,
       at: T0.toISOString(),
@@ -56,9 +56,9 @@ describe('Decider', () => {
     const out = await d.decide('gate-triage', 's', questions, { confidential: false });
     expect(out).toMatchObject({ answered: true, backend: 'claude', escalated: true });
     expect(records[0]!.attempts).toEqual([
-      { backend: 'jev', outcome: 'low-confidence', confidence: 0.55 },
-      { backend: 'local', outcome: 'unavailable', confidence: null },
-      { backend: 'claude', outcome: 'answered', confidence: null },
+      { backend: 'jev', outcome: 'low-confidence', confidence: 0.55, model: 'fake', usage: { inputTokens: 100, outputTokens: 10, costUsd: 0.00001 }, message: null },
+      { backend: 'local', outcome: 'unavailable', confidence: null, model: null, usage: null, message: 'down' },
+      { backend: 'claude', outcome: 'answered', confidence: null, model: 'opus', usage: { inputTokens: 100, outputTokens: 10, costUsd: 0.00001 }, message: null },
     ]);
     // Both calls that returned cost tokens; the low-confidence one is not free.
     expect(records[0]!.usage).toEqual({ inputTokens: 200, outputTokens: 20, costUsd: 0.00002 });
@@ -81,7 +81,7 @@ describe('Decider', () => {
     const { d, records } = decider({ jev, local, claude });
     await d.decide('gate-triage', 's', questions, { confidential: true });
     expect(jev.calls).toHaveLength(0);
-    expect(records[0]!.attempts[0]).toEqual({ backend: 'jev', outcome: 'skipped-confidential', confidence: null });
+    expect(records[0]!.attempts[0]).toEqual({ backend: 'jev', outcome: 'skipped-confidential', confidence: null, model: null, usage: null, message: null });
   });
 
   it('reports exhausted when no backend answers, and disabled when the decision is off', async () => {
@@ -107,7 +107,16 @@ describe('Decider', () => {
     const claude = new FakeBackend('claude', [ok({ kind: choiceAnswer('code', { code: 1 }, null) })]);
     const { d, records } = decider({ jev, claude }, { chain: ['jev', 'claude'] });
     expect(await d.decide('gate-triage', 's', questions, { confidential: false })).toMatchObject({ answered: true, backend: 'claude' });
-    expect(records[0]!.attempts[0]!.outcome).toBe('unavailable');
+    expect(records[0]!.attempts[0]).toMatchObject({ outcome: 'unavailable', message: 'socket hang up' });
+  });
+
+  it('keeps the failure reason of each attempt, redacted, so an invalid Jev answer can be diagnosed', async () => {
+    const secret = 'ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345';
+    const jev = new FakeBackend('jev', [invalid(`kind: choice "${secret}" is not an option`)]);
+    const claude = new FakeBackend('claude', [ok({ kind: choiceAnswer('code', { code: 1 }, null) })]);
+    const { d, records } = decider({ jev, claude }, { chain: ['jev', 'claude'] }, { knownSecrets: () => [secret] });
+    await d.decide('gate-triage', 's', questions, { confidential: false });
+    expect(records[0]!.attempts[0]).toMatchObject({ backend: 'jev', outcome: 'invalid', message: 'kind: choice "[REDACTED]" is not an option' });
   });
 
   it('truncates an oversized state and marks it', async () => {

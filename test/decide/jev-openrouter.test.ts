@@ -122,6 +122,14 @@ describe('fromJevResponse', () => {
     expect(fromJevResponse(missing, triage)).toMatchObject({ ok: false, message: expect.stringContaining('dependency') });
   });
 
+  it('rejects a score outside the level range', () => {
+    const body = structuredClone(mixedFixture);
+    body.answers.risk.score = 7;
+    expect(fromJevResponse(body, mixed)).toMatchObject({ ok: false, message: expect.stringContaining('risk') });
+    body.answers.risk.score = -0.5;
+    expect(fromJevResponse(body, mixed)).toMatchObject({ ok: false, message: expect.stringContaining('risk') });
+  });
+
   it('rejects a missing answer, a type mismatch and a malformed body', () => {
     expect(fromJevResponse({ model: 'm', answers: {}, usage: { input_tokens: 1, output_tokens: 1 } }, triage)).toMatchObject({
       ok: false,

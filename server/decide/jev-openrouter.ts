@@ -103,6 +103,8 @@ export function fromJevResponse(
       answers[id] = { type: 'choice', value: a.choice, probabilities: a.probabilities, confidence: a.confidence };
     } else if (a.type === 'score' && q.type === 'score') {
       const keys = q.levels.map((_, i) => String(i));
+      const max = q.levels.length - 1;
+      if (a.score < 0 || a.score > max) return { ok: false, message: `${id}: score ${a.score} is outside the level range 0..${max}` };
       const bad = checkDistribution(id, a.probabilities, keys);
       if (bad) return { ok: false, message: bad };
       answers[id] = { type: 'score', value: a.score, probabilities: a.probabilities, confidence: a.confidence };
