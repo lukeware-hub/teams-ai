@@ -57,9 +57,27 @@ export function parseGodNodes(text: string): Array<{ label: string; edges: numbe
   return out;
 }
 
+export interface GraphifyDeps {
+  exec: Exec;
+  readFile: (absolutePath: string) => Promise<string | null>;
+  /** Moves a directory (replacing the destination); defaults to fs.rename with a prior rm. */
+  moveDir?: (from: string, to: string) => Promise<void>;
+}
+
+async function defaultMoveDir(from: string, to: string): Promise<void> {
+  const fs = await import('node:fs/promises');
+  await fs.rm(to, { recursive: true, force: true });
+  await fs.mkdir(path.dirname(to), { recursive: true });
+  await fs.rename(from, to);
+}
+
 /** Thin wrapper over the graphify CLI; no LLM-backed feature is ever invoked. */
 export class Graphify {
-  constructor(private readonly deps: { exec: Exec; readFile: (absolutePath: string) => Promise<string | null> }) {}
+  private readonly moveDir: (from: string, to: string) => Promise<void>;
+
+  constructor(private readonly deps: GraphifyDeps) {
+    this.moveDir = deps.moveDir ?? defaultMoveDir;
+  }
 
   private graphPath(outDir: string) {
     return path.posix.join(outDir.replace(/\\/g, '/'), 'graphify-out', 'graph.json');
@@ -74,9 +92,19 @@ export class Graphify {
     }
   }
 
-  /** AST-only rebuild after a merge (spec §9 layer 2); the graph lives outside the repository. */
+  /**
+   * AST-only rebuild after a merge (spec §9 layer 2). graphify writes `graphify-out/` next to the
+   * path it scans, so the run happens inside the repository and the output is moved to `outDir`;
+   * the graph never lives in the repository (and Plan 6 excludes `graphify-out/` via .git/info/exclude).
+   */
   async update(repoDir: string, outDir: string): Promise<GraphCoverage> {
-    await this.run(['update', repoDir, '--no-cluster'], outDir);
+    await this.run(['update', '.', '--no-cluster'], repoDir);
+    const produced = path.join(repoDir, 'graphify-out');
+    try {
+      await this.moveDir(produced, path.join(outDir, 'graphify-out'));
+    } catch {
+      /* nothing produced (unsupported repo) → coverage 0 below */
+    }
     return this.coverage(outDir);
   }
 

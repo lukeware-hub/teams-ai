@@ -42,11 +42,18 @@ describe('parsers', () => {
 describe('Graphify', () => {
   const files = (map: Record<string, string>) => async (p: string) => map[p.replace(/\\/g, '/')] ?? null;
 
-  it('runs update without LLM features and reports coverage from graph.json', async () => {
+  it('runs update inside the repo, then moves graphify-out outside it and reports coverage', async () => {
     const fake = new FakeExec();
-    const g = new Graphify({ exec: fake.exec, readFile: files({ '/ws/graph/graphify-out/graph.json': fx('graph.json') }) });
+    const moves: Array<[string, string]> = [];
+    const g = new Graphify({
+      exec: fake.exec,
+      readFile: files({ '/ws/graph/graphify-out/graph.json': fx('graph.json') }),
+      moveDir: async (from, to) => void moves.push([from.replace(/\\/g, '/'), to.replace(/\\/g, '/')]),
+    });
     const cov = await g.update('/ws/repo', '/ws/graph');
-    expect(fake.calls[0]).toMatchObject({ bin: 'graphify', args: ['update', '/ws/repo', '--no-cluster'], cwd: '/ws/graph' });
+    // graphify writes graphify-out/ next to the path it scans; the graph must not live in the repository (spec §9).
+    expect(fake.calls[0]).toMatchObject({ bin: 'graphify', args: ['update', '.', '--no-cluster'], cwd: '/ws/repo' });
+    expect(moves).toEqual([['/ws/repo/graphify-out', '/ws/graph/graphify-out']]);
     expect(cov).toEqual({ extracted: 3, failed: 1, nodes: 2, links: 1, ratio: 0.75 });
   });
 
