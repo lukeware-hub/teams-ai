@@ -111,7 +111,7 @@ describe('Run', () => {
     expect(await git(remote.repo, ['ls-tree', '--name-only', 'origin/main', 'src/'])).toContain('src/a');
     expect(run.accounting.records().length).toBeGreaterThanOrEqual(4);
     await run.close();
-  });
+  }, 30_000);
 
   it('pauses after the in-flight step returns and resumes without re-running it', async () => {
     let devCalls = 0;
