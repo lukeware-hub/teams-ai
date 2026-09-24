@@ -253,4 +253,38 @@ describe('Run', () => {
     expect(resumed.journal.events.filter((e) => e.type === OrchEvent.PrMerged && e.data.taskId === 'T1')).toHaveLength(1);
     await resumed.close();
   }, 30_000);
+
+  it('requestStop lets the in-flight step finish and ends the run drained', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    let devStarted: () => void = () => {};
+    const started = new Promise<void>((r) => (devStarted = r));
+    const script: Script = async (req) => {
+      if (req.kind === 'dev') {
+        devStarted();
+        await gate;
+      }
+      return happy(req);
+    };
+    const run = await Run.create(await withAgents(deps(script, { maxParallel: 1 })));
+    const done = run.execute();
+    await started;
+    await run.requestStop();
+    await run.requestStop(); // idempotent
+    release();
+    expect(await done).toBe('drained');
+    const types = run.journal.events.map((e) => e.type);
+    expect(types.filter((t) => t === 'RUN_STOP_REQUESTED')).toHaveLength(1);
+    const states = [...run.journal.state.tasks.values()].map((t) => t.state);
+    expect(states).toContain('merged');
+    expect(states).toContain('ready');
+    await run.close();
+  }, 30_000);
+
+  it('create accepts an explicit run id', async () => {
+    const run = await Run.create(await withAgents(deps(happy)), 'spec-001-r7');
+    expect(run.runId).toBe('spec-001-r7');
+    expect(run.journal.events[0]!.data).toMatchObject({ runId: 'spec-001-r7' });
+    await run.close();
+  });
 });

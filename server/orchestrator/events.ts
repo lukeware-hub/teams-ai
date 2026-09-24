@@ -66,6 +66,7 @@ const REDUCED = new Set([
   'RUN_PAUSED',
   'RUN_RESUMED',
   'RUN_BUDGET_EXHAUSTED',
+  'RUN_STOP_REQUESTED',
 ]);
 
 /** The single write path for run state: append to the log, then reduce. Replay and live execution share it. */

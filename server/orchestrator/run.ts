@@ -114,12 +114,12 @@ export class Run {
     return journal;
   }
 
-  static async create(deps: RunDeps): Promise<Run> {
-    const runId = await nextRunId(deps.ws, deps.spec.specId);
-    await fs.mkdir(runDir(deps.ws, runId), { recursive: true });
-    const journal = await Run.openJournal(deps, runId);
-    await journal.fact(OrchEvent.RunStarted, { runId, specId: deps.spec.specId, projectId: deps.project.projectId });
-    return new Run(runId, journal, deps);
+  static async create(deps: RunDeps, runId?: string): Promise<Run> {
+    const id = runId ?? (await nextRunId(deps.ws, deps.spec.specId));
+    await fs.mkdir(runDir(deps.ws, id), { recursive: true });
+    const journal = await Run.openJournal(deps, id);
+    await journal.fact(OrchEvent.RunStarted, { runId: id, specId: deps.spec.specId, projectId: deps.project.projectId });
+    return new Run(id, journal, deps);
   }
 
   static async resume(deps: RunDeps, runId: string): Promise<Run> {
@@ -346,9 +346,14 @@ export class Run {
     return 'resumed';
   }
 
+  private pauseUntil(): string {
+    const b = this.breaker.state();
+    return (b.status === 'paused' ? b.until : new Date(this.clock().getTime() + 60_000)).toISOString();
+  }
+
   private async waitWhilePaused(): Promise<void> {
     while (!this.breaker.canStart()) {
-      if (this.journal.state.status === 'running') await this.journal.fact(RunEvent.RunPaused, { reason: 'quota' });
+      if (this.journal.state.status === 'running') await this.journal.fact(RunEvent.RunPaused, { reason: 'quota', until: this.pauseUntil() });
       const b = this.breaker.state();
       const wait = b.status === 'paused' ? Math.max(1000, b.until.getTime() - this.clock().getTime()) : 60_000;
       this.log(`run paused (quota) for ${Math.round(wait / 1000)}s`);
@@ -384,6 +389,12 @@ export class Run {
     return this.loop();
   }
 
+  /** Spec (run API) §5: a signal drains — in-flight steps finish, nothing new starts. Idempotent. */
+  async requestStop(): Promise<void> {
+    if (this.journal.state.status === 'draining') return;
+    await this.journal.fact(RunEvent.RunStopRequested, {});
+  }
+
   private async loop(): Promise<ExecuteResult> {
     const { cfg } = this.deps;
     for (;;) {
@@ -393,7 +404,7 @@ export class Run {
         return 'paused:auth';
       }
       if (!this.breaker.canStart()) {
-        if (state.status === 'running') await this.journal.fact(RunEvent.RunPaused, { reason: 'quota' });
+        if (state.status === 'running') await this.journal.fact(RunEvent.RunPaused, { reason: 'quota', until: this.pauseUntil() });
         const b = this.breaker.state();
         const wait = b.status === 'paused' ? Math.max(1000, b.until.getTime() - this.clock().getTime()) : 60_000;
         this.log(`run paused (quota) for ${Math.round(wait / 1000)}s`);
