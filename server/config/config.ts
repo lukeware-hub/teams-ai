@@ -36,9 +36,15 @@ export const DecisionConfigSchema = z.object({
   escalateTo: z.enum(ROLES).default('test'),
 });
 
+/** Spec 10A.5 "Escalates to" column; decisions with "—" never reach Claude. */
+const DECISION_DEFAULTS: Partial<Record<DecisionId, Partial<DecisionConfig>>> = {
+  'attempt-progress': { escalateTo: 'sm' },
+  'model-tier': { chain: ['jev', 'local'] },
+};
+
 const PerDecisionSchema = z
   .object(
-    Object.fromEntries(DECISION_IDS.map((id) => [id, DecisionConfigSchema.prefault({})])) as Record<
+    Object.fromEntries(DECISION_IDS.map((id) => [id, DecisionConfigSchema.prefault(DECISION_DEFAULTS[id] ?? {})])) as Record<
       DecisionId,
       z.ZodPrefault<typeof DecisionConfigSchema>
     >,

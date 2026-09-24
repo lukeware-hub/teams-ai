@@ -32,4 +32,9 @@ describe('decisions config', () => {
     expect(() => loadConfig({ decisions: { perDecision: { 'gate-triage': { thresholds: { jev: 1.5 } } } } })).toThrow(ConfigError);
     expect(() => loadConfig({ decisions: { perDecision: { 'gate-triage': { chain: ['gpt'] } } } })).toThrow(ConfigError);
   });
+  it('per-decision defaults follow the spec escalation column', () => {
+    expect(DEFAULT_CONFIG.decisions.perDecision['attempt-progress']).toMatchObject({ escalateTo: 'sm', chain: ['jev', 'local', 'claude'] });
+    expect(DEFAULT_CONFIG.decisions.perDecision['pr-risk']).toMatchObject({ escalateTo: 'test' });
+    expect(DEFAULT_CONFIG.decisions.perDecision['model-tier']).toMatchObject({ chain: ['jev', 'local'] });
+  });
 });

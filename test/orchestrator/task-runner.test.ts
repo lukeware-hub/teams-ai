@@ -337,3 +337,29 @@ describe('TaskRunner: merge gates triage', () => {
     expect(journal.events.find((e) => e.type === RunEvent.InfraRetry)!.data).toMatchObject({ taskId: 'T1', gate: 'merge-gates' });
   });
 });
+
+describe('TaskRunner: attempt progress', () => {
+  const failingGates = async () => { const f = gate('unit-test', { passed: false, exitCode: 1, stderrTail: 'boom', failure: 'code' as const }); return { results: [f], blockingFailure: f }; };
+  const stalled = { decide: async (id: string) => (id === 'attempt-progress' ? { answered: true as const, backend: 'jev' as const, escalated: false, answers: { progress: { type: 'score' as const, value: 1, probabilities: {}, confidence: 0.9 } } } : { answered: false as const, reason: 'disabled' as const }) };
+  const replanAgent: Agent = async (req) => (req.kind === 'replan' ? ok({ specHash: HASH, replacements: [makePlanTask({ id: 'T1-a', criteriaRefs: ['AC-001'], affectedPaths: ['src'], dependsOn: [] })] }) : devDone()(req));
+
+  it('replans after the second failed attempt when progress is stalled', async () => {
+    const r = new TaskRunner('T1', deps({ agent: replanAgent, gates: failingGates, decider: stalled }));
+    await r.advance(); await r.advance(); // attempt 1 fails → retry-dev
+    expect(state()).toMatchObject({ state: 'implementing', attempts: 1 });
+    await r.advance(); await r.advance(); // attempt 2 fails → stalled → replan
+    expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'dev', 'replan']);
+    expect(journal.events.find((e) => e.type === RunEvent.TaskReplanned)).toBeTruthy();
+  });
+
+  it('never replans a task that was already replanned; it retries instead', async () => {
+    // The reducer marks replacements `replanned: true`; replace T1 by T2 through the journal, then run T2.
+    const T2 = makePlanTask({ id: 'T2', criteriaRefs: ['AC-001'], affectedPaths: ['src'], dependsOn: [] });
+    await journal.fact(RunEvent.TaskReplanned, { taskId: 'T1', replacements: [T2] });
+    await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T2', to: 'ready' });
+    const r = new TaskRunner('T2', deps({ agent: replanAgent, gates: failingGates, decider: stalled }));
+    await r.advance(); await r.advance(); await r.advance(); await r.advance();
+    expect(agentCalls.filter((c) => c.kind === 'replan')).toHaveLength(0);
+    expect(journal.state.tasks.get('T2')).toMatchObject({ state: 'implementing', attempts: 2, replanned: true });
+  });
+});

@@ -8,6 +8,7 @@ import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
 import { taskBranch } from '../core/ids.js';
 import type { DecideContext, Decider } from '../decide/decider.js';
+import { assessAttemptProgress } from '../decide/decisions/attempt-progress.js';
 import { triageGateFailure } from '../decide/decisions/gate-triage.js';
 import type { TestResult } from '../evidence/junit.js';
 import { verifyClaimedEvidence } from '../evidence/matrix.js';
@@ -66,7 +67,8 @@ const tail = (s: string) => (s.length > TAIL ? s.slice(-TAIL) : s);
 
 async function porcelainNames(dir: string, exec: Exec): Promise<string[]> {
   const out = await git(dir, ['status', '--porcelain', '--untracked-files=all'], exec);
-  return out === '' ? [] : out.split('\n').map((l) => l.slice(3).trim().replace(/^"|"$/g, ''));
+  // git() trims stdout, so the first line may have lost the leading space of its XY status prefix.
+  return out === '' ? [] : out.split('\n').map((l) => l.trimStart().replace(/^\S{1,2}\s+/, '').trim().replace(/^"|"$/g, ''));
 }
 
 /** Spec (orchestrator) §4.4: one state row per advance(); every effect is intent → effect → confirm. */
@@ -342,16 +344,30 @@ export class TaskRunner {
     const failure: Failure = { kind, gate, schemaRetriesUsed: this.schemaRetries };
     const decision = decideOnFailure(failure, this.task, this.deps.policy);
     switch (decision.action) {
-      case 'retry-dev':
+      case 'retry-dev': {
         this.schemaRetries = 0;
         // `merging` cannot go straight to `implementing`; step back through `rebasing` first.
         if (this.task.state === 'merging') await this.transition('rebasing');
+        // Spec 10A.5 decision 6: once two attempts have failed, stalled or diverging progress replans early
+        // instead of spending the remaining attempts; a replacement task is never replanned again.
+        const next = this.task.attempts + 2;
+        if (next >= 3 && !this.task.replanned) {
+          const history = this.deps.journal.events.filter((e) => e.type === OrchEvent.Feedback && e.data.taskId === this.taskId).map((e) => String(e.data.text));
+          const { progress, source } = await assessAttemptProgress(this.task.def, next, [...history, text], this.deps.decider, this.ctx);
+          if (progress !== 'converging') {
+            await this.feedback(`${text}
+
+Attempt progress judged ${progress} (${source}); replanning early.`);
+            return this.replan();
+          }
+        }
         // State first, attempt second: a crash in between under-counts one attempt and never charges an
         // interrupted step twice (spec §6 "an interrupted LLM step is re-run and not counted").
         await this.feedback(text);
         await this.transition('implementing');
         await this.deps.journal.fact(RunEvent.AttemptConsumed, { taskId: this.taskId });
         return;
+      }
       case 'rerun-gate':
         await this.deps.journal.fact(kind === 'flaky-test' ? RunEvent.FlakyRetry : RunEvent.InfraRetry, { taskId: this.taskId, gate });
         return;
