@@ -3,7 +3,9 @@
 Audited against the codebase (`server/`, `web/`, `test/`) on 2026-09-24. Specs live in `docs/superpowers/specs/`:
 `2026-09-23-teams-ai-poc-design.md` (POC design), `2026-09-24-orchestrator-phases-1-3-design.md`, and
 `2026-09-24-web-ui-onboarding-design.md` — all three are design companions to the plans below and match what
-was implemented.
+was implemented. Three further specs are designed and not yet planned or implemented: the web UI blocks A
+(`2026-09-24-run-api-execution-ui-design.md`), B (`2026-09-24-refinement-ui-design.md`) and C
+(`2026-09-24-phases-4-6-validation-ui-design.md`).
 
 | # | Plan | Status |
 |---|------|--------|
