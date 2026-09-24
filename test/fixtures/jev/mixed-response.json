@@ -1,0 +1,16 @@
+{
+  "id": "gen-dec-1789738400-Aq9",
+  "model": "typesafe/jev-1.13-20260917",
+  "provider": "TypeSafe",
+  "answers": {
+    "risk": {
+      "type": "score",
+      "score": 1.05,
+      "legend": { "0": "trivial", "1": "moderate", "2": "high" },
+      "probabilities": { "0": 0.0, "1": 0.95, "2": 0.05 },
+      "confidence": 0.92
+    },
+    "drift": { "type": "noul", "noul": 0.98 }
+  },
+  "usage": { "input_tokens": 304, "output_tokens": 18, "cost": 0.0000128 }
+}
