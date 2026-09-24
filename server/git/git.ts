@@ -59,6 +59,18 @@ async function branchExists(repo: string, branch: string, exec: Exec): Promise<b
  * same branch. A branch that already carries commits not on `base` (a previous attempt whose
  * worktree is gone) is refused unless `reset` is set, because `-B` would discard them silently.
  */
+/**
+ * Serializes worktree bookkeeping and fetches per repository: concurrent `git worktree add`
+ * calls race on `.git/config` ("could not lock config file") when two task runners start at once.
+ */
+const repoLocks = new Map<string, Promise<unknown>>();
+export function withRepoLock<T>(repo: string, fn: () => Promise<T>): Promise<T> {
+  const prev = repoLocks.get(repo) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  repoLocks.set(repo, next.catch(() => undefined));
+  return next;
+}
+
 export async function createWorktree(
   repo: string,
   dir: string,
@@ -67,6 +79,10 @@ export async function createWorktree(
   exec: Exec = execCommand,
   opts: { reset?: boolean } = {},
 ): Promise<void> {
+  return withRepoLock(repo, () => createWorktreeUnlocked(repo, dir, branch, base, exec, opts));
+}
+
+async function createWorktreeUnlocked(repo: string, dir: string, branch: string, base: string, exec: Exec, opts: { reset?: boolean }): Promise<void> {
   // Drop registrations whose directory vanished (crash, manual cleanup) before deciding anything.
   await git(repo, ['worktree', 'prune'], exec);
   const list = await git(repo, ['worktree', 'list', '--porcelain'], exec);
@@ -86,11 +102,13 @@ export async function createWorktree(
 }
 
 export async function removeWorktree(repo: string, dir: string, exec: Exec = execCommand): Promise<void> {
-  const r = await run(repo, ['worktree', 'remove', '--force', dir], exec);
-  if (r.exitCode !== 0 && !/is not a working tree|No such file|does not exist/i.test(r.stderr)) {
-    throw new GitError(`git worktree remove failed: ${r.stderr.trim()}`);
-  }
-  await git(repo, ['worktree', 'prune'], exec);
+  return withRepoLock(repo, async () => {
+    const r = await run(repo, ['worktree', 'remove', '--force', dir], exec);
+    if (r.exitCode !== 0 && !/is not a working tree|No such file|does not exist/i.test(r.stderr)) {
+      throw new GitError(`git worktree remove failed: ${r.stderr.trim()}`);
+    }
+    await git(repo, ['worktree', 'prune'], exec);
+  });
 }
 
 export async function commitAll(
@@ -140,7 +158,7 @@ export async function push(dir: string, branch: string, exec: Exec = execCommand
 }
 
 export async function fetch(repo: string, exec: Exec = execCommand): Promise<void> {
-  await git(repo, ['fetch', '-q', '--prune', 'origin'], exec);
+  await withRepoLock(repo, () => git(repo, ['fetch', '-q', '--prune', 'origin'], exec));
 }
 
 /** The sha of `main` on the remote right now — compared with the rebase base before merging. */

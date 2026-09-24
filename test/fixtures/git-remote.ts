@@ -28,5 +28,5 @@ export async function makeRemote(files: Record<string, string>): Promise<Remote>
   await git(repo, ['add', '-A'], execCommand);
   await git(repo, ['commit', '-q', '-m', 'docs: initial'], execCommand);
   await git(repo, ['push', '-q', '-u', 'origin', 'main'], execCommand);
-  return { root, origin, repo, cleanup: () => fs.rm(root, { recursive: true, force: true }) };
+  return { root, origin, repo, cleanup: () => fs.rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }) };
 }

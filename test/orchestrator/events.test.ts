@@ -55,4 +55,32 @@ describe('Journal', () => {
     expect(j.assumptions()).toEqual(['T1: q → a']);
     await j.close();
   });
+  it('refuses an event the reducer rejects and leaves the log untouched', async () => {
+    const j = await open();
+    await j.fact(RunEvent.TaskPlanned, { task: makePlanTask({ id: 'T1' }) });
+    await expect(j.fact(RunEvent.TaskStateChanged, { taskId: 'T1', to: 'merged' })).rejects.toThrow();
+    expect(j.events).toHaveLength(1);
+    expect(j.state.tasks.get('T1')!.state).toBe('planned');
+    await j.close();
+    const again = await Journal.open({ file: path.join(dir, 'events.ndjson'), runId: 'spec-r1', specHash: HASH });
+    expect(again.events).toHaveLength(1);
+    await again.close();
+  });
+
+  it('allocates step sequence numbers synchronously so concurrent steps never share an id', async () => {
+    const j = await open();
+    expect([j.allocStepSeq(), j.allocStepSeq(), j.allocStepSeq()]).toEqual([1, 2, 3]);
+    await j.fact(OrchEvent.StepStarted, { stepId: 's00003', kind: 'dev' });
+    await j.close();
+    const again = await Journal.open({ file: path.join(dir, 'events.ndjson'), runId: 'spec-r1', specHash: HASH });
+    expect(again.allocStepSeq()).toBe(2);
+    await again.close();
+  });
+
+  it('rebuilds handoffs from PR_MERGED facts', async () => {
+    const j = await open();
+    await j.fact(OrchEvent.PrMerged, { taskId: 'T1', pr: 1, sha: 'abc', handoff: { taskId: 'T1', title: 't', summary: 's', changedFiles: ['a'], mergedAt: '2026-09-24T10:00:00.000Z' } });
+    expect(j.handoffs()).toEqual([{ taskId: 'T1', title: 't', summary: 's', changedFiles: ['a'], mergedAt: '2026-09-24T10:00:00.000Z' }]);
+    await j.close();
+  });
 });

@@ -6,7 +6,7 @@ type ReviewOutput = z.infer<typeof ReviewOutputSchema>;
 import type { Plan, PlanTask } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
-import { stepId, taskBranch } from '../core/ids.js';
+import { taskBranch } from '../core/ids.js';
 import type { DecideContext, Decider } from '../decide/decider.js';
 import { triageGateFailure } from '../decide/decisions/gate-triage.js';
 import type { TestResult } from '../evidence/junit.js';
@@ -17,10 +17,12 @@ import { changedFiles, commitAll, createWorktree, fetch as gitFetch, git } from 
 import type { MergeQueue, MergeSteps } from '../git/merge-queue.js';
 import type { CodeContext, HandoffSummary } from '../knowledge/context-pack.js';
 import { RunEvent, type TaskRuntime } from '../pipeline/run-state.js';
-import { TERMINAL_STATES, type TaskState } from '../pipeline/task-state.js';
+import { TERMINAL_STATES, assertTransition, type TaskState } from '../pipeline/task-state.js';
 import type { StepOutcome } from '../runner/step.js';
 import { decideOnFailure, type Failure, type FailureKind, type PolicyConfig } from '../scheduler/retry-policy.js';
+import { redactSecrets } from '../core/redact.js';
 import { checkScope } from '../validators/diff-guard.js';
+import { findCycle } from '../validators/plan.js';
 import type { RefContext } from '../validators/references.js';
 import { Intent, OrchEvent, type Journal } from './events.js';
 import { devPack, replanPack, reviewPack, specGapPack, type AgentStepRequest, type PackBase } from './steps.js';
@@ -47,9 +49,19 @@ export interface TaskRunnerDeps {
   handoffs: () => readonly HandoffSummary[];
   boundaries: () => Promise<readonly string[]>;
   maxSpecGapRounds?: number;
+  /** Secret values to strip from gate tails and other process text before journaling (spec §5). */
+  secretValues?: () => readonly string[];
+  /** Refused merges tolerated per task before they count as an infra failure (default 3). */
+  maxMergeRefusals?: number;
 }
 
 const TAIL = 2000;
+
+function dedupeById(results: readonly TestResult[]): TestResult[] {
+  const byId = new Map<string, TestResult>();
+  for (const r of results) byId.set(r.id, r);
+  return [...byId.values()];
+}
 const tail = (s: string) => (s.length > TAIL ? s.slice(-TAIL) : s);
 
 async function porcelainNames(dir: string, exec: Exec): Promise<string[]> {
@@ -64,6 +76,7 @@ export class TaskRunner {
   private schemaRetries = 0;
   private specGapRounds = 0;
   private junit: TestResult[] = [];
+  private mergeRefusals = 0;
   private readonly maxSpecGapRounds: number;
 
   constructor(
@@ -85,11 +98,25 @@ export class TaskRunner {
     return TERMINAL_STATES.has(this.task.state);
   }
 
+  private clean(text: string): string {
+    return redactSecrets(text, this.deps.secretValues?.() ?? []);
+  }
+
   private get ctx(): DecideContext {
     return { confidential: this.deps.project.confidential };
   }
 
   async advance(): Promise<void> {
+    try {
+      await this.step();
+    } catch (err) {
+      if ((err as { fatal?: boolean }).fatal === true) throw err;
+      // git/worktree trouble is infrastructure: retried per the policy, never charged to the Dev.
+      await this.fail('infra', this.clean(`Orchestrator step failed: ${(err as Error).message}`), 'worktree');
+    }
+  }
+
+  private async step(): Promise<void> {
     switch (this.task.state) {
       case 'ready':
         await this.transition('implementing');
@@ -110,6 +137,7 @@ export class TaskRunner {
 
   private async transition(to: TaskState): Promise<void> {
     if (this.task.state === to) return;
+    assertTransition(this.task.state, to);
     await this.deps.journal.fact(RunEvent.TaskStateChanged, { taskId: this.taskId, to });
   }
 
@@ -142,8 +170,12 @@ export class TaskRunner {
     await this.ensureWorktree();
     const task = this.task;
     const attempt = task.attempts + 1;
+    const commitKey = `${this.taskId}:a${attempt}`;
+    if (this.deps.journal.isConfirmed(Intent.Commit, commitKey)) {
+      // Crash between the commit confirm and the state change: the work is committed, do not run Dev again.
+      return this.transition('validating');
+    }
     const pack = devPack(this.deps.packBase(), task.def, { code: await this.deps.code(this.worktree, task.def), handoffs: this.deps.handoffs(), feedback: this.deps.journal.lastFeedback(this.taskId) });
-    const seq = this.deps.journal.nextStepSeq();
     const outcome = await this.deps.runAgent<'dev'>({
       kind: 'dev',
       role: 'dev',
@@ -162,10 +194,9 @@ export class TaskRunner {
     const touched = await porcelainNames(this.worktree, this.deps.exec);
     const scope = checkScope({ changedFiles: touched, affectedPaths: task.def.affectedPaths, frozenPaths: this.deps.plan.frozenPaths, scopeJustification: value.scopeJustification, allowFrozen: this.deps.firstSpec && this.taskId === 'T0-scaffold' });
     if (!scope.ok) return this.fail('review-changes', `Scope violation:\n${scope.errors.join('\n')}`);
-    const key = stepId(seq);
-    await this.deps.journal.intent(Intent.Commit, key, { taskId: this.taskId, worktree: this.worktree, message: value.commitMessage });
+    await this.deps.journal.intent(Intent.Commit, commitKey, { taskId: this.taskId, worktree: this.worktree, message: value.commitMessage });
     const sha = (await commitAll(this.worktree, value.commitMessage, {}, this.deps.exec)) ?? (await git(this.worktree, ['rev-parse', 'HEAD'], this.deps.exec));
-    await this.deps.journal.confirm(Intent.Commit, key, { sha });
+    await this.deps.journal.confirm(Intent.Commit, commitKey, { sha });
     const changed = await changedFiles(this.worktree, 'origin/main', this.deps.exec);
     await this.deps.journal.fact(OrchEvent.DevCommitted, { taskId: this.taskId, sha, changedFiles: changed, summary: value.summary });
     await this.transition('validating');
@@ -188,9 +219,18 @@ export class TaskRunner {
   private async validate(): Promise<void> {
     const { results, blockingFailure } = await this.deps.gates(this.worktree, this.branch);
     for (const r of results) {
-      await this.deps.journal.fact(r.passed ? OrchEvent.GatePassed : OrchEvent.GateFailed, { taskId: this.taskId, gate: r.name, failure: r.failure, exitCode: r.exitCode, durationMs: r.durationMs });
+      await this.deps.journal.fact(r.passed ? OrchEvent.GatePassed : OrchEvent.GateFailed, {
+        taskId: this.taskId,
+        gate: r.name,
+        failure: r.failure,
+        exitCode: r.exitCode,
+        durationMs: r.durationMs,
+        // Kept so a resume in `reviewing` can verify evidence without re-running the gates.
+        junit: (r.junit ?? []).map((t) => ({ id: t.id, name: t.name, classname: t.classname, status: t.status, acIds: t.acIds })),
+      });
     }
-    this.junit = results.flatMap((r) => r.junit ?? []);
+    // Every gate that leaves a report is read; the same test id from a later gate replaces the earlier one.
+    this.junit = dedupeById(results.flatMap((r) => r.junit ?? []));
     if (!blockingFailure) return this.transition('reviewing');
     const gateDef = this.deps.plan.gates.find((g) => g.name === blockingFailure.name) ?? { name: blockingFailure.name, command: '', blocking: true, network: 'none' as const, secrets: [] };
     const triage = await triageGateFailure(gateDef, blockingFailure, this.deps.decider, this.ctx);
@@ -198,15 +238,23 @@ export class TaskRunner {
     const delta = [
       `Gate ${blockingFailure.name} failed (${triage.kind}, exit ${blockingFailure.exitCode})`,
       failedIds.length > 0 ? `Failed tests:\n${failedIds.join('\n')}` : '',
-      blockingFailure.stderrTail ? `stderr (tail):\n${tail(blockingFailure.stderrTail)}` : '',
-      blockingFailure.stdoutTail ? `stdout (tail):\n${tail(blockingFailure.stdoutTail)}` : '',
+      blockingFailure.stderrTail ? `stderr (tail):\n${this.clean(tail(blockingFailure.stderrTail))}` : '',
+      blockingFailure.stdoutTail ? `stdout (tail):\n${this.clean(tail(blockingFailure.stdoutTail))}` : '',
     ]
       .filter((s) => s !== '')
       .join('\n\n');
     return this.fail(triage.kind, delta, blockingFailure.name);
   }
 
+  private junitFromJournal(): TestResult[] {
+    const events = this.deps.journal.events.filter((e) => (e.type === OrchEvent.GatePassed || e.type === OrchEvent.GateFailed) && e.data.taskId === this.taskId);
+    const lastRound = new Map<string, TestResult[]>();
+    for (const e of events) lastRound.set(String(e.data.gate), (e.data.junit as TestResult[] | undefined) ?? []);
+    return dedupeById([...lastRound.values()].flat());
+  }
+
   private async review(): Promise<void> {
+    if (this.junit.length === 0) this.junit = this.junitFromJournal();
     const changed = await changedFiles(this.worktree, 'origin/main', this.deps.exec);
     const diffStat = await git(this.worktree, ['diff', '--stat', 'origin/main...HEAD'], this.deps.exec);
     const pack = reviewPack(this.deps.packBase(), this.task.def, { diffStat, changedFiles: changed, code: await this.deps.impact(this.worktree, this.branch, changed) });
@@ -245,20 +293,39 @@ export class TaskRunner {
     };
     const outcome = await this.deps.mergeQueue.enqueue(this.taskId, wrapped);
     if (outcome.ok) {
-      await this.deps.journal.fact(OrchEvent.PrMerged, { taskId: this.taskId, pr: outcome.pr, already: outcome.already ?? false, warning: outcome.warning ?? null });
+      // The queue short-circuits an already-merged PR before afterMerge; the cleanup still has to happen.
+      if (outcome.already && steps.afterMerge) await steps.afterMerge();
+      const handoff = this.deps.handoffs().find((h) => h.taskId === this.taskId) ?? null;
+      const sha = await git(this.worktree, ['rev-parse', 'HEAD'], this.deps.exec).catch(() => null);
+      await this.deps.journal.fact(OrchEvent.PrMerged, { taskId: this.taskId, pr: outcome.pr, sha, already: outcome.already ?? false, warning: outcome.warning ?? null, handoff });
       if (this.task.state === 'rebasing') await this.transition('merging');
       return this.transition('merged');
     }
-    if (outcome.stage === 'merge') return this.transition('rebasing');
+    if (outcome.stage === 'merge') {
+      this.mergeRefusals += 1;
+      if (this.mergeRefusals <= (this.deps.maxMergeRefusals ?? 3)) return this.transition('rebasing');
+      this.mergeRefusals = 0;
+      if (this.task.state === 'merging') await this.transition('rebasing');
+      return this.fail('infra', `Merge refused ${this.deps.maxMergeRefusals ?? 3} times: ${this.clean(outcome.detail ?? '')}`, 'merge');
+    }
     if (this.task.state === 'merging') await this.transition('rebasing');
     switch (outcome.stage) {
       case 'rebase':
         return this.fail('rebase-conflict', `Rebase conflicts on origin/main:\n${(outcome.conflicts ?? []).join('\n')}`);
-      case 'gates':
-        return this.fail('code', `Gates failed after rebase:\n${outcome.detail ?? ''}`, 'merge-gates');
+      case 'gates': {
+        // merge-steps prefixes the detail with the gate runner's own classification ([infra] or [code]).
+        const infra = /^\[infra\]/.test(outcome.detail ?? '');
+        await this.deps.journal.fact(OrchEvent.GateFailed, { taskId: this.taskId, gate: 'merge-gates', failure: infra ? 'infra' : 'code', exitCode: null, durationMs: 0, junit: [] });
+        return this.fail(infra ? 'infra' : 'code', `Gates failed after rebase:\n${this.clean(outcome.detail ?? '')}`, 'merge-gates');
+      }
       default:
-        return this.fail('infra', `Merge queue ${outcome.stage} failed: ${outcome.detail ?? ''}`, 'merge');
+        return this.fail('infra', `Merge queue ${outcome.stage} failed: ${this.clean(outcome.detail ?? '')}`, 'merge');
     }
+  }
+
+  /** Spec (orchestrator) §7: the task's token budget is spent; counts as a failed attempt (POC spec §8.5). */
+  budgetExceeded(tokens: number, cap: number): Promise<void> {
+    return this.fail('budget', `Task token budget exceeded: ${tokens} tokens used, cap ${cap}. Finish with a smaller change set.`);
   }
 
   private async fail(kind: FailureKind, text: string, gate?: string): Promise<void> {
@@ -296,9 +363,38 @@ export class TaskRunner {
   private async replan(): Promise<void> {
     const history = this.deps.journal.events.filter((e) => e.type === OrchEvent.Feedback && e.data.taskId === this.taskId).map((e) => String(e.data.text));
     const outcome = await this.deps.runAgent<'replan'>({ kind: 'replan', role: 'sm', pack: replanPack(this.deps.packBase(), this.task.def, { history, boundaries: await this.deps.boundaries() }), cwd: this.deps.ws.repo, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts });
-    if (!outcome.ok) return this.block(`replan failed: ${outcome.errors.join('; ')}`);
+    if (!outcome.ok) {
+      if (outcome.failure === 'quota' || outcome.failure === 'auth') return this.fail(outcome.failure, outcome.errors.join('\n'));
+      return this.block(`replan failed: ${outcome.errors.join('; ')}`);
+    }
     const value = outcome.value as ReplanOutput;
+    // Validate before the journal reduces the replan: a bad replacement would be rejected by the reducer
+    // after it was written, corrupting the log. Structural checks only; AC coverage of the whole plan is
+    // not the replan's concern (spec §4.6: the replacements cover the original task's criteria).
+    const errors = this.replanErrors(value.replacements);
+    if (errors.length > 0) return this.block(`replan rejected: ${errors.join('; ')}`);
     await this.deps.journal.fact(RunEvent.TaskReplanned, { taskId: this.taskId, replacements: value.replacements });
+  }
+
+  private replanErrors(replacements: readonly PlanTask[]): string[] {
+    const errors: string[] = [];
+    const known = new Set(this.deps.journal.state.tasks.keys());
+    const newIds = new Set(replacements.map((r) => r.id));
+    if (newIds.size !== replacements.length) errors.push('duplicate replacement ids');
+    for (const r of replacements) {
+      if (known.has(r.id)) errors.push(`replacement ${r.id} reuses an existing task id`);
+      for (const d of r.dependsOn) {
+        if (d === this.taskId) errors.push(`${r.id} depends on the superseded task ${this.taskId}`);
+        else if (!known.has(d) && !newIds.has(d)) errors.push(`${r.id} depends on unknown task ${d}`);
+      }
+    }
+    const wanted = new Set(this.task.def.criteriaRefs);
+    const covered = new Set(replacements.flatMap((r) => r.criteriaRefs));
+    for (const id of wanted) if (!covered.has(id)) errors.push(`criterion ${id} of ${this.taskId} is not covered by any replacement`);
+    const all = [...[...this.deps.journal.state.tasks.values()].map((t) => t.def).filter((t) => t.id !== this.taskId), ...replacements];
+    const cycle = findCycle(all);
+    if (cycle) errors.push(`dependency cycle: ${cycle.join(' -> ')}`);
+    return errors;
   }
 
   private async block(reason: string): Promise<void> {

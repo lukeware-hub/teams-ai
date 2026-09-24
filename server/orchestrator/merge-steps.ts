@@ -56,7 +56,7 @@ async function guarded(journal: Journal, type: (typeof Intent)[keyof typeof Inte
   return result;
 }
 
-function common(deps: MergeStepsDeps, worktree: string, branch: string, title: string, body: () => Promise<string>, runGates: boolean) {
+function common(deps: MergeStepsDeps, worktree: string, branch: string, title: string, body: () => Promise<string>, runGates: boolean, taskId: string | null = null) {
   const repo = deps.ws.repo;
   return {
     alreadyMerged: () => findMergedPr({ cwd: repo, head: branch, base: 'main' }, deps.ghExec),
@@ -72,9 +72,12 @@ function common(deps: MergeStepsDeps, worktree: string, branch: string, title: s
       return { ok: false, detail: redactSecrets(`${gateLine(f)}\n${tail(f.stderrTail || f.stdoutTail)}`, deps.secretValues()) };
     },
     push: async () => {
-      await guarded(deps.journal, Intent.Push, branch, { worktree, branch }, async () => {
+      // Keyed by head sha: a second pass through the queue (merge refused, conflict resolved, resume)
+      // has a new head and must push again; a plain branch key would skip it forever.
+      const sha = await headSha(worktree, deps.exec);
+      await guarded(deps.journal, Intent.Push, `${branch}@${sha}`, { worktree, branch, sha }, async () => {
         await push(worktree, branch, deps.exec);
-        return { sha: await headSha(worktree, deps.exec) };
+        return { sha };
       });
     },
     ensurePr: async () => {
@@ -88,12 +91,15 @@ function common(deps: MergeStepsDeps, worktree: string, branch: string, title: s
     },
     remoteMainSha: () => remoteMainSha(repo, deps.exec),
     merge: async (number: number) => {
-      const data = await guarded(deps.journal, Intent.PrMerge, branch, { branch, number }, async () => {
-        const r = await mergePr({ cwd: repo, number, headSha: await headSha(worktree, deps.exec) }, deps.ghExec);
-        if (!r.merged && !r.already) throw new Error(r.reason ?? 'merge refused');
-        return { merged: true, already: r.already };
-      }).catch((err: Error) => ({ merged: false, reason: err.message }));
-      return data.merged ? { merged: true } : { merged: false, reason: String(data.reason) };
+      const sha = await headSha(worktree, deps.exec);
+      // A refusal is a confirmed outcome for this head sha; a thrown error (gh down, journal failure,
+      // an injected crash) propagates so the caller sees it, never disguised as a refusal.
+      // taskId travels with the intent so reconcile can finish the task after a crash between merge and confirm.
+      const data = await guarded(deps.journal, Intent.PrMerge, `${branch}@${sha}`, { branch, number, sha, taskId }, async () => {
+        const r = await mergePr({ cwd: repo, number, headSha: sha }, deps.ghExec);
+        return { merged: r.merged || r.already, already: r.already, reason: r.reason ?? null };
+      });
+      return data.merged ? { merged: true } : { merged: false, reason: String(data.reason ?? 'merge refused') };
     },
     cleanup: async () => {
       await guarded(deps.journal, Intent.WorktreeRemove, branch, { worktree }, async () => {
@@ -108,7 +114,7 @@ function common(deps: MergeStepsDeps, worktree: string, branch: string, title: s
 export function taskMergeSteps(deps: MergeStepsDeps, task: PlanTask, worktree: string, branch: string, spec: Spec, summary: string): MergeSteps {
   let gateResults: GateResult[] = [];
   let changed: string[] = [];
-  const base = common(deps, worktree, branch, `${task.id}: ${task.title}`, async () => prBody({ summary, criteria: spec.acceptanceCriteria.filter((c) => task.criteriaRefs.includes(c.id)), gateLines: gateResults.map(gateLine) }, deps.secretValues()), true);
+  const base = common(deps, worktree, branch, `${task.id}: ${task.title}`, async () => prBody({ summary, criteria: spec.acceptanceCriteria.filter((c) => task.criteriaRefs.includes(c.id)), gateLines: gateResults.map(gateLine) }, deps.secretValues()), true, task.id);
   return {
     ...base,
     rebase: async () => {
@@ -122,7 +128,7 @@ export function taskMergeSteps(deps: MergeStepsDeps, task: PlanTask, worktree: s
       gateResults = r.results;
       if (!r.blockingFailure) return { ok: true };
       const f = r.blockingFailure;
-      return { ok: false, detail: redactSecrets(`${gateLine(f)}\n${tail(f.stderrTail || f.stdoutTail)}`, deps.secretValues()) };
+      return { ok: false, detail: redactSecrets(`[${f.failure ?? 'code'}] ${gateLine(f)}\n${tail(f.stderrTail || f.stdoutTail)}`, deps.secretValues()) };
     },
     afterMerge: async () => {
       await gitFetch(deps.ws.repo, deps.exec);

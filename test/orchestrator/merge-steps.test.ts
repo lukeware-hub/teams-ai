@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execCommand } from '../../server/exec/command.js';
-import { commitAll, createWorktree, git } from '../../server/git/git.js';
+import { commitAll, createWorktree, git, headSha } from '../../server/git/git.js';
 import { MergeQueue } from '../../server/git/merge-queue.js';
 import { Intent, Journal, OrchEvent } from '../../server/orchestrator/events.js';
 import { docsMergeSteps, prBody, taskMergeSteps, type MergeStepsDeps } from '../../server/orchestrator/merge-steps.js';
@@ -130,5 +130,19 @@ describe('docsMergeSteps', () => {
     expect(out).toEqual({ ok: true, pr: 1 });
     expect(gh.prs[0]!.title).toBe('docs(spec-001): technical spec');
     await expect(fs.access(docsWt)).rejects.toThrow();
+  });
+  it('pushes and merges again on a second pass when the head changed (merge refused, main moved)', async () => {
+    const d = deps();
+    const first = taskMergeSteps(d, task, worktree, 'task/spec-001-T1', spec, 'did T1');
+    await first.push();
+    const sha1 = await headSha(worktree);
+    await fs.writeFile(path.join(worktree, 'src', 'sum.ts'), 'export const sum = (a: number, b: number) => a + b; // v2\n');
+    await commitAll(worktree, 'feat: v2');
+    const second = taskMergeSteps(d, task, worktree, 'task/spec-001-T1', spec, 'did T1');
+    await second.push();
+    const sha2 = await headSha(worktree);
+    expect(sha2).not.toBe(sha1);
+    expect(await git(remote.repo, ['ls-remote', 'origin', 'refs/heads/task/spec-001-T1'])).toContain(sha2);
+    expect(journal.events.filter((e) => e.kind === 'intent' && e.type === Intent.Push)).toHaveLength(2);
   });
 });

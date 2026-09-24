@@ -1,3 +1,4 @@
+import type { HandoffSummary } from '../knowledge/context-pack.js';
 import { applyEvent, emptyRunState, type RunState } from '../pipeline/run-state.js';
 import { EventStore, unconfirmedIntents, type StoredEvent } from '../store/event-store.js';
 
@@ -38,6 +39,14 @@ export const Intent = {
 } as const;
 export type IntentType = (typeof Intent)[keyof typeof Intent];
 
+/**
+ * Thrown by the journal test hook right after an intent is appended. Marked fatal so no retry
+ * layer (task runner, merge queue) turns it into a failure: the process must die here.
+ */
+export class CrashInjected extends Error {
+  readonly fatal = true;
+}
+
 export type RunResult = 'complete' | 'blocked' | 'deadlocked' | 'drained' | 'phase-failed';
 
 /** Deterministic so reconcile can match an intent to its confirm across restarts (spec §7.2). */
@@ -61,6 +70,7 @@ const REDUCED = new Set([
 export class Journal {
   readonly state: RunState;
   private readonly log: StoredEvent[];
+  private stepSeq: number;
 
   private constructor(
     private readonly store: EventStore,
@@ -69,6 +79,7 @@ export class Journal {
     this.log = events;
     this.state = emptyRunState();
     for (const e of events) this.reduce(e);
+    this.stepSeq = events.filter((e) => e.type === OrchEvent.StepStarted).length;
   }
 
   static async open(opts: { file: string; runId: string; specHash: string; clock?: () => Date }): Promise<Journal> {
@@ -91,9 +102,17 @@ export class Journal {
     intentId?: string;
     data?: Record<string, unknown>;
   }): Promise<StoredEvent> {
+    // Reduce on a copy first: an event the reducer rejects must never reach the log, or every
+    // later open would throw while replaying it.
+    if ((input.kind ?? 'fact') === 'fact' && REDUCED.has(input.type)) {
+      applyEvent(structuredClone(this.state), { type: input.type, data: input.data ?? {} });
+    }
     const stored = await this.store.append(input);
     this.log.push(stored);
     this.reduce(stored);
+    if (stored.type === OrchEvent.StepStarted) {
+      this.stepSeq = Math.max(this.stepSeq, this.log.filter((e) => e.type === OrchEvent.StepStarted).length);
+    }
     return stored;
   }
 
@@ -118,8 +137,20 @@ export class Journal {
     return this.log.some((e) => e.kind === 'confirm' && e.intentId === id);
   }
 
+  /** Next step number without allocating it (status displays). */
   nextStepSeq(): number {
-    return 1 + this.log.filter((e) => e.type === OrchEvent.StepStarted).length;
+    return this.stepSeq + 1;
+  }
+
+  /** Allocates the next step number synchronously, so concurrent steps never share an id or a directory. */
+  allocStepSeq(): number {
+    this.stepSeq += 1;
+    return this.stepSeq;
+  }
+
+  /** Handoff summaries of merged tasks, rebuilt from PR_MERGED facts so they survive a restart. */
+  handoffs(): HandoffSummary[] {
+    return this.log.filter((e) => e.type === OrchEvent.PrMerged && e.data.handoff).map((e) => e.data.handoff as HandoffSummary);
   }
 
   lastFeedback(taskId: string): string | null {

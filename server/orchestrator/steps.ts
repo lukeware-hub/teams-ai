@@ -159,7 +159,7 @@ export interface AgentStepDeps {
  * runs/<runId>/steps/. Accounting is done by runStep itself (Plan 3).
  */
 export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>, deps: AgentStepDeps): Promise<StepOutcome<OutputOf<K>>> {
-  const seq = deps.journal.nextStepSeq();
+  const seq = deps.journal.allocStepSeq();
   const id = stepId(seq);
   const pack = buildContextPack(req.pack);
   const dir = deps.stepDir(seq);
@@ -205,10 +205,11 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
   }
   deps.breaker.observe(outcome.summary.rateLimit);
   if (!outcome.ok && outcome.failure === 'quota') deps.breaker.onQuotaFailure(outcome.summary.rateLimit);
-  const result: StepOutcome<OutputOf<K>> = outcome.ok ? outcome : { ...outcome, errors: outcome.errors.map(clean) };
-  const record = outcome.ok
-    ? { ok: true, value: JSON.parse(clean(JSON.stringify(outcome.value))) as unknown }
-    : { ok: false, failure: outcome.failure, errors: result.ok ? [] : result.errors };
+  // Everything the agent produced is redacted once, here, so no caller journals a raw value.
+  const result: StepOutcome<OutputOf<K>> = outcome.ok
+    ? { ...outcome, value: JSON.parse(clean(JSON.stringify(outcome.value))) as OutputOf<K> }
+    : { ...outcome, errors: outcome.errors.map(clean) };
+  const record = result.ok ? { ok: true, value: result.value as unknown } : { ok: false, failure: result.failure, errors: result.errors };
   await fs.writeFile(path.join(dir, 'output.json'), JSON.stringify(record, null, 2));
   await deps.journal.fact(OrchEvent.StepFinished, {
     stepId: id,

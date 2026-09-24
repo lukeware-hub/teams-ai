@@ -87,6 +87,8 @@ export class MergeQueue {
       }
       return { ok: true, pr: pr.number };
     } catch (err) {
+      // A fatal error (an injected crash in tests) must reach the caller; every other failure is a stage outcome.
+      if ((err as { fatal?: boolean }).fatal === true) throw err;
       return { ok: false, stage, detail: (err as Error).message };
     }
   }

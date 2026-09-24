@@ -183,4 +183,23 @@ describe('runAgentStep', () => {
     expect(peak).toBe(1);
     expect(d.breaker.canStart()).toBe(false);
   });
+  it('gives concurrent steps distinct step ids and directories', async () => {
+    const d = await deps(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+      return { ok: true, value: { specHash: HASH, status: 'done', summary: 'ok', changedFiles: [], commitMessage: 'feat: x' }, summary: summary() };
+    });
+    const req = { kind: 'dev' as const, role: 'dev' as const, pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1 };
+    await Promise.all([runAgentStep(req, d), runAgentStep({ ...req, taskId: 'T2' }, d)]);
+    const started = d.journal.events.filter((e) => e.type === OrchEvent.StepStarted).map((e) => e.data.stepId);
+    expect(new Set(started).size).toBe(2);
+  });
+
+  it('redacts secret values inside the returned value, not only in the files', async () => {
+    const d = await deps(async () => ({ ok: true, value: { specHash: HASH, status: 'done', summary: 'token s3cr3t-value leaked', changedFiles: [], commitMessage: 'feat: s3cr3t-value' }, summary: summary() }));
+    const out = await runAgentStep({ kind: 'dev', role: 'dev', pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1 }, d);
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(JSON.stringify(out.value)).not.toContain('s3cr3t-value');
+    expect((out.value as unknown as { commitMessage: string }).commitMessage).toBe('feat: [REDACTED]');
+  });
 });

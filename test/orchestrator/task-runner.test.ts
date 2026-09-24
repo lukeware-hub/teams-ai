@@ -285,6 +285,14 @@ describe('TaskRunner: attempts, replan, block', () => {
     expect(r.done).toBe(true);
   });
 
+  it('budgetExceeded consumes an attempt with the token count as feedback', async () => {
+    const r = new TaskRunner('T1', deps());
+    await r.advance();
+    await r.budgetExceeded(1_600_000, 1_500_000);
+    expect(state()).toMatchObject({ state: 'implementing', attempts: 1 });
+    expect(journal.lastFeedback('T1')).toContain('1600000');
+  });
+
   it('blocks a replanned task when its attempts are spent', async () => {
     await journal.fact(RunEvent.TaskReplanned, { taskId: 'T1', replacements: [replacement] });
     await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T1-r1', to: 'ready' });
