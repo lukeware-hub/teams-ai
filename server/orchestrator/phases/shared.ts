@@ -60,9 +60,12 @@ export async function docsWorktree(deps: PhaseDeps, branch: string): Promise<str
 
 export async function commitAndMergeDocs(deps: PhaseDeps, phase: 1 | 2, branch: string, worktree: string, title: string): Promise<PhaseResult> {
   const key = `${deps.spec.specId}-${phase}`;
-  await deps.journal.intent(Intent.DocsCommit, key, { worktree, branch, message: title });
-  const sha = (await commitAll(worktree, title, {}, deps.exec)) ?? (await git(worktree, ['rev-parse', 'HEAD'], deps.exec));
-  await deps.journal.confirm(Intent.DocsCommit, key, { sha });
+  if (!deps.journal.isConfirmed(Intent.DocsCommit, key)) {
+    const baseSha = await git(worktree, ['rev-parse', 'HEAD'], deps.exec);
+    await deps.journal.intent(Intent.DocsCommit, key, { worktree, branch, message: title, baseSha });
+    const sha = (await commitAll(worktree, title, {}, deps.exec)) ?? (await git(worktree, ['rev-parse', 'HEAD'], deps.exec));
+    await deps.journal.confirm(Intent.DocsCommit, key, { sha });
+  }
   for (let attempt = 1; attempt <= 2; attempt++) {
     const out = await deps.mergeQueue.enqueue(`docs-${phase}-${attempt}`, docsMergeSteps(deps.mergeDeps, branch, worktree, title));
     if (out.ok) {

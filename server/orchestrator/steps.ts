@@ -134,7 +134,7 @@ export interface AgentStepRequest<K extends StepKind> {
   phase: string;
   taskId: string | null;
   attempt: number;
-  refContext?: RefContext;
+  refContext?: RefContext | (() => Promise<RefContext>);
   refs?: StepRequest['refs'];
   semantic?: StepRequest['semantic'];
   extraAllow?: readonly string[];

@@ -67,7 +67,7 @@ export class Run {
   private readonly governor: Governor;
   private readonly breaker: QuotaBreaker;
   private readonly mergeQueue = new MergeQueue();
-  private readonly handoffs: HandoffSummary[] = [];
+  private readonly handoffs: HandoffSummary[];
   private readonly clock: () => Date;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly log: (line: string) => void;
@@ -87,6 +87,7 @@ export class Run {
     this.sleep = deps.sleep ?? defaultSleep;
     this.log = deps.log ?? ((l) => process.stderr.write(`${l}\n`));
     this.maxParallel = deps.maxParallel ?? deps.cfg.concurrency.maxParallel;
+    this.handoffs = journal.handoffs();
     this.governor = new Governor(deps.cfg.concurrency.maxClaudeProcesses);
     this.breaker = new QuotaBreaker(DEFAULT_BREAKER, this.clock);
   }
@@ -117,6 +118,7 @@ export class Run {
     const journal = await Run.openJournal(deps, runId);
     const run = new Run(runId, journal, deps);
     await reconcile({ journal, ws: deps.ws, exec: deps.exec, ghExec: deps.ghExec, afterMerge: (taskId, branch) => run.afterMergeOnResume(taskId, branch), log: run.log });
+    await run.writeState();
     return run;
   }
 
@@ -223,13 +225,22 @@ export class Run {
       cfg,
       secrets,
       accounting: this.accounting,
-      runEscalation: ({ role, prompt }) => {
+      runEscalation: async ({ role, prompt }) => {
+        // A Claude escalation is a claude process like any other step: governed and breaker-observed (spec §7).
         const profile = resolveProfile(cfg, role, project);
-        return this.deps.runStep<'decide'>({ kind: 'decide', role, agent: this.deps.agents[role], profile, model: profile.model, cwd: this.deps.ws.repo, prompt, expectedSpecHash: spec.specHash!, phase: 'decide', taskId: null, attempt: 0 }, this.stepDeps()) as Promise<StepOutcome<DecideOutput>>;
+        const release = await this.governor.acquire();
+        try {
+          const out = (await this.deps.runStep<'decide'>({ kind: 'decide', role, agent: this.deps.agents[role], profile, model: profile.model, cwd: this.deps.ws.repo, prompt, expectedSpecHash: spec.specHash!, phase: 'decide', taskId: null, attempt: 0 }, this.stepDeps())) as StepOutcome<DecideOutput>;
+          this.breaker.observe(out.summary.rateLimit);
+          if (!out.ok && out.failure === 'quota') this.breaker.onQuotaFailure(out.summary.rateLimit);
+          return out;
+        } finally {
+          release();
+        }
       },
       fetch: this.deps.fetch,
       onDecision: (record) => {
-        void this.journal.fact(OrchEvent.DecisionMade, { record: JSON.parse(JSON.stringify(record)) });
+        this.journal.fact(OrchEvent.DecisionMade, { record: JSON.parse(JSON.stringify(record)) }).catch((err: Error) => this.log(`decision not journaled: ${err.message}`));
       },
     });
     return {
@@ -302,7 +313,10 @@ export class Run {
     const { cfg } = this.deps;
     for (;;) {
       const state = this.journal.state;
-      if (state.status === 'paused:auth') return 'paused:auth';
+      if (state.status === 'paused:auth') {
+        await Promise.allSettled(this.inflight.values());
+        return 'paused:auth';
+      }
       if (!this.breaker.canStart()) {
         if (state.status === 'running') await this.journal.fact(RunEvent.RunPaused, { reason: 'quota' });
         const b = this.breaker.state();
@@ -327,6 +341,8 @@ export class Run {
       if (progress !== 'running' && this.inflight.size === 0) return this.finish(progress === 'complete' ? 'complete' : progress);
       if (this.journal.state.status === 'running') {
         for (const id of nextRunnable(this.journal.state, this.maxParallel)) {
+          // Replacements from a replan are born `planned`; the runner only acts from `ready` onward.
+          if (this.journal.state.tasks.get(id)!.state === 'planned') await this.journal.fact(RunEvent.TaskStateChanged, { taskId: id, to: 'ready' });
           if (!this.runners.has(id)) this.runners.set(id, new TaskRunner(id, this.runnerDeps()));
           this.start(id);
         }
@@ -357,6 +373,15 @@ export class Run {
         if (tokens > cap && !runner.done) {
           if (this.deps.cfg.budgets.observeOnly) await this.journal.fact(OrchEvent.BudgetExceeded, { taskId: id, tokens, cap });
           else await runner.budgetExceeded(tokens, cap);
+        }
+      })
+      .catch(async (err: Error & { fatal?: boolean }) => {
+        // A runner that throws blocks its task with the error; only a fatal error (crash injection) ends the process.
+        if (err.fatal === true) throw err;
+        this.log(`task ${id} failed with an unexpected error: ${err.message}`);
+        if (!runner.done) {
+          await this.journal.fact(RunEvent.TaskStateChanged, { taskId: id, to: 'blocked' }).catch(() => undefined);
+          await this.journal.fact(OrchEvent.TaskBlocked, { taskId: id, reason: `orchestrator error: ${err.message}` }).catch(() => undefined);
         }
       })
       .finally(() => this.inflight.delete(id));

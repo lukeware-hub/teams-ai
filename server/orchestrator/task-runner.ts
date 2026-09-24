@@ -184,17 +184,20 @@ export class TaskRunner {
       phase: 'phase3',
       taskId: this.taskId,
       attempt,
-      refContext: await this.refContext(),
+      refContext: () => this.refContext(),
       refs: ((v: DevOutput) => ({ files: v.changedFiles })) as never,
     });
     if (!outcome.ok) return this.fail(outcome.failure, outcome.errors.join('\n'));
     const value = outcome.value as DevOutput;
     if (value.status === 'spec-gap') return this.specGap(task.def, value.question);
     this.specGapRounds = 0;
-    const touched = await porcelainNames(this.worktree, this.deps.exec);
+    // Gate artifacts (the JUnit report) are written by the orchestrator, not by the Dev, and are never committed.
+    const touched = (await porcelainNames(this.worktree, this.deps.exec)).filter((f) => f !== this.deps.plan.junitPath);
     const scope = checkScope({ changedFiles: touched, affectedPaths: task.def.affectedPaths, frozenPaths: this.deps.plan.frozenPaths, scopeJustification: value.scopeJustification, allowFrozen: this.deps.firstSpec && this.taskId === 'T0-scaffold' });
     if (!scope.ok) return this.fail('review-changes', `Scope violation:\n${scope.errors.join('\n')}`);
-    await this.deps.journal.intent(Intent.Commit, commitKey, { taskId: this.taskId, worktree: this.worktree, message: value.commitMessage });
+    // baseSha lets reconcile tell "committed, then crashed" from "crashed before committing" (spec §6).
+    const baseSha = await git(this.worktree, ['rev-parse', 'HEAD'], this.deps.exec);
+    await this.deps.journal.intent(Intent.Commit, commitKey, { taskId: this.taskId, worktree: this.worktree, message: value.commitMessage, baseSha });
     const sha = (await commitAll(this.worktree, value.commitMessage, {}, this.deps.exec)) ?? (await git(this.worktree, ['rev-parse', 'HEAD'], this.deps.exec));
     await this.deps.journal.confirm(Intent.Commit, commitKey, { sha });
     const changed = await changedFiles(this.worktree, 'origin/main', this.deps.exec);
@@ -266,7 +269,7 @@ export class TaskRunner {
       phase: 'phase3',
       taskId: this.taskId,
       attempt: this.task.attempts + 1,
-      refContext: await this.refContext(),
+      refContext: () => this.refContext(),
       refs: ((v: ReviewOutput) => ({ acIds: v.criteria.map((c) => c.id), files: v.findings.map((f) => f.file) })) as never,
     });
     if (!outcome.ok) return this.fail(outcome.failure, outcome.errors.join('\n'));
@@ -334,9 +337,14 @@ export class TaskRunner {
     switch (decision.action) {
       case 'retry-dev':
         this.schemaRetries = 0;
-        await this.deps.journal.fact(RunEvent.AttemptConsumed, { taskId: this.taskId });
+        // `merging` cannot go straight to `implementing`; step back through `rebasing` first.
+        if (this.task.state === 'merging') await this.transition('rebasing');
+        // State first, attempt second: a crash in between under-counts one attempt and never charges an
+        // interrupted step twice (spec §6 "an interrupted LLM step is re-run and not counted").
         await this.feedback(text);
-        return this.transition('implementing');
+        await this.transition('implementing');
+        await this.deps.journal.fact(RunEvent.AttemptConsumed, { taskId: this.taskId });
+        return;
       case 'rerun-gate':
         await this.deps.journal.fact(kind === 'flaky-test' ? RunEvent.FlakyRetry : RunEvent.InfraRetry, { taskId: this.taskId, gate });
         return;

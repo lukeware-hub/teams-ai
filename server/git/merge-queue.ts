@@ -83,6 +83,7 @@ export class MergeQueue {
       try {
         await steps.afterMerge?.();
       } catch (err) {
+        if ((err as { fatal?: boolean }).fatal === true) throw err;
         return { ok: true, pr: pr.number, warning: `afterMerge: ${(err as Error).message}` };
       }
       return { ok: true, pr: pr.number };

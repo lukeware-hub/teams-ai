@@ -163,6 +163,29 @@ describe('Run', () => {
     await run.close();
   });
 
+  it('runs a replacement task from a successful replan to merged', async () => {
+    let reviews = 0;
+    const script: Script = async (req) => {
+      if (req.kind === 'review' && req.taskId === 'T1') {
+        reviews += 1;
+        return { ok: true, value: { specHash: HASH, decision: 'changes', criteria: [{ id: 'AC-001', status: 'failed', evidence: [] }], findings: [{ file: 'src/a/index.ts', line: 1, severity: 'important', problem: 'wrong', fix: 'fix it', acIds: ['AC-001'] }] }, summary: summary() };
+      }
+      if (req.kind === 'replan') {
+        return { ok: true, value: { specHash: HASH, replacements: [{ id: 'T1-r1', title: 'T1 again', description: 'smaller', criteriaRefs: ['AC-001'], dependsOn: [], affectedPaths: ['src/a'], owner: 'dev' }] }, summary: summary() };
+      }
+      if (req.kind === 'dev' && req.taskId === 'T1-r1') return happy({ ...req, taskId: 'T1' });
+      return happy(req);
+    };
+    const run = await Run.create(await withAgents(deps(script, { maxParallel: 1 })));
+    expect(await run.execute()).toBe('complete');
+    expect(reviews).toBe(3);
+    const s = run.journal.state;
+    expect(s.tasks.get('T1')!.state).toBe('superseded');
+    expect(s.tasks.get('T1-r1')).toMatchObject({ state: 'merged', replanned: true });
+    expect(s.tasks.get('T2')!.state).toBe('merged');
+    await run.close();
+  }, 30_000);
+
   it('journals every decision with its backend and cost', async () => {
     const d = await withAgents(deps(happy));
     d.cfg = loadConfig({ ...JSON.parse(JSON.stringify(d.cfg)), decisions: { enabled: true } });

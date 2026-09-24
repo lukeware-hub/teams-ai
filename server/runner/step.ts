@@ -23,7 +23,8 @@ export interface StepRequest {
   cwd: string;
   prompt: string;
   expectedSpecHash: string;
-  refContext?: RefContext;
+  /** Reference context for output validation; a thunk is resolved after the process exits, so files the agent wrote count. */
+  refContext?: RefContext | (() => Promise<RefContext>);
   refs?: (value: never) => References;
   semantic?: ReadonlyArray<(value: never) => string[]>;
   phase: string;
@@ -187,7 +188,7 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
   const validation = validateAgentOutput(schema, raw.summary.structuredOutput, {
     expectedSpecHash: req.expectedSpecHash,
     refs: req.refs as ((value: { specHash: string }) => References) | undefined,
-    refContext: req.refContext,
+    refContext: typeof req.refContext === 'function' ? await req.refContext() : req.refContext,
     semantic: req.semantic as ReadonlyArray<(value: { specHash: string }) => string[]> | undefined,
   });
   if (!validation.ok) {

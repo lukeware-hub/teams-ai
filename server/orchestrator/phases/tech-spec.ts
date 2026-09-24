@@ -22,7 +22,6 @@ export async function runPhase1(deps: PhaseDeps): Promise<PhaseResult & { techSp
   let techSpecText = '';
   let lastUncovered: string[] = [];
   for (let attempt = 1; attempt <= max; attempt++) {
-    const files = await trackedAndUntracked(worktree, deps.exec);
     const wrote: StepOutcome<OutputOf<'tech-spec'>> = await deps.runAgent<'tech-spec'>({
       kind: 'tech-spec',
       role: 'dev',
@@ -31,10 +30,9 @@ export async function runPhase1(deps: PhaseDeps): Promise<PhaseResult & { techSp
       phase: 'phase1',
       taskId: null,
       attempt,
-      refContext: { acIds: new Set(deps.spec.acceptanceCriteria.map((c) => c.id)), taskIds: new Set(), files: await trackedAndUntracked(worktree, deps.exec), tests: new Set(), adrIds: new Set() },
+      refContext: async () => ({ acIds: new Set(deps.spec.acceptanceCriteria.map((c) => c.id)), taskIds: new Set(), files: await trackedAndUntracked(worktree, deps.exec), tests: new Set(), adrIds: new Set() }),
       refs: ((v: TechSpecOutput) => ({ files: [v.techSpecPath, ...v.adrs.map((a) => a.path)] })) as never,
     });
-    void files;
     if (!wrote.ok) {
       feedback = `Previous attempt failed (${wrote.failure}):\n${wrote.errors.join('\n')}`;
       continue;
