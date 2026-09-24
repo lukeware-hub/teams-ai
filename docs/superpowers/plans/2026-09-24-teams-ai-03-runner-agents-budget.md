@@ -1,5 +1,7 @@
 # teams-ai Plan 3 — Runner, Agents and Budget Implementation Plan
 
+**Status: implemented and merged to main** — `server/runner/` (invocation, process-runner, role-settings, step, stream-events), `server/agents/`, `server/budget/` (accounting, governor, quota-breaker) all exist with matching tests under `test/`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Give the orchestrator a tested way to run one agent step: build an isolated `claude -p` invocation for a role, spawn it with turn/time caps, parse and validate its structured output, account for its tokens, and decide whether the run may proceed under the subscription quota.

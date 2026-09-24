@@ -1,5 +1,7 @@
 # teams-ai Plan 6 — Knowledge Implementation Plan
 
+**Status: implemented and merged to main** — `server/knowledge/` (chunker, context-pack, graphify, retrieval) exists with matching tests under `test/knowledge/`. Originally numbered plan 5 in error; renumbered to 6 (see commit `134bcf3`, "two plans carried the number 05").
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the three knowledge layers of spec §9 and the context-pack builder of §8.3/§9A.1: lookup by ID from the JSON contract, a code graph through graphify, and BM25 text retrieval over documentation and refinement history — assembled into a small, deterministic, budgeted prompt for every agent step.

@@ -1,5 +1,7 @@
 # teams-ai Plan 5 — System 1 Decision Layer, Phase 1 Implementation Plan
 
+**Status: implemented and merged to main, but disabled by default** — `server/decide/` (decider, jev-openrouter, local-stub, claude-escalate, decisions/gate-triage.ts) exists with tests, wired via `server/config/config.ts`. The `decisions.enabled` flag defaults to `false` (`server/config/config.ts:108`), so the decision layer does not run unless an operator flips it.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add the `decide` module: typed Choice / Score / Noul questions answered by a backend chain (Jev via OpenRouter → local stub → Claude escalation → deterministic default), with per-decision thresholds, cost accounting and outcome logging, and wire the first decision, gate failure triage (spec 10A.5 decision 1).

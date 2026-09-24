@@ -1,5 +1,7 @@
 # teams-ai Plan 2 — Environment and CLI Spike Implementation Plan
 
+**Status: implemented and merged to main** — `server/env/tool-report.ts` exists with tests; findings recorded at `docs/superpowers/spikes/2026-09-23-cli-findings.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Stand up the WSL2 Ubuntu environment the orchestrator runs in, and answer the spec's open questions about the Claude Code CLI (spec §16) with recorded evidence, so Plan 3 can build the runner on facts instead of assumptions.

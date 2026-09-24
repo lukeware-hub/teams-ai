@@ -1,5 +1,7 @@
 # teams-ai Plan 8 — Web UI Onboarding Implementation Plan
 
+**Status: implemented and merged to main, live-tested** — `server/onboarding/` (config-store, login-session, probes, pty, status, transcripts), `server/api/onboarding-routes.ts`, and `web/` (onboarding pages/components) exist with matching tests. Findings section records a live WSL run for 4 of 6 items; items 1 and 2 (a real `claude auth login` transcript on a clean host, and a real `gh` device-flow walkthrough) are still outstanding — see this plan's `## Findings` section.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Let a human get the orchestrator host authenticated and configured from the browser alone: Claude login, GitHub owner, `gh` login, GitHub token and OpenRouter key, each verified by a live probe, each redoable from a status screen.

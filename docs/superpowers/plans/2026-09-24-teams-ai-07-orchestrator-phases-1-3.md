@@ -1,5 +1,7 @@
 # teams-ai Plan 7 — Orchestrator, Phases 1–3 Implementation Plan
 
+**Status: implemented and merged to main, live-tested** — `server/orchestrator/` (events, merge-steps, phases, reconcile, run, steps, task-runner, workspace) and `server/cli.ts` exist with matching tests; Task 10 Findings record a live run against a hello-app.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build `server/orchestrator/`: the module that takes a frozen spec in an existing repository through the technical spec (Phase 1), the plan (Phase 2) and the task loop (Phase 3) with crash recovery, budgets, quota pauses and gate-failure triage, driven by a `teams-ai` CLI.

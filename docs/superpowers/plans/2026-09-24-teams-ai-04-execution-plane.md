@@ -1,5 +1,7 @@
 # teams-ai Plan 4 — Execution Plane Implementation Plan
 
+**Status: implemented and merged to main** — `server/exec/` (command, gate-runner), `server/git/` (git, github, merge-queue), `server/deploy/` (docker-local, kind, target) all exist with matching tests under `test/`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Give the orchestrator the deterministic, non-LLM half of the task loop: run gates in disposable containers, drive git and GitHub idempotently through a serialized merge queue, and deploy to `docker-local` and `kind` with verification and rollback.

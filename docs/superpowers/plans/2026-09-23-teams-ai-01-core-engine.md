@@ -1,5 +1,7 @@
 # teams-ai Plan 1 — Core Engine Implementation Plan
 
+**Status: implemented and merged to main** — `server/contracts/`, `server/store/event-store.ts`, `server/pipeline/task-state.ts`, `server/scheduler/`, `server/validators/`, `server/evidence/` all exist with matching tests under `test/`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the deterministic, LLM-free core of the teams-ai orchestrator: data contracts, event store, task state machine, scheduler, retry policy, validators, evidence collection and diff guard.
