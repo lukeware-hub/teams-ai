@@ -33,3 +33,15 @@
 `scripts/wsl/check-tools.sh` on Ubuntu-24.04 (all required tools present; `llama-server` optional, Plan 8):
 
 node v22.23.3 · npm 10.9.9 · git 2.43.0 · claude 2.1.281 · gh 2.101.0 · docker 29.7.2 · kind v0.29.0 · kubectl v1.36.1 · gitleaks 8.24.3 · osv-scanner 2.6.0 · graphify 0.9.67 · nvidia-smi 616.92 (RTX 3060 Ti, 8 GB, visible in WSL and in containers via `--gpus all`) · bubblewrap + socat installed after p5.
+
+## Runner smoke (Plan 3, 2026-09-24, CLI 2.1.281, WSL)
+
+`npx tsx scripts/smoke/real-step.ts` — one real `dev` step through `runStep` (Claude subscription, model `sonnet`):
+
+| Attempt | Result | Finding |
+|---|---|---|
+| 1 | `failure: code` — `--agent 'dev' not found. Available agents: claude, Explore, ...` | **Agents in `.claude/agents` are resolved from the process cwd**, i.e. the product worktree, not the orchestrator repo. Fix: the runner passes the registry definition inline with `--agents '{"dev":{"description","prompt","tools","model"}}'` and keeps `--agent dev` to select it. |
+| 2 | `failure: schema` — `(root): expected object, received null`; `stop_reason: end_turn`, `structured_output` **absent**, `result` text = fenced ```` ```json {...} ``` ```` | With `--agents` + `--json-schema` the model answered the JSON as text and never triggered the structured-output tool (p2, with `--tools ""`, did populate `structured_output`). Fix: `summarizeStream` falls back to a JSON object extracted from the result text (fences stripped) and reports `structuredSource: 'text'`; semantic validation runs on it unchanged. |
+| 3 | **`ok: true`**, 1 turn, `structuredSource: text`, usage 2 in / 134 out / 8250 cache-read / 837 cache-write, `total_cost_usd` 0.0063, breaker `closed` | The agent prompt + schema are served from the 1h prompt cache on repeated steps (8.2k cache-read vs 9.1k cache-write on the first run). |
+
+Amendment to row 2: read `structured_output` when present, otherwise the fenced/plain JSON object in `result`; either way the zod contract and the semantic checks decide.
