@@ -59,9 +59,9 @@ describe('Graphify', () => {
 
   it('reports zero coverage when graph.json is missing or has no sources', async () => {
     const g = new Graphify({ exec: new FakeExec().exec, readFile: files({}) });
-    expect(await g.coverage('/ws/graph')).toEqual({ extracted: 0, failed: 0, nodes: 0, links: 0, ratio: 0 });
+    expect(await g.coverage('/ws/graph', ['src/a.ts'])).toEqual({ extracted: 0, failed: 0, nodes: 0, links: 0, ratio: 0 });
     const empty = new Graphify({ exec: new FakeExec().exec, readFile: files({ '/ws/graph/graphify-out/graph.json': '{"nodes":[],"links":[],"extracted_sources":[],"failed_sources":[]}' }) });
-    expect((await empty.coverage('/ws/graph')).ratio).toBe(0);
+    expect((await empty.coverage('/ws/graph', ['src/a.ts'])).ratio).toBe(0);
     expect(MIN_COVERAGE).toBe(0.5);
   });
 
@@ -90,19 +90,19 @@ describe('Graphify', () => {
 
 describe('grepFallback', () => {
   it('searches tracked files case-insensitively and parses file:line:text', async () => {
-    const fake = new FakeExec().onArgs('git', ['grep'], () => ({ stdout: 'src/a.ts:12:const discount = 5;\nsrc/b.ts:3:// Discount rules\n' }));
+    const fake = new FakeExec().onArgs('git', ['grep'], () => ({ stdout: 'src/a.ts\u000012:const discount = 5;\nsrc/b.ts\u00003:// Discount rules\n' }));
     const hits = await grepFallback('/ws/repo', ['discount', 'vip'], fake.exec);
     expect(hits).toEqual([
       { file: 'src/a.ts', line: 12, text: 'const discount = 5;' },
       { file: 'src/b.ts', line: 3, text: '// Discount rules' },
     ]);
-    expect(fake.calls[0]).toMatchObject({ bin: 'git', cwd: '/ws/repo', args: ['grep', '-n', '-I', '-i', '-e', 'discount', '-e', 'vip', '--', '.'] });
+    expect(fake.calls[0]).toMatchObject({ bin: 'git', cwd: '/ws/repo', args: ['grep', '-n', '-I', '-i', '-z', '-e', 'discount', '-e', 'vip', '--', '.'] });
   });
 
   it('caps hits and tolerates exit code 1 (no match)', async () => {
     const fake = new FakeExec().onArgs('git', ['grep'], () => ({ exitCode: 1 }));
     expect(await grepFallback('/ws/repo', ['zzz'], fake.exec)).toEqual([]);
-    const many = new FakeExec().onArgs('git', ['grep'], () => ({ stdout: Array.from({ length: 50 }, (_, i) => `f.ts:${i + 1}:x`).join('\n') }));
+    const many = new FakeExec().onArgs('git', ['grep'], () => ({ stdout: Array.from({ length: 50 }, (_, i) => `f.ts\u0000${i + 1}:x`).join('\n') }));
     expect(await grepFallback('/ws/repo', ['x'], many.exec, { maxHits: 5 })).toHaveLength(5);
   });
 });
@@ -134,5 +134,35 @@ describe('coverage from AST graphs', () => {
     const fake = new FakeExec().onArgs('git', ['ls-files'], () => ({ stdout: 'src/a.ts\nsrc/b.ts\ndocs/x.md\nimg.png\n' }));
     const g = new Graphify({ exec: fake.exec, readFile: files({ '/ws/graph/graphify-out/graph.json': astGraph }), moveDir: async () => undefined });
     expect((await g.update('/ws/repo', '/ws/graph')).ratio).toBe(1);
+  });
+});
+
+describe('grepFallback with odd file names', () => {
+  it('uses NUL-separated paths so a colon in a file name cannot shift the fields', async () => {
+    const fake = new FakeExec().onArgs('git', ['grep'], () => ({ stdout: 'weird:5:file.ts\u000020:other text\n' }));
+    expect(await grepFallback('/ws/repo', ['x'], fake.exec)).toEqual([{ file: 'weird:5:file.ts', line: 20, text: 'other text' }]);
+  });
+});
+
+describe('Graphify.update concurrency', () => {
+  it('serializes updates of the same repository so a second run never overwrites a graph being moved', async () => {
+    const order: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const fake = new FakeExec()
+      .onArgs('graphify', ['update'], async () => {
+        order.push('graphify');
+        if (order.filter((o) => o === 'graphify').length === 1) await gate;
+        return {};
+      })
+      .onArgs('git', ['ls-files'], () => ({ stdout: '' }));
+    const g = new Graphify({ exec: fake.exec, readFile: async () => null, moveDir: async () => void order.push('move') });
+    const first = g.update('/ws/repo', '/ws/graph');
+    const second = g.update('/ws/repo', '/ws/graph');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(order).toEqual(['graphify']);
+    release();
+    await Promise.all([first, second]);
+    expect(order).toEqual(['graphify', 'move', 'graphify', 'move']);
   });
 });

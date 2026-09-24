@@ -82,6 +82,8 @@ async function defaultMoveDir(from: string, to: string): Promise<void> {
 /** Thin wrapper over the graphify CLI; no LLM-backed feature is ever invoked. */
 export class Graphify {
   private readonly moveDir: (from: string, to: string) => Promise<void>;
+  /** One update at a time per repository: graphify writes a fixed graphify-out/ path inside it. */
+  private readonly updates = new Map<string, Promise<unknown>>();
 
   constructor(private readonly deps: GraphifyDeps) {
     this.moveDir = deps.moveDir ?? defaultMoveDir;
@@ -105,15 +107,22 @@ export class Graphify {
    * path it scans, so the run happens inside the repository and the output is moved to `outDir`;
    * the graph never lives in the repository (and Plan 6 excludes `graphify-out/` via .git/info/exclude).
    */
-  async update(repoDir: string, outDir: string): Promise<GraphCoverage> {
-    await this.run(['update', '.', '--no-cluster'], repoDir);
-    const produced = path.join(repoDir, 'graphify-out');
-    try {
-      await this.moveDir(produced, path.join(outDir, 'graphify-out'));
-    } catch {
-      /* nothing produced (unsupported repo) → coverage 0 below */
-    }
-    return this.coverage(outDir, await this.trackedFiles(repoDir));
+  update(repoDir: string, outDir: string): Promise<GraphCoverage> {
+    const key = path.resolve(repoDir);
+    const work = async () => {
+      await this.run(['update', '.', '--no-cluster'], repoDir);
+      const produced = path.join(repoDir, 'graphify-out');
+      try {
+        await this.moveDir(produced, path.join(outDir, 'graphify-out'));
+      } catch {
+        /* nothing produced (unsupported repo) → coverage 0 below */
+      }
+      return this.coverage(outDir, await this.trackedFiles(repoDir));
+    };
+    const previous = this.updates.get(key) ?? Promise.resolve();
+    const result = previous.then(work, work);
+    this.updates.set(key, result.catch(() => undefined));
+    return result;
   }
 
   /**
@@ -122,7 +131,7 @@ export class Graphify {
    * the distinct code files present in the graph over the tracked code files of the repository
    * (`extracted` = covered files, `failed` = tracked code files absent from the graph).
    */
-  async coverage(outDir: string, trackedFiles?: readonly string[]): Promise<GraphCoverage> {
+  async coverage(outDir: string, trackedFiles: readonly string[]): Promise<GraphCoverage> {
     const empty = { extracted: 0, failed: 0, nodes: 0, links: 0, ratio: 0 };
     const raw = await this.deps.readFile(this.graphPath(outDir));
     if (!raw) return empty;
@@ -140,7 +149,6 @@ export class Graphify {
       return { extracted, failed, nodes, links, ratio: extracted / (extracted + failed) };
     }
     const inGraph = new Set((g.nodes ?? []).map((n) => n.source_file).filter((f): f is string => !!f && isCodeFile(f)));
-    if (!trackedFiles) return { extracted: inGraph.size, failed: 0, nodes, links, ratio: inGraph.size > 0 ? 1 : 0 };
     const tracked = trackedFiles.filter(isCodeFile);
     const covered = tracked.filter((f) => inGraph.has(f)).length;
     return { extracted: covered, failed: tracked.length - covered, nodes, links, ratio: tracked.length === 0 ? 0 : covered / tracked.length };
@@ -177,15 +185,18 @@ export async function grepFallback(
   exec: Exec,
   opts: { maxHits?: number } = {},
 ): Promise<Array<{ file: string; line: number; text: string }>> {
-  const args = ['grep', '-n', '-I', '-i'];
+  // -z terminates the path with NUL, so a ':' inside a file name cannot shift the fields.
+  const args = ['grep', '-n', '-I', '-i', '-z'];
   for (const t of terms) args.push('-e', t);
   args.push('--', '.');
   const r = await exec({ bin: 'git', args, cwd: repoDir, timeoutMs: 60_000 });
   if (r.exitCode !== 0) return [];
   const hits: Array<{ file: string; line: number; text: string }> = [];
   for (const line of r.stdout.split('\n')) {
-    const m = line.match(/^(.+?):(\d+):(.*)$/);
-    if (m) hits.push({ file: m[1]!, line: Number(m[2]), text: m[3]! });
+    const nul = line.indexOf('\0');
+    if (nul === -1) continue;
+    const m = line.slice(nul + 1).match(/^(\d+):(.*)$/);
+    if (m) hits.push({ file: line.slice(0, nul), line: Number(m[1]), text: m[2]! });
     if (hits.length >= (opts.maxHits ?? 40)) break;
   }
   return hits;
