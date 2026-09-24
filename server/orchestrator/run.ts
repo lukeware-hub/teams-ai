@@ -258,12 +258,12 @@ export class Run {
     return { source: 'grep', grep: await grepFallback(worktree, terms, this.deps.exec) };
   };
 
-  private impact = async (worktree: string, branch: string, changed: readonly string[]): Promise<CodeContext> => {
+  private impact = async (worktree: string, branch: string, changed: readonly string[], depth: number): Promise<CodeContext> => {
     const g = this.deps.graphify;
     if (!g || changed.length === 0) return { source: 'none' };
     const out = graphDir(this.deps.ws, branch);
     await g.update(worktree, out).catch(() => undefined);
-    const affected = (await Promise.all(changed.map((f) => g.affected(out, f, 2).catch(() => [])))).flat();
+    const affected = (await Promise.all(changed.map((f) => g.affected(out, f, depth).catch(() => [])))).flat();
     return { source: 'graph', affected };
   };
 

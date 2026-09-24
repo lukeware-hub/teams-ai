@@ -86,7 +86,7 @@ describe('packs', () => {
   });
 
   it('review pack puts the diff and impact radius in feedback and code', () => {
-    const p = reviewPack(base, task, { diffStat: ' src/a.ts | 2 +-', changedFiles: ['src/a.ts'], code: { source: 'graph', affected: [] } });
+    const p = reviewPack(base, task, { diffStat: ' src/a.ts | 2 +-', changedFiles: ['src/a.ts'], code: { source: 'graph', affected: [] }, profile: 'standard' });
     expect(p.kind).toBe('review');
     expect(p.role).toBe('test');
     expect(p.feedback).toContain('src/a.ts');

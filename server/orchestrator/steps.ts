@@ -8,6 +8,7 @@ import type { ProviderProfile, Role } from '../config/config.js';
 import type { PlanTask } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
+import type { ReviewProfile } from '../decide/decisions/pr-risk.js';
 import { stepId } from '../core/ids.js';
 import { redactSecrets } from '../core/redact.js';
 import { buildContextPack, type CodeContext, type ContextPackInput, type HandoffSummary } from '../knowledge/context-pack.js';
@@ -74,9 +75,11 @@ export function devPack(
 export function reviewPack(
   base: PackBase,
   task: PlanTask,
-  opts: { diffStat: string; changedFiles: readonly string[]; code: CodeContext },
+  opts: { diffStat: string; changedFiles: readonly string[]; code: CodeContext; profile: ReviewProfile },
 ): ContextPackInput {
-  const feedback = `Changed files:\n${opts.changedFiles.join('\n')}\n\nDiff stat:\n${opts.diffStat}`;
+  const feedback = `Review profile: ${opts.profile}
+
+Changed files:\n${opts.changedFiles.join('\n')}\n\nDiff stat:\n${opts.diffStat}`;
   return { ...common(base, 'review', 'test'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), code: opts.code, feedback };
 }
 

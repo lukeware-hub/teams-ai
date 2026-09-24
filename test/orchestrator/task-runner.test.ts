@@ -325,7 +325,7 @@ describe('TaskRunner: merge gates triage', () => {
     const r = new TaskRunner('T1', deps({ agent, decider, merge: { gates: async () => ({ ok: false, detail: '[code] unit-test exit 1\nboom', failure }) } }));
     await toRebasing(r);
     await r.advance();
-    expect(calls[0]![0]).toBe('gate-triage');
+    expect(calls.map((c) => c[0])).toContain('gate-triage');
     expect(journal.events.find((e) => e.type === RunEvent.FlakyRetry)!.data).toMatchObject({ taskId: 'T1', gate: 'merge-gates' });
     expect(journal.events.find((e) => e.type === OrchEvent.GateFailed && e.data.gate === 'merge-gates')!.data).toMatchObject({ failure: 'code', exitCode: 1 });
   });
@@ -361,5 +361,27 @@ describe('TaskRunner: attempt progress', () => {
     await r.advance(); await r.advance(); await r.advance(); await r.advance();
     expect(agentCalls.filter((c) => c.kind === 'replan')).toHaveLength(0);
     expect(journal.state.tasks.get('T2')).toMatchObject({ state: 'implementing', attempts: 2, replanned: true });
+  });
+});
+
+describe('TaskRunner: review profile', () => {
+  const risky = (value: number) => ({ decide: async (id: string) => (id === 'pr-risk' ? { answered: true as const, backend: 'jev' as const, escalated: false, answers: { risk: { type: 'score' as const, value, probabilities: {}, confidence: 0.9 } } } : { answered: false as const, reason: 'disabled' as const }) });
+  const agent: Agent = async (req) => (req.kind === 'review' ? approve() : devDone()(req));
+
+  it('asks pr-risk before review, journals the profile and passes the depth to impact', async () => {
+    const depths: number[] = [];
+    const r = new TaskRunner('T1', deps({ agent, decider: risky(3), impact: async (_w, _b, _c, depth) => { depths.push(depth); return { source: 'none' }; } }));
+    await r.advance(); await r.advance(); await r.advance();
+    expect(depths).toEqual([3]);
+    expect(journal.events.find((e) => e.type === OrchEvent.ReviewProfileChosen)!.data).toMatchObject({ taskId: 'T1', risk: 'high', profile: 'deep', source: 'jev' });
+    expect(agentCalls.find((c) => c.kind === 'review')!.pack.feedback).toContain('Review profile: deep');
+  });
+
+  it('quick profile skips the impact query', async () => {
+    const depths: number[] = [];
+    const r = new TaskRunner('T1', deps({ agent, decider: risky(0), impact: async (_w, _b, _c, depth) => { depths.push(depth); return { source: 'graph', affected: [] }; } }));
+    await r.advance(); await r.advance(); await r.advance();
+    expect(depths).toEqual([]);
+    expect(agentCalls.find((c) => c.kind === 'review')!.pack.code).toEqual({ source: 'none' });
   });
 });
