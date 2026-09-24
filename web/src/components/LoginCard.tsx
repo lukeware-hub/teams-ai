@@ -10,6 +10,7 @@ export function LoginCard({ cli, title, item, onDone }: { cli: Cli; title: strin
   const [showOutput, setShowOutput] = useState(false);
   const start = async () => {
     const r = await api.login(cli);
+    setCode('');
     setState(r.state);
     setUrl(api.events(cli));
   };

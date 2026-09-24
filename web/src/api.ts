@@ -13,7 +13,7 @@ export type Cli = 'claude' | 'gh';
 
 const P = '/api/onboarding';
 async function json<T>(res: Response): Promise<T> {
-  const body = (await res.json()) as T & { error?: string };
+  const body = (await res.json().catch(() => ({}))) as T & { error?: string }; // a non-JSON body still reports the status
   if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
   return body;
 }
