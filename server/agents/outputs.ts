@@ -4,7 +4,7 @@ import { ADR_ID, Plan } from '../contracts/plan.js';
 import { AC_ID } from '../contracts/spec.js';
 import { ID_PATTERNS } from '../core/ids.js';
 
-export const STEP_KINDS = ['refine', 'tech-spec', 'coverage', 'plan', 'dev', 'review', 'deployment', 'report'] as const;
+export const STEP_KINDS = ['refine', 'tech-spec', 'coverage', 'plan', 'dev', 'review', 'deployment', 'report', 'decide'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -95,6 +95,20 @@ export const ReportOutput = z.object({
   summary: z.string().min(1),
 });
 
+/** Spec 10A.3: a System 2 answer to typed questions; no probabilities, the value only. */
+export const DecideOutput = z.object({
+  specHash,
+  answers: z.record(
+    z.string(),
+    z.discriminatedUnion('type', [
+      z.object({ type: z.literal('choice'), value: z.string().min(1) }),
+      z.object({ type: z.literal('score'), value: z.number().min(0) }),
+      z.object({ type: z.literal('noul'), value: z.number().min(0).max(1) }),
+    ]),
+  ),
+});
+export type DecideOutput = z.infer<typeof DecideOutput>;
+
 export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> = {
   refine: RefineOutput,
   'tech-spec': TechSpecOutput,
@@ -104,6 +118,7 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   review: ReviewOutput,
   deployment: DeploymentOutput,
   report: ReportOutput,
+  decide: DecideOutput,
 };
 
 export type OutputOf<K extends StepKind> = z.infer<(typeof OUTPUT_SCHEMAS)[K]>;

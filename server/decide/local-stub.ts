@@ -1,4 +1,4 @@
-import type { BackendResult, DecisionBackend } from './types.js';
+import type { BackendInput, BackendResult, DecisionBackend } from './types.js';
 
 /**
  * Spec 10A.2a: phase 1 ships the slot in the chain, not the model. Reporting "unavailable" makes
@@ -7,7 +7,7 @@ import type { BackendResult, DecisionBackend } from './types.js';
 export class LocalStubBackend implements DecisionBackend {
   readonly name = 'local' as const;
 
-  async evaluate(): Promise<BackendResult> {
+  async evaluate(_input: BackendInput): Promise<BackendResult> {
     return { ok: false, reason: 'unavailable', message: 'local-logprobs backend is not built yet (spec 10A.2a, phase 2)' };
   }
 }
