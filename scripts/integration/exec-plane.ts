@@ -44,6 +44,7 @@ console.log('== docker-local deploy');
 const local = new DockerLocalTarget({ exec: execCommand, get: httpGet, secrets: {} });
 console.log('  ', JSON.stringify(await runDeployment(local, intent, { smoke, baseUrl: local.baseUrl(intent) })));
 await local.destroy(intent);
+await execCommand({ bin: 'docker', args: ['rmi', '-f', `${intent.image}:${intent.tag}`], timeoutMs: 60_000 }); // no image left behind
 
 if (process.env.KIND_CLUSTER) {
   console.log(`== kind deploy (${process.env.KIND_CLUSTER})`);
@@ -51,4 +52,5 @@ if (process.env.KIND_CLUSTER) {
   console.log('  ', JSON.stringify(await runDeployment(kind, intent, { smoke: async () => ({ ok: true, detail: 'in-cluster probe is the smoke' }), baseUrl: '' })));
   await kind.destroy(intent);
 }
+await execCommand({ bin: 'docker', args: ['rmi', '-f', `${intent.image}:${intent.tag}`], timeoutMs: 60_000 }).catch(() => undefined);
 await fs.rm(work, { recursive: true, force: true });

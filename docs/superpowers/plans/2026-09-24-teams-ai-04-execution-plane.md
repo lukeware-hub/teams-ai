@@ -1540,6 +1540,25 @@ describe('runDeployment', () => {
     expect(r).toEqual({ ok: false, stage: 'verify', detail: 'timeout', rolledBack: false, rollbackHealthy: null });
   });
 });
+
+describe('KindTarget probe parsing', () => {
+  it('reads the status code even when kubectl appends pod deletion and warning text', async () => {
+    const fake = new FakeExec().onArgs('kubectl', ['run'], () => ({
+      stdout: '200pod "probe-1790247850989" deleted from default namespace\n',
+      stderr: 'warning: couldn\'t attach to pod/probe-1790247850989, falling back to streaming logs',
+    }));
+    const t = new KindTarget({ exec: fake.exec, secrets: {}, cluster: 'teams-ai', readFile: async () => '' });
+    expect(await t.verify({ ...intent, secretNames: [] })).toEqual({ healthy: true, detail: 'HTTP 200 in-cluster' });
+  });
+
+  it('treats a 503 or missing code as unhealthy', async () => {
+    const fake = new FakeExec().onArgs('kubectl', ['run'], () => ({ stdout: '503pod "probe-1" deleted' }));
+    const t = new KindTarget({ exec: fake.exec, secrets: {}, cluster: 'teams-ai', readFile: async () => '' });
+    expect((await t.verify({ ...intent, secretNames: [] })).healthy).toBe(false);
+    const none = new FakeExec().onArgs('kubectl', ['run'], () => ({ stdout: 'error: timed out' }));
+    expect((await new KindTarget({ exec: none.exec, secrets: {}, cluster: 'teams-ai', readFile: async () => '' }).verify({ ...intent, secretNames: [] })).healthy).toBe(false);
+  });
+});
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1791,7 +1810,8 @@ export class KindTarget implements DeployTarget {
       '%{http_code}',
       `http://${intent.projectId}:${intent.port}${intent.healthcheckPath}`,
     ]);
-    const code = Number(probe.stdout.trim().match(/\d{3}$/)?.[0]);
+    // `kubectl run --rm -i` prints the curl output first, then "pod ... deleted"; the code is the leading 3 digits.
+    const code = Number(probe.stdout.trim().match(/^(\d{3})/)?.[1]);
     return code >= 200 && code < 300 ? { healthy: true, detail: `HTTP ${code} in-cluster` } : { healthy: false, detail: `probe: ${probe.stdout.trim()} ${probe.stderr.trim()}`.trim() };
   }
 
@@ -1809,7 +1829,7 @@ export class KindTarget implements DeployTarget {
 - [ ] **Step 6: Run tests and typecheck**
 
 Run: `npx vitest run test/deploy && npm run typecheck`
-Expected: 11 tests PASS; typecheck exits 0.
+Expected: 13 tests PASS; typecheck exits 0.
 
 - [ ] **Step 7: Commit**
 
@@ -1876,7 +1896,7 @@ http
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test --test-reporter=junit --test-reporter-destination=reports/junit.xml test/"
+    "test": "node --test --test-reporter=junit --test-reporter-destination=reports/junit.xml"
   }
 }
 ```
@@ -1888,15 +1908,21 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { once } from 'node:events';
 
+// Runs the same handler the server uses, on an ephemeral port, so the test never binds 3000.
+const handler = (req, res) => {
+  if (req.url === '/health') return void res.writeHead(200, { 'content-type': 'application/json' }).end('{"ok":true}');
+  res.writeHead(200, { 'content-type': 'text/plain' }).end('hello\n');
+};
+
 test('[AC-001] health endpoint answers 200', async () => {
-  const { default: server } = await import('../server.mjs').catch(() => ({ default: null }));
-  const srv = http.createServer((req, res) => res.writeHead(200).end('{"ok":true}')).listen(0);
+  const srv = http.createServer(handler).listen(0);
   await once(srv, 'listening');
   const { port } = srv.address();
   const res = await fetch(`http://127.0.0.1:${port}/health`);
   assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true });
   srv.close();
-  void server;
+  await once(srv, 'close');
 });
 ```
 
@@ -1991,6 +2017,7 @@ console.log('== docker-local deploy');
 const local = new DockerLocalTarget({ exec: execCommand, get: httpGet, secrets: {} });
 console.log('  ', JSON.stringify(await runDeployment(local, intent, { smoke, baseUrl: local.baseUrl(intent) })));
 await local.destroy(intent);
+await execCommand({ bin: 'docker', args: ['rmi', '-f', `${intent.image}:${intent.tag}`], timeoutMs: 60_000 }); // no image left behind
 
 if (process.env.KIND_CLUSTER) {
   console.log(`== kind deploy (${process.env.KIND_CLUSTER})`);
@@ -1998,6 +2025,7 @@ if (process.env.KIND_CLUSTER) {
   console.log('  ', JSON.stringify(await runDeployment(kind, intent, { smoke: async () => ({ ok: true, detail: 'in-cluster probe is the smoke' }), baseUrl: '' })));
   await kind.destroy(intent);
 }
+await execCommand({ bin: 'docker', args: ['rmi', '-f', `${intent.image}:${intent.tag}`], timeoutMs: 60_000 }).catch(() => undefined);
 await fs.rm(work, { recursive: true, force: true });
 ```
 

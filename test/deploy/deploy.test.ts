@@ -146,3 +146,22 @@ describe('runDeployment', () => {
     expect(r).toEqual({ ok: false, stage: 'verify', detail: 'timeout', rolledBack: false, rollbackHealthy: null });
   });
 });
+
+describe('KindTarget probe parsing', () => {
+  it('reads the status code even when kubectl appends pod deletion and warning text', async () => {
+    const fake = new FakeExec().onArgs('kubectl', ['run'], () => ({
+      stdout: '200pod "probe-1790247850989" deleted from default namespace\n',
+      stderr: 'warning: couldn\'t attach to pod/probe-1790247850989, falling back to streaming logs',
+    }));
+    const t = new KindTarget({ exec: fake.exec, secrets: {}, cluster: 'teams-ai', readFile: async () => '' });
+    expect(await t.verify({ ...intent, secretNames: [] })).toEqual({ healthy: true, detail: 'HTTP 200 in-cluster' });
+  });
+
+  it('treats a 503 or missing code as unhealthy', async () => {
+    const fake = new FakeExec().onArgs('kubectl', ['run'], () => ({ stdout: '503pod "probe-1" deleted' }));
+    const t = new KindTarget({ exec: fake.exec, secrets: {}, cluster: 'teams-ai', readFile: async () => '' });
+    expect((await t.verify({ ...intent, secretNames: [] })).healthy).toBe(false);
+    const none = new FakeExec().onArgs('kubectl', ['run'], () => ({ stdout: 'error: timed out' }));
+    expect((await new KindTarget({ exec: none.exec, secrets: {}, cluster: 'teams-ai', readFile: async () => '' }).verify({ ...intent, secretNames: [] })).healthy).toBe(false);
+  });
+});

@@ -77,7 +77,8 @@ export class KindTarget implements DeployTarget {
       '%{http_code}',
       `http://${intent.projectId}:${intent.port}${intent.healthcheckPath}`,
     ]);
-    const code = Number(probe.stdout.trim().match(/\d{3}$/)?.[0]);
+    // `kubectl run --rm -i` prints the curl output first, then "pod ... deleted"; the code is the leading 3 digits.
+    const code = Number(probe.stdout.trim().match(/^(\d{3})/)?.[1]);
     return code >= 200 && code < 300 ? { healthy: true, detail: `HTTP ${code} in-cluster` } : { healthy: false, detail: `probe: ${probe.stdout.trim()} ${probe.stderr.trim()}`.trim() };
   }
 
