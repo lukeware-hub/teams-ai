@@ -106,6 +106,10 @@ export const Config = z.object({
     .object({
       /** Off for runs 1 and 2 (spec §1.3); every decision then takes its System 2 path or default. */
       enabled: z.boolean().default(false),
+      /** Spec 10A.5 decision 10: tier names map to the role's Claude models; OmniRoute pins are never replaced. */
+      modelTiers: z
+        .object({ small: z.string().min(1).default('haiku'), medium: z.string().min(1).default('sonnet'), large: z.string().min(1).default('opus') })
+        .prefault({}),
       openrouter: z
         .object({
           baseUrl: z.string().url().default('https://openrouter.ai/api'),

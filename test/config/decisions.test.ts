@@ -37,4 +37,9 @@ describe('decisions config', () => {
     expect(DEFAULT_CONFIG.decisions.perDecision['pr-risk']).toMatchObject({ escalateTo: 'test' });
     expect(DEFAULT_CONFIG.decisions.perDecision['model-tier']).toMatchObject({ chain: ['jev', 'local'] });
   });
+
+  it('model tiers default to haiku / sonnet / opus and must be non-empty', () => {
+    expect(DEFAULT_CONFIG.decisions.modelTiers).toEqual({ small: 'haiku', medium: 'sonnet', large: 'opus' });
+    expect(() => loadConfig({ decisions: { modelTiers: { small: '' } } })).toThrow(ConfigError);
+  });
 });

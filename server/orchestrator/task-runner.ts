@@ -10,7 +10,9 @@ import { taskBranch } from '../core/ids.js';
 import type { DecideContext, Decider } from '../decide/decider.js';
 import { assessAttemptProgress } from '../decide/decisions/attempt-progress.js';
 import { triageGateFailure } from '../decide/decisions/gate-triage.js';
+import { chooseModelTier, type Effort, type ModelTier } from '../decide/decisions/model-tier.js';
 import { REVIEW_PROFILE_DEPTH, choosePrRisk } from '../decide/decisions/pr-risk.js';
+import type { Role } from '../config/config.js';
 import type { TestResult } from '../evidence/junit.js';
 import { verifyClaimedEvidence } from '../evidence/matrix.js';
 import type { Exec } from '../exec/command.js';
@@ -46,6 +48,8 @@ export interface TaskRunnerDeps {
   code: (worktree: string, task: PlanTask) => Promise<CodeContext>;
   impact: (worktree: string, branch: string, changed: readonly string[], depth: number) => Promise<CodeContext>;
   decider: Pick<Decider, 'decide'>;
+  /** Model name for a tier on this role's Claude profile; null when the role runs on another provider. */
+  tierModel: (role: Role, tier: ModelTier) => string | null;
   policy: PolicyConfig;
   packBase: () => PackBase;
   handoffs: () => readonly HandoffSummary[];
@@ -103,6 +107,13 @@ export class TaskRunner {
 
   private clean(text: string): string {
     return redactSecrets(text, this.deps.secretValues?.() ?? []);
+  }
+
+  /** Spec 10A.5 decisions 10/11: model tier and effort for one step; empty when unanswered or off-profile. */
+  private async stepOverrides(role: Role, attempt: number): Promise<{ model?: string; effort?: Effort }> {
+    const chosen = await chooseModelTier(this.task.def, attempt, this.deps.decider, this.ctx);
+    const model = chosen.tier ? this.deps.tierModel(role, chosen.tier) : null;
+    return { ...(model ? { model } : {}), ...(chosen.effort ? { effort: chosen.effort } : {}) };
   }
 
   private get ctx(): DecideContext {
@@ -185,6 +196,7 @@ export class TaskRunner {
       role: 'dev',
       pack,
       cwd: this.worktree,
+      ...(await this.stepOverrides('dev', attempt)),
       phase: 'phase3',
       taskId: this.taskId,
       attempt,
@@ -279,6 +291,7 @@ export class TaskRunner {
       role: 'test',
       pack,
       cwd: this.worktree,
+      ...(await this.stepOverrides('test', this.task.attempts + 1)),
       phase: 'phase3',
       taskId: this.taskId,
       attempt: this.task.attempts + 1,

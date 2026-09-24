@@ -212,4 +212,14 @@ describe('runAgentStep', () => {
     expect(JSON.stringify(out.value)).not.toContain('s3cr3t-value');
     expect((out.value as unknown as { commitMessage: string }).commitMessage).toBe('feat: [REDACTED]');
   });
+
+  it('a request model and effort override the role profile for that step only', async () => {
+    const d = await deps(async () => ({ ok: true, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() }));
+    // The harness fake sees only {kind, prompt}; wrap runStep to capture the full StepRequest.
+    const seen: unknown[] = [];
+    const inner = d.runStep;
+    d.runStep = (async (req, sd) => { seen.push(req); return inner(req, sd); }) as AgentStepDeps['runStep'];
+    await runAgentStep({ kind: 'dev', role: 'dev', pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1, model: 'haiku', effort: 'low' }, d);
+    expect(seen[0]).toMatchObject({ model: 'haiku', effort: 'low', profile: { provider: 'claude', model: 'sonnet' } });
+  });
 });

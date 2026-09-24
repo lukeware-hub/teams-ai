@@ -8,6 +8,7 @@ import type { ProviderProfile, Role } from '../config/config.js';
 import type { PlanTask } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
+import type { Effort } from '../decide/decisions/model-tier.js';
 import type { ReviewProfile } from '../decide/decisions/pr-risk.js';
 import { stepId } from '../core/ids.js';
 import { redactSecrets } from '../core/redact.js';
@@ -162,6 +163,9 @@ export interface AgentStepRequest<K extends StepKind> {
   refs?: StepRequest['refs'];
   semantic?: StepRequest['semantic'];
   extraAllow?: readonly string[];
+  /** Spec 10A.5 decisions 10/11: per-step model and effort; absent means the role profile. */
+  model?: string;
+  effort?: Effort;
 }
 
 export interface AgentStepDeps {
@@ -209,7 +213,8 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
         role: req.role,
         agent: deps.agents[req.role],
         profile,
-        model: profile.model,
+        model: req.model ?? profile.model,
+        effort: req.effort,
         cwd: req.cwd,
         prompt: pack.text,
         expectedSpecHash: deps.specHash,

@@ -5,6 +5,7 @@ import type { AgentDefinition } from '../agents/registry.js';
 import { ALWAYS_DENIED } from '../agents/registry.js';
 import type { Accounting } from '../budget/accounting.js';
 import type { ProviderProfile, Role } from '../config/config.js';
+import type { Effort } from '../decide/decisions/model-tier.js';
 import type { FailureKind } from '../scheduler/retry-policy.js';
 import { validateAgentOutput } from '../validators/agent-output.js';
 import type { RefContext, References } from '../validators/references.js';
@@ -35,6 +36,7 @@ export interface StepRequest {
   omniroute?: { baseUrl: string; token: string; compactWindow?: number };
   /** Extra allow rules for this step's role settings (from the plan's commands). */
   extraAllow?: readonly string[];
+  effort?: Effort;
 }
 
 export type StepOutcome<T> =
@@ -150,6 +152,7 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
       resume: req.resume,
       omniroute: req.omniroute,
       agentDefinition: req.agent,
+      effort: req.effort,
     },
     hostEnv,
   );

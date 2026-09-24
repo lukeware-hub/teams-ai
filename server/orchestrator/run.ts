@@ -301,6 +301,10 @@ export class Run {
       code: this.code,
       impact: this.impact,
       decider,
+      tierModel: (role, tier) => {
+        const profile = resolveProfile(cfg, role, project);
+        return profile.provider === 'claude' ? cfg.decisions.modelTiers[tier] : null;
+      },
       policy: { ...DEFAULT_POLICY, ...cfg.retry },
       packBase: this.packBase,
       handoffs: () => this.handoffs,

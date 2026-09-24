@@ -121,6 +121,12 @@ describe('buildInvocation', () => {
   it('omits --agents when no definition is given', () => {
     expect(buildInvocation(base, hostEnv).args).not.toContain('--agents');
   });
+
+  it('passes --effort only when set', () => {
+    expect(buildInvocation(base, hostEnv).args).not.toContain('--effort');
+    const args = buildInvocation({ ...base, effort: 'high' }, hostEnv).args;
+    expect(args.slice(args.indexOf('--effort'), args.indexOf('--effort') + 2)).toEqual(['--effort', 'high']);
+  });
 });
 
 describe('sanitizeEnv', () => {

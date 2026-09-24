@@ -233,7 +233,8 @@ describe('Run', () => {
     await run.execute();
     const made = run.journal.events.filter((e) => e.type === OrchEvent.DecisionMade);
     expect(made.length).toBeGreaterThan(0);
-    expect(made[0]!.data.record).toMatchObject({ decisionId: 'gate-triage', backend: 'jev' });
+    expect(made.map((e) => (e.data.record as { decisionId: string }).decisionId)).toContain('gate-triage');
+    expect(made.find((e) => (e.data.record as { decisionId: string }).decisionId === 'gate-triage')!.data.record).toMatchObject({ decisionId: 'gate-triage', backend: 'jev' });
     expect(run.accounting.total({ provider: 'openrouter' }).steps).toBeGreaterThan(0);
     await run.close();
   });

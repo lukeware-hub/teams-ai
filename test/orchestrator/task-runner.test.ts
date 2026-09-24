@@ -81,6 +81,7 @@ function deps(over: Partial<TaskRunnerDeps> & { agent?: Agent; merge?: Partial<M
     code: async () => ({ source: 'none' }),
     impact: async () => ({ source: 'none' }),
     decider: { decide: async () => ({ answered: false, reason: 'disabled' }) },
+    tierModel: () => null,
     policy: DEFAULT_POLICY,
     packBase: () => ({ spec, project, specHash: HASH, assumptions: journal.assumptions(), budgetTokens: 8000 }),
     handoffs: () => [],
@@ -383,5 +384,39 @@ describe('TaskRunner: review profile', () => {
     await r.advance(); await r.advance(); await r.advance();
     expect(depths).toEqual([]);
     expect(agentCalls.find((c) => c.kind === 'review')!.pack.code).toEqual({ source: 'none' });
+  });
+});
+
+describe('TaskRunner: model tier', () => {
+  const tierDecider = { decide: async (id: string) => (id === 'model-tier' ? { answered: true as const, backend: 'jev' as const, escalated: false, answers: { tier: { type: 'choice' as const, value: 'small', probabilities: { small: 0.9 }, confidence: 0.9 }, effort: { type: 'score' as const, value: 0, probabilities: {}, confidence: 0.9 } } } : { answered: false as const, reason: 'disabled' as const }) };
+  const tiers: Record<string, string> = { small: 'haiku', medium: 'sonnet', large: 'opus' };
+
+  it('dev attempt 1 runs on the small tier with low effort; review on the test role uses the same decision', async () => {
+    const agent: Agent = async (req) => (req.kind === 'review' ? approve() : devDone()(req));
+    const r = new TaskRunner('T1', deps({ agent, decider: tierDecider, tierModel: (_role, tier) => tiers[tier]! }));
+    await r.advance(); await r.advance(); await r.advance();
+    expect(agentCalls.find((c) => c.kind === 'dev')).toMatchObject({ model: 'haiku', effort: 'low' });
+    expect(agentCalls.find((c) => c.kind === 'review')).toMatchObject({ model: 'haiku', effort: 'low' });
+  });
+
+  it('attempt 2 moves one tier up', async () => {
+    const failingGates = async () => { const f = gate('unit-test', { passed: false, exitCode: 1, failure: 'code' as const }); return { results: [f], blockingFailure: f }; };
+    const r = new TaskRunner('T1', deps({ gates: failingGates, decider: tierDecider, tierModel: (_role, tier) => tiers[tier]! }));
+    await r.advance(); await r.advance(); await r.advance();
+    expect(agentCalls.map((c) => [c.kind, c.model, c.effort])).toEqual([['dev', 'haiku', 'low'], ['dev', 'sonnet', 'medium']]);
+  });
+
+  it('leaves model unset when the role is not on a claude profile (OmniRoute pin kept)', async () => {
+    const r = new TaskRunner('T1', deps({ decider: tierDecider, tierModel: () => null }));
+    await r.advance();
+    expect(agentCalls[0]!.model).toBeUndefined();
+    expect(agentCalls[0]!.effort).toBe('low');
+  });
+
+  it('with the decision off nothing is set', async () => {
+    const r = new TaskRunner('T1', deps({ tierModel: (_role, tier) => tiers[tier]! }));
+    await r.advance();
+    expect(agentCalls[0]!.model).toBeUndefined();
+    expect(agentCalls[0]!.effort).toBeUndefined();
   });
 });

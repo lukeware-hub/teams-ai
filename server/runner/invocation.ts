@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { ProviderProfile, Role } from '../config/config.js';
+import type { Effort } from '../decide/decisions/model-tier.js';
 
 /** Flags fixed by the CLI spike (docs/superpowers/spikes/2026-09-23-cli-findings.md). */
 export const ISOLATION_FLAGS: readonly string[] = [
@@ -44,6 +45,8 @@ export interface InvocationInput {
    * The step model wins over the agent file's model.
    */
   agentDefinition?: { description: string; model: string; tools: readonly string[]; body: string };
+  /** Claude Code effort level for this step (spec 10A.5 decision 11); absent means the CLI default. */
+  effort?: Effort;
 }
 
 export interface Invocation {
@@ -79,6 +82,7 @@ export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessE
   args.push(...ISOLATION_FLAGS);
   args.push('--settings', input.settingsPath);
   args.push('--model', input.model);
+  if (input.effort) args.push('--effort', input.effort);
   args.push('--json-schema', JSON.stringify(input.jsonSchema));
   args.push('--tools', input.tools.join(','));
   if (input.disallowedTools.length > 0) args.push('--disallowed-tools', ...input.disallowedTools);
