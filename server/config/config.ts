@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { DEFAULT_MAX_PARALLEL } from '../scheduler/scheduler.js';
 import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
+import { BACKEND_NAMES, DECISION_IDS, type DecisionConfig, type DecisionId } from '../decide/types.js';
 
 export const ROLES = ['sm', 'po', 'dev', 'test', 'devops'] as const;
 export type Role = (typeof ROLES)[number];
@@ -24,6 +25,31 @@ const linuxPath = z
   .string()
   .min(1)
   .refine((p) => !p.startsWith('/mnt/'), { message: 'must live on the Linux filesystem, not under /mnt (spec §15)' });
+
+const unit = z.number().min(0).max(1);
+
+/** Spec 10A.0: one entry per decision; thresholds are per backend. */
+export const DecisionConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  chain: z.array(z.enum(BACKEND_NAMES)).default([...BACKEND_NAMES]),
+  thresholds: z.object({ jev: unit.default(0.8), local: unit.default(0.9) }).prefault({}),
+  escalateTo: z.enum(ROLES).default('test'),
+});
+
+const PerDecisionSchema = z
+  .object(
+    Object.fromEntries(DECISION_IDS.map((id) => [id, DecisionConfigSchema.prefault({})])) as Record<
+      DecisionId,
+      z.ZodPrefault<typeof DecisionConfigSchema>
+    >,
+  )
+  .strict();
+
+/** Spec 10A.2: the model is pinned; aliases such as `jev-latest` would make attempts irreproducible. */
+const pinnedModel = z
+  .string()
+  .min(1)
+  .refine((m) => !/latest|auto/i.test(m), { message: 'decision model must be pinned (no latest/auto alias)' });
 
 export const StepBudget = z.object({
   timeoutMs: positive.default(20 * 60_000),
@@ -70,6 +96,22 @@ export const Config = z.object({
       enabled: z.boolean().default(false),
     })
     .prefault({}),
+  decisions: z
+    .object({
+      /** Off for runs 1 and 2 (spec §1.3); every decision then takes its System 2 path or default. */
+      enabled: z.boolean().default(false),
+      openrouter: z
+        .object({
+          baseUrl: z.string().url().default('https://openrouter.ai/api'),
+          model: pinnedModel.default('typesafe/jev-1.13'),
+          timeoutMs: positive.default(15_000),
+          maxTries: positive.default(3),
+          backoffMs: positive.default(500),
+        })
+        .prefault({}),
+      perDecision: PerDecisionSchema.prefault({}),
+    })
+    .prefault({}),
   paths: z
     .object({
       workspaces: linuxPath.default('~/.teams-ai/workspaces'),
@@ -100,4 +142,10 @@ export function resolveProfile(cfg: Config, role: Role, project: { confidential:
     return CLAUDE_DEFAULTS[role];
   }
   return profile;
+}
+
+/** A disabled layer switches every decision off without touching its other settings (spec 10A.0). */
+export function resolveDecision(cfg: Config, id: DecisionId): DecisionConfig {
+  const d = cfg.decisions.perDecision[id];
+  return { ...d, chain: [...d.chain], thresholds: { ...d.thresholds }, enabled: cfg.decisions.enabled && d.enabled };
 }

@@ -8,6 +8,7 @@ export const REDACTED = '[REDACTED]';
 
 const CREDENTIAL_PATTERNS: readonly RegExp[] = [
   /sk-ant-[A-Za-z0-9_-]{8,}/g,
+  /sk-or-v1-[A-Za-z0-9]{16,}/g,
   /\bgh[pousr]_[A-Za-z0-9]{20,}/g,
   /\bgithub_pat_[A-Za-z0-9_]{20,}/g,
   /\bAKIA[0-9A-Z]{16}\b/g,
@@ -29,8 +30,9 @@ export function redactSecrets(text: string, knownValues: readonly string[] = [])
   out = out.replace(CREDENTIAL_PATTERNS[1]!, REDACTED);
   out = out.replace(CREDENTIAL_PATTERNS[2]!, REDACTED);
   out = out.replace(CREDENTIAL_PATTERNS[3]!, REDACTED);
-  out = out.replace(CREDENTIAL_PATTERNS[4]!, `$1 ${REDACTED}`);
-  out = out.replace(CREDENTIAL_PATTERNS[5]!, `$1=${REDACTED}`);
-  out = out.replace(CREDENTIAL_PATTERNS[6]!, `$1${REDACTED}@`);
+  out = out.replace(CREDENTIAL_PATTERNS[4]!, REDACTED);
+  out = out.replace(CREDENTIAL_PATTERNS[5]!, `$1 ${REDACTED}`);
+  out = out.replace(CREDENTIAL_PATTERNS[6]!, `$1=${REDACTED}`);
+  out = out.replace(CREDENTIAL_PATTERNS[7]!, `$1${REDACTED}@`);
   return out;
 }

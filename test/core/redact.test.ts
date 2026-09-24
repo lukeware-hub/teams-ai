@@ -30,4 +30,8 @@ describe('redactSecrets', () => {
     const text = 'FAIL src/a.test.ts\n  expected 1 to be 2\nnpm ERR! code ELIFECYCLE';
     expect(redactSecrets(text, [])).toBe(text);
   });
+  it('masks an OpenRouter key even when it was not registered', () => {
+    const key = 'sk-or-v1-' + 'a1'.repeat(32);
+    expect(redactSecrets(`401 for ${key}`)).toBe('401 for [REDACTED]');
+  });
 });

@@ -3,12 +3,13 @@ import type { Role } from '../config/config.js';
 import type { Usage } from '../runner/stream-events.js';
 
 export interface UsageRecord {
-  role: Role;
+  /** `system1` is the decision layer (spec 10A.2); it is not an agent role. */
+  role: Role | 'system1';
   phase: string;
   taskId: string | null;
   attempt: number;
   stepKind: StepKind;
-  provider: 'claude' | 'omniroute';
+  provider: 'claude' | 'omniroute' | 'openrouter';
   model: string;
   usage: Usage;
   costUsd: number | null;
