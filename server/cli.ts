@@ -14,6 +14,9 @@ import { expandHome, stateFile, workspacePaths } from './orchestrator/workspace.
 import { runStep } from './runner/step.js';
 import { startApi } from './api/server.js';
 import { onboardingRoutes } from './api/onboarding-routes.js';
+import { defaultRunControl } from './api/run-control.js';
+import { runRoutes } from './api/run-routes.js';
+import { readUserConfig } from './onboarding/config-store.js';
 import { hasScript, spawnScriptPty } from './onboarding/pty.js';
 
 export interface CliIo {
@@ -51,8 +54,16 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
   const staticDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'web', 'dist');
   const hasDist = await fs.access(path.join(staticDir, 'index.html')).then(() => true, () => false);
   if (!hasDist) io.stderr('web/dist not found: run `npm run web:build` (or `npm run web:dev` for the Vite dev server with /api proxied)');
+  const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
   return startApi(
-    { routes: onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr }), staticDir: hasDist ? staticDir : null, log: io.stderr },
+    {
+      routes: [
+        ...onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr }),
+        ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr }),
+      ],
+      staticDir: hasDist ? staticDir : null,
+      log: io.stderr,
+    },
     port,
   );
 }

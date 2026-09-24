@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Onboarding } from './pages/Onboarding.js';
+import { Projects } from './pages/Projects.js';
 import { StatusPage } from './pages/StatusPage.js';
 
 export function App() {
@@ -9,6 +10,7 @@ export function App() {
         <Route path="/" element={<Navigate to="/onboarding" replace />} />
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/status" element={<StatusPage />} />
+        <Route path="/projects" element={<Projects />} />
       </Routes>
     </BrowserRouter>
   );

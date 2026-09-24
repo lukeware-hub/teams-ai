@@ -14,3 +14,5 @@ button { padding: 0.4rem 0.8rem; }
 .output { background: #111; color: #ddd; padding: 0.5rem; max-height: 12rem; overflow: auto; font-size: 0.8rem; }
 .hint { color: #777; }
 .compact .card { padding: 0.5rem 1rem; }
+table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; font-size: 0.9rem; }
+th, td { text-align: left; padding: 0.3rem 0.4rem; border-bottom: 1px solid #eee; vertical-align: top; }
