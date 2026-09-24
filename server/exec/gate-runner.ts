@@ -1,3 +1,4 @@
+import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { Gate } from '../contracts/plan.js';
 import { redactSecrets } from '../core/redact.js';
@@ -102,6 +103,8 @@ export interface GateDeps {
   exec: Exec;
   readFile: (absolutePath: string) => Promise<string | null>;
   removeFile: (absolutePath: string) => Promise<void>;
+  /** Restores the last JUnit report after the run; defaults to the filesystem. */
+  writeFile?: (absolutePath: string, text: string) => Promise<void>;
 }
 
 function junitFile(ctx: GateContext): string {
@@ -152,10 +155,24 @@ export async function runGates(
   deps: GateDeps,
 ): Promise<{ results: GateResult[]; blockingFailure: GateResult | null }> {
   const results: GateResult[] = [];
+  const report = junitFile(ctx);
+  let lastXml: string | null = null;
+  let outcome: { results: GateResult[]; blockingFailure: GateResult | null } = { results, blockingFailure: null };
   for (const gate of gates) {
     const r = await runGate(gate, ctx, deps);
     results.push(r);
-    if (!r.passed && r.blocking) return { results, blockingFailure: r };
+    // Each gate removes the report before running (no stale evidence); keep the last one produced.
+    const xml = await deps.readFile(report);
+    if (xml !== null) lastXml = xml;
+    if (!r.passed && r.blocking) {
+      outcome = { results, blockingFailure: r };
+      break;
+    }
   }
-  return { results, blockingFailure: null };
+  // Reviewers read the report from the worktree; a gate after the test gate would have wiped it.
+  if (lastXml !== null && (await deps.readFile(report)) === null) {
+    const write = deps.writeFile ?? ((p: string, text: string) => fs.writeFile(p, text));
+    await write(report, lastXml).catch(() => undefined);
+  }
+  return outcome;
 }

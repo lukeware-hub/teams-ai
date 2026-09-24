@@ -182,4 +182,23 @@ describe('runGates', () => {
     expect(out.results.map((r) => r.passed)).toEqual([true, true, false, true]);
     expect(out.blockingFailure).toBeNull();
   });
+
+  it('leaves the last JUnit report in the worktree after the run (reviewers read it)', async () => {
+    // Every gate removes the report before it runs; only unit-test writes one. Without restoring it
+    // the reviewer finds no test evidence (live-run finding).
+    const f = files({});
+    const report = `${ctx.worktree}/${ctx.junitPath}`.replace(/\\/g, '/');
+    const fake = new FakeExec().on(
+      (s) => s.args.includes('npm test'),
+      () => {
+        f.store.set(report, '<testsuite name="s"><testcase classname="s" name="[AC-001] ok"/></testsuite>');
+        return { exitCode: 0 };
+      },
+    );
+    const written: Array<[string, string]> = [];
+    const out = await runGates(gates, ctx, { exec: fake.exec, ...f.deps, writeFile: async (p, text) => void written.push([p.replace(/\\/g, '/'), text]) });
+    expect(out.blockingFailure).toBeNull();
+    expect(out.results[1]!.junit?.map((t) => t.id)).toEqual(['s::[AC-001] ok']);
+    expect(written).toEqual([[report, '<testsuite name="s"><testcase classname="s" name="[AC-001] ok"/></testsuite>']]);
+  });
 });
