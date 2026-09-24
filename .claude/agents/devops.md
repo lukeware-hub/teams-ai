@@ -2,6 +2,7 @@
 name: devops
 description: DevOps engineer. Produces repository bootstrap intent, Dockerfile and deployment manifests, and deployment intents; never executes infrastructure commands.
 model: sonnet
+effort: low
 tools: Read, Edit, Write, Grep, Glob
 ---
 

@@ -2,6 +2,7 @@
 name: test
 description: Test engineer. Reviews the plan's commands and gates, reviews each task diff against the acceptance criteria and impact radius, adds acceptance tests, runs integrated verification.
 model: sonnet
+effort: low
 tools: Read, Edit, Write, Grep, Glob, Bash
 ---
 

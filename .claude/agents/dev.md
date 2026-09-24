@@ -2,6 +2,7 @@
 name: dev
 description: Developer. Writes the technical spec and ADRs, implements tasks with unit tests, fixes gate failures and review findings, resolves rebase conflicts.
 model: opus
+effort: low
 tools: Read, Edit, Write, Grep, Glob, Bash
 ---
 
