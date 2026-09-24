@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { HASH_PATTERN } from '../contracts/hash.js';
-import { ADR_ID, Plan } from '../contracts/plan.js';
+import { ADR_ID, Plan, PlanTask } from '../contracts/plan.js';
 import { AC_ID } from '../contracts/spec.js';
 import { ID_PATTERNS } from '../core/ids.js';
 
-export const STEP_KINDS = ['refine', 'tech-spec', 'coverage', 'plan', 'dev', 'review', 'deployment', 'report', 'decide'] as const;
+export const STEP_KINDS = ['refine', 'tech-spec', 'coverage', 'plan', 'dev', 'review', 'deployment', 'report', 'decide', 'spec-gap', 'replan'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -109,6 +109,14 @@ export const DecideOutput = z.object({
 });
 export type DecideOutput = z.infer<typeof DecideOutput>;
 
+/** Spec (orchestrator) §4.5: SM answers a Dev's spec-gap; the assumption is the one-line log entry. */
+export const SpecGapOutput = z.object({ specHash, answer: z.string().min(1), assumption: z.string().min(1) });
+export type SpecGapOutput = z.infer<typeof SpecGapOutput>;
+
+/** Spec (orchestrator) §4.6: SM splits or changes a task that spent its attempts. */
+export const ReplanOutput = z.object({ specHash, replacements: z.array(PlanTask).min(1).max(3) });
+export type ReplanOutput = z.infer<typeof ReplanOutput>;
+
 export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> = {
   refine: RefineOutput,
   'tech-spec': TechSpecOutput,
@@ -119,6 +127,8 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   deployment: DeploymentOutput,
   report: ReportOutput,
   decide: DecideOutput,
+  'spec-gap': SpecGapOutput,
+  replan: ReplanOutput,
 };
 
 export type OutputOf<K extends StepKind> = z.infer<(typeof OUTPUT_SCHEMAS)[K]>;

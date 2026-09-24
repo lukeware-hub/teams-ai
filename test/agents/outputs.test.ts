@@ -61,4 +61,15 @@ describe('dev output JSON Schema carries the status-dependent requirements', () 
     expect(done.required).toContain('commitMessage');
     expect(gap.required).toContain('question');
   });
+  it('spec-gap and replan are step kinds with their own schemas', () => {
+    const HASH = 'sha256:' + 'a'.repeat(64);
+    expect(STEP_KINDS).toContain('spec-gap');
+    expect(STEP_KINDS).toContain('replan');
+    expect(OUTPUT_SCHEMAS['spec-gap'].safeParse({ specHash: HASH, answer: 'Use UTC', assumption: 'T1: timezone → UTC' }).success).toBe(true);
+    expect(OUTPUT_SCHEMAS['spec-gap'].safeParse({ specHash: HASH, answer: '' }).success).toBe(false);
+    const task = { id: 'T1-r1', title: 't', description: 'd', criteriaRefs: ['AC-001'], dependsOn: [], affectedPaths: ['src'], owner: 'dev' };
+    expect(OUTPUT_SCHEMAS.replan.safeParse({ specHash: HASH, replacements: [task] }).success).toBe(true);
+    expect(OUTPUT_SCHEMAS.replan.safeParse({ specHash: HASH, replacements: [] }).success).toBe(false);
+    expect(OUTPUT_SCHEMAS.replan.safeParse({ specHash: HASH, replacements: [task, task, task, task] }).success).toBe(false);
+  });
 });
