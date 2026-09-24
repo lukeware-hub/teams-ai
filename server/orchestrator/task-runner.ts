@@ -10,6 +10,7 @@ import { taskBranch } from '../core/ids.js';
 import type { DecideContext, Decider } from '../decide/decider.js';
 import { assessAttemptProgress } from '../decide/decisions/attempt-progress.js';
 import { triageGateFailure } from '../decide/decisions/gate-triage.js';
+import { REVIEW_PROFILE_DEPTH, choosePrRisk } from '../decide/decisions/pr-risk.js';
 import type { TestResult } from '../evidence/junit.js';
 import { verifyClaimedEvidence } from '../evidence/matrix.js';
 import type { Exec } from '../exec/command.js';
@@ -43,7 +44,7 @@ export interface TaskRunnerDeps {
   mergeQueue: MergeQueue;
   mergeSteps: (task: PlanTask, worktree: string, branch: string) => MergeSteps;
   code: (worktree: string, task: PlanTask) => Promise<CodeContext>;
-  impact: (worktree: string, branch: string, changed: readonly string[]) => Promise<CodeContext>;
+  impact: (worktree: string, branch: string, changed: readonly string[], depth: number) => Promise<CodeContext>;
   decider: Pick<Decider, 'decide'>;
   policy: PolicyConfig;
   packBase: () => PackBase;
@@ -162,7 +163,8 @@ export class TaskRunner {
     return {
       acIds: new Set(this.deps.spec.acceptanceCriteria.map((c) => c.id)),
       taskIds: new Set(this.deps.plan.tasks.map((t) => t.id)),
-      files: new Set([...tracked, ...untracked]),
+      // The JUnit report is ignored by most .gitignore files yet present in the worktree; reviewers cite it.
+      files: new Set([...tracked, ...untracked, this.deps.plan.junitPath]),
       tests: new Set(this.junit.map((t) => t.id)),
       adrIds: new Set(this.deps.plan.adrRefs),
     };
@@ -266,7 +268,12 @@ export class TaskRunner {
     if (this.junit.length === 0) this.junit = this.junitFromJournal();
     const changed = await changedFiles(this.worktree, 'origin/main', this.deps.exec);
     const diffStat = await git(this.worktree, ['diff', '--stat', 'origin/main...HEAD'], this.deps.exec);
-    const pack = reviewPack(this.deps.packBase(), this.task.def, { diffStat, changedFiles: changed, code: await this.deps.impact(this.worktree, this.branch, changed) });
+    // Spec 10A.5 decision 5: risk picks the review profile (context depth); the review itself always runs.
+    const risk = await choosePrRisk(this.task.def, { changedFiles: changed, diffStat }, this.deps.decider, this.ctx);
+    await this.deps.journal.fact(OrchEvent.ReviewProfileChosen, { taskId: this.taskId, risk: risk.risk, profile: risk.profile, source: risk.source });
+    const depth = REVIEW_PROFILE_DEPTH[risk.profile];
+    const code: CodeContext = depth === 0 ? { source: 'none' } : await this.deps.impact(this.worktree, this.branch, changed, depth);
+    const pack = reviewPack(this.deps.packBase(), this.task.def, { diffStat, changedFiles: changed, code, profile: risk.profile });
     const outcome = await this.deps.runAgent<'review'>({
       kind: 'review',
       role: 'test',
