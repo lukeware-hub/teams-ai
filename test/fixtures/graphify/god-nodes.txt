@@ -1,0 +1,4 @@
+God nodes (most connected):
+  1. DeploymentIntent - 23 edges
+  2. DockerLocalTarget - 14 edges
+  3. git() - 13 edges

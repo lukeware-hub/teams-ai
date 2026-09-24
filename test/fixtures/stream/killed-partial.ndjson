@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"s-p"}
+{"type":"assistant","message":{"id":"msg_P1","role":"assistant","content":[{"type":"text","text":"a"}],"usage":{"input_tokens":10,"output_tokens":20,"cache_read_input_tokens":1000,"cache_creation_input_tokens":300}},"session_id":"s-p"}
+{"type":"assistant","message":{"id":"msg_P1","role":"assistant","content":[{"type":"tool_use","id":"t","name":"Read","input":{}}],"usage":{"input_tokens":10,"output_tokens":20,"cache_read_input_tokens":1000,"cache_creation_input_tokens":300}},"session_id":"s-p"}
+{"type":"assistant","message":{"id":"msg_P2","role":"assistant","content":[{"type":"text","text":"b"}],"usage":{"input_tokens":12,"output_tokens":30,"cache_read_input_tokens":1300,"cache_creation_input_tokens":0}},"session_id":"s-p"}

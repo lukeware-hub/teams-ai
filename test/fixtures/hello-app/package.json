@@ -1,0 +1,9 @@
+{
+  "name": "hello-app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test --test-reporter=junit --test-reporter-destination=reports/junit.xml"
+  }
+}

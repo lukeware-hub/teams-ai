@@ -61,7 +61,7 @@ Using a reference spec (a small TODO REST API with 4–5 acceptance criteria):
 | Models | Per-role, configurable: `opus` for SM/PO/Dev, `sonnet` for Test/DevOps (Claude subscription). |
 | Free LLMs | OmniRoute gateway, per-role provider profile; POC uses it for Test, DevOps and report steps with a pinned model. |
 | Knowledge | Structured JSON contract (lookup by ID) + graphify code graph + BM25 text retrieval (SQLite FTS5). |
-| Fast decisions | System One–style decision layer (Choice / Score / Noul) on a local 7–9B model via llama.cpp with logprobs; low confidence escalates to Claude agents. |
+| Fast decisions | System One decision layer (Choice / Score / Noul): Jev via OpenRouter as primary, a local 7–9B llama.cpp model with logprobs as fallback (confidential projects, outages), low confidence escalates to Claude agents. |
 
 ## 3. Architecture
 
@@ -160,7 +160,8 @@ All contract files live in the product repository under `docs/` and are versione
 
 - `projectId`, `name`, `vision`
 - `personas[]` — who uses the product and why
-- `constraints[]` — including optional `stack` constraint
+- `constraints[]` — free-text constraints
+- `stack` — optional; when set, the Dev agent must use this stack instead of choosing one
 - `principles[]` — the project constitution: non-negotiable rules loaded by every agent (test conventions, security rules, style)
 - `deploy.target` — `docker-local` | `kind`
 - `github.owner` — optional override
@@ -174,7 +175,7 @@ All contract files live in the product repository under `docs/` and are versione
 - `acceptanceCriteria[]` — `{id: "AC-001", given, when, then, smoke: boolean}`
 - `outOfScope[]`
 - `externalDependencies[]` — `{name, purpose, secretNames[]}` (names only, never values)
-- `tasks[]` — optional human-defined tasks
+- `tasks[]` — optional human-defined tasks (`{title, description}` only; dependencies are derived by the SM in the plan, where the DAG is validated)
 - `status` — `refining` | `running` | `paused:quota` | `paused:auth` | `awaiting-validation` | `done`
 - `validationReports[]` — problems reported by the human after deploy
 
@@ -182,9 +183,12 @@ All contract files live in the product repository under `docs/` and are versione
 
 - `stack` and `adrRefs[]`
 - `commands` — `{install, format, lint, typecheck?, test, build, run, healthcheck}`; `test` must emit JUnit XML to a known path
-- `gates[]` — ordered list, each `{name, command, blocking}`; POC blocking gates: format/lint, typecheck (when applicable), unit tests, build, secret scan (gitleaks); non-blocking: dependency scan (osv-scanner)
+- `gates[]` — ordered list, each `{name, command, blocking, network, secrets}`; POC blocking gates: format/lint, typecheck (when applicable), unit tests, build, secret scan (gitleaks); non-blocking: dependency scan (osv-scanner)
+- `gateImage` — toolchain image every gate runs in (from the stack ADR, e.g. `node:22-bookworm`); each gate also declares `network` (`none` by default; `egress` only for `install` and `dependency-scan`) and `secrets` (names injected into that gate's container only)
 - `tasks[]` — `{id, title, description, criteriaRefs[], dependsOn[], affectedPaths[], owner}`; includes structural tasks `T0-scaffold` (first spec only; all tasks depend on it) and a deploy-infrastructure task owned by DevOps
-- `deploy` — adapter-specific intent (image, ports, manifests paths, healthcheck path)
+- `specId`, `specHash` — the frozen spec this plan was built for; a mismatch rejects the plan
+- `junitPath` — where the `test` command writes its JUnit XML report
+- `deploy` — adapter-specific intent (`image`, `port`, `manifests` paths, `healthcheckPath`)
 
 ### 4.4 Frozen files
 
@@ -212,7 +216,7 @@ The "Start" button is enabled only when all items pass.
 **SM (execution):**
 - External dependencies are listed and every required secret is present in `~/.teams-ai/secrets/<projectId>.env`.
 - Constraints are clear.
-- Human-defined tasks, if any, are feasible and acyclic.
+- Human-defined tasks, if any, are feasible and non-contradictory (their dependency graph is derived and validated in the plan phase).
 - No open questions remain.
 
 ### 5.2 Mechanics
@@ -258,7 +262,7 @@ For each task:
    5. `gh pr merge --squash --match-head-commit <sha>`; skip if already merged.
    6. Release lock; run `graphify update` on `main`; remove worktree.
 6. Gate failures are triaged first (10A.5, decision 1); only `code`/`dependency` failures return to Dev. Before review, PR risk selects the review profile (decision 5). From attempt 2 onward, attempt progress may trigger early replan (decision 6).
-7. Each return to Dev is one attempt. After 3 failed attempts, SM replans once (split or change the task; the new tasks re-enter the loop). If that fails, the task and its dependents become `blocked`.
+7. Each return to Dev is one attempt. After 3 failed attempts, SM replans once (split or change the task; the replaced task becomes `superseded` and its dependents are rewired to the replacement tasks, which re-enter the loop). Replacement tasks get a fresh budget of 3 attempts but can never be replanned again; when it is spent, the task and its dependents become `blocked`. A timeout or turn/token cap counts as a failed attempt, so an oversized task reaches the replan through the normal attempt budget.
 
 ### Phase 4 — Integrated verification
 Test runs the full suite plus all acceptance tests on `main`. Failures make SM create fix tasks (one round only), which go through Phase 3.
@@ -275,12 +279,14 @@ The human checks the service and runs exploratory tests. "Report problem" opens 
 ## 7. State machine, persistence and idempotency
 
 ### 7.1 Task states
-`planned → ready → implementing → validating → reviewing → rebasing → merging → merged`, plus terminal `blocked` and `superseded` (a task replaced by a replan; its dependents are rewired to the replacement tasks). Run-level states include `paused:quota` and `paused:auth`.
+`planned → ready → implementing → validating → reviewing → rebasing → merging → merged`, plus terminal `blocked` and `superseded` (a task replaced by a replan; its dependents are rewired to the replacement tasks). Failures return a task to `implementing` from `validating`, `reviewing` or `rebasing`; `merging` may fall back to `rebasing` when `main` moved. Rebase and the post-rebase gate re-run happen in `rebasing`; `merging` covers only the PR merge itself.
+
+Run-level status: `running`, `paused:quota`, `paused:auth`, `draining` (run budget exhausted: in-flight tasks finish, nothing new starts). No task starts unless the run is `running`.
 
 ### 7.2 Events
 Examples: `RUN_STARTED`, `PHASE_STARTED`, `TASK_READY`, `TASK_STARTED`, `DEV_COMMITTED`, `GATE_FAILED`, `GATE_PASSED`, `REVIEW_CHANGES`, `REVIEW_APPROVED`, `MERGE_LOCK_ACQUIRED`, `PR_CREATED`, `PR_MERGED`, `TASK_BLOCKED`, `REPLAN_STARTED`, `DEPLOY_APPLIED`, `DEPLOY_VERIFIED`, `ROLLBACK_DONE`, `RUN_PAUSED`, `RUN_RESUMED`, `REPORT_READY`.
 
-Every side effect follows **intent → effect → confirm**: the intent event is appended before the side effect, the confirm event after it.
+Every side effect follows **intent → effect → confirm**: the intent event is appended before the side effect, the confirm event after it. Events carry `kind: fact | intent | confirm` and, for intent/confirm pairs, a shared `intentId`. The log is append-only NDJSON with contiguous `seq`; on open the orchestrator repairs a torn or unreadable last line (crash during append) and refuses to open a log another writer holds (lock file).
 
 ### 7.3 Crash recovery
 On boot, the orchestrator replays `events.ndjson`, finds intents without a confirm, and reconciles against external reality (does the branch exist? was it pushed? does the PR exist? is it merged? is the deployment applied?) before resuming. An interrupted LLM step is re-run and not counted as an attempt.
@@ -330,7 +336,7 @@ Root causes addressed: **ambiguity** (agents invent when the spec has gaps) and 
 ### 9A.1 Prevent — no reliance on agent memory
 - Gate 1 removes ambiguity before any autonomous work (5.1).
 - Fresh session per step with a context pack rebuilt from the frozen `spec.json` (ACs addressed by ID), principles and ADRs.
-- Tasks are sized to fit a single step budget; exceeding the turn cap triggers replan into smaller tasks.
+- Tasks are sized to fit a single step budget; a step that exceeds its turn/token cap is a failed attempt, and repeated overruns reach the replan through the attempt budget (12).
 - **Compaction detection:** if the stream shows auto-compaction inside a step, the step is marked suspect, its output is discarded, and the task is replanned smaller.
 - **Task handoff:** the context pack of a task includes the merged summaries of its `dependsOn` tasks plus a graphify query over the code already merged to `main`. Merged code is the source of truth, not agent recollection.
 
@@ -359,14 +365,27 @@ Root causes addressed: **ambiguity** (agents invent when the spec has gaps) and 
 - `omniroute`: OmniRoute runs as a pinned-version container in WSL on `localhost:20128`. The runner injects `ANTHROPIC_BASE_URL=http://localhost:20128`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_MODEL` (a pinned model — never `auto` combos, to keep attempts reproducible) and `CLAUDE_CODE_AUTO_COMPACT_WINDOW` matching the model's real context window.
 - OmniRoute compression is disabled for agent traffic (header `x-omniroute-compression: off` or a compression-free combo), because RTK/Caveman compression can truncate test output and rewrite structured content.
 - The Claude subscription is **never** routed through OmniRoute (Anthropic's terms restrict subscription credentials to official clients; risk of account suspension). OmniRoute serves only non-Claude providers.
-- Projects with `confidential: true` cannot use OmniRoute profiles (free tiers may log or train on prompts).
+- Projects with `confidential: true` cannot use OmniRoute profiles (free tiers may log or train on prompts) nor the `jev-openrouter` decision backend (10A.2); their decisions use the local backend or escalate.
+- `OPENROUTER_API_KEY` (for the decision layer only, 10A.2) is stored in `~/.teams-ai/secrets/` and never reaches agent processes or OmniRoute.
 - If OmniRoute is unavailable, the affected role falls back to its Claude profile and the fallback is recorded.
 - The model that actually served a request is taken from OmniRoute logs (`X-OmniRoute-Decision`), since the CLI does not expose response headers.
 - Run 1 (baseline) uses Claude for all roles; run 2 switches Test and DevOps (and the report step) to OmniRoute.
 
 ## 10A. System 1 decision layer
 
-Inspired by TypeSafe's System One models (Jev): instead of asking a text-generating agent for a judgment, ask **atomic typed questions** against a state and get **probabilities** back, then combine answers with thresholds in code. Jev itself is a hosted, paid, early-access API, so the POC emulates the concept locally and for free. A `typesafe-jev` backend may be added later.
+Inspired by TypeSafe's System One models (Jev): instead of asking a text-generating agent for a judgment, ask **atomic typed questions** against a state and get **probabilities** back, then combine answers with thresholds in code. Jev is generally available through OpenRouter (`typesafe/jev-1.13`, $0.042 per million input tokens, output free, 32k context, ~0.25 s latency), so the POC uses Jev as the primary backend and keeps a local emulation as the fallback for confidential projects and outages.
+
+### 10A.0 Backend chain
+
+Every decision runs through the same chain. The `decide` module owns the chain; callers see only the final answer.
+
+1. **Deterministic rules** (in the caller). If a rule matches, no backend is called.
+2. **`jev-openrouter`** (primary). Skipped when the project is `confidential` or the backend is disabled.
+3. **`local-logprobs`** (fallback). Used when Jev is skipped or unavailable (HTTP 429/529, network error, timeout). Phase 1 ships a stub that always reports "unavailable".
+4. **`claude-escalate`** (System 2). Used when the answering backend's confidence is below the decision's threshold for that backend, or when both System 1 backends are unavailable.
+5. **Deterministic default** of the decision, when escalation itself fails.
+
+Per-decision config: `{enabled, chain: ['jev', 'local', 'claude'], thresholds: {jev, local}, escalateTo}`. Thresholds are per backend because Jev is calibrated and the local model is not: initial values `jev: 0.8`, `local: 0.9`. Every answer is logged with `backend`, `probabilities`, `confidence`, `escalated`, `cost` and later its real outcome (10A.4). With the layer disabled (runs 1 and 2), every decision goes straight to its System 2 path or deterministic default.
 
 ### 10A.1 Primitives
 
@@ -380,8 +399,21 @@ Inspired by TypeSafe's System One models (Jev): instead of asking a text-generat
 - `confidence`: for Choice, the calibrated probability of the selected option; for Score, derived from the spread of the level distribution (1 − normalized entropy); for Noul, `value` itself carries the certainty.
 - Questions must be atomic ("a judgment an expert makes in seconds"). Multi-factor judgments are decomposed into several questions and combined in code.
 
-### 10A.2 Local backend (`local-logprobs`)
+### 10A.2 Primary backend (`jev-openrouter`)
 
+- **Endpoint:** `POST https://openrouter.ai/api/v1/systemone`, `Authorization: Bearer <OPENROUTER_API_KEY>`. Request `{model: "typesafe/jev-1.13", state, questions}`; response `{id, model, provider, answers, usage: {input_tokens, output_tokens, cost}}`. Same shapes as TypeSafe's own API, so the `@typesafe-ai/sdk` client pointed at base URL `https://openrouter.ai/api` also works; the POC uses plain `fetch` to avoid a dependency.
+- **Model pinned** to `typesafe/jev-1.13` (never an alias) so decisions are reproducible across attempts.
+- **Not an OpenAI-compatible chat endpoint.** It is called directly, never through OmniRoute or through a Claude Code process.
+- **Key:** `OPENROUTER_API_KEY` lives in `~/.teams-ai/secrets/`, is read by the orchestrator only, and is never injected into agent processes. It is redacted from logs like every other secret.
+- **Probabilities and confidence** come from the model (trained for calibration), so no post-hoc calibration is needed; 10A.4 still logs outcomes to verify it.
+- **Retries:** exponential backoff on 429/529, at most 3 tries; then the backend reports "unavailable" and the chain continues.
+- **Confidential projects:** the backend is never called; the state would leave the machine. `confidential: true` therefore covers OmniRoute and Jev alike (see §10).
+- **Cost accounting:** `usage.cost` is recorded in `budget/accounting` under provider `openrouter`, role `system1`, keyed by decision id.
+- **State size cap:** states are truncated or summarized by the caller (e.g. diff stats + changed symbols instead of a full diff) to stay well under the 32k-token context.
+
+### 10A.2a Fallback backend (`local-logprobs`) — phase 2
+
+- **Phase 1** ships only the interface and a stub that reports "unavailable", so the chain falls through to `claude-escalate`. The real backend is built once decision logs from phase 1 exist to serve as eval fixtures (10A.6).
 - **Runtime:** llama.cpp server built with CUDA, running in WSL2 on the RTX 3060 Ti (8 GB VRAM). Parallel slots (`-np`) with continuous batching; one server shared by all decisions.
 - **Model:** a 7–9B instruct model quantized to Q4_K_M or Q5_K_M (~5 GB), leaving room for an 8–16k-token KV cache. 14B-class models do not fit fully in 8 GB and are excluded. The concrete model is selected by the decision eval (10A.6), not fixed in this spec.
 - **Type safety:** grammar-constrained decoding restricts the single answer token to valid labels, so the output can never be outside the defined type.
@@ -390,15 +422,15 @@ Inspired by TypeSafe's System One models (Jev): instead of asking a text-generat
   - Noul: P(`yes`) / (P(`yes`) + P(`no`)).
   - Score: levels are labeled `0`…`9`; `value` = Σ i · pᵢ.
 - **Parallel questions:** the state is sent as a shared prompt prefix (prompt cache); each question is a short suffix, so N questions cost roughly one state evaluation.
-- **State size cap:** states are truncated or summarized by the caller (e.g. diff stats + changed symbols instead of a full diff) to stay within the context budget.
+- **State size cap:** same caller-side cap as 10A.2.
 
 ### 10A.3 Escalation backend (`claude-escalate`)
 
-When local confidence is below the decision's threshold, or the local backend is unavailable, the same question is answered by a Claude agent step (`claude -p --json-schema`) with a schema matching the primitive. System 2 answers carry no calibrated probabilities; they are recorded with `confidence: null` and treated as final.
+When the answering System 1 backend's confidence is below the decision's threshold for that backend, or when both System 1 backends are unavailable, the same question is answered by a Claude agent step (`claude -p --json-schema`) with a schema matching the primitive. System 2 answers carry no calibrated probabilities; they are recorded with `confidence: null` and treated as final.
 
-### 10A.4 Calibration
+### 10A.4 Calibration and outcome logging
 
-Raw LLM token probabilities are typically overconfident. The pipeline produces its own ground truth, so each decision is logged together with its later real outcome (e.g. triage said `infra` → did the re-run pass without code changes?). After enough runs, per-decision calibration (temperature scaling or isotonic regression) is fitted and thresholds are tuned. Until then, conservative initial thresholds apply.
+Each decision is logged together with its later real outcome (e.g. triage said `infra` → did the re-run pass without code changes?). For Jev this verifies the advertised calibration and tunes thresholds. For the local backend, whose raw token probabilities are typically overconfident, the logs serve two purposes: per-decision calibration (temperature scaling or isotonic regression) once enough runs exist, and, where Jev answered the same state, Jev's distribution as a reference probability for the eval (10A.6). Until then, conservative initial thresholds apply.
 
 ### 10A.5 Decisions in the POC
 
@@ -415,14 +447,23 @@ Rule: **deterministic rules first, System 1 second, System 2 on low confidence.*
 | 7 | Validation report routing: `bug-existing-ac` / `new-requirement` / `environment` / `unclear` | Choice | After human validation report | Sets the continuation mode of the spec; `unclear` → PO asks the human | PO |
 | 8 | CLI error classification: `usage-limit` / `auth-expired` / `network` / `invalid-output` / `other` | Choice | Runner, when rules do not match | Feeds the quota breaker and pause states | — (falls back to `other` → generic retry) |
 | 9 | Scope drift: one Noul per out-of-scope item, one for changes not required by referenced ACs | Noul | Phase 3, before review | High values force the `deep` review profile (9A.3) | Test |
+| 10 | Model tier per task: `small` / `medium` / `large` (mapped to the role's configured models, e.g. haiku / sonnet / opus, or the OmniRoute pin) | Choice | Phase 3, before each Dev/Test step, from the task, its ACs and the declared file set | Selects the model for attempt 1; attempt 2 onward always moves one tier up, so a misclassified task self-corrects through the attempt budget | — (default: the role's configured model) |
+| 11 | Reasoning effort per task: `low` / `medium` / `high` / `max` | Score | Same call as decision 10 | Sets the Claude Code effort level for the step; attempt 2 onward raises it one level | — (default: the CLI default) |
+| 12 | Rank candidate plans or approaches when SM enumerates more than one (one Score per candidate on AC coverage and risk) | Score | Phase 2 (planning) and replan | Picks the highest-scoring candidate; SM still authors every candidate, System 1 never invents a path | SM |
 
-Each decision has a config entry `{enabled, threshold, backend, escalateTo}`. With the layer disabled (runs 1 and 2), every decision goes straight to its System 2 path or deterministic default.
+Decisions 2–4 and 7 are the only System 1 role in answering questions: they filter and route (blocking or not, duplicate, which AC, resolved by the human's answer). Writing the answer itself is always PO/SM (System 2).
+
+Each decision has the config entry described in 10A.0. Delivery order: **phase 1** = `decide` module, `jev-openrouter`, `claude-escalate`, local stub and decision 1 (gate failure triage); **phase 2** = real `local-logprobs` backend and decision evals; **phase 3** = decisions 2–12.
 
 ### 10A.6 Decision evals
 
 - A labeled fixture set per decision (initially hand-built from recorded runs, then grown from logged outcomes).
 - Metrics per decision and model: accuracy, Brier score, expected calibration error (ECE), escalation rate at the configured threshold, latency.
 - Used to select the local model and to set thresholds.
+
+### 10A.7 Agent-authored questions (phase 4, not designed yet)
+
+Today every question is authored in code by the orchestrator. A later phase may expose the `decide` module to agent steps as a tool ("ask a typed question about this state"), so an agent can offload its own quick judgments to System 1 instead of reasoning them out in tokens. Structured instructions (`Entry`) are already supported for that. Open points for its own spec section: per-step budget of questions, which roles may ask, how agent-authored questions are logged and evaluated, and how confidential projects are handled.
 
 ## 11. Web UI
 
@@ -448,9 +489,10 @@ Fastify serves REST + SSE, bound to `127.0.0.1`, no authentication. SSE supports
 | OmniRoute unavailable | Fall back to Claude profile for that role | No |
 | Docker / GitHub / network transient error | Backoff on idempotent operation | No |
 | Output with `specHash` mismatch or unresolved reference | Same as schema failure (re-run up to 2 times) | Only after those 2 |
-| Auto-compaction detected inside a step | Discard output, replan task smaller | No |
+| Auto-compaction detected inside a step | Discard output, replan task smaller; if the task already came from a replan, block it | No |
 | Dev returns `spec-gap` | SM decides and logs assumption; task resumes | No |
-| Local System 1 backend unavailable | All decisions escalate to System 2 | No |
+| Jev (OpenRouter) unavailable after 3 backoff retries | Decision falls through to the local backend, then to System 2; the fallback is recorded | No |
+| Local System 1 backend unavailable | Decision escalates to System 2 | No |
 | Gate failure triaged as `infra`/`environment` | Retry with backoff, max 3 per gate, then treated as `code` | No (until the cap) |
 | Claude login expired in WSL | `paused:auth`, UI notice; resumes after `claude login` | No |
 | Orchestrator crash | Replay + reconcile (7.3) | No |
@@ -465,7 +507,7 @@ Raw agent streams are stored per step in `runs/<runId>/steps/<stepId>.ndjson`. W
 2. **Runner contract:** a fake `claude` binary (via `CLAUDE_BIN`) replays recorded stream-json fixtures — success, invalid JSON, quota error, timeout, oversized output. A record mode captures real outputs to create fixtures.
 3. **Integration (on demand):** git controller against a local bare repository and a fake `gh` (create PR twice, merge twice → idempotent); deploy adapters against real Docker and kind with a "hello" fixture app exposing a healthcheck and a smoke test.
 4. **Agent evals (on demand, consume tokens):** small set of context packs per role; outputs must pass schema and semantic validation; pass rate tracked per role and provider.
-5. **Decision evals (on demand, local, free):** see 10A.6. Unit tests for the decide layer use a fake backend returning fixed distributions to test thresholds, escalation and disabled mode.
+5. **Decision evals (on demand):** see 10A.6; Jev calls cost cents, the local backend is free. Unit tests for the decide layer use fake backends returning fixed distributions or "unavailable" to test thresholds, chain fall-through, confidential skipping, escalation and disabled mode; the Jev HTTP client is tested against a recorded response fixture, never the live API.
 6. **Golden run:** see 1.3.
 
 ## 14. Security model
@@ -484,6 +526,18 @@ Raw agent streams are stored per step in `runs/<runId>/steps/<stepId>.ndjson`. W
 - OmniRoute container (pinned version) for runs 2 and 3.
 - NVIDIA driver with CUDA support for WSL2; llama.cpp server built with CUDA inside Ubuntu; a 7–9B GGUF model (Q4_K_M/Q5_K_M) for the System 1 layer.
 - teams-ai and `~/.teams-ai/` located on the Linux filesystem, not under `/mnt/c`.
+
+## 15A. Core engine conventions (fixed by Plan 1)
+
+- **Identifiers:** `projectId`, `specId`, `runId` are lowercase slugs (`^[a-z0-9]+(?:-[a-z0-9]+)*$`); task ids match `^T\d+(?:-[a-z0-9]+)*$`; AC ids `^AC-\d{3}$`; ADR ids `^ADR-\d{3}$`; hashes `sha256:<hex>`. Branch: `task/<specId>-<taskId>` (task id verbatim). Attempt id `<taskId>-a<n>` and step id `s<seq, 5 digits>` are relative to `runs/<runId>/`.
+- **Spec hash:** computed over `specId, specVersion, objectives, features, acceptanceCriteria, outOfScope, externalDependencies, tasks` of the parsed spec (defaults included, keys sorted); `status` and `validationReports` are excluded. "Start" increments `specVersion` (starting at 0) and sets `status: running`.
+- **Plan fields:** `PlanTask.owner` is `dev | devops`; `plan.gates[]` must include blocking `format`, `lint`, `unit-test`, `build`, `secret-scan` (and `typecheck` when `commands.typecheck` exists); `dependency-scan` is non-blocking. First spec: `T0-scaffold` present, without dependencies, reachable from every task, plus at least one `devops` task; later specs must not contain `T0-scaffold`.
+- **Path overlap heuristic (scheduler):** two path lists overlap when the static (non-glob) prefix of one entry is an ancestor of, or equal to, the other's; root-level globs (`**/*.md`) and the repository root overlap everything. Conservative by design: it only reduces parallelism.
+- **Diff guard:** paths are normalized (backslashes, `./`, trailing slashes, leading `/`); a bare path covers itself and everything below it; dotfiles match; frozen-file violations are rejected even with a justification; a whitespace-only `scopeJustification` counts as missing. `allowFrozen` applies only to `T0-scaffold` on the first spec.
+- **Evidence rules:** the `[AC-xxx]` tag is case-insensitive, requires exactly three digits, and may appear in the test name or classname; skipped tests never count; a report with no executed tests fails the gate. A missing classname falls back to the suite name. Evidence statuses: `passed`, `failed` (any failing tagged test), `blocked` (all owning tasks blocked and no tests), `missing`. The Test agent's review claims (`{id, status, evidence[]}`) are cross-checked: every cited test must exist, carry the criterion's tag, and have passed for a `passed` claim; a `passed` claim without evidence is rejected.
+- **Execution plane:** gates run as `docker run --rm --network none|bridge --cpus N --memory M -v <worktree>:/work -w /work <gateImage> sh -lc <command>`; exit 137/125, daemon errors, disk full and timeouts are `infra`. The merge queue is `rebase → gates → push → ensurePr → merge --squash --match-head-commit`; a refused merge is reported, never forced. Deploy is `validate → build → apply → verify → smoke`, rolling back to the previous image (docker) or `rollout undo` (kind) and re-verifying on any failure after `apply`; kind manifests reference `{{IMAGE}}`, secrets become one Kubernetes Secret created from stdin.
+- **Knowledge:** text retrieval is BM25 over `node:sqlite` FTS5 (`porter unicode61`), chunked per Markdown heading (≤1200 chars); queries are sanitized to a bag of terms; documents are replaced on re-index. The code graph is `graphify update <repo> --no-cluster` run from `workspaces/<p>/graph/`; coverage = extracted/(extracted+failed) sources, below 0.5 the pack uses `git grep` instead. Context packs render sections in a fixed order (principles, contract, task, criteria, objectives, tech-spec, ADRs, assumptions, handoffs, code, retrieval, feedback), estimate tokens as chars/4 and drop whole sections from the end of `retrieval, code, adrs, tech-spec, objectives, handoffs, assumptions, feedback` until they fit; the first four sections are never dropped.
+- **Failure taxonomy (retry policy input):** `code`, `dependency`, `timeout`, `budget`, `review-changes`, `rebase-conflict` consume an attempt; `schema` re-runs the step up to 2 times first; `infra`/`environment` re-run the gate up to 3 times per gate, `flaky-test` once; `compaction`, `spec-gap`, `quota`, `auth` never consume an attempt.
 
 ## 16. Open items to verify during implementation
 

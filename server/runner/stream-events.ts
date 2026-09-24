@@ -1,0 +1,267 @@
+import { z } from 'zod';
+
+export const StreamEvent = z
+  .object({
+    type: z.string().min(1),
+    subtype: z.string().optional(),
+    session_id: z.string().optional(),
+  })
+  .passthrough();
+export type StreamEvent = z.infer<typeof StreamEvent>;
+
+export interface ParsedStream {
+  events: StreamEvent[];
+  malformed: Array<{ line: number; text: string }>;
+}
+
+export function parseStreamJson(text: string): ParsedStream {
+  const events: StreamEvent[] = [];
+  const malformed: Array<{ line: number; text: string }> = [];
+  text.split('\n').forEach((raw, index) => {
+    if (raw.trim() === '') return;
+    let value: unknown;
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      malformed.push({ line: index + 1, text: raw.slice(0, 200) });
+      return;
+    }
+    const parsed = StreamEvent.safeParse(value);
+    if (parsed.success) events.push(parsed.data);
+    else malformed.push({ line: index + 1, text: raw.slice(0, 200) });
+  });
+  return { events, malformed };
+}
+
+export interface Usage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+}
+
+/**
+ * Extracts a single JSON object from agent text, tolerating markdown fences and surrounding prose.
+ * The CLI does not always populate structured_output (observed with --agents + --json-schema),
+ * so the runner falls back to the text; validation still runs on the parsed object.
+ */
+export function extractJsonObject(text: string | null): Record<string, unknown> | null {
+  if (!text) return null;
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const candidate = (fenced ? fenced[1] : text).trim();
+  const start = candidate.indexOf('{');
+  const end = candidate.lastIndexOf('}');
+  if (start === -1 || end === -1 || end < start) return null;
+  try {
+    const value: unknown = JSON.parse(candidate.slice(start, end + 1));
+    return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `allowed_warning` is still allowed: the CLI emits it on a successful step when a window is high.
+ * Only a status that actually refused the request counts as rejected (spec §8.7).
+ */
+export function isRateLimitRejected(status: string): boolean {
+  return status !== 'allowed' && status !== 'allowed_warning';
+}
+
+export interface RateLimitInfo {
+  status: string;
+  /** Top-level reset of the window the CLI is reporting on (epoch seconds). */
+  resetsAt: number | null;
+  fiveHourUtilization: number | null;
+  fiveHourResetsAt: number | null;
+  sevenDayUtilization: number | null;
+  sevenDayResetsAt: number | null;
+}
+
+export interface ResultSummary {
+  found: boolean;
+  isError: boolean;
+  subtype: string | null;
+  numTurns: number;
+  durationMs: number;
+  costUsd: number | null;
+  usage: Usage;
+  sessionId: string | null;
+  resultText: string | null;
+  /** Parsed --json-schema output (CLI 2.1.281 puts it in result.structured_output). */
+  structuredOutput: unknown | null;
+  /** Where structuredOutput came from; null when the result had neither. */
+  structuredSource: 'structured_output' | 'text' | null;
+  /** e.g. "completed", "rapid_refill_breaker"; the CLI may report is_error=true with subtype "success". */
+  terminalReason: string | null;
+  /** HTTP status of the failing API call when the CLI reports one (401 auth, 429 quota). */
+  apiErrorStatus: number | null;
+  /** Latest rate_limit_event in the stream (subscription usage windows). */
+  rateLimit: RateLimitInfo | null;
+  compactions: number;
+}
+
+const ResultEvent = z
+  .object({
+    type: z.literal('result'),
+    subtype: z.string().optional(),
+    is_error: z.boolean().optional(),
+    duration_ms: z.number().optional(),
+    num_turns: z.number().optional(),
+    result: z.string().optional(),
+    session_id: z.string().optional(),
+    total_cost_usd: z.number().optional(),
+    structured_output: z.unknown().optional(),
+    terminal_reason: z.string().nullable().optional(),
+    api_error_status: z.number().nullable().optional(),
+    usage: z
+      .object({
+        input_tokens: z.number().optional(),
+        output_tokens: z.number().optional(),
+        cache_read_input_tokens: z.number().optional(),
+        cache_creation_input_tokens: z.number().optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+const ZERO_USAGE: Usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+
+const RateLimitEvent = z
+  .object({
+    type: z.literal('rate_limit_event'),
+    rate_limit_info: z
+      .object({
+        status: z.string(),
+        resetsAt: z.number().optional(),
+        unifiedWindows: z
+          .object({
+            five_hour: z.object({ utilization: z.number().optional(), resetsAt: z.number().optional() }).optional(),
+            seven_day: z.object({ utilization: z.number().optional(), resetsAt: z.number().optional() }).optional(),
+          })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+const AssistantUsage = z
+  .object({
+    type: z.literal('assistant'),
+    message: z
+      .object({
+        id: z.string().optional(),
+        usage: z
+          .object({
+            input_tokens: z.number().optional(),
+            output_tokens: z.number().optional(),
+            cache_read_input_tokens: z.number().optional(),
+            cache_creation_input_tokens: z.number().optional(),
+          })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+/** Usage of a killed step: assistant messages carry usage per message id (one entry per content block). */
+function partialUsage(events: readonly StreamEvent[]): { usage: Usage; turns: number } {
+  const seen = new Map<string, Usage>();
+  let anonymous = 0;
+  for (const e of events) {
+    const parsed = AssistantUsage.safeParse(e);
+    if (!parsed.success) continue;
+    const id = parsed.data.message.id ?? `anon-${anonymous++}`;
+    const u = parsed.data.message.usage;
+    if (!u) {
+      if (!seen.has(id)) seen.set(id, { ...ZERO_USAGE });
+      continue;
+    }
+    seen.set(id, {
+      inputTokens: u.input_tokens ?? 0,
+      outputTokens: u.output_tokens ?? 0,
+      cacheReadTokens: u.cache_read_input_tokens ?? 0,
+      cacheWriteTokens: u.cache_creation_input_tokens ?? 0,
+    });
+  }
+  const usage = { ...ZERO_USAGE };
+  for (const u of seen.values()) {
+    usage.inputTokens += u.inputTokens;
+    usage.outputTokens += u.outputTokens;
+    usage.cacheReadTokens += u.cacheReadTokens;
+    usage.cacheWriteTokens += u.cacheWriteTokens;
+  }
+  return { usage, turns: seen.size };
+}
+
+function latestRateLimit(events: readonly StreamEvent[]): RateLimitInfo | null {
+  const raw = [...events].reverse().find((e) => e.type === 'rate_limit_event');
+  const parsed = raw ? RateLimitEvent.safeParse(raw) : null;
+  if (!parsed || !parsed.success) return null;
+  const info = parsed.data.rate_limit_info;
+  return {
+    status: info.status,
+    resetsAt: info.resetsAt ?? null,
+    fiveHourUtilization: info.unifiedWindows?.five_hour?.utilization ?? null,
+    fiveHourResetsAt: info.unifiedWindows?.five_hour?.resetsAt ?? null,
+    sevenDayUtilization: info.unifiedWindows?.seven_day?.utilization ?? null,
+    sevenDayResetsAt: info.unifiedWindows?.seven_day?.resetsAt ?? null,
+  };
+}
+
+export function summarizeStream(parsed: ParsedStream): ResultSummary {
+  const compactions = parsed.events.filter((e) => e.type === 'system' && e.subtype === 'compact_boundary').length;
+  const sessionId = parsed.events.find((e) => typeof e.session_id === 'string')?.session_id ?? null;
+  const rateLimit = latestRateLimit(parsed.events);
+  const raw = [...parsed.events].reverse().find((e) => e.type === 'result');
+  const result = raw ? ResultEvent.safeParse(raw) : null;
+  if (!result || !result.success) {
+    const partial = partialUsage(parsed.events);
+    return {
+      found: false,
+      isError: true,
+      subtype: null,
+      numTurns: partial.turns,
+      durationMs: 0,
+      costUsd: null,
+      usage: partial.usage,
+      sessionId,
+      resultText: null,
+      structuredOutput: null,
+      structuredSource: null,
+      terminalReason: null,
+      apiErrorStatus: null,
+      rateLimit,
+      compactions,
+    };
+  }
+  const r = result.data;
+  const fromText = r.structured_output === undefined ? extractJsonObject(r.result ?? null) : null;
+  const structuredOutput = r.structured_output ?? fromText;
+  const structuredSource = r.structured_output !== undefined ? 'structured_output' : fromText ? 'text' : null;
+  return {
+    found: true,
+    isError: r.is_error ?? r.subtype !== 'success',
+    subtype: r.subtype ?? null,
+    numTurns: r.num_turns ?? 0,
+    durationMs: r.duration_ms ?? 0,
+    costUsd: r.total_cost_usd ?? null,
+    usage: {
+      inputTokens: r.usage?.input_tokens ?? 0,
+      outputTokens: r.usage?.output_tokens ?? 0,
+      cacheReadTokens: r.usage?.cache_read_input_tokens ?? 0,
+      cacheWriteTokens: r.usage?.cache_creation_input_tokens ?? 0,
+    },
+    sessionId: r.session_id ?? sessionId,
+    resultText: r.result ?? null,
+    structuredOutput: structuredOutput ?? null,
+    structuredSource,
+    terminalReason: r.terminal_reason ?? null,
+    apiErrorStatus: r.api_error_status ?? null,
+    rateLimit,
+    compactions,
+  };
+}

@@ -1,0 +1,16 @@
+{
+  "specId": "hello-001",
+  "specVersion": 1,
+  "specHash": null,
+  "objectives": ["Greet a caller by name over HTTP"],
+  "features": ["GET /hello?name=X returns {\"message\":\"Hello, X\"}", "GET /health returns {\"ok\":true}"],
+  "acceptanceCriteria": [
+    { "id": "AC-001", "given": "the service is running", "when": "GET /hello?name=Ada is called", "then": "the body is {\"message\":\"Hello, Ada\"} with status 200", "smoke": true },
+    { "id": "AC-002", "given": "the service is running", "when": "GET /hello is called without name", "then": "status 400 and {\"error\":\"name is required\"}", "smoke": false },
+    { "id": "AC-003", "given": "the service is running", "when": "GET /health is called", "then": "status 200 and {\"ok\":true}", "smoke": true }
+  ],
+  "outOfScope": ["Authentication", "Persistence"],
+  "externalDependencies": [],
+  "status": "running",
+  "validationReports": []
+}

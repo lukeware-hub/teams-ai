@@ -1,0 +1,14 @@
+{
+  "id": "gen-dec-1789738314-X5e5eKGQdvR9rblyX250",
+  "model": "typesafe/jev-1.13-20260917",
+  "provider": "TypeSafe",
+  "answers": {
+    "kind": {
+      "type": "choice",
+      "choice": "infra",
+      "probabilities": { "code": 0.06, "flaky-test": 0.02, "infra": 0.88, "environment": 0.03, "dependency": 0.01 },
+      "confidence": 0.86
+    }
+  },
+  "usage": { "input_tokens": 412, "output_tokens": 34, "cost": 0.0000173 }
+}

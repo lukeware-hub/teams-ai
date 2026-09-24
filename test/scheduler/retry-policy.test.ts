@@ -1,0 +1,79 @@
+import { describe, expect, it } from 'vitest';
+import { DEFAULT_POLICY, decideOnFailure } from '../../server/scheduler/retry-policy.js';
+import { runtime } from '../fixtures/run-state.js';
+
+const task = (extra = {}) => runtime({ id: 'T1-a' }, 'validating', extra);
+
+describe('decideOnFailure', () => {
+  it('uses the spec defaults', () => {
+    expect(DEFAULT_POLICY).toEqual({
+      maxAttempts: 3,
+      maxInfraRetriesPerGate: 3,
+      maxFlakyRetriesPerGate: 1,
+      maxSchemaRetriesPerStep: 2,
+    });
+  });
+
+  it('retries the dev on the first two code failures, then replans, then blocks', () => {
+    expect(decideOnFailure({ kind: 'code' }, task({ attempts: 0 }))).toEqual({ action: 'retry-dev', consumeAttempt: true });
+    expect(decideOnFailure({ kind: 'code' }, task({ attempts: 1 }))).toEqual({ action: 'retry-dev', consumeAttempt: true });
+    expect(decideOnFailure({ kind: 'code' }, task({ attempts: 2 }))).toEqual({ action: 'replan', consumeAttempt: true });
+    expect(decideOnFailure({ kind: 'code' }, task({ attempts: 2, replanned: true }))).toEqual({ action: 'block', consumeAttempt: true });
+  });
+
+  it('gives a replacement task a fresh attempt budget but never a second replan', () => {
+    expect(decideOnFailure({ kind: 'code' }, task({ attempts: 0, replanned: true })).action).toBe('retry-dev');
+    expect(decideOnFailure({ kind: 'code' }, task({ attempts: 2, replanned: true })).action).toBe('block');
+  });
+
+  it('treats review changes, rebase conflicts, timeouts, budget and dependency errors as attempts', () => {
+    for (const kind of ['review-changes', 'rebase-conflict', 'timeout', 'budget', 'dependency'] as const) {
+      expect(decideOnFailure({ kind }, task()).consumeAttempt).toBe(true);
+    }
+  });
+
+  it('re-runs infra and environment failures without consuming attempts until the per-gate cap', () => {
+    expect(decideOnFailure({ kind: 'infra', gate: 'unit-test' }, task())).toEqual({ action: 'rerun-gate', consumeAttempt: false });
+    expect(decideOnFailure({ kind: 'environment', gate: 'unit-test' }, task({ infraRetries: { 'unit-test': 2 } }))).toEqual({
+      action: 'rerun-gate',
+      consumeAttempt: false,
+    });
+    expect(decideOnFailure({ kind: 'infra', gate: 'unit-test' }, task({ infraRetries: { 'unit-test': 3 } }))).toEqual({
+      action: 'retry-dev',
+      consumeAttempt: true,
+    });
+  });
+
+  it('counts infra retries per gate', () => {
+    const t = task({ infraRetries: { lint: 3 } });
+    expect(decideOnFailure({ kind: 'infra', gate: 'unit-test' }, t).action).toBe('rerun-gate');
+  });
+
+  it('re-runs a flaky test once, then treats it as code', () => {
+    expect(decideOnFailure({ kind: 'flaky-test', gate: 'unit-test' }, task())).toEqual({ action: 'rerun-gate', consumeAttempt: false });
+    expect(decideOnFailure({ kind: 'flaky-test', gate: 'unit-test' }, task({ flakyRetries: { 'unit-test': 1 } })).action).toBe('retry-dev');
+  });
+
+  it('requires a gate for gate-scoped failures', () => {
+    expect(() => decideOnFailure({ kind: 'infra' }, task())).toThrow(/gate/);
+    expect(() => decideOnFailure({ kind: 'environment' }, task())).toThrow(/gate/);
+    expect(() => decideOnFailure({ kind: 'flaky-test' }, task())).toThrow(/gate/);
+  });
+
+  it('re-runs the step on schema failures up to the limit, then consumes an attempt', () => {
+    expect(decideOnFailure({ kind: 'schema', schemaRetriesUsed: 0 }, task())).toEqual({ action: 'rerun-step', consumeAttempt: false });
+    expect(decideOnFailure({ kind: 'schema', schemaRetriesUsed: 1 }, task()).action).toBe('rerun-step');
+    expect(decideOnFailure({ kind: 'schema', schemaRetriesUsed: 2 }, task())).toEqual({ action: 'retry-dev', consumeAttempt: true });
+  });
+
+  it('replans on compaction without consuming an attempt, and blocks if already replanned', () => {
+    expect(decideOnFailure({ kind: 'compaction' }, task())).toEqual({ action: 'replan', consumeAttempt: false });
+    expect(decideOnFailure({ kind: 'compaction' }, task({ replanned: true }))).toEqual({ action: 'block', consumeAttempt: false });
+  });
+
+  it('pauses on quota and auth, and routes spec gaps, without consuming attempts', () => {
+    expect(decideOnFailure({ kind: 'quota' }, task())).toEqual({ action: 'pause-quota', consumeAttempt: false });
+    expect(decideOnFailure({ kind: 'auth' }, task())).toEqual({ action: 'pause-auth', consumeAttempt: false });
+    expect(decideOnFailure({ kind: 'spec-gap' }, task())).toEqual({ action: 'route-spec-gap', consumeAttempt: false });
+  });
+});

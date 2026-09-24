@@ -1,0 +1,12 @@
+{
+  "input_tokens": 0,
+  "output_tokens": 0,
+  "failed_sources": ["server/legacy/old.cob"],
+  "extracted_sources": ["server/runner/stream-events.ts", "server/runner/step.ts", "server/deploy/kind.ts"],
+  "nodes": [
+    { "id": "server_runner_stream_events", "label": "stream-events.ts", "file_type": "code", "source_file": "server/runner/stream-events.ts", "source_location": "L1", "_origin": "ast" },
+    { "id": "server_runner_step_runstep", "label": "runStep()", "file_type": "code", "source_file": "server/runner/step.ts", "source_location": "L100", "_origin": "ast" }
+  ],
+  "links": [{ "source": "server_runner_step_runstep", "target": "server_runner_stream_events", "relation": "imports" }],
+  "directed": false
+}

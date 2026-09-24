@@ -1,0 +1,5 @@
+Affected nodes for summarizeStream()
+Relations: calls, indirect_call, references, imports, imports_from, dynamic_import, re_exports, inherits, extends, implements, uses, mixes_in, embeds, requires
+Depth: 1
+- process-runner.ts [imports] server/runner/process-runner.ts:L6
+- runProcess() [calls] server/runner/process-runner.ts:L130

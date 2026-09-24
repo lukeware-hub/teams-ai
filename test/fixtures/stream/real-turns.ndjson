@@ -1,0 +1,6 @@
+{"type":"system","subtype":"init","session_id":"s-t","model":"claude-sonnet-5"}
+{"type":"assistant","message":{"id":"msg_01A","role":"assistant","content":[{"type":"text","text":"thinking about it"}],"usage":{"input_tokens":5,"output_tokens":10,"cache_read_input_tokens":100,"cache_creation_input_tokens":20}},"session_id":"s-t"}
+{"type":"assistant","message":{"id":"msg_01A","role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"a"}}],"usage":{"input_tokens":5,"output_tokens":10,"cache_read_input_tokens":100,"cache_creation_input_tokens":20}},"session_id":"s-t"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"}]},"session_id":"s-t"}
+{"type":"assistant","message":{"id":"msg_01A","role":"assistant","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":5,"output_tokens":10,"cache_read_input_tokens":100,"cache_creation_input_tokens":20}},"session_id":"s-t"}
+{"type":"result","subtype":"success","is_error":false,"duration_ms":9,"num_turns":1,"result":"done","session_id":"s-t","total_cost_usd":0.001,"usage":{"input_tokens":5,"output_tokens":10,"cache_read_input_tokens":100,"cache_creation_input_tokens":20}}
