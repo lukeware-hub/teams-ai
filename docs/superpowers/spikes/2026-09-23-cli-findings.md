@@ -53,3 +53,16 @@ Amendment to row 2: read `structured_output` when present, otherwise the fenced/
 | Does `--settings <file>` apply together with `--setting-sources project`? | temp workspace, role settings file with `Bash(cat ./secrets/*)` deny + sandbox allowlist | `cat ./secrets/x.env` → `permission_denied` event; `curl https://example.com` → `sandbox_violations: deny network-outbound example.com:443` | The orchestrator ships a per-role settings file via `--settings`; the worktree's own `.claude/settings.json` is never relied on, and agents are denied `Edit/Write(.claude/**)`. |
 | Can the prompt be given on stdin? | `printf '--- not a flag\n...' \| claude -p ...` | exit 0, prompt consumed (the model answered to its content) | Prompt always on stdin; never as an argv value. |
 | Hardened runner end to end (`scripts/smoke/real-step.ts`) | real `dev` step, model `sonnet` | `ok: true`, settings file written to `~/.teams-ai/settings/dev.settings.json`, no "Sandbox disabled" on stderr, 1 turn, 11.8k cache-write (fresh prefix after the prompt change) | — |
+
+## Execution plane integration (Plan 4, 2026-09-24, WSL)
+
+`npx tsx scripts/integration/exec-plane.ts` with the `hello-app` fixture, Docker Desktop 29.7.2 (WSL integration), kind v0.29.0 / kubectl v1.37.1:
+
+| Step | Result | Notes |
+|---|---|---|
+| gate `install` (egress, `node:22-bookworm`, non-root, `.git` read-only) | passed | network `bridge` |
+| gate `unit-test` (network `none`) | passed, JUnit picked up (1 test, `[AC-001]`) | stale report removed first |
+| `docker-local` deploy | `{"ok":true,"previous":null}` | container bound to 127.0.0.1, removed after |
+| `kind` deploy (cluster `teams-ai`) | `{"ok":true,"previous":null}` | first run failed on a probe race right after `apply` (kube-proxy had not programmed the Service: ClusterIP refused while pod IP answered); the in-cluster probe now retries (12 × 5 s) |
+
+Environment fixes made on the way: Docker Desktop's `IntegratedWslDistros` had been left `null` by an earlier edit (integration re-enabled via the settings JSON), and `kubectl` was only the Windows `kubectl.exe` reachable through interop — `scripts/wsl/*.sh` now ignore binaries under `/mnt`.
