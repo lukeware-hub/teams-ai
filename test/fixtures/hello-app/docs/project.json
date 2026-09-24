@@ -1,0 +1,12 @@
+{
+  "projectId": "hello-app",
+  "name": "Hello app",
+  "vision": "A tiny HTTP service that greets by name, used to exercise the orchestrator end to end.",
+  "personas": [{ "name": "Tester", "description": "Runs the service locally and calls it with curl." }],
+  "constraints": ["Node 22, no framework, no database", "Every endpoint answers JSON"],
+  "stack": "node",
+  "principles": ["Small commits", "Tests carry their acceptance criterion id", "No secrets in the repository"],
+  "deploy": { "target": "docker-local" },
+  "github": {},
+  "confidential": false
+}
