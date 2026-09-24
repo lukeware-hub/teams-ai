@@ -9,5 +9,5 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["server", "test", "vitest.config.ts"]
+  "include": ["server", "test", "scripts/smoke", "vitest.config.ts"]
 }
