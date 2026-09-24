@@ -45,3 +45,11 @@ node v22.23.3 · npm 10.9.9 · git 2.43.0 · claude 2.1.281 · gh 2.101.0 · doc
 | 3 | **`ok: true`**, 1 turn, `structuredSource: text`, usage 2 in / 134 out / 8250 cache-read / 837 cache-write, `total_cost_usd` 0.0063, breaker `closed` | The agent prompt + schema are served from the 1h prompt cache on repeated steps (8.2k cache-read vs 9.1k cache-write on the first run). |
 
 Amendment to row 2: read `structured_output` when present, otherwise the fenced/plain JSON object in `result`; either way the zod contract and the semantic checks decide.
+
+## Review-driven verifications (Plan 3 fix pass, 2026-09-24)
+
+| Question | Probe | Result | Decision |
+|---|---|---|---|
+| Does `--settings <file>` apply together with `--setting-sources project`? | temp workspace, role settings file with `Bash(cat ./secrets/*)` deny + sandbox allowlist | `cat ./secrets/x.env` → `permission_denied` event; `curl https://example.com` → `sandbox_violations: deny network-outbound example.com:443` | The orchestrator ships a per-role settings file via `--settings`; the worktree's own `.claude/settings.json` is never relied on, and agents are denied `Edit/Write(.claude/**)`. |
+| Can the prompt be given on stdin? | `printf '--- not a flag\n...' \| claude -p ...` | exit 0, prompt consumed (the model answered to its content) | Prompt always on stdin; never as an argv value. |
+| Hardened runner end to end (`scripts/smoke/real-step.ts`) | real `dev` step, model `sonnet` | `ok: true`, settings file written to `~/.teams-ai/settings/dev.settings.json`, no "Sandbox disabled" on stderr, 1 turn, 11.8k cache-write (fresh prefix after the prompt change) | — |

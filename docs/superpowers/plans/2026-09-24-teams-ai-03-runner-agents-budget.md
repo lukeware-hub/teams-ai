@@ -14,6 +14,7 @@
 
 - Everything from Plan 1's Global Constraints (pins, ESM, `.js` import suffix, English, commit trailer).
 - No real `claude` call inside `npm test`; the fake binary replays fixtures. Real calls only in Task 7 (manual, WSL).
+- The prompt is written to the child's stdin (a context pack may start with `-` or `---`); the role settings file is passed with `--settings`; the agent definition is passed inline with `--agents` because `.claude/agents` resolves from the cwd (the product worktree).
 - Invocation flags are exactly the findings' decisions: `--output-format stream-json --verbose --setting-sources project --strict-mcp-config --mcp-config '{"mcpServers":{}}' --exclude-dynamic-system-prompt-sections --no-session-persistence --permission-mode dontAsk`, plus `--json-schema`, `--tools`, `--disallowed-tools`, `--model`, `--agent`. There is no `--max-turns` in CLI 2.1.281; the runner caps turns itself.
 - Agent environment is an allowlist. `GITHUB_TOKEN`, `GH_TOKEN`, `ANTHROPIC_API_KEY`, `AWS_*`, `KUBECONFIG`, `DOCKER_*` never reach an agent (spec §14).
 - `is_error` is authoritative over `subtype` (findings row 4).
@@ -95,6 +96,7 @@ const base: InvocationInput = {
   jsonSchema: { type: 'object', properties: { specHash: { type: 'string' } }, required: ['specHash'] },
   tools: ['Read', 'Edit', 'Write', 'Grep', 'Glob', 'Bash'],
   disallowedTools: ['Bash(gh:*)', 'Bash(git push:*)', 'Bash(docker:*)', 'Bash(kubectl:*)'],
+  settingsPath: '/home/u/.teams-ai/settings/dev.settings.json',
 };
 
 const hostEnv = {
@@ -109,11 +111,13 @@ const hostEnv = {
 };
 
 describe('buildInvocation', () => {
-  it('starts with the agent, the prompt and every isolation flag from the findings', () => {
+  it('selects the agent, passes the role settings file and every isolation flag; the prompt goes to stdin', () => {
     const inv = buildInvocation(base, hostEnv);
-    expect(inv.args.slice(0, 4)).toEqual(['-p', 'Implement T1', '--agent', 'dev']);
+    expect(inv.args.slice(0, 3)).toEqual(['-p', '--agent', 'dev']);
+    expect(inv.args).not.toContain('Implement T1');
+    expect(inv.stdin).toBe('Implement T1');
     for (const flag of ISOLATION_FLAGS) expect(inv.args).toContain(flag);
-    expect(inv.args).toContain('--strict-mcp-config');
+    expect(inv.args[inv.args.indexOf('--settings') + 1]).toBe(base.settingsPath);
     expect(inv.args[inv.args.indexOf('--mcp-config') + 1]).toBe('{"mcpServers":{}}');
     expect(inv.args[inv.args.indexOf('--permission-mode') + 1]).toBe('dontAsk');
     expect(inv.args).not.toContain('--max-turns');
@@ -128,17 +132,17 @@ describe('buildInvocation', () => {
     expect(inv.args.slice(i + 1, i + 5)).toEqual(base.disallowedTools);
   });
 
-  it('omits --tools when the list is empty and passes "" explicitly', () => {
-    const inv = buildInvocation({ ...base, tools: [] }, hostEnv);
-    expect(inv.args[inv.args.indexOf('--tools') + 1]).toBe('');
+  it('passes "" for an empty tool list', () => {
+    expect(buildInvocation({ ...base, tools: [] }, hostEnv).args[buildInvocation({ ...base, tools: [] }, hostEnv).args.indexOf('--tools') + 1]).toBe('');
   });
 
   it('adds --session-id for a new refinement session and --resume for a continued one', () => {
-    const fresh = buildInvocation({ ...base, sessionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }, hostEnv);
+    const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const fresh = buildInvocation({ ...base, sessionId: id }, hostEnv);
     expect(fresh.args).toContain('--session-id');
     expect(fresh.args).not.toContain('--no-session-persistence');
-    const resumed = buildInvocation({ ...base, sessionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', resume: true }, hostEnv);
-    expect(resumed.args[resumed.args.indexOf('--resume') + 1]).toBe('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+    const resumed = buildInvocation({ ...base, sessionId: id, resume: true }, hostEnv);
+    expect(resumed.args[resumed.args.indexOf('--resume') + 1]).toBe(id);
     expect(buildInvocation(base, hostEnv).args).toContain('--no-session-persistence');
   });
 
@@ -166,12 +170,30 @@ describe('buildInvocation', () => {
     expect(buildInvocation(base, hostEnv).env).not.toHaveProperty('ANTHROPIC_BASE_URL');
   });
 
-  it('refuses an omniroute profile without connection details', () => {
+  it('refuses an omniroute profile without connection details or with an empty token', () => {
     expect(() => buildInvocation({ ...base, profile: { provider: 'omniroute', model: 'x' } }, hostEnv)).toThrow(InvocationError);
+    expect(() =>
+      buildInvocation({ ...base, profile: { provider: 'omniroute', model: 'x' }, omniroute: { baseUrl: 'http://localhost:20128', token: '  ' } }, hostEnv),
+    ).toThrow(/token/);
   });
 
-  it('refuses a prompt that is empty', () => {
+  it('refuses an empty prompt or a missing settings path', () => {
     expect(() => buildInvocation({ ...base, prompt: '  ' }, hostEnv)).toThrow(InvocationError);
+    expect(() => buildInvocation({ ...base, settingsPath: '' }, hostEnv)).toThrow(/settings/);
+  });
+
+  it('passes the agent definition inline via --agents with the step model, not the file model', () => {
+    const inv = buildInvocation(
+      { ...base, model: 'sonnet', agentDefinition: { description: 'Developer.', model: 'opus', tools: ['Read', 'Edit'], body: 'Echo the specHash.' } },
+      hostEnv,
+    );
+    const json = JSON.parse(inv.args[inv.args.indexOf('--agents') + 1]!);
+    expect(json).toEqual({ dev: { description: 'Developer.', prompt: 'Echo the specHash.', tools: ['Read', 'Edit'], model: 'sonnet' } });
+    expect(inv.args.indexOf('--agents')).toBeGreaterThan(inv.args.indexOf('--agent'));
+  });
+
+  it('omits --agents when no definition is given', () => {
+    expect(buildInvocation(base, hostEnv).args).not.toContain('--agents');
   });
 });
 
@@ -191,11 +213,13 @@ describe('ensureTrusted', () => {
     await fs.rm(dir, { recursive: true, force: true });
   });
 
-  it('creates the file and the project entry when missing', async () => {
+  it('creates the file and the project entry keyed by the resolved path', async () => {
     const file = path.join(dir, '.claude.json');
-    await ensureTrusted('/home/u/ws/wt', file);
+    const wt = path.join(dir, 'wt');
+    await fs.mkdir(wt);
+    await ensureTrusted(`${wt}${path.sep}`, file);
     const json = JSON.parse(await fs.readFile(file, 'utf8'));
-    expect(json.projects['/home/u/ws/wt'].hasTrustDialogAccepted).toBe(true);
+    expect(json.projects[await fs.realpath(wt)].hasTrustDialogAccepted).toBe(true);
   });
 
   it('preserves other keys and existing project settings', async () => {
@@ -206,6 +230,14 @@ describe('ensureTrusted', () => {
     expect(json.theme).toBe('dark');
     expect(json.projects['/other']).toEqual({ allowedTools: ['Read'] });
     expect(json.projects['/home/u/ws/wt']).toEqual({ allowedTools: ['Bash'], hasTrustDialogAccepted: true });
+  });
+
+  it('does not lose entries when called concurrently', async () => {
+    const file = path.join(dir, '.claude.json');
+    await Promise.all(Array.from({ length: 10 }, (_, i) => ensureTrusted(`/home/u/ws/wt${i}`, file)));
+    const json = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(Object.keys(json.projects)).toHaveLength(10);
+    expect(await fs.readdir(dir)).toEqual(['.claude.json']);
   });
 });
 ```
@@ -238,7 +270,11 @@ export const ISOLATION_FLAGS: readonly string[] = [
   'dontAsk',
 ];
 
-/** Only these host variables reach an agent process (spec §14). */
+/**
+ * Only these host variables reach an agent process (spec §14). HOME is required for the
+ * subscription login; the credential stores under it are covered by Read deny rules in the
+ * role settings (see role-settings.ts PROTECTED_READ_PATHS).
+ */
 export const ENV_ALLOWLIST: readonly string[] = ['HOME', 'PATH', 'TERM', 'LANG', 'LC_ALL', 'USER', 'SHELL', 'TMPDIR', 'TZ'];
 
 export interface InvocationInput {
@@ -250,15 +286,25 @@ export interface InvocationInput {
   jsonSchema: object;
   tools: readonly string[];
   disallowedTools: readonly string[];
+  /** Role settings file written by the orchestrator (sandbox + permissions), passed with --settings. */
+  settingsPath: string;
   sessionId?: string;
   resume?: boolean;
   omniroute?: { baseUrl: string; token: string; compactWindow?: number };
+  /**
+   * Inline agent definition (`--agents` JSON). Agents in `.claude/agents` are loaded from the
+   * process cwd, which is the product worktree, so the orchestrator ships the role definition itself.
+   * The step model wins over the agent file's model.
+   */
+  agentDefinition?: { description: string; model: string; tools: readonly string[]; body: string };
 }
 
 export interface Invocation {
   args: string[];
   env: Record<string, string>;
   cwd: string;
+  /** The prompt, written to the child's stdin: a leading `-`/`--` in a context pack must never be parsed as a flag. */
+  stdin: string;
 }
 
 export class InvocationError extends Error {}
@@ -274,7 +320,17 @@ export function sanitizeEnv(hostEnv: NodeJS.ProcessEnv): Record<string, string> 
 
 export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessEnv = process.env): Invocation {
   if (input.prompt.trim() === '') throw new InvocationError('prompt must not be empty');
-  const args: string[] = ['-p', input.prompt, '--agent', input.role, ...ISOLATION_FLAGS];
+  if (!input.settingsPath || input.settingsPath.trim() === '') throw new InvocationError('settingsPath is required');
+  const args: string[] = ['-p', '--agent', input.role];
+  if (input.agentDefinition) {
+    const def = input.agentDefinition;
+    args.push(
+      '--agents',
+      JSON.stringify({ [input.role]: { description: def.description, prompt: def.body, tools: [...def.tools], model: input.model } }),
+    );
+  }
+  args.push(...ISOLATION_FLAGS);
+  args.push('--settings', input.settingsPath);
   args.push('--model', input.model);
   args.push('--json-schema', JSON.stringify(input.jsonSchema));
   args.push('--tools', input.tools.join(','));
@@ -289,43 +345,230 @@ export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessE
   const env = sanitizeEnv(hostEnv);
   if (input.profile.provider === 'omniroute') {
     if (!input.omniroute) throw new InvocationError('omniroute profile requires baseUrl and token');
+    if (input.omniroute.token.trim() === '') {
+      throw new InvocationError('omniroute token must not be empty (an empty token could fall back to the subscription login)');
+    }
     env.ANTHROPIC_BASE_URL = input.omniroute.baseUrl;
     env.ANTHROPIC_AUTH_TOKEN = input.omniroute.token;
     env.ANTHROPIC_MODEL = input.model;
     if (input.omniroute.compactWindow) env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = String(input.omniroute.compactWindow);
   }
-  return { args, env, cwd: input.cwd };
+  return { args, env, cwd: input.cwd, stdin: input.prompt };
 }
+
+// Writes to ~/.claude.json are serialized in-process and made atomic (temp file + rename), because
+// parallel steps trust their worktrees at the same time and the CLI reads the file at startup.
+let trustQueue: Promise<unknown> = Promise.resolve();
 
 /**
  * Project-level permissions.allow is ignored until the workspace is trusted
- * (findings row 5b). The orchestrator trusts every worktree it creates.
+ * (findings row 5b). The orchestrator trusts every worktree it creates, keyed by its resolved path.
  */
-export async function ensureTrusted(dir: string, claudeJsonPath: string): Promise<void> {
-  let json: Record<string, unknown> = {};
-  try {
-    json = JSON.parse(await fs.readFile(claudeJsonPath, 'utf8')) as Record<string, unknown>;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-  }
-  const projects = (json.projects ?? {}) as Record<string, Record<string, unknown>>;
-  projects[dir] = { ...(projects[dir] ?? {}), hasTrustDialogAccepted: true };
-  json.projects = projects;
-  await fs.mkdir(path.dirname(claudeJsonPath), { recursive: true });
-  await fs.writeFile(claudeJsonPath, `${JSON.stringify(json, null, 2)}\n`);
+export function ensureTrusted(dir: string, claudeJsonPath: string): Promise<void> {
+  const work = async () => {
+    // Key by the resolved real path when the directory exists (symlinks, trailing slashes);
+    // otherwise keep the caller's spelling so a foreign-platform path is not rewritten.
+    let key = dir;
+    try {
+      key = await fs.realpath(dir);
+    } catch {
+      key = dir;
+    }
+    let json: Record<string, unknown> = {};
+    try {
+      json = JSON.parse(await fs.readFile(claudeJsonPath, 'utf8')) as Record<string, unknown>;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+    const projects = (json.projects ?? {}) as Record<string, Record<string, unknown>>;
+    projects[key] = { ...(projects[key] ?? {}), hasTrustDialogAccepted: true };
+    json.projects = projects;
+    await fs.mkdir(path.dirname(claudeJsonPath), { recursive: true });
+    const tmp = `${claudeJsonPath}.${process.pid}.tmp`;
+    await fs.writeFile(tmp, `${JSON.stringify(json, null, 2)}\n`);
+    await fs.rename(tmp, claudeJsonPath);
+  };
+  const result = trustQueue.then(work, work);
+  trustQueue = result.catch(() => undefined);
+  return result;
 }
 ```
 
 - [ ] **Step 4: Run tests and typecheck**
 
 Run: `npx vitest run test/runner/invocation.test.ts && npm run typecheck`
-Expected: 11 tests PASS; typecheck exits 0.
+Expected: 14 tests PASS; typecheck exits 0.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add server/runner/invocation.ts test/runner/invocation.test.ts
 git commit -m "feat: add isolated claude invocation builder and trust writer" -m "Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 1b: Role settings shipped to the agent (added after the final review)
+
+**Files:**
+- Create: `server/runner/role-settings.ts`
+- Test: `test/runner/role-settings.test.ts`
+
+**Interfaces:**
+- Consumes: `ALWAYS_DENIED` (Task 2), `Role` (Plan 2).
+- Produces: `PROTECTED_READ_PATHS`, `buildRoleSettings(role, { allowedDomains, extraAllow? })`, `writeRoleSettings(dir, role, input): Promise<string>` (writes `<dir>/<role>.settings.json` atomically and returns the path).
+
+With `--setting-sources project` the CLI reads only the product worktree's `.claude/settings.json`, which the agents could write. The orchestrator therefore ships a per-role settings file with `--settings <path>` (verified on CLI 2.1.281 together with `--setting-sources project`: deny rules and the sandbox network policy apply). `Edit(.claude/**)` and `Write(.claude/**)` are always denied.
+
+- [ ] **Step 1: Write the failing test**
+
+`test/runner/role-settings.test.ts`:
+```ts
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { ROLES } from '../../server/config/config.js';
+import { ALWAYS_DENIED } from '../../server/agents/registry.js';
+import { PROTECTED_READ_PATHS, buildRoleSettings, writeRoleSettings } from '../../server/runner/role-settings.js';
+
+describe('buildRoleSettings', () => {
+  it('enables the sandbox with the configured network allowlist', () => {
+    const s = buildRoleSettings('dev', { allowedDomains: ['registry.npmjs.org'] });
+    expect(s.sandbox).toEqual({ enabled: true, network: { allowedDomains: ['registry.npmjs.org'] } });
+  });
+
+  it('denies secrets, credential stores, the settings directory and orchestrator-only commands for every role', () => {
+    for (const role of ROLES) {
+      const deny = buildRoleSettings(role, { allowedDomains: [] }).permissions.deny;
+      for (const p of PROTECTED_READ_PATHS) expect(deny, role).toContain(`Read(${p})`);
+      expect(deny, role).toContain('Edit(.claude/**)');
+      expect(deny, role).toContain('Write(.claude/**)');
+      for (const d of ALWAYS_DENIED) expect(deny, role).toContain(d);
+    }
+  });
+
+  it('grants Bash allow rules only to roles that may run the suite', () => {
+    expect(buildRoleSettings('dev', { allowedDomains: [] }).permissions.allow).toEqual(
+      expect.arrayContaining(['Bash(npm:*)', 'Bash(npx:*)', 'Bash(node:*)', 'Bash(git status:*)', 'Bash(git diff:*)']),
+    );
+    expect(buildRoleSettings('test', { allowedDomains: [] }).permissions.allow).toContain('Bash(npm:*)');
+    expect(buildRoleSettings('devops', { allowedDomains: [] }).permissions.allow).toEqual([]);
+    expect(buildRoleSettings('sm', { allowedDomains: [] }).permissions.allow).toEqual([]);
+  });
+
+  it('adds extra allow rules from the plan commands without touching the deny list', () => {
+    const s = buildRoleSettings('dev', { allowedDomains: [], extraAllow: ['Bash(pytest:*)'] });
+    expect(s.permissions.allow).toContain('Bash(pytest:*)');
+    expect(s.permissions.deny).toContain('Bash(gh:*)');
+  });
+});
+
+describe('writeRoleSettings', () => {
+  let dir: string;
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-role-settings-'));
+  });
+  afterEach(async () => {
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it('writes one file per role outside the worktree and returns its path', async () => {
+    const file = await writeRoleSettings(dir, 'dev', { allowedDomains: ['registry.npmjs.org'] });
+    expect(path.dirname(file)).toBe(dir);
+    expect(path.basename(file)).toBe('dev.settings.json');
+    const json = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(json.sandbox.enabled).toBe(true);
+    expect(json.permissions.deny).toContain('Bash(gh:*)');
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run test/runner/role-settings.test.ts`
+Expected: FAIL — cannot resolve `../../server/runner/role-settings.js`.
+
+- [ ] **Step 3: Write the module**
+
+`server/runner/role-settings.ts`:
+```ts
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { ALWAYS_DENIED } from '../agents/registry.js';
+import type { Role } from '../config/config.js';
+
+/**
+ * Settings the orchestrator ships to every agent process via `--settings <file>`.
+ * With `--setting-sources project` the CLI would otherwise read only the product worktree's
+ * `.claude/settings.json`, which the agents themselves could write (CLI spike, Plan 3 review).
+ * Verified on CLI 2.1.281: `--settings` is honored alongside `--setting-sources project`.
+ */
+
+/** Credential stores reachable through HOME; the Read tool must never open them (spec §14). */
+export const PROTECTED_READ_PATHS: readonly string[] = [
+  '~/.teams-ai/secrets/**',
+  '~/.config/gh/**',
+  '~/.kube/**',
+  '~/.docker/**',
+  '~/.aws/**',
+  '~/.ssh/**',
+  '~/.claude/.credentials.json',
+];
+
+const ROLE_ALLOW: Record<Role, readonly string[]> = {
+  sm: [],
+  po: [],
+  dev: ['Bash(npm:*)', 'Bash(npx:*)', 'Bash(node:*)', 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(ls:*)', 'Bash(cat:*)'],
+  test: ['Bash(npm:*)', 'Bash(npx:*)', 'Bash(node:*)', 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(ls:*)', 'Bash(cat:*)'],
+  devops: [],
+};
+
+export interface RoleSettingsInput {
+  allowedDomains: readonly string[];
+  /** Extra allow rules derived from the plan's commands (e.g. `Bash(pytest:*)` for a Python stack). */
+  extraAllow?: readonly string[];
+}
+
+export interface RoleSettings {
+  sandbox: { enabled: true; network: { allowedDomains: string[] } };
+  permissions: { allow: string[]; deny: string[] };
+}
+
+export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSettings {
+  const deny = [
+    ...PROTECTED_READ_PATHS.map((p) => `Read(${p})`),
+    'Edit(.claude/**)',
+    'Write(.claude/**)',
+    ...ALWAYS_DENIED,
+  ];
+  return {
+    sandbox: { enabled: true, network: { allowedDomains: [...input.allowedDomains] } },
+    permissions: { allow: [...ROLE_ALLOW[role], ...(input.extraAllow ?? [])], deny: [...new Set(deny)] },
+  };
+}
+
+/** Writes `<dir>/<role>.settings.json` (outside any worktree) and returns its path. */
+export async function writeRoleSettings(dir: string, role: Role, input: RoleSettingsInput): Promise<string> {
+  await fs.mkdir(dir, { recursive: true });
+  const file = path.join(dir, `${role}.settings.json`);
+  const tmp = `${file}.${process.pid}.tmp`;
+  await fs.writeFile(tmp, `${JSON.stringify(buildRoleSettings(role, input), null, 2)}\n`);
+  await fs.rename(tmp, file);
+  return file;
+}
+```
+
+- [ ] **Step 4: Run tests and typecheck**
+
+Run: `npx vitest run test/runner/role-settings.test.ts && npm run typecheck`
+Expected: 5 tests PASS; typecheck exits 0.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add server/runner/role-settings.ts test/runner/role-settings.test.ts
+git commit -m "feat: add role settings shipped to agents via --settings" -m "Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
@@ -368,7 +611,8 @@ Rules you never break:
 - Reference only acceptance criteria, tasks and ADRs that exist in the context pack. Never invent ids.
 - Tasks must be small enough for one agent step; declare `dependsOn` and `affectedPaths` for each.
 - When a task fails three times, replan it into smaller tasks; never re-issue the same task.
-- Unclear documentation is a question for the human during refinement, never an assumption during a run.
+- During refinement, unclear documentation becomes a question for the human.
+- During a run, nobody asks the human. When the Dev returns a spec-gap, you decide it from the principles, the ADRs and the spec, record the decision as an assumption (task, question, decision, rationale), and the task resumes with it.
 ```
 
 `.claude/agents/po.md`:
@@ -510,6 +754,20 @@ describe('loadAgents', () => {
     await expect(loadAgents(path.resolve('test/fixtures/no-such-dir'))).rejects.toThrow(AgentFileError);
   });
 });
+
+describe('settings directory protection', () => {
+  it('always denies editing or writing the project settings directory', () => {
+    expect(ALWAYS_DENIED).toEqual(expect.arrayContaining(['Edit(.claude/**)', 'Write(.claude/**)']));
+    expect(() => parseAgentFile(`---\nname: dev\ndescription: x\nmodel: opus\ntools: Read, Write(.claude/**)\n---\nEcho specHash.`, 'dev')).toThrow(/\.claude/);
+  });
+
+  it('the SM prompt tells the agent to decide spec gaps and log assumptions, never to ask the human mid-run', async () => {
+    const agents = await loadAgents(AGENTS_DIR);
+    expect(agents.sm.body).toMatch(/spec-gap|spec gap/i);
+    expect(agents.sm.body).toMatch(/assumption/i);
+    expect(agents.sm.body).not.toMatch(/never an assumption during a run/);
+  });
+});
 ```
 
 - [ ] **Step 3: Run test to verify it fails**
@@ -546,7 +804,16 @@ export const ROLE_TOOL_POLICY: Record<Role, { allowed: readonly string[] }> = {
 };
 
 /** Never granted to any agent; the orchestrator owns these (spec §3.2, §14). */
-export const ALWAYS_DENIED: readonly string[] = ['Bash(gh:*)', 'Bash(git push:*)', 'Bash(docker:*)', 'Bash(kubectl:*)'];
+export const ALWAYS_DENIED: readonly string[] = [
+  'Bash(gh:*)',
+  'Bash(git push:*)',
+  'Bash(docker:*)',
+  'Bash(kubectl:*)',
+  // The project settings directory is where sandbox and permission rules would be read from;
+  // an agent must never be able to rewrite it.
+  'Edit(.claude/**)',
+  'Write(.claude/**)',
+];
 
 export class AgentFileError extends Error {}
 
@@ -598,7 +865,7 @@ export async function loadAgents(dir: string): Promise<Record<Role, AgentDefinit
 - [ ] **Step 5: Run tests and typecheck**
 
 Run: `npx vitest run test/agents/registry.test.ts && npm run typecheck`
-Expected: 9 tests PASS; typecheck exits 0.
+Expected: 11 tests PASS; typecheck exits 0.
 
 - [ ] **Step 6: Commit**
 
@@ -636,9 +903,10 @@ const HASH = `sha256:${'a'.repeat(64)}`;
 describe('output contracts', () => {
   it('every step kind has a schema requiring specHash', () => {
     for (const kind of STEP_KINDS) {
-      const schema = toJsonSchema(kind) as { required?: string[]; properties?: Record<string, unknown> };
-      expect(schema.required, kind).toContain('specHash');
-      expect(schema.properties, kind).toHaveProperty('specHash');
+      const schema = toJsonSchema(kind) as { required?: string[]; anyOf?: Array<{ required?: string[] }>; oneOf?: Array<{ required?: string[] }> };
+      const branches = schema.anyOf ?? schema.oneOf ?? [schema];
+      expect(branches.length, kind).toBeGreaterThan(0);
+      for (const branch of branches) expect(branch.required, kind).toContain('specHash');
     }
     expect(Object.keys(OUTPUT_SCHEMAS).sort()).toEqual([...STEP_KINDS].sort());
   });
@@ -676,6 +944,19 @@ describe('output contracts', () => {
       docPatch: [],
     });
     expect(ok.success).toBe(true);
+  });
+});
+
+describe('dev output JSON Schema carries the status-dependent requirements', () => {
+  it('lists commitMessage as required for done and question for spec-gap', () => {
+    type Branch = { required?: string[]; properties?: Record<string, { const?: string; enum?: string[] }> };
+    const schema = toJsonSchema('dev') as { anyOf?: Branch[]; oneOf?: Branch[] };
+    const branches = schema.anyOf ?? schema.oneOf;
+    expect(branches).toBeDefined();
+    const done = branches!.find((b) => JSON.stringify(b.properties?.status).includes('done'))!;
+    const gap = branches!.find((b) => JSON.stringify(b.properties?.status).includes('spec-gap'))!;
+    expect(done.required).toContain('commitMessage');
+    expect(gap.required).toContain('question');
   });
 });
 ```
@@ -738,20 +1019,18 @@ export const CoverageOutput = z.object({
 
 export const PlanOutput = Plan;
 
-export const DevOutput = z
-  .object({
-    specHash,
-    status: z.enum(['done', 'spec-gap']),
-    summary: z.string().min(1),
-    commitMessage: z.string().min(1).optional(),
-    changedFiles: z.array(z.string().min(1)),
-    scopeJustification: z.string().optional(),
-    question: z.string().min(1).optional(),
-  })
-  .superRefine((v, ctx) => {
-    if (v.status === 'done' && !v.commitMessage) ctx.addIssue({ code: 'custom', path: ['commitMessage'], message: 'required when status is done' });
-    if (v.status === 'spec-gap' && !v.question) ctx.addIssue({ code: 'custom', path: ['question'], message: 'required when status is spec-gap' });
-  });
+const devCommon = {
+  specHash,
+  summary: z.string().min(1),
+  changedFiles: z.array(z.string().min(1)),
+  scopeJustification: z.string().optional(),
+};
+
+/** A discriminated union so the generated JSON Schema tells the model which fields each status requires. */
+export const DevOutput = z.discriminatedUnion('status', [
+  z.object({ ...devCommon, status: z.literal('done'), commitMessage: z.string().min(1) }),
+  z.object({ ...devCommon, status: z.literal('spec-gap'), question: z.string().min(1) }),
+]);
 
 export const ReviewOutput = z.object({
   specHash,
@@ -810,7 +1089,7 @@ export function toJsonSchema(kind: StepKind): object {
 - [ ] **Step 4: Run tests and typecheck**
 
 Run: `npx vitest run test/agents/outputs.test.ts && npm run typecheck`
-Expected: 5 tests PASS; typecheck exits 0. If `z.toJSONSchema` refuses `superRefine` on `DevOutput`, keep the refinement (the validator needs it) and note that JSON Schema only carries the structural part — that is the findings row 2 conclusion anyway.
+Expected: 6 tests PASS; typecheck exits 0. If `z.toJSONSchema` refuses `superRefine` on `DevOutput`, keep the refinement (the validator needs it) and note that JSON Schema only carries the structural part — that is the findings row 2 conclusion anyway.
 
 - [ ] **Step 5: Commit**
 
@@ -845,38 +1124,54 @@ Turn counting: each `assistant` event is one turn (the CLI's `num_turns` counts 
 `test/fixtures/fake-claude/fake-claude.mjs`:
 ```js
 #!/usr/bin/env node
-// Replays a stream-json fixture as if it were `claude -p`. Controlled by environment variables:
-//   FAKE_CLAUDE_FIXTURE   path to an .ndjson file (required unless FAKE_CLAUDE_HANG_IMMEDIATELY)
-//   FAKE_CLAUDE_DELAY_MS  delay between lines (default 0)
+// Replays a stream-json fixture as if it were `claude -p`. Reads the prompt from stdin like the real
+// CLI. Controlled by environment variables the test passes through RunnerBinary.env:
+//   FAKE_CLAUDE_FIXTURE     path to an .ndjson file (optional)
+//   FAKE_CLAUDE_DELAY_MS    delay between lines (default 0)
 //   FAKE_CLAUDE_HANG_AFTER  stop after N lines and never exit
-//   FAKE_CLAUDE_STDERR    text to print on stderr before the stream
-//   FAKE_CLAUDE_EXIT_CODE exit code after the stream (default 0)
-//   FAKE_CLAUDE_CAPTURE   path; argv and env are written there as JSON for assertions
+//   FAKE_CLAUDE_STDERR      text to print on stderr before the stream
+//   FAKE_CLAUDE_EXIT_CODE   exit code after the stream (default 0)
+//   FAKE_CLAUDE_CAPTURE     path; argv, env, cwd and the stdin prompt are written there as JSON
+//   FAKE_CLAUDE_CHILD_HOLD  spawn a grandchild that keeps stdout open for N ms after we exit
 import { readFileSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 
 const env = process.env;
-if (env.FAKE_CLAUDE_CAPTURE) {
-  writeFileSync(env.FAKE_CLAUDE_CAPTURE, JSON.stringify({ argv: process.argv.slice(2), env: { ...env }, cwd: process.cwd() }));
+let prompt = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (d) => (prompt += d));
+process.stdin.on('end', start);
+process.stdin.on('error', start);
+let started = false;
+
+function start() {
+  if (started) return;
+  started = true;
+  if (env.FAKE_CLAUDE_CAPTURE) {
+    writeFileSync(env.FAKE_CLAUDE_CAPTURE, JSON.stringify({ argv: process.argv.slice(2), env: { ...env }, cwd: process.cwd(), prompt }));
+  }
+  if (env.FAKE_CLAUDE_STDERR) process.stderr.write(`${env.FAKE_CLAUDE_STDERR}\n`);
+  if (env.FAKE_CLAUDE_CHILD_HOLD) {
+    const hold = Number(env.FAKE_CLAUDE_CHILD_HOLD);
+    spawn(process.execPath, ['-e', `setTimeout(() => {}, ${hold})`], { stdio: ['ignore', 'inherit', 'ignore'] });
+  }
+
+  const delay = Number(env.FAKE_CLAUDE_DELAY_MS ?? 0);
+  const hangAfter = env.FAKE_CLAUDE_HANG_AFTER === undefined ? Infinity : Number(env.FAKE_CLAUDE_HANG_AFTER);
+  const lines = env.FAKE_CLAUDE_FIXTURE ? readFileSync(env.FAKE_CLAUDE_FIXTURE, 'utf8').split('\n').filter((l) => l.trim()) : [];
+
+  let i = 0;
+  const tick = () => {
+    if (i >= hangAfter) {
+      setInterval(() => {}, 60_000); // keep the event loop alive: hang until the runner kills us
+      return;
+    }
+    if (i >= lines.length) process.exit(Number(env.FAKE_CLAUDE_EXIT_CODE ?? 0));
+    process.stdout.write(`${lines[i++]}\n`);
+    setTimeout(tick, delay);
+  };
+  tick();
 }
-if (env.FAKE_CLAUDE_STDERR) process.stderr.write(`${env.FAKE_CLAUDE_STDERR}\n`);
-
-const delay = Number(env.FAKE_CLAUDE_DELAY_MS ?? 0);
-const hangAfter = env.FAKE_CLAUDE_HANG_AFTER === undefined ? Infinity : Number(env.FAKE_CLAUDE_HANG_AFTER);
-const lines = env.FAKE_CLAUDE_FIXTURE ? readFileSync(env.FAKE_CLAUDE_FIXTURE, 'utf8').split('\n').filter((l) => l.trim()) : [];
-
-let i = 0;
-const tick = () => {
-  if (i >= hangAfter) {
-    setInterval(() => {}, 60_000); // keep the event loop alive: hang until the runner kills us
-    return;
-  }
-  if (i >= lines.length) {
-    process.exit(Number(env.FAKE_CLAUDE_EXIT_CODE ?? 0));
-  }
-  process.stdout.write(`${lines[i++]}\n`);
-  setTimeout(tick, delay);
-};
-tick();
 ```
 
 - [ ] **Step 2: Write the failing test**
@@ -888,11 +1183,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Invocation } from '../../server/runner/invocation.js';
-import { runProcess, type RunnerBinary } from '../../server/runner/process-runner.js';
+import { preflightSandbox, runProcess, type RunnerBinary } from '../../server/runner/process-runner.js';
 
 const FAKE = path.resolve('test/fixtures/fake-claude/fake-claude.mjs');
 const fixture = (name: string) => path.resolve(`test/fixtures/stream/${name}.ndjson`);
-const binary: RunnerBinary = { bin: process.execPath, prefixArgs: [FAKE] };
+const fake = (env: Record<string, string>): RunnerBinary => ({ bin: process.execPath, prefixArgs: [FAKE], env, requireSandboxTools: false });
 
 let dir: string;
 beforeEach(async () => {
@@ -902,13 +1197,13 @@ afterEach(async () => {
   await fs.rm(dir, { recursive: true, force: true });
 });
 
-const inv = (env: Record<string, string>): Invocation => ({ args: ['-p', 'hi', '--agent', 'dev'], env, cwd: dir });
+const inv = (over: Partial<Invocation> = {}): Invocation => ({ args: ['-p', '--agent', 'dev'], env: { ONLY_THIS: '1' }, cwd: dir, stdin: 'hello prompt', ...over });
 const caps = { timeoutMs: 5_000, maxTurns: 50, killGraceMs: 200 };
 
 describe('runProcess', () => {
-  it('replays a success stream and summarizes it', async () => {
+  it('replays a success stream, feeds the prompt on stdin and summarizes', async () => {
     const capture = path.join(dir, 'capture.json');
-    const result = await runProcess(binary, inv({ FAKE_CLAUDE_FIXTURE: fixture('real-json-schema'), FAKE_CLAUDE_CAPTURE: capture }), caps);
+    const result = await runProcess(fake({ FAKE_CLAUDE_FIXTURE: fixture('real-json-schema'), FAKE_CLAUDE_CAPTURE: capture }), inv(), caps);
     expect(result.summary.found).toBe(true);
     expect(result.summary.isError).toBe(false);
     expect(result.summary.structuredOutput).toEqual({ specHash: 'sha256:aa', status: 'done' });
@@ -916,13 +1211,14 @@ describe('runProcess', () => {
     expect(result.killedBy).toBeNull();
     expect(result.sandboxDisabled).toBe(false);
     const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
-    expect(captured.argv).toEqual(['-p', 'hi', '--agent', 'dev']);
+    expect(captured.argv).toEqual(['-p', '--agent', 'dev']);
+    expect(captured.prompt).toBe('hello prompt');
     expect(path.resolve(captured.cwd)).toBe(path.resolve(dir));
   });
 
-  it('passes only the invocation environment to the child', async () => {
+  it('passes only the invocation environment plus the binary scenario to the child', async () => {
     const capture = path.join(dir, 'capture.json');
-    await runProcess(binary, inv({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture, ONLY_THIS: '1' }), caps);
+    await runProcess(fake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture }), inv(), caps);
     const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
     expect(captured.env.ONLY_THIS).toBe('1');
     expect(captured.env).not.toHaveProperty('GITHUB_TOKEN');
@@ -930,48 +1226,73 @@ describe('runProcess', () => {
 
   it('streams each line to the observer as it arrives', async () => {
     const seen: string[] = [];
-    await runProcess(binary, inv({ FAKE_CLAUDE_FIXTURE: fixture('success') }), caps, (line) => seen.push(line));
+    await runProcess(fake({ FAKE_CLAUDE_FIXTURE: fixture('success') }), inv(), caps, (line) => seen.push(line));
     expect(seen).toHaveLength(3);
     expect(JSON.parse(seen[0]!).type).toBe('system');
   });
 
   it('kills a hanging process at the timeout and reports the partial stream', async () => {
     const started = Date.now();
-    const result = await runProcess(binary, inv({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_HANG_AFTER: '1' }), { ...caps, timeoutMs: 400 });
+    const result = await runProcess(fake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_HANG_AFTER: '1' }), inv(), { ...caps, timeoutMs: 400 });
     expect(result.killedBy).toBe('timeout');
     expect(result.summary.found).toBe(false);
     expect(result.parsed.events).toHaveLength(1);
     expect(Date.now() - started).toBeLessThan(4_000);
   });
 
+  it('counts turns by distinct assistant message id, not by content block', async () => {
+    // real-turns has 3 assistant lines sharing one message id, then a result with num_turns 1.
+    const result = await runProcess(fake({ FAKE_CLAUDE_FIXTURE: fixture('real-turns') }), inv(), { ...caps, maxTurns: 1 });
+    expect(result.killedBy).toBeNull();
+    expect(result.turns).toBe(1);
+  });
+
   it('kills the process when the turn cap is exceeded', async () => {
-    const result = await runProcess(
-      binary,
-      inv({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_DELAY_MS: '20', FAKE_CLAUDE_HANG_AFTER: '2' }),
-      { ...caps, maxTurns: 0 },
-    );
+    const result = await runProcess(fake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_DELAY_MS: '20', FAKE_CLAUDE_HANG_AFTER: '2' }), inv(), { ...caps, maxTurns: 0 });
     expect(result.killedBy).toBe('turns');
   });
 
-  it('flags a disabled sandbox from stderr', async () => {
+  it('kills immediately when stderr reports a disabled sandbox', async () => {
     const result = await runProcess(
-      binary,
-      inv({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_STDERR: '⚠ Sandbox disabled: sandbox is enabled but dependencies are missing: bubblewrap' }),
+      fake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_DELAY_MS: '150', FAKE_CLAUDE_STDERR: '⚠ Sandbox disabled: sandbox is enabled but dependencies are missing: bubblewrap' }),
+      inv(),
       caps,
     );
     expect(result.sandboxDisabled).toBe(true);
-    expect(result.stderr).toContain('Sandbox disabled');
+    expect(result.killedBy).toBe('environment');
+    expect(result.parsed.events.length).toBeLessThan(3);
   });
 
-  it('reports a non-zero exit without a result as not found', async () => {
-    const result = await runProcess(binary, inv({ FAKE_CLAUDE_FIXTURE: fixture('noisy'), FAKE_CLAUDE_EXIT_CODE: '3' }), caps);
+  it('reports the exit code and malformed lines when the stream is noisy', async () => {
+    const result = await runProcess(fake({ FAKE_CLAUDE_FIXTURE: fixture('noisy'), FAKE_CLAUDE_EXIT_CODE: '3' }), inv(), caps);
     expect(result.exitCode).toBe(3);
     expect(result.summary.found).toBe(true);
     expect(result.parsed.malformed).toHaveLength(2);
   });
 
+  it('resolves even when a grandchild keeps stdout open after the child exits', async () => {
+    const started = Date.now();
+    const result = await runProcess(fake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CHILD_HOLD: '4000' }), inv(), caps);
+    expect(result.summary.found).toBe(true);
+    expect(Date.now() - started).toBeLessThan(3_000);
+  });
+
   it('rejects when the binary cannot be spawned', async () => {
-    await expect(runProcess({ bin: path.join(dir, 'no-such-binary'), prefixArgs: [] }, inv({}), caps)).rejects.toThrow();
+    await expect(runProcess({ bin: path.join(dir, 'no-such-binary'), prefixArgs: [], env: {}, requireSandboxTools: false }, inv(), caps)).rejects.toThrow();
+  });
+});
+
+describe('preflightSandbox', () => {
+  it('passes when both tools are on PATH', async () => {
+    const bin = path.join(dir, 'bin');
+    await fs.mkdir(bin);
+    await fs.writeFile(path.join(bin, 'bwrap'), '');
+    await fs.writeFile(path.join(bin, 'socat'), '');
+    expect(await preflightSandbox({ PATH: bin })).toEqual([]);
+  });
+
+  it('names each missing tool', async () => {
+    expect(await preflightSandbox({ PATH: dir })).toEqual(['bwrap', 'socat']);
   });
 });
 ```
@@ -986,6 +1307,8 @@ Expected: FAIL — cannot resolve `../../server/runner/process-runner.js`.
 `server/runner/process-runner.ts`:
 ```ts
 import { spawn } from 'node:child_process';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Invocation } from './invocation.js';
 import { parseStreamJson, summarizeStream, type ParsedStream, type ResultSummary } from './stream-events.js';
@@ -993,16 +1316,20 @@ import { parseStreamJson, summarizeStream, type ParsedStream, type ResultSummary
 export interface RunnerBinary {
   bin: string;
   prefixArgs: readonly string[];
+  /** Extra environment for the binary itself (test scenarios for the fake claude); never secrets. */
+  env: Record<string, string>;
+  /** Fail before spawning when bubblewrap/socat are missing (always true on the WSL host). */
+  requireSandboxTools: boolean;
 }
 
 export interface ProcessCaps {
   timeoutMs: number;
-  /** Assistant turns allowed before the process is killed (CLI 2.1.281 has no --max-turns). */
+  /** Assistant turns (distinct message ids) allowed before the process is killed; CLI 2.1.281 has no --max-turns. */
   maxTurns: number;
   killGraceMs?: number;
 }
 
-export type KillReason = 'timeout' | 'turns' | null;
+export type KillReason = 'timeout' | 'turns' | 'environment' | null;
 
 export interface RawStepResult {
   parsed: ParsedStream;
@@ -1012,12 +1339,45 @@ export interface RawStepResult {
   killedBy: KillReason;
   sandboxDisabled: boolean;
   durationMs: number;
+  turns: number;
 }
 
 /** Findings row 5: the CLI runs unsandboxed when bubblewrap/socat are missing and only warns on stderr. */
 export const SANDBOX_DISABLED_PATTERN = /Sandbox disabled/;
+export const SANDBOX_TOOLS = ['bwrap', 'socat'] as const;
 
 const STDERR_LIMIT = 64 * 1024;
+const DRAIN_MS = 1_000;
+
+/** Returns the sandbox tools missing from PATH. */
+export async function preflightSandbox(env: NodeJS.ProcessEnv): Promise<string[]> {
+  const dirs = (env.PATH ?? '').split(path.delimiter).filter(Boolean);
+  const missing: string[] = [];
+  for (const tool of SANDBOX_TOOLS) {
+    let found = false;
+    for (const dir of dirs) {
+      try {
+        await fs.access(path.join(dir, tool));
+        found = true;
+        break;
+      } catch {
+        /* keep looking */
+      }
+    }
+    if (!found) missing.push(tool);
+  }
+  return missing;
+}
+
+function messageId(line: string): string | null {
+  if (!line.includes('"type":"assistant"')) return null;
+  try {
+    const event = JSON.parse(line) as { type?: string; message?: { id?: string } };
+    return event.type === 'assistant' ? (event.message?.id ?? `line:${line.length}:${Math.random()}`) : null;
+  } catch {
+    return null;
+  }
+}
 
 export function runProcess(
   binary: RunnerBinary,
@@ -1027,56 +1387,51 @@ export function runProcess(
 ): Promise<RawStepResult> {
   return new Promise((resolve, reject) => {
     const started = Date.now();
+    const posix = process.platform !== 'win32';
     const child = spawn(binary.bin, [...binary.prefixArgs, ...invocation.args], {
       cwd: invocation.cwd,
-      env: invocation.env,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...invocation.env, ...binary.env },
+      stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
+      // A process group lets the kill reach grandchildren (npm test, dev servers) too.
+      detached: posix,
     });
 
     const lines: string[] = [];
+    const turnIds = new Set<string>();
     let stderr = '';
-    let turns = 0;
     let killedBy: KillReason = null;
     let settled = false;
+    let graceTimer: NodeJS.Timeout | null = null;
+    let drainTimer: NodeJS.Timeout | null = null;
 
-    const kill = (reason: KillReason) => {
+    const signal = (sig: NodeJS.Signals) => {
+      try {
+        if (posix && child.pid) process.kill(-child.pid, sig);
+        else child.kill(sig);
+      } catch {
+        /* already gone */
+      }
+    };
+
+    const kill = (reason: Exclude<KillReason, null>) => {
       if (killedBy) return;
       killedBy = reason;
-      child.kill('SIGTERM');
-      setTimeout(() => {
-        if (child.exitCode === null && !child.killed) child.kill('SIGKILL');
-        else if (child.exitCode === null) child.kill('SIGKILL');
-      }, caps.killGraceMs ?? 2_000).unref();
+      signal('SIGTERM');
+      graceTimer = setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null) signal('SIGKILL');
+      }, caps.killGraceMs ?? 2_000);
+      graceTimer.unref();
     };
 
     const timer = setTimeout(() => kill('timeout'), caps.timeoutMs);
 
-    const stdout = createInterface({ input: child.stdout!, crlfDelay: Infinity });
-    stdout.on('line', (line) => {
-      lines.push(line);
-      onEvent?.(line);
-      if (/"type":"assistant"/.test(line)) {
-        turns += 1;
-        if (turns > caps.maxTurns) kill('turns');
-      }
-    });
-
-    child.stderr!.on('data', (chunk: Buffer) => {
-      if (stderr.length < STDERR_LIMIT) stderr += chunk.toString('utf8');
-    });
-
-    child.on('error', (err) => {
+    const finish = (code: number | null) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      reject(err);
-    });
-
-    child.on('close', (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
+      if (graceTimer) clearTimeout(graceTimer);
+      if (drainTimer) clearTimeout(drainTimer);
       const parsed = parseStreamJson(lines.join('\n'));
       resolve({
         parsed,
@@ -1086,8 +1441,47 @@ export function runProcess(
         killedBy,
         sandboxDisabled: SANDBOX_DISABLED_PATTERN.test(stderr),
         durationMs: Date.now() - started,
+        turns: turnIds.size,
       });
+    };
+
+    const stdout = createInterface({ input: child.stdout!, crlfDelay: Infinity });
+    stdout.on('line', (line) => {
+      lines.push(line);
+      onEvent?.(line);
+      const id = messageId(line);
+      if (id) {
+        turnIds.add(id);
+        if (turnIds.size > caps.maxTurns) kill('turns');
+      }
     });
+
+    child.stderr!.on('data', (chunk: Buffer) => {
+      if (stderr.length < STDERR_LIMIT) stderr += chunk.toString('utf8');
+      // Fail closed the moment the CLI admits it is running unsandboxed.
+      if (SANDBOX_DISABLED_PATTERN.test(stderr)) kill('environment');
+    });
+
+    child.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (graceTimer) clearTimeout(graceTimer);
+      reject(err);
+    });
+
+    // `exit` fires when the child is gone even if a grandchild still holds stdout; give the
+    // pipes a bounded time to drain, then settle on whatever arrived.
+    child.on('exit', (code) => {
+      drainTimer = setTimeout(() => finish(code), DRAIN_MS);
+      drainTimer.unref();
+    });
+    child.on('close', (code) => finish(code));
+
+    child.stdin!.on('error', () => {
+      /* the child may exit before reading its prompt */
+    });
+    child.stdin!.end(invocation.stdin);
   });
 }
 ```
@@ -1095,7 +1489,7 @@ export function runProcess(
 - [ ] **Step 5: Run tests and typecheck**
 
 Run: `npx vitest run test/runner/process-runner.test.ts && npm run typecheck`
-Expected: 8 tests PASS; typecheck exits 0. On Windows `SIGTERM` is emulated as a hard kill; the timeout test still passes.
+Expected: 12 tests PASS; typecheck exits 0. On Windows `SIGTERM` is emulated as a hard kill; the timeout test still passes.
 
 - [ ] **Step 6: Commit**
 
@@ -1259,28 +1653,28 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseAgentFile } from '../../server/agents/registry.js';
 import { Accounting } from '../../server/budget/accounting.js';
-import { classifyFailure, runStep, type StepDeps, type StepRequest } from '../../server/runner/step.js';
 import type { RawStepResult } from '../../server/runner/process-runner.js';
+import { classifyFailure, runStep, type StepDeps, type StepRequest } from '../../server/runner/step.js';
 import { parseStreamJson, summarizeStream } from '../../server/runner/stream-events.js';
 
 const FAKE = path.resolve('test/fixtures/fake-claude/fake-claude.mjs');
 const fixture = (name: string) => path.resolve(`test/fixtures/stream/${name}.ndjson`);
-const HASH_AA = `sha256:${'a'.repeat(64)}`;
+const HASH = `sha256:${'a'.repeat(64)}`;
 
 const devAgent = parseAgentFile(`---\nname: dev\ndescription: d\nmodel: opus\ntools: Read, Edit, Bash\n---\nEcho specHash.`, 'dev');
 
 let dir: string;
 let deps: StepDeps;
-let fakeEnv: Record<string, string>;
 beforeEach(async () => {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-step-'));
-  fakeEnv = {};
   deps = {
-    binary: { bin: process.execPath, prefixArgs: [FAKE] },
+    binary: { bin: process.execPath, prefixArgs: [FAKE], env: {}, requireSandboxTools: false },
     caps: { timeoutMs: 5_000, maxTurns: 50, killGraceMs: 200 },
     accounting: new Accounting(),
     claudeJsonPath: path.join(dir, '.claude.json'),
-    hostEnv: { HOME: dir, PATH: process.env.PATH ?? '', ...fakeEnv },
+    settingsDir: path.join(dir, 'settings'),
+    network: { allowedDomains: ['registry.npmjs.org'] },
+    hostEnv: { HOME: dir, PATH: process.env.PATH ?? '' },
     clock: () => new Date('2026-09-24T10:00:00.000Z'),
   };
 });
@@ -1296,60 +1690,75 @@ const request = (over: Partial<StepRequest> = {}): StepRequest => ({
   model: 'opus',
   cwd: dir,
   prompt: 'Implement it',
-  expectedSpecHash: HASH_AA,
+  expectedSpecHash: HASH,
   phase: 'tasks',
   taskId: 'T1-create',
   attempt: 1,
   ...over,
 });
 
-// The fake binary reads its scenario from the environment the runner passes through hostEnv.
 const withFake = (vars: Record<string, string>) => {
-  deps.hostEnv = { ...deps.hostEnv, ...vars };
+  deps.binary = { ...deps.binary, env: { ...deps.binary.env, ...vars } };
 };
 
+async function writeStream(name: string, events: object[]): Promise<string> {
+  const file = path.join(dir, name);
+  await fs.writeFile(file, events.map((e) => JSON.stringify(e)).join('\n'));
+  return file;
+}
+
+const okValue = { specHash: HASH, status: 'done', summary: 'did it', commitMessage: 'feat: x', changedFiles: ['src/a.ts'] };
+const init = { type: 'system', subtype: 'init', session_id: 's', model: 'claude-opus-5-5' };
+
 describe('runStep', () => {
-  it('returns a validated value and records usage on success', async () => {
+  it('rejects an output that fails the contract as a schema failure and still records usage', async () => {
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('real-json-schema') });
-    const outcome = await runStep(
-      request({ kind: 'dev', semantic: [] }),
-      { ...deps, hostEnv: deps.hostEnv },
-    );
-    expect(outcome.ok).toBe(false); // real-json-schema output lacks summary/changedFiles → schema failure
+    const outcome = await runStep(request(), deps);
+    expect(outcome.ok).toBe(false);
     if (!outcome.ok) {
       expect(outcome.failure).toBe('schema');
-      expect(outcome.errors.join(' ')).toMatch(/summary|changedFiles/);
+      expect(outcome.errors.join(' ')).toMatch(/summary|changedFiles|specHash/);
     }
     const rec = deps.accounting.records()[0]!;
     expect(rec).toMatchObject({ role: 'dev', phase: 'tasks', taskId: 'T1-create', attempt: 1, provider: 'claude', numTurns: 2 });
     expect(rec.usage.cacheWriteTokens).toBe(2892);
   });
 
-  it('accepts a fixture whose structured output satisfies the contract', async () => {
-    const ok = path.join(dir, 'ok.ndjson');
-    const value = { specHash: HASH_AA, status: 'done', summary: 'did it', commitMessage: 'feat: x', changedFiles: ['src/a.ts'] };
-    await fs.writeFile(
-      ok,
-      [
-        JSON.stringify({ type: 'system', subtype: 'init', session_id: 's', model: 'claude-opus-5-5' }),
-        JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [] }, session_id: 's' }),
-        JSON.stringify({ type: 'result', subtype: 'success', is_error: false, duration_ms: 5, num_turns: 1, result: JSON.stringify(value), structured_output: value, session_id: 's', total_cost_usd: 0.01, usage: { input_tokens: 1, output_tokens: 2 } }),
-      ].join('\n'),
-    );
+  it('accepts structured output that satisfies the contract', async () => {
+    const ok = await writeStream('ok.ndjson', [
+      init,
+      { type: 'result', subtype: 'success', is_error: false, duration_ms: 5, num_turns: 1, result: JSON.stringify(okValue), structured_output: okValue, session_id: 's', total_cost_usd: 0.01, usage: { input_tokens: 1, output_tokens: 2 } },
+    ]);
     withFake({ FAKE_CLAUDE_FIXTURE: ok });
     const outcome = await runStep(request(), deps);
     expect(outcome.ok).toBe(true);
-    if (outcome.ok) expect(outcome.value).toEqual(value);
+    if (outcome.ok) expect(outcome.value).toEqual(okValue);
   });
 
-  it('classifies the compaction breaker and discards its output', async () => {
-    withFake({ FAKE_CLAUDE_FIXTURE: fixture('real-compaction-breaker') });
+  it('accepts fenced JSON in the result text when structured_output is absent', async () => {
+    const ok = await writeStream('fenced.ndjson', [
+      init,
+      { type: 'result', subtype: 'success', is_error: false, duration_ms: 5, num_turns: 1, result: '```json\n' + JSON.stringify(okValue, null, 2) + '\n```', session_id: 's' },
+    ]);
+    withFake({ FAKE_CLAUDE_FIXTURE: ok });
+    const outcome = await runStep(request(), deps);
+    expect(outcome.ok).toBe(true);
+    expect(outcome.summary.structuredSource).toBe('text');
+  });
+
+  it('classifies the compaction breaker and discards a valid structured output', async () => {
+    const breaker = await writeStream('breaker.ndjson', [
+      init,
+      { type: 'system', subtype: 'compact_boundary', session_id: 's', compact_metadata: { trigger: 'auto', pre_tokens: 70000, post_tokens: 900 } },
+      { type: 'result', subtype: 'success', is_error: true, terminal_reason: 'rapid_refill_breaker', duration_ms: 5, num_turns: 9, result: 'Autocompact is thrashing', structured_output: okValue, session_id: 's' },
+    ]);
+    withFake({ FAKE_CLAUDE_FIXTURE: breaker });
     const outcome = await runStep(request(), deps);
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) expect(outcome.failure).toBe('compaction');
   });
 
-  it('classifies a disabled sandbox as environment before anything else', async () => {
+  it('classifies a disabled sandbox as environment', async () => {
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('real-json-schema'), FAKE_CLAUDE_STDERR: 'Sandbox disabled: bubblewrap missing' });
     const outcome = await runStep(request(), deps);
     expect(outcome.ok).toBe(false);
@@ -1359,54 +1768,119 @@ describe('runStep', () => {
     }
   });
 
-  it('classifies a kill by timeout', async () => {
-    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_HANG_AFTER: '1' });
+  it('classifies a kill by timeout and keeps the partial usage', async () => {
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('killed-partial'), FAKE_CLAUDE_HANG_AFTER: '4' });
     const outcome = await runStep(request(), { ...deps, caps: { ...deps.caps, timeoutMs: 300 } });
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) expect(outcome.failure).toBe('timeout');
+    expect(deps.accounting.total().outputTokens).toBe(50);
+  });
+
+  it('keeps a successful output even when the rate limit reading is not allowed', async () => {
+    const warn = await writeStream('warn.ndjson', [
+      init,
+      { type: 'rate_limit_event', rate_limit_info: { status: 'allowed_warning', resetsAt: 1790259600, unifiedWindows: { five_hour: { utilization: 0.97, resetsAt: 1790259600 } } } },
+      { type: 'result', subtype: 'success', is_error: false, duration_ms: 5, num_turns: 1, result: JSON.stringify(okValue), structured_output: okValue, session_id: 's' },
+    ]);
+    withFake({ FAKE_CLAUDE_FIXTURE: warn });
+    const outcome = await runStep(request(), deps);
+    expect(outcome.ok).toBe(true);
+    expect(outcome.summary.rateLimit?.status).toBe('allowed_warning');
   });
 
   it('rejects a specHash mismatch as a schema failure', async () => {
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('real-json-schema') });
     const outcome = await runStep(request({ expectedSpecHash: `sha256:${'b'.repeat(64)}` }), deps);
     expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.failure).toBe('schema');
+  });
+
+  it('trusts the working directory and writes the role settings before spawning', async () => {
+    const capture = path.join(dir, 'capture.json');
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
+    await runStep(request(), deps);
+    const json = JSON.parse(await fs.readFile(deps.claudeJsonPath, 'utf8'));
+    expect(json.projects[await fs.realpath(dir)].hasTrustDialogAccepted).toBe(true);
+    const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
+    const settingsPath = captured.argv[captured.argv.indexOf('--settings') + 1];
+    expect(settingsPath).toBe(path.join(deps.settingsDir, 'dev.settings.json'));
+    const settings = JSON.parse(await fs.readFile(settingsPath, 'utf8'));
+    expect(settings.sandbox).toEqual({ enabled: true, network: { allowedDomains: ['registry.npmjs.org'] } });
+    expect(settings.permissions.deny).toContain('Write(.claude/**)');
+    expect(captured.prompt).toBe('Implement it');
+  });
+
+  it('sends the role agent definition inline with the step model', async () => {
+    const capture = path.join(dir, 'capture.json');
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
+    await runStep(request({ model: 'sonnet' }), deps);
+    const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
+    const agents = JSON.parse(captured.argv[captured.argv.indexOf('--agents') + 1]);
+    expect(agents.dev).toMatchObject({ prompt: devAgent.body, tools: devAgent.tools, model: 'sonnet' });
+  });
+
+  it('returns an environment failure when the working directory does not exist, without trusting it', async () => {
+    const missing = path.join(dir, 'missing');
+    const outcome = await runStep(request({ cwd: missing }), deps);
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.failure).toBe('environment');
+    await expect(fs.readFile(deps.claudeJsonPath, 'utf8')).rejects.toThrow();
+  });
+
+  it('returns an environment failure when the binary cannot be spawned', async () => {
+    const outcome = await runStep(request(), { ...deps, binary: { bin: path.join(dir, 'no-such-binary'), prefixArgs: [], env: {}, requireSandboxTools: false } });
+    expect(outcome.ok).toBe(false);
     if (!outcome.ok) {
-      expect(outcome.failure).toBe('schema');
+      expect(outcome.failure).toBe('environment');
+      expect(outcome.errors[0]).toMatch(/spawn|ENOENT/);
     }
   });
 
-  it('trusts the working directory before spawning', async () => {
+  it('returns an environment failure when the sandbox tools are missing on the host', async () => {
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('success') });
-    await runStep(request(), deps);
-    const json = JSON.parse(await fs.readFile(deps.claudeJsonPath, 'utf8'));
-    expect(json.projects[dir].hasTrustDialogAccepted).toBe(true);
+    const outcome = await runStep(request(), { ...deps, binary: { ...deps.binary, requireSandboxTools: true }, hostEnv: { HOME: dir, PATH: dir } });
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) {
+      expect(outcome.failure).toBe('environment');
+      expect(outcome.errors[0]).toMatch(/bwrap/);
+    }
+    expect(deps.accounting.records()).toHaveLength(0);
   });
 });
 
 describe('classifyFailure', () => {
-  const raw = (over: Partial<RawStepResult>, text = ''): RawStepResult => {
+  const raw = (text: string, over: Partial<RawStepResult> = {}): RawStepResult => {
     const parsed = parseStreamJson(text);
-    return { parsed, summary: summarizeStream(parsed), stderr: '', exitCode: 0, killedBy: null, sandboxDisabled: false, durationMs: 1, ...over };
+    return { parsed, summary: summarizeStream(parsed), stderr: '', exitCode: 0, killedBy: null, sandboxDisabled: false, durationMs: 1, turns: 0, ...over };
   };
 
-  it('maps a rejected rate limit to quota', () => {
-    const text = [
+  it('maps a 429 error to quota and a 401 error to auth', () => {
+    expect(classifyFailure(raw('{"type":"result","subtype":"error","is_error":true,"api_error_status":429,"result":"x"}'))).toBe('quota');
+    expect(classifyFailure(raw('{"type":"result","subtype":"error","is_error":true,"api_error_status":401,"result":"x"}'))).toBe('auth');
+  });
+
+  it('falls back to a rejected rate limit reading or text only when the status is unknown', () => {
+    const rejected = [
       '{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","unifiedWindows":{"five_hour":{"utilization":1,"resetsAt":1}}}}',
-      '{"type":"result","subtype":"success","is_error":true,"result":"You have hit your usage limit"}',
+      '{"type":"result","subtype":"error","is_error":true,"result":"You have hit your usage limit"}',
     ].join('\n');
-    expect(classifyFailure(raw({}, text))).toBe('quota');
+    expect(classifyFailure(raw(rejected))).toBe('quota');
+    expect(classifyFailure(raw('{"type":"result","subtype":"error","is_error":true,"result":"Not logged in. Please run claude login"}'))).toBe('auth');
+    expect(classifyFailure(raw('{"type":"result","subtype":"error","is_error":true,"api_error_status":500,"result":"rate limit mentioned in passing"}'))).toBe('code');
   });
 
-  it('maps an auth error text to auth', () => {
-    expect(classifyFailure(raw({}, '{"type":"result","subtype":"error","is_error":true,"result":"Not logged in. Please run claude login"}'))).toBe('auth');
+  it('never classifies a successful result as quota or auth', () => {
+    const text = [
+      '{"type":"rate_limit_event","rate_limit_info":{"status":"rejected"}}',
+      '{"type":"result","subtype":"success","is_error":false,"result":"{}"}',
+    ].join('\n');
+    expect(classifyFailure(raw(text))).toBeNull();
   });
 
-  it('maps a missing result to code', () => {
-    expect(classifyFailure(raw({}, '{"type":"system","subtype":"init"}'))).toBe('code');
-  });
-
-  it('returns null for a clean success', () => {
-    expect(classifyFailure(raw({}, '{"type":"result","subtype":"success","is_error":false,"result":"{}"}'))).toBeNull();
+  it('maps a missing result to code and a kill to timeout', () => {
+    expect(classifyFailure(raw('{"type":"system","subtype":"init"}'))).toBe('code');
+    expect(classifyFailure(raw('{"type":"system","subtype":"init"}', { killedBy: 'turns' }))).toBe('timeout');
+    expect(classifyFailure(raw('{"type":"system","subtype":"init"}', { killedBy: 'environment', sandboxDisabled: true }))).toBe('environment');
   });
 });
 ```
@@ -1420,6 +1894,7 @@ Expected: FAIL — cannot resolve `../../server/runner/step.js`.
 
 `server/runner/step.ts`:
 ```ts
+import { promises as fs } from 'node:fs';
 import { OUTPUT_SCHEMAS, toJsonSchema, type OutputOf, type StepKind } from '../agents/outputs.js';
 import type { AgentDefinition } from '../agents/registry.js';
 import { ALWAYS_DENIED } from '../agents/registry.js';
@@ -1429,7 +1904,8 @@ import type { FailureKind } from '../scheduler/retry-policy.js';
 import { validateAgentOutput } from '../validators/agent-output.js';
 import type { RefContext, References } from '../validators/references.js';
 import { buildInvocation, ensureTrusted } from './invocation.js';
-import { runProcess, type ProcessCaps, type RawStepResult, type RunnerBinary } from './process-runner.js';
+import { preflightSandbox, runProcess, type ProcessCaps, type RawStepResult, type RunnerBinary } from './process-runner.js';
+import { writeRoleSettings, type RoleSettingsInput } from './role-settings.js';
 import type { ResultSummary } from './stream-events.js';
 
 export interface StepRequest {
@@ -1450,6 +1926,8 @@ export interface StepRequest {
   sessionId?: string;
   resume?: boolean;
   omniroute?: { baseUrl: string; token: string; compactWindow?: number };
+  /** Extra allow rules for this step's role settings (from the plan's commands). */
+  extraAllow?: readonly string[];
 }
 
 export type StepOutcome<T> =
@@ -1461,6 +1939,9 @@ export interface StepDeps {
   caps: ProcessCaps;
   accounting: Accounting;
   claudeJsonPath: string;
+  /** Directory (outside any worktree) where per-role settings files are written. */
+  settingsDir: string;
+  network: Pick<RoleSettingsInput, 'allowedDomains'>;
   hostEnv?: NodeJS.ProcessEnv;
   onEvent?: (line: string) => void;
   clock?: () => Date;
@@ -1469,21 +1950,64 @@ export interface StepDeps {
 const QUOTA_TEXT = /usage limit|rate limit|out of .*quota/i;
 const AUTH_TEXT = /not logged in|authentication|invalid api key|please run claude login/i;
 
-/** Order follows spec §12 and the CLI findings: environment → timeout → compaction → quota → auth → code. */
+/**
+ * Order follows spec §12 and the CLI findings: environment → timeout → compaction → (only for a
+ * failed step) quota → auth → code. A successful result is never reclassified by its rate-limit
+ * reading; that reading goes to the breaker separately.
+ */
 export function classifyFailure(raw: RawStepResult): FailureKind | null {
   const s = raw.summary;
-  if (raw.sandboxDisabled) return 'environment';
+  if (raw.sandboxDisabled || raw.killedBy === 'environment') return 'environment';
   if (raw.killedBy) return 'timeout';
   if (s.compactions > 0 || s.terminalReason === 'rapid_refill_breaker') return 'compaction';
+  if (s.found && !s.isError) return null;
   const text = s.resultText ?? '';
-  if ((s.rateLimit && s.rateLimit.status !== 'allowed') || (s.isError && QUOTA_TEXT.test(text))) return 'quota';
-  if (s.isError && AUTH_TEXT.test(text)) return 'auth';
-  if (!s.found || s.isError) return 'code';
-  return null;
+  if (s.apiErrorStatus === 429) return 'quota';
+  if (s.apiErrorStatus === 401 || s.apiErrorStatus === 403) return 'auth';
+  if (s.apiErrorStatus === null) {
+    if ((s.rateLimit && s.rateLimit.status !== 'allowed') || QUOTA_TEXT.test(text)) return 'quota';
+    if (AUTH_TEXT.test(text)) return 'auth';
+  }
+  return 'code';
+}
+
+const EMPTY_SUMMARY: ResultSummary = {
+  found: false,
+  isError: true,
+  subtype: null,
+  numTurns: 0,
+  durationMs: 0,
+  costUsd: null,
+  usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+  sessionId: null,
+  resultText: null,
+  structuredOutput: null,
+  structuredSource: null,
+  terminalReason: null,
+  apiErrorStatus: null,
+  rateLimit: null,
+  compactions: 0,
+};
+
+function environmentFailure<T>(message: string): StepOutcome<T> {
+  return { ok: false, failure: 'environment', errors: [message], summary: EMPTY_SUMMARY, sandboxDisabled: false };
 }
 
 export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDeps): Promise<StepOutcome<OutputOf<K>>> {
+  const hostEnv = deps.hostEnv ?? process.env;
+  try {
+    const stat = await fs.stat(req.cwd);
+    if (!stat.isDirectory()) return environmentFailure(`cwd is not a directory: ${req.cwd}`);
+  } catch {
+    return environmentFailure(`cwd does not exist: ${req.cwd}`);
+  }
+  if (deps.binary.requireSandboxTools) {
+    const missing = await preflightSandbox(hostEnv);
+    if (missing.length > 0) return environmentFailure(`sandbox tools missing on PATH: ${missing.join(', ')} (apt install bubblewrap socat)`);
+  }
+
   await ensureTrusted(req.cwd, deps.claudeJsonPath);
+  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: req.extraAllow });
   const invocation = buildInvocation(
     {
       role: req.role,
@@ -1494,18 +2018,22 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
       jsonSchema: toJsonSchema(req.kind),
       tools: req.agent.tools,
       disallowedTools: ALWAYS_DENIED,
+      settingsPath,
       sessionId: req.sessionId,
       resume: req.resume,
       omniroute: req.omniroute,
+      agentDefinition: req.agent,
     },
-    deps.hostEnv ?? process.env,
+    hostEnv,
   );
-  // Test scaffolding: the fake binary reads FAKE_CLAUDE_* from the host env; they are harmless for the real CLI.
-  for (const [k, v] of Object.entries(deps.hostEnv ?? {})) {
-    if (k.startsWith('FAKE_CLAUDE_') && typeof v === 'string') invocation.env[k] = v;
+
+  let raw: RawStepResult;
+  try {
+    raw = await runProcess(deps.binary, invocation, deps.caps, deps.onEvent);
+  } catch (err) {
+    return environmentFailure(`spawn failed: ${(err as Error).message}`);
   }
 
-  const raw = await runProcess(deps.binary, invocation, deps.caps, deps.onEvent);
   deps.accounting.record({
     role: req.role,
     phase: req.phase,
@@ -1517,7 +2045,7 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
     usage: raw.summary.usage,
     costUsd: raw.summary.costUsd,
     durationMs: raw.durationMs,
-    numTurns: raw.summary.numTurns,
+    numTurns: raw.summary.numTurns || raw.turns,
     at: (deps.clock ?? (() => new Date()))().toISOString(),
   });
 
@@ -1543,7 +2071,7 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
 - [ ] **Step 8: Run tests and typecheck**
 
 Run: `npx vitest run test/budget/accounting.test.ts test/runner/step.test.ts && npm run typecheck`
-Expected: 15 tests PASS; typecheck exits 0.
+Expected: 21 tests PASS (accounting 4, step 17); typecheck exits 0.
 
 - [ ] **Step 9: Commit**
 
@@ -1717,78 +2245,110 @@ import type { RateLimitInfo } from '../../server/runner/stream-events.js';
 
 const T0 = new Date('2026-09-24T10:00:00.000Z');
 const epoch = (d: Date) => Math.floor(d.getTime() / 1000);
+const FIVE_H_RESET = new Date('2026-09-24T12:00:00.000Z');
+const SEVEN_D_RESET = new Date('2026-09-26T00:00:00.000Z');
 const info = (over: Partial<RateLimitInfo> = {}): RateLimitInfo => ({
   status: 'allowed',
+  resetsAt: epoch(FIVE_H_RESET),
   fiveHourUtilization: 0.1,
-  fiveHourResetsAt: epoch(new Date('2026-09-24T12:00:00.000Z')),
+  fiveHourResetsAt: epoch(FIVE_H_RESET),
   sevenDayUtilization: 0.64,
-  sevenDayResetsAt: epoch(new Date('2026-09-26T00:00:00.000Z')),
+  sevenDayResetsAt: epoch(SEVEN_D_RESET),
   ...over,
 });
 
-function breaker(times: Date[]) {
-  let i = 0;
-  const clock = () => times[Math.min(i++, times.length - 1)]!;
-  return new QuotaBreaker(DEFAULT_BREAKER, clock);
+/** A settable fake clock: the breaker may read it more than once per call. */
+function breaker(start = T0) {
+  const clock = { now: start };
+  return { b: new QuotaBreaker(DEFAULT_BREAKER, () => clock.now), clock };
 }
 
 describe('QuotaBreaker', () => {
   it('stays closed while every window is under the threshold', () => {
-    const b = breaker([T0]);
+    const { b } = breaker();
     b.observe(info());
     expect(b.canStart()).toBe(true);
     expect(b.state()).toEqual({ status: 'closed' });
   });
 
   it('pauses until the reset of a window at or above the threshold', () => {
-    const b = breaker([T0, T0]);
+    const { b } = breaker();
     b.observe(info({ fiveHourUtilization: 0.97 }));
     expect(b.canStart()).toBe(false);
-    expect(b.state()).toEqual({ status: 'paused', until: new Date('2026-09-24T12:00:00.000Z'), reason: 'window' });
+    expect(b.state()).toEqual({ status: 'paused', until: FIVE_H_RESET, reason: 'window' });
   });
 
-  it('pauses on a rejected status even with low utilization', () => {
-    const b = breaker([T0, T0]);
+  it('pauses on a rejected status even with low utilization, using the top-level reset', () => {
+    const { b } = breaker();
     b.observe(info({ status: 'rejected', fiveHourUtilization: 0.2 }));
-    expect(b.state()).toMatchObject({ status: 'paused', reason: 'rejected' });
+    expect(b.state()).toEqual({ status: 'paused', until: FIVE_H_RESET, reason: 'rejected' });
   });
 
   it('closes again once the reset time has passed', () => {
-    const b = breaker([T0, T0, new Date('2026-09-24T12:00:01.000Z')]);
+    const { b, clock } = breaker();
     b.observe(info({ fiveHourUtilization: 1 }));
     expect(b.canStart()).toBe(false);
-    b.tick();
+    clock.now = new Date('2026-09-24T12:00:01.000Z');
     expect(b.canStart()).toBe(true);
+  });
+
+  it('ignores a healthy reading while paused (it may come from a step that started earlier)', () => {
+    const { b } = breaker();
+    b.observe(info({ status: 'rejected' }));
+    b.observe(info({ status: 'allowed', fiveHourUtilization: 0.6 }));
+    expect(b.canStart()).toBe(false);
+    expect(b.state()).toMatchObject({ status: 'paused', reason: 'rejected' });
   });
 
   it('uses backoff probes when a quota failure carries no reset time', () => {
-    const b = breaker([T0, T0, T0, T0]);
+    const { b, clock } = breaker();
     b.onQuotaFailure(null);
     expect(b.state()).toEqual({ status: 'paused', until: new Date('2026-09-24T10:05:00.000Z'), reason: 'probe' });
+    clock.now = new Date('2026-09-24T10:05:00.000Z');
     b.onQuotaFailure(null);
-    expect(b.state()).toEqual({ status: 'paused', until: new Date('2026-09-24T10:10:00.000Z'), reason: 'probe' });
+    expect(b.state()).toEqual({ status: 'paused', until: new Date('2026-09-24T10:15:00.000Z'), reason: 'probe' });
   });
 
-  it('caps the backoff at the last value and resets after a healthy observation', () => {
-    const b = breaker(Array(10).fill(T0));
-    for (let i = 0; i < 7; i++) b.onQuotaFailure(null);
-    expect(b.state()).toEqual({ status: 'paused', until: new Date('2026-09-24T11:00:00.000Z'), reason: 'probe' });
+  it('caps the backoff at the last value and resets the ladder after the pause ends with a healthy reading', () => {
+    const { b, clock } = breaker();
+    for (let i = 0; i < 7; i++) {
+      const s = b.state();
+      if (s.status === 'paused') clock.now = s.until; // each probe fails right when it fires
+      b.onQuotaFailure(null);
+    }
+    // 5 + 10 + 20 + 40 + 60 + 60 + 60 minutes after T0
+    expect(b.state()).toEqual({ status: 'paused', until: new Date('2026-09-24T14:15:00.000Z'), reason: 'probe' });
+    clock.now = new Date('2026-09-24T14:15:00.000Z');
     b.observe(info());
     expect(b.canStart()).toBe(true);
     b.onQuotaFailure(null);
-    expect(b.state()).toMatchObject({ until: new Date('2026-09-24T10:05:00.000Z') });
+    expect(b.state()).toMatchObject({ until: new Date('2026-09-24T14:20:00.000Z') });
   });
 
-  it('prefers the reset time when a quota failure carries one', () => {
-    const b = breaker([T0, T0]);
-    b.onQuotaFailure(info({ status: 'rejected' }));
-    expect(b.state()).toEqual({ status: 'paused', until: new Date('2026-09-24T12:00:00.000Z'), reason: 'rejected' });
+  it('on a quota failure prefers the exhausted window reset over an earlier healthy one', () => {
+    const { b } = breaker();
+    b.onQuotaFailure(info({ status: 'rejected', sevenDayUtilization: 1, fiveHourUtilization: 0.3 }));
+    expect(b.state()).toEqual({ status: 'paused', until: SEVEN_D_RESET, reason: 'rejected' });
+  });
+
+  it('on a quota failure falls back to the top-level resetsAt when no window is exhausted', () => {
+    const { b } = breaker();
+    b.onQuotaFailure(info({ status: 'rejected', resetsAt: epoch(new Date('2026-09-24T10:30:00.000Z')) }));
+    expect(b.state()).toEqual({ status: 'paused', until: new Date('2026-09-24T10:30:00.000Z'), reason: 'rejected' });
+  });
+
+  it('does not shorten an existing longer pause with a later quota failure', () => {
+    const { b } = breaker();
+    b.observe(info({ sevenDayUtilization: 1 }));
+    expect(b.state()).toMatchObject({ until: SEVEN_D_RESET });
+    b.onQuotaFailure(info({ status: 'rejected', sevenDayUtilization: 0.5 }));
+    expect(b.state()).toMatchObject({ until: SEVEN_D_RESET });
   });
 
   it('picks the earliest reset among exhausted windows', () => {
-    const b = breaker([T0, T0]);
+    const { b } = breaker();
     b.observe(info({ fiveHourUtilization: 0.99, sevenDayUtilization: 0.99 }));
-    expect(b.state()).toMatchObject({ until: new Date('2026-09-24T12:00:00.000Z') });
+    expect(b.state()).toMatchObject({ until: FIVE_H_RESET });
   });
 });
 ```
@@ -1817,6 +2377,9 @@ export type BreakerState = { status: 'closed' } | { status: 'paused'; until: Dat
 /**
  * Proactive quota circuit breaker (spec §8.7, findings row 7): every CLI run reports the
  * subscription windows, so the orchestrator pauses before a step would be rejected.
+ *
+ * While paused, only `tick()` (time passing) closes the breaker: a healthy reading may belong to
+ * a step that started before the pause. A pause is never shortened by a later reading.
  */
 export class QuotaBreaker {
   private current: BreakerState = { status: 'closed' };
@@ -1842,9 +2405,10 @@ export class QuotaBreaker {
 
   observe(info: RateLimitInfo | null): void {
     if (!info) return;
+    this.tick();
     const exhausted = this.exhaustedResets(info);
     if (info.status !== 'allowed') {
-      const reset = exhausted[0] ?? this.knownResets(info)[0];
+      const reset = exhausted[0] ?? this.topLevelReset(info);
       this.pauseUntil(reset ?? this.nextProbe(), reset ? 'rejected' : 'probe');
       return;
     }
@@ -1852,21 +2416,18 @@ export class QuotaBreaker {
       this.pauseUntil(exhausted[0]!, 'window');
       return;
     }
-    // Healthy reading: the API just accepted a request, so any pause is over and the probe ladder resets.
-    this.backoffIndex = 0;
-    this.current = { status: 'closed' };
+    if (this.current.status === 'closed') this.backoffIndex = 0;
   }
 
   onQuotaFailure(info: RateLimitInfo | null): void {
-    const resets = info ? this.knownResets(info) : [];
-    if (resets.length > 0) {
-      this.pauseUntil(resets[0]!, 'rejected');
-      return;
-    }
-    this.pauseUntil(this.nextProbe(), 'probe');
+    this.tick();
+    const reset = info ? (this.exhaustedResets(info)[0] ?? this.topLevelReset(info)) : null;
+    this.pauseUntil(reset ?? this.nextProbe(), reset ? 'rejected' : 'probe');
   }
 
+  /** Extends the pause; never shortens one already in place. */
   private pauseUntil(until: Date, reason: 'window' | 'rejected' | 'probe'): void {
+    if (this.current.status === 'paused' && this.current.until > until) return;
     this.current = { status: 'paused', until, reason };
   }
 
@@ -1876,11 +2437,8 @@ export class QuotaBreaker {
     return new Date(this.clock().getTime() + minutes * 60_000);
   }
 
-  private knownResets(info: RateLimitInfo): Date[] {
-    return [info.fiveHourResetsAt, info.sevenDayResetsAt]
-      .filter((t): t is number => typeof t === 'number')
-      .map((t) => new Date(t * 1000))
-      .sort((a, b) => a.getTime() - b.getTime());
+  private topLevelReset(info: RateLimitInfo): Date | null {
+    return typeof info.resetsAt === 'number' ? new Date(info.resetsAt * 1000) : null;
   }
 
   private exhaustedResets(info: RateLimitInfo): Date[] {
@@ -1899,12 +2457,12 @@ export class QuotaBreaker {
 - [ ] **Step 8: Run tests and typecheck**
 
 Run: `npx vitest run test/budget && npm run typecheck`
-Expected: 16 tests PASS (accounting 4, governor 4, breaker 8); typecheck exits 0.
+Expected: 19 tests PASS (accounting 4, governor 4, breaker 11); typecheck exits 0.
 
 - [ ] **Step 9: Run the full suite and commit**
 
 Run: `npm test && npm run typecheck`
-Expected: 26 test files, 244 tests PASS (Plan 1 + Plan 2 + this plan); typecheck exits 0.
+Expected: 27 test files, 277 tests PASS (Plan 1 + Plan 2 + this plan); typecheck exits 0.
 
 ```bash
 git add server/budget/governor.ts server/budget/quota-breaker.ts test/budget
@@ -1940,6 +2498,10 @@ const breaker = new QuotaBreaker();
 const specHash = `sha256:${'a'.repeat(64)}`;
 
 const provider = process.env.SMOKE_PROVIDER === 'omniroute' ? 'omniroute' : 'claude';
+if (provider === 'omniroute' && !process.env.OMNIROUTE_TOKEN) {
+  console.error('OMNIROUTE_TOKEN is required for the omniroute provider (an empty token could fall back to the subscription login)');
+  process.exit(2);
+}
 const model = process.env.SMOKE_MODEL ?? (provider === 'omniroute' ? 'kimi/k2' : 'sonnet');
 
 const outcome = await runStep(
@@ -1955,13 +2517,15 @@ const outcome = await runStep(
     phase: 'smoke',
     taskId: null,
     attempt: 1,
-    omniroute: provider === 'omniroute' ? { baseUrl: 'http://localhost:20128', token: process.env.OMNIROUTE_TOKEN ?? '', compactWindow: 120000 } : undefined,
+    omniroute: provider === 'omniroute' ? { baseUrl: 'http://localhost:20128', token: process.env.OMNIROUTE_TOKEN!, compactWindow: 120000 } : undefined,
   },
   {
-    binary: { bin: 'claude', prefixArgs: [] },
+    binary: { bin: 'claude', prefixArgs: [], env: {}, requireSandboxTools: process.platform === 'linux' },
     caps: { timeoutMs: 120_000, maxTurns: 6 },
     accounting,
     claudeJsonPath: path.join(os.homedir(), '.claude.json'),
+    settingsDir: path.join(os.homedir(), '.teams-ai', 'settings'),
+    network: { allowedDomains: ['registry.npmjs.org'] },
     onEvent: (line) => {
       if (line.includes('"type":"result"') || line.includes('rate_limit_event')) console.error(line);
     },
