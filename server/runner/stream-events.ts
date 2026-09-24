@@ -62,6 +62,8 @@ export function extractJsonObject(text: string | null): Record<string, unknown> 
 
 export interface RateLimitInfo {
   status: string;
+  /** Top-level reset of the window the CLI is reporting on (epoch seconds). */
+  resetsAt: number | null;
   fiveHourUtilization: number | null;
   fiveHourResetsAt: number | null;
   sevenDayUtilization: number | null;
@@ -84,6 +86,8 @@ export interface ResultSummary {
   structuredSource: 'structured_output' | 'text' | null;
   /** e.g. "completed", "rapid_refill_breaker"; the CLI may report is_error=true with subtype "success". */
   terminalReason: string | null;
+  /** HTTP status of the failing API call when the CLI reports one (401 auth, 429 quota). */
+  apiErrorStatus: number | null;
   /** Latest rate_limit_event in the stream (subscription usage windows). */
   rateLimit: RateLimitInfo | null;
   compactions: number;
@@ -101,6 +105,7 @@ const ResultEvent = z
     total_cost_usd: z.number().optional(),
     structured_output: z.unknown().optional(),
     terminal_reason: z.string().nullable().optional(),
+    api_error_status: z.number().nullable().optional(),
     usage: z
       .object({
         input_tokens: z.number().optional(),
@@ -121,6 +126,7 @@ const RateLimitEvent = z
     rate_limit_info: z
       .object({
         status: z.string(),
+        resetsAt: z.number().optional(),
         unifiedWindows: z
           .object({
             five_hour: z.object({ utilization: z.number().optional(), resetsAt: z.number().optional() }).optional(),
@@ -133,6 +139,56 @@ const RateLimitEvent = z
   })
   .passthrough();
 
+const AssistantUsage = z
+  .object({
+    type: z.literal('assistant'),
+    message: z
+      .object({
+        id: z.string().optional(),
+        usage: z
+          .object({
+            input_tokens: z.number().optional(),
+            output_tokens: z.number().optional(),
+            cache_read_input_tokens: z.number().optional(),
+            cache_creation_input_tokens: z.number().optional(),
+          })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+/** Usage of a killed step: assistant messages carry usage per message id (one entry per content block). */
+function partialUsage(events: readonly StreamEvent[]): { usage: Usage; turns: number } {
+  const seen = new Map<string, Usage>();
+  let anonymous = 0;
+  for (const e of events) {
+    const parsed = AssistantUsage.safeParse(e);
+    if (!parsed.success) continue;
+    const id = parsed.data.message.id ?? `anon-${anonymous++}`;
+    const u = parsed.data.message.usage;
+    if (!u) {
+      if (!seen.has(id)) seen.set(id, { ...ZERO_USAGE });
+      continue;
+    }
+    seen.set(id, {
+      inputTokens: u.input_tokens ?? 0,
+      outputTokens: u.output_tokens ?? 0,
+      cacheReadTokens: u.cache_read_input_tokens ?? 0,
+      cacheWriteTokens: u.cache_creation_input_tokens ?? 0,
+    });
+  }
+  const usage = { ...ZERO_USAGE };
+  for (const u of seen.values()) {
+    usage.inputTokens += u.inputTokens;
+    usage.outputTokens += u.outputTokens;
+    usage.cacheReadTokens += u.cacheReadTokens;
+    usage.cacheWriteTokens += u.cacheWriteTokens;
+  }
+  return { usage, turns: seen.size };
+}
+
 function latestRateLimit(events: readonly StreamEvent[]): RateLimitInfo | null {
   const raw = [...events].reverse().find((e) => e.type === 'rate_limit_event');
   const parsed = raw ? RateLimitEvent.safeParse(raw) : null;
@@ -140,6 +196,7 @@ function latestRateLimit(events: readonly StreamEvent[]): RateLimitInfo | null {
   const info = parsed.data.rate_limit_info;
   return {
     status: info.status,
+    resetsAt: info.resetsAt ?? null,
     fiveHourUtilization: info.unifiedWindows?.five_hour?.utilization ?? null,
     fiveHourResetsAt: info.unifiedWindows?.five_hour?.resetsAt ?? null,
     sevenDayUtilization: info.unifiedWindows?.seven_day?.utilization ?? null,
@@ -154,19 +211,21 @@ export function summarizeStream(parsed: ParsedStream): ResultSummary {
   const raw = [...parsed.events].reverse().find((e) => e.type === 'result');
   const result = raw ? ResultEvent.safeParse(raw) : null;
   if (!result || !result.success) {
+    const partial = partialUsage(parsed.events);
     return {
       found: false,
       isError: true,
       subtype: null,
-      numTurns: 0,
+      numTurns: partial.turns,
       durationMs: 0,
       costUsd: null,
-      usage: ZERO_USAGE,
+      usage: partial.usage,
       sessionId,
       resultText: null,
       structuredOutput: null,
       structuredSource: null,
       terminalReason: null,
+      apiErrorStatus: null,
       rateLimit,
       compactions,
     };
@@ -193,6 +252,7 @@ export function summarizeStream(parsed: ParsedStream): ResultSummary {
     structuredOutput: structuredOutput ?? null,
     structuredSource,
     terminalReason: r.terminal_reason ?? null,
+    apiErrorStatus: r.api_error_status ?? null,
     rateLimit,
     compactions,
   };

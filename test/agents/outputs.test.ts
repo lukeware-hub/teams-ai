@@ -6,9 +6,10 @@ const HASH = `sha256:${'a'.repeat(64)}`;
 describe('output contracts', () => {
   it('every step kind has a schema requiring specHash', () => {
     for (const kind of STEP_KINDS) {
-      const schema = toJsonSchema(kind) as { required?: string[]; properties?: Record<string, unknown> };
-      expect(schema.required, kind).toContain('specHash');
-      expect(schema.properties, kind).toHaveProperty('specHash');
+      const schema = toJsonSchema(kind) as { required?: string[]; anyOf?: Array<{ required?: string[] }>; oneOf?: Array<{ required?: string[] }> };
+      const branches = schema.anyOf ?? schema.oneOf ?? [schema];
+      expect(branches.length, kind).toBeGreaterThan(0);
+      for (const branch of branches) expect(branch.required, kind).toContain('specHash');
     }
     expect(Object.keys(OUTPUT_SCHEMAS).sort()).toEqual([...STEP_KINDS].sort());
   });
@@ -46,5 +47,18 @@ describe('output contracts', () => {
       docPatch: [],
     });
     expect(ok.success).toBe(true);
+  });
+});
+
+describe('dev output JSON Schema carries the status-dependent requirements', () => {
+  it('lists commitMessage as required for done and question for spec-gap', () => {
+    type Branch = { required?: string[]; properties?: Record<string, { const?: string; enum?: string[] }> };
+    const schema = toJsonSchema('dev') as { anyOf?: Branch[]; oneOf?: Branch[] };
+    const branches = schema.anyOf ?? schema.oneOf;
+    expect(branches).toBeDefined();
+    const done = branches!.find((b) => JSON.stringify(b.properties?.status).includes('done'))!;
+    const gap = branches!.find((b) => JSON.stringify(b.properties?.status).includes('spec-gap'))!;
+    expect(done.required).toContain('commitMessage');
+    expect(gap.required).toContain('question');
   });
 });

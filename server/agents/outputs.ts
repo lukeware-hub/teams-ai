@@ -47,20 +47,18 @@ export const CoverageOutput = z.object({
 
 export const PlanOutput = Plan;
 
-export const DevOutput = z
-  .object({
-    specHash,
-    status: z.enum(['done', 'spec-gap']),
-    summary: z.string().min(1),
-    commitMessage: z.string().min(1).optional(),
-    changedFiles: z.array(z.string().min(1)),
-    scopeJustification: z.string().optional(),
-    question: z.string().min(1).optional(),
-  })
-  .superRefine((v, ctx) => {
-    if (v.status === 'done' && !v.commitMessage) ctx.addIssue({ code: 'custom', path: ['commitMessage'], message: 'required when status is done' });
-    if (v.status === 'spec-gap' && !v.question) ctx.addIssue({ code: 'custom', path: ['question'], message: 'required when status is spec-gap' });
-  });
+const devCommon = {
+  specHash,
+  summary: z.string().min(1),
+  changedFiles: z.array(z.string().min(1)),
+  scopeJustification: z.string().optional(),
+};
+
+/** A discriminated union so the generated JSON Schema tells the model which fields each status requires. */
+export const DevOutput = z.discriminatedUnion('status', [
+  z.object({ ...devCommon, status: z.literal('done'), commitMessage: z.string().min(1) }),
+  z.object({ ...devCommon, status: z.literal('spec-gap'), question: z.string().min(1) }),
+]);
 
 export const ReviewOutput = z.object({
   specHash,

@@ -13,6 +13,10 @@ const breaker = new QuotaBreaker();
 const specHash = `sha256:${'a'.repeat(64)}`;
 
 const provider = process.env.SMOKE_PROVIDER === 'omniroute' ? 'omniroute' : 'claude';
+if (provider === 'omniroute' && !process.env.OMNIROUTE_TOKEN) {
+  console.error('OMNIROUTE_TOKEN is required for the omniroute provider (an empty token could fall back to the subscription login)');
+  process.exit(2);
+}
 const model = process.env.SMOKE_MODEL ?? (provider === 'omniroute' ? 'kimi/k2' : 'sonnet');
 
 const outcome = await runStep(
@@ -28,13 +32,15 @@ const outcome = await runStep(
     phase: 'smoke',
     taskId: null,
     attempt: 1,
-    omniroute: provider === 'omniroute' ? { baseUrl: 'http://localhost:20128', token: process.env.OMNIROUTE_TOKEN ?? '', compactWindow: 120000 } : undefined,
+    omniroute: provider === 'omniroute' ? { baseUrl: 'http://localhost:20128', token: process.env.OMNIROUTE_TOKEN!, compactWindow: 120000 } : undefined,
   },
   {
-    binary: { bin: 'claude', prefixArgs: [] },
+    binary: { bin: 'claude', prefixArgs: [], env: {}, requireSandboxTools: process.platform === 'linux' },
     caps: { timeoutMs: 120_000, maxTurns: 6 },
     accounting,
     claudeJsonPath: path.join(os.homedir(), '.claude.json'),
+    settingsDir: path.join(os.homedir(), '.teams-ai', 'settings'),
+    network: { allowedDomains: ['registry.npmjs.org'] },
     onEvent: (line) => {
       if (line.includes('"type":"result"') || line.includes('rate_limit_event')) console.error(line);
     },

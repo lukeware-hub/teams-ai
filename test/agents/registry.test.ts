@@ -54,3 +54,17 @@ describe('loadAgents', () => {
     await expect(loadAgents(path.resolve('test/fixtures/no-such-dir'))).rejects.toThrow(AgentFileError);
   });
 });
+
+describe('settings directory protection', () => {
+  it('always denies editing or writing the project settings directory', () => {
+    expect(ALWAYS_DENIED).toEqual(expect.arrayContaining(['Edit(.claude/**)', 'Write(.claude/**)']));
+    expect(() => parseAgentFile(`---\nname: dev\ndescription: x\nmodel: opus\ntools: Read, Write(.claude/**)\n---\nEcho specHash.`, 'dev')).toThrow(/\.claude/);
+  });
+
+  it('the SM prompt tells the agent to decide spec gaps and log assumptions, never to ask the human mid-run', async () => {
+    const agents = await loadAgents(AGENTS_DIR);
+    expect(agents.sm.body).toMatch(/spec-gap|spec gap/i);
+    expect(agents.sm.body).toMatch(/assumption/i);
+    expect(agents.sm.body).not.toMatch(/never an assumption during a run/);
+  });
+});

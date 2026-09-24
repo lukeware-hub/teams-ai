@@ -40,6 +40,7 @@ describe('summarizeStream', () => {
       structuredOutput: { specHash: 'sha256:aa', status: 'done' },
       structuredSource: 'text',
       terminalReason: null,
+      apiErrorStatus: null,
       rateLimit: null,
       compactions: 0,
     });
@@ -82,6 +83,7 @@ describe('summarizeStream against real CLI 2.1.281 recordings', () => {
     const summary = summarizeStream(parseStreamJson(fixture('real-json-schema')));
     expect(summary.rateLimit).toEqual({
       status: 'allowed',
+      resetsAt: 1790259600,
       fiveHourUtilization: 0,
       fiveHourResetsAt: 1790259600,
       sevenDayUtilization: 0.64,
@@ -130,5 +132,29 @@ describe('summarizeStream structured output fallback', () => {
   it('reports no source when neither is present', () => {
     expect(summarizeStream(parseStreamJson(fixture('success'))).structuredSource).toBe('text');
     expect(summarizeStream(parseStreamJson('{"type":"result","subtype":"success","is_error":false,"result":"OK"}\n')).structuredSource).toBeNull();
+  });
+});
+
+describe('summarizeStream partial usage and API error status', () => {
+  it('sums assistant usage by distinct message id when the stream has no result', () => {
+    const summary = summarizeStream(parseStreamJson(fixture('killed-partial')));
+    expect(summary.found).toBe(false);
+    expect(summary.usage).toEqual({ inputTokens: 22, outputTokens: 50, cacheReadTokens: 2300, cacheWriteTokens: 300 });
+    expect(summary.numTurns).toBe(2);
+  });
+
+  it('exposes api_error_status and the top-level rate limit resetsAt', () => {
+    const text = [
+      '{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1790259600,"unifiedWindows":{"five_hour":{"utilization":1,"resetsAt":1790259600}}}}',
+      '{"type":"result","subtype":"error","is_error":true,"api_error_status":429,"result":"rate limited"}',
+    ].join('\n');
+    const summary = summarizeStream(parseStreamJson(text));
+    expect(summary.apiErrorStatus).toBe(429);
+    expect(summary.rateLimit?.resetsAt).toBe(1790259600);
+  });
+
+  it('reports null api_error_status when the CLI sends null or nothing', () => {
+    expect(summarizeStream(parseStreamJson('{"type":"result","subtype":"success","is_error":false,"api_error_status":null,"result":"OK"}\n')).apiErrorStatus).toBeNull();
+    expect(summarizeStream(parseStreamJson(fixture('success'))).apiErrorStatus).toBeNull();
   });
 });

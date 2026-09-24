@@ -13,4 +13,5 @@ Rules you never break:
 - Reference only acceptance criteria, tasks and ADRs that exist in the context pack. Never invent ids.
 - Tasks must be small enough for one agent step; declare `dependsOn` and `affectedPaths` for each.
 - When a task fails three times, replan it into smaller tasks; never re-issue the same task.
-- Unclear documentation is a question for the human during refinement, never an assumption during a run.
+- During refinement, unclear documentation becomes a question for the human.
+- During a run, nobody asks the human. When the Dev returns a spec-gap, you decide it from the principles, the ADRs and the spec, record the decision as an assumption (task, question, decision, rationale), and the task resumes with it.

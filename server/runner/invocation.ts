@@ -17,7 +17,11 @@ export const ISOLATION_FLAGS: readonly string[] = [
   'dontAsk',
 ];
 
-/** Only these host variables reach an agent process (spec §14). */
+/**
+ * Only these host variables reach an agent process (spec §14). HOME is required for the
+ * subscription login; the credential stores under it are covered by Read deny rules in the
+ * role settings (see role-settings.ts PROTECTED_READ_PATHS).
+ */
 export const ENV_ALLOWLIST: readonly string[] = ['HOME', 'PATH', 'TERM', 'LANG', 'LC_ALL', 'USER', 'SHELL', 'TMPDIR', 'TZ'];
 
 export interface InvocationInput {
@@ -29,12 +33,15 @@ export interface InvocationInput {
   jsonSchema: object;
   tools: readonly string[];
   disallowedTools: readonly string[];
+  /** Role settings file written by the orchestrator (sandbox + permissions), passed with --settings. */
+  settingsPath: string;
   sessionId?: string;
   resume?: boolean;
   omniroute?: { baseUrl: string; token: string; compactWindow?: number };
   /**
    * Inline agent definition (`--agents` JSON). Agents in `.claude/agents` are loaded from the
    * process cwd, which is the product worktree, so the orchestrator ships the role definition itself.
+   * The step model wins over the agent file's model.
    */
   agentDefinition?: { description: string; model: string; tools: readonly string[]; body: string };
 }
@@ -43,6 +50,8 @@ export interface Invocation {
   args: string[];
   env: Record<string, string>;
   cwd: string;
+  /** The prompt, written to the child's stdin: a leading `-`/`--` in a context pack must never be parsed as a flag. */
+  stdin: string;
 }
 
 export class InvocationError extends Error {}
@@ -58,15 +67,17 @@ export function sanitizeEnv(hostEnv: NodeJS.ProcessEnv): Record<string, string> 
 
 export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessEnv = process.env): Invocation {
   if (input.prompt.trim() === '') throw new InvocationError('prompt must not be empty');
-  const args: string[] = ['-p', input.prompt, '--agent', input.role];
+  if (!input.settingsPath || input.settingsPath.trim() === '') throw new InvocationError('settingsPath is required');
+  const args: string[] = ['-p', '--agent', input.role];
   if (input.agentDefinition) {
     const def = input.agentDefinition;
     args.push(
       '--agents',
-      JSON.stringify({ [input.role]: { description: def.description, prompt: def.body, tools: [...def.tools], model: def.model } }),
+      JSON.stringify({ [input.role]: { description: def.description, prompt: def.body, tools: [...def.tools], model: input.model } }),
     );
   }
   args.push(...ISOLATION_FLAGS);
+  args.push('--settings', input.settingsPath);
   args.push('--model', input.model);
   args.push('--json-schema', JSON.stringify(input.jsonSchema));
   args.push('--tools', input.tools.join(','));
@@ -81,28 +92,50 @@ export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessE
   const env = sanitizeEnv(hostEnv);
   if (input.profile.provider === 'omniroute') {
     if (!input.omniroute) throw new InvocationError('omniroute profile requires baseUrl and token');
+    if (input.omniroute.token.trim() === '') {
+      throw new InvocationError('omniroute token must not be empty (an empty token could fall back to the subscription login)');
+    }
     env.ANTHROPIC_BASE_URL = input.omniroute.baseUrl;
     env.ANTHROPIC_AUTH_TOKEN = input.omniroute.token;
     env.ANTHROPIC_MODEL = input.model;
     if (input.omniroute.compactWindow) env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = String(input.omniroute.compactWindow);
   }
-  return { args, env, cwd: input.cwd };
+  return { args, env, cwd: input.cwd, stdin: input.prompt };
 }
+
+// Writes to ~/.claude.json are serialized in-process and made atomic (temp file + rename), because
+// parallel steps trust their worktrees at the same time and the CLI reads the file at startup.
+let trustQueue: Promise<unknown> = Promise.resolve();
 
 /**
  * Project-level permissions.allow is ignored until the workspace is trusted
- * (findings row 5b). The orchestrator trusts every worktree it creates.
+ * (findings row 5b). The orchestrator trusts every worktree it creates, keyed by its resolved path.
  */
-export async function ensureTrusted(dir: string, claudeJsonPath: string): Promise<void> {
-  let json: Record<string, unknown> = {};
-  try {
-    json = JSON.parse(await fs.readFile(claudeJsonPath, 'utf8')) as Record<string, unknown>;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-  }
-  const projects = (json.projects ?? {}) as Record<string, Record<string, unknown>>;
-  projects[dir] = { ...(projects[dir] ?? {}), hasTrustDialogAccepted: true };
-  json.projects = projects;
-  await fs.mkdir(path.dirname(claudeJsonPath), { recursive: true });
-  await fs.writeFile(claudeJsonPath, `${JSON.stringify(json, null, 2)}\n`);
+export function ensureTrusted(dir: string, claudeJsonPath: string): Promise<void> {
+  const work = async () => {
+    // Key by the resolved real path when the directory exists (symlinks, trailing slashes);
+    // otherwise keep the caller's spelling so a foreign-platform path is not rewritten.
+    let key = dir;
+    try {
+      key = await fs.realpath(dir);
+    } catch {
+      key = dir;
+    }
+    let json: Record<string, unknown> = {};
+    try {
+      json = JSON.parse(await fs.readFile(claudeJsonPath, 'utf8')) as Record<string, unknown>;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+    const projects = (json.projects ?? {}) as Record<string, Record<string, unknown>>;
+    projects[key] = { ...(projects[key] ?? {}), hasTrustDialogAccepted: true };
+    json.projects = projects;
+    await fs.mkdir(path.dirname(claudeJsonPath), { recursive: true });
+    const tmp = `${claudeJsonPath}.${process.pid}.tmp`;
+    await fs.writeFile(tmp, `${JSON.stringify(json, null, 2)}\n`);
+    await fs.rename(tmp, claudeJsonPath);
+  };
+  const result = trustQueue.then(work, work);
+  trustQueue = result.catch(() => undefined);
+  return result;
 }

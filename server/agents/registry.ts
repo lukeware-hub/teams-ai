@@ -23,7 +23,16 @@ export const ROLE_TOOL_POLICY: Record<Role, { allowed: readonly string[] }> = {
 };
 
 /** Never granted to any agent; the orchestrator owns these (spec §3.2, §14). */
-export const ALWAYS_DENIED: readonly string[] = ['Bash(gh:*)', 'Bash(git push:*)', 'Bash(docker:*)', 'Bash(kubectl:*)'];
+export const ALWAYS_DENIED: readonly string[] = [
+  'Bash(gh:*)',
+  'Bash(git push:*)',
+  'Bash(docker:*)',
+  'Bash(kubectl:*)',
+  // The project settings directory is where sandbox and permission rules would be read from;
+  // an agent must never be able to rewrite it.
+  'Edit(.claude/**)',
+  'Write(.claude/**)',
+];
 
 export class AgentFileError extends Error {}
 

@@ -13,6 +13,9 @@ export type BreakerState = { status: 'closed' } | { status: 'paused'; until: Dat
 /**
  * Proactive quota circuit breaker (spec §8.7, findings row 7): every CLI run reports the
  * subscription windows, so the orchestrator pauses before a step would be rejected.
+ *
+ * While paused, only `tick()` (time passing) closes the breaker: a healthy reading may belong to
+ * a step that started before the pause. A pause is never shortened by a later reading.
  */
 export class QuotaBreaker {
   private current: BreakerState = { status: 'closed' };
@@ -38,9 +41,10 @@ export class QuotaBreaker {
 
   observe(info: RateLimitInfo | null): void {
     if (!info) return;
+    this.tick();
     const exhausted = this.exhaustedResets(info);
     if (info.status !== 'allowed') {
-      const reset = exhausted[0] ?? this.knownResets(info)[0];
+      const reset = exhausted[0] ?? this.topLevelReset(info);
       this.pauseUntil(reset ?? this.nextProbe(), reset ? 'rejected' : 'probe');
       return;
     }
@@ -48,21 +52,18 @@ export class QuotaBreaker {
       this.pauseUntil(exhausted[0]!, 'window');
       return;
     }
-    // Healthy reading: the API just accepted a request, so any pause is over and the probe ladder resets.
-    this.backoffIndex = 0;
-    this.current = { status: 'closed' };
+    if (this.current.status === 'closed') this.backoffIndex = 0;
   }
 
   onQuotaFailure(info: RateLimitInfo | null): void {
-    const resets = info ? this.knownResets(info) : [];
-    if (resets.length > 0) {
-      this.pauseUntil(resets[0]!, 'rejected');
-      return;
-    }
-    this.pauseUntil(this.nextProbe(), 'probe');
+    this.tick();
+    const reset = info ? (this.exhaustedResets(info)[0] ?? this.topLevelReset(info)) : null;
+    this.pauseUntil(reset ?? this.nextProbe(), reset ? 'rejected' : 'probe');
   }
 
+  /** Extends the pause; never shortens one already in place. */
   private pauseUntil(until: Date, reason: 'window' | 'rejected' | 'probe'): void {
+    if (this.current.status === 'paused' && this.current.until > until) return;
     this.current = { status: 'paused', until, reason };
   }
 
@@ -72,11 +73,8 @@ export class QuotaBreaker {
     return new Date(this.clock().getTime() + minutes * 60_000);
   }
 
-  private knownResets(info: RateLimitInfo): Date[] {
-    return [info.fiveHourResetsAt, info.sevenDayResetsAt]
-      .filter((t): t is number => typeof t === 'number')
-      .map((t) => new Date(t * 1000))
-      .sort((a, b) => a.getTime() - b.getTime());
+  private topLevelReset(info: RateLimitInfo): Date | null {
+    return typeof info.resetsAt === 'number' ? new Date(info.resetsAt * 1000) : null;
   }
 
   private exhaustedResets(info: RateLimitInfo): Date[] {

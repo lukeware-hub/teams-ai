@@ -21,6 +21,7 @@ const base: InvocationInput = {
   jsonSchema: { type: 'object', properties: { specHash: { type: 'string' } }, required: ['specHash'] },
   tools: ['Read', 'Edit', 'Write', 'Grep', 'Glob', 'Bash'],
   disallowedTools: ['Bash(gh:*)', 'Bash(git push:*)', 'Bash(docker:*)', 'Bash(kubectl:*)'],
+  settingsPath: '/home/u/.teams-ai/settings/dev.settings.json',
 };
 
 const hostEnv = {
@@ -35,11 +36,13 @@ const hostEnv = {
 };
 
 describe('buildInvocation', () => {
-  it('starts with the agent, the prompt and every isolation flag from the findings', () => {
+  it('selects the agent, passes the role settings file and every isolation flag; the prompt goes to stdin', () => {
     const inv = buildInvocation(base, hostEnv);
-    expect(inv.args.slice(0, 4)).toEqual(['-p', 'Implement T1', '--agent', 'dev']);
+    expect(inv.args.slice(0, 3)).toEqual(['-p', '--agent', 'dev']);
+    expect(inv.args).not.toContain('Implement T1');
+    expect(inv.stdin).toBe('Implement T1');
     for (const flag of ISOLATION_FLAGS) expect(inv.args).toContain(flag);
-    expect(inv.args).toContain('--strict-mcp-config');
+    expect(inv.args[inv.args.indexOf('--settings') + 1]).toBe(base.settingsPath);
     expect(inv.args[inv.args.indexOf('--mcp-config') + 1]).toBe('{"mcpServers":{}}');
     expect(inv.args[inv.args.indexOf('--permission-mode') + 1]).toBe('dontAsk');
     expect(inv.args).not.toContain('--max-turns');
@@ -54,17 +57,17 @@ describe('buildInvocation', () => {
     expect(inv.args.slice(i + 1, i + 5)).toEqual(base.disallowedTools);
   });
 
-  it('omits --tools when the list is empty and passes "" explicitly', () => {
-    const inv = buildInvocation({ ...base, tools: [] }, hostEnv);
-    expect(inv.args[inv.args.indexOf('--tools') + 1]).toBe('');
+  it('passes "" for an empty tool list', () => {
+    expect(buildInvocation({ ...base, tools: [] }, hostEnv).args[buildInvocation({ ...base, tools: [] }, hostEnv).args.indexOf('--tools') + 1]).toBe('');
   });
 
   it('adds --session-id for a new refinement session and --resume for a continued one', () => {
-    const fresh = buildInvocation({ ...base, sessionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }, hostEnv);
+    const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const fresh = buildInvocation({ ...base, sessionId: id }, hostEnv);
     expect(fresh.args).toContain('--session-id');
     expect(fresh.args).not.toContain('--no-session-persistence');
-    const resumed = buildInvocation({ ...base, sessionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', resume: true }, hostEnv);
-    expect(resumed.args[resumed.args.indexOf('--resume') + 1]).toBe('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+    const resumed = buildInvocation({ ...base, sessionId: id, resume: true }, hostEnv);
+    expect(resumed.args[resumed.args.indexOf('--resume') + 1]).toBe(id);
     expect(buildInvocation(base, hostEnv).args).toContain('--no-session-persistence');
   });
 
@@ -92,12 +95,30 @@ describe('buildInvocation', () => {
     expect(buildInvocation(base, hostEnv).env).not.toHaveProperty('ANTHROPIC_BASE_URL');
   });
 
-  it('refuses an omniroute profile without connection details', () => {
+  it('refuses an omniroute profile without connection details or with an empty token', () => {
     expect(() => buildInvocation({ ...base, profile: { provider: 'omniroute', model: 'x' } }, hostEnv)).toThrow(InvocationError);
+    expect(() =>
+      buildInvocation({ ...base, profile: { provider: 'omniroute', model: 'x' }, omniroute: { baseUrl: 'http://localhost:20128', token: '  ' } }, hostEnv),
+    ).toThrow(/token/);
   });
 
-  it('refuses a prompt that is empty', () => {
+  it('refuses an empty prompt or a missing settings path', () => {
     expect(() => buildInvocation({ ...base, prompt: '  ' }, hostEnv)).toThrow(InvocationError);
+    expect(() => buildInvocation({ ...base, settingsPath: '' }, hostEnv)).toThrow(/settings/);
+  });
+
+  it('passes the agent definition inline via --agents with the step model, not the file model', () => {
+    const inv = buildInvocation(
+      { ...base, model: 'sonnet', agentDefinition: { description: 'Developer.', model: 'opus', tools: ['Read', 'Edit'], body: 'Echo the specHash.' } },
+      hostEnv,
+    );
+    const json = JSON.parse(inv.args[inv.args.indexOf('--agents') + 1]!);
+    expect(json).toEqual({ dev: { description: 'Developer.', prompt: 'Echo the specHash.', tools: ['Read', 'Edit'], model: 'sonnet' } });
+    expect(inv.args.indexOf('--agents')).toBeGreaterThan(inv.args.indexOf('--agent'));
+  });
+
+  it('omits --agents when no definition is given', () => {
+    expect(buildInvocation(base, hostEnv).args).not.toContain('--agents');
   });
 });
 
@@ -117,11 +138,13 @@ describe('ensureTrusted', () => {
     await fs.rm(dir, { recursive: true, force: true });
   });
 
-  it('creates the file and the project entry when missing', async () => {
+  it('creates the file and the project entry keyed by the resolved path', async () => {
     const file = path.join(dir, '.claude.json');
-    await ensureTrusted('/home/u/ws/wt', file);
+    const wt = path.join(dir, 'wt');
+    await fs.mkdir(wt);
+    await ensureTrusted(`${wt}${path.sep}`, file);
     const json = JSON.parse(await fs.readFile(file, 'utf8'));
-    expect(json.projects['/home/u/ws/wt'].hasTrustDialogAccepted).toBe(true);
+    expect(json.projects[await fs.realpath(wt)].hasTrustDialogAccepted).toBe(true);
   });
 
   it('preserves other keys and existing project settings', async () => {
@@ -133,20 +156,12 @@ describe('ensureTrusted', () => {
     expect(json.projects['/other']).toEqual({ allowedTools: ['Read'] });
     expect(json.projects['/home/u/ws/wt']).toEqual({ allowedTools: ['Bash'], hasTrustDialogAccepted: true });
   });
-});
 
-describe('agent definition injection', () => {
-  it('passes the agent definition inline via --agents so it does not depend on the cwd', () => {
-    const inv = buildInvocation(
-      { ...base, agentDefinition: { description: 'Developer.', model: 'opus', tools: ['Read', 'Edit'], body: 'Echo the specHash.' } },
-      hostEnv,
-    );
-    const json = JSON.parse(inv.args[inv.args.indexOf('--agents') + 1]!);
-    expect(json).toEqual({ dev: { description: 'Developer.', prompt: 'Echo the specHash.', tools: ['Read', 'Edit'], model: 'opus' } });
-    expect(inv.args.indexOf('--agents')).toBeGreaterThan(inv.args.indexOf('--agent'));
-  });
-
-  it('omits --agents when no definition is given', () => {
-    expect(buildInvocation(base, hostEnv).args).not.toContain('--agents');
+  it('does not lose entries when called concurrently', async () => {
+    const file = path.join(dir, '.claude.json');
+    await Promise.all(Array.from({ length: 10 }, (_, i) => ensureTrusted(`/home/u/ws/wt${i}`, file)));
+    const json = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(Object.keys(json.projects)).toHaveLength(10);
+    expect(await fs.readdir(dir)).toEqual(['.claude.json']);
   });
 });
