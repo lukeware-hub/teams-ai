@@ -16,6 +16,8 @@ export interface DeployTarget {
   build(intent: DeploymentIntent): Promise<void>;
   apply(intent: DeploymentIntent): Promise<{ previous: string | null }>;
   verify(intent: DeploymentIntent): Promise<{ healthy: boolean; detail: string }>;
+  /** Image reference currently serving the project, or null when nothing runs. */
+  currentImage(intent: DeploymentIntent): Promise<string | null>;
   rollback(intent: DeploymentIntent, previous: string): Promise<void>;
   destroy(intent: DeploymentIntent): Promise<void>;
 }
@@ -44,7 +46,7 @@ export async function waitHealthy(
 ): Promise<{ healthy: boolean; detail: string }> {
   const deadline = Date.now() + opts.timeoutMs;
   let attempts = 0;
-  let last: string = 'no response';
+  let last = 'no response';
   do {
     attempts += 1;
     const r = await get(url, Math.min(opts.intervalMs * 5, 5_000));
@@ -59,8 +61,9 @@ export const imageRef = (intent: DeploymentIntent) => `${intent.image}:${intent.
 
 /**
  * Spec Phase 5: validate → build → apply → verify → smoke. Any failure after apply rolls back to the
- * previous version (when one exists) and re-verifies, so the environment is healthy before the
- * failure is reported and the fix goes through a PR.
+ * previous version (when one exists), re-verifies health and confirms the previous image is the one
+ * running, so the environment is known-good before the failure is reported and the fix goes through a PR.
+ * Nothing here rejects: every path ends in a DeployResult.
  */
 export async function runDeployment(
   target: DeployTarget,
@@ -82,11 +85,28 @@ export async function runDeployment(
   }
   const fail = async (stage: DeployStage, detail: string): Promise<DeployResult> => {
     if (!previous) return { ok: false, stage, detail, rolledBack: false, rollbackHealthy: null };
-    await target.rollback(intent, previous);
-    const back = await target.verify(intent);
-    return { ok: false, stage, detail, rolledBack: true, rollbackHealthy: back.healthy };
+    try {
+      await target.rollback(intent, previous);
+    } catch (err) {
+      return { ok: false, stage, detail: `${detail}; rollback failed: ${(err as Error).message}`, rolledBack: false, rollbackHealthy: false };
+    }
+    try {
+      const back = await target.verify(intent);
+      const running = await target.currentImage(intent);
+      if (running !== previous) {
+        return { ok: false, stage, detail: `${detail}; after rollback ${running ?? 'nothing'} is running instead of ${previous}`, rolledBack: true, rollbackHealthy: false };
+      }
+      return { ok: false, stage, detail, rolledBack: true, rollbackHealthy: back.healthy };
+    } catch (err) {
+      return { ok: false, stage, detail: `${detail}; rollback verify failed: ${(err as Error).message}`, rolledBack: true, rollbackHealthy: false };
+    }
   };
-  const health = await target.verify(intent);
+  let health: { healthy: boolean; detail: string };
+  try {
+    health = await target.verify(intent);
+  } catch (err) {
+    return fail('verify', (err as Error).message);
+  }
   if (!health.healthy) return fail('verify', health.detail);
   const smoke = await deps.smoke(deps.baseUrl);
   if (!smoke.ok) return fail('smoke', smoke.detail);

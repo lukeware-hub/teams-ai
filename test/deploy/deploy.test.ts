@@ -33,9 +33,8 @@ describe('waitHealthy', () => {
 });
 
 describe('DockerLocalTarget', () => {
-  it('builds, replaces the container, remembers the previous image and verifies', async () => {
-    const fake = new FakeExec()
-      .onArgs('docker', ['inspect'], () => ({ stdout: 'todo-api:spec-001-old0000\n' }));
+  it('builds, parks the old container, runs the new one bound to localhost with secrets in the environment, verifies', async () => {
+    const fake = new FakeExec().onArgs('docker', ['inspect'], () => ({ stdout: 'todo-api:spec-001-old0000\n' }));
     const t = new DockerLocalTarget({ exec: fake.exec, get: okGet, secrets });
     expect(await t.validate(intent)).toEqual([]);
     await t.build(intent);
@@ -43,16 +42,35 @@ describe('DockerLocalTarget', () => {
     expect(previous).toBe('todo-api:spec-001-old0000');
     const lines = fake.lines('docker');
     expect(lines[0]).toBe('build -t todo-api:spec-001-abc1234 /home/u/ws/repo');
-    expect(lines).toContain('rm -f teams-ai-todo-api');
+    expect(lines).toContain('rename teams-ai-todo-api teams-ai-todo-api-prev');
     const run = fake.calls.find((c) => c.args[0] === 'run')!;
-    expect(run.args).toEqual(expect.arrayContaining(['-d', '--name', 'teams-ai-todo-api', '-p', '3000:3000', '-e', 'DATABASE_URL=postgres://x', 'todo-api:spec-001-abc1234']));
+    expect(run.args).toEqual(expect.arrayContaining(['-d', '--name', 'teams-ai-todo-api', '-p', '127.0.0.1:3000:3000', '-e', 'DATABASE_URL', 'todo-api:spec-001-abc1234']));
+    expect(run.args.join(' ')).not.toContain('postgres://x');
+    expect(run.env).toEqual({ DATABASE_URL: 'postgres://x' });
+    expect(lines).toContain('rm -f teams-ai-todo-api-prev');
     expect(await t.verify(intent)).toMatchObject({ healthy: true });
+    expect(await t.currentImage(intent)).toBe('todo-api:spec-001-old0000');
+  });
+
+  it('restores the parked container when docker run fails, then rethrows', async () => {
+    const fake = new FakeExec()
+      .onArgs('docker', ['inspect'], () => ({ stdout: 'todo-api:old\n' }))
+      .onArgs('docker', ['run'], () => ({ exitCode: 125, stderr: 'port is already allocated' }));
+    const t = new DockerLocalTarget({ exec: fake.exec, get: okGet, secrets });
+    await expect(t.apply(intent)).rejects.toThrow(/port is already allocated/);
+    const lines = fake.lines('docker');
+    const runAt = fake.calls.findIndex((c) => c.args[0] === 'run');
+    const after = fake.calls.slice(runAt + 1).map((c) => c.args.join(' '));
+    expect(after).toEqual(expect.arrayContaining(['rename teams-ai-todo-api-prev teams-ai-todo-api', 'start teams-ai-todo-api']));
+    expect(after).not.toContain('rm -f teams-ai-todo-api-prev');
+    expect(lines).toContain('rename teams-ai-todo-api teams-ai-todo-api-prev');
   });
 
   it('reports no previous image when nothing was running', async () => {
     const fake = new FakeExec().onArgs('docker', ['inspect'], () => ({ exitCode: 1, stderr: 'No such object' }));
     const t = new DockerLocalTarget({ exec: fake.exec, get: okGet, secrets });
     expect((await t.apply(intent)).previous).toBeNull();
+    expect(fake.lines('docker')).not.toContain('rename teams-ai-todo-api teams-ai-todo-api-prev');
   });
 
   it('rolls back by running the previous image and validates missing secrets', async () => {
@@ -67,32 +85,65 @@ describe('DockerLocalTarget', () => {
 
 describe('KindTarget', () => {
   const manifest = 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: todo-api\nspec:\n  template:\n    spec:\n      containers:\n      - name: app\n        image: {{IMAGE}}\n';
+  const mk = (fake: FakeExec, over: Partial<ConstructorParameters<typeof KindTarget>[0]> = {}) =>
+    new KindTarget({ exec: fake.exec, secrets, cluster: 'teams-ai', readFile: async () => manifest, sleep: async () => undefined, ...over });
 
-  it('loads the image, renders and applies manifests, remembers the previous image', async () => {
-    const fake = new FakeExec().onArgs('kubectl', ['get', 'deploy'], () => ({ stdout: 'todo-api:spec-001-old0000' }));
-    const t = new KindTarget({ exec: fake.exec, secrets, cluster: 'teams-ai', readFile: async () => manifest });
+  it('loads the image, renders and applies manifests in the kind context, remembers the previous image', async () => {
+    const fake = new FakeExec().onArgs('kubectl', ['--context', 'kind-teams-ai', 'get', 'deploy'], () => ({ stdout: 'todo-api:spec-001-old0000' }));
+    const t = mk(fake);
     await t.build(intent);
     const { previous } = await t.apply(intent);
     expect(previous).toBe('todo-api:spec-001-old0000');
     expect(fake.lines('kind')).toEqual(['load docker-image todo-api:spec-001-abc1234 --name teams-ai']);
-    // The first 'apply -f -' is the Secret (from the dry-run output); the manifests come last.
-    const apply = fake.calls.filter((c) => c.bin === 'kubectl' && c.args[0] === 'apply').pop()!;
-    expect(apply.args).toEqual(['apply', '-f', '-']);
+    for (const call of fake.calls.filter((c) => c.bin === 'kubectl')) expect(call.args.slice(0, 2)).toEqual(['--context', 'kind-teams-ai']);
+    const apply = fake.calls.filter((c) => c.bin === 'kubectl' && c.args[2] === 'apply').pop()!;
+    expect(apply.args.slice(2)).toEqual(['apply', '-f', '-']);
     expect(apply.stdin).toContain('image: todo-api:spec-001-abc1234');
     expect(apply.stdin).not.toContain('{{IMAGE}}');
-    const secret = fake.calls.find((c) => c.bin === 'kubectl' && c.args[0] === 'create')!;
+    const secret = fake.calls.find((c) => c.bin === 'kubectl' && c.args[2] === 'create')!;
     expect(secret.args.join(' ')).toContain('secret generic todo-api-secrets');
     expect(secret.args.join(' ')).not.toContain('postgres://x');
     expect(secret.stdin).toContain('postgres://x');
+    expect(await t.currentImage(intent)).toBe('todo-api:spec-001-old0000');
   });
 
   it('verifies with rollout status and an in-cluster probe, and rolls back with rollout undo', async () => {
-    const fake = new FakeExec().onArgs('kubectl', ['run'], () => ({ stdout: '200' }));
-    const t = new KindTarget({ exec: fake.exec, secrets, cluster: 'teams-ai', readFile: async () => manifest });
+    const fake = new FakeExec().onArgs('kubectl', ['--context', 'kind-teams-ai', 'run'], () => ({ stdout: '200pod "probe-x" deleted' }));
+    const t = mk(fake);
     expect(await t.verify(intent)).toMatchObject({ healthy: true });
-    expect(fake.lines('kubectl')[0]).toBe('rollout status deployment/todo-api --timeout=120s');
+    expect(fake.lines('kubectl')[0]).toBe('--context kind-teams-ai rollout status deployment/todo-api --timeout=120s');
     await t.rollback(intent, 'todo-api:spec-001-old0000');
-    expect(fake.lines('kubectl')).toContain('rollout undo deployment/todo-api');
+    expect(fake.lines('kubectl')).toContain('--context kind-teams-ai rollout undo deployment/todo-api');
+  });
+
+  it('reads the status code even when kubectl appends pod deletion and warning text', async () => {
+    const fake = new FakeExec().onArgs('kubectl', ['--context', 'kind-teams-ai', 'run'], () => ({
+      stdout: '200pod "probe-1790247850989" deleted from default namespace\n',
+      stderr: "warning: couldn't attach to pod/probe-1790247850989, falling back to streaming logs",
+    }));
+    expect(await mk(fake, { secrets: {} }).verify({ ...intent, secretNames: [] })).toEqual({ healthy: true, detail: 'HTTP 200 in-cluster after 1 attempts' });
+  });
+
+  it('retries the in-cluster probe while kube-proxy has not programmed the Service yet', async () => {
+    let n = 0;
+    const fake = new FakeExec().onArgs('kubectl', ['--context', 'kind-teams-ai', 'run'], () => ({ stdout: `${++n < 3 ? '000' : '200'}pod "probe-x" deleted` }));
+    const t = mk(fake, { secrets: {} });
+    expect(await t.verify({ ...intent, secretNames: [] })).toEqual({ healthy: true, detail: 'HTTP 200 in-cluster after 3 attempts' });
+    expect(fake.calls.filter((c) => c.bin === 'kubectl' && c.args[2] === 'run')).toHaveLength(3);
+  });
+
+  it('gives up after the configured attempts and treats 503 as unhealthy', async () => {
+    const fake = new FakeExec().onArgs('kubectl', ['--context', 'kind-teams-ai', 'run'], () => ({ stdout: '503pod deleted' }));
+    const r = await mk(fake, { secrets: {}, probeAttempts: 4 }).verify({ ...intent, secretNames: [] });
+    expect(r.healthy).toBe(false);
+    expect(fake.calls.filter((c) => c.bin === 'kubectl' && c.args[2] === 'run')).toHaveLength(4);
+  });
+
+  it('validates a manifest that requires the Secret when no secret names are given', async () => {
+    const fake = new FakeExec();
+    const strict = manifest + '        envFrom:\n        - secretRef:\n            name: todo-api-secrets\n';
+    const t = new KindTarget({ exec: fake.exec, secrets: {}, cluster: 'teams-ai', readFile: async () => strict, sleep: async () => undefined });
+    expect(await t.validate({ ...intent, secretNames: [] })).toEqual(['manifest references Secret todo-api-secrets but the intent declares no secrets']);
   });
 });
 
@@ -104,6 +155,7 @@ describe('runDeployment', () => {
       build: async () => void log.push('build'),
       apply: async () => (log.push('apply'), { previous: 'img:old' }),
       verify: async () => (log.push('verify'), { healthy: true, detail: 'ok' }),
+      currentImage: async () => (log.push('image'), 'img:old'),
       rollback: async () => void log.push('rollback'),
       destroy: async () => void log.push('destroy'),
       ...over,
@@ -125,16 +177,17 @@ describe('runDeployment', () => {
     expect(log).toEqual([]);
   });
 
-  it('rolls back when the smoke suite fails after a healthy deploy and confirms the old version is healthy', async () => {
+  it('rolls back when the smoke suite fails and confirms the old image is healthy and running', async () => {
     const log: string[] = [];
-    let verifies = 0;
-    const r = await runDeployment(
-      target({ verify: async () => (log.push('verify'), { healthy: true, detail: `v${++verifies}` }) }, log),
-      intent,
-      { smoke: async () => ({ ok: false, detail: '[AC-001] failed' }), baseUrl: 'u' },
-    );
+    const r = await runDeployment(target({}, log), intent, { smoke: async () => ({ ok: false, detail: '[AC-001] failed' }), baseUrl: 'u' });
     expect(r).toEqual({ ok: false, stage: 'smoke', detail: '[AC-001] failed', rolledBack: true, rollbackHealthy: true });
-    expect(log).toEqual(['validate', 'build', 'apply', 'verify', 'rollback', 'verify']);
+    expect(log).toEqual(['validate', 'build', 'apply', 'verify', 'rollback', 'verify', 'image']);
+  });
+
+  it('reports rollbackHealthy=false when a different image is running after the rollback', async () => {
+    const r = await runDeployment(target({ currentImage: async () => 'img:other' }), intent, { smoke: async () => ({ ok: false, detail: 'x' }), baseUrl: 'u' });
+    expect(r).toMatchObject({ ok: false, stage: 'smoke', rolledBack: true, rollbackHealthy: false });
+    if (!r.ok) expect(r.detail).toContain('img:other');
   });
 
   it('reports an unhealthy deploy with no rollback when there was no previous version', async () => {
@@ -145,23 +198,13 @@ describe('runDeployment', () => {
     );
     expect(r).toEqual({ ok: false, stage: 'verify', detail: 'timeout', rolledBack: false, rollbackHealthy: null });
   });
-});
 
-describe('KindTarget probe parsing', () => {
-  it('reads the status code even when kubectl appends pod deletion and warning text', async () => {
-    const fake = new FakeExec().onArgs('kubectl', ['run'], () => ({
-      stdout: '200pod "probe-1790247850989" deleted from default namespace\n',
-      stderr: 'warning: couldn\'t attach to pod/probe-1790247850989, falling back to streaming logs',
-    }));
-    const t = new KindTarget({ exec: fake.exec, secrets: {}, cluster: 'teams-ai', readFile: async () => '' });
-    expect(await t.verify({ ...intent, secretNames: [] })).toEqual({ healthy: true, detail: 'HTTP 200 in-cluster' });
-  });
-
-  it('treats a 503 or missing code as unhealthy', async () => {
-    const fake = new FakeExec().onArgs('kubectl', ['run'], () => ({ stdout: '503pod "probe-1" deleted' }));
-    const t = new KindTarget({ exec: fake.exec, secrets: {}, cluster: 'teams-ai', readFile: async () => '' });
-    expect((await t.verify({ ...intent, secretNames: [] })).healthy).toBe(false);
-    const none = new FakeExec().onArgs('kubectl', ['run'], () => ({ stdout: 'error: timed out' }));
-    expect((await new KindTarget({ exec: none.exec, secrets: {}, cluster: 'teams-ai', readFile: async () => '' }).verify({ ...intent, secretNames: [] })).healthy).toBe(false);
+  it('turns a throwing rollback into a result instead of a rejection', async () => {
+    const r = await runDeployment(
+      target({ verify: async () => ({ healthy: false, detail: 'down' }), rollback: async () => { throw new Error('docker run failed'); } }),
+      intent,
+      { smoke: smokeOk, baseUrl: 'u' },
+    );
+    expect(r).toEqual({ ok: false, stage: 'verify', detail: 'down; rollback failed: docker run failed', rolledBack: false, rollbackHealthy: false });
   });
 });

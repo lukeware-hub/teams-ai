@@ -2,7 +2,20 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { changedFiles, commitAll, createWorktree, fetch, git, headSha, push, rebaseOnto, removeWorktree } from '../../server/git/git.js';
+import {
+  DEFAULT_COMMIT_EXCLUDES,
+  GitError,
+  changedFiles,
+  commitAll,
+  createWorktree,
+  fetch,
+  git,
+  headSha,
+  push,
+  rebaseOnto,
+  remoteMainSha,
+  removeWorktree,
+} from '../../server/git/git.js';
 
 let root: string;
 let origin: string;
@@ -37,6 +50,17 @@ describe('commitAll', () => {
     expect(await git(repo, ['log', '-1', '--format=%an <%ae> %s'])).toBe('teams-ai <teams-ai@localhost> feat: a');
     expect(await commitAll(repo, 'nothing')).toBeNull();
   });
+
+  it('never stages secrets, dependency trees or gate reports', async () => {
+    await write(repo, '.env', 'SECRET=1');
+    await write(repo, '.env.local', 'SECRET=2');
+    await write(repo, 'node_modules/x/index.js', '');
+    await write(repo, 'reports/junit.xml', '<testsuite/>');
+    await write(repo, 'src/ok.ts', 'ok');
+    const sha = await commitAll(repo, 'feat: ok', { exclude: [...DEFAULT_COMMIT_EXCLUDES, 'reports/junit.xml'] });
+    expect(sha).not.toBeNull();
+    expect((await git(repo, ['show', '--name-only', '--format=', 'HEAD'])).split('\n')).toEqual(['src/ok.ts']);
+  });
 });
 
 describe('worktrees', () => {
@@ -50,6 +74,14 @@ describe('worktrees', () => {
     await removeWorktree(repo, wt); // no error when absent
     await expect(fs.access(wt)).rejects.toThrow();
   });
+
+  it('recreates a worktree whose directory vanished (stale registration)', async () => {
+    const wt = path.join(root, 'wt-gone');
+    await createWorktree(repo, wt, 'task/gone', 'main');
+    await fs.rm(wt, { recursive: true, force: true });
+    await createWorktree(repo, wt, 'task/gone', 'main');
+    expect(await git(wt, ['branch', '--show-current'])).toBe('task/gone');
+  });
 });
 
 describe('changedFiles and rebase', () => {
@@ -62,7 +94,7 @@ describe('changedFiles and rebase', () => {
     await write(repo, 'src/b.ts', 'b');
     await commitAll(repo, 'feat: b');
     const result = await rebaseOnto(wt, 'main');
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, baseSha: await headSha(repo) });
     expect(await changedFiles(wt, 'main')).toEqual(['src/a.ts']);
     expect(await git(wt, ['log', '--format=%s', 'main..HEAD'])).toBe('feat: a');
   });
@@ -79,9 +111,20 @@ describe('changedFiles and rebase', () => {
     expect(await git(wt, ['status', '--porcelain'])).toBe('');
     expect(await fs.readFile(path.join(wt, 'README.md'), 'utf8')).toBe('from task\n');
   });
+
+  it('throws GitError (infra) when the rebase fails for a reason that is not a conflict', async () => {
+    const wt = path.join(root, 'wt');
+    await createWorktree(repo, wt, 'task/x', 'main');
+    await write(wt, 'src/a.ts', 'a');
+    await commitAll(wt, 'feat: a');
+    await write(repo, 'reports/junit.xml', 'tracked-on-main');
+    await commitAll(repo, 'chore: track report', { exclude: [] });
+    await write(wt, 'reports/junit.xml', 'untracked-in-worktree'); // would be overwritten by the rebase
+    await expect(rebaseOnto(wt, 'main')).rejects.toThrow(GitError);
+  });
 });
 
-describe('push and fetch', () => {
+describe('push, fetch and remote main', () => {
   it('pushes a branch to origin with force-with-lease and fetch sees it', async () => {
     const wt = path.join(root, 'wt');
     await createWorktree(repo, wt, 'task/y', 'main');
@@ -91,5 +134,14 @@ describe('push and fetch', () => {
     expect(await git(origin, ['rev-parse', 'task/y'])).toBe(sha);
     await fetch(repo);
     expect(await git(repo, ['rev-parse', 'origin/task/y'])).toBe(sha);
+  });
+
+  it('reads the remote main sha', async () => {
+    expect(await remoteMainSha(repo)).toBe(await headSha(repo));
+    await write(repo, 'z.txt', 'z');
+    const local = await commitAll(repo, 'feat: z');
+    expect(await remoteMainSha(repo)).not.toBe(local);
+    await push(repo, 'main');
+    expect(await remoteMainSha(repo)).toBe(local);
   });
 });

@@ -20,8 +20,18 @@ const gates = [
 ];
 const g = await runGates(
   gates,
-  { worktree: work, image: 'node:22-bookworm', junitPath: 'reports/junit.xml', cpus: 2, memory: '1g', timeoutMs: 600_000, secrets: {} },
-  { exec: execCommand, readFile: async (p) => fs.readFile(p, 'utf8').catch(() => null) },
+  {
+    worktree: work,
+    image: 'node:22-bookworm',
+    junitPath: 'reports/junit.xml',
+    cpus: 2,
+    memory: '1g',
+    timeoutMs: 600_000,
+    secrets: {},
+    containerName: `gate-it-${Date.now()}`,
+    user: process.getuid && process.getgid ? `${process.getuid()}:${process.getgid()}` : undefined,
+  },
+  { exec: execCommand, readFile: async (p) => fs.readFile(p, 'utf8').catch(() => null), removeFile: async (p) => fs.rm(p, { force: true }) },
 );
 for (const r of g.results) console.log(`  ${r.name}: passed=${r.passed} exit=${r.exitCode} failure=${r.failure} junit=${r.junit?.length ?? 'none'}`);
 

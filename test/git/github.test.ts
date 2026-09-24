@@ -1,36 +1,57 @@
 import { describe, expect, it } from 'vitest';
-import { GitHubError, ensurePr, ensureRepo, mergePr, prState } from '../../server/git/github.js';
+import { GitHubError, ensurePr, ensureRepo, findMergedPr, mergePr, prState } from '../../server/git/github.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
 
 const cwd = '/home/u/ws/repo';
 
 describe('ensureRepo', () => {
-  it('returns the existing repository without creating', async () => {
-    const fake = new FakeExec().onArgs('gh', ['repo', 'view'], () => ({ stdout: '{"nameWithOwner":"acme/todo-api","url":"https://github.com/acme/todo-api"}' }));
+  it('returns the existing repository and makes sure origin and main exist on it', async () => {
+    const fake = new FakeExec()
+      .onArgs('gh', ['repo', 'view'], () => ({ stdout: '{"nameWithOwner":"acme/todo-api","url":"https://github.com/acme/todo-api"}' }))
+      .onArgs('git', ['remote', 'get-url'], () => ({ stdout: 'https://github.com/acme/todo-api.git' }))
+      .onArgs('git', ['ls-remote'], () => ({ stdout: 'abc\trefs/heads/main' }));
     const r = await ensureRepo({ owner: 'acme', name: 'todo-api', private: true, cwd }, fake.exec);
     expect(r).toEqual({ fullName: 'acme/todo-api', url: 'https://github.com/acme/todo-api', created: false });
     expect(fake.lines('gh').some((l) => l.startsWith('repo create'))).toBe(false);
+    expect(fake.lines('git').some((l) => l.startsWith('push'))).toBe(false);
   });
 
-  it('creates a private repository when missing', async () => {
+  it('reconciles a half-created repository: adds origin and pushes main when missing', async () => {
     const fake = new FakeExec()
-      .onArgs('gh', ['repo', 'view'], () => ({ exitCode: 1, stderr: 'GraphQL: Could not resolve to a Repository' }))
+      .onArgs('gh', ['repo', 'view'], () => ({ stdout: '{"nameWithOwner":"acme/todo-api","url":"https://github.com/acme/todo-api"}' }))
+      .onArgs('git', ['remote', 'get-url'], () => ({ exitCode: 2, stderr: 'error: No such remote' }))
+      .onArgs('git', ['ls-remote'], () => ({ stdout: '' }));
+    await ensureRepo({ owner: 'acme', name: 'todo-api', private: true, cwd }, fake.exec);
+    expect(fake.lines('git')).toEqual(expect.arrayContaining(['remote add origin https://github.com/acme/todo-api.git', 'push -u origin main']));
+  });
+
+  it('creates a private repository only when GitHub says it does not exist', async () => {
+    const fake = new FakeExec()
+      .onArgs('gh', ['repo', 'view'], () => ({ exitCode: 1, stderr: 'GraphQL: Could not resolve to a Repository with the name' }))
       .onArgs('gh', ['repo', 'create'], () => ({ stdout: 'https://github.com/acme/todo-api\n' }));
     const r = await ensureRepo({ owner: 'acme', name: 'todo-api', private: true, cwd }, fake.exec);
     expect(r).toEqual({ fullName: 'acme/todo-api', url: 'https://github.com/acme/todo-api', created: true });
     expect(fake.lines('gh')[1]).toBe('repo create acme/todo-api --private --source . --remote origin --push');
   });
 
+  it('does not create when repo view fails for another reason', async () => {
+    const fake = new FakeExec().onArgs('gh', ['repo', 'view'], () => ({ exitCode: 1, stderr: 'HTTP 401: Bad credentials' }));
+    await expect(ensureRepo({ owner: 'acme', name: 'todo-api', private: true, cwd }, fake.exec)).rejects.toThrow(GitHubError);
+    expect(fake.lines('gh').some((l) => l.startsWith('repo create'))).toBe(false);
+  });
+
   it('uses the authenticated user when no owner is given', async () => {
     const fake = new FakeExec()
       .onArgs('gh', ['api', 'user'], () => ({ stdout: '{"login":"me"}' }))
-      .onArgs('gh', ['repo', 'view'], () => ({ stdout: '{"nameWithOwner":"me/todo-api","url":"u"}' }));
+      .onArgs('gh', ['repo', 'view'], () => ({ stdout: '{"nameWithOwner":"me/todo-api","url":"u"}' }))
+      .onArgs('git', ['remote', 'get-url'], () => ({ stdout: 'u.git' }))
+      .onArgs('git', ['ls-remote'], () => ({ stdout: 'abc\trefs/heads/main' }));
     const r = await ensureRepo({ name: 'todo-api', private: true, cwd }, fake.exec);
     expect(r.fullName).toBe('me/todo-api');
   });
 });
 
-describe('ensurePr', () => {
+describe('ensurePr and findMergedPr', () => {
   const input = { cwd, head: 'task/spec-001-T1-a', base: 'main', title: 'T1', body: 'body' };
 
   it('reuses an open PR for the head branch', async () => {
@@ -50,9 +71,22 @@ describe('ensurePr', () => {
     expect(create.stdin).toBe('body');
   });
 
+  it('rejects an unparseable PR url instead of returning NaN', async () => {
+    const fake = new FakeExec().onArgs('gh', ['pr', 'list'], () => ({ stdout: '[]' })).onArgs('gh', ['pr', 'create'], () => ({ stdout: 'Warning: something\n' }));
+    await expect(ensurePr(input, fake.exec)).rejects.toThrow(/PR number/);
+  });
+
   it('throws when gh fails', async () => {
     const fake = new FakeExec().onArgs('gh', ['pr', 'list'], () => ({ exitCode: 1, stderr: 'not logged in' }));
     await expect(ensurePr(input, fake.exec)).rejects.toThrow(GitHubError);
+  });
+
+  it('finds a merged PR for the head branch', async () => {
+    const fake = new FakeExec().onArgs('gh', ['pr', 'list'], () => ({ stdout: '[{"number":44,"state":"MERGED"},{"number":45,"state":"CLOSED"}]' }));
+    expect(await findMergedPr({ cwd, head: input.head, base: 'main' }, fake.exec)).toBe(44);
+    expect(fake.lines('gh')[0]).toContain('--state all');
+    const none = new FakeExec().onArgs('gh', ['pr', 'list'], () => ({ stdout: '[{"number":45,"state":"CLOSED"}]' }));
+    expect(await findMergedPr({ cwd, head: input.head, base: 'main' }, none.exec)).toBeNull();
   });
 });
 

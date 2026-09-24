@@ -14,8 +14,19 @@ export const GIT_IDENTITY: Record<string, string> = {
   GIT_CONFIG_PARAMETERS: "'core.autocrlf=false'",
 };
 
+/**
+ * Repository content that must never reach a commit: secrets, dependency trees and gate artifacts.
+ * The caller adds the plan's junitPath. Pathspecs use the exclude magic so `add -A` stays otherwise complete.
+ */
+export const DEFAULT_COMMIT_EXCLUDES: readonly string[] = ['.env', '.env.*', '**/.env', '**/.env.*', 'node_modules', '**/node_modules', 'reports/junit.xml'];
+
+/** Hardening applied to every git command: hooks and fsmonitor from a (possibly agent-written) config never execute. */
+const SAFE_CONFIG = ['-c', 'core.fsmonitor=', '-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false'];
+
+const TIMEOUT = 120_000;
+
 /** Canonical form for comparing paths git prints (long, forward slashes) with paths we were given. */
-async function canonical(p: string): Promise<string> {
+function canonical(p: string): string {
   let real = p;
   try {
     real = realpathSync.native(p); // expands Windows 8.3 short names too
@@ -26,10 +37,8 @@ async function canonical(p: string): Promise<string> {
   return process.platform === 'win32' ? s.toLowerCase() : s;
 }
 
-const TIMEOUT = 120_000;
-
 async function run(cwd: string, args: readonly string[], exec: Exec) {
-  return exec({ bin: 'git', args, cwd, env: GIT_IDENTITY, timeoutMs: TIMEOUT });
+  return exec({ bin: 'git', args: [...SAFE_CONFIG, ...args], cwd, env: GIT_IDENTITY, timeoutMs: TIMEOUT });
 }
 
 export async function git(cwd: string, args: readonly string[], exec: Exec = execCommand): Promise<string> {
@@ -42,9 +51,11 @@ export const headSha = (cwd: string, exec: Exec = execCommand) => git(cwd, ['rev
 export const currentBranch = (cwd: string, exec: Exec = execCommand) => git(cwd, ['branch', '--show-current'], exec);
 
 export async function createWorktree(repo: string, dir: string, branch: string, base: string, exec: Exec = execCommand): Promise<void> {
+  // Drop registrations whose directory vanished (crash, manual cleanup) before deciding anything.
+  await git(repo, ['worktree', 'prune'], exec);
   const list = await git(repo, ['worktree', 'list', '--porcelain'], exec);
-  const wanted = await canonical(dir);
-  const listed = await Promise.all(list.split('\n').filter((l) => l.startsWith('worktree ')).map((l) => canonical(l.slice(9))));
+  const wanted = canonical(dir);
+  const listed = list.split('\n').filter((l) => l.startsWith('worktree ')).map((l) => canonical(l.slice(9)));
   if (listed.includes(wanted)) {
     if ((await currentBranch(dir, exec)) === branch) return;
     throw new GitError(`worktree ${dir} exists on another branch`);
@@ -60,8 +71,14 @@ export async function removeWorktree(repo: string, dir: string, exec: Exec = exe
   await git(repo, ['worktree', 'prune'], exec);
 }
 
-export async function commitAll(dir: string, message: string, exec: Exec = execCommand): Promise<string | null> {
-  await git(dir, ['add', '-A'], exec);
+export async function commitAll(
+  dir: string,
+  message: string,
+  opts: { exclude?: readonly string[] } = {},
+  exec: Exec = execCommand,
+): Promise<string | null> {
+  const exclude = opts.exclude ?? DEFAULT_COMMIT_EXCLUDES;
+  await git(dir, ['add', '-A', '--', '.', ...exclude.map((p) => `:(exclude,glob)${p}`)], exec);
   const staged = await run(dir, ['diff', '--cached', '--quiet'], exec);
   if (staged.exitCode === 0) return null;
   await git(dir, ['commit', '-q', '-m', message], exec);
@@ -73,12 +90,27 @@ export async function changedFiles(dir: string, base: string, exec: Exec = execC
   return out === '' ? [] : out.split('\n');
 }
 
-export async function rebaseOnto(dir: string, base: string, exec: Exec = execCommand): Promise<{ ok: true } | { ok: false; conflicts: string[] }> {
+/**
+ * Rebases the worktree onto `base`. Conflicts abort the rebase and are returned as `ok: false`
+ * with the files; any other failure (untracked files in the way, a rebase already in progress,
+ * a failed abort) is infrastructure and throws GitError, so the Dev is not charged an attempt.
+ */
+export async function rebaseOnto(
+  dir: string,
+  base: string,
+  exec: Exec = execCommand,
+): Promise<{ ok: true; baseSha: string } | { ok: false; conflicts: string[] }> {
+  const baseSha = await git(dir, ['rev-parse', base], exec);
   const r = await run(dir, ['rebase', base], exec);
-  if (r.exitCode === 0) return { ok: true };
+  if (r.exitCode === 0) return { ok: true, baseSha };
   const unmerged = await git(dir, ['diff', '--name-only', '--diff-filter=U'], exec).catch(() => '');
-  await run(dir, ['rebase', '--abort'], exec);
-  return { ok: false, conflicts: unmerged === '' ? [] : unmerged.split('\n') };
+  const conflicts = unmerged === '' ? [] : unmerged.split('\n');
+  const abort = await run(dir, ['rebase', '--abort'], exec);
+  if (conflicts.length === 0) {
+    throw new GitError(`git rebase ${base} failed without conflicts: ${r.stderr.trim() || r.stdout.trim()}`);
+  }
+  if (abort.exitCode !== 0) throw new GitError(`git rebase --abort failed: ${abort.stderr.trim()}`);
+  return { ok: false, conflicts };
 }
 
 export async function push(dir: string, branch: string, exec: Exec = execCommand): Promise<void> {
@@ -87,4 +119,12 @@ export async function push(dir: string, branch: string, exec: Exec = execCommand
 
 export async function fetch(repo: string, exec: Exec = execCommand): Promise<void> {
   await git(repo, ['fetch', '-q', '--prune', 'origin'], exec);
+}
+
+/** The sha of `main` on the remote right now — compared with the rebase base before merging. */
+export async function remoteMainSha(repo: string, exec: Exec = execCommand, branch = 'main'): Promise<string> {
+  const out = await git(repo, ['ls-remote', 'origin', `refs/heads/${branch}`], exec);
+  const sha = out.split(/\s+/)[0];
+  if (!sha) throw new GitError(`origin has no branch ${branch}`);
+  return sha;
 }

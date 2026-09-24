@@ -28,10 +28,21 @@ describe('execCommand', () => {
     expect(Date.now() - started).toBeLessThan(3_000);
   });
 
-  it('truncates output beyond the limit and flags it', async () => {
-    const r = await node('process.stdout.write("x".repeat(5000))', { outputLimit: 1000 });
+  it('keeps the tail of the output when truncating, so the decisive last lines survive', async () => {
+    const r = await node('process.stdout.write("x".repeat(5000) + "no space left on device")', { outputLimit: 1000 });
     expect(r.stdout.length).toBe(1000);
+    expect(r.stdout.endsWith('no space left on device')).toBe(true);
     expect(r.truncated).toBe(true);
+  });
+
+  it('kills the whole process group on timeout even when a grandchild ignores SIGTERM', async () => {
+    const started = Date.now();
+    const r = await node(
+      'const {spawn}=require("child_process"); spawn(process.execPath,["-e","process.on(\\"SIGTERM\\",()=>{}); setInterval(()=>{},1000)"],{stdio:"inherit"}); setInterval(()=>{},1000)',
+      { timeoutMs: 300 },
+    );
+    expect(r.timedOut).toBe(true);
+    expect(Date.now() - started).toBeLessThan(5_000);
   });
 
   it('throws CommandError when the binary does not exist', async () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Gate } from '../../server/contracts/plan.js';
 import { Gate as GateSchema } from '../../server/contracts/plan.js';
-import { classifyGate, dockerArgs, runGate, runGates, type GateContext } from '../../server/exec/gate-runner.js';
+import { classifyGate, dockerArgs, runGate, runGates, type GateContext, type GateDeps } from '../../server/exec/gate-runner.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
 
 const ctx: GateContext = {
@@ -12,29 +12,64 @@ const ctx: GateContext = {
   memory: '2g',
   timeoutMs: 600_000,
   secrets: { NPM_TOKEN: 'npm_x', DATABASE_URL: 'postgres://x' },
+  containerName: 'gate-T1-create-a1',
+  user: '1000:1000',
 };
 const gate = (over: Partial<Gate> & { name: string; command: string }): Gate => GateSchema.parse({ blocking: true, ...over });
 const JUNIT = '<testsuite name="s"><testcase classname="c" name="[AC-001] ok"/><testcase classname="c" name="[AC-002] bad"><failure/></testcase></testsuite>';
-const files = (map: Record<string, string>) => async (p: string) => map[p.replace(/\\/g, '/')] ?? null;
+
+function files(map: Record<string, string>) {
+  const store = new Map(Object.entries(map));
+  const removed: string[] = [];
+  const deps: Pick<GateDeps, 'readFile' | 'removeFile'> = {
+    readFile: async (p) => store.get(p.replace(/\\/g, '/')) ?? null,
+    removeFile: async (p) => {
+      removed.push(p.replace(/\\/g, '/'));
+      store.delete(p.replace(/\\/g, '/'));
+    },
+  };
+  return { deps, store, removed };
+}
 
 describe('dockerArgs', () => {
-  it('runs the command offline in a disposable container with limits and the worktree mounted', () => {
-    const args = dockerArgs(gate({ name: 'unit-test', command: 'npm test' }), ctx);
-    expect(args.slice(0, 2)).toEqual(['run', '--rm']);
-    expect(args).toEqual(expect.arrayContaining(['--network', 'none', '--cpus', '2', '--memory', '2g', '-v', `${ctx.worktree}:/work`, '-w', '/work', 'node:22-bookworm']));
+  it('runs the command offline in a named, init-managed, non-root container with limits and read-only .git', () => {
+    const { args, env } = dockerArgs(gate({ name: 'unit-test', command: 'npm test' }), ctx);
+    expect(args.slice(0, 3)).toEqual(['run', '--rm', '--init']);
+    expect(args).toEqual(
+      expect.arrayContaining([
+        '--name', 'gate-T1-create-a1-unit-test',
+        '--network', 'none',
+        '--cpus', '2',
+        '--memory', '2g',
+        '--user', '1000:1000',
+        '-e', 'HOME=/tmp',
+        '--mount', `type=bind,source=${ctx.worktree},target=/work`,
+        '--mount', `type=bind,source=${ctx.worktree}/.git,target=/work/.git,readonly`,
+        '-w', '/work',
+        'node:22-bookworm',
+      ]),
+    );
     expect(args.slice(-3)).toEqual(['sh', '-lc', 'npm test']);
     expect(args.join(' ')).not.toContain('npm_x');
+    expect(env).toEqual({});
   });
 
-  it('gives egress gates a bridge network and injects only the declared secrets', () => {
-    const args = dockerArgs(gate({ name: 'install', command: 'npm ci', network: 'egress', secrets: ['NPM_TOKEN'] }), ctx);
+  it('gives egress gates a bridge network and passes declared secrets by name, values through the environment', () => {
+    const { args, env } = dockerArgs(gate({ name: 'install', command: 'npm ci', network: 'egress', secrets: ['NPM_TOKEN'] }), ctx);
     expect(args[args.indexOf('--network') + 1]).toBe('bridge');
-    expect(args).toEqual(expect.arrayContaining(['-e', 'NPM_TOKEN=npm_x']));
-    expect(args.join(' ')).not.toContain('DATABASE_URL');
+    expect(args).toEqual(expect.arrayContaining(['-e', 'NPM_TOKEN']));
+    expect(args.join(' ')).not.toContain('npm_x');
+    expect(env).toEqual({ NPM_TOKEN: 'npm_x' });
+    expect(env).not.toHaveProperty('DATABASE_URL');
   });
 
   it('fails loudly when a declared secret is missing', () => {
     expect(() => dockerArgs(gate({ name: 'x', command: 'y', secrets: ['MISSING'] }), ctx)).toThrow(/MISSING/);
+  });
+
+  it('omits --user when no user is configured', () => {
+    const { args } = dockerArgs(gate({ name: 'x', command: 'y' }), { ...ctx, user: undefined });
+    expect(args).not.toContain('--user');
   });
 });
 
@@ -46,44 +81,72 @@ describe('classifyGate', () => {
     expect(classifyGate({ exitCode: null, timedOut: true, stderrTail: '' })).toBe('infra');
   });
 
-  it('treats an ordinary non-zero exit as code', () => {
+  it('does not mistake a test\'s own ENOENT or heap message for infra', () => {
+    expect(classifyGate({ exitCode: 1, timedOut: false, stderrTail: "Error: ENOENT: no such file or directory, open 'fixtures/x.json'" })).toBe('code');
+    expect(classifyGate({ exitCode: 1, timedOut: false, stderrTail: 'FATAL ERROR: JavaScript heap out of memory' })).toBe('code');
     expect(classifyGate({ exitCode: 1, timedOut: false, stderrTail: '3 tests failed' })).toBe('code');
   });
 });
 
 describe('runGate', () => {
-  it('passes on exit 0 and picks up the JUnit report', async () => {
-    const fake = new FakeExec().onArgs('docker', ['run'], () => ({ stdout: 'ok' }));
-    const r = await runGate(gate({ name: 'unit-test', command: 'npm test' }), ctx, { exec: fake.exec, readFile: files({ '/home/u/ws/worktrees/T1-create/reports/junit.xml': JUNIT }) });
+  it('passes on exit 0, removes a stale report first and picks up the fresh JUnit report', async () => {
+    const report = '/home/u/ws/worktrees/T1-create/reports/junit.xml';
+    const f = files({ [report]: '<testsuite name="stale"><testcase classname="c" name="[AC-009] stale"/></testsuite>' });
+    const fake = new FakeExec().onArgs('docker', ['run'], () => {
+      f.store.set(report, JUNIT); // the gate writes a fresh report
+      return { stdout: 'ok' };
+    });
+    const r = await runGate(gate({ name: 'unit-test', command: 'npm test' }), ctx, { exec: fake.exec, ...f.deps });
+    expect(f.removed).toEqual([report]);
     expect(r).toMatchObject({ name: 'unit-test', passed: true, exitCode: 0, failure: null });
     expect(r.junit).toHaveLength(2);
     expect(r.junit![1]!.status).toBe('failed');
+    const run = fake.calls.find((c) => c.args[0] === 'run')!;
+    expect(run.env).toEqual({});
   });
 
-  it('reports a code failure with output tails when the command exits non-zero', async () => {
-    const fake = new FakeExec().onArgs('docker', ['run'], () => ({ exitCode: 1, stdout: 'x'.repeat(10_000), stderr: 'FAIL src/a.test.ts' }));
-    const r = await runGate(gate({ name: 'unit-test', command: 'npm test' }), ctx, { exec: fake.exec, readFile: files({}) });
+  it('reports a code failure with the tail of the output when the command exits non-zero', async () => {
+    const f = files({});
+    const fake = new FakeExec().onArgs('docker', ['run'], () => ({ exitCode: 1, stdout: 'x'.repeat(10_000) + 'THE END', stderr: 'FAIL src/a.test.ts' }));
+    const r = await runGate(gate({ name: 'unit-test', command: 'npm test' }), ctx, { exec: fake.exec, ...f.deps });
     expect(r.passed).toBe(false);
     expect(r.failure).toBe('code');
     expect(r.stdoutTail.length).toBe(4000);
+    expect(r.stdoutTail.endsWith('THE END')).toBe(true);
     expect(r.junit).toBeNull();
   });
 
   it('reports infra when the container is OOM-killed', async () => {
+    const f = files({});
     const fake = new FakeExec().onArgs('docker', ['run'], () => ({ exitCode: 137 }));
-    const r = await runGate(gate({ name: 'build', command: 'npm run build' }), ctx, { exec: fake.exec, readFile: files({}) });
+    const r = await runGate(gate({ name: 'build', command: 'npm run build' }), ctx, { exec: fake.exec, ...f.deps });
     expect(r.failure).toBe('infra');
   });
 
+  it('force-removes the named container after a timeout so nothing keeps running', async () => {
+    const f = files({});
+    const fake = new FakeExec().onArgs('docker', ['run'], () => ({ exitCode: null, timedOut: true }));
+    const r = await runGate(gate({ name: 'unit-test', command: 'npm test' }), ctx, { exec: fake.exec, ...f.deps });
+    expect(r.failure).toBe('infra');
+    expect(fake.lines('docker')).toContain('rm -f gate-T1-create-a1-unit-test');
+  });
+
   it('reports infra when docker itself cannot be spawned', async () => {
+    const f = files({});
     const r = await runGate(gate({ name: 'build', command: 'npm run build' }), ctx, {
       exec: async () => {
         throw new Error('cannot run docker: spawn docker ENOENT');
       },
-      readFile: files({}),
+      ...f.deps,
     });
     expect(r).toMatchObject({ passed: false, failure: 'infra' });
     expect(r.stderrTail).toMatch(/ENOENT/);
+  });
+
+  it('rejects a junitPath that escapes the worktree', async () => {
+    const f = files({});
+    const fake = new FakeExec();
+    await expect(runGate(gate({ name: 'unit-test', command: 'npm test' }), { ...ctx, junitPath: '../outside.xml' }, { exec: fake.exec, ...f.deps })).rejects.toThrow(/junitPath/);
   });
 });
 
@@ -96,15 +159,17 @@ describe('runGates', () => {
   ];
 
   it('stops at the first blocking failure and skips the rest', async () => {
+    const f = files({});
     const fake = new FakeExec().on((s) => s.args.includes('npm test'), () => ({ exitCode: 1, stderr: 'boom' }));
-    const out = await runGates(gates, ctx, { exec: fake.exec, readFile: files({}) });
+    const out = await runGates(gates, ctx, { exec: fake.exec, ...f.deps });
     expect(out.results.map((r) => r.name)).toEqual(['lint', 'unit-test']);
     expect(out.blockingFailure?.name).toBe('unit-test');
   });
 
   it('runs every gate when only a non-blocking one fails', async () => {
+    const f = files({});
     const fake = new FakeExec().on((s) => s.args.includes('osv-scanner .'), () => ({ exitCode: 2, stdout: 'vuln' }));
-    const out = await runGates(gates, ctx, { exec: fake.exec, readFile: files({}) });
+    const out = await runGates(gates, ctx, { exec: fake.exec, ...f.deps });
     expect(out.results.map((r) => r.passed)).toEqual([true, true, false, true]);
     expect(out.blockingFailure).toBeNull();
   });
