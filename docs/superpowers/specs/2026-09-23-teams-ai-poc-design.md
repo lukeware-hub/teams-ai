@@ -447,8 +447,13 @@ Rule: **deterministic rules first, System 1 second, System 2 on low confidence.*
 | 7 | Validation report routing: `bug-existing-ac` / `new-requirement` / `environment` / `unclear` | Choice | After human validation report | Sets the continuation mode of the spec; `unclear` → PO asks the human | PO |
 | 8 | CLI error classification: `usage-limit` / `auth-expired` / `network` / `invalid-output` / `other` | Choice | Runner, when rules do not match | Feeds the quota breaker and pause states | — (falls back to `other` → generic retry) |
 | 9 | Scope drift: one Noul per out-of-scope item, one for changes not required by referenced ACs | Noul | Phase 3, before review | High values force the `deep` review profile (9A.3) | Test |
+| 10 | Model tier per task: `small` / `medium` / `large` (mapped to the role's configured models, e.g. haiku / sonnet / opus, or the OmniRoute pin) | Choice | Phase 3, before each Dev/Test step, from the task, its ACs and the declared file set | Selects the model for attempt 1; attempt 2 onward always moves one tier up, so a misclassified task self-corrects through the attempt budget | — (default: the role's configured model) |
+| 11 | Reasoning effort per task: `low` / `medium` / `high` / `max` | Score | Same call as decision 10 | Sets the Claude Code effort level for the step; attempt 2 onward raises it one level | — (default: the CLI default) |
+| 12 | Rank candidate plans or approaches when SM enumerates more than one (one Score per candidate on AC coverage and risk) | Score | Phase 2 (planning) and replan | Picks the highest-scoring candidate; SM still authors every candidate, System 1 never invents a path | SM |
 
-Each decision has the config entry described in 10A.0. Delivery order: **phase 1** = `decide` module, `jev-openrouter`, `claude-escalate`, local stub and decision 1 (gate failure triage); **phase 2** = real `local-logprobs` backend and decision evals; **phase 3** = decisions 2–9.
+Decisions 2–4 and 7 are the only System 1 role in answering questions: they filter and route (blocking or not, duplicate, which AC, resolved by the human's answer). Writing the answer itself is always PO/SM (System 2).
+
+Each decision has the config entry described in 10A.0. Delivery order: **phase 1** = `decide` module, `jev-openrouter`, `claude-escalate`, local stub and decision 1 (gate failure triage); **phase 2** = real `local-logprobs` backend and decision evals; **phase 3** = decisions 2–12.
 
 ### 10A.6 Decision evals
 
