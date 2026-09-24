@@ -96,6 +96,8 @@ export const Config = z.object({
     })
     .prefault({}),
   github: z.object({ owner: z.string().min(1).optional() }).prefault({}),
+  /** Directories holding docs/project.json, registered from the UI (spec run API §2). */
+  projects: z.array(z.object({ dir: z.string().min(1) })).default([]),
   omniroute: z
     .object({
       baseUrl: z.string().url().default('http://localhost:20128'),

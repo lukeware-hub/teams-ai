@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { GITHUB_OWNER, readUserConfig, setGithubOwner, userConfigFile } from '../../server/onboarding/config-store.js';
+import { GITHUB_OWNER, addProject, readUserConfig, setGithubOwner, userConfigFile } from '../../server/onboarding/config-store.js';
 
 let home = '';
 afterEach(async () => {
@@ -30,5 +30,14 @@ describe('config store', () => {
       await expect(setGithubOwner(bad, home)).rejects.toThrow(RangeError);
     }
     expect(GITHUB_OWNER.test('lukeware70X7')).toBe(true);
+  });
+
+  it('addProject appends once by dir and validates the whole config', async () => {
+    home = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-home-'));
+    await addProject('/home/u/proj', home);
+    const twice = await addProject('/home/u/proj', home);
+    expect(twice.projects).toEqual([{ dir: '/home/u/proj' }]);
+    const raw = JSON.parse(await fs.readFile(userConfigFile(home), 'utf8'));
+    expect(raw.projects).toEqual([{ dir: '/home/u/proj' }]);
   });
 });

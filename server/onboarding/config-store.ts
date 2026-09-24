@@ -19,11 +19,7 @@ export async function readUserConfig(home?: string): Promise<{ raw: Record<strin
   return { raw, cfg: loadConfig(raw) };
 }
 
-export async function setGithubOwner(owner: string, home?: string): Promise<Config> {
-  if (!GITHUB_OWNER.test(owner)) throw new RangeError(`not a GitHub login: ${JSON.stringify(owner)}`);
-  const { raw } = await readUserConfig(home);
-  const github = typeof raw.github === 'object' && raw.github !== null ? (raw.github as Record<string, unknown>) : {};
-  const next = { ...raw, github: { ...github, owner } };
+async function writeUserConfig(next: Record<string, unknown>, home?: string): Promise<Config> {
   const cfg = loadConfig(next); // validate before writing
   const file = userConfigFile(home);
   await fs.mkdir(path.dirname(file), { recursive: true });
@@ -31,4 +27,17 @@ export async function setGithubOwner(owner: string, home?: string): Promise<Conf
   await fs.writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`);
   await fs.rename(tmp, file);
   return cfg;
+}
+
+export async function setGithubOwner(owner: string, home?: string): Promise<Config> {
+  if (!GITHUB_OWNER.test(owner)) throw new RangeError(`not a GitHub login: ${JSON.stringify(owner)}`);
+  const { raw } = await readUserConfig(home);
+  const github = typeof raw.github === 'object' && raw.github !== null ? (raw.github as Record<string, unknown>) : {};
+  return writeUserConfig({ ...raw, github: { ...github, owner } }, home);
+}
+
+export async function addProject(dir: string, home?: string): Promise<Config> {
+  const { raw, cfg } = await readUserConfig(home);
+  if (cfg.projects.some((p) => p.dir === dir)) return cfg;
+  return writeUserConfig({ ...raw, projects: [...cfg.projects, { dir }] }, home);
 }
