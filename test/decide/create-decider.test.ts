@@ -1,0 +1,95 @@
+import { describe, expect, it } from 'vitest';
+import { Accounting } from '../../server/budget/accounting.js';
+import { loadConfig } from '../../server/config/config.js';
+import { createDecider } from '../../server/decide/create-decider.js';
+import type { DecisionRecord, Questions } from '../../server/decide/types.js';
+import type { ResultSummary } from '../../server/runner/stream-events.js';
+
+const HASH = 'sha256:' + 'b'.repeat(64);
+const questions: Questions = { kind: { type: 'choice', instructions: 'why?', options: { code: 'c', infra: 'i' } } };
+const summary: ResultSummary = {
+  found: true,
+  isError: false,
+  subtype: 'success',
+  numTurns: 1,
+  durationMs: 800,
+  costUsd: 0.01,
+  usage: { inputTokens: 500, outputTokens: 40, cacheReadTokens: 0, cacheWriteTokens: 0 },
+  sessionId: null,
+  resultText: null,
+  structuredOutput: null,
+  structuredSource: null,
+  terminalReason: null,
+  apiErrorStatus: null,
+  rateLimit: null,
+  compactions: 0,
+};
+const jevBody = {
+  model: 'typesafe/jev-1.13-20260917',
+  answers: { kind: { type: 'choice', choice: 'infra', probabilities: { code: 0.1, infra: 0.9 }, confidence: 0.88 } },
+  usage: { input_tokens: 300, output_tokens: 20, cost: 0.0000126 },
+};
+const okFetch = (async () => new Response(JSON.stringify(jevBody), { status: 200 })) as typeof fetch;
+const KEY = 'sk-or-v1-' + 'cd'.repeat(32);
+
+describe('createDecider', () => {
+  it('answers from Jev with the key from secrets and books the cost under system1/openrouter', async () => {
+    const accounting = new Accounting();
+    const records: DecisionRecord[] = [];
+    const d = createDecider({
+      cfg: loadConfig({ decisions: { enabled: true } }),
+      secrets: { OPENROUTER_API_KEY: KEY },
+      accounting,
+      runEscalation: async () => {
+        throw new Error('must not escalate');
+      },
+      fetch: okFetch,
+      sleep: async () => {},
+      onDecision: (r) => records.push(r),
+    });
+    const out = await d.decide('gate-triage', 'S', questions, { confidential: false });
+    expect(out).toMatchObject({ answered: true, backend: 'jev' });
+    expect(accounting.records()).toHaveLength(1);
+    expect(accounting.records()[0]).toMatchObject({
+      role: 'system1',
+      provider: 'openrouter',
+      stepKind: 'decide',
+      model: 'typesafe/jev-1.13-20260917',
+      costUsd: 0.0000126,
+    });
+    expect(accounting.total({ provider: 'openrouter' })).toMatchObject({ inputTokens: 300, outputTokens: 20, steps: 1 });
+    expect(records).toHaveLength(1);
+  });
+
+  it('without a key the chain skips jev as missing and escalates to Claude, booked under claude', async () => {
+    const accounting = new Accounting();
+    const d = createDecider({
+      cfg: loadConfig({ decisions: { enabled: true } }),
+      secrets: {},
+      accounting,
+      runEscalation: async (req) => {
+        expect(req.role).toBe('test');
+        return { ok: true, value: { specHash: HASH, answers: { kind: { type: 'choice', value: 'code' } } }, summary };
+      },
+      fetch: okFetch,
+    });
+    const out = await d.decide('gate-triage', 'S', questions, { confidential: false });
+    expect(out).toMatchObject({ answered: true, backend: 'claude', escalated: true });
+    expect(accounting.records()[0]).toMatchObject({ role: 'system1', provider: 'claude', costUsd: 0.01 });
+  });
+
+  it('books nothing when the layer is disabled', async () => {
+    const accounting = new Accounting();
+    const d = createDecider({
+      cfg: loadConfig({}),
+      secrets: { OPENROUTER_API_KEY: KEY },
+      accounting,
+      runEscalation: async () => {
+        throw new Error('no');
+      },
+      fetch: okFetch,
+    });
+    expect(await d.decide('gate-triage', 'S', questions, { confidential: false })).toEqual({ answered: false, reason: 'disabled' });
+    expect(accounting.records()).toHaveLength(0);
+  });
+});
