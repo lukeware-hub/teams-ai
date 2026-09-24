@@ -139,3 +139,44 @@ export function ensureTrusted(dir: string, claudeJsonPath: string): Promise<void
   trustQueue = result.catch(() => undefined);
   return result;
 }
+
+/**
+ * Drops the trust entry of a worktree that is being removed, so `~/.claude.json` does not grow
+ * without bound and a directory recreated later at the same path does not inherit the trust.
+ * Other settings stored under the project entry are kept.
+ */
+export function removeTrusted(dir: string, claudeJsonPath: string): Promise<void> {
+  const work = async () => {
+    let json: Record<string, unknown>;
+    try {
+      json = JSON.parse(await fs.readFile(claudeJsonPath, 'utf8')) as Record<string, unknown>;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw err;
+    }
+    const projects = (json.projects ?? {}) as Record<string, Record<string, unknown>>;
+    let real = dir;
+    try {
+      real = await fs.realpath(dir);
+    } catch {
+      real = dir;
+    }
+    let changed = false;
+    for (const key of new Set([dir, real])) {
+      const entry = projects[key];
+      if (!entry || !('hasTrustDialogAccepted' in entry)) continue;
+      const { hasTrustDialogAccepted: _dropped, ...rest } = entry;
+      if (Object.keys(rest).length === 0) delete projects[key];
+      else projects[key] = rest;
+      changed = true;
+    }
+    if (!changed) return;
+    json.projects = projects;
+    const tmp = `${claudeJsonPath}.${process.pid}.tmp`;
+    await fs.writeFile(tmp, `${JSON.stringify(json, null, 2)}\n`);
+    await fs.rename(tmp, claudeJsonPath);
+  };
+  const result = trustQueue.then(work, work);
+  trustQueue = result.catch(() => undefined);
+  return result;
+}

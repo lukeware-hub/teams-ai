@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import { OUTPUT_SCHEMAS, toJsonSchema, type OutputOf, type StepKind } from '../agents/outputs.js';
 import type { AgentDefinition } from '../agents/registry.js';
 import { ALWAYS_DENIED } from '../agents/registry.js';
@@ -46,6 +47,8 @@ export interface StepDeps {
   claudeJsonPath: string;
   /** Directory (outside any worktree) where per-role settings files are written. */
   settingsDir: string;
+  /** Every step cwd must live under this directory; anything else is never trusted or run. */
+  workspacesRoot: string;
   network: Pick<RoleSettingsInput, 'allowedDomains'>;
   hostEnv?: NodeJS.ProcessEnv;
   onEvent?: (line: string) => void;
@@ -65,6 +68,8 @@ export function classifyFailure(raw: RawStepResult): FailureKind | null {
   if (raw.sandboxDisabled || raw.killedBy === 'environment') return 'environment';
   if (raw.killedBy) return 'timeout';
   if (s.compactions > 0 || s.terminalReason === 'rapid_refill_breaker') return 'compaction';
+  // The CLI's own turn cap is the same condition as the runner's cap (spec §12): one taxonomy.
+  if (s.subtype === 'error_max_turns') return 'timeout';
   if (s.found && !s.isError) return null;
   const text = s.resultText ?? '';
   if (s.apiErrorStatus === 429) return 'quota';
@@ -94,6 +99,19 @@ const EMPTY_SUMMARY: ResultSummary = {
   compactions: 0,
 };
 
+/** True when `dir` is `root` or below it, comparing resolved real paths (symlinks, `..`, short names). */
+async function isInside(root: string, dir: string): Promise<boolean> {
+  let realRoot: string;
+  let realDir: string;
+  try {
+    [realRoot, realDir] = await Promise.all([fs.realpath(root), fs.realpath(dir)]);
+  } catch {
+    return false;
+  }
+  const rel = path.relative(realRoot, realDir);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
 function environmentFailure<T>(message: string): StepOutcome<T> {
   return { ok: false, failure: 'environment', errors: [message], summary: EMPTY_SUMMARY, sandboxDisabled: false };
 }
@@ -105,6 +123,9 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
     if (!stat.isDirectory()) return environmentFailure(`cwd is not a directory: ${req.cwd}`);
   } catch {
     return environmentFailure(`cwd does not exist: ${req.cwd}`);
+  }
+  if (!(await isInside(deps.workspacesRoot, req.cwd))) {
+    return environmentFailure(`cwd ${req.cwd} is outside the workspaces root ${deps.workspacesRoot}`);
   }
   if (deps.binary.requireSandboxTools) {
     const missing = await preflightSandbox(hostEnv);

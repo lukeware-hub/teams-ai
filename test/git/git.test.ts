@@ -75,6 +75,18 @@ describe('worktrees', () => {
     await expect(fs.access(wt)).rejects.toThrow();
   });
 
+  it('refuses to reset a branch that carries commits not on the base, unless asked to', async () => {
+    const wt = path.join(root, 'wt-T2');
+    await createWorktree(repo, wt, 'task/spec-001-T2-b', 'main');
+    await write(wt, 'work.txt', 'in progress');
+    const sha = await commitAll(wt, 'feat: in progress');
+    await removeWorktree(repo, wt);
+    await expect(createWorktree(repo, wt, 'task/spec-001-T2-b', 'main')).rejects.toThrow(/commits not on main/);
+    expect(await git(repo, ['rev-parse', 'task/spec-001-T2-b'])).toBe(sha);
+    await createWorktree(repo, wt, 'task/spec-001-T2-b', 'main', undefined, { reset: true });
+    expect(await headSha(wt)).toBe(await headSha(repo));
+  });
+
   it('recreates a worktree whose directory vanished (stale registration)', async () => {
     const wt = path.join(root, 'wt-gone');
     await createWorktree(repo, wt, 'task/gone', 'main');

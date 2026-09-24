@@ -50,7 +50,23 @@ export async function git(cwd: string, args: readonly string[], exec: Exec = exe
 export const headSha = (cwd: string, exec: Exec = execCommand) => git(cwd, ['rev-parse', 'HEAD'], exec);
 export const currentBranch = (cwd: string, exec: Exec = execCommand) => git(cwd, ['branch', '--show-current'], exec);
 
-export async function createWorktree(repo: string, dir: string, branch: string, base: string, exec: Exec = execCommand): Promise<void> {
+async function branchExists(repo: string, branch: string, exec: Exec): Promise<boolean> {
+  return (await run(repo, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`], exec)).exitCode === 0;
+}
+
+/**
+ * Creates the task worktree on `branch` from `base`; idempotent for an existing worktree on the
+ * same branch. A branch that already carries commits not on `base` (a previous attempt whose
+ * worktree is gone) is refused unless `reset` is set, because `-B` would discard them silently.
+ */
+export async function createWorktree(
+  repo: string,
+  dir: string,
+  branch: string,
+  base: string,
+  exec: Exec = execCommand,
+  opts: { reset?: boolean } = {},
+): Promise<void> {
   // Drop registrations whose directory vanished (crash, manual cleanup) before deciding anything.
   await git(repo, ['worktree', 'prune'], exec);
   const list = await git(repo, ['worktree', 'list', '--porcelain'], exec);
@@ -59,6 +75,12 @@ export async function createWorktree(repo: string, dir: string, branch: string, 
   if (listed.includes(wanted)) {
     if ((await currentBranch(dir, exec)) === branch) return;
     throw new GitError(`worktree ${dir} exists on another branch`);
+  }
+  if (!opts.reset && (await branchExists(repo, branch, exec))) {
+    const contained = await run(repo, ['merge-base', '--is-ancestor', branch, base], exec);
+    if (contained.exitCode !== 0) {
+      throw new GitError(`branch ${branch} has commits not on ${base}; refusing to reset it (pass reset to discard them)`);
+    }
   }
   await git(repo, ['worktree', 'add', '-B', branch, dir, base], exec);
 }

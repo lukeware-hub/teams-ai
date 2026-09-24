@@ -24,6 +24,7 @@ beforeEach(async () => {
     accounting: new Accounting(),
     claudeJsonPath: path.join(dir, '.claude.json'),
     settingsDir: path.join(dir, 'settings'),
+    workspacesRoot: dir,
     network: { allowedDomains: ['registry.npmjs.org'] },
     hostEnv: { HOME: dir, PATH: process.env.PATH ?? '' },
     clock: () => new Date('2026-09-24T10:00:00.000Z'),
@@ -116,6 +117,31 @@ describe('runStep', () => {
     if (!outcome.ok) {
       expect(outcome.failure).toBe('environment');
       expect(outcome.sandboxDisabled).toBe(true);
+    }
+  });
+
+  it('classifies the CLI turn cap as timeout, like the runner cap', async () => {
+    // No compaction in this stream: compaction outranks every other classification.
+    const capped = await writeStream('max-turns.ndjson', [init, { type: 'result', subtype: 'error_max_turns', is_error: true, duration_ms: 90000, num_turns: 25, session_id: 's' }]);
+    withFake({ FAKE_CLAUDE_FIXTURE: capped });
+    const outcome = await runStep(request(), deps);
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.failure).toBe('timeout');
+  });
+
+  it('refuses a cwd outside the workspaces root before trusting or spawning anything', async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-outside-'));
+    try {
+      const outcome = await runStep(request({ cwd: outside }), deps);
+      expect(outcome.ok).toBe(false);
+      if (!outcome.ok) {
+        expect(outcome.failure).toBe('environment');
+        expect(outcome.errors[0]).toMatch(/outside the workspaces root/);
+      }
+      await expect(fs.access(deps.claudeJsonPath)).rejects.toThrow();
+      expect(deps.accounting.total().outputTokens).toBe(0);
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
     }
   });
 

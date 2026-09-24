@@ -8,6 +8,7 @@ import {
   InvocationError,
   buildInvocation,
   ensureTrusted,
+  removeTrusted,
   sanitizeEnv,
   type InvocationInput,
 } from '../../server/runner/invocation.js';
@@ -155,6 +156,25 @@ describe('ensureTrusted', () => {
     expect(json.theme).toBe('dark');
     expect(json.projects['/other']).toEqual({ allowedTools: ['Read'] });
     expect(json.projects['/home/u/ws/wt']).toEqual({ allowedTools: ['Bash'], hasTrustDialogAccepted: true });
+  });
+
+  it('removeTrusted drops only the trust flag and deletes an entry left empty', async () => {
+    const file = path.join(dir, '.claude.json');
+    const wt = path.join(dir, 'wt');
+    await fs.mkdir(wt);
+    await ensureTrusted(wt, file);
+    await ensureTrusted('/home/u/ws/other', file);
+    const current = JSON.parse(await fs.readFile(file, 'utf8'));
+    current.projects['/keep'] = { allowedTools: ['Read'], hasTrustDialogAccepted: true };
+    await fs.writeFile(file, JSON.stringify(current));
+    await removeTrusted(`${wt}${path.sep}`, file);
+    await removeTrusted('/keep', file);
+    await removeTrusted('/never-there', file);
+    const json = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(json.projects[await fs.realpath(wt)]).toBeUndefined();
+    expect(json.projects['/home/u/ws/other'].hasTrustDialogAccepted).toBe(true);
+    expect(json.projects['/keep']).toEqual({ allowedTools: ['Read'] });
+    await expect(removeTrusted('/x', path.join(dir, 'missing.json'))).resolves.toBeUndefined();
   });
 
   it('does not lose entries when called concurrently', async () => {

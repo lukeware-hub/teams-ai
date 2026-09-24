@@ -40,6 +40,7 @@ const outcome = await runStep(
     accounting,
     claudeJsonPath: path.join(os.homedir(), '.claude.json'),
     settingsDir: path.join(os.homedir(), '.teams-ai', 'settings'),
+    workspacesRoot: os.tmpdir(),
     network: { allowedDomains: ['registry.npmjs.org'] },
     onEvent: (line) => {
       if (line.includes('"type":"result"') || line.includes('rate_limit_event')) console.error(line);
