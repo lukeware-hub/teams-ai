@@ -6,7 +6,7 @@ import { runRoutes } from '../../server/api/run-routes.js';
 import { startApi } from '../../server/api/server.js';
 import type { RunControlDeps } from '../../server/api/run-control.js';
 import { readUserConfig } from '../../server/onboarding/config-store.js';
-import { writeRun } from '../fixtures/runs/write-run.js';
+import { appendEvents, eventLines, writeRun } from '../fixtures/runs/write-run.js';
 
 const HELLO = path.resolve('test/fixtures/hello-app');
 let home = '';
@@ -146,5 +146,104 @@ describe('start, resume, stop', () => {
     expect((await post('/api/runs/hello-001-r1/stop')).status).toBe(409);
     await writeRun(runs, 'hello-001-r2', [started('hello-001-r2')], state('running'));
     expect((await post('/api/runs/hello-001-r2/stop')).status).toBe(409);
+  });
+});
+
+const task = (id: string) => ({ id, title: id, description: 'd', criteriaRefs: ['AC-001'], dependsOn: [], affectedPaths: [`src/${id}/**`], owner: 'dev' });
+
+async function readSse(url: string, lastId: string | null, until: (events: Array<{ event: string; id: string | null; data: string }>) => boolean, timeoutMs = 5000) {
+  const res = await fetch(url, { headers: lastId === null ? {} : { 'last-event-id': lastId } });
+  if (!res.ok) return { status: res.status, events: [] as Array<{ event: string; id: string | null; data: string }> };
+  const reader = res.body!.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  const events: Array<{ event: string; id: string | null; data: string }> = [];
+  const deadline = Date.now() + timeoutMs;
+  // one pending read at a time: a read abandoned by the race would otherwise swallow the chunk it wins
+  let pending: ReturnType<typeof reader.read> | null = null;
+  while (Date.now() < deadline) {
+    pending ??= reader.read().then((r) => {
+      pending = null;
+      return r;
+    });
+    const { value, done } = await Promise.race([pending, new Promise<{ value: undefined; done: false }>((r) => setTimeout(() => r({ value: undefined, done: false }), 300))]);
+    if (value) buf += dec.decode(value);
+    for (;;) {
+      const i = buf.indexOf('\n\n');
+      if (i < 0) break;
+      const block = buf.slice(0, i);
+      buf = buf.slice(i + 2);
+      const get = (k: string) => block.split('\n').find((l) => l.startsWith(`${k}: `))?.slice(k.length + 2) ?? null;
+      events.push({ event: get('event') ?? 'message', id: get('id'), data: get('data') ?? '' });
+    }
+    if (until(events) || done) break;
+  }
+  await reader.cancel().catch(() => {});
+  return { status: res.status, events };
+}
+
+describe('run detail, events and steps', () => {
+  it('detail computes state and tokens from the journal and carries the acceptance criteria', async () => {
+    await writeRun(
+      runs,
+      'hello-001-r1',
+      [
+        started('hello-001-r1'),
+        { type: 'TASK_PLANNED', data: { task: task('T1') } },
+        { type: 'TASK_STATE_CHANGED', data: { taskId: 'T1', to: 'ready' } },
+        { type: 'STEP_STARTED', data: { stepId: 's00001', kind: 'dev', role: 'dev', taskId: 'T1', attempt: 1, tokens: 10, dropped: [] } },
+        { type: 'STEP_FINISHED', data: { stepId: 's00001', kind: 'dev', taskId: 'T1', attempt: 1, ok: true, failure: null, usage: { inputTokens: 100, outputTokens: 20, cacheReadTokens: 5, cacheWriteTokens: 0 }, costUsd: 0.5, durationMs: 10, numTurns: 1 } },
+        { type: 'RUN_PAUSED', data: { reason: 'quota', until: '2026-09-24T10:30:00.000Z' } },
+      ],
+      state('running'),
+    );
+    const r = await fetch(`${base()}/api/runs/hello-001-r1`);
+    expect(r.status).toBe(200);
+    const d = await r.json();
+    expect(d).toMatchObject({ runId: 'hello-001-r1', specId: 'hello-001', projectId: 'hello-app', status: 'paused:quota', finished: null });
+    expect(d.state.order).toEqual(['T1']);
+    expect(d.state.tasks[0]).toMatchObject({ state: 'ready', attempts: 0, def: { id: 'T1' } });
+    expect(d.tokens).toEqual({ inputTokens: 100, outputTokens: 20, cacheReadTokens: 5, cacheWriteTokens: 0, costUsd: 0.5, steps: 1 });
+    expect(d.acceptanceCriteria.map((a: { id: string }) => a.id)).toEqual(['AC-001', 'AC-002', 'AC-003']);
+    expect((await fetch(`${base()}/api/runs/nope`)).status).toBe(404);
+  });
+
+  it('events replays from Last-Event-ID, tails appended lines and ends after RUN_FINISHED', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), { type: 'PHASE_STARTED', data: { phase: 1 } }, { type: 'PHASE_STARTED', data: { phase: 2 } }], state('running'));
+    const first = await readSse(`${base()}/api/runs/hello-001-r1/events`, null, (ev) => ev.length >= 3);
+    expect(first.events.map((e) => [e.event, e.id])).toEqual([
+      ['journal', '1'],
+      ['journal', '2'],
+      ['journal', '3'],
+    ]);
+    expect(JSON.parse(first.events[2]!.data)).toMatchObject({ seq: 3, type: 'PHASE_STARTED' });
+    const later = readSse(`${base()}/api/runs/hello-001-r1/events`, '2', (ev) => ev.some((e) => e.event === 'end'));
+    await new Promise((r) => setTimeout(r, 50));
+    await appendEvents(runs, 'hello-001-r1', [{ type: 'RUN_FINISHED', data: { result: 'complete', merged: [], blocked: [], tokens: {} } }], 4);
+    const { events } = await later;
+    expect(events.map((e) => [e.event, e.id])).toEqual([
+      ['journal', '3'],
+      ['journal', '4'],
+      ['end', null],
+    ]);
+    expect((await readSse(`${base()}/api/runs/nope/events`, null, () => true)).status).toBe(404);
+  });
+
+  it('a corrupt journal is reported as 500 on detail and events', async () => {
+    const dir = await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'));
+    await fs.appendFile(path.join(dir, 'events.ndjson'), 'not json\n' + eventLines('hello-001-r1', [{ type: 'X' }], 3) + '\n');
+    const r = await fetch(`${base()}/api/runs/hello-001-r1`);
+    expect(r.status).toBe(500);
+    expect((await r.json()).error).toMatch(/corrupt/);
+  });
+
+  it('serves step artifacts from the run directory only', async () => {
+    const dir = await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'));
+    await fs.mkdir(path.join(dir, 'steps', 's00001'), { recursive: true });
+    await fs.writeFile(path.join(dir, 'steps', 's00001', 'prompt.md'), '# prompt');
+    await fs.writeFile(path.join(dir, 'steps', 's00001', 'output.json'), JSON.stringify({ ok: true, value: { summary: 'x' } }));
+    expect(await (await fetch(`${base()}/api/runs/hello-001-r1/steps/s00001`)).json()).toEqual({ prompt: '# prompt', output: { ok: true, value: { summary: 'x' } } });
+    expect((await fetch(`${base()}/api/runs/hello-001-r1/steps/s00002`)).status).toBe(404);
+    expect((await fetch(`${base()}/api/runs/hello-001-r1/steps/..%2Fui.log`)).status).toBe(400);
   });
 });

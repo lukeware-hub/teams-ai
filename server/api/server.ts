@@ -3,7 +3,7 @@ import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import path from 'node:path';
 
 export interface SseWriter {
-  send(event: string, data: unknown): void;
+  send(event: string, data: unknown, id?: string): void;
   close(): void;
   onClose(cb: () => void): void;
 }
@@ -135,7 +135,7 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
       res.flushHeaders();
       done(200);
       return {
-        send: (event, data) => void res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
+        send: (event, data, id) => void res.write(`${id === undefined ? '' : `id: ${id}\n`}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
         close: () => res.end(),
         onClose: (cb) => void res.on('close', cb),
       };
