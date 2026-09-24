@@ -819,6 +819,18 @@ REC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/docs/superpowers
 mkdir -p "$REC_DIR"
 SANDBOX_DIR="$(mktemp -d /tmp/teams-ai-probe-XXXX)"
 
+# Project-level permissions.allow entries are ignored unless the workspace is trusted
+# (hasTrustDialogAccepted in ~/.claude.json). The orchestrator must do the same for every worktree.
+trust_dir() {
+  node -e '
+    const fs = require("fs"); const f = process.env.HOME + "/.claude.json";
+    const j = fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : {};
+    j.projects = j.projects || {}; j.projects[process.argv[1]] = { ...(j.projects[process.argv[1]] || {}), hasTrustDialogAccepted: true };
+    fs.writeFileSync(f, JSON.stringify(j, null, 2));
+  ' "$1"
+}
+trust_dir "$SANDBOX_DIR"
+
 # Runs claude headless with the orchestrator's isolation flags; stream saved to $REC_DIR/$1.ndjson.
 run_isolated() {
   local name="$1"; shift
