@@ -27,6 +27,20 @@ export interface PhaseDeps {
   packBase: () => PackBase;
   godNodes: () => Promise<ReadonlyArray<{ label: string; edges: number }>>;
   maxPhaseAttempts?: number;
+  /**
+   * Quota/auth failures are not phase attempts (POC spec §12). The Run pauses on the breaker and
+   * answers `resumed`, or `auth` when a human must log in again.
+   */
+  pause?: (failure: 'quota' | 'auth') => Promise<'resumed' | 'auth'>;
+}
+
+export const PAUSED_AUTH = 'paused:auth';
+
+/** True when the caller must return `paused:auth`; false when the step may simply run again. */
+export async function pauseForFailure(deps: PhaseDeps, failure: string): Promise<boolean> {
+  if (failure !== 'quota' && failure !== 'auth') return false;
+  const r = deps.pause ? await deps.pause(failure) : failure === 'auth' ? 'auth' : 'resumed';
+  return r === 'auth';
 }
 
 export type PhaseResult = { ok: true } | { ok: false; reason: string };
@@ -47,19 +61,22 @@ export async function readDocs(repo: string, specId: string, exec?: Exec): Promi
   return { techSpecText, plan: planText === null ? null : Plan.parse(JSON.parse(planText)) };
 }
 
-export async function docsWorktree(deps: PhaseDeps, branch: string): Promise<string> {
+export async function docsWorktree(deps: PhaseDeps, branch: string, opts: { keepCommits?: boolean } = {}): Promise<string> {
   const dir = worktreeDir(deps.ws, branch);
   const key = `docs-${branch}`;
   await gitFetch(deps.ws.repo, deps.exec);
   const confirmed = deps.journal.isConfirmed(Intent.WorktreeCreate, key);
   if (!confirmed) await deps.journal.intent(Intent.WorktreeCreate, key, { worktree: dir, branch });
-  await createWorktree(deps.ws.repo, dir, branch, 'origin/main', deps.exec, { reset: true });
+  // A docs branch left by a crashed attempt is discarded (reset), unless its commit is already confirmed.
+  await createWorktree(deps.ws.repo, dir, branch, 'origin/main', deps.exec, { reset: !opts.keepCommits });
   if (!confirmed) await deps.journal.confirm(Intent.WorktreeCreate, key, {});
   return dir;
 }
 
+export const docsCommitKey = (deps: PhaseDeps, phase: 1 | 2) => `${deps.spec.specId}-${phase}`;
+
 export async function commitAndMergeDocs(deps: PhaseDeps, phase: 1 | 2, branch: string, worktree: string, title: string): Promise<PhaseResult> {
-  const key = `${deps.spec.specId}-${phase}`;
+  const key = docsCommitKey(deps, phase);
   if (!deps.journal.isConfirmed(Intent.DocsCommit, key)) {
     const baseSha = await git(worktree, ['rev-parse', 'HEAD'], deps.exec);
     await deps.journal.intent(Intent.DocsCommit, key, { worktree, branch, message: title, baseSha });

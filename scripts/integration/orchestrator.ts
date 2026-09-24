@@ -3,6 +3,11 @@
  *   TEAMS_AI_GH_OWNER=<owner> npx tsx --no-warnings=ExperimentalWarning scripts/integration/orchestrator.ts
  * Creates (or reuses) the repository <owner>/teams-ai-hello-app, pushes docs/ to main, then runs Phases 1–3.
  * Costs real tokens (one Opus tech spec, one plan, one Dev + one review per task). Never part of `npm test`.
+ *
+ * Run it from the repository root. To repeat from scratch, delete the GitHub repository
+ * (`gh repo delete <owner>/teams-ai-hello-app`), `rm -rf ~/.teams-ai/workspaces/hello-app` and the
+ * `~/.teams-ai/runs/hello-001-*` directories: reusing the repository with a new run would find the old
+ * task PRs already merged and report `complete` without merging new work.
  */
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -27,6 +32,10 @@ const ws = workspacePaths(cfg, 'hello-app');
 const secrets = await loadSecrets(expandHome(cfg.paths.secrets));
 const ghExec: Exec = (spec) => execCommand({ ...spec, env: { ...(spec.env ?? {}), ...(secrets.GITHUB_TOKEN ? { GH_TOKEN: secrets.GITHUB_TOKEN } : {}) } });
 const fixture = path.resolve('test/fixtures/hello-app');
+await fs.access(path.join(fixture, 'docs', 'project.json')).catch(() => {
+  console.error('run this script from the repository root');
+  process.exit(2);
+});
 
 await fs.mkdir(ws.root, { recursive: true });
 try {

@@ -6,16 +6,25 @@ import type { StepOutcome } from '../../runner/step.js';
 
 type TechSpecOutput = z.infer<typeof TechSpecOutputSchema>;
 type CoverageOutput = z.infer<typeof CoverageOutputSchema>;
-import { OrchEvent } from '../events.js';
+import { Intent, OrchEvent } from '../events.js';
 import { coveragePack, techSpecPack } from '../steps.js';
-import { commitAndMergeDocs, docsWorktree, readDocs, readInWorktree, trackedAndUntracked, type PhaseDeps, type PhaseResult } from './shared.js';
+import { PAUSED_AUTH, commitAndMergeDocs, docsCommitKey, docsWorktree, pauseForFailure, readDocs, readInWorktree, trackedAndUntracked, type PhaseDeps, type PhaseResult } from './shared.js';
 
 /** Spec (orchestrator) §4.2. */
 export async function runPhase1(deps: PhaseDeps): Promise<PhaseResult & { techSpecText?: string }> {
   const existing = await readDocs(deps.ws.repo, deps.spec.specId, deps.exec);
   if (existing.techSpecText !== null) return { ok: true, techSpecText: existing.techSpecText };
-  await deps.journal.fact(OrchEvent.PhaseStarted, { phase: 1 });
   const branch = `docs/${deps.spec.specId}`;
+  if (deps.journal.isConfirmed(Intent.DocsCommit, docsCommitKey(deps, 1))) {
+    // Crash between the docs commit and its merge: the agents already ran; only the merge is left (spec §6).
+    const worktree = await docsWorktree(deps, branch, { keepCommits: true });
+    // Read before the merge: the docs merge removes the worktree afterwards.
+    const techSpecText = await readInWorktree(worktree, `docs/specs/${deps.spec.specId}/tech-spec.md`);
+    const merged = await commitAndMergeDocs(deps, 1, branch, worktree, `docs(${deps.spec.specId}): technical spec`);
+    if (!merged.ok) return merged;
+    return { ok: true, techSpecText };
+  }
+  await deps.journal.fact(OrchEvent.PhaseStarted, { phase: 1 });
   const worktree = await docsWorktree(deps, branch);
   const max = deps.maxPhaseAttempts ?? 3;
   let feedback: string | null = null;
@@ -34,6 +43,11 @@ export async function runPhase1(deps: PhaseDeps): Promise<PhaseResult & { techSp
       refs: ((v: TechSpecOutput) => ({ files: [v.techSpecPath, ...v.adrs.map((a) => a.path)] })) as never,
     });
     if (!wrote.ok) {
+      if (wrote.failure === 'quota' || wrote.failure === 'auth') {
+        if (await pauseForFailure(deps, wrote.failure)) return { ok: false, reason: PAUSED_AUTH };
+        attempt -= 1;
+        continue;
+      }
       feedback = `Previous attempt failed (${wrote.failure}):\n${wrote.errors.join('\n')}`;
       continue;
     }
@@ -42,6 +56,11 @@ export async function runPhase1(deps: PhaseDeps): Promise<PhaseResult & { techSp
     techSpecText = await readInWorktree(worktree, spec.techSpecPath);
     const checked: StepOutcome<OutputOf<'coverage'>> = await deps.runAgent<'coverage'>({ kind: 'coverage', role: 'po', pack: coveragePack(deps.packBase(), { techSpecText }), cwd: worktree, phase: 'phase1', taskId: null, attempt });
     if (!checked.ok) {
+      if (checked.failure === 'quota' || checked.failure === 'auth') {
+        if (await pauseForFailure(deps, checked.failure)) return { ok: false, reason: PAUSED_AUTH };
+        attempt -= 1;
+        continue;
+      }
       feedback = `Coverage check failed (${checked.failure}):\n${checked.errors.join('\n')}`;
       continue;
     }

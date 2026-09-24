@@ -186,6 +186,38 @@ describe('Run', () => {
     await run.close();
   }, 30_000);
 
+  it('an auth failure returns paused:auth and resume continues after the human logged in again', async () => {
+    let first = true;
+    const script: Script = async (req) => {
+      if (req.kind === 'dev' && first) {
+        first = false;
+        return { ok: false, failure: 'auth', errors: ['not logged in'], summary: summary({ isError: true }), sandboxDisabled: false };
+      }
+      return happy(req);
+    };
+    const d = await withAgents(deps(script, { maxParallel: 1 }));
+    const run = await Run.create(d);
+    expect(await run.execute()).toBe('paused:auth');
+    expect(run.journal.state.status).toBe('paused:auth');
+    await run.close();
+    const resumed = await Run.resume(d, run.runId);
+    expect(await resumed.execute()).toBe('complete');
+    expect(resumed.journal.state.tasks.get('T1')!.attempts).toBe(0);
+    await resumed.close();
+  }, 30_000);
+
+  it('rebuilds accounting from the journal on resume', async () => {
+    const d = await withAgents(deps(happy, { maxParallel: 1, crashAfterIntent: (id) => id.startsWith('PR_MERGE:task/spec-001-T1@') }));
+    const run = await Run.create(d);
+    await run.execute().catch(() => undefined);
+    const before = run.accounting.total();
+    await run.close();
+    const resumed = await Run.resume({ ...d, crashAfterIntent: undefined }, run.runId);
+    expect(resumed.accounting.total().steps).toBe(before.steps);
+    expect(resumed.accounting.total().inputTokens).toBe(before.inputTokens);
+    await resumed.close();
+  }, 30_000);
+
   it('journals every decision with its backend and cost', async () => {
     const d = await withAgents(deps(happy));
     d.cfg = loadConfig({ ...JSON.parse(JSON.stringify(d.cfg)), decisions: { enabled: true } });

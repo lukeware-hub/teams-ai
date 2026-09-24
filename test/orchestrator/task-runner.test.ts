@@ -147,6 +147,13 @@ describe('TaskRunner: implementing', () => {
     expect(journal.events.some((e) => e.type === Intent.Commit)).toBe(false);
   });
 
+  it('a Dev that changes nothing fails the attempt instead of reaching gates, review and a PR', async () => {
+    const r = new TaskRunner('T1', deps({ agent: async () => ok({ specHash: HASH, status: 'done', summary: 'nothing', changedFiles: [], commitMessage: 'feat: nothing' }) }));
+    await r.advance();
+    expect(state()).toMatchObject({ state: 'implementing', attempts: 1 });
+    expect(journal.lastFeedback('T1')).toContain('no changes');
+  });
+
   it('pauses the run on a quota failure without consuming an attempt', async () => {
     const r = new TaskRunner('T1', deps({ agent: async () => failed('quota', 'usage limit reached') }));
     await r.advance();
@@ -300,5 +307,33 @@ describe('TaskRunner: attempts, replan, block', () => {
     for (let i = 0; i < 6; i++) await r.advance();
     expect(journal.state.tasks.get('T1-r1')!.state).toBe('blocked');
     expect(journal.events.find((e) => e.type === OrchEvent.TaskBlocked)!.data).toMatchObject({ taskId: 'T1-r1' });
+  });
+});
+
+describe('TaskRunner: merge gates triage', () => {
+  const toRebasing = async (r: TaskRunner) => {
+    await r.advance(); // implementing → validating
+    await r.advance(); // validating → reviewing
+    await r.advance(); // reviewing → rebasing
+  };
+  const agent: Agent = async (req) => (req.kind === 'review' ? approve() : devDone()(req));
+
+  it('sends a merge-gate failure to the gate triage and uses its kind', async () => {
+    const calls: unknown[][] = [];
+    const decider = { decide: async (...args: unknown[]) => { calls.push(args); return { answered: true, backend: 'jev', escalated: false, answers: { kind: { type: 'choice', value: 'flaky-test', probabilities: { 'flaky-test': 0.9 }, confidence: 0.9 } } } as const; } };
+    const failure = gate('unit-test', { passed: false, exitCode: 1, stderrTail: 'boom', failure: 'code' });
+    const r = new TaskRunner('T1', deps({ agent, decider, merge: { gates: async () => ({ ok: false, detail: '[code] unit-test exit 1\nboom', failure }) } }));
+    await toRebasing(r);
+    await r.advance();
+    expect(calls[0]![0]).toBe('gate-triage');
+    expect(journal.events.find((e) => e.type === RunEvent.FlakyRetry)!.data).toMatchObject({ taskId: 'T1', gate: 'merge-gates' });
+    expect(journal.events.find((e) => e.type === OrchEvent.GateFailed && e.data.gate === 'merge-gates')!.data).toMatchObject({ failure: 'code', exitCode: 1 });
+  });
+
+  it('falls back to the [infra] prefix when the merge steps give no GateResult', async () => {
+    const r = new TaskRunner('T1', deps({ agent, merge: { gates: async () => ({ ok: false, detail: '[infra] docker daemon down' }) } }));
+    await toRebasing(r);
+    await r.advance();
+    expect(journal.events.find((e) => e.type === RunEvent.InfraRetry)!.data).toMatchObject({ taskId: 'T1', gate: 'merge-gates' });
   });
 });

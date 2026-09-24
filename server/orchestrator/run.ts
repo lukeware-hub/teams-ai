@@ -27,7 +27,7 @@ import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
 import { CrashInjected, Intent, Journal, OrchEvent, type IntentType, type RunResult } from './events.js';
 export { CrashInjected };
 import { taskMergeSteps, type MergeStepsDeps } from './merge-steps.js';
-import { runPhase1, runPhase2, type PhaseDeps } from './phases/index.js';
+import { PAUSED_AUTH, runPhase1, runPhase2, type PhaseDeps } from './phases/index.js';
 import { reconcile } from './reconcile.js';
 import { runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
 import { TaskRunner, type TaskRunnerDeps } from './task-runner.js';
@@ -88,6 +88,7 @@ export class Run {
     this.log = deps.log ?? ((l) => process.stderr.write(`${l}\n`));
     this.maxParallel = deps.maxParallel ?? deps.cfg.concurrency.maxParallel;
     this.handoffs = journal.handoffs();
+    this.rebuildAccounting();
     this.governor = new Governor(deps.cfg.concurrency.maxClaudeProcesses);
     this.breaker = new QuotaBreaker(DEFAULT_BREAKER, this.clock);
   }
@@ -118,8 +119,36 @@ export class Run {
     const journal = await Run.openJournal(deps, runId);
     const run = new Run(runId, journal, deps);
     await reconcile({ journal, ws: deps.ws, exec: deps.exec, ghExec: deps.ghExec, afterMerge: (taskId, branch) => run.afterMergeOnResume(taskId, branch), log: run.log });
+    // `resume` is the human's signal that the login was redone (spec §7 "resume tries again").
+    if (journal.state.status === 'paused:auth') await journal.fact(RunEvent.RunResumed, {});
     await run.writeState();
     return run;
+  }
+
+  /** Budgets span the whole run, not one process: replay STEP_STARTED/STEP_FINISHED into the ledger. */
+  private rebuildAccounting(): void {
+    const started = new Map<string, Record<string, unknown>>();
+    for (const e of this.journal.events) {
+      if (e.type === OrchEvent.StepStarted) started.set(String(e.data.stepId), e.data);
+      if (e.type !== OrchEvent.StepFinished) continue;
+      const s = started.get(String(e.data.stepId));
+      const usage = e.data.usage as { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number } | undefined;
+      if (!s || !usage) continue;
+      this.accounting.record({
+        role: s.role as Role,
+        phase: e.data.taskId ? 'phase3' : 'phase',
+        taskId: (e.data.taskId as string | null) ?? null,
+        attempt: Number(e.data.attempt ?? 0),
+        stepKind: e.data.kind as StepKind,
+        provider: 'claude',
+        model: 'unknown',
+        usage,
+        costUsd: (e.data.costUsd as number | null) ?? null,
+        durationMs: Number(e.data.durationMs ?? 0),
+        numTurns: Number(e.data.numTurns ?? 0),
+        at: e.at,
+      });
+    }
   }
 
   private async afterMergeOnResume(taskId: string, branch: string): Promise<void> {
@@ -280,7 +309,30 @@ export class Run {
       mergeDeps: this.mergeDeps(),
       packBase: this.packBase,
       godNodes: () => (this.deps.graphify ? this.deps.graphify.godNodes(graphDir(this.deps.ws, null), 10).catch(() => []) : Promise.resolve([])),
+      pause: (failure) => this.pauseFor(failure),
     };
+  }
+
+  /** Spec §7: a quota failure pauses the whole run until the breaker reopens; auth needs a human. */
+  private async pauseFor(failure: 'quota' | 'auth'): Promise<'resumed' | 'auth'> {
+    if (failure === 'auth') {
+      if (this.journal.state.status === 'running') await this.journal.fact(RunEvent.RunPaused, { reason: 'auth' });
+      return 'auth';
+    }
+    await this.waitWhilePaused();
+    return 'resumed';
+  }
+
+  private async waitWhilePaused(): Promise<void> {
+    while (!this.breaker.canStart()) {
+      if (this.journal.state.status === 'running') await this.journal.fact(RunEvent.RunPaused, { reason: 'quota' });
+      const b = this.breaker.state();
+      const wait = b.status === 'paused' ? Math.max(1000, b.until.getTime() - this.clock().getTime()) : 60_000;
+      this.log(`run paused (quota) for ${Math.round(wait / 1000)}s`);
+      await this.sleep(wait);
+      this.breaker.tick();
+    }
+    if (this.journal.state.status === 'paused:quota') await this.journal.fact(RunEvent.RunResumed, {});
   }
 
   private async loadAdrs(): Promise<void> {
@@ -295,11 +347,11 @@ export class Run {
 
   async execute(): Promise<ExecuteResult> {
     const phase1 = await runPhase1(this.phaseDeps());
-    if (!phase1.ok) return this.finish('phase-failed', phase1.reason);
+    if (!phase1.ok) return phase1.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase1.reason);
     this.techSpecText = phase1.techSpecText ?? '';
     await this.loadAdrs();
     const phase2 = await runPhase2(this.phaseDeps(), this.techSpecText);
-    if (!phase2.ok) return this.finish('phase-failed', phase2.reason);
+    if (!phase2.ok) return phase2.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase2.reason);
     this.plan = phase2.plan!;
     if (!this.journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 3)) await this.journal.fact(OrchEvent.PhaseStarted, { phase: 3 });
     for (const task of this.plan.tasks) {

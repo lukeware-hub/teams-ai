@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execCommand } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
 import { MergeQueue } from '../../server/git/merge-queue.js';
-import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
+import { Intent, Journal, OrchEvent } from '../../server/orchestrator/events.js';
 import { runPhase1, runPhase2, type PhaseDeps } from '../../server/orchestrator/phases/index.js';
 import type { AgentStepRequest } from '../../server/orchestrator/steps.js';
 import type { StepOutcome } from '../../server/runner/step.js';
@@ -75,6 +75,30 @@ describe('Phase 1', () => {
     expect(journal.events.filter((e) => e.type === OrchEvent.CoverageChecked).map((e) => e.data.uncovered)).toEqual([spec.acceptanceCriteria.map((c) => c.id), []]);
   });
 
+  it('a quota failure pauses the run and retries the step without consuming a phase attempt', async () => {
+    const paused: string[] = [];
+    let n = 0;
+    const d = deps(async (req) => {
+      if (req.kind === 'tech-spec' && n++ === 0) return { ok: false, failure: 'quota', errors: ['usage limit'], summary: { ...summary, isError: true }, sandboxDisabled: false };
+      return req.kind === 'tech-spec' ? writeTechSpec(req) : coverage(true);
+    });
+    d.pause = async (failure) => {
+      paused.push(failure);
+      return 'resumed';
+    };
+    const r = await runPhase1(d);
+    expect(r.ok).toBe(true);
+    expect(paused).toEqual(['quota']);
+    expect(calls.map((c) => [c.kind, c.attempt])).toEqual([['tech-spec', 1], ['tech-spec', 1], ['coverage', 1]]);
+  });
+
+  it('an auth failure returns paused:auth so the CLI can stop without failing the phase', async () => {
+    const d = deps(async () => ({ ok: false, failure: 'auth', errors: ['not logged in'], summary: { ...summary, isError: true }, sandboxDisabled: false }));
+    d.pause = async () => 'auth';
+    expect(await runPhase1(d)).toEqual({ ok: false, reason: 'paused:auth' });
+    expect(journal.events.some((e) => e.type === OrchEvent.PhaseFailed)).toBe(false);
+  });
+
   it('fails the phase after three uncovered rounds', async () => {
     const r = await runPhase1(deps(async (req) => (req.kind === 'tech-spec' ? writeTechSpec(req) : coverage(false))));
     expect(r).toMatchObject({ ok: false, reason: expect.stringContaining('AC-001') });
@@ -91,6 +115,19 @@ describe('Phase 1', () => {
     const r = await runPhase1(deps(async () => { throw new Error('no agent call expected'); }));
     expect(r).toEqual({ ok: true, techSpecText: '# existing' });
     expect(calls).toHaveLength(0);
+  });
+  it('a crash between the docs commit confirm and the merge skips the agents and merges the committed branch', async () => {
+    // First pass: agents run and the docs commit is confirmed, then the process "dies" before the merge.
+    const dying = deps(async (req) => (req.kind === 'tech-spec' ? writeTechSpec(req) : coverage(true)));
+    dying.mergeQueue = { enqueue: async () => { throw Object.assign(new Error('crash before merge'), { fatal: true }); } } as never;
+    await expect(runPhase1(dying)).rejects.toThrow('crash before merge');
+    expect(journal.isConfirmed(Intent.DocsCommit, 'spec-001-1')).toBe(true);
+    const agentCalls = calls.length;
+    // Resume: nothing on main yet, but the commit is confirmed → no agent step, straight to the merge.
+    const r = await runPhase1(deps(async () => { throw new Error('no agent call expected on resume'); }));
+    expect(r.ok).toBe(true);
+    expect(calls).toHaveLength(agentCalls);
+    expect(gh.prs.map((p) => p.state)).toEqual(['MERGED']);
   });
 });
 

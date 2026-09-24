@@ -201,6 +201,10 @@ export class TaskRunner {
     const sha = (await commitAll(this.worktree, value.commitMessage, {}, this.deps.exec)) ?? (await git(this.worktree, ['rev-parse', 'HEAD'], this.deps.exec));
     await this.deps.journal.confirm(Intent.Commit, commitKey, { sha });
     const changed = await changedFiles(this.worktree, 'origin/main', this.deps.exec);
+    if (changed.length === 0) {
+      // Nothing to gate, review or open a PR for; GitHub would refuse the PR anyway. Charge the attempt now.
+      return this.fail('code', 'Dev reported done but produced no changes against origin/main. Implement the task or return spec-gap.');
+    }
     await this.deps.journal.fact(OrchEvent.DevCommitted, { taskId: this.taskId, sha, changedFiles: changed, summary: value.summary });
     await this.transition('validating');
   }
@@ -316,10 +320,13 @@ export class TaskRunner {
       case 'rebase':
         return this.fail('rebase-conflict', `Rebase conflicts on origin/main:\n${(outcome.conflicts ?? []).join('\n')}`);
       case 'gates': {
-        // merge-steps prefixes the detail with the gate runner's own classification ([infra] or [code]).
-        const infra = /^\[infra\]/.test(outcome.detail ?? '');
-        await this.deps.journal.fact(OrchEvent.GateFailed, { taskId: this.taskId, gate: 'merge-gates', failure: infra ? 'infra' : 'code', exitCode: null, durationMs: 0, junit: [] });
-        return this.fail(infra ? 'infra' : 'code', `Gates failed after rebase:\n${this.clean(outcome.detail ?? '')}`, 'merge-gates');
+        const f = outcome.gateFailure;
+        // Fakes and older steps give only the detail; the prefix is the gate runner's own classification.
+        const kind = f
+          ? (await triageGateFailure(this.deps.plan.gates.find((g) => g.name === f.name) ?? { name: f.name, command: '', blocking: true, network: 'none' as const, secrets: [] }, f, this.deps.decider, this.ctx)).kind
+          : /^\[infra\]/.test(outcome.detail ?? '') ? 'infra' : 'code';
+        await this.deps.journal.fact(OrchEvent.GateFailed, { taskId: this.taskId, gate: 'merge-gates', failure: f?.failure ?? (kind === 'infra' ? 'infra' : 'code'), exitCode: f?.exitCode ?? null, durationMs: f?.durationMs ?? 0, junit: [] });
+        return this.fail(kind, `Gates failed after rebase (${kind}):\n${this.clean(outcome.detail ?? '')}`, 'merge-gates');
       }
       default:
         return this.fail('infra', `Merge queue ${outcome.stage} failed: ${this.clean(outcome.detail ?? '')}`, 'merge');
