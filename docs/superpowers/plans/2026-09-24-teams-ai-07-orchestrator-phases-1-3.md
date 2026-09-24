@@ -3985,3 +3985,22 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Review Focus mapping.** 1 → Task 6 test "confirms a merged PR and finishes the task without merging again" and Task 8 crash test on `PR_MERGE`. 2 → Task 3 "redacts secret values…" and Task 5 "redacts the PR body". 3 → Task 4 "a refused merge returns the task to rebasing…". 4 → Task 4 "caps spec-gap rounds at three per attempt". 5 → Task 8 "pauses after the in-flight step returns and resumes without re-running it".
 
 **Ambiguities resolved.** (a) Spec §4.4 says a scope violation is treated as `review-changes`; the runner does exactly that and never commits the violating tree. (b) Spec §5 lists `MERGE_LOCK_ACQUIRED`; not emitted (see above). (c) Spec §4.2 does not say which base the docs worktree uses; `origin/main` with `reset: true`, because a crashed docs attempt must not survive. (d) Spec §7 does not say whether the per-run budget check counts decision-layer tokens; it does (they are in `Accounting`), which is the conservative reading. (e) `paused:auth` is not a `RunResult`; `execute()` returns it as a sixth value and the CLI exits 2 without `RUN_FINISHED`, so `resume` can continue later.
+
+## Findings (Task 10, live run on hello-app, 2026-09-24)
+
+Repository `diego-dm-morais/teams-ai-hello-app`, WSL Ubuntu 24.04, real `claude` (Max subscription), Docker 29, `gh` 2.101. Result of run `hello-001-r1`: **complete**; 7 PRs squash-merged into `main` (2 docs, 5 tasks: `T0-scaffold-r1`, `T0-scaffold-r2`, `T1`, `T2`, `T3`); 24 agent steps; accounted cost **$3.33** (input 304, output 78k, cache read 2.43M, cache write 311k tokens); about 30 minutes of wall time including three stop/resume cycles.
+
+Earlier attempts spent about $1.45 before being stopped (runs 3 and 4). Every finding below was fixed with a test before the next attempt:
+
+1. `git` in the orchestrator used the interactive `gh` login's credentials (a different account) → env-based credential helper with `GITHUB_TOKEN`.
+2. A Claude session limit made Phase 1 burn its three attempts in three seconds → quota/auth failures pause the run (phases included) and resume automatically; `paused:auth` is resumable.
+3. Agents could not write files under `--permission-mode dontAsk` (Edit/Write not in the allow list) → editing roles get the file tools.
+4. The gate container wrote `reports/junit.xml` as root → gates run as the orchestrator's uid:gid.
+5. `git add` with an `:(exclude)` pathspec naming an ignored path exits 1 → stage all, then unstage excludes.
+6. The SM learned the plan validator's rules by rejection (one wasted plan step) → rules stated in the plan pack.
+7. The SM's own `build` gate could not pass on the `.gitignore`-only scaffold task → three attempts, then a real replan split the scaffold into two tasks that merged. Open improvement: tell the SM that every gate must pass on `T0-scaffold` alone.
+8. The reviewer cited the ignored JUnit path, invented `AC-000` for a task without criteria, and cited file line ranges as evidence → JUnit path accepted as a reference, empty `criteria` allowed, Test prompt states the `<classname>::<name>` evidence format.
+9. Gates after `unit-test` wiped the JUnit report before the reviewer read it → the last report is restored after the gates run.
+10. A reviewer's schema failures cost the Dev an attempt (deferred: charge nobody, or the reviewer).
+
+What worked unchanged on the first live pass: intent → effect → confirm and `resume` (three resumes, no duplicate commit, PR or merge; interrupted steps re-ran without an attempt), spec-gap routing to the SM, replan, merge queue with rebase and post-rebase gates, budget accounting rebuilt from the journal, decision layer disabled by default (no `config.json`), and the Jev path untouched in this run.
