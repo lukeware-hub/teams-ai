@@ -9,11 +9,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { loadConfig } from '../../server/config/config.js';
 import { Spec, computeSpecHash } from '../../server/contracts/spec.js';
-import { execCommand } from '../../server/exec/command.js';
+import { loadSecrets } from '../../server/core/secrets.js';
+import { execCommand, type Exec } from '../../server/exec/command.js';
 import { ensureRepo } from '../../server/git/github.js';
 import { git } from '../../server/git/git.js';
 import { main } from '../../server/cli.js';
-import { workspacePaths } from '../../server/orchestrator/workspace.js';
+import { expandHome, workspacePaths } from '../../server/orchestrator/workspace.js';
 
 const owner = process.env.TEAMS_AI_GH_OWNER;
 if (!owner) {
@@ -22,6 +23,9 @@ if (!owner) {
 }
 const cfg = loadConfig(JSON.parse(await fs.readFile(path.join(os.homedir(), '.teams-ai', 'config.json'), 'utf8').catch(() => '{}')));
 const ws = workspacePaths(cfg, 'hello-app');
+// Repository creation runs as the token's user (the orchestrator's identity), not as the interactive gh login.
+const secrets = await loadSecrets(expandHome(cfg.paths.secrets));
+const ghExec: Exec = (spec) => execCommand({ ...spec, env: { ...(spec.env ?? {}), ...(secrets.GITHUB_TOKEN ? { GH_TOKEN: secrets.GITHUB_TOKEN } : {}) } });
 const fixture = path.resolve('test/fixtures/hello-app');
 
 await fs.mkdir(ws.root, { recursive: true });
@@ -35,7 +39,7 @@ try {
   await git(ws.repo, ['init', '-b', 'main']);
   await git(ws.repo, ['add', '-A']);
   await git(ws.repo, ['commit', '-q', '-m', 'docs: hello-app contracts']);
-  const repo = await ensureRepo({ owner, name: 'teams-ai-hello-app', private: true, cwd: ws.repo }, execCommand);
+  const repo = await ensureRepo({ owner, name: 'teams-ai-hello-app', private: true, cwd: ws.repo }, ghExec);
   console.error(`repository ${repo.fullName} (${repo.created ? 'created' : 'reused'})`);
 }
 
