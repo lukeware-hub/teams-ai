@@ -106,3 +106,33 @@ describe('grepFallback', () => {
     expect(await grepFallback('/ws/repo', ['x'], many.exec, { maxHits: 5 })).toHaveLength(5);
   });
 });
+
+describe('coverage from AST graphs', () => {
+  const files = (map: Record<string, string>) => async (p: string) => map[p.replace(/\\/g, '/')] ?? null;
+  const astGraph = JSON.stringify({
+    nodes: [
+      { id: 'a', label: 'a.ts', source_file: 'src/a.ts', _origin: 'ast' },
+      { id: 'a_fn', label: 'fn()', source_file: 'src/a.ts', _origin: 'ast' },
+      { id: 'b', label: 'b.ts', source_file: 'src/b.ts', _origin: 'ast' },
+      { id: 'doc', label: 'README', source_file: 'README.md', _origin: 'ast' },
+      { id: 'ref', label: 'ref_zod', source_file: '', _origin: 'ast' },
+    ],
+    links: [{ source: 'a', target: 'b', relation: 'imports' }],
+    extracted_sources: [],
+    failed_sources: [],
+  });
+
+  it('measures coverage as code files in the graph over tracked code files when the source lists are empty', async () => {
+    const fake = new FakeExec().onArgs('git', ['ls-files'], () => ({ stdout: 'src/a.ts\nsrc/b.ts\nsrc/c.ts\nsrc/d.py\nREADME.md\npackage.json\n' }));
+    const g = new Graphify({ exec: fake.exec, readFile: files({ '/ws/graph/graphify-out/graph.json': astGraph }), moveDir: async () => undefined });
+    const cov = await g.update('/ws/repo', '/ws/graph');
+    expect(fake.calls.find((c) => c.bin === 'git')).toMatchObject({ args: ['ls-files'], cwd: '/ws/repo' });
+    expect(cov).toEqual({ extracted: 2, failed: 2, nodes: 5, links: 1, ratio: 0.5 });
+  });
+
+  it('counts only code extensions as tracked sources', async () => {
+    const fake = new FakeExec().onArgs('git', ['ls-files'], () => ({ stdout: 'src/a.ts\nsrc/b.ts\ndocs/x.md\nimg.png\n' }));
+    const g = new Graphify({ exec: fake.exec, readFile: files({ '/ws/graph/graphify-out/graph.json': astGraph }), moveDir: async () => undefined });
+    expect((await g.update('/ws/repo', '/ws/graph')).ratio).toBe(1);
+  });
+});

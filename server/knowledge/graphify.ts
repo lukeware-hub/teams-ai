@@ -22,6 +22,14 @@ export interface GraphCoverage {
 /** Below this share of extracted sources the code graph is too thin; the pack falls back to grep (spec §9). */
 export const MIN_COVERAGE = 0.5;
 
+/** Source extensions that count as code for the coverage denominator. */
+export const CODE_EXTENSIONS: readonly string[] = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.go', '.java', '.kt', '.rb', '.rs', '.cs', '.php', '.swift', '.scala', '.c', '.cc', '.cpp', '.h', '.hpp', '.sh', '.dart', '.ex', '.exs', '.lua', '.sql'];
+
+export function isCodeFile(file: string): boolean {
+  const lower = file.toLowerCase();
+  return CODE_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
 const TIMEOUT = 300_000;
 
 const NODE_LINE = /^NODE (.+?) \[src=(.*?) loc=(?:L(\d+))? ?community=.*\]$/;
@@ -105,20 +113,46 @@ export class Graphify {
     } catch {
       /* nothing produced (unsupported repo) → coverage 0 below */
     }
-    return this.coverage(outDir);
+    return this.coverage(outDir, await this.trackedFiles(repoDir));
   }
 
-  async coverage(outDir: string): Promise<GraphCoverage> {
+  /**
+   * Coverage of the code graph. graphify's `extracted_sources`/`failed_sources` are only filled by
+   * the LLM extractors; the AST mode we use leaves them empty (verified in WSL), so the measure is
+   * the distinct code files present in the graph over the tracked code files of the repository
+   * (`extracted` = covered files, `failed` = tracked code files absent from the graph).
+   */
+  async coverage(outDir: string, trackedFiles?: readonly string[]): Promise<GraphCoverage> {
+    const empty = { extracted: 0, failed: 0, nodes: 0, links: 0, ratio: 0 };
     const raw = await this.deps.readFile(this.graphPath(outDir));
-    if (!raw) return { extracted: 0, failed: 0, nodes: 0, links: 0, ratio: 0 };
+    if (!raw) return empty;
+    let g: { extracted_sources?: string[]; failed_sources?: string[]; nodes?: Array<{ source_file?: string }>; links?: unknown[] };
     try {
-      const g = JSON.parse(raw) as { extracted_sources?: string[]; failed_sources?: string[]; nodes?: unknown[]; links?: unknown[] };
-      const extracted = g.extracted_sources?.length ?? 0;
-      const failed = g.failed_sources?.length ?? 0;
-      const total = extracted + failed;
-      return { extracted, failed, nodes: g.nodes?.length ?? 0, links: g.links?.length ?? 0, ratio: total === 0 ? 0 : extracted / total };
+      g = JSON.parse(raw) as typeof g;
     } catch {
-      return { extracted: 0, failed: 0, nodes: 0, links: 0, ratio: 0 };
+      return empty;
+    }
+    const nodes = g.nodes?.length ?? 0;
+    const links = g.links?.length ?? 0;
+    if ((g.extracted_sources?.length ?? 0) + (g.failed_sources?.length ?? 0) > 0) {
+      const extracted = g.extracted_sources!.length;
+      const failed = g.failed_sources?.length ?? 0;
+      return { extracted, failed, nodes, links, ratio: extracted / (extracted + failed) };
+    }
+    const inGraph = new Set((g.nodes ?? []).map((n) => n.source_file).filter((f): f is string => !!f && isCodeFile(f)));
+    if (!trackedFiles) return { extracted: inGraph.size, failed: 0, nodes, links, ratio: inGraph.size > 0 ? 1 : 0 };
+    const tracked = trackedFiles.filter(isCodeFile);
+    const covered = tracked.filter((f) => inGraph.has(f)).length;
+    return { extracted: covered, failed: tracked.length - covered, nodes, links, ratio: tracked.length === 0 ? 0 : covered / tracked.length };
+  }
+
+  /** Tracked files of the repository, for the coverage denominator. */
+  async trackedFiles(repoDir: string): Promise<string[]> {
+    try {
+      const r = await this.deps.exec({ bin: 'git', args: ['ls-files'], cwd: repoDir, timeoutMs: 60_000 });
+      return r.exitCode === 0 ? r.stdout.split('\n').map((l) => l.trim()).filter(Boolean) : [];
+    } catch {
+      return [];
     }
   }
 
