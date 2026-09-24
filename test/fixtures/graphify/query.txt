@@ -1,0 +1,8 @@
+Graph: graphify-out/graph.json (412 nodes) | Traversal: BFS depth=2 | Start: ['stream-events.ts', 'StreamEvent'] | 128 nodes found
+
+[!] TRUNCATED: showing 4 of 128 nodes (~400-token budget). The answer may be among the 124 cut nodes — raise the token budget (CLI: --budget) or narrow the query (e.g. context_filter=['call'], or get_node for a specific symbol).
+
+NODE stream-events.ts [src=server/runner/stream-events.ts loc=L1 community=]
+NODE StreamEvent [src=server/runner/stream-events.ts loc=L3 community=]
+NODE ref_zod [src= loc= community=]
+NODE RateLimitInfo [src=server/runner/stream-events.ts loc=L63 community=]
