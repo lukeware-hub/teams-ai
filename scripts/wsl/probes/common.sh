@@ -17,6 +17,20 @@ trust_dir() {
 }
 trust_dir "$SANDBOX_DIR"
 
+untrust_dir() {
+  node -e '
+    const fs = require("fs"); const f = process.env.HOME + "/.claude.json";
+    if (!fs.existsSync(f)) process.exit(0);
+    const j = JSON.parse(fs.readFileSync(f, "utf8"));
+    if (j.projects) delete j.projects[process.argv[1]];
+    fs.writeFileSync(f, JSON.stringify(j, null, 2));
+  ' "$1"
+}
+
+# Probes must not leave state behind: remove the temp workspace and its trust entry on exit.
+cleanup_probe() { untrust_dir "$SANDBOX_DIR"; rm -rf "$SANDBOX_DIR"; }
+trap cleanup_probe EXIT
+
 # Runs claude headless with the orchestrator's isolation flags; stream saved to $REC_DIR/$1.ndjson.
 run_isolated() {
   local name="$1"; shift
