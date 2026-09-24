@@ -66,3 +66,19 @@ Amendment to row 2: read `structured_output` when present, otherwise the fenced/
 | `kind` deploy (cluster `teams-ai`) | `{"ok":true,"previous":null}` | first run failed on a probe race right after `apply` (kube-proxy had not programmed the Service: ClusterIP refused while pod IP answered); the in-cluster probe now retries (12 × 5 s) |
 
 Environment fixes made on the way: Docker Desktop's `IntegratedWslDistros` had been left `null` by an earlier edit (integration re-enabled via the settings JSON), and `kubectl` was only the Windows `kubectl.exe` reachable through interop — `scripts/wsl/*.sh` now ignore binaries under `/mnt`.
+
+## Knowledge integration (Plan 5, 2026-09-24, WSL)
+
+`npx tsx scripts/integration/knowledge.ts .` on this repository, graphify 0.9.67, `node:sqlite` (SQLite 3.51.3, FTS5):
+
+| Layer | Result |
+|---|---|
+| `graphify update . --no-cluster` (AST only, ~0.8 s) | 1004 nodes, 2282 links; `graphify-out/` moved to the graph dir outside the repo (repo clean) |
+| coverage | 142/142 tracked code files present in the graph → ratio 1.0 (`extracted_sources`/`failed_sources` stay empty in AST mode, so coverage is measured against `git ls-files`) |
+| `god-nodes --top 5` | `vitest`, `DeploymentIntent`, the design spec, `Role`, a plan heading (markdown is also extracted) |
+| `query "how is a step result summarized" --budget 600` | 23 nodes, truncated=true (header `[!] TRUNCATED: showing N of M nodes`) |
+| `affected summarizeStream --depth 1` | 9 nodes (`- <label> [<relation>] <file>:L<line>`) |
+| retrieval over `docs/superpowers/{specs,spikes}` | 106 chunks from 3 files; "quota breaker rate limit reset" → spec §8 first; "sandbox bubblewrap socat" → findings row 5; "merge queue head commit" → spec Phase 3 |
+| context pack (dev step, budget 3000) | 985 tokens, sections principles, contract, task, criteria, code, retrieval; nothing dropped |
+
+Formats the parsers rely on: `graph.json` keys `input_tokens, output_tokens, failed_sources, extracted_sources, nodes, links, directed`; node fields `id, label, file_type, source_file, source_location ("L<n>"), _origin`; `query` lines `NODE <label> [src=<file> loc=L<n> community=]`; `affected` lines `- <label> [<relation>] <file>:L<n>`; `god-nodes` lines `<i>. <label> - <k> edges`.
