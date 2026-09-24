@@ -1,7 +1,8 @@
-import type { OutputOf, ReplanOutput, SpecGapOutput, StepKind } from '../agents/outputs.js';
+import type { z } from 'zod';
+import type { DevOutput as DevOutputSchema, OutputOf, ReplanOutput, ReviewOutput as ReviewOutputSchema, SpecGapOutput, StepKind } from '../agents/outputs.js';
 
-type DevOutput = OutputOf<'dev'>;
-type ReviewOutput = OutputOf<'review'>;
+type DevOutput = z.infer<typeof DevOutputSchema>;
+type ReviewOutput = z.infer<typeof ReviewOutputSchema>;
 import type { Plan, PlanTask } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
@@ -226,7 +227,7 @@ export class TaskRunner {
     if (evidenceErrors.length > 0) return this.fail('schema', `Review evidence rejected:\n${evidenceErrors.join('\n')}`);
     if (value.decision === 'changes') {
       await this.deps.journal.fact(OrchEvent.ReviewChanges, { taskId: this.taskId, findings: value.findings });
-      const text = value.findings.map((f) => `- ${f.file}${f.line === null ? '' : `:${f.line}`} [${f.severity}] ${f.text}`).join('\n');
+      const text = value.findings.map((f) => `- ${f.file}${f.line === null ? '' : `:${f.line}`} [${f.severity}] ${f.problem} (fix: ${f.fix})`).join('\n');
       return this.fail('review-changes', `Review requested changes:\n${text}`);
     }
     await this.deps.journal.fact(OrchEvent.ReviewApproved, { taskId: this.taskId, criteria: value.criteria });

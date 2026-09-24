@@ -202,7 +202,7 @@ describe('TaskRunner: validating', () => {
 
 describe('TaskRunner: reviewing', () => {
   const review = (decision: 'approve' | 'changes', evidence = ['sum::[AC-001] adds']) =>
-    ok({ specHash: HASH, decision, criteria: [{ id: 'AC-001', status: decision === 'approve' ? 'passed' : 'failed', evidence }], findings: decision === 'changes' ? [{ file: 'src/a.ts', line: 1, severity: 'major', text: 'no test for the empty case', acIds: ['AC-001'] }] : [] });
+    ok({ specHash: HASH, decision, criteria: [{ id: 'AC-001', status: decision === 'approve' ? 'passed' : 'failed', evidence }], findings: decision === 'changes' ? [{ file: 'src/a.ts', line: 1, severity: 'important', problem: 'no test for the empty case', fix: 'add it', acIds: ['AC-001'] }] : [] });
   async function validated(reviewer: Agent) {
     const r = new TaskRunner('T1', deps({ agent: async (req) => (req.kind === 'review' ? reviewer(req) : devDone()(req)) }));
     await r.advance();
