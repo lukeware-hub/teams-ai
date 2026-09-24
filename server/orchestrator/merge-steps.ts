@@ -69,7 +69,7 @@ function common(deps: MergeStepsDeps, worktree: string, branch: string, title: s
       const r = await deps.gates(worktree, branch);
       if (!r.blockingFailure) return { ok: true };
       const f = r.blockingFailure;
-      return { ok: false, detail: redactSecrets(`${gateLine(f)}\n${tail(f.stderrTail || f.stdoutTail)}`, deps.secretValues()) };
+      return { ok: false, failure: f, detail: redactSecrets(`${gateLine(f)}\n${tail(f.stderrTail || f.stdoutTail)}`, deps.secretValues()) };
     },
     push: async () => {
       // Keyed by head sha: a second pass through the queue (merge refused, conflict resolved, resume)
@@ -128,7 +128,7 @@ export function taskMergeSteps(deps: MergeStepsDeps, task: PlanTask, worktree: s
       gateResults = r.results;
       if (!r.blockingFailure) return { ok: true };
       const f = r.blockingFailure;
-      return { ok: false, detail: redactSecrets(`[${f.failure ?? 'code'}] ${gateLine(f)}\n${tail(f.stderrTail || f.stdoutTail)}`, deps.secretValues()) };
+      return { ok: false, failure: f, detail: redactSecrets(`[${f.failure ?? 'code'}] ${gateLine(f)}\n${tail(f.stderrTail || f.stdoutTail)}`, deps.secretValues()) };
     },
     afterMerge: async () => {
       await gitFetch(deps.ws.repo, deps.exec);

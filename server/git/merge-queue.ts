@@ -1,3 +1,4 @@
+import type { GateResult } from '../exec/gate-runner.js';
 export type MergeStage = 'rebase' | 'gates' | 'push' | 'pr' | 'merge';
 
 export interface MergeSteps {
@@ -5,7 +6,7 @@ export interface MergeSteps {
   alreadyMerged(): Promise<number | null>;
   /** Rebase onto the current main; `baseSha` is the main commit the branch now sits on. */
   rebase(): Promise<{ ok: boolean; conflicts?: string[]; baseSha?: string }>;
-  gates(): Promise<{ ok: boolean; detail?: string }>;
+  gates(): Promise<{ ok: boolean; detail?: string; failure?: GateResult }>;
   push(): Promise<void>;
   ensurePr(): Promise<{ number: number }>;
   /** Sha of main on the remote right before merging; must equal `baseSha` or the merge is refused. */
@@ -16,7 +17,7 @@ export interface MergeSteps {
 
 export type MergeOutcome =
   | { ok: true; pr: number; already?: true; warning?: string }
-  | { ok: false; stage: MergeStage; conflicts?: string[]; detail?: string };
+  | { ok: false; stage: MergeStage; conflicts?: string[]; detail?: string; gateFailure?: GateResult };
 
 /**
  * Only the orchestrator writes `main`, one task at a time (spec §6 step 5): rebase on the current
@@ -67,7 +68,7 @@ export class MergeQueue {
       if (!rebase.ok) return { ok: false, stage, conflicts: rebase.conflicts ?? [] };
       stage = 'gates';
       const gates = await steps.gates();
-      if (!gates.ok) return { ok: false, stage, detail: gates.detail };
+      if (!gates.ok) return { ok: false, stage, detail: gates.detail, gateFailure: gates.failure };
       stage = 'push';
       await steps.push();
       stage = 'pr';
