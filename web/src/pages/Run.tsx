@@ -6,8 +6,9 @@ import { evidence, pausedUntil, phases, runState, tokens } from '../run/selector
 import { useJournal } from '../useSse.js';
 
 const hhmm = (iso: string) => new Date(iso).toTimeString().slice(0, 5);
+const money = (n: number) => `US$ ${n.toFixed(4)}`;
 const ORDER = ['implementing', 'validating', 'reviewing', 'rebasing', 'merging', 'ready', 'planned', 'merged', 'blocked', 'superseded'];
-const statusLabel = (status: string) => ({ done: 'concluído', complete: 'concluído', implementing: 'implementando', validating: 'validando', reviewing: 'revisando', rebasing: 'rebaseando', merging: 'mesclando', ready: 'pronta', planned: 'planejada', merged: 'mesclada', blocked: 'bloqueada', superseded: 'substituída', running: 'em execução' } as Record<string, string>)[status] ?? status;
+const statusLabel = (status: string) => ({ done: 'concluído', complete: 'concluído', failed: 'falhou', implementing: 'implementando', validating: 'validando', reviewing: 'revisando', rebasing: 'rebaseando', merging: 'mesclando', ready: 'pronta', planned: 'planejada', merged: 'mesclada', blocked: 'bloqueada', superseded: 'substituída', running: 'em execução' } as Record<string, string>)[status] ?? status;
 const statusTone = (status: string) => (['done', 'complete', 'merged'].includes(status) ? 'good' : ['blocked', 'failed'].includes(status) ? 'bad' : status.startsWith('paused') ? 'warn' : status === 'running' ? 'neutral' : 'neutral');
 
 export function RunView({ detail, events, ended, error, loadStep }: { detail: RunDetail; events: StoredEvent[]; ended: boolean; error: string | null; loadStep: (stepId: string) => Promise<{ prompt: string; output: unknown }> }) {
@@ -93,7 +94,7 @@ export function RunView({ detail, events, ended, error, loadStep }: { detail: Ru
                 <td>{r}</td>
                 <td className="num">{u.inputTokens}</td>
                 <td className="num">{u.outputTokens}</td>
-                <td className="num">${u.costUsd.toFixed(4)}</td>
+                <td className="num">{money(u.costUsd)}</td>
                 <td className="num">{u.steps}</td>
               </tr>
             ))}
@@ -114,13 +115,13 @@ export function RunView({ detail, events, ended, error, loadStep }: { detail: Ru
                 <td>{p}</td>
                 <td className="num">{u.inputTokens}</td>
                 <td className="num">{u.outputTokens}</td>
-                <td className="num">${u.costUsd.toFixed(4)}</td>
+                <td className="num">{money(u.costUsd)}</td>
               </tr>
             ))}
           </tbody>
         </table>
         <p className="tokens-total">
-          Total de <strong>US$ {t.total.costUsd.toFixed(4)}</strong> em {t.total.steps} etapas
+          Total de <strong>{money(t.total.costUsd)}</strong> em {t.total.steps} etapas
         </p>
       </section>
       <section className="card">
