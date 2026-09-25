@@ -15,4 +15,4 @@ RUN npm run --prefix web build
 
 ENV HOST=0.0.0.0
 EXPOSE 8787
-CMD ["npm", "run", "ui", "--", "--port", "8787"]
+CMD ["sh", "-lc", "find /root/.teams-ai/workspaces -name '*.ndjson.lock' -delete 2>/dev/null || true; exec npm run ui -- --port 8787"]
