@@ -16,6 +16,10 @@ import { startApi } from './api/server.js';
 import { onboardingRoutes } from './api/onboarding-routes.js';
 import { defaultRunControl } from './api/run-control.js';
 import { runRoutes } from './api/run-routes.js';
+import { refineRoutes } from './api/refine-routes.js';
+import { readProject } from './api/run-index.js';
+import { makeRunAgent } from './refine/agent.js';
+import { SessionRegistry } from './refine/registry.js';
 import { readUserConfig } from './onboarding/config-store.js';
 import { hasScript, spawnScriptPty } from './onboarding/pty.js';
 
@@ -60,6 +64,22 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
       routes: [
         ...onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr }),
         ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr }),
+        ...refineRoutes({
+          registry: new SessionRegistry({
+            cfg: async () => (await readUserConfig()).cfg,
+            runAgent: await makeRunAgent({ cfg, agentsDir: path.join(repoRoot, '.claude', 'agents'), hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), workspacesRoot: expandHome(cfg.paths.workspaces) }),
+            secretsDir: expandHome(cfg.paths.secrets),
+            exec: execCommand,
+            projectDir: async (projectId) => {
+              for (const { dir } of (await readUserConfig()).cfg.projects) {
+                const read = await readProject(dir).catch(() => null);
+                if (read?.project.projectId === projectId) return dir;
+              }
+              return null;
+            },
+          }),
+          log: io.stderr,
+        }),
       ],
       staticDir: hasDist ? staticDir : null,
       log: io.stderr,
