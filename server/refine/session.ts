@@ -6,7 +6,7 @@ import { loadSecrets, SECRET_NAME, writeSecret } from '../core/secrets.js';
 import type { Hit } from '../knowledge/retrieval.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import { EventStore, type StoredEvent } from '../store/event-store.js';
-import { runCycle, type RunAgent } from './cycle.js';
+import { runCycle, type CycleDeps, type RunAgent } from './cycle.js';
 import { flowTemplate, readDerived, readDoc, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
 import { DRAFT_HASH, RefineEvent } from './events.js';
 import { applyPatch } from './patches.js';
@@ -65,6 +65,7 @@ export interface SessionDeps {
   runAgent: RunAgent;
   secretsDir: string;
   retrieval: (query: string) => readonly Hit[];
+  validateDocs?: CycleDeps['validateDocs'];
 }
 export interface SecretRow {
   name: string;
@@ -174,6 +175,7 @@ export class RefineSession {
         principles: () => this.state.derived?.project.principles ?? [],
         retrieval: this.deps.retrieval,
         secretsDir: this.deps.secretsDir,
+        validateDocs: this.deps.validateDocs,
       },
       cycle,
     ).finally(() => {

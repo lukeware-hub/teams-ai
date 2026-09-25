@@ -12,6 +12,7 @@ import { KnowledgeIndex } from '../knowledge/retrieval.js';
 import { expandHome, nextRunId, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
 import { loadEvents } from '../store/event-store.js';
 import type { RunAgent } from './cycle.js';
+import type { CycleDeps } from './cycle.js';
 import { createFromRepo, createNewProject, draftExists, draftPaths, type Draft } from './draft.js';
 import { ConflictError, NotFoundError, RefineSession } from './session.js';
 import { reduceRefineEvents, type RefineStatus } from './state.js';
@@ -20,6 +21,7 @@ export interface RegistryDeps {
   cfg: () => Promise<Config>;
   home?: string;
   runAgent: RunAgent;
+  validateDocs?: CycleDeps['validateDocs'];
   secretsDir: string;
   exec: Exec;
   /** Directory of a registered block A project, or null when the id is not registered. */
@@ -56,7 +58,7 @@ export class SessionRegistry {
     const key = `${draft.projectId}/${draft.specId}`;
     const p = (async () => {
       const retrieval = (await exists(ws.knowledgeDb)) ? (q: string) => KnowledgeIndex.open(ws.knowledgeDb).search(q, { k: 5 }) : () => [];
-      const deps = { ws, draft, runAgent: this.deps.runAgent, secretsDir: this.deps.secretsDir, retrieval };
+      const deps = { ws, draft, runAgent: this.deps.runAgent, secretsDir: this.deps.secretsDir, retrieval, validateDocs: this.deps.validateDocs };
       return create ? RefineSession.create(deps, create) : RefineSession.open(deps);
     })();
     this.sessions.set(key, p);

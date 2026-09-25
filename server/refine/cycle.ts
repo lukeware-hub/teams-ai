@@ -29,6 +29,7 @@ export interface CycleDeps {
   principles: () => readonly string[];
   retrieval: (query: string) => readonly Hit[];
   secretsDir: string;
+  validateDocs?: (docs: { project: string; briefing: string; stack: string; flow: string }) => Promise<{ available: boolean; consistent: boolean | null; confidence: number | null; model: string | null }>;
 }
 
 const norm = (t: string) => t.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -47,6 +48,10 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
   };
   const previous = await readDerived(draft);
   const fail = (reason: string) => journal.fact(RefineEvent.CycleFailed, { cycle, reason });
+  if (deps.validateDocs) {
+    const validation = await deps.validateDocs({ project: docs['project.md'], briefing: docs['brief.md'], stack: docs['stack.md'], flow: docs['flow.md'] }).catch(() => ({ available: false, consistent: null, confidence: null, model: null }));
+    await journal.fact(RefineEvent.DocsValidated, { cycle, backend: 'jev', ...validation });
+  }
 
   const d = await deps.runAgent<'derive'>(
     {

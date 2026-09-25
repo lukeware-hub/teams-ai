@@ -2,6 +2,7 @@ export const RefineEvent = {
   Created: 'REFINE_CREATED',
   DocEdited: 'DOC_EDITED',
   CycleStarted: 'REFINE_CYCLE_STARTED',
+  DocsValidated: 'REFINE_DOCS_VALIDATED',
   Derived: 'DERIVED',
   Evaluated: 'REFINE_EVALUATED',
   CycleFailed: 'REFINE_CYCLE_FAILED',

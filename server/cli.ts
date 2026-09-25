@@ -20,6 +20,7 @@ import { refineRoutes } from './api/refine-routes.js';
 import { readProject, runsDir } from './api/run-index.js';
 import { makeRunAgent } from './refine/agent.js';
 import { SessionRegistry } from './refine/registry.js';
+import { createJevValidator } from './refine/jev-validation.js';
 import { addProject, readUserConfig } from './onboarding/config-store.js';
 import { hasScript, spawnScriptPty } from './onboarding/pty.js';
 import { DockerLocalTarget } from './deploy/docker-local.js';
@@ -71,6 +72,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
           registry: new SessionRegistry({
             cfg: async () => (await readUserConfig()).cfg,
             runAgent: await makeRunAgent({ cfg, agentsDir: path.join(repoRoot, '.claude', 'agents'), hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), workspacesRoot: expandHome(cfg.paths.workspaces) }),
+            validateDocs: createJevValidator(cfg, async () => loadSecrets(expandHome(cfg.paths.secrets))),
             secretsDir: expandHome(cfg.paths.secrets),
             exec: execCommand,
             projectDir: async (projectId) => {
