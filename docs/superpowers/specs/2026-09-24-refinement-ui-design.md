@@ -36,7 +36,7 @@ server/refine/
   events.ts         REFINE_* event types and payloads
 server/api/refine-routes.ts
 server/orchestrator/phases/bootstrap.ts   Phase 0 (§4)
-server/cli.ts                             run --draft <dir>
+server/cli.ts                             run --project <draftRoot> --spec <id> --draft
 web/src/pages/Refinement.tsx, web/src/refine/*
 .claude/agents/po.md, sm.md               refine and derive prompt sections
 ```
@@ -88,7 +88,7 @@ Rules:
 2. **refine** — PO and SM `runAgentStep({kind: 'refine'})` in parallel. Pack: both Markdown files, both derived JSON, retrieval hits from the project knowledge index (previous specs, ADRs), the Q&A history (answered, skipped), rejected patches with their reasons, and the checklist ids the role owns. Output: `RefineOutput` (exists: `checklist[]`, `questions[]`, `docPatch[]`).
 3. **merge** — questions from both roles are concatenated, duplicates removed by normalized text (lowercase, whitespace collapsed; System 1 decision 3 replaces this later), blocking first, PO before SM within a class. Questions already answered or skipped (same normalized text) are dropped. Patches are validated (§3.4) and queued.
 4. **checklist** — the union of both roles' items, keyed by the fixed ids of POC §5.1:
-   PO `po.objectives-verifiable`, `po.personas`, `po.scope-explicit`, `po.no-contradictions`; SM `sm.dependencies-and-secrets`, `sm.constraints-clear`, `sm.tasks-feasible`, `sm.no-open-questions`. An item an agent omits is `passed: false, detail: 'not reported'`. `sm.dependencies-and-secrets` is overwritten by the orchestrator: passed only when every `secretNames` entry of every external dependency in the derived `spec.json` exists in `~/.teams-ai/secrets/<projectId>.env`. `sm.no-open-questions` is overwritten too: passed only when the queue has no blocking question.
+   PO `po.objectives-verifiable`, `po.personas`, `po.scope-explicit`, `po.no-contradictions`; SM `sm.dependencies-and-secrets`, `sm.constraints-clear`, `sm.tasks-feasible`, `sm.no-open-questions`. An item an agent omits is `passed: false, detail: 'not reported'`. `sm.dependencies-and-secrets` is overwritten by the orchestrator: passed only when every `secretNames` entry of every external dependency in the derived `spec.json` exists as a file in `~/.teams-ai/secrets/` (one file per secret name, the store `loadSecrets` reads). `sm.no-open-questions` is overwritten too: passed only when the queue has no blocking question.
 5. State after the cycle: `ready` when every item passed and no patch is pending; `answering` when at least one question is queued or one patch is pending; `drafting` otherwise (an item failed for a reason the human fixes in the editor or in the secrets panel, with nothing to answer or decide).
 
 Events: `REFINE_CYCLE_STARTED`, `DERIVED {project, spec}`, `STEP_STARTED`/`STEP_FINISHED` per agent step (same payloads as runs, so the token panel of block A applies), `REFINE_EVALUATED {checklist, questions, discardedPatches}`, `PATCH_PROPOSED {patch, diff}` per valid patch, `REFINE_CYCLE_FAILED {reason}`.
@@ -107,20 +107,20 @@ Events: `REFINE_CYCLE_STARTED`, `DERIVED {project, spec}`, `STEP_STARTED`/`STEP_
 
 ### 3.5 Secrets panel
 
-Rows come from `externalDependencies[].secretNames` of the derived `spec.json`. Each row shows present/absent and a 4-character hint when present. Entering a value calls `writeSecret` into `~/.teams-ai/secrets/<projectId>.env` (0600, atomic); the value is never echoed; the checklist becomes stale. No agent is involved.
+Rows come from `externalDependencies[].secretNames` of the derived `spec.json`. Each row shows present/absent and a 4-character hint when present. Entering a value calls `writeSecret` into `~/.teams-ai/secrets/<NAME>` (one file per name, 0600, atomic; the same store the onboarding uses); the value is never echoed; the checklist becomes stale. No agent is involved.
 
 ### 3.6 Start
 
 1. Refuse unless `ready` and not stale.
 2. `freezeSpec(spec)` on the derived `spec.json` (status `running`, `specVersion + 1`, `specHash`); write it to the draft. Write `project.json` as derived.
-3. Compute `runId = nextRunId(specId)`, spawn `teams-ai run --draft <draftDir> --run-id <runId>` exactly as block A spawns runs (`spawnRun`, detached, `pid` file).
+3. Compute `runId = nextRunId(specId)`, spawn `teams-ai run --project <draftRoot> --spec <specId> --run-id <runId> --draft` exactly as block A spawns runs (the draft root holds `docs/project.json`, so it is a valid block A project directory) (`spawnRun`, detached, `pid` file).
 4. Register the project in `config.json.projects` (idempotent). Append `REFINE_STARTED_RUN {runId}`; the session is `started` and the UI navigates to `/runs/<runId>`.
 
 The draft is left in place for the run to consume and for audit; a later "New spec" on the same project starts a fresh draft. A `started` session cannot be reopened; a new one is created by "Continue spec" after the run.
 
 ## 4. Phase 0 — Bootstrap (inside the run)
 
-`teams-ai run --draft <dir>` replaces the current precondition "docs on `main`" with a Phase 0 that puts them there. Everything is `intent → effect → confirm` through the run's journal, so `resume` reconciles a crash at any point.
+`teams-ai run --project <draftRoot> --spec <id> --draft` replaces the current precondition "docs on `main`" with a Phase 0 that puts them there. Everything is `intent → effect → confirm` through the run's journal, so `resume` reconciles a crash at any point.
 
 | Case | Steps |
 |---|---|
@@ -151,7 +151,7 @@ All under `/api`; JSON; errors `{ error }` with 400/404/409/500 as in block A. `
 | POST | `/refine/:sessionId/start` | 409 unless `ready` and not stale. Returns `{ runId }`. |
 | GET | `/refine/:sessionId/events` | SSE, journal replay from `Last-Event-ID`, then tail; same framing as block A. |
 
-Block A's `GET /projects` gains `drafts: [{ specId, state }]` per project and a top-level `unregistered: [{ projectId, specId, state }]` list for new projects whose session has not started, so the Projects screen can show "Open refinement". Registered projects' spec rows gain the actions "New spec" and "Continue spec" (the latter only for `awaiting-validation`/`done`).
+A new `GET /refine` lists every draft found under `workspaces/*/refine/*/` as `[{ projectId, specId, state, registered }]` (block A's `GET /projects` keeps its shape), so the Projects screen can show "Open refinement" for registered projects and for new projects whose session has not started. Registered projects' spec rows gain the actions "New spec" and "Continue spec" (the latter only for `awaiting-validation`/`done`).
 
 ## 6. Web UI — `/refine/:projectId/:specId`
 
@@ -167,7 +167,7 @@ The page loads `GET /refine/:sessionId` once and then applies SSE events with a 
 
 - Host check as before. Draft paths are built from validated slugs only; the API never accepts a path.
 - Agent steps get the sanitized environment; secrets are never in a pack (only their names and present/absent).
-- `writeSecret` is the only writer of `secrets/<projectId>.env`; the API returns hints only.
+- `writeSecret` is the only writer of `~/.teams-ai/secrets/`; the API returns hints only.
 - Patches can only target the two Markdown files of the draft; derived JSON is never patched.
 - Phase 0 uses `GH_TOKEN` from the secrets store through the existing git unit; the UI process never runs `gh` for bootstrap.
 
