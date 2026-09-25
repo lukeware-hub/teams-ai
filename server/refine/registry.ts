@@ -1,12 +1,15 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import type { RunControlDeps } from '../api/run-control.js';
+import { spawnRun } from '../api/run-control.js';
+import { writePid } from '../api/run-index.js';
 import type { Config } from '../config/config.js';
 import { Spec } from '../contracts/spec.js';
 import { ID_PATTERNS } from '../core/ids.js';
 import type { Exec } from '../exec/command.js';
 import { fetch as gitFetch, git } from '../git/git.js';
 import { KnowledgeIndex } from '../knowledge/retrieval.js';
-import { expandHome, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
+import { expandHome, nextRunId, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
 import { loadEvents } from '../store/event-store.js';
 import type { RunAgent } from './cycle.js';
 import { createFromRepo, createNewProject, draftExists, draftPaths, type Draft } from './draft.js';
@@ -21,6 +24,9 @@ export interface RegistryDeps {
   exec: Exec;
   /** Directory of a registered block A project, or null when the id is not registered. */
   projectDir: (projectId: string) => Promise<string | null>;
+  control: RunControlDeps;
+  runsDir: () => Promise<string>;
+  register: (dir: string) => Promise<void>;
 }
 
 export interface DraftRow {
@@ -113,6 +119,22 @@ export class SessionRegistry {
     }
     await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'continue', report });
     return this.session(draft, ws, 'continue');
+  }
+
+  /** Spec (refinement) §3.6: freeze the spec, spawn `run --draft`, register the draft root as a project. */
+  async start(projectId: string, specId: string): Promise<{ runId: string }> {
+    const session = await this.get(projectId, specId);
+    const ws = await this.ws(projectId);
+    const draft = draftPaths(ws, specId);
+    await session.freeze();
+    const runs = await this.deps.runsDir();
+    const runId = await nextRunId({ runs }, specId);
+    await fs.mkdir(path.posix.join(runs, runId), { recursive: true });
+    const { pid } = spawnRun(this.deps.control, { projectDir: draft.root, specId, runId, mode: 'run', draft: true, logFile: path.posix.join(runs, runId, 'ui.log') });
+    await writePid(runs, runId, pid);
+    await this.deps.register(draft.root);
+    await session.markStarted(runId);
+    return { runId };
   }
 
   async list(): Promise<DraftRow[]> {

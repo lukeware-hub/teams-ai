@@ -127,6 +127,11 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       }),
     },
     {
+      method: 'POST',
+      path: `${S}/start`,
+      handler: wrap(async ({ params, json }) => json(200, await registry.start(params.projectId!, params.specId!))),
+    },
+    {
       method: 'GET',
       path: `${S}/events`,
       handler: wrap(async ({ req, params, sse }) => {

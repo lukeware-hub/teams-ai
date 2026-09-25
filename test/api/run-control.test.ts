@@ -69,4 +69,9 @@ describe('run control', () => {
     expect(await stop(deps, 4242, 1000)).toBe('terminated');
     expect(await stop(fake(new Set()).deps, 99, 1000)).toBe('gone');
   });
+  it('adds --draft to a run command when asked', () => {
+    const { deps } = fake(new Set());
+    expect(runCommand(deps, { projectDir: '/d', specId: 's', runId: 's-r1', mode: 'run', draft: true }).args.slice(-1)).toEqual(['--draft']);
+    expect(runCommand(deps, { projectDir: '/d', specId: 's', runId: 's-r1', mode: 'run' }).args).not.toContain('--draft');
+  });
 });

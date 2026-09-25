@@ -17,10 +17,10 @@ import { onboardingRoutes } from './api/onboarding-routes.js';
 import { defaultRunControl } from './api/run-control.js';
 import { runRoutes } from './api/run-routes.js';
 import { refineRoutes } from './api/refine-routes.js';
-import { readProject } from './api/run-index.js';
+import { readProject, runsDir } from './api/run-index.js';
 import { makeRunAgent } from './refine/agent.js';
 import { SessionRegistry } from './refine/registry.js';
-import { readUserConfig } from './onboarding/config-store.js';
+import { addProject, readUserConfig } from './onboarding/config-store.js';
 import { hasScript, spawnScriptPty } from './onboarding/pty.js';
 
 export interface CliIo {
@@ -77,6 +77,9 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
               }
               return null;
             },
+            control: defaultRunControl(repoRoot),
+            runsDir: async () => runsDir({ cfg: (await readUserConfig()).cfg, isAlive: () => false }),
+            register: (dir) => addProject(dir).then(() => undefined),
           }),
           log: io.stderr,
         }),

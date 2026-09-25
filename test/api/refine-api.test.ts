@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { refineRoutes } from '../../server/api/refine-routes.js';
+import type { RunControlDeps } from '../../server/api/run-control.js';
 import { startApi } from '../../server/api/server.js';
 import { execCommand } from '../../server/exec/command.js';
 import { readUserConfig } from '../../server/onboarding/config-store.js';
@@ -16,6 +17,8 @@ let api: { port: number; close(): Promise<void> };
 let registry: SessionRegistry;
 let script: Script;
 let remote: Remote | null = null;
+let spawns: Array<{ args: string[]; logFile: string }>;
+let registered: string[];
 const base = () => `http://127.0.0.1:${api.port}`;
 const call = (method: string, p: string, body?: unknown) =>
   fetch(`${base()}${p}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -34,7 +37,29 @@ beforeEach(async () => {
   await fs.mkdir(`${home}/.teams-ai`, { recursive: true });
   await fs.writeFile(`${home}/.teams-ai/config.json`, JSON.stringify({ paths: { workspaces: `${home}/ws`, runs: `${home}/runs`, secrets: `${home}/secrets` }, projects: [] }));
   script = {};
-  registry = new SessionRegistry({ cfg: async () => (await readUserConfig(home)).cfg, home, runAgent: makeFakeRunAgent(script), secretsDir: `${home}/secrets`, exec: execCommand, projectDir: async () => null });
+  spawns = [];
+  registered = [];
+  const control: RunControlDeps = {
+    spawn: (a) => {
+      spawns.push({ args: a.args, logFile: a.logFile });
+      return { pid: 5000 + spawns.length };
+    },
+    kill: () => true,
+    sleep: async () => {},
+    cliEntry: () => ({ bin: 'node', prefix: ['cli'] }),
+    repoRoot: '/repo',
+  };
+  registry = new SessionRegistry({
+    cfg: async () => (await readUserConfig(home)).cfg,
+    home,
+    runAgent: makeFakeRunAgent(script),
+    secretsDir: `${home}/secrets`,
+    exec: execCommand,
+    projectDir: async (projectId) => (registered.find((d) => d.includes(`/${projectId}/refine/`)) ?? null),
+    control,
+    runsDir: async () => `${home}/runs`,
+    register: async (dir) => { registered.push(dir); },
+  });
   api = await startApi({ routes: refineRoutes({ registry }) }, 0);
 });
 afterEach(async () => {
@@ -107,5 +132,36 @@ describe('refine api', () => {
     expect(await put.json()).toEqual({ present: true, hint: 'cret' });
     expect((await call('PUT', '/api/refine/hello-app/hello-app-001/secrets/DB_URL', { value: '' })).status).toBe(400);
     expect(await fs.readFile(`${home}/secrets/DB_URL`, 'utf8')).toBe('postgres://secret');
+  });
+
+  it('start freezes the spec, spawns run --draft with the draft root, registers it, and refuses when stale', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/start')).status).toBe(409);
+    script['derive/po'] = [derived];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
+    await settle();
+    expect((await snapshot()).state.status).toBe('ready');
+    await call('PUT', '/api/refine/hello-app/hello-app-001/docs/brief.md', { text: '## Objectives\n- changed' });
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/start')).status).toBe(409); // stale
+    expect(spawns).toHaveLength(0);
+    script['derive/po'] = [derived];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
+    await settle();
+    const started = await call('POST', '/api/refine/hello-app/hello-app-001/start');
+    expect(started.status).toBe(200);
+    expect(await started.json()).toEqual({ runId: 'hello-app-001-r1' });
+    const draftRoot = `${home}/ws/hello-app/refine/hello-app-001`;
+    expect(spawns[0]!.args).toEqual(['cli', 'run', '--project', draftRoot, '--spec', 'hello-app-001', '--run-id', 'hello-app-001-r1', '--draft']);
+    expect(registered).toEqual([draftRoot]);
+    const spec = JSON.parse(await fs.readFile(`${draftRoot}/docs/specs/hello-app-001/spec.json`, 'utf8'));
+    expect(spec).toMatchObject({ status: 'running', specVersion: 1 });
+    expect(spec.specHash).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(await fs.readFile(`${home}/runs/hello-app-001-r1/pid`, 'utf8')).toBe('5001');
+    expect((await snapshot()).state).toMatchObject({ status: 'started', runId: 'hello-app-001-r1' });
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/evaluate')).status).toBe(409);
   });
 });
