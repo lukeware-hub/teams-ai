@@ -3,9 +3,9 @@
 Audited against the codebase (`server/`, `web/`, `test/`) on 2026-09-24. Specs live in `docs/superpowers/specs/`:
 `2026-09-23-teams-ai-poc-design.md` (POC design), `2026-09-24-orchestrator-phases-1-3-design.md`, and
 `2026-09-24-web-ui-onboarding-design.md` — all three are design companions to the plans below and match what
-was implemented. Web UI block A (`2026-09-24-run-api-execution-ui-design.md`) is implemented by plan 10. Two
-further specs are designed and not yet planned or implemented: blocks B (`2026-09-24-refinement-ui-design.md`)
-and C (`2026-09-24-phases-4-6-validation-ui-design.md`).
+was implemented. Web UI block A (`2026-09-24-run-api-execution-ui-design.md`) is implemented by plan 10, block B
+(`2026-09-24-refinement-ui-design.md`) is implemented by plan 11. One further spec is designed and not yet
+planned or implemented: block C (`2026-09-24-phases-4-6-validation-ui-design.md`).
 
 | # | Plan | Status |
 |---|------|--------|
@@ -19,6 +19,7 @@ and C (`2026-09-24-phases-4-6-validation-ui-design.md`).
 | 8 | [`2026-09-24-teams-ai-08-web-ui-onboarding.md`](2026-09-24-teams-ai-08-web-ui-onboarding.md) | Implemented and merged to main, live-tested — 4 of 6 findings items confirmed live; 2 still need a live run (see Outstanding work). |
 | 9 | [`2026-09-24-teams-ai-09-jev-decisions-phase3a.md`](2026-09-24-teams-ai-09-jev-decisions-phase3a.md) (renamed from `2026-09-24-jev-decisions-phase3a.md`) | Partially implemented — 4 of the additional decisions (merge-gate triage, attempt progress, PR risk, model tier/effort) are wired; several are explicitly out of scope (see Outstanding work). |
 | 10 | [`2026-09-24-teams-ai-10-run-api-execution-ui.md`](2026-09-24-teams-ai-10-run-api-execution-ui.md) | Implemented — run API, SSE journal stream with `Last-Event-ID` replay, Projects and Execution screens, graceful stop on SIGTERM; live-checked in WSL against the recorded `hello-001-r1` journal (see the plan's Findings). |
+| 11 | [`2026-09-24-teams-ai-11-refinement-ui.md`](2026-09-24-teams-ai-11-refinement-ui.md) | Implemented and unit/integration tested — Gate 1 refinement session (derive/refine cycle, questions, doc patches, secrets), Phase 0 bootstrap, Refinement screen; live-checked in WSL through the derive step's real failure path, blocked by account quota before the happy path (see the plan's Findings). |
 
 Note: plan 6 (knowledge) was originally numbered plan 5, duplicating the decision-layer plan's number; it was
 renumbered to 6 in commit `134bcf3` ("docs: renumber the knowledge plan to 06 (two plans carried the number 05)").

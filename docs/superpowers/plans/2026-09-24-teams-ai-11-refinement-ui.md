@@ -2574,3 +2574,17 @@ git commit -m "docs: plan 11 findings from the live refinement check; plans inde
 - Deviations from the spec text, all applied to the spec file in the same commit as this plan: secrets are one file per name under `~/.teams-ai/secrets/` (the existing store), drafts are listed by `GET /api/refine` instead of extra fields on `GET /api/projects`, and the run is started with `--project <draftRoot> --spec <id> --draft` because the draft root already satisfies block A's project-directory contract.
 - The refine journal's `specHash` field is the literal `draft` and every agent step echoes the cycle's `draftHash`, so `runStep`'s hash check still guards against a stale answer.
 - `Run.executePhase0()` is public so Phase 0 tests do not have to script Phases 1–3.
+
+## Findings
+
+Live check run 2026-09-24 in WSL Ubuntu-24.04, against a fresh clone of `feat/refinement-ui` under an isolated `HOME`, with the account's real `claude`/`gh` credentials symlinked in.
+
+- Onboarding was already green on this host (`claude`, `githubOwner`, `ghLogin`, `githubToken`); `openrouterKey` is not needed by refinement.
+- `POST /api/projects/new` created `hello-live/hello-live-001` and the draft templates as designed.
+- `PUT .../docs/project.md` and `.../docs/brief.md` accepted hand-written Markdown for a small "hello" service (one smoke AC, one non-smoke AC, one external dependency naming `DEMO_TOKEN`).
+- `POST .../evaluate` returned `202 {"state":"evaluating"}` and started a real `derive` step against Claude.
+- **The derive step failed on a real account quota limit** ("You've hit your weekly limit · resets Sep 26, 9am"), not a code defect. This is the first genuine exercise of the failure path end to end: `REFINE_CYCLE_STARTED` → `STEP_STARTED`/`STEP_FINISHED{ok:false, failure:'quota'}` → `REFINE_CYCLE_FAILED{reason}` were journaled correctly, and the snapshot's `state.status` was `'error'` with the exact provider message in `state.error`. This is exactly the behaviour Task 6's `session.test.ts` and Task 7's `refine-api.test.ts` assert with a fake agent; seeing it reproduce against the real CLI's own failure text is useful confirmation the redaction and error-surfacing path is not fake-agent-shaped.
+- The happy path — PO/SM questions, patch accept/reject, reaching `ready`, `Start` creating a private GitHub repository via Phase 0 bootstrap and landing on `PHASE_STARTED {1}` — was **not** exercised against the real CLI in this session, because of the quota block. No GitHub repository was created, so there was nothing to delete. This remains an open item: retry after the quota resets (2026-09-26) or with a different Claude account.
+- Practical note for whoever retries this: WSL's default PATH carries the Windows-side PATH (interop), which put a Windows `npx` ahead of the Linux one and made `npm run ui` shell out through `cmd.exe`. Launching with `HOME` set and the nvm `node`/`tsx` binaries referenced by full path avoided it; a real run should just use an interactive login shell instead of a one-off `bash -c`.
+
+**Status: implemented and unit/integration tested (all 11 tasks); live-tested through the derive step's real failure path; the happy path through Phase 0 is still pending a live run once quota allows.**
