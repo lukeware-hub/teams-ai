@@ -25,6 +25,7 @@ export function refinePack(input: {
   const rejected = input.rejected.map((p) => `- ${DOC_REL[p.file](input.specId)}: "${p.find.slice(0, 80)}" → rejected${p.decision ? `: ${p.decision}` : ''}`);
   const ids = input.role === 'po' ? PO_ITEMS : SM_ITEMS;
   const feedback = [
+    'Write every user-facing question, checklist detail, patch reason, and explanation in Brazilian Portuguese. Keep technical identifiers, file names, HTTP status codes, and checklist ids unchanged.',
     `Report exactly these checklist ids: ${ids.join(', ')}.`,
     `Patch files: ${DOC_REL['project.md'](input.specId)}, ${DOC_REL['brief.md'](input.specId)}.`,
     `### ${DOC_REL['project.md'](input.specId)}`,
