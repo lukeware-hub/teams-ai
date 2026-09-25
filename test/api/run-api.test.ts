@@ -101,6 +101,24 @@ describe('start, resume, stop', () => {
     expect(rows[0]).toMatchObject({ runId: 'hello-001-r2', status: 'running', stoppable: true });
   });
 
+  it('two concurrent starts on one spec launch exactly one run', async () => {
+    onSpawn = async (runId) => {
+      await writeRun(runs, runId, [started(runId)], state('running'));
+    };
+    const [a, b] = await Promise.all([post('/api/projects/hello-app/specs/hello-001/runs'), post('/api/projects/hello-app/specs/hello-001/runs')]);
+    expect([a.status, b.status].sort()).toEqual([200, 409]);
+    expect(spawns).toHaveLength(1);
+    const again = await post('/api/projects/hello-app/specs/hello-001/runs');
+    expect(again.status).toBe(409); // the run is now live, not just launching
+  });
+
+  it('two concurrent resumes of one run launch exactly one process', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('paused:auth'));
+    const [a, b] = await Promise.all([post('/api/runs/hello-001-r1/resume'), post('/api/runs/hello-001-r1/resume')]);
+    expect([a.status, b.status].sort()).toEqual([200, 409]);
+    expect(spawns).toHaveLength(1);
+  });
+
   it('refuses to start while the spec has an active run, or for an unknown spec', async () => {
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 900);
     alive.add(900);

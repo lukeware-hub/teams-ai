@@ -281,6 +281,17 @@ describe('Run', () => {
     await run.close();
   }, 30_000);
 
+  it('resume clears the pid.gone marker the UI leaves behind, so a CLI resume is not listed as interrupted', async () => {
+    const d = await withAgents(deps(happy));
+    const run = await Run.create(d);
+    await run.close();
+    const marker = path.join(d.ws.runs, run.runId, 'pid.gone');
+    await fs.writeFile(marker, '');
+    const resumed = await Run.resume(d, run.runId);
+    await expect(fs.access(marker)).rejects.toThrow();
+    await resumed.close();
+  });
+
   it('create accepts an explicit run id', async () => {
     const run = await Run.create(await withAgents(deps(happy)), 'spec-001-r7');
     expect(run.runId).toBe('spec-001-r7');

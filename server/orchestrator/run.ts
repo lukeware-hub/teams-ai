@@ -123,6 +123,8 @@ export class Run {
   }
 
   static async resume(deps: RunDeps, runId: string): Promise<Run> {
+    // The UI marks a run whose process died with `pid.gone`; any resume, CLI or UI, ends that state.
+    await fs.rm(path.join(runDir(deps.ws, runId), 'pid.gone'), { force: true });
     const journal = await Run.openJournal(deps, runId);
     const run = new Run(runId, journal, deps);
     await reconcile({ journal, ws: deps.ws, exec: deps.exec, ghExec: deps.ghExec, afterMerge: (taskId, branch) => run.afterMergeOnResume(taskId, branch), log: run.log });

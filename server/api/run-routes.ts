@@ -107,6 +107,18 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     await writePid(runs, o.runId, pid);
     deps.log?.(`run ${o.runId} ${o.mode} pid ${pid}`);
   };
+  // The 409 checks read the filesystem, which lags a spawn by up to the journal wait; two concurrent
+  // requests would both pass. A key is held from the check to the pid write.
+  const launching = new Set<string>();
+  const exclusive = async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+    if (launching.has(key)) throw new HttpError(409, `${key} is already starting`);
+    launching.add(key);
+    try {
+      return await fn();
+    } finally {
+      launching.delete(key);
+    }
+  };
   const P = '/api';
   return [
     { method: 'GET', path: `${P}/projects`, handler: async ({ json }) => json(200, await listProjects(await index())) },
@@ -142,11 +154,14 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const specId = safe(params.specId!);
         const { specs } = await readProject(dir);
         if (!specs.some((s) => s.specId === specId)) throw new HttpError(404, `unknown spec ${specId}`);
-        const rows = await listRuns(idx, params.projectId!);
-        const active = rows.find((r) => r.specId === specId && CLAIMS_SPEC.has(r.status));
-        if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status})`);
-        const runId = await nextRunId({ runs: runsDir(idx) }, specId);
-        await launch(idx, { projectDir: dir, specId, runId, mode: 'run' });
+        const runId = await exclusive(`spec ${params.projectId}/${specId}`, async () => {
+          const rows = await listRuns(idx, params.projectId!);
+          const active = rows.find((r) => r.specId === specId && CLAIMS_SPEC.has(r.status));
+          if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status})`);
+          const id = await nextRunId({ runs: runsDir(idx) }, specId);
+          await launch(idx, { projectDir: dir, specId, runId: id, mode: 'run' });
+          return id;
+        });
         json(200, { runId });
       },
     },
@@ -156,9 +171,11 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       handler: async ({ params, json }) => {
         const idx = await index();
         const runId = safe(params.runId!);
-        const { row, dir } = await findRun(idx, runId);
-        if (row.status !== 'paused:auth' && row.status !== 'interrupted') throw new HttpError(409, `run ${runId} is ${row.status}; only paused:auth or interrupted runs resume`);
-        await launch(idx, { projectDir: dir, specId: row.specId, runId, mode: 'resume' });
+        await exclusive(`run ${runId}`, async () => {
+          const { row, dir } = await findRun(idx, runId);
+          if (row.status !== 'paused:auth' && row.status !== 'interrupted') throw new HttpError(409, `run ${runId} is ${row.status}; only paused:auth or interrupted runs resume`);
+          await launch(idx, { projectDir: dir, specId: row.specId, runId, mode: 'resume' });
+        });
         json(200, { runId });
       },
     },
