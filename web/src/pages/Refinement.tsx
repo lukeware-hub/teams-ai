@@ -83,13 +83,17 @@ export function RefinementView(p: ViewProps) {
   const [secretValues, setSecretValues] = useState<Record<string, string>>({});
   useEffect(() => setDocs(snap.docs), [snap.docs]);
   const locked = busy || st.status === 'evaluating' || st.status === 'started';
+  const jevBlocked = st.error?.startsWith('Jev bloqueou') ?? false;
+  const hasDocumentChanges = (Object.keys(docs) as DocFile[]).some((file) => docs[file] !== snap.docs[file]);
   const pending = [...st.questions.filter((q) => q.status === 'pending')].sort((a, b) => Number(b.blocking) - Number(a.blocking));
   const current = pending[0];
   const canStart = st.status === 'ready' && !st.stale && !busy;
   const derivedThisCycle = (p.events ?? []).some((e) => e.type === 'DERIVED' && Number(e.data.cycle) === st.cycle);
   const jevEvent = (p.events ?? []).find((e) => e.type === 'REFINE_DOCS_VALIDATED' && Number(e.data.cycle) === st.cycle);
   const claudeStage = currentClaudeStage(p.events ?? [], st.cycle, jevEvent, derivedThisCycle);
-  const nextStep = pending.length > 0
+  const nextStep = jevBlocked && !hasDocumentChanges
+    ? 'Edite e salve um dos quatro documentos para liberar a reavaliação.'
+    : pending.length > 0
     ? 'Responda as perguntas pendentes para continuar.'
     : st.stale
       ? 'Clique em Reavaliar para atualizar a checklist após suas respostas.'
@@ -131,9 +135,10 @@ export function RefinementView(p: ViewProps) {
           </p>
         )}
         {st.status === 'error' && <p className="error">{errorText(st.error)}</p>}
+        {jevBlocked && !hasDocumentChanges && <p className="notice">A reavaliação fica pausada para evitar repetir o mesmo bloqueio. Edite e salve um documento antes de tentar novamente.</p>}
         <div className="doc-actions">
           <span className="save-hint">As alterações são salvas ao sair do editor.</span>
-          <button data-testid="evaluate" className="secondary" disabled={locked} onClick={p.onEvaluate}>
+          <button data-testid="evaluate" className="secondary" disabled={locked || (jevBlocked && !hasDocumentChanges)} onClick={p.onEvaluate}>
           {st.cycle === 0 ? 'Avaliar' : 'Reavaliar'}
           </button>
         </div>

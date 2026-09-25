@@ -19,7 +19,7 @@ export interface JevValidationResult {
   stateTruncated: boolean;
 }
 
-const MAX_STATE_CHARS = 24_000;
+const MAX_STATE_CHARS = 32_000;
 const CHECKS = {
   documents_consistent: {
     instructions: 'Do project.md, briefing.md, stack.md, and flow.md agree without a material contradiction?',

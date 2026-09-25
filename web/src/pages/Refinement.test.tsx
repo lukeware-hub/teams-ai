@@ -93,6 +93,16 @@ describe('RefinementView', () => {
     expect(screen.getByText(/spec.objectives: too small/)).toBeTruthy();
   });
 
+  it('explains that a Jev block needs a document edit before re-evaluation', () => {
+    render(
+      <MemoryRouter>
+        <RefinementView snap={base({ status: 'error', error: 'Jev bloqueou a derivação: flow_covers_scope', questions: [], patches: [] })} busy={false} {...on()} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/Edite e salve um dos quatro documentos/)).toBeTruthy();
+    expect((screen.getByTestId('evaluate') as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('shows the active Claude step from the refinement journal', () => {
     render(
       <MemoryRouter>
