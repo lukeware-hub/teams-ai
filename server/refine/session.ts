@@ -82,6 +82,9 @@ export interface Snapshot {
 
 export class RefineSession {
   private running: Promise<void> | null = null;
+  /** Set synchronously by `freeze()`, before any await, so a second concurrent `start` never slips
+   *  through the window between freezing the spec and the run being marked started. */
+  private starting = false;
 
   private constructor(
     private readonly deps: SessionDeps,
@@ -123,6 +126,7 @@ export class RefineSession {
 
   private guard(): void {
     if (this.state.status === 'started') throw new ConflictError('session already started a run');
+    if (this.starting) throw new ConflictError('a start is already in progress');
     if (this.busy) throw new ConflictError('evaluation in progress');
   }
 
@@ -229,10 +233,16 @@ export class RefineSession {
     if (this.state.status !== 'ready' || this.state.stale) {
       throw new ConflictError(`session is ${this.state.status}${this.state.stale ? ' (stale)' : ''}; evaluate until ready`);
     }
-    const derived = this.state.derived!;
-    const value = { project: derived.project, spec: freezeSpec(derived.spec) };
-    await writeDerived(this.deps.draft, value);
-    return value;
+    this.starting = true;
+    try {
+      const derived = this.state.derived!;
+      const value = { project: derived.project, spec: freezeSpec(derived.spec) };
+      await writeDerived(this.deps.draft, value);
+      return value;
+    } catch (err) {
+      this.starting = false;
+      throw err;
+    }
   }
 
   async markStarted(runId: string): Promise<void> {

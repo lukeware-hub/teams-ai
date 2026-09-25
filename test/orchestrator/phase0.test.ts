@@ -6,6 +6,7 @@ import { execCommand } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
 import { Intent, OrchEvent } from '../../server/orchestrator/events.js';
 import { Run, type RunDeps } from '../../server/orchestrator/run.js';
+import { worktreeDir } from '../../server/orchestrator/workspace.js';
 import { runStep } from '../../server/runner/step.js';
 import { makeFrozenSpec, makeProject } from '../fixtures/contracts.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
@@ -88,5 +89,94 @@ describe('phase 0', () => {
     expect(log.trim().split('\n')).toHaveLength(1);
     expect(resumed.journal.events.filter((e) => e.kind === 'confirm' && e.type === Intent.DocsCommit)).toHaveLength(1);
     await resumed.close();
+  });
+
+  it('resuming after Phase 0 already merged does not open a second, empty docs PR', { timeout: 60_000 }, async () => {
+    const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
+    exec.onArgs('gh', ['repo', 'view'], () => ({ stdout: JSON.stringify({ nameWithOwner: 'o/hello-app', url: remote.origin }) }));
+    const gh = new FakeGh().install(exec);
+    const d = deps(exec, remote.repo);
+    const first = await Run.create(d, 'hello-001-r1');
+    expect(await first.executePhase0()).toEqual({ ok: true });
+    await first.close();
+    const resumed = await Run.resume(d, 'hello-001-r1');
+    expect(await resumed.executePhase0()).toEqual({ ok: true });
+    expect(gh.prs.filter((p) => p.title === 'docs(hello-001): spec v1')).toHaveLength(1);
+    await resumed.close();
+  });
+
+  it('a crash after the docs commit is confirmed but before the push does not lose the commit on resume', { timeout: 60_000 }, async () => {
+    const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
+    exec.onArgs('gh', ['repo', 'view'], () => ({ stdout: JSON.stringify({ nameWithOwner: 'o/hello-app', url: remote.origin }) }));
+    const gh = new FakeGh().install(exec);
+    // DOCS_COMMIT is confirmed and the commit exists in the local worktree; the crash lands on the
+    // very next intent (PUSH), before the commit ever reaches the remote.
+    const d = deps(exec, remote.repo, { crashAfterIntent: (id) => id.startsWith('PUSH:') });
+    const first = await Run.create(d, 'hello-001-r1');
+    await expect(first.executePhase0()).rejects.toThrow(/crash injected/);
+    await first.close();
+    const resumed = await Run.resume({ ...d, crashAfterIntent: undefined }, 'hello-001-r1');
+    expect(await resumed.executePhase0()).toEqual({ ok: true });
+    const pr = gh.prs.find((p) => p.title === 'docs(hello-001): spec v1');
+    expect(pr).toBeDefined();
+    const merged = await git(remote.repo, ['show', `${pr!.headRefOid}:docs/specs/hello-001/spec.json`], execCommand);
+    expect(merged).toContain('"specHash"');
+    await resumed.close();
+  });
+
+  it('if the local worktree is lost after the docs commit is confirmed, resume never silently discards it', { timeout: 60_000 }, async () => {
+    const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
+    exec.onArgs('gh', ['repo', 'view'], () => ({ stdout: JSON.stringify({ nameWithOwner: 'o/hello-app', url: remote.origin }) }));
+    new FakeGh().install(exec);
+    const d = deps(exec, remote.repo, { crashAfterIntent: (id) => id.startsWith('PUSH:') });
+    const first = await Run.create(d, 'hello-001-r1');
+    await expect(first.executePhase0()).rejects.toThrow(/crash injected/);
+    await first.close();
+    // Simulate the worktree directory being lost between the crash and the resume (ephemeral storage,
+    // disk cleanup): the branch still exists in the repo's object database with the unmerged commit.
+    const branch = `docs/hello-001-v1`;
+    await fs.rm(worktreeDir(d.ws, branch), { recursive: true, force: true });
+    const resumed = await Run.resume({ ...d, crashAfterIntent: undefined }, 'hello-001-r1');
+    // Either it recreates the worktree without losing the commit, or it fails loudly instead of
+    // silently recreating an empty branch — never a merged PR whose diff has quietly gone missing.
+    const result = await resumed.executePhase0().catch((err: Error) => ({ ok: false as const, reason: err.message }));
+    if (result.ok) {
+      const head = await git(remote.repo, ['show', `origin/main:docs/specs/hello-001/spec.json`], execCommand).catch(() => null);
+      expect(head).toContain('"specHash"');
+    }
+    await resumed.close();
+  });
+
+  it('records PHASE_FAILED instead of throwing when gh repo create fails', { timeout: 60_000 }, async () => {
+    const wsRepo = path.join(remote.root, 'fresh-repo-2').replace(/\\/g, '/');
+    const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
+    exec.onArgs('gh', ['repo', 'view'], () => ({ exitCode: 1, stderr: 'Could not resolve to a Repository' }));
+    exec.onArgs('gh', ['repo', 'create'], () => ({ exitCode: 1, stderr: 'HTTP 422: name already exists on this account' }));
+    new FakeGh().install(exec);
+    const d = deps(exec, wsRepo);
+    const run = await Run.create(d, 'hello-001-r1');
+    const result = await run.executePhase0();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toMatch(/gh repo create failed/);
+    expect(run.journal.events.some((e) => e.type === OrchEvent.PhaseFailed && e.data.phase === 0)).toBe(true);
+    await run.close();
+  });
+
+  it('an unrelated gh repo view failure (auth/network) is a hard error, not silently treated as "no repository"', { timeout: 60_000 }, async () => {
+    const wsRepo = path.join(remote.root, 'fresh-repo-3').replace(/\\/g, '/');
+    const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
+    exec.onArgs('gh', ['repo', 'view'], () => ({ exitCode: 1, stderr: 'HTTP 401: Bad credentials' }));
+    const created = { called: false };
+    exec.onArgs('gh', ['repo', 'create'], () => {
+      created.called = true;
+      return { stdout: 'https://github.example/o/hello-app\n' };
+    });
+    new FakeGh().install(exec);
+    const d = deps(exec, wsRepo);
+    const run = await Run.create(d, 'hello-001-r1');
+    const result = await run.executePhase0();
+    expect(result.ok).toBe(false);
+    expect(created.called).toBe(false);
+    await run.close();
   });
 });

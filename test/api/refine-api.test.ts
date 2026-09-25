@@ -164,4 +164,18 @@ describe('refine api', () => {
     expect((await snapshot()).state).toMatchObject({ status: 'started', runId: 'hello-app-001-r1' });
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/evaluate')).status).toBe(409);
   });
+
+  it('two concurrent start requests spawn exactly one run', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    script['derive/po'] = [derived];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
+    await settle();
+    const [a, b] = await Promise.all([call('POST', '/api/refine/hello-app/hello-app-001/start'), call('POST', '/api/refine/hello-app/hello-app-001/start')]);
+    const statuses = [a.status, b.status].sort();
+    expect(statuses).toEqual([200, 409]);
+    expect(spawns).toHaveLength(1);
+    expect(registered).toHaveLength(1);
+  });
 });
