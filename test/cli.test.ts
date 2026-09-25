@@ -66,4 +66,19 @@ describe('teams-ai cli', () => {
     expect(seen).toEqual([undefined, 'spec-001-r9']);
     expect(stops).toBe(1);
   });
+
+  it('run accepts --draft and still reaches the factory', async () => {
+    const a = io(['run', '--project', '/tmp/p', '--spec', 'spec-001', '--draft']);
+    let reached = false;
+    const code = await main(
+      a.io,
+      async () => {
+        reached = true;
+        return { runId: 'x', execute: async () => 'complete', requestStop: async () => {}, close: async () => {}, journal: { state: { tasks: new Map() } }, accounting: { total: () => ({ costUsd: 0 }) } } as never;
+      },
+      { signals: () => () => {} },
+    );
+    expect(code).toBe(0);
+    expect(reached).toBe(true);
+  });
 });

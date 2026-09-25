@@ -27,7 +27,7 @@ import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
 import { CrashInjected, Intent, Journal, OrchEvent, type IntentType, type RunResult } from './events.js';
 export { CrashInjected };
 import { taskMergeSteps, type MergeStepsDeps } from './merge-steps.js';
-import { PAUSED_AUTH, runPhase1, runPhase2, type PhaseDeps } from './phases/index.js';
+import { PAUSED_AUTH, runPhase0, runPhase1, runPhase2, type PhaseDeps, type PhaseResult } from './phases/index.js';
 import { reconcile } from './reconcile.js';
 import { runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
 import { TaskRunner, type TaskRunnerDeps } from './task-runner.js';
@@ -56,6 +56,8 @@ export interface RunDeps {
   maxParallel?: number;
   /** Claude Code's trust file; tests point it into a temp dir so they never touch the real ~/.claude.json. */
   claudeJsonPath?: string;
+  /** Spec (refinement) §4: docs to put on main before Phase 1 (`run --draft`). */
+  bootstrap?: { docsDir: string; owner: string | undefined };
 }
 
 export type ExecuteResult = RunResult | 'paused:auth';
@@ -375,7 +377,15 @@ export class Run {
     }
   }
 
+  /** Phase 0 runs only for a draft; public so tests can drive it without scripting Phases 1–3. */
+  async executePhase0(): Promise<PhaseResult> {
+    if (!this.deps.bootstrap) return { ok: true };
+    return runPhase0({ ...this.phaseDeps(), ghExec: this.deps.ghExec }, this.deps.bootstrap);
+  }
+
   async execute(): Promise<ExecuteResult> {
+    const phase0 = await this.executePhase0();
+    if (!phase0.ok) return phase0.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase0.reason);
     const phase1 = await runPhase1(this.phaseDeps());
     if (!phase1.ok) return phase1.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase1.reason);
     this.techSpecText = phase1.techSpecText ?? '';

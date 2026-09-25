@@ -73,9 +73,9 @@ export async function docsWorktree(deps: PhaseDeps, branch: string, opts: { keep
   return dir;
 }
 
-export const docsCommitKey = (deps: PhaseDeps, phase: 1 | 2) => `${deps.spec.specId}-${phase}`;
+export const docsCommitKey = (deps: PhaseDeps, phase: 0 | 1 | 2) => `${deps.spec.specId}-${phase}`;
 
-export async function commitAndMergeDocs(deps: PhaseDeps, phase: 1 | 2, branch: string, worktree: string, title: string): Promise<PhaseResult> {
+export async function commitAndMergeDocs(deps: PhaseDeps, phase: 0 | 1 | 2, branch: string, worktree: string, title: string): Promise<PhaseResult> {
   const key = docsCommitKey(deps, phase);
   if (!deps.journal.isConfirmed(Intent.DocsCommit, key)) {
     const baseSha = await git(worktree, ['rev-parse', 'HEAD'], deps.exec);
