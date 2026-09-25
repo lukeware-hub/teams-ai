@@ -118,7 +118,7 @@ async function readJson<T>(file: string, parse: (v: unknown) => T): Promise<T> {
   return parse(JSON.parse(await fs.readFile(file, 'utf8')));
 }
 
-async function preconditions(exec: Exec, repo: string, specId: string, draft: boolean): Promise<string[]> {
+async function preconditions(exec: Exec, repo: string, specId: string, draft: boolean, complete = false): Promise<string[]> {
   const errors: string[] = [];
   const check = async (label: string, spec: Parameters<Exec>[0], test?: (stdout: string) => boolean) => {
     const r = await exec(spec).catch(() => null);
@@ -127,9 +127,11 @@ async function preconditions(exec: Exec, repo: string, specId: string, draft: bo
   if (!draft) await check('repo/ is not a git clone with origin', { bin: 'git', args: ['-C', repo, 'ls-remote', '--exit-code', 'origin', 'refs/heads/main'], timeoutMs: 60_000 });
   if (!draft) await check('main lacks docs/project.json', { bin: 'git', args: ['-C', repo, 'cat-file', '-e', 'origin/main:docs/project.json'], timeoutMs: 10_000 });
   if (!draft) await check(`main lacks docs/specs/${specId}/spec.json`, { bin: 'git', args: ['-C', repo, 'cat-file', '-e', `origin/main:docs/specs/${specId}/spec.json`], timeoutMs: 10_000 });
-  await check('claude is not logged in', { bin: 'claude', args: ['auth', 'status', '--json'], timeoutMs: 30_000 }, (out) => /"loggedIn":\s*true/.test(out));
-  await check('gh is not logged in', { bin: 'gh', args: ['auth', 'status'], timeoutMs: 30_000 });
-  await check('docker daemon is not reachable', { bin: 'docker', args: ['version'], timeoutMs: 30_000 });
+  if (!complete) {
+    await check('claude is not logged in', { bin: 'claude', args: ['auth', 'status', '--json'], timeoutMs: 30_000 }, (out) => /"loggedIn":\s*true/.test(out));
+    await check('gh is not logged in', { bin: 'gh', args: ['auth', 'status'], timeoutMs: 30_000 });
+    await check('docker daemon is not reachable', { bin: 'docker', args: ['version'], timeoutMs: 30_000 });
+  }
   return errors;
 }
 
@@ -157,7 +159,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
     : {};
   const exec: Exec = (s) => execCommand(s.bin === 'git' ? { ...s, env: { ...(s.env ?? {}), ...gitAuth } } : s);
   const ghExec: Exec = (s) => execCommand({ ...s, env: { ...(s.env ?? {}), ...gitAuth } });
-  const errors = await preconditions(exec, ws.repo, specId, opts.draft === true);
+  const errors = await preconditions(exec, ws.repo, specId, opts.draft === true, opts.complete === true);
   if (errors.length > 0) throw new Error(`preconditions failed:\n- ${errors.join('\n- ')}`);
   const agents = await loadAgents(path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '.claude', 'agents'));
   const graphify = new Graphify({ exec, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null) });
