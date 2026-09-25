@@ -6,6 +6,7 @@ import { outputContract } from '../orchestrator/steps.js';
 import { PO_ITEMS, SM_ITEMS } from './checklist.js';
 import { DOC_REL } from './draft.js';
 import type { PatchRow, QuestionRow } from './state.js';
+import type { JevValidationResult } from './jev-validation.js';
 
 /** Spec (refinement) §3.2 step 2: what PO and SM see on every cycle. */
 export function refinePack(input: {
@@ -21,6 +22,7 @@ export function refinePack(input: {
   retrieval: readonly Hit[];
   history: readonly QuestionRow[];
   rejected: readonly PatchRow[];
+  jevValidation?: JevValidationResult;
 }): ContextPackInput {
   const answered = input.history.filter((q) => q.status === 'answered').map((q) => `- [${q.role}] ${q.text}\n  answer: ${q.answer}`);
   const skipped = input.history.filter((q) => q.status === 'skipped').map((q) => `- [${q.role}] ${q.text}`);
@@ -37,6 +39,8 @@ export function refinePack(input: {
     input.briefMd,
     ...(input.stackMd ? ['### stack.md', input.stackMd] : []),
     ...(input.flowMd ? ['### flow.md (Mermaid)', input.flowMd] : []),
+    '### Jev preflight validation',
+    input.jevValidation ? JSON.stringify(input.jevValidation, null, 2) : '(not available)',
     '### derived project.json',
     JSON.stringify(input.derived.project, null, 2),
     '### derived spec.json',

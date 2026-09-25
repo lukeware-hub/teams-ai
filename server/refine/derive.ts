@@ -3,6 +3,7 @@ import { Project } from '../contracts/project.js';
 import { AcceptanceCriterion, Spec } from '../contracts/spec.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
+import type { JevValidationResult } from './jev-validation.js';
 
 export function derivePack(input: {
   specHash: string;
@@ -13,6 +14,7 @@ export function derivePack(input: {
   flowMd?: string;
   previous: { project: Project; spec: Spec } | null;
   specId: string;
+  jevValidation?: JevValidationResult;
 }): ContextPackInput {
   const schemas = {
     project: z.toJSONSchema(Project, { target: 'draft-07', io: 'input' }),
@@ -27,6 +29,8 @@ export function derivePack(input: {
     input.briefMd,
     ...(input.stackMd ? ['### stack.md', input.stackMd] : []),
     ...(input.flowMd ? ['### flow.md (Mermaid)', input.flowMd] : []),
+    '### Jev preflight validation',
+    input.jevValidation ? JSON.stringify(input.jevValidation, null, 2) : '(not available)',
     '### previous derived JSON (keep unchanged acceptance criterion ids)',
     input.previous ? JSON.stringify(input.previous, null, 2) : '(none)',
     '### JSON schemas',

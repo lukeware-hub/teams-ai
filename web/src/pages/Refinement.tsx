@@ -18,6 +18,8 @@ const errorText = (text: string | null) => text
 function currentClaudeStage(events: StoredEvent[], cycle: number, jevEvent: StoredEvent | undefined, derived: boolean): string {
   if (!jevEvent) return 'Jev está validando project.md, briefing.md, stack.md e flow.md.';
   if (jevEvent.data.available === false) return 'Jev não está disponível; verifique OPENROUTER_API_KEY.';
+  if (jevEvent.data.decision === 'blocked') return 'Jev encontrou inconsistências graves; a derivação foi bloqueada.';
+  if (jevEvent.data.decision === 'review') return 'Jev encontrou pontos para revisão; Claude está analisando os documentos.';
 
   const cycleEvents = events.filter((e) => Number(e.data.attempt) === cycle || Number(e.data.cycle) === cycle);
   const started = new Map<string, { kind: string; role: string }>();

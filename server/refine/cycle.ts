@@ -9,6 +9,7 @@ import { mergeChecklist, type ChecklistItem } from './checklist.js';
 import { derivePack, postProcessDerived } from './derive.js';
 import { draftHash, readDerived, readDoc, writeDerived, type DocFile, type Draft } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
+import type { JevValidationResult } from './jev-validation.js';
 import { refinePack } from './packs.js';
 import { applyPatch, checkPatch, patchId, unifiedDiff } from './patches.js';
 import type { RefineState } from './state.js';
@@ -29,7 +30,7 @@ export interface CycleDeps {
   principles: () => readonly string[];
   retrieval: (query: string) => readonly Hit[];
   secretsDir: string;
-  validateDocs?: (docs: { project: string; briefing: string; stack: string; flow: string }) => Promise<{ available: boolean; consistent: boolean | null; confidence: number | null; model: string | null }>;
+  validateDocs?: (docs: { project: string; briefing: string; stack: string; flow: string }) => Promise<JevValidationResult>;
 }
 
 const norm = (t: string) => t.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -48,16 +49,22 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
   };
   const previous = await readDerived(draft);
   const fail = (reason: string) => journal.fact(RefineEvent.CycleFailed, { cycle, reason });
+  let jevValidation: JevValidationResult | undefined;
   if (deps.validateDocs) {
-    const validation = await deps.validateDocs({ project: docs['project.md'], briefing: docs['brief.md'], stack: docs['stack.md'], flow: docs['flow.md'] }).catch(() => ({ available: false, consistent: null, confidence: null, model: null }));
+    jevValidation = await deps.validateDocs({ project: docs['project.md'], briefing: docs['brief.md'], stack: docs['stack.md'], flow: docs['flow.md'] }).catch(() => ({ available: false, decision: 'review' as const, consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false }));
+    const validation = jevValidation;
     await journal.fact(RefineEvent.DocsValidated, { cycle, backend: 'jev', ...validation });
+    if (validation.decision === 'blocked') {
+      await fail(`Jev bloqueou a derivação: ${Object.entries(validation.checks).filter(([, value]) => value < 0.5).map(([id]) => id).join(', ') || 'inconsistência grave'}`);
+      return;
+    }
   }
 
   const d = await deps.runAgent<'derive'>(
     {
       kind: 'derive',
       role: 'po',
-      pack: derivePack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], previous, specId: draft.specId }),
+      pack: derivePack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], previous, specId: draft.specId, jevValidation }),
       cwd: draft.root,
       phase: 'refine',
       taskId: null,
@@ -97,6 +104,7 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
           retrieval,
           history: state.questions,
           rejected: state.patches.filter((p) => p.status === 'rejected'),
+          jevValidation,
         }),
         cwd: draft.root,
         phase: 'refine',
