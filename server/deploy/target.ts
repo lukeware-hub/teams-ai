@@ -20,6 +20,7 @@ export interface DeployTarget {
   currentImage(intent: DeploymentIntent): Promise<string | null>;
   rollback(intent: DeploymentIntent, previous: string): Promise<void>;
   destroy(intent: DeploymentIntent): Promise<void>;
+  serviceUrl?(intent: DeploymentIntent): Promise<string> | string;
 }
 
 export type DeployStage = 'validate' | 'build' | 'apply' | 'verify' | 'smoke';

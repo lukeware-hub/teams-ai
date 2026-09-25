@@ -1,0 +1,44 @@
+import type { PlanTask } from '../../contracts/plan.js';
+import { runDeployment, type DeploymentIntent, type DeployStage } from '../../deploy/target.js';
+import type { SmokeRow } from '../../exec/smoke.js';
+import { RunEvent } from '../../pipeline/run-state.js';
+import { Intent, OrchEvent } from '../events.js';
+import { checkoutMain, type PhaseDeps } from './shared.js';
+
+export type Phase5Result = { ok: true; url: string; smoke: SmokeRow[]; healthcheck: string } | { ok: false; reason: string; fixTask?: PlanTask };
+export const MAX_DEPLOY_ATTEMPTS = 3;
+
+export function deployIntent(deps: PhaseDeps, tag: string): DeploymentIntent {
+  const p = deps.plan!;
+  return { projectId: deps.project.projectId, image: p.deploy.image, tag, port: p.deploy.port, healthcheckPath: p.deploy.healthcheckPath, manifests: [...p.deploy.manifests], secretNames: deps.secretNames ? deps.secretNames() : [...new Set(deps.spec.externalDependencies.flatMap((d) => d.secretNames))], contextDir: deps.ws.repo };
+}
+const fixTask = (deps: PhaseDeps, attempt: number, stage: DeployStage, detail: string): PlanTask => ({ id: `T950-deploy-fix-${attempt}`, title: `Fix deployment (${stage})`, description: `Deploy attempt ${attempt} failed at ${stage}: ${detail}`, criteriaRefs: [], dependsOn: [], affectedPaths: [...deps.plan!.deploy.manifests, 'Dockerfile'], owner: 'devops', origin: 'deploy-fix' });
+
+export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3): Promise<Phase5Result> {
+  if (!deps.plan || !deps.target || !deps.smoke) throw new Error('Phase 5 needs plan, target and smoke');
+  const done = deps.journal.events.find((e) => e.type === OrchEvent.DeployVerified && e.data.attempt === attempt);
+  if (done) return { ok: true, url: String(done.data.url), smoke: done.data.smoke as SmokeRow[], healthcheck: String(done.data.healthcheck) };
+  if (!deps.journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 5)) await deps.journal.fact(OrchEvent.PhaseStarted, { phase: 5 });
+  const tag = await checkoutMain(deps); const intent = deployIntent(deps, tag); const key = `deploy-${attempt}`;
+  const failed = async (stage: DeployStage, detail: string, rolledBack: boolean, rollbackHealthy: boolean | null, previous: string | null): Promise<Phase5Result> => {
+    await deps.journal.fact(OrchEvent.DeployFailed, { attempt, stage, detail, rolledBack, rollbackHealthy, tag });
+    if (rolledBack) await deps.journal.fact(OrchEvent.RollbackDone, { attempt, previous });
+    if (attempt >= 3) return { ok: false, reason: `deploy failed on attempt ${attempt} at ${stage}: ${detail}` };
+    const task = fixTask(deps, attempt, stage, detail); await deps.journal.fact(RunEvent.FixTasksPlanned, { tasks: [task] });
+    return { ok: false, reason: `deploy failed at ${stage}; deploy-fix task planned`, fixTask: task };
+  };
+  let previous: string | null = null; let healthcheck = '';
+  if (deps.journal.isConfirmed(Intent.DeployApply, key)) {
+    const c = [...deps.journal.events].reverse().find((e) => e.kind === 'confirm' && e.intentId === `${Intent.DeployApply}:${key}`); previous = (c?.data.previous as string | null | undefined) ?? null;
+    const h = await deps.target.verify(intent); if (!h.healthy) return failed('verify', h.detail, false, null, previous); healthcheck = h.detail;
+  } else {
+    await deps.journal.intent(Intent.DeployApply, key, { attempt, image: intent.image, tag, intent });
+    const r = await runDeployment(deps.target, intent, { smoke: async () => ({ ok: true, detail: 'journaled separately' }), baseUrl: '' });
+    if (!r.ok) return failed(r.stage, r.detail, r.rolledBack, r.rollbackHealthy, null);
+    previous = r.previous; await deps.journal.confirm(Intent.DeployApply, key, { previous }); await deps.journal.fact(OrchEvent.DeployApplied, { attempt, previous, tag });
+    healthcheck = (await deps.target.verify(intent)).detail;
+  }
+  let url: string; try { url = await (deps.target.serviceUrl ? deps.target.serviceUrl(intent) : ''); } catch (e) { return failed('verify', (e as Error).message, false, null, previous); }
+  const s = await deps.smoke(deps.ws.repo, url); if (!s.ok) { let rb = false; let rh: boolean | null = null; if (previous) { await deps.target.rollback(intent, previous); rb = true; rh = (await deps.target.verify(intent)).healthy; } return failed('smoke', s.detail, rb, rh, previous); }
+  await deps.journal.fact(OrchEvent.DeployVerified, { attempt, url, smoke: s.rows, healthcheck, tag }); return { ok: true, url, smoke: s.rows, healthcheck };
+}

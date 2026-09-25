@@ -8,7 +8,7 @@ import { loadEvents } from '../store/event-store.js';
 
 export const SAFE_ID = /^[A-Za-z0-9_.-]+$/;
 
-export type RunListStatus = 'running' | 'paused:quota' | 'paused:auth' | 'draining' | 'complete' | 'blocked' | 'deadlocked' | 'drained' | 'phase-failed' | 'interrupted' | 'unknown';
+export type RunListStatus = 'running' | 'paused:quota' | 'paused:auth' | 'draining' | 'complete' | 'blocked' | 'deadlocked' | 'drained' | 'phase-failed' | 'awaiting-validation' | 'verification-failed' | 'deploy-failed' | 'done' | 'interrupted' | 'unknown';
 const ACTIVE: ReadonlySet<string> = new Set(['running', 'paused:quota', 'paused:auth', 'draining']);
 /** A spec with an interrupted run is resumed, not restarted: the UI offers Resume instead of Start. */
 export const CLAIMS_SPEC: ReadonlySet<string> = new Set([...ACTIVE, 'interrupted']);

@@ -89,6 +89,7 @@ export function makePlan(spec: Spec, overrides: Partial<Plan> = {}): Plan {
       build: 'npm run build',
       run: 'npm start',
       healthcheck: 'curl -fsS http://localhost:3000/health',
+      smoke: 'npm run smoke',
     },
     gateImage: 'node:22-bookworm',
     junitPath: 'reports/junit.xml',

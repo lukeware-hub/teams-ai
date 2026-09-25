@@ -4,6 +4,11 @@ import type { OutputOf, StepKind } from '../../agents/outputs.js';
 import { Plan } from '../../contracts/plan.js';
 import type { Project } from '../../contracts/project.js';
 import type { Spec } from '../../contracts/spec.js';
+import type { GateResult } from '../../exec/gate-runner.js';
+import type { Decider } from '../../decide/decider.js';
+import type { EvidenceTask } from '../../evidence/matrix.js';
+import type { DeployTarget } from '../../deploy/target.js';
+import type { SmokeRow } from '../../exec/smoke.js';
 import type { Exec } from '../../exec/command.js';
 import { commitAll, createWorktree, fetch as gitFetch, git } from '../../git/git.js';
 import type { MergeQueue } from '../../git/merge-queue.js';
@@ -32,6 +37,15 @@ export interface PhaseDeps {
    * answers `resumed`, or `auth` when a human must log in again.
    */
   pause?: (failure: 'quota' | 'auth') => Promise<'resumed' | 'auth'>;
+  plan?: Plan;
+  gates?: (worktree: string, branch: string) => Promise<{ results: GateResult[]; blockingFailure: GateResult | null }>;
+  tasks?: () => Iterable<EvidenceTask>;
+  decider?: Pick<Decider, 'decide'>;
+  confidential?: boolean;
+  boundaries?: () => Promise<readonly string[]>;
+  target?: DeployTarget;
+  smoke?: (contextDir: string, serviceUrl: string) => Promise<{ ok: boolean; rows: SmokeRow[]; detail: string }>;
+  secretNames?: () => string[];
 }
 
 export const PAUSED_AUTH = 'paused:auth';
@@ -73,9 +87,9 @@ export async function docsWorktree(deps: PhaseDeps, branch: string, opts: { keep
   return dir;
 }
 
-export const docsCommitKey = (deps: PhaseDeps, phase: 0 | 1 | 2) => `${deps.spec.specId}-${phase}`;
+export const docsCommitKey = (deps: PhaseDeps, phase: 0 | 1 | 2 | 6) => `${deps.spec.specId}-${phase}`;
 
-export async function commitAndMergeDocs(deps: PhaseDeps, phase: 0 | 1 | 2, branch: string, worktree: string, title: string): Promise<PhaseResult> {
+export async function commitAndMergeDocs(deps: PhaseDeps, phase: 0 | 1 | 2 | 6, branch: string, worktree: string, title: string): Promise<PhaseResult> {
   const key = docsCommitKey(deps, phase);
   if (!deps.journal.isConfirmed(Intent.DocsCommit, key)) {
     const baseSha = await git(worktree, ['rev-parse', 'HEAD'], deps.exec);
@@ -106,4 +120,10 @@ export async function trackedAndUntracked(dir: string, exec: Exec): Promise<Set<
 
 export async function readInWorktree(worktree: string, rel: string): Promise<string> {
   return fs.readFile(path.join(worktree, rel), 'utf8');
+}
+
+export async function checkoutMain(deps: PhaseDeps): Promise<string> {
+  await gitFetch(deps.ws.repo, deps.exec);
+  await git(deps.ws.repo, ['checkout', '-q', '--detach', 'origin/main'], deps.exec);
+  return (await git(deps.ws.repo, ['rev-parse', '--short', 'HEAD'], deps.exec)).trim();
 }

@@ -5,7 +5,7 @@ import type { AgentDefinition } from '../agents/registry.js';
 import type { Governor } from '../budget/governor.js';
 import type { QuotaBreaker } from '../budget/quota-breaker.js';
 import type { ProviderProfile, Role } from '../config/config.js';
-import type { PlanTask } from '../contracts/plan.js';
+import type { Plan, PlanTask } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
 import type { Effort } from '../decide/decisions/model-tier.js';
@@ -149,6 +149,31 @@ export function specGapPack(base: PackBase, task: PlanTask, opts: { question: st
 export function replanPack(base: PackBase, task: PlanTask, opts: { history: readonly string[]; boundaries: readonly string[] }): ContextPackInput {
   const feedback = `Attempt history:\n${opts.history.map((h, i) => `${i + 1}. ${h}`).join('\n')}\n\nModule boundaries:\n${opts.boundaries.map((b) => `- ${b}`).join('\n')}`;
   return { ...common(base, 'replan', 'sm'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), feedback };
+}
+
+export function fixTasksPack(base: PackBase, opts: { failedTests: readonly string[]; tails: string; uncoveredAcs: readonly string[]; plan: Plan; boundaries: readonly string[]; feedback: string | null }): ContextPackInput {
+  const feedback = [
+    'Integrated verification on main failed. Plan 1 to 3 fix tasks. Ids are assigned by the orchestrator.',
+    `Failed tests:\n${opts.failedTests.map((t) => `- ${t}`).join('\n') || '- none'}`,
+    `Criteria without passed evidence:\n${opts.uncoveredAcs.map((a) => `- ${a}`).join('\n') || '- none'}`,
+    `Gate output (tail):\n${opts.tails}`,
+    `Existing tasks:\n${opts.plan.tasks.map((t) => `- ${t.id}: ${t.title} [${t.criteriaRefs.join(', ')}]`).join('\n')}`,
+    `Module boundaries:\n${opts.boundaries.map((b) => `- ${b}`).join('\n')}`,
+    opts.feedback ? `Previous answer was rejected:\n${opts.feedback}` : '',
+  ].filter(Boolean).join('\n\n');
+  return { ...common(base, 'fix-tasks', 'sm'), criteria: base.spec.acceptanceCriteria, feedback };
+}
+
+export function reportPack(base: PackBase, opts: { delivered: readonly string[]; blocked: ReadonlyArray<{ taskId: string; reason: string }>; evidence: string; assumptions: readonly string[]; deploy: string; tokens: string }): ContextPackInput {
+  return { ...common(base, 'report', 'sm'), criteria: base.spec.acceptanceCriteria, feedback: [
+    'Write the final report for the human validator. Give concrete exploratory steps for every acceptance criterion.',
+    `Delivered tasks: ${opts.delivered.join(', ') || 'none'}`,
+    `Blocked tasks:\n${opts.blocked.map((b) => `- ${b.taskId}: ${b.reason}`).join('\n') || '- none'}`,
+    `Evidence matrix:\n${opts.evidence}`,
+    `Assumptions:\n${opts.assumptions.join('\n') || '- none'}`,
+    `Deploy outcome: ${opts.deploy}`,
+    `Token usage: ${opts.tokens}`,
+  ].join('\n\n') };
 }
 
 export interface AgentStepRequest<K extends StepKind> {

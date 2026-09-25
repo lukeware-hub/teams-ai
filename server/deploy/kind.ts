@@ -132,4 +132,11 @@ export class KindTarget implements DeployTarget {
     await this.kubectl(['delete', '-f', '-', '--ignore-not-found'], await this.render(intent, imageRef(intent)));
     await this.kubectl(['delete', 'secret', this.secretName(intent), '--ignore-not-found']);
   }
+
+  async serviceUrl(intent: DeploymentIntent): Promise<string> {
+    const r = await this.kubectl(['get', 'svc', intent.projectId, '-o', 'jsonpath={.spec.ports[0].nodePort}']);
+    const port = r.stdout.trim();
+    if (r.exitCode !== 0 || !/^\d+$/.test(port)) throw new Error(`service has no NodePort: ${r.stderr.trim() || port || 'empty output'}`);
+    return `http://127.0.0.1:${port}`;
+  }
 }

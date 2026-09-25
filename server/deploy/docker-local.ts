@@ -16,6 +16,8 @@ export class DockerLocalTarget implements DeployTarget {
     return `http://127.0.0.1:${intent.port}`;
   }
 
+  serviceUrl(intent: DeploymentIntent) { return this.baseUrl(intent); }
+
   private docker(args: string[], env?: Record<string, string>, timeoutMs = 120_000) {
     return this.deps.exec({ bin: 'docker', args, env, timeoutMs });
   }

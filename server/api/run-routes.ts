@@ -211,6 +211,8 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           .then(readProject)
           .then((p) => p.specs.find((s) => s.specId === specId) ?? null)
           .catch(() => null);
+        const report = [...evs].reverse().find((e) => e.type === 'REPORT_READY')?.data.report ?? null;
+        const phase = [...evs].reverse().find((e) => e.type === 'PHASE_STARTED')?.data.phase ?? 0;
         json(200, {
           runId,
           specId,
@@ -220,6 +222,8 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           finished: finished?.data ?? null,
           tokens: tokensOf(evs),
           acceptanceCriteria: spec?.acceptanceCriteria ?? [],
+          report,
+          phase,
         });
       },
     },

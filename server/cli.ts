@@ -22,6 +22,9 @@ import { makeRunAgent } from './refine/agent.js';
 import { SessionRegistry } from './refine/registry.js';
 import { addProject, readUserConfig } from './onboarding/config-store.js';
 import { hasScript, spawnScriptPty } from './onboarding/pty.js';
+import { DockerLocalTarget } from './deploy/docker-local.js';
+import { KindTarget } from './deploy/kind.js';
+import { httpGet } from './deploy/target.js';
 
 export interface CliIo {
   argv: string[];
@@ -106,7 +109,7 @@ function flags(argv: string[]): Record<string, string | true> {
 }
 
 export function exitCode(result: ExecuteResult): number {
-  if (result === 'complete') return 0;
+  if (result === 'complete' || result === 'awaiting-validation' || result === 'done') return 0;
   if (result === 'drained') return 3;
   return 2;
 }
@@ -169,7 +172,10 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
     io.stderr('dry run: every agent step answers from the fake claude scenario (set steps in code before use)');
   }
   const bootstrap = opts.draft ? { docsDir: path.join(projectDir, 'docs'), owner: project.github.owner ?? cfg.github.owner } : undefined;
-  return { cfg, ws, project, spec, firstSpec, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap };
+  const target = project.deploy.target === 'kind'
+    ? new KindTarget({ exec, secrets, cluster: 'teams-ai', readFile: (p) => fs.readFile(p, 'utf8') })
+    : new DockerLocalTarget({ exec, get: httpGet, secrets });
+  return { cfg, ws, project, spec, firstSpec, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target };
 }
 
 type Factory = (deps: RunDeps, runId?: string, explicitId?: string) => Promise<Run>;

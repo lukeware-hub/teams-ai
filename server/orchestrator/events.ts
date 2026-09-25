@@ -59,7 +59,7 @@ export class CrashInjected extends Error {
   readonly fatal = true;
 }
 
-export type RunResult = 'complete' | 'blocked' | 'deadlocked' | 'drained' | 'phase-failed';
+export type RunResult = 'complete' | 'blocked' | 'deadlocked' | 'drained' | 'phase-failed' | 'awaiting-validation' | 'verification-failed' | 'deploy-failed' | 'done';
 
 /** Deterministic so reconcile can match an intent to its confirm across restarts (spec §7.2). */
 export function intentId(type: IntentType, key: string): string {

@@ -27,11 +27,13 @@ import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
 import { CrashInjected, Intent, Journal, OrchEvent, type IntentType, type RunResult } from './events.js';
 export { CrashInjected };
 import { taskMergeSteps, type MergeStepsDeps } from './merge-steps.js';
-import { PAUSED_AUTH, runPhase0, runPhase1, runPhase2, type PhaseDeps, type PhaseResult } from './phases/index.js';
+import { PAUSED_AUTH, runPhase0, runPhase1, runPhase2, runPhase4, runPhase5, runPhase6, MAX_DEPLOY_ATTEMPTS, type PhaseDeps, type PhaseResult } from './phases/index.js';
 import { reconcile } from './reconcile.js';
 import { runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
 import { TaskRunner, type TaskRunnerDeps } from './task-runner.js';
 import { eventsFile, expandHome, graphDir, nextRunId, runDir, stateFile, stepDir, type Workspace } from './workspace.js';
+import type { DeployTarget } from '../deploy/target.js';
+import { runSmoke } from '../exec/smoke.js';
 
 export interface RunDeps {
   cfg: Config;
@@ -58,6 +60,7 @@ export interface RunDeps {
   claudeJsonPath?: string;
   /** Spec (refinement) §4: docs to put on main before Phase 1 (`run --draft`). */
   bootstrap?: { docsDir: string; owner: string | undefined };
+  target?: DeployTarget;
 }
 
 export type ExecuteResult = RunResult | 'paused:auth';
@@ -337,6 +340,16 @@ export class Run {
       packBase: this.packBase,
       godNodes: () => (this.deps.graphify ? this.deps.graphify.godNodes(graphDir(this.deps.ws, null), 10).catch(() => []) : Promise.resolve([])),
       pause: (failure) => this.pauseFor(failure),
+      plan: this.plan ?? undefined,
+      gates: this.gates,
+      tasks: () => [...this.journal.state.tasks.values()],
+      boundaries: async () => (this.deps.graphify ? (await this.deps.graphify.godNodes(graphDir(this.deps.ws, null), 10).catch(() => [])).map((n) => n.label) : []),
+      target: this.deps.target,
+      smoke: async (contextDir, url) => {
+        const p = this.plan!;
+        const r = await runSmoke(p, this.deps.spec, { worktree: contextDir, image: p.gateImage, junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-smoke`, user: containerUser() }, url, { exec: this.deps.exec, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
+        return { ok: r.ok, rows: r.rows, detail: r.detail };
+      },
     };
   }
 
@@ -398,7 +411,11 @@ export class Run {
       const t = this.journal.state.tasks.get(task.id);
       if (t && t.state === 'planned') await this.journal.fact(RunEvent.TaskStateChanged, { taskId: task.id, to: 'ready' });
     }
-    return this.loop();
+    const phase3 = await this.loop({ final: false });
+    if (phase3 !== 'complete') return phase3;
+    // Unit harnesses without a deployment target exercise Phases 0–3 only; production deps always provide one.
+    if (!this.deps.target) return this.finish('complete');
+    return this.postPhases();
   }
 
   /** Spec (run API) §5: a signal drains — in-flight steps finish, nothing new starts. Idempotent. */
@@ -407,7 +424,33 @@ export class Run {
     await this.journal.fact(RunEvent.RunStopRequested, {});
   }
 
-  private async loop(): Promise<ExecuteResult> {
+  private async postPhases(): Promise<ExecuteResult> {
+    const runFix = async (tasks: PlanTask[]): Promise<ExecuteResult | 'merged'> => {
+      for (const t of tasks) if (this.journal.state.tasks.get(t.id)?.state === 'planned') await this.journal.fact(RunEvent.TaskStateChanged, { taskId: t.id, to: 'ready' });
+      const r = await this.loop({ final: false });
+      if (r !== 'complete') return r;
+      return tasks.every((t) => this.journal.state.tasks.get(t.id)?.state === 'merged') ? 'merged' : 'blocked';
+    };
+    let result: 'awaiting-validation' | 'verification-failed' | 'deploy-failed' = 'awaiting-validation';
+    let p4 = await runPhase4(this.phaseDeps(), 1);
+    if (!p4.ok && p4.reason === PAUSED_AUTH) return 'paused:auth';
+    if (!p4.ok && p4.fixTasks) { const back = await runFix(p4.fixTasks); if (back !== 'merged') return back; p4 = await runPhase4(this.phaseDeps(), 2); }
+    if (!p4.ok) result = 'verification-failed';
+    if (p4.ok && this.deps.target) {
+      for (let attempt = 1 as 1 | 2 | 3; attempt <= MAX_DEPLOY_ATTEMPTS; attempt = (attempt + 1) as 1 | 2 | 3) {
+        const p5 = await runPhase5(this.phaseDeps(), attempt);
+        if (p5.ok) break;
+        if (!p5.fixTask) { result = 'deploy-failed'; break; }
+        const back = await runFix([p5.fixTask]); if (back !== 'merged') { result = 'deploy-failed'; break; }
+      }
+    }
+    const p6 = await runPhase6({ ...this.phaseDeps(), runId: this.runId, accounting: this.accounting, result });
+    if (!p6.ok && p6.reason === PAUSED_AUTH) return 'paused:auth';
+    if (!p6.ok) return this.finish('phase-failed', p6.reason);
+    return this.finish(result);
+  }
+
+  private async loop(opts: { final: boolean } = { final: true }): Promise<ExecuteResult> {
     const { cfg } = this.deps;
     for (;;) {
       const state = this.journal.state;
@@ -436,7 +479,10 @@ export class Run {
         }
       }
       const progress = runProgress(this.journal.state, this.maxParallel);
-      if (progress !== 'running' && this.inflight.size === 0) return this.finish(progress === 'complete' ? 'complete' : progress);
+      if (progress !== 'running' && this.inflight.size === 0) {
+        if (progress === 'complete' && !opts.final && ![...this.journal.state.tasks.values()].some((t) => t.state === 'blocked')) return 'complete';
+        return this.finish(progress === 'complete' ? 'complete' : progress);
+      }
       if (this.journal.state.status === 'running') {
         for (const id of nextRunnable(this.journal.state, this.maxParallel)) {
           // Replacements from a replan are born `planned`; the runner only acts from `ready` onward.
