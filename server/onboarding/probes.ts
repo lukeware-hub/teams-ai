@@ -19,7 +19,7 @@ const TIMEOUT = 30_000;
 const firstLine = (s: string) => s.trim().split('\n')[0] ?? '';
 
 export async function claudeStatus(d: ProbeDeps): Promise<ProbeResult> {
-  const r = await d.exec({ bin: 'claude', args: ['auth', 'status', '--json'], env: childEnv(d.hostEnv), timeoutMs: d.timeoutMs ?? TIMEOUT }).catch((e: Error) => ({ exitCode: 127, stdout: '', stderr: e.message }));
+  const r = await d.exec({ bin: d.hostEnv?.CLAUDE_BIN ?? 'claude', args: ['auth', 'status', '--json'], env: childEnv(d.hostEnv), timeoutMs: d.timeoutMs ?? TIMEOUT }).catch((e: Error) => ({ exitCode: 127, stdout: '', stderr: e.message }));
   if (r.exitCode !== 0) return { ok: false, detail: `claude auth status failed: ${firstLine(r.stderr || r.stdout) || `exit ${r.exitCode}`}` };
   try {
     const j = JSON.parse(r.stdout) as { loggedIn?: boolean; email?: string; subscriptionType?: string };
@@ -31,7 +31,7 @@ export async function claudeStatus(d: ProbeDeps): Promise<ProbeResult> {
 }
 
 export async function ghStatus(d: ProbeDeps): Promise<ProbeResult> {
-  const r = await d.exec({ bin: 'gh', args: ['auth', 'status'], env: childEnv(d.hostEnv), timeoutMs: d.timeoutMs ?? TIMEOUT }).catch((e: Error) => ({ exitCode: 127, stdout: '', stderr: e.message }));
+  const r = await d.exec({ bin: d.hostEnv?.GH_BIN ?? 'gh', args: ['auth', 'status'], env: childEnv(d.hostEnv), timeoutMs: d.timeoutMs ?? TIMEOUT }).catch((e: Error) => ({ exitCode: 127, stdout: '', stderr: e.message }));
   const text = `${r.stdout}\n${r.stderr}`;
   const m = /Logged in to github\.com account (\S+)/.exec(text);
   if (r.exitCode === 0 && m) return { ok: true, detail: m[1]! };
@@ -44,7 +44,7 @@ function ghEnv(d: ProbeDeps, token: string | null): Record<string, string> {
 
 export async function ghOwner(d: ProbeDeps, owner: string, token: string | null): Promise<ProbeResult> {
   for (const kind of ['users', 'orgs'] as const) {
-    const r = await d.exec({ bin: 'gh', args: ['api', `${kind}/${owner}`], env: ghEnv(d, token), timeoutMs: d.timeoutMs ?? TIMEOUT }).catch((e: Error) => ({ exitCode: 1, stdout: '', stderr: e.message }));
+    const r = await d.exec({ bin: d.hostEnv?.GH_BIN ?? 'gh', args: ['api', `${kind}/${owner}`], env: ghEnv(d, token), timeoutMs: d.timeoutMs ?? TIMEOUT }).catch((e: Error) => ({ exitCode: 1, stdout: '', stderr: e.message }));
     if (r.exitCode === 0) {
       try {
         const j = JSON.parse(r.stdout) as { login?: string; type?: string };
@@ -58,7 +58,7 @@ export async function ghOwner(d: ProbeDeps, owner: string, token: string | null)
 }
 
 export async function ghToken(d: ProbeDeps, token: string): Promise<ProbeResult> {
-  const r = await d.exec({ bin: 'gh', args: ['api', 'user', '-i'], env: ghEnv(d, token), timeoutMs: d.timeoutMs ?? TIMEOUT }).catch((e: Error) => ({ exitCode: 1, stdout: '', stderr: e.message }));
+  const r = await d.exec({ bin: d.hostEnv?.GH_BIN ?? 'gh', args: ['api', 'user', '-i'], env: ghEnv(d, token), timeoutMs: d.timeoutMs ?? TIMEOUT }).catch((e: Error) => ({ exitCode: 1, stdout: '', stderr: e.message }));
   const clean = (s: string) => redactSecrets(s, [token]);
   if (r.exitCode !== 0) return { ok: false, detail: clean(firstLine(r.stderr || r.stdout) || `gh api user failed (exit ${r.exitCode})`) };
   const [head, ...rest] = r.stdout.split(/\r?\n\r?\n/);

@@ -23,8 +23,8 @@ export class Onboarding {
   constructor(private readonly deps: OnboardingDeps) {
     const env = childEnv(deps.hostEnv);
     const commands = deps.commands ?? {
-      claude: { bin: 'claude', args: ['auth', 'login', '--claudeai'], env },
-      gh: { bin: 'gh', args: ['auth', 'login', '--hostname', 'github.com', '--web', '--git-protocol', 'https', '--skip-ssh-key'], env },
+      claude: { bin: deps.hostEnv?.CLAUDE_BIN ?? 'claude', args: ['auth', 'login', '--claudeai'], env },
+      gh: { bin: deps.hostEnv?.GH_BIN ?? 'gh', args: ['auth', 'login', '--hostname', 'github.com', '--web', '--git-protocol', 'https', '--skip-ssh-key'], env },
     };
     const known = async () => Object.values(await import('../core/secrets.js').then((m) => m.loadSecrets(deps.secretsDir)));
     let knownCache: readonly string[] = [];
