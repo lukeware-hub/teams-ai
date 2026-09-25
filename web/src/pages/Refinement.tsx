@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { refineApi, type ChecklistItem, type Snapshot } from '../api.js';
+import { refineApi, type ChecklistItem, type Snapshot, type StoredEvent } from '../api.js';
 import { applyToSnapshot, type LiveSnapshot } from '../refine/reducer.js';
 import { useJournal } from '../useSse.js';
 
@@ -24,6 +24,7 @@ export interface ViewProps {
   onReject(id: string, reason: string | null): void;
   onSecret(name: string, value: string): void;
   onStart(): void;
+  events?: StoredEvent[];
 }
 
 function Checklist({ items, role }: { items: ChecklistItem[]; role: 'po' | 'sm' }) {
@@ -53,6 +54,8 @@ export function RefinementView(p: ViewProps) {
   const pending = [...st.questions.filter((q) => q.status === 'pending')].sort((a, b) => Number(b.blocking) - Number(a.blocking));
   const current = pending[0];
   const canStart = st.status === 'ready' && !st.stale && !busy;
+  const derivedThisCycle = (p.events ?? []).some((e) => e.type === 'DERIVED' && Number(e.data.cycle) === st.cycle);
+  const claudeStage = derivedThisCycle ? 'Documentos analisados; PO e SM revisando a especificação.' : 'Preparando a análise dos documentos do projeto.';
   const nextStep = pending.length > 0
     ? 'Responda as perguntas pendentes para continuar.'
     : st.stale
@@ -112,6 +115,16 @@ export function RefinementView(p: ViewProps) {
           <span className="count-pill">{pending.length} em aberto</span>
         </div>
         <p className="next-step"><b>Próximo passo:</b> {nextStep}</p>
+        {busy && (
+          <div className="claude-session" role="status" aria-live="polite">
+            <span className="live-dot" aria-hidden="true" />
+            <div>
+              <b>Sessão Claude ativa</b>
+              <span>Ciclo {st.cycle} · {claudeStage}</span>
+            </div>
+            <span className="session-spinner" aria-hidden="true">•••</span>
+          </div>
+        )}
         {current ? (
           <div className="question card-inner">
             <span className={`badge ${current.role}`}>{current.role.toUpperCase()}</span>
@@ -300,6 +313,7 @@ export function RefinementPage() {
         onReject={(id, r) => act(() => refineApi.reject(projectId, specId, id, r))()}
         onSecret={(n, v) => act(() => refineApi.secret(projectId, specId, n, v).then(load))()}
         onStart={act(() => refineApi.start(projectId, specId).then(({ runId }) => navigate(`/runs/${runId}`)))}
+        events={events}
       />
     </main>
   );

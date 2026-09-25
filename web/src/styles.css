@@ -51,6 +51,14 @@ h3 { font-size: 1rem; margin: 0.6rem 0 0.2rem; }
 .full-width { width: 100%; padding: .7rem 1rem; }
 .card-inner { border: 1px solid #e6ebf2; border-radius: 10px; padding: 1rem; background: #fbfcfe; }
 .next-step { margin: 0 0 1rem; border: 1px solid #cfd8ff; border-radius: 9px; padding: .7rem .8rem; color: #34448f; background: #f2f4ff; font-size: .82rem; line-height: 1.45; }
+.claude-session { display: flex; align-items: center; gap: .7rem; margin: 0 0 1rem; border: 1px solid #c9e4d4; border-radius: 9px; padding: .7rem .8rem; color: #1f6542; background: #effaf3; }
+.claude-session > div { display: grid; gap: .15rem; flex: 1; }
+.claude-session b { font-size: .82rem; }
+.claude-session span { color: #4e8164; font-size: .75rem; line-height: 1.35; }
+.live-dot { width: .55rem; height: .55rem; border-radius: 50%; background: #2f9e61; box-shadow: 0 0 0 4px rgba(47, 158, 97, .14); animation: live-pulse 1.6s ease-in-out infinite; }
+.session-spinner { letter-spacing: .15em; animation: session-blink 1.2s ease-in-out infinite; }
+@keyframes live-pulse { 50% { opacity: .45; transform: scale(.8); } }
+@keyframes session-blink { 50% { opacity: .35; } }
 .field-label { display: block; margin: 1rem 0 .4rem; color: #53627a; font-size: .78rem; font-weight: 700; }
 .question textarea { min-height: 7rem; background: #fff; font-family: inherit; font-size: .9rem; }
 .badge { display: inline-flex; border-radius: 999px; padding: .25rem .5rem; font-size: .68rem; font-weight: 800; letter-spacing: .04em; }
