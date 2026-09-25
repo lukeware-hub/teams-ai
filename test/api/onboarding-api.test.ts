@@ -76,6 +76,12 @@ describe('api server', () => {
     expect((await fetch(`${base()}/api/onboarding/nope`)).status).toBe(404);
   });
 
+  it('serves onboarding through the versioned API prefix', async () => {
+    const r = await fetch(`${base()}/teams-ai/v1/api/onboarding/status`);
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ items: { claude: { ok: true } } });
+  });
+
   it('PUT /secrets/<NAME> writes the secret, probes it and never echoes the value; other names are 404', async () => {
     const r = await fetch(`${base()}/api/onboarding/secrets/GITHUB_TOKEN`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value: TOKEN }) });
     expect(r.status).toBe(200);
