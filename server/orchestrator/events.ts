@@ -29,6 +29,13 @@ export const OrchEvent = {
   RepoBootstrapped: 'REPO_BOOTSTRAPPED',
   /** The delta handed to the next Dev attempt (gate failures, findings, conflicts, spec-gap answer). */
   Feedback: 'FEEDBACK',
+  VerificationPassed: 'VERIFICATION_PASSED',
+  VerificationFailed: 'VERIFICATION_FAILED',
+  DeployApplied: 'DEPLOY_APPLIED',
+  DeployFailed: 'DEPLOY_FAILED',
+  RollbackDone: 'ROLLBACK_DONE',
+  DeployVerified: 'DEPLOY_VERIFIED',
+  ReportReady: 'REPORT_READY',
 } as const;
 
 export const Intent = {
@@ -40,6 +47,7 @@ export const Intent = {
   PrMerge: 'PR_MERGE',
   WorktreeRemove: 'WORKTREE_REMOVE',
   RepoCreate: 'REPO_CREATE',
+  DeployApply: 'DEPLOY_APPLY',
 } as const;
 export type IntentType = (typeof Intent)[keyof typeof Intent];
 

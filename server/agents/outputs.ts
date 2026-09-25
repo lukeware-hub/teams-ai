@@ -6,7 +6,7 @@ import { ID_PATTERNS } from '../core/ids.js';
 import { Project } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 
-export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'dev', 'review', 'deployment', 'report', 'decide', 'spec-gap', 'replan'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'dev', 'review', 'deployment', 'report', 'decide', 'spec-gap', 'replan', 'fix-tasks'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -124,6 +124,10 @@ export type SpecGapOutput = z.infer<typeof SpecGapOutput>;
 export const ReplanOutput = z.object({ specHash, replacements: z.array(PlanTask).min(1).max(3) });
 export type ReplanOutput = z.infer<typeof ReplanOutput>;
 
+/** Spec (phases 4-6) §3: SM plans one round of fix tasks from failed tests and uncovered criteria. */
+export const FixTasksOutput = z.object({ specHash, tasks: z.array(PlanTask).min(1).max(3) });
+export type FixTasksOutput = z.infer<typeof FixTasksOutput>;
+
 export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> = {
   refine: RefineOutput,
   derive: DeriveOutput,
@@ -137,6 +141,7 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   decide: DecideOutput,
   'spec-gap': SpecGapOutput,
   replan: ReplanOutput,
+  'fix-tasks': FixTasksOutput,
 };
 
 export type OutputOf<K extends StepKind> = z.infer<(typeof OUTPUT_SCHEMAS)[K]>;
