@@ -8,6 +8,7 @@ import { useJournal } from '../useSse.js';
 const hhmm = (iso: string) => new Date(iso).toTimeString().slice(0, 5);
 const ORDER = ['implementing', 'validating', 'reviewing', 'rebasing', 'merging', 'ready', 'planned', 'merged', 'blocked', 'superseded'];
 const statusLabel = (status: string) => ({ done: 'concluído', complete: 'concluído', implementing: 'implementando', validating: 'validando', reviewing: 'revisando', rebasing: 'rebaseando', merging: 'mesclando', ready: 'pronta', planned: 'planejada', merged: 'mesclada', blocked: 'bloqueada', superseded: 'substituída', running: 'em execução' } as Record<string, string>)[status] ?? status;
+const statusTone = (status: string) => (['done', 'complete', 'merged'].includes(status) ? 'good' : ['blocked', 'failed'].includes(status) ? 'bad' : status.startsWith('paused') ? 'warn' : status === 'running' ? 'neutral' : 'neutral');
 
 export function RunView({ detail, events, ended, error, loadStep }: { detail: RunDetail; events: StoredEvent[]; ended: boolean; error: string | null; loadStep: (stepId: string) => Promise<{ prompt: string; output: unknown }> }) {
   const unique = events.filter((e, i) => events.findIndex((x) => x.seq === e.seq) === i);
@@ -30,11 +31,13 @@ export function RunView({ detail, events, ended, error, loadStep }: { detail: Ru
           {detail.projectId} / {detail.specId}
         </small>
       </h1>
-      <p data-testid="status">
-        Status: <strong>{statusLabel(status)}</strong>
-        {ended ? ' (encerrada)' : ''}
-        {until ? <span data-testid="paused-until"> — pausada até {hhmm(until)}</span> : null}
-      </p>
+      <div className="run-meta">
+        <span data-testid="status" className={`status-pill tone-${statusTone(status)}`}>
+          {statusLabel(status)}
+          {ended ? ' (encerrada)' : ''}
+        </span>
+        {until ? <span data-testid="paused-until" className="hint">pausada até {hhmm(until)}</span> : null}
+      </div>
       {error ? <p className="error">{error}</p> : null}
       <section className="card">
         <h2>Fases</h2>
@@ -49,18 +52,21 @@ export function RunView({ detail, events, ended, error, loadStep }: { detail: Ru
       <section className="card">
         <h2>Tarefas</h2>
         {groups.map(([s, ids]) => (
-          <div key={s} data-testid={`group-${s}`}>
-            <h3>{s}</h3>
+          <div key={s} className="task-group" data-testid={`group-${s}`}>
+            <h3>{statusLabel(s)}</h3>
             <ul>
               {ids.map((id) => {
                 const tk = state.tasks.get(id)!;
                 return (
-                  <li key={id}>
-                    <button data-testid={`task-${id}`} onClick={() => setSelected(id)}>
+                  <li key={id} className="task-row">
+                    <button className="task-id" data-testid={`task-${id}`} onClick={() => setSelected(id)}>
                       {id}
-                    </button>{' '}
-                    {tk.def.title} · tentativas {tk.attempts}
-                    {tk.replanned ? ' · replanejada' : ''}
+                    </button>
+                    <span className="task-title">{tk.def.title}</span>
+                    <span className="task-meta">
+                      tentativas {tk.attempts}
+                      {tk.replanned ? ' · replanejada' : ''}
+                    </span>
                   </li>
                 );
               })}
@@ -75,20 +81,20 @@ export function RunView({ detail, events, ended, error, loadStep }: { detail: Ru
           <thead>
             <tr>
               <th>Papel</th>
-              <th>Entrada</th>
-              <th>Saída</th>
-              <th>Custo</th>
-              <th>Etapas</th>
+              <th className="num">Entrada</th>
+              <th className="num">Saída</th>
+              <th className="num">Custo</th>
+              <th className="num">Etapas</th>
             </tr>
           </thead>
           <tbody>
             {Object.entries(t.byRole).map(([r, u]) => (
               <tr key={r} data-testid={`tokens-${r}`}>
                 <td>{r}</td>
-                <td>{u.inputTokens}</td>
-                <td>{u.outputTokens}</td>
-                <td>${u.costUsd.toFixed(4)}</td>
-                <td>{u.steps}</td>
+                <td className="num">{u.inputTokens}</td>
+                <td className="num">{u.outputTokens}</td>
+                <td className="num">${u.costUsd.toFixed(4)}</td>
+                <td className="num">{u.steps}</td>
               </tr>
             ))}
           </tbody>
@@ -97,24 +103,24 @@ export function RunView({ detail, events, ended, error, loadStep }: { detail: Ru
           <thead>
             <tr>
               <th>Fase</th>
-              <th>Entrada</th>
-              <th>Saída</th>
-              <th>Custo</th>
+              <th className="num">Entrada</th>
+              <th className="num">Saída</th>
+              <th className="num">Custo</th>
             </tr>
           </thead>
           <tbody>
             {Object.entries(t.byPhase).map(([p, u]) => (
               <tr key={p}>
                 <td>{p}</td>
-                <td>{u.inputTokens}</td>
-                <td>{u.outputTokens}</td>
-                <td>${u.costUsd.toFixed(4)}</td>
+                <td className="num">{u.inputTokens}</td>
+                <td className="num">{u.outputTokens}</td>
+                <td className="num">${u.costUsd.toFixed(4)}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        <p>
-          Total de US$ {t.total.costUsd.toFixed(4)} em {t.total.steps} etapas
+        <p className="tokens-total">
+          Total de <strong>US$ {t.total.costUsd.toFixed(4)}</strong> em {t.total.steps} etapas
         </p>
       </section>
       <section className="card">

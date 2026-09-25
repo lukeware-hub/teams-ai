@@ -1,8 +1,9 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { RunControlDeps } from '../api/run-control.js';
-import { spawnRun } from '../api/run-control.js';
+import { spawnRun, waitForRunJournal } from '../api/run-control.js';
 import { writePid } from '../api/run-index.js';
+import { HttpError } from '../api/server.js';
 import type { Config } from '../config/config.js';
 import { Spec } from '../contracts/spec.js';
 import { ID_PATTERNS } from '../core/ids.js';
@@ -133,6 +134,12 @@ export class SessionRegistry {
     const runId = await nextRunId({ runs }, specId);
     await fs.mkdir(path.posix.join(runs, runId), { recursive: true });
     const { pid } = spawnRun(this.deps.control, { projectDir: draft.root, specId, runId, mode: 'run', draft: true, logFile: path.posix.join(runs, runId, 'ui.log') });
+    try {
+      await waitForRunJournal(this.deps.control, runs, runId, pid);
+    } catch (err) {
+      session.failStart();
+      throw new HttpError(500, err instanceof Error ? err.message : String(err));
+    }
     await writePid(runs, runId, pid);
     await this.deps.register(draft.root);
     await session.markStarted(runId);

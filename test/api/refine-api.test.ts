@@ -1,4 +1,4 @@
-import { promises as fs } from 'node:fs';
+import { mkdirSync, promises as fs, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -13,6 +13,7 @@ import { makeFakeRunAgent, type Script } from '../fixtures/fake-run-agent.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 
 let home = '';
+let spawnShouldFail = false;
 let api: { port: number; close(): Promise<void> };
 let registry: SessionRegistry;
 let script: Script;
@@ -39,12 +40,20 @@ beforeEach(async () => {
   script = {};
   spawns = [];
   registered = [];
+  spawnShouldFail = false;
   const control: RunControlDeps = {
     spawn: (a) => {
       spawns.push({ args: a.args, logFile: a.logFile });
+      // The registry now waits for the child's journal before returning; simulate the child writing it immediately,
+      // unless the test wants to simulate a child that dies on preconditions before ever writing one.
+      const runId = a.args[a.args.indexOf('--run-id') + 1]!;
+      const runDir = `${home}/runs/${runId}`;
+      mkdirSync(runDir, { recursive: true });
+      if (spawnShouldFail) writeFileSync(`${runDir}/ui.log`, 'preconditions failed:\n- docker daemon is not reachable\n');
+      else writeFileSync(`${runDir}/events.ndjson`, '');
       return { pid: 5000 + spawns.length };
     },
-    kill: () => true,
+    kill: () => !spawnShouldFail,
     sleep: async () => {},
     cliEntry: () => ({ bin: 'node', prefix: ['cli'] }),
     repoRoot: '/repo',
@@ -177,5 +186,24 @@ describe('refine api', () => {
     expect(statuses).toEqual([200, 409]);
     expect(spawns).toHaveLength(1);
     expect(registered).toHaveLength(1);
+  });
+
+  it('a child that dies before writing its journal reports 500 with the log tail and leaves the session retryable', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    script['derive/po'] = [derived];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
+    await settle();
+    spawnShouldFail = true;
+    const failed = await call('POST', '/api/refine/hello-app/hello-app-001/start');
+    expect(failed.status).toBe(500);
+    expect((await failed.json()).error).toContain('docker daemon is not reachable');
+    expect((await snapshot()).state.status).toBe('ready'); // never got to StartedRun; not stuck as 'started'
+
+    spawnShouldFail = false;
+    const retried = await call('POST', '/api/refine/hello-app/hello-app-001/start');
+    expect(retried.status).toBe(200); // the earlier failure must not leave the session locked with 'a start is already in progress'
+    expect(spawns).toHaveLength(2);
   });
 });
