@@ -1,0 +1,37 @@
+import { describe, expect, it } from 'vitest';
+import { derivePack, postProcessDerived } from '../../server/refine/derive.js';
+import { makeProject, makeSpec } from '../fixtures/contracts.js';
+
+const PROJECT = makeProject();
+const ac = (id: string, then: string) => ({ id, given: 'g', when: 'w', then, smoke: false });
+const prev = { ...makeSpec(), specVersion: 2, status: 'awaiting-validation' as const, specHash: `sha256:${'b'.repeat(64)}`, acceptanceCriteria: [ac('AC-001', 'one'), ac('AC-002', 'two')], validationReports: [{ at: '2026-09-24T10:00:00.000Z', text: 'r' }] };
+
+describe('postProcessDerived', () => {
+  it('keeps ids of unchanged criteria, renumbers a new one after the highest, and forces status/hash/version/reports', () => {
+    const out = postProcessDerived(
+      { project: PROJECT, spec: { ...prev, specId: 'wrong', status: 'running', specHash: `sha256:${'c'.repeat(64)}`, specVersion: 9, validationReports: [], acceptanceCriteria: [ac('AC-001', 'two'), ac('AC-001', 'three'), ac('AC-007', 'one')] } },
+      prev,
+      'hello-001',
+    );
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.value.spec.acceptanceCriteria.map((c) => [c.id, c.then])).toEqual([['AC-002', 'two'], ['AC-008', 'three'], ['AC-001', 'one']]);
+    expect(out.value.spec).toMatchObject({ specId: 'hello-001', status: 'refining', specHash: null, specVersion: 2 });
+    expect(out.value.spec.validationReports).toHaveLength(1);
+  });
+  it('reports zod issues with paths', () => {
+    const out = postProcessDerived({ project: { ...PROJECT, personas: [] }, spec: prev }, null, 'hello-001');
+    expect(out.ok).toBe(false);
+    if (out.ok) return;
+    expect(out.issues.join('\n')).toMatch(/project\.personas/);
+  });
+  it('derivePack carries both Markdown files, the schemas and the spec id', () => {
+    const pack = derivePack({ specHash: `sha256:${'d'.repeat(64)}`, principles: ['p'], projectMd: '# P', briefMd: '## O', previous: null, specId: 'hello-001' });
+    expect(pack.kind).toBe('derive');
+    expect(pack.role).toBe('po');
+    expect(pack.feedback).toContain('# P');
+    expect(pack.feedback).toContain('## O');
+    expect(pack.feedback).toContain('specId must be hello-001');
+    expect(pack.feedback).toContain('acceptanceCriteria');
+  });
+});
