@@ -424,6 +424,18 @@ export class Run {
     await this.journal.fact(RunEvent.RunStopRequested, {});
   }
 
+  async completeSpec(): Promise<ExecuteResult> {
+    if (this.deps.spec.status !== 'awaiting-validation') return this.finish('phase-failed', `spec ${this.deps.spec.specId} is ${this.deps.spec.status}; only awaiting-validation specs complete`);
+    const branch = `docs/${this.deps.spec.specId}-done`;
+    const wt = await (await import('./phases/shared.js')).docsWorktree(this.phaseDeps(), branch);
+    const file = path.join(wt, 'docs', 'specs', this.deps.spec.specId, 'spec.json');
+    const current = JSON.parse(await fs.readFile(file, 'utf8')) as Record<string, unknown>;
+    await fs.writeFile(file, `${JSON.stringify({ ...current, status: 'done' }, null, 2)}\n`);
+    const merged = await (await import('./phases/shared.js')).commitAndMergeDocs(this.phaseDeps(), 6, branch, wt, `docs(${this.deps.spec.specId}): done`);
+    if (!merged.ok) return this.finish('phase-failed', merged.reason);
+    return this.finish('done');
+  }
+
   private async postPhases(): Promise<ExecuteResult> {
     const runFix = async (tasks: PlanTask[]): Promise<ExecuteResult | 'merged'> => {
       for (const t of tasks) if (this.journal.state.tasks.get(t.id)?.state === 'planned') await this.journal.fact(RunEvent.TaskStateChanged, { taskId: t.id, to: 'ready' });

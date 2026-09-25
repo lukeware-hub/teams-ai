@@ -99,7 +99,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     const log = await fs.readFile(path.join(runs, runId, 'ui.log'), 'utf8').catch(() => '');
     throw new HttpError(500, `run ${runId} did not start: ${log.slice(-500) || 'no output'}`);
   };
-  const launch = async (idx: IndexDeps, o: { projectDir: string; specId: string; runId: string; mode: 'run' | 'resume' }): Promise<void> => {
+  const launch = async (idx: IndexDeps, o: { projectDir: string; specId: string; runId: string; mode: 'run' | 'resume' | 'complete' }): Promise<void> => {
     const runs = runsDir(idx);
     await fs.mkdir(path.join(runs, o.runId), { recursive: true });
     const { pid } = spawnRun(deps.control, { ...o, logFile: path.join(runs, o.runId, 'ui.log') });
@@ -192,6 +192,28 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const how = await stop(deps.control, pid);
         await clearPid(runs, runId);
         json(200, { stopped: true, how: how === 'gone' ? 'terminated' : how });
+      },
+    },
+    {
+      method: 'POST',
+      path: `${P}/projects/:projectId/specs/:specId/complete`,
+      handler: async ({ params, json }) => {
+        const idx = await index();
+        const dir = await projectDir(idx, params.projectId!);
+        const specId = safe(params.specId!);
+        const read = await readProject(dir);
+        const spec = read.specs.find((s) => s.specId === specId);
+        if (!spec) throw new HttpError(404, `unknown spec ${specId}`);
+        if (spec.status !== 'awaiting-validation') throw new HttpError(409, `spec ${specId} is ${spec.status}; only awaiting-validation specs complete`);
+        const runId = await exclusive(`complete ${params.projectId}/${specId}`, async () => {
+          const rows = await listRuns(idx, params.projectId!);
+          const active = rows.find((r) => r.specId === specId && CLAIMS_SPEC.has(r.status));
+          if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status})`);
+          const id = await nextRunId({ runs: runsDir(idx) }, `${specId}-complete`);
+          await launch(idx, { projectDir: dir, specId, runId: id, mode: 'complete' });
+          return id;
+        });
+        json(202, { runId });
       },
     },
     {

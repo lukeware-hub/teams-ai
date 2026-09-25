@@ -10,7 +10,7 @@ import { execCommand, type Exec } from './exec/command.js';
 import { Graphify } from './knowledge/graphify.js';
 import { KnowledgeIndex } from './knowledge/retrieval.js';
 import { Run, type ExecuteResult, type RunDeps } from './orchestrator/run.js';
-import { expandHome, stateFile, workspacePaths } from './orchestrator/workspace.js';
+import { expandHome, nextRunId, stateFile, workspacePaths } from './orchestrator/workspace.js';
 import { runStep } from './runner/step.js';
 import { startApi } from './api/server.js';
 import { onboardingRoutes } from './api/onboarding-routes.js';
@@ -133,14 +133,15 @@ async function preconditions(exec: Exec, repo: string, specId: string, draft: bo
   return errors;
 }
 
-export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: string | undefined, opts: { dryRun: boolean; maxParallel?: number; draft?: boolean }): Promise<RunDeps> {
+export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: string | undefined, opts: { dryRun: boolean; maxParallel?: number; draft?: boolean; complete?: boolean }): Promise<RunDeps> {
   const cfgFile = path.join(expandHome('~/.teams-ai'), 'config.json');
   const cfg: Config = loadConfig(await fs.readFile(cfgFile, 'utf8').then(JSON.parse).catch(() => ({})));
   const project = await readJson(path.join(projectDir, 'docs', 'project.json'), (v) => Project.parse(v));
   const specId = specIdArg ?? (await fs.readdir(path.join(projectDir, 'docs', 'specs'))).sort().at(-1);
   if (!specId) throw new Error('no spec found under docs/specs and no --spec given');
   const spec = await readJson(path.join(projectDir, 'docs', 'specs', specId, 'spec.json'), (v) => Spec.parse(v));
-  if (spec.status !== 'running' || !spec.specHash) throw new Error(`spec ${specId} is not frozen (status ${spec.status}); finish Gate 1 first`);
+  const allowed = opts.complete ? spec.status === 'awaiting-validation' : spec.status === 'running';
+  if (!allowed || !spec.specHash) throw new Error(`spec ${specId} is not ${opts.complete ? 'awaiting-validation' : 'running'} (status ${spec.status}); finish Gate 1 first`);
   const ws = workspacePaths(cfg, project.projectId);
   const secrets = await loadSecrets(expandHome(cfg.paths.secrets));
   // The orchestrator authenticates to GitHub as the token's user (spec §10 GITHUB_TOKEN), for `gh` and for
@@ -189,7 +190,8 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
   const [command, ...rest] = io.argv;
   const f = flags(rest);
   const projectDir = typeof f.project === 'string' ? f.project : null;
-  if (!command || !['run', 'resume', 'status', 'ui'].includes(command) || (!projectDir && command !== 'ui')) {
+  const completing = command === 'spec' && rest[0] === 'complete';
+  if (!command || (!(completing || ['run', 'resume', 'status', 'ui'].includes(command))) || (!projectDir && command !== 'ui')) {
     io.stderr(USAGE);
     if (command && !projectDir) io.stderr('--project <dir> is required');
     return 2;
@@ -217,11 +219,13 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
       }
       return 0;
     }
-    const load = loadRunDeps(io, projectDir, typeof f.spec === 'string' ? f.spec : undefined, { dryRun: f['dry-run'] === true, draft: f.draft === true, maxParallel: typeof f['max-parallel'] === 'string' ? Number(f['max-parallel']) : undefined });
+    const load = loadRunDeps(io, projectDir, typeof f.spec === 'string' ? f.spec : undefined, { dryRun: f['dry-run'] === true, draft: f.draft === true, maxParallel: typeof f['max-parallel'] === 'string' ? Number(f['max-parallel']) : undefined, complete: completing });
     const deps = factory === defaultFactory ? await load : await load.catch(() => null as unknown as RunDeps);
     const explicitId = typeof f['run-id'] === 'string' ? f['run-id'] : undefined;
     if (explicitId !== undefined && !/^[A-Za-z0-9_.-]+$/.test(explicitId)) throw new Error('--run-id must match ^[A-Za-z0-9_.-]+$');
-    const run = await factory(deps, command === 'resume' ? String(f.run) : undefined, explicitId);
+    const run = completing
+      ? await Run.create(deps, explicitId ?? await nextRunId(deps.ws, `${deps.spec.specId}-complete`))
+      : await factory(deps, command === 'resume' ? String(f.run) : undefined, explicitId);
     io.stderr(`run ${run.runId} started`);
     const off = (hooks.signals ?? realSignals)(() => {
       io.stderr('stop requested: draining');
@@ -229,7 +233,7 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
     });
     let result: ExecuteResult;
     try {
-      result = await run.execute();
+      result = completing ? await run.completeSpec() : await run.execute();
     } finally {
       off();
       await run.close();
