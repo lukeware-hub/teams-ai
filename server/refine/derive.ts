@@ -20,6 +20,7 @@ export function derivePack(input: {
   };
   const feedback = [
     `specId must be ${input.specId}. Derive project.json and spec.json from the Markdown below.`,
+    'Use flow.md as the business-flow reference and keep the derived objectives, features, and acceptance criteria consistent with its application behavior.',
     '### docs/project.md',
     input.projectMd,
     '### brief.md',
