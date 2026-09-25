@@ -37,6 +37,8 @@ export const Commands = z.object({
   build: z.string().min(1),
   run: z.string().min(1),
   healthcheck: z.string().min(1),
+  /** Runs against SERVICE_URL after deploy and must write JUnit to junitPath (spec Phase 5). */
+  smoke: z.string().min(1).optional(),
 });
 
 export const PlanTask = z.object({
@@ -47,6 +49,8 @@ export const PlanTask = z.object({
   dependsOn: z.array(z.string().regex(ID_PATTERNS.TASK_ID)),
   affectedPaths: z.array(RepoPath).min(1),
   owner: z.enum(['dev', 'devops']),
+  /** Set by the orchestrator, never by the SM: plan task, Phase 4 fix task, Phase 5 deploy-fix task. */
+  origin: z.enum(['plan', 'fix', 'deploy-fix']).default('plan'),
 });
 export type PlanTask = z.infer<typeof PlanTask>;
 

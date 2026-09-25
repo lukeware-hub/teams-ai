@@ -29,6 +29,9 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
     ids.add(task.id);
   }
 
+  const smokeAcs = spec.acceptanceCriteria.filter((ac) => ac.smoke).map((ac) => ac.id);
+  if (smokeAcs.length > 0 && !plan.commands.smoke) errors.push(`commands.smoke is required: ${smokeAcs.join(', ')} ${smokeAcs.length === 1 ? 'is a smoke criterion' : 'are smoke criteria'}`);
+
   const acIds = new Set(spec.acceptanceCriteria.map((ac) => ac.id));
   const covered = new Set<string>();
   for (const task of plan.tasks) {
