@@ -3,6 +3,7 @@ import { redactSecrets } from '../core/redact.js';
 export type Cli = 'claude' | 'gh';
 
 const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
+const OSC = /\x1b\][^\x07]*?(?:\x07|\x1b\\)/g;
 const URL = /https:\/\/[^\s"'<>\x1b]+/;
 const TERMINATED_URL = /https:\/\/[^\s\"'<>\x1b]+(?=\s)/;
 const ONE_TIME_CODE = /one-time code(?:[^A-Z0-9]{1,20})([A-Z0-9]{4}-[A-Z0-9]{4})/i;
@@ -14,7 +15,7 @@ const SUCCESS: Record<Cli, RegExp> = {
 export const TAIL_CHARS = 4096;
 
 export function stripAnsi(text: string): string {
-  return text.replace(ANSI, '');
+  return text.replace(ANSI, '').replace(OSC, '');
 }
 
 export function extractUrl(text: string): string | null {

@@ -8,6 +8,7 @@ const CLAUDE = `Opening browser to sign in…\n\x1b[1mhttps://claude.com/cai/oau
 describe('transcript helpers', () => {
   it('strips ANSI and extracts the first https URL without trailing punctuation', () => {
     expect(stripAnsi('\x1b[1mbold\x1b[0m')).toBe('bold');
+    expect(stripAnsi('\x1b]8;;https://claude.com/login\x1b\\https://claude.com/login\x1b]8;;\x1b\\')).toBe('https://claude.com/login');
     expect(extractUrl(GH)).toBe('https://github.com/login/device');
     expect(extractUrl(CLAUDE)).toBe('https://claude.com/cai/oauth/authorize?code=true&client_id=abc&state=Uf52');
     expect(extractUrl('no links here')).toBeNull();
