@@ -14,6 +14,9 @@ import { expandHome, stateFile, workspacePaths } from './orchestrator/workspace.
 import { runStep } from './runner/step.js';
 import { startApi } from './api/server.js';
 import { onboardingRoutes } from './api/onboarding-routes.js';
+import { defaultRunControl } from './api/run-control.js';
+import { runRoutes } from './api/run-routes.js';
+import { readUserConfig } from './onboarding/config-store.js';
 import { hasScript, spawnScriptPty } from './onboarding/pty.js';
 
 export interface CliIo {
@@ -24,7 +27,7 @@ export interface CliIo {
 }
 
 const USAGE = `Usage:
-  teams-ai run    --project <dir> [--spec <id>] [--max-parallel N] [--dry-run]
+  teams-ai run    --project <dir> [--spec <id>] [--run-id <id>] [--max-parallel N] [--dry-run]
   teams-ai resume --project <dir> --run <runId>
   teams-ai status --project <dir> --run <runId> [--json]
   teams-ai ui     [--port N]            start the local web UI (onboarding, status)`;
@@ -32,6 +35,17 @@ const USAGE = `Usage:
 export interface UiHooks {
   startUi?: (port: number) => Promise<{ port: number; close(): Promise<void> }>;
   waitForSignal?: () => Promise<void>;
+  /** Called with the stop callback; returns a function that removes the handlers. */
+  signals?: (onStop: () => void) => () => void;
+}
+
+function realSignals(onStop: () => void): () => void {
+  process.on('SIGTERM', onStop);
+  process.on('SIGINT', onStop);
+  return () => {
+    process.off('SIGTERM', onStop);
+    process.off('SIGINT', onStop);
+  };
 }
 
 async function startUiReal(port: number, io: CliIo): Promise<{ port: number; close(): Promise<void> }> {
@@ -40,8 +54,16 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
   const staticDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'web', 'dist');
   const hasDist = await fs.access(path.join(staticDir, 'index.html')).then(() => true, () => false);
   if (!hasDist) io.stderr('web/dist not found: run `npm run web:build` (or `npm run web:dev` for the Vite dev server with /api proxied)');
+  const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
   return startApi(
-    { routes: onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr }), staticDir: hasDist ? staticDir : null, log: io.stderr },
+    {
+      routes: [
+        ...onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr }),
+        ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr }),
+      ],
+      staticDir: hasDist ? staticDir : null,
+      log: io.stderr,
+    },
     port,
   );
 }
@@ -126,13 +148,14 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   return { cfg, ws, project, spec, firstSpec, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel };
 }
 
-const defaultFactory = (deps: RunDeps, runId?: string): Promise<Run> => (runId ? Run.resume(deps, runId) : Run.create(deps));
+type Factory = (deps: RunDeps, runId?: string, explicitId?: string) => Promise<Run>;
+const defaultFactory: Factory = (deps, runId, explicitId) => (runId ? Run.resume(deps, runId) : Run.create(deps, explicitId));
 
 /**
  * `factory` is the seam tests use to substitute the Run; with a custom factory the dependency
  * loading is best-effort (a missing project on disk yields `null` deps), since the factory owns them.
  */
-export async function main(io: CliIo, factory: (deps: RunDeps, runId?: string) => Promise<Run> = defaultFactory, hooks: UiHooks = {}): Promise<number> {
+export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: UiHooks = {}): Promise<number> {
   const [command, ...rest] = io.argv;
   const f = flags(rest);
   const projectDir = typeof f.project === 'string' ? f.project : null;
@@ -145,7 +168,7 @@ export async function main(io: CliIo, factory: (deps: RunDeps, runId?: string) =
     if (command === 'ui') {
       const port = typeof f.port === 'string' ? Number(f.port) : 8787;
       const server = await (hooks.startUi ?? ((p) => startUiReal(p, io)))(port);
-      io.stderr(`Open http://localhost:${server.port}/onboarding`);
+      io.stderr(`Open http://localhost:${server.port}/`);
       await (hooks.waitForSignal ?? (() => new Promise<void>((resolve) => { process.once('SIGINT', () => resolve()); process.once('SIGTERM', () => resolve()); })))();
       await server.close();
       return 0;
@@ -166,10 +189,21 @@ export async function main(io: CliIo, factory: (deps: RunDeps, runId?: string) =
     }
     const load = loadRunDeps(io, projectDir, typeof f.spec === 'string' ? f.spec : undefined, { dryRun: f['dry-run'] === true, maxParallel: typeof f['max-parallel'] === 'string' ? Number(f['max-parallel']) : undefined });
     const deps = factory === defaultFactory ? await load : await load.catch(() => null as unknown as RunDeps);
-    const run = await factory(deps, command === 'resume' ? String(f.run) : undefined);
+    const explicitId = typeof f['run-id'] === 'string' ? f['run-id'] : undefined;
+    if (explicitId !== undefined && !/^[A-Za-z0-9_.-]+$/.test(explicitId)) throw new Error('--run-id must match ^[A-Za-z0-9_.-]+$');
+    const run = await factory(deps, command === 'resume' ? String(f.run) : undefined, explicitId);
     io.stderr(`run ${run.runId} started`);
-    const result = await run.execute();
-    await run.close();
+    const off = (hooks.signals ?? realSignals)(() => {
+      io.stderr('stop requested: draining');
+      void run.requestStop();
+    });
+    let result: ExecuteResult;
+    try {
+      result = await run.execute();
+    } finally {
+      off();
+      await run.close();
+    }
     if (result === 'paused:auth') io.stderr('run paused: claude auth expired; run "claude auth login" and resume');
     else io.stderr(`run ${run.runId} finished: ${result}`);
     return exitCode(result);

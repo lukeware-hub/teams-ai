@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-export const HASH_PATTERN = /^sha256:[0-9a-f]{64}$/;
+export { HASH_PATTERN } from './patterns.js';
 
 function sortKeys(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortKeys);

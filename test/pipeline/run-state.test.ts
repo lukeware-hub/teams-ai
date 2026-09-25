@@ -133,4 +133,14 @@ describe('run status precedence', () => {
     ]);
     expect(state.status).toBe('draining');
   });
+
+  it('RUN_STOP_REQUESTED drains and a later pause or resume cannot undo it', () => {
+    const s = reduceEvents([
+      { type: RunEvent.TaskPlanned, data: { task: makePlanTask({ id: 'T1' }) } },
+      { type: RunEvent.RunStopRequested, data: {} },
+      { type: RunEvent.RunPaused, data: { reason: 'quota', until: '2026-09-24T10:05:00.000Z' } },
+      { type: RunEvent.RunResumed, data: {} },
+    ]);
+    expect(s.status).toBe('draining');
+  });
 });

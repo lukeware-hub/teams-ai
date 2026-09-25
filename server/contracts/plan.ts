@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { ID_PATTERNS } from '../core/ids.js';
-import { HASH_PATTERN } from './hash.js';
-import { AC_ID } from './spec.js';
+import { AC_ID, HASH_PATTERN } from './patterns.js';
 
 export const ADR_ID = /^ADR-\d{3}$/;
 

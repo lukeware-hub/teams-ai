@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { ID_PATTERNS } from '../core/ids.js';
-import { HASH_PATTERN, canonicalJson, sha256 } from './hash.js';
+import { canonicalJson, sha256 } from './hash.js';
+import { AC_ID, HASH_PATTERN } from './patterns.js';
 
-export const AC_ID = /^AC-\d{3}$/;
+export { AC_ID };
 
 export const AcceptanceCriterion = z.object({
   id: z.string().regex(AC_ID),

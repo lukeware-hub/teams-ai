@@ -36,7 +36,34 @@ describe('teams-ai cli', () => {
       waitForSignal: async () => undefined,
     });
     expect(code).toBe(0);
-    expect(a.err.join('\n')).toContain('http://localhost:45678/onboarding');
+    expect(a.err.join('\n')).toContain('http://localhost:45678/');
     expect(closed).toBe(true);
+  });
+
+  it('run passes --run-id to the factory and a SIGTERM requests a stop', async () => {
+    const seen: Array<string | undefined> = [];
+    let stops = 0;
+    let resolveRun: (r: 'drained') => void = () => {};
+    const a = io(['run', '--project', '/tmp/p', '--spec', 'spec-001', '--run-id', 'spec-001-r9']);
+    const code = main(
+      a.io,
+      async (_deps, runId, explicitId) => {
+        seen.push(runId, explicitId);
+        return {
+          runId: explicitId ?? 'x',
+          execute: () => new Promise<'drained'>((r) => (resolveRun = r)),
+          requestStop: async () => { stops += 1; },
+          close: async () => {},
+          journal: { state: { tasks: new Map() } },
+          accounting: { total: () => ({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, steps: 0 }) },
+        } as never;
+      },
+      { signals: (cb) => { setTimeout(() => cb(), 5); return () => {}; } },
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    resolveRun('drained');
+    expect(await code).toBe(3);
+    expect(seen).toEqual([undefined, 'spec-001-r9']);
+    expect(stops).toBe(1);
   });
 });

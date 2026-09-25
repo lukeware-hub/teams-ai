@@ -3,7 +3,7 @@ import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import path from 'node:path';
 
 export interface SseWriter {
-  send(event: string, data: unknown): void;
+  send(event: string, data: unknown, id?: string): void;
   close(): void;
   onClose(cb: () => void): void;
 }
@@ -11,6 +11,7 @@ export interface SseWriter {
 export interface RouteContext {
   req: IncomingMessage;
   res: ServerResponse;
+  params: Record<string, string>;
   body: () => Promise<unknown>;
   json: (status: number, value: unknown) => void;
   sse: () => SseWriter;
@@ -18,8 +19,41 @@ export interface RouteContext {
 
 export interface Route {
   method: 'GET' | 'POST' | 'PUT';
+  /** Literal segments or `:name` parameters, e.g. `/api/runs/:runId/events`. */
   path: string;
   handler: (ctx: RouteContext) => Promise<void>;
+}
+
+export function matchRoute(routes: readonly Route[], method: string, pathname: string): { route: Route; params: Record<string, string> } | null {
+  const parts = pathname.split('/');
+  for (const route of routes) {
+    if (route.method !== method) continue;
+    const pattern = route.path.split('/');
+    if (pattern.length !== parts.length) continue;
+    const params: Record<string, string> = {};
+    let ok = true;
+    for (let i = 0; i < pattern.length; i++) {
+      const p = pattern[i]!;
+      const v = parts[i]!;
+      if (p.startsWith(':')) {
+        if (v === '') {
+          ok = false;
+          break;
+        }
+        try {
+          params[p.slice(1)] = decodeURIComponent(v);
+        } catch {
+          ok = false;
+          break;
+        }
+      } else if (p !== v) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return { route, params };
+  }
+  return null;
 }
 
 export interface ApiDeps {
@@ -91,8 +125,8 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
       done(status);
     };
     if (!isAllowedHost(req.headers.host)) return json(403, { error: 'forbidden host' });
-    const route = deps.routes.find((r) => r.method === req.method && r.path === url.pathname);
-    if (!route) {
+    const match = matchRoute(deps.routes, req.method ?? 'GET', url.pathname);
+    if (!match) {
       if (req.method === 'GET' && deps.staticDir && (await serveStatic(deps.staticDir, url.pathname, res))) return done(200);
       return json(404, { error: 'not found' });
     }
@@ -101,13 +135,13 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
       res.flushHeaders();
       done(200);
       return {
-        send: (event, data) => void res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
+        send: (event, data, id) => void res.write(`${id === undefined ? '' : `id: ${id}\n`}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
         close: () => res.end(),
         onClose: (cb) => void res.on('close', cb),
       };
     };
     try {
-      await route.handler({ req, res, body: () => readBody(req), json, sse });
+      await match.route.handler({ req, res, params: match.params, body: () => readBody(req), json, sse });
     } catch (err) {
       const status = err instanceof HttpError ? err.status : 500;
       if (!res.headersSent) json(status, { error: err instanceof HttpError ? err.message : 'internal error' });

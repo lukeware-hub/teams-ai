@@ -1,6 +1,6 @@
 # teams-ai Plan 10 — Run API and Execution UI Implementation Plan
 
-**Status: not started**
+**Status: implemented — live check recorded in Findings (read-only against the recorded run; start/stop/resume from the browser still to be exercised)**
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -2584,3 +2584,32 @@ git commit -m "feat(web): home routes to projects; plan 10 findings from the liv
 **Type consistency.** `RunControlDeps`, `spawnRun`, `stop`, `isAlive` (Task 3) are used with the same signatures in Task 5; `IndexDeps`, `listRuns`, `readProject`, `runsDir`, `readPid/writePid/clearPid`, `SAFE_ID` (Task 4) in Tasks 5–6; `SseWriter.send(event, data, id?)` (Task 6) matches the onboarding use; `StoredEvent` in `web/src/api.ts` mirrors `server/store/event-store.ts`; `Usage` matches `Accounting.total()`; `useJournal` (Task 7) is what `RunPage` (Task 9) calls; `Home` (Task 10) is the route element `App.tsx` exports.
 
 **Review Focus.** Each of the five lines names its owning task and test; all are present above.
+
+## Findings (live check, 2026-09-24, WSL Ubuntu, Node 22.23.3)
+
+Run from a temporary worktree of this branch (`git worktree add /tmp/t10`, `node_modules` symlinked from the WSL
+clone, `vite build`, `setsid npm run ui -- --port 8790`), driven with `curl` against the real
+`~/.teams-ai/runs/hello-001-r1` journal (289 events, the plan 7 live run). No run was started from the UI: the
+hello-app spec is frozen and a full run costs about $3, so start, stop and resume from the browser remain to be
+exercised on a deliberate run.
+
+1. `POST /api/projects` with `~/.teams-ai/workspaces/hello-app/repo` registered the project and listed
+   `hello-001` (`running`, `activeRunId: null`); `GET /api/projects/hello-app/runs` returned `hello-001-r1` as
+   `complete`, 78 760 tokens, $3.33, `stoppable: false`. Both match the CLI `status` output.
+2. `GET /api/runs/hello-001-r1` reduced all six tasks (`T0-scaffold`, `T1`–`T3`, `T0-scaffold-r1/-r2`) from the
+   journal; the run's own `state.status` is still `running` because the journal never records a terminal run
+   status — the route reports `complete` from `RUN_FINISHED`, as designed.
+3. SSE replay honoured `Last-Event-ID`: from `20` the stream began at `id: 21`; from `90` it replayed to the end
+   and closed with `event: end` after the `RUN_FINISHED` line. The 500 ms tail loop never ran for a finished run.
+4. `POST /api/runs/hello-001-r1/stop` → 409 (`no live process started from the UI`), as the spec requires for
+   CLI-started runs.
+5. `GET /` served the built SPA (200). The printed URL in `ui.log` still said `/onboarding` because the worktree
+   was cut before Task 10's CLI change; the change is in this commit.
+6. Not verified: SIGTERM reaching the orchestrator through the `tsx` wrapper (spec §10). `stop` signals the whole
+   process group (`-pid`), so both `tsx` and its child receive it; `tsx` also forwards signals. To confirm on a
+   real run: start a run from the UI, click Stop during phase 3, and check the journal ends with
+   `RUN_STOP_REQUESTED` … `RUN_FINISHED {result: "drained"}`. If the journal is torn instead, switch `cliEntry`
+   in `server/api/run-control.ts` to `node --import tsx server/cli.ts` so the orchestrator is the group leader.
+7. Cleanup: the registered project was removed from `~/.teams-ai/config.json` again and the worktree deleted. A
+   `pkill -f` used during cleanup matched the previous `teams-ai ui --port 8787` process from the plan 8 session
+   and stopped it; restart it with `npm run ui` if it is still wanted.

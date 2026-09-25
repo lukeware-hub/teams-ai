@@ -111,4 +111,14 @@ describe('Plan', () => {
     expect(Plan.safeParse({ ...plan, junitPath: '/tmp/junit.xml' }).success).toBe(false);
     expect(Plan.safeParse({ ...plan, deploy: { ...plan.deploy, manifests: ['../../secrets.yaml'] } }).success).toBe(false);
   });
+
+  it('run-state and plan contracts import nothing from node: (browser reducer)', async () => {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const out = await promisify(execFile)(process.execPath, ['--input-type=module', '-e', "import('./server/pipeline/run-state.ts').then(() => console.log('ok'))"], { env: { ...process.env, NODE_OPTIONS: '--import tsx' } });
+    expect(out.stdout.trim()).toBe('ok');
+    const src = await (await import('node:fs/promises')).readFile('server/contracts/plan.ts', 'utf8');
+    expect(src).not.toContain("from './hash.js'");
+    expect(src).not.toContain("from './spec.js'");
+  });
 });

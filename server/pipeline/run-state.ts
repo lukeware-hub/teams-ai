@@ -37,6 +37,7 @@ export const RunEvent = {
   RunPaused: 'RUN_PAUSED',
   RunResumed: 'RUN_RESUMED',
   RunBudgetExhausted: 'RUN_BUDGET_EXHAUSTED',
+  RunStopRequested: 'RUN_STOP_REQUESTED',
 } as const;
 
 export class UnknownTaskError extends Error {}
@@ -48,7 +49,7 @@ const StateChangedData = z.object({ taskId: z.string(), to: z.enum(TASK_STATES) 
 const TaskRefData = z.object({ taskId: z.string() });
 const GateRetryData = z.object({ taskId: z.string(), gate: z.string().min(1) });
 const ReplannedData = z.object({ taskId: z.string(), replacements: z.array(PlanTask).min(1) });
-const PausedData = z.object({ reason: z.enum(['quota', 'auth']) });
+const PausedData = z.object({ reason: z.enum(['quota', 'auth']), until: z.string().optional() });
 
 export function emptyRunState(): RunState {
   return { status: 'running', tasks: new Map(), order: [] };
@@ -102,6 +103,10 @@ export function applyEvent(state: RunState, event: ReducibleEvent): void {
       return;
     }
     case RunEvent.RunBudgetExhausted: {
+      state.status = 'draining';
+      return;
+    }
+    case RunEvent.RunStopRequested: {
       state.status = 'draining';
       return;
     }
