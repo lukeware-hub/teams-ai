@@ -26,6 +26,7 @@ export const OrchEvent = {
   TaskBlocked: 'TASK_BLOCKED',
   BudgetExceeded: 'BUDGET_EXCEEDED',
   RunFinished: 'RUN_FINISHED',
+  RepoBootstrapped: 'REPO_BOOTSTRAPPED',
   /** The delta handed to the next Dev attempt (gate failures, findings, conflicts, spec-gap answer). */
   Feedback: 'FEEDBACK',
 } as const;
@@ -38,6 +39,7 @@ export const Intent = {
   PrCreate: 'PR_CREATE',
   PrMerge: 'PR_MERGE',
   WorktreeRemove: 'WORKTREE_REMOVE',
+  RepoCreate: 'REPO_CREATE',
 } as const;
 export type IntentType = (typeof Intent)[keyof typeof Intent];
 

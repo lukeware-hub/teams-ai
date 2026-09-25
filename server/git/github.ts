@@ -24,7 +24,7 @@ function prNumber(url: string): number {
   return n;
 }
 
-const NOT_FOUND = /Could not resolve to a Repository|HTTP 404/i;
+export const NOT_FOUND = /Could not resolve to a Repository|HTTP 404/i;
 
 /**
  * Idempotent repository bootstrap (spec §7.4). A half-finished `gh repo create --push` (remote

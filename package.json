@@ -18,11 +18,13 @@
     "test:web": "cd web && npm test"
   },
   "dependencies": {
+    "diff": "8.0.2",
     "fast-xml-parser": "5.11.1",
     "picomatch": "4.0.7",
     "zod": "4.6.5"
   },
   "devDependencies": {
+    "@types/diff": "8.0.0",
     "@types/node": "22.20.4",
     "@types/picomatch": "4.0.3",
     "tsx": "4.23.15",

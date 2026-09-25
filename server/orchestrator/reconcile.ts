@@ -62,7 +62,12 @@ export async function reconcile(deps: ReconcileDeps): Promise<ReconcileReport> {
           break;
         }
         const dirty = (await git(wt, ['status', '--porcelain', '--untracked-files=all'], exec)) !== '';
-        const head = await headSha(wt, exec);
+        // A repository without commits yet (Phase 0 bootstrap) has no HEAD: the commit never happened.
+        const head = await headSha(wt, exec).catch(() => null);
+        if (head === null) {
+          redo(e);
+          break;
+        }
         const moved = d.baseSha === undefined || head !== d.baseSha;
         !dirty && moved ? await confirm(e, { sha: head }) : redo(e);
         break;
@@ -77,6 +82,11 @@ export async function reconcile(deps: ReconcileDeps): Promise<ReconcileReport> {
         const local = await headSha(wt, exec);
         const remote = (await git(deps.ws.repo, ['ls-remote', 'origin', `refs/heads/${branch}`], exec)).split(/\s+/)[0] ?? '';
         remote === local ? await confirm(e, { sha: local }) : redo(e);
+        break;
+      }
+      case Intent.RepoCreate: {
+        const view = await ghExec({ bin: 'gh', args: ['repo', 'view', `${String(d.owner)}/${String(d.name)}`, '--json', 'nameWithOwner,url'], cwd: deps.ws.root, timeoutMs: 60_000 });
+        view.exitCode === 0 ? await confirm(e, JSON.parse(view.stdout) as Record<string, unknown>) : redo(e);
         break;
       }
       case Intent.PrCreate: {

@@ -24,10 +24,10 @@ const runs = {
 
 describe('ProjectsView', () => {
   it('shows one action per spec status and per run status', () => {
-    const on = { start: vi.fn(), resume: vi.fn(), stop: vi.fn(), add: vi.fn() };
+    const on = { start: vi.fn(), resume: vi.fn(), stop: vi.fn(), add: vi.fn(), newProject: vi.fn(), newSpec: vi.fn(), cont: vi.fn() };
     render(
       <MemoryRouter>
-        <ProjectsView projects={projects} runs={runs} error={null} onStart={on.start} onResume={on.resume} onStop={on.stop} onAdd={on.add} />
+        <ProjectsView projects={projects} runs={runs} drafts={[]} error={null} onStart={on.start} onResume={on.resume} onStop={on.stop} onAdd={on.add} onNewProject={on.newProject} onNewSpec={on.newSpec} onContinue={on.cont} />
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByTestId('start-hello-001'));
@@ -45,12 +45,50 @@ describe('ProjectsView', () => {
     const onAdd = vi.fn();
     render(
       <MemoryRouter>
-        <ProjectsView projects={[]} runs={{}} error="not a project directory" onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={onAdd} />
+        <ProjectsView projects={[]} runs={{}} drafts={[]} error="not a project directory" onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={onAdd} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} />
       </MemoryRouter>,
     );
     fireEvent.change(screen.getByPlaceholderText('/path/to/project'), { target: { value: '/x' } });
     fireEvent.click(screen.getByText('Add project'));
     expect(onAdd).toHaveBeenCalledWith('/x');
     expect(screen.getByText('not a project directory')).toBeTruthy();
+  });
+  it('offers new project, new spec, continue spec and open refinement', () => {
+    const on = { start: vi.fn(), resume: vi.fn(), stop: vi.fn(), add: vi.fn(), newProject: vi.fn(), newSpec: vi.fn(), cont: vi.fn() };
+    const drafts = [
+      { projectId: 'hello-app', specId: 'hello-003', state: 'answering' as const, registered: true },
+      { projectId: 'fresh', specId: 'fresh-001', state: 'drafting' as const, registered: false },
+      { projectId: 'hello-app', specId: 'hello-004', state: 'started' as const, registered: true },
+    ];
+    render(
+      <MemoryRouter>
+        <ProjectsView
+          projects={projects}
+          runs={runs}
+          drafts={drafts}
+          error={null}
+          onStart={on.start}
+          onResume={on.resume}
+          onStop={on.stop}
+          onAdd={on.add}
+          onNewProject={on.newProject}
+          onNewSpec={on.newSpec}
+          onContinue={on.cont}
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByTestId('new-project-id'), { target: { value: 'shop' } });
+    fireEvent.change(screen.getByTestId('new-project-name'), { target: { value: 'Shop' } });
+    fireEvent.click(screen.getByTestId('new-project'));
+    expect(on.newProject).toHaveBeenCalledWith('shop', 'Shop');
+    fireEvent.change(screen.getByTestId('new-spec-id-hello-app'), { target: { value: 'hello-005' } });
+    fireEvent.click(screen.getByTestId('new-spec-hello-app'));
+    expect(on.newSpec).toHaveBeenCalledWith('hello-app', 'hello-005');
+    fireEvent.click(screen.getByTestId('continue-hello-000'));
+    expect(on.cont).toHaveBeenCalledWith('hello-app', 'hello-000');
+    expect(screen.queryByTestId('continue-hello-001')).toBeNull();
+    expect(screen.getByTestId('refine-hello-app-hello-003').getAttribute('href')).toBe('/refine/hello-app/hello-003');
+    expect(screen.getByTestId('refine-fresh-fresh-001').getAttribute('href')).toBe('/refine/fresh/fresh-001');
+    expect(screen.queryByTestId('refine-hello-app-hello-004')).toBeNull();
   });
 });

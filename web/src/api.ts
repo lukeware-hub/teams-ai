@@ -103,3 +103,87 @@ export const runApi = {
   step: (runId: string, stepId: string) => fetch(`${R}/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}`).then((r) => json<{ prompt: string; output: unknown }>(r)),
   runEvents: (runId: string) => `${R}/runs/${encodeURIComponent(runId)}/events`,
 };
+
+export type RefineStatus = 'drafting' | 'evaluating' | 'answering' | 'ready' | 'error' | 'started';
+export interface ChecklistItem {
+  id: string;
+  role: 'po' | 'sm';
+  passed: boolean;
+  detail: string;
+}
+export interface QuestionRow {
+  questionId: string;
+  role: 'po' | 'sm';
+  text: string;
+  blocking: boolean;
+  relatedAcIds: string[];
+  cycle: number;
+  status: 'pending' | 'answered' | 'skipped';
+  answer: string | null;
+}
+export interface PatchRow {
+  patchId: string;
+  role: 'po' | 'sm';
+  file: 'project.md' | 'brief.md';
+  find: string;
+  replace: string;
+  reason: string;
+  diff: string;
+  cycle: number;
+  status: 'pending' | 'accepted' | 'rejected' | 'dropped';
+  decision: string | null;
+}
+export interface DerivedDoc {
+  spec: {
+    acceptanceCriteria: AcceptanceCriterion[];
+    tasks?: Array<{ title: string; description: string }>;
+    externalDependencies: Array<{ name: string; secretNames: string[] }>;
+  } & Record<string, unknown>;
+  project: unknown;
+}
+export interface RefineState {
+  status: RefineStatus;
+  stale: boolean;
+  cycle: number;
+  derived: DerivedDoc | null;
+  checklist: ChecklistItem[];
+  questions: QuestionRow[];
+  patches: PatchRow[];
+  discarded: Array<{ cycle: number; role: string; file: string; reason: string }>;
+  error: string | null;
+  runId: string | null;
+}
+export interface Snapshot {
+  projectId: string;
+  specId: string;
+  state: RefineState;
+  docs: { 'project.md': string; 'brief.md': string };
+  secrets: Array<{ name: string; present: boolean; hint: string | null }>;
+  tokens: { inputTokens: number; outputTokens: number; costUsd: number; steps: number };
+}
+export interface DraftRow {
+  projectId: string;
+  specId: string;
+  state: RefineStatus;
+  registered: boolean;
+}
+
+const send = (method: string, p: string, body?: unknown) => fetch(`${R}${p}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+export const refineApi = {
+  list: () => fetch(`${R}/refine`).then((r) => json<DraftRow[]>(r)),
+  newProject: (projectId: string, name: string) => send('POST', '/projects/new', { projectId, name }).then((r) => json<{ sessionId: string }>(r)),
+  newSpec: (projectId: string, specId: string) => send('POST', `/projects/${encodeURIComponent(projectId)}/specs`, { specId }).then((r) => json<{ sessionId: string }>(r)),
+  continueSpec: (projectId: string, specId: string, report?: string) =>
+    send('POST', `/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/continue`, { report }).then((r) => json<{ sessionId: string }>(r)),
+  snapshot: (p: string, s: string) => fetch(`${R}/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}`).then((r) => json<Snapshot>(r)),
+  saveDoc: (p: string, s: string, file: 'project.md' | 'brief.md', text: string) => send('PUT', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${file}`, { text }).then((r) => json<{ ok: true }>(r)),
+  evaluate: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/evaluate`).then((r) => json<{ state: string }>(r)),
+  answer: (p: string, s: string, questionId: string, text: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/answers`, { questionId, text }).then((r) => json<{ ok: true }>(r)),
+  skip: (p: string, s: string, questionId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/questions/${encodeURIComponent(questionId)}/skip`).then((r) => json<{ ok: true }>(r)),
+  accept: (p: string, s: string, patchId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/patches/${encodeURIComponent(patchId)}/accept`).then((r) => json<{ ok: true }>(r)),
+  reject: (p: string, s: string, patchId: string, reason: string | null) =>
+    send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/patches/${encodeURIComponent(patchId)}/reject`, { reason: reason ?? undefined }).then((r) => json<{ ok: true }>(r)),
+  secret: (p: string, s: string, name: string, value: string) => send('PUT', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/secrets/${encodeURIComponent(name)}`, { value }).then((r) => json<{ present: boolean; hint: string }>(r)),
+  start: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/start`).then((r) => json<{ runId: string }>(r)),
+  events: (p: string, s: string) => `${R}/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/events`,
+};

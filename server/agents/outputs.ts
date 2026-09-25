@@ -3,8 +3,10 @@ import { HASH_PATTERN } from '../contracts/hash.js';
 import { ADR_ID, Plan, PlanTask } from '../contracts/plan.js';
 import { AC_ID } from '../contracts/spec.js';
 import { ID_PATTERNS } from '../core/ids.js';
+import { Project } from '../contracts/project.js';
+import { Spec } from '../contracts/spec.js';
 
-export const STEP_KINDS = ['refine', 'tech-spec', 'coverage', 'plan', 'dev', 'review', 'deployment', 'report', 'decide', 'spec-gap', 'replan'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'dev', 'review', 'deployment', 'report', 'decide', 'spec-gap', 'replan'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -31,6 +33,10 @@ export const RefineOutput = z.object({
   ),
   docPatch: z.array(DocPatch),
 });
+
+/** Spec (refinement) §3.2 step 1: Markdown → project.json + spec.json; the orchestrator re-validates and forces status/hash/version. */
+export const DeriveOutput = z.object({ specHash, project: Project, spec: Spec });
+export type DeriveOutput = z.infer<typeof DeriveOutput>;
 
 export const TechSpecOutput = z.object({
   specHash,
@@ -120,6 +126,7 @@ export type ReplanOutput = z.infer<typeof ReplanOutput>;
 
 export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> = {
   refine: RefineOutput,
+  derive: DeriveOutput,
   'tech-spec': TechSpecOutput,
   coverage: CoverageOutput,
   plan: PlanOutput,

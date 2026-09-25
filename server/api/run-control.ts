@@ -25,13 +25,18 @@ export interface RunTarget {
   mode: 'run' | 'resume';
   /** Where ui.log goes; the caller passes the run directory once it exists. */
   logFile?: string;
+  /** Spec (refinement) §4: the project directory is a draft root; `run` bootstraps Phase 0. */
+  draft?: boolean;
 }
 
 const POLL_MS = 250;
 
 export function runCommand(deps: RunControlDeps, o: RunTarget): SpawnArgs {
   const { bin, prefix } = deps.cliEntry();
-  const args = o.mode === 'run' ? ['run', '--project', o.projectDir, '--spec', o.specId, '--run-id', o.runId] : ['resume', '--project', o.projectDir, '--run', o.runId];
+  const args =
+    o.mode === 'run'
+      ? ['run', '--project', o.projectDir, '--spec', o.specId, '--run-id', o.runId, ...(o.draft ? ['--draft'] : [])]
+      : ['resume', '--project', o.projectDir, '--run', o.runId];
   return { bin, args: [...prefix, ...args], cwd: deps.repoRoot, logFile: o.logFile ?? 'ui.log' };
 }
 
