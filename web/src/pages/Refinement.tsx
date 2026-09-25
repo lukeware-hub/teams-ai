@@ -9,7 +9,7 @@ const questionText = (text: string) => text.startsWith('What counts as valid cli
   ? 'Quais dados um cliente precisa ter? Nome, e-mail, telefone e observações são obrigatórios? Quais formatos e limites devemos aceitar? O e-mail pode se repetir? Se algum dado for inválido, devemos mostrar o erro de cada campo e retornar HTTP 400?'
   : text;
 const errorText = (text: string | null) => text
-  ?.replaceAll('interrupted', 'interrompido')
+  ?.replace(/\binterrupted\b/gi, 'A avaliação foi interrompida. Clique em Reavaliar para tentar novamente.')
   .replaceAll('failed', 'falhou')
   .replaceAll('timeout', 'tempo limite excedido')
   .replaceAll('internal error', 'erro interno') ?? null;
