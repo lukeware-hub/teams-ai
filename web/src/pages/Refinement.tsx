@@ -56,8 +56,8 @@ export function RefinementView(p: ViewProps) {
   const current = pending[0];
   const canStart = st.status === 'ready' && !st.stale && !busy;
   const derivedThisCycle = (p.events ?? []).some((e) => e.type === 'DERIVED' && Number(e.data.cycle) === st.cycle);
-  const jevValidated = (p.events ?? []).some((e) => e.type === 'REFINE_DOCS_VALIDATED' && Number(e.data.cycle) === st.cycle);
-  const claudeStage = !jevValidated ? 'Jev está validando os quatro documentos.' : derivedThisCycle ? 'Documentos analisados; PO e SM revisando a especificação.' : 'Jev validou a base; preparando a análise do Claude.';
+  const jevEvent = (p.events ?? []).find((e) => e.type === 'REFINE_DOCS_VALIDATED' && Number(e.data.cycle) === st.cycle);
+  const claudeStage = !jevEvent ? 'Jev está validando os quatro documentos.' : jevEvent.data.available === false ? 'Jev não está disponível; verifique OPENROUTER_API_KEY.' : derivedThisCycle ? 'Documentos analisados; PO e SM revisando a especificação.' : 'Jev validou a base; preparando a análise do Claude.';
   const nextStep = pending.length > 0
     ? 'Responda as perguntas pendentes para continuar.'
     : st.stale
