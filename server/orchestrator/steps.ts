@@ -176,7 +176,7 @@ export interface AgentStepDeps {
   omniroute?: StepRequest['omniroute'];
   governor: Governor;
   breaker: QuotaBreaker;
-  journal: Journal;
+  journal: Pick<Journal, 'allocStepSeq' | 'fact'>;
   stepDir: (seq: number) => string;
   secretValues: () => readonly string[];
   specHash: string;

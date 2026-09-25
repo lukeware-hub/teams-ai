@@ -77,3 +77,14 @@ describe('dev output JSON Schema carries the status-dependent requirements', () 
     expect(OUTPUT_SCHEMAS.replan.safeParse({ specHash: HASH, replacements: [task, task, task, task] }).success).toBe(false);
   });
 });
+
+describe('derive output', () => {
+  it('is a step kind whose output carries a project and a spec', async () => {
+    const { DeriveOutput } = await import('../../server/agents/outputs.js');
+    const { makeProject, makeSpec } = await import('../fixtures/contracts.js');
+    expect(STEP_KINDS).toContain('derive');
+    const out = DeriveOutput.parse({ specHash: HASH, project: makeProject(), spec: { ...makeSpec(), status: 'refining', specHash: null } });
+    expect(out.spec.status).toBe('refining');
+    expect(OUTPUT_SCHEMAS.derive).toBe(DeriveOutput);
+  });
+});

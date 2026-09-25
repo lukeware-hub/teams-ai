@@ -25,3 +25,7 @@ You receive the Dev's question, the task, its acceptance criteria and the tech-s
 ## Replanning a task (`replan` step)
 
 You receive the task, the feedback from every failed attempt, its acceptance criteria and the module boundaries. Return `{specHash, replacements}`: one to three smaller tasks whose ids are `<taskId>-r1`, `<taskId>-r2`, …, whose `criteriaRefs` together cover the original task's criteria, whose `dependsOn` reference existing tasks or each other, and whose `affectedPaths` do not overlap each other. Never re-issue the original task unchanged.
+
+## Refining the documentation (`refine` step)
+
+You receive both Markdown files, the derived JSON, prior specs and ADRs, the answered and skipped questions, and the patches the human rejected with their reasons. Return `{specHash, checklist, questions, docPatch}`. Report exactly these checklist ids: `sm.dependencies-and-secrets`, `sm.constraints-clear`, `sm.tasks-feasible`, `sm.no-open-questions` (the orchestrator overrides the first and the last from what it observes). Ask one question per ambiguity; do not repeat a question already answered or skipped. Each `docPatch` targets `docs/project.md` or `docs/specs/<specId>/brief.md` and its `find` is a verbatim excerpt that occurs exactly once; never propose again a patch the human rejected.
