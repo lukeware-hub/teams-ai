@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type { Snapshot } from '../api.js';
+import type { StoredEvent } from '../api.js';
 import { RefinementView } from './Refinement.js';
 
 const green = (ids: string[]) => ids.map((id) => ({ id, role: (id.startsWith('po') ? 'po' : 'sm') as 'po' | 'sm', passed: true, detail: 'ok' }));
@@ -31,6 +32,7 @@ const base = (over: Partial<Snapshot['state']>): Snapshot => ({
   },
 });
 const on = () => ({ onSaveDoc: vi.fn(), onEvaluate: vi.fn(), onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn() });
+const event = (seq: number, type: string, data: Record<string, unknown>): StoredEvent => ({ seq, at: '', runId: 'hello-app/hello-001', specHash: 'draft', type, kind: 'fact', data });
 
 describe('RefinementView', () => {
   it('shows the blocking question first without a skip button, patches with accept/reject, and disables Start while answering', () => {
@@ -89,5 +91,23 @@ describe('RefinementView', () => {
       </MemoryRouter>,
     );
     expect(screen.getByText(/spec.objectives: too small/)).toBeTruthy();
+  });
+
+  it('shows the active Claude step from the refinement journal', () => {
+    render(
+      <MemoryRouter>
+        <RefinementView
+          snap={base({ status: 'evaluating', questions: [], patches: [] })}
+          busy={true}
+          events={[
+            event(1, 'REFINE_CYCLE_STARTED', { cycle: 1 }),
+            event(2, 'REFINE_DOCS_VALIDATED', { cycle: 1, available: true }),
+            event(3, 'STEP_STARTED', { stepId: 'step-1', kind: 'derive', role: 'po', attempt: 1 }),
+          ]}
+          {...on()}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/derivando project\.json e spec\.json/)).toBeTruthy();
   });
 });

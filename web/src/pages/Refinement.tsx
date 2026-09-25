@@ -14,6 +14,26 @@ const errorText = (text: string | null) => text
   .replaceAll('failed', 'falhou')
   .replaceAll('timeout', 'tempo limite excedido')
   .replaceAll('internal error', 'erro interno') ?? null;
+
+function currentClaudeStage(events: StoredEvent[], cycle: number, jevEvent: StoredEvent | undefined, derived: boolean): string {
+  if (!jevEvent) return 'Jev está validando project.md, briefing.md, stack.md e flow.md.';
+  if (jevEvent.data.available === false) return 'Jev não está disponível; verifique OPENROUTER_API_KEY.';
+
+  const cycleEvents = events.filter((e) => Number(e.data.attempt) === cycle || Number(e.data.cycle) === cycle);
+  const started = new Map<string, { kind: string; role: string }>();
+  for (const event of cycleEvents) {
+    if (event.type === 'STEP_STARTED') started.set(String(event.data.stepId), { kind: String(event.data.kind), role: String(event.data.role) });
+    if (event.type === 'STEP_FINISHED') started.delete(String(event.data.stepId));
+  }
+  const active = [...started.values()];
+  if (active.some((step) => step.kind === 'derive')) return 'Claude está derivando project.json e spec.json a partir dos quatro documentos.';
+  const roles = active.filter((step) => step.kind === 'refine').map((step) => step.role);
+  if (roles.includes('po') && roles.includes('sm')) return 'PO e SM estão revisando objetivos, critérios e fluxos em paralelo.';
+  if (roles.includes('po')) return 'PO está revisando objetivos, critérios e o fluxo de negócio.';
+  if (roles.includes('sm')) return 'SM está revisando stack, tarefas, validação e viabilidade.';
+  if (!derived) return 'Jev validou os documentos; Claude está iniciando a derivação dos arquivos.';
+  return 'Derivação concluída; Claude está preparando a revisão do PO e do SM.';
+}
 export interface ViewProps {
   snap: Snapshot;
   busy: boolean;
@@ -57,7 +77,7 @@ export function RefinementView(p: ViewProps) {
   const canStart = st.status === 'ready' && !st.stale && !busy;
   const derivedThisCycle = (p.events ?? []).some((e) => e.type === 'DERIVED' && Number(e.data.cycle) === st.cycle);
   const jevEvent = (p.events ?? []).find((e) => e.type === 'REFINE_DOCS_VALIDATED' && Number(e.data.cycle) === st.cycle);
-  const claudeStage = !jevEvent ? 'Jev está validando os quatro documentos.' : jevEvent.data.available === false ? 'Jev não está disponível; verifique OPENROUTER_API_KEY.' : derivedThisCycle ? 'Documentos analisados; PO e SM revisando a especificação.' : 'Jev validou a base; preparando a análise do Claude.';
+  const claudeStage = currentClaudeStage(p.events ?? [], st.cycle, jevEvent, derivedThisCycle);
   const nextStep = pending.length > 0
     ? 'Responda as perguntas pendentes para continuar.'
     : st.stale
