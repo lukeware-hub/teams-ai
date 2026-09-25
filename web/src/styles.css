@@ -16,3 +16,11 @@ button { padding: 0.4rem 0.8rem; }
 .compact .card { padding: 0.5rem 1rem; }
 table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; font-size: 0.9rem; }
 th, td { text-align: left; padding: 0.3rem 0.4rem; border-bottom: 1px solid #eee; vertical-align: top; }
+.phase { display: inline-block; margin-right: 0.5rem; padding: 0.2rem 0.5rem; border-radius: 4px; background: #eee; }
+.phase-done { background: #d8f3e0; }
+.phase-failed { background: #f8d7d7; }
+.phase-running { background: #fff3cd; }
+.test { display: inline-block; margin-right: 0.5rem; }
+.test-passed { color: #2e9e4f; }
+.test-failed { color: #b00; }
+h3 { font-size: 1rem; margin: 0.6rem 0 0.2rem; }

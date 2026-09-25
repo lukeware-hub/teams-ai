@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Onboarding } from './pages/Onboarding.js';
 import { Projects } from './pages/Projects.js';
+import { RunPage } from './pages/Run.js';
 import { StatusPage } from './pages/StatusPage.js';
 
 export function App() {
@@ -11,6 +12,7 @@ export function App() {
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/status" element={<StatusPage />} />
         <Route path="/projects" element={<Projects />} />
+        <Route path="/runs/:runId" element={<RunPage />} />
       </Routes>
     </BrowserRouter>
   );
