@@ -8,6 +8,11 @@ type DocFile = 'project.md' | 'brief.md';
 const questionText = (text: string) => text.startsWith('What counts as valid client data?')
   ? 'Quais dados um cliente precisa ter? Nome, e-mail, telefone e observações são obrigatórios? Quais formatos e limites devemos aceitar? O e-mail pode se repetir? Se algum dado for inválido, devemos mostrar o erro de cada campo e retornar HTTP 400?'
   : text;
+const errorText = (text: string | null) => text
+  ?.replaceAll('interrupted', 'interrompido')
+  .replaceAll('failed', 'falhou')
+  .replaceAll('timeout', 'tempo limite excedido')
+  .replaceAll('internal error', 'erro interno') ?? null;
 export interface ViewProps {
   snap: Snapshot;
   busy: boolean;
@@ -89,7 +94,7 @@ export function RefinementView(p: ViewProps) {
             Lista desatualizada — reavalie
           </p>
         )}
-        {st.status === 'error' && <p className="error">{st.error}</p>}
+        {st.status === 'error' && <p className="error">{errorText(st.error)}</p>}
         <div className="doc-actions">
           <span className="save-hint">As alterações são salvas ao sair do editor.</span>
           <button data-testid="evaluate" className="secondary" disabled={locked} onClick={p.onEvaluate}>
@@ -283,7 +288,7 @@ export function RefinementPage() {
       <header>
         <a href="/projects">Projetos</a> › {projectId} / {specId} <span className={`status ${snap.state.status}`}>{({ answering: 'respondendo', evaluating: 'avaliando', ready: 'pronto', error: 'erro', started: 'iniciado', drafting: 'rascunho' } as Record<string, string>)[snap.state.status] ?? snap.state.status}</span>
       </header>
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error">{errorText(error)}</p>}
       <RefinementView
         snap={snap}
         busy={snap.state.status === 'evaluating'}
