@@ -150,7 +150,7 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
   });
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
-    server.listen(port, '127.0.0.1', () => resolve());
+    server.listen(port, process.env.HOST ?? '127.0.0.1', () => resolve());
   });
   const address = server.address();
   const bound = typeof address === 'object' && address ? address.port : port;
