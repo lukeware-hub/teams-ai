@@ -4,7 +4,8 @@ import { refineApi, type ChecklistItem, type Snapshot, type StoredEvent } from '
 import { applyToSnapshot, type LiveSnapshot } from '../refine/reducer.js';
 import { useJournal } from '../useSse.js';
 
-type DocFile = 'project.md' | 'brief.md';
+type DocFile = 'project.md' | 'brief.md' | 'stack.md' | 'flow.md';
+const docLabel: Record<DocFile, string> = { 'project.md': 'project.md', 'brief.md': 'briefing.md', 'stack.md': 'stack.md', 'flow.md': 'flow.md' };
 const questionText = (text: string) => text.startsWith('What counts as valid client data?')
   ? 'Quais dados um cliente precisa ter? Nome, e-mail, telefone e observações são obrigatórios? Quais formatos e limites devemos aceitar? O e-mail pode se repetir? Se algum dado for inválido, devemos mostrar o erro de cada campo e retornar HTTP 400?'
   : text;
@@ -76,20 +77,20 @@ export function RefinementView(p: ViewProps) {
           <span className="doc-state">{locked ? 'Somente leitura' : 'Editável'}</span>
         </div>
         <div className="tabs" role="tablist" aria-label="Documentos do projeto">
-          {(['project.md', 'brief.md'] as DocFile[]).map((f) => (
+          {(['project.md', 'brief.md', 'stack.md', 'flow.md'] as DocFile[]).map((f) => (
             <button key={f} className={tab === f ? 'active' : ''} onClick={() => setTab(f)}>
-              {f}
+              {docLabel[f]}
             </button>
           ))}
         </div>
         <textarea
           aria-label={`${tab} editor`}
           data-testid={`doc-${tab}`}
-          value={docs[tab]}
+          value={docs[tab] ?? ''}
           readOnly={locked}
           onChange={(e) => setDocs({ ...docs, [tab]: e.target.value })}
           onBlur={() => {
-            if (!locked && docs[tab] !== snap.docs[tab]) p.onSaveDoc(tab, docs[tab]);
+            if (!locked && docs[tab] !== snap.docs[tab]) p.onSaveDoc(tab, docs[tab] ?? '');
           }}
         />
         {st.stale && (

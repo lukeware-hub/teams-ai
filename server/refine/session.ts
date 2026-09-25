@@ -7,7 +7,7 @@ import type { Hit } from '../knowledge/retrieval.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import { EventStore, type StoredEvent } from '../store/event-store.js';
 import { runCycle, type RunAgent } from './cycle.js';
-import { readDerived, readDoc, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
+import { flowTemplate, readDerived, readDoc, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
 import { DRAFT_HASH, RefineEvent } from './events.js';
 import { applyPatch } from './patches.js';
 import { applyRefineEvent, emptyRefineState, type RefineState } from './state.js';
@@ -75,7 +75,7 @@ export interface Snapshot {
   projectId: string;
   specId: string;
   state: RefineState;
-  docs: Record<DocFile, string>;
+  docs: { 'project.md': string; 'brief.md': string; 'stack.md': string; 'flow.md': string };
   secrets: SecretRow[];
   tokens: { inputTokens: number; outputTokens: number; costUsd: number; steps: number };
 }
@@ -93,6 +93,11 @@ export class RefineSession {
 
   static async open(deps: SessionDeps): Promise<RefineSession> {
     await fs.mkdir(deps.draft.root, { recursive: true });
+    await fs.mkdir(deps.draft.docs, { recursive: true });
+    await Promise.all([
+      fs.access(deps.draft.stackMd).catch(() => fs.writeFile(deps.draft.stackMd, stackTemplate())),
+      fs.access(deps.draft.flowMd).catch(() => fs.writeFile(deps.draft.flowMd, flowTemplate())),
+    ]);
     const journal = await RefineJournal.open(deps.draft.events, { projectId: deps.draft.projectId, specId: deps.draft.specId });
     // Spec §8: a cycle cut by a restart is failed, never resumed; nothing was charged as an attempt.
     if (journal.state.status === 'evaluating') await journal.fact(RefineEvent.CycleFailed, { cycle: journal.state.cycle, reason: 'interrupted' });
@@ -131,7 +136,12 @@ export class RefineSession {
   }
 
   async snapshot(): Promise<Snapshot> {
-    const docs = { 'project.md': await readDoc(this.deps.draft, 'project.md'), 'brief.md': await readDoc(this.deps.draft, 'brief.md') } as Record<DocFile, string>;
+    const docs = {
+      'project.md': await readDoc(this.deps.draft, 'project.md'),
+      'brief.md': await readDoc(this.deps.draft, 'brief.md'),
+      'stack.md': await readDoc(this.deps.draft, 'stack.md'),
+      'flow.md': await readDoc(this.deps.draft, 'flow.md'),
+    } as Record<DocFile, string>;
     const present = await loadSecrets(this.deps.secretsDir);
     const names = [...new Set((this.state.derived?.spec.externalDependencies ?? []).flatMap((d) => d.secretNames))];
     const secrets = names.map((name) => ({ name, present: name in present, hint: name in present ? present[name]!.slice(-4) : null }));

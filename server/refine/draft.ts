@@ -16,15 +16,19 @@ export interface Draft {
   projectMd: string;
   projectJson: string;
   briefMd: string;
+  stackMd: string;
+  flowMd: string;
   specJson: string;
   events: string;
   steps: (seq: number) => string;
 }
-export type DocFile = 'project.md' | 'brief.md';
+export type DocFile = 'project.md' | 'brief.md' | 'stack.md' | 'flow.md';
 
 export const DOC_REL: Record<DocFile, (specId: string) => string> = {
   'project.md': () => 'docs/project.md',
   'brief.md': (specId) => `docs/specs/${specId}/brief.md`,
+  'stack.md': () => 'docs/stack.md',
+  'flow.md': () => 'docs/flow.md',
 };
 
 /** Spec (refinement) §2: the draft lives beside the workspace, never inside the clone. */
@@ -39,13 +43,15 @@ export function draftPaths(ws: Workspace, specId: string): Draft {
     projectMd: path.posix.join(docs, 'project.md'),
     projectJson: path.posix.join(docs, 'project.json'),
     briefMd: path.posix.join(docs, 'specs', specId, 'brief.md'),
+    stackMd: path.posix.join(docs, 'stack.md'),
+    flowMd: path.posix.join(docs, 'flow.md'),
     specJson: path.posix.join(docs, 'specs', specId, 'spec.json'),
     events: path.posix.join(root, 'events.ndjson'),
     steps: (seq) => path.posix.join(root, 'steps', stepId(seq)),
   };
 }
 
-export const docPath = (d: Draft, file: DocFile): string => (file === 'project.md' ? d.projectMd : d.briefMd);
+export const docPath = (d: Draft, file: DocFile): string => ({ 'project.md': d.projectMd, 'brief.md': d.briefMd, 'stack.md': d.stackMd, 'flow.md': d.flowMd })[file];
 
 export function projectTemplate(name: string): string {
   return `# ${name}\n\n## Vision\n\n<what the product is and why it exists>\n\n## Personas\n\n- <name>: <who they are and what they need>\n\n## Constraints\n\n- <free-text constraint>\n\n## Stack\n\n<optional; leave empty to let the Dev choose>\n\n## Principles\n\n- <non-negotiable rule every agent follows>\n\n## Deploy target\n\ndocker-local\n\n## GitHub owner\n\n<optional override of config.json github.owner>\n`;
@@ -53,6 +59,14 @@ export function projectTemplate(name: string): string {
 
 export function briefTemplate(): string {
   return `## Objectives\n\n- <objective>\n\n## Features\n\n- <feature>\n\n## Acceptance criteria\n\n- AC-001 (smoke): Given <state>, when <action>, then <outcome>\n\n## Out of scope\n\n- <item>\n\n## External dependencies\n\n- <name>: <purpose> (secrets: <NAME>)\n\n## Tasks\n\n<optional; one "- title: description" per line>\n`;
+}
+
+export function stackTemplate(): string {
+  return `# Stack\n\n## Runtime\n\n- <runtime and language>\n\n## Frameworks\n\n- <framework or library>\n\n## Storage\n\n- <database or file storage>\n\n## Tooling\n\n- <build, test, and deployment tools>\n`;
+}
+
+export function flowTemplate(): string {
+  return `# Application flow\n\n\`\`\`mermaid\nflowchart TD\n  A[Start] --> B[Configure Claude and GitHub]\n  B --> C[Create or open project]\n  C --> D[Edit project.md]\n  D --> E[Edit briefing.md]\n  E --> F[Define stack.md]\n  F --> G[Define flow.md]\n  G --> H[Evaluate with Claude]\n  H --> I[Derive project and spec JSON]\n  I --> J[PO and SM review]\n  J --> K{Questions pending?}\n  K -- Yes --> L[Answer or skip question]\n  L --> H\n  K -- No --> M{Patches pending?}\n  M -- Yes --> N[Accept or reject patch]\n  N --> H\n  M -- No --> O{Checklist green?}\n  O -- No --> D\n  O -- Yes --> P[Start implementation run]\n  P --> Q[Execute tasks and verification]\n  Q --> R[Review evidence]\n  R --> S[Merge or fix] \n  S --> T[Deploy locally]\n\`\`\`\n`;
 }
 
 const list = (items: readonly string[]) => (items.length === 0 ? '- (none)' : items.map((i) => `- ${i}`).join('\n'));
@@ -83,6 +97,8 @@ export async function createNewProject(d: Draft, name: string): Promise<void> {
   await fs.mkdir(path.dirname(d.briefMd), { recursive: true });
   await fs.writeFile(d.projectMd, projectTemplate(name));
   await fs.writeFile(d.briefMd, briefTemplate());
+  await fs.writeFile(d.stackMd, stackTemplate());
+  await fs.writeFile(d.flowMd, flowTemplate());
 }
 
 export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: { kind: 'new-spec' } | { kind: 'continue'; report?: string }): Promise<void> {
@@ -94,6 +110,8 @@ export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: {
     await fs.writeFile(target, await git(repo, ['show', `origin/main:${rel}`], exec));
   }
   await fs.mkdir(path.dirname(d.briefMd), { recursive: true });
+  if (!files.includes('docs/stack.md')) await fs.writeFile(d.stackMd, stackTemplate());
+  if (!files.includes('docs/flow.md')) await fs.writeFile(d.flowMd, flowTemplate());
   if (!files.includes('docs/project.md')) {
     const project = Project.parse(JSON.parse(await fs.readFile(d.projectJson, 'utf8')));
     await fs.writeFile(d.projectMd, renderProjectMd(project));
@@ -123,6 +141,6 @@ export async function writeDerived(d: Draft, v: { project: Project; spec: Spec }
 }
 
 export async function draftHash(d: Draft): Promise<string> {
-  const [project, brief] = await Promise.all([readDoc(d, 'project.md'), readDoc(d, 'brief.md')]);
-  return sha256(canonicalJson({ project, brief }));
+  const [project, brief, stack, flow] = await Promise.all([readDoc(d, 'project.md'), readDoc(d, 'brief.md'), readDoc(d, 'stack.md'), readDoc(d, 'flow.md')]);
+  return sha256(canonicalJson({ project, brief, stack, flow }));
 }

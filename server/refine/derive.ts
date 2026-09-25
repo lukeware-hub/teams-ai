@@ -9,6 +9,8 @@ export function derivePack(input: {
   principles: readonly string[];
   projectMd: string;
   briefMd: string;
+  stackMd?: string;
+  flowMd?: string;
   previous: { project: Project; spec: Spec } | null;
   specId: string;
 }): ContextPackInput {
@@ -22,6 +24,8 @@ export function derivePack(input: {
     input.projectMd,
     '### brief.md',
     input.briefMd,
+    ...(input.stackMd ? ['### stack.md', input.stackMd] : []),
+    ...(input.flowMd ? ['### flow.md (Mermaid)', input.flowMd] : []),
     '### previous derived JSON (keep unchanged acceptance criterion ids)',
     input.previous ? JSON.stringify(input.previous, null, 2) : '(none)',
     '### JSON schemas',

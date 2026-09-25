@@ -124,7 +124,7 @@ export interface QuestionRow {
 export interface PatchRow {
   patchId: string;
   role: 'po' | 'sm';
-  file: 'project.md' | 'brief.md';
+  file: 'project.md' | 'brief.md' | 'stack.md' | 'flow.md';
   find: string;
   replace: string;
   reason: string;
@@ -157,7 +157,7 @@ export interface Snapshot {
   projectId: string;
   specId: string;
   state: RefineState;
-  docs: { 'project.md': string; 'brief.md': string };
+  docs: { 'project.md': string; 'brief.md': string; 'stack.md'?: string; 'flow.md'?: string };
   secrets: Array<{ name: string; present: boolean; hint: string | null }>;
   tokens: { inputTokens: number; outputTokens: number; costUsd: number; steps: number };
 }
@@ -176,7 +176,7 @@ export const refineApi = {
   continueSpec: (projectId: string, specId: string, report?: string) =>
     send('POST', `/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/continue`, { report }).then((r) => json<{ sessionId: string }>(r)),
   snapshot: (p: string, s: string) => fetch(`${R}/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}`).then((r) => json<Snapshot>(r)),
-  saveDoc: (p: string, s: string, file: 'project.md' | 'brief.md', text: string) => send('PUT', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${file}`, { text }).then((r) => json<{ ok: true }>(r)),
+  saveDoc: (p: string, s: string, file: 'project.md' | 'brief.md' | 'stack.md' | 'flow.md', text: string) => send('PUT', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${file}`, { text }).then((r) => json<{ ok: true }>(r)),
   evaluate: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/evaluate`).then((r) => json<{ state: string }>(r)),
   answer: (p: string, s: string, questionId: string, text: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/answers`, { questionId, text }).then((r) => json<{ ok: true }>(r)),
   skip: (p: string, s: string, questionId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/questions/${encodeURIComponent(questionId)}/skip`).then((r) => json<{ ok: true }>(r)),

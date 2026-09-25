@@ -15,6 +15,8 @@ export function refinePack(input: {
   specId: string;
   projectMd: string;
   briefMd: string;
+  stackMd?: string;
+  flowMd?: string;
   derived: { project: Project; spec: Spec };
   retrieval: readonly Hit[];
   history: readonly QuestionRow[];
@@ -32,6 +34,8 @@ export function refinePack(input: {
     input.projectMd,
     `### ${DOC_REL['brief.md'](input.specId)}`,
     input.briefMd,
+    ...(input.stackMd ? ['### stack.md', input.stackMd] : []),
+    ...(input.flowMd ? ['### flow.md (Mermaid)', input.flowMd] : []),
     '### derived project.json',
     JSON.stringify(input.derived.project, null, 2),
     '### derived spec.json',

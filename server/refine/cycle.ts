@@ -39,7 +39,12 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
   const hash = await draftHash(draft);
   await journal.fact(RefineEvent.CycleStarted, { cycle, draftHash: hash });
   const ctx = { journal, stepDir: draft.steps, specHash: hash };
-  const docs: Record<DocFile, string> = { 'project.md': await readDoc(draft, 'project.md'), 'brief.md': await readDoc(draft, 'brief.md') };
+  const docs: Record<DocFile, string> = {
+    'project.md': await readDoc(draft, 'project.md'),
+    'brief.md': await readDoc(draft, 'brief.md'),
+    'stack.md': await readDoc(draft, 'stack.md'),
+    'flow.md': await readDoc(draft, 'flow.md'),
+  };
   const previous = await readDerived(draft);
   const fail = (reason: string) => journal.fact(RefineEvent.CycleFailed, { cycle, reason });
 
@@ -47,7 +52,7 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
     {
       kind: 'derive',
       role: 'po',
-      pack: derivePack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['brief.md'], previous, specId: draft.specId }),
+      pack: derivePack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], previous, specId: draft.specId }),
       cwd: draft.root,
       phase: 'refine',
       taskId: null,
@@ -81,6 +86,8 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
           specId: draft.specId,
           projectMd: docs['project.md'],
           briefMd: docs['brief.md'],
+          stackMd: docs['stack.md'],
+          flowMd: docs['flow.md'],
           derived: checked.value,
           retrieval,
           history: state.questions,
