@@ -24,3 +24,13 @@ th, td { text-align: left; padding: 0.3rem 0.4rem; border-bottom: 1px solid #eee
 .test-passed { color: #2e9e4f; }
 .test-failed { color: #b00; }
 h3 { font-size: 1rem; margin: 0.6rem 0 0.2rem; }
+
+/* Refinement screen */
+.refine { display: grid; grid-template-columns: 1fr 1fr 22rem; gap: 1rem; }
+.refine textarea { width: 100%; min-height: 60vh; font-family: monospace; }
+.refine .diff { background: #f6f8fa; font-size: .85rem; overflow: auto; }
+.refine .checklist .pass { color: #1a7f37; }
+.refine .checklist .fail { color: #cf222e; }
+.refine .badge.po { background: #ddf4ff; }
+.refine .badge.sm { background: #fff8c5; }
+.refine .notice { color: #9a6700; }
