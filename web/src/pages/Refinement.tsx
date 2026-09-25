@@ -47,8 +47,15 @@ export function RefinementView(p: ViewProps) {
   const canStart = st.status === 'ready' && !st.stale && !busy;
   return (
     <div className="refine">
-      <section className="docs">
-        <div className="tabs">
+      <section className="docs panel-card">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">Workspace</span>
+            <h2>Project documents</h2>
+          </div>
+          <span className="doc-state">{locked ? 'Read-only' : 'Editable'}</span>
+        </div>
+        <div className="tabs" role="tablist" aria-label="Project documents">
           {(['project.md', 'brief.md'] as DocFile[]).map((f) => (
             <button key={f} className={tab === f ? 'active' : ''} onClick={() => setTab(f)}>
               {f}
@@ -56,6 +63,7 @@ export function RefinementView(p: ViewProps) {
           ))}
         </div>
         <textarea
+          aria-label={`${tab} editor`}
           data-testid={`doc-${tab}`}
           value={docs[tab]}
           readOnly={locked}
@@ -70,19 +78,30 @@ export function RefinementView(p: ViewProps) {
           </p>
         )}
         {st.status === 'error' && <p className="error">{st.error}</p>}
-        <button data-testid="evaluate" disabled={locked} onClick={p.onEvaluate}>
+        <div className="doc-actions">
+          <span className="save-hint">Changes save when you leave the editor.</span>
+          <button data-testid="evaluate" className="secondary" disabled={locked} onClick={p.onEvaluate}>
           {st.cycle === 0 ? 'Evaluate' : 'Re-evaluate'}
-        </button>
+          </button>
+        </div>
         {st.status === 'evaluating' && <span className="spinner">evaluating…</span>}
       </section>
-      <section className="conversation">
+      <section className="conversation panel-card">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">Refinement</span>
+            <h2>Review workspace</h2>
+          </div>
+          <span className="count-pill">{pending.length} open</span>
+        </div>
         {current ? (
-          <div className="question">
+          <div className="question card-inner">
             <span className={`badge ${current.role}`}>{current.role.toUpperCase()}</span>
             {current.blocking && <span className="tag">blocking</span>}
             <p>{current.text}</p>
             {current.relatedAcIds.length > 0 && <small>{current.relatedAcIds.join(', ')}</small>}
-            <textarea data-testid="answer" value={answer} onChange={(e) => setAnswer(e.target.value)} />
+            <label className="field-label" htmlFor="refinement-answer">Your answer</label>
+            <textarea id="refinement-answer" data-testid="answer" value={answer} onChange={(e) => setAnswer(e.target.value)} />
             <button
               data-testid={`answer-${current.questionId}`}
               disabled={locked || answer.trim() === ''}
@@ -149,8 +168,14 @@ export function RefinementView(p: ViewProps) {
             ))}
         </ul>
       </section>
-      <section className="panels">
-        <h4>Checklist</h4>
+      <section className="panels panel-card">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">Quality gate</span>
+            <h2>Checklist</h2>
+          </div>
+          <span className={`status-dot ${st.stale ? 'warn' : 'ok'}`}>{st.stale ? 'Needs review' : 'Current'}</span>
+        </div>
         <h5>PO</h5>
         <Checklist items={st.checklist} role="po" />
         <h5>SM</h5>
@@ -194,7 +219,7 @@ export function RefinementView(p: ViewProps) {
         <p className="tokens">
           {snap.tokens.steps} steps · {snap.tokens.inputTokens + snap.tokens.outputTokens} tokens · ${snap.tokens.costUsd.toFixed(2)}
         </p>
-        <button data-testid="start" className="primary" disabled={!canStart} onClick={p.onStart}>
+        <button data-testid="start" className="primary full-width" disabled={!canStart} onClick={p.onStart}>
           Start
         </button>
       </section>
