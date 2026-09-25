@@ -33,7 +33,7 @@ export async function claudeStatus(d: ProbeDeps): Promise<ProbeResult> {
 export async function ghStatus(d: ProbeDeps): Promise<ProbeResult> {
   const r = await d.exec({ bin: d.hostEnv?.GH_BIN ?? 'gh', args: ['auth', 'status'], env: childEnv(d.hostEnv), timeoutMs: d.timeoutMs ?? TIMEOUT }).catch((e: Error) => ({ exitCode: 127, stdout: '', stderr: e.message }));
   const text = `${r.stdout}\n${r.stderr}`;
-  const m = /Logged in to github\.com account (\S+)/.exec(text);
+  const m = /Logged in to github\.com (?:account|as) (\S+)/i.exec(text);
   if (r.exitCode === 0 && m) return { ok: true, detail: m[1]! };
   return { ok: false, detail: firstLine(r.stderr || r.stdout) || 'gh is not logged in' };
 }
