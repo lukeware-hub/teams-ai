@@ -72,6 +72,11 @@ export class HttpError extends Error {
 }
 
 const MAX_BODY = 64 * 1024;
+export const API_PREFIX = '/teams-ai/v1';
+
+function apiPath(pathname: string): string {
+  return pathname === API_PREFIX ? '/' : pathname.startsWith(`${API_PREFIX}/`) ? pathname.slice(API_PREFIX.length) : pathname;
+}
 
 /** Spec (onboarding) §7: only the local browser may talk to the API; a foreign Host is DNS rebinding. */
 export function isAllowedHost(host: string | undefined): boolean {
@@ -125,9 +130,10 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
       done(status);
     };
     if (!isAllowedHost(req.headers.host)) return json(403, { error: 'forbidden host' });
-    const match = matchRoute(deps.routes, req.method ?? 'GET', url.pathname);
+    const routedPath = apiPath(url.pathname);
+    const match = matchRoute(deps.routes, req.method ?? 'GET', routedPath);
     if (!match) {
-      if (req.method === 'GET' && deps.staticDir && (await serveStatic(deps.staticDir, url.pathname, res))) return done(200);
+      if (req.method === 'GET' && deps.staticDir && (await serveStatic(deps.staticDir, routedPath, res))) return done(200);
       return json(404, { error: 'not found' });
     }
     const sse = (): SseWriter => {
