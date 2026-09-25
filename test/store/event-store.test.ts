@@ -66,6 +66,13 @@ describe('EventStore', () => {
     await expect(EventStore.open({ file, runId: 'run-1', specHash: HASH })).rejects.toThrow(EventLogLockedError);
   });
 
+  it('reclaims a lock whose pid was reused after a container restart', async () => {
+    await writeLines(rawEvent(1));
+    await fs.writeFile(`${file}.lock`, String(process.pid));
+    const reopened = await open();
+    expect((await reopened.append({ type: 'B' })).seq).toBe(2);
+  });
+
   it('refuses appends after close', async () => {
     const store = await open();
     await store.close();

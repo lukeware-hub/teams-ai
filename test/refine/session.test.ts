@@ -52,6 +52,25 @@ describe('RefineSession', () => {
     expect((await s.snapshot()).tokens.steps).toBe(3);
   });
 
+  it('does not retry a blocked Jev cycle until a document changes', async () => {
+    let validations = 0;
+    const s = await RefineSession.create({
+      ...deps(),
+      validateDocs: async () => validations++ === 0
+        ? { available: true, decision: 'blocked' as const, consistent: false, confidence: 0.2, model: 'jev', checks: { flow_covers_scope: 0.2 }, stateTruncated: false }
+        : { available: true, decision: 'approved' as const, consistent: true, confidence: 0.95, model: 'jev', checks: { flow_covers_scope: 0.95 }, stateTruncated: false },
+    }, 'new-project');
+    await s.evaluate();
+    await expect(s.evaluate()).rejects.toThrow('Edite project.md');
+    expect(calls).toHaveLength(0);
+    await s.saveDoc('flow.md', '# corrected flow\n');
+    script['derive/po'] = [derived];
+    script['refine/po'] = [refineOut(green(PO))];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await s.evaluate();
+    expect(s.state.cycle).toBe(2);
+  });
+
   it('routes answers and rejections into the next cycle, refuses skipping a blocking question, and reaches ready', async () => {
     const s = await RefineSession.create(deps(), 'new-project');
     script['derive/po'] = [derived, derived];

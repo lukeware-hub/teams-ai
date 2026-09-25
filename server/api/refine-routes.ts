@@ -77,6 +77,7 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
         const s = await get(params);
         if (s.busy) throw new ConflictError('evaluation in progress');
         if (s.state.status === 'started') throw new ConflictError('session already started a run');
+        s.ensureCanEvaluate();
         s.evaluate().catch((err: Error) => deps.log?.(`refine ${params.projectId}/${params.specId}: ${err.message}`));
         json(202, { state: 'evaluating' });
       }),

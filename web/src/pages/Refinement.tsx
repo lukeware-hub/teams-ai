@@ -9,11 +9,20 @@ const docLabel: Record<DocFile, string> = { 'project.md': 'project.md', 'brief.m
 const questionText = (text: string) => text.startsWith('What counts as valid client data?')
   ? 'Quais dados um cliente precisa ter? Nome, e-mail, telefone e observações são obrigatórios? Quais formatos e limites devemos aceitar? O e-mail pode se repetir? Se algum dado for inválido, devemos mostrar o erro de cada campo e retornar HTTP 400?'
   : text;
+const jevCheckLabel: Record<string, string> = {
+  documents_consistent: 'documentos com contradições',
+  flow_covers_scope: 'fluxo não cobre todo o escopo',
+  validation_aligned: 'regras de validação divergentes',
+  persistence_aligned: 'persistência divergente',
+  responses_aligned: 'respostas ou rotas divergentes',
+  health_aligned: 'health check divergente',
+};
 const errorText = (text: string | null) => text
   ?.replace(/\binterrupted\b/gi, 'A avaliação foi interrompida. Clique em Reavaliar para tentar novamente.')
   .replaceAll('failed', 'falhou')
   .replaceAll('timeout', 'tempo limite excedido')
-  .replaceAll('internal error', 'erro interno') ?? null;
+  .replaceAll('internal error', 'erro interno')
+  .replace(/\b(documents_consistent|flow_covers_scope|validation_aligned|persistence_aligned|responses_aligned|health_aligned)\b/g, (id) => jevCheckLabel[id] ?? id) ?? null;
 
 function currentClaudeStage(events: StoredEvent[], cycle: number, jevEvent: StoredEvent | undefined, derived: boolean): string {
   if (!jevEvent) return 'Jev está validando project.md, briefing.md, stack.md e flow.md.';

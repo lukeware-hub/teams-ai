@@ -136,6 +136,21 @@ export class RefineSession {
     if (this.busy) throw new ConflictError('evaluation in progress');
   }
 
+  private jevBlockNeedsEdit(): boolean {
+    const events = this.journal.events;
+    const failedAt = [...events].reverse().findIndex((event) => event.type === RefineEvent.CycleFailed && String(event.data.reason).startsWith('Jev bloqueou a derivação:'));
+    if (failedAt < 0) return false;
+    const index = events.length - failedAt - 1;
+    return !events.slice(index + 1).some((event) => event.type === RefineEvent.DocEdited);
+  }
+
+  ensureCanEvaluate(): void {
+    this.guard();
+    if (this.jevBlockNeedsEdit()) {
+      throw new ConflictError('Jev bloqueou esta versão dos documentos. Edite project.md, briefing.md, stack.md ou flow.md antes de reavaliar.');
+    }
+  }
+
   async snapshot(): Promise<Snapshot> {
     const docs = {
       'project.md': await readDoc(this.deps.draft, 'project.md'),
@@ -165,7 +180,7 @@ export class RefineSession {
   }
 
   async evaluate(): Promise<void> {
-    this.guard();
+    this.ensureCanEvaluate();
     const cycle = this.state.cycle + 1;
     this.running = runCycle(
       {

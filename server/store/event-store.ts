@@ -25,6 +25,7 @@ export class EventLogCorruptError extends Error {}
 export class EventLogLockedError extends Error {}
 
 const EVENT_KINDS: ReadonlySet<string> = new Set<EventKind>(['fact', 'intent', 'confirm']);
+const heldLocks = new Set<string>();
 
 /** Every field the store writes must be present: a torn line that still parses (`{"seq":2}`) is corrupt. */
 function isStoredEvent(value: unknown): value is StoredEvent {
@@ -141,13 +142,21 @@ async function acquireLock(file: string, lockFile: string): Promise<void> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const handle = await fs.open(lockFile, 'wx');
-      await handle.writeFile(String(process.pid));
-      await handle.close();
-      return;
+      heldLocks.add(lockFile);
+      try {
+        await handle.writeFile(String(process.pid));
+        await handle.close();
+        return;
+      } catch (err) {
+        heldLocks.delete(lockFile);
+        await handle.close().catch(() => undefined);
+        throw err;
+      }
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
       const owner = Number.parseInt(await fs.readFile(lockFile, 'utf8').catch(() => ''), 10);
-      if (attempt === 0 && Number.isInteger(owner) && owner !== process.pid && !processAlive(owner)) {
+      const sameProcessAfterRestart = owner === process.pid && !heldLocks.has(lockFile);
+      if (attempt === 0 && Number.isInteger(owner) && (sameProcessAfterRestart || (owner !== process.pid && !processAlive(owner)))) {
         await fs.rm(lockFile, { force: true });
         continue;
       }
@@ -186,6 +195,7 @@ export class EventStore {
       await repairEventLog(opts.file);
       events = await loadEvents(opts.file);
     } catch (err) {
+      heldLocks.delete(lockFile);
       await fs.rm(lockFile, { force: true });
       throw err;
     }
@@ -230,6 +240,7 @@ export class EventStore {
         // The on-disk tail is now unknown; force a reopen, which repairs it. The lock goes with
         // the store, otherwise the reopen would be refused by our own live pid.
         this.closed = true;
+        heldLocks.delete(this.lockFile);
         await fs.rm(this.lockFile, { force: true }).catch(() => undefined);
         throw err;
       }
@@ -246,6 +257,7 @@ export class EventStore {
     await this.enqueue(async () => {
       if (this.closed) return;
       this.closed = true;
+      heldLocks.delete(this.lockFile);
       await fs.rm(this.lockFile, { force: true });
     });
   }
