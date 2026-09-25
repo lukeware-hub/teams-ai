@@ -3,9 +3,9 @@
 Audited against the codebase (`server/`, `web/`, `test/`) on 2026-09-24. Specs live in `docs/superpowers/specs/`:
 `2026-09-23-teams-ai-poc-design.md` (POC design), `2026-09-24-orchestrator-phases-1-3-design.md`, and
 `2026-09-24-web-ui-onboarding-design.md` — all three are design companions to the plans below and match what
-was implemented. Three further specs are designed and not yet planned or implemented: the web UI blocks A
-(`2026-09-24-run-api-execution-ui-design.md`), B (`2026-09-24-refinement-ui-design.md`) and C
-(`2026-09-24-phases-4-6-validation-ui-design.md`).
+was implemented. Web UI block A (`2026-09-24-run-api-execution-ui-design.md`) is implemented by plan 10. Two
+further specs are designed and not yet planned or implemented: blocks B (`2026-09-24-refinement-ui-design.md`)
+and C (`2026-09-24-phases-4-6-validation-ui-design.md`).
 
 | # | Plan | Status |
 |---|------|--------|
@@ -18,6 +18,7 @@ was implemented. Three further specs are designed and not yet planned or impleme
 | 7 | [`2026-09-24-teams-ai-07-orchestrator-phases-1-3.md`](2026-09-24-teams-ai-07-orchestrator-phases-1-3.md) | Implemented and merged to main, live-tested against a hello-app run. |
 | 8 | [`2026-09-24-teams-ai-08-web-ui-onboarding.md`](2026-09-24-teams-ai-08-web-ui-onboarding.md) | Implemented and merged to main, live-tested — 4 of 6 findings items confirmed live; 2 still need a live run (see Outstanding work). |
 | 9 | [`2026-09-24-teams-ai-09-jev-decisions-phase3a.md`](2026-09-24-teams-ai-09-jev-decisions-phase3a.md) (renamed from `2026-09-24-jev-decisions-phase3a.md`) | Partially implemented — 4 of the additional decisions (merge-gate triage, attempt progress, PR risk, model tier/effort) are wired; several are explicitly out of scope (see Outstanding work). |
+| 10 | [`2026-09-24-teams-ai-10-run-api-execution-ui.md`](2026-09-24-teams-ai-10-run-api-execution-ui.md) | Implemented — run API, SSE journal stream with `Last-Event-ID` replay, Projects and Execution screens, graceful stop on SIGTERM; live-checked in WSL against the recorded `hello-001-r1` journal (see the plan's Findings). |
 
 Note: plan 6 (knowledge) was originally numbered plan 5, duplicating the decision-layer plan's number; it was
 renumbered to 6 in commit `134bcf3` ("docs: renumber the knowledge plan to 06 (two plans carried the number 05)").
@@ -44,6 +45,12 @@ Ordered by what unblocks what. Spec references are to `docs/superpowers/specs/20
   config mention it.
 - **Decision 7 (validation report routing) — blocked on the validation flow.** No post-human-validation step
   exists in `server/orchestrator/` (spec UI screen 4 "Validation").
+- **Web UI blocks B and C — designed, not planned.** Block A (plan 10) gives Projects and Execution. Block B is
+  the Refinement screen with the Gate 1 loop (unblocks decisions 2–4); block C is phases 4–6 plus the Validation
+  screen (unblocks decision 7).
+- **Plan 10 — items not covered by the live check.** A run has not yet been started, stopped and resumed from
+  the browser (the live check replayed the recorded `hello-001-r1` journal only, to avoid a $3 run); whether
+  SIGTERM reaches the orchestrator through the `tsx` wrapper is therefore unverified — see plan 10 Findings.
 - **`local-logprobs` backend (spec §10A.2a, phase 2) — client built, server not set up.**
   `server/decide/local-logprobs.ts` talks to a llama.cpp server (`/completion`, one grammar-constrained token per
   question, probabilities from `top_logprobs`); `createDecider` wires it when `decisions.local.enabled` is true,

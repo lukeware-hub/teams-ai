@@ -21,7 +21,7 @@ export function Onboarding({ compact = false }: { compact?: boolean }) {
       <SecretCard name="OPENROUTER_API_KEY" title="OpenRouter key (Jev)" item={item('openrouterKey')} onSaved={patch('openrouterKey')} />
       {status?.allOk ? (
         <p className="all-ok">
-          Everything is set. <Link to="/status">Continue</Link>
+          Everything is set. <Link to="/projects">Go to projects</Link>
         </p>
       ) : null}
     </main>

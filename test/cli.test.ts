@@ -36,7 +36,7 @@ describe('teams-ai cli', () => {
       waitForSignal: async () => undefined,
     });
     expect(code).toBe(0);
-    expect(a.err.join('\n')).toContain('http://localhost:45678/onboarding');
+    expect(a.err.join('\n')).toContain('http://localhost:45678/');
     expect(closed).toBe(true);
   });
 

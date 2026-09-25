@@ -168,7 +168,7 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
     if (command === 'ui') {
       const port = typeof f.port === 'string' ? Number(f.port) : 8787;
       const server = await (hooks.startUi ?? ((p) => startUiReal(p, io)))(port);
-      io.stderr(`Open http://localhost:${server.port}/onboarding`);
+      io.stderr(`Open http://localhost:${server.port}/`);
       await (hooks.waitForSignal ?? (() => new Promise<void>((resolve) => { process.once('SIGINT', () => resolve()); process.once('SIGTERM', () => resolve()); })))();
       await server.close();
       return 0;
