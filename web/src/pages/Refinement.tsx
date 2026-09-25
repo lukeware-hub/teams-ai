@@ -48,6 +48,15 @@ export function RefinementView(p: ViewProps) {
   const pending = [...st.questions.filter((q) => q.status === 'pending')].sort((a, b) => Number(b.blocking) - Number(a.blocking));
   const current = pending[0];
   const canStart = st.status === 'ready' && !st.stale && !busy;
+  const nextStep = pending.length > 0
+    ? 'Responda as perguntas pendentes para continuar.'
+    : st.stale
+      ? 'Clique em Reavaliar para atualizar a checklist após suas respostas.'
+      : st.patches.some((x) => x.status === 'pending')
+        ? 'Revise as alterações sugeridas e aceite ou rejeite cada uma.'
+        : canStart
+          ? 'Tudo pronto. Clique em Iniciar para executar o projeto.'
+          : 'Revise a checklist e corrija os itens pendentes.';
   return (
     <div className="refine">
       <section className="docs panel-card">
@@ -97,6 +106,7 @@ export function RefinementView(p: ViewProps) {
           </div>
           <span className="count-pill">{pending.length} em aberto</span>
         </div>
+        <p className="next-step"><b>Próximo passo:</b> {nextStep}</p>
         {current ? (
           <div className="question card-inner">
             <span className={`badge ${current.role}`}>{current.role.toUpperCase()}</span>
