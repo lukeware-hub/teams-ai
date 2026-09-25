@@ -5,7 +5,8 @@ import { refineApi, runApi, type DraftRow, type ProjectRow, type RunRow } from '
 const CONTINUABLE = new Set(['awaiting-validation', 'done']);
 
 const ACTIVE = new Set(['running', 'paused:quota', 'paused:auth', 'draining']);
-const money = (n: number) => `$${n.toFixed(2)}`;
+const money = (n: number) => `US$ ${n.toFixed(2)}`;
+const statusLabel = (status: string) => ({ done: 'concluído', running: 'em execução', 'paused:quota': 'pausada por cota', 'paused:auth': 'pausada por autenticação', draining: 'finalizando', interrupted: 'interrompida', planned: 'planejada' } as Record<string, string>)[status] ?? status;
 
 export function ProjectsView(p: {
   projects: ProjectRow[];
@@ -27,18 +28,18 @@ export function ProjectsView(p: {
   const openDrafts = p.drafts.filter((d) => d.state !== 'started');
   return (
     <main>
-      <h1>Projects</h1>
+      <h1>Projetos</h1>
       <form
         onSubmit={(e) => {
           e.preventDefault();
           p.onNewProject(newProjectId, newProjectName);
         }}
       >
-        <p className="hint">New project starts the guided refinement flow and creates the project files.</p>
-        <input data-testid="new-project-id" value={newProjectId} onChange={(e) => setNewProjectId(e.target.value)} placeholder="project id" />
-        <input data-testid="new-project-name" value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="name" />
+        <p className="hint">Um projeto novo inicia o refinamento guiado e cria os arquivos do projeto.</p>
+        <input data-testid="new-project-id" value={newProjectId} onChange={(e) => setNewProjectId(e.target.value)} placeholder="id do projeto" />
+        <input data-testid="new-project-name" value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="nome" />
         <button data-testid="new-project" type="submit" disabled={newProjectId.trim() === '' || newProjectName.trim() === ''}>
-          New project
+          Novo projeto
         </button>
       </form>
       <form
@@ -47,10 +48,10 @@ export function ProjectsView(p: {
           p.onAdd(dir);
         }}
       >
-        <p className="hint">Add existing project requires a directory that already contains docs/project.json.</p>
-        <input value={dir} onChange={(e) => setDir(e.target.value)} placeholder="/path/to/project" />
+        <p className="hint">Para adicionar um projeto existente, a pasta precisa conter docs/project.json.</p>
+        <input value={dir} onChange={(e) => setDir(e.target.value)} placeholder="/caminho/do/projeto" />
         <button type="submit" disabled={dir.trim() === ''}>
-          Add project
+          Adicionar projeto
         </button>
       </form>
       {p.error ? <p className="error">{p.error}</p> : null}
@@ -72,20 +73,20 @@ export function ProjectsView(p: {
               {pr.specs.map((s) => (
                 <tr key={s.specId}>
                   <td>{s.specId}</td>
-                  <td>{s.status}</td>
+                  <td>{statusLabel(s.status)}</td>
                   <td>
                     {s.activeRunId ? (
                       <Link data-testid={`open-${s.specId}`} to={`/runs/${s.activeRunId}`}>
-                        Open run
+                        Abrir execução
                       </Link>
                     ) : s.status === 'done' ? null : (
                       <button data-testid={`start-${s.specId}`} onClick={() => p.onStart(pr.projectId, s.specId)}>
-                        Start run
+                        Iniciar execução
                       </button>
                     )}
                     {CONTINUABLE.has(s.status) ? (
                       <button data-testid={`continue-${s.specId}`} onClick={() => p.onContinue(pr.projectId, s.specId)}>
-                        Continue spec
+                        Continuar spec
                       </button>
                     ) : null}
                   </td>
@@ -98,20 +99,20 @@ export function ProjectsView(p: {
               data-testid={`new-spec-id-${pr.projectId}`}
               value={newSpecId[pr.projectId] ?? ''}
               onChange={(e) => setNewSpecId({ ...newSpecId, [pr.projectId]: e.target.value })}
-              placeholder="new spec id"
+              placeholder="id da nova spec"
             />
-            <button data-testid={`new-spec-${pr.projectId}`} onClick={() => p.onNewSpec(pr.projectId, newSpecId[pr.projectId] ?? '')}>
-              New spec
+              <button data-testid={`new-spec-${pr.projectId}`} onClick={() => p.onNewSpec(pr.projectId, newSpecId[pr.projectId] ?? '')}>
+                Nova spec
             </button>
           </p>
           <table>
             <thead>
               <tr>
-                <th>Run</th>
+                <th>Execução</th>
                 <th>Spec</th>
                 <th>Status</th>
                 <th>Tokens</th>
-                <th>Cost</th>
+                <th>Custo</th>
                 <th></th>
               </tr>
             </thead>
@@ -122,18 +123,18 @@ export function ProjectsView(p: {
                     <Link to={`/runs/${r.runId}`}>{r.runId}</Link>
                   </td>
                   <td>{r.specId}</td>
-                  <td>{r.status}</td>
+                  <td>{statusLabel(r.status)}</td>
                   <td>{r.tokens}</td>
                   <td>{money(r.cost)}</td>
                   <td className="controls">
                     {r.status === 'paused:auth' || r.status === 'interrupted' ? (
                       <button data-testid={`resume-${r.runId}`} onClick={() => p.onResume(r.runId)}>
-                        Resume
+                        Retomar
                       </button>
                     ) : null}
                     {r.stoppable && ACTIVE.has(r.status) ? (
                       <button data-testid={`stop-${r.runId}`} onClick={() => p.onStop(r.runId)}>
-                        Stop
+                        Parar
                       </button>
                     ) : null}
                   </td>
@@ -146,7 +147,7 @@ export function ProjectsView(p: {
             .map((d) => (
               <p key={d.specId}>
                 <Link data-testid={`refine-${d.projectId}-${d.specId}`} to={`/refine/${d.projectId}/${d.specId}`}>
-                  Open refinement ({d.specId}, {d.state})
+                  Abrir refinamento ({d.specId}, {d.state})
                 </Link>
               </p>
             ))}
@@ -154,13 +155,13 @@ export function ProjectsView(p: {
       ))}
       {openDrafts.some((d) => !d.registered) ? (
         <section className="card">
-          <h2>Drafts (unregistered)</h2>
+          <h2>Rascunhos (não registrados)</h2>
           {openDrafts
             .filter((d) => !d.registered)
             .map((d) => (
               <p key={`${d.projectId}/${d.specId}`}>
                 <Link data-testid={`refine-${d.projectId}-${d.specId}`} to={`/refine/${d.projectId}/${d.specId}`}>
-                  {d.projectId} / {d.specId} ({d.state})
+                  {d.projectId} / {d.specId} ({statusLabel(d.state)})
                 </Link>
               </p>
             ))}

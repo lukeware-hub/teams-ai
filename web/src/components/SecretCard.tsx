@@ -27,9 +27,9 @@ export function SecretCard({ name, title, item, onSaved }: { name: 'GITHUB_TOKEN
           void save();
         }}
       >
-        <input type="password" value={value} onChange={(e) => setValue(e.target.value)} placeholder={item?.secret?.set ? 'Replace the stored value' : 'Paste the value'} autoComplete="off" />
+        <input type="password" value={value} onChange={(e) => setValue(e.target.value)} placeholder={item?.secret?.set ? 'Substituir valor salvo' : 'Cole o valor'} autoComplete="off" />
         <button type="submit" disabled={busy || value.trim() === ''}>
-          {busy ? 'Checking…' : 'Save and verify'}
+          {busy ? 'Verificando…' : 'Salvar e verificar'}
         </button>
       </form>
       {error ? <p className="error">{error}</p> : null}

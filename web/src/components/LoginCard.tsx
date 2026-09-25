@@ -31,7 +31,7 @@ export function LoginCard({ cli, title, item, onDone }: { cli: Cli; title: strin
       <LoginControls state={state} code={code} onCode={setCode} onStart={start} onSend={send} onCancel={() => api.cancel(cli)} />
       {url ? (
         <button type="button" className="link" onClick={() => setShowOutput((v) => !v)}>
-          {showOutput ? 'Hide CLI output' : 'Show CLI output'}
+          {showOutput ? 'Ocultar saída do CLI' : 'Mostrar saída do CLI'}
         </button>
       ) : null}
       {showOutput ? <pre className="output">{output}</pre> : null}
@@ -45,20 +45,20 @@ export function LoginControls({ state, code, onCode, onStart, onSend, onCancel }
     <div className="controls">
       {!live ? (
         <button type="button" onClick={onStart}>
-          {state.name === 'failed' ? 'Retry' : 'Sign in'}
+          {state.name === 'failed' ? 'Tentar novamente' : 'Entrar'}
         </button>
       ) : null}
-      {state.name === 'starting' || state.name === 'verifying' ? <span className="spinner">{state.name === 'starting' ? 'Starting…' : 'Verifying…'}</span> : null}
+      {state.name === 'starting' || state.name === 'verifying' ? <span className="spinner">{state.name === 'starting' ? 'Iniciando…' : 'Verificando…'}</span> : null}
       {state.name === 'awaiting-browser' || state.name === 'awaiting-code' ? (
         <>
           {state.url ? (
             <a href={state.url} target="_blank" rel="noreferrer">
-              Open link
+              Abrir link
             </a>
           ) : null}
           {state.name === 'awaiting-browser' && state.code ? (
             <p>
-              Enter this code on the page: <code data-testid="one-time-code">{state.code}</code>
+              Digite este código na página: <code data-testid="one-time-code">{state.code}</code>
             </p>
           ) : null}
         </>
@@ -71,17 +71,17 @@ export function LoginControls({ state, code, onCode, onStart, onSend, onCancel }
           }}
         >
           <label>
-            Paste the code shown by the page
+            Cole o código mostrado pela página
             <input data-testid="code-input" value={code} onChange={(e) => onCode(e.target.value)} autoComplete="off" />
           </label>
           <button type="submit" disabled={code.trim() === ''}>
-            Send
+            Enviar
           </button>
         </form>
       ) : null}
       {live ? (
         <button type="button" className="secondary" onClick={onCancel}>
-          Cancel
+          Cancelar
         </button>
       ) : null}
       {state.name === 'failed' ? <p className="error">{state.reason}</p> : null}

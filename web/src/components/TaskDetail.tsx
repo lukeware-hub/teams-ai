@@ -3,6 +3,7 @@ import type { StoredEvent } from '../api.js';
 import { taskDetail } from '../run/selectors.js';
 
 type Artifact = { prompt: string; output: unknown };
+const stateLabel = (state: string) => ({ running: 'em execução', ok: 'ok', failed: 'falhou', passed: 'passou' } as Record<string, string>)[state] ?? state;
 
 export function TaskDetail({ events, taskId, loadStep }: { events: StoredEvent[]; taskId: string; loadStep: (stepId: string) => Promise<Artifact> }) {
   const d = taskDetail(events, taskId);
@@ -29,12 +30,12 @@ export function TaskDetail({ events, taskId, loadStep }: { events: StoredEvent[]
             PR #{d.pr.number}
           </a>
         ) : null}
-        {d.lockHeld ? <span className="hint">holds merge lock</span> : null}
+        {d.lockHeld ? <span className="hint">mantém o bloqueio de mesclagem</span> : null}
       </header>
-      {d.blockedReason ? <p className="error">Blocked: {d.blockedReason}</p> : null}
+      {d.blockedReason ? <p className="error">Bloqueada: {d.blockedReason}</p> : null}
       {d.attempts.map((a) => (
         <div key={a.attempt} data-testid={`attempt-${a.attempt}`}>
-          <h3>Attempt {a.attempt}</h3>
+          <h3>Tentativa {a.attempt}</h3>
           <ul>
             {a.steps.map((s) => {
               const art = open[s.stepId];
@@ -44,7 +45,7 @@ export function TaskDetail({ events, taskId, loadStep }: { events: StoredEvent[]
                     {s.stepId}
                   </button>{' '}
                   {s.kind} · {s.role}
-                  {s.tier ? ` · ${s.tier}` : ''} · {s.ok === null ? 'running' : s.ok ? 'ok' : `failed (${s.failure})`}
+                  {s.tier ? ` · ${s.tier}` : ''} · {s.ok === null ? stateLabel('running') : s.ok ? stateLabel('ok') : `${stateLabel('failed')} (${s.failure})`}
                   {s.usage ? ` · ${s.usage.inputTokens + s.usage.outputTokens} tokens` : ''}
                   {art && art !== 'loading' ? (
                     <pre className="output">
@@ -57,12 +58,12 @@ export function TaskDetail({ events, taskId, loadStep }: { events: StoredEvent[]
               );
             })}
           </ul>
-          {a.gates.length ? <p>Gates: {a.gates.map((g) => `${g.gate} ${g.passed ? 'passed' : 'failed'}${g.failedTests.length ? ` (${g.failedTests.join(', ')})` : ''}`).join(' · ')}</p> : null}
+          {a.gates.length ? <p>Portões: {a.gates.map((g) => `${g.gate} ${g.passed ? 'passou' : 'falhou'}${g.failedTests.length ? ` (${g.failedTests.join(', ')})` : ''}`).join(' · ')}</p> : null}
           {a.review ? (
             <p>
-              Review: {a.review.profile} profile, risk {a.review.risk}
-              {a.review.drift ? `, drift ${a.review.drift}` : ''}
-              {a.review.findings.length ? `, ${a.review.findings.length} finding(s)` : ', approved'}
+              Revisão: perfil {a.review.profile}, risco {a.review.risk}
+              {a.review.drift ? `, desvio ${a.review.drift}` : ''}
+              {a.review.findings.length ? `, ${a.review.findings.length} apontamento(s)` : ', aprovada'}
             </p>
           ) : null}
         </div>

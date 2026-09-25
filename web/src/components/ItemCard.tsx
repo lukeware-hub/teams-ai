@@ -6,11 +6,11 @@ export function ItemCard({ title, item, children }: { title: string; item: Item 
   return (
     <section className={`card card-${status}`} data-testid={`card-${title}`}>
       <header>
-        <span className="dot" aria-label={status} />
+        <span className="dot" aria-label={status === 'checking' ? 'verificando' : status === 'ok' ? 'concluído' : 'pendente'} />
         <h2>{title}</h2>
         {item?.secret?.set ? <code className="hint">…{item.secret.hint}</code> : null}
       </header>
-      <p className="detail">{item === null ? 'Checking…' : item.detail}</p>
+      <p className="detail">{item === null ? 'Verificando…' : item.detail}</p>
       {children}
     </section>
   );

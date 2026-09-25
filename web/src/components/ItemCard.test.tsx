@@ -5,7 +5,7 @@ import { ItemCard } from './ItemCard.js';
 describe('ItemCard', () => {
   it('renders checking, green and red states from the status payload and shows only the hint of a secret', () => {
     const { rerender } = render(<ItemCard title="Claude login" item={null} />);
-    expect(screen.getByText('Checking…')).toBeTruthy();
+    expect(screen.getByText('Verificando…')).toBeTruthy();
     expect(screen.getByLabelText('checking')).toBeTruthy();
     rerender(<ItemCard title="Claude login" item={{ ok: true, detail: 'a@b.c (max)' }} />);
     expect(screen.getByLabelText('ok')).toBeTruthy();

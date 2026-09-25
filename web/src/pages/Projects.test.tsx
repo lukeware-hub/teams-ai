@@ -39,7 +39,7 @@ describe('ProjectsView', () => {
     fireEvent.click(screen.getByTestId('stop-hello-002-r1'));
     expect(on.stop).toHaveBeenCalledWith('hello-002-r1');
     expect(screen.queryByTestId('stop-hello-001-r1')).toBeNull();
-    expect(screen.getByText('$3.33')).toBeTruthy();
+    expect(screen.getByText('US$ 3.33')).toBeTruthy();
   });
   it('submits a directory to add and shows the error', () => {
     const onAdd = vi.fn();
@@ -48,8 +48,8 @@ describe('ProjectsView', () => {
         <ProjectsView projects={[]} runs={{}} drafts={[]} error="not a project directory" onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={onAdd} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} />
       </MemoryRouter>,
     );
-    fireEvent.change(screen.getByPlaceholderText('/path/to/project'), { target: { value: '/x' } });
-    fireEvent.click(screen.getByText('Add project'));
+    fireEvent.change(screen.getByPlaceholderText('/caminho/do/projeto'), { target: { value: '/x' } });
+    fireEvent.click(screen.getByText('Adicionar projeto'));
     expect(onAdd).toHaveBeenCalledWith('/x');
     expect(screen.getByText('not a project directory')).toBeTruthy();
   });

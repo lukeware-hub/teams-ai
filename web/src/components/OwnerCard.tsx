@@ -21,9 +21,9 @@ export function OwnerCard({ item, onSaved }: { item: Item | null; onSaved: (item
           void save();
         }}
       >
-        <input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="user or organization" />
+        <input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="usuário ou organização" />
         <button type="submit" disabled={owner.trim() === ''}>
-          Save and verify
+          Salvar e verificar
         </button>
       </form>
       {error ? <p className="error">{error}</p> : null}

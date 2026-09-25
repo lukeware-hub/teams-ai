@@ -49,7 +49,7 @@ describe('RefinementView', () => {
     expect(h.onAccept).toHaveBeenCalledWith('sm-c1-0');
     expect(screen.getByText(/find not found in project.md/)).toBeTruthy();
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText('Re-evaluate')).toBeTruthy();
+    expect(screen.getByText('Reavaliar')).toBeTruthy();
   });
 
   it('saves a doc on blur, enables Start only when ready and not stale, and shows secrets rows', () => {

@@ -34,13 +34,13 @@ describe('RunView', () => {
   it('renders header, phases, tasks grouped by state, tokens and evidence from the journal', () => {
     render(view());
     expect(screen.getByTestId('status').textContent).toContain('paused:quota');
-    expect(screen.getByTestId('paused-until').textContent).toMatch(/until \d{2}:\d{2}/);
-    expect(screen.getAllByTestId('phase').map((p) => p.textContent)).toEqual(['1 done', '2 done', '3 running']);
+    expect(screen.getByTestId('paused-until').textContent).toMatch(/até \d{2}:\d{2}/);
+    expect(screen.getAllByTestId('phase').map((p) => p.textContent)).toEqual(['1 concluído', '2 concluído', '3 em execução']);
     expect(screen.getByTestId('group-merged').textContent).toContain('T1');
     expect(screen.getByTestId('group-ready').textContent).toContain('T2');
     expect(screen.getByTestId('tokens-dev').textContent).toContain('4100');
     expect(screen.getByTestId('evidence-AC-001').textContent).toContain('sum::[AC-001] adds');
-    expect(screen.getByTestId('evidence-AC-002').textContent).toContain('no test');
+    expect(screen.getByTestId('evidence-AC-002').textContent).toContain('nenhum teste');
   });
   it('selecting a task shows attempts, gates, review and the PR; a step expands to its artifacts', async () => {
     const loadStep = vi.fn(async () => ({ prompt: '# the prompt', output: { ok: true, value: { summary: 'did T1' } } }));
@@ -57,6 +57,6 @@ describe('RunView', () => {
     const dup = [...events, { ...events[3]! }];
     render(view({ detail: { ...detail, status: 'complete' }, events: dup, ended: true }));
     expect(screen.getByTestId('tokens-sm').textContent).toContain('1800'); // 1000 + 800, the duplicate STEP_FINISHED not double counted
-    expect(screen.getByTestId('status').textContent).toContain('complete');
+    expect(screen.getByTestId('status').textContent).toContain('concluído');
   });
 });

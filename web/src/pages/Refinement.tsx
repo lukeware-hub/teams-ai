@@ -5,6 +5,9 @@ import { applyToSnapshot, type LiveSnapshot } from '../refine/reducer.js';
 import { useJournal } from '../useSse.js';
 
 type DocFile = 'project.md' | 'brief.md';
+const questionText = (text: string) => text.startsWith('What counts as valid client data?')
+  ? 'Quais dados um cliente precisa ter? Nome, e-mail, telefone e observações são obrigatórios? Quais formatos e limites devemos aceitar? O e-mail pode se repetir? Se algum dado for inválido, devemos mostrar o erro de cada campo e retornar HTTP 400?'
+  : text;
 export interface ViewProps {
   snap: Snapshot;
   busy: boolean;
@@ -50,12 +53,12 @@ export function RefinementView(p: ViewProps) {
       <section className="docs panel-card">
         <div className="section-heading">
           <div>
-            <span className="eyebrow">Workspace</span>
-            <h2>Project documents</h2>
+            <span className="eyebrow">Área de trabalho</span>
+            <h2>Documentos do projeto</h2>
           </div>
-          <span className="doc-state">{locked ? 'Read-only' : 'Editable'}</span>
+          <span className="doc-state">{locked ? 'Somente leitura' : 'Editável'}</span>
         </div>
-        <div className="tabs" role="tablist" aria-label="Project documents">
+        <div className="tabs" role="tablist" aria-label="Documentos do projeto">
           {(['project.md', 'brief.md'] as DocFile[]).map((f) => (
             <button key={f} className={tab === f ? 'active' : ''} onClick={() => setTab(f)}>
               {f}
@@ -74,33 +77,33 @@ export function RefinementView(p: ViewProps) {
         />
         {st.stale && (
           <p data-testid="stale" className="notice">
-            Checklist out of date — re-evaluate
+            Lista desatualizada — reavalie
           </p>
         )}
         {st.status === 'error' && <p className="error">{st.error}</p>}
         <div className="doc-actions">
-          <span className="save-hint">Changes save when you leave the editor.</span>
+          <span className="save-hint">As alterações são salvas ao sair do editor.</span>
           <button data-testid="evaluate" className="secondary" disabled={locked} onClick={p.onEvaluate}>
-          {st.cycle === 0 ? 'Evaluate' : 'Re-evaluate'}
+          {st.cycle === 0 ? 'Avaliar' : 'Reavaliar'}
           </button>
         </div>
-        {st.status === 'evaluating' && <span className="spinner">evaluating…</span>}
+        {st.status === 'evaluating' && <span className="spinner">avaliando…</span>}
       </section>
       <section className="conversation panel-card">
         <div className="section-heading">
           <div>
-            <span className="eyebrow">Refinement</span>
-            <h2>Review workspace</h2>
+            <span className="eyebrow">Refinamento</span>
+            <h2>Área de revisão</h2>
           </div>
-          <span className="count-pill">{pending.length} open</span>
+          <span className="count-pill">{pending.length} em aberto</span>
         </div>
         {current ? (
           <div className="question card-inner">
             <span className={`badge ${current.role}`}>{current.role.toUpperCase()}</span>
-            {current.blocking && <span className="tag">blocking</span>}
-            <p>{current.text}</p>
+            {current.blocking && <span className="tag">bloqueante</span>}
+            <p>{questionText(current.text)}</p>
             {current.relatedAcIds.length > 0 && <small>{current.relatedAcIds.join(', ')}</small>}
-            <label className="field-label" htmlFor="refinement-answer">Your answer</label>
+            <label className="field-label" htmlFor="refinement-answer">Sua resposta</label>
             <textarea id="refinement-answer" data-testid="answer" value={answer} onChange={(e) => setAnswer(e.target.value)} />
             <button
               data-testid={`answer-${current.questionId}`}
@@ -110,17 +113,17 @@ export function RefinementView(p: ViewProps) {
                 setAnswer('');
               }}
             >
-              Answer
+              Responder
             </button>
             {!current.blocking && (
               <button data-testid={`skip-${current.questionId}`} disabled={locked} onClick={() => p.onSkip(current.questionId)}>
-                Skip
+                Ignorar
               </button>
             )}
-            <small>{pending.length - 1} more pending</small>
+            <small>{pending.length - 1} pendentes</small>
           </div>
         ) : (
-          <p className="muted">No open question.</p>
+          <p className="muted">Nenhuma pergunta em aberto.</p>
         )}
         {st.patches
           .filter((x) => x.status === 'pending')
@@ -129,32 +132,32 @@ export function RefinementView(p: ViewProps) {
               <span className={`badge ${x.role}`}>{x.role.toUpperCase()}</span> <b>{x.file}</b> — {x.reason}
               <pre className="diff">{x.diff}</pre>
               <button data-testid={`accept-${x.patchId}`} disabled={locked} onClick={() => p.onAccept(x.patchId)}>
-                Accept
+                Aceitar
               </button>
               <input
                 data-testid={`reject-reason-${x.patchId}`}
-                placeholder="reason (optional)"
+                placeholder="motivo (opcional)"
                 value={reasons[x.patchId] ?? ''}
                 onChange={(e) => setReasons({ ...reasons, [x.patchId]: e.target.value })}
               />
               <button data-testid={`reject-${x.patchId}`} disabled={locked} onClick={() => p.onReject(x.patchId, reasons[x.patchId] || null)}>
-                Reject
+                Rejeitar
               </button>
             </div>
           ))}
         {st.discarded.map((d, i) => (
           <p key={i} className="warning">
-            Discarded {d.role} patch on {d.file}: {d.reason}
+            Alteração de {d.role} descartada em {d.file}: {d.reason}
           </p>
         ))}
-        <h4>History</h4>
+        <h4>Histórico</h4>
         <ul className="history">
           {[...st.questions]
             .filter((q) => q.status !== 'pending')
             .reverse()
             .map((q) => (
               <li key={q.questionId}>
-                <span className={`badge ${q.role}`}>{q.role}</span> {q.text} → {q.status === 'skipped' ? <i>skipped</i> : q.answer}
+                <span className={`badge ${q.role}`}>{q.role}</span> {questionText(q.text)} → {q.status === 'skipped' ? <i>ignorada</i> : q.answer}
               </li>
             ))}
           {[...st.patches]
@@ -162,7 +165,7 @@ export function RefinementView(p: ViewProps) {
             .reverse()
             .map((x) => (
               <li key={x.patchId}>
-                patch {x.file} ({x.reason}) → {x.status}
+                alteração em {x.file} ({x.reason}) → {x.status === 'accepted' ? 'aceita' : x.status === 'rejected' ? 'rejeitada' : 'descartada'}
                 {x.decision ? `: ${x.decision}` : ''}
               </li>
             ))}
@@ -171,16 +174,16 @@ export function RefinementView(p: ViewProps) {
       <section className="panels panel-card">
         <div className="section-heading">
           <div>
-            <span className="eyebrow">Quality gate</span>
-            <h2>Checklist</h2>
+            <span className="eyebrow">Controle de qualidade</span>
+            <h2>Lista de verificação</h2>
           </div>
-          <span className={`status-dot ${st.stale ? 'warn' : 'ok'}`}>{st.stale ? 'Needs review' : 'Current'}</span>
+          <span className={`status-dot ${st.stale ? 'warn' : 'ok'}`}>{st.stale ? 'Precisa revisar' : 'Atual'}</span>
         </div>
         <h5>PO</h5>
         <Checklist items={st.checklist} role="po" />
         <h5>SM</h5>
         <Checklist items={st.checklist} role="sm" />
-        <h4>Derived</h4>
+        <h4>Arquivos gerados</h4>
         <details>
           <summary>spec.json</summary>
           <pre>{JSON.stringify(st.derived?.spec ?? null, null, 2)}</pre>
@@ -189,7 +192,7 @@ export function RefinementView(p: ViewProps) {
           <summary>project.json</summary>
           <pre>{JSON.stringify(st.derived?.project ?? null, null, 2)}</pre>
         </details>
-        <h5>Tasks</h5>
+        <h5>Tarefas</h5>
         <ul>
           {(st.derived?.spec.tasks ?? []).map((t, i) => (
             <li key={i}>
@@ -197,7 +200,7 @@ export function RefinementView(p: ViewProps) {
             </li>
           ))}
         </ul>
-        <h4>Secrets</h4>
+        <h4>Segredos</h4>
         <ul>
           {snap.secrets.map((s) => (
             <li key={s.name}>
@@ -211,16 +214,16 @@ export function RefinementView(p: ViewProps) {
                   setSecretValues({ ...secretValues, [s.name]: '' });
                 }}
               >
-                Save
+                Salvar
               </button>
             </li>
           ))}
         </ul>
         <p className="tokens">
-          {snap.tokens.steps} steps · {snap.tokens.inputTokens + snap.tokens.outputTokens} tokens · ${snap.tokens.costUsd.toFixed(2)}
+          {snap.tokens.steps} etapas · {snap.tokens.inputTokens + snap.tokens.outputTokens} tokens · US$ {snap.tokens.costUsd.toFixed(2)}
         </p>
         <button data-testid="start" className="primary full-width" disabled={!canStart} onClick={p.onStart}>
-          Start
+          Iniciar
         </button>
       </section>
     </div>
@@ -258,7 +261,7 @@ export function RefinementPage() {
   }, [events]);
   if (!snap) return (
     <main>
-      <p>{error ?? 'loading…'}</p>
+      <p>{error ?? 'carregando…'}</p>
     </main>
   );
   const act = (f: () => Promise<unknown>) => () => {
@@ -268,7 +271,7 @@ export function RefinementPage() {
   return (
     <main>
       <header>
-        <a href="/projects">Projects</a> › {projectId} / {specId} <span className={`status ${snap.state.status}`}>{snap.state.status}</span>
+        <a href="/projects">Projetos</a> › {projectId} / {specId} <span className={`status ${snap.state.status}`}>{({ answering: 'respondendo', evaluating: 'avaliando', ready: 'pronto', error: 'erro', started: 'iniciado', drafting: 'rascunho' } as Record<string, string>)[snap.state.status] ?? snap.state.status}</span>
       </header>
       {error && <p className="error">{error}</p>}
       <RefinementView
