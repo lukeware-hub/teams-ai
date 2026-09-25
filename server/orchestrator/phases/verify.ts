@@ -19,7 +19,10 @@ export async function runPhase4(deps: PhaseDeps, round: 1 | 2): Promise<Phase4Re
   if (!deps.journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 4 && e.data.round === round)) await deps.journal.fact(OrchEvent.PhaseStarted, { phase: 4, round });
   await checkoutMain(deps);
   let results: GateResult[] = [], blocking: GateResult | null = null;
-  ({ results, blockingFailure: blocking } = await deps.gates(deps.ws.repo, 'main'));
+  for (let attempt = 0; attempt < 4; attempt++) {
+    ({ results, blockingFailure: blocking } = await deps.gates(deps.ws.repo, 'main'));
+    if (!blocking || !['infra', 'environment', 'flaky-test'].includes(String(blocking.failure)) || attempt === 3) break;
+  }
   for (const r of results) await deps.journal.fact(r.passed ? OrchEvent.GatePassed : OrchEvent.GateFailed, { phase: 4, round, gate: r.name, failure: r.failure, junit: r.junit ?? [] });
   const junit = [...new Map(results.flatMap((r) => r.junit ?? []).map((t) => [t.id, t])).values()];
   const matrix = buildEvidenceMatrix(deps.spec, deps.tasks(), junit);
