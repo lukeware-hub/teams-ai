@@ -34,6 +34,7 @@ export function ProjectsView(p: {
           p.onNewProject(newProjectId, newProjectName);
         }}
       >
+        <p className="hint">New project starts the guided refinement flow and creates the project files.</p>
         <input data-testid="new-project-id" value={newProjectId} onChange={(e) => setNewProjectId(e.target.value)} placeholder="project id" />
         <input data-testid="new-project-name" value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="name" />
         <button data-testid="new-project" type="submit" disabled={newProjectId.trim() === '' || newProjectName.trim() === ''}>
@@ -46,6 +47,7 @@ export function ProjectsView(p: {
           p.onAdd(dir);
         }}
       >
+        <p className="hint">Add existing project requires a directory that already contains docs/project.json.</p>
         <input value={dir} onChange={(e) => setDir(e.target.value)} placeholder="/path/to/project" />
         <button type="submit" disabled={dir.trim() === ''}>
           Add project
