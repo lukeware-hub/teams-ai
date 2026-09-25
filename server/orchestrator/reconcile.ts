@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import type { Exec } from '../exec/command.js';
+import type { DeploymentIntent } from '../deploy/target.js';
 import { git, headSha, removeWorktree } from '../git/git.js';
 import { findMergedPr, prState } from '../git/github.js';
 import { RunEvent } from '../pipeline/run-state.js';
@@ -14,6 +15,7 @@ export interface ReconcileDeps {
   ghExec: Exec;
   afterMerge: (taskId: string, branch: string) => Promise<void>;
   log: (line: string) => void;
+  currentImage?: (intent: DeploymentIntent) => Promise<string | null>;
 }
 
 export interface ReconcileReport {
@@ -122,6 +124,12 @@ export async function reconcile(deps: ReconcileDeps): Promise<ReconcileReport> {
         const wt = String(d.worktree);
         if (await insideWorktree(wt, exec)) await removeWorktree(deps.ws.repo, wt, exec);
         await confirm(e, {});
+        break;
+      }
+      case Intent.DeployApply: {
+        const intent = d.intent as unknown as DeploymentIntent | undefined;
+        const running = intent && deps.currentImage ? await deps.currentImage(intent) : null;
+        running !== null && running === `${String(d.image)}:${String(d.tag)}` ? await confirm(e, { previous: null, reconciled: true }) : redo(e);
         break;
       }
       default:

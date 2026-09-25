@@ -132,7 +132,7 @@ export class Run {
     await fs.rm(path.join(runDir(deps.ws, runId), 'pid.gone'), { force: true });
     const journal = await Run.openJournal(deps, runId);
     const run = new Run(runId, journal, deps);
-    await reconcile({ journal, ws: deps.ws, exec: deps.exec, ghExec: deps.ghExec, afterMerge: (taskId, branch) => run.afterMergeOnResume(taskId, branch), log: run.log });
+    await reconcile({ journal, ws: deps.ws, exec: deps.exec, ghExec: deps.ghExec, afterMerge: (taskId, branch) => run.afterMergeOnResume(taskId, branch), log: run.log, currentImage: deps.target?.currentImage.bind(deps.target) });
     // `resume` is the human's signal that the login was redone (spec §7 "resume tries again").
     if (journal.state.status === 'paused:auth') await journal.fact(RunEvent.RunResumed, {});
     await run.writeState();
