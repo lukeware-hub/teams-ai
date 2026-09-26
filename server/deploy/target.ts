@@ -58,7 +58,15 @@ export async function waitHealthy(
   return { healthy: false, detail: `${last} after ${attempts} attempts (${opts.timeoutMs} ms)` };
 }
 
-export const imageRef = (intent: DeploymentIntent) => `${intent.image}:${intent.tag}`;
+/** The plan's image may already carry a tag ('client-management:latest'); the run's tag replaces it, since
+ * 'name:latest:<sha>' is not a valid reference (seen live on 1387253335-001-r13). A registry port
+ * ('host:5000/name') is left alone: only a colon after the last path segment is a tag. */
+export function imageName(image: string): string {
+  const slash = image.lastIndexOf('/');
+  const colon = image.lastIndexOf(':');
+  return colon > slash ? image.slice(0, colon) : image;
+}
+export const imageRef = (intent: DeploymentIntent) => `${imageName(intent.image)}:${intent.tag}`;
 
 /**
  * Spec Phase 5: validate → build → apply → verify → smoke. Any failure after apply rolls back to the

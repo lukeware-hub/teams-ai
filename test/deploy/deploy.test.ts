@@ -208,3 +208,13 @@ describe('runDeployment', () => {
     expect(r).toEqual({ ok: false, stage: 'verify', detail: 'down; rollback failed: docker run failed', rolledBack: false, rollbackHealthy: false });
   });
 });
+
+describe('imageRef', () => {
+  it('replaces a tag the plan already put on the image and keeps a registry port', async () => {
+    const { imageName, imageRef } = await import('../../server/deploy/target.js');
+    expect(imageName('client-management:latest')).toBe('client-management');
+    expect(imageName('ghcr.io/acme/app:1.2')).toBe('ghcr.io/acme/app');
+    expect(imageName('localhost:5000/app')).toBe('localhost:5000/app');
+    expect(imageRef({ image: 'client-management:latest', tag: '44e0b56' } as never)).toBe('client-management:44e0b56');
+  });
+});
