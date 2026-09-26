@@ -26,7 +26,7 @@ export function ItemCard({ title, item, children, variant = 'default', subtitle,
           {subtitle ? <p className="card-subtitle">{subtitle}</p> : null}
         </div>
         <span className="status-chip">{statusLabel}</span>
-        {item?.secret?.set ? <code className="hint">…{item.secret.hint}</code> : null}
+        {variant !== 'login' && item?.secret?.set ? <code className="hint">…{item.secret.hint}</code> : null}
       </header>
       <p className="detail onboarding-detail">
         {variant === 'login' ? <span className="detail-icon"><Icon name="user" size={22} /></span> : null}
