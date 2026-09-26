@@ -131,6 +131,13 @@ describe('LoginSession (claude flow)', () => {
 });
 
 describe('LoginSession (gh flow)', () => {
+  it('confirms GitHub credential storage before continuing to device login', () => {
+    const h = harness({ cli: 'gh', command: { bin: 'gh', args: ['auth', 'login', '--web'] } });
+    h.s.start();
+    h.ptys[0]!.emit('? Authenticate Git with your GitHub credentials? (Y/n)\n');
+    expect(h.ptys[0]!.writes).toEqual(['y\r']);
+  });
+
   it('shows the one-time code with the URL, presses Enter itself, and finishes on the success line', async () => {
     const h = harness({ cli: 'gh', command: { bin: 'gh', args: ['auth', 'login', '--web'] } });
     h.probeResults.splice(0, 1, { ok: true, detail: 'lukeware70X7' });

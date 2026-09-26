@@ -72,11 +72,16 @@ export class LoginSession {
     const pty = this.deps.spawn(this.deps.command);
     this.pty = pty;
     let enterSent = false;
+    let gitCredentialConfirmationSent = false;
     pty.onData((raw) => {
       if (gen !== this.generation || !this.reader) return;
       const clean = this.reader.push(raw);
       if (clean !== '') this.emit({ type: 'output', chunk: clean });
       const st = this.reader.state;
+      if (this.deps.cli === 'gh' && !gitCredentialConfirmationSent && /Authenticate Git with your GitHub credentials\?\s*\(Y\/n\)/i.test(`${clean}\n${this.reader.tail}`)) {
+        gitCredentialConfirmationSent = true;
+        pty.write('y\r');
+      }
       if (st.code && !this.codes.includes(st.code)) this.codes.push(st.code);
       if (this.current.name === 'starting' && st.url) this.set({ name: 'awaiting-browser', url: st.url, code: st.code });
       else if (this.current.name === 'awaiting-browser' && st.code && this.current.code === null) this.set({ ...this.current, code: st.code });
