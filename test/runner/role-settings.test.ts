@@ -17,7 +17,7 @@ describe('buildRoleSettings', () => {
       const deny = buildRoleSettings(role, { allowedDomains: [] }).permissions.deny;
       for (const p of PROTECTED_READ_PATHS) expect(deny, role).toContain(`Read(${p})`);
       expect(deny, role).toContain('Edit(.claude/**)');
-      expect(deny, role).toContain('Write(.claude/**)');
+      expect(deny, role).not.toContain('Write(.claude/**)'); // not a valid file rule; Claude warns and ignores it
       for (const d of ALWAYS_DENIED) expect(deny, role).toContain(d);
     }
   });

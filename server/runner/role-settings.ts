@@ -51,8 +51,8 @@ export interface RoleSettings {
 export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSettings {
   const deny = [
     ...PROTECTED_READ_PATHS.map((p) => `Read(${p})`),
+    // Edit(path) rules cover every file-editing tool; a Write(path) rule is not matched by the file permission checks.
     'Edit(.claude/**)',
-    'Write(.claude/**)',
     ...ALWAYS_DENIED,
   ];
   return {

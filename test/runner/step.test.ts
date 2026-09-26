@@ -183,7 +183,7 @@ describe('runStep', () => {
     expect(settingsPath).toBe(path.join(deps.settingsDir, 'dev.settings.json'));
     const settings = JSON.parse(await fs.readFile(settingsPath, 'utf8'));
     expect(settings.sandbox).toEqual({ enabled: true, network: { allowedDomains: ['registry.npmjs.org'] } });
-    expect(settings.permissions.deny).toContain('Write(.claude/**)');
+    expect(settings.permissions.deny).toContain('Edit(.claude/**)');
     expect(captured.prompt).toBe('Implement it');
   });
 

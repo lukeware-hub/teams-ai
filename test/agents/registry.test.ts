@@ -57,7 +57,8 @@ describe('loadAgents', () => {
 
 describe('settings directory protection', () => {
   it('always denies editing or writing the project settings directory', () => {
-    expect(ALWAYS_DENIED).toEqual(expect.arrayContaining(['Edit(.claude/**)', 'Write(.claude/**)']));
+    expect(ALWAYS_DENIED).toEqual(expect.arrayContaining(['Edit(.claude/**)']));
+    expect(ALWAYS_DENIED).not.toContain('Write(.claude/**)'); // Edit(path) covers every file-editing tool; Write(path) is not a valid rule
     expect(() => parseAgentFile(`---\nname: dev\ndescription: x\nmodel: opus\ntools: Read, Write(.claude/**)\n---\nEcho specHash.`, 'dev')).toThrow(/\.claude/);
   });
 
