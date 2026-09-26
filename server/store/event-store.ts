@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 export type EventKind = 'fact' | 'intent' | 'confirm';
@@ -137,14 +138,22 @@ function processAlive(pid: number): boolean {
   }
 }
 
-/** Takes the exclusive lock; a lock whose owner process is gone is reclaimed. */
+/** Lock contents: `<pid>@<hostname>`. The hostname tells a lock from a previous container (whose pids
+ * restart from 1, so a live unrelated process can wear the owner's number) from one taken on this host. */
+const lockOwner = (): string => `${process.pid}@${os.hostname()}`;
+function parseLockOwner(text: string): { pid: number; host: string | null } {
+  const [pid, host] = text.trim().split('@');
+  return { pid: Number.parseInt(pid ?? '', 10), host: host ?? null };
+}
+
+/** Takes the exclusive lock; a lock whose owner process is gone (or lived on another host) is reclaimed. */
 async function acquireLock(file: string, lockFile: string): Promise<void> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const handle = await fs.open(lockFile, 'wx');
       heldLocks.add(lockFile);
       try {
-        await handle.writeFile(String(process.pid));
+        await handle.writeFile(lockOwner());
         await handle.close();
         return;
       } catch (err) {
@@ -154,13 +163,14 @@ async function acquireLock(file: string, lockFile: string): Promise<void> {
       }
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
-      const owner = Number.parseInt(await fs.readFile(lockFile, 'utf8').catch(() => ''), 10);
-      const sameProcessAfterRestart = owner === process.pid && !heldLocks.has(lockFile);
-      if (attempt === 0 && Number.isInteger(owner) && (sameProcessAfterRestart || (owner !== process.pid && !processAlive(owner)))) {
+      const owner = parseLockOwner(await fs.readFile(lockFile, 'utf8').catch(() => ''));
+      const otherHost = owner.host !== null && owner.host !== os.hostname();
+      const sameProcessAfterRestart = owner.pid === process.pid && !heldLocks.has(lockFile);
+      if (attempt === 0 && Number.isInteger(owner.pid) && (otherHost || sameProcessAfterRestart || (owner.pid !== process.pid && !processAlive(owner.pid)))) {
         await fs.rm(lockFile, { force: true });
         continue;
       }
-      throw new EventLogLockedError(`${file} is already open (lock: ${lockFile}, pid ${owner})`);
+      throw new EventLogLockedError(`${file} is already open (lock: ${lockFile}, pid ${owner.pid})`);
     }
   }
 }

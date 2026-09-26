@@ -73,6 +73,15 @@ describe('EventStore', () => {
     expect((await reopened.append({ type: 'B' })).seq).toBe(2);
   });
 
+  it('reclaims a lock taken on another host even when a live process here wears its pid', async () => {
+    await writeLines(rawEvent(1));
+    // A previous container wrote this; its pid restarted from 1 there and is now some unrelated live process.
+    await fs.writeFile(`${file}.lock`, `${process.ppid}@some-other-container`);
+    const reopened = await open();
+    expect((await reopened.append({ type: 'B' })).seq).toBe(2);
+    expect(await fs.readFile(`${file}.lock`, 'utf8')).toBe(`${process.pid}@${(await import('node:os')).default.hostname()}`);
+  });
+
   it('refuses appends after close', async () => {
     const store = await open();
     await store.close();
