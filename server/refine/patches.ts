@@ -21,10 +21,12 @@ export type PatchCheck = { ok: true; file: DocFile } | { ok: false; reason: stri
 const count = (text: string, find: string): number => (find === '' ? 0 : text.split(find).length - 1);
 
 /** Spec (refinement) §3.4: only the two Markdown files, and `find` must occur exactly once. */
-export function checkPatch(p: DocPatchIn, specId: string, docs: Record<DocFile, string>): PatchCheck {
+export function checkPatch(p: DocPatchIn, specId: string, docs: Partial<Record<DocFile, string>>): PatchCheck {
   const file = (Object.keys(DOC_REL) as DocFile[]).find((f) => DOC_REL[f](specId) === p.file);
   if (!file) return { ok: false, reason: `unknown file ${p.file}` };
-  const n = count(docs[file], p.find);
+  const text = docs[file];
+  if (text === undefined) return { ok: false, reason: `document not loaded: ${file}` };
+  const n = count(text, p.find);
   if (n === 0) return { ok: false, reason: `find not found in ${file}` };
   if (n > 1) return { ok: false, reason: `find occurs ${n} times in ${file}` };
   return { ok: true, file };

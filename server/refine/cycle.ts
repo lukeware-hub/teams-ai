@@ -27,6 +27,7 @@ export interface CycleDeps {
   draft: Draft;
   journal: CycleJournal;
   runAgent: RunAgent;
+  frontAgent?: RunAgent;
   principles: () => readonly string[];
   retrieval: (query: string) => readonly Hit[];
   secretsDir: string;
@@ -46,6 +47,7 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
     'brief.md': await readDoc(draft, 'brief.md'),
     'stack.md': await readDoc(draft, 'stack.md'),
     'flow.md': await readDoc(draft, 'flow.md'),
+    'design.md': await readDoc(draft, 'design.md'),
   };
   const previous = await readDerived(draft);
   const fail = (reason: string) => journal.fact(RefineEvent.CycleFailed, { cycle, reason });
@@ -64,7 +66,7 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
     {
       kind: 'derive',
       role: 'po',
-      pack: derivePack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], previous, specId: draft.specId, jevValidation }),
+      pack: derivePack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, specId: draft.specId, jevValidation }),
       cwd: draft.root,
       phase: 'refine',
       taskId: null,
@@ -84,6 +86,16 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
   await writeDerived(draft, checked.value);
   await journal.fact(RefineEvent.Derived, { cycle, ...checked.value });
 
+  if (deps.frontAgent) {
+    const review = await deps.frontAgent({ kind: 'refine', role: 'front',
+      pack: refinePack({ role: 'po', specHash: hash, principles: deps.principles(), specId: draft.specId,
+        projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'],
+        derived: checked.value, retrieval: [], history: journal.state.questions,
+        rejected: journal.state.patches.filter((p) => p.status === 'rejected'), jevValidation }),
+      cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, ctx);
+    if (!review.ok) { await fail(`front validation failed: ${review.failure}: ${review.errors.join('; ')}`); return; }
+  }
+
   const state = journal.state;
   const retrieval = deps.retrieval(checked.value.spec.objectives.join(' '));
   const step = (role: 'po' | 'sm') =>
@@ -100,6 +112,7 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
           briefMd: docs['brief.md'],
           stackMd: docs['stack.md'],
           flowMd: docs['flow.md'],
+          designMd: docs['design.md'],
           derived: checked.value,
           retrieval,
           history: state.questions,
@@ -144,6 +157,10 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
     let i = 0;
     for (const p of out.docPatch) {
       const c = checkPatch(p, draft.specId, docs);
+      if (c.ok && c.file === 'design.md') {
+        discardedPatches.push({ role, file: p.file, reason: 'design.md is reviewable only by front' });
+        continue;
+      }
       if (!c.ok) {
         discardedPatches.push({ role, file: p.file, reason: c.reason });
         continue;

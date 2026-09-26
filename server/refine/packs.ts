@@ -18,6 +18,7 @@ export function refinePack(input: {
   briefMd: string;
   stackMd?: string;
   flowMd?: string;
+  designMd?: string;
   derived: { project: Project; spec: Spec };
   retrieval: readonly Hit[];
   history: readonly QuestionRow[];
@@ -31,6 +32,7 @@ export function refinePack(input: {
   const feedback = [
     'Write every user-facing question, checklist detail, patch reason, and explanation in Brazilian Portuguese. Keep technical identifiers, file names, HTTP status codes, and checklist ids unchanged.',
     'Review flow.md as the business and application flow contract. Check that create, validate, persist, list, search, detail, update, delete, error, health, and persistence flows agree with project.md and brief.md. Ask a question or propose a patch when a flow is missing, ambiguous, or contradictory.',
+    'Treat design.md as the frontend source of truth. Validate distinctive web and mobile direction, responsive states, accessibility, keyboard focus, reduced motion, touch targets, and consistency with project.md, brief.md, stack.md, and flow.md. Reject generic AI-looking UI choices and propose a precise patch when design.md is incomplete or contradictory.',
     `Report exactly these checklist ids: ${ids.join(', ')}.`,
     `Patch files: ${DOC_REL['project.md'](input.specId)}, ${DOC_REL['brief.md'](input.specId)}.`,
     `### ${DOC_REL['project.md'](input.specId)}`,
@@ -39,6 +41,7 @@ export function refinePack(input: {
     input.briefMd,
     ...(input.stackMd ? ['### stack.md', input.stackMd] : []),
     ...(input.flowMd ? ['### flow.md (Mermaid)', input.flowMd] : []),
+    ...(input.designMd ? ['### design.md (frontend source of truth)', input.designMd] : []),
     '### Jev preflight validation',
     input.jevValidation ? JSON.stringify(input.jevValidation, null, 2) : '(not available)',
     '### derived project.json',

@@ -17,6 +17,7 @@ const EDITING = [...READ_ONLY, 'Edit', 'Write'] as const;
 export const ROLE_TOOL_POLICY: Record<Role, { allowed: readonly string[] }> = {
   sm: { allowed: READ_ONLY },
   po: { allowed: READ_ONLY },
+  front: { allowed: [...EDITING, 'Bash'] },
   dev: { allowed: [...EDITING, 'Bash'] },
   test: { allowed: [...EDITING, 'Bash'] },
   devops: { allowed: EDITING },

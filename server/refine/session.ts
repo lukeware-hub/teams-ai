@@ -63,6 +63,7 @@ export interface SessionDeps {
   ws: Workspace;
   draft: Draft;
   runAgent: RunAgent;
+  frontAgent?: RunAgent;
   secretsDir: string;
   retrieval: (query: string) => readonly Hit[];
   validateDocs?: CycleDeps['validateDocs'];
@@ -76,7 +77,7 @@ export interface Snapshot {
   projectId: string;
   specId: string;
   state: RefineState;
-  docs: { 'project.md': string; 'brief.md': string; 'stack.md': string; 'flow.md': string };
+  docs: { 'project.md': string; 'brief.md': string; 'stack.md': string; 'flow.md': string; 'design.md': string };
   secrets: SecretRow[];
   tokens: { inputTokens: number; outputTokens: number; costUsd: number; steps: number };
 }
@@ -157,6 +158,7 @@ export class RefineSession {
       'brief.md': await readDoc(this.deps.draft, 'brief.md'),
       'stack.md': await readDoc(this.deps.draft, 'stack.md'),
       'flow.md': await readDoc(this.deps.draft, 'flow.md'),
+      'design.md': await readDoc(this.deps.draft, 'design.md'),
     } as Record<DocFile, string>;
     const present = await loadSecrets(this.deps.secretsDir);
     const names = [...new Set((this.state.derived?.spec.externalDependencies ?? []).flatMap((d) => d.secretNames))];
@@ -187,6 +189,7 @@ export class RefineSession {
         draft: this.deps.draft,
         journal: this.journal,
         runAgent: this.deps.runAgent,
+        frontAgent: this.deps.frontAgent,
         principles: () => this.state.derived?.project.principles ?? [],
         retrieval: this.deps.retrieval,
         secretsDir: this.deps.secretsDir,

@@ -12,6 +12,7 @@ export function derivePack(input: {
   briefMd: string;
   stackMd?: string;
   flowMd?: string;
+  designMd?: string;
   previous: { project: Project; spec: Spec } | null;
   specId: string;
   jevValidation?: JevValidationResult;
@@ -29,6 +30,7 @@ export function derivePack(input: {
     input.briefMd,
     ...(input.stackMd ? ['### stack.md', input.stackMd] : []),
     ...(input.flowMd ? ['### flow.md (Mermaid)', input.flowMd] : []),
+    ...(input.designMd ? ['### design.md', input.designMd] : []),
     '### Jev preflight validation',
     input.jevValidation ? JSON.stringify(input.jevValidation, null, 2) : '(not available)',
     '### previous derived JSON (keep unchanged acceptance criterion ids)',
