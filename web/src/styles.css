@@ -367,11 +367,6 @@ h3 { font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; colo
 .refine-workspace h4 svg { color: var(--accent); }
 .history:empty { display: grid; place-items: center; min-height: 3.3rem; }
 .history:empty::before { content: 'Nenhum registro no momento.'; color: var(--ink-soft); }
-.quality-people { display: grid; gap: .8rem; }
-.quality-people label { display: grid; gap: .35rem; color: var(--ink); font-size: .76rem; font-weight: 700; }
-.quality-input { display: flex; align-items: center; gap: .55rem; height: 2.8rem; padding: 0 .75rem; border: 1px solid #dbe3ee; border-radius: 10px; color: var(--ink-soft); background: #fff; }
-.quality-input input { width: 100%; min-width: 0; height: auto; margin: 0; padding: 0; border: 0; outline: 0; }
-.quality-input input:focus { outline: 0; }
 .quality-checks { display: grid; gap: .3rem; }
 .quality-checks h5 { margin: 1rem 0 .45rem; }
 .panels details summary { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }

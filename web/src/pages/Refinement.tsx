@@ -256,7 +256,6 @@ export function RefinementView(p: ViewProps) {
           </div>
           <span className={`status-dot ${st.stale ? 'warn' : 'ok'}`}>{st.stale ? 'Precisa revisar' : 'Atual'}</span>
         </div>
-        <div className="quality-people"><label><span>PO</span><div className="quality-input"><Icon name="user" size={18} /><input placeholder="Digite o nome do PO…" /></div></label><label><span>SM</span><div className="quality-input"><Icon name="user" size={18} /><input placeholder="Digite o nome do SM…" /></div></label></div>
         <div className="quality-checks"><h5>Checklist PO</h5><Checklist items={st.checklist} role="po" /><h5>Checklist SM</h5><Checklist items={st.checklist} role="sm" /></div>
         <h4><Icon name="file" size={20} />Arquivos gerados</h4>
         <details>

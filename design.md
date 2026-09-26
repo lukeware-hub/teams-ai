@@ -1196,7 +1196,7 @@ The user-provided reference images 2 and 3 are the approved visual target for `/
 ### 30.4 Quality panel
 
 - Use the green shield tile, `Controle de qualidade` eyebrow, `Lista de verificação` title, and `Atual` state chip.
-- Present PO and SM as full-width labeled fields with user icons and clear placeholders.
+- PO and SM are review-agent roles, not user-entered fields. Show them as clearly labeled checklist groups; do not ask the user to enter agent names.
 - Generated files use bordered rows with a chevron/summary affordance and download action. Tasks use a bordered empty state with `Nenhuma tarefa gerada ainda.` and `As tarefas aparecerão aqui após a análise.`.
 - Keep the secrets and token summary at the bottom. `Iniciar análise` is the panel's primary action and occupies the full available width.
 
