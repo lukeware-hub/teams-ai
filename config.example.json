@@ -1,0 +1,20 @@
+{
+  "github": {
+    "owner": "your-github-org-or-user"
+  },
+  "sandbox": { "enabled": false },
+  "docker": {
+    "bindRewrite": {
+      "from": "/root/.teams-ai",
+      "to": "/var/lib/docker/volumes/teams-ai-config/_data"
+    },
+    "serviceHost": "host.docker.internal",
+    "publishBind": "0.0.0.0"
+  },
+  "paths": {
+    "workspaces": "~/.teams-ai/workspaces",
+    "secrets": "~/.teams-ai/secrets",
+    "runs": "~/.teams-ai/runs"
+  },
+  "projects": []
+}
