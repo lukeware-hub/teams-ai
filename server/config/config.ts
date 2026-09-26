@@ -105,6 +105,10 @@ export const Config = z.object({
        * Bind sources under `from` (the orchestrator's view) are rewritten to `to` (the daemon's view),
        * e.g. from ~/.teams-ai to /var/lib/docker/volumes/teams-ai-config/_data. */
       bindRewrite: z.object({ from: linuxPath, to: z.string().min(1) }).optional(),
+      /** Host the orchestrator and the smoke gate use to reach a locally deployed service (docker-local target). */
+      serviceHost: z.string().min(1).default('127.0.0.1'),
+      /** Address the deployed container port is published on. */
+      publishBind: z.string().min(1).default('127.0.0.1'),
     })
     .prefault({}),
   /** Directories holding docs/project.json, registered from the UI (spec run API §2). */

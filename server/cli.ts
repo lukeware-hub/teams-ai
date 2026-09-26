@@ -182,7 +182,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   const bootstrap = opts.draft ? { docsDir: path.join(projectDir, 'docs'), owner: project.github.owner ?? cfg.github.owner } : undefined;
   const target = project.deploy.target === 'kind'
     ? new KindTarget({ exec, secrets, cluster: 'teams-ai', readFile: (p) => fs.readFile(p, 'utf8') })
-    : new DockerLocalTarget({ exec, get: httpGet, secrets });
+    : new DockerLocalTarget({ exec, get: httpGet, secrets, serviceHost: cfg.docker.serviceHost, publishBind: cfg.docker.publishBind });
   return { cfg, ws, project, spec, firstSpec, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target };
 }
 

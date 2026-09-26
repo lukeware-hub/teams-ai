@@ -218,3 +218,11 @@ describe('imageRef', () => {
     expect(imageRef({ image: 'client-management:latest', tag: '44e0b56' } as never)).toBe('client-management:44e0b56');
   });
 });
+
+describe('DockerLocalTarget: containerized orchestrator', () => {
+  it('reaches the service through serviceHost and publishes on publishBind', async () => {
+    const { DockerLocalTarget } = await import('../../server/deploy/docker-local.js');
+    const t = new DockerLocalTarget({ exec: async () => ({ exitCode: 0, signal: null, stdout: '', stderr: '', timedOut: false, durationMs: 1, truncated: false }), get: async () => ({ status: 200, body: '' }), secrets: {}, serviceHost: 'host.docker.internal', publishBind: '0.0.0.0' });
+    expect(t.baseUrl({ port: 3000 } as never)).toBe('http://host.docker.internal:3000');
+  });
+});
