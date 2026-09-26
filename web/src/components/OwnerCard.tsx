@@ -10,20 +10,20 @@ export function OwnerCard({ organizations, initialOwner, loading, loadError, ite
     setError(null);
     try {
       onSaved((await api.owner(owner)).item);
-    } catch (e) {
-      setError((e as Error).message);
+    } catch {
+      setError('Não foi possível salvar a organização. Tente novamente.');
     }
   };
   return (
-    <ItemCard title="GitHub organization" item={item}>
+    <ItemCard title="Organização do GitHub" item={item}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
           void save();
         }}
       >
-        <select aria-label="GitHub organization" value={owner} onChange={(e) => setOwner(e.target.value)} disabled={loading || organizations.length === 0}>
-          <option value="">{loading ? 'Loading organizations…' : organizations.length === 0 ? 'No organizations found' : 'Select an organization'}</option>
+        <select aria-label="Organização do GitHub" value={owner} onChange={(e) => setOwner(e.target.value)} disabled={loading || organizations.length === 0}>
+          <option value="">{loading ? 'Carregando organizações…' : organizations.length === 0 ? 'Nenhuma organização encontrada' : 'Selecione uma organização'}</option>
           {organizations.map((organization) => <option key={organization} value={organization}>{organization}</option>)}
         </select>
         <button type="submit" disabled={loading || owner.trim() === ''}>
@@ -31,7 +31,7 @@ export function OwnerCard({ organizations, initialOwner, loading, loadError, ite
         </button>
       </form>
       {loadError ? <p className="error">{loadError}</p> : null}
-      {!loading && !loadError && organizations.length === 0 ? <p className="error">No organization was found for this GitHub account.</p> : null}
+      {!loading && !loadError && organizations.length === 0 ? <p className="error">Nenhuma organização foi encontrada para esta conta do GitHub.</p> : null}
       {error ? <p className="error">{error}</p> : null}
     </ItemCard>
   );

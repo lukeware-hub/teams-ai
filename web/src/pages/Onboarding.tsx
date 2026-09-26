@@ -31,23 +31,42 @@ export function Onboarding({ compact = false }: { compact?: boolean }) {
       if (!active) return;
       setOrganizations(result.organizations);
       setOrganizationOwner(result.owner);
-    }).catch((e: Error) => {
-      if (active) setOrganizationsError(e.message);
+    }).catch(() => {
+      if (active) setOrganizationsError('Não foi possível carregar suas organizações do GitHub.');
     }).finally(() => {
       if (active) setOrganizationsLoading(false);
     });
     return () => { active = false; };
   }, [githubLoggedIn]);
+  const total = status ? Object.keys(status.items).length : 5;
+  const ready = status ? Object.values(status.items).filter((it) => it.ok).length : 0;
+  const progress = Math.round((ready / total) * 100);
   return (
-    <main className={compact ? 'compact' : ''}>
-      <h1>{compact ? 'Status do ambiente' : 'Configure este ambiente'}</h1>
+    <main className={`onboarding-shell${compact ? ' compact' : ''}`}>
+      <header className="setup-hero">
+        <div>
+          <p className="setup-kicker">Configuração local</p>
+          <h1>{compact ? 'Status do ambiente' : 'Configure este ambiente'}</h1>
+          <p className="setup-intro">Conecte as ferramentas que o Teams AI precisa para trabalhar neste computador.</p>
+        </div>
+        <div className="setup-progress" aria-label={`${ready} de ${total} itens configurados`}>
+          <div className="progress-meta">
+            <span>Progresso</span>
+            <strong>{ready}/{total}</strong>
+          </div>
+          <div className="progress-track"><span style={{ width: `${progress}%` }} /></div>
+          <small>{status?.allOk ? 'Tudo pronto para começar' : 'Complete os itens abaixo'}</small>
+        </div>
+      </header>
+      <div className="setup-grid">
       <LoginCard cli="gh" title="Login do GitHub CLI" item={item('ghLogin')} onDone={refresh} />
       {githubLoggedIn ? <OwnerCard organizations={organizations} initialOwner={organizationOwner} loading={organizationsLoading} loadError={organizationsError} item={item('githubOwner')} onSaved={patch('githubOwner')} /> : null}
       {githubOwnerReady ? <SecretCard name="GITHUB_TOKEN" title="Token do GitHub" item={item('githubToken')} onSaved={patch('githubToken')} /> : null}
       <LoginCard cli="claude" title="Login do Claude" item={item('claude')} onDone={refresh} />
       <SecretCard name="OPENROUTER_API_KEY" title="Chave do OpenRouter (Jev)" item={item('openrouterKey')} onSaved={patch('openrouterKey')} />
+      </div>
       {status?.allOk ? (
-        <p className="all-ok">
+        <p className="all-ok setup-complete">
           Tudo configurado. <Link to="/projects">Ir para projetos</Link>
         </p>
       ) : null}

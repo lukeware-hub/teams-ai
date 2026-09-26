@@ -32,11 +32,11 @@ describe('Onboarding GitHub flow', () => {
 
     render(<Onboarding />);
     const githubCard = await screen.findByTestId('card-Login do GitHub CLI');
-    expect(screen.queryByTestId('card-GitHub organization')).toBeNull();
+    expect(screen.queryByTestId('card-Organização do GitHub')).toBeNull();
     fireEvent.click(within(githubCard).getByRole('button', { name: 'Entrar' }));
 
-    const ownerCard = await screen.findByTestId('card-GitHub organization');
-    const select = within(ownerCard).getByRole('combobox', { name: 'GitHub organization' });
+    const ownerCard = await screen.findByTestId('card-Organização do GitHub');
+    const select = within(ownerCard).getByRole('combobox', { name: 'Organização do GitHub' });
     await waitFor(() => expect(within(select).getByRole('option', { name: 'acme' })).toBeTruthy());
     fireEvent.change(select, { target: { value: 'acme' } });
     fireEvent.click(within(ownerCard).getByRole('button', { name: 'Salvar e verificar' }));
