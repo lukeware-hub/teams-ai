@@ -26,7 +26,7 @@ h1 { font-size: 1.5rem; letter-spacing: -0.01em; margin: 0 0 0.15rem; }
 .card-todo .dot { background: var(--bad); }
 .detail { color: var(--ink-soft); margin: 0.5rem 0; }
 .controls, form { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
-input { flex: 1; min-width: 12rem; padding: 0.5rem 0.65rem; border: 1px solid var(--line); border-radius: 8px; font: inherit; color: var(--ink); background: #fff; }
+input, select { flex: 1; min-width: 12rem; padding: 0.5rem 0.65rem; border: 1px solid var(--line); border-radius: 8px; font: inherit; color: var(--ink); background: #fff; }
 input:focus { outline: 3px solid rgba(67, 87, 199, .15); border-color: var(--accent); }
 button { padding: 0.5rem 0.9rem; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); font-weight: 600; font-size: 0.85rem; cursor: pointer; transition: transform .1s ease, border-color .15s ease, background .15s ease; }
 button:hover { border-color: #c6cee2; }

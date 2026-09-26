@@ -19,6 +19,7 @@ async function json<T>(res: Response): Promise<T> {
 }
 export const api = {
   status: () => fetch(`${P}/status`).then((r) => json<Status>(r)),
+  organizations: () => fetch(`${P}/github-organizations`).then((r) => json<{ organizations: string[]; owner: string | null }>(r)),
   login: (cli: Cli) => fetch(`${P}/${cli}/login`, { method: 'POST' }).then((r) => json<{ state: SessionState }>(r)),
   cancel: (cli: Cli) => fetch(`${P}/${cli}/cancel`, { method: 'POST' }).then((r) => json<{ state: SessionState }>(r)),
   code: (cli: Cli, code: string) => fetch(`${P}/${cli}/code`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code }) }).then((r) => json<{ state: SessionState }>(r)),
