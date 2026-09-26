@@ -14,7 +14,7 @@ let remote: Remote | null = null;
 
 beforeEach(async () => {
   root = (await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-draft-'))).replace(/\\/g, '/');
-  ws = { projectId: 'hello-app', root, repo: `${root}/repo`, worktrees: `${root}/worktrees`, graph: `${root}/graph`, knowledgeDb: `${root}/k.sqlite`, runs: `${root}/runs` };
+  ws = { projectId: 'hello-app', root, repo: `${root}/repo`, worktrees: `${root}/worktrees`, graph: `${root}/graph`, knowledgeDb: `${root}/k.sqlite`, secrets: `${root}/secrets`, runs: `${root}/runs` };
 });
 afterEach(async () => {
   await remote?.cleanup();

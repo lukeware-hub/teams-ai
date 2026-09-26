@@ -11,6 +11,7 @@ export interface Workspace {
   worktrees: string;
   graph: string;
   knowledgeDb: string;
+  secrets: string;
   runs: string;
 }
 
@@ -28,6 +29,7 @@ export function workspacePaths(cfg: Config, projectId: string, home?: string): W
     worktrees: path.posix.join(root, 'worktrees'),
     graph: path.posix.join(root, 'graph'),
     knowledgeDb: path.posix.join(root, 'knowledge.sqlite'),
+    secrets: path.posix.join(root, 'secrets'),
     runs: expandHome(cfg.paths.runs, home),
   };
 }

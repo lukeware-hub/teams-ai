@@ -57,7 +57,7 @@ function deps(scenario: Scenario, over: Partial<RunDeps> = {}): RunDeps {
   const root = path.join(remote.root, 'ws');
   return {
     cfg: loadConfig({ paths: { workspaces: root.replace(/\\/g, '/'), runs: path.join(remote.root, 'runs').replace(/\\/g, '/'), secrets: '/tmp/none' } }),
-    ws: { projectId: 'shop', root, repo: remote.repo, worktrees: path.join(root, 'wt'), graph: path.join(root, 'graph'), knowledgeDb: '', runs: path.join(remote.root, 'runs') },
+    ws: { projectId: 'shop', root, repo: remote.repo, worktrees: path.join(root, 'wt'), graph: path.join(root, 'graph'), knowledgeDb: '', secrets: path.join(root, 'secrets'), runs: path.join(remote.root, 'runs') },
     // Not the first spec: the fixture plan has no T0-scaffold / deploy-infrastructure tasks, which validatePlan requires on a first spec.
     project, spec, firstSpec: false,
     exec: exec.exec, ghExec: exec.exec,

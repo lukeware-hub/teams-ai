@@ -45,7 +45,7 @@ function deps(over: Partial<MergeStepsDeps> = {}): MergeStepsDeps {
   const ghRouted = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s)).on((s) => s.bin === 'gh', (s) => ghExec.exec(s));
   return {
     journal,
-    ws: { projectId: 'shop', root: remote.root, repo: remote.repo, worktrees: path.join(remote.root, 'wt'), graph: path.join(remote.root, 'graph'), knowledgeDb: '', runs: remote.root },
+    ws: { projectId: 'shop', root: remote.root, repo: remote.repo, worktrees: path.join(remote.root, 'wt'), graph: path.join(remote.root, 'graph'), knowledgeDb: '', secrets: path.join(remote.root, 'secrets'), runs: remote.root },
     exec: exec.exec,
     ghExec: ghRouted.exec,
     gates: async () => ({ results: [], blockingFailure: null }),

@@ -25,7 +25,7 @@ const deps = () => ({ ws, draft: draft(), runAgent: makeFakeRunAgent(script), se
 beforeEach(async () => {
   root = (await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'))).replace(/\\/g, '/');
   secretsDir = `${root}/secrets`;
-  ws = { projectId: 'hello-app', root, repo: `${root}/repo`, worktrees: `${root}/wt`, graph: `${root}/g`, knowledgeDb: `${root}/k.sqlite`, runs: `${root}/runs` };
+  ws = { projectId: 'hello-app', root, repo: `${root}/repo`, worktrees: `${root}/wt`, graph: `${root}/g`, knowledgeDb: `${root}/k.sqlite`, secrets: `${root}/secrets`, runs: `${root}/runs` };
   await createNewProject(draft(), 'Hello');
   script = {};
   calls.length = 0;

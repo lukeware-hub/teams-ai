@@ -151,10 +151,7 @@ export class RefineSession {
       'design.md': await readDoc(this.deps.draft, 'design.md'),
     } as Record<DocFile, string>;
     const present = await loadSecrets(this.deps.secretsDir);
-    const names = [...new Set([
-      ...(this.state.derived?.spec.externalDependencies ?? []).flatMap((d) => d.secretNames),
-      ...Object.keys(present),
-    ])].sort();
+    const names = Object.keys(present).sort();
     const secrets = names.map((name) => ({ name, present: name in present, hint: name in present ? present[name]!.slice(-4) : null }));
     const tokens = { inputTokens: 0, outputTokens: 0, costUsd: 0, steps: 0 };
     for (const e of this.journal.events) {
@@ -250,7 +247,9 @@ export class RefineSession {
 
   /** Spec (refinement) §3.6 steps 1–2. */
   async freeze(): Promise<{ spec: Spec; project: Project }> {
-    this.guard();
+    if (this.state.status === 'started') throw new ConflictError('session already started a run');
+    if (this.starting) throw new ConflictError('a start is already in progress');
+    if (this.running) await this.running;
     if (this.state.status !== 'ready' || this.state.stale) {
       throw new ConflictError(`session is ${this.state.status}${this.state.stale ? ' (stale)' : ''}; evaluate until ready`);
     }

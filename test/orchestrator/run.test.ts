@@ -75,7 +75,7 @@ function deps(script: Script, over: Partial<RunDeps> = {}): RunDeps {
       return { exitCode: 0 };
     });
   gh.install(exec);
-  const ws = { projectId: 'shop', root: path.join(remote.root, 'ws'), repo: remote.repo, worktrees: path.join(remote.root, 'ws', 'wt'), graph: path.join(remote.root, 'ws', 'graph'), knowledgeDb: '', runs: path.join(remote.root, 'runs') };
+  const ws = { projectId: 'shop', root: path.join(remote.root, 'ws'), repo: remote.repo, worktrees: path.join(remote.root, 'ws', 'wt'), graph: path.join(remote.root, 'ws', 'graph'), knowledgeDb: '', secrets: path.join(remote.root, 'ws', 'secrets'), runs: path.join(remote.root, 'runs') };
   return {
     cfg, ws, project, spec, firstSpec: false,
     exec: exec.exec, ghExec: exec.exec,
