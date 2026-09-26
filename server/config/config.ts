@@ -96,6 +96,9 @@ export const Config = z.object({
     })
     .prefault({}),
   github: z.object({ owner: z.string().min(1).optional() }).prefault({}),
+  /** The Claude Code sandbox (bubblewrap) for agent steps. Off only where the process already runs inside
+   * an isolation boundary that the sandbox cannot nest in, e.g. as root in the backend container. */
+  sandbox: z.object({ enabled: z.boolean().default(true) }).prefault({}),
   docker: z
     .object({
       /** When the orchestrator itself runs in a container, the daemon it talks to cannot see its paths.

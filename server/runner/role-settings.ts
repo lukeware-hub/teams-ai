@@ -39,10 +39,12 @@ export interface RoleSettingsInput {
   allowedDomains: readonly string[];
   /** Extra allow rules derived from the plan's commands (e.g. `Bash(pytest:*)` for a Python stack). */
   extraAllow?: readonly string[];
+  /** Config `sandbox.enabled`; defaults to on. */
+  sandboxEnabled?: boolean;
 }
 
 export interface RoleSettings {
-  sandbox: { enabled: true; network: { allowedDomains: string[] } };
+  sandbox: { enabled: boolean; network: { allowedDomains: string[] } };
   permissions: { allow: string[]; deny: string[] };
 }
 
@@ -54,7 +56,7 @@ export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSet
     ...ALWAYS_DENIED,
   ];
   return {
-    sandbox: { enabled: true, network: { allowedDomains: [...input.allowedDomains] } },
+    sandbox: { enabled: input.sandboxEnabled ?? true, network: { allowedDomains: [...input.allowedDomains] } },
     permissions: { allow: [...ROLE_ALLOW[role], ...(input.extraAllow ?? [])], deny: [...new Set(deny)] },
   };
 }

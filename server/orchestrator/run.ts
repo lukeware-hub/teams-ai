@@ -192,6 +192,7 @@ export class Run {
       settingsDir: path.posix.join(runDir(ws, this.runId), 'settings'),
       workspacesRoot: ws.root,
       network: { allowedDomains: ['registry.npmjs.org', ...(cfg.omniroute.enabled ? ['localhost'] : [])] },
+      sandbox: { enabled: cfg.sandbox.enabled },
       clock: this.clock,
     };
   }
