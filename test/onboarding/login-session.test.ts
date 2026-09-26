@@ -98,6 +98,15 @@ describe('LoginSession (claude flow)', () => {
     expect(reason).not.toContain('host-secret');
   });
 
+  it('rechecks GitHub after the device login process exits', async () => {
+    const h = harness({ cli: 'gh', command: { bin: 'gh', args: ['auth', 'login', '--web'] } });
+    h.probeResults.splice(0, 1, { ok: false, detail: 'not logged in' }, { ok: true, detail: 'diego-dm-morais' });
+    h.s.start();
+    h.ptys[0]!.emitExit(0);
+    await h.tick();
+    expect(h.s.state).toEqual({ name: 'done', detail: 'diego-dm-morais' });
+  });
+
   it('times out after ten minutes, killing the process', async () => {
     const h = harness();
     h.s.start();

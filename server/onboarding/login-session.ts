@@ -128,7 +128,11 @@ export class LoginSession {
   }
 
   private async verify(gen: number, exitCode: number | null): Promise<void> {
-    const result = await this.deps.probe().catch((err: Error) => ({ ok: false, detail: err.message }));
+    let result = await this.deps.probe().catch((err: Error) => ({ ok: false, detail: err.message }));
+    for (let attempt = 0; this.deps.cli === 'gh' && !result.ok && attempt < 3; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      result = await this.deps.probe().catch((err: Error) => ({ ok: false, detail: err.message }));
+    }
     if (gen !== this.generation) return;
     if (result.ok) this.set({ name: 'done', detail: result.detail });
     else {
