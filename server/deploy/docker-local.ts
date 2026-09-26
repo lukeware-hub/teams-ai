@@ -52,6 +52,9 @@ export class DockerLocalTarget implements DeployTarget {
     if (exists) {
       await this.docker(['rm', '-f', prev], undefined, 60_000); // a stale park from an interrupted apply
       parked = (await this.docker(['rename', name, prev], undefined, 60_000)).exitCode === 0;
+      // Parked but still running, it keeps the published port and the new container cannot bind it
+      // ("port is already allocated", 1387253335-001-r13). Rollback starts it again after renaming it back.
+      if (parked) await this.docker(['stop', prev], undefined, 60_000);
     }
     const args = ['run', '-d', '--name', name, '--restart', 'unless-stopped', '-p', `${this.deps.publishBind ?? '127.0.0.1'}:${intent.port}:${intent.port}`];
     const env: Record<string, string> = {};

@@ -43,6 +43,7 @@ describe('DockerLocalTarget', () => {
     const lines = fake.lines('docker');
     expect(lines[0]).toBe('build -t todo-api:spec-001-abc1234 /home/u/ws/repo');
     expect(lines).toContain('rename teams-ai-todo-api teams-ai-todo-api-prev');
+    expect(lines.indexOf('stop teams-ai-todo-api-prev')).toBeGreaterThan(lines.indexOf('rename teams-ai-todo-api teams-ai-todo-api-prev')); // the parked container must free the port
     const run = fake.calls.find((c) => c.args[0] === 'run')!;
     expect(run.args).toEqual(expect.arrayContaining(['-d', '--name', 'teams-ai-todo-api', '-p', '127.0.0.1:3000:3000', '-e', 'DATABASE_URL', 'todo-api:spec-001-abc1234']));
     expect(run.args.join(' ')).not.toContain('postgres://x');
