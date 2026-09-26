@@ -37,6 +37,7 @@ The onboarding login card follows the supplied Claude authentication reference: 
 - On desktop, the link, code field, send action, and cancel action share one baseline.
 - On narrow screens, the code field remains readable and actions wrap in the same order without horizontal scrolling.
 - The error state occupies a full-width row below the action controls.
+- Primary actions always sit in the upper-right position of their action area. They must not be stranded in the lower-left corner of a card.
 
 ## Components
 
