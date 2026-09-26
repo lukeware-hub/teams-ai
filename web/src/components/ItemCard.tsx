@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { Item } from '../api.js';
+import { Icon, type IconName } from './Icons.js';
 
 function friendlyDetail(detail: string) {
   const normalized = detail.trim().toLowerCase();
@@ -12,18 +13,24 @@ function friendlyDetail(detail: string) {
   return detail;
 }
 
-export function ItemCard({ title, item, children }: { title: string; item: Item | null; children?: ReactNode }) {
+export function ItemCard({ title, item, children, variant = 'default', subtitle, icon }: { title: string; item: Item | null; children?: ReactNode; variant?: 'default' | 'claude'; subtitle?: string; icon?: IconName }) {
   const status = item === null ? 'checking' : item.ok ? 'ok' : 'todo';
   const statusLabel = status === 'checking' ? 'Verificando' : status === 'ok' ? 'Concluído' : 'Pendente';
   return (
-    <section className={`card card-${status} onboarding-card`} data-testid={`card-${title}`}>
+    <section className={`card card-${status} onboarding-card${variant === 'claude' ? ' claude-login-card' : ''}`} data-testid={`card-${title}`}>
       <header className="onboarding-card-header">
-        <span className="dot" aria-label={status === 'checking' ? 'verificando' : status === 'ok' ? 'concluído' : 'pendente'} />
-        <h2>{title}</h2>
+        {icon ? <span className="card-icon"><Icon name={icon} size={variant === 'claude' ? 38 : 24} /></span> : <span className="dot" aria-label={status === 'checking' ? 'verificando' : status === 'ok' ? 'concluído' : 'pendente'} />}
+        <div className="card-title-block">
+          <h2>{title}</h2>
+          {subtitle ? <p className="card-subtitle">{subtitle}</p> : null}
+        </div>
         <span className="status-chip">{statusLabel}</span>
         {item?.secret?.set ? <code className="hint">…{item.secret.hint}</code> : null}
       </header>
-      <p className="detail onboarding-detail">{item === null ? 'Verificando…' : friendlyDetail(item.detail)}</p>
+      <p className="detail onboarding-detail">
+        {variant === 'claude' ? <span className="detail-icon"><Icon name="user" size={22} /></span> : null}
+        <span>{item === null ? 'Verificando…' : friendlyDetail(item.detail)}</span>
+      </p>
       {children}
     </section>
   );

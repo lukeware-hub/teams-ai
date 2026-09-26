@@ -13,6 +13,8 @@
   --bad-soft: #fdeceb;
   --warn: #96620d;
   --warn-soft: #fff3d5;
+  --control-height: 3rem;
+  --control-radius: 10px;
 }
 * { box-sizing: border-box; }
 body { margin: 0; -webkit-font-smoothing: antialiased; }
@@ -26,9 +28,9 @@ h1 { font-size: 1.5rem; letter-spacing: -0.01em; margin: 0 0 0.15rem; }
 .card-todo .dot { background: var(--bad); }
 .detail { color: var(--ink-soft); margin: 0.5rem 0; }
 .controls, form { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
-input, select { flex: 1; min-width: 12rem; padding: 0.5rem 0.65rem; border: 1px solid var(--line); border-radius: 8px; font: inherit; color: var(--ink); background: #fff; }
+input, select { flex: 1; min-width: 12rem; height: var(--control-height); padding: 0.5rem 0.75rem; border: 1px solid var(--line); border-radius: var(--control-radius); font: inherit; color: var(--ink); background: #fff; }
 input:focus { outline: 3px solid rgba(67, 87, 199, .15); border-color: var(--accent); }
-button { padding: 0.5rem 0.9rem; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); font-weight: 600; font-size: 0.85rem; cursor: pointer; transition: transform .1s ease, border-color .15s ease, background .15s ease; }
+button { height: var(--control-height); padding: 0.5rem 0.9rem; border: 1px solid var(--line); border-radius: var(--control-radius); background: #fff; color: var(--ink); font-weight: 600; font-size: 0.85rem; cursor: pointer; transition: transform .1s ease, border-color .15s ease, background .15s ease; }
 button:hover { border-color: #c6cee2; }
 button:active { transform: scale(.98); }
 button:disabled { cursor: not-allowed; opacity: .5; }
@@ -64,6 +66,29 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .card-todo .status-chip { color: var(--bad); background: var(--bad-soft); }
 .onboarding-card .hint { flex: 0 0 auto; font-size: 0.72rem; }
 .onboarding-card .onboarding-detail { margin: 0 0 1.1rem; overflow-wrap: anywhere; font-size: 0.9rem; line-height: 1.45; }
+.card-title-block { min-width: 0; flex: 1; }
+.card-title-block h2 { flex: none; }
+.card-subtitle { margin: 0.35rem 0 0; color: var(--ink-soft); font-size: 0.96rem; line-height: 1.35; }
+.card-icon { display: inline-grid; flex: 0 0 auto; place-items: center; width: 4.2rem; height: 4.2rem; border: 1px solid #f6d9ca; border-radius: 1.1rem; color: #d86b47; background: #fff0e8; box-shadow: 0 8px 18px rgba(216, 107, 71, .12); }
+.detail-icon { display: inline-grid; flex: 0 0 auto; place-items: center; width: 2.8rem; height: 2.8rem; border-radius: 50%; color: #2f65e8; background: #e9f0ff; }
+.claude-login-card { overflow: hidden; padding: 0 1.35rem 1.25rem; border-radius: 24px; border-color: #dce7f6; }
+.claude-login-card .onboarding-card-header { align-items: center; margin: 0 -1.35rem 1.15rem; padding: 1.3rem 1.35rem; border-bottom: 0; border-radius: 24px 24px 1.2rem 1.2rem; background: radial-gradient(circle at 88% 16%, rgba(255, 231, 220, .9), transparent 42%), #fffaf8; }
+.claude-login-card .onboarding-card-header h2 { font-size: clamp(1.35rem, 2.5vw, 2rem); letter-spacing: -0.035em; }
+.claude-login-card .status-chip { min-height: 2.2rem; padding: 0.35rem 0.9rem; color: var(--good); background: var(--good-soft); font-size: 0.88rem; }
+.claude-login-card .onboarding-detail { display: flex; align-items: center; gap: 0.85rem; margin-bottom: 1.15rem; padding-bottom: 1.05rem; border-bottom: 1px solid var(--line); font-size: 1.1rem; }
+.claude-login-card .onboarding-detail > span:last-child { font-weight: 700; color: var(--ink); }
+.claude-login-card .onboarding-detail > span:last-child::after { content: ''; }
+.claude-login-card .link-button, .claude-login-card .primary-button, .claude-login-card .secondary { display: inline-flex; align-items: center; justify-content: center; gap: 0.55rem; height: var(--control-height); padding: 0.65rem 1rem; font-size: 0.95rem; }
+.claude-login-card .link-button { border-color: #cbd9ff; background: #f2f5ff; }
+.claude-login-card .code-form { padding: 0.9rem 1rem; border-color: #e1e8f8; border-radius: 16px; background: #f8faff; }
+.claude-login-card .code-label { font-size: 0.88rem; }
+.claude-login-card .code-label input { height: var(--control-height); font-size: 1rem; }
+.claude-login-card .primary-button { border-color: #2f65e8; background: #2f65e8; box-shadow: 0 8px 16px rgba(47, 101, 232, .2); }
+.claude-login-card .primary-button:hover { border-color: #2458d5; background: #2458d5; }
+.claude-login-card .terminal-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; margin-top: 1.1rem; padding: 1rem 0 0.15rem; border-top: 1px solid var(--line); }
+.terminal-toggle-label { display: inline-flex; align-items: center; gap: 0.7rem; }
+.claude-login-card .terminal-toggle-label svg { color: #2f65e8; }
+.claude-login-card .terminal-toggle > svg { color: var(--ink-soft); }
 .login-controls { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: end; min-width: 0; gap: 0.75rem; }
 .primary-button { border-color: var(--ink); color: #fff; background: var(--ink); }
 .primary-button:hover { border-color: #273657; background: #273657; }
@@ -92,8 +117,10 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .onboarding-shell button:focus-visible, .onboarding-shell a:focus-visible, .onboarding-shell input:focus-visible { outline: 3px solid rgba(67, 87, 199, .28); outline-offset: 2px; }
 
 @media (max-width: 720px) {
-  .onboarding-shell { width: 100%; min-width: 0; padding-top: 2rem; }
+  .onboarding-shell { width: calc(100vw - 2rem); max-width: calc(100vw - 2rem); min-width: 0; padding-top: 2rem; }
+  .setup-hero, .setup-grid, .onboarding-card { width: 100%; max-width: 100%; }
   .setup-hero { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; min-width: 0; }
+  .setup-hero > div:first-child, .setup-intro { width: 100%; min-width: 0; }
   .setup-hero h1, .setup-intro { max-width: 100%; overflow-wrap: anywhere; }
   .setup-progress { width: 100%; min-width: 0; }
   .setup-grid, .onboarding-card { min-width: 0; }
@@ -108,7 +135,12 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   .login-controls.with-code .browser-step, .login-controls.with-code > .secondary { margin-bottom: 0; }
   .login-status-error { grid-row: 2; }
   .onboarding-card-header { align-items: flex-start; }
+  .onboarding-card-header { flex-wrap: wrap; }
   .status-chip { margin-left: auto; }
+  .claude-login-card .onboarding-card-header { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 0.75rem; row-gap: 0.5rem; }
+  .claude-login-card .card-icon { grid-row: 1 / span 2; }
+  .claude-login-card .card-title-block, .claude-login-card .status-chip { grid-column: 2; }
+  .claude-login-card .status-chip { justify-self: start; margin-left: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {

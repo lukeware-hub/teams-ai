@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type Cli, type Item, type SessionState } from '../api.js';
 import { ItemCard } from './ItemCard.js';
+import { Icon } from './Icons.js';
 import { useSse } from '../useSse.js';
 
 function friendlyLoginReason(reason: string) {
@@ -47,13 +48,13 @@ export function LoginCard({ cli, title, item, onDone }: { cli: Cli; title: strin
     onDone();
   }, [onDone, state.name, url]);
   return (
-    <ItemCard title={title} item={item}>
+    <ItemCard title={title} item={item} variant={cli === 'claude' ? 'claude' : 'default'} subtitle={cli === 'claude' ? 'Acesse sua conta do Claude de forma rápida e segura.' : undefined} icon={cli === 'claude' ? 'claude' : undefined}>
       <LoginControls state={state} code={code} onCode={setCode} onStart={start} onSend={send} onCancel={() => api.cancel(cli)} />
       {error ? <p className="error">{error}</p> : null}
       {url ? (
         <button type="button" className="link terminal-toggle" aria-expanded={showOutput} onClick={() => setShowOutput((v) => !v)}>
-          <span className="terminal-toggle-dot" aria-hidden="true" />
-          {showOutput ? 'Ocultar saída do CLI' : 'Mostrar saída do CLI'}
+          <span className="terminal-toggle-label"><Icon name="terminal" size={22} />{showOutput ? 'Ocultar saída do CLI' : 'Mostrar saída do CLI'}</span>
+          <Icon name="chevron" size={22} />
         </button>
       ) : null}
       {showOutput ? (
@@ -80,6 +81,7 @@ export function LoginControls({ state, code, onCode, onStart, onSend, onCancel }
         <div className="browser-step">
           {state.url ? (
             <a className="link-button" href={state.url} target="_blank" rel="noreferrer">
+              <Icon name="external" size={22} />
               Abrir link
             </a>
           ) : null}
@@ -100,15 +102,17 @@ export function LoginControls({ state, code, onCode, onStart, onSend, onCancel }
         >
           <label className="code-label">
             <span>Cole o código mostrado pela página</span>
-            <input data-testid="code-input" value={code} onChange={(e) => onCode(e.target.value)} autoComplete="off" />
+            <input data-testid="code-input" value={code} onChange={(e) => onCode(e.target.value)} placeholder="Cole o código aqui…" autoComplete="off" />
           </label>
           <button type="submit" className="primary-button" disabled={code.trim() === ''}>
+            <Icon name="send" size={20} />
             Enviar
           </button>
         </form>
       ) : null}
       {live ? (
         <button type="button" className="secondary" onClick={onCancel}>
+          <Icon name="close" size={22} />
           Cancelar
         </button>
       ) : null}
