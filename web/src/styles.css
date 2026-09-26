@@ -107,6 +107,11 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .owner-form select { width: 100%; min-width: 0; }
 .owner-form .primary-button { border-color: #2f65e8; background: #2f65e8; box-shadow: 0 8px 16px rgba(47, 101, 232, .2); }
 .owner-form .primary-button:hover { border-color: #2458d5; background: #2458d5; }
+.secret-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 0.7rem; width: 100%; }
+.secret-field { display: grid; gap: 0.38rem; min-width: 0; color: var(--ink-soft); font-size: 0.74rem; font-weight: 700; }
+.secret-field input { width: 100%; min-width: 0; }
+.secret-form .primary-button { border-color: #2f65e8; background: #2f65e8; box-shadow: 0 8px 16px rgba(47, 101, 232, .2); }
+.secret-form .primary-button:hover { border-color: #2458d5; background: #2458d5; }
 .code-label { display: grid; gap: 0.38rem; min-width: 0; color: var(--ink-soft); font-size: 0.74rem; font-weight: 700; }
 .code-label input { width: 100%; min-width: 0; }
 .login-controls > .secondary { grid-column: 3; grid-row: 1; }
@@ -142,6 +147,8 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   .code-form button { width: 100%; }
   .owner-form { grid-template-columns: 1fr; }
   .owner-form button { width: 100%; }
+  .secret-form { grid-template-columns: 1fr; }
+  .secret-form button { width: 100%; }
   .login-controls > .secondary { grid-column: 2; grid-row: 1; }
   .login-controls.with-code .browser-step, .login-controls.with-code > .secondary { margin-bottom: 0; }
   .login-status-error { grid-row: 2; }
