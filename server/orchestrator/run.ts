@@ -492,7 +492,8 @@ export class Run {
         const p5 = await runPhase5(this.phaseDeps(), attempt);
         if (p5.ok) break;
         if (!p5.fixTask) { result = 'deploy-failed'; break; }
-        const back = await runFix([p5.fixTask]); if (back !== 'merged') { result = 'deploy-failed'; break; }
+        // Same rule as Phase 4: the fix task is best effort and the next deploy attempt is the verdict.
+        const back = await runFix([p5.fixTask]); if (back !== 'merged' && back !== 'blocked') { result = 'deploy-failed'; break; }
       }
     }
     const p6 = await runPhase6({ ...this.phaseDeps(), runId: this.runId, accounting: this.accounting, result });
