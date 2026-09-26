@@ -18,7 +18,7 @@ import type { TestResult } from '../evidence/junit.js';
 import { verifyClaimedEvidence } from '../evidence/matrix.js';
 import type { Exec } from '../exec/command.js';
 import type { GateResult } from '../exec/gate-runner.js';
-import { changedFiles, commitAll, createWorktree, fetch as gitFetch, git } from '../git/git.js';
+import { changedFiles, commitAll, createWorktree, fetch as gitFetch, git, removeWorktree } from '../git/git.js';
 import type { MergeQueue, MergeSteps } from '../git/merge-queue.js';
 import type { CodeContext, HandoffSummary } from '../knowledge/context-pack.js';
 import { RunEvent, type TaskRuntime } from '../pipeline/run-state.js';
@@ -180,9 +180,19 @@ export class TaskRunner {
     const { journal, ws, exec } = this.deps;
     await gitFetch(ws.repo, exec);
     const confirmed = journal.isConfirmed(Intent.WorktreeCreate, this.taskId);
-    if (!confirmed) await journal.intent(Intent.WorktreeCreate, this.taskId, { worktree: this.worktree, branch: this.branch });
-    await createWorktree(ws.repo, this.worktree, this.branch, 'origin/main', exec);
-    if (!confirmed) await journal.confirm(Intent.WorktreeCreate, this.taskId, {});
+    if (confirmed) {
+      // This run already created it (resume after a crash): keep whatever the Dev committed there.
+      await createWorktree(ws.repo, this.worktree, this.branch, 'origin/main', exec);
+      return;
+    }
+    await journal.intent(Intent.WorktreeCreate, this.taskId, { worktree: this.worktree, branch: this.branch });
+    // First touch by this run: a worktree or branch of the same name is a leftover from an earlier run of
+    // this spec (they are not cleaned up when a run ends blocked), and its commits must not leak into
+    // this run - seen live when a new run picked up a superseded scaffold branch with the changes a
+    // review had just rejected. Start from origin/main.
+    await removeWorktree(ws.repo, this.worktree, exec);
+    await createWorktree(ws.repo, this.worktree, this.branch, 'origin/main', exec, { reset: true });
+    await journal.confirm(Intent.WorktreeCreate, this.taskId, {});
   }
 
   private async refContext(): Promise<RefContext> {
@@ -226,7 +236,7 @@ export class TaskRunner {
     this.specGapRounds = 0;
     // Gate artifacts (the JUnit report) are written by the orchestrator, not by the Dev, and are never committed.
     const touched = (await porcelainNames(this.worktree, this.deps.exec)).filter((f) => f !== this.deps.plan.junitPath);
-    const scope = checkScope({ changedFiles: touched, affectedPaths: task.def.affectedPaths, frozenPaths: this.deps.plan.frozenPaths, scopeJustification: value.scopeJustification, allowFrozen: this.deps.firstSpec && this.taskId === 'T0-scaffold' });
+    const scope = checkScope({ changedFiles: touched, affectedPaths: task.def.affectedPaths, frozenPaths: this.deps.plan.frozenPaths, scopeJustification: value.scopeJustification, allowFrozen: this.deps.firstSpec && task.bootstrapsFrozenPaths });
     if (!scope.ok) return this.fail('review-changes', `Scope violation:\n${scope.errors.join('\n')}`);
     this.scopeJustification = value.scopeJustification;
     // baseSha lets reconcile tell "committed, then crashed" from "crashed before committing" (spec §6).
@@ -439,7 +449,7 @@ export class TaskRunner {
   /** Returns false only for an early replan the SM could not produce; the policy path blocks instead. */
   private async replan(opts: { early?: boolean } = {}): Promise<boolean> {
     const history = this.deps.journal.events.filter((e) => e.type === OrchEvent.Feedback && e.data.taskId === this.taskId).map((e) => String(e.data.text));
-    const outcome = await this.deps.runAgent<'replan'>({ kind: 'replan', role: 'sm', pack: replanPack(this.deps.packBase(), this.task.def, { history, boundaries: await this.deps.boundaries() }), cwd: this.deps.ws.repo, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts });
+    const outcome = await this.deps.runAgent<'replan'>({ kind: 'replan', role: 'sm', pack: replanPack(this.deps.packBase(), this.task.def, { history, boundaries: await this.deps.boundaries(), atomic: this.task.bootstrapsFrozenPaths }), cwd: this.deps.ws.repo, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts });
     if (!outcome.ok) {
       if (outcome.failure === 'quota' || outcome.failure === 'auth') {
         await this.fail(outcome.failure, outcome.errors.join('\n'));
@@ -468,6 +478,9 @@ export class TaskRunner {
     const known = new Set(this.deps.journal.state.tasks.keys());
     const newIds = new Set(replacements.map((r) => r.id));
     if (newIds.size !== replacements.length) errors.push('duplicate replacement ids');
+    // The scaffold makes the gates runnable; a piece of it cannot pass them (seen live: a scripts-only
+    // replacement failed lint/typecheck/build for lack of the toolchain its sibling task owned).
+    if (this.task.bootstrapsFrozenPaths && replacements.length !== 1) errors.push(`${this.taskId} is the scaffold task and must be replanned into exactly one task, got ${replacements.length}`);
     for (const r of replacements) {
       if (known.has(r.id)) errors.push(`replacement ${r.id} reuses an existing task id`);
       for (const d of r.dependsOn) {

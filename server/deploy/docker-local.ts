@@ -6,14 +6,17 @@ const TIMEOUT = 600_000;
 export class DockerLocalTarget implements DeployTarget {
   readonly name = 'docker-local' as const;
 
-  constructor(private readonly deps: { exec: Exec; get: HttpGet; secrets: Record<string, string> }) {}
+  /** `serviceHost` is where the orchestrator (and the smoke gate) reach the service; `publishBind` is the
+   * address the container port is published on. Both default to loopback; when the orchestrator itself
+   * runs in a container the service lives on the host daemon, so it needs host.docker.internal / 0.0.0.0. */
+  constructor(private readonly deps: { exec: Exec; get: HttpGet; secrets: Record<string, string>; serviceHost?: string; publishBind?: string }) {}
 
   private container(intent: DeploymentIntent) {
     return `teams-ai-${intent.projectId}`;
   }
 
   baseUrl(intent: DeploymentIntent) {
-    return `http://127.0.0.1:${intent.port}`;
+    return `http://${this.deps.serviceHost ?? '127.0.0.1'}:${intent.port}`;
   }
 
   serviceUrl(intent: DeploymentIntent) { return this.baseUrl(intent); }
@@ -49,8 +52,11 @@ export class DockerLocalTarget implements DeployTarget {
     if (exists) {
       await this.docker(['rm', '-f', prev], undefined, 60_000); // a stale park from an interrupted apply
       parked = (await this.docker(['rename', name, prev], undefined, 60_000)).exitCode === 0;
+      // Parked but still running, it keeps the published port and the new container cannot bind it
+      // ("port is already allocated", 1387253335-001-r13). Rollback starts it again after renaming it back.
+      if (parked) await this.docker(['stop', prev], undefined, 60_000);
     }
-    const args = ['run', '-d', '--name', name, '--restart', 'unless-stopped', '-p', `127.0.0.1:${intent.port}:${intent.port}`];
+    const args = ['run', '-d', '--name', name, '--restart', 'unless-stopped', '-p', `${this.deps.publishBind ?? '127.0.0.1'}:${intent.port}:${intent.port}`];
     const env: Record<string, string> = {};
     for (const n of intent.secretNames) {
       args.push('-e', n);

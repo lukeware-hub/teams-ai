@@ -43,6 +43,7 @@ describe('DockerLocalTarget', () => {
     const lines = fake.lines('docker');
     expect(lines[0]).toBe('build -t todo-api:spec-001-abc1234 /home/u/ws/repo');
     expect(lines).toContain('rename teams-ai-todo-api teams-ai-todo-api-prev');
+    expect(lines.indexOf('stop teams-ai-todo-api-prev')).toBeGreaterThan(lines.indexOf('rename teams-ai-todo-api teams-ai-todo-api-prev')); // the parked container must free the port
     const run = fake.calls.find((c) => c.args[0] === 'run')!;
     expect(run.args).toEqual(expect.arrayContaining(['-d', '--name', 'teams-ai-todo-api', '-p', '127.0.0.1:3000:3000', '-e', 'DATABASE_URL', 'todo-api:spec-001-abc1234']));
     expect(run.args.join(' ')).not.toContain('postgres://x');
@@ -206,5 +207,23 @@ describe('runDeployment', () => {
       { smoke: smokeOk, baseUrl: 'u' },
     );
     expect(r).toEqual({ ok: false, stage: 'verify', detail: 'down; rollback failed: docker run failed', rolledBack: false, rollbackHealthy: false });
+  });
+});
+
+describe('imageRef', () => {
+  it('replaces a tag the plan already put on the image and keeps a registry port', async () => {
+    const { imageName, imageRef } = await import('../../server/deploy/target.js');
+    expect(imageName('client-management:latest')).toBe('client-management');
+    expect(imageName('ghcr.io/acme/app:1.2')).toBe('ghcr.io/acme/app');
+    expect(imageName('localhost:5000/app')).toBe('localhost:5000/app');
+    expect(imageRef({ image: 'client-management:latest', tag: '44e0b56' } as never)).toBe('client-management:44e0b56');
+  });
+});
+
+describe('DockerLocalTarget: containerized orchestrator', () => {
+  it('reaches the service through serviceHost and publishes on publishBind', async () => {
+    const { DockerLocalTarget } = await import('../../server/deploy/docker-local.js');
+    const t = new DockerLocalTarget({ exec: async () => ({ exitCode: 0, signal: null, stdout: '', stderr: '', timedOut: false, durationMs: 1, truncated: false }), get: async () => ({ status: 200, body: '' }), secrets: {}, serviceHost: 'host.docker.internal', publishBind: '0.0.0.0' });
+    expect(t.baseUrl({ port: 3000 } as never)).toBe('http://host.docker.internal:3000');
   });
 });

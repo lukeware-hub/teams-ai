@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { PlanTask } from '../contracts/plan.js';
-import { findCycle } from '../validators/plan.js';
+import { findCycle, SCAFFOLD_TASK_ID } from '../validators/plan.js';
 import { TASK_STATES, TERMINAL_STATES, assertTransition, type TaskState } from './task-state.js';
 
 export interface TaskRuntime {
@@ -11,6 +11,10 @@ export interface TaskRuntime {
   infraRetries: Record<string, number>;
   flakyRetries: Record<string, number>;
   replacedBy: string[];
+  /** True for T0-scaffold and, transitively, for whatever the SM replans it into - the one task allowed
+   * to write the frozen docs it bootstraps (spec (orchestrator) §4). Tracked by lineage, not by id, so a
+   * replan (which the SM is trusted to author) doesn't silently strip the permission from its own work. */
+  bootstrapsFrozenPaths: boolean;
 }
 
 export const RUN_STATUSES = ['running', 'paused:quota', 'paused:auth', 'draining'] as const;
@@ -66,7 +70,8 @@ export function reduceEvents(events: Iterable<ReducibleEvent>): RunState {
 export function applyEvent(state: RunState, event: ReducibleEvent): void {
   switch (event.type) {
     case RunEvent.TaskPlanned: {
-      addTask(state, TaskPlannedData.parse(event.data).task, false);
+      const planned = TaskPlannedData.parse(event.data).task;
+      addTask(state, planned, false, planned.id === SCAFFOLD_TASK_ID);
       return;
     }
     case RunEvent.TaskStateChanged: {
@@ -121,7 +126,7 @@ export function applyEvent(state: RunState, event: ReducibleEvent): void {
   }
 }
 
-function addTask(state: RunState, def: PlanTask, replanned: boolean): void {
+function addTask(state: RunState, def: PlanTask, replanned: boolean, bootstrapsFrozenPaths = false): void {
   if (state.tasks.has(def.id)) throw new DuplicateTaskError(`task ${def.id} already exists`);
   state.tasks.set(def.id, {
     def,
@@ -131,6 +136,7 @@ function addTask(state: RunState, def: PlanTask, replanned: boolean): void {
     infraRetries: {},
     flakyRetries: {},
     replacedBy: [],
+    bootstrapsFrozenPaths,
   });
   state.order.push(def.id);
 }
@@ -175,7 +181,7 @@ function replan(state: RunState, { taskId, replacements }: { taskId: string; rep
   const cycle = findCycle(futureDefs);
   if (cycle) throw new ReplanError(`replan would create a dependency cycle: ${cycle.join(' -> ')}`);
 
-  for (const replacement of replacements) addTask(state, replacement, true);
+  for (const replacement of replacements) addTask(state, replacement, true, original.bootstrapsFrozenPaths);
   original.state = 'superseded';
   original.replacedBy = ids;
   for (const [id, def] of rewired) getTask(state, id).def = def;

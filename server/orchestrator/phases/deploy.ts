@@ -3,6 +3,7 @@ import { runDeployment, type DeploymentIntent, type DeployStage } from '../../de
 import type { SmokeRow } from '../../exec/smoke.js';
 import { RunEvent } from '../../pipeline/run-state.js';
 import { Intent, OrchEvent } from '../events.js';
+import { SMOKE_CONTRACT } from '../steps.js';
 import { checkoutMain, type PhaseDeps } from './shared.js';
 
 export type Phase5Result = { ok: true; url: string; smoke: SmokeRow[]; healthcheck: string } | { ok: false; reason: string; fixTask?: PlanTask };
@@ -12,7 +13,28 @@ export function deployIntent(deps: PhaseDeps, tag: string): DeploymentIntent {
   const p = deps.plan!;
   return { projectId: deps.project.projectId, image: p.deploy.image, tag, port: p.deploy.port, healthcheckPath: p.deploy.healthcheckPath, manifests: [...p.deploy.manifests], secretNames: deps.secretNames ? deps.secretNames() : [...new Set(deps.spec.externalDependencies.flatMap((d) => d.secretNames))], contextDir: deps.ws.repo };
 }
-const fixTask = (deps: PhaseDeps, attempt: number, stage: DeployStage, detail: string): PlanTask => ({ id: `T950-deploy-fix-${attempt}`, title: `Fix deployment (${stage})`, description: `Deploy attempt ${attempt} failed at ${stage}: ${detail}`, criteriaRefs: [], dependsOn: [], affectedPaths: [...deps.plan!.deploy.manifests, 'Dockerfile'], owner: 'devops', origin: 'deploy-fix' });
+// Ids are assigned here and must stay unique across attempts and resumes (a resumed attempt re-issued
+// T950-deploy-fix-1 and the reducer rejected it - 1387253335-001-r13).
+const fixTaskId = (deps: PhaseDeps) => `T950-deploy-fix-${[...deps.journal.state.tasks.keys()].filter((id) => id.startsWith('T950-deploy-fix-')).length + 1}`;
+const fixTask = (deps: PhaseDeps, attempt: number, stage: DeployStage, detail: string): PlanTask => {
+  const base = { id: fixTaskId(deps), title: `Fix deployment (${stage})`, criteriaRefs: [], dependsOn: [], origin: 'deploy-fix' as const };
+  // A smoke failure is about the smoke tests, not the manifests: the Dev owns it and must know the contract.
+  if (stage === 'smoke') {
+    return { ...base, description: `Deploy attempt ${attempt} succeeded but the smoke suite did not prove the smoke criteria: ${detail}
+
+Contract: ${SMOKE_CONTRACT}`, affectedPaths: ['tests/smoke/**', 'tests/smoke', 'vitest.config.ts', 'package.json'], owner: 'dev' };
+  }
+  return { ...base, description: `Deploy attempt ${attempt} failed at ${stage}: ${detail}`, affectedPaths: [...deps.plan!.deploy.manifests, 'Dockerfile'], owner: 'devops' };
+};
+
+/** Resuming a new process restarts postPhases()'s attempt loop at 1; without this it replayed attempt 1's
+ * already-resolved failure on every resume (new fix task, wasted tokens, never reaching later attempts -
+ * 1387253335-001-r13). Each root deploy-fix task (not its `-rN` replan children) that reached a terminal
+ * state stands for one attempt cycle that is done; the next attempt starts after all of them. */
+export function deployStartAttempt(deps: PhaseDeps): 1 | 2 | 3 {
+  const done = [...deps.journal.state.tasks.entries()].filter(([id, t]) => /^T950-deploy-fix-\d+$/.test(id) && ['merged', 'blocked'].includes(t.state)).length;
+  return Math.min(1 + done, 3) as 1 | 2 | 3;
+}
 
 export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3): Promise<Phase5Result> {
   if (!deps.plan || !deps.target || !deps.smoke) throw new Error('Phase 5 needs plan, target and smoke');

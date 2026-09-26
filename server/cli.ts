@@ -165,6 +165,9 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   if (errors.length > 0) throw new Error(`preconditions failed:\n- ${errors.join('\n- ')}`);
   const agents = await loadAgents(path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '.claude', 'agents'));
   const graphify = new Graphify({ exec, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null) });
+  // A `--draft` first run's workspace root (ws.root, parent of knowledgeDb) doesn't exist yet — Phase 0
+  // creates ws.repo underneath it — so ensure it exists before SQLite tries to open a file inside it.
+  await fs.mkdir(ws.root, { recursive: true });
   const knowledge = KnowledgeIndex.open(ws.knowledgeDb);
   const firstSpec = (await fs.readdir(path.join(projectDir, 'docs', 'specs'))).length === 1;
   let binary: RunDeps['binary'] = { bin: io.env.CLAUDE_BIN ?? 'claude', prefixArgs: [], env: {}, requireSandboxTools: process.platform === 'linux' };
@@ -179,7 +182,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   const bootstrap = opts.draft ? { docsDir: path.join(projectDir, 'docs'), owner: project.github.owner ?? cfg.github.owner } : undefined;
   const target = project.deploy.target === 'kind'
     ? new KindTarget({ exec, secrets, cluster: 'teams-ai', readFile: (p) => fs.readFile(p, 'utf8') })
-    : new DockerLocalTarget({ exec, get: httpGet, secrets });
+    : new DockerLocalTarget({ exec, get: httpGet, secrets, serviceHost: cfg.docker.serviceHost, publishBind: cfg.docker.publishBind });
   return { cfg, ws, project, spec, firstSpec, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target };
 }
 

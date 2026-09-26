@@ -1,0 +1,30 @@
+# Runs the teams-ai backend as a container that itself drives Docker on the host (gates, deploys,
+# the Dev's sandbox). Every setting here was required live in this session; see the commit history on
+# main-3 (bindRewrite, sandbox.enabled, serviceHost/publishBind, npm 12, security-opt) for why.
+services:
+  backend:
+    build: .
+    image: teams-ai-backend:local
+    ports:
+      - '8787:8787'
+    # The bwrap sandbox Claude Code uses for each agent step needs user namespaces, which Docker's
+    # default seccomp/apparmor profiles block for a root process. Without this the Dev has no shell at
+    # all in dontAsk mode - see server/config/config.ts sandbox.enabled for the alternative of turning
+    # the sandbox off entirely instead of loosening the container.
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    volumes:
+      - teams-ai-config:/root/.teams-ai
+      - teams-ai-claude:/root/.claude
+      - teams-ai-gh:/root/.config/gh
+      # Talk to the HOST's Docker daemon (Docker Desktop's proxy socket), not one inside this
+      # container - server/exec/gate-runner.ts binds the worktree by path, so config.json's
+      # docker.bindRewrite must translate this container's paths into the daemon's view of them
+      # (see config.example.json).
+      - /run/host-services/docker.proxy.sock:/var/run/docker.sock
+
+volumes:
+  teams-ai-config:
+  teams-ai-claude:
+  teams-ai-gh:

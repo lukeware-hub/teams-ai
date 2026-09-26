@@ -17,7 +17,7 @@ describe('buildRoleSettings', () => {
       const deny = buildRoleSettings(role, { allowedDomains: [] }).permissions.deny;
       for (const p of PROTECTED_READ_PATHS) expect(deny, role).toContain(`Read(${p})`);
       expect(deny, role).toContain('Edit(.claude/**)');
-      expect(deny, role).toContain('Write(.claude/**)');
+      expect(deny, role).not.toContain('Write(.claude/**)'); // not a valid file rule; Claude warns and ignores it
       for (const d of ALWAYS_DENIED) expect(deny, role).toContain(d);
     }
   });
@@ -67,5 +67,14 @@ describe('writeRoleSettings', () => {
     const json = JSON.parse(await fs.readFile(file, 'utf8'));
     expect(json.sandbox.enabled).toBe(true);
     expect(json.permissions.deny).toContain('Bash(gh:*)');
+  });
+});
+
+describe('sandbox.enabled', () => {
+  it('turns the sandbox off when the config says so, keeping the permission rules', async () => {
+    const { buildRoleSettings } = await import('../../server/runner/role-settings.js');
+    const s = buildRoleSettings('dev', { allowedDomains: ['registry.npmjs.org'], sandboxEnabled: false });
+    expect(s.sandbox).toEqual({ enabled: false, network: { allowedDomains: ['registry.npmjs.org'] } });
+    expect(s.permissions.allow).toContain('Bash(npm:*)');
   });
 });

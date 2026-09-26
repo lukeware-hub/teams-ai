@@ -103,12 +103,19 @@ export function coveragePack(base: PackBase, opts: { techSpecText: string }): Co
 }
 
 /** The validator's rules, stated before the SM plans; learning them by rejection costs a step each time. */
+/** How Phase 5 runs commands.smoke; the Dev writing the smoke tests must know it (SERVICE_URL was never
+ * mentioned to any agent, and the first live smoke suite built and started containers itself). */
+export const SMOKE_CONTRACT =
+  'commands.smoke runs inside gateImage against a service the orchestrator has ALREADY deployed: the tests read the base URL from process.env.SERVICE_URL, never start, build or restart containers (docker is not available there), and each acceptance criterion with smoke: true needs at least one test whose name carries its id, e.g. "[AC-001] GET /health answers 200"';
+
 export function planRules(firstSpec: boolean): string {
   const lines = [
     'Plan rules (the orchestrator rejects a plan that breaks any of them):',
     `- gates must include these blocking gates: ${REQUIRED_BLOCKING_GATES.join(', ')} (plus a blocking typecheck gate when commands.typecheck exists)`,
     '- every acceptance criterion is covered by at least one task (criteriaRefs); every task has at least one criterion or is infrastructure',
     '- dependsOn forms a DAG; affectedPaths are repository-relative paths or globs; tasks small enough for one agent step',
+    '- gateImage is a glibc-based image (e.g. node:22-bookworm-slim), never an Alpine/musl one: dependencies are installed by the Dev on a Debian host and native optional packages (rollup, esbuild, swc) will not load under musl',
+    `- ${SMOKE_CONTRACT}`,
   ];
   if (firstSpec) {
     lines.push(
@@ -146,8 +153,13 @@ export function specGapPack(base: PackBase, task: PlanTask, opts: { question: st
   return { ...common(base, 'spec-gap', 'sm'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), feedback: `Dev question (spec gap):\n${opts.question}` };
 }
 
-export function replanPack(base: PackBase, task: PlanTask, opts: { history: readonly string[]; boundaries: readonly string[] }): ContextPackInput {
-  const feedback = `Attempt history:\n${opts.history.map((h, i) => `${i + 1}. ${h}`).join('\n')}\n\nModule boundaries:\n${opts.boundaries.map((b) => `- ${b}`).join('\n')}`;
+/** The scaffold task is what makes the plan's gates runnable; split up, none of its pieces can pass them. */
+export const SCAFFOLD_REPLAN_RULE =
+  'This is the scaffold task: every gate in the plan (npm run ...) runs against each task on its own, so the toolchain (package.json, lockfile, configs, gate scripts) must land in ONE task. Replan it as exactly one replacement task, never several.';
+
+export function replanPack(base: PackBase, task: PlanTask, opts: { history: readonly string[]; boundaries: readonly string[]; atomic?: boolean }): ContextPackInput {
+  const constraint = opts.atomic ? `\n\nConstraint:\n- ${SCAFFOLD_REPLAN_RULE}` : '';
+  const feedback = `Attempt history:\n${opts.history.map((h, i) => `${i + 1}. ${h}`).join('\n')}\n\nModule boundaries:\n${opts.boundaries.map((b) => `- ${b}`).join('\n')}${constraint}`;
   return { ...common(base, 'replan', 'sm'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), feedback };
 }
 

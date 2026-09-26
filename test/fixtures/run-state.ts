@@ -16,6 +16,7 @@ export function runtime(
     infraRetries: {},
     flakyRetries: {},
     replacedBy: [],
+    bootstrapsFrozenPaths: false,
     ...extra,
   };
 }

@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { runApi, type RunDetail, type StoredEvent } from '../api.js';
 import { TaskDetail } from '../components/TaskDetail.js';
-import { evidence, pausedUntil, phases, runState, tokens } from '../run/selectors.js';
+import { evidence, explainBlockReason, mergedPrs, pausedUntil, phases, rootBlockers, runState, tokens } from '../run/selectors.js';
 import { useJournal } from '../useSse.js';
 
 const hhmm = (iso: string) => new Date(iso).toTimeString().slice(0, 5);
+const money = (n: number) => `US$ ${n.toFixed(4)}`;
 const ORDER = ['implementing', 'validating', 'reviewing', 'rebasing', 'merging', 'ready', 'planned', 'merged', 'blocked', 'superseded'];
-const statusLabel = (status: string) => ({ done: 'concluído', complete: 'concluído', implementing: 'implementando', validating: 'validando', reviewing: 'revisando', rebasing: 'rebaseando', merging: 'mesclando', ready: 'pronta', planned: 'planejada', merged: 'mesclada', blocked: 'bloqueada', superseded: 'substituída', running: 'em execução' } as Record<string, string>)[status] ?? status;
+const statusLabel = (status: string) => ({ done: 'concluído', complete: 'concluído', failed: 'falhou', implementing: 'implementando', validating: 'validando', reviewing: 'revisando', rebasing: 'rebaseando', merging: 'mesclando', ready: 'pronta', planned: 'planejada', merged: 'mesclada', blocked: 'bloqueada', superseded: 'substituída', running: 'em execução' } as Record<string, string>)[status] ?? status;
+const statusTone = (status: string) => (['done', 'complete', 'merged'].includes(status) ? 'good' : ['blocked', 'failed'].includes(status) ? 'bad' : status.startsWith('paused') ? 'warn' : status === 'running' ? 'neutral' : 'neutral');
 
 export function RunView({ detail, events, ended, error, loadStep }: { detail: RunDetail; events: StoredEvent[]; ended: boolean; error: string | null; loadStep: (stepId: string) => Promise<{ prompt: string; output: unknown }> }) {
   const unique = events.filter((e, i) => events.findIndex((x) => x.seq === e.seq) === i);
@@ -19,6 +21,11 @@ export function RunView({ detail, events, ended, error, loadStep }: { detail: Ru
   const t = tokens(unique);
   const [selected, setSelected] = useState<string | null>(null);
   const groups = ORDER.map((s) => [s, state.order.filter((id) => state.tasks.get(id)!.state === s)] as const).filter(([, ids]) => ids.length);
+  const blocked = (finished?.data.blocked as Array<{ taskId: string; reason: string }> | undefined) ?? [];
+  const causes = rootBlockers(blocked);
+  const prs = mergedPrs(unique);
+  const totalTasks = state.order.length;
+  const doneTasks = [...state.tasks.values()].filter((t) => t.state === 'merged').length;
   return (
     <main>
       <p>
@@ -30,12 +37,53 @@ export function RunView({ detail, events, ended, error, loadStep }: { detail: Ru
           {detail.projectId} / {detail.specId}
         </small>
       </h1>
-      <p data-testid="status">
-        Status: <strong>{statusLabel(status)}</strong>
-        {ended ? ' (encerrada)' : ''}
-        {until ? <span data-testid="paused-until"> — pausada até {hhmm(until)}</span> : null}
-      </p>
+      <div className="run-meta">
+        <span data-testid="status" className={`status-pill tone-${statusTone(status)}`}>
+          {statusLabel(status)}
+          {ended ? ' (encerrada)' : ''}
+        </span>
+        {until ? <span data-testid="paused-until" className="hint">pausada até {hhmm(until)}</span> : null}
+        {totalTasks ? (
+          <span data-testid="task-progress" className="hint">
+            {doneTasks} de {totalTasks} tarefas mescladas
+          </span>
+        ) : null}
+      </div>
+      {prs.length ? (
+        <section className="card">
+          <h2>Pull requests mesclados</h2>
+          <ul className="pr-list">
+            {prs.map((p) => (
+              <li key={p.taskId}>
+                <span className="task-id">{p.taskId}</span>
+                {p.url ? (
+                  <a href={p.url} target="_blank" rel="noreferrer">
+                    PR #{p.number}
+                  </a>
+                ) : (
+                  <span>PR #{p.number}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       {error ? <p className="error">{error}</p> : null}
+      {causes.length ? (
+        <section className="card card-cause" data-testid="block-cause">
+          <h2>Por que parou</h2>
+          <ul className="cause-list">
+            {causes.map((c) => (
+              <li key={c.taskId}>
+                <button className="task-id" onClick={() => setSelected(c.taskId)}>
+                  {c.taskId}
+                </button>
+                <span>{explainBlockReason(c.reason)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <section className="card">
         <h2>Fases</h2>
         <p>
@@ -49,18 +97,21 @@ export function RunView({ detail, events, ended, error, loadStep }: { detail: Ru
       <section className="card">
         <h2>Tarefas</h2>
         {groups.map(([s, ids]) => (
-          <div key={s} data-testid={`group-${s}`}>
-            <h3>{s}</h3>
+          <div key={s} className="task-group" data-testid={`group-${s}`}>
+            <h3>{statusLabel(s)}</h3>
             <ul>
               {ids.map((id) => {
                 const tk = state.tasks.get(id)!;
                 return (
-                  <li key={id}>
-                    <button data-testid={`task-${id}`} onClick={() => setSelected(id)}>
+                  <li key={id} className="task-row">
+                    <button className="task-id" data-testid={`task-${id}`} onClick={() => setSelected(id)}>
                       {id}
-                    </button>{' '}
-                    {tk.def.title} · tentativas {tk.attempts}
-                    {tk.replanned ? ' · replanejada' : ''}
+                    </button>
+                    <span className="task-title">{tk.def.title}</span>
+                    <span className="task-meta">
+                      tentativas {tk.attempts}
+                      {tk.replanned ? ' · replanejada' : ''}
+                    </span>
                   </li>
                 );
               })}
@@ -71,50 +122,52 @@ export function RunView({ detail, events, ended, error, loadStep }: { detail: Ru
       {selected ? <TaskDetail events={unique} taskId={selected} loadStep={loadStep} /> : null}
       <section className="card">
         <h2>Tokens</h2>
+        <h3 className="tokens-subhead">Por papel</h3>
         <table>
           <thead>
             <tr>
               <th>Papel</th>
-              <th>Entrada</th>
-              <th>Saída</th>
-              <th>Custo</th>
-              <th>Etapas</th>
+              <th className="num">Entrada</th>
+              <th className="num">Saída</th>
+              <th className="num">Custo</th>
+              <th className="num">Etapas</th>
             </tr>
           </thead>
           <tbody>
             {Object.entries(t.byRole).map(([r, u]) => (
               <tr key={r} data-testid={`tokens-${r}`}>
                 <td>{r}</td>
-                <td>{u.inputTokens}</td>
-                <td>{u.outputTokens}</td>
-                <td>${u.costUsd.toFixed(4)}</td>
-                <td>{u.steps}</td>
+                <td className="num">{u.inputTokens}</td>
+                <td className="num">{u.outputTokens}</td>
+                <td className="num">{money(u.costUsd)}</td>
+                <td className="num">{u.steps}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        <h3 className="tokens-subhead">Por fase</h3>
         <table>
           <thead>
             <tr>
               <th>Fase</th>
-              <th>Entrada</th>
-              <th>Saída</th>
-              <th>Custo</th>
+              <th className="num">Entrada</th>
+              <th className="num">Saída</th>
+              <th className="num">Custo</th>
             </tr>
           </thead>
           <tbody>
             {Object.entries(t.byPhase).map(([p, u]) => (
               <tr key={p}>
                 <td>{p}</td>
-                <td>{u.inputTokens}</td>
-                <td>{u.outputTokens}</td>
-                <td>${u.costUsd.toFixed(4)}</td>
+                <td className="num">{u.inputTokens}</td>
+                <td className="num">{u.outputTokens}</td>
+                <td className="num">{money(u.costUsd)}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        <p>
-          Total de US$ {t.total.costUsd.toFixed(4)} em {t.total.steps} etapas
+        <p className="tokens-total">
+          Total de <strong>{money(t.total.costUsd)}</strong> em {t.total.steps} etapas
         </p>
       </section>
       <section className="card">

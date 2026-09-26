@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { StoredEvent } from '../api.js';
-import { taskDetail } from '../run/selectors.js';
+import { explainBlockReason, taskDetail } from '../run/selectors.js';
 
 type Artifact = { prompt: string; output: unknown };
 const stateLabel = (state: string) => ({ running: 'em execução', ok: 'ok', failed: 'falhou', passed: 'passou' } as Record<string, string>)[state] ?? state;
@@ -32,7 +32,7 @@ export function TaskDetail({ events, taskId, loadStep }: { events: StoredEvent[]
         ) : null}
         {d.lockHeld ? <span className="hint">mantém o bloqueio de mesclagem</span> : null}
       </header>
-      {d.blockedReason ? <p className="error">Bloqueada: {d.blockedReason}</p> : null}
+      {d.blockedReason ? <p className="error">Bloqueada: {explainBlockReason(d.blockedReason)}</p> : null}
       {d.attempts.map((a) => (
         <div key={a.attempt} data-testid={`attempt-${a.attempt}`}>
           <h3>Tentativa {a.attempt}</h3>
@@ -58,7 +58,17 @@ export function TaskDetail({ events, taskId, loadStep }: { events: StoredEvent[]
               );
             })}
           </ul>
-          {a.gates.length ? <p>Portões: {a.gates.map((g) => `${g.gate} ${g.passed ? 'passou' : 'falhou'}${g.failedTests.length ? ` (${g.failedTests.join(', ')})` : ''}`).join(' · ')}</p> : null}
+          {a.gates.length ? (
+            <p className="gates">
+              <span className="hint">Portões:</span>{' '}
+              {a.gates.map((g) => (
+                <span key={g.gate} className={`test test-${g.passed ? 'passed' : 'failed'}`} title={g.failedTests.length ? g.failedTests.join(', ') : undefined}>
+                  {g.gate} {g.passed ? 'passou' : 'falhou'}
+                  {g.failedTests.length ? ` (${g.failedTests.length})` : ''}
+                </span>
+              ))}
+            </p>
+          ) : null}
           {a.review ? (
             <p>
               Revisão: perfil {a.review.profile}, risco {a.review.risk}

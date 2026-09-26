@@ -53,6 +53,8 @@ export interface StepDeps {
   /** Every step cwd must live under this directory; anything else is never trusted or run. */
   workspacesRoot: string;
   network: Pick<RoleSettingsInput, 'allowedDomains'>;
+  /** Config `sandbox`; when disabled the bubblewrap/socat tool check is skipped as well. */
+  sandbox?: { enabled: boolean };
   hostEnv?: NodeJS.ProcessEnv;
   onEvent?: (line: string) => void;
   clock?: () => Date;
@@ -130,13 +132,13 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
   if (!(await isInside(deps.workspacesRoot, req.cwd))) {
     return environmentFailure(`cwd ${req.cwd} is outside the workspaces root ${deps.workspacesRoot}`);
   }
-  if (deps.binary.requireSandboxTools) {
+  if (deps.binary.requireSandboxTools && deps.sandbox?.enabled !== false) {
     const missing = await preflightSandbox(hostEnv);
     if (missing.length > 0) return environmentFailure(`sandbox tools missing on PATH: ${missing.join(', ')} (apt install bubblewrap socat)`);
   }
 
   await ensureTrusted(req.cwd, deps.claudeJsonPath);
-  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: req.extraAllow });
+  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: req.extraAllow, sandboxEnabled: deps.sandbox?.enabled });
   const invocation = buildInvocation(
     {
       role: req.role,

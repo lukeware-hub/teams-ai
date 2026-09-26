@@ -1,5 +1,5 @@
 import { spawn as nodeSpawn } from 'node:child_process';
-import { openSync } from 'node:fs';
+import { openSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 
 export interface SpawnArgs {
@@ -59,6 +59,25 @@ export async function stop(deps: RunControlDeps, pid: number, timeoutMs = 15_000
   }
   deps.kill(-pid, 'SIGKILL');
   return 'killed';
+}
+
+/** Waits for the spawned process to write its journal, so a spawn that dies on preconditions (e.g. `docker version`
+ * unreachable) surfaces its `ui.log` tail instead of leaving the caller to poll a run that will never exist. */
+export async function waitForRunJournal(deps: RunControlDeps, runs: string, runId: string, pid: number, timeoutMs = 10_000): Promise<void> {
+  const file = path.join(runs, runId, 'events.ndjson');
+  for (let waited = 0; waited < timeoutMs; waited += POLL_MS) {
+    if (
+      await fs.access(file).then(
+        () => true,
+        () => false,
+      )
+    )
+      return;
+    if (!isAlive(deps, pid)) break;
+    await deps.sleep(POLL_MS);
+  }
+  const log = await fs.readFile(path.join(runs, runId, 'ui.log'), 'utf8').catch(() => '');
+  throw new Error(`run ${runId} did not start: ${log.slice(-500) || 'no output'}`);
 }
 
 export function defaultRunControl(repoRoot: string): RunControlDeps {

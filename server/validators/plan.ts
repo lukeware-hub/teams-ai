@@ -18,6 +18,9 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
     errors.push(`plan specHash ${plan.specHash} does not match spec ${spec.specHash}`);
   }
   if (plan.specId !== spec.specId) errors.push(`plan specId ${plan.specId} does not match spec ${spec.specId}`);
+  // The Dev installs dependencies on the orchestrator's Debian host; an Alpine gate image then fails to load
+  // the native optional packages that install picked for glibc (seen live: rollup under vitest).
+  if (/(^|[:/-])alpine(\d|[.:-]|$)/i.test(plan.gateImage)) errors.push(`gateImage ${plan.gateImage} is Alpine (musl); use a glibc-based image such as node:22-bookworm-slim`);
 
   const ids = new Set<string>();
   let duplicates = false;
@@ -46,6 +49,18 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
   }
   for (const ac of acIds) {
     if (!covered.has(ac)) errors.push(`acceptance criterion ${ac} is not covered by any task`);
+  }
+
+  // A criterion only ever touched by devops tasks (manifests, Dockerfile) has no unit/integration test to
+  // prove it - only a running deployment can (spec §9 smoke); Phase 4 then reports it as evidence-missing
+  // forever (seen live: AC-008/AC-009 on 1387253335-001-r13). Require the spec to say so up front.
+  const smokeSet = new Set(smokeAcs);
+  const tasksByAc = new Map<string, string[]>();
+  for (const task of plan.tasks) for (const ref of task.criteriaRefs) tasksByAc.set(ref, [...(tasksByAc.get(ref) ?? []), task.owner]);
+  for (const [ac, owners] of tasksByAc) {
+    if (owners.length > 0 && owners.every((o) => o === 'devops') && !smokeSet.has(ac)) {
+      errors.push(`acceptance criterion ${ac} is only covered by devops task(s) (infra/manifests, no app test); mark it smoke: true in the spec or add an app-level test`);
+    }
   }
 
   // With duplicate ids the graph is ambiguous; the duplicate error already blocks the plan.

@@ -12,7 +12,7 @@ import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
 import { createDecider } from '../decide/create-decider.js';
 import type { Exec } from '../exec/command.js';
-import { runGates } from '../exec/gate-runner.js';
+import { runGates, TAIL_CHARS, type GateResult } from '../exec/gate-runner.js';
 import { git } from '../git/git.js';
 import { MergeQueue } from '../git/merge-queue.js';
 import type { CodeContext, HandoffSummary } from '../knowledge/context-pack.js';
@@ -27,7 +27,7 @@ import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
 import { CrashInjected, Intent, Journal, OrchEvent, type IntentType, type RunResult } from './events.js';
 export { CrashInjected };
 import { taskMergeSteps, type MergeStepsDeps } from './merge-steps.js';
-import { PAUSED_AUTH, runPhase0, runPhase1, runPhase2, runPhase4, runPhase5, runPhase6, MAX_DEPLOY_ATTEMPTS, type PhaseDeps, type PhaseResult } from './phases/index.js';
+import { PAUSED_AUTH, runPhase0, runPhase1, runPhase2, runPhase4, runPhase5, runPhase6, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, type PhaseDeps, type PhaseResult } from './phases/index.js';
 import { reconcile } from './reconcile.js';
 import { runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
 import { TaskRunner, type TaskRunnerDeps } from './task-runner.js';
@@ -192,6 +192,7 @@ export class Run {
       settingsDir: path.posix.join(runDir(ws, this.runId), 'settings'),
       workspacesRoot: ws.root,
       network: { allowedDomains: ['registry.npmjs.org', ...(cfg.omniroute.enabled ? ['localhost'] : [])] },
+      sandbox: { enabled: cfg.sandbox.enabled },
       clock: this.clock,
     };
   }
@@ -215,8 +216,38 @@ export class Run {
 
   private runAgent = <K extends StepKind>(req: AgentStepRequest<K>): Promise<StepOutcome<OutputOf<K>>> => runAgentStep(req, this.agentDeps());
 
+  /**
+   * A task worktree starts from origin/main, which never carries installed dependencies, and gates run
+   * offline in the gate image. Without this every task lost its first attempt to "tsc: not found" until
+   * the Dev thought of running the install itself. Runs the plan's install command in the worktree when
+   * the dependency directory is missing; a failure is reported like a blocking gate so the Dev sees it.
+   */
+  private async installDeps(worktree: string): Promise<GateResult | null> {
+    const command = this.plan!.commands.install;
+    if (!command) return null;
+    const present = await fs.access(path.join(worktree, 'node_modules')).then(() => true, () => false);
+    if (present) return null;
+    const started = Date.now();
+    const r = await this.deps.exec({ bin: 'sh', args: ['-lc', command], cwd: worktree, timeoutMs: 10 * 60_000 });
+    if (r.exitCode === 0 && !r.timedOut) return null;
+    return {
+      name: 'install',
+      blocking: true,
+      passed: false,
+      exitCode: r.exitCode,
+      timedOut: r.timedOut,
+      durationMs: Date.now() - started,
+      stdoutTail: r.stdout.slice(-TAIL_CHARS),
+      stderrTail: r.stderr.slice(-TAIL_CHARS),
+      junit: null,
+      failure: r.timedOut ? 'infra' : 'code',
+    };
+  }
+
   private gates = async (worktree: string, branch: string) => {
     const plan = this.plan!;
+    const install = await this.installDeps(worktree);
+    if (install) return { results: [install], blockingFailure: install };
     return runGates(
       plan.gates.filter((g) => g.blocking),
       {
@@ -231,6 +262,7 @@ export class Run {
         // Files the gate writes into the bind-mounted worktree (the JUnit report) must stay owned by the
         // orchestrator user, or the next attempt cannot remove them (EACCES on the first live run).
         user: containerUser(),
+        bindRewrite: this.deps.cfg.docker.bindRewrite,
       },
       { exec: this.deps.exec, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null), removeFile: (p) => fs.rm(p, { force: true }) },
     );
@@ -347,8 +379,10 @@ export class Run {
       target: this.deps.target,
       smoke: async (contextDir, url) => {
         const p = this.plan!;
-        const r = await runSmoke(p, this.deps.spec, { worktree: contextDir, image: p.gateImage, junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-smoke`, user: containerUser() }, url, { exec: this.deps.exec, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
-        return { ok: r.ok, rows: r.rows, detail: r.detail };
+        const r = await runSmoke(p, this.deps.spec, { worktree: contextDir, image: p.gateImage, junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-smoke`, user: containerUser(), bindRewrite: this.deps.cfg.docker.bindRewrite }, url, { exec: this.deps.exec, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
+        // The gate's output is the only clue the fix task gets about why a smoke test is missing or failing.
+        const tail = r.ok || !r.result ? '' : `\n\nsmoke gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
+        return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
       },
     };
   }
@@ -440,20 +474,28 @@ export class Run {
     const runFix = async (tasks: PlanTask[]): Promise<ExecuteResult | 'merged'> => {
       for (const t of tasks) if (this.journal.state.tasks.get(t.id)?.state === 'planned') await this.journal.fact(RunEvent.TaskStateChanged, { taskId: t.id, to: 'ready' });
       const r = await this.loop({ final: false });
-      if (r !== 'complete') return r;
+      if (r !== 'complete') return r; // loop() already journaled RUN_FINISHED for a non-complete outcome
       return tasks.every((t) => this.journal.state.tasks.get(t.id)?.state === 'merged') ? 'merged' : 'blocked';
     };
     let result: 'awaiting-validation' | 'verification-failed' | 'deploy-failed' = 'awaiting-validation';
     let p4 = await runPhase4(this.phaseDeps(), 1);
     if (!p4.ok && p4.reason === PAUSED_AUTH) return 'paused:auth';
-    if (!p4.ok && p4.fixTasks) { const back = await runFix(p4.fixTasks); if (back !== 'merged') return back; p4 = await runPhase4(this.phaseDeps(), 2); }
+    if (!p4.ok && p4.fixTasks) {
+      const back = await runFix(p4.fixTasks);
+      if (back !== 'merged' && back !== 'blocked') return back;
+      // Fix tasks are best effort; the second verification round is the verdict. A fix task that blocked
+      // (e.g. the SM diagnosed a toolchain problem the Dev found nothing to change for) must not end the
+      // run before that round runs (1387253335-001-r13). Its blocked state is still reported by finish().
+      p4 = await runPhase4(this.phaseDeps(), 2);
+    }
     if (!p4.ok) result = 'verification-failed';
     if (p4.ok && this.deps.target) {
-      for (let attempt = 1 as 1 | 2 | 3; attempt <= MAX_DEPLOY_ATTEMPTS; attempt = (attempt + 1) as 1 | 2 | 3) {
+      for (let attempt = deployStartAttempt(this.phaseDeps()); attempt <= MAX_DEPLOY_ATTEMPTS; attempt = (attempt + 1) as 1 | 2 | 3) {
         const p5 = await runPhase5(this.phaseDeps(), attempt);
         if (p5.ok) break;
         if (!p5.fixTask) { result = 'deploy-failed'; break; }
-        const back = await runFix([p5.fixTask]); if (back !== 'merged') { result = 'deploy-failed'; break; }
+        // Same rule as Phase 4: the fix task is best effort and the next deploy attempt is the verdict.
+        const back = await runFix([p5.fixTask]); if (back !== 'merged' && back !== 'blocked') { result = 'deploy-failed'; break; }
       }
     }
     const p6 = await runPhase6({ ...this.phaseDeps(), runId: this.runId, accounting: this.accounting, result });
@@ -492,7 +534,9 @@ export class Run {
       }
       const progress = runProgress(this.journal.state, this.maxParallel);
       if (progress !== 'running' && this.inflight.size === 0) {
-        if (progress === 'complete' && !opts.final && ![...this.journal.state.tasks.values()].some((t) => t.state === 'blocked')) return 'complete';
+        // A non-final loop (fix tasks) reports completion and lets the caller judge blocked tasks: a blocked
+        // fix task must not end the run before the next verification round or deploy attempt.
+        if (progress === 'complete' && !opts.final) return 'complete';
         return this.finish(progress === 'complete' ? 'complete' : progress);
       }
       if (this.journal.state.status === 'running') {

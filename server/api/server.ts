@@ -140,9 +140,18 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
       res.flushHeaders();
       done(200);
+      // A browser that navigates away closes the socket while the tail is still producing events. A write
+      // after that raises 'error' on the response, and an unhandled 'error' event takes the whole server
+      // down (seen live: ERR_STREAM_WRITE_AFTER_END from the run events tail). Swallow it and stop writing.
+      res.on('error', () => undefined);
+      const open = () => !res.writableEnded && !res.destroyed;
       return {
-        send: (event, data, id) => void res.write(`${id === undefined ? '' : `id: ${id}\n`}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
-        close: () => res.end(),
+        send: (event, data, id) => {
+          if (open()) res.write(`${id === undefined ? '' : `id: ${id}\n`}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+        },
+        close: () => {
+          if (open()) res.end();
+        },
         onClose: (cb) => void res.on('close', cb),
       };
     };

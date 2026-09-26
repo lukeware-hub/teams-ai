@@ -275,4 +275,9 @@ export class RefineSession {
   async markStarted(runId: string): Promise<void> {
     await this.journal.fact(RefineEvent.StartedRun, { runId });
   }
+
+  /** The spawned run died before writing its journal (e.g. a precondition failed); undo the `starting` lock so the session can retry. */
+  failStart(): void {
+    this.starting = false;
+  }
 }

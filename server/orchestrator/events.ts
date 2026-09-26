@@ -77,6 +77,9 @@ const REDUCED = new Set([
   'RUN_RESUMED',
   'RUN_BUDGET_EXHAUSTED',
   'RUN_STOP_REQUESTED',
+  // Phase 4 fix tasks: without this the event reached the log but never the live state, so runFix() saw
+  // no task to schedule and the run ended without a RUN_FINISHED (1387253335-001-r13).
+  'FIX_TASKS_PLANNED',
 ]);
 
 /** The single write path for run state: append to the log, then reduce. Replay and live execution share it. */

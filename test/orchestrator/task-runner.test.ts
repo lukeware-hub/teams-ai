@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DecisionOutcome } from '../../server/decide/types.js';
 import { execCommand } from '../../server/exec/command.js';
 import type { GateResult } from '../../server/exec/gate-runner.js';
-import { git, headSha } from '../../server/git/git.js';
+import { commitAll, createWorktree, git, headSha } from '../../server/git/git.js';
 import { MergeQueue, type MergeOutcome, type MergeSteps } from '../../server/git/merge-queue.js';
 import { Intent, Journal, OrchEvent } from '../../server/orchestrator/events.js';
 import type { AgentStepRequest } from '../../server/orchestrator/steps.js';
@@ -487,5 +487,58 @@ describe('TaskRunner: final review fixes', () => {
     await r.advance(); await r.advance(); await r.advance();
     expect(agentCalls.map((c) => [c.kind, c.model, c.effort])).toEqual([['dev', undefined, undefined], ['review', undefined, undefined]]);
     expect(calls.filter((id) => id === 'model-tier')).toHaveLength(1);
+  });
+});
+
+describe('TaskRunner: replanning the scaffold task', () => {
+  const failGates: TaskRunnerDeps['gates'] = async () => {
+    const g = gate('unit-test', { passed: false, exitCode: 1, failure: 'code', junit: null });
+    return { results: [g], blockingFailure: g };
+  };
+  const scaffold = makePlanTask({ id: 'T0-scaffold', criteriaRefs: ['AC-001'], affectedPaths: ['scripts'] });
+  const piece = (id: string) => makePlanTask({ id, criteriaRefs: ['AC-001'], affectedPaths: ['scripts'], dependsOn: [] });
+
+  it('rejects a replan that splits the scaffold, since no piece can run the gates alone', async () => {
+    await journal.fact(RunEvent.TaskPlanned, { task: scaffold });
+    await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T0-scaffold', to: 'ready' });
+    const agent: Agent = async (req) => (req.kind === 'replan' ? ok({ specHash: HASH, replacements: [piece('T0-scaffold-r1'), piece('T0-scaffold-r2')] }) : devDone()(req));
+    const r = new TaskRunner('T0-scaffold', deps({ agent, gates: failGates }));
+    for (let i = 0; i < 6; i++) await r.advance();
+    expect(journal.state.tasks.get('T0-scaffold')!.state).toBe('blocked');
+    expect(journal.events.find((e) => e.type === OrchEvent.TaskBlocked && e.data.taskId === 'T0-scaffold')!.data.reason).toMatch(/exactly one task/);
+    expect(journal.state.tasks.has('T0-scaffold-r1')).toBe(false);
+  });
+
+  it('accepts a single replacement, which inherits the frozen-path permission', async () => {
+    await journal.fact(RunEvent.TaskPlanned, { task: scaffold });
+    await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T0-scaffold', to: 'ready' });
+    const agent: Agent = async (req) => (req.kind === 'replan' ? ok({ specHash: HASH, replacements: [piece('T0-scaffold-r1')] }) : devDone()(req));
+    const r = new TaskRunner('T0-scaffold', deps({ agent, gates: failGates }));
+    for (let i = 0; i < 6; i++) await r.advance();
+    expect(journal.state.tasks.get('T0-scaffold')!.state).toBe('superseded');
+    expect(journal.state.tasks.get('T0-scaffold-r1')).toMatchObject({ replanned: true, bootstrapsFrozenPaths: true });
+  });
+});
+
+describe('TaskRunner: worktree left by an earlier run', () => {
+  it('starts a new run from origin/main, discarding the stale branch and its commits', async () => {
+    // A previous run of this spec left the task worktree behind, with a commit main never took.
+    const r0 = new TaskRunner('T1', deps());
+    await createWorktree(remote.repo, r0.worktree, r0.branch, 'origin/main');
+    await fs.writeFile(path.join(r0.worktree, 'stale.txt'), 'from an earlier run\n');
+    await commitAll(r0.worktree, 'chore: stale work from an earlier run');
+    const staleSha = await headSha(r0.worktree);
+
+    // A fresh journal = a new run; its first touch of T1 must not inherit that commit.
+    await journal.close();
+    journal = await Journal.open({ file: path.join(remote.root, 'events-run2.ndjson'), runId: 'spec-001-r2', specHash: HASH });
+    await journal.fact(RunEvent.TaskPlanned, { task: T1 });
+    await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T1', to: 'ready' });
+    const r = new TaskRunner('T1', deps());
+    await r.advance();
+    expect(await git(r.worktree, ['log', '-1', '--format=%s'])).toBe('feat: T1');
+    const log = await git(r.worktree, ['log', '--format=%H']);
+    expect(log).not.toContain(staleSha);
+    await expect(fs.access(path.join(r.worktree, 'stale.txt'))).rejects.toThrow();
   });
 });

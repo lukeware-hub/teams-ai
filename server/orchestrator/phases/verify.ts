@@ -16,6 +16,10 @@ export async function runPhase4(deps: PhaseDeps, round: 1 | 2): Promise<Phase4Re
   if (!deps.plan || !deps.gates || !deps.tasks) throw new Error('Phase 4 needs plan, gates and tasks');
   const prior = deps.journal.events.find((e) => e.type === OrchEvent.VerificationPassed && e.data.round === round);
   if (prior) return { ok: true, matrix: prior.data.matrix as EvidenceRow[] };
+  // Resumed after fix tasks were planned for this round: they are the answer, do not verify and plan again
+  // (a second pass re-issued the same T900-fix-* ids and the reducer rejected them - 1387253335-001-r13).
+  const plannedBefore = deps.journal.events.filter((e) => e.type === RunEvent.FixTasksPlanned && e.data.round === round);
+  if (round === 1 && plannedBefore.length > 0) return { ok: false, reason: 'verification failed; fix tasks already planned', fixTasks: plannedBefore.flatMap((e) => e.data.tasks as PlanTask[]) };
   if (!deps.journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 4 && e.data.round === round)) await deps.journal.fact(OrchEvent.PhaseStarted, { phase: 4, round });
   await checkoutMain(deps);
   let results: GateResult[] = [], blocking: GateResult | null = null;
@@ -35,10 +39,12 @@ export async function runPhase4(deps: PhaseDeps, round: 1 | 2): Promise<Phase4Re
   for (let attempt = 1; attempt <= 2; attempt++) {
     const out = await deps.runAgent<'fix-tasks'>({ kind: 'fix-tasks', role: 'sm', pack: fixTasksPack(deps.packBase(), { failedTests, tails: tail(results.map((r) => `${r.name}: ${r.stderrTail || r.stdoutTail}`).join('\n')), uncoveredAcs, plan: deps.plan, boundaries: deps.boundaries ? await deps.boundaries() : [], feedback }), cwd: deps.ws.repo, phase: 'phase4', taskId: null, attempt }) as StepOutcome<FixTasksOutput>;
     if (!out.ok) { if (await pauseForFailure(deps, out.failure)) return { ok: false, reason: PAUSED_AUTH }; feedback = out.errors.join('\n'); continue; }
-    const fixTasks = out.value.tasks.map((t, i) => ({ ...t, id: `T900-fix-${i + 1}`, origin: 'fix' as const }));
+    // Ids are assigned here and must stay unique across rounds and resumes.
+    const existing = [...deps.journal.state.tasks.keys()].filter((id) => id.startsWith('T900-fix-')).length;
+    const fixTasks = out.value.tasks.map((t, i) => ({ ...t, id: `T900-fix-${existing + i + 1}`, origin: 'fix' as const }));
     const errors = validatePlan({ ...deps.plan, tasks: [...deps.plan.tasks, ...fixTasks] }, deps.spec, { firstSpec: deps.firstSpec });
     if (errors.length) { feedback = errors.join('\n'); continue; }
-    await deps.journal.fact(RunEvent.FixTasksPlanned, { tasks: fixTasks });
+    await deps.journal.fact(RunEvent.FixTasksPlanned, { tasks: fixTasks, round });
     return { ok: false, reason: 'verification failed; fix tasks planned', fixTasks };
   }
   return { ok: false, reason: `fix-tasks rejected twice: ${feedback ?? 'no answer'}` };

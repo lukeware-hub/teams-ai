@@ -31,7 +31,6 @@ export const ALWAYS_DENIED: readonly string[] = [
   // The project settings directory is where sandbox and permission rules would be read from;
   // an agent must never be able to rewrite it.
   'Edit(.claude/**)',
-  'Write(.claude/**)',
 ];
 
 export class AgentFileError extends Error {}

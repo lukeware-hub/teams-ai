@@ -48,7 +48,7 @@ describe('RunView', () => {
     fireEvent.click(screen.getByTestId('task-T1'));
     expect(screen.getByTestId('attempt-1').textContent).toContain('lint');
     expect(screen.getByTestId('attempt-2').textContent).toContain('standard');
-    expect(screen.getByText('PR #3').getAttribute('href')).toBe('https://github.com/o/r/pull/3');
+    expect(screen.getByTestId('detail-T1').querySelector('a')!.getAttribute('href')).toBe('https://github.com/o/r/pull/3');
     fireEvent.click(screen.getByTestId('step-s00003'));
     await screen.findByText(/# the prompt/);
     expect(loadStep).toHaveBeenCalledWith('s00003');
