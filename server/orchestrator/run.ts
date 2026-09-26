@@ -534,7 +534,9 @@ export class Run {
       }
       const progress = runProgress(this.journal.state, this.maxParallel);
       if (progress !== 'running' && this.inflight.size === 0) {
-        if (progress === 'complete' && !opts.final && ![...this.journal.state.tasks.values()].some((t) => t.state === 'blocked')) return 'complete';
+        // A non-final loop (fix tasks) reports completion and lets the caller judge blocked tasks: a blocked
+        // fix task must not end the run before the next verification round or deploy attempt.
+        if (progress === 'complete' && !opts.final) return 'complete';
         return this.finish(progress === 'complete' ? 'complete' : progress);
       }
       if (this.journal.state.status === 'running') {
