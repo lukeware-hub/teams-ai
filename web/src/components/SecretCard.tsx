@@ -20,7 +20,7 @@ export function SecretCard({ name, title, item, onSaved }: { name: 'GITHUB_TOKEN
     }
   };
   return (
-    <ItemCard title={title} item={item} variant="login" subtitle={name === 'GITHUB_TOKEN' ? 'Informe um token para validar o acesso aos seus repositórios.' : 'Informe a chave para habilitar os recursos de IA.'} icon={name === 'GITHUB_TOKEN' ? 'github' : 'user'}>
+    <ItemCard title={title} item={item} variant="login" subtitle={name === 'GITHUB_TOKEN' ? 'Informe um token para validar o acesso aos seus repositórios.' : 'Informe a chave para habilitar os recursos de IA.'} icon={name === 'GITHUB_TOKEN' ? 'github' : 'user'} illustration={name === 'GITHUB_TOKEN' ? '/onboarding-github-token.png' : '/onboarding-openrouter.png'}>
       <form
         className="secret-form"
         onSubmit={(e) => {

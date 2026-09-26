@@ -14,11 +14,11 @@ function friendlyDetail(detail: string) {
   return detail;
 }
 
-export function ItemCard({ title, item, children, variant = 'default', subtitle, icon }: { title: string; item: Item | null; children?: ReactNode; variant?: 'default' | 'login'; subtitle?: string; icon?: IconName }) {
+export function ItemCard({ title, item, children, variant = 'default', subtitle, icon, illustration }: { title: string; item: Item | null; children?: ReactNode; variant?: 'default' | 'login'; subtitle?: string; icon?: IconName; illustration?: string }) {
   const status = item === null ? 'checking' : item.ok ? 'ok' : 'todo';
   const statusLabel = status === 'checking' ? 'Verificando' : status === 'ok' ? 'Concluído' : 'Pendente';
   return (
-    <section className={`card card-${status} onboarding-card${variant === 'login' ? ' auth-login-card' : ''}`} data-testid={`card-${title}`}>
+    <section className={`card card-${status} onboarding-card${variant === 'login' ? ' auth-login-card' : ''}${illustration ? ' has-illustration' : ''}`} data-testid={`card-${title}`}>
       <header className="onboarding-card-header">
         {icon ? <span className={`card-icon card-icon-${icon}`}><Icon name={icon} size={variant === 'login' ? 38 : 24} /></span> : <span className="dot" aria-label={status === 'checking' ? 'verificando' : status === 'ok' ? 'concluído' : 'pendente'} />}
         <div className="card-title-block">
@@ -32,7 +32,7 @@ export function ItemCard({ title, item, children, variant = 'default', subtitle,
         {variant === 'login' ? <span className="detail-icon"><Icon name="user" size={22} /></span> : null}
         <span>{item === null ? 'Verificando…' : friendlyDetail(item.detail)}</span>
       </p>
-      {children}
+      {illustration ? <div className="card-body-with-illustration"><div className="card-body-content">{children}</div><img className="card-illustration" src={illustration} alt="" /></div> : children}
     </section>
   );
 }

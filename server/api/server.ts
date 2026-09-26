@@ -102,7 +102,7 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
   }
 }
 
-const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.ico': 'image/x-icon' };
+const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.ico': 'image/x-icon' };
 
 async function serveStatic(dir: string, urlPath: string, res: ServerResponse): Promise<boolean> {
   const rel = urlPath === '/' || !path.extname(urlPath) ? 'index.html' : urlPath.slice(1);

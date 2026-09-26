@@ -15,7 +15,7 @@ export function OwnerCard({ organizations, initialOwner, loading, loadError, ite
     }
   };
   return (
-    <ItemCard title="Organização do GitHub" item={item} variant="login" subtitle="Escolha onde o Teams AI deve trabalhar." icon="github">
+    <ItemCard title="Organização do GitHub" item={item} variant="login" subtitle="Escolha onde o Teams AI deve trabalhar." icon="github" illustration="/onboarding-github-organization.png">
       <form
         className="owner-form"
         onSubmit={(e) => {

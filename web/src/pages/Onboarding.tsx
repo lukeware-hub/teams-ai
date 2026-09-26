@@ -60,6 +60,7 @@ export function Onboarding({ compact = false }: { compact?: boolean }) {
           <h2 id="welcome-title">Tudo pronto para começar</h2>
           <p>O Teams AI está conectado às suas ferramentas e pronto para ajudar a organizar projetos, executar tarefas e acompanhar o trabalho da equipe.</p>
           <Link className="primary-button" to="/projects">Ir para projetos</Link>
+          <div className="welcome-visual" aria-hidden="true"><img className="welcome-art" src="/onboarding-complete.png" alt="" /></div>
         </section>
       );
     }
