@@ -18,17 +18,19 @@ export interface Draft {
   briefMd: string;
   stackMd: string;
   flowMd: string;
+  designMd?: string;
   specJson: string;
   events: string;
   steps: (seq: number) => string;
 }
-export type DocFile = 'project.md' | 'brief.md' | 'stack.md' | 'flow.md';
+export type DocFile = 'project.md' | 'brief.md' | 'stack.md' | 'flow.md' | 'design.md';
 
 export const DOC_REL: Record<DocFile, (specId: string) => string> = {
   'project.md': () => 'docs/project.md',
   'brief.md': (specId) => `docs/specs/${specId}/brief.md`,
   'stack.md': () => 'docs/stack.md',
   'flow.md': () => 'docs/flow.md',
+  'design.md': () => 'docs/design.md',
 };
 
 /** Spec (refinement) §2: the draft lives beside the workspace, never inside the clone. */
@@ -45,13 +47,14 @@ export function draftPaths(ws: Workspace, specId: string): Draft {
     briefMd: path.posix.join(docs, 'specs', specId, 'brief.md'),
     stackMd: path.posix.join(docs, 'stack.md'),
     flowMd: path.posix.join(docs, 'flow.md'),
+    designMd: path.posix.join(docs, 'design.md'),
     specJson: path.posix.join(docs, 'specs', specId, 'spec.json'),
     events: path.posix.join(root, 'events.ndjson'),
     steps: (seq) => path.posix.join(root, 'steps', stepId(seq)),
   };
 }
 
-export const docPath = (d: Draft, file: DocFile): string => ({ 'project.md': d.projectMd, 'brief.md': d.briefMd, 'stack.md': d.stackMd, 'flow.md': d.flowMd })[file];
+export const docPath = (d: Draft, file: DocFile): string => ({ 'project.md': d.projectMd, 'brief.md': d.briefMd, 'stack.md': d.stackMd, 'flow.md': d.flowMd, 'design.md': d.designMd ?? path.posix.join(d.docs, 'design.md') })[file];
 
 export function projectTemplate(name: string): string {
   return `# ${name}\n\n## Vision\n\n<what the product is and why it exists>\n\n## Personas\n\n- <name>: <who they are and what they need>\n\n## Constraints\n\n- <free-text constraint>\n\n## Stack\n\n<optional; leave empty to let the Dev choose>\n\n## Principles\n\n- <non-negotiable rule every agent follows>\n\n## Deploy target\n\ndocker-local\n\n## GitHub owner\n\n<optional override of config.json github.owner>\n`;
@@ -67,6 +70,10 @@ export function stackTemplate(): string {
 
 export function flowTemplate(): string {
   return `# Application flow\n\n\`\`\`mermaid\nflowchart TD\n  A[Start] --> B[Configure Claude and GitHub]\n  B --> C[Create or open project]\n  C --> D[Edit project.md]\n  D --> E[Edit briefing.md]\n  E --> F[Define stack.md]\n  F --> G[Define flow.md]\n  G --> H[Evaluate with Claude]\n  H --> I[Derive project and spec JSON]\n  I --> J[PO and SM review]\n  J --> K{Questions pending?}\n  K -- Yes --> L[Answer or skip question]\n  L --> H\n  K -- No --> M{Patches pending?}\n  M -- Yes --> N[Accept or reject patch]\n  N --> H\n  M -- No --> O{Checklist green?}\n  O -- No --> D\n  O -- Yes --> P[Start implementation run]\n  P --> Q[Execute tasks and verification]\n  Q --> R[Review evidence]\n  R --> S[Merge or fix] \n  S --> T[Deploy locally]\n\`\`\`\n`;
+}
+
+export function designTemplate(): string {
+  return `# Design\n\n> This file is the executable visual contract. The Front agent owns its review and edits.\n\n## Brand and direction\n\n- Audience: <who this is for>\n- Product character: <specific visual language, not generic adjectives>\n- Signature: <one memorable design decision>\n- Avoid: <AI tells, visual patterns, or references that do not belong>\n\n## Foundations\n\n### Color tokens\n\n| Token | Value | Usage | Contrast / exception |\n|---|---|---|---|\n| color.bg | <hex> | page background | <rule> |\n| color.surface | <hex> | surfaces | <rule> |\n| color.ink | <hex> | primary text | <rule> |\n| color.muted | <hex> | secondary text | <rule> |\n| color.accent | <hex> | primary action | <rule> |\n| color.success | <hex> | success state | <rule> |\n| color.warning | <hex> | warning state | <rule> |\n| color.danger | <hex> | error state | <rule> |\n\n### Typography\n\n- Families: <display>, <body>, <mono if needed>\n- Scale: <named sizes, weights, line-heights, tracking>\n- Rules: <sentence case, max line length, hierarchy>\n\n### Spacing, shape, elevation\n\n- Base unit and scale: <values>\n- Containers and grid: <max width, columns, gutters>\n- Radii and borders: <values and usage>\n- Elevation: <shadow tokens and layering rules>\n\n## Responsive composition\n\n- Breakpoints: <mobile, tablet, desktop values and rationale>\n- Web: <layout and input behavior>\n- Mobile: <layout, orientation, touch target and safe-area behavior>\n- States: <loading, empty, error, offline, success>\n\n## Components and patterns\n\n- Buttons: <anatomy, variants, sizes, disabled/loading/focus>\n- Forms: <labels, validation, errors, keyboard and autofill>\n- Navigation: <desktop/mobile behavior>\n- Surfaces: <when to use cards, panels, lists, tables>\n- Feedback: <toast, dialog, inline, confirmation>\n\n## Interaction and motion\n\n- Feedback: <what changes immediately after each action>\n- Motion: <durations, easing/spring, purpose, interruptibility>\n- Reduced motion: <static alternatives>\n\n## Accessibility and content\n\n- Semantics and focus: <landmarks, heading order, visible focus>\n- Contrast and targets: <minimums and touch sizes>\n- Copy: <plain language, action labels, error/empty guidance>\n- Icons and assets: <source, sizing, alt text, no fake screenshots>\n\n## Implementation contract\n\n- <CSS/component token mapping and examples>\n- <tests or screenshots required before approval>\n`;
 }
 
 const list = (items: readonly string[]) => (items.length === 0 ? '- (none)' : items.map((i) => `- ${i}`).join('\n'));
@@ -99,6 +106,7 @@ export async function createNewProject(d: Draft, name: string): Promise<void> {
   await fs.writeFile(d.briefMd, briefTemplate());
   await fs.writeFile(d.stackMd, stackTemplate());
   await fs.writeFile(d.flowMd, flowTemplate());
+  await fs.writeFile(docPath(d, 'design.md'), designTemplate());
 }
 
 export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: { kind: 'new-spec' } | { kind: 'continue'; report?: string }): Promise<void> {
@@ -112,6 +120,7 @@ export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: {
   await fs.mkdir(path.dirname(d.briefMd), { recursive: true });
   if (!files.includes('docs/stack.md')) await fs.writeFile(d.stackMd, stackTemplate());
   if (!files.includes('docs/flow.md')) await fs.writeFile(d.flowMd, flowTemplate());
+  if (!files.includes('docs/design.md')) await fs.writeFile(docPath(d, 'design.md'), designTemplate());
   if (!files.includes('docs/project.md')) {
     const project = Project.parse(JSON.parse(await fs.readFile(d.projectJson, 'utf8')));
     await fs.writeFile(d.projectMd, renderProjectMd(project));
@@ -125,7 +134,15 @@ export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: {
   await fs.writeFile(d.specJson, JSON.stringify({ ...spec, status: 'refining', specHash: null }, null, 2));
 }
 
-export const readDoc = (d: Draft, file: DocFile): Promise<string> => fs.readFile(docPath(d, file), 'utf8');
+export async function readDoc(d: Draft, file: DocFile): Promise<string> {
+  try {
+    return await fs.readFile(docPath(d, file), 'utf8');
+  } catch (err) {
+    // Older drafts predate design.md; treat the new contract as its migration default.
+    if (file === 'design.md' && (err as NodeJS.ErrnoException).code === 'ENOENT') return designTemplate();
+    throw err;
+  }
+}
 /** Docs end with a newline: they are copied verbatim into the project repo, where a format gate will check them. */
 const withNewline = (text: string): string => (text.endsWith('\n') ? text : `${text}\n`);
 export const writeDoc = (d: Draft, file: DocFile, text: string): Promise<void> => fs.writeFile(docPath(d, file), withNewline(text));
@@ -143,6 +160,6 @@ export async function writeDerived(d: Draft, v: { project: Project; spec: Spec }
 }
 
 export async function draftHash(d: Draft): Promise<string> {
-  const [project, brief, stack, flow] = await Promise.all([readDoc(d, 'project.md'), readDoc(d, 'brief.md'), readDoc(d, 'stack.md'), readDoc(d, 'flow.md')]);
-  return sha256(canonicalJson({ project, brief, stack, flow }));
+  const [project, brief, stack, flow, design] = await Promise.all([readDoc(d, 'project.md'), readDoc(d, 'brief.md'), readDoc(d, 'stack.md'), readDoc(d, 'flow.md'), readDoc(d, 'design.md')]);
+  return sha256(canonicalJson({ project, brief, stack, flow, design }));
 }

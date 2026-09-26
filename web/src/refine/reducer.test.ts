@@ -5,7 +5,7 @@ import { applyToSnapshot } from './reducer.js';
 const snap: Snapshot = {
   projectId: 'p',
   specId: 's',
-  docs: { 'project.md': '', 'brief.md': '' },
+  docs: { 'project.md': '', 'brief.md': '', 'stack.md': '', 'flow.md': '', 'design.md': '' },
   secrets: [],
   tokens: { inputTokens: 0, outputTokens: 0, costUsd: 0, steps: 0 },
   state: { status: 'drafting', stale: false, cycle: 0, derived: null, checklist: [], questions: [], patches: [], discarded: [], error: null, runId: null },

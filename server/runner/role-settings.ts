@@ -51,6 +51,7 @@ const SUITE_BASH = [
 const ROLE_ALLOW: Record<Role, readonly string[]> = {
   sm: [],
   po: [],
+  front: [...EDIT_TOOLS, ...SUITE_BASH],
   dev: [...EDIT_TOOLS, ...SUITE_BASH],
   test: [...EDIT_TOOLS, ...SUITE_BASH],
   devops: [...EDIT_TOOLS],

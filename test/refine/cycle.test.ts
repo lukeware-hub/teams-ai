@@ -20,6 +20,7 @@ describe('refinement cycle Jev gate', () => {
       briefMd: path.join(docs, 'brief.md'),
       stackMd: path.join(docs, 'stack.md'),
       flowMd: path.join(docs, 'flow.md'),
+      designMd: path.join(docs, 'design.md'),
       specJson: path.join(docs, 'spec.json'),
       events: path.join(root, 'events.ndjson'),
       steps: (seq: number) => path.join(root, 'steps', String(seq)),
@@ -29,6 +30,7 @@ describe('refinement cycle Jev gate', () => {
       writeFile(draft.briefMd, '# Brief'),
       writeFile(draft.stackMd, '# Stack'),
       writeFile(draft.flowMd, '# Flow'),
+      writeFile(draft.designMd, '# Design'),
     ]);
     const events: Array<{ type: string; data: Record<string, unknown> }> = [];
     const journal = {

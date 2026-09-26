@@ -3,7 +3,7 @@ import { DEFAULT_MAX_PARALLEL } from '../scheduler/scheduler.js';
 import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
 import { BACKEND_NAMES, DECISION_IDS, type DecisionConfig, type DecisionId } from '../decide/types.js';
 
-export const ROLES = ['sm', 'po', 'dev', 'test', 'devops'] as const;
+export const ROLES = ['sm', 'po', 'front', 'dev', 'test', 'devops'] as const;
 export type Role = (typeof ROLES)[number];
 
 export const ProviderProfile = z.object({
@@ -15,6 +15,7 @@ export type ProviderProfile = z.infer<typeof ProviderProfile>;
 const CLAUDE_DEFAULTS: Record<Role, ProviderProfile> = {
   sm: { provider: 'claude', model: 'opus' },
   po: { provider: 'claude', model: 'opus' },
+  front: { provider: 'claude', model: 'opus' },
   dev: { provider: 'claude', model: 'opus' },
   test: { provider: 'claude', model: 'sonnet' },
   devops: { provider: 'claude', model: 'sonnet' },

@@ -102,7 +102,7 @@ describe('refine api', () => {
     expect(text).toContain('event: journal');
     const snap = await snapshot();
     expect(snap.state.status).toBe('answering');
-    expect(snap.docs['brief.md']).toBe('## Objectives\n- ship');
+    expect(snap.docs['brief.md']).toBe('## Objectives\n- ship\n');
     expect(snap.state.questions[0]).toMatchObject({ questionId: 'po-c1-0', blocking: true });
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/questions/po-c1-0/skip')).status).toBe(409);
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/answers', { questionId: 'po-c1-0', text: '8080' })).status).toBe(200);
