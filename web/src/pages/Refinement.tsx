@@ -362,7 +362,7 @@ export function RefinementPage() {
           <Icon name="play" size={18} />Iniciar análise
         </button>
       </header>
-      {(error || snap.state.status === 'error') && <p className="refine-page-error" role="alert">{errorText(error ?? snap.state.error)}</p>}
+      {(error || snap.state.status === 'error') && <p className="error refine-page-error" role="alert">{errorText(error ?? snap.state.error)}</p>}
       <RefinementView
         snap={snap}
         busy={snap.state.status === 'evaluating'}

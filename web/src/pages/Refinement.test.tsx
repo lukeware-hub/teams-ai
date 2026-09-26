@@ -77,7 +77,7 @@ describe('RefinementView', () => {
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('locks the editor and the evaluate button while evaluating and shows a cycle error', () => {
+  it('locks the editor and the evaluate button while evaluating and leaves cycle errors to the page alert', () => {
     render(
       <MemoryRouter>
         <RefinementView snap={base({ status: 'evaluating', questions: [], patches: [] })} busy={true} {...on()} />
@@ -90,7 +90,7 @@ describe('RefinementView', () => {
         <RefinementView snap={base({ status: 'error', error: 'derive: spec.objectives: too small', questions: [], patches: [] })} busy={false} {...on()} />
       </MemoryRouter>,
     );
-    expect(screen.getByText(/spec.objectives: too small/)).toBeTruthy();
+    expect(screen.queryByText(/spec.objectives: too small/)).toBeNull();
   });
 
   it('keeps pending patch decisions available while an evaluation is visible', () => {
