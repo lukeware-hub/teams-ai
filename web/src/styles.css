@@ -52,7 +52,44 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .progress-track { height: 0.35rem; margin: 0.7rem 0 0.55rem; overflow: hidden; border-radius: 999px; background: #e7ebf3; }
 .progress-track span { display: block; width: 100%; height: 100%; border-radius: inherit; background: var(--accent); transform: scaleX(0); transform-origin: left center; transition: transform .35s ease; }
 .setup-progress small { color: var(--ink-soft); font-size: 0.7rem; }
-.setup-grid { display: grid; gap: 0.85rem; }
+  .setup-grid { display: grid; gap: 0.85rem; }
+
+  .onboarding-navigation {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-3);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--line);
+  }
+  .onboarding-navigation .primary-button,
+  .onboarding-navigation .secondary { min-width: 8rem; text-align: center; text-decoration: none; }
+
+  .welcome-card {
+    display: grid;
+    justify-items: start;
+    gap: var(--space-3);
+    padding: clamp(2rem, 6vw, 4.5rem);
+    border: 1px solid var(--good-line);
+    border-radius: var(--radius-xl);
+    background: linear-gradient(135deg, var(--surface), var(--good-soft));
+    box-shadow: var(--shadow-panel);
+  }
+  .welcome-icon {
+    display: grid;
+    place-items: center;
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: var(--radius-circle);
+    color: var(--good);
+    background: var(--good-soft);
+    font-size: var(--text-3xl);
+    font-weight: var(--weight-bold);
+  }
+  .welcome-card .setup-kicker { margin: 0; }
+  .welcome-card h2 { margin: 0; font-size: var(--text-display-card); letter-spacing: var(--tracking-tight); }
+  .welcome-card p:not(.setup-kicker) { max-width: 42rem; margin: 0; color: var(--ink-soft); font-size: var(--text-lg); line-height: var(--leading-relaxed); }
+  .welcome-card .primary-button { display: inline-flex; align-items: center; justify-content: center; min-width: 10rem; text-decoration: none; }
 .onboarding-card { padding: 1.25rem 1.35rem; border-radius: 16px; box-shadow: 0 1px 2px rgba(24, 34, 53, .03), 0 12px 30px rgba(24, 34, 53, .045); }
 .onboarding-card-header { padding-bottom: 0.85rem; margin-bottom: 0.85rem; }
 .onboarding-card-header h2 { font-size: 1rem; letter-spacing: -0.015em; }
@@ -149,6 +186,8 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   .owner-form button { width: 100%; }
   .secret-form { grid-template-columns: 1fr; }
   .secret-form button { width: 100%; }
+  .onboarding-navigation { position: sticky; bottom: 0; padding: 0.75rem 0; background: var(--bg); }
+  .onboarding-navigation .primary-button, .onboarding-navigation .secondary { flex: 1; }
   .login-controls > .secondary { grid-column: 2; grid-row: 1; }
   .login-controls.with-code .browser-step, .login-controls.with-code > .secondary { margin-bottom: 0; }
   .login-status-error { grid-row: 2; }

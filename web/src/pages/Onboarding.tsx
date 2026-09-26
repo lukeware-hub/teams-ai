@@ -83,7 +83,7 @@ export function Onboarding({ compact = false }: { compact?: boolean }) {
       <div className="setup-grid">{stepContent()}</div>
       <nav className="onboarding-navigation" aria-label="Navegação da configuração">
         <button type="button" className="secondary" onClick={() => setStep((current) => current - 1)} disabled={step === 0}>Voltar</button>
-        {step < totalSteps - 1 ? <button type="button" className="primary-button" onClick={next} disabled={!currentItem?.ok}>Próximo</button> : <Link className="primary-button" to="/projects">Ir para projetos</Link>}
+        {step < totalSteps - 1 ? <button type="button" className="primary-button" onClick={next} disabled={!currentItem?.ok}>Próximo</button> : null}
       </nav>
     </main>
   );
