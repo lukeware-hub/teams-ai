@@ -226,7 +226,7 @@ export class TaskRunner {
     this.specGapRounds = 0;
     // Gate artifacts (the JUnit report) are written by the orchestrator, not by the Dev, and are never committed.
     const touched = (await porcelainNames(this.worktree, this.deps.exec)).filter((f) => f !== this.deps.plan.junitPath);
-    const scope = checkScope({ changedFiles: touched, affectedPaths: task.def.affectedPaths, frozenPaths: this.deps.plan.frozenPaths, scopeJustification: value.scopeJustification, allowFrozen: this.deps.firstSpec && this.taskId === 'T0-scaffold' });
+    const scope = checkScope({ changedFiles: touched, affectedPaths: task.def.affectedPaths, frozenPaths: this.deps.plan.frozenPaths, scopeJustification: value.scopeJustification, allowFrozen: this.deps.firstSpec && task.bootstrapsFrozenPaths });
     if (!scope.ok) return this.fail('review-changes', `Scope violation:\n${scope.errors.join('\n')}`);
     this.scopeJustification = value.scopeJustification;
     // baseSha lets reconcile tell "committed, then crashed" from "crashed before committing" (spec §6).

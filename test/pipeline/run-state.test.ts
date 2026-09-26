@@ -84,6 +84,19 @@ describe('replan', () => {
     expect(state.order).toEqual(['T1-a', 'T2-b', 'T4-a1', 'T5-a2']);
   });
 
+  it('T0-scaffold starts with permission to write the frozen docs it bootstraps, and a replan inherits it', () => {
+    const state = reduceEvents([planned('T0-scaffold'), replan('T0-scaffold', makePlanTask({ id: 'T0-scaffold-r1' }), makePlanTask({ id: 'T0-scaffold-r2' }))]);
+    expect(state.tasks.get('T0-scaffold')!.bootstrapsFrozenPaths).toBe(true);
+    expect(state.tasks.get('T0-scaffold-r1')!.bootstrapsFrozenPaths).toBe(true);
+    expect(state.tasks.get('T0-scaffold-r2')!.bootstrapsFrozenPaths).toBe(true);
+  });
+
+  it('an ordinary task never gets the frozen-path permission, replanned or not', () => {
+    const state = reduceEvents([planned('T1-a'), replan('T1-a', makePlanTask({ id: 'T1-a-r1' }))]);
+    expect(state.tasks.get('T1-a')!.bootstrapsFrozenPaths).toBe(false);
+    expect(state.tasks.get('T1-a-r1')!.bootstrapsFrozenPaths).toBe(false);
+  });
+
   it('does not duplicate a dependency already listed by the dependent', () => {
     const state = reduceEvents([planned('T1-a'), planned('T4-r'), planned('T2-b', ['T1-a', 'T4-r']), replan('T1-a', makePlanTask({ id: 'T5-r2' }))]);
     expect(state.tasks.get('T2-b')!.def.dependsOn).toEqual(['T4-r', 'T5-r2']);
