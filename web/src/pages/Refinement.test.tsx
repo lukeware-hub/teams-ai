@@ -18,7 +18,7 @@ const base = (over: Partial<Snapshot['state']>): Snapshot => ({
     status: 'answering',
     stale: false,
     cycle: 1,
-    derived: { spec: { acceptanceCriteria: [], externalDependencies: [{ name: 'db', secretNames: ['DB_URL'] }] }, project: {} },
+    derived: { spec: { type: 'feature', acceptanceCriteria: [], externalDependencies: [{ name: 'db', secretNames: ['DB_URL'] }] }, project: {} },
     checklist: green(ALL),
     questions: [
       { questionId: 'po-c1-0', role: 'po', text: 'Port?', blocking: true, relatedAcIds: ['AC-001'], cycle: 1, status: 'pending', answer: null },
@@ -119,5 +119,34 @@ describe('RefinementView', () => {
       </MemoryRouter>,
     );
     expect(screen.getByText(/derivando project\.json e spec\.json/)).toBeTruthy();
+  });
+
+  it('shows the demand type, bug details, and downloadable derived JSON', () => {
+    render(
+      <MemoryRouter>
+        <RefinementView
+          snap={base({
+            status: 'ready',
+            questions: [],
+            patches: [],
+            derived: {
+              project: {},
+              spec: {
+                type: 'bug',
+                bug: { actual: '500', expected: '200', reproduction: 'GET /todos' },
+                acceptanceCriteria: [],
+                externalDependencies: [],
+              },
+            },
+          })}
+          busy={false}
+          {...on()}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('spec-type').textContent).toContain('Bug');
+    expect(screen.getByTestId('bug-details').textContent).toContain('GET /todos');
+    expect(screen.getByTestId('download-spec-json').getAttribute('download')).toBe('spec.json');
+    expect(screen.getByTestId('download-project-json').getAttribute('download')).toBe('project.json');
   });
 });
