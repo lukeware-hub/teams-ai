@@ -1,8 +1,8 @@
 import { SECRET_NAME, writeSecret } from '../core/secrets.js';
 import { redactSecrets } from '../core/redact.js';
-import { GITHUB_OWNER, setGithubOwner } from '../onboarding/config-store.js';
+import { GITHUB_OWNER, readUserConfig, setGithubOwner } from '../onboarding/config-store.js';
 import { LoginSession } from '../onboarding/login-session.js';
-import { claudeStatus, ghStatus } from '../onboarding/probes.js';
+import { claudeStatus, ghOrganizations, ghStatus } from '../onboarding/probes.js';
 import { childEnv, type PtySpec, type SpawnPty } from '../onboarding/pty.js';
 import { computeItem, computeStatus, type ItemName, type StatusDeps } from '../onboarding/status.js';
 import type { Cli } from '../onboarding/transcripts.js';
@@ -46,6 +46,15 @@ export function onboardingRoutes(deps: OnboardingDeps): Route[] {
   const P = '/api/onboarding';
   const routes: Route[] = [
     { method: 'GET', path: `${P}/status`, handler: async ({ json }) => json(200, await computeStatus(deps)) },
+    {
+      method: 'GET',
+      path: `${P}/github-organizations`,
+      handler: async ({ json }) => {
+        const result = await ghOrganizations(deps);
+        if (!result.ok) throw new HttpError(400, result.detail);
+        json(200, { organizations: result.organizations, owner: (await readUserConfig(deps.home)).cfg.github.owner ?? null });
+      },
+    },
     {
       method: 'PUT',
       path: `${P}/github-owner`,

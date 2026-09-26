@@ -37,6 +37,7 @@ beforeEach(async () => {
   exec = new FakeExec()
     .onArgs('claude', ['auth', 'status'], () => ({ stdout: JSON.stringify({ loggedIn: true, email: 'a@b.c', subscriptionType: 'max' }) }))
     .onArgs('gh', ['auth', 'status'], () => ({ exitCode: 1, stderr: 'not logged in' }))
+    .onArgs('gh', ['api', 'user/orgs'], () => ({ stdout: 'acme\nplatform\nacme\n' }))
     .onArgs('gh', ['api', 'user'], (s) => (s.env?.GH_TOKEN === TOKEN ? { stdout: `HTTP/2.0 200 OK\nX-Oauth-Scopes: repo\n\n{"login":"diego"}` } : { exitCode: 1, stderr: `HTTP 401 for ${s.env?.GH_TOKEN ?? ''}` }));
   const okFetch = (async () => new Response(JSON.stringify({ model: 'typesafe/jev-1.13', answers: { probe: { type: 'noul', noul: 0.9 } }, usage: { input_tokens: 1, output_tokens: 1, cost: 0.000001 } }), { status: 200 })) as typeof fetch;
   api = await startApi(
@@ -110,6 +111,12 @@ describe('api server', () => {
     const ok = await fetch(`${base()}/api/onboarding/github-owner`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ owner: 'diego-dm-morais' }) });
     expect(await ok.json()).toEqual({ item: { ok: true, detail: 'diego-dm-morais (User)' } });
     expect(JSON.parse(await fs.readFile(path.join(home, '.teams-ai', 'config.json'), 'utf8'))).toEqual({ github: { owner: 'diego-dm-morais' } });
+  });
+
+  it('GET /github-organizations lists unique organizations and the saved owner', async () => {
+    const r = await fetch(`${base()}/api/onboarding/github-organizations`);
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ organizations: ['acme', 'platform'], owner: null });
   });
 
   it('login session over SSE: state events, code posting, 409 outside awaiting-code, replay on connect', async () => {

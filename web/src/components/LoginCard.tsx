@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, type Cli, type Item, type SessionState } from '../api.js';
 import { ItemCard } from './ItemCard.js';
 import { useSse } from '../useSse.js';
@@ -22,10 +22,11 @@ export function LoginCard({ cli, title, item, onDone }: { cli: Cli; title: strin
     await api.code(cli, code);
     setCode('');
   };
-  if (state.name === 'done' && url) {
+  useEffect(() => {
+    if (state.name !== 'done' || !url) return;
     setUrl(null);
     onDone();
-  }
+  }, [state.name, url, onDone]);
   return (
     <ItemCard title={title} item={item}>
       <LoginControls state={state} code={code} onCode={setCode} onStart={start} onSend={send} onCancel={() => api.cancel(cli)} />

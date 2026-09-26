@@ -38,6 +38,18 @@ export async function ghStatus(d: ProbeDeps): Promise<ProbeResult> {
   return { ok: false, detail: firstLine(r.stderr || r.stdout) || 'gh is not logged in' };
 }
 
+export async function ghOrganizations(d: ProbeDeps): Promise<ProbeResult & { organizations: string[] }> {
+  const r = await d.exec({
+    bin: d.hostEnv?.GH_BIN ?? 'gh',
+    args: ['api', 'user/orgs', '--paginate', '--jq', '.[].login'],
+    env: childEnv(d.hostEnv),
+    timeoutMs: d.timeoutMs ?? TIMEOUT,
+  }).catch((e: Error) => ({ exitCode: 1, stdout: '', stderr: e.message }));
+  if (r.exitCode !== 0) return { ok: false, detail: firstLine(r.stderr || r.stdout) || 'could not list GitHub organizations', organizations: [] };
+  const organizations = [...new Set(r.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean))];
+  return { ok: true, detail: `${organizations.length} organization(s)`, organizations };
+}
+
 function ghEnv(d: ProbeDeps, token: string | null): Record<string, string> {
   return childEnv(d.hostEnv, token ? { GH_TOKEN: token } : {});
 }
