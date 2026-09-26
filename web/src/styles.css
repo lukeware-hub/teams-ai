@@ -348,7 +348,7 @@ h3 { font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; colo
 .refine-breadcrumb { display: flex; align-items: center; flex-wrap: wrap; gap: .55rem; color: var(--ink-soft); font-size: .8rem; }
 .refine-breadcrumb a { display: inline-flex; align-items: center; gap: .4rem; color: var(--accent); text-decoration: none; }
 .refine-breadcrumb strong { color: var(--ink); }
-.refine-breadcrumb .status { margin-left: auto; color: var(--accent-ink); font-weight: 700; }
+.refine-page-error { width: min(100%, 48rem); margin: 0 auto; text-align: center; }
 .refine-workspace { grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; }
 .refine-workspace .panel-card { padding: 1.25rem; border: 1px solid var(--line); border-radius: 18px; background: rgba(255, 255, 255, .9); box-shadow: 0 12px 28px rgba(24, 34, 53, .06); }
 .refine-workspace .docs, .refine-workspace .panels { position: static; }

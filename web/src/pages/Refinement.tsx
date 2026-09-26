@@ -153,7 +153,6 @@ export function RefinementView(p: ViewProps) {
             Lista desatualizada — reavalie
           </p>
         )}
-        {st.status === 'error' && <p className="error">{errorText(st.error)}</p>}
         {jevAdvisory && <p className="notice">O Jev atua como auxiliar: seus apontamentos serão considerados por Claude, PO e SM.</p>}
         <div className="doc-actions">
           <span className="save-hint"><Icon name="info" size={18} />As alterações são salvas automaticamente ao sair do editor.</span>
@@ -358,12 +357,12 @@ export function RefinementPage() {
   };
   return (
     <main className="refine-page">
-      <header className="refine-breadcrumb"><a href="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></a><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} rascunho</span><span className={`status ${snap.state.status}`}>{({ answering: 'respondendo', evaluating: 'avaliando', ready: 'pronto', error: 'erro', started: 'iniciado', drafting: 'rascunho' } as Record<string, string>)[snap.state.status] ?? snap.state.status}</span>
+      <header className="refine-breadcrumb"><a href="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></a><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} rascunho</span>
         <button data-testid="start" className="primary refine-start refine-top-action" disabled={snap.state.status !== 'ready' || snap.state.stale} onClick={act(() => refineApi.start(projectId, specId).then(({ runId }) => navigate(`/runs/${runId}`)))}>
           <Icon name="play" size={18} />Iniciar análise
         </button>
       </header>
-      {error && <p className="error">{errorText(error)}</p>}
+      {(error || snap.state.status === 'error') && <p className="refine-page-error" role="alert">{errorText(error ?? snap.state.error)}</p>}
       <RefinementView
         snap={snap}
         busy={snap.state.status === 'evaluating'}
