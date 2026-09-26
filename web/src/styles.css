@@ -98,8 +98,8 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .browser-step { display: flex; grid-column: 1; grid-row: 1; flex-wrap: wrap; align-items: center; gap: 0.7rem; min-width: 0; }
 .link-button { display: inline-flex; align-items: center; min-height: 2.2rem; padding: 0.45rem 0.75rem; border: 1px solid #cad4f2; border-radius: 8px; color: var(--accent); background: var(--accent-soft); font-size: 0.85rem; font-weight: 700; text-decoration: none; }
 .link-button:hover { border-color: #aebbe8; background: #e4e8fb; }
-.browser-step p { margin: 0; color: var(--ink-soft); font-size: 0.84rem; }
-.browser-step code { padding: 0.25rem 0.45rem; border-radius: 6px; color: var(--ink); background: #f1f4f8; font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.78rem; }
+.browser-step p { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0.55rem; margin: 0; color: var(--ink-soft); font-size: 0.88rem; line-height: 1.35; }
+.browser-step code { display: inline-flex; align-items: center; min-height: 2.2rem; padding: 0.35rem 0.7rem; border: 1px solid #cbd8f5; border-radius: 8px; color: var(--ink); background: #f5f7ff; font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.88rem; font-weight: 700; letter-spacing: 0.045em; }
 .code-form { display: grid; grid-column: 2; grid-row: 1; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 0.7rem; width: 100%; min-width: 0; max-width: none; margin: 0; padding: 0.9rem; border: 1px solid #e5e9f1; border-radius: 12px; background: #fafbfd; }
 .code-label { display: grid; gap: 0.38rem; min-width: 0; color: var(--ink-soft); font-size: 0.74rem; font-weight: 700; }
 .code-label input { width: 100%; min-width: 0; }
