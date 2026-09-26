@@ -95,6 +95,7 @@ export function RunView({ detail, events, ended, error, loadStep }: { detail: Ru
       {selected ? <TaskDetail events={unique} taskId={selected} loadStep={loadStep} /> : null}
       <section className="card">
         <h2>Tokens</h2>
+        <h3 className="tokens-subhead">Por papel</h3>
         <table>
           <thead>
             <tr>
@@ -117,6 +118,7 @@ export function RunView({ detail, events, ended, error, loadStep }: { detail: Ru
             ))}
           </tbody>
         </table>
+        <h3 className="tokens-subhead">Por fase</h3>
         <table>
           <thead>
             <tr>

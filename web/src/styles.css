@@ -41,7 +41,8 @@ th { text-align: left; padding: 0.45rem 0.6rem; color: var(--ink-soft); font-siz
 td { text-align: left; padding: 0.55rem 0.6rem; border-bottom: 1px solid #f0f2f6; vertical-align: top; }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover td { background: #fafbfd; }
-td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: "SFMono-Regular", Consolas, monospace; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+td.num { color: var(--ink); font-weight: 500; }
 .phase { display: inline-flex; align-items: center; gap: 0.4rem; margin-right: 0.5rem; padding: 0.3rem 0.7rem; border-radius: 999px; background: #eee; font-size: 0.78rem; font-weight: 700; color: var(--ink-soft); }
 .phase::before { content: ""; width: 0.4rem; height: 0.4rem; border-radius: 50%; background: currentColor; }
 .phase-done { background: var(--good-soft); color: var(--good); }
@@ -70,6 +71,8 @@ h3 { font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; colo
 .task-group ul { list-style: none; margin: 0; padding: 0; }
 .tokens-total { color: var(--ink-soft); font-size: 0.85rem; margin: 0.9rem 0 0; padding-top: 0.75rem; border-top: 1px solid var(--line); }
 .tokens-total strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+.tokens-subhead { margin: 1.5rem 0 0; padding-top: 1.1rem; border-top: 1px solid var(--line); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); }
+.tokens-subhead:first-of-type { margin-top: 0; padding-top: 0; border-top: none; }
 .card-cause { border-color: #f5cfcd; background: var(--bad-soft); }
 .card-cause h2 { color: var(--bad); }
 .cause-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
