@@ -68,6 +68,7 @@ export interface ViewProps {
   onReject(id: string, reason: string | null): void;
   onSecret(name: string, value: string): void;
   onStart(): void;
+  startInHeader?: boolean;
   events?: StoredEvent[];
 }
 
@@ -262,6 +263,9 @@ export function RefinementView(p: ViewProps) {
               </li>
             ))}
         </ul>
+        {!p.startInHeader && <button data-testid="start" className="primary full-width refine-start" disabled={!canStart} onClick={p.onStart}>
+          <Icon name="play" size={18} />Iniciar análise
+        </button>}
       </section>
       <section className="panels panel-card">
         <div className="section-heading">
@@ -309,9 +313,6 @@ export function RefinementView(p: ViewProps) {
           ))}
           {newSecrets.map((s) => <li key={s.id} className="secret-row new-secret-row"><div className="secret-entry secret-key-entry"><input aria-label="Nome da chave" placeholder="NOME_DA_CHAVE" value={s.name} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, name: e.target.value.toUpperCase() } : row))} /><input type="password" aria-label="Valor da chave" placeholder="Cole o valor da chave" value={s.value} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, value: e.target.value } : row))} /><button disabled={locked || !/^[A-Z][A-Z0-9_]*$/.test(s.name) || !s.value} onClick={() => { p.onSecret(s.name, s.value); setNewSecrets((rows) => rows.filter((row) => row.id !== s.id)); }}>Salvar</button></div></li>)}
         </ul>
-        <button data-testid="start" className="primary full-width refine-start" disabled={!canStart} onClick={p.onStart}>
-          <Icon name="play" size={18} />Iniciar análise
-        </button>
       </section>
     </div>
   );
@@ -358,6 +359,9 @@ export function RefinementPage() {
   return (
     <main className="refine-page">
       <header className="refine-breadcrumb"><a href="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></a><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} rascunho</span><span className={`status ${snap.state.status}`}>{({ answering: 'respondendo', evaluating: 'avaliando', ready: 'pronto', error: 'erro', started: 'iniciado', drafting: 'rascunho' } as Record<string, string>)[snap.state.status] ?? snap.state.status}</span>
+        <button data-testid="start" className="primary refine-start refine-top-action" disabled={snap.state.status !== 'ready' || snap.state.stale} onClick={act(() => refineApi.start(projectId, specId).then(({ runId }) => navigate(`/runs/${runId}`)))}>
+          <Icon name="play" size={18} />Iniciar análise
+        </button>
       </header>
       {error && <p className="error">{errorText(error)}</p>}
       <RefinementView
@@ -371,6 +375,7 @@ export function RefinementPage() {
         onReject={(id, r) => act(() => refineApi.reject(projectId, specId, id, r))()}
         onSecret={(n, v) => act(() => refineApi.secret(projectId, specId, n, v).then(load))()}
         onStart={act(() => refineApi.start(projectId, specId).then(({ runId }) => navigate(`/runs/${runId}`)))}
+        startInHeader
         events={events}
       />
     </main>

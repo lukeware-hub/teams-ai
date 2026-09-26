@@ -148,7 +148,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   if (!allowed || !spec.specHash) throw new Error(`spec ${specId} is not ${opts.complete ? 'awaiting-validation' : 'running'} (status ${spec.status}); finish Gate 1 first`);
   const ws = workspacePaths(cfg, project.projectId);
   const platformSecrets = await loadSecrets(expandHome(cfg.paths.secrets));
-  const secrets = { ...platformSecrets, ...(await loadSecrets(ws.secrets)) };
+  const secrets = { ...platformSecrets, ...(await loadSecrets(path.posix.join(ws.root, 'secrets'))) };
   // The orchestrator authenticates to GitHub as the token's user (spec §10 GITHUB_TOKEN), for `gh` and for
   // git over HTTPS alike; the interactive `gh auth login` may belong to a different account. The helper reads
   // the token from the environment, so it never appears on a command line or in a remote URL.
