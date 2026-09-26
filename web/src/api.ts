@@ -95,7 +95,7 @@ const R = '/api';
 const jsonPost = (p: string, body?: unknown) => fetch(`${R}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
 export const runApi = {
   projects: () => fetch(`${R}/projects`).then((r) => json<ProjectRow[]>(r)),
-  addProject: (dir: string) => jsonPost('/projects', { dir }).then((r) => json<ProjectRow>(r)),
+  addProject: (url: string) => jsonPost('/projects', { url }).then((r) => json<ProjectRow>(r)),
   runs: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/runs`).then((r) => json<RunRow[]>(r)),
   startRun: (projectId: string, specId: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/runs`).then((r) => json<{ runId: string }>(r)),
   resumeRun: (runId: string) => jsonPost(`/runs/${encodeURIComponent(runId)}/resume`).then((r) => json<{ runId: string }>(r)),

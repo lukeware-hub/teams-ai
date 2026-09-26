@@ -21,7 +21,7 @@ export function ProjectsView(p: {
   onNewSpec: (projectId: string, specId: string) => void;
   onContinue: (projectId: string, specId: string) => void;
 }) {
-  const [dir, setDir] = useState('');
+  const [repoUrl, setRepoUrl] = useState('');
   const [newProjectId, setNewProjectId] = useState('');
   const [newProjectName, setNewProjectName] = useState('');
   const [newSpecId, setNewSpecId] = useState<Record<string, string>>({});
@@ -56,11 +56,11 @@ export function ProjectsView(p: {
         <form className="project-action-card"
         onSubmit={(e) => {
           e.preventDefault();
-          p.onAdd(dir);
+          p.onAdd(repoUrl);
         }}
       >
-          <div className="project-action-heading"><span className="project-action-icon project-action-icon-muted">↗</span><div><h2>Adicionar projeto existente</h2><p>A pasta precisa conter <code>docs/project.json</code>.</p></div></div>
-          <div className="project-action-fields project-import-fields"><label><span>Caminho da pasta</span><input aria-label="Caminho da pasta" value={dir} onChange={(e) => setDir(e.target.value)} placeholder="C:\\projetos\\meu-projeto" /></label><button className="secondary" type="submit" disabled={dir.trim() === ''}>Adicionar projeto</button></div>
+          <div className="project-action-heading"><span className="project-action-icon project-action-icon-muted">↗</span><div><h2>Adicionar projeto do Git</h2><p>Cole o link do repositório que contém <code>docs/project.json</code>.</p></div></div>
+          <div className="project-action-fields project-import-fields"><label><span>URL do repositório</span><input aria-label="URL do repositório" type="url" value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder="https://github.com/organização/projeto.git" /></label><button className="secondary" type="submit" disabled={repoUrl.trim() === ''}>Baixar e adicionar</button></div>
         </form>
       </section>
       {p.error ? <p className="error">{p.error}</p> : null}

@@ -16,6 +16,7 @@ const alive = new Set<number>();
 let spawns: Array<{ args: string[]; logFile: string }>;
 let signals: Array<[number, string | number]>;
 let onSpawn: (runId: string) => Promise<void>;
+let cloned: Array<{ url: string; destination: string }>;
 const base = () => `http://127.0.0.1:${api.port}`;
 const post = (p: string, body?: unknown) => fetch(`${base()}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
 
@@ -27,6 +28,7 @@ beforeEach(async () => {
   alive.clear();
   spawns = [];
   signals = [];
+  cloned = [];
   onSpawn = async () => {};
   const control: RunControlDeps = {
     spawn: (a) => {
@@ -47,7 +49,7 @@ beforeEach(async () => {
     cliEntry: () => ({ bin: 'node', prefix: ['cli'] }),
     repoRoot: '/repo',
   };
-  api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control }) }, 0);
+  api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, cloneProject: async (url, destination) => { cloned.push({ url, destination }); await fs.cp(HELLO, destination, { recursive: true }); } }) }, 0);
 });
 afterEach(async () => {
   await api.close();
@@ -82,6 +84,17 @@ describe('projects', () => {
     expect((await post('/api/projects', { dir: 42 })).status).toBe(400);
     expect((await readUserConfig(home)).cfg.projects).toHaveLength(2);
     expect((await fetch(`${base()}/api/projects/nobody/runs`)).status).toBe(404);
+  });
+  it('validates a Git URL, clones it into an isolated directory and supports multiple imports', async () => {
+    expect((await post('/api/projects', { url: 'github.com/acme/demo' })).status).toBe(400);
+    const first = await post('/api/projects', { url: 'https://github.com/acme/demo.git' });
+    const second = await post('/api/projects', { url: 'https://github.com/acme/another.git' });
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(cloned).toHaveLength(2);
+    expect(cloned[0]!.destination).toContain(`${path.sep}imports${path.sep}demo-`);
+    expect(cloned[1]!.destination).toContain(`${path.sep}imports${path.sep}another-`);
+    expect((await readUserConfig(home)).cfg.projects).toHaveLength(3);
   });
 });
 
