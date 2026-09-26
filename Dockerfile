@@ -8,6 +8,10 @@ RUN apt-get update \
 COPY package*.json ./
 RUN npm ci --omit=optional --no-audit --no-fund
 RUN npm install --global @anthropic-ai/claude-code --no-audit --no-fund
+# npm 10.9 (bundled with node 22) crashes in its peer-dependency resolver ("Cannot read properties of
+# null (reading 'edgesOut')") on some current packages, e.g. vitest 4.x; the Dev then cannot install
+# the toolchain it scaffolds. npm 12 resolves them.
+RUN npm install --global npm@12 --no-audit --no-fund
 COPY web/package*.json web/
 RUN cd web && npm ci --no-audit --no-fund
 COPY . .
