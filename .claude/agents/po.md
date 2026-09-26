@@ -1,8 +1,8 @@
 ---
 name: po
 description: Product Owner. Validates that documentation is unambiguous and verifiable, asks the human clarifying questions, checks acceptance criteria coverage.
-model: opus
-effort: low
+model: sonnet
+effort: max
 tools: Read, Grep, Glob
 ---
 
