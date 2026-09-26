@@ -26,7 +26,28 @@ export const PROTECTED_READ_PATHS: readonly string[] = [
  * granted the file tools explicitly (the first live run's Dev could not write the tech spec).
  */
 const EDIT_TOOLS = ['Edit', 'Write', 'MultiEdit'] as const;
-const SUITE_BASH = ['Bash(npm:*)', 'Bash(npx:*)', 'Bash(node:*)', 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(ls:*)', 'Bash(cat:*)'] as const;
+// In dontAsk mode a compound command is denied unless every segment matches a rule, so the read-only
+// helpers a Dev chains onto npm/node (`... 2>&1 | tail -20`, `mktemp -d`, `grep`) are allowed too;
+// without them the Dev concluded "Bash is denied" and stopped installing its own toolchain.
+const SUITE_BASH = [
+  'Bash(npm:*)',
+  'Bash(npx:*)',
+  'Bash(node:*)',
+  'Bash(git status:*)',
+  'Bash(git diff:*)',
+  'Bash(git log:*)',
+  'Bash(ls:*)',
+  'Bash(cat:*)',
+  'Bash(head:*)',
+  'Bash(tail:*)',
+  'Bash(grep:*)',
+  'Bash(find:*)',
+  'Bash(wc:*)',
+  'Bash(mktemp:*)',
+  'Bash(echo:*)',
+  'Bash(pwd:*)',
+  'Bash(true:*)',
+] as const;
 const ROLE_ALLOW: Record<Role, readonly string[]> = {
   sm: [],
   po: [],
