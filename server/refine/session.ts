@@ -138,19 +138,8 @@ export class RefineSession {
     if (this.busy) throw new ConflictError('evaluation in progress');
   }
 
-  private jevBlockNeedsEdit(): boolean {
-    const events = this.journal.events;
-    const failedAt = [...events].reverse().findIndex((event) => event.type === RefineEvent.CycleFailed && String(event.data.reason).startsWith('Jev bloqueou a derivação:'));
-    if (failedAt < 0) return false;
-    const index = events.length - failedAt - 1;
-    return !events.slice(index + 1).some((event) => event.type === RefineEvent.DocEdited);
-  }
-
   ensureCanEvaluate(): void {
     this.guard();
-    if (this.jevBlockNeedsEdit()) {
-      throw new ConflictError('Jev bloqueou esta versão dos documentos. Edite project.md, briefing.md, stack.md ou flow.md antes de reavaliar.');
-    }
   }
 
   async snapshot(): Promise<Snapshot> {
@@ -162,7 +151,7 @@ export class RefineSession {
       'design.md': await readDoc(this.deps.draft, 'design.md'),
     } as Record<DocFile, string>;
     const present = await loadSecrets(this.deps.secretsDir);
-    const names = [...new Set((this.state.derived?.spec.externalDependencies ?? []).flatMap((d) => d.secretNames))];
+    const names = Object.keys(present).sort();
     const secrets = names.map((name) => ({ name, present: name in present, hint: name in present ? present[name]!.slice(-4) : null }));
     const tokens = { inputTokens: 0, outputTokens: 0, costUsd: 0, steps: 0 };
     for (const e of this.journal.events) {
@@ -252,15 +241,15 @@ export class RefineSession {
   async writeSecret(name: string, value: string): Promise<void> {
     this.guard();
     if (!SECRET_NAME.test(name)) throw new NotFoundError(`invalid secret name ${name}`);
-    const listed = (this.state.derived?.spec.externalDependencies ?? []).some((d) => d.secretNames.includes(name));
-    if (!listed) throw new NotFoundError(`secret ${name} is not listed by the derived spec`);
     await writeSecret(this.deps.secretsDir, name, value);
     await this.journal.fact(RefineEvent.SecretWritten, { name });
   }
 
   /** Spec (refinement) §3.6 steps 1–2. */
   async freeze(): Promise<{ spec: Spec; project: Project }> {
-    this.guard();
+    if (this.state.status === 'started') throw new ConflictError('session already started a run');
+    if (this.starting) throw new ConflictError('a start is already in progress');
+    if (this.running) await this.running;
     if (this.state.status !== 'ready' || this.state.stale) {
       throw new ConflictError(`session is ${this.state.status}${this.state.stale ? ' (stale)' : ''}; evaluate until ready`);
     }

@@ -119,6 +119,24 @@ export function RunView({ detail, events, ended, error, loadStep }: { detail: Ru
           </div>
         ))}
       </section>
+      {detail.plan ? (
+        <section className="card" data-testid="plan-artifact">
+          <h2>Plano executável</h2>
+          <p className="hint">Stack: {detail.plan.stack} · specHash: {detail.plan.specHash}</p>
+          <ul>
+            {detail.plan.tasks.map((task) => (
+              <li key={task.id} data-testid={`plan-task-${task.id}`}>
+                <strong>{task.id}</strong> — {task.title} · {task.owner} · origem {task.origin}
+                <div className="hint">AC: {task.criteriaRefs.join(', ') || 'nenhum'} · caminhos: {task.affectedPaths.join(', ')}</div>
+              </li>
+            ))}
+          </ul>
+          <details>
+            <summary>Ver plan.json</summary>
+            <pre>{JSON.stringify(detail.plan, null, 2)}</pre>
+          </details>
+        </section>
+      ) : null}
       {selected ? <TaskDetail events={unique} taskId={selected} loadStep={loadStep} /> : null}
       <section className="card">
         <h2>Tokens</h2>

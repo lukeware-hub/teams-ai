@@ -32,7 +32,7 @@ export function refinePack(input: {
   const feedback = [
     'Write every user-facing question, checklist detail, patch reason, and explanation in Brazilian Portuguese. Keep technical identifiers, file names, HTTP status codes, and checklist ids unchanged.',
     'Review flow.md as the business and application flow contract. Check that create, validate, persist, list, search, detail, update, delete, error, health, and persistence flows agree with project.md and brief.md. Ask a question or propose a patch when a flow is missing, ambiguous, or contradictory.',
-    'Treat design.md as the frontend source of truth. Validate distinctive web and mobile direction, responsive states, accessibility, keyboard focus, reduced motion, touch targets, and consistency with project.md, brief.md, stack.md, and flow.md. Reject generic AI-looking UI choices and propose a precise patch when design.md is incomplete or contradictory.',
+    'Treat design.md as the frontend source of truth. Validate distinctive web and mobile direction, responsive states, accessibility, keyboard focus, reduced motion, touch targets, and consistency with project.md, brief.md, stack.md, and flow.md. Reject generic AI-looking UI choices and propose a precise patch when design.md is incomplete or contradictory. Write every new design.md heading, description, label, and patch reason in Brazilian Portuguese; preserve only technical identifiers, file names, code, and color tokens.',
     `Report exactly these checklist ids: ${ids.join(', ') || '(none; Front reports only design.md patches)'}.`,
     input.role === 'front'
       ? `Patch files: ${DOC_REL['design.md'](input.specId)} only. Do not ask questions; return an empty questions array.`

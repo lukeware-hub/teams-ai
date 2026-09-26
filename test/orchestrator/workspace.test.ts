@@ -22,6 +22,7 @@ describe('workspace', () => {
       worktrees: '/home/u/.teams-ai/workspaces/shop/worktrees',
       graph: '/home/u/.teams-ai/workspaces/shop/graph',
       knowledgeDb: '/home/u/.teams-ai/workspaces/shop/knowledge.sqlite',
+      secrets: '/home/u/.teams-ai/workspaces/shop/secrets',
       runs: '/home/u/.teams-ai/runs',
     });
     expect(worktreeDir(ws, 'task/checkout-T1')).toBe('/home/u/.teams-ai/workspaces/shop/worktrees/task__checkout-T1');

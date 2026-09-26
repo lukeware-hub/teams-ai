@@ -7,6 +7,7 @@ import { startApi } from '../../server/api/server.js';
 import type { RunControlDeps } from '../../server/api/run-control.js';
 import { readUserConfig } from '../../server/onboarding/config-store.js';
 import { appendEvents, eventLines, writeRun } from '../fixtures/runs/write-run.js';
+import { makeFrozenSpec, makePlan } from '../fixtures/contracts.js';
 
 const HELLO = path.resolve('test/fixtures/hello-app');
 let home = '';
@@ -16,6 +17,7 @@ const alive = new Set<number>();
 let spawns: Array<{ args: string[]; logFile: string }>;
 let signals: Array<[number, string | number]>;
 let onSpawn: (runId: string) => Promise<void>;
+let cloned: Array<{ url: string; destination: string }>;
 const base = () => `http://127.0.0.1:${api.port}`;
 const post = (p: string, body?: unknown) => fetch(`${base()}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
 
@@ -27,6 +29,7 @@ beforeEach(async () => {
   alive.clear();
   spawns = [];
   signals = [];
+  cloned = [];
   onSpawn = async () => {};
   const control: RunControlDeps = {
     spawn: (a) => {
@@ -47,7 +50,7 @@ beforeEach(async () => {
     cliEntry: () => ({ bin: 'node', prefix: ['cli'] }),
     repoRoot: '/repo',
   };
-  api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control }) }, 0);
+  api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, cloneProject: async (url, destination) => { cloned.push({ url, destination }); await fs.cp(HELLO, destination, { recursive: true }); } }) }, 0);
 });
 afterEach(async () => {
   await api.close();
@@ -82,6 +85,17 @@ describe('projects', () => {
     expect((await post('/api/projects', { dir: 42 })).status).toBe(400);
     expect((await readUserConfig(home)).cfg.projects).toHaveLength(2);
     expect((await fetch(`${base()}/api/projects/nobody/runs`)).status).toBe(404);
+  });
+  it('validates a Git URL, clones it into an isolated directory and supports multiple imports', async () => {
+    expect((await post('/api/projects', { url: 'github.com/acme/demo' })).status).toBe(400);
+    const first = await post('/api/projects', { url: 'https://github.com/acme/demo.git' });
+    const second = await post('/api/projects', { url: 'https://github.com/acme/another.git' });
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(cloned).toHaveLength(2);
+    expect(cloned[0]!.destination).toContain(`${path.sep}imports${path.sep}demo-`);
+    expect(cloned[1]!.destination).toContain(`${path.sep}imports${path.sep}another-`);
+    expect((await readUserConfig(home)).cfg.projects).toHaveLength(3);
   });
 });
 
@@ -224,6 +238,18 @@ describe('run detail, events and steps', () => {
     expect(d.tokens).toEqual({ inputTokens: 100, outputTokens: 20, cacheReadTokens: 5, cacheWriteTokens: 0, costUsd: 0.5, steps: 1 });
     expect(d.acceptanceCriteria.map((a: { id: string }) => a.id)).toEqual(['AC-001', 'AC-002', 'AC-003']);
     expect((await fetch(`${base()}/api/runs/nope`)).status).toBe(404);
+  });
+
+  it('returns the persisted plan artifact when the run project contains plan.json', async () => {
+    const project = path.join(home, 'project');
+    await fs.cp(HELLO, project, { recursive: true });
+    await fs.mkdir(path.join(project, 'docs', 'specs', 'hello-001'), { recursive: true });
+    await fs.writeFile(path.join(project, 'docs', 'specs', 'hello-001', 'plan.json'), JSON.stringify(makePlan(makeFrozenSpec({ specId: 'hello-001' }))));
+    await fs.writeFile(path.join(home, '.teams-ai', 'config.json'), JSON.stringify({ paths: { runs: runs.replace(/\\/g, '/') }, projects: [{ dir: project }] }));
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'));
+    const d = await (await fetch(`${base()}/api/runs/hello-001-r1`)).json();
+    expect(d.plan.specId).toBe('hello-001');
+    expect(d.plan.tasks.some((task: { id: string }) => task.id === 'T0-scaffold')).toBe(true);
   });
 
   it('events replays from Last-Event-ID, tails appended lines and ends after RUN_FINISHED', async () => {

@@ -23,6 +23,19 @@ const detail: RunDetail = {
     { id: 'AC-001', given: 'g', when: 'w', then: 't', smoke: true },
     { id: 'AC-002', given: 'g', when: 'w', then: 't', smoke: false },
   ],
+  plan: {
+    specId: 'hello-001',
+    specHash: 'sha256:' + 'a'.repeat(64),
+    stack: 'node',
+    adrRefs: [],
+    commands: {},
+    gateImage: 'node:22',
+    junitPath: 'reports/junit.xml',
+    gates: [],
+    frozenPaths: [],
+    tasks: [{ id: 'T1', title: 'Create endpoint', description: 'Implement endpoint', criteriaRefs: ['AC-001'], dependsOn: [], affectedPaths: ['src/**'], owner: 'dev', origin: 'plan' }],
+    deploy: { image: 'hello', port: 3000, healthcheckPath: '/health', manifests: [] },
+  },
 };
 const view = (props: Partial<Parameters<typeof RunView>[0]> = {}) => (
   <MemoryRouter>
@@ -58,5 +71,11 @@ describe('RunView', () => {
     render(view({ detail: { ...detail, status: 'complete' }, events: dup, ended: true }));
     expect(screen.getByTestId('tokens-sm').textContent).toContain('1800'); // 1000 + 800, the duplicate STEP_FINISHED not double counted
     expect(screen.getByTestId('status').textContent).toContain('concluído');
+  });
+  it('shows the persisted plan and task traceability', () => {
+    render(view());
+    expect(screen.getByTestId('plan-artifact').textContent).toContain('node');
+    expect(screen.getByTestId('plan-task-T1').textContent).toContain('AC-001');
+    expect(screen.getByTestId('plan-task-T1').textContent).toContain('src/**');
   });
 });

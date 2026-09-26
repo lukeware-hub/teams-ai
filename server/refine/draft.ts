@@ -61,7 +61,7 @@ export function projectTemplate(name: string): string {
 }
 
 export function briefTemplate(): string {
-  return `## Objectives\n\n- <objective>\n\n## Features\n\n- <feature>\n\n## Acceptance criteria\n\n- AC-001 (smoke): Given <state>, when <action>, then <outcome>\n\n## Out of scope\n\n- <item>\n\n## External dependencies\n\n- <name>: <purpose> (secrets: <NAME>)\n\n## Tasks\n\n<optional; one "- title: description" per line>\n`;
+  return `## Type\n\nfeature\n\n## Objectives\n\n- <objective>\n\n## Features\n\n- <feature>\n\n## Acceptance criteria\n\n- AC-001 (smoke): Given <state>, when <action>, then <outcome>\n\n## Out of scope\n\n- <item>\n\n## External dependencies\n\n- <name>: <purpose> (secrets: <NAME>)\n\n## Bug details\n\n- Actual: <required only for bugs>\n- Expected: <required only for bugs>\n- Reproduction: <required only for bugs>\n- Evidence: <optional>\n\n## Tasks\n\n<optional; one "- title: description" per line>\n`;
 }
 
 export function stackTemplate(): string {
@@ -90,9 +90,15 @@ export function renderBriefMd(s: Spec, validationReport?: string): string {
   const acs = s.acceptanceCriteria.map((c) => `- ${c.id}${c.smoke ? ' (smoke)' : ''}: Given ${c.given}, when ${c.when}, then ${c.then}`);
   const deps = s.externalDependencies.map((d) => `${d.name}: ${d.purpose} (secrets: ${d.secretNames.join(', ') || 'none'})`);
   const tasks = (s.tasks ?? []).map((t) => `${t.title}: ${t.description}`);
+  const bug = s.bug ? [
+    `- Actual: ${s.bug.actual}`,
+    `- Expected: ${s.bug.expected}`,
+    `- Reproduction: ${s.bug.reproduction}`,
+    ...(s.bug.evidence ? [`- Evidence: ${s.bug.evidence}`] : []),
+  ] : ['- (not applicable)'];
   const parts = [
-    '## Objectives', '', list(s.objectives), '', '## Features', '', list(s.features), '', '## Acceptance criteria', '', acs.join('\n') || '- (none)', '',
-    '## Out of scope', '', list(s.outOfScope), '', '## External dependencies', '', list(deps), '', '## Tasks', '', list(tasks), '',
+    '## Type', '', s.type, '', '## Objectives', '', list(s.objectives), '', '## Features', '', list(s.features), '', '## Acceptance criteria', '', acs.join('\n') || '- (none)', '',
+    '## Out of scope', '', list(s.outOfScope), '', '## External dependencies', '', list(deps), '', '## Bug details', '', bug.join('\n'), '', '## Tasks', '', list(tasks), '',
   ];
   if (validationReport) parts.push('## Validation report', '', validationReport, '');
   return parts.join('\n');

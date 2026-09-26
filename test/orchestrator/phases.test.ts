@@ -49,7 +49,7 @@ const coverage = (covered: boolean) => ok({ specHash: HASH, coverage: spec.accep
 function deps(agent: Agent): PhaseDeps {
   const ghExec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
   gh.install(ghExec);
-  const ws = { projectId: 'shop', root: remote.root, repo: remote.repo, worktrees: path.join(remote.root, 'wt'), graph: '', knowledgeDb: '', runs: remote.root };
+  const ws = { projectId: 'shop', root: remote.root, repo: remote.repo, worktrees: path.join(remote.root, 'wt'), graph: '', knowledgeDb: '', secrets: path.join(remote.root, 'secrets'), runs: remote.root };
   return {
     journal, ws, spec, project, specHash: HASH, firstSpec: true, exec: execCommand,
     runAgent: (async (req) => { calls.push(req); return agent(req); }) as PhaseDeps['runAgent'],

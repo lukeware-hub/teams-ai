@@ -133,6 +133,15 @@ describe('summarizeStream structured output fallback', () => {
     expect(summarizeStream(parseStreamJson(fixture('success'))).structuredSource).toBe('text');
     expect(summarizeStream(parseStreamJson('{"type":"result","subtype":"success","is_error":false,"result":"OK"}\n')).structuredSource).toBeNull();
   });
+
+  it('falls back to result text when structured_output is null', () => {
+    const value = { specHash: 'sha256:aa', status: 'done' };
+    const summary = summarizeStream(parseStreamJson(JSON.stringify({
+      type: 'result', subtype: 'success', is_error: false, result: JSON.stringify(value), structured_output: null,
+    }) + '\n'));
+    expect(summary.structuredOutput).toEqual(value);
+    expect(summary.structuredSource).toBe('text');
+  });
 });
 
 describe('summarizeStream partial usage and API error status', () => {

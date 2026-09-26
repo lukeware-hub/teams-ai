@@ -20,15 +20,19 @@ export function SecretCard({ name, title, item, onSaved }: { name: 'GITHUB_TOKEN
     }
   };
   return (
-    <ItemCard title={title} item={item}>
+    <ItemCard title={title} item={item} variant="login" subtitle={name === 'GITHUB_TOKEN' ? 'Informe um token para validar o acesso aos seus repositórios.' : 'Informe a chave para habilitar os recursos de IA.'} icon={name === 'GITHUB_TOKEN' ? 'github' : 'user'} illustration={name === 'GITHUB_TOKEN' ? '/onboarding-github-token.png' : '/onboarding-openrouter.png'}>
       <form
+        className="secret-form"
         onSubmit={(e) => {
           e.preventDefault();
           void save();
         }}
       >
-        <input type="password" value={value} onChange={(e) => setValue(e.target.value)} placeholder={item?.secret?.set ? 'Substituir valor salvo' : 'Cole o valor'} autoComplete="off" />
-        <button type="submit" disabled={busy || value.trim() === ''}>
+        <label className="secret-field">
+          <span>{item?.secret?.set ? 'Substituir token salvo' : 'Cole o token de acesso'}</span>
+          <input type="password" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Cole o valor aqui…" autoComplete="off" />
+        </label>
+        <button type="submit" className="primary-button" disabled={busy || value.trim() === ''}>
           {busy ? 'Verificando…' : 'Salvar e verificar'}
         </button>
       </form>

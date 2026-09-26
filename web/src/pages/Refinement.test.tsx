@@ -18,7 +18,7 @@ const base = (over: Partial<Snapshot['state']>): Snapshot => ({
     status: 'answering',
     stale: false,
     cycle: 1,
-    derived: { spec: { acceptanceCriteria: [], externalDependencies: [{ name: 'db', secretNames: ['DB_URL'] }] }, project: {} },
+    derived: { spec: { type: 'feature', acceptanceCriteria: [], externalDependencies: [{ name: 'db', secretNames: ['DB_URL'] }] }, project: {} },
     checklist: green(ALL),
     questions: [
       { questionId: 'po-c1-0', role: 'po', text: 'Port?', blocking: true, relatedAcIds: ['AC-001'], cycle: 1, status: 'pending', answer: null },
@@ -77,7 +77,7 @@ describe('RefinementView', () => {
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('locks the editor and the evaluate button while evaluating and shows a cycle error', () => {
+  it('locks the editor and the evaluate button while evaluating and leaves cycle errors to the page alert', () => {
     render(
       <MemoryRouter>
         <RefinementView snap={base({ status: 'evaluating', questions: [], patches: [] })} busy={true} {...on()} />
@@ -90,17 +90,27 @@ describe('RefinementView', () => {
         <RefinementView snap={base({ status: 'error', error: 'derive: spec.objectives: too small', questions: [], patches: [] })} busy={false} {...on()} />
       </MemoryRouter>,
     );
-    expect(screen.getByText(/spec.objectives: too small/)).toBeTruthy();
+    expect(screen.queryByText(/spec.objectives: too small/)).toBeNull();
   });
 
-  it('explains that a Jev block needs a document edit before re-evaluation', () => {
+  it('keeps pending patch decisions available while an evaluation is visible', () => {
+    render(
+      <MemoryRouter>
+        <RefinementView snap={base({ status: 'evaluating', questions: [] })} busy={true} {...on()} />
+      </MemoryRouter>,
+    );
+    expect((screen.getByTestId('accept-sm-c1-0') as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByTestId('reject-sm-c1-0') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('explains that Jev findings are advisory and keeps re-evaluation available', () => {
     render(
       <MemoryRouter>
         <RefinementView snap={base({ status: 'error', error: 'Jev bloqueou a derivação: flow_covers_scope', questions: [], patches: [] })} busy={false} {...on()} />
       </MemoryRouter>,
     );
-    expect(screen.getByText(/Edite e salve um dos cinco documentos/)).toBeTruthy();
-    expect((screen.getByTestId('evaluate') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/O Jev atua como auxiliar/)).toBeTruthy();
+    expect((screen.getByTestId('evaluate') as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('shows the active Claude step from the refinement journal', () => {
@@ -119,5 +129,35 @@ describe('RefinementView', () => {
       </MemoryRouter>,
     );
     expect(screen.getByText(/derivando project\.json e spec\.json/)).toBeTruthy();
+  });
+
+  it('shows the demand type, bug details, and downloadable derived JSON', () => {
+    render(
+      <MemoryRouter>
+        <RefinementView
+          snap={base({
+            status: 'ready',
+            questions: [],
+            patches: [],
+            derived: {
+              project: {},
+              spec: {
+                type: 'bug',
+                bug: { actual: '500', expected: '200', reproduction: 'GET /todos' },
+                acceptanceCriteria: [],
+                externalDependencies: [],
+              },
+            },
+          })}
+          busy={false}
+          {...on()}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('doc-impact').textContent).toContain('spec.json');
+    expect(screen.getByTestId('spec-type').textContent).toContain('Bug');
+    expect(screen.getByTestId('bug-details').textContent).toContain('GET /todos');
+    expect(screen.getByTestId('download-spec-json').getAttribute('download')).toBe('spec.json');
+    expect(screen.getByTestId('download-project-json').getAttribute('download')).toBe('project.json');
   });
 });

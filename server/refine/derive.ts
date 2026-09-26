@@ -22,7 +22,7 @@ export function derivePack(input: {
     spec: z.toJSONSchema(Spec, { target: 'draft-07', io: 'input' }),
   };
   const feedback = [
-    `specId must be ${input.specId}. Derive project.json and spec.json from the Markdown below.`,
+    `specId must be ${input.specId}. Derive project.json and spec.json from the Markdown below. Classify the demand as feature, bug, maintenance, or refactor. For bugs, preserve actual behavior, expected behavior, reproduction steps, and optional evidence in the bug object; do not invent missing reproduction details.`,
     'Use flow.md as the business-flow reference and keep the derived objectives, features, and acceptance criteria consistent with its application behavior.',
     '### docs/project.md',
     input.projectMd,

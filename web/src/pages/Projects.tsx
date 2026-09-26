@@ -21,47 +21,56 @@ export function ProjectsView(p: {
   onNewSpec: (projectId: string, specId: string) => void;
   onContinue: (projectId: string, specId: string) => void;
 }) {
-  const [dir, setDir] = useState('');
+  const [repoUrl, setRepoUrl] = useState('');
   const [newProjectId, setNewProjectId] = useState('');
   const [newProjectName, setNewProjectName] = useState('');
   const [newSpecId, setNewSpecId] = useState<Record<string, string>>({});
   const openDrafts = p.drafts.filter((d) => d.state !== 'started');
   return (
-    <main>
-      <h1>Projetos</h1>
-      <form
+    <main className="projects-shell">
+      <header className="projects-hero">
+        <div>
+          <p className="projects-kicker">Workspace</p>
+          <h1>Projetos</h1>
+          <p>Organize seus projetos, refine especificações e acompanhe cada execução em um só lugar.</p>
+        </div>
+        <div className="projects-summary" aria-label={`${p.projects.length} projetos cadastrados`}>
+          <strong>{p.projects.length}</strong>
+          <span>{p.projects.length === 1 ? 'projeto cadastrado' : 'projetos cadastrados'}</span>
+        </div>
+      </header>
+      <section className="project-actions" aria-label="Ações de projeto">
+        <form className="project-action-card project-action-primary"
         onSubmit={(e) => {
           e.preventDefault();
           p.onNewProject(newProjectId, newProjectName);
         }}
       >
-        <p className="hint">Um projeto novo inicia o refinamento guiado e cria os arquivos do projeto.</p>
-        <input data-testid="new-project-id" value={newProjectId} onChange={(e) => setNewProjectId(e.target.value)} placeholder="id do projeto" />
-        <input data-testid="new-project-name" value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="nome" />
-        <button data-testid="new-project" type="submit" disabled={newProjectId.trim() === '' || newProjectName.trim() === ''}>
-          Novo projeto
-        </button>
-      </form>
-      <form
+          <div className="project-action-heading"><span className="project-action-icon">＋</span><div><h2>Novo projeto</h2><p>Comece um refinamento guiado do zero.</p></div></div>
+          <div className="project-action-fields">
+            <label><span>ID do projeto</span><input data-testid="new-project-id" value={newProjectId} onChange={(e) => setNewProjectId(e.target.value)} placeholder="ex.: portal-interno" /></label>
+            <label><span>Nome do projeto</span><input data-testid="new-project-name" value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="ex.: Portal interno" /></label>
+            <button data-testid="new-project" className="primary-button" type="submit" disabled={newProjectId.trim() === '' || newProjectName.trim() === ''}>Criar projeto</button>
+          </div>
+        </form>
+        <form className="project-action-card"
         onSubmit={(e) => {
           e.preventDefault();
-          p.onAdd(dir);
+          p.onAdd(repoUrl);
         }}
       >
-        <p className="hint">Para adicionar um projeto existente, a pasta precisa conter docs/project.json.</p>
-        <input value={dir} onChange={(e) => setDir(e.target.value)} placeholder="/caminho/do/projeto" />
-        <button type="submit" disabled={dir.trim() === ''}>
-          Adicionar projeto
-        </button>
-      </form>
+          <div className="project-action-heading"><span className="project-action-icon project-action-icon-muted">↗</span><div><h2>Adicionar projeto do Git</h2><p>Cole o link do repositório que contém <code>docs/project.json</code>.</p></div></div>
+          <div className="project-action-fields project-import-fields"><label><span>URL do repositório</span><input aria-label="URL do repositório" type="url" value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder="https://github.com/organização/projeto.git" /></label><button className="secondary" type="submit" disabled={repoUrl.trim() === ''}>Baixar e adicionar</button></div>
+        </form>
+      </section>
       {p.error ? <p className="error">{p.error}</p> : null}
       {p.projects.map((pr) => (
-        <section className="card" key={pr.projectId}>
-          <header>
-            <h2>{pr.projectId}</h2>
-            <code className="hint">{pr.dir}</code>
+        <section className="card project-card" key={pr.projectId}>
+          <header className="project-card-header">
+            <div><p className="projects-kicker">Projeto</p><h2>{pr.projectId}</h2><code>{pr.dir}</code></div>
+            <span className="project-count">{pr.specs.length} {pr.specs.length === 1 ? 'spec' : 'specs'}</span>
           </header>
-          <table>
+          <div className="project-table-section"><div className="project-section-heading"><h3>Especificações</h3><span>Refinamentos e execuções planejadas</span></div><table>
             <thead>
               <tr>
                 <th>Spec</th>
@@ -93,19 +102,18 @@ export function ProjectsView(p: {
                 </tr>
               ))}
             </tbody>
-          </table>
-          <p>
+          </table></div>
+          <div className="new-spec-row">
+            <div><strong>Adicionar especificação</strong><span>Crie uma nova etapa de refinamento para este projeto.</span></div>
             <input
               data-testid={`new-spec-id-${pr.projectId}`}
               value={newSpecId[pr.projectId] ?? ''}
               onChange={(e) => setNewSpecId({ ...newSpecId, [pr.projectId]: e.target.value })}
               placeholder="id da nova spec"
             />
-              <button data-testid={`new-spec-${pr.projectId}`} onClick={() => p.onNewSpec(pr.projectId, newSpecId[pr.projectId] ?? '')}>
-                Nova spec
-            </button>
-          </p>
-          <table>
+            <button className="secondary" data-testid={`new-spec-${pr.projectId}`} onClick={() => p.onNewSpec(pr.projectId, newSpecId[pr.projectId] ?? '')}>Nova spec</button>
+          </div>
+          <div className="project-table-section"><div className="project-section-heading"><h3>Execuções recentes</h3><span>Uso e estado das tarefas</span></div><table>
             <thead>
               <tr>
                 <th>Execução</th>
@@ -141,7 +149,7 @@ export function ProjectsView(p: {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
           {openDrafts
             .filter((d) => d.projectId === pr.projectId)
             .map((d) => (
@@ -154,7 +162,7 @@ export function ProjectsView(p: {
         </section>
       ))}
       {openDrafts.some((d) => !d.registered) ? (
-        <section className="card">
+        <section className="card project-card">
           <h2>Rascunhos (não registrados)</h2>
           {openDrafts
             .filter((d) => !d.registered)

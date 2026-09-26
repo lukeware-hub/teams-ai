@@ -1,9 +1,13 @@
 import { promises as fs } from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import type { StepKind } from '../agents/outputs.js';
 import { Accounting } from '../budget/accounting.js';
 import type { Config, Role } from '../config/config.js';
+import { Plan } from '../contracts/plan.js';
 import { addProject } from '../onboarding/config-store.js';
+import { expandHome } from '../orchestrator/workspace.js';
+import { execCommand } from '../exec/command.js';
 import { nextRunId } from '../orchestrator/workspace.js';
 import { reduceEvents } from '../pipeline/run-state.js';
 import { EventLogCorruptError, loadEvents, type StoredEvent } from '../store/event-store.js';
@@ -17,6 +21,7 @@ export interface RunRoutesDeps {
   home?: string;
   control: RunControlDeps;
   log?: (line: string) => void;
+  cloneProject?: (url: string, destination: string) => Promise<void>;
 }
 
 const str = (v: unknown, field: string): string => {
@@ -37,6 +42,11 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     if (!SAFE_ID.test(id)) throw new HttpError(400, `invalid id ${JSON.stringify(id)}`);
     return id;
   };
+  const cloneProject = deps.cloneProject ?? (async (url, destination) => {
+    await fs.mkdir(path.dirname(destination), { recursive: true });
+    const result = await execCommand({ bin: 'git', args: ['clone', '--depth', '1', url, destination], cwd: path.dirname(destination), timeoutMs: 120_000 });
+    if (result.exitCode !== 0) throw new HttpError(400, `não foi possível clonar o repositório: ${result.stderr.trim() || 'URL Git inválida'}`);
+  });
   const events = async (runs: string, runId: string): Promise<StoredEvent[]> => {
     const file = path.join(runs, runId, 'events.ndjson');
     await fs.access(file).catch(() => {
@@ -126,9 +136,31 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       method: 'POST',
       path: `${P}/projects`,
       handler: async ({ body, json }) => {
-        const dir = path.resolve(str(await body(), 'dir'));
+        const payload = await body();
+        const cfg = await deps.cfg();
+        const source: Record<string, unknown> = typeof payload === 'object' && payload !== null ? payload as Record<string, unknown> : {};
+        let dir: string;
+        if (typeof source.url === 'string') {
+          const url = source.url.trim();
+          let remote: URL;
+          try {
+            remote = new URL(url);
+          } catch {
+            throw new HttpError(400, 'informe uma URL Git válida');
+          }
+          const repoPath = remote.pathname.replace(/\/$/, '');
+          if (!['https:', 'http:'].includes(remote.protocol) || !remote.hostname || !/^\/[^/]+\/[^/]+(?:\.git)?$/.test(repoPath)) {
+            throw new HttpError(400, 'use o formato https://servidor/organização/projeto.git');
+          }
+          const repoName = path.posix.basename(repoPath).replace(/\.git$/, '').replace(/[^a-zA-Z0-9._-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'project';
+          const suffix = createHash('sha256').update(url).digest('hex').slice(0, 8);
+          dir = path.resolve(expandHome(path.posix.join(cfg.paths.workspaces, 'imports', `${repoName}-${suffix}`), deps.home));
+          await fs.access(path.join(dir, '.git')).catch(async () => cloneProject(url, dir));
+        } else {
+          dir = path.resolve(str(payload, 'dir'));
+        }
         const read = await readProject(dir).catch((err: Error) => {
-          throw new HttpError(400, `not a project directory: ${err.message.includes('ENOENT') ? 'docs/project.json is missing' : err.message}`);
+          throw new HttpError(400, `${typeof source.url === 'string' ? 'repositório inválido' : 'not a project directory'}: ${err.message.includes('ENOENT') ? 'docs/project.json não foi encontrado' : err.message}`);
         });
         await addProject(dir, deps.home);
         const idx = await index();
@@ -233,6 +265,12 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           .then(readProject)
           .then((p) => p.specs.find((s) => s.specId === specId) ?? null)
           .catch(() => null);
+        const project = await projectDir(idx, projectId).catch(() => null);
+        const plan = project
+          ? await fs.readFile(path.join(project, 'docs', 'specs', specId, 'plan.json'), 'utf8')
+              .then((text) => Plan.safeParse(JSON.parse(text)).data ?? null)
+              .catch(() => null)
+          : null;
         const report = [...evs].reverse().find((e) => e.type === 'REPORT_READY')?.data.report ?? null;
         const phase = [...evs].reverse().find((e) => e.type === 'PHASE_STARTED')?.data.phase ?? 0;
         json(200, {
@@ -244,6 +282,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           finished: finished?.data ?? null,
           tokens: tokensOf(evs),
           acceptanceCriteria: spec?.acceptanceCriteria ?? [],
+          plan,
           report,
           phase,
         });

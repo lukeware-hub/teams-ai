@@ -20,9 +20,20 @@ const firstLine = (s: string) => s.trim().split('\n')[0] ?? '';
 
 export async function claudeStatus(d: ProbeDeps): Promise<ProbeResult> {
   const r = await d.exec({ bin: d.hostEnv?.CLAUDE_BIN ?? 'claude', args: ['auth', 'status', '--json'], env: childEnv(d.hostEnv), timeoutMs: d.timeoutMs ?? TIMEOUT }).catch((e: Error) => ({ exitCode: 127, stdout: '', stderr: e.message }));
-  if (r.exitCode !== 0) return { ok: false, detail: `claude auth status failed: ${firstLine(r.stderr || r.stdout) || `exit ${r.exitCode}`}` };
+  const parse = (text: string): { loggedIn?: boolean; email?: string; subscriptionType?: string } | null => {
+    try {
+      return JSON.parse(text.trim()) as { loggedIn?: boolean; email?: string; subscriptionType?: string };
+    } catch {
+      return null;
+    }
+  };
+  if (r.exitCode !== 0) {
+    const j = parse(r.stderr) ?? parse(r.stdout);
+    return { ok: false, detail: j?.loggedIn === false ? 'not logged in' : `claude auth status failed: ${firstLine(r.stderr || r.stdout) || `exit ${r.exitCode}`}` };
+  }
   try {
-    const j = JSON.parse(r.stdout) as { loggedIn?: boolean; email?: string; subscriptionType?: string };
+    const j = parse(r.stdout);
+    if (!j) throw new Error('invalid JSON');
     if (j.loggedIn !== true) return { ok: false, detail: 'not logged in' };
     return { ok: true, detail: `${j.email ?? 'unknown account'} (${j.subscriptionType ?? 'unknown plan'})` };
   } catch {

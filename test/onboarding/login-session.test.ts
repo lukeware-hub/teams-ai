@@ -98,6 +98,17 @@ describe('LoginSession (claude flow)', () => {
     expect(reason).not.toContain('host-secret');
   });
 
+  it('rechecks GitHub after the device login process exits', async () => {
+    const h = harness({ cli: 'gh', command: { bin: 'gh', args: ['auth', 'login', '--web'] } });
+    h.probeResults.splice(0, 1, { ok: false, detail: 'not logged in' }, { ok: true, detail: 'diego-dm-morais' });
+    h.s.start();
+    h.ptys[0]!.emitExit(0);
+    await h.tick();
+    h.advance(250);
+    await h.tick();
+    expect(h.s.state).toEqual({ name: 'done', detail: 'diego-dm-morais' });
+  });
+
   it('times out after ten minutes, killing the process', async () => {
     const h = harness();
     h.s.start();
@@ -131,6 +142,13 @@ describe('LoginSession (claude flow)', () => {
 });
 
 describe('LoginSession (gh flow)', () => {
+  it('confirms GitHub credential storage before continuing to device login', () => {
+    const h = harness({ cli: 'gh', command: { bin: 'gh', args: ['auth', 'login', '--web'] } });
+    h.s.start();
+    h.ptys[0]!.emit('? Authenticate Git with your GitHub credentials? (Y/n)\n');
+    expect(h.ptys[0]!.writes).toEqual(['y\r']);
+  });
+
   it('shows the one-time code with the URL, presses Enter itself, and finishes on the success line', async () => {
     const h = harness({ cli: 'gh', command: { bin: 'gh', args: ['auth', 'login', '--web'] } });
     h.probeResults.splice(0, 1, { ok: true, detail: 'lukeware70X7' });

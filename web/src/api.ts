@@ -74,11 +74,24 @@ export interface AcceptanceCriterion {
   smoke: boolean;
 }
 export interface TaskRow {
-  def: { id: string; title: string; owner: string; dependsOn: string[]; criteriaRefs: string[] };
+  def: { id: string; title: string; description?: string; owner: string; dependsOn: string[]; criteriaRefs: string[]; affectedPaths?: string[]; origin?: string };
   state: string;
   attempts: number;
   replanned: boolean;
   replacedBy: string[];
+}
+export interface PlanArtifact {
+  specId: string;
+  specHash: string;
+  stack: string;
+  adrRefs: string[];
+  commands: Record<string, string | undefined>;
+  gateImage: string;
+  junitPath: string;
+  gates: Array<{ name: string; command: string; blocking: boolean }>;
+  frozenPaths: string[];
+  tasks: Array<{ id: string; title: string; description: string; criteriaRefs: string[]; dependsOn: string[]; affectedPaths: string[]; owner: string; origin: string }>;
+  deploy: { image: string; port: number; healthcheckPath: string; manifests: string[] };
 }
 export interface RunDetail {
   runId: string;
@@ -89,13 +102,14 @@ export interface RunDetail {
   finished: Record<string, unknown> | null;
   tokens: Usage;
   acceptanceCriteria: AcceptanceCriterion[];
+  plan: PlanArtifact | null;
 }
 
 const R = '/api';
 const jsonPost = (p: string, body?: unknown) => fetch(`${R}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
 export const runApi = {
   projects: () => fetch(`${R}/projects`).then((r) => json<ProjectRow[]>(r)),
-  addProject: (dir: string) => jsonPost('/projects', { dir }).then((r) => json<ProjectRow>(r)),
+  addProject: (url: string) => jsonPost('/projects', { url }).then((r) => json<ProjectRow>(r)),
   runs: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/runs`).then((r) => json<RunRow[]>(r)),
   startRun: (projectId: string, specId: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/runs`).then((r) => json<{ runId: string }>(r)),
   resumeRun: (runId: string) => jsonPost(`/runs/${encodeURIComponent(runId)}/resume`).then((r) => json<{ runId: string }>(r)),
@@ -136,6 +150,8 @@ export interface PatchRow {
 }
 export interface DerivedDoc {
   spec: {
+    type: 'feature' | 'bug' | 'maintenance' | 'refactor';
+    bug?: { actual: string; expected: string; reproduction: string; evidence?: string };
     acceptanceCriteria: AcceptanceCriterion[];
     tasks?: Array<{ title: string; description: string }>;
     externalDependencies: Array<{ name: string; secretNames: string[] }>;

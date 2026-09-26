@@ -26,6 +26,17 @@ export const HumanTask = z.object({
   description: z.string().min(1),
 });
 
+export const SpecType = z.enum(['feature', 'bug', 'maintenance', 'refactor']);
+export type SpecType = z.infer<typeof SpecType>;
+
+export const BugDetails = z.object({
+  actual: z.string().min(1),
+  expected: z.string().min(1),
+  reproduction: z.string().min(1),
+  evidence: z.string().min(1).optional(),
+});
+export type BugDetails = z.infer<typeof BugDetails>;
+
 export const SpecStatus = z.enum([
   'refining',
   'running',
@@ -46,6 +57,8 @@ export const Spec = z
     specId: z.string().regex(ID_PATTERNS.SLUG),
     specVersion: z.number().int().nonnegative(),
     specHash: z.string().regex(HASH_PATTERN).nullable(),
+    type: SpecType.default('feature'),
+    bug: BugDetails.optional(),
     objectives: z.array(z.string().min(1)).min(1),
     features: z.array(z.string().min(1)),
     acceptanceCriteria: z.array(AcceptanceCriterion).min(1),
@@ -56,6 +69,9 @@ export const Spec = z
     validationReports: z.array(ValidationReport).default([]),
   })
   .superRefine((spec, ctx) => {
+    if (spec.type === 'bug' && !spec.bug) {
+      ctx.addIssue({ code: 'custom', message: 'bug details are required for bug specs', path: ['bug'] });
+    }
     const seen = new Set<string>();
     for (const ac of spec.acceptanceCriteria) {
       if (seen.has(ac.id)) {
@@ -73,6 +89,8 @@ export type Spec = z.infer<typeof Spec>;
 const HASHED_FIELDS = [
   'specId',
   'specVersion',
+  'type',
+  'bug',
   'objectives',
   'features',
   'acceptanceCriteria',

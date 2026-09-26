@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { LoginControls } from './LoginCard.js';
+import { api } from '../api.js';
+import { LoginCard, LoginControls } from './LoginCard.js';
 
 const noop = () => undefined;
 
@@ -20,6 +21,14 @@ describe('LoginControls', () => {
     expect(onSend).toHaveBeenCalledTimes(1);
     rerender(<LoginControls state={{ name: 'failed', reason: 'timeout' }} code="" onCode={noop} onStart={noop} onSend={onSend} onCancel={noop} />);
     expect(screen.getByText('Tentar novamente')).toBeTruthy();
-    expect(screen.getByText('timeout')).toBeTruthy();
+    expect(screen.getByText('O login demorou demais. Tente novamente.')).toBeTruthy();
+  });
+
+  it('shows an API error when starting login fails', async () => {
+    const login = vi.spyOn(api, 'login').mockRejectedValue(new Error('HTTP 500'));
+    render(<LoginCard cli="claude" title="Login do Claude" item={null} onDone={noop} />);
+    fireEvent.click(screen.getByText('Entrar'));
+    expect(await screen.findByText('Não foi possível iniciar o login. Tente novamente.')).toBeTruthy();
+    login.mockRestore();
   });
 });

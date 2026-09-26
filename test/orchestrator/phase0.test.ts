@@ -33,7 +33,7 @@ function deps(exec: FakeExec, repo: string, over: Partial<RunDeps> = {}): RunDep
   const root = path.join(remote.root, 'ws').replace(/\\/g, '/');
   return {
     cfg: loadConfig({ paths: { workspaces: root, runs: `${root}/runs`, secrets: '/tmp/none' } }),
-    ws: { projectId: 'hello-app', root, repo, worktrees: `${root}/wt`, graph: `${root}/graph`, knowledgeDb: '', runs: `${root}/runs` },
+    ws: { projectId: 'hello-app', root, repo, worktrees: `${root}/wt`, graph: `${root}/graph`, knowledgeDb: '', secrets: `${root}/secrets`, runs: `${root}/runs` },
     project, spec, firstSpec: true,
     exec: exec.exec, ghExec: exec.exec,
     runStep,

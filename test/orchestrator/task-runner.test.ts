@@ -58,7 +58,7 @@ afterEach(async () => {
 });
 
 function deps(over: Partial<TaskRunnerDeps> & { agent?: Agent; merge?: Partial<MergeSteps> | MergeOutcome } = {}): TaskRunnerDeps {
-  const ws = { projectId: 'shop', root: remote.root, repo: remote.repo, worktrees: path.join(remote.root, 'wt'), graph: path.join(remote.root, 'graph'), knowledgeDb: '', runs: remote.root };
+  const ws = { projectId: 'shop', root: remote.root, repo: remote.repo, worktrees: path.join(remote.root, 'wt'), graph: path.join(remote.root, 'graph'), knowledgeDb: '', secrets: path.join(remote.root, 'secrets'), runs: remote.root };
   const agent = over.agent ?? devDone();
   const forced: MergeOutcome | null = over.merge && 'ok' in over.merge ? over.merge : null;
   const steps: MergeSteps = {

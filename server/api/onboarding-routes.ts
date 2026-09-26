@@ -15,6 +15,7 @@ export interface OnboardingDeps extends StatusDeps {
 }
 
 const SECRETS: Record<string, ItemName> = { GITHUB_TOKEN: 'githubToken', OPENROUTER_API_KEY: 'openrouterKey' };
+const GITHUB_LOGIN_TIMEOUT_MS = 60_000;
 
 /** Spec (onboarding) §3: one live session per CLI, kept for the process lifetime. */
 export class Onboarding {
@@ -24,14 +25,14 @@ export class Onboarding {
     const env = childEnv(deps.hostEnv);
     const commands = deps.commands ?? {
       claude: { bin: deps.hostEnv?.CLAUDE_BIN ?? 'claude', args: ['auth', 'login', '--claudeai'], env },
-      gh: { bin: deps.hostEnv?.GH_BIN ?? 'gh', args: ['auth', 'login', '--hostname', 'github.com', '--web', '--git-protocol', 'https'], env },
+      gh: { bin: deps.hostEnv?.GH_BIN ?? 'gh', args: ['auth', 'login', '--hostname', 'github.com', '--web', '--git-protocol', 'https'], env: { ...env, GH_PROMPT_DISABLED: '1' } },
     };
     const known = async () => Object.values(await import('../core/secrets.js').then((m) => m.loadSecrets(deps.secretsDir)));
     let knownCache: readonly string[] = [];
     void known().then((v) => (knownCache = v));
     this.sessions = {
       claude: new LoginSession({ cli: 'claude', spawn: deps.spawn, command: commands.claude, probe: () => claudeStatus(deps), knownSecrets: () => knownCache }),
-      gh: new LoginSession({ cli: 'gh', spawn: deps.spawn, command: commands.gh, probe: () => ghStatus(deps), knownSecrets: () => knownCache }),
+      gh: new LoginSession({ cli: 'gh', spawn: deps.spawn, command: commands.gh, probe: () => ghStatus(deps), knownSecrets: () => knownCache, timeoutMs: GITHUB_LOGIN_TIMEOUT_MS }),
     };
   }
 }

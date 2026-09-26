@@ -1,41 +1,68 @@
 import { useEffect, useState } from 'react';
 import { api, type Cli, type Item, type SessionState } from '../api.js';
 import { ItemCard } from './ItemCard.js';
+import { Icon } from './Icons.js';
 import { useSse } from '../useSse.js';
+
+function friendlyLoginReason(reason: string) {
+  const normalized = reason.trim().toLowerCase();
+  if (normalized.includes('cancel')) return 'Login cancelado. Você pode tentar novamente.';
+  if (normalized.includes('timeout')) return 'O login demorou demais. Tente novamente.';
+  return 'Não foi possível concluir o login. Tente novamente.';
+}
 
 export function LoginCard({ cli, title, item, onDone }: { cli: Cli; title: string; item: Item | null; onDone: () => void }) {
   const [url, setUrl] = useState<string | null>(null);
   const { state, output, setState } = useSse(url);
   const [code, setCode] = useState('');
   const [showOutput, setShowOutput] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const start = async () => {
-    const r = await api.login(cli);
-    setCode('');
-    if (r.state.name === 'done') {
-      onDone();
-      return;
+    setError(null);
+    try {
+      const r = await api.login(cli);
+      setCode('');
+      if (r.state.name === 'done') {
+        setUrl(null);
+        onDone();
+        return;
+      }
+      setState(r.state);
+      setUrl(api.events(cli));
+    } catch {
+      setError('Não foi possível iniciar o login. Tente novamente.');
     }
-    setState(r.state);
-    setUrl(api.events(cli));
   };
   const send = async () => {
-    await api.code(cli, code);
-    setCode('');
+    setError(null);
+    try {
+      await api.code(cli, code);
+      setCode('');
+    } catch {
+      setError('Não foi possível enviar o código. Confira o código e tente novamente.');
+    }
   };
   useEffect(() => {
     if (state.name !== 'done' || !url) return;
     setUrl(null);
     onDone();
-  }, [state.name, url, onDone]);
+  }, [onDone, state.name, url]);
   return (
-    <ItemCard title={title} item={item}>
+    <ItemCard title={title} item={item} variant="login" subtitle={cli === 'claude' ? 'Acesse sua conta do Claude de forma rápida e segura.' : 'Conecte sua conta do GitHub para usar seus repositórios.'} icon={cli === 'claude' ? 'claude' : 'github'} illustration={cli === 'claude' ? '/onboarding-claude.png' : '/onboarding-github-login.png'}>
       <LoginControls state={state} code={code} onCode={setCode} onStart={start} onSend={send} onCancel={() => api.cancel(cli)} />
+      {error ? <p className="error">{error}</p> : null}
       {url ? (
-        <button type="button" className="link" onClick={() => setShowOutput((v) => !v)}>
-          {showOutput ? 'Ocultar saída do CLI' : 'Mostrar saída do CLI'}
+        <button type="button" className="link terminal-toggle" aria-expanded={showOutput} onClick={() => setShowOutput((v) => !v)}>
+          <span className="terminal-toggle-label"><Icon name="terminal" size={22} />{showOutput ? 'Ocultar saída do CLI' : 'Mostrar saída do CLI'}</span>
+          <Icon name="chevron" size={22} />
         </button>
       ) : null}
-      {showOutput ? <pre className="output">{output}</pre> : null}
+      {showOutput ? (
+        <div className="terminal-output">
+          <div className="terminal-output-header"><span>Saída do CLI</span><span>ao vivo</span></div>
+          <pre className="output">{output}</pre>
+        </div>
+      ) : null}
     </ItemCard>
   );
 }
@@ -43,17 +70,18 @@ export function LoginCard({ cli, title, item, onDone }: { cli: Cli; title: strin
 export function LoginControls({ state, code, onCode, onStart, onSend, onCancel }: { state: SessionState; code: string; onCode: (v: string) => void; onStart: () => void; onSend: () => void; onCancel: () => void }) {
   const live = state.name === 'starting' || state.name === 'awaiting-browser' || state.name === 'awaiting-code' || state.name === 'verifying';
   return (
-    <div className="controls">
+    <div className={`controls login-controls${state.name === 'awaiting-code' ? ' with-code' : ''}`}>
       {!live ? (
-        <button type="button" onClick={onStart}>
+        <button type="button" className="primary-button" onClick={onStart}>
           {state.name === 'failed' ? 'Tentar novamente' : 'Entrar'}
         </button>
       ) : null}
       {state.name === 'starting' || state.name === 'verifying' ? <span className="spinner">{state.name === 'starting' ? 'Iniciando…' : 'Verificando…'}</span> : null}
       {state.name === 'awaiting-browser' || state.name === 'awaiting-code' ? (
-        <>
+        <div className="browser-step">
           {state.url ? (
-            <a href={state.url} target="_blank" rel="noreferrer">
+            <a className="link-button" href={state.url} target="_blank" rel="noreferrer">
+              <Icon name="external" size={22} />
               Abrir link
             </a>
           ) : null}
@@ -62,30 +90,33 @@ export function LoginControls({ state, code, onCode, onStart, onSend, onCancel }
               Digite este código na página: <code data-testid="one-time-code">{state.code}</code>
             </p>
           ) : null}
-        </>
+        </div>
       ) : null}
       {state.name === 'awaiting-code' ? (
         <form
+          className="code-form"
           onSubmit={(e) => {
             e.preventDefault();
             onSend();
           }}
         >
-          <label>
-            Cole o código mostrado pela página
-            <input data-testid="code-input" value={code} onChange={(e) => onCode(e.target.value)} autoComplete="off" />
+          <label className="code-label">
+            <span>Cole o código mostrado pela página</span>
+            <input data-testid="code-input" value={code} onChange={(e) => onCode(e.target.value)} placeholder="Cole o código aqui…" autoComplete="off" />
           </label>
-          <button type="submit" disabled={code.trim() === ''}>
+          <button type="submit" className="primary-button" disabled={code.trim() === ''}>
+            <Icon name="send" size={20} />
             Enviar
           </button>
         </form>
       ) : null}
       {live ? (
         <button type="button" className="secondary" onClick={onCancel}>
+          <Icon name="close" size={22} />
           Cancelar
         </button>
       ) : null}
-      {state.name === 'failed' ? <p className="error">{state.reason}</p> : null}
+      {state.name === 'failed' ? <p className="error login-status-error">{friendlyLoginReason(state.reason)}</p> : null}
     </div>
   );
 }

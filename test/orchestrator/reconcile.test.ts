@@ -38,7 +38,7 @@ function deps(): ReconcileDeps {
   gh.install(ghExec);
   return {
     journal,
-    ws: { projectId: 'shop', root: remote.root, repo: remote.repo, worktrees: path.join(remote.root, 'wt'), graph: '', knowledgeDb: '', runs: remote.root },
+    ws: { projectId: 'shop', root: remote.root, repo: remote.repo, worktrees: path.join(remote.root, 'wt'), graph: '', knowledgeDb: '', secrets: path.join(remote.root, 'secrets'), runs: remote.root },
     exec: execCommand,
     ghExec: ghExec.exec,
     afterMerge: async (taskId, branch) => { afterMergeCalls.push(`${taskId}:${branch}`); },

@@ -48,9 +48,9 @@ describe('ProjectsView', () => {
         <ProjectsView projects={[]} runs={{}} drafts={[]} error="not a project directory" onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={onAdd} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} />
       </MemoryRouter>,
     );
-    fireEvent.change(screen.getByPlaceholderText('/caminho/do/projeto'), { target: { value: '/x' } });
-    fireEvent.click(screen.getByText('Adicionar projeto'));
-    expect(onAdd).toHaveBeenCalledWith('/x');
+    fireEvent.change(screen.getByLabelText('URL do repositório'), { target: { value: 'https://github.com/acme/demo.git' } });
+    fireEvent.click(screen.getByText('Baixar e adicionar'));
+    expect(onAdd).toHaveBeenCalledWith('https://github.com/acme/demo.git');
     expect(screen.getByText('not a project directory')).toBeTruthy();
   });
   it('offers new project, new spec, continue spec and open refinement', () => {
