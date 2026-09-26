@@ -4,3 +4,10 @@ coverage/
 *.log
 web/node_modules/
 web/dist/
+.codex/agents/dev.toml
+.codex/agents/devops.toml
+.codex/agents/front.toml
+.codex/agents/po.toml
+.codex/agents/sm.toml
+.codex/agents/test.toml
+AGENTS.md
