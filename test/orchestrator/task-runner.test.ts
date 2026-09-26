@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DecisionOutcome } from '../../server/decide/types.js';
 import { execCommand } from '../../server/exec/command.js';
 import type { GateResult } from '../../server/exec/gate-runner.js';
-import { git, headSha } from '../../server/git/git.js';
+import { commitAll, createWorktree, git, headSha } from '../../server/git/git.js';
 import { MergeQueue, type MergeOutcome, type MergeSteps } from '../../server/git/merge-queue.js';
 import { Intent, Journal, OrchEvent } from '../../server/orchestrator/events.js';
 import type { AgentStepRequest } from '../../server/orchestrator/steps.js';
@@ -517,5 +517,28 @@ describe('TaskRunner: replanning the scaffold task', () => {
     for (let i = 0; i < 6; i++) await r.advance();
     expect(journal.state.tasks.get('T0-scaffold')!.state).toBe('superseded');
     expect(journal.state.tasks.get('T0-scaffold-r1')).toMatchObject({ replanned: true, bootstrapsFrozenPaths: true });
+  });
+});
+
+describe('TaskRunner: worktree left by an earlier run', () => {
+  it('starts a new run from origin/main, discarding the stale branch and its commits', async () => {
+    // A previous run of this spec left the task worktree behind, with a commit main never took.
+    const r0 = new TaskRunner('T1', deps());
+    await createWorktree(remote.repo, r0.worktree, r0.branch, 'origin/main');
+    await fs.writeFile(path.join(r0.worktree, 'stale.txt'), 'from an earlier run\n');
+    await commitAll(r0.worktree, 'chore: stale work from an earlier run');
+    const staleSha = await headSha(r0.worktree);
+
+    // A fresh journal = a new run; its first touch of T1 must not inherit that commit.
+    await journal.close();
+    journal = await Journal.open({ file: path.join(remote.root, 'events-run2.ndjson'), runId: 'spec-001-r2', specHash: HASH });
+    await journal.fact(RunEvent.TaskPlanned, { task: T1 });
+    await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T1', to: 'ready' });
+    const r = new TaskRunner('T1', deps());
+    await r.advance();
+    expect(await git(r.worktree, ['log', '-1', '--format=%s'])).toBe('feat: T1');
+    const log = await git(r.worktree, ['log', '--format=%H']);
+    expect(log).not.toContain(staleSha);
+    await expect(fs.access(path.join(r.worktree, 'stale.txt'))).rejects.toThrow();
   });
 });

@@ -18,7 +18,7 @@ import type { TestResult } from '../evidence/junit.js';
 import { verifyClaimedEvidence } from '../evidence/matrix.js';
 import type { Exec } from '../exec/command.js';
 import type { GateResult } from '../exec/gate-runner.js';
-import { changedFiles, commitAll, createWorktree, fetch as gitFetch, git } from '../git/git.js';
+import { changedFiles, commitAll, createWorktree, fetch as gitFetch, git, removeWorktree } from '../git/git.js';
 import type { MergeQueue, MergeSteps } from '../git/merge-queue.js';
 import type { CodeContext, HandoffSummary } from '../knowledge/context-pack.js';
 import { RunEvent, type TaskRuntime } from '../pipeline/run-state.js';
@@ -180,9 +180,19 @@ export class TaskRunner {
     const { journal, ws, exec } = this.deps;
     await gitFetch(ws.repo, exec);
     const confirmed = journal.isConfirmed(Intent.WorktreeCreate, this.taskId);
-    if (!confirmed) await journal.intent(Intent.WorktreeCreate, this.taskId, { worktree: this.worktree, branch: this.branch });
-    await createWorktree(ws.repo, this.worktree, this.branch, 'origin/main', exec);
-    if (!confirmed) await journal.confirm(Intent.WorktreeCreate, this.taskId, {});
+    if (confirmed) {
+      // This run already created it (resume after a crash): keep whatever the Dev committed there.
+      await createWorktree(ws.repo, this.worktree, this.branch, 'origin/main', exec);
+      return;
+    }
+    await journal.intent(Intent.WorktreeCreate, this.taskId, { worktree: this.worktree, branch: this.branch });
+    // First touch by this run: a worktree or branch of the same name is a leftover from an earlier run of
+    // this spec (they are not cleaned up when a run ends blocked), and its commits must not leak into
+    // this run - seen live when a new run picked up a superseded scaffold branch with the changes a
+    // review had just rejected. Start from origin/main.
+    await removeWorktree(ws.repo, this.worktree, exec);
+    await createWorktree(ws.repo, this.worktree, this.branch, 'origin/main', exec, { reset: true });
+    await journal.confirm(Intent.WorktreeCreate, this.taskId, {});
   }
 
   private async refContext(): Promise<RefContext> {
