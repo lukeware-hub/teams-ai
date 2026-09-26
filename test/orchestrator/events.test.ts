@@ -84,3 +84,13 @@ describe('Journal', () => {
     await j.close();
   });
 });
+
+describe('Journal: phase 4 fix tasks', () => {
+  it('applies FIX_TASKS_PLANNED to the live state, not only on replay', async () => {
+    const j = await open();
+    await j.fact(RunEvent.TaskPlanned, { task: makePlanTask({ id: 'T1' }) });
+    await j.fact(RunEvent.FixTasksPlanned, { tasks: [makePlanTask({ id: 'T900-fix-1', dependsOn: ['T1'] })] });
+    expect(j.state.tasks.get('T900-fix-1')?.state).toBe('planned');
+    await j.close();
+  });
+});

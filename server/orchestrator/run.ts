@@ -472,8 +472,11 @@ export class Run {
     const runFix = async (tasks: PlanTask[]): Promise<ExecuteResult | 'merged'> => {
       for (const t of tasks) if (this.journal.state.tasks.get(t.id)?.state === 'planned') await this.journal.fact(RunEvent.TaskStateChanged, { taskId: t.id, to: 'ready' });
       const r = await this.loop({ final: false });
-      if (r !== 'complete') return r;
-      return tasks.every((t) => this.journal.state.tasks.get(t.id)?.state === 'merged') ? 'merged' : 'blocked';
+      if (r !== 'complete') return r; // loop() already journaled RUN_FINISHED for a non-complete outcome
+      if (tasks.every((t) => this.journal.state.tasks.get(t.id)?.state === 'merged')) return 'merged';
+      // A fix task that never merged ends the run here; without finish() the run had no RUN_FINISHED and
+      // the API kept it "running" forever (1387253335-001-r13).
+      return this.finish('blocked');
     };
     let result: 'awaiting-validation' | 'verification-failed' | 'deploy-failed' = 'awaiting-validation';
     let p4 = await runPhase4(this.phaseDeps(), 1);
