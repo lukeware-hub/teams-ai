@@ -439,7 +439,7 @@ export class TaskRunner {
   /** Returns false only for an early replan the SM could not produce; the policy path blocks instead. */
   private async replan(opts: { early?: boolean } = {}): Promise<boolean> {
     const history = this.deps.journal.events.filter((e) => e.type === OrchEvent.Feedback && e.data.taskId === this.taskId).map((e) => String(e.data.text));
-    const outcome = await this.deps.runAgent<'replan'>({ kind: 'replan', role: 'sm', pack: replanPack(this.deps.packBase(), this.task.def, { history, boundaries: await this.deps.boundaries() }), cwd: this.deps.ws.repo, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts });
+    const outcome = await this.deps.runAgent<'replan'>({ kind: 'replan', role: 'sm', pack: replanPack(this.deps.packBase(), this.task.def, { history, boundaries: await this.deps.boundaries(), atomic: this.task.bootstrapsFrozenPaths }), cwd: this.deps.ws.repo, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts });
     if (!outcome.ok) {
       if (outcome.failure === 'quota' || outcome.failure === 'auth') {
         await this.fail(outcome.failure, outcome.errors.join('\n'));
@@ -468,6 +468,9 @@ export class TaskRunner {
     const known = new Set(this.deps.journal.state.tasks.keys());
     const newIds = new Set(replacements.map((r) => r.id));
     if (newIds.size !== replacements.length) errors.push('duplicate replacement ids');
+    // The scaffold makes the gates runnable; a piece of it cannot pass them (seen live: a scripts-only
+    // replacement failed lint/typecheck/build for lack of the toolchain its sibling task owned).
+    if (this.task.bootstrapsFrozenPaths && replacements.length !== 1) errors.push(`${this.taskId} is the scaffold task and must be replanned into exactly one task, got ${replacements.length}`);
     for (const r of replacements) {
       if (known.has(r.id)) errors.push(`replacement ${r.id} reuses an existing task id`);
       for (const d of r.dependsOn) {

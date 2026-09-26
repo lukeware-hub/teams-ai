@@ -146,8 +146,13 @@ export function specGapPack(base: PackBase, task: PlanTask, opts: { question: st
   return { ...common(base, 'spec-gap', 'sm'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), feedback: `Dev question (spec gap):\n${opts.question}` };
 }
 
-export function replanPack(base: PackBase, task: PlanTask, opts: { history: readonly string[]; boundaries: readonly string[] }): ContextPackInput {
-  const feedback = `Attempt history:\n${opts.history.map((h, i) => `${i + 1}. ${h}`).join('\n')}\n\nModule boundaries:\n${opts.boundaries.map((b) => `- ${b}`).join('\n')}`;
+/** The scaffold task is what makes the plan's gates runnable; split up, none of its pieces can pass them. */
+export const SCAFFOLD_REPLAN_RULE =
+  'This is the scaffold task: every gate in the plan (npm run ...) runs against each task on its own, so the toolchain (package.json, lockfile, configs, gate scripts) must land in ONE task. Replan it as exactly one replacement task, never several.';
+
+export function replanPack(base: PackBase, task: PlanTask, opts: { history: readonly string[]; boundaries: readonly string[]; atomic?: boolean }): ContextPackInput {
+  const constraint = opts.atomic ? `\n\nConstraint:\n- ${SCAFFOLD_REPLAN_RULE}` : '';
+  const feedback = `Attempt history:\n${opts.history.map((h, i) => `${i + 1}. ${h}`).join('\n')}\n\nModule boundaries:\n${opts.boundaries.map((b) => `- ${b}`).join('\n')}${constraint}`;
   return { ...common(base, 'replan', 'sm'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), feedback };
 }
 

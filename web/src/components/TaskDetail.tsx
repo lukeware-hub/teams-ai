@@ -58,7 +58,17 @@ export function TaskDetail({ events, taskId, loadStep }: { events: StoredEvent[]
               );
             })}
           </ul>
-          {a.gates.length ? <p>Portões: {a.gates.map((g) => `${g.gate} ${g.passed ? 'passou' : 'falhou'}${g.failedTests.length ? ` (${g.failedTests.join(', ')})` : ''}`).join(' · ')}</p> : null}
+          {a.gates.length ? (
+            <p className="gates">
+              <span className="hint">Portões:</span>{' '}
+              {a.gates.map((g) => (
+                <span key={g.gate} className={`test test-${g.passed ? 'passed' : 'failed'}`} title={g.failedTests.length ? g.failedTests.join(', ') : undefined}>
+                  {g.gate} {g.passed ? 'passou' : 'falhou'}
+                  {g.failedTests.length ? ` (${g.failedTests.length})` : ''}
+                </span>
+              ))}
+            </p>
+          ) : null}
           {a.review ? (
             <p>
               Revisão: perfil {a.review.profile}, risco {a.review.risk}

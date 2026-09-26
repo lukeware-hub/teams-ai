@@ -489,3 +489,33 @@ describe('TaskRunner: final review fixes', () => {
     expect(calls.filter((id) => id === 'model-tier')).toHaveLength(1);
   });
 });
+
+describe('TaskRunner: replanning the scaffold task', () => {
+  const failGates: TaskRunnerDeps['gates'] = async () => {
+    const g = gate('unit-test', { passed: false, exitCode: 1, failure: 'code', junit: null });
+    return { results: [g], blockingFailure: g };
+  };
+  const scaffold = makePlanTask({ id: 'T0-scaffold', criteriaRefs: ['AC-001'], affectedPaths: ['scripts'] });
+  const piece = (id: string) => makePlanTask({ id, criteriaRefs: ['AC-001'], affectedPaths: ['scripts'], dependsOn: [] });
+
+  it('rejects a replan that splits the scaffold, since no piece can run the gates alone', async () => {
+    await journal.fact(RunEvent.TaskPlanned, { task: scaffold });
+    await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T0-scaffold', to: 'ready' });
+    const agent: Agent = async (req) => (req.kind === 'replan' ? ok({ specHash: HASH, replacements: [piece('T0-scaffold-r1'), piece('T0-scaffold-r2')] }) : devDone()(req));
+    const r = new TaskRunner('T0-scaffold', deps({ agent, gates: failGates }));
+    for (let i = 0; i < 6; i++) await r.advance();
+    expect(journal.state.tasks.get('T0-scaffold')!.state).toBe('blocked');
+    expect(journal.events.find((e) => e.type === OrchEvent.TaskBlocked && e.data.taskId === 'T0-scaffold')!.data.reason).toMatch(/exactly one task/);
+    expect(journal.state.tasks.has('T0-scaffold-r1')).toBe(false);
+  });
+
+  it('accepts a single replacement, which inherits the frozen-path permission', async () => {
+    await journal.fact(RunEvent.TaskPlanned, { task: scaffold });
+    await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T0-scaffold', to: 'ready' });
+    const agent: Agent = async (req) => (req.kind === 'replan' ? ok({ specHash: HASH, replacements: [piece('T0-scaffold-r1')] }) : devDone()(req));
+    const r = new TaskRunner('T0-scaffold', deps({ agent, gates: failGates }));
+    for (let i = 0; i < 6; i++) await r.advance();
+    expect(journal.state.tasks.get('T0-scaffold')!.state).toBe('superseded');
+    expect(journal.state.tasks.get('T0-scaffold-r1')).toMatchObject({ replanned: true, bootstrapsFrozenPaths: true });
+  });
+});
