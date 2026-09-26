@@ -473,15 +473,19 @@ export class Run {
       for (const t of tasks) if (this.journal.state.tasks.get(t.id)?.state === 'planned') await this.journal.fact(RunEvent.TaskStateChanged, { taskId: t.id, to: 'ready' });
       const r = await this.loop({ final: false });
       if (r !== 'complete') return r; // loop() already journaled RUN_FINISHED for a non-complete outcome
-      if (tasks.every((t) => this.journal.state.tasks.get(t.id)?.state === 'merged')) return 'merged';
-      // A fix task that never merged ends the run here; without finish() the run had no RUN_FINISHED and
-      // the API kept it "running" forever (1387253335-001-r13).
-      return this.finish('blocked');
+      return tasks.every((t) => this.journal.state.tasks.get(t.id)?.state === 'merged') ? 'merged' : 'blocked';
     };
     let result: 'awaiting-validation' | 'verification-failed' | 'deploy-failed' = 'awaiting-validation';
     let p4 = await runPhase4(this.phaseDeps(), 1);
     if (!p4.ok && p4.reason === PAUSED_AUTH) return 'paused:auth';
-    if (!p4.ok && p4.fixTasks) { const back = await runFix(p4.fixTasks); if (back !== 'merged') return back; p4 = await runPhase4(this.phaseDeps(), 2); }
+    if (!p4.ok && p4.fixTasks) {
+      const back = await runFix(p4.fixTasks);
+      if (back !== 'merged' && back !== 'blocked') return back;
+      // Fix tasks are best effort; the second verification round is the verdict. A fix task that blocked
+      // (e.g. the SM diagnosed a toolchain problem the Dev found nothing to change for) must not end the
+      // run before that round runs (1387253335-001-r13). Its blocked state is still reported by finish().
+      p4 = await runPhase4(this.phaseDeps(), 2);
+    }
     if (!p4.ok) result = 'verification-failed';
     if (p4.ok && this.deps.target) {
       for (let attempt = 1 as 1 | 2 | 3; attempt <= MAX_DEPLOY_ATTEMPTS; attempt = (attempt + 1) as 1 | 2 | 3) {
