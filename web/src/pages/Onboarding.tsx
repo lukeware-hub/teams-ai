@@ -54,7 +54,7 @@ export function Onboarding({ compact = false }: { compact?: boolean }) {
             <span>Progresso</span>
             <strong>{ready}/{total}</strong>
           </div>
-          <div className="progress-track"><span style={{ width: `${progress}%` }} /></div>
+          <div className="progress-track"><span style={{ transform: `scaleX(${progress / 100})` }} /></div>
           <small>{status?.allOk ? 'Tudo pronto para começar' : 'Complete os itens abaixo'}</small>
         </div>
       </header>

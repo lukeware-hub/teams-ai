@@ -50,7 +50,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .progress-meta { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; color: var(--ink-soft); font-size: 0.75rem; font-weight: 700; }
 .progress-meta strong { color: var(--ink); font-size: 1.15rem; letter-spacing: -0.03em; }
 .progress-track { height: 0.35rem; margin: 0.7rem 0 0.55rem; overflow: hidden; border-radius: 999px; background: #e7ebf3; }
-.progress-track span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width .35s ease; }
+.progress-track span { display: block; width: 100%; height: 100%; border-radius: inherit; background: var(--accent); transform: scaleX(0); transform-origin: left center; transition: transform .35s ease; }
 .setup-progress small { color: var(--ink-soft); font-size: 0.7rem; }
 .setup-grid { display: grid; gap: 0.85rem; }
 .onboarding-card { padding: 1.25rem 1.35rem; border-radius: 16px; box-shadow: 0 1px 2px rgba(24, 34, 53, .03), 0 12px 30px rgba(24, 34, 53, .045); }
@@ -80,7 +80,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .claude-login-card .onboarding-detail > span:last-child::after { content: ''; }
 .claude-login-card .link-button, .claude-login-card .primary-button, .claude-login-card .secondary { display: inline-flex; align-items: center; justify-content: center; gap: 0.55rem; height: var(--control-height); padding: 0.65rem 1rem; font-size: 0.95rem; }
 .claude-login-card .link-button { border-color: #cbd9ff; background: #f2f5ff; }
-.claude-login-card .code-form { padding: 0.9rem 1rem; border-color: #e1e8f8; border-radius: 16px; background: #f8faff; }
+.claude-login-card .code-form { padding: 0; border: 0; border-radius: 0; background: transparent; }
 .claude-login-card .code-label { font-size: 0.88rem; }
 .claude-login-card .code-label input { height: var(--control-height); font-size: 1rem; }
 .claude-login-card .primary-button { border-color: #2f65e8; background: #2f65e8; box-shadow: 0 8px 16px rgba(47, 101, 232, .2); }
@@ -115,6 +115,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .setup-complete { margin: 0.25rem 0 0; padding: 1rem 1.1rem; border: 1px solid #cce8da; border-radius: 12px; color: var(--good); background: var(--good-soft); font-weight: 700; }
 .setup-complete a { color: inherit; }
 .onboarding-shell button:focus-visible, .onboarding-shell a:focus-visible, .onboarding-shell input:focus-visible { outline: 3px solid rgba(67, 87, 199, .28); outline-offset: 2px; }
+.claude-login-card .code-label input:focus-visible { outline: none; border-color: #6e9cff; box-shadow: 0 0 0 3px rgba(110, 156, 255, .24); }
 
 @media (max-width: 720px) {
   .onboarding-shell { width: calc(100vw - 2rem); max-width: calc(100vw - 2rem); min-width: 0; padding-top: 2rem; }
