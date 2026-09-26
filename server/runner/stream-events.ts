@@ -239,9 +239,10 @@ export function summarizeStream(parsed: ParsedStream): ResultSummary {
     };
   }
   const r = result.data;
-  const fromText = r.structured_output === undefined ? extractJsonObject(r.result ?? null) : null;
+  const hasStructuredOutput = r.structured_output !== undefined && r.structured_output !== null;
+  const fromText = hasStructuredOutput ? null : extractJsonObject(r.result ?? null);
   const structuredOutput = r.structured_output ?? fromText;
-  const structuredSource = r.structured_output !== undefined ? 'structured_output' : fromText ? 'text' : null;
+  const structuredSource = hasStructuredOutput ? 'structured_output' : fromText ? 'text' : null;
   return {
     found: true,
     isError: r.is_error ?? r.subtype !== 'success',
