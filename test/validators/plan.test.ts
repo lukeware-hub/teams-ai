@@ -181,3 +181,18 @@ describe('validatePlan: gate image', () => {
     expect(validatePlan(makePlan(spec, { gateImage: 'node:22-bookworm-slim' }), spec, { firstSpec: true })).toEqual([]);
   });
 });
+
+describe('validatePlan: devops-only criteria need a smoke flag', () => {
+  it('rejects a criterion only covered by devops tasks when the spec does not mark it smoke', () => {
+    const s = { ...spec, acceptanceCriteria: spec.acceptanceCriteria.map((ac, i) => (i === 0 ? { ...ac, smoke: false } : ac)) };
+    const onlyDevops = makePlanTask({ id: 'T9-infra', owner: 'devops', dependsOn: ['T0-scaffold'], criteriaRefs: [s.acceptanceCriteria[0]!.id] });
+    const errors = validatePlan(withTasks([...makePlan(s).tasks.filter((t) => t.id !== 'T9-infra' && t.id !== 'T1-create'), onlyDevops]), s, { firstSpec: true }).join('\n');
+    expect(errors).toMatch(/only covered by devops task/);
+  });
+  it('accepts it when the spec marks the criterion smoke: true', () => {
+    const s = { ...spec, acceptanceCriteria: spec.acceptanceCriteria.map((ac, i) => (i === 0 ? { ...ac, smoke: true } : ac)) };
+    const onlyDevops = makePlanTask({ id: 'T9-infra', owner: 'devops', dependsOn: ['T0-scaffold'], criteriaRefs: [s.acceptanceCriteria[0]!.id] });
+    const errors = validatePlan(withTasks([...makePlan(s).tasks.filter((t) => t.id !== 'T9-infra' && t.id !== 'T1-create'), onlyDevops]), s, { firstSpec: true }).join('\n');
+    expect(errors).not.toMatch(/only covered by devops task/);
+  });
+});

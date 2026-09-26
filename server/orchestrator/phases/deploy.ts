@@ -27,6 +27,15 @@ Contract: ${SMOKE_CONTRACT}`, affectedPaths: ['tests/smoke/**', 'tests/smoke', '
   return { ...base, description: `Deploy attempt ${attempt} failed at ${stage}: ${detail}`, affectedPaths: [...deps.plan!.deploy.manifests, 'Dockerfile'], owner: 'devops' };
 };
 
+/** Resuming a new process restarts postPhases()'s attempt loop at 1; without this it replayed attempt 1's
+ * already-resolved failure on every resume (new fix task, wasted tokens, never reaching later attempts -
+ * 1387253335-001-r13). Each root deploy-fix task (not its `-rN` replan children) that reached a terminal
+ * state stands for one attempt cycle that is done; the next attempt starts after all of them. */
+export function deployStartAttempt(deps: PhaseDeps): 1 | 2 | 3 {
+  const done = [...deps.journal.state.tasks.entries()].filter(([id, t]) => /^T950-deploy-fix-\d+$/.test(id) && ['merged', 'blocked'].includes(t.state)).length;
+  return Math.min(1 + done, 3) as 1 | 2 | 3;
+}
+
 export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3): Promise<Phase5Result> {
   if (!deps.plan || !deps.target || !deps.smoke) throw new Error('Phase 5 needs plan, target and smoke');
   const done = deps.journal.events.find((e) => e.type === OrchEvent.DeployVerified && e.data.attempt === attempt);

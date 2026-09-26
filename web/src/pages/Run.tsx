@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { runApi, type RunDetail, type StoredEvent } from '../api.js';
 import { TaskDetail } from '../components/TaskDetail.js';
-import { evidence, explainBlockReason, pausedUntil, phases, rootBlockers, runState, tokens } from '../run/selectors.js';
+import { evidence, explainBlockReason, mergedPrs, pausedUntil, phases, rootBlockers, runState, tokens } from '../run/selectors.js';
 import { useJournal } from '../useSse.js';
 
 const hhmm = (iso: string) => new Date(iso).toTimeString().slice(0, 5);
@@ -23,6 +23,9 @@ export function RunView({ detail, events, ended, error, loadStep }: { detail: Ru
   const groups = ORDER.map((s) => [s, state.order.filter((id) => state.tasks.get(id)!.state === s)] as const).filter(([, ids]) => ids.length);
   const blocked = (finished?.data.blocked as Array<{ taskId: string; reason: string }> | undefined) ?? [];
   const causes = rootBlockers(blocked);
+  const prs = mergedPrs(unique);
+  const totalTasks = state.order.length;
+  const doneTasks = [...state.tasks.values()].filter((t) => t.state === 'merged').length;
   return (
     <main>
       <p>
@@ -40,7 +43,31 @@ export function RunView({ detail, events, ended, error, loadStep }: { detail: Ru
           {ended ? ' (encerrada)' : ''}
         </span>
         {until ? <span data-testid="paused-until" className="hint">pausada até {hhmm(until)}</span> : null}
+        {totalTasks ? (
+          <span data-testid="task-progress" className="hint">
+            {doneTasks} de {totalTasks} tarefas mescladas
+          </span>
+        ) : null}
       </div>
+      {prs.length ? (
+        <section className="card">
+          <h2>Pull requests mesclados</h2>
+          <ul className="pr-list">
+            {prs.map((p) => (
+              <li key={p.taskId}>
+                <span className="task-id">{p.taskId}</span>
+                {p.url ? (
+                  <a href={p.url} target="_blank" rel="noreferrer">
+                    PR #{p.number}
+                  </a>
+                ) : (
+                  <span>PR #{p.number}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       {error ? <p className="error">{error}</p> : null}
       {causes.length ? (
         <section className="card card-cause" data-testid="block-cause">

@@ -27,7 +27,7 @@ import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
 import { CrashInjected, Intent, Journal, OrchEvent, type IntentType, type RunResult } from './events.js';
 export { CrashInjected };
 import { taskMergeSteps, type MergeStepsDeps } from './merge-steps.js';
-import { PAUSED_AUTH, runPhase0, runPhase1, runPhase2, runPhase4, runPhase5, runPhase6, MAX_DEPLOY_ATTEMPTS, type PhaseDeps, type PhaseResult } from './phases/index.js';
+import { PAUSED_AUTH, runPhase0, runPhase1, runPhase2, runPhase4, runPhase5, runPhase6, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, type PhaseDeps, type PhaseResult } from './phases/index.js';
 import { reconcile } from './reconcile.js';
 import { runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
 import { TaskRunner, type TaskRunnerDeps } from './task-runner.js';
@@ -490,7 +490,7 @@ export class Run {
     }
     if (!p4.ok) result = 'verification-failed';
     if (p4.ok && this.deps.target) {
-      for (let attempt = 1 as 1 | 2 | 3; attempt <= MAX_DEPLOY_ATTEMPTS; attempt = (attempt + 1) as 1 | 2 | 3) {
+      for (let attempt = deployStartAttempt(this.phaseDeps()); attempt <= MAX_DEPLOY_ATTEMPTS; attempt = (attempt + 1) as 1 | 2 | 3) {
         const p5 = await runPhase5(this.phaseDeps(), attempt);
         if (p5.ok) break;
         if (!p5.fixTask) { result = 'deploy-failed'; break; }

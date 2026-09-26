@@ -142,3 +142,6 @@ h3 { font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; colo
 .refine .badge.po { background: #ddf4ff; }
 .refine .badge.sm { background: #fff8c5; }
 .refine .notice { color: #9a6700; }
+.pr-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.pr-list li { display: flex; align-items: center; gap: 0.5rem; border: 1px solid var(--line); border-radius: 8px; padding: 0.3rem 0.6rem; }
+.pr-list a { color: var(--accent); font-weight: 700; }

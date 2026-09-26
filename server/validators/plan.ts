@@ -51,6 +51,18 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
     if (!covered.has(ac)) errors.push(`acceptance criterion ${ac} is not covered by any task`);
   }
 
+  // A criterion only ever touched by devops tasks (manifests, Dockerfile) has no unit/integration test to
+  // prove it - only a running deployment can (spec §9 smoke); Phase 4 then reports it as evidence-missing
+  // forever (seen live: AC-008/AC-009 on 1387253335-001-r13). Require the spec to say so up front.
+  const smokeSet = new Set(smokeAcs);
+  const tasksByAc = new Map<string, string[]>();
+  for (const task of plan.tasks) for (const ref of task.criteriaRefs) tasksByAc.set(ref, [...(tasksByAc.get(ref) ?? []), task.owner]);
+  for (const [ac, owners] of tasksByAc) {
+    if (owners.length > 0 && owners.every((o) => o === 'devops') && !smokeSet.has(ac)) {
+      errors.push(`acceptance criterion ${ac} is only covered by devops task(s) (infra/manifests, no app test); mark it smoke: true in the spec or add an app-level test`);
+    }
+  }
+
   // With duplicate ids the graph is ambiguous; the duplicate error already blocks the plan.
   if (!duplicates) {
     const cycle = findCycle(plan.tasks);

@@ -200,3 +200,19 @@ export function explainBlockReason(reason: string): string {
 export function rootBlockers(blocked: Array<{ taskId: string; reason: string }>): Array<{ taskId: string; reason: string }> {
   return blocked.filter((b) => b.reason !== 'a dependency is blocked');
 }
+
+/** One row per merged task's PR, in the order the merge happened - for a run overview link list. */
+export function mergedPrs(events: StoredEvent[]): Array<{ taskId: string; number: number; url: string }> {
+  const branchOf = new Map<string, { number: number; url: string }>();
+  for (const e of events) if (e.type === 'PR_CREATED') branchOf.set(String(e.data.branch), { number: Number(e.data.number), url: String(e.data.url) });
+  const rows: Array<{ taskId: string; number: number; url: string }> = [];
+  for (const e of events) {
+    if (e.type !== 'PR_MERGED') continue;
+    const taskId = String(e.data.taskId);
+    const byBranch = [...branchOf.entries()].find(([b]) => b.endsWith(`/${taskId}`))?.[1];
+    const number = Number(e.data.pr ?? byBranch?.number);
+    if (!Number.isFinite(number)) continue;
+    rows.push({ taskId, number, url: byBranch?.url ?? '' });
+  }
+  return rows;
+}
