@@ -12,7 +12,7 @@ import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
 import { createDecider } from '../decide/create-decider.js';
 import type { Exec } from '../exec/command.js';
-import { runGates } from '../exec/gate-runner.js';
+import { runGates, TAIL_CHARS, type GateResult } from '../exec/gate-runner.js';
 import { git } from '../git/git.js';
 import { MergeQueue } from '../git/merge-queue.js';
 import type { CodeContext, HandoffSummary } from '../knowledge/context-pack.js';
@@ -216,8 +216,38 @@ export class Run {
 
   private runAgent = <K extends StepKind>(req: AgentStepRequest<K>): Promise<StepOutcome<OutputOf<K>>> => runAgentStep(req, this.agentDeps());
 
+  /**
+   * A task worktree starts from origin/main, which never carries installed dependencies, and gates run
+   * offline in the gate image. Without this every task lost its first attempt to "tsc: not found" until
+   * the Dev thought of running the install itself. Runs the plan's install command in the worktree when
+   * the dependency directory is missing; a failure is reported like a blocking gate so the Dev sees it.
+   */
+  private async installDeps(worktree: string): Promise<GateResult | null> {
+    const command = this.plan!.commands.install;
+    if (!command) return null;
+    const present = await fs.access(path.join(worktree, 'node_modules')).then(() => true, () => false);
+    if (present) return null;
+    const started = Date.now();
+    const r = await this.deps.exec({ bin: 'sh', args: ['-lc', command], cwd: worktree, timeoutMs: 10 * 60_000 });
+    if (r.exitCode === 0 && !r.timedOut) return null;
+    return {
+      name: 'install',
+      blocking: true,
+      passed: false,
+      exitCode: r.exitCode,
+      timedOut: r.timedOut,
+      durationMs: Date.now() - started,
+      stdoutTail: r.stdout.slice(-TAIL_CHARS),
+      stderrTail: r.stderr.slice(-TAIL_CHARS),
+      junit: null,
+      failure: r.timedOut ? 'infra' : 'code',
+    };
+  }
+
   private gates = async (worktree: string, branch: string) => {
     const plan = this.plan!;
+    const install = await this.installDeps(worktree);
+    if (install) return { results: [install], blockingFailure: install };
     return runGates(
       plan.gates.filter((g) => g.blocking),
       {
