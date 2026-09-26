@@ -13,6 +13,8 @@ describe('probes', () => {
     expect(good.calls[0]!.args).toEqual(['auth', 'status', '--json']);
     const out = new FakeExec().onArgs('claude', ['auth', 'status'], () => ({ stdout: JSON.stringify({ loggedIn: false }) }));
     expect((await claudeStatus({ exec: out.exec, fetch: noFetch })).ok).toBe(false);
+    const stderrJson = new FakeExec().onArgs('claude', ['auth', 'status'], () => ({ exitCode: 1, stderr: JSON.stringify({ loggedIn: false, error: 'not authenticated' }) }));
+    expect(await claudeStatus({ exec: stderrJson.exec, fetch: noFetch })).toEqual({ ok: false, detail: 'not logged in' });
     const missing = new FakeExec().on((s) => s.bin === 'claude', () => ({ exitCode: 127, stderr: 'claude: not found' }));
     expect(await claudeStatus({ exec: missing.exec, fetch: noFetch })).toMatchObject({ ok: false, detail: expect.stringContaining('not found') });
   });

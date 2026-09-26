@@ -8,28 +8,41 @@ export function LoginCard({ cli, title, item, onDone }: { cli: Cli; title: strin
   const { state, output, setState } = useSse(url);
   const [code, setCode] = useState('');
   const [showOutput, setShowOutput] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const start = async () => {
-    const r = await api.login(cli);
-    setCode('');
-    if (r.state.name === 'done') {
-      onDone();
-      return;
+    setError(null);
+    try {
+      const r = await api.login(cli);
+      setCode('');
+      if (r.state.name === 'done') {
+        setUrl(null);
+        onDone();
+        return;
+      }
+      setState(r.state);
+      setUrl(api.events(cli));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível iniciar o login');
     }
-    setState(r.state);
-    setUrl(api.events(cli));
   };
   const send = async () => {
-    await api.code(cli, code);
-    setCode('');
+    setError(null);
+    try {
+      await api.code(cli, code);
+      setCode('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível enviar o código');
+    }
   };
   useEffect(() => {
     if (state.name !== 'done' || !url) return;
     setUrl(null);
     onDone();
-  }, [state.name, url, onDone]);
+  }, [onDone, state.name, url]);
   return (
     <ItemCard title={title} item={item}>
       <LoginControls state={state} code={code} onCode={setCode} onStart={start} onSend={send} onCancel={() => api.cancel(cli)} />
+      {error ? <p className="error">{error}</p> : null}
       {url ? (
         <button type="button" className="link" onClick={() => setShowOutput((v) => !v)}>
           {showOutput ? 'Ocultar saída do CLI' : 'Mostrar saída do CLI'}
