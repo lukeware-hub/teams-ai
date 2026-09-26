@@ -33,6 +33,14 @@ beforeEach(async () => {
 afterEach(() => fs.rm(root, { recursive: true, force: true }));
 
 describe('RefineSession', () => {
+  it('migrates an existing draft that predates design.md', async () => {
+    const design = path.join(draft().docs, 'design.md');
+    await fs.rm(design);
+    const s = await RefineSession.open(deps());
+    expect(await fs.readFile(design, 'utf8')).toContain('executable visual contract');
+    await s.close();
+  });
+
   it('evaluates: derive, PO and SM, questions merged blocking-first, patches proposed or discarded, secrets item computed', async () => {
     const s = await RefineSession.create(deps(), 'new-project');
     script['derive/po'] = [derived];
@@ -50,6 +58,22 @@ describe('RefineSession', () => {
     expect(st.checklist.find((i) => i.id === 'sm.no-open-questions')).toMatchObject({ passed: false });
     expect(calls.map((c) => c.kind)).toEqual(['derive', 'refine', 'refine']);
     expect((await s.snapshot()).tokens.steps).toBe(3);
+  });
+
+  it('routes Front patches to design.md and keeps them reviewable', async () => {
+    const base = deps();
+    const s = await RefineSession.create({
+      ...base,
+      frontAgent: makeFakeRunAgent(script),
+    }, 'new-project');
+    script['derive/po'] = [derived];
+    script['refine/front'] = [refineOut([], [], [{ file: 'docs/design.md', find: '# Design', replace: '# Product design', reason: 'define the visual contract' }])];
+    script['refine/po'] = [refineOut(green(PO))];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await s.evaluate();
+    expect(s.state.patches).toHaveLength(1);
+    expect(s.state.patches[0]).toMatchObject({ role: 'front', file: 'design.md', status: 'pending' });
+    expect(s.state.patches[0]!.diff).toContain('+# Product design');
   });
 
   it('does not retry a blocked Jev cycle until a document changes', async () => {

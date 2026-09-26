@@ -4,8 +4,8 @@ import { refineApi, type ChecklistItem, type Snapshot, type StoredEvent } from '
 import { applyToSnapshot, type LiveSnapshot } from '../refine/reducer.js';
 import { useJournal } from '../useSse.js';
 
-type DocFile = 'project.md' | 'brief.md' | 'stack.md' | 'flow.md';
-const docLabel: Record<DocFile, string> = { 'project.md': 'project.md', 'brief.md': 'briefing.md', 'stack.md': 'stack.md', 'flow.md': 'flow.md' };
+type DocFile = 'project.md' | 'brief.md' | 'stack.md' | 'flow.md' | 'design.md';
+const docLabel: Record<DocFile, string> = { 'project.md': 'project.md', 'brief.md': 'briefing.md', 'stack.md': 'stack.md', 'flow.md': 'flow.md', 'design.md': 'design.md' };
 const questionText = (text: string) => text.startsWith('What counts as valid client data?')
   ? 'Quais dados um cliente precisa ter? Nome, e-mail, telefone e observações são obrigatórios? Quais formatos e limites devemos aceitar? O e-mail pode se repetir? Se algum dado for inválido, devemos mostrar o erro de cada campo e retornar HTTP 400?'
   : text;
@@ -25,7 +25,7 @@ const errorText = (text: string | null) => text
   .replace(/\b(documents_consistent|flow_covers_scope|validation_aligned|persistence_aligned|responses_aligned|health_aligned)\b/g, (id) => jevCheckLabel[id] ?? id) ?? null;
 
 function currentClaudeStage(events: StoredEvent[], cycle: number, jevEvent: StoredEvent | undefined, derived: boolean): string {
-  if (!jevEvent) return 'Jev está validando project.md, briefing.md, stack.md e flow.md.';
+  if (!jevEvent) return 'Jev está validando os cinco documentos do projeto.';
   if (jevEvent.data.available === false) return 'Jev não está disponível; verifique OPENROUTER_API_KEY.';
   if (jevEvent.data.decision === 'blocked') return 'Jev encontrou inconsistências graves; a derivação foi bloqueada.';
   if (jevEvent.data.decision === 'review') return 'Jev encontrou pontos para revisão; Claude está analisando os documentos.';
@@ -37,8 +37,9 @@ function currentClaudeStage(events: StoredEvent[], cycle: number, jevEvent: Stor
     if (event.type === 'STEP_FINISHED') started.delete(String(event.data.stepId));
   }
   const active = [...started.values()];
-  if (active.some((step) => step.kind === 'derive')) return 'Claude está derivando project.json e spec.json a partir dos quatro documentos.';
+  if (active.some((step) => step.kind === 'derive')) return 'Claude está derivando project.json e spec.json a partir dos cinco documentos.';
   const roles = active.filter((step) => step.kind === 'refine').map((step) => step.role);
+  if (roles.includes('front')) return 'Front está revisando o contrato visual, responsividade e acessibilidade.';
   if (roles.includes('po') && roles.includes('sm')) return 'PO e SM estão revisando objetivos, critérios e fluxos em paralelo.';
   if (roles.includes('po')) return 'PO está revisando objetivos, critérios e o fluxo de negócio.';
   if (roles.includes('sm')) return 'SM está revisando stack, tarefas, validação e viabilidade.';
@@ -92,7 +93,7 @@ export function RefinementView(p: ViewProps) {
   const jevEvent = (p.events ?? []).find((e) => e.type === 'REFINE_DOCS_VALIDATED' && Number(e.data.cycle) === st.cycle);
   const claudeStage = currentClaudeStage(p.events ?? [], st.cycle, jevEvent, derivedThisCycle);
   const nextStep = jevBlocked && !hasDocumentChanges
-    ? 'Edite e salve um dos quatro documentos para liberar a reavaliação.'
+    ? 'Edite e salve um dos cinco documentos para liberar a reavaliação.'
     : pending.length > 0
     ? 'Responda as perguntas pendentes para continuar.'
     : st.stale
@@ -113,7 +114,7 @@ export function RefinementView(p: ViewProps) {
           <span className="doc-state">{locked ? 'Somente leitura' : 'Editável'}</span>
         </div>
         <div className="tabs" role="tablist" aria-label="Documentos do projeto">
-          {(['project.md', 'brief.md', 'stack.md', 'flow.md'] as DocFile[]).map((f) => (
+          {(['project.md', 'brief.md', 'stack.md', 'flow.md', 'design.md'] as DocFile[]).map((f) => (
             <button key={f} className={tab === f ? 'active' : ''} onClick={() => setTab(f)}>
               {docLabel[f]}
             </button>

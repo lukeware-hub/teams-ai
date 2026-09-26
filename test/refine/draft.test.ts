@@ -23,12 +23,13 @@ afterEach(async () => {
 });
 
 describe('draft', () => {
-  it('creates a new project from templates and hashes the two Markdown files', async () => {
+  it('creates a new project from templates and includes design.md in the draft hash', async () => {
     const d = draftPaths(ws, 'hello-001');
     await createNewProject(d, 'Hello App');
     expect(d.root).toBe(`${root}/refine/hello-001`);
     expect(await readDoc(d, 'project.md')).toContain('# Hello App');
     expect(await readDoc(d, 'brief.md')).toContain('## Acceptance criteria');
+    expect(await readDoc(d, 'design.md')).toContain('executable visual contract');
     expect(await readDerived(d)).toBeNull();
     const h1 = await draftHash(d);
     await writeDoc(d, 'brief.md', '## Objectives\n- ship');

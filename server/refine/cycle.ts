@@ -36,7 +36,7 @@ export interface CycleDeps {
 
 const norm = (t: string) => t.toLowerCase().replace(/\s+/g, ' ').trim();
 
-/** Spec (refinement) §3.2: derive → PO ∥ SM → merge questions → check patches → checklist with orchestrator overrides. */
+/** Spec (refinement) §3.2: derive → Front → PO ∥ SM → merge questions → check patches → checklist. */
 export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
   const { draft, journal } = deps;
   const hash = await draftHash(draft);
@@ -86,14 +86,32 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
   await writeDerived(draft, checked.value);
   await journal.fact(RefineEvent.Derived, { cycle, ...checked.value });
 
+  const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];
   if (deps.frontAgent) {
     const review = await deps.frontAgent({ kind: 'refine', role: 'front',
-      pack: refinePack({ role: 'po', specHash: hash, principles: deps.principles(), specId: draft.specId,
+      pack: refinePack({ role: 'front', specHash: hash, principles: deps.principles(), specId: draft.specId,
         projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'],
         derived: checked.value, retrieval: [], history: journal.state.questions,
         rejected: journal.state.patches.filter((p) => p.status === 'rejected'), jevValidation }),
       cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, ctx);
     if (!review.ok) { await fail(`front validation failed: ${review.failure}: ${review.errors.join('; ')}`); return; }
+    let i = 0;
+    for (const p of (review.value as z.infer<typeof RefineOutput>).docPatch) {
+      const c = checkPatch(p, draft.specId, docs);
+      if (!c.ok) {
+        discardedPatches.push({ role: 'front', file: p.file, reason: c.reason });
+        continue;
+      }
+      if (c.file !== 'design.md') {
+        discardedPatches.push({ role: 'front', file: p.file, reason: 'Front só pode alterar design.md' });
+        continue;
+      }
+      const after = applyPatch(docs[c.file], p)!;
+      await journal.fact(RefineEvent.PatchProposed, {
+        patchId: patchId('front', cycle, i++), role: 'front', file: c.file, find: p.find, replace: p.replace,
+        reason: p.reason, diff: unifiedDiff(c.file, docs[c.file], after), cycle,
+      });
+    }
   }
 
   const state = journal.state;
@@ -152,7 +170,6 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
     }
   }
 
-  const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];
   for (const [role, out] of [['po', po.value], ['sm', sm.value]] as const) {
     let i = 0;
     for (const p of out.docPatch) {

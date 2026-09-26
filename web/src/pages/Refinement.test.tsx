@@ -11,7 +11,7 @@ const ALL = ['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po
 const base = (over: Partial<Snapshot['state']>): Snapshot => ({
   projectId: 'hello-app',
   specId: 'hello-001',
-  docs: { 'project.md': '# Hello', 'brief.md': '## Objectives' },
+  docs: { 'project.md': '# Hello', 'brief.md': '## Objectives', 'stack.md': '# Stack', 'flow.md': '# Flow', 'design.md': '# Design' },
   secrets: [{ name: 'DB_URL', present: false, hint: null }],
   tokens: { inputTokens: 10, outputTokens: 5, costUsd: 0.02, steps: 3 },
   state: {
@@ -99,7 +99,7 @@ describe('RefinementView', () => {
         <RefinementView snap={base({ status: 'error', error: 'Jev bloqueou a derivação: flow_covers_scope', questions: [], patches: [] })} busy={false} {...on()} />
       </MemoryRouter>,
     );
-    expect(screen.getByText(/Edite e salve um dos quatro documentos/)).toBeTruthy();
+    expect(screen.getByText(/Edite e salve um dos cinco documentos/)).toBeTruthy();
     expect((screen.getByTestId('evaluate') as HTMLButtonElement).disabled).toBe(true);
   });
 

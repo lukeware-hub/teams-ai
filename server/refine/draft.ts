@@ -134,7 +134,15 @@ export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: {
   await fs.writeFile(d.specJson, JSON.stringify({ ...spec, status: 'refining', specHash: null }, null, 2));
 }
 
-export const readDoc = (d: Draft, file: DocFile): Promise<string> => fs.readFile(docPath(d, file), 'utf8');
+export async function readDoc(d: Draft, file: DocFile): Promise<string> {
+  try {
+    return await fs.readFile(docPath(d, file), 'utf8');
+  } catch (err) {
+    // Older drafts predate design.md; treat the new contract as its migration default.
+    if (file === 'design.md' && (err as NodeJS.ErrnoException).code === 'ENOENT') return designTemplate();
+    throw err;
+  }
+}
 /** Docs end with a newline: they are copied verbatim into the project repo, where a format gate will check them. */
 const withNewline = (text: string): string => (text.endsWith('\n') ? text : `${text}\n`);
 export const writeDoc = (d: Draft, file: DocFile, text: string): Promise<void> => fs.writeFile(docPath(d, file), withNewline(text));

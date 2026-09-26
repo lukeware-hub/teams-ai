@@ -7,7 +7,7 @@ import type { Hit } from '../knowledge/retrieval.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import { EventStore, type StoredEvent } from '../store/event-store.js';
 import { runCycle, type CycleDeps, type RunAgent } from './cycle.js';
-import { flowTemplate, readDerived, readDoc, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
+import { designTemplate, flowTemplate, readDerived, readDoc, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
 import { DRAFT_HASH, RefineEvent } from './events.js';
 import { applyPatch } from './patches.js';
 import { applyRefineEvent, emptyRefineState, type RefineState } from './state.js';
@@ -99,6 +99,7 @@ export class RefineSession {
     await Promise.all([
       fs.access(deps.draft.stackMd).catch(() => fs.writeFile(deps.draft.stackMd, stackTemplate())),
       fs.access(deps.draft.flowMd).catch(() => fs.writeFile(deps.draft.flowMd, flowTemplate())),
+      fs.access(deps.draft.designMd ?? `${deps.draft.docs}/design.md`).catch(() => fs.writeFile(deps.draft.designMd ?? `${deps.draft.docs}/design.md`, designTemplate())),
     ]);
     const journal = await RefineJournal.open(deps.draft.events, { projectId: deps.draft.projectId, specId: deps.draft.specId });
     // Spec §8: a cycle cut by a restart is failed, never resumed; nothing was charged as an attempt.

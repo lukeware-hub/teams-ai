@@ -9,7 +9,7 @@ export interface DocPatchIn {
 }
 export interface PendingPatch {
   patchId: string;
-  role: 'po' | 'sm';
+  role: 'po' | 'sm' | 'front';
   file: DocFile;
   find: string;
   replace: string;
@@ -20,7 +20,7 @@ export type PatchCheck = { ok: true; file: DocFile } | { ok: false; reason: stri
 
 const count = (text: string, find: string): number => (find === '' ? 0 : text.split(find).length - 1);
 
-/** Spec (refinement) §3.4: only the two Markdown files, and `find` must occur exactly once. */
+/** Spec (refinement) §3.4: only known Markdown files, and `find` must occur exactly once. */
 export function checkPatch(p: DocPatchIn, specId: string, docs: Partial<Record<DocFile, string>>): PatchCheck {
   const file = (Object.keys(DOC_REL) as DocFile[]).find((f) => DOC_REL[f](specId) === p.file);
   if (!file) return { ok: false, reason: `unknown file ${p.file}` };
@@ -40,4 +40,4 @@ export function unifiedDiff(file: DocFile, before: string, after: string): strin
   return createPatch(file, before, after, '', '', { context: 2 });
 }
 
-export const patchId = (role: 'po' | 'sm', cycle: number, index: number): string => `${role}-c${cycle}-${index}`;
+export const patchId = (role: 'po' | 'sm' | 'front', cycle: number, index: number): string => `${role}-c${cycle}-${index}`;
