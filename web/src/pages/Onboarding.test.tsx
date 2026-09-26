@@ -32,8 +32,9 @@ describe('Onboarding GitHub flow', () => {
 
     render(<Onboarding />);
     const githubCard = await screen.findByTestId('card-Login do GitHub CLI');
-    expect(screen.queryByTestId('card-Organização do GitHub')).toBeNull();
     fireEvent.click(within(githubCard).getByRole('button', { name: 'Entrar' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Próximo' }).hasAttribute('disabled')).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'Próximo' }));
 
     const ownerCard = await screen.findByTestId('card-Organização do GitHub');
     const select = within(ownerCard).getByRole('combobox', { name: 'Organização do GitHub' });
@@ -41,6 +42,8 @@ describe('Onboarding GitHub flow', () => {
     fireEvent.change(select, { target: { value: 'acme' } });
     fireEvent.click(within(ownerCard).getByRole('button', { name: 'Salvar e verificar' }));
 
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Próximo' }).hasAttribute('disabled')).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'Próximo' }));
     await waitFor(() => expect(screen.getByTestId('card-Token do GitHub')).toBeTruthy());
     expect(api.owner).toHaveBeenCalledWith('acme');
   });
