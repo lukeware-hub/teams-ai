@@ -172,3 +172,12 @@ describe('findCycle', () => {
     ).toEqual(['T1-a', 'T2-b', 'T1-a']);
   });
 });
+
+describe('validatePlan: gate image', () => {
+  it('rejects an Alpine gate image, since the Dev installs dependencies on a glibc host', () => {
+    for (const image of ['node:22-alpine', 'node:22.4-alpine3.20', 'alpine:3.20']) {
+      expect(validatePlan(makePlan(spec, { gateImage: image }), spec, { firstSpec: true }).join('\n')).toMatch(/Alpine \(musl\)/);
+    }
+    expect(validatePlan(makePlan(spec, { gateImage: 'node:22-bookworm-slim' }), spec, { firstSpec: true })).toEqual([]);
+  });
+});

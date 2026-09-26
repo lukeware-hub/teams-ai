@@ -18,6 +18,9 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
     errors.push(`plan specHash ${plan.specHash} does not match spec ${spec.specHash}`);
   }
   if (plan.specId !== spec.specId) errors.push(`plan specId ${plan.specId} does not match spec ${spec.specId}`);
+  // The Dev installs dependencies on the orchestrator's Debian host; an Alpine gate image then fails to load
+  // the native optional packages that install picked for glibc (seen live: rollup under vitest).
+  if (/[:-]alpine(\d|[.-]|$)/i.test(plan.gateImage)) errors.push(`gateImage ${plan.gateImage} is Alpine (musl); use a glibc-based image such as node:22-bookworm-slim`);
 
   const ids = new Set<string>();
   let duplicates = false;

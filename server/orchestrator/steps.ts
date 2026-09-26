@@ -109,6 +109,7 @@ export function planRules(firstSpec: boolean): string {
     `- gates must include these blocking gates: ${REQUIRED_BLOCKING_GATES.join(', ')} (plus a blocking typecheck gate when commands.typecheck exists)`,
     '- every acceptance criterion is covered by at least one task (criteriaRefs); every task has at least one criterion or is infrastructure',
     '- dependsOn forms a DAG; affectedPaths are repository-relative paths or globs; tasks small enough for one agent step',
+    '- gateImage is a glibc-based image (e.g. node:22-bookworm-slim), never an Alpine/musl one: dependencies are installed by the Dev on a Debian host and native optional packages (rollup, esbuild, swc) will not load under musl',
   ];
   if (firstSpec) {
     lines.push(
