@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { runApi, type RunDetail, type StoredEvent } from '../api.js';
 import { TaskDetail } from '../components/TaskDetail.js';
-import { evidence, pausedUntil, phases, runState, tokens } from '../run/selectors.js';
+import { evidence, explainBlockReason, pausedUntil, phases, rootBlockers, runState, tokens } from '../run/selectors.js';
 import { useJournal } from '../useSse.js';
 
 const hhmm = (iso: string) => new Date(iso).toTimeString().slice(0, 5);
@@ -21,6 +21,8 @@ export function RunView({ detail, events, ended, error, loadStep }: { detail: Ru
   const t = tokens(unique);
   const [selected, setSelected] = useState<string | null>(null);
   const groups = ORDER.map((s) => [s, state.order.filter((id) => state.tasks.get(id)!.state === s)] as const).filter(([, ids]) => ids.length);
+  const blocked = (finished?.data.blocked as Array<{ taskId: string; reason: string }> | undefined) ?? [];
+  const causes = rootBlockers(blocked);
   return (
     <main>
       <p>
@@ -40,6 +42,21 @@ export function RunView({ detail, events, ended, error, loadStep }: { detail: Ru
         {until ? <span data-testid="paused-until" className="hint">pausada até {hhmm(until)}</span> : null}
       </div>
       {error ? <p className="error">{error}</p> : null}
+      {causes.length ? (
+        <section className="card card-cause" data-testid="block-cause">
+          <h2>Por que parou</h2>
+          <ul className="cause-list">
+            {causes.map((c) => (
+              <li key={c.taskId}>
+                <button className="task-id" onClick={() => setSelected(c.taskId)}>
+                  {c.taskId}
+                </button>
+                <span>{explainBlockReason(c.reason)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <section className="card">
         <h2>Fases</h2>
         <p>

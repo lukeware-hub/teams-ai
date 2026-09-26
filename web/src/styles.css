@@ -70,6 +70,12 @@ h3 { font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; colo
 .task-group ul { list-style: none; margin: 0; padding: 0; }
 .tokens-total { color: var(--ink-soft); font-size: 0.85rem; margin: 0.9rem 0 0; padding-top: 0.75rem; border-top: 1px solid var(--line); }
 .tokens-total strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+.card-cause { border-color: #f5cfcd; background: var(--bad-soft); }
+.card-cause h2 { color: var(--bad); }
+.cause-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+.cause-list li { display: flex; align-items: baseline; gap: 0.6rem; }
+.cause-list .task-id { background: #fff; color: var(--bad); }
+.cause-list span:last-child { color: #7a2426; }
 
 /* Refinement screen */
 .refine { display: grid; grid-template-columns: minmax(300px, .85fr) minmax(420px, 1.35fr) minmax(280px, .75fr); gap: 1.25rem; align-items: start; }

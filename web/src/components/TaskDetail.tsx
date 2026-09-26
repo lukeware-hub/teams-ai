@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { StoredEvent } from '../api.js';
-import { taskDetail } from '../run/selectors.js';
+import { explainBlockReason, taskDetail } from '../run/selectors.js';
 
 type Artifact = { prompt: string; output: unknown };
 const stateLabel = (state: string) => ({ running: 'em execução', ok: 'ok', failed: 'falhou', passed: 'passou' } as Record<string, string>)[state] ?? state;
@@ -32,7 +32,7 @@ export function TaskDetail({ events, taskId, loadStep }: { events: StoredEvent[]
         ) : null}
         {d.lockHeld ? <span className="hint">mantém o bloqueio de mesclagem</span> : null}
       </header>
-      {d.blockedReason ? <p className="error">Bloqueada: {d.blockedReason}</p> : null}
+      {d.blockedReason ? <p className="error">Bloqueada: {explainBlockReason(d.blockedReason)}</p> : null}
       {d.attempts.map((a) => (
         <div key={a.attempt} data-testid={`attempt-${a.attempt}`}>
           <h3>Tentativa {a.attempt}</h3>

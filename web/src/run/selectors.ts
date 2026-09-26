@@ -185,3 +185,18 @@ export function evidence(events: StoredEvent[], criteria: string[]) {
     return { acId, tests };
   });
 }
+
+/** Task-block reasons come straight from the orchestrator in English; translate the ones a user needs
+ * to actually read (a plain dependency cascade isn't worth surfacing on its own — see rootBlockers). */
+export function explainBlockReason(reason: string): string {
+  const scope = reason.match(/^Scope violation:\n([\s\S]*)$/);
+  if (scope) return `Violação de escopo: ${scope[1]!.replace(/^frozen files modified: /, 'arquivos protegidos foram alterados: ')}`;
+  if (reason === 'a dependency is blocked') return 'uma dependência desta tarefa está bloqueada';
+  return reason;
+}
+
+/** The tasks whose block has its own real cause, filtering out the ones that are only blocked because
+ * something upstream failed (a pure dependency cascade, with no diagnostic value of its own). */
+export function rootBlockers(blocked: Array<{ taskId: string; reason: string }>): Array<{ taskId: string; reason: string }> {
+  return blocked.filter((b) => b.reason !== 'a dependency is blocked');
+}
