@@ -48,7 +48,7 @@ describe('ProjectsView', () => {
         <ProjectsView projects={[]} runs={{}} drafts={[]} error="not a project directory" onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={onAdd} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} />
       </MemoryRouter>,
     );
-    fireEvent.change(screen.getByPlaceholderText('/caminho/do/projeto'), { target: { value: '/x' } });
+    fireEvent.change(screen.getByLabelText('Caminho da pasta'), { target: { value: '/x' } });
     fireEvent.click(screen.getByText('Adicionar projeto'));
     expect(onAdd).toHaveBeenCalledWith('/x');
     expect(screen.getByText('not a project directory')).toBeTruthy();
