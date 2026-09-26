@@ -75,7 +75,9 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .auth-login-card { overflow: hidden; padding: 0 1.35rem 1.25rem; border-radius: 24px; border-color: #dce7f6; }
 .auth-login-card .onboarding-card-header { align-items: center; margin: 0 -1.35rem 1.15rem; padding: 1.3rem 1.35rem; border-bottom: 0; border-radius: 24px 24px 1.2rem 1.2rem; background: radial-gradient(circle at 88% 16%, rgba(255, 231, 220, .9), transparent 42%), #fffaf8; }
 .auth-login-card .onboarding-card-header h2 { font-size: clamp(1.35rem, 2.5vw, 2rem); letter-spacing: -0.035em; }
-.auth-login-card .status-chip { min-height: 2.2rem; padding: 0.35rem 0.9rem; color: var(--good); background: var(--good-soft); font-size: 0.88rem; }
+.auth-login-card .status-chip { min-height: 2.2rem; padding: 0.35rem 0.9rem; font-size: 0.88rem; }
+.auth-login-card.card-ok .status-chip { color: var(--good); background: var(--good-soft); }
+.auth-login-card.card-todo .status-chip { color: var(--bad); background: var(--bad-soft); }
 .auth-login-card .onboarding-detail { display: flex; align-items: center; gap: 0.85rem; margin-bottom: 1.15rem; padding-bottom: 1.05rem; border-bottom: 1px solid var(--line); font-size: 1.1rem; }
 .auth-login-card .onboarding-detail > span:last-child { font-weight: 700; color: var(--ink); }
 .auth-login-card .onboarding-detail > span:last-child::after { content: ''; }
@@ -101,6 +103,10 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .browser-step p { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0.55rem; margin: 0; color: var(--ink-soft); font-size: 0.88rem; line-height: 1.35; }
 .browser-step code { display: inline-flex; align-items: center; min-height: 2.2rem; padding: 0.35rem 0.7rem; border: 1px solid #cbd8f5; border-radius: 8px; color: var(--ink); background: #f5f7ff; font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.88rem; font-weight: 700; letter-spacing: 0.045em; }
 .code-form { display: grid; grid-column: 2; grid-row: 1; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 0.7rem; width: 100%; min-width: 0; max-width: none; margin: 0; padding: 0.9rem; border: 1px solid #e5e9f1; border-radius: 12px; background: #fafbfd; }
+.owner-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 0.7rem; width: 100%; }
+.owner-form select { width: 100%; min-width: 0; }
+.owner-form .primary-button { border-color: #2f65e8; background: #2f65e8; box-shadow: 0 8px 16px rgba(47, 101, 232, .2); }
+.owner-form .primary-button:hover { border-color: #2458d5; background: #2458d5; }
 .code-label { display: grid; gap: 0.38rem; min-width: 0; color: var(--ink-soft); font-size: 0.74rem; font-weight: 700; }
 .code-label input { width: 100%; min-width: 0; }
 .login-controls > .secondary { grid-column: 3; grid-row: 1; }
@@ -134,6 +140,8 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   .browser-step { grid-column: 1; }
   .code-form { grid-column: 1 / -1; grid-row: 2; grid-template-columns: 1fr; }
   .code-form button { width: 100%; }
+  .owner-form { grid-template-columns: 1fr; }
+  .owner-form button { width: 100%; }
   .login-controls > .secondary { grid-column: 2; grid-row: 1; }
   .login-controls.with-code .browser-step, .login-controls.with-code > .secondary { margin-bottom: 0; }
   .login-status-error { grid-row: 2; }

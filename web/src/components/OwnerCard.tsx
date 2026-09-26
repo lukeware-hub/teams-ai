@@ -15,8 +15,9 @@ export function OwnerCard({ organizations, initialOwner, loading, loadError, ite
     }
   };
   return (
-    <ItemCard title="Organização do GitHub" item={item}>
+    <ItemCard title="Organização do GitHub" item={item} variant="login" subtitle="Escolha onde o Teams AI deve trabalhar." icon="github">
       <form
+        className="owner-form"
         onSubmit={(e) => {
           e.preventDefault();
           void save();
@@ -26,7 +27,7 @@ export function OwnerCard({ organizations, initialOwner, loading, loadError, ite
           <option value="">{loading ? 'Carregando organizações…' : organizations.length === 0 ? 'Nenhuma organização encontrada' : 'Selecione uma organização'}</option>
           {organizations.map((organization) => <option key={organization} value={organization}>{organization}</option>)}
         </select>
-        <button type="submit" disabled={loading || owner.trim() === ''}>
+        <button type="submit" className="primary-button" disabled={loading || owner.trim() === ''}>
           Salvar e verificar
         </button>
       </form>
