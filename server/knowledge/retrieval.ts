@@ -33,19 +33,28 @@ export function sanitizeQuery(query: string): string {
  * criteria are never looked up here — they are addressed by ID from the contract.
  */
 export class KnowledgeIndex {
-  private constructor(private readonly db: DatabaseSync) {}
+  private constructor(private readonly db: DatabaseSync, private readonly fts5: boolean) {}
 
   static open(file: string | ':memory:'): KnowledgeIndex {
     const db = new DatabaseSync(file);
     db.exec(`
       CREATE TABLE IF NOT EXISTS docs (id TEXT PRIMARY KEY, kind TEXT NOT NULL, title TEXT NOT NULL, spec_id TEXT);
       CREATE TABLE IF NOT EXISTS chunks (chunk_id TEXT PRIMARY KEY, doc_id TEXT NOT NULL REFERENCES docs(id) ON DELETE CASCADE, ordinal INTEGER NOT NULL, heading TEXT, text TEXT NOT NULL);
-      CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(heading, text, content='chunks', content_rowid='rowid', tokenize='porter unicode61');
-      CREATE TRIGGER IF NOT EXISTS chunks_ai AFTER INSERT ON chunks BEGIN INSERT INTO chunks_fts(rowid, heading, text) VALUES (new.rowid, new.heading, new.text); END;
-      CREATE TRIGGER IF NOT EXISTS chunks_ad AFTER DELETE ON chunks BEGIN INSERT INTO chunks_fts(chunks_fts, rowid, heading, text) VALUES ('delete', old.rowid, old.heading, old.text); END;
       PRAGMA foreign_keys = ON;
     `);
-    return new KnowledgeIndex(db);
+    let fts5 = true;
+    try {
+      db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(heading, text, content='chunks', content_rowid='rowid', tokenize='porter unicode61');
+        CREATE TRIGGER IF NOT EXISTS chunks_ai AFTER INSERT ON chunks BEGIN INSERT INTO chunks_fts(rowid, heading, text) VALUES (new.rowid, new.heading, new.text); END;
+        CREATE TRIGGER IF NOT EXISTS chunks_ad AFTER DELETE ON chunks BEGIN INSERT INTO chunks_fts(chunks_fts, rowid, heading, text) VALUES ('delete', old.rowid, old.heading, old.text); END;
+      `);
+    } catch {
+      // Official Node builds may expose node:sqlite without compiling the FTS5 extension.
+      fts5 = false;
+      db.exec('DROP TRIGGER IF EXISTS chunks_ai; DROP TRIGGER IF EXISTS chunks_ad;');
+    }
+    return new KnowledgeIndex(db, fts5);
   }
 
   /** Indexes or replaces a document; returns the number of chunks stored. */
@@ -74,6 +83,7 @@ export class KnowledgeIndex {
   search(query: string, opts: { k?: number; kinds?: DocKind[]; specId?: string } = {}): Hit[] {
     const bag = sanitizeQuery(query);
     if (bag === '') return [];
+    if (!this.fts5) return this.searchWithoutFts5(bag, opts);
     // OR semantics: the caller passes a bag of terms; BM25 ranks chunks that match more of them higher.
     const q = bag.split(' ').map((t) => `"${t.replaceAll('"', '')}"`).join(' OR ');
     const k = opts.k ?? 8;
@@ -99,6 +109,41 @@ export class KnowledgeIndex {
       )
       .all(...params) as Array<{ chunk_id: string; doc_id: string; kind: DocKind; title: string; heading: string | null; text: string; snippet: string; score: number }>;
     return rows.map((r) => ({ chunkId: r.chunk_id, docId: r.doc_id, kind: r.kind, title: r.title, heading: r.heading, snippet: r.snippet, text: r.text, score: r.score }));
+  }
+
+  private searchWithoutFts5(bag: string, opts: { k?: number; kinds?: DocKind[]; specId?: string }): Hit[] {
+    const terms = bag.toLocaleLowerCase().split(' ');
+    const allowedKinds = opts.kinds && opts.kinds.length > 0 ? new Set(opts.kinds) : undefined;
+    const rows = this.db
+      .prepare(
+        `SELECT c.chunk_id, c.doc_id, d.kind, d.title, c.heading, c.text, c.ordinal, d.spec_id
+         FROM chunks c JOIN docs d ON d.id = c.doc_id
+         ORDER BY c.doc_id, c.ordinal`,
+      )
+      .all() as Array<{ chunk_id: string; doc_id: string; kind: DocKind; title: string; heading: string | null; text: string; ordinal: number; spec_id: string | null }>;
+    const hits = rows.flatMap((row) => {
+      if (allowedKinds && !allowedKinds.has(row.kind)) return [];
+      if (opts.specId && row.spec_id !== null && row.spec_id !== opts.specId) return [];
+      const haystack = `${row.heading ?? ''} ${row.text}`;
+      const tokens = new Set(haystack.toLocaleLowerCase().match(/[\p{L}\p{N}_-]+/gu) ?? []);
+      const matched = terms.filter((term) => tokens.has(term));
+      if (matched.length === 0) return [];
+      const first = matched[0];
+      const offset = haystack.toLocaleLowerCase().indexOf(first);
+      const start = Math.max(0, offset - 60);
+      const snippet = haystack.slice(start, start + 180);
+      return [{
+        chunkId: row.chunk_id,
+        docId: row.doc_id,
+        kind: row.kind,
+        title: row.title,
+        heading: row.heading,
+        snippet,
+        text: row.text,
+        score: matched.length / terms.length,
+      }];
+    });
+    return hits.sort((a, b) => b.score - a.score || a.docId.localeCompare(b.docId)).slice(0, opts.k ?? 8);
   }
 
   count(): number {
