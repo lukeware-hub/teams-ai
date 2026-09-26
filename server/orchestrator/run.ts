@@ -231,6 +231,7 @@ export class Run {
         // Files the gate writes into the bind-mounted worktree (the JUnit report) must stay owned by the
         // orchestrator user, or the next attempt cannot remove them (EACCES on the first live run).
         user: containerUser(),
+        bindRewrite: this.deps.cfg.docker.bindRewrite,
       },
       { exec: this.deps.exec, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null), removeFile: (p) => fs.rm(p, { force: true }) },
     );

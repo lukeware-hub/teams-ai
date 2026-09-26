@@ -19,6 +19,17 @@ export interface GateContext {
   /** `uid:gid` to run as, so files created in the bind-mounted worktree stay owned by the orchestrator user. */
   user?: string;
   containerWorkdir?: string;
+  /** Config `docker.bindRewrite`: the worktree path as the Docker daemon sees it, when the orchestrator runs in a container. */
+  bindRewrite?: { from: string; to: string };
+}
+
+/** Rewrites a bind source for a daemon that sees the orchestrator's filesystem under another root. */
+export function rewriteBindSource(source: string, rewrite: { from: string; to: string } | undefined): string {
+  if (!rewrite) return source;
+  const from = rewrite.from.replace(/\\/g, '/').replace(/\/+$/, '');
+  const to = rewrite.to.replace(/\\/g, '/').replace(/\/+$/, '');
+  if (source === from) return to;
+  return source.startsWith(`${from}/`) ? `${to}${source.slice(from.length)}` : source;
 }
 
 export interface GateResult {
@@ -54,7 +65,7 @@ export interface DockerInvocation {
 
 export function dockerArgs(gate: Gate, ctx: GateContext): DockerInvocation {
   const workdir = ctx.containerWorkdir ?? '/work';
-  const source = ctx.worktree.replace(/\\/g, '/');
+  const source = rewriteBindSource(ctx.worktree.replace(/\\/g, '/'), ctx.bindRewrite);
   const args = [
     'run',
     '--rm',

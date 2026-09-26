@@ -96,6 +96,14 @@ export const Config = z.object({
     })
     .prefault({}),
   github: z.object({ owner: z.string().min(1).optional() }).prefault({}),
+  docker: z
+    .object({
+      /** When the orchestrator itself runs in a container, the daemon it talks to cannot see its paths.
+       * Bind sources under `from` (the orchestrator's view) are rewritten to `to` (the daemon's view),
+       * e.g. from ~/.teams-ai to /var/lib/docker/volumes/teams-ai-config/_data. */
+      bindRewrite: z.object({ from: linuxPath, to: z.string().min(1) }).optional(),
+    })
+    .prefault({}),
   /** Directories holding docs/project.json, registered from the UI (spec run API §2). */
   projects: z.array(z.object({ dir: z.string().min(1) })).default([]),
   omniroute: z

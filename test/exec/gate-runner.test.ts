@@ -202,3 +202,19 @@ describe('runGates', () => {
     expect(written).toEqual([[report, '<testsuite name="s"><testcase classname="s" name="[AC-001] ok"/></testsuite>']]);
   });
 });
+
+describe('rewriteBindSource', () => {
+  it('maps a worktree under the orchestrator root onto the daemon-side root, and leaves other paths alone', async () => {
+    const { rewriteBindSource } = await import('../../server/exec/gate-runner.js');
+    const rewrite = { from: '/root/.teams-ai', to: '/var/lib/docker/volumes/teams-ai-config/_data' };
+    expect(rewriteBindSource('/root/.teams-ai/workspaces/p/worktrees/t', rewrite)).toBe('/var/lib/docker/volumes/teams-ai-config/_data/workspaces/p/worktrees/t');
+    expect(rewriteBindSource('/root/.teams-ai', rewrite)).toBe('/var/lib/docker/volumes/teams-ai-config/_data');
+    expect(rewriteBindSource('/root/.teams-ai-other/x', rewrite)).toBe('/root/.teams-ai-other/x');
+    expect(rewriteBindSource('/root/.teams-ai/x', undefined)).toBe('/root/.teams-ai/x');
+  });
+  it('dockerArgs binds the rewritten source for both the worktree and its .git', () => {
+    const { args } = dockerArgs(gate({ name: 'unit-test', command: 'npm test' }), { ...ctx, bindRewrite: { from: '/home/u/ws', to: '/vol/ws' } });
+    expect(args).toContain('type=bind,source=/vol/ws/worktrees/T1-create,target=/work');
+    expect(args).toContain('type=bind,source=/vol/ws/worktrees/T1-create/.git,target=/work/.git,readonly');
+  });
+});

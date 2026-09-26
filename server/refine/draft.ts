@@ -126,7 +126,9 @@ export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: {
 }
 
 export const readDoc = (d: Draft, file: DocFile): Promise<string> => fs.readFile(docPath(d, file), 'utf8');
-export const writeDoc = (d: Draft, file: DocFile, text: string): Promise<void> => fs.writeFile(docPath(d, file), text);
+/** Docs end with a newline: they are copied verbatim into the project repo, where a format gate will check them. */
+const withNewline = (text: string): string => (text.endsWith('\n') ? text : `${text}\n`);
+export const writeDoc = (d: Draft, file: DocFile, text: string): Promise<void> => fs.writeFile(docPath(d, file), withNewline(text));
 
 export async function readDerived(d: Draft): Promise<{ project: Project; spec: Spec } | null> {
   const read = (f: string) => fs.readFile(f, 'utf8').then(JSON.parse, () => null);
@@ -136,8 +138,8 @@ export async function readDerived(d: Draft): Promise<{ project: Project; spec: S
 }
 
 export async function writeDerived(d: Draft, v: { project: Project; spec: Spec }): Promise<void> {
-  await fs.writeFile(d.projectJson, JSON.stringify(v.project, null, 2));
-  await fs.writeFile(d.specJson, JSON.stringify(v.spec, null, 2));
+  await fs.writeFile(d.projectJson, withNewline(JSON.stringify(v.project, null, 2)));
+  await fs.writeFile(d.specJson, withNewline(JSON.stringify(v.spec, null, 2)));
 }
 
 export async function draftHash(d: Draft): Promise<string> {
