@@ -7,6 +7,7 @@ import { startApi } from '../../server/api/server.js';
 import type { RunControlDeps } from '../../server/api/run-control.js';
 import { readUserConfig } from '../../server/onboarding/config-store.js';
 import { appendEvents, eventLines, writeRun } from '../fixtures/runs/write-run.js';
+import { makeFrozenSpec, makePlan } from '../fixtures/contracts.js';
 
 const HELLO = path.resolve('test/fixtures/hello-app');
 let home = '';
@@ -237,6 +238,18 @@ describe('run detail, events and steps', () => {
     expect(d.tokens).toEqual({ inputTokens: 100, outputTokens: 20, cacheReadTokens: 5, cacheWriteTokens: 0, costUsd: 0.5, steps: 1 });
     expect(d.acceptanceCriteria.map((a: { id: string }) => a.id)).toEqual(['AC-001', 'AC-002', 'AC-003']);
     expect((await fetch(`${base()}/api/runs/nope`)).status).toBe(404);
+  });
+
+  it('returns the persisted plan artifact when the run project contains plan.json', async () => {
+    const project = path.join(home, 'project');
+    await fs.cp(HELLO, project, { recursive: true });
+    await fs.mkdir(path.join(project, 'docs', 'specs', 'hello-001'), { recursive: true });
+    await fs.writeFile(path.join(project, 'docs', 'specs', 'hello-001', 'plan.json'), JSON.stringify(makePlan(makeFrozenSpec({ specId: 'hello-001' }))));
+    await fs.writeFile(path.join(home, '.teams-ai', 'config.json'), JSON.stringify({ paths: { runs: runs.replace(/\\/g, '/') }, projects: [{ dir: project }] }));
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'));
+    const d = await (await fetch(`${base()}/api/runs/hello-001-r1`)).json();
+    expect(d.plan.specId).toBe('hello-001');
+    expect(d.plan.tasks.some((task: { id: string }) => task.id === 'T0-scaffold')).toBe(true);
   });
 
   it('events replays from Last-Event-ID, tails appended lines and ends after RUN_FINISHED', async () => {

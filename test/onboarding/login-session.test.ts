@@ -104,6 +104,8 @@ describe('LoginSession (claude flow)', () => {
     h.s.start();
     h.ptys[0]!.emitExit(0);
     await h.tick();
+    h.advance(250);
+    await h.tick();
     expect(h.s.state).toEqual({ name: 'done', detail: 'diego-dm-morais' });
   });
 

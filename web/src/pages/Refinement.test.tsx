@@ -93,14 +93,24 @@ describe('RefinementView', () => {
     expect(screen.getByText(/spec.objectives: too small/)).toBeTruthy();
   });
 
-  it('explains that a Jev block needs a document edit before re-evaluation', () => {
+  it('keeps pending patch decisions available while an evaluation is visible', () => {
+    render(
+      <MemoryRouter>
+        <RefinementView snap={base({ status: 'evaluating', questions: [] })} busy={true} {...on()} />
+      </MemoryRouter>,
+    );
+    expect((screen.getByTestId('accept-sm-c1-0') as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByTestId('reject-sm-c1-0') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('explains that Jev findings are advisory and keeps re-evaluation available', () => {
     render(
       <MemoryRouter>
         <RefinementView snap={base({ status: 'error', error: 'Jev bloqueou a derivação: flow_covers_scope', questions: [], patches: [] })} busy={false} {...on()} />
       </MemoryRouter>,
     );
-    expect(screen.getByText(/Edite e salve um dos cinco documentos/)).toBeTruthy();
-    expect((screen.getByTestId('evaluate') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/O Jev atua como auxiliar/)).toBeTruthy();
+    expect((screen.getByTestId('evaluate') as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('shows the active Claude step from the refinement journal', () => {
@@ -144,6 +154,7 @@ describe('RefinementView', () => {
         />
       </MemoryRouter>,
     );
+    expect(screen.getByTestId('doc-impact').textContent).toContain('spec.json');
     expect(screen.getByTestId('spec-type').textContent).toContain('Bug');
     expect(screen.getByTestId('bug-details').textContent).toContain('GET /todos');
     expect(screen.getByTestId('download-spec-json').getAttribute('download')).toBe('spec.json');

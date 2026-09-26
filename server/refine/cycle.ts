@@ -56,10 +56,7 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
     jevValidation = await deps.validateDocs({ project: docs['project.md'], briefing: docs['brief.md'], stack: docs['stack.md'], flow: docs['flow.md'] }).catch(() => ({ available: false, decision: 'review' as const, consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false }));
     const validation = jevValidation;
     await journal.fact(RefineEvent.DocsValidated, { cycle, backend: 'jev', ...validation });
-    if (validation.decision === 'blocked') {
-      await fail(`Jev bloqueou a derivação: ${Object.entries(validation.checks).filter(([, value]) => value < 0.5).map(([id]) => id).join(', ') || 'inconsistência grave'}`);
-      return;
-    }
+    // Jev is advisory here: its findings are passed to Claude, PO, and SM for review.
   }
 
   const d = await deps.runAgent<'derive'>(

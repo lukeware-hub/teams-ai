@@ -24,7 +24,25 @@ describe('Project', () => {
 
 describe('Spec', () => {
   it('parses a valid spec', () => {
+    expect(makeSpec()).toMatchObject({ type: 'feature' });
     expect(makeSpec().acceptanceCriteria).toHaveLength(2);
+  });
+
+  it('requires reproduction details for bug specs', () => {
+    const result = Spec.safeParse({ ...makeSpec(), type: 'bug' });
+    expect(result.success).toBe(false);
+
+    const complete = Spec.safeParse({
+      ...makeSpec(),
+      type: 'bug',
+      bug: { actual: '500', expected: '200', reproduction: 'GET /todos' },
+    });
+    expect(complete.success).toBe(true);
+  });
+
+  it('changes the hash when the work item type changes', () => {
+    const spec = makeSpec();
+    expect(computeSpecHash({ ...spec, type: 'maintenance' })).not.toBe(computeSpecHash(spec));
   });
 
   it('rejects malformed acceptance criterion ids', () => {

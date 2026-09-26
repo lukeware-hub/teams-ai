@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { StepKind } from '../agents/outputs.js';
 import { Accounting } from '../budget/accounting.js';
 import type { Config, Role } from '../config/config.js';
+import { Plan } from '../contracts/plan.js';
 import { addProject } from '../onboarding/config-store.js';
 import { expandHome } from '../orchestrator/workspace.js';
 import { execCommand } from '../exec/command.js';
@@ -264,6 +265,12 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           .then(readProject)
           .then((p) => p.specs.find((s) => s.specId === specId) ?? null)
           .catch(() => null);
+        const project = await projectDir(idx, projectId).catch(() => null);
+        const plan = project
+          ? await fs.readFile(path.join(project, 'docs', 'specs', specId, 'plan.json'), 'utf8')
+              .then((text) => Plan.safeParse(JSON.parse(text)).data ?? null)
+              .catch(() => null)
+          : null;
         const report = [...evs].reverse().find((e) => e.type === 'REPORT_READY')?.data.report ?? null;
         const phase = [...evs].reverse().find((e) => e.type === 'PHASE_STARTED')?.data.phase ?? 0;
         json(200, {
@@ -275,6 +282,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           finished: finished?.data ?? null,
           tokens: tokensOf(evs),
           acceptanceCriteria: spec?.acceptanceCriteria ?? [],
+          plan,
           report,
           phase,
         });

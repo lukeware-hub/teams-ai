@@ -130,7 +130,7 @@ export class LoginSession {
   private async verify(gen: number, exitCode: number | null): Promise<void> {
     let result = await this.deps.probe().catch((err: Error) => ({ ok: false, detail: err.message }));
     for (let attempt = 0; this.deps.cli === 'gh' && !result.ok && attempt < 3; attempt++) {
-      await new Promise((resolve) => setTimeout(resolve, 250));
+      await new Promise<void>((resolve) => (this.deps.schedule ?? defaultSchedule)(resolve, 250));
       result = await this.deps.probe().catch((err: Error) => ({ ok: false, detail: err.message }));
     }
     if (gen !== this.generation) return;

@@ -20,6 +20,7 @@ export function makeSpec(overrides: Partial<Spec> = {}): Spec {
     specId: 'spec-001',
     specVersion: 0,
     specHash: null,
+    type: 'feature',
     objectives: ['Users can manage todo items'],
     features: ['Create a todo', 'List todos'],
     acceptanceCriteria: [

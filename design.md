@@ -1199,6 +1199,8 @@ The user-provided reference images 2 and 3 are the approved visual target for `/
 - PO and SM are review-agent roles, not user-entered fields. Show them as clearly labeled checklist groups; do not ask the user to enter agent names.
 - Generated files use bordered rows with a chevron/summary affordance and download action. Tasks use a bordered empty state with `Nenhuma tarefa gerada ainda.` and `As tarefas aparecerão aqui após a análise.`.
 - Keep the secrets and token summary at the bottom. `Iniciar análise` is the panel's primary action and occupies the full available width.
+- Surface the current analysis cost immediately below the quality-panel header in a highlighted summary: steps, tokens, and USD cost. Cost visibility is part of the primary workspace hierarchy, not a footer detail.
+- Render secrets as compact key/value rows with an `Adicionar segredo` action. Accept any valid uppercase environment-style key, support multiple rows, never echo stored values, and keep saving controls aligned with the panel grid.
 
 ### 30.5 Interaction and accessibility
 
@@ -1206,3 +1208,7 @@ The user-provided reference images 2 and 3 are the approved visual target for `/
 - Preserve keyboard focus, visible focus rings, native button semantics, and accessible labels for icon-only controls.
 - Status colors communicate state but never stand alone; every status also has text.
 - Use the existing spacing, control-height, border, color, and typography tokens. Do not introduce one-off visual literals outside the token layer.
+
+### 30.6 Jev role in refinement
+
+Jev is an advisory assistant, never a hard gate for derivation. Its document consistency checks must be recorded in the refinement journal and passed to Claude, PO, and SM as review context. A low-confidence or negative Jev finding may create guidance or a checklist item, but it must not create `CycleFailed`, prevent derivation, disable `Reavaliar`, or require a document edit before the next cycle.

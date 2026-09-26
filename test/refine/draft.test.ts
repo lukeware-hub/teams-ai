@@ -61,4 +61,16 @@ describe('draft', () => {
     expect(md).toContain('smoke');
     expect(md).toContain('DB_URL');
   });
+
+  it('renders the work item type and bug details', () => {
+    const md = renderBriefMd(makeSpec({
+      type: 'bug',
+      bug: { actual: '500', expected: '200', reproduction: 'GET /todos', evidence: 'log.txt' },
+    }));
+    expect(md).toContain('## Type');
+    expect(md).toContain('bug');
+    expect(md).toContain('## Bug details');
+    expect(md).toContain('GET /todos');
+    expect(md.indexOf('## Bug details')).toBeLessThan(md.indexOf('## Tasks'));
+  });
 });

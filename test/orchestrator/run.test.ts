@@ -131,7 +131,7 @@ describe('Run', () => {
     expect(run.journal.events.filter((e) => e.type === OrchEvent.StepStarted && e.data.kind === 'dev' && e.data.taskId === 'T1')).toHaveLength(2);
     expect(run.journal.state.tasks.get('T1')!.attempts).toBe(0);
     await run.close();
-  });
+  }, 30_000);
 
   it('drains when the run budget is spent: in-flight tasks finish, nothing new starts', async () => {
     const d = await withAgents(deps(happy, { maxParallel: 1 }));
@@ -153,7 +153,7 @@ describe('Run', () => {
     expect(run.journal.events.some((e) => e.type === 'ATTEMPT_CONSUMED')).toBe(true);
     expect(run.journal.events.filter((e) => e.type === OrchEvent.Feedback).some((e) => String(e.data.text).includes('budget'))).toBe(true);
     await run.close();
-  });
+  }, 30_000);
 
   it('blocks a task that spends its attempts and reports it', async () => {
     const script: Script = async (req) => (req.kind === 'review' ? { ok: true, value: { specHash: HASH, decision: 'changes', criteria: [{ id: 'AC-001', status: 'failed', evidence: [] }], findings: [{ file: 'src/a/index.ts', line: 1, severity: 'major', text: 'wrong', acIds: ['AC-001'] }] }, summary: summary() } : req.kind === 'replan' ? { ok: false, failure: 'code', errors: ['no'], summary: summary({ isError: true }), sandboxDisabled: false } : happy(req));

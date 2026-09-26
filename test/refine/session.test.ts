@@ -76,7 +76,7 @@ describe('RefineSession', () => {
     expect(s.state.patches[0]!.diff).toContain('+# Product design');
   });
 
-  it('does not retry a blocked Jev cycle until a document changes', async () => {
+  it('continues after a Jev advisory without requiring a document edit', async () => {
     let validations = 0;
     const s = await RefineSession.create({
       ...deps(),
@@ -84,15 +84,12 @@ describe('RefineSession', () => {
         ? { available: true, decision: 'blocked' as const, consistent: false, confidence: 0.2, model: 'jev', checks: { flow_covers_scope: 0.2 }, stateTruncated: false }
         : { available: true, decision: 'approved' as const, consistent: true, confidence: 0.95, model: 'jev', checks: { flow_covers_scope: 0.95 }, stateTruncated: false },
     }, 'new-project');
-    await s.evaluate();
-    await expect(s.evaluate()).rejects.toThrow('Edite project.md');
-    expect(calls).toHaveLength(0);
-    await s.saveDoc('flow.md', '# corrected flow\n');
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO))];
     script['refine/sm'] = [refineOut(green(SM))];
     await s.evaluate();
-    expect(s.state.cycle).toBe(2);
+    expect(s.state.cycle).toBe(1);
+    expect(calls.map((call) => call.kind)).toEqual(['derive', 'refine', 'refine']);
   });
 
   it('routes answers and rejections into the next cycle, refuses skipping a blocking question, and reaches ready', async () => {
@@ -152,9 +149,10 @@ describe('RefineSession', () => {
     await third.close();
   });
 
-  it('writeSecret only accepts names the derived spec lists and marks the checklist stale', async () => {
+  it('writes custom secret names and marks the checklist stale', async () => {
     const s = await RefineSession.create(deps(), 'new-project');
-    await expect(s.writeSecret('DB_URL', 'x')).rejects.toThrow(/not listed/);
+    await s.writeSecret('CUSTOM_KEY', 'x');
+    expect(await fs.readFile(path.join(secretsDir, 'CUSTOM_KEY'), 'utf8')).toBe('x');
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO))];
     script['refine/sm'] = [refineOut(green(SM))];
@@ -162,6 +160,9 @@ describe('RefineSession', () => {
     await s.writeSecret('DB_URL', 'postgres://x');
     expect(await fs.readFile(path.join(secretsDir, 'DB_URL'), 'utf8')).toBe('postgres://x');
     expect(s.state.stale).toBe(true);
-    expect((await s.snapshot()).secrets).toEqual([{ name: 'DB_URL', present: true, hint: '://x' }]);
+    expect((await s.snapshot()).secrets).toEqual([
+      { name: 'CUSTOM_KEY', present: true, hint: 'x' },
+      { name: 'DB_URL', present: true, hint: '://x' },
+    ]);
   });
 });

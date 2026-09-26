@@ -25,6 +25,12 @@ describe('postProcessDerived', () => {
     if (out.ok) return;
     expect(out.issues.join('\n')).toMatch(/project\.personas/);
   });
+  it('reports missing bug reproduction fields', () => {
+    const out = postProcessDerived({ project: PROJECT, spec: { ...prev, type: 'bug', bug: undefined } }, null, 'hello-001');
+    expect(out.ok).toBe(false);
+    if (out.ok) return;
+    expect(out.issues.join('\n')).toMatch(/spec\.bug/);
+  });
   it('derivePack carries both Markdown files, the schemas and the spec id', () => {
     const pack = derivePack({ specHash: `sha256:${'d'.repeat(64)}`, principles: ['p'], projectMd: '# P', briefMd: '## O', previous: null, specId: 'hello-001' });
     expect(pack.kind).toBe('derive');
@@ -33,5 +39,11 @@ describe('postProcessDerived', () => {
     expect(pack.feedback).toContain('## O');
     expect(pack.feedback).toContain('specId must be hello-001');
     expect(pack.feedback).toContain('acceptanceCriteria');
+  });
+  it('requires the agent to classify the demand and preserve bug details', () => {
+    const pack = derivePack({ specHash: `sha256:${'d'.repeat(64)}`, principles: [], projectMd: '# P', briefMd: '## Type\nbug', stackMd: '# Stack', flowMd: '# Flow', previous: null, specId: 'hello-001' });
+    expect(pack.feedback).toContain('type');
+    expect(pack.feedback).toContain('bug');
+    expect(pack.feedback).toContain('reproduction');
   });
 });
