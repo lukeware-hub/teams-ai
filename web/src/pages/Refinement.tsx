@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { refineApi, type ChecklistItem, type Snapshot, type StoredEvent } from '../api.js';
 import { applyToSnapshot, type LiveSnapshot } from '../refine/reducer.js';
 import { useJournal } from '../useSse.js';
+import { Icon } from '../components/Icons.js';
 
 type DocFile = 'project.md' | 'brief.md' | 'stack.md' | 'flow.md' | 'design.md';
 const docLabel: Record<DocFile, string> = { 'project.md': 'project.md', 'brief.md': 'briefing.md', 'stack.md': 'stack.md', 'flow.md': 'flow.md', 'design.md': 'design.md' };
@@ -104,12 +105,14 @@ export function RefinementView(p: ViewProps) {
           ? 'Tudo pronto. Clique em Iniciar para executar o projeto.'
           : 'Revise a checklist e corrija os itens pendentes.';
   return (
-    <div className="refine">
+    <div className="refine refine-workspace">
       <section className="docs panel-card">
         <div className="section-heading">
           <div>
-            <span className="eyebrow">Área de trabalho</span>
+            <span className="refine-heading-icon refine-heading-icon-docs"><Icon name="file" size={26} /></span>
+            <div><span className="eyebrow">Área de trabalho</span>
             <h2>Documentos do projeto</h2>
+            </div>
           </div>
           <span className="doc-state">{locked ? 'Somente leitura' : 'Editável'}</span>
         </div>
@@ -120,7 +123,9 @@ export function RefinementView(p: ViewProps) {
             </button>
           ))}
         </div>
-        <textarea
+        <div className="document-editor">
+          <button type="button" className="editor-copy" aria-label="Copiar documento" onClick={() => void navigator.clipboard?.writeText(docs[tab] ?? '')}><Icon name="copy" size={19} /></button>
+          <textarea
           aria-label={`${tab} editor`}
           data-testid={`doc-${tab}`}
           value={docs[tab] ?? ''}
@@ -130,6 +135,7 @@ export function RefinementView(p: ViewProps) {
             if (!locked && docs[tab] !== snap.docs[tab]) p.onSaveDoc(tab, docs[tab] ?? '');
           }}
         />
+        </div>
         {st.stale && (
           <p data-testid="stale" className="notice">
             Lista desatualizada — reavalie
@@ -138,9 +144,9 @@ export function RefinementView(p: ViewProps) {
         {st.status === 'error' && <p className="error">{errorText(st.error)}</p>}
         {jevBlocked && !hasDocumentChanges && <p className="notice">A reavaliação fica pausada para evitar repetir o mesmo bloqueio. Edite e salve um documento antes de tentar novamente.</p>}
         <div className="doc-actions">
-          <span className="save-hint">As alterações são salvas ao sair do editor.</span>
-          <button data-testid="evaluate" className="secondary" disabled={locked || (jevBlocked && !hasDocumentChanges)} onClick={p.onEvaluate}>
-          {st.cycle === 0 ? 'Avaliar' : 'Reavaliar'}
+          <span className="save-hint"><Icon name="info" size={18} />As alterações são salvas automaticamente ao sair do editor.</span>
+          <button data-testid="evaluate" className="primary refine-action" disabled={locked || (jevBlocked && !hasDocumentChanges)} onClick={p.onEvaluate}>
+          <Icon name="check" size={18} />{st.cycle === 0 ? 'Avaliar' : 'Reavaliar'}
           </button>
         </div>
         {st.status === 'evaluating' && <span className="spinner">avaliando…</span>}
@@ -148,12 +154,14 @@ export function RefinementView(p: ViewProps) {
       <section className="conversation panel-card">
         <div className="section-heading">
           <div>
-            <span className="eyebrow">Refinamento</span>
+            <span className="refine-heading-icon refine-heading-icon-review"><Icon name="clipboard" size={26} /></span>
+            <div><span className="eyebrow">Refinamento</span>
             <h2>Área de revisão</h2>
+            </div>
           </div>
           <span className="count-pill">{pending.length} em aberto</span>
         </div>
-        <p className="next-step"><b>Próximo passo:</b> {nextStep}</p>
+        <p className="next-step"><Icon name="lightbulb" size={20} /><span><b>Próximo passo:</b> {nextStep}</span></p>
         {busy && (
           <div className="claude-session" role="status" aria-live="polite">
             <span className="live-dot" aria-hidden="true" />
@@ -217,7 +225,7 @@ export function RefinementView(p: ViewProps) {
             Alteração de {d.role} descartada em {d.file}: {d.reason}
           </p>
         ))}
-        <h4>Histórico</h4>
+        <h4><Icon name="clock" size={20} />Histórico</h4>
         <ul className="history">
           {[...st.questions]
             .filter((q) => q.status !== 'pending')
@@ -241,34 +249,35 @@ export function RefinementView(p: ViewProps) {
       <section className="panels panel-card">
         <div className="section-heading">
           <div>
-            <span className="eyebrow">Controle de qualidade</span>
+            <span className="refine-heading-icon refine-heading-icon-quality"><Icon name="shield" size={26} /></span>
+            <div><span className="eyebrow">Controle de qualidade</span>
             <h2>Lista de verificação</h2>
+            </div>
           </div>
           <span className={`status-dot ${st.stale ? 'warn' : 'ok'}`}>{st.stale ? 'Precisa revisar' : 'Atual'}</span>
         </div>
-        <h5>PO</h5>
-        <Checklist items={st.checklist} role="po" />
-        <h5>SM</h5>
-        <Checklist items={st.checklist} role="sm" />
-        <h4>Arquivos gerados</h4>
+        <div className="quality-people"><label><span>PO</span><div className="quality-input"><Icon name="user" size={18} /><input placeholder="Digite o nome do PO…" /></div></label><label><span>SM</span><div className="quality-input"><Icon name="user" size={18} /><input placeholder="Digite o nome do SM…" /></div></label></div>
+        <div className="quality-checks"><h5>Checklist PO</h5><Checklist items={st.checklist} role="po" /><h5>Checklist SM</h5><Checklist items={st.checklist} role="sm" /></div>
+        <h4><Icon name="file" size={20} />Arquivos gerados</h4>
         <details>
-          <summary>spec.json</summary>
+          <summary><span>spec.json</span><Icon name="download" size={18} /></summary>
           <pre>{JSON.stringify(st.derived?.spec ?? null, null, 2)}</pre>
         </details>
         <details>
-          <summary>project.json</summary>
+          <summary><span>project.json</span><Icon name="download" size={18} /></summary>
           <pre>{JSON.stringify(st.derived?.project ?? null, null, 2)}</pre>
         </details>
-        <h5>Tarefas</h5>
-        <ul>
+        <h4><Icon name="list" size={20} />Tarefas</h4>
+        <ul className="quality-tasks">
           {(st.derived?.spec.tasks ?? []).map((t, i) => (
             <li key={i}>
               <b>{t.title}</b>: {t.description}
             </li>
           ))}
         </ul>
-        <h4>Segredos</h4>
-        <ul>
+        {(st.derived?.spec.tasks ?? []).length === 0 && <div className="quality-empty"><Icon name="clipboard" size={26} /><strong>Nenhuma tarefa gerada ainda.</strong><span>As tarefas aparecerão aqui após a análise.</span></div>}
+        <h4><Icon name="lock" size={20} />Segredos</h4>
+        <ul className="quality-secrets">
           {snap.secrets.map((s) => (
             <li key={s.name}>
               {s.present ? '●' : '○'} {s.name} {s.hint && <code>…{s.hint}</code>}
@@ -289,8 +298,8 @@ export function RefinementView(p: ViewProps) {
         <p className="tokens">
           {snap.tokens.steps} etapas · {snap.tokens.inputTokens + snap.tokens.outputTokens} tokens · US$ {snap.tokens.costUsd.toFixed(2)}
         </p>
-        <button data-testid="start" className="primary full-width" disabled={!canStart} onClick={p.onStart}>
-          Iniciar
+        <button data-testid="start" className="primary full-width refine-start" disabled={!canStart} onClick={p.onStart}>
+          <Icon name="play" size={18} />Iniciar análise
         </button>
       </section>
     </div>
@@ -336,9 +345,8 @@ export function RefinementPage() {
     f().catch((e: Error) => setError(e.message));
   };
   return (
-    <main>
-      <header>
-        <a href="/projects">Projetos</a> › {projectId} / {specId} <span className={`status ${snap.state.status}`}>{({ answering: 'respondendo', evaluating: 'avaliando', ready: 'pronto', error: 'erro', started: 'iniciado', drafting: 'rascunho' } as Record<string, string>)[snap.state.status] ?? snap.state.status}</span>
+    <main className="refine-page">
+      <header className="refine-breadcrumb"><a href="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></a><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} rascunho</span><span className={`status ${snap.state.status}`}>{({ answering: 'respondendo', evaluating: 'avaliando', ready: 'pronto', error: 'erro', started: 'iniciado', drafting: 'rascunho' } as Record<string, string>)[snap.state.status] ?? snap.state.status}</span>
       </header>
       {error && <p className="error">{errorText(error)}</p>}
       <RefinementView
