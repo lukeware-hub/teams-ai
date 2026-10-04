@@ -21,8 +21,8 @@ async function json<T>(res: Response): Promise<T> {
 export const api = {
   status: () => authFetch(`${P}/status`).then((r) => json<Status>(r)),
   organizations: () => authFetch(`${P}/github-organizations`).then((r) => json<{ organizations: string[]; owner: string | null }>(r)),
-  login: (cli: Cli) => authFetch(`${P}/${cli}/login`, { method: 'POST' }).then((r) => json<{ state: SessionState }>(r)),
-  cancel: (cli: Cli) => authFetch(`${P}/${cli}/cancel`, { method: 'POST' }).then((r) => json<{ state: SessionState }>(r)),
+  login: (cli: Cli) => authFetch(`${P}/${cli}/login`, { method: 'POST', headers: { 'content-type': 'application/json' } }).then((r) => json<{ state: SessionState }>(r)),
+  cancel: (cli: Cli) => authFetch(`${P}/${cli}/cancel`, { method: 'POST', headers: { 'content-type': 'application/json' } }).then((r) => json<{ state: SessionState }>(r)),
   code: (cli: Cli, code: string) => authFetch(`${P}/${cli}/code`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code }) }).then((r) => json<{ state: SessionState }>(r)),
   owner: (owner: string) => authFetch(`${P}/github-owner`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ owner }) }).then((r) => json<{ item: Item }>(r)),
   secret: (name: 'GITHUB_TOKEN' | 'OPENROUTER_API_KEY', value: string) => authFetch(`${P}/secrets/${name}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value }) }).then((r) => json<{ item: Item }>(r)),

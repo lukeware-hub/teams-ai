@@ -18,6 +18,7 @@ let spawns: Array<{ args: string[]; logFile: string }>;
 let signals: Array<[number, string | number]>;
 let onSpawn: (runId: string) => Promise<void>;
 let cloned: Array<{ url: string; destination: string }>;
+let resolved: Record<string, string> = {};
 const base = () => `http://127.0.0.1:${api.port}`;
 const post = (p: string, body?: unknown) => fetch(`${base()}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
 
@@ -30,6 +31,7 @@ beforeEach(async () => {
   spawns = [];
   signals = [];
   cloned = [];
+  resolved = {};
   onSpawn = async () => {};
   const control: RunControlDeps = {
     spawn: (a) => {
@@ -50,7 +52,7 @@ beforeEach(async () => {
     cliEntry: () => ({ bin: 'node', prefix: ['cli'] }),
     repoRoot: '/repo',
   };
-  api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, cloneProject: async (url, destination) => { cloned.push({ url, destination }); await fs.cp(HELLO, destination, { recursive: true }); } }) }, 0);
+  api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, resolveHost: async (n) => [resolved[n] ?? '140.82.112.3'], cloneProject: async (url, destination) => { cloned.push({ url, destination }); await fs.cp(HELLO, destination, { recursive: true }); } }) }, 0);
 });
 afterEach(async () => {
   await api.close();
@@ -71,7 +73,7 @@ describe('projects', () => {
   });
 
   it('registers a project once and refuses a directory without a valid project.json', async () => {
-    const other = path.join(home, 'proj');
+    const other = path.join(home, '.teams-ai', 'workspaces', 'proj');
     await fs.mkdir(path.join(other, 'docs', 'specs'), { recursive: true });
     await fs.writeFile(path.join(other, 'docs', 'project.json'), await fs.readFile(path.join(HELLO, 'docs', 'project.json'), 'utf8'));
     const ok = await post('/api/projects', { dir: other });
@@ -79,10 +81,18 @@ describe('projects', () => {
     expect(await ok.json()).toMatchObject({ projectId: 'hello-app', dir: other, specs: [] });
     expect((await post('/api/projects', { dir: other })).status).toBe(200);
     expect((await readUserConfig(home)).cfg.projects).toEqual([{ dir: HELLO }, { dir: other }]);
-    const bad = await post('/api/projects', { dir: path.join(home, 'nope') });
+    const bad = await post('/api/projects', { dir: path.join(home, '.teams-ai', 'workspaces', 'nope') });
     expect(bad.status).toBe(400);
     expect((await bad.json()).error).toMatch(/project\.json/);
     expect((await post('/api/projects', { dir: 42 })).status).toBe(400);
+    // Audit M1: a valid project outside paths.workspaces is not registered (HELLO is already listed, so use a copy elsewhere).
+    const outside = path.join(home, 'outside');
+    await fs.mkdir(path.join(outside, 'docs'), { recursive: true });
+    await fs.writeFile(path.join(outside, 'docs', 'project.json'), await fs.readFile(path.join(HELLO, 'docs', 'project.json'), 'utf8'));
+    const refused = await post('/api/projects', { dir: outside });
+    expect(refused.status).toBe(400);
+    expect((await refused.json()).error).toMatch(/paths\.workspaces/);
+    expect((await post('/api/projects', { dir: path.join(other, '..', '..', '..', 'outside') })).status).toBe(400);
     expect((await readUserConfig(home)).cfg.projects).toHaveLength(2);
     expect((await fetch(`${base()}/api/projects/nobody/runs`)).status).toBe(404);
   });
@@ -96,6 +106,26 @@ describe('projects', () => {
     expect(cloned[0]!.destination).toContain(`${path.sep}imports${path.sep}demo-`);
     expect(cloned[1]!.destination).toContain(`${path.sep}imports${path.sep}another-`);
     expect((await readUserConfig(home)).cfg.projects).toHaveLength(3);
+  });
+
+  it('refuses hosts outside the allowlist, private literals, internal names and private resolutions (audit M1)', async () => {
+    const err = async (url: string) => {
+      const r = await post('/api/projects', { url });
+      expect(r.status).toBe(400);
+      return (await r.json()).error as string;
+    };
+    expect(await err('https://evil.example/acme/demo.git')).toMatch(/lista permitida/);
+    expect(await err('http://169.254.169.254/acme/demo.git')).toMatch(/lista permitida/);
+    expect(await err('https://kubernetes.default.svc/acme/demo.git')).toMatch(/lista permitida/);
+    expect(cloned).toHaveLength(0);
+    // A listed host is still refused when it is private or resolves to a private address.
+    await fs.writeFile(path.join(home, '.teams-ai', 'config.json'), JSON.stringify({ paths: { runs: runs.replace(/\\/g, '/') }, projects: [{ dir: HELLO }], github: { allowedHosts: ['github.com', '10.0.0.5', 'git.internal', 'sneaky.example'] } }));
+    expect(await err('http://10.0.0.5/acme/demo.git')).toMatch(/interno/);
+    expect(await err('https://git.internal/acme/demo.git')).toMatch(/interno/);
+    resolved['sneaky.example'] = '169.254.169.254';
+    expect(await err('https://sneaky.example/acme/demo.git')).toMatch(/interno/);
+    expect(cloned).toHaveLength(0);
+    expect((await readUserConfig(home)).cfg.projects).toEqual([{ dir: HELLO }]);
   });
 });
 
@@ -150,6 +180,27 @@ describe('start, resume, stop', () => {
     const r = await post('/api/projects/hello-app/specs/hello-001/runs');
     expect(r.status).toBe(500);
     expect((await r.json()).error).toContain('claude is not logged in');
+  }, 15_000);
+
+  it('redacts the ui.log tail with secrets read at request time (audit M3/M4)', async () => {
+    const secrets = path.join(home, '.teams-ai', 'secrets');
+    await fs.mkdir(secrets, { recursive: true });
+    onSpawn = async (runId) => {
+      // Written after startup: a list loaded once at boot would not know it. Short value, base64 form, URL-encoded form.
+      await fs.writeFile(path.join(secrets, 'DB_PASSWORD'), 'p@ss w0rd!');
+      await fs.mkdir(path.join(runs, runId), { recursive: true });
+      const value = 'p@ss w0rd!';
+      await fs.writeFile(path.join(runs, runId, 'ui.log'), `fail ${value} / ${encodeURIComponent(value)} / ${Buffer.from(value).toString('base64')}
+`);
+      alive.clear();
+    };
+    const r = await post('/api/projects/hello-app/specs/hello-001/runs');
+    expect(r.status).toBe(500);
+    const text = JSON.stringify(await r.json());
+    expect(text).not.toContain('p@ss');
+    expect(text).not.toContain(encodeURIComponent('p@ss w0rd!'));
+    expect(text).not.toContain(Buffer.from('p@ss w0rd!').toString('base64'));
+    expect(text).toContain('[REDACTED]');
   }, 15_000);
 
   it('resume is allowed only for paused:auth or interrupted runs', async () => {
@@ -289,6 +340,9 @@ describe('run detail, events and steps', () => {
     expect(await (await fetch(`${base()}/api/runs/hello-001-r1/steps/s00001`)).json()).toEqual({ prompt: '# prompt', output: { ok: true, value: { summary: 'x' } } });
     expect((await fetch(`${base()}/api/runs/hello-001-r1/steps/s00002`)).status).toBe(404);
     expect((await fetch(`${base()}/api/runs/hello-001-r1/steps/..%2Fui.log`)).status).toBe(400);
+    // Audit L1: a `..` id never reaches the handler over HTTP (URL parsing collapses it), but the id check must hold on its own.
+    await fs.writeFile(path.join(runs, 'prompt.md'), 'outside');
+    expect((await fetch(`${base()}/api/runs/hello-001-r1/steps/..`)).status).toBe(404);
   });
 
   it('spawns `spec readme` for a finished run and refuses while the spec has an active run', async () => {

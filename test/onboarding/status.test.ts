@@ -16,8 +16,8 @@ afterEach(async () => {
 });
 
 describe('status', () => {
-  it('hint shows only the last four characters', () => {
-    expect(hint(KEY)).toBe(KEY.slice(-4));
+  it('hint never shows any character of the value', () => {
+    expect(hint(KEY)).toBe('****');
     expect(hint('ab')).toBe('****');
   });
 
@@ -58,8 +58,8 @@ describe('status', () => {
     const okFetch = (async () => new Response(JSON.stringify({ model: 'typesafe/jev-1.13', answers: { probe: { type: 'noul', noul: 0.9 } }, usage: { input_tokens: 1, output_tokens: 1, cost: 0.000001 } }), { status: 200 })) as typeof fetch;
     const s = await computeStatus({ exec: exec.exec, fetch: okFetch, home, secretsDir });
     expect(s.allOk).toBe(true);
-    expect(s.items.githubToken.secret).toEqual({ set: true, hint: TOKEN.slice(-4) });
-    expect(s.items.openrouterKey.secret).toEqual({ set: true, hint: KEY.slice(-4) });
+    expect(s.items.githubToken.secret).toEqual({ set: true, hint: '****' });
+    expect(s.items.openrouterKey.secret).toEqual({ set: true, hint: '****' });
     expect(JSON.stringify(s)).not.toContain(TOKEN);
     expect(JSON.stringify(s)).not.toContain(KEY);
   });

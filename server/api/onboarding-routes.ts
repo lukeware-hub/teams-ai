@@ -1,4 +1,4 @@
-import { SECRET_NAME, writeSecret } from '../core/secrets.js';
+import { loadSecretValuesSync, SECRET_NAME, writeSecret } from '../core/secrets.js';
 import { redactSecrets } from '../core/redact.js';
 import { GITHUB_OWNER, readUserConfig, setGithubOwner } from '../onboarding/config-store.js';
 import { LoginSession } from '../onboarding/login-session.js';
@@ -27,12 +27,11 @@ export class Onboarding {
       claude: { bin: deps.hostEnv?.CLAUDE_BIN ?? 'claude', args: ['auth', 'login', '--claudeai'], env },
       gh: { bin: deps.hostEnv?.GH_BIN ?? 'gh', args: ['auth', 'login', '--hostname', 'github.com', '--web', '--git-protocol', 'https'], env: { ...env, GH_PROMPT_DISABLED: '1' } },
     };
-    const known = async () => Object.values(await import('../core/secrets.js').then((m) => m.loadSecrets(deps.secretsDir)));
-    let knownCache: readonly string[] = [];
-    void known().then((v) => (knownCache = v));
+    // Audit M4: read from disk on every transcript chunk (a few tiny files), so a secret stored a moment ago is masked at once.
+    const known = () => loadSecretValuesSync(deps.secretsDir);
     this.sessions = {
-      claude: new LoginSession({ cli: 'claude', spawn: deps.spawn, command: commands.claude, probe: () => claudeStatus(deps), knownSecrets: () => knownCache }),
-      gh: new LoginSession({ cli: 'gh', spawn: deps.spawn, command: commands.gh, probe: () => ghStatus(deps), knownSecrets: () => knownCache, timeoutMs: GITHUB_LOGIN_TIMEOUT_MS }),
+      claude: new LoginSession({ cli: 'claude', spawn: deps.spawn, command: commands.claude, probe: () => claudeStatus(deps), knownSecrets: known }),
+      gh: new LoginSession({ cli: 'gh', spawn: deps.spawn, command: commands.gh, probe: () => ghStatus(deps), knownSecrets: known, timeoutMs: GITHUB_LOGIN_TIMEOUT_MS }),
     };
   }
 }

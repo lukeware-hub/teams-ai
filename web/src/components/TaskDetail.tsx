@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { StoredEvent } from '../api.js';
+import { safeHttpUrl } from '../safeUrl.js';
 import { explainBlockReason, taskDetail } from '../run/selectors.js';
 
 type Artifact = { prompt: string; output: unknown };
@@ -26,9 +27,13 @@ export function TaskDetail({ events, taskId, loadStep }: { events: StoredEvent[]
       <header>
         <h2>{taskId}</h2>
         {d.pr ? (
-          <a href={d.pr.url} target="_blank" rel="noreferrer">
-            PR #{d.pr.number}
-          </a>
+          safeHttpUrl(d.pr.url) ? (
+            <a href={safeHttpUrl(d.pr.url)} target="_blank" rel="noreferrer">
+              PR #{d.pr.number}
+            </a>
+          ) : (
+            <span>PR #{d.pr.number}</span>
+          )
         ) : null}
         {d.lockHeld ? <span className="hint">mantém o bloqueio de mesclagem</span> : null}
       </header>

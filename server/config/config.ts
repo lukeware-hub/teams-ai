@@ -106,7 +106,7 @@ export const Config = z.object({
       maxSchemaRetriesPerStep: positive.default(DEFAULT_POLICY.maxSchemaRetriesPerStep),
     })
     .prefault({}),
-  github: z.object({ owner: z.string().min(1).optional() }).prefault({}),
+  github: z.object({ owner: z.string().min(1).optional(), /** Hosts `POST /projects` may clone from (audit M1). */ allowedHosts: z.array(z.string().min(1)).default(['github.com']) }).prefault({}),
   /** The Claude Code sandbox (bubblewrap) for agent steps. Off only where the process already runs inside
    * an isolation boundary that the sandbox cannot nest in, e.g. as root in the backend container. */
   sandbox: z.object({ enabled: z.boolean().default(true) }).prefault({}),
