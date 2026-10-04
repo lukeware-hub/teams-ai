@@ -1,8 +1,9 @@
-import { promises as fs } from 'node:fs';
+import { promises as fs, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '../../server/config/config.js';
+import { claimLaunch, clearStopRequested, markStopRequested } from '../../server/api/run-index.js';
 import type { RunControlDeps, SpawnArgs } from '../../server/api/run-control.js';
 import { superviseTick, type Backoff, type SuperviseDeps } from '../../server/supervisor/supervise.js';
 import { writeRun } from '../fixtures/runs/write-run.js';
@@ -91,5 +92,58 @@ describe('supervise', () => {
     };
     expect(await superviseTick(d, new Map())).toEqual([]);
     expect(logs.join('\n')).toContain('resume of hello-001-r1 failed: no pid');
+    expect(await claimLaunch(runs, 'hello-001-r1')).not.toBeNull(); // a failed spawn does not keep the run claimed
+  });
+
+  it('never resumes a run the user stopped from the UI, journal or not, until the user resumes it', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 111); // no RUN_STOP_REQUESTED: the signal never reached the CLI
+    await markStopRequested(runs, 'hello-001-r1');
+    expect(await superviseTick(deps(), new Map())).toEqual([]);
+    expect(spawned).toHaveLength(0);
+    expect(logs.join('\n')).toContain('hello-001-r1 skipped');
+    await clearStopRequested(runs, 'hello-001-r1'); // what the explicit resume does
+    expect(await superviseTick(deps(), new Map())).toEqual(['hello-001-r1']);
+  });
+
+  it('looks again right before resuming: a run revived since the scan is left alone', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 111);
+    await writeRun(runs, 'hello-001-r2', [started('hello-001-r2')], state('running'), 112);
+    const d = deps();
+    const spawn = d.control.spawn;
+    d.control.spawn = (a) => {
+      const out = spawn(a);
+      // while the first run is resumed, the UI resumes the other one: its pid file now names a live process
+      const other = a.args.includes('hello-001-r1') ? 'hello-001-r2' : 'hello-001-r1';
+      writeFileSync(path.join(runs, other, 'pid'), '777');
+      alive.add(777);
+      return out;
+    };
+    expect(await superviseTick(d, new Map())).toHaveLength(1);
+    expect(spawned).toHaveLength(1);
+  });
+
+  it('leaves a run alone while another spawner holds its launch claim, and frees the claim when done', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 111);
+    const release = (await claimLaunch(runs, 'hello-001-r1'))!;
+    expect(await superviseTick(deps(), new Map())).toEqual([]);
+    expect(spawned).toHaveLength(0);
+    await release();
+    expect(await superviseTick(deps(), new Map())).toEqual(['hello-001-r1']);
+    expect(await claimLaunch(runs, 'hello-001-r1')).not.toBeNull();
+  });
+});
+
+describe('launch claim', () => {
+  it('is exclusive, and a claim left behind by a dead spawner expires', async () => {
+    await fs.mkdir(path.join(runs, 'hello-001-r1'), { recursive: true });
+    const first = await claimLaunch(runs, 'hello-001-r1');
+    expect(first).not.toBeNull();
+    expect(await claimLaunch(runs, 'hello-001-r1')).toBeNull();
+    const old = new Date(Date.now() - 10 * 60_000);
+    await fs.utimes(path.join(runs, 'hello-001-r1', 'launch-claim'), old, old);
+    const taken = await claimLaunch(runs, 'hello-001-r1');
+    expect(taken).not.toBeNull();
+    await taken!();
+    expect(await claimLaunch(runs, 'hello-001-r1')).not.toBeNull();
   });
 });

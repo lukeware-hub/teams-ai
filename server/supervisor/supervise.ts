@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { loadEvents } from '../store/event-store.js';
 import { spawnRun, type RunControlDeps } from '../api/run-control.js';
-import { listRuns, readProject, runsDir, writePid, type IndexDeps } from '../api/run-index.js';
+import { claimLaunch, isStopRequested, listRuns, readProject, runRow, runsDir, writePid, type IndexDeps } from '../api/run-index.js';
 
 const MAX_BACKOFF_MS = 3_600_000;
 
@@ -17,13 +17,16 @@ export interface SuperviseDeps {
 /** Per run: how many resumes were tried since it last looked alive, and when the next one may happen. */
 export type Backoff = Map<string, { attempts: number; nextAt: number }>;
 
+/** Either the CLI journaled the stop, or the UI left its marker (its Stop can kill a process that never got to journal). */
 async function stopRequested(runs: string, runId: string): Promise<boolean> {
+  if (await isStopRequested(runs, runId)) return true;
   const events = await loadEvents(path.join(runs, runId, 'events.ndjson')).catch(() => []);
   return events.some((e) => e.type === 'RUN_STOP_REQUESTED');
 }
 
 /** One scan: resume every interrupted run that is not finished, not intentionally stopped and not backing off.
- * A resumed run gets a live pid, so the next scan sees it as running: one resume per run at a time. */
+ * A resumed run gets a live pid, so the next scan sees it as running: one resume per run at a time.
+ * The scan is a snapshot and the UI resumes runs too, so each run is claimed and looked at again before it is spawned. */
 export async function superviseTick(d: SuperviseDeps, backoff: Backoff): Promise<string[]> {
   const { project } = await readProject(d.projectDir);
   const runs = runsDir(d.idx);
@@ -33,21 +36,30 @@ export async function superviseTick(d: SuperviseDeps, backoff: Backoff): Promise
       if (row.stoppable && d.now() >= (backoff.get(row.runId)?.nextAt ?? 0)) backoff.delete(row.runId); // stayed alive past the backoff window: forget it
       continue;
     }
-    if (await stopRequested(runs, row.runId)) {
-      d.log(`supervise: ${row.runId} skipped, stop was requested`);
-      continue;
-    }
     const b = backoff.get(row.runId) ?? { attempts: 0, nextAt: 0 };
     if (d.now() < b.nextAt) continue;
-    const attempts = b.attempts + 1;
-    backoff.set(row.runId, { attempts, nextAt: d.now() + Math.min(d.intervalMs * 2 ** attempts, MAX_BACKOFF_MS) });
+    const release = await claimLaunch(runs, row.runId);
+    if (!release) {
+      d.log(`supervise: ${row.runId} skipped, another launch is in flight`);
+      continue;
+    }
     try {
+      // Checked under the claim and in this order: a dead process of a user's Stop implies its marker is already on disk.
+      if ((await runRow(d.idx, row.runId))?.status !== 'interrupted') continue;
+      if (await stopRequested(runs, row.runId)) {
+        d.log(`supervise: ${row.runId} skipped, stop was requested`);
+        continue;
+      }
+      const attempts = b.attempts + 1;
+      backoff.set(row.runId, { attempts, nextAt: d.now() + Math.min(d.intervalMs * 2 ** attempts, MAX_BACKOFF_MS) });
       const { pid } = spawnRun(d.control, { projectDir: d.projectDir, specId: row.specId, runId: row.runId, mode: 'resume', logFile: path.join(runs, row.runId, 'ui.log') });
       await writePid(runs, row.runId, pid);
       d.log(`supervise: resumed ${row.runId} pid ${pid} (attempt ${attempts})`);
       resumed.push(row.runId);
     } catch (err) {
       d.log(`supervise: resume of ${row.runId} failed: ${(err as Error).message}`);
+    } finally {
+      await release();
     }
   }
   return resumed;

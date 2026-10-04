@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { runApi, type Report, type RunDetail } from '../api.js';
 
@@ -175,6 +175,13 @@ export function ValidationPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [polling, setPolling] = useState(false);
+  const inFlight = useRef(false); // a double click must send one request, not two (the second would 409 and mask the first's success)
+  const guarded = (call: () => Promise<void>) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setActionError(null);
+    call().catch((e: Error) => setActionError(e.message)).finally(() => { inFlight.current = false; });
+  };
   const load = async () => {
     if (!runId) return;
     const d = await runApi.run(runId);
@@ -200,20 +207,10 @@ export function ValidationPage() {
       detail={detail}
       specStatus={specStatus}
       actionError={actionError}
-      onReport={(text) => {
-        setActionError(null);
-        runApi
-          .reportProblem(detail.projectId, detail.specId, text)
-          .then(() => navigate(`/refine/${detail.projectId}/${detail.specId}`))
-          .catch((e: Error) => setActionError(e.message));
-      }}
-      onComplete={() => {
-        setActionError(null);
-        runApi
-          .complete(detail.projectId, detail.specId)
-          .then(() => setPolling(true))
-          .catch((e: Error) => setActionError(e.message));
-      }}
+      onReport={(text) =>
+        guarded(() => runApi.reportProblem(detail.projectId, detail.specId, text).then(() => navigate(`/refine/${detail.projectId}/${detail.specId}`)))
+      }
+      onComplete={() => guarded(() => runApi.complete(detail.projectId, detail.specId).then(() => setPolling(true)))}
     />
   );
 }

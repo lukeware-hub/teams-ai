@@ -146,6 +146,37 @@ function parseLockOwner(text: string): { pid: number; host: string | null } {
   return { pid: Number.parseInt(pid ?? '', 10), host: host ?? null };
 }
 
+/** Stale = its owner cannot be holding it: it lived on another host, is an earlier life of this very pid, or its pid is gone. */
+function isStaleLock(lockFile: string, owner: { pid: number; host: string | null }): boolean {
+  const otherHost = owner.host !== null && owner.host !== os.hostname();
+  const sameProcessAfterRestart = owner.pid === process.pid && !heldLocks.has(lockFile);
+  return Number.isInteger(owner.pid) && (otherHost || sameProcessAfterRestart || (owner.pid !== process.pid && !processAlive(owner.pid)));
+}
+
+/**
+ * Deletes a stale lock under a `<lock>.reclaim` guard, itself an ordinary lock (so a guard left by a crash is reclaimed
+ * the same way). Judging a lock stale and deleting it are two steps: unguarded, a contender that judged it stale
+ * earlier would delete the fresh lock the winner has taken since, and both would open the log. So the lock is judged
+ * again under the guard, and a contender that cannot take the guard leaves it alone; the exclusive create that
+ * follows picks the winner.
+ */
+async function reclaimStaleLock(file: string, lockFile: string): Promise<void> {
+  const guard = `${lockFile}.reclaim`;
+  try {
+    await acquireLock(file, guard);
+  } catch (err) {
+    if (err instanceof EventLogLockedError) return;
+    throw err;
+  }
+  try {
+    const owner = parseLockOwner(await fs.readFile(lockFile, 'utf8').catch(() => ''));
+    if (isStaleLock(lockFile, owner)) await fs.rm(lockFile, { force: true });
+  } finally {
+    heldLocks.delete(guard);
+    await fs.rm(guard, { force: true });
+  }
+}
+
 /** Takes the exclusive lock; a lock whose owner process is gone (or lived on another host) is reclaimed. */
 async function acquireLock(file: string, lockFile: string): Promise<void> {
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -164,10 +195,8 @@ async function acquireLock(file: string, lockFile: string): Promise<void> {
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
       const owner = parseLockOwner(await fs.readFile(lockFile, 'utf8').catch(() => ''));
-      const otherHost = owner.host !== null && owner.host !== os.hostname();
-      const sameProcessAfterRestart = owner.pid === process.pid && !heldLocks.has(lockFile);
-      if (attempt === 0 && Number.isInteger(owner.pid) && (otherHost || sameProcessAfterRestart || (owner.pid !== process.pid && !processAlive(owner.pid)))) {
-        await fs.rm(lockFile, { force: true });
+      if (attempt === 0 && isStaleLock(lockFile, owner)) {
+        await reclaimStaleLock(file, lockFile);
         continue;
       }
       throw new EventLogLockedError(`${file} is already open (lock: ${lockFile}, pid ${owner.pid})`);

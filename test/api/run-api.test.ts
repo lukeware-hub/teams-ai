@@ -1,11 +1,13 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { claimLaunch } from '../../server/api/run-index.js';
 import { runRoutes } from '../../server/api/run-routes.js';
 import { startApi } from '../../server/api/server.js';
 import type { RunControlDeps } from '../../server/api/run-control.js';
 import { readUserConfig } from '../../server/onboarding/config-store.js';
+import { superviseTick, type SuperviseDeps } from '../../server/supervisor/supervise.js';
 import { appendEvents, eventLines, writeRun } from '../fixtures/runs/write-run.js';
 import { makeFrozenSpec, makePlan } from '../fixtures/contracts.js';
 
@@ -14,9 +16,12 @@ let home = '';
 let runs = '';
 let api: { port: number; close(): Promise<void> };
 const alive = new Set<number>();
+let control: RunControlDeps;
 let spawns: Array<{ args: string[]; logFile: string }>;
 let signals: Array<[number, string | number]>;
 let onSpawn: (runId: string) => Promise<void>;
+let onSignal: () => void;
+let onSleep: () => Promise<void>;
 let cloned: Array<{ url: string; destination: string }>;
 const base = () => `http://127.0.0.1:${api.port}`;
 const post = (p: string, body?: unknown) => fetch(`${base()}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -31,7 +36,9 @@ beforeEach(async () => {
   signals = [];
   cloned = [];
   onSpawn = async () => {};
-  const control: RunControlDeps = {
+  onSignal = () => {};
+  onSleep = async () => {};
+  control = {
     spawn: (a) => {
       spawns.push({ args: a.args, logFile: a.logFile });
       const runId = a.args[a.args.indexOf('--run-id') + 1] ?? a.args[a.args.indexOf('--run') + 1]!;
@@ -44,21 +51,43 @@ beforeEach(async () => {
       const p = Math.abs(pid);
       if (!alive.has(p)) return false;
       if (sig === 'SIGTERM' || sig === 'SIGKILL') alive.delete(p);
+      if (sig === 'SIGTERM') onSignal();
       return true;
     },
-    sleep: async () => {},
+    sleep: () => onSleep(),
     cliEntry: () => ({ bin: 'node', prefix: ['cli'] }),
     repoRoot: '/repo',
   };
   api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, cloneProject: async (url, destination) => { cloned.push({ url, destination }); await fs.cp(HELLO, destination, { recursive: true }); } }) }, 0);
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   await api.close();
   await fs.rm(home, { recursive: true, force: true });
 });
 
 const started = (runId: string) => ({ type: 'RUN_STARTED', data: { runId, specId: 'hello-001', projectId: 'hello-app' } });
 const state = (status: string) => ({ runId: 'x', at: '2026-09-24T10:01:00.000Z', status, tasks: [], tokens: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0.01, steps: 1 } });
+
+/** The supervisor of the same project, sharing the fake process table with the routes. */
+const supervisorDeps = async (): Promise<SuperviseDeps> => ({ idx: { cfg: (await readUserConfig(home)).cfg, home, isAlive: (pid) => alive.has(pid) }, control, projectDir: HELLO, intervalMs: 1000, now: () => 0, log: () => {} });
+
+/** Pauses the launch of `runId` right before it spawns: the route has passed its checks, nothing is spawned yet. */
+function holdLaunch(runId: string): { reached: Promise<void>; release: () => void } {
+  let reached = () => {};
+  let release = () => {};
+  const hit = new Promise<void>((r) => (reached = r));
+  const open = new Promise<void>((r) => (release = r));
+  const realMkdir = fs.mkdir.bind(fs);
+  vi.spyOn(fs, 'mkdir').mockImplementation((async (...args: Parameters<typeof fs.mkdir>) => {
+    if (path.resolve(String(args[0])) === path.resolve(runs, runId)) {
+      reached();
+      await open;
+    }
+    return realMkdir(...args);
+  }) as typeof fs.mkdir);
+  return { reached: hit, release: () => release() };
+}
 
 describe('projects', () => {
   it('lists registered projects with specs and runs', async () => {
@@ -178,6 +207,56 @@ describe('start, resume, stop', () => {
     expect((await post('/api/runs/hello-001-r1/stop')).status).toBe(409);
     await writeRun(runs, 'hello-001-r2', [started('hello-001-r2')], state('running'));
     expect((await post('/api/runs/hello-001-r2/stop')).status).toBe(409);
+  });
+
+  it('a run stopped from the UI stays stopped: the supervisor leaves it alone until the user resumes it', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 950);
+    alive.add(950);
+    expect((await post('/api/runs/hello-001-r1/stop')).status).toBe(200);
+    expect(await superviseTick(await supervisorDeps(), new Map())).toEqual([]);
+    expect(spawns).toHaveLength(0);
+    expect((await post('/api/runs/hello-001-r1/resume')).status).toBe(200); // the user's resume lifts the stop
+    alive.delete(5001); // the run dies again later: now it is the supervisor's to bring back
+    expect(await superviseTick(await supervisorDeps(), new Map())).toEqual(['hello-001-r1']);
+    expect(spawns).toHaveLength(2);
+  });
+
+  it('a supervisor scan between the stop signal and the pid cleanup does not resume the run', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 950);
+    alive.add(950);
+    let scan: Promise<string[]> = Promise.resolve([]);
+    onSignal = () => {
+      scan = supervisorDeps().then((d) => superviseTick(d, new Map())); // the process is gone, the route is still waiting on it
+    };
+    onSleep = async () => {
+      await scan;
+    };
+    expect((await post('/api/runs/hello-001-r1/stop')).status).toBe(200);
+    expect(await scan).toEqual([]);
+    expect(spawns).toHaveLength(0);
+  });
+
+  it('a supervisor scan during a UI resume does not spawn a second process for the run', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 111); // dead pid: interrupted
+    const hold = holdLaunch('hello-001-r1');
+    const resume = post('/api/runs/hello-001-r1/resume');
+    await hold.reached;
+    expect(await superviseTick(await supervisorDeps(), new Map())).toEqual([]);
+    hold.release();
+    expect((await resume).status).toBe(200);
+    expect(spawns).toHaveLength(1);
+    expect(await fs.readFile(path.join(runs, 'hello-001-r1', 'pid'), 'utf8')).toBe('5001');
+  });
+
+  it('resume answers 409 while another spawner holds the launch claim of the run, and releases its own claim', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 111);
+    const release = (await claimLaunch(runs, 'hello-001-r1'))!;
+    expect((await post('/api/runs/hello-001-r1/resume')).status).toBe(409);
+    expect(spawns).toHaveLength(0);
+    await release();
+    expect((await post('/api/runs/hello-001-r1/resume')).status).toBe(200);
+    expect(spawns).toHaveLength(1);
+    expect(await claimLaunch(runs, 'hello-001-r1')).not.toBeNull();
   });
 });
 

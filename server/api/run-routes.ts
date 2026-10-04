@@ -13,7 +13,7 @@ import { reduceEvents } from '../pipeline/run-state.js';
 import { EventLogCorruptError, loadEvents, type StoredEvent } from '../store/event-store.js';
 import { tailJournal } from './journal-tail.js';
 import { isAlive, spawnRun, stop, type RunControlDeps } from './run-control.js';
-import { CLAIMS_SPEC, clearPid, listProjects, listRuns, readPid, readProject, runsDir, SAFE_ID, writePid, type IndexDeps, type RunRow } from './run-index.js';
+import { CLAIMS_SPEC, claimLaunch, clearPid, clearStopRequested, listProjects, listRuns, markStopRequested, readPid, readProject, runsDir, SAFE_ID, writePid, type IndexDeps, type RunRow } from './run-index.js';
 import { HttpError, type Route } from './server.js';
 
 export interface RunRoutesDeps {
@@ -209,10 +209,20 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       handler: async ({ params, json }) => {
         const idx = await index();
         const runId = safe(params.runId!);
+        const runs = runsDir(idx);
         await exclusive(`run ${runId}`, async () => {
-          const { row, dir } = await findRun(idx, runId);
-          if (row.status !== 'paused:auth' && row.status !== 'interrupted') throw new HttpError(409, `run ${runId} is ${row.status}; only paused:auth or interrupted runs resume`);
-          await launch(idx, { projectDir: dir, specId: row.specId, runId, mode: 'resume' });
+          await events(runs, runId); // 404 before claiming: the claim is a file in the run directory
+          // Shared with the supervisor, which resumes interrupted runs too: whoever holds the claim is the only one to spawn.
+          const release = await claimLaunch(runs, runId);
+          if (!release) throw new HttpError(409, `run ${runId} is already starting`);
+          try {
+            const { row, dir } = await findRun(idx, runId);
+            if (row.status !== 'paused:auth' && row.status !== 'interrupted') throw new HttpError(409, `run ${runId} is ${row.status}; only paused:auth or interrupted runs resume`);
+            await clearStopRequested(runs, runId); // an explicit resume overrides an earlier Stop
+            await launch(idx, { projectDir: dir, specId: row.specId, runId, mode: 'resume' });
+          } finally {
+            await release();
+          }
         });
         json(200, { runId });
       },
@@ -227,6 +237,8 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const runs = runsDir(idx);
         const pid = await readPid(runs, runId);
         if (pid === null || !isAlive(deps.control, pid)) throw new HttpError(409, `run ${runId} has no live process started from the UI`);
+        // Before the signal: once the process is gone, the supervisor must already find the user's intent on disk.
+        await markStopRequested(runs, runId);
         const how = await stop(deps.control, pid);
         await clearPid(runs, runId);
         json(200, { stopped: true, how: how === 'gone' ? 'terminated' : how });

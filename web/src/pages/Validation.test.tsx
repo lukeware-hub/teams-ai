@@ -1,8 +1,8 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
-import type { Report, RunDetail } from '../api.js';
-import { ValidationView } from './Validation.js';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { runApi, type Report, type RunDetail } from '../api.js';
+import { ValidationPage, ValidationView } from './Validation.js';
 
 const report: Report = {
   runId: 'hello-001-r1', specId: 'hello-001', specHash: 'h', result: 'awaiting-validation',
@@ -65,5 +65,18 @@ describe('ValidationView', () => {
   it('without a report yet it says so', () => {
     render(<MemoryRouter><ValidationView detail={detail({ report: null, status: 'running', phase: 3 })} specStatus="running" onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
     expect(screen.getByText(/no report yet/i)).toBeTruthy();
+  });
+});
+
+describe('ValidationPage', () => {
+  it('sends one complete request on a double click', async () => {
+    vi.spyOn(runApi, 'run').mockResolvedValue(detail());
+    vi.spyOn(runApi, 'projects').mockResolvedValue([{ projectId: 'hello-app', specs: [{ specId: 'hello-001', status: 'awaiting-validation' }] }] as never);
+    const complete = vi.spyOn(runApi, 'complete').mockImplementation(() => new Promise((r) => setTimeout(() => r(undefined as never), 20)));
+    render(<MemoryRouter initialEntries={['/validate/hello-001-r1']}><Routes><Route path="/validate/:runId" element={<ValidationPage />} /></Routes></MemoryRouter>);
+    const btn = await screen.findByTestId('complete-spec');
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+    await waitFor(() => expect(complete).toHaveBeenCalledTimes(1));
   });
 });
