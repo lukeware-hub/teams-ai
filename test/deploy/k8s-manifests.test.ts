@@ -73,13 +73,69 @@ describe('deploy/k8s manifests', () => {
     expect(base).not.toMatch(/secret/i);
   });
 
-  it('NetworkPolicy allows all ingress and egress', () => {
-    const policies = manifests.filter(({ doc }) => doc.kind === 'NetworkPolicy');
-    expect(policies.length).toBe(1);
-    const spec = policies[0]!.doc.spec;
-    expect(spec.podSelector).toEqual({});
-    expect(spec.policyTypes.sort()).toEqual(['Egress', 'Ingress']);
-    expect(spec.ingress).toEqual([{}]);
-    expect(spec.egress).toEqual([{}]);
+  it('NetworkPolicy keeps the namespace open except for agent-step pods', () => {
+    const allow = manifests.find(({ doc }) => doc.kind === 'NetworkPolicy' && doc.metadata?.name === 'allow-all')!.doc.spec;
+    expect(allow.policyTypes.sort()).toEqual(['Egress', 'Ingress']);
+    expect(allow.ingress).toEqual([{}]);
+    expect(allow.egress).toEqual([{}]);
+    // Policies are additive: the open policy must not select agent pods or it would defeat the isolation policy.
+    expect(allow.podSelector.matchExpressions).toEqual([{ key: 'role', operator: 'NotIn', values: ['agent-step'] }]);
+  });
+
+  it('isolates role=agent-step pods: default-deny plus an egress allowlist', () => {
+    const iso = manifests.find(({ doc }) => doc.kind === 'NetworkPolicy' && doc.metadata?.name === 'agent-step-isolation')!.doc.spec;
+    expect(iso.podSelector).toEqual({ matchLabels: { role: 'agent-step' } });
+    expect(iso.policyTypes.sort()).toEqual(['Egress', 'Ingress']);
+    expect(iso.ingress ?? []).toEqual([]);
+    const rules = iso.egress as Array<{ to?: any[]; ports?: Array<{ port: number; protocol?: string }> }>;
+    expect(rules.length).toBeGreaterThan(3);
+    for (const r of rules) {
+      expect(r.to?.length, 'egress rule without a destination').toBeGreaterThan(0);
+      expect(r.ports?.length, 'egress rule without ports').toBeGreaterThan(0);
+      for (const t of r.to!) expect(t.ipBlock?.cidr, 'open CIDR').not.toBe('0.0.0.0/0');
+    }
+    const apps = rules.flatMap((r) => r.to!).map((t) => t.podSelector?.matchLabels?.app).filter(Boolean);
+    expect(apps.sort()).toEqual(['llama', 'omniroute', 'registry']);
+    expect(rules.some((r) => r.ports!.some((p) => p.port === 53))).toBe(true);
+    expect(rules.some((r) => r.to!.some((t) => t.ipBlock) && r.ports!.every((p) => p.port === 443))).toBe(true);
+  });
+
+  it('gives agent-step pods a ServiceAccount without token automount', () => {
+    const sa = manifests.find(({ doc }) => doc.kind === 'ServiceAccount' && doc.metadata?.name === 'agent-step')!.doc;
+    expect(sa.automountServiceAccountToken).toBe(false);
+  });
+
+  it('hardens every Deployment (non-root, no escalation, no capabilities)', () => {
+    const deployments = manifests.filter(({ doc }) => doc.kind === 'Deployment');
+    expect(deployments.length).toBe(5);
+    for (const { f, doc } of deployments) {
+      const pod = doc.spec.template.spec;
+      const name = doc.metadata!.name!;
+      for (const c of [...(pod.initContainers ?? []), ...pod.containers]) {
+        const where = `${name}/${c.name} (${f})`;
+        expect(c.securityContext?.runAsNonRoot ?? pod.securityContext?.runAsNonRoot, where).toBe(true);
+        expect(c.securityContext?.runAsUser ?? pod.securityContext?.runAsUser, where).not.toBe(0);
+        // Rootless BuildKit needs setuid newuidmap and an unconfined seccomp profile: the one documented exemption.
+        if (name === 'buildkitd') continue;
+        expect(c.securityContext?.allowPrivilegeEscalation, where).toBe(false);
+        expect(c.securityContext?.capabilities?.drop, where).toEqual(['ALL']);
+        expect(c.securityContext?.seccompProfile?.type ?? pod.securityContext?.seccompProfile?.type, where).toBe('RuntimeDefault');
+      }
+    }
+    const backend = deployments.find(({ doc }) => doc.metadata?.name === 'backend')!.doc.spec.template.spec;
+    expect(backend.containers[0].securityContext.readOnlyRootFilesystem).toBe(true);
+  });
+
+  it('keeps the kind registry reachable by node containerd', () => {
+    const kind = readFileSync(path.join(ROOT, 'overlays/kind/kustomization.yaml'), 'utf8');
+    expect(kind).toMatch(/name: registry/);
+    expect(kind).toContain('30500');
+    const cluster = readFileSync(path.resolve(__dirname, '../../scripts/wsl/kind-cluster.yaml'), 'utf8');
+    expect(cluster).toContain('registry.teams-ai:5000');
+    expect(cluster).toContain('http://localhost:30500');
+  });
+
+  it('references only resolvable ServiceAccounts and lists the new manifest in the base', () => {
+    expect(readFileSync(path.join(ROOT, 'base/kustomization.yaml'), 'utf8')).toContain('agent-step.yaml');
   });
 });

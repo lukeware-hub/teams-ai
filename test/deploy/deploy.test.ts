@@ -148,6 +148,63 @@ describe('KindTarget', () => {
   });
 });
 
+describe('KindTarget registry build path', () => {
+  const manifest = 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: todo-api\nspec:\n  template:\n    spec:\n      containers:\n      - name: app\n        image: {{IMAGE}}\n';
+  const registry = { buildkitAddr: 'tcp://buildkitd:1234', pushHost: 'registry:5000', pullHost: 'registry.teams-ai:5000', namespace: 'teams-ai' };
+  const mk = (fake: FakeExec, over: Partial<ConstructorParameters<typeof KindTarget>[0]> = {}) =>
+    new KindTarget({ exec: fake.exec, secrets, cluster: 'teams-ai', readFile: async () => manifest, sleep: async () => undefined, registry, ...over });
+
+  it('builds with buildctl and pushes to the in-namespace registry, without docker or kind', async () => {
+    const fake = new FakeExec();
+    await mk(fake).build(intent);
+    expect(fake.calls.map((c) => c.bin)).toEqual(['buildctl']);
+    expect(fake.lines('buildctl')[0]).toBe(
+      '--addr tcp://buildkitd:1234 build --frontend dockerfile.v0 --local context=/home/u/ws/repo --local dockerfile=/home/u/ws/repo ' +
+        '--output type=image,name=registry:5000/todo-api:spec-001-abc1234,push=true,registry.insecure=true',
+    );
+  });
+
+  it('reports a failed build', async () => {
+    const fake = new FakeExec().on((s) => s.bin === 'buildctl', () => ({ exitCode: 1, stderr: 'boom' }));
+    await expect(mk(fake).build(intent)).rejects.toThrow('buildctl build failed: boom');
+  });
+
+  it('deploys by the pull reference, in the namespace, without a kubectl context', async () => {
+    const fake = new FakeExec();
+    await mk(fake).apply(intent);
+    const calls = fake.calls.filter((c) => c.bin === 'kubectl');
+    for (const c of calls) expect(c.args.slice(0, 2)).toEqual(['-n', 'teams-ai']);
+    expect(calls.some((c) => c.args.includes('--context'))).toBe(false);
+    const apply = calls.filter((c) => c.args[2] === 'apply').pop()!;
+    expect(apply.stdin).toContain('image: registry.teams-ai:5000/todo-api:spec-001-abc1234');
+  });
+
+  it('drops a registry host and tag already present in the plan image', async () => {
+    const fake = new FakeExec();
+    await mk(fake).build({ ...intent, image: 'localhost:5000/team/todo-api:latest' });
+    expect(fake.lines('buildctl')[0]).toContain('name=registry:5000/team/todo-api:spec-001-abc1234,');
+  });
+
+  it('verifies with rollout status and an HTTP probe of the in-cluster URL', async () => {
+    const urls: string[] = [];
+    const fake = new FakeExec();
+    const t = mk(fake, { httpGet: async (u) => (urls.push(u), { status: 200 }) });
+    expect(await t.verify(intent)).toMatchObject({ healthy: true });
+    expect(urls).toEqual(['http://todo-api.teams-ai.svc.cluster.local:3000/health']);
+    expect(fake.lines('kubectl')).toEqual(['-n teams-ai rollout status deployment/todo-api --timeout=120s']);
+  });
+
+  it('exposes the in-cluster Service URL for the smoke gate', () => {
+    expect(mk(new FakeExec()).serviceUrlInCluster(intent)).toBe('http://todo-api.teams-ai.svc.cluster.local:3000');
+  });
+
+  it('keeps the docker build + kind load path when no registry is configured', async () => {
+    const fake = new FakeExec();
+    await new KindTarget({ exec: fake.exec, secrets, cluster: 'teams-ai', readFile: async () => manifest }).build(intent);
+    expect(fake.calls.map((c) => c.bin)).toEqual(['docker', 'kind']);
+  });
+});
+
 describe('runDeployment', () => {
   function target(over: Partial<DeployTarget> = {}, log: string[] = []): DeployTarget {
     return {

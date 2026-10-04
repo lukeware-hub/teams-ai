@@ -24,10 +24,20 @@ spec:
     metadata:
       labels: { app: omniroute }
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
       containers:
         - name: omniroute
           # Pin to the release scripts/wsl/omniroute/up.sh uses (OMNIROUTE_VERSION).
           image: diegosouzapw/omniroute:4.12.0
+          # Root filesystem stays writable: the image's write paths outside /app/data are not verified.
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ['ALL'] }
           ports:
             - { name: http, containerPort: 20128 }
           envFrom:

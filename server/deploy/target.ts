@@ -21,6 +21,8 @@ export interface DeployTarget {
   rollback(intent: DeploymentIntent, previous: string): Promise<void>;
   destroy(intent: DeploymentIntent): Promise<void>;
   serviceUrl?(intent: DeploymentIntent): Promise<string> | string;
+  /** Service DNS URL reachable from pods in the cluster (the smoke gate runs there as a Job); absent when the target has no in-cluster address. */
+  serviceUrlInCluster?(intent: DeploymentIntent): string;
 }
 
 export type DeployStage = 'validate' | 'build' | 'apply' | 'verify' | 'smoke';

@@ -12,3 +12,12 @@ patches:
       - op: add
         path: /spec/ports/0/nodePort
         value: 30787
+  # Node containerd pulls registry.teams-ai:5000/* through a mirror to localhost:30500 (scripts/wsl/kind-cluster.yaml).
+  - target: { kind: Service, name: registry }
+    patch: |-
+      - op: replace
+        path: /spec/type
+        value: NodePort
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30500
