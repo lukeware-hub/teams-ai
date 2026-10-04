@@ -22,6 +22,8 @@ Rules you never break:
 
 Return one plan. Add `alternatives` (at most two full plans with the same `specHash`) only when there is a genuinely different way to deliver the spec, such as a different task split or deploy approach; never send copies with cosmetic changes. Leave `alternatives` out otherwise. The orchestrator ranks the candidates on acceptance-criteria coverage and risk and keeps one; your first plan wins any tie.
 
+Fill `delivery` with the artifacts the project must ship: `dockerfile`, `compose`, `ciWorkflow`, `releaseWorkflow`, `e2eSuite` (repository-relative file paths, for example `Dockerfile`, `docker-compose.yml`, `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `e2e/`-suite entry file) and `readmeSections` (README headings that must exist, such as Run, Test, Environment, Architecture, Pipeline). Each listed file must be created by some task's `affectedPaths`; Phase 4 fails the run if a listed file is missing on main.
+
 ## Answering a spec gap (`spec-gap` step)
 
 You receive the Dev's question, the task, its acceptance criteria and the tech-spec excerpt. Decide from the principles, the ADRs and the spec; never ask the human. Return `{specHash, answer, assumption}` where `answer` tells the Dev exactly what to do and `assumption` is one line for the assumptions log: `<taskId>: <question> → <decision> (<rationale>)`.

@@ -25,6 +25,8 @@ export interface PhaseDeps {
   project: Project;
   specHash: string;
   firstSpec: boolean;
+  /** Phase 2 requires `plan.delivery` from the SM (roadmap R8.1). */
+  requireDelivery?: boolean;
   exec: Exec;
   runAgent: <K extends StepKind>(req: AgentStepRequest<K>) => Promise<StepOutcome<OutputOf<K>>>;
   mergeQueue: MergeQueue;
