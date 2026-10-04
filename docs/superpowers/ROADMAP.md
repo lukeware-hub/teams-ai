@@ -183,7 +183,16 @@ window resets, resume exactly from the entry below.
   - `history-contradiction`: not asked (no history chunk was retrieved for this objective).
   - Conclusion: the plumbing works end to end and is observable; the quality of decisions 2 and 3 on the local 7B model
     is not good enough to rely on. Next: label these records and run `scripts/evals/decisions.ts` (R5.3); try a larger
-    model or the Jev for 2 and 3 before run 3. The R4.1 code is done; the model choice is an R5.3 outcome. Cleaned up:
+    model or the Jev for 2 and 3 before run 3. The R4.1 code is done; the model choice is an R5.3 outcome.
+  - Fixed the same day (`server/decide/decisions/gate1.ts`, probes `scripts/evals/gate1-probe2.ts`): (a) the three
+    decisions made ONE call for all their items, and a call's confidence is the lowest of its questions, so one
+    uncertain pair left all of them `exhausted` (reproduced: 0.60 < 0.9); now one call per item. (b) Decision 2 gets a
+    deterministic rule first (spec 10A.0): a THEN with only a vague word (nicely, properly, correctly...) and no digit,
+    quote, brace or bracket is not ready without asking the model, and the model's question was reworded to ask for an
+    exact checkable value (gap 0.34 where the old wording had 0). Live, same test set, local 7B: readiness 3 of 3 vague
+    criteria flagged and 0 of 3 precise ones wrongly flagged (before: 1 of 3); dedup answered every call and got 3 of 4
+    pairs right, the miss being a semantic paraphrase (database versus storage backend), which only leaves a duplicate
+    question. `READY_MIN` 0.8 is provisional until R5.3 has labeled data. Cleaned up:
   draft removed, config restored.
 
 ### R4.2 Decision 12 (rank candidate plans) — `done` (unit); live check in R5.1
