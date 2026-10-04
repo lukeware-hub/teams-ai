@@ -163,6 +163,16 @@ window resets, resume exactly from the entry below.
 - Progress (2026-10-04): implemented (`server/decide/decisions/gate1.ts`, cycle, pack, session/registry, CLI)
   with unit tests (`test/decide/gate1.test.ts`, `test/refine/cycle.test.ts`; 750 passing). Left: the e2e refinement
   session with decisions on (needs Claude quota for PO/SM; local backend now available, R4.3).
+- E2E (2026-10-04, WSL, real UI server and real Claude PO/SM/Front, decisions on with the chain `local` only so the
+  Jev was not called, llama.cpp Qwen2.5-7B on the GPU): a new spec session on hello-app with a vague AC and a
+  requirement that contradicts hello-001 reached `answering` after one cycle. The llama server log grew by 56 lines
+  and about 11 completions (~1,600 tokens each), so the three decisions ran; the cycle finished without error.
+  Not proven: what the decisions answered. The PO and SM still produced near-duplicate questions on the empty `name`
+  parameter (`po-c1-0`, `sm-c1-0`), either because their `relatedAcIds` did not share an AC (decision 3 only pairs
+  questions that share one) or because the model answered below 0.5.
+- Finding: the UI server's decider has no `onDecision`, so Gate 1 decisions leave no record at all; R5.3 (evals) needs
+  them. Open: journal each decision into the refine event log, then re-run this e2e and read the answers. Cleaned up:
+  draft removed, config restored.
 
 ### R4.2 Decision 12 (rank candidate plans) — `done` (unit); live check in R5.1
 
