@@ -246,6 +246,18 @@ branch (768 passing, typecheck clean). Nothing below was applied to a cluster or
 | R7.5 | CI + pipeline e2e, plan 18 (`test/e2e/pipeline.e2e.test.ts`) | done | see the plan for the furthest milestone reached without Docker |
 | R7.6 | Ops: `/healthz`, `/metrics`, backup CronJob, runbooks (`docs/superpowers/ops/`) | done, unit | not run in a cluster |
 
+### Stage 7b — Second workflow (2026-10-04): the code items, each with an independent reviewer
+
+Five branches built, reviewed, merged and fixed (855 passing, typecheck clean). Plans 20–24 in `plans/`.
+
+| Item | What changed | Left |
+|------|--------------|------|
+| R7.4 runner (plan 20, audit C1/H3/M2) | Sandbox mandatory (two opt-ins to disable), per-step empty HOME with a copy of the credential only, nested-interpreter denies, worktree `.claude` settings ignored; a run now refuses an unsandboxed config before any phase | Not tried against the real `claude` CLI (`--setting-sources user`, empty HOME login, the wildcard deny syntax): needs a probe on the real CLI; the credential copy is still readable by the agent; the backend pod runs unsandboxed with both opt-ins until agent steps are their own pods |
+| R7.4 API (plan 21, H2/M1/M3–M5/L1–L6, plan 15 leftovers) | CSRF and clickjacking guards, clone-host allowlist, redaction fixes, shared SSE poller with a cap, security headers, configurable allowed Hosts | SSE idle timeouts; clone allowlist is `github.com` only by default; DNS-rebinding window on clone |
+| R7.1 Job runner (plan 22) | `GateExecutor` with `docker` (default) and `k8s` (Job per gate, JUnit and logs through kubectl), smoke reaches the Service by DNS; offline gates get a deny-all policy | Never run against a cluster; `kubectl logs` merges stdout/stderr; k8s executor requires the kind target (guarded at run start) |
+| R7.1 Deploy (plan 23, H4/M6) | Registry build via BuildKit, non-root image without docker.io, securityContext everywhere, agent-step egress allowlist (placeholder CIDRs), kind containerd mirror | CIDR placeholders must be replaced; compose file still mounts `/root` and the Docker socket (legacy path); image pins unchecked against a registry; nothing applied to a cluster |
+| Orchestrator (plan 24) | Explicit `blocked` status in the Dev/DevOps output (no spec-gap rounds burned), supervisor stop-marker rule | A hand-resumed stopped run still ends `drained` (run-state ignores RUN_RESUMED while draining); supervise CLI test covers argument validation only |
+
 - **Decision for the human:** the audit's C1/H3/H4 (agent steps with credentials readable and unrestricted egress;
   deny rules bypassable through `node`/`npm`; root container with the Docker socket) are made worse by the requested
   fully open NetworkPolicies. Recommended: keep ingress open, but give agent-step pods a default-deny egress plus an
