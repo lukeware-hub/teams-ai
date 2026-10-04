@@ -2,6 +2,29 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 /**
+ * Optional long-lived token (create one with `claude setup-token`, then `export CLAUDE_CODE_OAUTH_TOKEN=...` on the host).
+ * When set, claude steps get it through their environment and the credential file is neither copied nor written back: no
+ * refresh token rotates, so concurrent steps cannot race (plan 38).
+ */
+export const OAUTH_TOKEN_ENV = 'CLAUDE_CODE_OAUTH_TOKEN';
+
+export function hasOauthToken(hostEnv: NodeJS.ProcessEnv): boolean {
+  return (hostEnv[OAUTH_TOKEN_ENV] ?? '').trim() !== '';
+}
+
+/** expiresAt (epoch ms) of the host's stored login, or null when there is no readable credential. */
+export async function hostTokenExpiresAt(hostEnv: NodeJS.ProcessEnv): Promise<number | null> {
+  if (!hostEnv.HOME) return null;
+  try {
+    const raw = await fs.readFile(path.join(hostEnv.HOME, '.claude', '.credentials.json'), 'utf8');
+    const at = (JSON.parse(raw) as { claudeAiOauth?: { expiresAt?: unknown } }).claudeAiOauth?.expiresAt;
+    return typeof at === 'number' ? at : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Creates the empty HOME of one agent step, outside the worktree (audit C1). It starts empty so that
  * `~/.teams-ai/secrets`, `~/.config/gh`, `~/.kube` and friends do not exist for the agent. The only
  * thing copied in is what the `claude` CLI needs to log in with the subscription: a read-only copy
@@ -13,7 +36,7 @@ export async function createStepHome(parentDir: string, hostEnv: NodeJS.ProcessE
   const home = await fs.mkdtemp(path.join(parentDir, 'home-'));
   await fs.mkdir(path.join(home, 'tmp'), { recursive: true });
   const hostHome = hostEnv.HOME;
-  if (withClaudeLogin && hostHome) {
+  if (withClaudeLogin && hostHome && !hasOauthToken(hostEnv)) {
     const source = path.join(hostHome, '.claude', '.credentials.json');
     try {
       const data = await fs.readFile(source);
@@ -38,7 +61,7 @@ export async function removeStepHome(home: string): Promise<void> {
  */
 export async function syncBackCredentials(home: string, hostEnv: NodeJS.ProcessEnv): Promise<void> {
   const hostHome = hostEnv.HOME;
-  if (!hostHome) return;
+  if (!hostHome || hasOauthToken(hostEnv)) return;
   const read = async (file: string): Promise<{ raw: string; expiresAt: number; refresh: boolean } | null> => {
     try {
       const raw = await fs.readFile(file, 'utf8');
