@@ -42,6 +42,11 @@ export function RunView({ detail, events, ended, error, loadStep }: { detail: Ru
           {statusLabel(status)}
           {ended ? ' (encerrada)' : ''}
         </span>
+        {detail.report ? (
+          <Link data-testid="validation-link" to={`/runs/${detail.runId}/validation`}>
+            Validação →
+          </Link>
+        ) : null}
         {until ? <span data-testid="paused-until" className="hint">pausada até {hhmm(until)}</span> : null}
         {totalTasks ? (
           <span data-testid="task-progress" className="hint">
@@ -111,6 +116,7 @@ export function RunView({ detail, events, ended, error, loadStep }: { detail: Ru
                     <span className="task-meta">
                       tentativas {tk.attempts}
                       {tk.replanned ? ' · replanejada' : ''}
+                      {tk.def.origin && tk.def.origin !== 'plan' ? <span className={`tag tag-${tk.def.origin}`}> · {tk.def.origin}</span> : null}
                     </span>
                   </li>
                 );

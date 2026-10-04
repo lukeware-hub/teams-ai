@@ -48,9 +48,32 @@ export function phases(events: StoredEvent[]) {
     if (!cur) continue;
     if (e.type === 'DOCS_MERGED' && Number(e.data.phase) === cur.phase) Object.assign(cur, { endedAt: e.at, result: 'done' });
     if (e.type === 'PHASE_FAILED' && Number(e.data.phase) === cur.phase) Object.assign(cur, { endedAt: e.at, result: 'failed', reason: String(e.data.reason ?? '') });
-    if (e.type === 'RUN_FINISHED' && cur.result === 'running') Object.assign(cur, { endedAt: e.at, result: e.data.result === 'complete' ? 'done' : 'failed', reason: e.data.reason ? String(e.data.reason) : null });
+    if (e.type === 'VERIFICATION_PASSED' && cur.phase === 4) Object.assign(cur, { endedAt: e.at, result: 'done' });
+    if (e.type === 'VERIFICATION_FAILED' && cur.phase === 4 && Number(e.data.round) === 2) Object.assign(cur, { endedAt: e.at, result: 'failed', reason: 'verification failed' });
+    if (e.type === 'DEPLOY_VERIFIED' && cur.phase === 5) Object.assign(cur, { endedAt: e.at, result: 'done' });
+    if (e.type === 'DEPLOY_FAILED' && cur.phase === 5 && Number(e.data.attempt) >= 3) Object.assign(cur, { endedAt: e.at, result: 'failed', reason: String(e.data.detail ?? '') });
+    if (e.type === 'REPORT_READY' && cur.phase === 6) Object.assign(cur, { endedAt: e.at, result: 'done' });
+    if (e.type === 'RUN_FINISHED' && cur.result === 'running') Object.assign(cur, { endedAt: e.at, result: ['complete', 'awaiting-validation', 'done'].includes(String(e.data.result)) ? 'done' : 'failed', reason: e.data.reason ? String(e.data.reason) : null });
   }
   return out;
+}
+
+export function deployOutcome(events: StoredEvent[]) {
+  let attempts = 0;
+  let verified: { url: string } | null = null;
+  let lastFailure: { stage: string; detail: string } | null = null;
+  for (const e of events) {
+    if (e.type === 'DEPLOY_FAILED') {
+      attempts = Math.max(attempts, Number(e.data.attempt));
+      lastFailure = { stage: String(e.data.stage), detail: String(e.data.detail ?? '') };
+    }
+    if (e.type === 'DEPLOY_VERIFIED') {
+      attempts = Math.max(attempts, Number(e.data.attempt));
+      verified = { url: String(e.data.url) };
+      lastFailure = null;
+    }
+  }
+  return { attempts, verified, lastFailure };
 }
 
 export function pausedUntil(events: StoredEvent[]): string | null {

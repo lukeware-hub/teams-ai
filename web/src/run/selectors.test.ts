@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { StoredEvent } from '../api.js';
-import { evidence, pausedUntil, phases, runState, taskDetail, tokens } from './selectors.js';
+import { deployOutcome, evidence, pausedUntil, phases, runState, taskDetail, tokens } from './selectors.js';
 
 // jsdom gives import.meta.url an http: scheme; vitest runs with cwd = web/
 const events: StoredEvent[] = readFileSync(path.resolve('../test/fixtures/runs/hello-run.ndjson'), 'utf8')
@@ -58,4 +58,11 @@ describe('run selectors', () => {
       { acId: 'AC-002', tests: [] },
     ]);
   });
+});
+
+it('phases 4-6 end on their own events', () => {
+  const evs = (list: Array<[string, Record<string, unknown>]>) => list.map(([type, data], i) => ({ seq: i + 1, at: '2026-09-24T10:00:00.000Z', runId: 'r', specHash: 'h', type, kind: 'fact' as const, data }));
+  const out = phases(evs([['PHASE_STARTED', { phase: 4, round: 1 }], ['VERIFICATION_FAILED', { round: 1 }], ['PHASE_STARTED', { phase: 4, round: 2 }], ['VERIFICATION_PASSED', { round: 2 }], ['PHASE_STARTED', { phase: 5 }], ['DEPLOY_FAILED', { attempt: 1, stage: 'apply' }], ['DEPLOY_VERIFIED', { attempt: 2, url: 'http://x' }], ['PHASE_STARTED', { phase: 6 }], ['REPORT_READY', {}]]));
+  expect(out.map((p) => [p.phase, p.result])).toEqual([[4, 'running'], [4, 'done'], [5, 'done'], [6, 'done']]);
+  expect(deployOutcome(evs([['DEPLOY_FAILED', { attempt: 1, stage: 'apply', detail: 'busy' }], ['DEPLOY_VERIFIED', { attempt: 2, url: 'http://x' }]]))).toEqual({ attempts: 2, verified: { url: 'http://x' }, lastFailure: null });
 });

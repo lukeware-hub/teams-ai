@@ -16,6 +16,8 @@ const detail: RunDetail = {
   specId: 'hello-001',
   projectId: 'hello-app',
   status: 'paused:quota',
+  phase: 3,
+  report: null,
   state: { status: 'paused:quota', order: [], tasks: [] },
   finished: null,
   tokens: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, steps: 0 },
@@ -77,5 +79,11 @@ describe('RunView', () => {
     expect(screen.getByTestId('plan-artifact').textContent).toContain('node');
     expect(screen.getByTestId('plan-task-T1').textContent).toContain('AC-001');
     expect(screen.getByTestId('plan-task-T1').textContent).toContain('src/**');
+  });
+  it('tags fix tasks with their origin and links to validation once a report exists', () => {
+    const fix = [...events, { seq: 9999, at: '2026-09-24T12:00:00.000Z', runId: 'hello-001-r1', specHash: 'h', type: 'FIX_TASKS_PLANNED', kind: 'fact' as const, data: { tasks: [{ id: 'T900-fix-1', title: 'fix', description: 'd', criteriaRefs: [], dependsOn: [], affectedPaths: ['src'], owner: 'dev', origin: 'fix' }] } }];
+    render(view({ events: fix, detail: { ...detail, phase: 6, report: { summary: 's' } as never } }));
+    expect(screen.getByTestId('task-T900-fix-1').parentElement!.textContent).toContain('fix');
+    expect(screen.getByTestId('validation-link').getAttribute('href')).toBe('/runs/hello-001-r1/validation');
   });
 });
