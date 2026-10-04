@@ -379,6 +379,7 @@ export class Run {
     return {
       journal: this.journal, ws: this.deps.ws, spec: this.deps.spec, project: this.deps.project, specHash: this.deps.spec.specHash!, firstSpec: this.deps.firstSpec, exec: this.deps.exec,
       runAgent: this.runAgent,
+      decider: this.decider(),
       mergeQueue: this.mergeQueue,
       mergeDeps: this.mergeDeps(),
       packBase: this.packBase,

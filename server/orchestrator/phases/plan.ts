@@ -6,6 +6,7 @@ import type { StepOutcome } from '../../runner/step.js';
 import { canonicalJson } from '../../contracts/hash.js';
 import { RunEvent } from '../../pipeline/run-state.js';
 import { validatePlan } from '../../validators/plan.js';
+import { rankPlans } from '../../decide/decisions/plan-rank.js';
 import { Intent, OrchEvent } from '../events.js';
 import { planPack } from '../steps.js';
 import { PAUSED_AUTH, commitAndMergeDocs, docsCommitKey, docsWorktree, pauseForFailure, readDocs, specDir, type PhaseDeps, type PhaseResult } from './shared.js';
@@ -51,7 +52,15 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
       feedback = `Previous plan was rejected (${out.failure}):\n${out.errors.join('\n')}`;
       continue;
     }
-    const plan = out.value as Plan;
+    const { alternatives = [], ...primary } = out.value as Plan & { alternatives?: Plan[] };
+    const valid = alternatives.filter((p) => p.specHash === deps.specHash && validatePlan(p, deps.spec, { firstSpec: deps.firstSpec }).length === 0);
+    const candidates: Plan[] = [primary, ...valid];
+    let plan: Plan = primary;
+    if (candidates.length > 1) {
+      const ranking = deps.decider ? await rankPlans(deps.spec, candidates, deps.decider, { confidential: deps.project.confidential }) : { index: 0, source: 'default' as const };
+      plan = candidates[ranking.index]!;
+      await deps.journal.fact(OrchEvent.PlanChosen, { index: ranking.index, candidates: candidates.length, source: ranking.source });
+    }
     const rel = `${specDir(deps.spec.specId)}/plan.json`;
     await fs.mkdir(path.dirname(path.join(worktree, rel)), { recursive: true });
     await fs.writeFile(path.join(worktree, rel), `${JSON.stringify(JSON.parse(canonicalJson(plan)), null, 2)}\n`);

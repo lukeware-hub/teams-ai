@@ -20,6 +20,7 @@ export const OrchEvent = {
   SecurityChanges: 'SECURITY_CHANGES',
   ReviewProfileChosen: 'REVIEW_PROFILE_CHOSEN',
   ScopeDriftScored: 'SCOPE_DRIFT_SCORED',
+  PlanChosen: 'PLAN_CHOSEN',
   SpecGapAnswered: 'SPEC_GAP_ANSWERED',
   DecisionMade: 'DECISION_MADE',
   MergeLockAcquired: 'MERGE_LOCK_ACQUIRED',

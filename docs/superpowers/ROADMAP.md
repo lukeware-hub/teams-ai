@@ -108,10 +108,15 @@ window resets, resume exactly from the entry below.
   - B. Route the existing JEV consistency check (`server/refine/jev-validation.ts`) through the decider. No new questions.
   - C. Decide after reading the refinement cost in run 1 (recommended).
 
-### R4.2 Decision 12 (rank candidate plans) — `blocked`
+### R4.2 Decision 12 (rank candidate plans) — `done` (unit); live check in R5.1
 
-- Needs the SM contract to allow several candidate plans (`server/contracts/plan.ts`, `server/agents/outputs.ts`).
-  Optional for run 3.
+- Plan and outcome (2026-10-04): the `plan` step output may carry `alternatives` (at most two full plans, same
+  `specHash`; `server/agents/outputs.ts`); `plan.json` keeps the `Plan` contract. Phase 2 drops alternatives that
+  fail `validatePlan` or carry another `specHash`, asks `plan-rank` (one Score per candidate on AC coverage and
+  risk, `server/decide/decisions/plan-rank.ts`, escalates to the SM) and journals `PLAN_CHOSEN`; the first plan wins
+  ties and every unanswered case. `sm.md` offers alternatives only for a genuinely different approach.
+- Unit tests: `test/decide/plan-rank.test.ts`, Phase 2 ranking in `test/orchestrator/phases.test.ts` (740 passing).
+- Not covered: replan candidates (spec row 12 also names replan); the SM authors one replacement plan today.
 
 ### R4.3 `local-logprobs` backend on the host — `in progress` (optional)
 
@@ -154,7 +159,7 @@ window resets, resume exactly from the entry below.
 | 8 | CLI error classification | Wired 2026-10-04 (`cli-error`: quota / auth / schema / code; never escalates to Claude) |
 | 9 | Scope drift | Wired (`scope-drift`) |
 | 10–11 | Model tier and effort per task | Wired (`model-tier`) |
-| 12 | Rank candidate plans | Blocked on the SM contract (R4.2) |
+| 12 | Rank candidate plans | Wired 2026-10-04 for Phase 2 (`plan-rank`); replan not covered (R4.2) |
 
 ## Done log
 

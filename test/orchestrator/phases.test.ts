@@ -142,6 +142,23 @@ describe('Phase 2', () => {
     expect(gh.prs[0]!.title).toBe('docs(spec-001): plan');
   });
 
+  it('ranks SM alternatives with decision 12 and writes the winner without the alternatives field', async () => {
+    const primary = makePlan(spec);
+    const alt = makePlan(spec, { stack: 'node-alt' });
+    const invalid = { ...makePlan(spec, { stack: 'broken' }), specHash: `sha256:${'f'.repeat(64)}` };
+    const asked: unknown[][] = [];
+    const decider = { decide: async (...args: unknown[]) => { asked.push(args); return { answered: true as const, backend: 'jev' as const, escalated: false, answers: { c0: { type: 'score' as const, value: 1, probabilities: {}, confidence: 0.9 }, c1: { type: 'score' as const, value: 4, probabilities: {}, confidence: 0.9 } } }; } };
+    const r = await runPhase2({ ...deps(async () => ok({ ...primary, alternatives: [alt, invalid] })), decider }, '# Tech spec');
+    expect(r.ok).toBe(true);
+    expect(asked[0]![0]).toBe('plan-rank');
+    expect(String(asked[0]![1])).not.toContain('broken'); // a candidate with the wrong specHash is never ranked
+    await git(remote.repo, ['fetch', '-q', 'origin']);
+    const written = JSON.parse(await git(remote.repo, ['show', 'origin/main:docs/specs/spec-001/plan.json']));
+    expect(written.stack).toBe('node-alt');
+    expect(written.alternatives).toBeUndefined();
+    expect(journal.events.some((e) => e.type === OrchEvent.PlanChosen && e.data.index === 1 && e.data.candidates === 2)).toBe(true);
+  });
+
   it('feeds validation errors back and fails after the retries', async () => {
     const bad = { ...makePlan(spec), tasks: [] };
     const r = await runPhase2(deps(async () => ({ ok: false, failure: 'schema', errors: ['tasks: Too small: expected array to have >=1 items'], summary, sandboxDisabled: false })), '# Tech spec');

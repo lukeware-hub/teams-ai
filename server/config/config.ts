@@ -46,6 +46,7 @@ const DECISION_DEFAULTS: Partial<Record<DecisionId, Partial<DecisionConfig>>> = 
   'report-routing': { chain: ['jev', 'local'], escalateTo: 'po' },
   // Spec 10A.5 row 8 escalates to no one; a Claude escalation would itself be a step that can fail.
   'cli-error': { chain: ['jev', 'local'] },
+  'plan-rank': { escalateTo: 'sm' },
 };
 
 const PerDecisionSchema = z
