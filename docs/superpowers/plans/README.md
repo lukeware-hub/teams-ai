@@ -34,8 +34,8 @@ decision layer and plan 7's orchestrator.
 Ordered by what unblocks what. Spec references are to `docs/superpowers/specs/2026-09-23-teams-ai-poc-design.md`.
 
 - **Golden run comparison (spec §1.3) — only run 1 done.** The reference spec (TODO REST API, 5 criteria) now
-  exists at `test/fixtures/todo-api` (docs only; agents write the code); `scripts/integration/orchestrator.ts` is still
-  hard-wired to hello-app. Plan 7 records one live baseline run on hello-app
+  exists at `test/fixtures/todo-api` (docs only; agents write the code); run it with `TEAMS_AI_FIXTURE=todo-api` on
+  `scripts/integration/orchestrator.ts`. Plan 7 records one live baseline run on hello-app
   (`hello-001-r1`, decisions off, $3.33). Run 2 (OmniRoute for Test/DevOps, decisions off) and run 3 (decisions
   on) have not been executed. `decisions.enabled` defaulting to `false` (`server/config/config.ts:108`) is by
   design for runs 1–2 — it is not a bug; run 3 flips it per run, not in the default.
