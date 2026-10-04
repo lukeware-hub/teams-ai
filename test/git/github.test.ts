@@ -88,6 +88,13 @@ describe('ensurePr and findMergedPr', () => {
     const none = new FakeExec().onArgs('gh', ['pr', 'list'], () => ({ stdout: '[{"number":45,"state":"CLOSED"}]' }));
     expect(await findMergedPr({ cwd, head: input.head, base: 'main' }, none.exec)).toBeNull();
   });
+
+  it('with a head sha, a merged PR of an older tip of a reused branch does not count', async () => {
+    const fake = new FakeExec().onArgs('gh', ['pr', 'list'], () => ({ stdout: '[{"number":2,"state":"MERGED","headRefOid":"old"}]' }));
+    expect(await findMergedPr({ cwd, head: input.head, base: 'main', headSha: 'new' }, fake.exec)).toBeNull();
+    expect(await findMergedPr({ cwd, head: input.head, base: 'main', headSha: 'old' }, fake.exec)).toBe(2);
+    expect(fake.lines('gh')[0]).toContain('number,state,headRefOid');
+  });
 });
 
 describe('prState and mergePr', () => {

@@ -23,7 +23,7 @@ export class FakeGh {
         case 'list': {
           const state = arg('--state');
           const rows = this.prs.filter((p) => p.head === arg('--head') && p.base === arg('--base') && (state === 'all' || p.state === state.toUpperCase()));
-          return { stdout: JSON.stringify(rows.map((p) => ({ number: p.number, url: `https://github.example/o/r/pull/${p.number}`, state: p.state }))) };
+          return { stdout: JSON.stringify(rows.map((p) => ({ number: p.number, url: `https://github.example/o/r/pull/${p.number}`, state: p.state, headRefOid: p.headRefOid }))) };
         }
         case 'create': {
           const head = arg('--head');

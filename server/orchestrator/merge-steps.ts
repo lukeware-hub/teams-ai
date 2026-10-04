@@ -59,7 +59,7 @@ async function guarded(journal: Journal, type: (typeof Intent)[keyof typeof Inte
 function common(deps: MergeStepsDeps, worktree: string, branch: string, title: string, body: () => Promise<string>, runGates: boolean, taskId: string | null = null) {
   const repo = deps.ws.repo;
   return {
-    alreadyMerged: () => findMergedPr({ cwd: repo, head: branch, base: 'main' }, deps.ghExec),
+    alreadyMerged: async () => findMergedPr({ cwd: repo, head: branch, base: 'main', headSha: await headSha(worktree, deps.exec).catch(() => undefined) }, deps.ghExec),
     rebase: async () => {
       await gitFetch(repo, deps.exec);
       return rebaseOnto(worktree, 'origin/main', deps.exec);
