@@ -107,9 +107,9 @@ export const Config = z.object({
     })
     .prefault({}),
   github: z.object({ owner: z.string().min(1).optional() }).prefault({}),
-  /** The Claude Code sandbox (bubblewrap) for agent steps. Off only where the process already runs inside
-   * an isolation boundary that the sandbox cannot nest in, e.g. as root in the backend container. */
-  sandbox: z.object({ enabled: z.boolean().default(true) }).prefault({}),
+  /** The Claude Code sandbox (bubblewrap) for agent steps. Mandatory: `enabled: false` is refused unless
+   * `unsafeNoSandbox` is true AND the env TEAMS_AI_UNSAFE_NO_SANDBOX=1 is set (see runner/sandbox-policy.ts). */
+  sandbox: z.object({ enabled: z.boolean().default(true), unsafeNoSandbox: z.boolean().default(false) }).prefault({}),
   docker: z
     .object({
       /** When the orchestrator itself runs in a container, the daemon it talks to cannot see its paths.

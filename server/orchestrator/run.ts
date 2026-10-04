@@ -194,7 +194,7 @@ export class Run {
       settingsDir: path.posix.join(runDir(ws, this.runId), 'settings'),
       workspacesRoot: ws.root,
       network: { allowedDomains: ['registry.npmjs.org', ...(cfg.omniroute.enabled ? ['localhost'] : [])] },
-      sandbox: { enabled: cfg.sandbox.enabled },
+      sandbox: { enabled: cfg.sandbox.enabled, unsafeNoSandbox: cfg.sandbox.unsafeNoSandbox },
       clock: this.clock,
       // cli-error's chain never reaches Claude, so classifying a failed step cannot start another step.
       classifyUnknown: (input) => classifyCliError(input, this.decider(), { confidential: this.deps.project.confidential }),
