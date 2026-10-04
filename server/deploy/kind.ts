@@ -1,6 +1,6 @@
 import path from 'node:path';
 import type { Exec } from '../exec/command.js';
-import { httpGet, imageName, imageRef, waitHealthy, type DeploymentIntent, type DeployTarget, type HttpGet } from './target.js';
+import { archivePath, httpGet, imageName, imageRef, waitHealthy, type DeploymentIntent, type DeployTarget, type HttpGet } from './target.js';
 
 const TIMEOUT = 600_000;
 
@@ -86,6 +86,8 @@ export class KindTarget implements DeployTarget {
 
   async build(intent: DeploymentIntent): Promise<void> {
     const reg = this.deps.registry;
+    const archive = archivePath(intent);
+    if (archive) await this.deps.exec({ bin: 'mkdir', args: ['-p', archive.slice(0, archive.lastIndexOf('/'))], timeoutMs: 60_000 });
     if (reg) {
       const name = `${reg.pushHost}/${this.registryPath(intent)}:${intent.tag}`;
       const r = await this.deps.exec({
@@ -94,6 +96,7 @@ export class KindTarget implements DeployTarget {
           '--addr', reg.buildkitAddr, 'build', '--frontend', 'dockerfile.v0',
           '--local', `context=${intent.contextDir}`, '--local', `dockerfile=${intent.contextDir}`,
           '--output', `type=image,name=${name},push=true,registry.insecure=true`,
+          ...(archive ? ['--output', `type=oci,dest=${archive}`] : []),
         ],
         timeoutMs: TIMEOUT,
       });
@@ -102,6 +105,10 @@ export class KindTarget implements DeployTarget {
     }
     const build = await this.deps.exec({ bin: 'docker', args: ['build', '-t', this.ref(intent), intent.contextDir], timeoutMs: TIMEOUT });
     if (build.exitCode !== 0) throw new Error(`docker build failed: ${build.stderr.slice(-2000)}`);
+    if (archive) {
+      const save = await this.deps.exec({ bin: 'docker', args: ['save', '-o', archive, this.ref(intent)], timeoutMs: TIMEOUT });
+      if (save.exitCode !== 0) throw new Error(`docker save failed: ${save.stderr.slice(-2000)}`);
+    }
     const load = await this.deps.exec({ bin: 'kind', args: ['load', 'docker-image', this.ref(intent), '--name', this.deps.cluster], timeoutMs: TIMEOUT });
     if (load.exitCode !== 0) throw new Error(`kind load failed: ${load.stderr.slice(-2000)}`);
   }

@@ -1,5 +1,5 @@
 import type { Exec } from '../exec/command.js';
-import { imageRef, waitHealthy, type DeploymentIntent, type DeployTarget, type HttpGet } from './target.js';
+import { archivePath, imageRef, waitHealthy, type DeploymentIntent, type DeployTarget, type HttpGet } from './target.js';
 
 const TIMEOUT = 600_000;
 
@@ -64,6 +64,12 @@ export class DockerLocalTarget implements DeployTarget {
     if (intent.compose) return; // `compose up --build` builds in apply
     const r = await this.docker(['build', '-t', imageRef(intent), intent.contextDir], undefined, TIMEOUT);
     if (r.exitCode !== 0) throw new Error(`docker build failed: ${r.stderr.slice(-2000)}`);
+    const archive = archivePath(intent);
+    if (archive) {
+      await this.deps.exec({ bin: 'mkdir', args: ['-p', archive.slice(0, archive.lastIndexOf('/'))], timeoutMs: 60_000 });
+      const save = await this.docker(['save', '-o', archive, imageRef(intent)], undefined, TIMEOUT);
+      if (save.exitCode !== 0) throw new Error(`docker save failed: ${save.stderr.slice(-2000)}`);
+    }
   }
 
   async currentImage(intent: DeploymentIntent): Promise<string | null> {

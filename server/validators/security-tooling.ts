@@ -1,4 +1,5 @@
 import type { Gate, Plan } from '../contracts/plan.js';
+import { INSTALLER_COMMAND, INSTALLER_PATH } from './tools-installer.js';
 
 /** Gate that makes the scanners available; gates are separate containers, so it installs into the worktree. */
 export const TOOLS_GATE = 'security-tools';
@@ -22,7 +23,8 @@ export function prescribedCommands(kind: StackKind): Record<string, string[]> {
     'secret-scan': ['gitleaks detect --no-git --source . --redact --exit-code 1'],
     sast: ['semgrep scan --config auto --severity ERROR --error --metrics off .'],
     'dependency-scan': dependency,
-    'image-scan': ['trivy image --input <image-archive> --severity CRITICAL --exit-code 1'],
+    // Gates have no docker daemon, so the always-available scan reads the Dockerfile/manifests and the source tree.
+    'image-scan': ['trivy config --severity CRITICAL --exit-code 1 .', 'trivy fs --scanners vuln,secret --severity CRITICAL --exit-code 1 .'],
   };
 }
 
@@ -71,12 +73,16 @@ const RULES: Rule[] = [
   },
   {
     name: 'image-scan',
-    what: 'trivy image with --severity CRITICAL --exit-code 1',
-    allowed: (c) => /^trivy\s+image\b/.test(c),
-    extra: (g) => [
-      ...(/--severity[= ]CRITICAL\b/.test(g.command) ? [] : ['--severity CRITICAL']),
-      ...(/--exit-code[= ]1\b/.test(g.command) ? [] : ['--exit-code 1']),
-    ],
+    what: 'trivy config and trivy fs (joined with &&), each with --severity CRITICAL --exit-code 1',
+    allowed: (c) => c.split('&&').every((part) => /^trivy\s+(config|fs)\b/.test(bare(part))),
+    extra: (g) => {
+      const parts = g.command.split('&&').map(bare);
+      const missing: string[] = [];
+      for (const sub of ['config', 'fs']) if (!parts.some((p) => new RegExp(`^trivy\\s+${sub}\\b`).test(p))) missing.push(`a trivy ${sub} command`);
+      if (!parts.every((p) => /--severity[= ]CRITICAL\b/.test(p))) missing.push('--severity CRITICAL on every trivy command');
+      if (!parts.every((p) => /--exit-code[= ]1\b/.test(p))) missing.push('--exit-code 1 on every trivy command');
+      return missing;
+    },
     egress: () => true,
   },
 ];
@@ -88,9 +94,10 @@ export function validateSecurityGates(plan: Plan): string[] {
   const index = (name: string) => plan.gates.findIndex((g) => g.name === name);
 
   const tools = plan.gates.find((g) => g.name === TOOLS_GATE);
-  if (!tools) errors.push(`missing gate ${TOOLS_GATE}: a blocking egress gate that installs gitleaks, semgrep, osv-scanner and trivy into ${TOOLS_DIR}`);
+  if (!tools) errors.push(`missing gate ${TOOLS_GATE}: a blocking egress gate that runs "${INSTALLER_COMMAND}" to install gitleaks, semgrep, osv-scanner and trivy into ${TOOLS_DIR}`);
   else {
     if (!tools.blocking) errors.push(`gate ${TOOLS_GATE} must be blocking`);
+    if (bare(tools.command) !== INSTALLER_COMMAND) errors.push(`gate ${TOOLS_GATE} must run exactly "${INSTALLER_COMMAND}" (the installer the orchestrator renders); got "${tools.command}"`);
     if (tools.network !== 'egress') errors.push(`gate ${TOOLS_GATE} needs network egress to download the tools`);
   }
 
@@ -125,11 +132,11 @@ export function securityToolingRules(): string {
   const other = prescribedCommands('other');
   return [
     `- security gates are required, all blocking, in this order: ${TOOLS_GATE}, secret-scan, sast, dependency-scan, image-scan (image-scan after build)`,
-    `  - ${TOOLS_GATE} (network egress): installs gitleaks, semgrep, osv-scanner and trivy into ${TOOLS_DIR} of the worktree (gates are separate containers, only the worktree persists; add .tools/ to .gitignore); gateImage must therefore have curl, tar and python3/pip (e.g. node:22-bookworm, not -slim). Every other security gate command starts with ${PATH_PREFIX} so it finds them`,
+    `  - ${TOOLS_GATE} (network egress): command exactly \`${INSTALLER_COMMAND}\`; the orchestrator renders ${INSTALLER_PATH} (pinned versions, sha256-checked) before gates run and it installs gitleaks, semgrep, osv-scanner and trivy into ${TOOLS_DIR} of the worktree (gates are separate containers, only the worktree persists; add .tools/ to .gitignore); gateImage must therefore have curl, tar, sha256sum and python3/pip (e.g. node:22-bookworm, not -slim). Every other security gate command starts with ${PATH_PREFIX} so it finds them`,
     `  - secret-scan: ${PATH_PREFIX} ${other['secret-scan']![0]}`,
     `  - sast (egress, rules are downloaded): ${PATH_PREFIX} ${other.sast![0]}`,
     `  - dependency-scan (egress): node stacks ${PATH_PREFIX} ${node['dependency-scan']![0]} (or ${node['dependency-scan']![1]}); python stacks ${py['dependency-scan']![0]} (or ${py['dependency-scan']![1]}); other stacks ${other['dependency-scan']![0]}`,
-    `  - image-scan (egress, after build): ${PATH_PREFIX} ${other['image-scan']![0]}; <image-archive> is the image tarball the build writes inside the worktree (e.g. .tools/image.tar)`,
+    `  - image-scan (egress, after build): ${other['image-scan']!.map((c) => `${PATH_PREFIX} ${c}`).join(' && ')} (each command needs its own PATH prefix; gates have no docker, so the Dockerfile, manifests and source tree are scanned instead of an image)`,
     '  - never weaken a security gate: no `|| true`, no `--exit-code 0`, no non-blocking gates; other tools are rejected',
   ].join('\n');
 }

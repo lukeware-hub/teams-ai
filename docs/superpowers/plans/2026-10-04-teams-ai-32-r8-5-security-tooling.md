@@ -30,6 +30,8 @@ The generated project's security gates use prescribed tools and block on high fi
 Gates have no docker, so `trivy image` needs an image archive (`--input`) that an earlier gate produced; the plan pack
 tells the SM to name it, but how the archive is produced is not wired by this item.
 
+Superseded by plan 37: image-scan is 	rivy config + 	rivy fs, and the install gate runs a rendered pinned installer.
+
 ## Files
 
 server/validators/security-tooling.ts, server/validators/plan.ts, server/orchestrator/steps.ts, phases/shared.ts,

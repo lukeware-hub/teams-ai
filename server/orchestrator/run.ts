@@ -15,6 +15,8 @@ import type { Decider } from '../decide/decider.js';
 import { classifyCliError } from '../decide/decisions/cli-error.js';
 import { sandboxPolicyViolation } from '../runner/sandbox-policy.js';
 import type { Exec } from '../exec/command.js';
+import { TOOLS_GATE } from '../validators/security-tooling.js';
+import { writeToolsInstaller } from './tools-install.js';
 import { runGates, TAIL_CHARS, type GateExecutor, type GateResult } from '../exec/gate-runner.js';
 import { git } from '../git/git.js';
 import { MergeQueue } from '../git/merge-queue.js';
@@ -273,6 +275,7 @@ export class Run {
     const plan = this.plan!;
     const install = await this.installDeps(worktree);
     if (install) return { results: [install], blockingFailure: install };
+    if (plan.gates.some((g) => g.name === TOOLS_GATE)) await writeToolsInstaller(worktree);
     return runGates(
       plan.gates.filter((g) => g.blocking && g.name !== E2E_GATE), // the e2e gate runs in Phase 5 only
       {
