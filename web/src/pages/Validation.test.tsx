@@ -56,6 +56,12 @@ describe('ValidationView', () => {
     expect(screen.getByTestId('actions-note').textContent).toContain('deploy-failed');
   });
 
+  it('shows an action error next to the buttons without hiding them', () => {
+    render(<MemoryRouter><ValidationView detail={detail()} specStatus="awaiting-validation" actionError="409 spec is not awaiting validation" onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
+    expect(screen.getByTestId('action-error').textContent).toContain('409');
+    expect((screen.getByTestId('complete-spec') as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('without a report yet it says so', () => {
     render(<MemoryRouter><ValidationView detail={detail({ report: null, status: 'running', phase: 3 })} specStatus="running" onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
     expect(screen.getByText(/no report yet/i)).toBeTruthy();

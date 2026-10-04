@@ -18,7 +18,7 @@ function writeChecks(runId: string, checks: Record<string, boolean>): void {
   }
 }
 
-export function ValidationView({ detail, specStatus, onReport, onComplete }: { detail: RunDetail; specStatus: string; onReport: (text: string) => void; onComplete: () => void }) {
+export function ValidationView({ detail, specStatus, actionError = null, onReport, onComplete }: { detail: RunDetail; specStatus: string; actionError?: string | null; onReport: (text: string) => void; onComplete: () => void }) {
   const [checks, setChecks] = useState<Record<string, boolean>>(() => readChecks(detail.runId));
   const [text, setText] = useState('');
   const report: Report | null = detail.report;
@@ -152,6 +152,7 @@ export function ValidationView({ detail, specStatus, onReport, onComplete }: { d
       <section className="card">
         <h2>Actions</h2>
         {note ? <p data-testid="actions-note" className="hint">{note}</p> : null}
+        {actionError ? <p data-testid="action-error" className="error">{actionError}</p> : null}
         <textarea data-testid="problem-text" value={text} onChange={(e) => setText(e.target.value)} placeholder="What went wrong? This reopens refinement with your report." disabled={!enabled} />
         <p className="controls">
           <button data-testid="report-problem" disabled={!enabled || text.trim() === ''} onClick={() => onReport(text.trim())}>
@@ -172,6 +173,7 @@ export function ValidationPage() {
   const [detail, setDetail] = useState<RunDetail | null>(null);
   const [specStatus, setSpecStatus] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [polling, setPolling] = useState(false);
   const load = async () => {
     if (!runId) return;
@@ -197,17 +199,20 @@ export function ValidationPage() {
     <ValidationView
       detail={detail}
       specStatus={specStatus}
+      actionError={actionError}
       onReport={(text) => {
+        setActionError(null);
         runApi
           .reportProblem(detail.projectId, detail.specId, text)
           .then(() => navigate(`/refine/${detail.projectId}/${detail.specId}`))
-          .catch((e: Error) => setError(e.message));
+          .catch((e: Error) => setActionError(e.message));
       }}
       onComplete={() => {
+        setActionError(null);
         runApi
           .complete(detail.projectId, detail.specId)
           .then(() => setPolling(true))
-          .catch((e: Error) => setError(e.message));
+          .catch((e: Error) => setActionError(e.message));
       }}
     />
   );

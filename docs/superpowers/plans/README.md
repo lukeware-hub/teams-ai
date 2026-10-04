@@ -21,7 +21,7 @@ was implemented. Web UI block A (`2026-09-24-run-api-execution-ui-design.md`) is
 | 10 | [`2026-09-24-teams-ai-10-run-api-execution-ui.md`](2026-09-24-teams-ai-10-run-api-execution-ui.md) | Implemented — run API, SSE journal stream with `Last-Event-ID` replay, Projects and Execution screens, graceful stop on SIGTERM; live-checked in WSL against the recorded `hello-001-r1` journal (see the plan's Findings). |
 | 11 | [`2026-09-24-teams-ai-11-refinement-ui.md`](2026-09-24-teams-ai-11-refinement-ui.md) | Implemented and unit/integration tested — Gate 1 refinement session (derive/refine cycle, questions, doc patches, secrets), Phase 0 bootstrap, Refinement screen; live-checked in WSL through the derive step's real failure path, blocked by account quota before the happy path (see the plan's Findings). |
 | 12 | [`2026-09-24-teams-ai-12-phases-4-6-validation-ui.md`](2026-09-24-teams-ai-12-phases-4-6-validation-ui.md) | Implemented and live-checked on docker-local (deploy-failed and awaiting-validation -> done paths) — phases 4 (verification + one fix round), 5 (deploy, rollback, smoke gate, deploy-fix tasks), 6 (report merged with awaiting-validation), `spec complete`, Validation screen (see the plan's Findings). |
-| 13 | [`2026-10-04-teams-ai-13-security-review.md`](2026-10-04-teams-ai-13-security-review.md) | Implemented and unit-tested, live check not run — read-only `sec` agent reviews each task diff after Test and before merge; critical/high findings go back to Dev; findings reach the report, Validation screen and task detail. Design: `specs/2026-10-04-security-review-design.md`. |
+| 13 | [`2026-10-04-teams-ai-13-security-review.md`](2026-10-04-teams-ai-13-security-review.md) | Implemented, unit-tested and live-checked with a single `sec` step (seeded command injection returns `critical`; full hello-app run not done) — read-only `sec` agent reviews each task diff after Test and before merge; critical/high findings go back to Dev; findings reach the report, Validation screen and task detail. Design: `specs/2026-10-04-security-review-design.md`. |
 
 Note: plan 6 (knowledge) was originally numbered plan 5, duplicating the decision-layer plan's number; it was
 renumbered to 6 in commit `134bcf3` ("docs: renumber the knowledge plan to 06 (two plans carried the number 05)").
@@ -48,7 +48,7 @@ Ordered by what unblocks what. Spec references are to `docs/superpowers/specs/20
   config mention it.
 - **Decision 7 (validation report routing) — call site now exists** (Validation → `continue { report }`); the
   System 1 question that routes the text to PO or SM first is still unwired.
-- **Plan 12 — open items.** Report-step failure in the live run, Validation page losing its buttons after an action error, `kind` target and "Report problem" unchecked; see the plan's Findings.
+- **Plan 12 — open items.** Report-step failure in the live run, `kind` target and "Report problem" unchecked (the Validation page no longer loses its buttons after an action error); see the plan's Findings.
 - **Plan 10 — items not covered by the live check.** A run has not yet been started, stopped and resumed from
   the browser (the live check replayed the recorded `hello-001-r1` journal only, to avoid a $3 run); whether
   SIGTERM reaches the orchestrator through the `tsx` wrapper is therefore unverified — see plan 10 Findings.

@@ -12,13 +12,17 @@ Design: `docs/superpowers/specs/2026-10-04-security-review-design.md`.
 
 ## Status
 
-Implemented and unit-tested (commits `e024114`, `ee68ebe`). Live check not run.
+Implemented, unit-tested (commits `e024114`, `ee68ebe`) and live-checked on WSL with a single `sec` step (`scripts/smoke/sec-step.ts`, $0.015). Full hello-app run with the gate still not run.
 
 ## Findings
 
 - Test fakes that answer unknown step kinds with a Dev output made every task block silently after the gate was added; each fake must now script `security` explicitly.
 - Shell-escaped multi-line edits corrupted source twice (a literal newline inside a string); edits were redone with the editor tool and verified by typecheck.
 
-## Live check (to do)
+## Live check
 
-Run the hello-app fixture on a WSL host and confirm: `sec` returns valid JSON on the real CLI, reads files under `dontAsk` with an empty allow list, and a seeded vulnerability (e.g. string-built shell command) comes back `high` and returns to Dev.
+`npx tsx scripts/smoke/sec-step.ts` on WSL (Ubuntu-24.04, real `claude` CLI, sandbox tools on) against a seeded `execSync('echo hello ' + name)`:
+
+- `sec` reads files under `dontAsk` with an empty allow list (3 turns, no permission denial).
+- First run failed schema validation: the agent returned `issue` instead of `problem` and omitted `severity`, because `sec.md` described the fields in prose. `sec.md` now lists the exact field names; second run returned valid JSON, `severity: critical`, `decision: changes`.
+- Not covered: the full gate inside a hello-app run (finding returns to Dev, Dev fixes, `sec` approves).

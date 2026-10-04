@@ -2119,6 +2119,6 @@ Defects found and fixed here (each with a test that failed first)
 Open
 - Docker Desktop on WSL: host and gate containers need one address both can reach. `127.0.0.1` fails inside the gate container; `172.17.0.1` and `host.docker.internal` fail from the WSL host. Setting `docker.serviceHost` to the WSL VM IP (`hostname -I`) with `publishBind: 0.0.0.0` worked. The compose backend (orchestrator in a container, `host.docker.internal`) was not exercised.
 - The report agent step failed in `r16` (`Invalid input: expected object, received null`), so the Validation page shows an empty exploratory script and a failure summary. Not diagnosed.
-- On a failed action (e.g. 409 on Complete spec) `ValidationPage` replaces the whole screen with the error text; reload is needed to get the buttons back.
+- On a failed action (e.g. 409 on Complete spec) `ValidationPage` replaced the whole screen with the error text. Fixed: the error now shows in the Actions section (`action-error`) and the buttons stay.
 - Smoke test ids render with HTML entities (`&quot;`) because the Node JUnit reporter double-escapes quotes.
 - Not checked: "Report problem" from the UI, `kind` target.
