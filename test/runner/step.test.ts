@@ -120,6 +120,22 @@ describe('runStep', () => {
     }
   });
 
+  it('asks classifyUnknown only when no rule matched, and uses its answer', async () => {
+    const odd = await writeStream('odd.ndjson', [init, { type: 'result', subtype: 'error_during_execution', is_error: true, api_error_status: 529, duration_ms: 5, num_turns: 1, result: 'Overloaded, retry after 5h', session_id: 's' }]);
+    withFake({ FAKE_CLAUDE_FIXTURE: odd });
+    const seen: unknown[] = [];
+    const outcome = await runStep(request(), { ...deps, classifyUnknown: async (input) => { seen.push(input); return 'quota'; } });
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.failure).toBe('quota');
+    expect(seen).toEqual([expect.objectContaining({ apiErrorStatus: 529, resultText: 'Overloaded, retry after 5h', subtype: 'error_during_execution' })]);
+
+    const capped = await writeStream('capped-no-ask.ndjson', [init, { type: 'result', subtype: 'error_max_turns', is_error: true, duration_ms: 5, num_turns: 25, session_id: 's' }]);
+    withFake({ FAKE_CLAUDE_FIXTURE: capped });
+    seen.length = 0;
+    await runStep(request(), { ...deps, classifyUnknown: async () => 'quota' as const });
+    expect(seen).toEqual([]);
+  });
+
   it('classifies the CLI turn cap as timeout, like the runner cap', async () => {
     // No compaction in this stream: compaction outranks every other classification.
     const capped = await writeStream('max-turns.ndjson', [init, { type: 'result', subtype: 'error_max_turns', is_error: true, duration_ms: 90000, num_turns: 25, session_id: 's' }]);

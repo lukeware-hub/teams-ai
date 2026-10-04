@@ -11,6 +11,8 @@ import type { Plan, PlanTask } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
 import { createDecider } from '../decide/create-decider.js';
+import type { Decider } from '../decide/decider.js';
+import { classifyCliError } from '../decide/decisions/cli-error.js';
 import type { Exec } from '../exec/command.js';
 import { runGates, TAIL_CHARS, type GateResult } from '../exec/gate-runner.js';
 import { git } from '../git/git.js';
@@ -194,6 +196,8 @@ export class Run {
       network: { allowedDomains: ['registry.npmjs.org', ...(cfg.omniroute.enabled ? ['localhost'] : [])] },
       sandbox: { enabled: cfg.sandbox.enabled },
       clock: this.clock,
+      // cli-error's chain never reaches Claude, so classifying a failed step cannot start another step.
+      classifyUnknown: (input) => classifyCliError(input, this.decider(), { confidential: this.deps.project.confidential }),
     };
   }
 
@@ -306,9 +310,12 @@ export class Run {
     return { source: 'graph', affected };
   };
 
-  private runnerDeps(): TaskRunnerDeps {
+  private system1?: Decider;
+
+  /** One decider per run: task steps and the runner's CLI error classification (decision 8) share its journal. */
+  private decider(): Decider {
     const { cfg, project, spec, secrets } = this.deps;
-    const decider = createDecider({
+    return (this.system1 ??= createDecider({
       cfg,
       secrets,
       accounting: this.accounting,
@@ -329,7 +336,12 @@ export class Run {
       onDecision: (record) => {
         this.journal.fact(OrchEvent.DecisionMade, { record: JSON.parse(JSON.stringify(record)) }).catch((err: Error) => this.log(`decision not journaled: ${err.message}`));
       },
-    });
+    }));
+  }
+
+  private runnerDeps(): TaskRunnerDeps {
+    const { cfg, project, spec } = this.deps;
+    const decider = this.decider();
     return {
       journal: this.journal, ws: this.deps.ws, spec, project, plan: this.plan!, specHash: spec.specHash!, firstSpec: this.deps.firstSpec,
       exec: this.deps.exec,

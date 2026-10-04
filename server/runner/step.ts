@@ -6,6 +6,7 @@ import { ALWAYS_DENIED } from '../agents/registry.js';
 import type { Accounting } from '../budget/accounting.js';
 import type { ProviderProfile, Role } from '../config/config.js';
 import type { Effort } from '../decide/decisions/model-tier.js';
+import type { CliErrorInput } from '../decide/decisions/cli-error.js';
 import type { FailureKind } from '../scheduler/retry-policy.js';
 import { validateAgentOutput } from '../validators/agent-output.js';
 import type { RefContext, References } from '../validators/references.js';
@@ -58,6 +59,8 @@ export interface StepDeps {
   hostEnv?: NodeJS.ProcessEnv;
   onEvent?: (line: string) => void;
   clock?: () => Date;
+  /** Spec 10A.5 decision 8: asked only when no deterministic rule matched (the `code` fallthrough). */
+  classifyUnknown?: (input: CliErrorInput) => Promise<FailureKind>;
 }
 
 const QUOTA_TEXT = /usage limit|rate limit|out of .*quota/i;
@@ -181,11 +184,21 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
     at: (deps.clock ?? (() => new Date()))().toISOString(),
   });
 
-  const failure = classifyFailure(raw);
+  let failure = classifyFailure(raw);
   if (failure) {
     // Agent-controlled text and CLI stderr flow into the event store and UI: never with credentials.
     const known = req.omniroute ? [req.omniroute.token] : [];
     const message = redactSecrets(raw.summary.resultText ?? raw.stderr.slice(0, 500), known);
+    if (failure === 'code' && deps.classifyUnknown) {
+      const s = raw.summary;
+      failure = await deps.classifyUnknown({
+        resultText: s.resultText === null ? null : redactSecrets(s.resultText, known),
+        stderr: redactSecrets(raw.stderr.slice(-2000), known),
+        apiErrorStatus: s.apiErrorStatus,
+        subtype: s.subtype,
+        terminalReason: s.terminalReason,
+      });
+    }
     return { ok: false, failure, errors: [message], summary: raw.summary, sandboxDisabled: raw.sandboxDisabled };
   }
 

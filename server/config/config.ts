@@ -44,6 +44,8 @@ const DECISION_DEFAULTS: Partial<Record<DecisionId, Partial<DecisionConfig>>> = 
   'model-tier': { chain: ['jev', 'local'] },
   // Runs in the UI server, which has no claude step to escalate to; the PO reads the report anyway.
   'report-routing': { chain: ['jev', 'local'], escalateTo: 'po' },
+  // Spec 10A.5 row 8 escalates to no one; a Claude escalation would itself be a step that can fail.
+  'cli-error': { chain: ['jev', 'local'] },
 };
 
 const PerDecisionSchema = z

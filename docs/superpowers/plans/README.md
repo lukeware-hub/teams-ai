@@ -39,9 +39,11 @@ Ordered by what unblocks what. Spec references are to `docs/superpowers/specs/20
   (`hello-001-r1`, decisions off, $3.33). Run 2 (OmniRoute for Test/DevOps, decisions off) and run 3 (decisions
   on) have not been executed. `decisions.enabled` defaulting to `false` (`server/config/config.ts:108`) is by
   design for runs 1–2 — it is not a bug; run 3 flips it per run, not in the default.
-- **Decision 8 (CLI error classification) — deterministic rules only.** `classifyFailure`
-  (`server/runner/step.ts:69`) falls through to `code`; the spec says System 1 runs "when rules do not match" with
-  default `other`. Low value until a real run shows misclassified failures; leave for after run 3.
+- **Decision 8 (CLI error classification) — wired.** When `classifyFailure` falls through to `code`, `runStep`
+  asks `cli-error` (`server/decide/decisions/cli-error.ts`, chain jev → local, never Claude) through
+  `StepDeps.classifyUnknown`. Options use the runner's taxonomy (`quota`, `auth`, `schema`, `code`; the spec's
+  usage-limit / auth-expired / invalid-output / other); `network` is left out because the retry policy only accepts
+  infra/environment for gates. Default `code`, as before (decided 2026-10-04).
 - **Decision 12 (rank candidate plans) — blocked on the SM contract.** `server/contracts/plan.ts` and
   `server/agents/outputs.ts` have no notion of multiple candidate plans; the SM authors exactly one. Needs a
   contract change first.

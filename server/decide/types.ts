@@ -5,7 +5,7 @@ export const BACKEND_NAMES = ['jev', 'local', 'claude'] as const;
 export type BackendName = (typeof BACKEND_NAMES)[number];
 
 /** Spec 10A.5: phase 1 ships decision 1 only; decisions 2–9 append here in phase 3. */
-export const DECISION_IDS = ['gate-triage', 'attempt-progress', 'pr-risk', 'model-tier', 'scope-drift', 'report-routing'] as const;
+export const DECISION_IDS = ['gate-triage', 'attempt-progress', 'pr-risk', 'model-tier', 'scope-drift', 'report-routing', 'cli-error'] as const;
 export type DecisionId = (typeof DECISION_IDS)[number];
 
 /**
