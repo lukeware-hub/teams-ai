@@ -86,9 +86,16 @@ window resets, resume exactly from the entry below.
 
 ## Stage 2 — Browser checks (cheap, on the run 1 result)
 
-### R2.1 "Report problem" from the Validation page (plan 12) — `todo`
+### R2.1 "Report problem" from the Validation page (plan 12) — `done` (API e2e; button click unchecked)
 
-- Reopens refinement with the report; with decisions on, `brief.md` shows the decision 7 hint.
+- 2026-10-04, WSL, real UI server (`server/cli.ts ui --port 8788`; 8787 is held by the `teams-ai-backend-1`
+  container) on the hello-app clone (hello-001 is `done` on main, which `continue` accepts):
+  `POST /api/projects/hello-app/specs/hello-001/continue {report}` → HTTP 200, session opened; the report landed under
+  `## Validation report` in `brief.md` and the spec turned `refining`. No `Routing (System 1 ...)` line, as designed
+  with decisions off.
+- Not checked: clicking the button in the browser (it is enabled only for an `awaiting-validation` spec with a report,
+  which needs a finished run: R1.1b) and the decision 7 hint with decisions on (run 3).
+- Cleaned up: draft removed, user config restored.
 
 ### R2.2 Start, stop and resume a run from the browser (plan 10) — `todo`
 
