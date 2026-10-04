@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import path from 'node:path';
+import { bearerOk, requestAuthorized, resolveAuth, SESSION_PATH, sessionCookie, TOKEN_ENV } from './auth.js';
 
 export interface SseWriter {
   send(event: string, data: unknown, id?: string): void;
@@ -60,6 +61,10 @@ export interface ApiDeps {
   routes: Route[];
   staticDir?: string | null;
   log?: (line: string) => void;
+  /** Bearer token; defaults to TEAMS_AI_UI_TOKEN. */
+  token?: string;
+  /** Listen address; defaults to HOST or 127.0.0.1. */
+  host?: string;
 }
 
 export class HttpError extends Error {
@@ -120,6 +125,8 @@ async function serveStatic(dir: string, urlPath: string, res: ServerResponse): P
 
 export async function startApi(deps: ApiDeps, port: number): Promise<{ port: number; close(): Promise<void> }> {
   const log = deps.log ?? (() => undefined);
+  const host = deps.host ?? process.env.HOST ?? '127.0.0.1';
+  const token = resolveAuth(deps.token ?? process.env[TOKEN_ENV], host, log);
   const server = http.createServer(async (req, res) => {
     const started = Date.now();
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
@@ -131,6 +138,17 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
     };
     if (!isAllowedHost(req.headers.host)) return json(403, { error: 'forbidden host' });
     const routedPath = apiPath(url.pathname);
+    if (routedPath === SESSION_PATH && req.method === 'POST') {
+      // Lets the web client turn its bearer token into an HttpOnly cookie that EventSource can send.
+      if (token !== null && !bearerOk(req, token)) return json(401, { error: 'unauthorized' });
+      res.writeHead(204, token === null ? {} : { 'set-cookie': sessionCookie(token) });
+      res.end();
+      return done(204);
+    }
+    if (token !== null && routedPath.startsWith('/api/') && !requestAuthorized(req, token)) {
+      res.setHeader('www-authenticate', 'Bearer');
+      return json(401, { error: 'unauthorized' });
+    }
     const match = matchRoute(deps.routes, req.method ?? 'GET', routedPath);
     if (!match) {
       if (req.method === 'GET' && deps.staticDir && (await serveStatic(deps.staticDir, routedPath, res))) return done(200);
@@ -165,7 +183,7 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
   });
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
-    server.listen(port, process.env.HOST ?? '127.0.0.1', () => resolve());
+    server.listen(port, host, () => resolve());
   });
   const address = server.address();
   const bound = typeof address === 'object' && address ? address.port : port;
