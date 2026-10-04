@@ -1,6 +1,6 @@
 # The namespace is deliberately permissive (ingress open, egress open for the app pods) EXCEPT pods labeled
-# role=agent-step. NetworkPolicies are additive, so allow-all must not select those pods or it would cancel
-# agent-step-isolation below.
+# role=agent-step and gate Job pods labeled teams-ai.dev/network=deny. NetworkPolicies are additive, so allow-all
+# must not select those pods or it would cancel the isolation policies below.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -10,6 +10,7 @@ spec:
   podSelector:
     matchExpressions:
       - { key: role, operator: NotIn, values: ['agent-step'] }
+      - { key: teams-ai.dev/network, operator: NotIn, values: ['deny'] }
   policyTypes:
     - Ingress
     - Egress
@@ -60,3 +61,17 @@ spec:
         - ipBlock: { cidr: 198.51.100.0/24 } # placeholder: model API endpoints
       ports:
         - { protocol: TCP, port: 443 }
+---
+# Gate Jobs whose gate declares network: none (tests, lint, build) run with no network at all, like docker's
+# --network none. The label is set by server/exec/k8s-gate-executor.ts.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gate-offline
+  namespace: teams-ai
+spec:
+  podSelector:
+    matchLabels: { teams-ai.dev/network: deny }
+  policyTypes:
+    - Ingress
+    - Egress

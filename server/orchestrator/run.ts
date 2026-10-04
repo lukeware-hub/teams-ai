@@ -13,6 +13,7 @@ import type { Spec } from '../contracts/spec.js';
 import { createDecider } from '../decide/create-decider.js';
 import type { Decider } from '../decide/decider.js';
 import { classifyCliError } from '../decide/decisions/cli-error.js';
+import { sandboxPolicyViolation } from '../runner/sandbox-policy.js';
 import type { Exec } from '../exec/command.js';
 import { runGates, TAIL_CHARS, type GateExecutor, type GateResult } from '../exec/gate-runner.js';
 import { git } from '../git/git.js';
@@ -123,7 +124,18 @@ export class Run {
     return journal;
   }
 
+  /** Refuse an unsafe or inconsistent configuration before any phase runs. Audit C1: runStep keeps the sandbox check as a backstop. */
+  private static assertSandboxPolicy(deps: RunDeps): void {
+    const violation = sandboxPolicyViolation(deps.cfg.sandbox, process.env);
+    if (violation) throw new Error(violation);
+    // Gate Jobs run in the cluster: a target that only knows 127.0.0.1 would send the smoke gate to its own loopback.
+    if (deps.gateExecutor?.kind === 'k8s' && deps.target && !deps.target.gateServiceUrl) {
+      throw new Error(`executor.kind=k8s needs a deploy target that reports an in-cluster service URL; the ${deps.target.name} target does not (use the kind target, or executor.kind=docker)`);
+    }
+  }
+
   static async create(deps: RunDeps, runId?: string): Promise<Run> {
+    Run.assertSandboxPolicy(deps);
     const id = runId ?? (await nextRunId(deps.ws, deps.spec.specId));
     await fs.mkdir(runDir(deps.ws, id), { recursive: true });
     const journal = await Run.openJournal(deps, id);
@@ -132,6 +144,7 @@ export class Run {
   }
 
   static async resume(deps: RunDeps, runId: string): Promise<Run> {
+    Run.assertSandboxPolicy(deps);
     // The UI marks a run whose process died with `pid.gone`; any resume, CLI or UI, ends that state.
     await fs.rm(path.join(runDir(deps.ws, runId), 'pid.gone'), { force: true });
     const journal = await Run.openJournal(deps, runId);

@@ -46,7 +46,7 @@ data:
   config.json: |
     {
       "github": { "owner": "your-github-org-or-user" },
-      "sandbox": { "enabled": false },
+      "sandbox": { "enabled": false, "unsafeNoSandbox": true },
       "omniroute": { "baseUrl": "http://omniroute:20128", "enabled": true },
       "decisions": { "local": { "enabled": true, "baseUrl": "http://llama:8080" } },
       "projects": []
@@ -114,6 +114,9 @@ spec:
           env:
             - { name: HOST, value: 0.0.0.0 }
             - { name: TEAMS_AI_NAMESPACE, value: teams-ai }
+            # bubblewrap cannot nest in this unprivileged pod, so the pod is the isolation boundary until agent steps run as
+            # their own pods (audit C1, plan 20): both opt-ins are set on purpose and the refusal in runStep stays for others.
+            - { name: TEAMS_AI_UNSAFE_NO_SANDBOX, value: '1' }
             - { name: HOME, value: /home/node }
           readinessProbe:
             tcpSocket: { port: http }

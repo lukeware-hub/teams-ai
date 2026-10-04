@@ -43,6 +43,18 @@ describe('deploy/k8s manifests', () => {
     }
   });
 
+  it('keeps offline gate pods out of allow-all and denies them everything', () => {
+    const policy = (name: string) => manifests.find(({ doc }) => doc.kind === 'NetworkPolicy' && doc.metadata?.name === name)?.doc;
+    const allowAll = policy('allow-all')!;
+    const excluded = allowAll.spec.podSelector.matchExpressions.find((e: { key: string }) => e.key === 'teams-ai.dev/network');
+    expect(excluded).toMatchObject({ operator: 'NotIn', values: ['deny'] });
+    const offline = policy('gate-offline')!;
+    expect(offline.spec.podSelector.matchLabels).toEqual({ 'teams-ai.dev/network': 'deny' });
+    expect(offline.spec.policyTypes.sort()).toEqual(['Egress', 'Ingress']);
+    expect(offline.spec.egress).toBeUndefined();
+    expect(offline.spec.ingress).toBeUndefined();
+  });
+
   it('keeps kustomization resources resolvable', () => {
     for (const f of files.filter(isKustomization)) {
       for (const r of (load(f)[0]!.resources ?? []) as string[]) {
@@ -79,7 +91,10 @@ describe('deploy/k8s manifests', () => {
     expect(allow.ingress).toEqual([{}]);
     expect(allow.egress).toEqual([{}]);
     // Policies are additive: the open policy must not select agent pods or it would defeat the isolation policy.
-    expect(allow.podSelector.matchExpressions).toEqual([{ key: 'role', operator: 'NotIn', values: ['agent-step'] }]);
+    expect(allow.podSelector.matchExpressions).toEqual([
+      { key: 'role', operator: 'NotIn', values: ['agent-step'] },
+      { key: 'teams-ai.dev/network', operator: 'NotIn', values: ['deny'] },
+    ]);
   });
 
   it('isolates role=agent-step pods: default-deny plus an egress allowlist', () => {
