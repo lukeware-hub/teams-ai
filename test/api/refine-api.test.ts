@@ -140,12 +140,12 @@ describe('refine api', () => {
     await settle();
     const put = await call('PUT', '/api/refine/hello-app/hello-app-001/secrets/DB_URL', { value: 'postgres://secret' });
     expect(put.status).toBe(200);
-    expect(await put.json()).toEqual({ present: true, hint: 'cret' });
+    expect(await put.json()).toEqual({ present: true });
     expect((await call('PUT', '/api/refine/hello-app/hello-app-001/secrets/DB_URL', { value: '' })).status).toBe(400);
     expect(await fs.readFile(`${home}/ws/hello-app/secrets/DB_URL`, 'utf8')).toBe('postgres://secret');
     expect((await (await fetch(`${base()}/api/refine/hello-app/hello-app-001`)).json()).secrets).toEqual([
-      { name: 'CUSTOM_KEY', present: true, hint: 'x' },
-      { name: 'DB_URL', present: true, hint: 'cret' },
+      { name: 'CUSTOM_KEY', present: true, hint: '****' },
+      { name: 'DB_URL', present: true, hint: '****' },
     ]);
   });
 

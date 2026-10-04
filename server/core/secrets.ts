@@ -1,4 +1,4 @@
-import { promises as fs } from 'node:fs';
+import { promises as fs, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 export const SECRET_NAME = /^[A-Z][A-Z0-9_]*$/;
@@ -22,6 +22,25 @@ export async function loadSecrets(dir: string): Promise<Record<string, string>> 
     out[e.name] = (await fs.readFile(path.join(dir, e.name), 'utf8')).trim();
   }
   return out;
+}
+
+/**
+ * Audit M4: the values to redact with, read from disk on every call so a secret stored a moment ago is
+ * masked at once. An unreadable directory yields none rather than failing the response being redacted.
+ */
+export async function loadSecretValues(dir: string): Promise<string[]> {
+  return Object.values(await loadSecrets(dir).catch(() => ({})));
+}
+
+/** Synchronous twin of `loadSecretValues`, for callers that cannot await (the login transcript reader). */
+export function loadSecretValuesSync(dir: string): string[] {
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isFile() && SECRET_NAME.test(e.name))
+      .map((e) => readFileSync(path.join(dir, e.name), 'utf8').trim());
+  } catch {
+    return [];
+  }
 }
 
 /**

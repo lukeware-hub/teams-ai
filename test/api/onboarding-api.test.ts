@@ -88,7 +88,7 @@ describe('api server', () => {
     expect(r.status).toBe(200);
     const body = await r.text();
     expect(body).not.toContain(TOKEN);
-    expect(JSON.parse(body)).toMatchObject({ item: { ok: true, detail: 'diego · scopes: repo', secret: { set: true, hint: TOKEN.slice(-4) } } });
+    expect(JSON.parse(body)).toMatchObject({ item: { ok: true, detail: 'diego · scopes: repo', secret: { set: true, hint: '****' } } });
     expect(await fs.readFile(path.join(home, 'secrets', 'GITHUB_TOKEN'), 'utf8')).toBe(TOKEN);
     expect((await fetch(`${base()}/api/onboarding/secrets/OTHER`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value: 'x' }) })).status).toBe(404);
     expect((await fetch(`${base()}/api/onboarding/secrets/GITHUB_TOKEN`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value: 'two\nlines' }) })).status).toBe(400);
@@ -121,7 +121,7 @@ describe('api server', () => {
 
   it('login session over SSE: state events, code posting, 409 outside awaiting-code, replay on connect', async () => {
     expect((await fetch(`${base()}/api/onboarding/claude/code`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: 'x' }) })).status).toBe(409);
-    const started = await fetch(`${base()}/api/onboarding/claude/login`, { method: 'POST' });
+    const started = await fetch(`${base()}/api/onboarding/claude/login`, { method: 'POST', headers: { 'content-type': 'application/json' } });
     expect(started.status).toBe(202);
     expect(await started.json()).toEqual({ state: { name: 'starting' } });
     const es = await fetch(`${base()}/api/onboarding/claude/events`);
@@ -142,8 +142,29 @@ describe('api server', () => {
     expect(all).toContain('"name":"done"');
     expect(all).not.toContain('c0de#st');
     await reader.cancel();
-    const cancel = await fetch(`${base()}/api/onboarding/claude/cancel`, { method: 'POST' });
+    const cancel = await fetch(`${base()}/api/onboarding/claude/cancel`, { method: 'POST', headers: { 'content-type': 'application/json' } });
     expect(cancel.status).toBe(200);
+  });
+
+  it('masks a secret stored after startup, written through the API or straight to disk, in the login transcript (audit M4)', async () => {
+    const viaApi = 'plain-token-no-known-shape-12345';
+    const onDisk = 'other-opaque-value-98765';
+    expect((await fetch(`${base()}/api/onboarding/secrets/OPENROUTER_API_KEY`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value: viaApi }) })).status).toBe(200);
+    await fs.writeFile(path.join(home, 'secrets', 'DB_PASSWORD'), onDisk);
+    await fetch(`${base()}/api/onboarding/claude/login`, { method: 'POST', headers: { 'content-type': 'application/json' } });
+    const es = await fetch(`${base()}/api/onboarding/claude/events`);
+    const reader = es.body!.getReader();
+    const read = async (): Promise<string> => new TextDecoder().decode((await reader.read()).value);
+    await read();
+    ptys[0]!.emit(`echo ${viaApi} and ${onDisk}
+https://claude.example/a
+`);
+    let all = '';
+    for (let i = 0; i < 3 && !all.includes('output'); i++) all += await read();
+    expect(all).toContain('[REDACTED]');
+    expect(all).not.toContain(viaApi);
+    expect(all).not.toContain(onDisk);
+    await reader.cancel();
   });
 
   it('rejects oversized bodies with 413', async () => {

@@ -42,5 +42,5 @@ export async function authFetch(input: string, init?: RequestInit): Promise<Resp
 
 /** EventSource cannot set headers: trade the token for an HttpOnly SameSite=Strict cookie before opening one. */
 export async function ensureSession(): Promise<void> {
-  await authFetch('/api/auth/session', { method: 'POST' }).catch(() => undefined);
+  await authFetch('/api/auth/session', { method: 'POST', headers: { 'content-type': 'application/json' } }).catch(() => undefined);
 }

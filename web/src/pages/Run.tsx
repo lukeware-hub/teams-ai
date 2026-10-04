@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { runApi, type RunDetail, type StoredEvent } from '../api.js';
 import { Icon } from '../components/Icons.js';
 import { Markdown } from '../components/Markdown.js';
+import { safeHttpUrl } from '../safeUrl.js';
 import { TaskDetail } from '../components/TaskDetail.js';
 import { evidence, explainBlockReason, explainStop, lastDeployFailure, mergedPrs, pausedUntil, phases, rootBlockers, runState, stopSummary, tokens } from '../run/selectors.js';
 import { useJournal } from '../useSse.js';
@@ -209,8 +210,8 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
             {prs.map((p) => (
               <li key={p.taskId}>
                 <span className="task-id">{p.taskId}</span>
-                {p.url ? (
-                  <a href={p.url} target="_blank" rel="noreferrer">
+                {safeHttpUrl(p.url) ? (
+                  <a href={safeHttpUrl(p.url)} target="_blank" rel="noreferrer">
                     PR #{p.number}
                     <Icon name="external" size={14} />
                   </a>

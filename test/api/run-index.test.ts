@@ -65,5 +65,7 @@ describe('run index', () => {
     expect(SAFE_ID.test('hello-001-r1')).toBe(true);
     expect(SAFE_ID.test('../x')).toBe(false);
     expect(SAFE_ID.test('a/b')).toBe(false);
+    for (const id of ['.', '..', '.hidden', '...']) expect(SAFE_ID.test(id), id).toBe(false);
+    expect(SAFE_ID.test('hello-001.r1_x')).toBe(true);
   });
 });

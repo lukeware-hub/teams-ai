@@ -6,7 +6,8 @@ import { Spec } from '../contracts/spec.js';
 import { expandHome } from '../orchestrator/workspace.js';
 import { loadEvents } from '../store/event-store.js';
 
-export const SAFE_ID = /^[A-Za-z0-9_.-]+$/;
+/** Run, spec and step ids become path segments: no leading dot, so neither `.` nor `..` matches. */
+export const SAFE_ID = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
 
 export type RunListStatus = 'running' | 'paused:quota' | 'paused:auth' | 'draining' | 'complete' | 'blocked' | 'deadlocked' | 'drained' | 'phase-failed' | 'awaiting-validation' | 'verification-failed' | 'deploy-failed' | 'done' | 'interrupted' | 'unknown';
 const ACTIVE: ReadonlySet<string> = new Set(['running', 'paused:quota', 'paused:auth', 'draining']);

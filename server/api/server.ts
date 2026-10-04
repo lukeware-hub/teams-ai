@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import path from 'node:path';
 import { bearerOk, requestAuthorized, resolveAuth, SESSION_PATH, sessionCookie, TOKEN_ENV } from './auth.js';
+import { ALLOWED_HOSTS_ENV, applySecurityHeaders, crossSite, isJsonContentType, parseAllowedHosts } from './security.js';
 
 export interface SseWriter {
   send(event: string, data: unknown, id?: string): void;
@@ -65,6 +66,10 @@ export interface ApiDeps {
   token?: string;
   /** Listen address; defaults to HOST or 127.0.0.1. */
   host?: string;
+  /** Host header values accepted besides loopback (Service or Ingress names); defaults to TEAMS_AI_ALLOWED_HOSTS. */
+  allowedHosts?: string[];
+  /** Concurrent SSE streams, in total and per remote address (audit M5). */
+  maxSse?: { total: number; perAddress: number };
 }
 
 export class HttpError extends Error {
@@ -84,10 +89,11 @@ function apiPath(pathname: string): string {
 }
 
 /** Spec (onboarding) §7: only the local browser may talk to the API; a foreign Host is DNS rebinding. */
-export function isAllowedHost(host: string | undefined): boolean {
+export function isAllowedHost(host: string | undefined, extra: readonly string[] = []): boolean {
   if (!host) return false;
-  const name = host.replace(/:\d+$/, '').toLowerCase();
-  return name === 'localhost' || name === '127.0.0.1' || name === '[::1]';
+  const full = host.toLowerCase();
+  const name = full.replace(/:\d+$/, '');
+  return name === 'localhost' || name === '127.0.0.1' || name === '[::1]' || extra.includes(name) || extra.includes(full);
 }
 
 async function readBody(req: IncomingMessage): Promise<unknown> {
@@ -112,7 +118,7 @@ const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js
 async function serveStatic(dir: string, urlPath: string, res: ServerResponse): Promise<boolean> {
   const rel = urlPath === '/' || !path.extname(urlPath) ? 'index.html' : urlPath.slice(1);
   const file = path.resolve(dir, rel);
-  if (!file.startsWith(path.resolve(dir))) return false;
+  if (!file.startsWith(path.resolve(dir) + path.sep)) return false;
   try {
     const data = await fs.readFile(file);
     res.writeHead(200, { 'content-type': MIME[path.extname(file)] ?? 'application/octet-stream' });
@@ -127,8 +133,13 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
   const log = deps.log ?? (() => undefined);
   const host = deps.host ?? process.env.HOST ?? '127.0.0.1';
   const token = resolveAuth(deps.token ?? process.env[TOKEN_ENV], host, log);
+  const allowedHosts = (deps.allowedHosts ?? parseAllowedHosts(process.env[ALLOWED_HOSTS_ENV])).map((h) => h.toLowerCase());
+  const maxSse = deps.maxSse ?? { total: 200, perAddress: 50 };
+  let sseTotal = 0;
+  const ssePerAddress = new Map<string, number>();
   const server = http.createServer(async (req, res) => {
     const started = Date.now();
+    applySecurityHeaders(res);
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     const done = (status: number) => log(`${req.method} ${url.pathname} ${status} ${Date.now() - started}ms`);
     const json = (status: number, value: unknown) => {
@@ -136,11 +147,14 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
       res.end(JSON.stringify(value));
       done(status);
     };
-    if (!isAllowedHost(req.headers.host)) return json(403, { error: 'forbidden host' });
+    if (!isAllowedHost(req.headers.host, allowedHosts)) return json(403, { error: 'forbidden host' });
     const routedPath = apiPath(url.pathname);
+    const bearer = token !== null && bearerOk(req, token);
+    if (req.method !== 'GET' && req.method !== 'HEAD' && !isJsonContentType(req.headers['content-type'])) return json(415, { error: 'content-type must be application/json' });
+    if (routedPath.startsWith('/api/') && !bearer && crossSite(req)) return json(403, { error: 'cross-site request refused' });
     if (routedPath === SESSION_PATH && req.method === 'POST') {
       // Lets the web client turn its bearer token into an HttpOnly cookie that EventSource can send.
-      if (token !== null && !bearerOk(req, token)) return json(401, { error: 'unauthorized' });
+      if (token !== null && !bearer) return json(401, { error: 'unauthorized' });
       res.writeHead(204, token === null ? {} : { 'set-cookie': sessionCookie(token) });
       res.end();
       return done(204);
@@ -155,6 +169,17 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
       return json(404, { error: 'not found' });
     }
     const sse = (): SseWriter => {
+      const remote = req.socket.remoteAddress ?? '';
+      const mine = ssePerAddress.get(remote) ?? 0;
+      if (sseTotal >= maxSse.total || mine >= maxSse.perAddress) throw new HttpError(503, 'too many event streams');
+      sseTotal++;
+      ssePerAddress.set(remote, mine + 1);
+      res.once('close', () => {
+        sseTotal--;
+        const left = (ssePerAddress.get(remote) ?? 1) - 1;
+        if (left <= 0) ssePerAddress.delete(remote);
+        else ssePerAddress.set(remote, left);
+      });
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
       res.flushHeaders();
       done(200);
@@ -181,6 +206,8 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
       else done(status);
     }
   });
+  server.headersTimeout = 15_000;
+  server.requestTimeout = 60_000;
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
     server.listen(port, host, () => resolve());
