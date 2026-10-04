@@ -140,10 +140,13 @@ window resets, resume exactly from the entry below.
 
 - Tokens, retries, wall time, blocked tasks, escalation rate. Closes the POC.
 
-### R5.3 Decision evals (spec §10A.6) — `todo`
+### R5.3 Decision evals (spec §10A.6) — `in progress` (harness done; data from R5.1)
 
-- Harness not built (accuracy, Brier, ECE, escalation rate, latency per decision and model); fixtures from the
-  `DECISION_MADE` records of run 3.
+- Harness (2026-10-04): `server/decide/evals.ts` joins `DECISION_MADE` records with hand labels
+  (`{runId, seq, question, label}`) and computes per decision: accuracy, multiclass Brier, ECE (10 bins),
+  escalation rate, latency p50/p95. CLI: `npx tsx scripts/evals/decisions.ts --runs ~/.teams-ai/runs --labels <file>`.
+  Unit tests in `test/decide/evals.test.ts`; checked end to end on a synthetic journal.
+- Left: label the run 3 decisions and record the metrics here; then pick the `local` model and threshold.
 
 ## System 1 decisions (spec §10A.5)
 
