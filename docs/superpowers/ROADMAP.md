@@ -88,9 +88,13 @@ window resets, resume exactly from the entry below.
 
 ## Stage 3 — Golden run 2
 
-### R3.1 OmniRoute up on the host — `todo`
+### R3.1 OmniRoute up on the host — `blocked` (human step)
 
 - `scripts/wsl/omniroute`; `omniroute.enabled` for the run only.
+- 2026-10-04: container `omniroute` 3.8.51 up and healthy on `http://localhost:20128` (`OMNIROUTE_VERSION=3.8.51
+  bash scripts/wsl/omniroute/up.sh`; the script's old example tag 4.12.0 does not exist on Docker Hub and was fixed).
+- Blocked on the human: open the dashboard, add a free provider (needs an account with that provider), pin a model,
+  create an API key with compression disabled, and save it as `OMNIROUTE_TOKEN` in `~/.teams-ai/secrets`.
 
 ### R3.2 Golden run 2 on `todo-api` (OmniRoute for Test/DevOps, decisions off) — `todo`
 
@@ -109,7 +113,14 @@ window resets, resume exactly from the entry below.
 - Needs the SM contract to allow several candidate plans (`server/contracts/plan.ts`, `server/agents/outputs.ts`).
   Optional for run 3.
 
-### R4.3 `local-logprobs` backend on the host — `todo` (optional)
+### R4.3 `local-logprobs` backend on the host — `in progress` (optional)
+
+- Plan (2026-10-04): `sudo apt install nvidia-cuda-toolkit` (12.0; driver 617 supports it); clone
+  `ggml-org/llama.cpp` to `~/llama.cpp` and build with `-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=86` (RTX 3060 Ti);
+  download `bartowski/Qwen2.5-7B-Instruct-GGUF` `Qwen2.5-7B-Instruct-Q4_K_M.gguf` (about 4.7 GB) to `~/models`;
+  start `llama-server -m <model> -np 4 -c 8192 --port 8080` (the config default `decisions.local.baseUrl`).
+  Verify with a real smoke of `LocalLogprobsBackend` (one choice question, probabilities sum to about 1). Costs no
+  Claude tokens. Log: `~/r43-setup.log`.
 
 - Client built (`server/decide/local-logprobs.ts`). Host: llama.cpp with CUDA in WSL2, a 7–9B instruct GGUF (start
   with Qwen2.5-7B-Instruct Q4_K_M), `llama-server -np 4 -c 8192`, a real smoke. Jev alone covers run 3.
