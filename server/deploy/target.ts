@@ -21,6 +21,8 @@ export interface DeployTarget {
   rollback(intent: DeploymentIntent, previous: string): Promise<void>;
   destroy(intent: DeploymentIntent): Promise<void>;
   serviceUrl?(intent: DeploymentIntent): Promise<string> | string;
+  /** The service URL as seen from a gate Job pod (in-cluster Service DNS); absent when the orchestrator's URL already works there. */
+  gateServiceUrl?(intent: DeploymentIntent): Promise<string> | string;
 }
 
 export type DeployStage = 'validate' | 'build' | 'apply' | 'verify' | 'smoke';
