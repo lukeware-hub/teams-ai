@@ -32,6 +32,7 @@ export { CrashInjected };
 import { taskMergeSteps, type MergeStepsDeps } from './merge-steps.js';
 import { PAUSED_AUTH, runPhase0, runWorkflowBootstrap, runPhase1, runPhase2, runPhase4, runPhase5, runPhase6, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, type PhaseDeps, type PhaseResult } from './phases/index.js';
 import { reconcile } from './reconcile.js';
+import { validateDocs } from '../validators/docs.js';
 import { readmePack, runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
 import { TaskRunner, type TaskRunnerDeps } from './task-runner.js';
 import { eventsFile, expandHome, graphDir, nextRunId, runDir, stateFile, stepDir, type Workspace } from './workspace.js';
@@ -519,15 +520,25 @@ export class Run {
     const plan = await fs.readFile(rel('docs', 'specs', specId, 'plan.json'), 'utf8').then((t) => JSON.parse(t) as Plan).catch(() => null);
     const existing = await fs.readFile(rel('docs', 'README.md'), 'utf8').catch(() => null);
     let readme = '';
+    let runbook = '';
+    let apiDocs = '';
+    let docsErrors: string[] = [];
     let error = 'readme step failed';
     for (let attempt = 1; attempt <= 2; attempt++) {
-      const out = (await this.runAgent<'readme'>({ kind: 'readme', role: 'sm', pack: readmePack(this.packBase(), { tasks: (plan?.tasks ?? []).map((t) => `- ${t.id}: ${t.title}`), existing }), cwd: wt, phase: 'readme', taskId: null, attempt })) as { ok: boolean; value?: { readme: string }; failure?: string; errors?: string[] };
-      if (out.ok && out.value) { readme = out.value.readme; break; }
+      const out = (await this.runAgent<'readme'>({ kind: 'readme', role: 'sm', pack: readmePack(this.packBase(), { tasks: (plan?.tasks ?? []).map((t) => `- ${t.id}: ${t.title}`), existing, docsErrors }), cwd: wt, phase: 'readme', taskId: null, attempt })) as { ok: boolean; value?: { readme: string; runbook?: string; apiDocs?: string }; failure?: string; errors?: string[] };
+      if (out.ok && out.value) {
+        readme = out.value.readme; runbook = out.value.runbook ?? ''; apiDocs = out.value.apiDocs ?? '';
+        docsErrors = validateDocs({ readme, runbook, apiDocs }, this.deps.spec.features);
+        if (docsErrors.length === 0) break;
+        error = `documentation rejected: ${docsErrors.join('; ')}`; readme = ''; continue;
+      }
       if (out.failure === 'quota' || out.failure === 'auth') { if (await shared.pauseForFailure(this.phaseDeps(), out.failure)) return 'paused:auth'; continue; }
       error = out.errors?.join('; ') ?? error;
     }
     if (!readme) return this.finish('phase-failed', error);
     await fs.writeFile(rel('docs', 'README.md'), `${readme.trimEnd()}\n`);
+    await fs.writeFile(rel('docs', 'RUNBOOK.md'), `${runbook.trimEnd()}\n`);
+    if (apiDocs.trim()) await fs.writeFile(rel('docs', 'API.md'), `${apiDocs.trimEnd()}\n`);
     const merged = await shared.commitAndMergeDocs(this.phaseDeps(), 6, branch, wt, `docs(${specId}): README`);
     return merged.ok ? this.finish('done') : this.finish('phase-failed', merged.reason);
   }

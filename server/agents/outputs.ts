@@ -114,7 +114,7 @@ export const DeploymentOutput = z.object({
 });
 
 /** `spec readme`: the SM alone writes docs/README.md for a spec that already has code on main. */
-export const ReadmeOutput = z.object({ specHash, readme: z.string().min(1) });
+export const ReadmeOutput = z.object({ specHash, readme: z.string().min(1), runbook: z.string().optional(), apiDocs: z.string().optional() });
 
 export const ReportOutput = z.object({
   specHash,
@@ -125,6 +125,10 @@ export const ReportOutput = z.object({
   summary: z.string().min(1),
   /** Markdown for docs/README.md: a project overview the orchestrator commits with the report. */
   readme: z.string().min(1),
+  /** Markdown for docs/RUNBOOK.md (start, stop, logs, rollback); validated by the docs gate. */
+  runbook: z.string().optional(),
+  /** Markdown for docs/API.md listing every endpoint the spec features name. */
+  apiDocs: z.string().optional(),
 });
 
 /** Spec 10A.3: a System 2 answer to typed questions; no probabilities, the value only. */
