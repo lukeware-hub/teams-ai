@@ -4,6 +4,7 @@ namespace: teams-ai
 resources:
   - namespace.yaml
   - networkpolicy.yaml
+  - agent-step.yaml
   - backend.yaml
   - omniroute.yaml
   - llama.yaml

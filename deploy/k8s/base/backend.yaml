@@ -79,6 +79,12 @@ spec:
       labels: { app: backend }
     spec:
       serviceAccountName: teams-ai-backend
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
       initContainers:
         - name: seed
           image: teams-ai-backend:local
@@ -95,6 +101,10 @@ spec:
             - { name: data, mountPath: /data }
             - { name: config, mountPath: /seed/config }
             - { name: claude-credentials, mountPath: /seed/claude }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ['ALL'] }
       containers:
         - name: backend
           image: teams-ai-backend:local
@@ -104,15 +114,25 @@ spec:
           env:
             - { name: HOST, value: 0.0.0.0 }
             - { name: TEAMS_AI_NAMESPACE, value: teams-ai }
+            - { name: HOME, value: /home/node }
           readinessProbe:
             tcpSocket: { port: http }
             periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ['ALL'] }
           volumeMounts:
-            - { name: data, mountPath: /root/.teams-ai, subPath: teams-ai }
-            - { name: data, mountPath: /root/.claude, subPath: claude }
+            # Read-only root filesystem: HOME and /tmp are scratch (git, gh, npm state); the PVC subPaths mount inside HOME.
+            - { name: home, mountPath: /home/node }
+            - { name: tmp, mountPath: /tmp }
+            - { name: data, mountPath: /home/node/.teams-ai, subPath: teams-ai }
+            - { name: data, mountPath: /home/node/.claude, subPath: claude }
             # One file per secret (server/core/secrets.ts reads ~/.teams-ai/secrets/<NAME>).
-            - { name: platform-secrets, mountPath: /root/.teams-ai/secrets, readOnly: true }
+            - { name: platform-secrets, mountPath: /home/node/.teams-ai/secrets, readOnly: true }
       volumes:
+        - { name: home, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
         - name: data
           persistentVolumeClaim: { claimName: teams-ai-data }
         - name: config

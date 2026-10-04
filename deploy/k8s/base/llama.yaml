@@ -25,6 +25,12 @@ spec:
     metadata:
       labels: { app: llama }
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
       initContainers:
         - name: fetch-model
           image: curlimages/curl:8.10.1
@@ -34,7 +40,11 @@ spec:
             - |
               f=/models/Qwen2.5-7B-Instruct-Q4_K_M.gguf
               [ -s "$f" ] || { curl -fL --retry 5 -o "$f.part" https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf && mv "$f.part" "$f"; }
-          securityContext: { runAsUser: 0 }
+          # fsGroup makes the PVC writable for uid 1000: no root needed.
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ['ALL'] }
           volumeMounts:
             - { name: models, mountPath: /models }
       containers:
@@ -55,6 +65,10 @@ spec:
             httpGet: { path: /health, port: http }
             periodSeconds: 10
             failureThreshold: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ['ALL'] }
           resources:
             requests: { cpu: '2', memory: 8Gi }
           volumeMounts:

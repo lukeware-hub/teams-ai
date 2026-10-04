@@ -28,8 +28,11 @@ spec:
           readinessProbe:
             exec: { command: ['buildctl', 'debug', 'workers'] }
             periodSeconds: 10
+          # Documented exemption: rootless BuildKit needs setuid newuidmap/newgidmap (so no allowPrivilegeEscalation: false
+          # and no dropped capabilities) and an unconfined seccomp profile. It still runs as uid 1000, never privileged.
           securityContext:
             seccompProfile: { type: Unconfined }
+            runAsNonRoot: true
             runAsUser: 1000
             runAsGroup: 1000
           volumeMounts:
@@ -61,9 +64,19 @@ spec:
     metadata:
       labels: { app: registry }
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
       containers:
         - name: registry
-          image: registry:2
+          image: registry:2.8.3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ['ALL'] }
           ports:
             - { name: http, containerPort: 5000 }
           volumeMounts:

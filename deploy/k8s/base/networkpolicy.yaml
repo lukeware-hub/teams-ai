@@ -1,11 +1,15 @@
-# Deliberately permissive: every pod accepts all ingress and may reach anything (in or out of the namespace).
+# The namespace is deliberately permissive (ingress open, egress open for the app pods) EXCEPT pods labeled
+# role=agent-step. NetworkPolicies are additive, so allow-all must not select those pods or it would cancel
+# agent-step-isolation below.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-all
   namespace: teams-ai
 spec:
-  podSelector: {}
+  podSelector:
+    matchExpressions:
+      - { key: role, operator: NotIn, values: ['agent-step'] }
   policyTypes:
     - Ingress
     - Egress
@@ -13,3 +17,46 @@ spec:
     - {}
   egress:
     - {}
+---
+# Agent steps run untrusted, prompt-injectable code: default-deny both directions, then allow only DNS, the
+# in-namespace registry, OmniRoute and llama, and external HTTPS to named CIDRs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agent-step-isolation
+  namespace: teams-ai
+spec:
+  podSelector:
+    matchLabels: { role: agent-step }
+  policyTypes:
+    - Ingress
+    - Egress
+  # No ingress rules: nothing may connect to an agent step.
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - podSelector: { matchLabels: { app: registry } }
+      ports:
+        - { protocol: TCP, port: 5000 }
+    - to:
+        - podSelector: { matchLabels: { app: omniroute } }
+      ports:
+        - { protocol: TCP, port: 20128 }
+    - to:
+        - podSelector: { matchLabels: { app: llama } }
+      ports:
+        - { protocol: TCP, port: 8080 }
+    # External HTTPS, named destinations only. REPLACE the TEST-NET placeholders (RFC 5737, they match nothing real)
+    # with the CIDRs of the package registry and the model API, or the IP of an egress proxy, via a kustomize patch.
+    - to:
+        - ipBlock: { cidr: 192.0.2.0/24 } # placeholder: package registry (registry.npmjs.org)
+        - ipBlock: { cidr: 198.51.100.0/24 } # placeholder: model API endpoints
+      ports:
+        - { protocol: TCP, port: 443 }
