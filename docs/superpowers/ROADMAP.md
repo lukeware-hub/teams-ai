@@ -143,15 +143,24 @@ window resets, resume exactly from the entry below.
 
 ## Stage 3 — Golden run 2
 
-### R3.1 OmniRoute up on the host — `blocked` (human step)
+### R3.1 OmniRoute provider — `optional` (human decision, 2026-10-04; not a blocker)
 
-- `scripts/wsl/omniroute`; `omniroute.enabled` for the run only.
-- 2026-10-04: container `omniroute` 3.8.51 up and healthy on `http://localhost:20128` (`OMNIROUTE_VERSION=3.8.51
-  bash scripts/wsl/omniroute/up.sh`; the script's old example tag 4.12.0 does not exist on Docker Hub and was fixed).
-- Blocked on the human: open the dashboard, add a free provider (needs an account with that provider), pin a model,
-  create an API key with compression disabled, and save it as `OMNIROUTE_TOKEN` in `~/.teams-ai/secrets`.
+- Decision: OmniRoute is an optional, parameterized provider. The default for every role is the Claude Code CLI
+  (`CLAUDE_DEFAULTS` in `server/config/config.ts`). OmniRoute is used only when ALL hold: a role's profile is set to
+  `provider: "omniroute"`, `omniroute.enabled` is true, and the project is not `confidential`; otherwise `resolveProfile`
+  returns the Claude profile for that role. So with the parameter off, Claude is the effective fallback.
+- Not implemented, and not required by this decision: automatic failover from Claude to OmniRoute when the Claude quota
+  runs out (today the quota breaker pauses the run until the window reopens). If wanted, it is a new item.
+- State: container `omniroute` 3.8.51 up and healthy on `http://localhost:20128` (`OMNIROUTE_VERSION=3.8.51 bash
+  scripts/wsl/omniroute/up.sh`; the old example tag 4.12.0 did not exist). Nothing else is needed until someone chooses to
+  turn the parameter on: then open the dashboard, add a provider, pin a model, create a key with compression disabled and
+  save it as `OMNIROUTE_TOKEN` in `~/.teams-ai/secrets`.
+- Effect on the definition of done: spec §1.3 run 2 ("Mixed", OmniRoute for Test/DevOps) is conditional on this
+  parameter being turned on. Without it the golden runs are 1 (baseline) and 3 (decisions on), both Claude only.
 
-### R3.2 Golden run 2 on `todo-api` (OmniRoute for Test/DevOps, decisions off) — `todo`
+### R3.2 Golden run 2 on `todo-api` (OmniRoute for Test/DevOps, decisions off) — `conditional on R3.1`
+
+- Only if the OmniRoute parameter is turned on. Skipped otherwise; the three-run comparison (R5.2) then compares runs 1 and 3.
 
 ## Stage 4 — System 1 ready for run 3
 
