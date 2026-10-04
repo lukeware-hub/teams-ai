@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+patches:
+  # Needs the NVIDIA device plugin on the cluster; uses the CUDA build of llama.cpp and offloads all layers.
+  - target: { kind: Deployment, name: llama }
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: ghcr.io/ggml-org/llama.cpp:server-cuda
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --n-gpu-layers
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: '99'
+      - op: add
+        path: /spec/template/spec/containers/0/resources/limits
+        value:
+          nvidia.com/gpu: 1

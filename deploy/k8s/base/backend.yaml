@@ -1,0 +1,138 @@
+# Orchestrator + API + web UI in one pod: `npm run ui` serves the built web bundle (see Dockerfile).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: teams-ai-backend
+  namespace: teams-ai
+---
+# Lets the orchestrator run gate Jobs and deploy projects inside this namespace only (plan 14).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: teams-ai-backend
+  namespace: teams-ai
+rules:
+  - apiGroups: ['batch']
+    resources: ['jobs']
+    verbs: ['create', 'get', 'list', 'watch', 'delete']
+  - apiGroups: ['']
+    resources: ['pods', 'pods/log', 'services', 'configmaps', 'secrets', 'persistentvolumeclaims']
+    verbs: ['create', 'get', 'list', 'watch', 'update', 'patch', 'delete']
+  - apiGroups: ['apps']
+    resources: ['deployments', 'replicasets']
+    verbs: ['create', 'get', 'list', 'watch', 'update', 'patch', 'delete']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: teams-ai-backend
+  namespace: teams-ai
+subjects:
+  - kind: ServiceAccount
+    name: teams-ai-backend
+    namespace: teams-ai
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: teams-ai-backend
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: teams-ai-config
+  namespace: teams-ai
+data:
+  # Seeded into ~/.teams-ai/config.json by the init container only when the file does not exist yet.
+  config.json: |
+    {
+      "github": { "owner": "your-github-org-or-user" },
+      "sandbox": { "enabled": false },
+      "omniroute": { "baseUrl": "http://omniroute:20128", "enabled": true },
+      "decisions": { "local": { "enabled": true, "baseUrl": "http://llama:8080" } },
+      "projects": []
+    }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: teams-ai-data
+  namespace: teams-ai
+spec:
+  accessModes: ['ReadWriteOnce']
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: teams-ai
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: { app: backend }
+  template:
+    metadata:
+      labels: { app: backend }
+    spec:
+      serviceAccountName: teams-ai-backend
+      initContainers:
+        - name: seed
+          image: teams-ai-backend:local
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              mkdir -p /data/teams-ai /data/claude
+              [ -f /data/teams-ai/config.json ] || cp /seed/config/config.json /data/teams-ai/config.json
+              [ -f /data/claude/.credentials.json ] || { [ -f /seed/claude/.credentials.json ] && cp /seed/claude/.credentials.json /data/claude/.credentials.json; }
+              true
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: config, mountPath: /seed/config }
+            - { name: claude-credentials, mountPath: /seed/claude }
+      containers:
+        - name: backend
+          image: teams-ai-backend:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 8787 }
+          env:
+            - { name: HOST, value: 0.0.0.0 }
+            - { name: TEAMS_AI_NAMESPACE, value: teams-ai }
+          readinessProbe:
+            tcpSocket: { port: http }
+            periodSeconds: 5
+          volumeMounts:
+            - { name: data, mountPath: /root/.teams-ai, subPath: teams-ai }
+            - { name: data, mountPath: /root/.claude, subPath: claude }
+            # One file per secret (server/core/secrets.ts reads ~/.teams-ai/secrets/<NAME>).
+            - { name: platform-secrets, mountPath: /root/.teams-ai/secrets, readOnly: true }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: teams-ai-data }
+        - name: config
+          configMap: { name: teams-ai-config }
+        - name: claude-credentials
+          secret: { secretName: claude-credentials, optional: true }
+        - name: platform-secrets
+          projected:
+            sources:
+              - secret: { name: github-token, optional: true }
+              - secret: { name: omniroute-secrets, optional: true }
+              - secret: { name: openrouter-api-key, optional: true }
+              - secret: { name: gemini-api-key, optional: true }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: teams-ai
+spec:
+  selector: { app: backend }
+  ports:
+    - { name: http, port: 8787, targetPort: http }

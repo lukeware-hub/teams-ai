@@ -1,0 +1,10 @@
+# Template, no values. Create the real Secret instead:
+#   kubectl -n teams-ai create secret generic gemini-api-key --from-literal=GEMINI_API_KEY=...
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gemini-api-key
+  namespace: teams-ai
+type: Opaque
+stringData:
+  GEMINI_API_KEY: ""
