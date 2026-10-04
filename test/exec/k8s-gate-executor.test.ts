@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Gate as GateSchema, type Gate } from '../../server/contracts/plan.js';
-import { buildGateManifests, jobName, K8sGateExecutor, type K8sExecutorConfig } from '../../server/exec/k8s-gate-executor.js';
+import { buildGateManifests, GATE_WRAPPER, jobName, K8sGateExecutor, splitGateLogs, STDERR_MARK, STDOUT_MARK, type K8sExecutorConfig } from '../../server/exec/k8s-gate-executor.js';
 import { runGate, type GateContext } from '../../server/exec/gate-runner.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
 
@@ -43,7 +43,7 @@ describe('buildGateManifests', () => {
               {
                 name: 'gate',
                 image: 'node:22-bookworm',
-                command: ['sh', '-lc', 'npm test'],
+                command: ['sh', '-c', GATE_WRAPPER, 'gate', 'npm test'],
                 workingDir: '/work',
                 env: [{ name: 'HOME', value: '/tmp' }, { name: 'NPM_TOKEN', valueFrom: { secretKeyRef: { name: NAME, key: 'NPM_TOKEN' } } }],
                 resources: { limits: { cpu: '2', memory: '2Gi' } },
@@ -160,5 +160,40 @@ describe('K8sGateExecutor lifecycle', () => {
     const r = await runGate(g, ctx, { ...deps, executor: new K8sGateExecutor({ exec: bad.exec, config: cfg, sleep: async () => undefined }) });
     expect(r).toMatchObject({ passed: false, failure: 'infra' });
     expect(r.stderrTail).not.toContain('npm_SECRET');
+  });
+});
+
+describe('separate stdout and stderr', () => {
+  const wrapped = (out: string, err: string) => `noise\n${STDOUT_MARK}\n${out}\n${STDERR_MARK}\n${err}`;
+  const run = (log: string, exitCode: number) => {
+    const fake = new FakeExec()
+      .onArgs('kubectl', ['-n', 'teams-ai', 'get', `job/${NAME}`], () => ({ stdout: jobJson(exitCode === 0 ? { type: 'Complete' } : { type: 'Failed' }) }))
+      .onArgs('kubectl', ['-n', 'teams-ai', 'get', 'pods'], () => ({ stdout: podJson({ state: { terminated: { exitCode, reason: 'Error' } } }) }))
+      .onArgs('kubectl', ['-n', 'teams-ai', 'logs'], () => ({ stdout: log }));
+    const executor = new K8sGateExecutor({ exec: fake.exec, config: cfg, sleep: async () => undefined });
+    return runGate(g, ctx, { exec: new FakeExec().exec, executor, readFile: async () => null, removeFile: async () => undefined });
+  };
+
+  it('runs the command with its own redirection, passed as an argument and not interpolated', () => {
+    expect(GATE_WRAPPER).toContain('>/tmp/gate.out 2>/tmp/gate.err');
+    expect(GATE_WRAPPER).toContain('"$1"');
+    expect(GATE_WRAPPER).toContain('exit $rc');
+  });
+
+  it('splits the two sections and falls back to all-stdout without markers', () => {
+    expect(splitGateLogs(wrapped('out line', 'err line'))).toEqual({ stdout: 'out line', stderr: 'err line' });
+    expect(splitGateLogs('killed mid-way')).toEqual({ stdout: 'killed mid-way', stderr: '' });
+  });
+
+  it('classifies an infra-looking stderr as infra', async () => {
+    const r = await run(wrapped('', 'write error: no space left on device'), 1);
+    expect(r).toMatchObject({ passed: false, failure: 'infra' });
+    expect(r.stderrTail).toContain('no space left on device');
+  });
+
+  it('classifies a test failure on stdout as code', async () => {
+    const r = await run(wrapped('FAIL src/a.test.ts\nExpected 1 to be 2', ''), 1);
+    expect(r).toMatchObject({ passed: false, failure: 'code' });
+    expect(r.stdoutTail).toContain('Expected 1 to be 2');
   });
 });

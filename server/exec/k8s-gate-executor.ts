@@ -29,7 +29,20 @@ const KUBECTL_TIMEOUT = 60_000;
 /** The Job deadline starts when the Job does; the client waits this much longer before giving up on its own. */
 const CLIENT_GRACE_MS = 60_000;
 const STUCK_REASONS = new Set(['ImagePullBackOff', 'InvalidImageName', 'CreateContainerConfigError']);
-const LOG_TAIL_LINES = 500;
+const STREAM_TAIL_LINES = 500;
+/** Delimiter lines the in-pod wrapper prints between the two captured streams (`kubectl logs` merges them). */
+export const STDOUT_MARK = '--teams-ai-gate-stdout--';
+export const STDERR_MARK = '--teams-ai-gate-stderr--';
+// The gate command is `$1`: it never gets interpolated into the script. Each stream goes to its own file in /tmp.
+export const GATE_WRAPPER = `sh -lc "$1" >/tmp/gate.out 2>/tmp/gate.err; rc=$?; printf '\\n%s\\n' ${STDOUT_MARK}; tail -n ${STREAM_TAIL_LINES} /tmp/gate.out; printf '\\n%s\\n' ${STDERR_MARK}; tail -n ${STREAM_TAIL_LINES} /tmp/gate.err; exit $rc`;
+
+/** Splits the wrapper's log into the gate's stdout and stderr; a log without the markers (a killed pod) is all stdout. */
+export function splitGateLogs(log: string): { stdout: string; stderr: string } {
+  const e = log.lastIndexOf('\n' + STDERR_MARK + '\n');
+  const o = log.lastIndexOf('\n' + STDOUT_MARK + '\n', e < 0 ? undefined : e);
+  if (e < 0 || o < 0) return { stdout: log, stderr: '' };
+  return { stdout: log.slice(o + STDOUT_MARK.length + 2, e), stderr: log.slice(e + STDERR_MARK.length + 2) };
+}
 
 /** DNS-1123 label of at most 63 characters (it becomes the `job-name` label value); long names keep a hash suffix. */
 export function jobName(containerName: string, gateName: string): string {
@@ -86,7 +99,7 @@ export function buildGateManifests(gate: Gate, ctx: GateContext, cfg: K8sExecuto
             {
               name: 'gate',
               image: ctx.image,
-              command: ['sh', '-lc', gate.command],
+              command: ['sh', '-c', GATE_WRAPPER, 'gate', gate.command],
               workingDir: workdir,
               env: [
                 { name: 'HOME', value: '/tmp' },
@@ -157,13 +170,14 @@ export class K8sGateExecutor implements GateExecutor {
 
       const end = await this.wait(name, started + ctx.timeoutMs + CLIENT_GRACE_MS);
       const exit = end.state === 'complete' ? { exitCode: 0, reason: '' } : end.state === 'failed' ? await this.exitOf(name) : { exitCode: null, reason: '' };
-      const logs = await this.kubectl(['logs', `job/${name}`, `--tail=${LOG_TAIL_LINES}`]);
+      const logs = await this.kubectl(['logs', `job/${name}`, `--tail=${STREAM_TAIL_LINES * 2 + 10}`]);
+      const streams = logs.exitCode === 0 ? splitGateLogs(logs.stdout) : { stdout: '', stderr: '' };
       return {
         exitCode: exit.exitCode,
         timedOut: end.state === 'deadline',
         durationMs: this.now() - started,
-        stdout: logs.exitCode === 0 ? logs.stdout : '',
-        stderr: exit.reason,
+        stdout: streams.stdout,
+        stderr: [streams.stderr, exit.reason].filter(Boolean).join('\n'),
       };
     } finally {
       await this.cleanup(name, false);
