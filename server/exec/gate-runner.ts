@@ -21,6 +21,8 @@ export interface GateContext {
   containerWorkdir?: string;
   /** Config `docker.bindRewrite`: the worktree path as the Docker daemon sees it, when the orchestrator runs in a container. */
   bindRewrite?: { from: string; to: string };
+  /** Docker network an egress gate joins instead of the default bridge (the compose project network). */
+  network?: string;
 }
 
 /** Rewrites a bind source for a daemon that sees the orchestrator's filesystem under another root. */
@@ -73,7 +75,7 @@ export function dockerArgs(gate: Gate, ctx: GateContext): DockerInvocation {
     '--name',
     `${ctx.containerName}-${gate.name}`,
     '--network',
-    gate.network === 'egress' ? 'bridge' : 'none',
+    gate.network === 'egress' ? ctx.network ?? 'bridge' : 'none',
     '--cpus',
     String(ctx.cpus),
     '--memory',

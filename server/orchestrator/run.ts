@@ -409,9 +409,9 @@ export class Run {
       tasks: () => [...this.journal.state.tasks.values()],
       boundaries: async () => (this.deps.graphify ? (await this.deps.graphify.godNodes(graphDir(this.deps.ws, null), 10).catch(() => [])).map((n) => n.label) : []),
       target: this.deps.target,
-      smoke: async (contextDir, url, gateUrl) => {
+      smoke: async (contextDir, url, gateUrl, gateNetwork) => {
         const p = this.plan!;
-        const r = await runSmoke(p, this.deps.spec, { worktree: contextDir, image: p.gateImage, junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-smoke`, user: containerUser(), bindRewrite: this.deps.cfg.docker.bindRewrite }, this.deps.gateExecutor?.kind === 'k8s' ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
+        const r = await runSmoke(p, this.deps.spec, { worktree: contextDir, image: p.gateImage, junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-smoke`, user: containerUser(), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, this.deps.gateExecutor?.kind === 'k8s' || gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
         // The gate's output is the only clue the fix task gets about why a smoke test is missing or failing.
         const tail = r.ok || !r.result ? '' : `\n\nsmoke gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };

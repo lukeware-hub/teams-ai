@@ -48,7 +48,7 @@ export interface PhaseDeps {
   confidential?: boolean;
   boundaries?: () => Promise<readonly string[]>;
   target?: DeployTarget;
-  smoke?: (contextDir: string, serviceUrl: string, gateServiceUrl?: string) => Promise<{ ok: boolean; rows: SmokeRow[]; detail: string }>;
+  smoke?: (contextDir: string, serviceUrl: string, gateServiceUrl?: string, gateNetwork?: string) => Promise<{ ok: boolean; rows: SmokeRow[]; detail: string }>;
   secretNames?: () => string[];
 }
 
