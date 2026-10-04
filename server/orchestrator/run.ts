@@ -29,7 +29,7 @@ export { CrashInjected };
 import { taskMergeSteps, type MergeStepsDeps } from './merge-steps.js';
 import { PAUSED_AUTH, runPhase0, runPhase1, runPhase2, runPhase4, runPhase5, runPhase6, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, type PhaseDeps, type PhaseResult } from './phases/index.js';
 import { reconcile } from './reconcile.js';
-import { runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
+import { readmePack, runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
 import { TaskRunner, type TaskRunnerDeps } from './task-runner.js';
 import { eventsFile, expandHome, graphDir, nextRunId, runDir, stateFile, stepDir, type Workspace } from './workspace.js';
 import type { DeployTarget } from '../deploy/target.js';
@@ -470,6 +470,30 @@ export class Run {
     return this.finish('done');
   }
 
+  /** `spec readme`: the SM writes docs/README.md from what main carries; the file lands through a docs PR. */
+  async writeReadme(): Promise<ExecuteResult> {
+    const shared = await import('./phases/shared.js');
+    const specId = this.deps.spec.specId;
+    const branch = `docs/${specId}-readme`;
+    const wt = await shared.docsWorktree(this.phaseDeps(), branch);
+    const rel = (...p: string[]) => path.join(wt, ...p);
+    this.techSpecText = await fs.readFile(rel('docs', 'specs', specId, 'tech-spec.md'), 'utf8').catch(() => '');
+    const plan = await fs.readFile(rel('docs', 'specs', specId, 'plan.json'), 'utf8').then((t) => JSON.parse(t) as Plan).catch(() => null);
+    const existing = await fs.readFile(rel('docs', 'README.md'), 'utf8').catch(() => null);
+    let readme = '';
+    let error = 'readme step failed';
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const out = (await this.runAgent<'readme'>({ kind: 'readme', role: 'sm', pack: readmePack(this.packBase(), { tasks: (plan?.tasks ?? []).map((t) => `- ${t.id}: ${t.title}`), existing }), cwd: wt, phase: 'readme', taskId: null, attempt })) as { ok: boolean; value?: { readme: string }; failure?: string; errors?: string[] };
+      if (out.ok && out.value) { readme = out.value.readme; break; }
+      if (out.failure === 'quota' || out.failure === 'auth') { if (await shared.pauseForFailure(this.phaseDeps(), out.failure)) return 'paused:auth'; continue; }
+      error = out.errors?.join('; ') ?? error;
+    }
+    if (!readme) return this.finish('phase-failed', error);
+    await fs.writeFile(rel('docs', 'README.md'), `${readme.trimEnd()}\n`);
+    const merged = await shared.commitAndMergeDocs(this.phaseDeps(), 6, branch, wt, `docs(${specId}): README`);
+    return merged.ok ? this.finish('done') : this.finish('phase-failed', merged.reason);
+  }
+
   private async postPhases(): Promise<ExecuteResult> {
     const runFix = async (tasks: PlanTask[]): Promise<ExecuteResult | 'merged'> => {
       for (const t of tasks) if (this.journal.state.tasks.get(t.id)?.state === 'planned') await this.journal.fact(RunEvent.TaskStateChanged, { taskId: t.id, to: 'ready' });
@@ -478,6 +502,7 @@ export class Run {
       return tasks.every((t) => this.journal.state.tasks.get(t.id)?.state === 'merged') ? 'merged' : 'blocked';
     };
     let result: 'awaiting-validation' | 'verification-failed' | 'deploy-failed' = 'awaiting-validation';
+    let reason: string | undefined;
     let p4 = await runPhase4(this.phaseDeps(), 1);
     if (!p4.ok && p4.reason === PAUSED_AUTH) return 'paused:auth';
     if (!p4.ok && p4.fixTasks) {
@@ -488,20 +513,20 @@ export class Run {
       // run before that round runs (1387253335-001-r13). Its blocked state is still reported by finish().
       p4 = await runPhase4(this.phaseDeps(), 2);
     }
-    if (!p4.ok) result = 'verification-failed';
+    if (!p4.ok) { result = 'verification-failed'; reason = p4.reason; }
     if (p4.ok && this.deps.target) {
       for (let attempt = deployStartAttempt(this.phaseDeps()); attempt <= MAX_DEPLOY_ATTEMPTS; attempt = (attempt + 1) as 1 | 2 | 3) {
         const p5 = await runPhase5(this.phaseDeps(), attempt);
         if (p5.ok) break;
-        if (!p5.fixTask) { result = 'deploy-failed'; break; }
+        if (!p5.fixTask) { result = 'deploy-failed'; reason = p5.reason; break; }
         // Same rule as Phase 4: the fix task is best effort and the next deploy attempt is the verdict.
-        const back = await runFix([p5.fixTask]); if (back !== 'merged' && back !== 'blocked') { result = 'deploy-failed'; break; }
+        const back = await runFix([p5.fixTask]); if (back !== 'merged' && back !== 'blocked') { result = 'deploy-failed'; reason = p5.reason; break; }
       }
     }
     const p6 = await runPhase6({ ...this.phaseDeps(), runId: this.runId, accounting: this.accounting, result });
     if (!p6.ok && p6.reason === PAUSED_AUTH) return 'paused:auth';
     if (!p6.ok) return this.finish('phase-failed', p6.reason);
-    return this.finish(result);
+    return this.finish(result, reason);
   }
 
   private async loop(opts: { final: boolean } = { final: true }): Promise<ExecuteResult> {

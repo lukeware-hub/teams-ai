@@ -1,5 +1,6 @@
 import type { FixTasksOutput } from '../../agents/outputs.js';
 import type { Plan, PlanTask } from '../../contracts/plan.js';
+import type { TestResult } from '../../evidence/junit.js';
 import { buildEvidenceMatrix, readyForValidation, type EvidenceRow } from '../../evidence/matrix.js';
 import type { GateResult } from '../../exec/gate-runner.js';
 import { RunEvent } from '../../pipeline/run-state.js';
@@ -8,6 +9,17 @@ import { validatePlan } from '../../validators/plan.js';
 import { OrchEvent } from '../events.js';
 import { fixTasksPack } from '../steps.js';
 import { checkoutMain, pauseForFailure, PAUSED_AUTH, type PhaseDeps } from './shared.js';
+
+const WEIGHT: Record<TestResult['status'], number> = { skipped: 0, passed: 1, failed: 2 };
+/** One result per test id, the strongest wins: the smoke suite is skipped under the unit gate and shares ids with the unit tests. */
+export function dedupeJunit(all: TestResult[]): TestResult[] {
+  const byId = new Map<string, TestResult>();
+  for (const t of all) {
+    const prev = byId.get(t.id);
+    if (!prev || WEIGHT[t.status] > WEIGHT[prev.status]) byId.set(t.id, t);
+  }
+  return [...byId.values()];
+}
 
 export type Phase4Result = { ok: true; matrix: EvidenceRow[] } | { ok: false; reason: string; fixTasks?: PlanTask[] };
 const tail = (s: string) => s.length > 2000 ? s.slice(-2000) : s;
@@ -28,7 +40,7 @@ export async function runPhase4(deps: PhaseDeps, round: 1 | 2): Promise<Phase4Re
     if (!blocking || !['infra', 'environment', 'flaky-test'].includes(String(blocking.failure)) || attempt === 3) break;
   }
   for (const r of results) await deps.journal.fact(r.passed ? OrchEvent.GatePassed : OrchEvent.GateFailed, { phase: 4, round, gate: r.name, failure: r.failure, junit: r.junit ?? [] });
-  const junit = [...new Map(results.flatMap((r) => r.junit ?? []).map((t) => [t.id, t])).values()];
+  const junit = dedupeJunit(results.flatMap((r) => r.junit ?? []));
   const matrix = buildEvidenceMatrix(deps.spec, deps.tasks(), junit);
   const failedTests = junit.filter((t) => t.status === 'failed').map((t) => t.id);
   const uncoveredAcs = matrix.filter((r) => r.status === 'missing').map((r) => r.criterion);

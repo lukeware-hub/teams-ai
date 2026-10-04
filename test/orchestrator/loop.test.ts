@@ -39,6 +39,7 @@ function happyScenario(dir: string): Scenario {
     const d = id === 'T1' ? 'a' : 'b';
     s.set('dev', id, 1, { output: { specHash: HASH, status: 'done', summary: `did ${id}`, changedFiles: [`src/${d}/index.ts`], commitMessage: `feat: ${id}` }, files: { [`src/${d}/index.ts`]: `export const ${id} = 1;\n` } });
     s.set('review', id, 1, { output: { specHash: HASH, decision: 'approve', criteria: [{ id: 'AC-001', status: 'passed', evidence: ['sum::[AC-001] adds'] }], findings: [] } });
+    s.set('security', id, 1, { output: { specHash: HASH, decision: 'approve', findings: [] } });
   }
   return s;
 }
@@ -86,7 +87,7 @@ describe('orchestrator loop with the fake claude', () => {
     expect(tree).toContain('src/a/index.ts');
     expect(tree).toContain('src/b/index.ts');
     expect(gh.prs.map((p) => p.title)).toEqual(['docs(spec-001): technical spec', 'docs(spec-001): plan', 'T1: Task T1', 'T2: Task T2']);
-    expect(scenario.seen).toEqual(['tech-spec/-/1', 'coverage/-/1', 'plan/-/1', 'dev/T1/1', 'review/T1/1', 'dev/T2/1', 'review/T2/1']);
+    expect(scenario.seen).toEqual(['tech-spec/-/1', 'coverage/-/1', 'plan/-/1', 'dev/T1/1', 'review/T1/1', 'security/T1/1', 'dev/T2/1', 'review/T2/1', 'security/T2/1']);
   });
 
   it('survives a crash after every intent and never duplicates a commit, PR or merge', { timeout: 900_000 }, async () => {

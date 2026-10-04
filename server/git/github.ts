@@ -80,13 +80,14 @@ export async function ensurePr(
 }
 
 /** A PR for this head branch that already merged — the merge queue short-circuits on it (crash between merge and confirm). */
-export async function findMergedPr(input: { cwd: string; head: string; base: string }, exec: Exec): Promise<number | null> {
-  const all = await ghJson<Array<{ number: number; state: string }>>(
+export async function findMergedPr(input: { cwd: string; head: string; base: string; headSha?: string }, exec: Exec): Promise<number | null> {
+  const all = await ghJson<Array<{ number: number; state: string; headRefOid?: string }>>(
     input.cwd,
-    ['pr', 'list', '--head', input.head, '--base', input.base, '--state', 'all', '--json', 'number,state'],
+    ['pr', 'list', '--head', input.head, '--base', input.base, '--state', 'all', '--json', 'number,state,headRefOid'],
     exec,
   );
-  return all.find((p) => p.state === 'MERGED')?.number ?? null;
+  // A reused branch name (a second run, a re-opened spec) must not match the PR that merged an older tip.
+  return all.find((p) => p.state === 'MERGED' && (input.headSha === undefined || p.headRefOid === input.headSha))?.number ?? null;
 }
 
 export async function prState(input: { cwd: string; number: number }, exec: Exec): Promise<{ state: 'OPEN' | 'MERGED' | 'CLOSED'; headSha: string }> {

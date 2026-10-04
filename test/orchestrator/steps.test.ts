@@ -7,7 +7,7 @@ import { Accounting } from '../../server/budget/accounting.js';
 import { Governor } from '../../server/budget/governor.js';
 import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
-import { devPack, outputContract, planPack, reviewPack, runAgentStep, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
+import { devPack, outputContract, planPack, reportPack, reviewPack, runAgentStep, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
 import type { StepOutcome } from '../../server/runner/step.js';
 import type { ResultSummary } from '../../server/runner/stream-events.js';
 import { makePlanTask, makeProject, makeFrozenSpec } from '../fixtures/contracts.js';
@@ -91,6 +91,12 @@ describe('packs', () => {
     expect(p.role).toBe('test');
     expect(p.feedback).toContain('src/a.ts');
     expect(p.code?.source).toBe('graph');
+  });
+
+  it('report pack lists the security findings for the SM summary', () => {
+    const opts = { delivered: ['T1'], blocked: [], evidence: '[]', assumptions: [], deploy: '{}', tokens: '{}' };
+    expect(reportPack(base, { ...opts, security: '- T1 src/a.ts:3 [low] logging: verbose log' }).feedback).toContain('[low] logging: verbose log');
+    expect(reportPack(base, { ...opts, security: '' }).feedback).toContain('Security findings left by the sec review');
   });
 
   it('plan pack carries every criterion, the human tasks and god nodes', () => {

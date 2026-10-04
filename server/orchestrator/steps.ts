@@ -84,6 +84,16 @@ Changed files:\n${opts.changedFiles.join('\n')}\n\nDiff stat:\n${opts.diffStat}`
   return { ...common(base, 'review', 'test'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), code: opts.code, feedback };
 }
 
+/** The diff is inlined because the sec role has no Bash; it reads surrounding files with Read, Grep and Glob. */
+export function securityPack(
+  base: PackBase,
+  task: PlanTask,
+  opts: { diffStat: string; changedFiles: readonly string[]; diff: string; code: CodeContext },
+): ContextPackInput {
+  const feedback = `Changed files:\n${opts.changedFiles.join('\n')}\n\nDiff stat:\n${opts.diffStat}\n\nDiff against origin/main:\n${opts.diff}`;
+  return { ...common(base, 'security', 'sec'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), code: opts.code, feedback };
+}
+
 export function techSpecPack(base: PackBase, opts: { feedback: string | null }): ContextPackInput {
   return {
     ...common(base, 'tech-spec', 'dev'),
@@ -176,13 +186,24 @@ export function fixTasksPack(base: PackBase, opts: { failedTests: readonly strin
   return { ...common(base, 'fix-tasks', 'sm'), criteria: base.spec.acceptanceCriteria, feedback };
 }
 
-export function reportPack(base: PackBase, opts: { delivered: readonly string[]; blocked: ReadonlyArray<{ taskId: string; reason: string }>; evidence: string; assumptions: readonly string[]; deploy: string; tokens: string }): ContextPackInput {
+export function readmePack(base: PackBase, opts: { tasks: readonly string[]; existing: string | null }): ContextPackInput {
+  return { ...common(base, 'readme', 'sm'), criteria: base.spec.acceptanceCriteria, feedback: [
+    'Write docs/README.md for this project: the Markdown overview a newcomer reads first. Read the repository (package.json, entry points, tests, Dockerfile) with Read, Grep and Glob; state only what the files confirm.',
+    `Delivered tasks:\n${opts.tasks.join('\n') || '- none'}`,
+    opts.existing ? `Current docs/README.md (rewrite it, keep what is still true):\n${opts.existing}` : 'There is no docs/README.md yet.',
+  ].join('\n\n') };
+}
+
+export function reportPack(base: PackBase, opts: { delivered: readonly string[]; blocked: ReadonlyArray<{ taskId: string; reason: string }>; evidence: string; assumptions: readonly string[]; deploy: string; tokens: string; security: string }): ContextPackInput {
   return { ...common(base, 'report', 'sm'), criteria: base.spec.acceptanceCriteria, feedback: [
     'Write the final report for the human validator. Give concrete exploratory steps for every acceptance criterion.',
+    'Also return `readme`: the Markdown for docs/README.md, a short overview of the project (what it is, how to run and test it, the endpoints or commands it exposes, the acceptance criteria it satisfies). Use only facts from the context pack.',
     `Delivered tasks: ${opts.delivered.join(', ') || 'none'}`,
     `Blocked tasks:\n${opts.blocked.map((b) => `- ${b.taskId}: ${b.reason}`).join('\n') || '- none'}`,
     `Evidence matrix:\n${opts.evidence}`,
     `Assumptions:\n${opts.assumptions.join('\n') || '- none'}`,
+    `Security findings left by the sec review (mention residual risks in the summary):
+${opts.security || '- none'}`,
     `Deploy outcome: ${opts.deploy}`,
     `Token usage: ${opts.tokens}`,
   ].join('\n\n') };

@@ -35,7 +35,9 @@ const gate = (name: string, over: Partial<GateResult> = {}): GateResult => ({
 });
 
 type Agent = (req: AgentStepRequest<any>) => Promise<StepOutcome<any>>;
+const secApprove = () => ok({ specHash: HASH, decision: 'approve', findings: [] });
 const devDone = (message = 'feat: T1'): Agent => async (req) => {
+  if (req.kind === 'security') return secApprove();
   await fs.mkdir(path.join(req.cwd, 'src'), { recursive: true });
   await fs.writeFile(path.join(req.cwd, 'src', 'a.ts'), `// ${Date.now()}\n`);
   return ok({ specHash: HASH, status: 'done', summary: 'did T1', changedFiles: ['src/a.ts'], commitMessage: message });
@@ -243,6 +245,42 @@ describe('TaskRunner: reviewing', () => {
     await r.advance();
     await r.advance();
     expect(state()).toMatchObject({ state: 'implementing', attempts: 1 });
+  });
+});
+
+describe('TaskRunner: security review', () => {
+  const finding = (severity: string) => ({ file: 'src/a.ts', line: 3, severity, category: 'injection', problem: 'user input reaches a shell', fix: 'use execFile with an argument array' });
+  async function secured(sec: Agent) {
+    const r = new TaskRunner('T1', deps({ agent: async (req) => (req.kind === 'review' ? approve() : req.kind === 'security' ? sec(req) : devDone()(req)) }));
+    for (let i = 0; i < 3; i++) await r.advance();
+    return r;
+  }
+
+  it('runs the sec role on the diff after Test approves, then moves to rebasing', async () => {
+    await secured(async () => secApprove());
+    expect(state().state).toBe('rebasing');
+    const call = agentCalls.find((c) => c.kind === 'security')!;
+    expect(call).toMatchObject({ role: 'sec', taskId: 'T1' });
+    expect(call.model).toBeUndefined();
+    expect(call.effort).toBeUndefined();
+    expect(call.pack.feedback).toContain('Diff against origin/main');
+    expect(call.pack.feedback).toContain('src/a.ts');
+    expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'review', 'security']);
+    expect(types()).toContain(`fact:${OrchEvent.SecurityApproved}`);
+  });
+
+  it('returns critical and high findings to Dev as an attempt, even when the decision says approve', async () => {
+    await secured(async () => ok({ specHash: HASH, decision: 'approve', findings: [finding('high'), { ...finding('low'), problem: 'verbose log line' }] }));
+    expect(state()).toMatchObject({ state: 'implementing', attempts: 1 });
+    expect(journal.lastFeedback('T1')).toContain('user input reaches a shell');
+    expect(journal.lastFeedback('T1')).not.toContain('verbose log line');
+    expect(types()).toContain(`fact:${OrchEvent.SecurityChanges}`);
+  });
+
+  it('records medium and low findings without blocking the merge', async () => {
+    await secured(async () => ok({ specHash: HASH, decision: 'approve', findings: [finding('medium'), finding('low')] }));
+    expect(state().state).toBe('rebasing');
+    expect(journal.events.find((e) => e.type === OrchEvent.SecurityApproved)!.data.findings).toHaveLength(2);
   });
 });
 
@@ -485,7 +523,7 @@ describe('TaskRunner: final review fixes', () => {
     const agent: Agent = async (req) => (req.kind === 'review' ? approve() : devDone()(req));
     const r = new TaskRunner('T1', deps({ agent, decider: tierDecider, tierModel: () => null }));
     await r.advance(); await r.advance(); await r.advance();
-    expect(agentCalls.map((c) => [c.kind, c.model, c.effort])).toEqual([['dev', undefined, undefined], ['review', undefined, undefined]]);
+    expect(agentCalls.map((c) => [c.kind, c.model, c.effort])).toEqual([['dev', undefined, undefined], ['review', undefined, undefined], ['security', undefined, undefined]]);
     expect(calls.filter((id) => id === 'model-tier')).toHaveLength(1);
   });
 });

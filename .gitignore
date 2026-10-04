@@ -11,3 +11,5 @@ web/dist/
 .codex/agents/sm.toml
 .codex/agents/test.toml
 AGENTS.md
+
+reports/

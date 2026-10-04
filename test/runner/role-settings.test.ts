@@ -37,7 +37,7 @@ describe('buildRoleSettings', () => {
       const allow = buildRoleSettings(role, { allowedDomains: [] }).permissions.allow;
       expect(allow).toEqual(expect.arrayContaining(['Edit', 'Write', 'MultiEdit']));
     }
-    for (const role of ['sm', 'po'] as const) {
+    for (const role of ['sm', 'po', 'sec'] as const) {
       const allow = buildRoleSettings(role, { allowedDomains: [] }).permissions.allow;
       expect(allow).not.toContain('Write');
       expect(allow).not.toContain('Edit');

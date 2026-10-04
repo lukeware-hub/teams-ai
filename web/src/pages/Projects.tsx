@@ -25,6 +25,7 @@ export function ProjectsView(p: {
   const [newProjectId, setNewProjectId] = useState('');
   const [newProjectName, setNewProjectName] = useState('');
   const [newSpecId, setNewSpecId] = useState<Record<string, string>>({});
+  const lastRunOf = (projectId: string, specId: string) => (p.runs[projectId] ?? []).find((r) => r.specId === specId && !r.runId.includes('-complete-'))?.runId ?? '';
   const openDrafts = p.drafts.filter((d) => d.state !== 'started');
   return (
     <main className="projects-shell">
@@ -87,6 +88,10 @@ export function ProjectsView(p: {
                     {s.activeRunId ? (
                       <Link data-testid={`open-${s.specId}`} to={`/runs/${s.activeRunId}`}>
                         Abrir execução
+                      </Link>
+                    ) : s.status === 'awaiting-validation' ? (
+                      <Link data-testid={`validate-${s.specId}`} to={`/runs/${lastRunOf(pr.projectId, s.specId)}/validation`}>
+                        Validar
                       </Link>
                     ) : s.status === 'done' ? null : (
                       <button data-testid={`start-${s.specId}`} onClick={() => p.onStart(pr.projectId, s.specId)}>

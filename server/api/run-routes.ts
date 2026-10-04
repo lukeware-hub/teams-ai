@@ -29,6 +29,12 @@ const str = (v: unknown, field: string): string => {
   return (v as Record<string, string>)[field]!;
 };
 
+/** Browsable https URL of a GitHub remote (https or ssh form), or null for any other host. */
+export function githubRepoUrl(remote: string): string | null {
+  const m = /^(?:https?:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/.exec(remote.trim());
+  return m ? `https://github.com/${m[1]}/${m[2]}` : null;
+}
+
 export function runRoutes(deps: RunRoutesDeps): Route[] {
   const index = async (): Promise<IndexDeps> => ({ cfg: await deps.cfg(), home: deps.home, isAlive: (pid) => isAlive(deps.control, pid) });
   const projectDir = async (idx: IndexDeps, projectId: string): Promise<string> => {
@@ -109,7 +115,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     const log = await fs.readFile(path.join(runs, runId, 'ui.log'), 'utf8').catch(() => '');
     throw new HttpError(500, `run ${runId} did not start: ${log.slice(-500) || 'no output'}`);
   };
-  const launch = async (idx: IndexDeps, o: { projectDir: string; specId: string; runId: string; mode: 'run' | 'resume' | 'complete' }): Promise<void> => {
+  const launch = async (idx: IndexDeps, o: { projectDir: string; specId: string; runId: string; mode: 'run' | 'resume' | 'complete' | 'readme' }): Promise<void> => {
     const runs = runsDir(idx);
     await fs.mkdir(path.join(runs, o.runId), { recursive: true });
     const { pid } = spawnRun(deps.control, { ...o, logFile: path.join(runs, o.runId, 'ui.log') });
@@ -249,6 +255,29 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       },
     },
     {
+      method: 'POST',
+      path: `${P}/runs/:runId/readme`,
+      handler: async ({ params, json }) => {
+        const idx = await index();
+        const runId = safe(params.runId!);
+        const evs = await events(runsDir(idx), runId);
+        const started = evs.find((e) => e.type === 'RUN_STARTED');
+        const projectId = String(started?.data.projectId ?? '');
+        const specId = String(started?.data.specId ?? '');
+        const dir = await projectDir(idx, projectId);
+        // Same rule as spec completion: one writer per spec, because the docs PR resets the shared clone to main.
+        const id = await exclusive(`readme ${projectId}/${specId}`, async () => {
+          const rows = await listRuns(idx, projectId);
+          const active = rows.find((r) => r.specId === specId && CLAIMS_SPEC.has(r.status));
+          if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status}); the README is written when it ends`);
+          const next = await nextRunId({ runs: runsDir(idx) }, `${specId}-readme`);
+          await launch(idx, { projectDir: dir, specId, runId: next, mode: 'readme' });
+          return next;
+        });
+        json(202, { runId: id });
+      },
+    },
+    {
       method: 'GET',
       path: `${P}/runs/:runId`,
       handler: async ({ params, json }) => {
@@ -271,12 +300,23 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
               .then((text) => Plan.safeParse(JSON.parse(text)).data ?? null)
               .catch(() => null)
           : null;
+        const remote = project ? await execCommand({ bin: 'git', args: ['remote', 'get-url', 'origin'], cwd: project, timeoutMs: 5_000 }).catch(() => null) : null;
+        const repoUrl = remote?.exitCode === 0 ? githubRepoUrl(remote.stdout) : null;
+        // docs/README.md as merged on main; the working tree is the fallback for a clone without origin/main.
+        const readme = project
+          ? await execCommand({ bin: 'git', args: ['show', 'origin/main:docs/README.md'], cwd: project, timeoutMs: 5_000 })
+              .then((r) => (r.exitCode === 0 ? r.stdout : null))
+              .catch(() => null)
+              .then((text) => text ?? fs.readFile(path.join(project, 'docs', 'README.md'), 'utf8').catch(() => null))
+          : null;
         const report = [...evs].reverse().find((e) => e.type === 'REPORT_READY')?.data.report ?? null;
         const phase = [...evs].reverse().find((e) => e.type === 'PHASE_STARTED')?.data.phase ?? 0;
         json(200, {
           runId,
           specId,
           projectId,
+          repoUrl,
+          readme,
           status: finished ? String(finished.data.result) : state.status,
           state: { status: state.status, order: state.order, tasks: state.order.map((id) => state.tasks.get(id)) },
           finished: finished?.data ?? null,

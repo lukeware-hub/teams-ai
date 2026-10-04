@@ -37,6 +37,7 @@ export interface CliIo {
 const USAGE = `Usage:
   teams-ai run    --project <dir> [--spec <id>] [--run-id <id>] [--max-parallel N] [--dry-run] [--draft]
   teams-ai resume --project <dir> --run <runId>
+  teams-ai spec readme --project <dir> --spec <id> [--run-id <id>]   the SM writes docs/README.md (docs PR)
   teams-ai status --project <dir> --run <runId> [--json]
   teams-ai ui     [--port N]            start the local web UI (onboarding, status)`;
 
@@ -120,7 +121,7 @@ async function readJson<T>(file: string, parse: (v: unknown) => T): Promise<T> {
   return parse(JSON.parse(await fs.readFile(file, 'utf8')));
 }
 
-async function preconditions(exec: Exec, repo: string, specId: string, draft: boolean, complete = false): Promise<string[]> {
+async function preconditions(exec: Exec, repo: string, specId: string, draft: boolean, complete = false, readme = false): Promise<string[]> {
   const errors: string[] = [];
   const check = async (label: string, spec: Parameters<Exec>[0], test?: (stdout: string) => boolean) => {
     const r = await exec(spec).catch(() => null);
@@ -132,20 +133,21 @@ async function preconditions(exec: Exec, repo: string, specId: string, draft: bo
   if (!complete) {
     await check('claude is not logged in', { bin: 'claude', args: ['auth', 'status', '--json'], timeoutMs: 30_000 }, (out) => /"loggedIn":\s*true/.test(out));
     await check('gh is not logged in', { bin: 'gh', args: ['auth', 'status'], timeoutMs: 30_000 });
-    await check('docker daemon is not reachable', { bin: 'docker', args: ['version'], timeoutMs: 30_000 });
+    if (!readme) await check('docker daemon is not reachable', { bin: 'docker', args: ['version'], timeoutMs: 30_000 });
   }
   return errors;
 }
 
-export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: string | undefined, opts: { dryRun: boolean; maxParallel?: number; draft?: boolean; complete?: boolean }): Promise<RunDeps> {
+export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: string | undefined, opts: { dryRun: boolean; maxParallel?: number; draft?: boolean; complete?: boolean; readme?: boolean }): Promise<RunDeps> {
   const cfgFile = path.join(expandHome('~/.teams-ai'), 'config.json');
   const cfg: Config = loadConfig(await fs.readFile(cfgFile, 'utf8').then(JSON.parse).catch(() => ({})));
   const project = await readJson(path.join(projectDir, 'docs', 'project.json'), (v) => Project.parse(v));
   const specId = specIdArg ?? (await fs.readdir(path.join(projectDir, 'docs', 'specs'))).sort().at(-1);
   if (!specId) throw new Error('no spec found under docs/specs and no --spec given');
   const spec = await readJson(path.join(projectDir, 'docs', 'specs', specId, 'spec.json'), (v) => Spec.parse(v));
-  const allowed = opts.complete ? spec.status === 'awaiting-validation' : spec.status === 'running';
-  if (!allowed || !spec.specHash) throw new Error(`spec ${specId} is not ${opts.complete ? 'awaiting-validation' : 'running'} (status ${spec.status}); finish Gate 1 first`);
+  // A README is written for any spec whose code is on main, whatever its lifecycle status.
+  const allowed = opts.readme ? spec.status !== 'refining' : opts.complete ? spec.status === 'awaiting-validation' : spec.status === 'running';
+  if (!allowed || !spec.specHash) throw new Error(`spec ${specId} is not ${opts.readme ? 'past refinement' : opts.complete ? 'awaiting-validation' : 'running'} (status ${spec.status}); finish Gate 1 first`);
   const ws = workspacePaths(cfg, project.projectId);
   const platformSecrets = await loadSecrets(expandHome(cfg.paths.secrets));
   const secrets = { ...platformSecrets, ...(await loadSecrets(path.posix.join(ws.root, 'secrets'))) };
@@ -162,7 +164,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
     : {};
   const exec: Exec = (s) => execCommand(s.bin === 'git' ? { ...s, env: { ...(s.env ?? {}), ...gitAuth } } : s);
   const ghExec: Exec = (s) => execCommand({ ...s, env: { ...(s.env ?? {}), ...gitAuth } });
-  const errors = await preconditions(exec, ws.repo, specId, opts.draft === true, opts.complete === true);
+  const errors = await preconditions(exec, ws.repo, specId, opts.draft === true, opts.complete === true, opts.readme === true);
   if (errors.length > 0) throw new Error(`preconditions failed:\n- ${errors.join('\n- ')}`);
   const agents = await loadAgents(path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '.claude', 'agents'));
   const graphify = new Graphify({ exec, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null) });
@@ -199,7 +201,8 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
   const f = flags(rest);
   const projectDir = typeof f.project === 'string' ? f.project : null;
   const completing = command === 'spec' && rest[0] === 'complete';
-  if (!command || (!(completing || ['run', 'resume', 'status', 'ui'].includes(command))) || (!projectDir && command !== 'ui')) {
+  const readming = command === 'spec' && rest[0] === 'readme';
+  if (!command || (!(completing || readming || ['run', 'resume', 'status', 'ui'].includes(command))) || (!projectDir && command !== 'ui')) {
     io.stderr(USAGE);
     if (command && !projectDir) io.stderr('--project <dir> is required');
     return 2;
@@ -227,12 +230,12 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
       }
       return 0;
     }
-    const load = loadRunDeps(io, projectDir, typeof f.spec === 'string' ? f.spec : undefined, { dryRun: f['dry-run'] === true, draft: f.draft === true, maxParallel: typeof f['max-parallel'] === 'string' ? Number(f['max-parallel']) : undefined, complete: completing });
+    const load = loadRunDeps(io, projectDir, typeof f.spec === 'string' ? f.spec : undefined, { dryRun: f['dry-run'] === true, draft: f.draft === true, maxParallel: typeof f['max-parallel'] === 'string' ? Number(f['max-parallel']) : undefined, complete: completing, readme: readming });
     const deps = factory === defaultFactory ? await load : await load.catch(() => null as unknown as RunDeps);
     const explicitId = typeof f['run-id'] === 'string' ? f['run-id'] : undefined;
     if (explicitId !== undefined && !/^[A-Za-z0-9_.-]+$/.test(explicitId)) throw new Error('--run-id must match ^[A-Za-z0-9_.-]+$');
-    const run = completing
-      ? await Run.create(deps, explicitId ?? await nextRunId(deps.ws, `${deps.spec.specId}-complete`))
+    const run = completing || readming
+      ? await Run.create(deps, explicitId ?? await nextRunId(deps.ws, `${deps.spec.specId}-${completing ? 'complete' : 'readme'}`))
       : await factory(deps, command === 'resume' ? String(f.run) : undefined, explicitId);
     io.stderr(`run ${run.runId} started`);
     const off = (hooks.signals ?? realSignals)(() => {
@@ -241,7 +244,7 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
     });
     let result: ExecuteResult;
     try {
-      result = completing ? await run.completeSpec() : await run.execute();
+      result = completing ? await run.completeSpec() : readming ? await run.writeReadme() : await run.execute();
     } finally {
       off();
       await run.close();

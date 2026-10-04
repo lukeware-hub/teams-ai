@@ -20,6 +20,7 @@ export const ROLE_TOOL_POLICY: Record<Role, { allowed: readonly string[] }> = {
   front: { allowed: [...EDITING, 'Bash'] },
   dev: { allowed: [...EDITING, 'Bash'] },
   test: { allowed: [...EDITING, 'Bash'] },
+  sec: { allowed: READ_ONLY },
   devops: { allowed: EDITING },
 };
 

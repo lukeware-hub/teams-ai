@@ -91,4 +91,14 @@ describe('ProjectsView', () => {
     expect(screen.getByTestId('refine-fresh-fresh-001').getAttribute('href')).toBe('/refine/fresh/fresh-001');
     expect(screen.queryByTestId('refine-hello-app-hello-004')).toBeNull();
   });
+  it('an awaiting-validation spec links to the validation page of its last run', () => {
+    const awaiting = [{ projectId: 'hello-app', dir: '/p/hello', specs: [{ specId: 'hello-009', status: 'awaiting-validation', activeRunId: null }] }];
+    const awaitingRuns = { 'hello-app': [{ runId: 'hello-009-r1', specId: 'hello-009', projectId: 'hello-app', status: 'awaiting-validation', at: '2026-09-24T11:00:00.000Z', tokens: 1, cost: 0, stoppable: false }] };
+    render(
+      <MemoryRouter>
+        <ProjectsView projects={awaiting} runs={awaitingRuns} drafts={[]} error={null} onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={vi.fn()} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('validate-hello-009').getAttribute('href')).toBe('/runs/hello-009-r1/validation');
+  });
 });

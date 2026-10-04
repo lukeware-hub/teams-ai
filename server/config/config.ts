@@ -3,7 +3,7 @@ import { DEFAULT_MAX_PARALLEL } from '../scheduler/scheduler.js';
 import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
 import { BACKEND_NAMES, DECISION_IDS, type DecisionConfig, type DecisionId } from '../decide/types.js';
 
-export const ROLES = ['sm', 'po', 'front', 'dev', 'test', 'devops'] as const;
+export const ROLES = ['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops'] as const;
 export type Role = (typeof ROLES)[number];
 
 export const ProviderProfile = z.object({
@@ -18,6 +18,7 @@ const CLAUDE_DEFAULTS: Record<Role, ProviderProfile> = {
   front: { provider: 'claude', model: 'opus' },
   dev: { provider: 'claude', model: 'opus' },
   test: { provider: 'claude', model: 'sonnet' },
+  sec: { provider: 'claude', model: 'sonnet' },
   devops: { provider: 'claude', model: 'sonnet' },
 };
 

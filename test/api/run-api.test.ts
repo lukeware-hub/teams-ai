@@ -290,4 +290,18 @@ describe('run detail, events and steps', () => {
     expect((await fetch(`${base()}/api/runs/hello-001-r1/steps/s00002`)).status).toBe(404);
     expect((await fetch(`${base()}/api/runs/hello-001-r1/steps/..%2Fui.log`)).status).toBe(400);
   });
+
+  it('spawns `spec readme` for a finished run and refuses while the spec has an active run', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), { type: 'RUN_FINISHED', data: { result: 'complete' } }], state('running'));
+    onSpawn = async (runId) => {
+      await writeRun(runs, runId, [started(runId)], state('running'));
+    };
+    const ok = await post('/api/runs/hello-001-r1/readme');
+    expect(ok.status).toBe(202);
+    const { runId } = await ok.json();
+    expect(runId).toBe('hello-001-readme-r1');
+    expect(spawns[0]!.args).toEqual(['cli', 'spec', 'readme', '--project', HELLO, '--spec', 'hello-001', '--run-id', runId]);
+    expect((await post('/api/runs/hello-001-r1/readme')).status).toBe(409); // the readme run itself is now active
+    expect((await post('/api/runs/missing/readme')).status).toBe(404);
+  });
 });

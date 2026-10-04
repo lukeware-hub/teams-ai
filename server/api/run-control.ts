@@ -22,7 +22,7 @@ export interface RunTarget {
   projectDir: string;
   specId: string;
   runId: string;
-  mode: 'run' | 'resume' | 'complete';
+  mode: 'run' | 'resume' | 'complete' | 'readme';
   /** Where ui.log goes; the caller passes the run directory once it exists. */
   logFile?: string;
   /** Spec (refinement) §4: the project directory is a draft root; `run` bootstraps Phase 0. */
@@ -36,8 +36,8 @@ export function runCommand(deps: RunControlDeps, o: RunTarget): SpawnArgs {
   const args =
     o.mode === 'run'
       ? ['run', '--project', o.projectDir, '--spec', o.specId, '--run-id', o.runId, ...(o.draft ? ['--draft'] : [])]
-      : o.mode === 'complete'
-        ? ['spec', 'complete', '--project', o.projectDir, '--spec', o.specId, '--run-id', o.runId]
+      : o.mode === 'complete' || o.mode === 'readme'
+        ? ['spec', o.mode, '--project', o.projectDir, '--spec', o.specId, '--run-id', o.runId]
         : ['resume', '--project', o.projectDir, '--run', o.runId];
   return { bin, args: [...prefix, ...args], cwd: deps.repoRoot, logFile: o.logFile ?? 'ui.log' };
 }

@@ -93,11 +93,42 @@ export interface PlanArtifact {
   tasks: Array<{ id: string; title: string; description: string; criteriaRefs: string[]; dependsOn: string[]; affectedPaths: string[]; owner: string; origin: string }>;
   deploy: { image: string; port: number; healthcheckPath: string; manifests: string[] };
 }
+export interface SmokeRow { acId: string; testId: string | null; status: 'passed' | 'failed' | 'missing' }
+export interface EvidenceRow { criterion: string; tasks: string[]; tests: string[]; status: 'passed' | 'failed' | 'missing' | 'blocked' }
+export interface SecurityFinding {
+  taskId?: string;
+  file: string;
+  line: number | null;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  category: string;
+  problem: string;
+  fix: string;
+}
+export interface Report {
+  runId: string;
+  specId: string;
+  specHash: string;
+  result: 'awaiting-validation' | 'verification-failed' | 'deploy-failed';
+  service: { url: string; healthcheck: string; smoke: SmokeRow[] } | null;
+  deploy: { attempts: number; lastFailure: { attempt: number; stage: string; detail: string; rolledBack: boolean; rollbackHealthy: boolean | null } | null };
+  evidence: EvidenceRow[];
+  delivered: string[];
+  blocked: Array<{ taskId: string; reason: string }>;
+  assumptions: string[];
+  exploratoryScript: Array<{ acId: string; steps: string[] }>;
+  securityFindings?: SecurityFinding[];
+  tokens: { byRole: Record<string, { inputTokens: number; outputTokens: number; costUsd: number }>; total: { inputTokens: number; outputTokens: number; costUsd: number } };
+  summary: string;
+}
 export interface RunDetail {
   runId: string;
   specId: string;
   projectId: string;
+  repoUrl?: string | null;
+  readme?: string | null;
   status: string;
+  phase: number;
+  report: Report | null;
   state: { status: string; order: string[]; tasks: TaskRow[] };
   finished: Record<string, unknown> | null;
   tokens: Usage;
@@ -113,6 +144,9 @@ export const runApi = {
   runs: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/runs`).then((r) => json<RunRow[]>(r)),
   startRun: (projectId: string, specId: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/runs`).then((r) => json<{ runId: string }>(r)),
   resumeRun: (runId: string) => jsonPost(`/runs/${encodeURIComponent(runId)}/resume`).then((r) => json<{ runId: string }>(r)),
+  complete: (projectId: string, specId: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/complete`).then((r) => json<{ runId: string }>(r)),
+  reportProblem: (projectId: string, specId: string, report: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/continue`, { report }).then((r) => json<{ sessionId: string }>(r)),
+  writeReadme: (runId: string) => jsonPost(`/runs/${encodeURIComponent(runId)}/readme`).then((r) => json<{ runId: string }>(r)),
   stopRun: (runId: string) => jsonPost(`/runs/${encodeURIComponent(runId)}/stop`).then((r) => json<{ stopped: boolean }>(r)),
   run: (runId: string) => fetch(`${R}/runs/${encodeURIComponent(runId)}`).then((r) => json<RunDetail>(r)),
   step: (runId: string, stepId: string) => fetch(`${R}/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}`).then((r) => json<{ prompt: string; output: unknown }>(r)),

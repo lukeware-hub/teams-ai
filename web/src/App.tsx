@@ -6,6 +6,7 @@ import { Projects } from './pages/Projects.js';
 import { RefinementPage } from './pages/Refinement.js';
 import { RunPage } from './pages/Run.js';
 import { StatusPage } from './pages/StatusPage.js';
+import { ValidationPage } from './pages/Validation.js';
 
 export function Home() {
   const [to, setTo] = useState<string | null>(null);
@@ -27,6 +28,7 @@ export function App() {
         <Route path="/projects" element={<Projects />} />
         <Route path="/runs/:runId" element={<RunPage />} />
         <Route path="/refine/:projectId/:specId" element={<RefinementPage />} />
+        <Route path="/runs/:runId/validation" element={<ValidationPage />} />
       </Routes>
     </BrowserRouter>
   );
