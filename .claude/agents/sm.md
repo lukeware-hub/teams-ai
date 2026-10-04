@@ -24,6 +24,8 @@ Return one plan. Add `alternatives` (at most two full plans with the same `specH
 
 Fill `delivery` with the artifacts the project must ship: `dockerfile`, `compose`, `ciWorkflow`, `releaseWorkflow`, `e2eSuite` (repository-relative file paths, for example `Dockerfile`, `docker-compose.yml`, `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `e2e/`-suite entry file) and `readmeSections` (README headings that must exist, such as Run, Test, Environment, Architecture, Pipeline). Each listed file must be created by some task's `affectedPaths`; Phase 4 fails the run if a listed file is missing on main.
 
+Security gates use prescribed tools; the plan pack lists the exact commands and the orchestrator rejects any other. Gates, all blocking and in this order: `security-tools` (egress; installs the scanners into `.tools/bin`), `secret-scan` (gitleaks), `sast` (semgrep, `--severity ERROR --error`), `dependency-scan` (osv-scanner, or `npm audit --audit-level=high` for node, `pip-audit` for python; egress) and `image-scan` (trivy image, `--severity CRITICAL --exit-code 1`; egress; after `build`). Choose a non-slim glibc `gateImage` that has curl, tar and python3/pip. Never add `|| true` or `--exit-code 0`.
+
 ## Answering a spec gap (`spec-gap` step)
 
 You receive the Dev's question, the task, its acceptance criteria and the tech-spec excerpt. Decide from the principles, the ADRs and the spec; never ask the human. Return `{specHash, answer, assumption}` where `answer` tells the Dev exactly what to do and `assumption` is one line for the assumptions log: `<taskId>: <question> → <decision> (<rationale>)`.

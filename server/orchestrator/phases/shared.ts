@@ -27,6 +27,8 @@ export interface PhaseDeps {
   firstSpec: boolean;
   /** Phase 2 requires `plan.delivery` from the SM (roadmap R8.1). */
   requireDelivery?: boolean;
+  /** Phase 2 requires the prescribed security gates (roadmap R8.5). */
+  requireSecurityTooling?: boolean;
   exec: Exec;
   runAgent: <K extends StepKind>(req: AgentStepRequest<K>) => Promise<StepOutcome<OutputOf<K>>>;
   mergeQueue: MergeQueue;
