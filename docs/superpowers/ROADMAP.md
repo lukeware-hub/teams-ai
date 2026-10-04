@@ -54,9 +54,22 @@ window resets, resume exactly from the entry below.
 - Started 2026-10-04 as run `todo-001-r1` (approved by the human).
 - Outcome: _pending_.
 
-### R1.2 Deploy the run 1 result to `kind` — `todo`
+### R1.2 Deploy the run 1 result to `kind` — `in progress`
 
-- `kind` has never run. Needs a plan: second run with `deploy.target: "kind"`, or redeploy only.
+- `kind` has never run. Phase 5 is deterministic (no agent) once the plan carries the image, port, healthcheck and
+  manifests, so a deploy-only command costs no tokens.
+- Plan (2026-10-04, approved through the roadmap goal):
+  - New command `teams-ai spec deploy --project <dir> --spec <id> [--target kind|docker-local]` for a spec whose code
+    is on main (`awaiting-validation` or `done`). It journals a new run `<specId>-deploy-rN`.
+  - `Run.deployOnly()` reads `docs/specs/<id>/plan.json` from main and runs one Phase 5 attempt (deploy, verify,
+    smoke, rollback). No agent runs: a failure ends `deploy-failed` with its reason and plans no fix task.
+  - Files: `server/cli.ts` (command, target override, preconditions without the claude login check),
+    `server/orchestrator/run.ts` (`deployOnly`), `server/orchestrator/phases/deploy.ts` (option to skip the fix task).
+  - Unit tests: success, deploy failure without a fix task, kind with a plan that has no manifests, CLI parsing.
+  - E2E: run the command against the `teams-ai` kind cluster on the R1.1 result; green verify and smoke.
+  - Fallback if the R1.1 plan has no Kubernetes manifests: a full run with `deploy.target: "kind"` (costs a run).
+- Progress: command, `Run.deployOnly()` and the no-fix-task option implemented with unit tests (734 passing,
+  2026-10-04). Left: the e2e on kind, which needs the R1.1 result.
 
 ## Stage 2 — Browser checks (cheap, on the run 1 result)
 

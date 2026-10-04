@@ -18,6 +18,16 @@ describe('teams-ai cli', () => {
     expect(b.err.join('\n')).toContain('--project');
   });
 
+  it('spec deploy is listed and rejects an unknown --target before loading anything', async () => {
+    const a = io(['spec', 'deploy', '--project', '/nowhere', '--spec', 's', '--target', 'aws']);
+    expect(await main(a.io)).toBe(2);
+    expect(a.err.join('\n')).toContain('spec deploy');
+    expect(a.err.join('\n')).toContain('--target must be kind or docker-local');
+    const b = io(['spec', 'deploy']);
+    expect(await main(b.io)).toBe(2);
+    expect(b.err.join('\n')).toContain('--project');
+  });
+
   it('maps run results to exit codes', async () => {
     const results = ['complete', 'blocked', 'deadlocked', 'phase-failed', 'drained', 'paused:auth'] as const;
     const codes: number[] = [];

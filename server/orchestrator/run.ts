@@ -7,7 +7,7 @@ import { Accounting } from '../budget/accounting.js';
 import { Governor } from '../budget/governor.js';
 import { DEFAULT_BREAKER, QuotaBreaker } from '../budget/quota-breaker.js';
 import { resolveProfile, type Config, type Role } from '../config/config.js';
-import type { Plan, PlanTask } from '../contracts/plan.js';
+import { Plan, type PlanTask } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
 import { createDecider } from '../decide/create-decider.js';
@@ -504,6 +504,18 @@ export class Run {
     await fs.writeFile(rel('docs', 'README.md'), `${readme.trimEnd()}\n`);
     const merged = await shared.commitAndMergeDocs(this.phaseDeps(), 6, branch, wt, `docs(${specId}): README`);
     return merged.ok ? this.finish('done') : this.finish('phase-failed', merged.reason);
+  }
+
+  /** `spec deploy`: one Phase 5 attempt of the plan on main to this run's target; no agent runs, a failure is only reported. */
+  async deployOnly(): Promise<ExecuteResult> {
+    if (!this.deps.target) return this.finish('phase-failed', 'no deployment target');
+    const specId = this.deps.spec.specId;
+    await git(this.deps.ws.repo, ['fetch', '-q', 'origin'], this.deps.exec);
+    const text = await git(this.deps.ws.repo, ['show', `origin/main:docs/specs/${specId}/plan.json`], this.deps.exec).catch(() => null);
+    if (!text) return this.finish('phase-failed', `main has no docs/specs/${specId}/plan.json`);
+    this.plan = Plan.parse(JSON.parse(text));
+    const p5 = await runPhase5(this.phaseDeps(), 1, { fixTasks: false });
+    return p5.ok ? this.finish('done') : this.finish('deploy-failed', p5.reason);
   }
 
   private async postPhases(): Promise<ExecuteResult> {

@@ -36,7 +36,8 @@ export function deployStartAttempt(deps: PhaseDeps): 1 | 2 | 3 {
   return Math.min(1 + done, 3) as 1 | 2 | 3;
 }
 
-export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3): Promise<Phase5Result> {
+/** `fixTasks: false` (deploy-only runs): a failure is reported, never turned into agent work. */
+export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fixTasks?: boolean } = {}): Promise<Phase5Result> {
   if (!deps.plan || !deps.target || !deps.smoke) throw new Error('Phase 5 needs plan, target and smoke');
   const done = deps.journal.events.find((e) => e.type === OrchEvent.DeployVerified && e.data.attempt === attempt);
   if (done) return { ok: true, url: String(done.data.url), smoke: done.data.smoke as SmokeRow[], healthcheck: String(done.data.healthcheck) };
@@ -45,7 +46,7 @@ export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3): Promise<Ph
   const failed = async (stage: DeployStage, detail: string, rolledBack: boolean, rollbackHealthy: boolean | null, previous: string | null): Promise<Phase5Result> => {
     await deps.journal.fact(OrchEvent.DeployFailed, { attempt, stage, detail, rolledBack, rollbackHealthy, tag });
     if (rolledBack) await deps.journal.fact(OrchEvent.RollbackDone, { attempt, previous });
-    if (attempt >= 3) return { ok: false, reason: `deploy failed on attempt ${attempt} at ${stage}: ${detail}` };
+    if (attempt >= 3 || opts.fixTasks === false) return { ok: false, reason: `deploy failed on attempt ${attempt} at ${stage}: ${detail}` };
     // The plan is not the Dev's to edit, so a deploy-fix task could only come back empty and burn tokens.
     if (stage === 'smoke' && detail === 'plan.commands.smoke missing') return { ok: false, reason: `deploy failed at ${stage}: ${detail}` };
     const task = fixTask(deps, attempt, stage, detail); await deps.journal.fact(RunEvent.FixTasksPlanned, { tasks: [task] });

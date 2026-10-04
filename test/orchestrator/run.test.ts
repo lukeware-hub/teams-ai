@@ -300,4 +300,43 @@ describe('Run', () => {
     expect(run.journal.events[0]!.data).toMatchObject({ runId: 'spec-001-r7' });
     await run.close();
   });
+
+  describe('deployOnly (spec deploy)', () => {
+    const noAgent: Script = async (req) => { throw new Error(`deploy-only ran an agent step: ${req.kind}`); };
+    const target = (over: Record<string, unknown> = {}) => ({
+      name: 'kind' as const,
+      validate: async () => [] as string[],
+      build: async () => undefined,
+      apply: async () => ({ previous: null }),
+      verify: async () => ({ healthy: true, detail: 'HTTP 200' }),
+      currentImage: async () => null,
+      rollback: async () => undefined,
+      destroy: async () => undefined,
+      serviceUrl: async () => 'http://127.0.0.1:3000',
+      ...over,
+    });
+
+    it('deploys the plan on main with no agent step and finishes done', async () => {
+      const run = await Run.create(deps(noAgent, { target: target() as never }), 'spec-001-deploy-r1');
+      expect(await run.deployOnly()).toBe('done');
+      expect(run.journal.events.some((e) => e.type === OrchEvent.DeployVerified && e.data.url === 'http://127.0.0.1:3000')).toBe(true);
+      await run.close();
+    });
+
+    it('a failed deploy ends deploy-failed with the reason and plans no fix task', async () => {
+      const run = await Run.create(deps(noAgent, { target: target({ validate: async () => ['kind target requires at least one manifest'] }) as never }), 'spec-001-deploy-r2');
+      expect(await run.deployOnly()).toBe('deploy-failed');
+      const finished = run.journal.events.find((e) => e.type === OrchEvent.RunFinished)!;
+      expect(String(finished.data.reason)).toContain('kind target requires at least one manifest');
+      expect(run.journal.events.some((e) => e.type === 'FIX_TASKS_PLANNED')).toBe(false);
+      await run.close();
+    });
+
+    it('refuses without a deployment target', async () => {
+      const run = await Run.create(deps(noAgent), 'spec-001-deploy-r3');
+      expect(await run.deployOnly()).toBe('phase-failed');
+      await run.close();
+    });
+  });
 });
+
