@@ -377,12 +377,14 @@ unit-tested with fixtures. Each one needs a plan file in `plans/` before impleme
 
 - Built: `plan.delivery` (Dockerfile, compose, CI and release workflow paths, e2e suite, README sections), optional in the schema; `validatePlan` takes `requireDelivery` (on in `server/cli.ts`, so new plans must carry it); Phase 4 fails with the missing files before any gate. `sm.md` and the plan pack tell the SM to fill it.
 - Open: a live run will now reject an SM plan without `delivery` (check on the next run); Phase 4 does not check `readmeSections` (R8.6 does, in Phase 6); a missing delivery file ends the run at Phase 4 with no fix round.
-### R8.2 Docker infra enforced — `todo` (after R1.2/R7.1)
+### R8.2 Docker infra enforced — `done` (unit; plan 33, 2026-10-04)
 
 - DevOps must emit `Dockerfile` and `docker-compose.yml`; docker-local switches from one `docker run` to
   `docker compose config` + `up --wait`. Fixes the smoke network fault seen in run 1.
 - Files: `.claude/agents/devops.md`, `server/deploy/docker-local.ts`.
 
+- Built: docker-local deploys with `docker compose` when `plan.delivery.compose` is declared (`config --quiet`, `up -d --build --wait`, compose healthcheck plus HTTP check, rollback by the previous tag or `down`, destroy `down -v`); the single `docker run` stays as the fallback. The smoke gate container joins the compose network and reaches the service by name (`gateNetwork`, `gateServiceUrl`), which is the fix for the loopback fault of golden run 1.
+- Open: nothing of this is proven on a real Docker host (compose `--wait`, DNS of the service name, the network really named `<project>_default`); a failed FIRST deploy leaves the stack up (the orchestrator never calls rollback with no previous tag); the compose file content is not validated beyond `config`.
 ### R8.3 GitHub Actions in the generated repo — `done` (unit; plan 29, 2026-10-04)
 
 - `.github/workflows/ci.yml` (lint, typecheck, unit, e2e, scans) and `release.yml` (buildx build and push to GHCR with
@@ -397,12 +399,14 @@ unit-tested with fixtures. Each one needs a plan file in `plans/` before impleme
   reusing the `server/exec/smoke.ts` plumbing. Not the same as `commands.smoke`.
 - Files: `server/validators/plan.ts`, `server/exec/gate-runner.ts`, `.claude/agents/test.md`.
 
-### R8.5 Security tooling for the generated project — `todo`
+### R8.5 Security tooling for the generated project — `done` (unit; plan 32, 2026-10-04)
 
 - Prescribe tools in the default gates: gitleaks (secrets), osv-scanner or `npm audit` (dependencies), semgrep (SAST),
   trivy (image). High findings become blocking gates instead of names only. Separate from R7.4 (teams-ai's own audit).
 - Files: `server/validators/plan.ts`, `.claude/agents/sm.md`, `.claude/agents/sec.md`.
 
+- Built: `server/validators/security-tooling.ts` prescribes the gates (security-tools install gate with egress, gitleaks, semgrep `--severity ERROR`, osv-scanner or `npm audit --audit-level=high` or `pip-audit` per stack, trivy image CRITICAL after the build) and rejects missing, non-blocking, disarmed (`|| true`, `--exit-code 0`) or wrong-tool gates; `requireSecurityTooling` is on in `server/cli.ts` (older plans stay valid with it off); `sm.md`, `sec.md` and the plan pack say so.
+- Open: a gate has no docker, so `trivy image` needs an image archive that no gate produces yet; the install command of the tools is left to the SM and was never run; osv-scanner blocks on any finding; a live plan now needs BOTH `delivery` (R8.1) and the security gates, so check that the SM meets the stricter validator on the next run.
 ### R8.6 Documentation gate — `done` (unit; plan 30, 2026-10-04)
 
 - Required README sections (run, test, env, architecture, pipeline), a runbook and API docs step; a failed docs step
