@@ -14,11 +14,11 @@ import { expandHome, nextRunId, stateFile, workspacePaths } from './orchestrator
 import { runStep } from './runner/step.js';
 import { startApi } from './api/server.js';
 import { onboardingRoutes } from './api/onboarding-routes.js';
-import { defaultRunControl, isAlive } from './api/run-control.js';
+import { defaultRunControl, isAlive, type RunControlDeps } from './api/run-control.js';
 import { opsRoutes } from './api/ops-routes.js';
 import { runRoutes } from './api/run-routes.js';
 import { refineRoutes } from './api/refine-routes.js';
-import { readProject, runsDir } from './api/run-index.js';
+import { readProject, runsDir, type IndexDeps } from './api/run-index.js';
 import { supervise } from './supervisor/supervise.js';
 import { makeRunAgent } from './refine/agent.js';
 import { SessionRegistry } from './refine/registry.js';
@@ -54,6 +54,8 @@ export interface UiHooks {
   waitForSignal?: () => Promise<void>;
   /** Called with the stop callback; returns a function that removes the handlers. */
   signals?: (onStop: () => void) => () => void;
+  /** Replaces the real run index and process control of `supervise`. */
+  supervision?: { idx: IndexDeps; control: RunControlDeps };
 }
 
 function realSignals(onStop: () => void): () => void {
@@ -248,8 +250,8 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
     }
     if (!projectDir) return 2; // unreachable: the guard above admits a missing --project only for `ui`
     if (command === 'supervise') {
-      const control = defaultRunControl(path.resolve(path.dirname(new URL(import.meta.url).pathname), '..'));
-      const idx = { cfg: (await readUserConfig()).cfg, isAlive: (pid: number) => control.kill(pid, 0) };
+      const control = hooks.supervision?.control ?? defaultRunControl(path.resolve(path.dirname(new URL(import.meta.url).pathname), '..'));
+      const idx = hooks.supervision?.idx ?? { cfg: (await readUserConfig()).cfg, isAlive: (pid: number) => control.kill(pid, 0) };
       const seconds = typeof f.interval === 'string' ? Number(f.interval) : 60;
       if (!(seconds > 0)) throw new Error('--interval must be a positive number of seconds');
       let stop = false;
