@@ -11,7 +11,7 @@ export const MAX_DEPLOY_ATTEMPTS = 3;
 
 export function deployIntent(deps: PhaseDeps, tag: string): DeploymentIntent {
   const p = deps.plan!;
-  return { projectId: deps.project.projectId, image: p.deploy.image, tag, port: p.deploy.port, healthcheckPath: p.deploy.healthcheckPath, manifests: [...p.deploy.manifests], secretNames: deps.secretNames ? deps.secretNames() : [...new Set(deps.spec.externalDependencies.flatMap((d) => d.secretNames))], contextDir: deps.ws.repo };
+  return { projectId: deps.project.projectId, image: p.deploy.image, tag, port: p.deploy.port, healthcheckPath: p.deploy.healthcheckPath, manifests: [...p.deploy.manifests], secretNames: deps.secretNames ? deps.secretNames() : [...new Set(deps.spec.externalDependencies.flatMap((d) => d.secretNames))], contextDir: deps.ws.repo, ...(p.delivery?.compose ? { compose: p.delivery.compose } : {}) };
 }
 // Ids are assigned here and must stay unique across attempts and resumes (a resumed attempt re-issued
 // T950-deploy-fix-1 and the reducer rejected it - 1387253335-001-r13).
@@ -63,7 +63,7 @@ export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fix
     previous = r.previous; await deps.journal.confirm(Intent.DeployApply, key, { previous }); await deps.journal.fact(OrchEvent.DeployApplied, { attempt, previous, tag });
     healthcheck = (await deps.target.verify(intent)).detail;
   }
-  let url: string; let gateUrl: string | undefined; try { url = await (deps.target.serviceUrl ? deps.target.serviceUrl(intent) : ''); gateUrl = deps.target.gateServiceUrl ? await deps.target.gateServiceUrl(intent) : undefined; } catch (e) { return failed('verify', (e as Error).message, false, null, previous); }
-  const s = await deps.smoke(deps.ws.repo, url, gateUrl); if (!s.ok) { let rb = false; let rh: boolean | null = null; if (previous) { await deps.target.rollback(intent, previous); rb = true; rh = (await deps.target.verify(intent)).healthy; } return failed('smoke', s.detail, rb, rh, previous); }
+  let url: string; let gateUrl: string | undefined; let gateNet: string | undefined; try { url = await (deps.target.serviceUrl ? deps.target.serviceUrl(intent) : ''); gateUrl = deps.target.gateServiceUrl ? await deps.target.gateServiceUrl(intent) : undefined; gateNet = deps.target.gateNetwork?.(intent); } catch (e) { return failed('verify', (e as Error).message, false, null, previous); }
+  const s = await deps.smoke(deps.ws.repo, url, gateUrl, gateNet); if (!s.ok) { let rb = false; let rh: boolean | null = null; if (previous) { await deps.target.rollback(intent, previous); rb = true; rh = (await deps.target.verify(intent)).healthy; } return failed('smoke', s.detail, rb, rh, previous); }
   await deps.journal.fact(OrchEvent.DeployVerified, { attempt, url, smoke: s.rows, healthcheck, tag }); return { ok: true, url, smoke: s.rows, healthcheck };
 }

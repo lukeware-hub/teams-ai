@@ -21,20 +21,59 @@ export class DockerLocalTarget implements DeployTarget {
 
   serviceUrl(intent: DeploymentIntent) { return this.baseUrl(intent); }
 
+  /** Compose project name derived from the projectId (compose allows lowercase letters, digits, '-' and '_'). */
+  private project(intent: DeploymentIntent) {
+    return `teams-ai-${intent.projectId}`.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+  }
+
+  /** The app's compose service is named after the project (devops.md contract). */
+  private service(intent: DeploymentIntent) {
+    return intent.projectId;
+  }
+
+  /** Smoke gate runs on the compose project's default network and reaches the app by its service name. */
+  gateServiceUrl(intent: DeploymentIntent) {
+    return intent.compose ? `http://${this.service(intent)}:${intent.port}` : this.baseUrl(intent);
+  }
+
+  gateNetwork(intent: DeploymentIntent) {
+    return intent.compose ? `${this.project(intent)}_default` : undefined;
+  }
+
+  private compose(intent: DeploymentIntent, args: string[], image: string | null, timeoutMs = 120_000) {
+    const env: Record<string, string> = image ? { TEAMS_AI_IMAGE: image } : {};
+    for (const n of intent.secretNames) env[n] = this.deps.secrets[n]!;
+    const base = ['compose', '-p', this.project(intent), '-f', `${intent.contextDir.replaceAll('\\', '/')}/${intent.compose}`, '--project-directory', intent.contextDir];
+    return this.deps.exec({ bin: 'docker', args: [...base, ...args], env, timeoutMs });
+  }
+
   private docker(args: string[], env?: Record<string, string>, timeoutMs = 120_000) {
     return this.deps.exec({ bin: 'docker', args, env, timeoutMs });
   }
 
   async validate(intent: DeploymentIntent): Promise<string[]> {
-    return intent.secretNames.filter((n) => this.deps.secrets[n] === undefined).map((n) => `missing secret ${n}`);
+    const errors = intent.secretNames.filter((n) => this.deps.secrets[n] === undefined).map((n) => `missing secret ${n}`);
+    if (intent.compose && errors.length === 0) {
+      const r = await this.compose(intent, ['config', '--quiet'], imageRef(intent), 60_000);
+      if (r.exitCode !== 0) errors.push(`docker compose config failed: ${r.stderr.slice(-1000)}`);
+    }
+    return errors;
   }
 
   async build(intent: DeploymentIntent): Promise<void> {
+    if (intent.compose) return; // `compose up --build` builds in apply
     const r = await this.docker(['build', '-t', imageRef(intent), intent.contextDir], undefined, TIMEOUT);
     if (r.exitCode !== 0) throw new Error(`docker build failed: ${r.stderr.slice(-2000)}`);
   }
 
   async currentImage(intent: DeploymentIntent): Promise<string | null> {
+    if (intent.compose) {
+      const ps = await this.compose(intent, ['ps', '-q', this.service(intent)], null, 60_000);
+      const id = ps.stdout.trim().split(/\s+/)[0];
+      if (ps.exitCode !== 0 || !id) return null;
+      const r = await this.docker(['inspect', '--format', '{{.Config.Image}}', id], undefined, 60_000);
+      return r.exitCode === 0 && r.stdout.trim() !== '' ? r.stdout.trim() : null;
+    }
     const r = await this.docker(['inspect', '--format', '{{.Config.Image}}', this.container(intent)], undefined, 60_000);
     return r.exitCode === 0 && r.stdout.trim() !== '' ? r.stdout.trim() : null;
   }
@@ -77,19 +116,45 @@ export class DockerLocalTarget implements DeployTarget {
 
   async apply(intent: DeploymentIntent): Promise<{ previous: string | null }> {
     const previous = await this.currentImage(intent);
+    if (intent.compose) {
+      const r = await this.compose(intent, ['up', '-d', '--build', '--wait'], imageRef(intent), TIMEOUT);
+      if (r.exitCode !== 0) throw new Error(`docker compose up failed: ${r.stderr.slice(-2000)}`);
+      return { previous: previous === imageRef(intent) ? null : previous };
+    }
     await this.run(intent, imageRef(intent));
     return { previous: previous === imageRef(intent) ? null : previous };
   }
 
-  verify(intent: DeploymentIntent) {
+  async verify(intent: DeploymentIntent) {
+    if (intent.compose) {
+      // `up --wait` already gated on the compose healthcheck; re-read it so a later crash is not masked by the HTTP check.
+      const ps = await this.compose(intent, ['ps', '-q', this.service(intent)], null, 60_000);
+      const id = ps.stdout.trim().split(/\s+/)[0];
+      if (!id) return { healthy: false, detail: `compose service ${this.service(intent)} is not running` };
+      const h = await this.docker(['inspect', '--format', '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}', id], undefined, 60_000);
+      const status = h.stdout.trim();
+      if (status === 'unhealthy' || status === 'starting') return { healthy: false, detail: `compose healthcheck ${status}` };
+    }
     return waitHealthy(`${this.baseUrl(intent)}${intent.healthcheckPath}`, this.deps.get, { timeoutMs: 120_000, intervalMs: 2_000 });
   }
 
-  rollback(intent: DeploymentIntent, previous: string): Promise<void> {
+  async rollback(intent: DeploymentIntent, previous: string): Promise<void> {
+    if (intent.compose) {
+      // No previous image: nothing to go back to, take the failed stack down.
+      const r = previous
+        ? await this.compose(intent, ['up', '-d', '--no-build', '--wait'], previous, TIMEOUT)
+        : await this.compose(intent, ['down'], null, 120_000);
+      if (r.exitCode !== 0) throw new Error(`docker compose ${previous ? 'rollback up' : 'down'} failed: ${r.stderr.slice(-2000)}`);
+      return;
+    }
     return this.run(intent, previous);
   }
 
   async destroy(intent: DeploymentIntent): Promise<void> {
+    if (intent.compose) {
+      await this.compose(intent, ['down', '-v'], null, 120_000);
+      return;
+    }
     await this.docker(['rm', '-f', this.container(intent), `${this.container(intent)}-prev`], undefined, 60_000);
   }
 }

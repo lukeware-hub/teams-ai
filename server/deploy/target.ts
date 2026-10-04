@@ -8,6 +8,8 @@ export interface DeploymentIntent {
   secretNames: string[];
   /** Directory with the Dockerfile and manifests (the merged main checkout). */
   contextDir: string;
+  /** Repository-relative compose file (`plan.delivery.compose`); when set, docker-local deploys with `docker compose`. */
+  compose?: string;
 }
 
 export interface DeployTarget {
@@ -23,6 +25,8 @@ export interface DeployTarget {
   serviceUrl?(intent: DeploymentIntent): Promise<string> | string;
   /** The service URL as seen from a gate Job pod (in-cluster Service DNS); absent when the orchestrator's URL already works there. */
   gateServiceUrl?(intent: DeploymentIntent): Promise<string> | string;
+  /** Docker network a docker-run gate container must join to reach the service by `gateServiceUrl`; absent means the default bridge. */
+  gateNetwork?(intent: DeploymentIntent): string | undefined;
 }
 
 export type DeployStage = 'validate' | 'build' | 'apply' | 'verify' | 'smoke';
