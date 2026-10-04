@@ -31,48 +31,61 @@ decision layer and plan 7's orchestrator.
 
 ## Outstanding work
 
-Ordered by what unblocks what. Spec references are to `docs/superpowers/specs/2026-09-23-teams-ai-poc-design.md`.
+Roadmap to "done". Done means the golden run criteria in spec §1.3
+(`docs/superpowers/specs/2026-09-23-teams-ai-poc-design.md`): three runs on the reference spec, zero human
+interaction between Start and `awaiting-validation`, every AC `passed` in JUnit, green deploy and smoke on both
+`docker-local` and `kind`, zero duplicate PRs, `main` green after every merge, and the three runs compared on tokens,
+retries, wall time, blocked tasks and escalation rate. Stages are in order; each one unblocks the next.
 
-- **Golden run comparison (spec §1.3) — only run 1 done.** The reference spec (TODO REST API, 5 criteria) now
-  exists at `test/fixtures/todo-api` (docs only; agents write the code); run it with `TEAMS_AI_FIXTURE=todo-api` on
-  `scripts/integration/orchestrator.ts`. Plan 7 records one live baseline run on hello-app
-  (`hello-001-r1`, decisions off, $3.33). Run 2 (OmniRoute for Test/DevOps, decisions off) and run 3 (decisions
-  on) have not been executed. `decisions.enabled` defaulting to `false` (`server/config/config.ts:108`) is by
-  design for runs 1–2 — it is not a bug; run 3 flips it per run, not in the default.
-- **Decision 8 (CLI error classification) — wired.** When `classifyFailure` falls through to `code`, `runStep`
-  asks `cli-error` (`server/decide/decisions/cli-error.ts`, chain jev → local, never Claude) through
-  `StepDeps.classifyUnknown`. Options use the runner's taxonomy (`quota`, `auth`, `schema`, `code`; the spec's
-  usage-limit / auth-expired / invalid-output / other); `network` is left out because the retry policy only accepts
-  infra/environment for gates. Default `code`, as before (decided 2026-10-04).
-- **Decision 12 (rank candidate plans) — blocked on the SM contract.** `server/contracts/plan.ts` and
-  `server/agents/outputs.ts` have no notion of multiple candidate plans; the SM authors exactly one. Needs a
-  contract change first.
-- **Decisions 2–4 (Gate 1 readiness, question dedup, contradiction) — unblocked, not wired to System 1.** The
-  refinement loop now exists (plan 11, `server/refine/`). Question dedup is deterministic (normalized text,
-  `server/refine/cycle.ts:154`); a JEV/OpenRouter consistency check (`server/refine/jev-validation.ts`) covers part of
-  readiness and contradiction, but it calls the backend directly instead of going through the decider in
-  `server/decide/decisions/`.
-- **Decision 7 (validation report routing) — wired as a hint.** `continue { report }` asks `report-routing`
-  (`server/decide/decisions/report-routing.ts`, chain jev → local, no Claude escalation from the UI server) and writes
-  `Routing (System 1, <backend>): <route> (<p>)` under the report in `brief.md`; `unclear` adds an instruction for the PO
-  to ask the human. With the layer off or unanswered nothing is written. The route does not change the spec type or
-  skip refinement (decided 2026-10-04).
-- **Plan 12 — open items.** Report-step failure in the live run, `kind` target and "Report problem" unchecked (the Validation page no longer loses its buttons after an action error); see the plan's Findings.
-- **Plan 10 — items not covered by the live check.** A run has not yet been started, stopped and resumed from
-  the browser (the live check replayed the recorded `hello-001-r1` journal only, to avoid a $3 run). SIGTERM
-  reaching a process behind the `tsx` wrapper is verified (2026-10-04, WSL: handler ran for both a group kill and a
-  single-PID kill); the orchestrator's own `requestStop()` path under a real run is not.
-- **`local-logprobs` backend (spec §10A.2a, phase 2) — client built, server not set up.**
-  `server/decide/local-logprobs.ts` talks to a llama.cpp server (`/completion`, one grammar-constrained token per
-  question, probabilities from `top_logprobs`); `createDecider` wires it when `decisions.local.enabled` is true,
-  the stub otherwise. Still to do on the host: build llama.cpp with CUDA in WSL2, download a 7–9B instruct GGUF
-  (suggested start: Qwen2.5-7B-Instruct Q4_K_M), start `llama-server -np 4 -c 8192`, run a real smoke, then let
-  the evals pick the model and the `local` threshold.
-- **Decision evals (spec §10A.6) — not built.** Labeled fixtures are meant to grow from `DECISION_MADE` journal
-  records; the eval harness (accuracy, Brier, ECE, escalation rate, latency per decision and model) does not exist.
-  Depends on having enough journal records, i.e. run 3.
-- **Plan 8 — two live-verification items still open** (see the plan's `## Findings` section):
-  1. A real `claude auth login` transcript (URL line, paste-prompt wording, time to `loggedIn`) has not been
-     recorded on a fresh host / after `claude auth logout` — the live run tested a host that was already logged in.
-  2. The real `gh` device-flow walkthrough (auto-Enter behaviour) has only been exercised by the fake-CLI test,
-     not a real device-flow run.
+### Stage 1 — Golden run 1 (baseline: Claude only, decisions off) — in progress
+
+- Reference spec: `test/fixtures/todo-api` (TODO REST API, 5 ACs, docs only; agents write the code).
+- Run `todo-001-r1` started 2026-10-04 on WSL:
+  `TEAMS_AI_GH_OWNER=<owner> TEAMS_AI_FIXTURE=todo-api npx tsx scripts/integration/orchestrator.ts`
+  (repository `<owner>/teams-ai-todo-api`). The earlier `hello-001-r1` ($3.33) was on hello-app, not on the reference spec.
+- The same run also checks, live: the `sec` gate inside a run (plan 13) and the report step that failed in plan 12's
+  live run.
+- Deploy target is `docker-local`. `kind` is still never run: deploy the same result to `kind` (second run with
+  `deploy.target: "kind"`) before calling stage 1 done.
+
+### Stage 2 — Browser checks (cheap; after stage 1, on its result)
+
+- Plan 12: "Report problem" from the Validation page (reopens refinement; with decisions on, shows the decision 7 hint).
+- Plan 10: start, stop and resume a run from the browser.
+- Plan 8: a real `claude auth login` on a logged-out host (URL line, paste prompt, time to `loggedIn`) and a real
+  `gh` device-flow walkthrough (only the fake CLI has exercised it).
+
+### Stage 3 — Golden run 2 (OmniRoute for Test/DevOps, decisions off)
+
+- Needs OmniRoute up on the host (`scripts/wsl/omniroute`) and `omniroute.enabled` for the run.
+
+### Stage 4 — System 1 ready for run 3
+
+- Decisions 2–4 (Gate 1): pick the approach first, see the decision table below.
+- Decision 12: needs the SM contract to allow several candidate plans (`server/contracts/plan.ts`,
+  `server/agents/outputs.ts`). Optional for run 3.
+- `local-logprobs` backend (spec §10A.2a): client built (`server/decide/local-logprobs.ts`); host still needs
+  llama.cpp with CUDA in WSL2, a 7–9B instruct GGUF (start with Qwen2.5-7B-Instruct Q4_K_M) and
+  `llama-server -np 4 -c 8192`. Optional: Jev alone covers run 3.
+
+### Stage 5 — Golden run 3 (decisions on) and the comparison
+
+- Flip `decisions.enabled` for this run only (the `false` default is by design for runs 1–2).
+- Write the three-run comparison (tokens, retries, wall time, blocked tasks, escalation rate).
+- Decision evals (spec §10A.6): harness not built; fixtures come from `DECISION_MADE` records of run 3.
+
+### System 1 decisions (spec §10A.5)
+
+| # | Decision | Status |
+|---|----------|--------|
+| 1 | Gate failure triage | Wired (`gate-triage`) |
+| 2 | Gate 1 readiness per AC / checklist item | Not wired. A single JEV consistency check (`server/refine/jev-validation.ts`) covers part of it, outside the decider |
+| 3 | Question dedup | Deterministic only (normalized text, `server/refine/cycle.ts:154`) |
+| 4 | Contradiction with history | Not wired; partly covered by the same JEV check |
+| 5 | PR risk | Wired (`pr-risk`) |
+| 6 | Attempt progress | Wired (`attempt-progress`) |
+| 7 | Validation report routing | Wired 2026-10-04 as a hint in `brief.md` (`report-routing`); never changes the flow |
+| 8 | CLI error classification | Wired 2026-10-04 (`cli-error`: quota / auth / schema / code; never escalates to Claude) |
+| 9 | Scope drift | Wired (`scope-drift`) |
+| 10–11 | Model tier and effort per task | Wired (`model-tier`) |
+| 12 | Rank candidate plans | Blocked on the SM contract |
