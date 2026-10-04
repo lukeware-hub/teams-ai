@@ -156,4 +156,14 @@ describe('run status precedence', () => {
     ]);
     expect(s.status).toBe('draining');
   });
+
+  it('a manual resume undoes a stop, but never an exhausted budget, and an automatic resume undoes neither', () => {
+    const stop = { type: RunEvent.RunStopRequested, data: {} };
+    expect(reduceEvents([stop, { type: RunEvent.RunResumed, data: { manual: true } }]).status).toBe('running');
+    expect(reduceEvents([stop, { type: RunEvent.RunResumed, data: {} }]).status).toBe('draining');
+    const budget = { type: RunEvent.RunBudgetExhausted, data: {} };
+    expect(reduceEvents([budget, { type: RunEvent.RunResumed, data: { manual: true } }]).status).toBe('draining');
+    // a stop that follows an exhausted budget is still a budget drain once the stop is undone
+    expect(reduceEvents([budget, stop, { type: RunEvent.RunResumed, data: { manual: true } }]).status).toBe('draining');
+  });
 });

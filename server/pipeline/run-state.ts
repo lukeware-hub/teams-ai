@@ -22,6 +22,8 @@ export type RunStatus = (typeof RUN_STATUSES)[number];
 
 export interface RunState {
   status: RunStatus;
+  /** Why the run drains, when only a stop request does: a manual resume may undo a stop, never an exhausted budget. */
+  stopOnly?: boolean;
   tasks: Map<string, TaskRuntime>;
   order: string[];
 }
@@ -106,14 +108,20 @@ export function applyEvent(state: RunState, event: ReducibleEvent): void {
       return;
     }
     case RunEvent.RunResumed: {
-      if (state.status !== 'draining') state.status = 'running';
+      // Only the human's resume (data.manual) lifts a stop; the automatic resume after a quota pause must not.
+      if (state.status === 'draining' && state.stopOnly && event.data.manual === true) {
+        state.status = 'running';
+        state.stopOnly = false;
+      } else if (state.status !== 'draining') state.status = 'running';
       return;
     }
     case RunEvent.RunBudgetExhausted: {
       state.status = 'draining';
+      state.stopOnly = false;
       return;
     }
     case RunEvent.RunStopRequested: {
+      if (state.status !== 'draining') state.stopOnly = true;
       state.status = 'draining';
       return;
     }

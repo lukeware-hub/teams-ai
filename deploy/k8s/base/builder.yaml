@@ -11,8 +11,6 @@ spec:
   template:
     metadata:
       labels: { app: buildkitd }
-      annotations:
-        container.apparmor.security.beta.kubernetes.io/buildkitd: unconfined
     spec:
       containers:
         - name: buildkitd
@@ -32,6 +30,7 @@ spec:
           # and no dropped capabilities) and an unconfined seccomp profile. It still runs as uid 1000, never privileged.
           securityContext:
             seccompProfile: { type: Unconfined }
+            appArmorProfile: { type: Unconfined }
             runAsNonRoot: true
             runAsUser: 1000
             runAsGroup: 1000
