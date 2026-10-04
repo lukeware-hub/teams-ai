@@ -187,6 +187,37 @@ window resets, resume exactly from the entry below.
   Unit tests in `test/decide/evals.test.ts`; checked end to end on a synthetic journal.
 - Left: label the run 3 decisions and record the metrics here; then pick the `local` model and threshold.
 
+## Stage 6 — Everything in Kubernetes
+
+### R6.1 Run the whole stack as pods in one namespace — `planning` (starts after R1.1b ends)
+
+- Goal (human, 2026-10-04): application, back, front, OmniRoute and the local model all run in the same Kubernetes
+  namespace, every pod reaching every other and the internet (ingress and egress open); nothing left installed
+  directly on WSL or Docker. Order decided by the human: let golden run 1 finish first. Cluster: `kind` (the spec's
+  target, already proven); Docker stays only as the engine under kind.
+- Jev is the OpenRouter API (external): it stays external; the namespace only needs egress to openrouter.ai.
+- Inventory found 2026-10-04 (read-only):
+  - Docker containers: `teams-ai-control-plane` (kind), `omniroute` 3.8.51, `teams-ai-backend-1` (image
+    `teams-ai-backend:local`, up 2 h, not installed by this roadmap).
+  - Docker volumes: `omniroute-data`, `teams-ai_teams-ai-claude`, `teams-ai_teams-ai-config`, `teams-ai_teams-ai-gh`
+    (the last three hold a `claude` login, `gh` login and config: removing them loses those logins).
+  - Docker images: `teams-ai-backend:local`, `ghcr.io/diego-dm-morais/teams-ai:{0.1.0,latest}`,
+    `teams-ai-teams-ai:latest`, `diegosouzapw/omniroute:3.8.51`, 8 `hello-app:*`, `node:*`, `curlimages/curl`.
+  - WSL: `~/llama.cpp` (build), `~/models` (4.4 GB), `nvidia-cuda-toolkit` (apt), process `llama-server`, clones
+    `~/teams-ai-live`, `~/teams-ai-e2e`, `~/hello-kind`, `~/teams-ai`, `~/workspace/teams-ai`, `~/.teams-ai`
+    (config, runs, workspaces, secrets: 7 secrets incl. `OPENROUTER_API_KEY`, `GITHUB_TOKEN`, `GEMINI_API_KEY`).
+- Plan to write before touching anything (open questions, answered by reading the code first):
+  1. Namespace `teams-ai` with Deployments: `backend` (orchestrator and API), `front` (web UI served by the backend
+     today: one pod unless the build is split), `omniroute`, `llama` (GPU needs the NVIDIA device plugin in kind; the
+     fallback is CPU or leaving the model out), plus NetworkPolicies that allow all ingress and egress.
+  2. Secrets and logins as Kubernetes Secrets/PVCs: `claude` credentials, `gh`/`GITHUB_TOKEN`, OmniRoute secrets,
+     OpenRouter key, `~/.teams-ai` as a PVC.
+  3. The orchestrator needs Docker for gates and deploys and `kind` itself for the deploy target: inside the cluster
+     that means a Docker-in-Docker sidecar or Jobs; decide before building.
+  4. Cutover and removal: only after the stack runs and a smoke passes in the namespace; removal list shown to the
+     human first, volumes with logins only with an explicit yes.
+- Not started. First action when R1.1b ends: turn the open questions above into a plan file in `plans/`.
+
 ## System 1 decisions (spec §10A.5)
 
 | # | Decision | Status |
