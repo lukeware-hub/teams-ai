@@ -35,6 +35,12 @@ Status values: `todo` → `planning` → `approved` → `in progress` → `done`
 Rule (goal set 2026-10-04): when the 5-hour token window reaches 90 %, record the pause here and stop; when the
 window resets, resume exactly from the entry below.
 
+- **2026-10-04 17:46Z — run process gone, resume needed.** The orchestrator process for `todo-001-r1` died with
+  the previous Claude Code session (journal intact, last event `RUN_PAUSED` until 18:30Z). Resume on WSL after
+  18:30Z: `cd ~/teams-ai-live && ./node_modules/.bin/tsx --no-warnings=ExperimentalWarning server/cli.ts resume
+  --project ~/.teams-ai/workspaces/todo-api/repo --run todo-001-r1 > ~/golden-run-1.log 2>&1` (run it detached with
+  `setsid nohup ... &` so it survives the session). Done since the first pause: R1.2 code, R4.1 code, R4.2, R4.3,
+  R5.3 harness (see each item).
 - **2026-10-04 17:05Z — paused (5-hour window ≥ 95 %).** The orchestrator's quota breaker paused run
   `todo-001-r1` at 16:56Z until **18:30Z** (`RUN_PAUSED`, `reason: quota`); the run process stays alive and resumes
   by itself. Resume point: R1.1 — check `~/golden-run-1.log` and `~/.teams-ai/runs/todo-001-r1/events.ndjson` on
