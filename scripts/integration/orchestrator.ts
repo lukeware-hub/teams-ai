@@ -1,7 +1,9 @@
 /**
  * Manual, live: the whole orchestrator on a fixture (default hello-app) with the real claude, Docker and GitHub.
- *   TEAMS_AI_GH_OWNER=<owner> [TEAMS_AI_FIXTURE=todo-api] npx tsx --no-warnings=ExperimentalWarning scripts/integration/orchestrator.ts
- * Creates (or reuses) the repository <owner>/teams-ai-<fixture>, pushes docs/ to main, then runs Phases 1–3.
+ *   TEAMS_AI_GH_OWNER=<owner> [TEAMS_AI_FIXTURE=todo-api] [TEAMS_AI_PROJECT=todo-api-r3] npx tsx --no-warnings=ExperimentalWarning scripts/integration/orchestrator.ts
+ * Creates (or reuses) the repository <owner>/teams-ai-<project>, pushes docs/ to main, then runs the whole pipeline.
+ * TEAMS_AI_PROJECT (default: the fixture name) gives a repeat run its own repository and workspace without deleting the
+ * previous one: the fixture is copied with its projectId rewritten to that name.
  * Costs real tokens (one Opus tech spec, one plan, one Dev + one review per task). Never part of `npm test`.
  *
  * Run it from the repository root. To repeat from scratch, delete the GitHub repository
@@ -27,12 +29,13 @@ if (!owner) {
   process.exit(2);
 }
 const cfg = loadConfig(JSON.parse(await fs.readFile(path.join(os.homedir(), '.teams-ai', 'config.json'), 'utf8').catch(() => '{}')));
-const name = process.env.TEAMS_AI_FIXTURE ?? 'hello-app';
+const fixtureName = process.env.TEAMS_AI_FIXTURE ?? 'hello-app';
+const name = process.env.TEAMS_AI_PROJECT ?? fixtureName;
 const ws = workspacePaths(cfg, name);
 // Repository creation runs as the token's user (the orchestrator's identity), not as the interactive gh login.
 const secrets = await loadSecrets(expandHome(cfg.paths.secrets));
 const ghExec: Exec = (spec) => execCommand({ ...spec, env: { ...(spec.env ?? {}), ...(secrets.GITHUB_TOKEN ? { GH_TOKEN: secrets.GITHUB_TOKEN } : {}) } });
-const fixture = path.resolve('test/fixtures', name);
+const fixture = path.resolve('test/fixtures', fixtureName);
 await fs.access(path.join(fixture, 'docs', 'project.json')).catch(() => {
   console.error('run this script from the repository root');
   process.exit(2);
@@ -44,6 +47,12 @@ try {
   await fs.access(path.join(ws.repo, '.git'));
 } catch {
   await fs.cp(fixture, ws.repo, { recursive: true });
+  if (name !== fixtureName) {
+    const projectFile = path.join(ws.repo, 'docs', 'project.json');
+    const project = JSON.parse(await fs.readFile(projectFile, 'utf8')) as Record<string, unknown>;
+    await fs.writeFile(projectFile, `${JSON.stringify({ ...project, projectId: name }, null, 2)}
+`);
+  }
   const specFile = path.join(ws.repo, 'docs', 'specs', specId!, 'spec.json');
   const spec = Spec.parse(JSON.parse(await fs.readFile(specFile, 'utf8')));
   if (!spec.specHash) await fs.writeFile(specFile, `${JSON.stringify({ ...spec, specHash: computeSpecHash(spec) }, null, 2)}\n`);
