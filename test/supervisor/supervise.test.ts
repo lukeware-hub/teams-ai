@@ -70,6 +70,15 @@ describe('supervise', () => {
     expect(logs.join('\n')).toContain('hello-001-r5 skipped');
   });
 
+  it('a stop is intentional only while it is the last lifecycle event', async () => {
+    const stop = { type: 'RUN_STOP_REQUESTED' };
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), stop, { type: 'RUN_RESUMED' }], state('running'), 111); // hand resume, then crashed
+    await writeRun(runs, 'hello-001-r2', [started('hello-001-r2'), stop, started('hello-001-r2')], state('running'), 112); // restarted
+    await writeRun(runs, 'hello-001-r3', [started('hello-001-r3'), stop, { type: 'RUN_RESUMED' }, stop], state('draining'), 113); // stopped again
+    expect((await superviseTick(deps(), new Map())).sort()).toEqual(['hello-001-r1', 'hello-001-r2']);
+    expect(logs.join('\n')).toContain('hello-001-r3 skipped');
+  });
+
   it('resumes a run at most once while it lives, and backs off when it dies again', async () => {
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 111);
     const backoff: Backoff = new Map();

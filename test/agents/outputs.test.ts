@@ -20,6 +20,12 @@ describe('output contracts', () => {
     expect(text).not.toMatch(/"\$ref":"#\/\$defs/);
   });
 
+  it('dev output accepts blocked with a reason and rejects it without one', () => {
+    expect(DevOutput.safeParse({ specHash: HASH, status: 'blocked', summary: 's', reason: 'cluster unreachable from the sandbox', changedFiles: [] }).success).toBe(true);
+    expect(DevOutput.safeParse({ specHash: HASH, status: 'blocked', summary: 's', changedFiles: [] }).success).toBe(false);
+    expect(DevOutput.safeParse({ specHash: HASH, status: 'blocked', summary: 's', reason: '', changedFiles: [] }).success).toBe(false);
+  });
+
   it('dev output requires a question for spec-gap and a commit message for done', () => {
     expect(DevOutput.safeParse({ specHash: HASH, status: 'done', summary: 's', commitMessage: 'feat: x', changedFiles: ['src/a.ts'] }).success).toBe(true);
     expect(DevOutput.safeParse({ specHash: HASH, status: 'done', summary: 's', changedFiles: [] }).success).toBe(false);

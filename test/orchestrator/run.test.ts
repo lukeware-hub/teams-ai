@@ -294,6 +294,17 @@ describe('Run', () => {
     await resumed.close();
   });
 
+  it('a hand resume of a stopped run is journaled after the stop, so the supervisor stops treating the stop as current', async () => {
+    const d = await withAgents(deps(happy));
+    const run = await Run.create(d);
+    await run.requestStop();
+    await run.close();
+    const resumed = await Run.resume(d, run.runId);
+    const types = resumed.journal.events.map((e) => e.type);
+    expect(types.lastIndexOf('RUN_RESUMED')).toBeGreaterThan(types.lastIndexOf('RUN_STOP_REQUESTED'));
+    await resumed.close();
+  });
+
   it('create accepts an explicit run id', async () => {
     const run = await Run.create(await withAgents(deps(happy)), 'spec-001-r7');
     expect(run.runId).toBe('spec-001-r7');
