@@ -95,7 +95,7 @@ export interface PlanArtifact {
   deploy: { image: string; port: number; healthcheckPath: string; manifests: string[] };
 }
 export interface SmokeRow { acId: string; testId: string | null; status: 'passed' | 'failed' | 'missing' }
-export interface EvidenceRow { criterion: string; tasks: string[]; tests: string[]; status: 'passed' | 'failed' | 'missing' | 'blocked' }
+export interface EvidenceRow { criterion: string; tasks: string[]; tests: string[]; status: 'passed' | 'failed' | 'missing' | 'blocked'; e2e?: 'passed' | 'failed' | 'missing' | 'not-applicable'; e2eReason?: string }
 export interface SecurityFinding {
   taskId?: string;
   file: string;
@@ -110,7 +110,7 @@ export interface Report {
   specId: string;
   specHash: string;
   result: 'awaiting-validation' | 'verification-failed' | 'deploy-failed';
-  service: { url: string; healthcheck: string; smoke: SmokeRow[] } | null;
+  service: { url: string; healthcheck: string; smoke: SmokeRow[]; e2e?: Array<{ acId: string; testId: string | null; status: string; reason?: string }> } | null;
   deploy: { attempts: number; lastFailure: { attempt: number; stage: string; detail: string; rolledBack: boolean; rollbackHealthy: boolean | null } | null };
   evidence: EvidenceRow[];
   delivered: string[];

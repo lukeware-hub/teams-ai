@@ -106,7 +106,7 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
   }
 
   if (opts.requireSecurityTooling) errors.push(...validateSecurityGates(plan));
-  if (opts.requireE2e) errors.push(...validateE2e(plan));
+  if (opts.requireE2e) errors.push(...validateE2e(plan, spec));
 
   if (!plan.delivery) {
     if (opts.requireDelivery) errors.push('delivery is required: list dockerfile, compose, ciWorkflow, releaseWorkflow, e2eSuite and readmeSections');

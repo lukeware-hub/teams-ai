@@ -95,5 +95,7 @@ export const Plan = z.object({
   }),
   /** Optional; absent means no delivery contract. See `Delivery`. */
   delivery: Delivery.optional(),
+  /** Criteria with no testable observable behavior over the service interface; the e2e gate skips them (roadmap R8.4). */
+  e2eExemptions: z.array(z.object({ acId: z.string().regex(AC_ID), reason: z.string().min(1) })).optional(),
 });
 export type Plan = z.infer<typeof Plan>;

@@ -125,6 +125,7 @@ export function ValidationView({ detail, specStatus, actionError = null, onRepor
                   <th>AC</th>
                   <th>Tasks</th>
                   <th>Tests</th>
+                  <th>E2E</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -134,6 +135,7 @@ export function ValidationView({ detail, specStatus, actionError = null, onRepor
                     <td>{r.criterion}</td>
                     <td>{r.tasks.join(', ')}</td>
                     <td>{r.tests.join(', ') || '—'}</td>
+                    <td data-testid={`e2e-${r.criterion}`} title={r.e2eReason}>{r.e2e ?? '—'}{r.e2eReason ? ` (${r.e2eReason})` : ''}</td>
                     <td>{r.status}</td>
                   </tr>
                 ))}

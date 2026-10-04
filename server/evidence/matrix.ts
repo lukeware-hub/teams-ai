@@ -10,6 +10,10 @@ export interface EvidenceRow {
   tasks: string[];
   tests: string[];
   status: EvidenceStatus;
+  /** Post-deploy e2e result for this criterion (roadmap R8.4); absent before deploy or for runs without e2e. */
+  e2e?: 'passed' | 'failed' | 'missing' | 'not-applicable';
+  /** Why the criterion has no e2e test (e2e: not-applicable). */
+  e2eReason?: string;
 }
 
 export interface EvidenceTask {
@@ -32,6 +36,15 @@ export function buildEvidenceMatrix(
     else if (owners.length > 0 && owners.every((t) => t.state === 'blocked')) status = 'blocked';
     else status = 'missing';
     return { criterion: ac.id, tasks: owners.map((t) => t.def.id), tests: tests.map((r) => r.id), status };
+  });
+}
+
+/** Adds the Phase 5 e2e rows to the matrix per criterion (the matrix itself is built before deploy). */
+export function attachE2e(rows: readonly EvidenceRow[], e2e: ReadonlyArray<{ acId: string; status: NonNullable<EvidenceRow['e2e']>; reason?: string }> | undefined): EvidenceRow[] {
+  if (!e2e) return [...rows];
+  return rows.map((r) => {
+    const e = e2e.find((x) => x.acId === r.criterion);
+    return e ? { ...r, e2e: e.status, ...(e.reason ? { e2eReason: e.reason } : {}) } : r;
   });
 }
 

@@ -51,3 +51,21 @@ describe('runE2e', () => {
     expect((await runE2e(makePlan(spec), spec, ctx, 'http://x', deps(new FakeExec(), null))).detail).toBe('plan.commands.e2e missing');
   });
 });
+
+describe('e2e exemptions', () => {
+  const ex = [{ acId: 'AC-002', reason: 'devops-only criterion, no HTTP behavior' }];
+  it('skips an exempted criterion and keeps the reason in the row', () => {
+    const r = evaluateE2e(spec, parseJUnit(junit(ok('AC-001'))), ex);
+    expect(r.ok).toBe(true);
+    expect(r.rows[1]).toEqual({ acId: 'AC-002', testId: null, status: 'not-applicable', reason: ex[0]!.reason });
+    expect(r.detail).toBe('1/1 e2e criteria passed');
+  });
+  it('still fails a non-exempted missing criterion', () => {
+    expect(evaluateE2e(spec, parseJUnit(junit(ok('AC-002'))), ex).detail).toBe('AC-001: no e2e test');
+  });
+  it('runE2e honours plan.e2eExemptions', async () => {
+    const p = { ...plan, e2eExemptions: ex };
+    const r = await runE2e(p, spec, ctx, 'http://x', deps(new FakeExec(), junit(ok('AC-001'))));
+    expect(r.ok).toBe(true);
+  });
+});

@@ -8,7 +8,7 @@ const report: Report = {
   runId: 'hello-001-r1', specId: 'hello-001', specHash: 'h', result: 'awaiting-validation',
   service: { url: 'http://127.0.0.1:3000', healthcheck: 'HTTP 200 after 1 attempts', smoke: [{ acId: 'AC-001', testId: 's::[AC-001] home', status: 'passed' }] },
   deploy: { attempts: 1, lastFailure: null },
-  evidence: [{ criterion: 'AC-001', tasks: ['T1'], tests: ['u::[AC-001] a'], status: 'passed' }, { criterion: 'AC-002', tasks: ['T2'], tests: [], status: 'blocked' }],
+  evidence: [{ criterion: 'AC-001', tasks: ['T1'], tests: ['u::[AC-001] a'], status: 'passed', e2e: 'passed' }, { criterion: 'AC-002', tasks: ['T2'], tests: [], status: 'blocked', e2e: 'not-applicable', e2eReason: 'devops only' }],
   delivered: ['T1'], blocked: [{ taskId: 'T2', reason: 'attempts exhausted' }], assumptions: ['T1: assumed X'],
   exploratoryScript: [{ acId: 'AC-001', steps: ['open /', 'see the list'] }],
   tokens: { byRole: {}, total: { inputTokens: 10, outputTokens: 5, costUsd: 0.5 } }, summary: 'All good.',
@@ -33,6 +33,8 @@ describe('ValidationView', () => {
     render(<MemoryRouter><ValidationView detail={detail()} specStatus="awaiting-validation" onReport={on.report} onComplete={on.complete} /></MemoryRouter>);
     expect(screen.getByTestId('service-url').getAttribute('href')).toBe('http://127.0.0.1:3000');
     expect(screen.getByTestId('smoke-AC-001').textContent).toContain('passed');
+    expect(screen.getByTestId('e2e-AC-001').textContent).toBe('passed');
+    expect(screen.getByTestId('e2e-AC-002').textContent).toContain('not-applicable (devops only)');
     const step = screen.getByTestId('step-AC-001-0') as HTMLInputElement;
     fireEvent.click(step);
     expect(step.checked).toBe(true);

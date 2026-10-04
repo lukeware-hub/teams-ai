@@ -121,7 +121,7 @@ export const SMOKE_CONTRACT =
 
 /** How Phase 5 runs commands.e2e (roadmap R8.4); the Test agent writing the suite and the SM planning it must know it. */
 export const E2E_CONTRACT =
-  'commands.e2e is required and is NOT commands.smoke: it runs the suite at delivery.e2eSuite (the command must reference that path) inside gateImage after the compose stack is deployed and smoke has passed, black-box over HTTP against process.env.SERVICE_URL, no mocks of the service under test, never starting containers; every acceptance criterion needs one test whose name carries its id, e.g. "[AC-001] POST /todos creates a todo"; plan one task owned by dev that creates the suite and depends on the service tasks; a failing e2e blocks the run';
+  'commands.e2e is required and is NOT commands.smoke: it runs the suite at delivery.e2eSuite (the command must reference that path) inside gateImage after the compose stack is deployed and smoke has passed, black-box over HTTP against process.env.SERVICE_URL, no mocks of the service under test, never starting containers; every acceptance criterion needs one test whose name carries its id, e.g. "[AC-001] POST /todos creates a todo", EXCEPT criteria with no testable observable behavior over the service interface (devops-only, build, docs or style rules): list those in plan.e2eExemptions as {acId, reason} (reason of at least 10 characters, at least one criterion stays covered) and they get no e2e test; plan one task owned by dev that creates the suite and depends on the service tasks; a failing e2e blocks the run';
 
 export function planRules(firstSpec: boolean, requireDelivery = false, requireSecurityTooling = false, requireE2e = false): string {
   const lines = [

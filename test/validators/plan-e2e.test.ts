@@ -46,3 +46,19 @@ describe('validatePlan requireE2e', () => {
     expect(validatePlan(makePlan(spec), spec, { firstSpec: true, requireE2e: false })).toEqual([]);
   });
 });
+
+describe('validatePlan e2eExemptions', () => {
+  it('accepts an exemption with a reason when another criterion stays covered', () => {
+    expect(check(plan({}, { e2eExemptions: [{ acId: 'AC-002', reason: 'devops-only, nothing observable over HTTP' }] }))).toEqual([]);
+  });
+  it('rejects unknown ids, duplicates, short reasons', () => {
+    const errors = check(plan({}, { e2eExemptions: [{ acId: 'AC-009', reason: 'long enough reason' }, { acId: 'AC-002', reason: 'x' }, { acId: 'AC-002', reason: 'long enough reason' }] }));
+    expect(errors).toContain('e2eExemptions: AC-009 is not a criterion of the spec');
+    expect(errors).toContain('e2eExemptions: duplicate AC-002');
+    expect(errors.some((e) => e.includes('needs a reason'))).toBe(true);
+  });
+  it('rejects exempting every criterion', () => {
+    const all = spec.acceptanceCriteria.map((ac) => ({ acId: ac.id, reason: 'not observable over the service' }));
+    expect(check(plan({}, { e2eExemptions: all }))).toContain('e2eExemptions: at least one criterion must be covered by the e2e suite');
+  });
+});
