@@ -1,5 +1,11 @@
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { main } from '../server/cli.js';
+import { loadConfig } from '../server/config/config.js';
+import type { RunControlDeps, SpawnArgs } from '../server/api/run-control.js';
+import { writeRun } from './fixtures/runs/write-run.js';
 
 const io = (argv: string[]) => {
   const out: string[] = [];
@@ -45,6 +51,43 @@ describe('teams-ai cli', () => {
     const b = io(['supervise', '--project', '/nowhere', '--interval', '0']);
     expect(await main(b.io, undefined, { signals: () => () => {} })).toBe(2);
     expect(b.err.join('\n')).toContain('--interval must be a positive number');
+  });
+
+  it('supervise resumes an interrupted run once, leaves live and finished runs alone, and exits 0 on SIGTERM', async () => {
+    const hello = path.resolve('test/fixtures/hello-app');
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-cli-sup-'));
+    try {
+      const runs = path.join(home, 'runs');
+      const started = (runId: string) => ({ type: 'RUN_STARTED', data: { runId, specId: 'hello-001', projectId: 'hello-app' } });
+      const state = { runId: 'x', at: '2026-09-24T10:01:00.000Z', status: 'running', tasks: [], tokens: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, steps: 1 } };
+      await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state, 111); // dead: interrupted
+      await writeRun(runs, 'hello-001-r2', [started('hello-001-r2')], state, 112); // live
+      await writeRun(runs, 'hello-001-r3', [started('hello-001-r3'), { type: 'RUN_FINISHED', data: { result: 'complete' } }], state, 113); // finished
+      const alive = new Set([112]);
+      const spawned: SpawnArgs[] = [];
+      let stop = () => {};
+      let sleeps = 0;
+      const control = {
+        spawn: (a: SpawnArgs) => { spawned.push(a); alive.add(5000); return { pid: 5000 }; },
+        kill: () => true,
+        // 1s slices: the first scan, one full 1s interval, a second scan, then SIGTERM
+        sleep: async () => { if (++sleeps === 2) stop(); },
+        cliEntry: () => ({ bin: 'node', prefix: ['cli.ts'] }),
+        repoRoot: '/repo',
+      } as RunControlDeps;
+      const idx = { cfg: loadConfig({ paths: { runs: runs.split(path.sep).join('/') }, projects: [{ dir: hello }] }), home, isAlive: (pid: number) => alive.has(pid) };
+      const a = io(['supervise', '--project', hello, '--interval', '1']);
+      const code = await main(a.io, undefined, { supervision: { idx, control }, signals: (onStop) => { stop = onStop; return () => {}; } });
+      expect(code).toBe(0);
+      expect(sleeps).toBe(2);
+      expect(spawned).toHaveLength(1);
+      expect(spawned[0]!.args).toContain('resume');
+      expect(spawned[0]!.args).toContain('hello-001-r1');
+      expect(a.err.join('|')).toContain('resumed hello-001-r1');
+      expect(a.err.join('|')).toContain('supervise: stopped');
+    } finally {
+      await fs.rm(home, { recursive: true, force: true });
+    }
   });
 
   it('ui starts the API on the requested port and serves the status route', async () => {
