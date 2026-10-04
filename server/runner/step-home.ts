@@ -29,3 +29,37 @@ export async function createStepHome(parentDir: string, hostEnv: NodeJS.ProcessE
 export async function removeStepHome(home: string): Promise<void> {
   await fs.rm(home, { recursive: true, force: true }).catch(() => undefined);
 }
+
+/**
+ * The CLI renews its OAuth token inside the step HOME, and the server rotates the refresh token: the copy this module
+ * made at the start is then the only valid one, and deleting the HOME with it invalidates the host's login (live, 2026-10-04:
+ * golden run 3 broke the WSL login after one step). So a newer, well-formed credential is written back to the host file,
+ * atomically and with mode 0600, before the HOME goes away. Never throws: a failed write-back must not fail the step.
+ */
+export async function syncBackCredentials(home: string, hostEnv: NodeJS.ProcessEnv): Promise<void> {
+  const hostHome = hostEnv.HOME;
+  if (!hostHome) return;
+  const read = async (file: string): Promise<{ raw: string; expiresAt: number; refresh: boolean } | null> => {
+    try {
+      const raw = await fs.readFile(file, 'utf8');
+      const o = (JSON.parse(raw) as { claudeAiOauth?: { expiresAt?: unknown; refreshToken?: unknown } }).claudeAiOauth;
+      if (!o) return null;
+      return { raw, expiresAt: typeof o.expiresAt === 'number' ? o.expiresAt : 0, refresh: typeof o.refreshToken === 'string' && o.refreshToken !== '' };
+    } catch {
+      return null;
+    }
+  };
+  const step = await read(path.join(home, '.claude', '.credentials.json'));
+  if (!step || !step.refresh) return;
+  const hostFile = path.join(hostHome, '.claude', '.credentials.json');
+  const host = await read(hostFile);
+  if (host && host.expiresAt >= step.expiresAt) return;
+  const tmp = `${hostFile}.${process.pid}.tmp`;
+  try {
+    await fs.mkdir(path.dirname(hostFile), { recursive: true });
+    await fs.writeFile(tmp, step.raw, { mode: 0o600 });
+    await fs.rename(tmp, hostFile);
+  } catch {
+    await fs.rm(tmp, { force: true }).catch(() => undefined);
+  }
+}

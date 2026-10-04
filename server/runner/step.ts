@@ -12,7 +12,7 @@ import { validateAgentOutput } from '../validators/agent-output.js';
 import type { RefContext, References } from '../validators/references.js';
 import { buildInvocation, ensureTrusted } from './invocation.js';
 import { sandboxPolicyViolation } from './sandbox-policy.js';
-import { createStepHome, removeStepHome } from './step-home.js';
+import { createStepHome, removeStepHome, syncBackCredentials } from './step-home.js';
 import { preflightSandbox, runProcess, type ProcessCaps, type RawStepResult, type RunnerBinary } from './process-runner.js';
 import { writeRoleSettings, type RoleSettingsInput } from './role-settings.js';
 import { isRateLimitRejected, type ResultSummary } from './stream-events.js';
@@ -67,7 +67,7 @@ export interface StepDeps {
 }
 
 const QUOTA_TEXT = /usage limit|rate limit|out of .*quota/i;
-const AUTH_TEXT = /not logged in|authentication|invalid api key|please run claude login/i;
+const AUTH_TEXT = /not logged in|authentication|failed to authenticate|oauth session expired|could not be refreshed|invalid api key|please run (claude login|\/login)/i;
 
 /**
  * Order follows spec §12 and the CLI findings: environment → timeout → compaction → (only for a
@@ -149,6 +149,7 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
   try {
     return await runStepIn(req, deps, hostEnv, home);
   } finally {
+    await syncBackCredentials(home, hostEnv);
     await removeStepHome(home);
   }
 }

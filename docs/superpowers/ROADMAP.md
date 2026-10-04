@@ -246,7 +246,21 @@ window resets, resume exactly from the entry below.
   `local` then `claude` (`local` only for model-tier and cli-error); the Jev (OpenRouter) is NOT used, to avoid external spend.
 - It is the first live run of the runner-security changes (empty step HOME, mandatory sandbox), of `requireDelivery` (a plan without `delivery` is rejected) and of the Gate 1 / decision journaling.
 - **Restore after the run:** `~/.teams-ai/config.json` was changed to turn decisions on; the original is `~/config.json.bak-run3` (it held only `{ "github": { "owner": "lukeware70X7" } }`).
-- Outcome: _pending_.
+- Outcome (2026-10-04): **failed at Phase 1 after 74 s, $0.22**, `phase-failed`. Cause: a defect of my own plan 20 change. The
+  runner copies `~/.claude/.credentials.json` into a per-step HOME and deletes the HOME afterwards; step 1 made the CLI renew
+  its OAuth token inside the copy, the server rotated the refresh token, the host file kept the old one and the next step
+  (and any `claude` on that host) got `OAuth session expired and could not be refreshed`. The probe `p7-step-home.sh`
+  passed earlier because the token was still valid. **The WSL `claude` login is broken and needs `claude auth login` by the human**
+  (the credential file's `expiresAt` reads 1970). Second defect: the failure text did not match `AUTH_TEXT`, so it was `code`,
+  the `cli-error` decision answered with low confidence (0.64 and 0.61 on the local 7B, default `code`) and the run burned its
+  attempts instead of pausing for a login.
+- Fixed (`syncBackCredentials` in `server/runner/step-home.ts`, `AUTH_TEXT` in `server/runner/step.ts`, tests in
+  `test/runner/step-home-sync.test.ts`): a newer well-formed credential is written back to the host file atomically with mode
+  0600 before the HOME is removed; and the messages of a dead OAuth session now classify as `auth`. Not covered: two steps that
+  start in parallel with the same expired token can still race on the refresh (the loser fails as `auth` and the run pauses
+  for a login); a long-lived token through `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) would remove the race.
+- Run 3 must be started again after the human re-logs in; the config is restored (`~/.teams-ai/config.json` back to the owner only).
+- Outcome kept for the record: `todo-001-r3`, repository `lukeware70X7/teams-ai-todo-api-r3` (reusable only after deleting it or with a new `TEAMS_AI_PROJECT`).
 
 - Flip `decisions.enabled` for this run only; the `false` default is by design for runs 1–2.
 
