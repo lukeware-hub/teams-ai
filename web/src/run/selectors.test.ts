@@ -43,6 +43,13 @@ describe('run selectors', () => {
     expect(d.blockedReason).toBeNull();
     expect(taskDetail(events, 'T2').attempts).toEqual([]);
   });
+  it('task detail carries the security findings of the attempt', () => {
+    const sec = { file: 'src/a.ts', line: 3, severity: 'medium', category: 'cors', problem: 'open cors', fix: 'restrict origins' };
+    const withSec = [...events, { ...events[0]!, seq: 9000, type: 'SECURITY_APPROVED', data: { taskId: 'T1', findings: [sec] } } as StoredEvent];
+    const attempts = taskDetail(withSec, 'T1').attempts;
+    expect(attempts.at(-1)!.security).toEqual({ findings: [sec] });
+    expect(taskDetail(events, 'T1').attempts[0]!.security).toBeNull();
+  });
   it('tokens by phase, by role, with system1 from decisions', () => {
     const t = tokens(events);
     expect(t.byRole.dev).toMatchObject({ inputTokens: 4100, outputTokens: 900, costUsd: 0.6, steps: 2 });

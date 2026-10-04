@@ -1,5 +1,5 @@
 import { reduceEvents, type TaskRuntime } from '@server/pipeline/run-state.js';
-import type { StoredEvent, Usage } from '../api.js';
+import type { SecurityFinding, StoredEvent, Usage } from '../api.js';
 
 export type { TaskRuntime };
 export interface StepRow {
@@ -18,6 +18,9 @@ export interface GateRow {
   gate: string;
   passed: boolean;
   failedTests: string[];
+}
+export interface SecurityRow {
+  findings: SecurityFinding[];
 }
 export interface ReviewRow {
   profile: string;
@@ -86,11 +89,11 @@ export function pausedUntil(events: StoredEvent[]): string | null {
 }
 
 export function taskDetail(events: StoredEvent[], taskId: string) {
-  const attempts = new Map<number, { attempt: number; steps: StepRow[]; gates: GateRow[]; review: ReviewRow | null }>();
+  const attempts = new Map<number, { attempt: number; steps: StepRow[]; gates: GateRow[]; review: ReviewRow | null; security: SecurityRow | null }>();
   const at = (n: number) => {
     let a = attempts.get(n);
     if (!a) {
-      a = { attempt: n, steps: [], gates: [], review: null };
+      a = { attempt: n, steps: [], gates: [], review: null, security: null };
       attempts.set(n, a);
     }
     return a;
@@ -138,6 +141,10 @@ export function taskDetail(events: StoredEvent[], taskId: string) {
       case 'REVIEW_CHANGES':
         at(current).review = { profile: pendingReview.profile ?? 'standard', risk: pendingReview.risk ?? 'medium', drift: pendingReview.drift ?? null, findings: (d.findings as unknown[] | undefined) ?? [] };
         pendingReview = {};
+        break;
+      case 'SECURITY_APPROVED':
+      case 'SECURITY_CHANGES':
+        at(current).security = { findings: (d.findings as SecurityFinding[] | undefined) ?? [] };
         break;
       case 'MERGE_LOCK_ACQUIRED':
         lockHeld = true;

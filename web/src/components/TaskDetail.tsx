@@ -76,6 +76,23 @@ export function TaskDetail({ events, taskId, loadStep }: { events: StoredEvent[]
               {a.review.findings.length ? `, ${a.review.findings.length} apontamento(s)` : ', aprovada'}
             </p>
           ) : null}
+          {a.security ? (
+            <div data-testid={`security-${a.attempt}`}>
+              <p>
+                Segurança: {a.security.findings.length ? `${a.security.findings.length} apontamento(s)` : 'aprovada'}
+              </p>
+              {a.security.findings.length ? (
+                <ul>
+                  {a.security.findings.map((f, i) => (
+                    <li key={i}>
+                      [{f.severity}] {f.file}
+                      {f.line === null ? '' : `:${f.line}`} {f.category}: {f.problem}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ))}
     </section>

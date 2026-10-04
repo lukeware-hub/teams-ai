@@ -95,6 +95,15 @@ export interface PlanArtifact {
 }
 export interface SmokeRow { acId: string; testId: string | null; status: 'passed' | 'failed' | 'missing' }
 export interface EvidenceRow { criterion: string; tasks: string[]; tests: string[]; status: 'passed' | 'failed' | 'missing' | 'blocked' }
+export interface SecurityFinding {
+  taskId?: string;
+  file: string;
+  line: number | null;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  category: string;
+  problem: string;
+  fix: string;
+}
 export interface Report {
   runId: string;
   specId: string;
@@ -107,6 +116,7 @@ export interface Report {
   blocked: Array<{ taskId: string; reason: string }>;
   assumptions: string[];
   exploratoryScript: Array<{ acId: string; steps: string[] }>;
+  securityFindings?: SecurityFinding[];
   tokens: { byRole: Record<string, { inputTokens: number; outputTokens: number; costUsd: number }>; total: { inputTokens: number; outputTokens: number; costUsd: number } };
   summary: string;
 }

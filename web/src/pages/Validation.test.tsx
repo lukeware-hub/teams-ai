@@ -16,6 +16,18 @@ const report: Report = {
 const detail = (over: Partial<RunDetail> = {}): RunDetail => ({ runId: 'hello-001-r1', specId: 'hello-001', projectId: 'hello-app', status: 'awaiting-validation', phase: 6, report, state: { status: 'running', order: [], tasks: [] }, finished: null, tokens: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, steps: 0 }, acceptanceCriteria: [], plan: null, ...over });
 
 describe('ValidationView', () => {
+  it('lists the security findings and hides the section when there are none', () => {
+    const sec = { taskId: 'T1', file: 'src/a.ts', line: 3, severity: 'high' as const, category: 'injection', problem: 'user input reaches a shell', fix: 'use execFile' };
+    const withSec = { ...detail(), report: { ...report, securityFindings: [sec] } };
+    const { unmount } = render(<MemoryRouter><ValidationView detail={withSec} specStatus="awaiting-validation" onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
+    expect(screen.getByTestId('security-findings').textContent).toContain('[high]');
+    expect(screen.getByTestId('security-0').textContent).toContain('src/a.ts:3');
+    unmount();
+    render(<MemoryRouter><ValidationView detail={detail()} specStatus="awaiting-validation" onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
+    expect(screen.queryByTestId('security-findings')).toBeNull();
+  });
+
+
   it('shows service, script checkboxes, assumptions, blocked tasks and evidence; actions enabled when awaiting validation', () => {
     const on = { report: vi.fn(), complete: vi.fn() };
     render(<MemoryRouter><ValidationView detail={detail()} specStatus="awaiting-validation" onReport={on.report} onComplete={on.complete} /></MemoryRouter>);

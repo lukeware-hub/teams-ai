@@ -194,7 +194,7 @@ export function readmePack(base: PackBase, opts: { tasks: readonly string[]; exi
   ].join('\n\n') };
 }
 
-export function reportPack(base: PackBase, opts: { delivered: readonly string[]; blocked: ReadonlyArray<{ taskId: string; reason: string }>; evidence: string; assumptions: readonly string[]; deploy: string; tokens: string }): ContextPackInput {
+export function reportPack(base: PackBase, opts: { delivered: readonly string[]; blocked: ReadonlyArray<{ taskId: string; reason: string }>; evidence: string; assumptions: readonly string[]; deploy: string; tokens: string; security: string }): ContextPackInput {
   return { ...common(base, 'report', 'sm'), criteria: base.spec.acceptanceCriteria, feedback: [
     'Write the final report for the human validator. Give concrete exploratory steps for every acceptance criterion.',
     'Also return `readme`: the Markdown for docs/README.md, a short overview of the project (what it is, how to run and test it, the endpoints or commands it exposes, the acceptance criteria it satisfies). Use only facts from the context pack.',
@@ -202,6 +202,8 @@ export function reportPack(base: PackBase, opts: { delivered: readonly string[];
     `Blocked tasks:\n${opts.blocked.map((b) => `- ${b.taskId}: ${b.reason}`).join('\n') || '- none'}`,
     `Evidence matrix:\n${opts.evidence}`,
     `Assumptions:\n${opts.assumptions.join('\n') || '- none'}`,
+    `Security findings left by the sec review (mention residual risks in the summary):
+${opts.security || '- none'}`,
     `Deploy outcome: ${opts.deploy}`,
     `Token usage: ${opts.tokens}`,
   ].join('\n\n') };

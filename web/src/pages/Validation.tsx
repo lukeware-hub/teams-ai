@@ -105,6 +105,18 @@ export function ValidationView({ detail, specStatus, onReport, onComplete }: { d
             <h2>Blocked tasks</h2>
             <ul>{report.blocked.length ? report.blocked.map((b) => <li key={b.taskId} data-testid={`blocked-${b.taskId}`}><strong>{b.taskId}</strong>: {b.reason}</li>) : <li className="hint">none</li>}</ul>
           </section>
+          {report.securityFindings?.length ? (
+            <section className="card">
+              <h2>Security</h2>
+              <ul data-testid="security-findings">
+                {report.securityFindings.map((f, i) => (
+                  <li key={i} data-testid={`security-${i}`}>
+                    <strong>[{f.severity}]</strong> {f.taskId ? `${f.taskId} · ` : ''}{f.file}{f.line === null ? '' : `:${f.line}`} · {f.category}: {f.problem} <span className="hint">Fix: {f.fix}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           <section className="card">
             <h2>Evidence</h2>
             <table>
