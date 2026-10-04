@@ -269,7 +269,46 @@ describe('runDeployment', () => {
       intent,
       { smoke: smokeOk, baseUrl: 'u' },
     );
-    expect(r).toEqual({ ok: false, stage: 'verify', detail: 'timeout', rolledBack: false, rollbackHealthy: null });
+    expect(r).toMatchObject({ ok: false, stage: 'verify', rolledBack: false, rollbackHealthy: null });
+    if (!r.ok) expect(r.detail).toBe('timeout; first deploy failed, the new stack was torn down');
+  });
+
+  it('tears the new stack down with destroy when the first deploy fails, never rolling back', async () => {
+    const log: string[] = [];
+    const r = await runDeployment(target({ apply: async () => ({ previous: null }) }, log), intent, { smoke: async () => ({ ok: false, detail: 'x' }), baseUrl: 'u' });
+    expect(r).toMatchObject({ ok: false, stage: 'smoke', rolledBack: false });
+    expect(log).toEqual(['validate', 'build', 'verify', 'destroy']);
+  });
+
+  it('reports a failing teardown of a first deploy instead of rejecting', async () => {
+    const r = await runDeployment(
+      target({ apply: async () => ({ previous: null }), verify: async () => ({ healthy: false, detail: 'down' }), destroy: async () => { throw new Error('compose down failed'); } }),
+      intent,
+      { smoke: smokeOk, baseUrl: 'u' },
+    );
+    expect(r).toMatchObject({ ok: false, stage: 'verify', rolledBack: false });
+    if (!r.ok) expect(r.detail).toBe('down; teardown of the failed first deploy failed: compose down failed');
+  });
+
+  it('docker-local compose: a failed first deploy runs compose down for the project', async () => {
+    const fake = new FakeExec().onArgs('docker', ['compose'], (s) => (s.args.includes('ps') ? { stdout: '' } : {}));
+    const t = new DockerLocalTarget({ exec: fake.exec, get: okGet, secrets });
+    const ci = { ...intent, compose: 'docker-compose.yml' };
+    const r = await runDeployment(Object.assign(Object.create(t), { apply: async () => ({ previous: null }) }) as DeployTarget, ci, { smoke: smokeOk, baseUrl: 'u' });
+    expect(r).toMatchObject({ ok: false, stage: 'verify', rolledBack: false });
+    expect(fake.lines('docker').some((l) => l.startsWith('compose -p ') && l.includes(' down'))).toBe(true);
+  });
+
+  it('kind: a failed first deploy deletes the manifests and the secret', async () => {
+    const manifest = 'kind: Deployment\nmetadata:\n  name: todo-api\nimage: {{IMAGE}}\n';
+    const fake = new FakeExec().onArgs('kubectl', ['--context', 'kind-teams-ai', 'rollout', 'status'], () => ({ exitCode: 1, stderr: 'timed out' }));
+    const t = new KindTarget({ exec: fake.exec, secrets, cluster: 'teams-ai', readFile: async () => manifest, sleep: async () => undefined });
+    const r = await runDeployment(Object.assign(Object.create(t), { apply: async () => ({ previous: null }) }) as DeployTarget, intent, { smoke: smokeOk, baseUrl: 'u' });
+    expect(r).toMatchObject({ ok: false, stage: 'verify', rolledBack: false });
+    const lines = fake.lines('kubectl');
+    expect(lines).toContain('--context kind-teams-ai delete -f - --ignore-not-found');
+    expect(lines.some((l) => l.includes('delete secret todo-api-secrets'))).toBe(true);
+    expect(lines.some((l) => l.includes('rollout undo'))).toBe(false);
   });
 
   it('turns a throwing rollback into a result instead of a rejection', async () => {

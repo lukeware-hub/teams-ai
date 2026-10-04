@@ -99,7 +99,15 @@ export async function runDeployment(
     return { ok: false, stage: 'apply', detail: (err as Error).message, rolledBack: false, rollbackHealthy: null };
   }
   const fail = async (stage: DeployStage, detail: string): Promise<DeployResult> => {
-    if (!previous) return { ok: false, stage, detail, rolledBack: false, rollbackHealthy: null };
+    if (!previous) {
+      // First deploy: nothing to go back to, and the failed stack must not keep running (R8.2).
+      try {
+        await target.destroy(intent);
+        return { ok: false, stage, detail: `${detail}; first deploy failed, the new stack was torn down`, rolledBack: false, rollbackHealthy: null };
+      } catch (err) {
+        return { ok: false, stage, detail: `${detail}; teardown of the failed first deploy failed: ${(err as Error).message}`, rolledBack: false, rollbackHealthy: null };
+      }
+    }
     try {
       await target.rollback(intent, previous);
     } catch (err) {
