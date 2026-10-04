@@ -123,7 +123,7 @@ describe('packs', () => {
 
   it('plan pack prescribes the security tooling commands only when required', () => {
     const on = planPack(base, { techSpecText: '# t', godNodes: [], feedback: null, requireSecurityTooling: true });
-    for (const s of ['security-tools', 'gitleaks detect', 'semgrep scan', 'osv-scanner', 'trivy image']) expect(on.feedback).toContain(s);
+    for (const s of ['security-tools', 'gitleaks detect', 'semgrep scan', 'osv-scanner', 'trivy config', 'trivy fs']) expect(on.feedback).toContain(s);
     const off = planPack(base, { techSpecText: '# t', godNodes: [], feedback: null });
     expect(off.feedback).not.toContain('semgrep');
   });

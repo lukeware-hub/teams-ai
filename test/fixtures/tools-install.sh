@@ -1,0 +1,36 @@
+#!/bin/sh
+# Rendered by teams-ai (roadmap R8.5): pinned versions, sha256-verified downloads. Do not edit.
+set -eu
+ROOT="$PWD"
+BIN="$ROOT/.tools/bin"
+TMP="$ROOT/.tools/tmp"
+mkdir -p "$BIN" "$TMP"
+
+# fetch URL SHA256 DEST: download, then refuse anything whose digest differs.
+fetch() {
+  curl -fsSL --retry 3 -o "$3" "$1"
+  echo "$2  $3" | sha256sum -c -
+}
+
+fetch "https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz" a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb "$TMP/gitleaks.tgz"
+tar -xzf "$TMP/gitleaks.tgz" -C "$BIN" gitleaks
+
+fetch "https://github.com/google/osv-scanner/releases/download/v2.2.2/osv-scanner_linux_amd64" c799274b682e0437c802d4714a136ad09b39c65547c460049ba5358d28afa576 "$BIN/osv-scanner"
+chmod +x "$BIN/osv-scanner"
+
+fetch "https://github.com/aquasecurity/trivy/releases/download/v0.75.0/trivy_0.75.0_Linux-64bit.tar.gz" c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f "$TMP/trivy.tgz"
+tar -xzf "$TMP/trivy.tgz" -C "$BIN" trivy
+
+python3 -m pip install --quiet --disable-pip-version-check --target "$ROOT/.tools/py" "semgrep==1.131.0"
+cat > "$BIN/semgrep" <<'WRAP'
+#!/bin/sh
+D="$(cd "$(dirname "$0")/.." && pwd)"
+PYTHONPATH="$D/py" exec python3 -m semgrep "$@"
+WRAP
+chmod +x "$BIN/semgrep"
+
+rm -rf "$TMP"
+"$BIN/gitleaks" version
+"$BIN/osv-scanner" --version
+"$BIN/trivy" --version
+"$BIN/semgrep" --version

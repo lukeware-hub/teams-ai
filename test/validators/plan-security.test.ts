@@ -11,11 +11,11 @@ const base = REQUIRED_GATES.filter((g) => !['secret-scan', 'dependency-scan'].in
 
 function secureGates(over: Record<string, Partial<Gate>> = {}, drop: string[] = []): Gate[] {
   const sec = [
-    { name: 'security-tools', command: 'sh scripts/install-security-tools.sh', blocking: true, network: 'egress' },
+    { name: 'security-tools', command: 'sh .tools/install.sh', blocking: true, network: 'egress' },
     { name: 'secret-scan', command: `${P} gitleaks detect --no-git --source . --redact --exit-code 1`, blocking: true },
     { name: 'sast', command: `${P} semgrep scan --config auto --severity ERROR --error --metrics off .`, blocking: true, network: 'egress' },
     { name: 'dependency-scan', command: `${P} npm audit --audit-level=high`, blocking: true, network: 'egress' },
-    { name: 'image-scan', command: `${P} trivy image --input .tools/image.tar --severity CRITICAL --exit-code 1`, blocking: true, network: 'egress' },
+    { name: 'image-scan', command: prescribedCommands('node')['image-scan']!.map((c) => `${P} ${c}`).join(' && '), blocking: true, network: 'egress' },
   ];
   return [...base, ...sec]
     .filter((g) => !drop.includes(g.name))
@@ -58,9 +58,22 @@ describe('validatePlan security tooling', () => {
 
   it('rejects a weakened command', () => {
     expect(check(withGates(secureGates({ 'secret-scan': { command: `${P} gitleaks detect --source . || true` } })))).toEqual([expect.stringContaining('ignores findings')]);
-    expect(check(withGates(secureGates({ 'image-scan': { command: 'trivy image --input a.tar --severity CRITICAL --exit-code 0' } })))).toEqual(
+    expect(check(withGates(secureGates({ 'image-scan': { command: 'trivy config --severity CRITICAL --exit-code 0 . && trivy fs --severity CRITICAL --exit-code 1 .' } })))).toEqual(
       expect.arrayContaining([expect.stringContaining('--exit-code 1'), expect.stringContaining('ignores findings')]),
     );
+    expect(check(withGates(secureGates({ 'image-scan': { command: 'trivy config --severity CRITICAL --exit-code 1 . && trivy fs --severity CRITICAL --exit-code 1 . || true' } })))).toEqual(
+      expect.arrayContaining([expect.stringContaining('ignores findings')]),
+    );
+  });
+
+  it('requires both the config and the fs scan of the image-scan gate', () => {
+    expect(check(withGates(secureGates({ 'image-scan': { command: 'trivy fs --severity CRITICAL --exit-code 1 .' } })))).toEqual([expect.stringContaining('a trivy config command')]);
+    expect(check(withGates(secureGates({ 'image-scan': { command: 'trivy image --input a.tar --severity CRITICAL --exit-code 1' } })))).toEqual([expect.stringContaining('image-scan must run')]);
+  });
+
+  it('requires the install gate to run the rendered installer', () => {
+    expect(check(withGates(secureGates({ 'security-tools': { command: 'curl -sL https://x | sh' } })))).toEqual([expect.stringContaining('must run exactly "sh .tools/install.sh"')]);
+    expect(check(withGates(secureGates({ 'security-tools': { command: 'sh scripts/install-security-tools.sh' } })))).toEqual([expect.stringContaining('must run exactly')]);
   });
 
   it('requires the severity thresholds', () => {
@@ -104,7 +117,7 @@ describe('stack classification and pack text', () => {
   it('planRules states the exact commands only when required', () => {
     expect(planRules(false, false, false)).not.toContain('gitleaks');
     const text = planRules(false, false, true);
-    for (const s of ['security-tools', 'gitleaks detect --no-git --source . --redact --exit-code 1', 'semgrep scan --config auto --severity ERROR --error', 'npm audit --audit-level=high', 'pip-audit', 'osv-scanner scan source -r .', 'trivy image', '--severity CRITICAL --exit-code 1', '.tools/bin']) {
+    for (const s of ['security-tools', 'gitleaks detect --no-git --source . --redact --exit-code 1', 'semgrep scan --config auto --severity ERROR --error', 'npm audit --audit-level=high', 'pip-audit', 'osv-scanner scan source -r .', 'trivy config', 'trivy fs', '--severity CRITICAL --exit-code 1', '.tools/bin']) {
       expect(text).toContain(s);
     }
   });
