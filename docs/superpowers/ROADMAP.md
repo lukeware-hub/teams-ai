@@ -258,6 +258,13 @@ Five branches built, reviewed, merged and fixed (855 passing, typecheck clean). 
 | R7.1 Deploy (plan 23, H4/M6) | Registry build via BuildKit, non-root image without docker.io, securityContext everywhere, agent-step egress allowlist (placeholder CIDRs), kind containerd mirror | CIDR placeholders must be replaced; compose file still mounts `/root` and the Docker socket (legacy path); image pins unchecked against a registry; nothing applied to a cluster |
 | Orchestrator (plan 24) | Explicit `blocked` status in the Dev/DevOps output (no spec-gap rounds burned), supervisor stop-marker rule; a hand resume (`RUN_RESUMED {manual:true}`) now lifts a stop but never an exhausted budget | supervise CLI test covers argument validation only |
 
+### Stage 7c — Leftovers (2026-10-04, plans 25–27; 874 passing)
+
+- **SSE lifetime:** streams close after 30 min total or 10 min idle with `event: reconnect`; the client reconnects with `Last-Event-ID`. Timeouts are `ApiDeps` options, not yet read from the config file.
+- **Clone host check:** a host that does not resolve is now refused; the DNS-rebinding window (git resolves again at clone time) is narrowed, not closed (pinning the IP breaks TLS/SNI with plain git); see plan 25.
+- **Gate logs:** the k8s gate wrapper keeps stdout and stderr apart (last 500 lines each between markers), so infra failures classify as `infra`; the wrapper has no test against a real `sh` and `kubectl`, and a gate with more than 500 lines of output loses the early lines.
+- **Supervise CLI test:** the loop is tested through `main()` with injected index, liveness and spawner; `docker-compose.yml` no longer mounts the Docker socket or `/root` (not validated with `docker compose config`).
+
 - **Decision for the human:** the audit's C1/H3/H4 (agent steps with credentials readable and unrestricted egress;
   deny rules bypassable through `node`/`npm`; root container with the Docker socket) are made worse by the requested
   fully open NetworkPolicies. Recommended: keep ingress open, but give agent-step pods a default-deny egress plus an
