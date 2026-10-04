@@ -1,4 +1,4 @@
-# Backs up the teams-ai data PVC to a second PVC. Apply into the namespace that runs teams-ai.
+# Backs up the teams-ai data PVC to a second PVC. Lives in the single `teams-ai` namespace.
 # Assumes the data PVC is named `teams-ai-data`; change claimName below if the base manifests differ.
 # The data PVC is mounted read-only; ReadWriteOnce volumes need the job on the same node as the pod,
 # which the podAffinity below handles (label app=teams-ai on the teams-ai pod is assumed).
@@ -6,6 +6,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: teams-ai-backup
+  namespace: teams-ai
 spec:
   accessModes: [ReadWriteOnce]
   resources:
@@ -16,6 +17,7 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: teams-ai-backup
+  namespace: teams-ai
 spec:
   schedule: "17 3 * * *"
   concurrencyPolicy: Forbid
