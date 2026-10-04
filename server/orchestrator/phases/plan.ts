@@ -36,12 +36,12 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
     const out: StepOutcome<OutputOf<'plan'>> = await deps.runAgent<'plan'>({
       kind: 'plan',
       role: 'sm',
-      pack: planPack(deps.packBase(), { techSpecText, godNodes: await deps.godNodes(), feedback, firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery }),
+      pack: planPack(deps.packBase(), { techSpecText, godNodes: await deps.godNodes(), feedback, firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling }),
       cwd: worktree,
       phase: 'phase2',
       taskId: null,
       attempt,
-      semantic: [((p: Plan) => validatePlan(p, deps.spec, { firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery })) as never],
+      semantic: [((p: Plan) => validatePlan(p, deps.spec, { firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling })) as never],
     });
     if (!out.ok) {
       if (out.failure === 'quota' || out.failure === 'auth') {
@@ -53,7 +53,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
       continue;
     }
     const { alternatives = [], ...primary } = out.value as Plan & { alternatives?: Plan[] };
-    const valid = alternatives.filter((p) => p.specHash === deps.specHash && validatePlan(p, deps.spec, { firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery }).length === 0);
+    const valid = alternatives.filter((p) => p.specHash === deps.specHash && validatePlan(p, deps.spec, { firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling }).length === 0);
     const candidates: Plan[] = [primary, ...valid];
     let plan: Plan = primary;
     if (candidates.length > 1) {

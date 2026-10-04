@@ -22,6 +22,7 @@ Rules you never break:
 
 - Injection: SQL, command, template, path traversal, unsafe deserialization, `eval`, regex built from user input.
 - Authentication and authorization: missing checks, broken session or token handling, privilege escalation, IDOR.
+- Tooling: the plan's gates already run gitleaks, semgrep, a dependency audit and trivy (blocking on high/critical); do not repeat what they catch, look for what scanners miss (logic flaws, authz, unsafe design).
 - Secrets: credentials, tokens or keys in code, config, fixtures or logs; secrets read from anywhere but the environment.
 - Input and output handling: missing validation at trust boundaries, XSS, open redirects, SSRF, unrestricted uploads, verbose errors that leak internals.
 - Cryptography: home-made crypto, weak hashes for passwords, predictable randomness for tokens, disabled TLS verification.

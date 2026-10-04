@@ -121,6 +121,13 @@ describe('packs', () => {
     expect(later.feedback).toContain('secret-scan');
   });
 
+  it('plan pack prescribes the security tooling commands only when required', () => {
+    const on = planPack(base, { techSpecText: '# t', godNodes: [], feedback: null, requireSecurityTooling: true });
+    for (const s of ['security-tools', 'gitleaks detect', 'semgrep scan', 'osv-scanner', 'trivy image']) expect(on.feedback).toContain(s);
+    const off = planPack(base, { techSpecText: '# t', godNodes: [], feedback: null });
+    expect(off.feedback).not.toContain('semgrep');
+  });
+
   it('output contract states the JSON schema of the kind', () => {
     expect(outputContract('dev')).toContain('"specHash"');
     expect(outputContract('dev')).toContain('commitMessage');
