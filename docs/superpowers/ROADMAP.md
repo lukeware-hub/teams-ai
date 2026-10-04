@@ -122,9 +122,19 @@ window resets, resume exactly from the entry below.
   which needs a finished run: R1.1b) and the decision 7 hint with decisions on (run 3).
 - Cleaned up: draft removed, user config restored.
 
-### R2.2 Start, stop and resume a run from the browser (plan 10) — `todo`
+### R2.2 Start, stop and resume a run from the browser (plan 10) — `done`
 
-- SIGTERM through `tsx` is already verified (2026-10-04); the orchestrator's `requestStop()` path under a real run is not.
+- 2026-10-04, Chrome against the real UI server on WSL (port 8790, project `todo-api`, spec `todo-001`), all three clicks
+  done in the browser with the human's explicit approval:
+  - Start ("Iniciar execução", Projects page): `POST /api/projects/todo-api/specs/todo-001/runs` 200, run `todo-001-r2` created and its process alive.
+  - Stop ("Parar", recent-runs table on the Projects page, not on the run page): `POST /api/runs/todo-001-r2/stop` 200 after 15 s,
+    `RUN_STOP_REQUESTED` in the journal, process gone. This proves SIGTERM reaches the orchestrator's `requestStop()` through the `tsx` wrapper (plan 10's open item).
+  - Resume ("Retomar", shown once the run is `interrompida`): `POST /api/runs/todo-001-r2/resume` 200, journal `RUN_RESUMED {"manual":true}` (the 2026-10-04 reducer fix) and a new `STEP_STARTED`: the run continued. Stopped again afterwards.
+- Cost of the test: $0.89, 4 steps (it stops mid dev step, so the run is left unfinished on purpose).
+- Findings: (1) clicking by element reference did nothing twice (no POST reached the server); coordinate clicks worked, so
+  browser automation of this UI needs coordinates. (2) The stop took 15 s and the journal shows `STEP_STARTED` after `RUN_STOP_REQUESTED`
+  (seq 109 after 107): a step of an already-running task still started during the drain, and the stop looks like it ended by escalation after
+  the 15 s timeout, not by a clean drain; worth a look before relying on graceful stop. (3) There is no Stop button on the run page, only on the Projects page.
 
 ### R2.3 Real logins on a logged-out host (plan 8) — `todo`
 
