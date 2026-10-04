@@ -68,6 +68,13 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
   const hasDist = await fs.access(path.join(staticDir, 'index.html')).then(() => true, () => false);
   if (!hasDist) io.stderr('web/dist not found: run `npm run web:build` (or `npm run web:dev` for the Vite dev server with /api proxied)');
   const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+  // Decisions asked by the UI server (report routing, Gate 1) chain jev → local only: there is no claude step to escalate to.
+  const uiDecider = async () => createDecider({
+    cfg: (await readUserConfig()).cfg,
+    secrets: await loadSecrets(expandHome(cfg.paths.secrets)),
+    accounting: new Accounting(),
+    runEscalation: async () => { throw new Error('UI-server decisions do not escalate to Claude'); },
+  });
   return startApi(
     {
       routes: [
@@ -90,17 +97,11 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
             control: defaultRunControl(repoRoot),
             runsDir: async () => runsDir({ cfg: (await readUserConfig()).cfg, isAlive: () => false }),
             register: (dir) => addProject(dir).then(() => undefined),
-            routeReport: async (criteria, report, confidential) => {
-              const decider = createDecider({
-                cfg: (await readUserConfig()).cfg,
-                secrets: await loadSecrets(expandHome(cfg.paths.secrets)),
-                accounting: new Accounting(),
-                // report-routing's chain has no claude entry; the UI server has no step runner to escalate to.
-                runEscalation: async () => { throw new Error('report routing does not escalate to Claude'); },
-              });
+            routeReport: async (criteria, report, confidential) =>
               // The route is only a hint for PO and SM; a broken System 1 must not block reopening the spec.
-              return routeReport(criteria, report, decider, { confidential }).catch(() => null);
-            },
+              routeReport(criteria, report, await uiDecider(), { confidential }).catch(() => null),
+            // Gate 1 filters only route and drop; a broken System 1 must not fail a refinement cycle.
+            decider: { decide: async (...args) => (await uiDecider()).decide(...args).catch(() => ({ answered: false as const, reason: 'exhausted' as const })) },
           }),
           log: io.stderr,
         }),

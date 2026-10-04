@@ -67,6 +67,7 @@ export interface SessionDeps {
   secretsDir: string;
   retrieval: (query: string) => readonly Hit[];
   validateDocs?: CycleDeps['validateDocs'];
+  decider?: CycleDeps['decider'];
 }
 export interface SecretRow {
   name: string;
@@ -184,6 +185,7 @@ export class RefineSession {
         retrieval: this.deps.retrieval,
         secretsDir: this.deps.secretsDir,
         validateDocs: this.deps.validateDocs,
+        decider: this.deps.decider,
       },
       cycle,
     ).finally(() => {

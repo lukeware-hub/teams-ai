@@ -3,6 +3,8 @@ import type { z } from 'zod';
 import { loadSecrets } from '../core/secrets.js';
 import type { Hit } from '../knowledge/retrieval.js';
 import type { Journal } from '../orchestrator/events.js';
+import type { Decider } from '../decide/decider.js';
+import { contradictedChunks, duplicatePairs, notReadyCriteria } from '../decide/decisions/gate1.js';
 import type { AgentStepRequest } from '../orchestrator/steps.js';
 import type { StepOutcome } from '../runner/step.js';
 import { mergeChecklist, type ChecklistItem } from './checklist.js';
@@ -32,8 +34,12 @@ export interface CycleDeps {
   retrieval: (query: string) => readonly Hit[];
   secretsDir: string;
   validateDocs?: (docs: { project: string; briefing: string; stack: string; flow: string }) => Promise<JevValidationResult>;
+  /** Spec 10A.5 decisions 2–4; absent (or the layer off) leaves the cycle as it was. */
+  decider?: Pick<Decider, 'decide'>;
 }
 
+const MAX_DEDUP_PAIRS = 20;
+const MAX_HISTORY_CHUNKS = 5;
 const norm = (t: string) => t.toLowerCase().replace(/\s+/g, ' ').trim();
 
 /** Spec (refinement) §3.2: derive → Front → PO ∥ SM → merge questions → check patches → checklist. */
@@ -82,6 +88,9 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
   }
   await writeDerived(draft, checked.value);
   await journal.fact(RefineEvent.Derived, { cycle, ...checked.value });
+  const dctx = { confidential: checked.value.project.confidential };
+  const criteria = checked.value.spec.acceptanceCriteria;
+  const notReady = deps.decider ? await notReadyCriteria(criteria, deps.decider, dctx) : null;
 
   const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];
   if (deps.frontAgent) {
@@ -133,6 +142,7 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
           history: state.questions,
           rejected: state.patches.filter((p) => p.status === 'rejected'),
           jevValidation,
+          notReady,
         }),
         cwd: draft.root,
         phase: 'refine',
@@ -164,6 +174,28 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
         seen.add(key);
         merged.push({ questionId: `${role}-c${cycle}-${counters[role]++}`, role, text: q.text, blocking: q.blocking, relatedAcIds: q.relatedAcIds, cycle });
       }
+    }
+  }
+  if (deps.decider) {
+    // Decision 3: a new question that asks what an earlier one (new or decided) already asks, on a shared AC.
+    const shares = (x: readonly string[], y: readonly string[]) => x.some((id) => y.includes(id));
+    const earlier = [...state.questions.filter((q) => q.status !== 'pending'), ...merged];
+    const pairs: Array<{ a: string; b: string; drop: Question }> = [];
+    for (const q of merged) {
+      for (const e of earlier) {
+        if (pairs.length >= MAX_DEDUP_PAIRS) break;
+        if (e === q) break; // only earlier questions: `merged` follows `decided` in `earlier`
+        if (shares(e.relatedAcIds, q.relatedAcIds)) pairs.push({ a: e.text, b: q.text, drop: q });
+      }
+    }
+    const dup = await duplicatePairs(pairs, deps.decider, dctx);
+    const dropped = new Set(dup ? pairs.filter((_, i) => dup[i]).map((p) => p.drop) : []);
+    for (let i = merged.length - 1; i >= 0; i--) if (dropped.has(merged[i]!)) merged.splice(i, 1);
+    // Decision 4: history that the new spec contradicts becomes a blocking question for the human.
+    const hits = retrieval.slice(0, MAX_HISTORY_CHUNKS);
+    for (const i of await contradictedChunks(criteria, checked.value.spec.objectives, hits.map((h) => h.text), deps.decider, dctx)) {
+      const h = hits[i]!;
+      merged.push({ questionId: `po-c${cycle}-${counters.po++}`, role: 'po', text: `The new spec seems to contradict earlier project history (${h.title}${h.heading ? ` › ${h.heading}` : ''}): "${h.snippet}". Which one holds?`, blocking: true, relatedAcIds: [], cycle });
     }
   }
 

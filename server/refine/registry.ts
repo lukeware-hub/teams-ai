@@ -23,6 +23,8 @@ export interface RegistryDeps {
   home?: string;
   runAgent: RunAgent;
   validateDocs?: CycleDeps['validateDocs'];
+  /** Spec 10A.5 decisions 2–4 for every refinement cycle. */
+  decider?: CycleDeps['decider'];
   secretsDir: string;
   exec: Exec;
   /** Directory of a registered block A project, or null when the id is not registered. */
@@ -61,7 +63,7 @@ export class SessionRegistry {
     const key = `${draft.projectId}/${draft.specId}`;
     const p = (async () => {
       const retrieval = (await exists(ws.knowledgeDb)) ? (q: string) => KnowledgeIndex.open(ws.knowledgeDb).search(q, { k: 5 }) : () => [];
-      const deps = { ws, draft, runAgent: this.deps.runAgent, frontAgent: this.deps.runAgent, secretsDir: ws.secrets, retrieval, validateDocs: this.deps.validateDocs };
+      const deps = { ws, draft, runAgent: this.deps.runAgent, frontAgent: this.deps.runAgent, secretsDir: ws.secrets, retrieval, validateDocs: this.deps.validateDocs, decider: this.deps.decider };
       return create ? RefineSession.create(deps, create) : RefineSession.open(deps);
     })();
     this.sessions.set(key, p);

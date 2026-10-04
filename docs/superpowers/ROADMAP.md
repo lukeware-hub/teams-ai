@@ -100,13 +100,26 @@ window resets, resume exactly from the entry below.
 
 ## Stage 4 — System 1 ready for run 3
 
-### R4.1 Decisions 2–4 (Gate 1 readiness, question dedup, contradiction) — `todo`
+### R4.1 Decisions 2–4 (Gate 1 readiness, question dedup, contradiction) — `in progress` (unit done, e2e left)
 
-- Approach not chosen yet. Options:
-  - A. Spec questions: one readiness question per AC and checklist item (2), one per question pair (3), one per
-    retrieved history chunk (4), all through the decider. The existing JEV check stays.
-  - B. Route the existing JEV consistency check (`server/refine/jev-validation.ts`) through the decider. No new questions.
-  - C. Decide after reading the refinement cost in run 1 (recommended).
+- Approach A chosen 2026-10-04. Option C ("decide after run 1") was dropped: a golden run starts from a frozen spec
+  and never runs refinement, so run 1 says nothing about Gate 1 cost.
+- Plan, in the refinement cycle (`server/refine/cycle.ts`), all through the decider (chain jev → local; the UI
+  server has no Claude step to escalate to), no-ops while `decisions.enabled` is false:
+  - Decision 2 `gate1-readiness`: after derive, one Noul per acceptance criterion ("ready and verifiable?");
+    criteria below 0.5 reach the PO/SM refine pack as the ones to focus on. A hint; no step is skipped.
+  - Decision 3 `question-dedup`: after the normalized-text dedup, one Noul per pair of new questions that share an
+    AC, or a new question and an already decided one sharing an AC (at most 20 pairs); a confirmed duplicate
+    (≥ 0.5) is dropped, keeping the earlier one.
+  - Decision 4 `history-contradiction`: one Noul per retrieved history chunk (at most 5) against the derived spec;
+    a contradiction (≥ 0.5) adds a blocking PO question quoting the chunk.
+  - Files: `server/decide/decisions/gate1.ts`, `server/refine/cycle.ts`, `server/refine/packs.ts`,
+    `server/refine/session.ts` / `registry.ts` (pass the decider), `server/cli.ts` (build it), config defaults.
+  - Unit tests for each decision and for the cycle with a fake decider; e2e: one refinement session in the UI with
+    decisions on.
+- Progress (2026-10-04): implemented (`server/decide/decisions/gate1.ts`, cycle, pack, session/registry, CLI)
+  with unit tests (`test/decide/gate1.test.ts`, `test/refine/cycle.test.ts`; 750 passing). Left: the e2e refinement
+  session with decisions on (needs Claude quota for PO/SM; local backend now available, R4.3).
 
 ### R4.2 Decision 12 (rank candidate plans) — `done` (unit); live check in R5.1
 
@@ -118,17 +131,14 @@ window resets, resume exactly from the entry below.
 - Unit tests: `test/decide/plan-rank.test.ts`, Phase 2 ranking in `test/orchestrator/phases.test.ts` (740 passing).
 - Not covered: replan candidates (spec row 12 also names replan); the SM authors one replacement plan today.
 
-### R4.3 `local-logprobs` backend on the host — `in progress` (optional)
+### R4.3 `local-logprobs` backend on the host — `done`
 
-- Plan (2026-10-04): `sudo apt install nvidia-cuda-toolkit` (12.0; driver 617 supports it); clone
-  `ggml-org/llama.cpp` to `~/llama.cpp` and build with `-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=86` (RTX 3060 Ti);
-  download `bartowski/Qwen2.5-7B-Instruct-GGUF` `Qwen2.5-7B-Instruct-Q4_K_M.gguf` (about 4.7 GB) to `~/models`;
-  start `llama-server -m <model> -np 4 -c 8192 --port 8080` (the config default `decisions.local.baseUrl`).
-  Verify with a real smoke of `LocalLogprobsBackend` (one choice question, probabilities sum to about 1). Costs no
-  Claude tokens. Log: `~/r43-setup.log`.
-
-- Client built (`server/decide/local-logprobs.ts`). Host: llama.cpp with CUDA in WSL2, a 7–9B instruct GGUF (start
-  with Qwen2.5-7B-Instruct Q4_K_M), `llama-server -np 4 -c 8192`, a real smoke. Jev alone covers run 3.
+- 2026-10-04: `nvidia-cuda-toolkit` 12.0 installed; `~/llama.cpp` built with `-DGGML_CUDA=ON
+  -DCMAKE_CUDA_ARCHITECTURES=86`; model `~/models/Qwen2.5-7B-Instruct-Q4_K_M.gguf` (4.7 GB, bartowski);
+  server: `~/llama.cpp/build/bin/llama-server -m ~/models/Qwen2.5-7B-Instruct-Q4_K_M.gguf -np 4 -c 8192 -ngl 99
+  --host 127.0.0.1 --port 8080` (5.8 GB VRAM, log `~/llama-server.log`; not a service, restart it after a reboot).
+- Smoke `npx tsx scripts/smoke/local-logprobs.ts`: choice, noul and score answered in 545 ms, probabilities sum to 1,
+  cost $0. Enable with `decisions.local.enabled: true`. Model and threshold are tuned later with R5.3.
 
 ## Stage 5 — Golden run 3 and the comparison
 
@@ -153,9 +163,9 @@ window resets, resume exactly from the entry below.
 | # | Decision | Status |
 |---|----------|--------|
 | 1 | Gate failure triage | Wired (`gate-triage`) |
-| 2 | Gate 1 readiness per AC / checklist item | Not wired (R4.1). A single JEV consistency check covers part of it, outside the decider |
-| 3 | Question dedup | Deterministic only (normalized text, `server/refine/cycle.ts:154`) (R4.1) |
-| 4 | Contradiction with history | Not wired; partly covered by the same JEV check (R4.1) |
+| 2 | Gate 1 readiness per AC | Wired 2026-10-04 as a hint in the PO/SM pack (`gate1-readiness`, R4.1) |
+| 3 | Question dedup | Wired 2026-10-04 after the normalized-text dedup (`question-dedup`, R4.1) |
+| 4 | Contradiction with history | Wired 2026-10-04: a blocking PO question per contradicted chunk (`history-contradiction`, R4.1) |
 | 5 | PR risk | Wired (`pr-risk`) |
 | 6 | Attempt progress | Wired (`attempt-progress`) |
 | 7 | Validation report routing | Wired 2026-10-04 as a hint in `brief.md` (`report-routing`); never changes the flow |

@@ -47,6 +47,10 @@ const DECISION_DEFAULTS: Partial<Record<DecisionId, Partial<DecisionConfig>>> = 
   // Spec 10A.5 row 8 escalates to no one; a Claude escalation would itself be a step that can fail.
   'cli-error': { chain: ['jev', 'local'] },
   'plan-rank': { escalateTo: 'sm' },
+  // Gate 1 runs in the UI server, which has no claude step to escalate to.
+  'gate1-readiness': { chain: ['jev', 'local'], escalateTo: 'po' },
+  'question-dedup': { chain: ['jev', 'local'], escalateTo: 'sm' },
+  'history-contradiction': { chain: ['jev', 'local'], escalateTo: 'po' },
 };
 
 const PerDecisionSchema = z
