@@ -34,6 +34,15 @@ Status values: `todo` → `planning` → `approved` → `in progress` → `done`
 
 ## Pause log
 
+- **2026-10-04, end of the day — stopped by the human; everything saved to `main`.**
+  - Done today (details in each item): Stages 6 (plan only), 7, 7b, 7c, 7d and 8 (R8.1–R8.6 at unit level, 981 root and 58 web tests passing at the last full run), decisions 2–4, 7, 8 and 12, R2.2 checked in the browser, golden run 1 (deploy-failed at smoke, $14.34).
+  - **Blocker 1, the claude login on the WSL distro is broken** (my plan 20 runner copied the credential into a throwaway HOME and discarded the rotated token; fixed in `step-home.ts` and `AUTH_TEXT`, but the existing login is dead). The human must run `claude auth login` on the Ubuntu distro (or create a long-lived token with `claude setup-token` and export `CLAUDE_CODE_OAUTH_TOKEN`). Until then no agent step runs there. Verified again at the stop: `OAuth session expired and could not be refreshed`.
+  - **Golden run 3 (R5.1) failed at Phase 1 after 74 s ($0.22)** because of that login; repository `lukeware70X7/teams-ai-todo-api-r3` and run `todo-001-r3` exist. Restart with a new `TEAMS_AI_PROJECT` (for example `todo-api-r4`) from a clean export of `main`, decisions on with the chain `local` then `claude`; restore `~/.teams-ai/config.json` afterwards (it is `{ "github": { "owner": "lukeware70X7" } }` now).
+  - **R6.1 cutover (plan 31): NOT started.** The human gave the go for stages 1–5, but the background build was cut off before anything ran (`~/cutover-12.log` has only its first line): the kind cluster `teams-ai` and the image `teams-ai-backend:local` are the old ones. Restart at stage 1. Stage 6 (removal) still needs a second explicit yes.
+  - **Egress of agent steps:** the human answered "open for now", but the change was NOT applied: a local commit of the kind-overlay patch was dropped unpushed after the human rejected the command that would publish it. `main` keeps the default-deny allowlist (plan 23) with placeholder CIDRs, so agent steps have no external egress in the cluster. Ask again before applying.
+  - Another session (`teams-ai-a5`) has about 44 uncommitted files in the main working tree (concurrency, atomic writes, smoke host fix, kind.ts YAML, sec diff in the pack, Validation page); they are NOT in `main` and not mine. Its changes overlap files of the Stage 7–8 work, so expect conflicts when it commits.
+  - Still open: R8.7 (golden run on the full contract), R2.3 (real logins), real egress CIDRs, the three-run comparison (R5.2) and the decision evals with data (R5.3), OmniRoute is optional (R3.1). Resume from this entry: after the login is redone, start with golden run 3.
+
 Rule (goal set 2026-10-04): when the 5-hour token window reaches 90 %, record the pause here and stop; when the
 window resets, resume exactly from the entry below.
 
