@@ -166,6 +166,14 @@ describe('SSE limits (audit M5)', () => {
     await d.body?.cancel();
   });
 
+  it('ends a stream with a reconnect event after the lifetime, and after the idle time', async () => {
+    api = await startApi({ routes, host: '127.0.0.1', sseTimeouts: { lifetimeMs: 60, idleMs: 10_000 } }, 0);
+    expect(await (await fetch(url('/api/stream'))).text()).toContain('event: reconnect');
+    await api.close();
+    api = await startApi({ routes, host: '127.0.0.1', sseTimeouts: { lifetimeMs: 10_000, idleMs: 60 } }, 0);
+    expect(await (await fetch(url('/api/stream'))).text()).toContain('event: reconnect');
+  });
+
   it('caps streams per remote address', async () => {
     api = await startApi({ routes, host: '127.0.0.1', maxSse: { total: 100, perAddress: 1 } }, 0);
     const a = await fetch(url('/api/stream'));
@@ -185,7 +193,9 @@ describe('clone host policy (audit M1)', () => {
   });
   it('applies the allowlist first, then the private checks', async () => {
     expect(await refuseCloneHost('github.com', ['github.com'], async () => ['140.82.112.3'])).toBeNull();
-    expect(await refuseCloneHost('GitHub.com', ['github.com'], never)).toBeNull();
+    expect(await refuseCloneHost('GitHub.com', ['github.com'], async () => ['140.82.112.3'])).toBeNull();
+    expect(await refuseCloneHost('github.com', ['github.com'], never)).toMatch(/resolver/);
+    expect(await refuseCloneHost('github.com', ['github.com'], async () => [])).toMatch(/resolver/);
     expect(await refuseCloneHost('example.com', ['github.com'], never)).toMatch(/lista permitida/);
     expect(await refuseCloneHost('127.0.0.1', ['127.0.0.1'], never)).toMatch(/interno/);
     expect(await refuseCloneHost('[::1]', ['::1'], never)).toMatch(/interno/);

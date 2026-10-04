@@ -1,7 +1,7 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ensureSession } from './auth.js';
-import { useSse } from './useSse.js';
+import { useJournal, useSse } from './useSse.js';
 
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
@@ -74,5 +74,24 @@ describe('useSse', () => {
     renderHook(() => useSse(null));
     await new Promise((r) => setTimeout(r, 10));
     expect(FakeEventSource.instances).toHaveLength(0);
+  });
+});
+
+describe('useJournal reconnection (audit M5)', () => {
+  it('keeps the EventSource open on a server reconnect, drops replayed seqs, and closes only on end', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+    const { result } = renderHook(() => useJournal('/api/x/events'));
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const es = FakeEventSource.instances[0]!;
+    const ev = (seq: number) => ({ data: JSON.stringify({ seq, type: 'X' }) }) as MessageEvent;
+    es.listeners.journal!(ev(1));
+    // The browser resumes with Last-Event-ID and the server may replay: seq 1 is not applied twice.
+    es.listeners.journal!(ev(1));
+    es.listeners.journal!(ev(2));
+    await waitFor(() => expect(result.current.events.map((e) => e.seq)).toEqual([1, 2]));
+    expect(es.closed).toBe(false);
+    es.listeners.end!({} as MessageEvent);
+    await waitFor(() => expect(result.current.ended).toBe(true));
+    expect(es.closed).toBe(true);
   });
 });

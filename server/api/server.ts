@@ -70,6 +70,8 @@ export interface ApiDeps {
   allowedHosts?: string[];
   /** Concurrent SSE streams, in total and per remote address (audit M5). */
   maxSse?: { total: number; perAddress: number };
+  /** Audit M5: an event stream is closed after `lifetimeMs` in total or `idleMs` without an event (defaults 30 min / 10 min). */
+  sseTimeouts?: { lifetimeMs: number; idleMs: number };
 }
 
 export class HttpError extends Error {
@@ -135,6 +137,7 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
   const token = resolveAuth(deps.token ?? process.env[TOKEN_ENV], host, log);
   const allowedHosts = (deps.allowedHosts ?? parseAllowedHosts(process.env[ALLOWED_HOSTS_ENV])).map((h) => h.toLowerCase());
   const maxSse = deps.maxSse ?? { total: 200, perAddress: 50 };
+  const sseTimeouts = deps.sseTimeouts ?? { lifetimeMs: 30 * 60_000, idleMs: 10 * 60_000 };
   let sseTotal = 0;
   const ssePerAddress = new Map<string, number>();
   const server = http.createServer(async (req, res) => {
@@ -188,8 +191,23 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
       // down (seen live: ERR_STREAM_WRITE_AFTER_END from the run events tail). Swallow it and stop writing.
       res.on('error', () => undefined);
       const open = () => !res.writableEnded && !res.destroyed;
+      // Audit M5: tell the client to reconnect (EventSource does so with Last-Event-ID) and end the stream.
+      const expire = () => {
+        if (!open()) return;
+        res.write('event: reconnect\ndata: {}\n\n');
+        res.end();
+      };
+      const lifetime = setTimeout(expire, sseTimeouts.lifetimeMs);
+      const idle = setTimeout(expire, sseTimeouts.idleMs);
+      lifetime.unref();
+      idle.unref();
+      res.once('close', () => {
+        clearTimeout(lifetime);
+        clearTimeout(idle);
+      });
       return {
         send: (event, data, id) => {
+          idle.refresh();
           if (open()) res.write(`${id === undefined ? '' : `id: ${id}\n`}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
         },
         close: () => {

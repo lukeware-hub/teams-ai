@@ -82,7 +82,7 @@ const INTERNAL_NAME = /(^|\.)(localhost|local|internal|intranet|lan|home|svc|clu
 /**
  * Audit M1: why a clone host is refused, or null when it may be cloned. The allowlist (config) comes first;
  * private literals, internal names and names that resolve to private addresses are refused even when listed.
- * A name that does not resolve is left to the clone to fail.
+ * A name that does not resolve is refused (it cannot be checked); see plan 25 for the residual rebinding window.
  */
 export async function refuseCloneHost(hostname: string, allowed: readonly string[], resolve: ResolveHost = systemResolve): Promise<string | null> {
   const host = hostname.replace(/^\[|\]$/g, '').toLowerCase().replace(/\.$/, '');
@@ -90,5 +90,6 @@ export async function refuseCloneHost(hostname: string, allowed: readonly string
   if (net.isIP(host)) return isPrivateAddress(host) ? 'endereço interno não é permitido' : null;
   if (INTERNAL_NAME.test(host)) return 'nome interno não é permitido';
   const addresses = await resolve(host).catch(() => [] as string[]);
+  if (addresses.length === 0) return 'não foi possível resolver o servidor Git';
   return addresses.some(isPrivateAddress) ? 'o servidor Git resolve para um endereço interno' : null;
 }
