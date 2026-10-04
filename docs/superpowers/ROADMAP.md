@@ -13,6 +13,8 @@ The golden run criteria in spec §1.3 (`specs/2026-09-23-teams-ai-poc-design.md`
 - Green deploy and smoke tests on both `docker-local` and `kind`.
 - Zero duplicate PRs; `main` green after every merge.
 - The three runs compared on tokens, retries, wall time, blocked tasks and escalation rate.
+- Every generated project ships the full delivery contract (Stage 8): code, docs, unit and e2e tests, security scans,
+  GitHub Actions, image build and push, and a local docker infra that starts.
 
 ## How we work
 
@@ -302,6 +304,68 @@ Five branches built, reviewed, merged and fixed (855 passing, typecheck clean). 
   allowlist (registry, model endpoints), separate ServiceAccounts and no credentials in their HOME.
 - Next, in order: R7.4 fixes for critical/high; R7.1 Job gate runner and registry build (needs a plan: it changes
   `server/exec` and `server/deploy`); R7.2 allowed hosts for in-cluster use; then R6.1 cutover with the human.
+
+## Stage 8 — Delivery contract for generated projects (audit 2026-10-04)
+
+Acceptance criteria (set by the human): every project produced by teams-ai exits with **code, documentation, unit
+tests, e2e tests, secure code, GitHub Actions pipelines, a mini pipeline that builds the image and pushes it to the
+repo registry, and a local docker infra ready to start**. Audit of what ships today (read-only, no run):
+
+| Criterion | Today | Gap |
+|---|---|---|
+| Code | Hard gates (format, lint, unit, build, secret-scan) | no run has reached `awaiting-validation` yet (R1.2/R7.1) |
+| Documentation | `docs/README.md` only, written by the SM from a prompt | no docs gate; a failed README step is swallowed (`phases/report.ts:44`); no runbook or API docs |
+| Unit tests | Hard gate; AC ids in test names; evidence matrix | none known |
+| E2E tests | none (only `commands.smoke` after deploy, failed live) | no e2e step, gate or agent prompt for the generated project |
+| Secure code | Sec agent blocks `critical`/`high` per task diff; `secret-scan` required by name | SM picks the command; no SAST, dependency audit or image scan |
+| GitHub Actions | none | bootstrap commits `docs/` only; devops does not emit `.github/workflows` |
+| Build + push image | docker-local: build and run, no push; kind: push to an in-cluster insecure registry | no push to GHCR or another registry; no CI-driven pipeline |
+| Local docker infra | Dockerfile and compose are free-form paths | compose not enforced or validated; docker-local is one `docker run`; smoke failed live |
+
+Items below depend on R1.2/R7.1 (a run must reach the end first), except R8.1, R8.3 and R8.6, which can be built and
+unit-tested with fixtures. Each one needs a plan file in `plans/` before implementation. Items touching
+`server/exec`, `server/deploy` or `server/orchestrator` collide with work in flight; do them in a separate worktree.
+
+### R8.1 Delivery contract in the plan — `todo`
+
+- `plan.delivery` lists the required artifacts (Dockerfile, compose, CI workflow, release workflow, e2e suite, docs
+  sections). `server/validators/plan.ts` rejects a plan missing any; Phase 4 (`phases/verify.ts`) fails if a file is absent.
+- Files: `server/contracts/plan.ts`, `server/validators/plan.ts`, `server/orchestrator/phases/verify.ts`.
+
+### R8.2 Docker infra enforced — `todo` (after R1.2/R7.1)
+
+- DevOps must emit `Dockerfile` and `docker-compose.yml`; docker-local switches from one `docker run` to
+  `docker compose config` + `up --wait`. Fixes the smoke network fault seen in run 1.
+- Files: `.claude/agents/devops.md`, `server/deploy/docker-local.ts`.
+
+### R8.3 GitHub Actions in the generated repo — `todo`
+
+- `.github/workflows/ci.yml` (lint, typecheck, unit, e2e, scans) and `release.yml` (buildx build and push to GHCR with
+  `GITHUB_TOKEN`). Bootstrap commits them; a gate validates the YAML (actionlint). Decide: agent-written or template.
+- Files: `.claude/agents/devops.md`, `server/orchestrator/phases/bootstrap.ts`, `server/exec/gate-runner.ts`.
+
+### R8.4 E2E tests for the generated project — `todo` (after R8.2)
+
+- New required blocking gate `e2e`; the Test agent writes the suite; the runner executes it against the compose stack,
+  reusing the `server/exec/smoke.ts` plumbing. Not the same as `commands.smoke`.
+- Files: `server/validators/plan.ts`, `server/exec/gate-runner.ts`, `.claude/agents/test.md`.
+
+### R8.5 Security tooling for the generated project — `todo`
+
+- Prescribe tools in the default gates: gitleaks (secrets), osv-scanner or `npm audit` (dependencies), semgrep (SAST),
+  trivy (image). High findings become blocking gates instead of names only. Separate from R7.4 (teams-ai's own audit).
+- Files: `server/validators/plan.ts`, `.claude/agents/sm.md`, `.claude/agents/sec.md`.
+
+### R8.6 Documentation gate — `todo`
+
+- Required README sections (run, test, env, architecture, pipeline), a runbook and API docs step; a failed docs step
+  blocks the phase instead of being swallowed.
+- Files: `server/orchestrator/phases/report.ts`, `server/orchestrator/steps.ts`, `.claude/agents/sm.md`.
+
+### R8.7 Golden run on the full contract — `todo` (after R8.1–R8.6)
+
+- One run on a sample project proving all eight criteria: artifacts present, CI workflow green, image in the registry,
+  `docker compose up --wait` healthy, e2e passing. Cost about $14 per run.
 
 ## System 1 decisions (spec §10A.5)
 
