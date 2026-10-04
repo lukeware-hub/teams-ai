@@ -30,7 +30,7 @@ import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
 import { CrashInjected, Intent, Journal, OrchEvent, type IntentType, type RunResult } from './events.js';
 export { CrashInjected };
 import { taskMergeSteps, type MergeStepsDeps } from './merge-steps.js';
-import { PAUSED_AUTH, runPhase0, runPhase1, runPhase2, runPhase4, runPhase5, runPhase6, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, type PhaseDeps, type PhaseResult } from './phases/index.js';
+import { PAUSED_AUTH, runPhase0, runWorkflowBootstrap, runPhase1, runPhase2, runPhase4, runPhase5, runPhase6, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, type PhaseDeps, type PhaseResult } from './phases/index.js';
 import { reconcile } from './reconcile.js';
 import { readmePack, runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
 import { TaskRunner, type TaskRunnerDeps } from './task-runner.js';
@@ -459,6 +459,12 @@ export class Run {
     return runPhase0({ ...this.phaseDeps(), ghExec: this.deps.ghExec }, this.deps.bootstrap);
   }
 
+  /** R8.3: CI and release workflows land on main for a bootstrapped repository; public for tests. */
+  async executeWorkflows(plan: Plan): Promise<PhaseResult> {
+    if (!this.deps.bootstrap) return { ok: true };
+    return runWorkflowBootstrap(this.phaseDeps(), plan);
+  }
+
   async execute(): Promise<ExecuteResult> {
     const phase0 = await this.executePhase0();
     if (!phase0.ok) return phase0.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase0.reason);
@@ -469,6 +475,8 @@ export class Run {
     const phase2 = await runPhase2(this.phaseDeps(), this.techSpecText);
     if (!phase2.ok) return phase2.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase2.reason);
     this.plan = phase2.plan!;
+    const workflows = await this.executeWorkflows(this.plan);
+    if (!workflows.ok) return this.finish('phase-failed', workflows.reason);
     if (!this.journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 3)) await this.journal.fact(OrchEvent.PhaseStarted, { phase: 3 });
     for (const task of this.plan.tasks) {
       const t = this.journal.state.tasks.get(task.id);
