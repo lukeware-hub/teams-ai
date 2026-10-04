@@ -30,6 +30,17 @@ Status values: `todo` → `planning` → `approved` → `in progress` → `done`
 
 **R1.1** — Golden run 1 on `todo-api` (in progress).
 
+## Pause log
+
+Rule (goal set 2026-10-04): when the 5-hour token window reaches 90 %, record the pause here and stop; when the
+window resets, resume exactly from the entry below.
+
+- **2026-10-04 17:05Z — paused (5-hour window ≥ 95 %).** The orchestrator's quota breaker paused run
+  `todo-001-r1` at 16:56Z until **18:30Z** (`RUN_PAUSED`, `reason: quota`); the run process stays alive and resumes
+  by itself. Resume point: R1.1 — check `~/golden-run-1.log` and `~/.teams-ai/runs/todo-001-r1/events.ndjson` on
+  WSL; when the run ends, record the outcome in R1.1, delete the untracked `gr-tmp.sh` launcher at the repo root,
+  then plan R1.2 (plan before implementing).
+
 ## Stage 1 — Golden run 1 (baseline)
 
 ### R1.1 Golden run 1 on `todo-api`, `docker-local` — `in progress`
