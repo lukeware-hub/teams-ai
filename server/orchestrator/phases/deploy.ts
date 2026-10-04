@@ -46,6 +46,8 @@ export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3): Promise<Ph
     await deps.journal.fact(OrchEvent.DeployFailed, { attempt, stage, detail, rolledBack, rollbackHealthy, tag });
     if (rolledBack) await deps.journal.fact(OrchEvent.RollbackDone, { attempt, previous });
     if (attempt >= 3) return { ok: false, reason: `deploy failed on attempt ${attempt} at ${stage}: ${detail}` };
+    // The plan is not the Dev's to edit, so a deploy-fix task could only come back empty and burn tokens.
+    if (stage === 'smoke' && detail === 'plan.commands.smoke missing') return { ok: false, reason: `deploy failed at ${stage}: ${detail}` };
     const task = fixTask(deps, attempt, stage, detail); await deps.journal.fact(RunEvent.FixTasksPlanned, { tasks: [task] });
     return { ok: false, reason: `deploy failed at ${stage}; deploy-fix task planned`, fixTask: task };
   };
