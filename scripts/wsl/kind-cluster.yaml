@@ -1,0 +1,11 @@
+# kind cluster for the `kind` deploy target. Docker Desktop's bridge networks are not routable from WSL, so the
+# service must be reachable through a published host port: the Service is a NodePort pinned to 30080.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 30080
+        listenAddress: "127.0.0.1"
+        protocol: TCP

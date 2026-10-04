@@ -81,6 +81,15 @@ window resets, resume exactly from the entry below.
   - Unit tests: success, deploy failure without a fix task, kind with a plan that has no manifests, CLI parsing.
   - E2E: run the command against the `teams-ai` kind cluster on the R1.1 result; green verify and smoke.
   - Fallback if the R1.1 plan has no Kubernetes manifests: a full run with `deploy.target: "kind"` (costs a run).
+- E2E finding (2026-10-04, hello-app, no Claude tokens): `spec deploy --target kind` first failed at verify with
+  "service has no NodePort". Cause: the default `kind` cluster is unreachable from WSL (Docker Desktop networks are not
+  routable, even the node IP), and the fixture Service was ClusterIP. Fix: `scripts/wsl/kind-cluster.yaml` publishes
+  host port 30080; manifests for `kind` use a NodePort Service pinned to 30080 (fixture and `devops.md` updated);
+  recreate the cluster with `kind create cluster --name teams-ai --config scripts/wsl/kind-cluster.yaml`.
+- Result with the fix: apply, verify and URL OK (`curl 127.0.0.1:30080/health` → `{"ok":true}`), rollback OK
+  (`rolledBack`, `rollbackHealthy`). The run still ended `deploy-failed` at smoke: the hello-app fixture server is a
+  stub without `/hello`, a fixture limit, not a kind one. The kind path is proven; the todo-api result (R1.1b) will
+  be the real smoke check. Not covered: a plan whose manifests lack the NodePort (the DevOps agent now knows it).
 - Progress: command, `Run.deployOnly()` and the no-fix-task option implemented with unit tests (734 passing,
   2026-10-04). Left: the e2e on kind, which needs the R1.1 result.
 
