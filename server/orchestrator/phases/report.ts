@@ -18,6 +18,11 @@ export function securityFindings(events: ReadonlyArray<{ type: string; data: Rec
   return [...latest].flatMap(([taskId, findings]) => (findings as Array<Omit<SecurityFinding, 'taskId'>>).map((f) => ({ taskId, ...f }))).sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity));
 }
 
+/** The reason the orchestrator journaled when it blocked the task, so the report says why and not just that. */
+export function blockReason(events: readonly { type: string; data: Record<string, unknown> }[], taskId: string): string {
+  const e = [...events].reverse().find((x) => x.type === OrchEvent.TaskBlocked && x.data.taskId === taskId);
+  return String(e?.data.reason ?? 'blocked');
+}
 export type Phase6Deps = PhaseDeps & { runId: string; accounting: Accounting; result: Report['result'] };
 
 export async function runPhase6(deps: Phase6Deps): Promise<{ ok: boolean; report: Report; reason?: string }> {
@@ -29,7 +34,7 @@ export async function runPhase6(deps: Phase6Deps): Promise<{ ok: boolean; report
   const total = deps.accounting.total();
   const roles = ['po', 'sm', 'dev', 'test', 'sec', 'devops', 'system1'] as const;
   const byRole = Object.fromEntries(roles.map((role) => { const usage = deps.accounting.total({ role }); return [role, { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, costUsd: usage.costUsd }]; }));
-  const base = { runId: deps.runId, specId: deps.spec.specId, specHash: deps.specHash, result: deps.result, service: dv ? { url: String(dv.data.url), healthcheck: String(dv.data.healthcheck), smoke: dv.data.smoke as SmokeRow[] } : null, deploy: { attempts: failures.length || (dv ? Number(dv.data.attempt) : 0), lastFailure: failures.at(-1)?.data ?? null }, evidence: (ve?.data.matrix as EvidenceRow[] | undefined) ?? [], delivered: [...deps.journal.state.tasks.values()].filter((t) => t.state === 'merged').map((t) => t.def.id), blocked: [...deps.journal.state.tasks.values()].filter((t) => t.state === 'blocked').map((t) => ({ taskId: t.def.id, reason: 'blocked' })), assumptions: deps.journal.assumptions(), securityFindings: securityFindings(events), tokens: { byRole, total: { inputTokens: total.inputTokens, outputTokens: total.outputTokens, costUsd: total.costUsd } } };
+  const base = { runId: deps.runId, specId: deps.spec.specId, specHash: deps.specHash, result: deps.result, service: dv ? { url: String(dv.data.url), healthcheck: String(dv.data.healthcheck), smoke: dv.data.smoke as SmokeRow[] } : null, deploy: { attempts: failures.length || (dv ? Number(dv.data.attempt) : 0), lastFailure: failures.at(-1)?.data ?? null }, evidence: (ve?.data.matrix as EvidenceRow[] | undefined) ?? [], delivered: [...deps.journal.state.tasks.values()].filter((t) => t.state === 'merged').map((t) => t.def.id), blocked: [...deps.journal.state.tasks.values()].filter((t) => t.state === 'blocked').map((t) => ({ taskId: t.def.id, reason: blockReason(events, t.def.id) })), assumptions: deps.journal.assumptions(), securityFindings: securityFindings(events), tokens: { byRole, total: { inputTokens: total.inputTokens, outputTokens: total.outputTokens, costUsd: total.costUsd } } };
   let script: Report['exploratoryScript'] = []; let summary = ''; let readme = ''; let error = '';
   for (let attempt = 1; attempt <= 2; attempt++) {
     const out = await deps.runAgent<'report'>({ kind: 'report', role: 'sm', pack: reportPack(deps.packBase(), { delivered: base.delivered, blocked: base.blocked, evidence: JSON.stringify(base.evidence), assumptions: base.assumptions, deploy: JSON.stringify(base.service ?? base.deploy), tokens: JSON.stringify(base.tokens), security: base.securityFindings.map((f) => `- ${f.taskId} ${f.file}${f.line === null ? '' : `:${f.line}`} [${f.severity}] ${f.category}: ${f.problem}`).join('\n') }), cwd: deps.ws.repo, phase: 'phase6', taskId: null, attempt }) as any;

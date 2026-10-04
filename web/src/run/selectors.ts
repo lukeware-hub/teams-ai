@@ -45,8 +45,16 @@ export function runState(events: StoredEvent[]) {
 
 export function phases(events: StoredEvent[]) {
   const out: Array<{ phase: number; startedAt: string; endedAt: string | null; result: 'done' | 'failed' | 'running'; reason: string | null }> = [];
+  let deployFailure: string | null = null;
   for (const e of events) {
-    if (e.type === 'PHASE_STARTED') out.push({ phase: Number(e.data.phase), startedAt: e.at, endedAt: null, result: 'running', reason: null });
+    if (e.type === 'PHASE_STARTED') {
+      // Phase 5 never gets its own end event when the deploy gave up; the next phase starting is the proof.
+      const prev = out.at(-1);
+      if (prev && prev.phase === 5 && prev.result === 'running' && deployFailure !== null) Object.assign(prev, { endedAt: e.at, result: 'failed', reason: deployFailure });
+      out.push({ phase: Number(e.data.phase), startedAt: e.at, endedAt: null, result: 'running', reason: null });
+    }
+    if (e.type === 'DEPLOY_FAILED') deployFailure = String(e.data.detail ?? '');
+    if (e.type === 'DEPLOY_VERIFIED') deployFailure = null;
     const cur = out.at(-1);
     if (!cur) continue;
     if (e.type === 'DOCS_MERGED' && Number(e.data.phase) === cur.phase) Object.assign(cur, { endedAt: e.at, result: 'done' });
@@ -77,6 +85,24 @@ export function deployOutcome(events: StoredEvent[]) {
     }
   }
   return { attempts, verified, lastFailure };
+}
+
+export interface DeployFailure {
+  attempt: number;
+  stage: string;
+  detail: string;
+  rolledBack: boolean;
+  rollbackHealthy: boolean | null;
+}
+
+/** The latest deploy failure, or null when nothing failed or a later attempt verified. */
+export function lastDeployFailure(events: StoredEvent[]): DeployFailure | null {
+  let out: DeployFailure | null = null;
+  for (const e of events) {
+    if (e.type === 'DEPLOY_FAILED') out = { attempt: Number(e.data.attempt), stage: String(e.data.stage), detail: String(e.data.detail ?? ''), rolledBack: e.data.rolledBack === true, rollbackHealthy: typeof e.data.rollbackHealthy === 'boolean' ? e.data.rollbackHealthy : null };
+    if (e.type === 'DEPLOY_VERIFIED') out = null;
+  }
+  return out;
 }
 
 export function pausedUntil(events: StoredEvent[]): string | null {
@@ -223,6 +249,73 @@ export function explainBlockReason(reason: string): string {
   if (scope) return `Violação de escopo: ${scope[1]!.replace(/^frozen files modified: /, 'arquivos protegidos foram alterados: ')}`;
   if (reason === 'a dependency is blocked') return 'uma dependência desta tarefa está bloqueada';
   return reason;
+}
+
+export type StopOwner = 'Sistema' | 'Plano' | 'Você';
+export interface StopExplanation {
+  title: string;
+  hint: string;
+  owner: StopOwner;
+}
+
+// First match wins. Reasons are the orchestrator's English strings (server/orchestrator/task-runner.ts, phases/deploy.ts).
+const STOP_RULES: Array<[RegExp, StopExplanation]> = [
+  [/plan\.commands\.smoke missing/, { title: 'O plano não define commands.smoke', hint: 'Falta o comando dos testes de fumaça no plan.json. Nenhum agente edita o plano durante a run: adicione commands.smoke ao plano na main e tente de novo.', owner: 'Plano' }],
+  [/produced no changes against origin\/main/, { title: 'O Dev disse que terminou, mas não alterou nada', hint: 'A tarefa não gerou diferença em relação à main. Costuma ser um problema que código não resolve (ex.: um campo faltando no plano); repetir a tarefa só gasta tokens.', owner: 'Sistema' }],
+  [/^Scope violation:/, { title: 'O Dev mexeu em arquivos fora do escopo da tarefa', hint: 'A mudança foi rejeitada antes do merge. Revise os caminhos permitidos da tarefa no plano.', owner: 'Sistema' }],
+  [/^spec-gap rounds exhausted/, { title: 'O Dev continuou com dúvidas sobre a spec', hint: 'O Scrum Master respondeu três vezes e a dúvida persiste. Esclareça o ponto na spec e inicie uma nova execução.', owner: 'Você' }],
+  [/^Security review requested changes/, { title: 'A revisão de segurança pediu mudanças', hint: 'Os ajustes não passaram depois de todas as tentativas. Veja os achados na tarefa.', owner: 'Sistema' }],
+  [/^Review requested changes/, { title: 'A revisão de código pediu mudanças', hint: 'Os ajustes não passaram depois de todas as tentativas. Veja os achados na tarefa.', owner: 'Sistema' }],
+  [/^Review evidence rejected/, { title: 'A evidência da revisão foi rejeitada', hint: 'O revisor não apresentou evidência válida. Abra a tarefa para ver o motivo.', owner: 'Sistema' }],
+  [/^Rebase conflicts/, { title: 'Conflito de rebase com a main', hint: 'Outra tarefa alterou os mesmos arquivos e o conflito não foi resolvido automaticamente.', owner: 'Sistema' }],
+  [/^Merge (refused|queue)/, { title: 'O merge foi recusado', hint: 'O GitHub ou a fila de merge recusou a mudança várias vezes. Confira permissões e proteção de branch do repositório.', owner: 'Você' }],
+  [/^Task token budget exceeded/, { title: 'A tarefa estourou o orçamento de tokens', hint: 'Divida a tarefa em partes menores no plano ou aumente o limite por tarefa.', owner: 'Sistema' }],
+  [/^replan (rejected|failed)/, { title: 'O replanejamento da tarefa falhou', hint: 'O Scrum Master não conseguiu dividir a tarefa. Veja o detalhe técnico.', owner: 'Sistema' }],
+];
+
+/** A pt-BR explanation of a raw stop reason, or null when it is not one the UI knows (callers then show it raw). */
+export function explainStop(reason: string): StopExplanation | null {
+  return STOP_RULES.find(([re]) => re.test(reason))?.[1] ?? null;
+}
+
+const STOP_STATUSES = new Set(['deploy-failed', 'verification-failed', 'blocked', 'phase-failed', 'deadlocked']);
+
+export interface StopSummary {
+  what: string;
+  title: string;
+  hint: string;
+  owner: StopOwner;
+  raw: string;
+  rollback: string | null;
+  action: 'redeploy' | null;
+}
+
+/** What the outcome banner says about a run that ended without success, or null while it is fine. */
+export function stopSummary(input: { status: string; reason: string | null; causes: Array<{ taskId: string; reason: string }>; deployFailure: DeployFailure | null }): StopSummary | null {
+  const { status, reason, causes, deployFailure } = input;
+  if (!STOP_STATUSES.has(status)) return null;
+  if (status === 'deploy-failed') {
+    const f = deployFailure;
+    const raw = f ? f.detail : (reason ?? '');
+    const generic: StopExplanation = { title: f ? `Falha no estágio ${f.stage}` : 'O deploy falhou', hint: 'O orquestrador esgotou as tentativas de deploy. Veja o detalhe técnico e os logs do container.', owner: 'Sistema' };
+    const why = explainStop(raw) ?? explainStop(reason ?? '') ?? generic;
+    const rollback = f?.rolledBack ? (f.rollbackHealthy === false ? 'Rollback feito, mas a versão anterior não respondeu ao healthcheck.' : 'Rollback feito e saudável: a versão anterior continua no ar.') : null;
+    return { what: f ? `O deploy falhou no estágio ${f.stage} (tentativa ${f.attempt}).` : 'O deploy falhou.', ...why, raw, rollback, action: 'redeploy' };
+  }
+  if (status === 'verification-failed') {
+    return { what: 'A verificação (fase 4) não passou depois de duas rodadas.', title: 'Os testes de aceitação não passaram', hint: 'Veja a matriz de evidências abaixo e reporte o problema na tela de validação.', owner: 'Sistema', raw: reason ?? '', rollback: null, action: null };
+  }
+  if (status === 'deadlocked') {
+    return { what: 'Nenhuma tarefa pode avançar.', title: 'Todas as tarefas restantes dependem de uma tarefa bloqueada', hint: 'Corrija a tarefa bloqueada primeiro (veja "Por que parou").', owner: 'Você', raw: reason ?? '', rollback: null, action: null };
+  }
+  if (status === 'phase-failed') {
+    const why = explainStop(reason ?? '');
+    return { what: 'Uma fase da run falhou.', title: why?.title ?? 'Falha na fase', hint: why?.hint ?? 'Veja o detalhe técnico.', owner: why?.owner ?? 'Sistema', raw: reason ?? '', rollback: null, action: null };
+  }
+  const first = causes[0];
+  const why = (first ? explainStop(first.reason) : null) ?? { title: first ? 'Tarefa bloqueada' : 'Tarefas bloqueadas', hint: 'Abra a tarefa para ver o motivo.', owner: 'Sistema' as StopOwner };
+  const n = causes.length;
+  return { what: n === 1 ? '1 tarefa ficou bloqueada.' : `${n} tarefas ficaram bloqueadas.`, ...why, raw: first?.reason ?? reason ?? '', rollback: null, action: null };
 }
 
 /** The tasks whose block has its own real cause, filtering out the ones that are only blocked because

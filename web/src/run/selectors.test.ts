@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { StoredEvent } from '../api.js';
-import { deployOutcome, evidence, pausedUntil, phases, runState, taskDetail, tokens } from './selectors.js';
+import { deployOutcome, evidence, explainStop, lastDeployFailure, pausedUntil, phases, runState, stopSummary, taskDetail, tokens } from './selectors.js';
 
 // jsdom gives import.meta.url an http: scheme; vitest runs with cwd = web/
 const events: StoredEvent[] = readFileSync(path.resolve('../test/fixtures/runs/hello-run.ndjson'), 'utf8')
@@ -72,4 +72,45 @@ it('phases 4-6 end on their own events', () => {
   const out = phases(evs([['PHASE_STARTED', { phase: 4, round: 1 }], ['VERIFICATION_FAILED', { round: 1 }], ['PHASE_STARTED', { phase: 4, round: 2 }], ['VERIFICATION_PASSED', { round: 2 }], ['PHASE_STARTED', { phase: 5 }], ['DEPLOY_FAILED', { attempt: 1, stage: 'apply' }], ['DEPLOY_VERIFIED', { attempt: 2, url: 'http://x' }], ['PHASE_STARTED', { phase: 6 }], ['REPORT_READY', {}]]));
   expect(out.map((p) => [p.phase, p.result])).toEqual([[4, 'running'], [4, 'done'], [5, 'done'], [6, 'done']]);
   expect(deployOutcome(evs([['DEPLOY_FAILED', { attempt: 1, stage: 'apply', detail: 'busy' }], ['DEPLOY_VERIFIED', { attempt: 2, url: 'http://x' }]]))).toEqual({ attempts: 2, verified: { url: 'http://x' }, lastFailure: null });
+});
+
+describe('stopped run explanations', () => {
+  const evs = (list: Array<[string, Record<string, unknown>]>) => list.map(([type, data], i) => ({ seq: i + 1, at: '2026-09-24T10:00:00.000Z', runId: 'r', specHash: 'h', type, kind: 'fact' as const, data }));
+
+  it('explainStop names the cause and the owner, and returns null for unknown reasons', () => {
+    expect(explainStop('Dev reported done but produced no changes against origin/main. Implement the task or return spec-gap.')).toMatchObject({ owner: 'Sistema', title: expect.stringContaining('não alterou') });
+    expect(explainStop('plan.commands.smoke missing')).toMatchObject({ owner: 'Plano', hint: expect.stringContaining('commands.smoke') });
+    expect(explainStop('Review requested changes:\nuse a constant')).toMatchObject({ owner: 'Sistema' });
+    expect(explainStop('spec-gap rounds exhausted (3); last question: which currency?')).toMatchObject({ owner: 'Você' });
+    expect(explainStop('something nobody has seen before')).toBeNull();
+  });
+
+  it('lastDeployFailure is the latest failure unless a later deploy verified', () => {
+    const failed = evs([['DEPLOY_FAILED', { attempt: 1, stage: 'smoke', detail: 'plan.commands.smoke missing', rolledBack: true, rollbackHealthy: true }]]);
+    expect(lastDeployFailure(failed)).toMatchObject({ attempt: 1, stage: 'smoke', rolledBack: true, rollbackHealthy: true });
+    const recovered = evs([['DEPLOY_FAILED', { attempt: 1, stage: 'apply', detail: 'busy' }], ['DEPLOY_VERIFIED', { attempt: 2, url: 'http://x' }]]);
+    expect(lastDeployFailure(recovered)).toBeNull();
+  });
+
+  it('stopSummary explains a deploy-failed run with its stage, rollback and owner', () => {
+    const failure = { attempt: 1, stage: 'smoke', detail: 'plan.commands.smoke missing', rolledBack: true, rollbackHealthy: true };
+    const s = stopSummary({ status: 'deploy-failed', reason: 'deploy failed at smoke: plan.commands.smoke missing', causes: [], deployFailure: failure });
+    expect(s).toMatchObject({ owner: 'Plano', action: 'redeploy' });
+    expect(s!.what).toContain('smoke');
+    expect(s!.rollback).toContain('saudável');
+    expect(s!.raw).toContain('plan.commands.smoke missing');
+  });
+
+  it('stopSummary covers blocked runs and ignores healthy ones', () => {
+    const blocked = stopSummary({ status: 'blocked', reason: null, causes: [{ taskId: 'T2', reason: 'Task token budget exceeded: 9 tokens used, cap 5. Finish with a smaller change set.' }, { taskId: 'T3', reason: 'Task token budget exceeded: 9 tokens used, cap 5. Finish with a smaller change set.' }], deployFailure: null });
+    expect(blocked!.what).toContain('2 tarefas');
+    expect(blocked!.owner).toBe('Sistema');
+    expect(stopSummary({ status: 'awaiting-validation', reason: null, causes: [], deployFailure: null })).toBeNull();
+    expect(stopSummary({ status: 'running', reason: null, causes: [], deployFailure: null })).toBeNull();
+  });
+
+  it('phase 5 is failed on the first DEPLOY_FAILED with no later verification', () => {
+    const out = phases(evs([['PHASE_STARTED', { phase: 5 }], ['DEPLOY_FAILED', { attempt: 1, stage: 'smoke', detail: 'plan.commands.smoke missing' }], ['PHASE_STARTED', { phase: 6 }]]));
+    expect(out.find((p) => p.phase === 5)).toMatchObject({ result: 'failed', reason: 'plan.commands.smoke missing' });
+  });
 });

@@ -115,7 +115,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     const log = await fs.readFile(path.join(runs, runId, 'ui.log'), 'utf8').catch(() => '');
     throw new HttpError(500, `run ${runId} did not start: ${log.slice(-500) || 'no output'}`);
   };
-  const launch = async (idx: IndexDeps, o: { projectDir: string; specId: string; runId: string; mode: 'run' | 'resume' | 'complete' }): Promise<void> => {
+  const launch = async (idx: IndexDeps, o: { projectDir: string; specId: string; runId: string; mode: 'run' | 'resume' | 'complete' | 'readme' }): Promise<void> => {
     const runs = runsDir(idx);
     await fs.mkdir(path.join(runs, o.runId), { recursive: true });
     const { pid } = spawnRun(deps.control, { ...o, logFile: path.join(runs, o.runId, 'ui.log') });
@@ -252,6 +252,29 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           return id;
         });
         json(202, { runId });
+      },
+    },
+    {
+      method: 'POST',
+      path: `${P}/runs/:runId/readme`,
+      handler: async ({ params, json }) => {
+        const idx = await index();
+        const runId = safe(params.runId!);
+        const evs = await events(runsDir(idx), runId);
+        const started = evs.find((e) => e.type === 'RUN_STARTED');
+        const projectId = String(started?.data.projectId ?? '');
+        const specId = String(started?.data.specId ?? '');
+        const dir = await projectDir(idx, projectId);
+        // Same rule as spec completion: one writer per spec, because the docs PR resets the shared clone to main.
+        const id = await exclusive(`readme ${projectId}/${specId}`, async () => {
+          const rows = await listRuns(idx, projectId);
+          const active = rows.find((r) => r.specId === specId && CLAIMS_SPEC.has(r.status));
+          if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status}); the README is written when it ends`);
+          const next = await nextRunId({ runs: runsDir(idx) }, `${specId}-readme`);
+          await launch(idx, { projectDir: dir, specId, runId: next, mode: 'readme' });
+          return next;
+        });
+        json(202, { runId: id });
       },
     },
     {

@@ -100,4 +100,63 @@ describe('RunView', () => {
     render(view({ detail: { ...detail, readme: '# Hello App\n\n- GET /hello' } }));
     expect(screen.getByTestId('readme').querySelector('h3')!.textContent).toBe('Hello App');
   });
+  it('offers the sm README action, disabled while the writer run is going', () => {
+    const onGenerate = vi.fn();
+    const { unmount } = render(view({ readmeAction: { onGenerate, busy: false, error: null } }));
+    fireEvent.click(screen.getByTestId('readme-generate'));
+    expect(onGenerate).toHaveBeenCalledOnce();
+    expect(screen.getByTestId('readme-generate').textContent).toBe('Gerar README com o sm');
+    unmount();
+    render(view({ readmeAction: { onGenerate, busy: true, error: 'x falhou' } }));
+    expect((screen.getByTestId('readme-generate') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('readme-error').textContent).toBe('x falhou');
+  });
+
+  describe('stopped runs', () => {
+    const ev = (seq: number, type: string, data: Record<string, unknown>): StoredEvent => ({ seq: 10_000 + seq, at: '2026-10-04T10:00:00.000Z', runId: 'hello-001-r9', specHash: 'h', type, kind: 'fact' as const, data });
+    const deployFailed = [
+      ev(1, 'DEPLOY_FAILED', { attempt: 1, stage: 'smoke', detail: 'plan.commands.smoke missing', rolledBack: true, rollbackHealthy: true }),
+      ev(2, 'RUN_FINISHED', { result: 'deploy-failed', reason: 'deploy failed at smoke: plan.commands.smoke missing', merged: [], blocked: [], tokens: {} }),
+    ];
+
+    it('explains a deploy-failed run: what, why, rollback, owner and next step', () => {
+      render(view({ events: deployFailed, ended: true, detail: { ...detail, status: 'deploy-failed' } }));
+      expect(screen.getByTestId('status').textContent).toContain('deploy falhou');
+      const banner = screen.getByTestId('outcome-banner').textContent!;
+      expect(banner).toContain('smoke');
+      expect(banner).toContain('O plano não define commands.smoke');
+      expect(screen.getByTestId('outcome-rollback').textContent).toContain('saudável');
+      expect(screen.getByTestId('outcome-owner').textContent).toBe('Plano');
+      expect(screen.getByTestId('outcome-hint').textContent).toContain('commands.smoke');
+    });
+
+    it('offers retry deploy only when an action is wired, disabled while it starts', () => {
+      const onRedeploy = vi.fn();
+      const { rerender } = render(view({ events: deployFailed, ended: true, detail: { ...detail, status: 'deploy-failed' } }));
+      expect(screen.queryByTestId('redeploy')).toBeNull();
+      rerender(view({ events: deployFailed, ended: true, detail: { ...detail, status: 'deploy-failed' }, redeployAction: { onRedeploy, busy: false, error: null } }));
+      fireEvent.click(screen.getByTestId('redeploy'));
+      expect(onRedeploy).toHaveBeenCalledTimes(1);
+      rerender(view({ events: deployFailed, ended: true, detail: { ...detail, status: 'deploy-failed' }, redeployAction: { onRedeploy, busy: true, error: 'boom' } }));
+      expect((screen.getByTestId('redeploy') as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByTestId('redeploy-error').textContent).toBe('boom');
+    });
+
+    it('groups tasks blocked for the same reason into one translated cause', () => {
+      const reason = 'Dev reported done but produced no changes against origin/main. Implement the task or return spec-gap.';
+      const blocked = [{ taskId: 'T950-deploy-fix-1-r2', reason }, { taskId: 'T950-deploy-fix-4-r1', reason }];
+      render(view({ events: [ev(1, 'RUN_FINISHED', { result: 'blocked', reason: null, merged: [], blocked, tokens: {} })], ended: true, detail: { ...detail, status: 'blocked' } }));
+      const groups = screen.getAllByTestId('cause-group');
+      expect(groups).toHaveLength(1);
+      expect(groups[0]!.textContent).toContain('T950-deploy-fix-1-r2');
+      expect(groups[0]!.textContent).toContain('T950-deploy-fix-4-r1');
+      expect(groups[0]!.textContent).toContain('não alterou nada');
+      expect(groups[0]!.textContent).toContain(reason);
+    });
+
+    it('shows no banner for a healthy run', () => {
+      render(view());
+      expect(screen.queryByTestId('outcome-banner')).toBeNull();
+    });
+  });
 });
