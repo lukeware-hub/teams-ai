@@ -1,6 +1,6 @@
 # teams-ai Plan 12 — Phases 4–6 and Validation UI Implementation Plan
 
-**Status: not started**
+**Status: partially implemented — tasks 1–10 done, live check pending (see Findings)**
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -2153,3 +2153,17 @@ git commit -m "docs: plan 12 findings from the live run; plans index"
 **Type consistency.** `Phase4Result.fixTasks: PlanTask[]`, `Phase5Result.fixTask: PlanTask`, `runFix(tasks: PlanTask[])` in Task 6 wraps the single task in an array. `SmokeRow` is defined once (Task 2) and re-exported through `Report` (Task 6) and mirrored in `web/src/api.ts` (Task 9). `RunResult`/`ExecuteResult` extended in Task 1 and consumed by `finish()` and `exitCode` unchanged in shape. `deployIntent` uses `deps.plan!` (guarded by the `required` check at the top of `runPhase5`). `commitAndMergeDocs(deps, 6, …)` requires the widened phase type from Task 6 Step 3, which Task 7 reuses with a distinct `specId` key.
 
 **Review Focus.** Each of the five lines names its owning task and test; all five are present above.
+
+## Findings
+
+Not run — needs a live WSL host with Docker. Tasks 1–8 (server) were already on `main` from the orchestrator pipeline work (#8, #9); Task 9 (Validation screen, phase 4–6 timeline, `Projects`/`Run` links) was added on branch `feat/validation-ui` with 32/32 web tests, `tsc` and `vite build` green. Live-check checklist:
+
+1. `npm run web:build && npm run ui -- --port 8787` (detached with `setsid`).
+2. Copy `~/.teams-ai/runs/hello-001-r1` to `hello-001-r9`, drop the last line (`RUN_FINISHED`), and Resume it from Projects; the loop enters Phase 4 without Dev steps (about $0.20 for `fix-tasks`/`report`).
+3. Execution page shows phases 4, 5, 6; `docker ps` shows `teams-ai-hello-app`; `curl http://127.0.0.1:<port>/health`.
+4. Validation page: URL, smoke rows, script, evidence; tick a step, reload, it stays ticked.
+5. "Complete spec": `hello-001-complete-r1` appears; Projects then shows `hello-001` as `done` and `main` carries `status: "done"`.
+6. "Report problem" on an `awaiting-validation` spec navigates to `/refine/:projectId/:specId` (route exists on `main`) and opens the session with the report.
+7. `kind` target if the cluster exists; else record "docker-local only".
+
+Known gaps: Validation screen copy is in English while the rest of the UI is pt-BR; `lint` and `format:check` scripts do not exist in `package.json`, so only `tsc`, `vitest` and `vite build` gate the change.
