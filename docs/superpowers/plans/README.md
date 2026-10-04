@@ -45,9 +45,11 @@ Ordered by what unblocks what. Spec references are to `docs/superpowers/specs/20
 - **Decision 12 (rank candidate plans) — blocked on the SM contract.** `server/contracts/plan.ts` and
   `server/agents/outputs.ts` have no notion of multiple candidate plans; the SM authors exactly one. Needs a
   contract change first.
-- **Decisions 2–4 (Gate 1 readiness, question dedup, contradiction) — blocked on the refinement flow.** No
-  Gate 1 / refinement loop exists in `server/orchestrator/` (spec UI screen 2 "Refinement"); only contracts and
-  config mention it.
+- **Decisions 2–4 (Gate 1 readiness, question dedup, contradiction) — unblocked, not wired to System 1.** The
+  refinement loop now exists (plan 11, `server/refine/`). Question dedup is deterministic (normalized text,
+  `server/refine/cycle.ts:154`); a JEV/OpenRouter consistency check (`server/refine/jev-validation.ts`) covers part of
+  readiness and contradiction, but it calls the backend directly instead of going through the decider in
+  `server/decide/decisions/`.
 - **Decision 7 (validation report routing) — call site now exists** (Validation → `continue { report }`); the
   System 1 question that routes the text to PO or SM first is still unwired.
 - **Plan 12 — open items.** Report-step failure in the live run, `kind` target and "Report problem" unchecked (the Validation page no longer loses its buttons after an action error); see the plan's Findings.
