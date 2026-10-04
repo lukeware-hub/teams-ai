@@ -129,6 +129,15 @@ describe('TaskRunner: implementing', () => {
     expect(agentCalls[2]!.pack.assumptions).toContain('T1: timezone → UTC');
   });
 
+  it('a blocked Dev blocks the task at once with the reason: no SM round, no attempt consumed', async () => {
+    const agent: Agent = async () => ok({ specHash: HASH, status: 'blocked', summary: 'cannot deploy', changedFiles: [], reason: 'the smoke gate has no network' });
+    const r = new TaskRunner('T1', deps({ agent }));
+    await r.advance();
+    expect(state()).toMatchObject({ state: 'blocked', attempts: 0 });
+    expect(journal.events.find((e) => e.type === OrchEvent.TaskBlocked)!.data).toMatchObject({ taskId: 'T1', reason: 'the smoke gate has no network' });
+    expect(agentCalls.map((c) => c.kind)).toEqual(['dev']);
+  });
+
   it('caps spec-gap rounds at three per attempt', async () => {
     const agent: Agent = async (req) =>
       req.kind === 'spec-gap' ? ok({ specHash: HASH, answer: 'a', assumption: 'T1: q → a' }) : ok({ specHash: HASH, status: 'spec-gap', summary: 's', changedFiles: [], question: 'q' });

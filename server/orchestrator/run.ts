@@ -138,7 +138,8 @@ export class Run {
     const run = new Run(runId, journal, deps);
     await reconcile({ journal, ws: deps.ws, exec: deps.exec, ghExec: deps.ghExec, afterMerge: (taskId, branch) => run.afterMergeOnResume(taskId, branch), log: run.log, currentImage: deps.target?.currentImage.bind(deps.target) });
     // `resume` is the human's signal that the login was redone (spec §7 "resume tries again").
-    if (journal.state.status === 'paused:auth') await journal.fact(RunEvent.RunResumed, {});
+    // A hand resume of a stopped run is journaled too: the supervisor reads a stop as intentional only while it is the last lifecycle event.
+    if (journal.state.status === 'paused:auth' || journal.state.status === 'draining') await journal.fact(RunEvent.RunResumed, {});
     await run.writeState();
     return run;
   }

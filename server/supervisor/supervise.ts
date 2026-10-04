@@ -21,7 +21,10 @@ export type Backoff = Map<string, { attempts: number; nextAt: number }>;
 async function stopRequested(runs: string, runId: string): Promise<boolean> {
   if (await isStopRequested(runs, runId)) return true;
   const events = await loadEvents(path.join(runs, runId, 'events.ndjson')).catch(() => []);
-  return events.some((e) => e.type === 'RUN_STOP_REQUESTED');
+  // A stop is intentional only while it is the last lifecycle event: a later RUN_RESUMED (hand resume) or
+  // RUN_STARTED means someone restarted the run, so a crash after that is an interruption to resume.
+  const lastStop = events.map((e) => e.type).lastIndexOf('RUN_STOP_REQUESTED');
+  return lastStop >= 0 && !events.slice(lastStop + 1).some((e) => e.type === 'RUN_RESUMED' || e.type === 'RUN_STARTED');
 }
 
 /** One scan: resume every interrupted run that is not finished, not intentionally stopped and not backing off.

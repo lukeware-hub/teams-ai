@@ -38,6 +38,15 @@ describe('teams-ai cli', () => {
     expect(codes).toEqual([0, 2, 2, 2, 3, 2]);
   });
 
+  it('supervise requires --project and a positive --interval, and rejects a non-positive --interval', async () => {
+    const a = io(['supervise']);
+    expect(await main(a.io)).toBe(2);
+    expect(a.err.join('\n')).toContain('--project');
+    const b = io(['supervise', '--project', '/nowhere', '--interval', '0']);
+    expect(await main(b.io, undefined, { signals: () => () => {} })).toBe(2);
+    expect(b.err.join('\n')).toContain('--interval must be a positive number');
+  });
+
   it('ui starts the API on the requested port and serves the status route', async () => {
     const a = io(['ui', '--port', '0', '--project', '/tmp/p']);
     let closed = false;

@@ -65,6 +65,8 @@ const devCommon = {
 export const DevOutput = z.discriminatedUnion('status', [
   z.object({ ...devCommon, status: z.literal('done'), commitMessage: z.string().min(1) }),
   z.object({ ...devCommon, status: z.literal('spec-gap'), question: z.string().min(1) }),
+  /** The task cannot proceed for a reason outside its paths (deploy environment, missing access): no SM round, no attempt consumed. */
+  z.object({ ...devCommon, status: z.literal('blocked'), reason: z.string().min(1) }),
 ]);
 
 export const ReviewOutput = z.object({
