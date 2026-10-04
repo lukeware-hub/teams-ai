@@ -21,6 +21,9 @@ import { readProject, runsDir } from './api/run-index.js';
 import { makeRunAgent } from './refine/agent.js';
 import { SessionRegistry } from './refine/registry.js';
 import { createJevValidator } from './refine/jev-validation.js';
+import { createDecider } from './decide/create-decider.js';
+import { routeReport } from './decide/decisions/report-routing.js';
+import { Accounting } from './budget/accounting.js';
 import { addProject, readUserConfig } from './onboarding/config-store.js';
 import { hasScript, spawnScriptPty } from './onboarding/pty.js';
 import { DockerLocalTarget } from './deploy/docker-local.js';
@@ -86,6 +89,17 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
             control: defaultRunControl(repoRoot),
             runsDir: async () => runsDir({ cfg: (await readUserConfig()).cfg, isAlive: () => false }),
             register: (dir) => addProject(dir).then(() => undefined),
+            routeReport: async (criteria, report, confidential) => {
+              const decider = createDecider({
+                cfg: (await readUserConfig()).cfg,
+                secrets: await loadSecrets(expandHome(cfg.paths.secrets)),
+                accounting: new Accounting(),
+                // report-routing's chain has no claude entry; the UI server has no step runner to escalate to.
+                runEscalation: async () => { throw new Error('report routing does not escalate to Claude'); },
+              });
+              // The route is only a hint for PO and SM; a broken System 1 must not block reopening the spec.
+              return routeReport(criteria, report, decider, { confidential }).catch(() => null);
+            },
           }),
           log: io.stderr,
         }),

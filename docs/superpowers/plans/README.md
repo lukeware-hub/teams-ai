@@ -50,8 +50,11 @@ Ordered by what unblocks what. Spec references are to `docs/superpowers/specs/20
   `server/refine/cycle.ts:154`); a JEV/OpenRouter consistency check (`server/refine/jev-validation.ts`) covers part of
   readiness and contradiction, but it calls the backend directly instead of going through the decider in
   `server/decide/decisions/`.
-- **Decision 7 (validation report routing) — call site now exists** (Validation → `continue { report }`); the
-  System 1 question that routes the text to PO or SM first is still unwired.
+- **Decision 7 (validation report routing) — wired as a hint.** `continue { report }` asks `report-routing`
+  (`server/decide/decisions/report-routing.ts`, chain jev → local, no Claude escalation from the UI server) and writes
+  `Routing (System 1, <backend>): <route> (<p>)` under the report in `brief.md`; `unclear` adds an instruction for the PO
+  to ask the human. With the layer off or unanswered nothing is written. The route does not change the spec type or
+  skip refinement (decided 2026-10-04).
 - **Plan 12 — open items.** Report-step failure in the live run, `kind` target and "Report problem" unchecked (the Validation page no longer loses its buttons after an action error); see the plan's Findings.
 - **Plan 10 — items not covered by the live check.** A run has not yet been started, stopped and resumed from
   the browser (the live check replayed the recorded `hello-001-r1` journal only, to avoid a $3 run). SIGTERM

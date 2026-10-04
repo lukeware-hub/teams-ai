@@ -7,6 +7,9 @@ import { stepId } from '../core/ids.js';
 import type { Exec } from '../exec/command.js';
 import { fetch as gitFetch, git } from '../git/git.js';
 import type { Workspace } from '../orchestrator/workspace.js';
+import type { ReportRouting } from '../decide/decisions/report-routing.js';
+
+export type RouteReport = (criteria: Spec['acceptanceCriteria'], report: string, confidential: boolean) => Promise<ReportRouting | null>;
 
 export interface Draft {
   projectId: string;
@@ -86,7 +89,7 @@ export function renderProjectMd(p: Project): string {
   ].join('\n');
 }
 
-export function renderBriefMd(s: Spec, validationReport?: string): string {
+export function renderBriefMd(s: Spec, validationReport?: string, routing?: ReportRouting | null): string {
   const acs = s.acceptanceCriteria.map((c) => `- ${c.id}${c.smoke ? ' (smoke)' : ''}: Given ${c.given}, when ${c.when}, then ${c.then}`);
   const deps = s.externalDependencies.map((d) => `${d.name}: ${d.purpose} (secrets: ${d.secretNames.join(', ') || 'none'})`);
   const tasks = (s.tasks ?? []).map((t) => `${t.title}: ${t.description}`);
@@ -101,6 +104,12 @@ export function renderBriefMd(s: Spec, validationReport?: string): string {
     '## Out of scope', '', list(s.outOfScope), '', '## External dependencies', '', list(deps), '', '## Bug details', '', bug.join('\n'), '', '## Tasks', '', list(tasks), '',
   ];
   if (validationReport) parts.push('## Validation report', '', validationReport, '');
+  if (validationReport && routing) {
+    // Spec 10A.5 decision 7: a hint for PO and SM, never a verdict; `unclear` asks the human.
+    const confidence = routing.confidence === null ? '' : ` (${routing.confidence.toFixed(2)})`;
+    parts.push(`Routing (System 1, ${routing.source}): ${routing.route}${confidence}`, '');
+    if (routing.route === 'unclear') parts.push('PO: ask the human what the report means before patching the spec.', '');
+  }
   return parts.join('\n');
 }
 
@@ -115,7 +124,7 @@ export async function createNewProject(d: Draft, name: string): Promise<void> {
   await fs.writeFile(docPath(d, 'design.md'), designTemplate());
 }
 
-export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: { kind: 'new-spec' } | { kind: 'continue'; report?: string }): Promise<void> {
+export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: { kind: 'new-spec' } | { kind: 'continue'; report?: string; route?: RouteReport }): Promise<void> {
   await gitFetch(repo, exec);
   const files = (await git(repo, ['ls-tree', '-r', '--name-only', 'origin/main', 'docs/'], exec)).split('\n').filter((f) => f !== '');
   for (const rel of files) {
@@ -136,7 +145,12 @@ export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: {
     return;
   }
   const spec = Spec.parse(JSON.parse(await fs.readFile(d.specJson, 'utf8')));
-  await fs.writeFile(d.briefMd, renderBriefMd(spec, mode.report));
+  let routing: ReportRouting | null = null;
+  if (mode.report && mode.route) {
+    const project = Project.parse(JSON.parse(await fs.readFile(d.projectJson, 'utf8')));
+    routing = await mode.route(spec.acceptanceCriteria, mode.report, project.confidential);
+  }
+  await fs.writeFile(d.briefMd, renderBriefMd(spec, mode.report, routing));
   await fs.writeFile(d.specJson, JSON.stringify({ ...spec, status: 'refining', specHash: null }, null, 2));
 }
 

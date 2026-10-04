@@ -62,6 +62,16 @@ describe('draft', () => {
     expect(md).toContain('DB_URL');
   });
 
+  it('notes the System 1 routing under the validation report, and the human ask when unclear', () => {
+    const md = renderBriefMd(makeSpec(), '/health answers 500', { route: 'bug-existing-ac', confidence: 0.9, source: 'jev' });
+    expect(md).toContain('## Validation report\n\n/health answers 500\n\nRouting (System 1, jev): bug-existing-ac (0.90)');
+    const unclear = renderBriefMd(makeSpec(), 'meh', { route: 'unclear', confidence: null, source: 'claude' });
+    expect(unclear).toContain('Routing (System 1, claude): unclear');
+    expect(unclear).toContain('PO: ask the human');
+    expect(renderBriefMd(makeSpec(), 'x')).not.toContain('Routing');
+    expect(renderBriefMd(makeSpec(), 'x', null)).not.toContain('Routing');
+  });
+
   it('renders the work item type and bug details', () => {
     const md = renderBriefMd(makeSpec({
       type: 'bug',

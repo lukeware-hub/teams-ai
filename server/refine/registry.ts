@@ -14,7 +14,7 @@ import { expandHome, nextRunId, workspacePaths, type Workspace } from '../orches
 import { loadEvents } from '../store/event-store.js';
 import type { RunAgent } from './cycle.js';
 import type { CycleDeps } from './cycle.js';
-import { createFromRepo, createNewProject, draftExists, draftPaths, type Draft } from './draft.js';
+import { createFromRepo, createNewProject, draftExists, draftPaths, type Draft, type RouteReport } from './draft.js';
 import { ConflictError, NotFoundError, RefineSession } from './session.js';
 import { reduceRefineEvents, type RefineStatus } from './state.js';
 
@@ -30,6 +30,8 @@ export interface RegistryDeps {
   control: RunControlDeps;
   runsDir: () => Promise<string>;
   register: (dir: string) => Promise<void>;
+  /** Spec 10A.5 decision 7: classifies a validation report before refinement reopens; absent means no hint. */
+  routeReport?: RouteReport;
 }
 
 export interface DraftRow {
@@ -120,7 +122,7 @@ export class SessionRegistry {
     if (!spec || (spec.status !== 'awaiting-validation' && spec.status !== 'done')) {
       throw new ConflictError(`spec ${specId} is ${spec?.status ?? 'absent'} on main; only awaiting-validation or done specs continue`);
     }
-    await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'continue', report });
+    await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'continue', report, route: this.deps.routeReport });
     return this.session(draft, ws, 'continue');
   }
 

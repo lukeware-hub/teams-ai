@@ -68,6 +68,7 @@ beforeEach(async () => {
     control,
     runsDir: async () => `${home}/runs`,
     register: async (dir) => { registered.push(dir); },
+    routeReport: async (_criteria, report) => ({ route: report.includes('/hello') ? 'bug-existing-ac' : 'unclear', confidence: 0.9, source: 'jev' }),
   });
   api = await startApi({ routes: refineRoutes({ registry }) }, 0);
 });
@@ -125,6 +126,7 @@ describe('refine api', () => {
     expect(cont.status).toBe(200);
     const snap2 = await (await fetch(`${base()}/api/refine/hello-app/hello-001`)).json();
     expect(snap2.docs['brief.md']).toContain('broken /hello');
+    expect(snap2.docs['brief.md']).toContain('Routing (System 1, jev): bug-existing-ac (0.90)');
     expect(snap2.state.derived.spec.status).toBe('refining');
   });
 

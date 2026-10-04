@@ -42,6 +42,8 @@ export const DecisionConfigSchema = z.object({
 const DECISION_DEFAULTS: Partial<Record<DecisionId, Partial<DecisionConfig>>> = {
   'attempt-progress': { escalateTo: 'sm' },
   'model-tier': { chain: ['jev', 'local'] },
+  // Runs in the UI server, which has no claude step to escalate to; the PO reads the report anyway.
+  'report-routing': { chain: ['jev', 'local'], escalateTo: 'po' },
 };
 
 const PerDecisionSchema = z
