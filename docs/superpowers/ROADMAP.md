@@ -28,7 +28,7 @@ Status values: `todo` → `planning` → `approved` → `in progress` → `done`
 
 ## Current item
 
-**R1.1b** — carry `todo-001-r1` to a result (R1.1 closed incomplete).
+**R1.2 / R7.1** — run 1 ended `deploy-failed` (smoke cannot reach the service in docker-local); next is the Job-based gate and smoke runner in Kubernetes.
 
 ## Pause log
 
@@ -62,10 +62,24 @@ window resets, resume exactly from the entry below.
 - The run is still alive and resumes by itself; it is carried on in R1.1b. The decision to close R1.1 as incomplete is
   the human's; the §1.3 criteria for run 1 are still open.
 
-### R1.1b Carry `todo-001-r1` to a result — `in progress`
+### R1.1b Carry `todo-001-r1` to a result — `done` (result: `deploy-failed`)
 
-- Let the live run finish (it resumes after each quota pause), then record here: result, cost, retries, wall time,
-  blocked tasks, and the §1.3 checks. R1.2 and the other items that need run 1's result wait for this.
+- Run `todo-001-r1`, 2026-10-04 16:53Z to 19:14Z (2 h 21 min wall, 2 quota pauses), Claude only, decisions off:
+  phases 1 to 6 all ran; 830 events; 92 steps; **$14.34** (253 k output tokens, 7.1 M cache-read tokens).
+- Delivered: 10 plan tasks plus 2 deploy-fix tasks merged (`T0-scaffold`, `T1`–`T8`, `T9-deploy`,
+  `T950-deploy-fix-1-r1`, `T950-deploy-fix-4-r1`). Security gate: 13 approvals, 1 `changes` round. Verification
+  planned 2 fix tasks. 1 task blocked (`T950-deploy-fix-1-r2`).
+- Failure: deploy attempts 1–3 all failed at **smoke** (`AC-001`, `AC-002`, `AC-005`: "no smoke test"; the suite
+  ran 3 tests and all failed). Cause, named by the agents themselves: the smoke gate runs in a container whose
+  `SERVICE_URL=http://127.0.0.1:3000` is the container's own loopback, not the service; it needs the shared Docker
+  network and the app container name, `--network host` or `host.docker.internal`. An environment fault of the
+  docker-local target, not a code fault. In Kubernetes the smoke runs as a pod against the Service DNS name.
+- §1.3 checked: zero human interaction Start to terminal: yes; every AC `passed` in JUnit: not shown (smoke not
+  passed); deploy and smoke green: no; duplicate PRs and `main` green: not verified.
+- Findings: (1) docker-local smoke cannot reach the service (fix with the k8s Job runner in R7.1, or a network fix
+  for docker-local); (2) one run costs about $14 on this spec, 4x the hello-app baseline; (3) the agents' final
+  blocking notice is carried as a spec-gap question, which burned 3 spec-gap rounds.
+- R1.2 and the comparison now use this result as the run 1 data point.
 
 ### R1.2 Deploy the run 1 result to `kind` — `in progress`
 
