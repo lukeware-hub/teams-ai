@@ -84,6 +84,21 @@ describe('DockerLocalTarget', () => {
   });
 });
 
+describe('KindTarget gate service URL', () => {
+  const mkTarget = (namespace?: string) => new KindTarget({ exec: new FakeExec().exec, secrets: {}, cluster: 'teams-ai', readFile: async () => '', namespace });
+  it('reports the in-cluster Service DNS name for gate pods', () => {
+    expect(mkTarget('teams-ai').gateServiceUrl(intent)).toBe('http://todo-api.teams-ai.svc.cluster.local:3000');
+  });
+  it('adds --namespace to kubectl only when configured', async () => {
+    const plain = new FakeExec();
+    await new KindTarget({ exec: plain.exec, secrets: {}, cluster: 'teams-ai', readFile: async () => '' }).currentImage(intent);
+    expect(plain.lines('kubectl')[0]).not.toContain('--namespace');
+    const ns = new FakeExec();
+    await new KindTarget({ exec: ns.exec, secrets: {}, cluster: 'teams-ai', readFile: async () => '', namespace: 'teams-ai' }).currentImage(intent);
+    expect(ns.lines('kubectl')[0]).toContain('--context kind-teams-ai --namespace teams-ai get deploy');
+  });
+});
+
 describe('KindTarget', () => {
   const manifest = 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: todo-api\nspec:\n  template:\n    spec:\n      containers:\n      - name: app\n        image: {{IMAGE}}\n';
   const mk = (fake: FakeExec, over: Partial<ConstructorParameters<typeof KindTarget>[0]> = {}) =>

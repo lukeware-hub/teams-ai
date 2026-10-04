@@ -8,6 +8,8 @@ export interface KindDeps {
   exec: Exec;
   secrets: Record<string, string>;
   cluster: string;
+  /** Namespace of the project's Service; when set, every kubectl call uses it and gate pods reach the Service by its DNS name. */
+  namespace?: string;
   readFile: (absolutePath: string) => Promise<string>;
   /** Injected for tests; the probe waits between attempts while kube-proxy programs the Service. */
   sleep?: (ms: number) => Promise<void>;
@@ -38,7 +40,7 @@ export class KindTarget implements DeployTarget {
   }
 
   private async kubectl(args: readonly string[], stdin?: string) {
-    return this.deps.exec({ bin: 'kubectl', args: ['--context', `kind-${this.deps.cluster}`, ...args], timeoutMs: TIMEOUT, stdin });
+    return this.deps.exec({ bin: 'kubectl', args: ['--context', `kind-${this.deps.cluster}`, ...(this.deps.namespace ? ['--namespace', this.deps.namespace] : []), ...args], timeoutMs: TIMEOUT, stdin });
   }
 
   async validate(intent: DeploymentIntent): Promise<string[]> {
@@ -131,6 +133,10 @@ export class KindTarget implements DeployTarget {
   async destroy(intent: DeploymentIntent): Promise<void> {
     await this.kubectl(['delete', '-f', '-', '--ignore-not-found'], await this.render(intent, imageRef(intent)));
     await this.kubectl(['delete', 'secret', this.secretName(intent), '--ignore-not-found']);
+  }
+
+  gateServiceUrl(intent: DeploymentIntent): string {
+    return `http://${intent.projectId}.${this.deps.namespace ?? 'default'}.svc.cluster.local:${intent.port}`;
   }
 
   async serviceUrl(intent: DeploymentIntent): Promise<string> {

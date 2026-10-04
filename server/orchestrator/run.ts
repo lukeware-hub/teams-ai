@@ -14,7 +14,7 @@ import { createDecider } from '../decide/create-decider.js';
 import type { Decider } from '../decide/decider.js';
 import { classifyCliError } from '../decide/decisions/cli-error.js';
 import type { Exec } from '../exec/command.js';
-import { runGates, TAIL_CHARS, type GateResult } from '../exec/gate-runner.js';
+import { runGates, TAIL_CHARS, type GateExecutor, type GateResult } from '../exec/gate-runner.js';
 import { git } from '../git/git.js';
 import { MergeQueue } from '../git/merge-queue.js';
 import type { CodeContext, HandoffSummary } from '../knowledge/context-pack.js';
@@ -63,6 +63,8 @@ export interface RunDeps {
   /** Spec (refinement) §4: docs to put on main before Phase 1 (`run --draft`). */
   bootstrap?: { docsDir: string; owner: string | undefined };
   target?: DeployTarget;
+  /** Runs gates and smoke; absent means docker over `exec`. */
+  gateExecutor?: GateExecutor;
 }
 
 export type ExecuteResult = RunResult | 'paused:auth';
@@ -268,7 +270,7 @@ export class Run {
         user: containerUser(),
         bindRewrite: this.deps.cfg.docker.bindRewrite,
       },
-      { exec: this.deps.exec, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null), removeFile: (p) => fs.rm(p, { force: true }) },
+      { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null), removeFile: (p) => fs.rm(p, { force: true }) },
     );
   };
 
@@ -390,9 +392,9 @@ export class Run {
       tasks: () => [...this.journal.state.tasks.values()],
       boundaries: async () => (this.deps.graphify ? (await this.deps.graphify.godNodes(graphDir(this.deps.ws, null), 10).catch(() => [])).map((n) => n.label) : []),
       target: this.deps.target,
-      smoke: async (contextDir, url) => {
+      smoke: async (contextDir, url, gateUrl) => {
         const p = this.plan!;
-        const r = await runSmoke(p, this.deps.spec, { worktree: contextDir, image: p.gateImage, junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-smoke`, user: containerUser(), bindRewrite: this.deps.cfg.docker.bindRewrite }, url, { exec: this.deps.exec, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
+        const r = await runSmoke(p, this.deps.spec, { worktree: contextDir, image: p.gateImage, junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-smoke`, user: containerUser(), bindRewrite: this.deps.cfg.docker.bindRewrite }, this.deps.gateExecutor?.kind === 'k8s' ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
         // The gate's output is the only clue the fix task gets about why a smoke test is missing or failing.
         const tail = r.ok || !r.result ? '' : `\n\nsmoke gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
