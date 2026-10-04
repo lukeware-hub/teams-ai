@@ -393,12 +393,15 @@ unit-tested with fixtures. Each one needs a plan file in `plans/` before impleme
 
 - Built: deterministic templates, not agent-written (`server/orchestrator/workflows.ts`): `ci.yml` and `release.yml` (build and push `ghcr.io/<owner>/<image>` with sha and latest tags, least-privilege permissions, actions pinned by major tag), validated structurally before commit (actionlint is not available offline), committed by the bootstrap phase after Phase 2 when absent.
 - Open: the secret scan uses `gitleaks-action` (needs a license secret for organization repos); only bootstrapped runs get the files; the release workflow assumes a root Dockerfile (R8.1/R8.2); no e2e job (R8.4); never run on real GitHub.
-### R8.4 E2E tests for the generated project — `todo` (after R8.2)
+### R8.4 E2E tests for the generated project — `done` (unit; plan 34, 2026-10-04)
 
 - New required blocking gate `e2e`; the Test agent writes the suite; the runner executes it against the compose stack,
   reusing the `server/exec/smoke.ts` plumbing. Not the same as `commands.smoke`.
 - Files: `server/validators/plan.ts`, `server/exec/gate-runner.ts`, `.claude/agents/test.md`.
 
+- Built: required blocking `e2e` gate (`commands.e2e` or a gate named `e2e`; `requireE2e` on in `server/cli.ts`, older plans stay valid), run in Phase 5 after the smoke passes, against the compose stack through `gateNetwork` and `gateServiceUrl`, with JUnit rows per acceptance criterion (`server/exec/e2e.ts`); a failure rolls back and plans a Dev fix task inside the 3-attempt budget; `test.md`, `sm.md` and the plan pack say how the suite is written; the CI template got an `e2e` job (compose up, e2e, down).
+- Open: nothing ran on a real Docker host; the e2e rows live only in `DeployVerified` and the Phase 5 return (the evidence matrix and the Phase 6 report do not show them per AC yet); the e2e demands a `[AC-xxx]` test for EVERY criterion, including devops-only ones, which may be too rigid; smoke and e2e write the same `junitPath` in sequence; the CI job assumes the compose publishes the container port as-is.
+- Stage 8 state: R8.1–R8.6 done at unit level; **R8.7 (golden run on the full contract) is the only item left and needs a Claude login on the host and one costly live run.**
 ### R8.5 Security tooling for the generated project — `done` (unit; plan 32, 2026-10-04)
 
 - Prescribe tools in the default gates: gitleaks (secrets), osv-scanner or `npm audit` (dependencies), semgrep (SAST),
