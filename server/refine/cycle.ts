@@ -42,9 +42,25 @@ const MAX_DEDUP_PAIRS = 20;
 const MAX_HISTORY_CHUNKS = 5;
 const norm = (t: string) => t.toLowerCase().replace(/\s+/g, ' ').trim();
 
+/** Journals every decision the wrapped decider answers as DECISION_MADE (spec 10A.4), so evals can read Gate 1 too. */
+function recorded(decider: Pick<Decider, 'decide'>, journal: Pick<Journal, 'fact'>, cycle: number): Pick<Decider, 'decide'> {
+  return {
+    decide: async (id, state, questions, ctx) => {
+      const started = Date.now();
+      const outcome = await decider.decide(id, state, questions, ctx);
+      const record = outcome.answered
+        ? { decisionId: id, backend: outcome.backend, escalated: outcome.escalated, answers: outcome.answers, durationMs: Date.now() - started }
+        : { decisionId: id, backend: null, escalated: false, answers: null, durationMs: Date.now() - started, unanswered: outcome.reason };
+      await journal.fact(RefineEvent.DecisionMade, { cycle, record });
+      return outcome;
+    },
+  };
+}
+
 /** Spec (refinement) §3.2: derive → Front → PO ∥ SM → merge questions → check patches → checklist. */
 export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
   const { draft, journal } = deps;
+  const decider = deps.decider ? recorded(deps.decider, journal, cycle) : undefined;
   const hash = await draftHash(draft);
   await journal.fact(RefineEvent.CycleStarted, { cycle, draftHash: hash });
   const ctx = { journal, stepDir: draft.steps, specHash: hash };
@@ -90,7 +106,7 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
   await journal.fact(RefineEvent.Derived, { cycle, ...checked.value });
   const dctx = { confidential: checked.value.project.confidential };
   const criteria = checked.value.spec.acceptanceCriteria;
-  const notReady = deps.decider ? await notReadyCriteria(criteria, deps.decider, dctx) : null;
+  const notReady = deps.decider ? await notReadyCriteria(criteria, decider!, dctx) : null;
 
   const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];
   if (deps.frontAgent) {
@@ -188,12 +204,12 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
         if (shares(e.relatedAcIds, q.relatedAcIds)) pairs.push({ a: e.text, b: q.text, drop: q });
       }
     }
-    const dup = await duplicatePairs(pairs, deps.decider, dctx);
+    const dup = await duplicatePairs(pairs, decider!, dctx);
     const dropped = new Set(dup ? pairs.filter((_, i) => dup[i]).map((p) => p.drop) : []);
     for (let i = merged.length - 1; i >= 0; i--) if (dropped.has(merged[i]!)) merged.splice(i, 1);
     // Decision 4: history that the new spec contradicts becomes a blocking question for the human.
     const hits = retrieval.slice(0, MAX_HISTORY_CHUNKS);
-    for (const i of await contradictedChunks(criteria, checked.value.spec.objectives, hits.map((h) => h.text), deps.decider, dctx)) {
+    for (const i of await contradictedChunks(criteria, checked.value.spec.objectives, hits.map((h) => h.text), decider!, dctx)) {
       const h = hits[i]!;
       merged.push({ questionId: `po-c${cycle}-${counters.po++}`, role: 'po', text: `The new spec seems to contradict earlier project history (${h.title}${h.heading ? ` › ${h.heading}` : ''}): "${h.snippet}". Which one holds?`, blocking: true, relatedAcIds: [], cycle });
     }

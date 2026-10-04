@@ -93,6 +93,12 @@ describe('refinement cycle System 1 filters (decisions 2-4)', () => {
     const hit = { chunkId: 'c1', docId: 'd1', kind: 'spec' as never, title: 'spec-000', heading: 'Ports', snippet: 'the service listens on 8080', text: 'the service listens on 8080', score: 1 };
     await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [hit], secretsDir: root, decider }, 1);
     expect(asked).toEqual(['gate1-readiness', 'question-dedup', 'history-contradiction']);
+    // Every decision leaves a DECISION_MADE record the eval harness can read (spec 10A.4/10A.6).
+    const made = events.filter((e) => e.type === 'DECISION_MADE').map((e) => e.data as { cycle: number; record: { decisionId: string; backend: string; escalated: boolean; durationMs: number; answers: Record<string, { probabilities: unknown }> } });
+    expect(made.map((m) => m.record.decisionId)).toEqual(['gate1-readiness', 'question-dedup', 'history-contradiction']);
+    expect(made[0]).toMatchObject({ cycle: 1, record: { backend: 'jev', escalated: false } });
+    expect(typeof made[0]!.record.durationMs).toBe('number');
+    expect(Object.keys(made[0]!.record.answers).length).toBeGreaterThan(0);
     expect(packs.po).toContain('Not ready: ' + spec.acceptanceCriteria.map((c) => c.id).join(', '));
     const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
     const texts = (evaluated.data.questions as Array<{ text: string; blocking: boolean }>).map((q) => q.text);

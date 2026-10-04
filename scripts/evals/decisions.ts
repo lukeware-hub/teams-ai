@@ -2,6 +2,8 @@
  * Decision evals (spec 10A.6): joins DECISION_MADE records from run journals with hand labels and prints
  * per-decision metrics.
  *   npx tsx scripts/evals/decisions.ts --runs ~/.teams-ai/runs --labels labels.json
+ * Gate 1 decisions live in the refinement journals, which have the same layout: point --runs at
+ *   ~/.teams-ai/workspaces/<project>/refine (one <specId>/events.ndjson per session).
  * labels.json: [{ "runId": "todo-001-r3", "seq": 42, "question": "kind", "label": "code" }, ...]
  */
 import { promises as fs } from 'node:fs';

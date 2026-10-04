@@ -171,7 +171,9 @@ window resets, resume exactly from the entry below.
   parameter (`po-c1-0`, `sm-c1-0`), either because their `relatedAcIds` did not share an AC (decision 3 only pairs
   questions that share one) or because the model answered below 0.5.
 - Finding: the UI server's decider has no `onDecision`, so Gate 1 decisions leave no record at all; R5.3 (evals) needs
-  them. Open: journal each decision into the refine event log, then re-run this e2e and read the answers. Cleaned up:
+  them. Fixed 2026-10-04: every Gate 1 decision is now journaled as `DECISION_MADE` in the refine event log
+  (`server/refine/cycle.ts`, same record shape as the run journal; `scripts/evals/decisions.ts --runs
+  ~/.teams-ai/workspaces/<project>/refine` reads it); not yet re-run live, so the e2e answers are still unread. Cleaned up:
   draft removed, config restored.
 
 ### R4.2 Decision 12 (rank candidate plans) — `done` (unit); live check in R5.1
