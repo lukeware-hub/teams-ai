@@ -2103,67 +2103,12 @@ git commit -m "feat(web): validation screen with report, exploratory script and 
 
 **Files:**
 - Modify: `docs/superpowers/plans/README.md` (append the plan 12 row; move the "Decision 7" bullet under Outstanding work to "call site exists, decision not wired")
-- Modify: this plan's `**Status**` line and a new `## Findings` section at the end
-- Modify: `test/fixtures/hello-app/docs/specs/hello-001/spec.json` only if it lacks a `smoke: true` criterion needed by the live check (do not change ids)
+- Modify: this plan's `**Status**` line and a new `## Findings (live run, 2026-10-04, WSL Ubuntu-24.04, docker-local)
 
-- [ ] **Step 1: Full suite**
+Run `hello-001-r9` (copy of `hello-001-r1` without `RUN_FINISHED`, resumed from the UI). The existing plan on `main` predates `commands.smoke`, so this exercised the "smoke missing -> deploy-failed" path.
 
-Run: `npx tsc --noEmit -p . && npm run -s lint && npm run -s format:check && npx vitest run && (cd web && npx vitest run && npm run build)`
-Expected: everything green. Fix formatting with `npm run format` if `format:check` complains, and commit that separately as `style: format`.
-
-- [ ] **Step 2: Live check (WSL, real Docker, hello-app)**
-
-Preconditions: `teams-ai-hello-app` registered in the UI, its plan on `main` has `commands.smoke` (if the existing plan predates this change, the live run exercises the "smoke missing → deploy-failed → Validation shows the failure" path instead; record which). Then:
-
-1. `npm run web:build && npm run ui -- --port 8787` (detached with `setsid` as plan 8 found).
-2. Projects → "Start run" on a spec whose tasks are already merged (`resume` of the recorded `hello-001-r1` after deleting its `RUN_FINISHED` line in a copy is the cheap path: copy `~/.teams-ai/runs/hello-001-r1` to `hello-001-r9`, drop the last line, `Resume` it from the UI; the loop finds every task merged and enters Phase 4 without paying for Dev steps — only `fix-tasks`/`report` steps cost tokens, about $0.20).
-3. Watch the Execution page: phases 4, 5, 6 appear; `docker ps` shows `teams-ai-hello-app`; `curl http://127.0.0.1:<port>/health`.
-4. Open Validation: URL, smoke rows, script, evidence; tick a step, reload, it stays ticked.
-5. "Complete spec": `hello-001-complete-r1` appears in the runs list; after it finishes, Projects shows `hello-001` as `done` and `main` carries `status: "done"`.
-6. "Report problem" on a fresh `awaiting-validation` spec is only checkable once plan 11's `continue` route is on `main`; otherwise record "not checked — plan 11 pending".
-7. `kind`: run the same on a project whose `deploy.target` is `kind` if the cluster exists; else record "docker-local only".
-
-Record every observation, cost and fix in `## Findings (live run, <date>, <host>)`, like plan 8 and plan 10 did. If the live check cannot run from the executing host, write `## Findings` with "not run — needs a live WSL host with Docker" and list the exact commands above as the checklist.
-
-- [ ] **Step 3: README and status**
-
-Append to the plans table in `docs/superpowers/plans/README.md`:
-
-```md
-| 12 | [`2026-09-24-teams-ai-12-phases-4-6-validation-ui.md`](2026-09-24-teams-ai-12-phases-4-6-validation-ui.md) | <status from Findings> — phases 4 (verification + one fix round), 5 (deploy, rollback, smoke gate, deploy-fix tasks), 6 (report merged with awaiting-validation), `spec complete`, Validation screen. |
-```
-
-Under "Outstanding work", change the decision 7 bullet to: "**Decision 7 (validation report routing) — call site now exists** (Validation → `continue { report }`); the System 1 question that routes the text to PO or SM first is still unwired." Set this plan's status line to `**Status: implemented — see Findings**` (or `partially implemented — …` when the live check found open items).
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add docs/superpowers/plans/README.md docs/superpowers/plans/2026-09-24-teams-ai-12-phases-4-6-validation-ui.md
-git commit -m "docs: plan 12 findings from the live run; plans index"
-```
-
----
-
-## Self-review
-
-**Spec coverage.** §3 Phase 4 → Task 4 (+ Task 6 wiring of the fix round); §4 Phase 5 → Tasks 2, 3, 5, 6; §5 Phase 6 → Task 6; §6 lifecycle → Tasks 7, 8 (complete), 9 (report problem via plan 11's `continue`); §7 contracts → Task 1 (`Commands.smoke`, `origin`, events, results, `fix-tasks`), Task 6 (agent prompts); §8 API/UI → Tasks 8, 9; §9 security → smoke env path (Task 2), no UI git (Tasks 7–9); §10 error table → smoke missing (Task 2), manifests absent (existing `validate` stage, Task 5), NodePort (Task 3), rollback unhealthy (Task 5 + Validation copy), report step failure (Task 6), docs PR cannot merge (Task 6 `ok: false` → `phase-failed`, `REPORT_READY` still journaled), `spec complete` crash (block A's `interrupted` + Task 8 status union); §11 tests → one per bullet; §12 open items → Task 10 live check.
-
-**Placeholder scan.** No TBD/TODO. Task 7 Step 4 names a conditional edit in `loadRunDeps` ("append the condition") because that function's current shape is plan 11's to change; the executor reads it and appends the `awaiting-validation` pass-through if a status check exists.
-
-**Type consistency.** `Phase4Result.fixTasks: PlanTask[]`, `Phase5Result.fixTask: PlanTask`, `runFix(tasks: PlanTask[])` in Task 6 wraps the single task in an array. `SmokeRow` is defined once (Task 2) and re-exported through `Report` (Task 6) and mirrored in `web/src/api.ts` (Task 9). `RunResult`/`ExecuteResult` extended in Task 1 and consumed by `finish()` and `exitCode` unchanged in shape. `deployIntent` uses `deps.plan!` (guarded by the `required` check at the top of `runPhase5`). `commitAndMergeDocs(deps, 6, …)` requires the widened phase type from Task 6 Step 3, which Task 7 reuses with a distinct `specId` key.
-
-**Review Focus.** Each of the five lines names its owning task and test; all five are present above.
-
-## Findings
-
-Not run — needs a live WSL host with Docker. Tasks 1–8 (server) were already on `main` from the orchestrator pipeline work (#8, #9); Task 9 (Validation screen, phase 4–6 timeline, `Projects`/`Run` links) was added on branch `feat/validation-ui` with 32/32 web tests, `tsc` and `vite build` green. Live-check checklist:
-
-1. `npm run web:build && npm run ui -- --port 8787` (detached with `setsid`).
-2. Copy `~/.teams-ai/runs/hello-001-r1` to `hello-001-r9`, drop the last line (`RUN_FINISHED`), and Resume it from Projects; the loop enters Phase 4 without Dev steps (about $0.20 for `fix-tasks`/`report`).
-3. Execution page shows phases 4, 5, 6; `docker ps` shows `teams-ai-hello-app`; `curl http://127.0.0.1:<port>/health`.
-4. Validation page: URL, smoke rows, script, evidence; tick a step, reload, it stays ticked.
-5. "Complete spec": `hello-001-complete-r1` appears; Projects then shows `hello-001` as `done` and `main` carries `status: "done"`.
-6. "Report problem" on an `awaiting-validation` spec navigates to `/refine/:projectId/:specId` (route exists on `main`) and opens the session with the report.
-7. `kind` target if the cluster exists; else record "docker-local only".
-
-Known gaps: Validation screen copy is in English while the rest of the UI is pt-BR; `lint` and `format:check` scripts do not exist in `package.json`, so only `tsc`, `vitest` and `vite build` gate the change.
+- Setup: the recorded workspace `origin` (`diego-dm-morais/teams-ai-hello-app`) no longer existed, so the `repo/ is not a git clone with origin` precondition failed. Created private `lukeware70X7/teams-ai-hello-app`, pushed `main`, repointed `origin`. A copied run is only resumable after adding the `pid.gone` marker (`runRow` reads status from it).
+- Phase 4: `VERIFICATION_PASSED` in round 1. Phase 5: container `teams-ai-hello-app` came up on 127.0.0.1:3000 and `/health` answered `{"ok":true}`; every attempt failed at stage `smoke` with `plan.commands.smoke missing`; attempt 2 and 3 rolled back healthy. Phase 6: `REPORT_READY`, `RUN_FINISHED` = `deploy-failed`.
+- `GET /api/runs/hello-001-r9` returns `status: deploy-failed`, `phase: 6`, and a `report` whose `deploy` is `{attempts: 3, lastFailure: {stage: smoke, rolledBack: true, rollbackHealthy: true}}`.
+- Defect: the `deploy-fix` tasks (`T950-deploy-fix-1-r2`, `T950-deploy-fix-4-r1`) end blocked with "Dev reported done but produced no changes against origin/main". The failure is a missing `plan.commands.smoke`, a plan field, not code, so a Dev step cannot fix it and the loop spends all attempts (and Dev tokens) for nothing. Follow-up: when a deploy failure is `plan.commands.smoke missing`, skip the deploy-fix loop and report `deploy-failed` immediately (or route to SM to amend the plan).
+- Not checked: Validation page in a browser, "Complete spec", "Report problem" from the UI, `kind` target (docker-local only), and the `awaiting-validation` happy path, which needs a plan with `commands.smoke`.
