@@ -100,6 +100,8 @@ export const ReportOutput = z.object({
   assumptions: z.array(z.string()),
   exploratoryScript: z.array(z.object({ acId, steps: z.array(z.string().min(1)).min(1) })),
   summary: z.string().min(1),
+  /** Markdown for docs/README.md: a project overview the orchestrator commits with the report. */
+  readme: z.string().min(1),
 });
 
 /** Spec 10A.3: a System 2 answer to typed questions; no probabilities, the value only. */

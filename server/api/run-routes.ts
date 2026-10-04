@@ -29,6 +29,12 @@ const str = (v: unknown, field: string): string => {
   return (v as Record<string, string>)[field]!;
 };
 
+/** Browsable https URL of a GitHub remote (https or ssh form), or null for any other host. */
+export function githubRepoUrl(remote: string): string | null {
+  const m = /^(?:https?:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/.exec(remote.trim());
+  return m ? `https://github.com/${m[1]}/${m[2]}` : null;
+}
+
 export function runRoutes(deps: RunRoutesDeps): Route[] {
   const index = async (): Promise<IndexDeps> => ({ cfg: await deps.cfg(), home: deps.home, isAlive: (pid) => isAlive(deps.control, pid) });
   const projectDir = async (idx: IndexDeps, projectId: string): Promise<string> => {
@@ -271,12 +277,23 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
               .then((text) => Plan.safeParse(JSON.parse(text)).data ?? null)
               .catch(() => null)
           : null;
+        const remote = project ? await execCommand({ bin: 'git', args: ['remote', 'get-url', 'origin'], cwd: project, timeoutMs: 5_000 }).catch(() => null) : null;
+        const repoUrl = remote?.exitCode === 0 ? githubRepoUrl(remote.stdout) : null;
+        // docs/README.md as merged on main; the working tree is the fallback for a clone without origin/main.
+        const readme = project
+          ? await execCommand({ bin: 'git', args: ['show', 'origin/main:docs/README.md'], cwd: project, timeoutMs: 5_000 })
+              .then((r) => (r.exitCode === 0 ? r.stdout : null))
+              .catch(() => null)
+              .then((text) => text ?? fs.readFile(path.join(project, 'docs', 'README.md'), 'utf8').catch(() => null))
+          : null;
         const report = [...evs].reverse().find((e) => e.type === 'REPORT_READY')?.data.report ?? null;
         const phase = [...evs].reverse().find((e) => e.type === 'PHASE_STARTED')?.data.phase ?? 0;
         json(200, {
           runId,
           specId,
           projectId,
+          repoUrl,
+          readme,
           status: finished ? String(finished.data.result) : state.status,
           state: { status: state.status, order: state.order, tasks: state.order.map((id) => state.tasks.get(id)) },
           finished: finished?.data ?? null,

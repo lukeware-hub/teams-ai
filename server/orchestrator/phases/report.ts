@@ -20,15 +20,16 @@ export async function runPhase6(deps: Phase6Deps): Promise<{ ok: boolean; report
   const roles = ['po', 'sm', 'dev', 'test', 'devops', 'system1'] as const;
   const byRole = Object.fromEntries(roles.map((role) => { const usage = deps.accounting.total({ role }); return [role, { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, costUsd: usage.costUsd }]; }));
   const base = { runId: deps.runId, specId: deps.spec.specId, specHash: deps.specHash, result: deps.result, service: dv ? { url: String(dv.data.url), healthcheck: String(dv.data.healthcheck), smoke: dv.data.smoke as SmokeRow[] } : null, deploy: { attempts: failures.length || (dv ? Number(dv.data.attempt) : 0), lastFailure: failures.at(-1)?.data ?? null }, evidence: (ve?.data.matrix as EvidenceRow[] | undefined) ?? [], delivered: [...deps.journal.state.tasks.values()].filter((t) => t.state === 'merged').map((t) => t.def.id), blocked: [...deps.journal.state.tasks.values()].filter((t) => t.state === 'blocked').map((t) => ({ taskId: t.def.id, reason: 'blocked' })), assumptions: deps.journal.assumptions(), tokens: { byRole, total: { inputTokens: total.inputTokens, outputTokens: total.outputTokens, costUsd: total.costUsd } } };
-  let script: Report['exploratoryScript'] = []; let summary = ''; let error = '';
+  let script: Report['exploratoryScript'] = []; let summary = ''; let readme = ''; let error = '';
   for (let attempt = 1; attempt <= 2; attempt++) {
     const out = await deps.runAgent<'report'>({ kind: 'report', role: 'sm', pack: reportPack(deps.packBase(), { delivered: base.delivered, blocked: base.blocked, evidence: JSON.stringify(base.evidence), assumptions: base.assumptions, deploy: JSON.stringify(base.service ?? base.deploy), tokens: JSON.stringify(base.tokens) }), cwd: deps.ws.repo, phase: 'phase6', taskId: null, attempt }) as any;
-    if (out.ok && out.value) { script = out.value.exploratoryScript; summary = out.value.summary; break; }
+    if (out.ok && out.value) { script = out.value.exploratoryScript; summary = out.value.summary; readme = out.value.readme; break; }
     if (out.failure === 'quota' || out.failure === 'auth') { if (await pauseForFailure(deps, out.failure)) return { ok: false, report: { ...base, exploratoryScript: [], summary: PAUSED_AUTH }, reason: PAUSED_AUTH }; continue; }
     error = out.errors?.join('; ') ?? 'report step failed';
   }
   const report: Report = { ...base, exploratoryScript: script, summary: error ? `report step failed: ${error}` : summary };
   const branch = `docs/${deps.spec.specId}-report`; const wt = await docsWorktree(deps, branch); const dir = path.join(wt, specDir(deps.spec.specId)); await fs.mkdir(dir, { recursive: true }); await fs.writeFile(path.join(dir, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
+  if (readme) await fs.writeFile(path.join(wt, 'docs', 'README.md'), `${readme.trimEnd()}\n`);
   if (deps.result === 'awaiting-validation') { const file = path.join(dir, 'spec.json'); const current = JSON.parse(await fs.readFile(file, 'utf8')); await fs.writeFile(file, `${JSON.stringify({ ...current, status: 'awaiting-validation' }, null, 2)}\n`); }
   const merged = await commitAndMergeDocs(deps, 6, branch, wt, `docs(${deps.spec.specId}): report`); await deps.journal.fact(OrchEvent.ReportReady, { report, merged: merged.ok }); return merged.ok ? { ok: true, report } : { ok: false, report, reason: merged.reason };
 }

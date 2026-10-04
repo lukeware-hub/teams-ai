@@ -86,4 +86,18 @@ describe('RunView', () => {
     expect(screen.getByTestId('task-T900-fix-1').parentElement!.textContent).toContain('fix');
     expect(screen.getByTestId('validation-link').getAttribute('href')).toBe('/runs/hello-001-r1/validation');
   });
+  it('links to the project repository on GitHub, falling back to a merged PR URL', () => {
+    const { unmount } = render(view({ detail: { ...detail, repoUrl: 'https://github.com/acme/hello-app' } }));
+    expect(screen.getByTestId('github-link').getAttribute('href')).toBe('https://github.com/acme/hello-app');
+    unmount();
+    render(view());
+    expect(screen.getByTestId('github-link').getAttribute('href')).toBe('https://github.com/o/r');
+  });
+  it('prints docs/README.md, or explains who writes it when there is none yet', () => {
+    const { unmount } = render(view());
+    expect(screen.getByTestId('readme-empty').textContent).toContain('sm');
+    unmount();
+    render(view({ detail: { ...detail, readme: '# Hello App\n\n- GET /hello' } }));
+    expect(screen.getByTestId('readme').querySelector('h3')!.textContent).toBe('Hello App');
+  });
 });

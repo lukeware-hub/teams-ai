@@ -478,3 +478,47 @@ h3 { font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; colo
   .project-action-fields button, .new-spec-row button { width: 100%; }
   .project-card { padding: 1rem; }
 }
+
+/* Run */
+.run-page { align-content: start; }
+.run-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1rem 1.5rem; }
+.run-head-main { min-width: 0; }
+.run-head h1 { margin: 0; overflow-wrap: anywhere; font-size: 1.6rem; }
+.run-head .run-meta { margin: 0.6rem 0 0; }
+.run-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.6rem; }
+.run-action { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: var(--control-height); padding: 0.5rem 1rem; border: 1px solid var(--accent-line); border-radius: var(--control-radius); font-size: 0.9rem; font-weight: 700; text-decoration: none; transition: background .15s ease, border-color .15s ease; }
+.run-action.primary-button { border-color: var(--ink); color: #fff; background: var(--ink); }
+.run-action.primary-button:hover { border-color: #273657; background: #273657; }
+.run-action:focus-visible, .pr-list a:focus-visible { outline: 3px solid rgba(67, 87, 199, .28); outline-offset: 2px; }
+.run-progress { grid-column: 1 / -1; display: flex; align-items: center; gap: 0.9rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.run-progress-bar { flex: 1; height: 0.5rem; border-radius: 999px; background: var(--surface-muted); overflow: hidden; }
+.run-progress-bar span { display: block; height: 100%; border-radius: inherit; background: var(--good); transition: width .4s cubic-bezier(.16, 1, .3, 1); }
+.run-progress .hint { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.run-phases { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.run-phases .phase { margin-right: 0; }
+.pr-list a { display: inline-flex; align-items: center; gap: 0.35rem; text-decoration: none; }
+.pr-list a:hover { text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 720px) {
+  .run-head { grid-template-columns: minmax(0, 1fr); }
+  .run-actions { justify-content: stretch; }
+  .run-actions .run-action { flex: 1; }
+  .run-progress { flex-direction: column; align-items: stretch; gap: 0.5rem; }
+  .task-row { flex-wrap: wrap; }
+  .task-row .task-meta { margin-left: 0; white-space: normal; }
+}
+@media (prefers-reduced-motion: reduce) { .run-progress-bar span { transition: none; } }
+.run-readme header { gap: 0.75rem; }
+.run-readme-tile { display: inline-grid; flex: 0 0 auto; place-items: center; width: 2.2rem; height: 2.2rem; border-radius: 0.65rem; color: var(--accent); background: var(--accent-soft); }
+.run-readme-path { color: var(--ink-soft); font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.75rem; }
+.markdown { max-width: 72ch; color: var(--ink); line-height: 1.6; overflow-wrap: anywhere; }
+.markdown > :first-child { margin-top: 0; }
+.markdown > :last-child { margin-bottom: 0; }
+.markdown h3 { margin: 0 0 0.6rem; font-size: 1.25rem; letter-spacing: -0.01em; }
+.markdown h4, .markdown h5, .markdown h6 { margin: 1.5rem 0 0.4rem; font-size: 1rem; }
+.markdown p, .markdown ul, .markdown ol { margin: 0 0 0.9rem; }
+.markdown ul, .markdown ol { padding-left: 1.3rem; }
+.markdown li + li { margin-top: 0.25rem; }
+.markdown a { color: var(--accent); text-underline-offset: 3px; }
+.markdown code { padding: 0.1rem 0.35rem; border-radius: 6px; background: var(--surface-muted); font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.85em; }
+.markdown pre { margin: 0 0 0.9rem; padding: 0.85rem 1rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-sunken); overflow-x: auto; }
+.markdown pre code { padding: 0; background: none; font-size: 0.82rem; }

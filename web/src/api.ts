@@ -114,6 +114,8 @@ export interface RunDetail {
   runId: string;
   specId: string;
   projectId: string;
+  repoUrl?: string | null;
+  readme?: string | null;
   status: string;
   phase: number;
   report: Report | null;

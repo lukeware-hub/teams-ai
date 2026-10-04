@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { runApi, type RunDetail, type StoredEvent } from '../api.js';
+import { Icon } from '../components/Icons.js';
+import { Markdown } from '../components/Markdown.js';
 import { TaskDetail } from '../components/TaskDetail.js';
 import { evidence, explainBlockReason, mergedPrs, pausedUntil, phases, rootBlockers, runState, tokens } from '../run/selectors.js';
 import { useJournal } from '../useSse.js';
@@ -26,34 +28,76 @@ export function RunView({ detail, events, ended, error, loadStep }: { detail: Ru
   const prs = mergedPrs(unique);
   const totalTasks = state.order.length;
   const doneTasks = [...state.tasks.values()].filter((t) => t.state === 'merged').length;
+  // Older servers do not send repoUrl; a merged PR URL still names the repository.
+  const repoUrl = detail.repoUrl ?? prs.find((p) => p.url)?.url?.replace(/\/pull\/\d+.*$/, '') ?? null;
   return (
-    <main>
-      <p>
-        <Link to="/projects">← Projetos</Link>
-      </p>
-      <h1>
-        {detail.runId}{' '}
-        <small className="hint">
-          {detail.projectId} / {detail.specId}
-        </small>
-      </h1>
-      <div className="run-meta">
-        <span data-testid="status" className={`status-pill tone-${statusTone(status)}`}>
-          {statusLabel(status)}
-          {ended ? ' (encerrada)' : ''}
-        </span>
-        {detail.report ? (
-          <Link data-testid="validation-link" to={`/runs/${detail.runId}/validation`}>
-            Validação →
-          </Link>
-        ) : null}
-        {until ? <span data-testid="paused-until" className="hint">pausada até {hhmm(until)}</span> : null}
+    <main className="run-page">
+      <nav className="refine-breadcrumb" aria-label="Navegação">
+        <Link to="/projects" aria-label="Voltar para projetos">
+          <Icon name="home" size={18} />
+          <span>Projetos</span>
+        </Link>
+        <span aria-hidden="true">›</span>
+        <strong>{detail.projectId}</strong>
+        <span aria-hidden="true">›</span>
+        <span>{detail.runId}</span>
+      </nav>
+      <header className="card run-head">
+        <div className="run-head-main">
+          <h1>{detail.runId}</h1>
+          <div className="run-meta">
+            <span data-testid="status" className={`status-pill tone-${statusTone(status)}`}>
+              {statusLabel(status)}
+              {ended ? ' (encerrada)' : ''}
+            </span>
+            <span className="hint">
+              {detail.projectId} / {detail.specId}
+            </span>
+            {until ? <span data-testid="paused-until" className="hint">pausada até {hhmm(until)}</span> : null}
+          </div>
+        </div>
+        <div className="run-actions">
+          {detail.report ? (
+            <Link className="link-button run-action" data-testid="validation-link" to={`/runs/${detail.runId}/validation`}>
+              Validação
+              <Icon name="chevron" size={16} />
+            </Link>
+          ) : null}
+          {repoUrl ? (
+            <a className="primary-button run-action" data-testid="github-link" href={repoUrl} target="_blank" rel="noreferrer">
+              <Icon name="github" size={18} />
+              Abrir no GitHub
+              <Icon name="external" size={16} />
+            </a>
+          ) : null}
+        </div>
         {totalTasks ? (
-          <span data-testid="task-progress" className="hint">
-            {doneTasks} de {totalTasks} tarefas mescladas
-          </span>
+          <div className="run-progress">
+            <div className="run-progress-bar" role="progressbar" aria-label="Tarefas mescladas" aria-valuemin={0} aria-valuemax={totalTasks} aria-valuenow={doneTasks}>
+              <span style={{ width: `${(doneTasks / totalTasks) * 100}%` }} />
+            </div>
+            <span data-testid="task-progress" className="hint">
+              {doneTasks} de {totalTasks} tarefas mescladas
+            </span>
+          </div>
         ) : null}
-      </div>
+      </header>
+      <section className="card run-readme" data-testid="readme">
+        <header>
+          <span className="run-readme-tile">
+            <Icon name="file" size={20} />
+          </span>
+          <h2>README do projeto</h2>
+          <span className="run-readme-path">docs/README.md</span>
+        </header>
+        {detail.readme ? (
+          <Markdown source={detail.readme} />
+        ) : (
+          <p className="hint" data-testid="readme-empty">
+            Nenhum README gerado ainda. O Scrum Master (sm) escreve o resumo do projeto na fase de relatório, ao fim da run.
+          </p>
+        )}
+      </section>
       {prs.length ? (
         <section className="card">
           <h2>Pull requests mesclados</h2>
@@ -64,6 +108,7 @@ export function RunView({ detail, events, ended, error, loadStep }: { detail: Ru
                 {p.url ? (
                   <a href={p.url} target="_blank" rel="noreferrer">
                     PR #{p.number}
+                    <Icon name="external" size={14} />
                   </a>
                 ) : (
                   <span>PR #{p.number}</span>
@@ -91,13 +136,13 @@ export function RunView({ detail, events, ended, error, loadStep }: { detail: Ru
       ) : null}
       <section className="card">
         <h2>Fases</h2>
-        <p>
+        <div className="run-phases">
           {phases(unique).map((p) => (
             <span key={p.phase} data-testid="phase" className={`phase phase-${p.result}`}>
               {p.phase} {statusLabel(p.result)}
             </span>
           ))}
-        </p>
+        </div>
       </section>
       <section className="card">
         <h2>Tarefas</h2>
