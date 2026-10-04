@@ -50,8 +50,9 @@ Ordered by what unblocks what. Spec references are to `docs/superpowers/specs/20
   System 1 question that routes the text to PO or SM first is still unwired.
 - **Plan 12 — open items.** Report-step failure in the live run, `kind` target and "Report problem" unchecked (the Validation page no longer loses its buttons after an action error); see the plan's Findings.
 - **Plan 10 — items not covered by the live check.** A run has not yet been started, stopped and resumed from
-  the browser (the live check replayed the recorded `hello-001-r1` journal only, to avoid a $3 run); whether
-  SIGTERM reaches the orchestrator through the `tsx` wrapper is therefore unverified — see plan 10 Findings.
+  the browser (the live check replayed the recorded `hello-001-r1` journal only, to avoid a $3 run). SIGTERM
+  reaching a process behind the `tsx` wrapper is verified (2026-10-04, WSL: handler ran for both a group kill and a
+  single-PID kill); the orchestrator's own `requestStop()` path under a real run is not.
 - **`local-logprobs` backend (spec §10A.2a, phase 2) — client built, server not set up.**
   `server/decide/local-logprobs.ts` talks to a llama.cpp server (`/completion`, one grammar-constrained token per
   question, probabilities from `top_logprobs`); `createDecider` wires it when `decisions.local.enabled` is true,
