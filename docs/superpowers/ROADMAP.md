@@ -255,7 +255,7 @@ window resets, resume exactly from the entry below.
 
 ## Stage 6 — Everything in Kubernetes
 
-### R6.1 Run the whole stack as pods in one namespace — `planning` (starts after R1.1b ends)
+### R6.1 Run the whole stack as pods in one namespace — `approved to plan, awaiting go` (plan 31 written 2026-10-04)
 
 - Goal (human, 2026-10-04): application, back, front, OmniRoute and the local model all run in the same Kubernetes
   namespace, every pod reaching every other and the internet (ingress and egress open); nothing left installed
@@ -282,7 +282,8 @@ window resets, resume exactly from the entry below.
      that means a Docker-in-Docker sidecar or Jobs; decide before building.
   4. Cutover and removal: only after the stack runs and a smoke passes in the namespace; removal list shown to the
      human first, volumes with logins only with an explicit yes.
-- Not started. First action when R1.1b ends: turn the open questions above into a plan file in `plans/`.
+- Plan 31 (`plans/2026-10-04-teams-ai-31-k8s-cutover.md`) fixes the stages: build image, recreate kind, secrets and data, apply, prove with the R2.2 cycle and a Job gate, then reconfirm and remove. Nothing is applied or removed until the human gives the go for stage 1, and a second explicit go for stage 6 (the volumes with the claude and gh logins). Superseded line:
+- (old) Not started. First action when R1.1b ends: turn the open questions above into a plan file in `plans/`.
 
 ## Stage 7 — Production readiness (workflow, 2026-10-04)
 
