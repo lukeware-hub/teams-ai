@@ -345,24 +345,28 @@ Items below depend on R1.2/R7.1 (a run must reach the end first), except R8.1, R
 unit-tested with fixtures. Each one needs a plan file in `plans/` before implementation. Items touching
 `server/exec`, `server/deploy` or `server/orchestrator` collide with work in flight; do them in a separate worktree.
 
-### R8.1 Delivery contract in the plan — `todo`
+### R8.1 Delivery contract in the plan — `done` (unit; plan 28, 2026-10-04)
 
 - `plan.delivery` lists the required artifacts (Dockerfile, compose, CI workflow, release workflow, e2e suite, docs
   sections). `server/validators/plan.ts` rejects a plan missing any; Phase 4 (`phases/verify.ts`) fails if a file is absent.
 - Files: `server/contracts/plan.ts`, `server/validators/plan.ts`, `server/orchestrator/phases/verify.ts`.
 
+- Built: `plan.delivery` (Dockerfile, compose, CI and release workflow paths, e2e suite, README sections), optional in the schema; `validatePlan` takes `requireDelivery` (on in `server/cli.ts`, so new plans must carry it); Phase 4 fails with the missing files before any gate. `sm.md` and the plan pack tell the SM to fill it.
+- Open: a live run will now reject an SM plan without `delivery` (check on the next run); Phase 4 does not check `readmeSections` (R8.6 does, in Phase 6); a missing delivery file ends the run at Phase 4 with no fix round.
 ### R8.2 Docker infra enforced — `todo` (after R1.2/R7.1)
 
 - DevOps must emit `Dockerfile` and `docker-compose.yml`; docker-local switches from one `docker run` to
   `docker compose config` + `up --wait`. Fixes the smoke network fault seen in run 1.
 - Files: `.claude/agents/devops.md`, `server/deploy/docker-local.ts`.
 
-### R8.3 GitHub Actions in the generated repo — `todo`
+### R8.3 GitHub Actions in the generated repo — `done` (unit; plan 29, 2026-10-04)
 
 - `.github/workflows/ci.yml` (lint, typecheck, unit, e2e, scans) and `release.yml` (buildx build and push to GHCR with
   `GITHUB_TOKEN`). Bootstrap commits them; a gate validates the YAML (actionlint). Decide: agent-written or template.
 - Files: `.claude/agents/devops.md`, `server/orchestrator/phases/bootstrap.ts`, `server/exec/gate-runner.ts`.
 
+- Built: deterministic templates, not agent-written (`server/orchestrator/workflows.ts`): `ci.yml` and `release.yml` (build and push `ghcr.io/<owner>/<image>` with sha and latest tags, least-privilege permissions, actions pinned by major tag), validated structurally before commit (actionlint is not available offline), committed by the bootstrap phase after Phase 2 when absent.
+- Open: the secret scan uses `gitleaks-action` (needs a license secret for organization repos); only bootstrapped runs get the files; the release workflow assumes a root Dockerfile (R8.1/R8.2); no e2e job (R8.4); never run on real GitHub.
 ### R8.4 E2E tests for the generated project — `todo` (after R8.2)
 
 - New required blocking gate `e2e`; the Test agent writes the suite; the runner executes it against the compose stack,
@@ -375,12 +379,14 @@ unit-tested with fixtures. Each one needs a plan file in `plans/` before impleme
   trivy (image). High findings become blocking gates instead of names only. Separate from R7.4 (teams-ai's own audit).
 - Files: `server/validators/plan.ts`, `.claude/agents/sm.md`, `.claude/agents/sec.md`.
 
-### R8.6 Documentation gate — `todo`
+### R8.6 Documentation gate — `done` (unit; plan 30, 2026-10-04)
 
 - Required README sections (run, test, env, architecture, pipeline), a runbook and API docs step; a failed docs step
   blocks the phase instead of being swallowed.
 - Files: `server/orchestrator/phases/report.ts`, `server/orchestrator/steps.ts`, `.claude/agents/sm.md`.
 
+- Built: pure validators for README (run, test, env, architecture, pipeline), RUNBOOK and API docs (`server/validators/docs.ts`); Phase 6 validates each report attempt, feeds errors back and blocks the phase after 2 attempts instead of swallowing the failure; `spec readme` uses the same validator.
+- Open: the retry bound is 2 attempts in total, not 1 plus 2 retries.
 ### R8.7 Golden run on the full contract — `todo` (after R8.1–R8.6)
 
 - One run on a sample project proving all eight criteria: artifacts present, CI workflow green, image in the registry,
