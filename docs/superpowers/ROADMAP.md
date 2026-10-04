@@ -218,6 +218,27 @@ window resets, resume exactly from the entry below.
      human first, volumes with logins only with an explicit yes.
 - Not started. First action when R1.1b ends: turn the open questions above into a plan file in `plans/`.
 
+## Stage 7 — Production readiness (workflow, 2026-10-04)
+
+Six isolated agents built these in parallel; each wrote a plan in `plans/` and unit tests; merged into the PR #13
+branch (768 passing, typecheck clean). Nothing below was applied to a cluster or run live.
+
+| Id | Item | State | Open |
+|----|------|-------|------|
+| R7.1 | k8s stack, plan 14 (`deploy/k8s`: backend, omniroute, llama, buildkit + registry, Ingress, open NetworkPolicy, kustomize overlays `kind` and `gpu`, Secret templates) | manifests + parse test | Not validated with `kustomize build` or a cluster; image pins and the OmniRoute secret key names are guesses; **gates and deploys still call `docker`** (Job runner and registry build not written); backend Dockerfile still installs docker.io; kind needs a registry mirror |
+| R7.2 | API auth, plan 15 (bearer `TEAMS_AI_UI_TOKEN`, HttpOnly cookie for SSE, web client prompt) | done, unit | `isAllowedHost` still 403s any non-loopback Host (blocks a Service/Ingress); token not wired into the manifests; no browser check |
+| R7.3 | Supervisor, plan 16 (`teams-ai supervise`) | done, unit | not run live; a run stopped, hand-resumed, then crashed is never auto-resumed |
+| R7.4 | System security audit (`docs/superpowers/security/2026-10-04-system-audit.md`) | done | 1 critical, 4 high, 6 medium, 7 low, none fixed yet |
+| R7.5 | CI + pipeline e2e, plan 18 (`test/e2e/pipeline.e2e.test.ts`) | done | see the plan for the furthest milestone reached without Docker |
+| R7.6 | Ops: `/healthz`, `/metrics`, backup CronJob, runbooks (`docs/superpowers/ops/`) | done, unit | not run in a cluster |
+
+- **Decision for the human:** the audit's C1/H3/H4 (agent steps with credentials readable and unrestricted egress;
+  deny rules bypassable through `node`/`npm`; root container with the Docker socket) are made worse by the requested
+  fully open NetworkPolicies. Recommended: keep ingress open, but give agent-step pods a default-deny egress plus an
+  allowlist (registry, model endpoints), separate ServiceAccounts and no credentials in their HOME.
+- Next, in order: R7.4 fixes for critical/high; R7.1 Job gate runner and registry build (needs a plan: it changes
+  `server/exec` and `server/deploy`); R7.2 allowed hosts for in-cluster use; then R6.1 cutover with the human.
+
 ## System 1 decisions (spec §10A.5)
 
 | # | Decision | Status |
