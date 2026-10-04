@@ -23,6 +23,30 @@ describe('workflow golden files', () => {
   });
 });
 
+describe('ci e2e job (R8.4)', () => {
+  const e2ePlan = makePlan(spec, { commands: { ...nodePlan.commands, e2e: 'npx vitest run e2e/api.e2e.test.ts' } });
+  const pyE2e = makePlan(spec, { ...pythonPlan, commands: { ...pythonPlan.commands, e2e: 'pytest e2e/' } });
+
+  it.each([['node', e2ePlan], ['python', pyE2e]] as const)('%s plan with e2e renders the committed golden ci', async (name, plan) => {
+    await expect(renderCi(plan)).toMatchFileSnapshot(`../fixtures/workflows/${name}-e2e-ci.yml`);
+    expect(validateWorkflow('ci', renderCi(plan), plan)).toEqual([]);
+  });
+
+  it('runs compose up, the e2e command with SERVICE_URL on the published port, then compose down', () => {
+    const ci = renderCi(e2ePlan);
+    const order = ['docker compose up -d --build --wait', 'npx vitest run e2e/api.e2e.test.ts', 'docker compose down -v'].map((c) => ci.indexOf(c));
+    expect(order.every((i) => i > 0)).toBe(true);
+    expect([...order].sort((x, y) => x - y)).toEqual(order);
+    expect(ci).toContain('SERVICE_URL: http://localhost:3000');
+    expect(ci).toContain('needs: verify');
+  });
+
+  it('a plan without e2e renders no e2e job and rejects a stripped e2e step', () => {
+    expect(renderCi(nodePlan)).not.toContain('e2e');
+    expect(validateWorkflow('ci', renderCi(e2ePlan).replace('docker compose down -v', 'docker compose down'), e2ePlan).join(', ')).toMatch(/not a command from the plan|compose down/);
+  });
+});
+
 describe('validateWorkflow', () => {
   const ci = renderCi(nodePlan);
   const release = renderRelease(nodePlan);

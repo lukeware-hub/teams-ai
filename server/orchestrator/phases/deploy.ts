@@ -1,12 +1,13 @@
 import type { PlanTask } from '../../contracts/plan.js';
 import { runDeployment, type DeploymentIntent, type DeployStage } from '../../deploy/target.js';
+import { e2eCommand, type E2eRow } from '../../exec/e2e.js';
 import type { SmokeRow } from '../../exec/smoke.js';
 import { RunEvent } from '../../pipeline/run-state.js';
 import { Intent, OrchEvent } from '../events.js';
-import { SMOKE_CONTRACT } from '../steps.js';
+import { E2E_CONTRACT, SMOKE_CONTRACT } from '../steps.js';
 import { checkoutMain, type PhaseDeps } from './shared.js';
 
-export type Phase5Result = { ok: true; url: string; smoke: SmokeRow[]; healthcheck: string } | { ok: false; reason: string; fixTask?: PlanTask };
+export type Phase5Result = { ok: true; url: string; smoke: SmokeRow[]; healthcheck: string; e2e?: E2eRow[] } | { ok: false; reason: string; fixTask?: PlanTask };
 export const MAX_DEPLOY_ATTEMPTS = 3;
 
 export function deployIntent(deps: PhaseDeps, tag: string): DeploymentIntent {
@@ -24,6 +25,12 @@ const fixTask = (deps: PhaseDeps, attempt: number, stage: DeployStage, detail: s
 
 Contract: ${SMOKE_CONTRACT}`, affectedPaths: ['tests/smoke/**', 'tests/smoke', 'vitest.config.ts', 'package.json'], owner: 'dev' };
   }
+  if (stage === 'e2e') {
+    const suite = deps.plan!.delivery?.e2eSuite;
+    return { ...base, description: `Deploy attempt ${attempt} succeeded and smoke passed but the e2e suite did not prove the acceptance criteria: ${detail}
+
+Contract: ${E2E_CONTRACT}`, affectedPaths: [...(suite ? [suite] : []), 'e2e/**', 'tests/e2e/**', 'package.json'], owner: 'dev' };
+  }
   return { ...base, description: `Deploy attempt ${attempt} failed at ${stage}: ${detail}`, affectedPaths: [...deps.plan!.deploy.manifests, 'Dockerfile'], owner: 'devops' };
 };
 
@@ -40,7 +47,7 @@ export function deployStartAttempt(deps: PhaseDeps): 1 | 2 | 3 {
 export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fixTasks?: boolean } = {}): Promise<Phase5Result> {
   if (!deps.plan || !deps.target || !deps.smoke) throw new Error('Phase 5 needs plan, target and smoke');
   const done = deps.journal.events.find((e) => e.type === OrchEvent.DeployVerified && e.data.attempt === attempt);
-  if (done) return { ok: true, url: String(done.data.url), smoke: done.data.smoke as SmokeRow[], healthcheck: String(done.data.healthcheck) };
+  if (done) return { ok: true, url: String(done.data.url), smoke: done.data.smoke as SmokeRow[], healthcheck: String(done.data.healthcheck), ...(done.data.e2e ? { e2e: done.data.e2e as E2eRow[] } : {}) };
   if (!deps.journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 5)) await deps.journal.fact(OrchEvent.PhaseStarted, { phase: 5 });
   const tag = await checkoutMain(deps); const intent = deployIntent(deps, tag); const key = `deploy-${attempt}`;
   const failed = async (stage: DeployStage, detail: string, rolledBack: boolean, rollbackHealthy: boolean | null, previous: string | null): Promise<Phase5Result> => {
@@ -48,7 +55,7 @@ export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fix
     if (rolledBack) await deps.journal.fact(OrchEvent.RollbackDone, { attempt, previous });
     if (attempt >= 3 || opts.fixTasks === false) return { ok: false, reason: `deploy failed on attempt ${attempt} at ${stage}: ${detail}` };
     // The plan is not the Dev's to edit, so a deploy-fix task could only come back empty and burn tokens.
-    if (stage === 'smoke' && detail === 'plan.commands.smoke missing') return { ok: false, reason: `deploy failed at ${stage}: ${detail}` };
+    if ((stage === 'smoke' && detail === 'plan.commands.smoke missing') || (stage === 'e2e' && detail.startsWith('plan.commands.e2e missing'))) return { ok: false, reason: `deploy failed at ${stage}: ${detail}` };
     const task = fixTask(deps, attempt, stage, detail); await deps.journal.fact(RunEvent.FixTasksPlanned, { tasks: [task] });
     return { ok: false, reason: `deploy failed at ${stage}; deploy-fix task planned`, fixTask: task };
   };
@@ -65,5 +72,12 @@ export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fix
   }
   let url: string; let gateUrl: string | undefined; let gateNet: string | undefined; try { url = await (deps.target.serviceUrl ? deps.target.serviceUrl(intent) : ''); gateUrl = deps.target.gateServiceUrl ? await deps.target.gateServiceUrl(intent) : undefined; gateNet = deps.target.gateNetwork?.(intent); } catch (e) { return failed('verify', (e as Error).message, false, null, previous); }
   const s = await deps.smoke(deps.ws.repo, url, gateUrl, gateNet); if (!s.ok) { let rb = false; let rh: boolean | null = null; if (previous) { await deps.target.rollback(intent, previous); rb = true; rh = (await deps.target.verify(intent)).healthy; } return failed('smoke', s.detail, rb, rh, previous); }
-  await deps.journal.fact(OrchEvent.DeployVerified, { attempt, url, smoke: s.rows, healthcheck, tag }); return { ok: true, url, smoke: s.rows, healthcheck };
+  // The e2e suite runs only against a deployment whose smoke already passed (roadmap R8.4). Legacy plans without commands.e2e skip it unless the run requires it.
+  let e2eRows: E2eRow[] | undefined;
+  if (deps.e2e && (e2eCommand(deps.plan) || deps.requireE2e)) {
+    const e = await deps.e2e(deps.ws.repo, url, gateUrl, gateNet);
+    if (!e.ok) { let rb = false; let rh: boolean | null = null; if (previous) { await deps.target.rollback(intent, previous); rb = true; rh = (await deps.target.verify(intent)).healthy; } return failed('e2e', e.detail, rb, rh, previous); }
+    e2eRows = e.rows;
+  }
+  await deps.journal.fact(OrchEvent.DeployVerified, { attempt, url, smoke: s.rows, healthcheck, tag, ...(e2eRows ? { e2e: e2eRows } : {}) }); return { ok: true, url, smoke: s.rows, healthcheck, ...(e2eRows ? { e2e: e2eRows } : {}) };
 }

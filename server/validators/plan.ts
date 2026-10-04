@@ -1,5 +1,6 @@
 import { DELIVERY_PATH_FIELDS, type Plan, type PlanTask } from '../contracts/plan.js';
 import type { Spec } from '../contracts/spec.js';
+import { validateE2e } from './e2e.js';
 import { validateSecurityGates } from './security-tooling.js';
 
 export const SCAFFOLD_TASK_ID = 'T0-scaffold';
@@ -13,6 +14,8 @@ export interface PlanCheckOptions {
   requireDelivery?: boolean;
   /** New plans must carry the prescribed security gates (roadmap R8.5); false keeps older plans valid. */
   requireSecurityTooling?: boolean;
+  /** New plans must carry a post-deploy e2e gate (roadmap R8.4); false keeps older plans valid. */
+  requireE2e?: boolean;
 }
 
 export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): string[] {
@@ -103,6 +106,7 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
   }
 
   if (opts.requireSecurityTooling) errors.push(...validateSecurityGates(plan));
+  if (opts.requireE2e) errors.push(...validateE2e(plan));
 
   if (!plan.delivery) {
     if (opts.requireDelivery) errors.push('delivery is required: list dockerfile, compose, ciWorkflow, releaseWorkflow, e2eSuite and readmeSections');

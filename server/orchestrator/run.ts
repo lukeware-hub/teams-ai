@@ -37,6 +37,7 @@ import { readmePack, runAgentStep, type AgentStepDeps, type AgentStepRequest, ty
 import { TaskRunner, type TaskRunnerDeps } from './task-runner.js';
 import { eventsFile, expandHome, graphDir, nextRunId, runDir, stateFile, stepDir, type Workspace } from './workspace.js';
 import type { DeployTarget } from '../deploy/target.js';
+import { E2E_GATE, runE2e } from '../exec/e2e.js';
 import { runSmoke } from '../exec/smoke.js';
 
 export interface RunDeps {
@@ -47,6 +48,7 @@ export interface RunDeps {
   firstSpec: boolean;
   requireDelivery?: boolean;
   requireSecurityTooling?: boolean;
+  requireE2e?: boolean;
   exec: Exec;
   ghExec: Exec;
   runStep: typeof runStepFn;
@@ -272,7 +274,7 @@ export class Run {
     const install = await this.installDeps(worktree);
     if (install) return { results: [install], blockingFailure: install };
     return runGates(
-      plan.gates.filter((g) => g.blocking),
+      plan.gates.filter((g) => g.blocking && g.name !== E2E_GATE), // the e2e gate runs in Phase 5 only
       {
         worktree,
         image: plan.gateImage,
@@ -396,7 +398,7 @@ export class Run {
 
   private phaseDeps(): PhaseDeps {
     return {
-      journal: this.journal, ws: this.deps.ws, spec: this.deps.spec, project: this.deps.project, specHash: this.deps.spec.specHash!, firstSpec: this.deps.firstSpec, requireDelivery: this.deps.requireDelivery, requireSecurityTooling: this.deps.requireSecurityTooling, exec: this.deps.exec,
+      journal: this.journal, ws: this.deps.ws, spec: this.deps.spec, project: this.deps.project, specHash: this.deps.spec.specHash!, firstSpec: this.deps.firstSpec, requireDelivery: this.deps.requireDelivery, requireSecurityTooling: this.deps.requireSecurityTooling, requireE2e: this.deps.requireE2e, exec: this.deps.exec,
       runAgent: this.runAgent,
       decider: this.decider(),
       mergeQueue: this.mergeQueue,
@@ -414,6 +416,12 @@ export class Run {
         const r = await runSmoke(p, this.deps.spec, { worktree: contextDir, image: p.gateImage, junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-smoke`, user: containerUser(), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, this.deps.gateExecutor?.kind === 'k8s' || gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
         // The gate's output is the only clue the fix task gets about why a smoke test is missing or failing.
         const tail = r.ok || !r.result ? '' : `\n\nsmoke gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
+        return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
+      },
+      e2e: async (contextDir, url, gateUrl, gateNetwork) => {
+        const p = this.plan!;
+        const r = await runE2e(p, this.deps.spec, { worktree: contextDir, image: p.gateImage, junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-e2e`, user: containerUser(), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, this.deps.gateExecutor?.kind === 'k8s' || gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
+        const tail = r.ok || !r.result ? '' : `\n\ne2e gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
       },
     };

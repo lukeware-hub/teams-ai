@@ -24,6 +24,8 @@ Return one plan. Add `alternatives` (at most two full plans with the same `specH
 
 Fill `delivery` with the artifacts the project must ship: `dockerfile`, `compose`, `ciWorkflow`, `releaseWorkflow`, `e2eSuite` (repository-relative file paths, for example `Dockerfile`, `docker-compose.yml`, `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `e2e/`-suite entry file) and `readmeSections` (README headings that must exist, such as Run, Test, Environment, Architecture, Pipeline). Each listed file must be created by some task's `affectedPaths`; Phase 4 fails the run if a listed file is missing on main.
 
+Plan one task that creates the e2e suite at `delivery.e2eSuite` (black-box tests over `process.env.SERVICE_URL`, one `[AC-xxx]` test per acceptance criterion, written with the Test agent's rules) and set `commands.e2e` to the command that runs it; the command must reference the `e2eSuite` path and differ from `commands.smoke`. Phase 5 runs it after the compose deploy and smoke; a failure blocks the run.
+
 Security gates use prescribed tools; the plan pack lists the exact commands and the orchestrator rejects any other. Gates, all blocking and in this order: `security-tools` (egress; installs the scanners into `.tools/bin`), `secret-scan` (gitleaks), `sast` (semgrep, `--severity ERROR --error`), `dependency-scan` (osv-scanner, or `npm audit --audit-level=high` for node, `pip-audit` for python; egress) and `image-scan` (trivy image, `--severity CRITICAL --exit-code 1`; egress; after `build`). Choose a non-slim glibc `gateImage` that has curl, tar and python3/pip. Never add `|| true` or `--exit-code 0`.
 
 ## Answering a spec gap (`spec-gap` step)

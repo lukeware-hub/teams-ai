@@ -8,6 +8,7 @@ import type { GateResult } from '../../exec/gate-runner.js';
 import type { Decider } from '../../decide/decider.js';
 import type { EvidenceTask } from '../../evidence/matrix.js';
 import type { DeployTarget } from '../../deploy/target.js';
+import type { E2eRow } from '../../exec/e2e.js';
 import type { SmokeRow } from '../../exec/smoke.js';
 import type { Exec } from '../../exec/command.js';
 import { commitAll, createWorktree, fetch as gitFetch, git } from '../../git/git.js';
@@ -29,6 +30,7 @@ export interface PhaseDeps {
   requireDelivery?: boolean;
   /** Phase 2 requires the prescribed security gates (roadmap R8.5). */
   requireSecurityTooling?: boolean;
+  requireE2e?: boolean;
   exec: Exec;
   runAgent: <K extends StepKind>(req: AgentStepRequest<K>) => Promise<StepOutcome<OutputOf<K>>>;
   mergeQueue: MergeQueue;
@@ -49,6 +51,8 @@ export interface PhaseDeps {
   boundaries?: () => Promise<readonly string[]>;
   target?: DeployTarget;
   smoke?: (contextDir: string, serviceUrl: string, gateServiceUrl?: string, gateNetwork?: string) => Promise<{ ok: boolean; rows: SmokeRow[]; detail: string }>;
+  /** Post-deploy e2e suite (roadmap R8.4); same arguments as `smoke`. */
+  e2e?: (contextDir: string, serviceUrl: string, gateServiceUrl?: string, gateNetwork?: string) => Promise<{ ok: boolean; rows: E2eRow[]; detail: string }>;
   secretNames?: () => string[];
 }
 

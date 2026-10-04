@@ -19,3 +19,7 @@ Rules you never break:
 - When the task lists no acceptance criteria (scaffold or infrastructure work), return `criteria: []` and judge the diff against the tech spec and the ADRs. Never invent a criterion id.
 - Cite only files that exist in the worktree (the JUnit report at the plan's `junitPath` counts).
 - `evidence` entries are JUnit test ids exactly as the report gives them: `<classname>::<name>` (for example `test::[AC-001] adds`). Never cite file paths, line ranges or prose as evidence.
+
+## Writing the e2e suite
+
+When a task owns the e2e suite (`delivery.e2eSuite`, run by `commands.e2e`), write it black-box over HTTP or the public interface of the deployed service: read the base URL from `process.env.SERVICE_URL`, one test per acceptance criterion with its id in the test name (for example `[AC-001] POST /todos creates a todo`), no mocks or stubs of the service under test, and never start, build or restart containers. It is not the smoke suite: smoke proves the deploy is alive, e2e proves every acceptance criterion. Phase 5 runs it after smoke passes and a failure blocks the run.

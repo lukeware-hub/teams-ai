@@ -39,6 +39,8 @@ export const Commands = z.object({
   healthcheck: z.string().min(1),
   /** Runs against SERVICE_URL after deploy and must write JUnit to junitPath (spec Phase 5). */
   smoke: z.string().min(1).optional(),
+  /** Black-box e2e suite run after deploy against SERVICE_URL (roadmap R8.4); not the smoke command. */
+  e2e: z.string().min(1).optional(),
 });
 
 /**

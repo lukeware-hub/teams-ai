@@ -119,7 +119,11 @@ export function coveragePack(base: PackBase, opts: { techSpecText: string }): Co
 export const SMOKE_CONTRACT =
   'commands.smoke runs inside gateImage against a service the orchestrator has ALREADY deployed: the tests read the base URL from process.env.SERVICE_URL, never start, build or restart containers (docker is not available there), and each acceptance criterion with smoke: true needs at least one test whose name carries its id, e.g. "[AC-001] GET /health answers 200"';
 
-export function planRules(firstSpec: boolean, requireDelivery = false, requireSecurityTooling = false): string {
+/** How Phase 5 runs commands.e2e (roadmap R8.4); the Test agent writing the suite and the SM planning it must know it. */
+export const E2E_CONTRACT =
+  'commands.e2e is required and is NOT commands.smoke: it runs the suite at delivery.e2eSuite (the command must reference that path) inside gateImage after the compose stack is deployed and smoke has passed, black-box over HTTP against process.env.SERVICE_URL, no mocks of the service under test, never starting containers; every acceptance criterion needs one test whose name carries its id, e.g. "[AC-001] POST /todos creates a todo"; plan one task owned by dev that creates the suite and depends on the service tasks; a failing e2e blocks the run';
+
+export function planRules(firstSpec: boolean, requireDelivery = false, requireSecurityTooling = false, requireE2e = false): string {
   const lines = [
     'Plan rules (the orchestrator rejects a plan that breaks any of them):',
     `- gates must include these blocking gates: ${REQUIRED_BLOCKING_GATES.join(', ')} (plus a blocking typecheck gate when commands.typecheck exists)`,
@@ -132,6 +136,7 @@ export function planRules(firstSpec: boolean, requireDelivery = false, requireSe
       : '- delivery is optional; when present it must list dockerfile, compose, ciWorkflow, releaseWorkflow, e2eSuite (file paths) and readmeSections (non-empty); Phase 4 fails if a listed file is missing on main',
   ];
   if (requireSecurityTooling) lines.push(securityToolingRules());
+  if (requireE2e) lines.push(`- ${E2E_CONTRACT}`);
   if (firstSpec) {
     lines.push(
       `- first spec of the project: a task with id ${SCAFFOLD_TASK_ID} (owner dev, no dependsOn) creates the project skeleton, build, test and gate configuration; every other task depends on it directly or indirectly`,
@@ -145,12 +150,12 @@ export function planRules(firstSpec: boolean, requireDelivery = false, requireSe
 
 export function planPack(
   base: PackBase,
-  opts: { techSpecText: string; godNodes: ReadonlyArray<{ label: string; edges: number }>; feedback: string | null; firstSpec?: boolean; requireDelivery?: boolean; requireSecurityTooling?: boolean },
+  opts: { techSpecText: string; godNodes: ReadonlyArray<{ label: string; edges: number }>; feedback: string | null; firstSpec?: boolean; requireDelivery?: boolean; requireSecurityTooling?: boolean; requireE2e?: boolean },
 ): ContextPackInput {
   const human = (base.spec.tasks ?? []).map((t) => `- ${t.title}: ${t.description}`);
   const nodes = opts.godNodes.map((n) => `- ${n.label} (${n.edges} edges)`);
   const parts = [
-    planRules(opts.firstSpec ?? false, opts.requireDelivery ?? false, opts.requireSecurityTooling ?? false),
+    planRules(opts.firstSpec ?? false, opts.requireDelivery ?? false, opts.requireSecurityTooling ?? false, opts.requireE2e ?? false),
     human.length > 0 ? `Human-defined tasks (derive dependencies, keep them):\n${human.join('\n')}` : '',
     nodes.length > 0 ? `Central modules of the current code (graph god-nodes):\n${nodes.join('\n')}` : '',
     opts.feedback ?? '',

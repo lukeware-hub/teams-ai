@@ -1,5 +1,6 @@
 import { parse, stringify } from 'yaml';
 import type { Plan } from '../contracts/plan.js';
+import { e2eCommand } from '../exec/e2e.js';
 
 /**
  * Deterministic GitHub Actions pipelines for a generated repository (roadmap R8.3). Rendered from the
@@ -40,11 +41,15 @@ function setupStep(plan: Plan): Step[] {
   return [{ uses: kind === 'node' ? ACTIONS.node : ACTIONS.python, ...(version ? { with: { [`${kind}-version`]: version } } : {}) }];
 }
 
+export const COMPOSE_UP = 'docker compose up -d --build --wait';
+export const COMPOSE_DOWN = 'docker compose down -v';
+
 /** Commands a CI/release run step may use: every plan command and every plan gate command. */
 export function allowedCommands(plan: Plan): Set<string> {
   const out = new Set<string>();
   for (const v of Object.values(plan.commands)) if (typeof v === 'string') out.add(v.trim());
   for (const g of plan.gates) out.add(g.command.trim());
+  if (e2eCommand(plan)) { out.add(COMPOSE_UP); out.add(COMPOSE_DOWN); }
   return out;
 }
 
@@ -64,12 +69,28 @@ export function renderCi(plan: Plan): string {
     run('Build', c.build),
     { name: 'Secret scan', uses: ACTIONS.gitleaks, env: { GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}' } },
   ];
+  const e2e = e2eCommand(plan);
+  const e2eJob = e2e ? {
+    e2e: {
+      needs: 'verify',
+      'runs-on': 'ubuntu-latest',
+      'timeout-minutes': 30,
+      steps: [
+        { uses: ACTIONS.checkout },
+        ...setupStep(plan),
+        run('Install', c.install),
+        run('Compose up', COMPOSE_UP),
+        { name: 'E2E', run: e2e, env: { SERVICE_URL: `http://localhost:${plan.deploy.port}` } },
+        { name: 'Compose down', if: 'always()', run: COMPOSE_DOWN },
+      ],
+    },
+  } : {};
   return dump({
     name: 'ci',
     on: { push: { branches: ['main'] }, pull_request: {} },
     permissions: { contents: 'read' },
     concurrency: { group: 'ci-${{ github.ref }}', 'cancel-in-progress': true },
-    jobs: { verify: { 'runs-on': 'ubuntu-latest', 'timeout-minutes': 30, steps } },
+    jobs: { verify: { 'runs-on': 'ubuntu-latest', 'timeout-minutes': 30, steps }, ...e2eJob },
   });
 }
 
@@ -146,6 +167,11 @@ export function validateWorkflow(kind: 'ci' | 'release', text: string, plan: Pla
     const need: Array<[string | undefined, string]> = [[c.install, 'install'], [c.format, 'format'], [c.lint, 'lint'], [c.typecheck, 'typecheck'], [c.test, 'test'], [c.build, 'build']];
     for (const [cmd, label] of need) if (cmd !== undefined && !runs.includes(cmd.trim())) errors.push(`ci is missing the ${label} step (${cmd})`);
     if (!uses.some((u) => u.startsWith('gitleaks/'))) errors.push('ci is missing the secret scan step');
+    const e2e = e2eCommand(plan);
+    if (e2e) {
+      for (const [cmd, label] of [[COMPOSE_UP, 'compose up'], [e2e, 'e2e'], [COMPOSE_DOWN, 'compose down']] as const) if (!runs.includes(cmd.trim())) errors.push(`ci is missing the ${label} step (${cmd})`);
+      if (!text.includes('SERVICE_URL')) errors.push('ci e2e step must set SERVICE_URL');
+    }
   } else {
     for (const prefix of ['actions/checkout@', 'docker/setup-buildx-action@', 'docker/login-action@', 'docker/build-push-action@']) {
       if (!uses.some((u) => u.startsWith(prefix))) errors.push(`release is missing ${prefix}vN`);

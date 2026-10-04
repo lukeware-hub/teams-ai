@@ -29,7 +29,7 @@ export interface DeployTarget {
   gateNetwork?(intent: DeploymentIntent): string | undefined;
 }
 
-export type DeployStage = 'validate' | 'build' | 'apply' | 'verify' | 'smoke';
+export type DeployStage = 'validate' | 'build' | 'apply' | 'verify' | 'smoke' | 'e2e';
 
 export type DeployResult =
   | { ok: true; previous: string | null }
