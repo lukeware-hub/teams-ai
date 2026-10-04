@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { OUTPUT_SCHEMAS, toJsonSchema, type OutputOf, type StepKind } from '../agents/outputs.js';
 import type { AgentDefinition } from '../agents/registry.js';
-import { ALWAYS_DENIED } from '../agents/registry.js';
+import { ALWAYS_DENIED, NESTED_DENIED } from '../agents/registry.js';
 import type { Accounting } from '../budget/accounting.js';
 import type { ProviderProfile, Role } from '../config/config.js';
 import type { Effort } from '../decide/decisions/model-tier.js';
@@ -10,6 +10,8 @@ import type { FailureKind } from '../scheduler/retry-policy.js';
 import { validateAgentOutput } from '../validators/agent-output.js';
 import type { RefContext, References } from '../validators/references.js';
 import { buildInvocation, ensureTrusted } from './invocation.js';
+import { sandboxPolicyViolation } from './sandbox-policy.js';
+import { createStepHome, removeStepHome } from './step-home.js';
 import { preflightSandbox, runProcess, type ProcessCaps, type RawStepResult, type RunnerBinary } from './process-runner.js';
 import { writeRoleSettings, type RoleSettingsInput } from './role-settings.js';
 import { isRateLimitRejected, type ResultSummary } from './stream-events.js';
@@ -47,14 +49,15 @@ export interface StepDeps {
   binary: RunnerBinary;
   caps: ProcessCaps;
   accounting: Accounting;
-  claudeJsonPath: string;
+  /** Unused since agent steps get their own HOME (trust is recorded in the step home); kept for callers. */
+  claudeJsonPath?: string;
   /** Directory (outside any worktree) where per-role settings files are written. */
   settingsDir: string;
   /** Every step cwd must live under this directory; anything else is never trusted or run. */
   workspacesRoot: string;
   network: Pick<RoleSettingsInput, 'allowedDomains'>;
   /** Config `sandbox`; when disabled the bubblewrap/socat tool check is skipped as well. */
-  sandbox?: { enabled: boolean };
+  sandbox?: { enabled: boolean; unsafeNoSandbox?: boolean };
   hostEnv?: NodeJS.ProcessEnv;
   onEvent?: (line: string) => void;
   clock?: () => Date;
@@ -132,12 +135,23 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
   if (!(await isInside(deps.workspacesRoot, req.cwd))) {
     return environmentFailure(`cwd ${req.cwd} is outside the workspaces root ${deps.workspacesRoot}`);
   }
+  const violation = sandboxPolicyViolation(deps.sandbox, hostEnv);
+  if (violation) return environmentFailure(violation);
   if (deps.binary.requireSandboxTools && deps.sandbox?.enabled !== false) {
     const missing = await preflightSandbox(hostEnv);
     if (missing.length > 0) return environmentFailure(`sandbox tools missing on PATH: ${missing.join(', ')} (apt install bubblewrap socat)`);
   }
 
-  await ensureTrusted(req.cwd, deps.claudeJsonPath);
+  const home = await createStepHome(deps.settingsDir, hostEnv, req.profile.provider === 'claude');
+  try {
+    return await runStepIn(req, deps, hostEnv, home);
+  } finally {
+    await removeStepHome(home);
+  }
+}
+
+async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, hostEnv: NodeJS.ProcessEnv, home: string): Promise<StepOutcome<OutputOf<K>>> {
+  await ensureTrusted(req.cwd, path.join(home, '.claude.json'));
   const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: req.extraAllow, sandboxEnabled: deps.sandbox?.enabled });
   const invocation = buildInvocation(
     {
@@ -148,8 +162,9 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
       prompt: req.prompt,
       jsonSchema: toJsonSchema(req.kind),
       tools: req.agent.tools,
-      disallowedTools: ALWAYS_DENIED,
+      disallowedTools: [...ALWAYS_DENIED, ...NESTED_DENIED],
       settingsPath,
+      home,
       sessionId: req.sessionId,
       resume: req.resume,
       omniroute: req.omniroute,

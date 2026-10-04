@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { ALWAYS_DENIED } from '../agents/registry.js';
+import { ALWAYS_DENIED, NESTED_DENIED } from '../agents/registry.js';
 import type { Role } from '../config/config.js';
 
 /**
@@ -41,13 +41,13 @@ const SUITE_BASH = [
   'Bash(head:*)',
   'Bash(tail:*)',
   'Bash(grep:*)',
-  'Bash(find:*)',
   'Bash(wc:*)',
   'Bash(mktemp:*)',
   'Bash(echo:*)',
   'Bash(pwd:*)',
   'Bash(true:*)',
 ] as const;
+// `find` is deliberately absent (audit H3): `-exec` runs any command; use ls/grep.
 const ROLE_ALLOW: Record<Role, readonly string[]> = {
   sm: [],
   po: [],
@@ -77,6 +77,7 @@ export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSet
     // Edit(path) rules cover every file-editing tool; a Write(path) rule is not matched by the file permission checks.
     'Edit(.claude/**)',
     ...ALWAYS_DENIED,
+    ...NESTED_DENIED,
   ];
   return {
     sandbox: { enabled: input.sandboxEnabled ?? true, network: { allowedDomains: [...input.allowedDomains] } },

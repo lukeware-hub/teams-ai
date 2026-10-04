@@ -35,6 +35,29 @@ export const ALWAYS_DENIED: readonly string[] = [
   'Edit(.claude/**)',
 ];
 
+/**
+ * Nested invocations of the orchestrator-only commands through allowed interpreters. These match the
+ * command text, so they are defense in depth only: `node` and `npm run` can still build a command
+ * string at runtime. The real boundary is the empty per-step HOME (no gh/kube/docker credentials to
+ * use) plus the sandbox (network allowlist, filesystem confinement).
+ */
+export const NESTED_DENIED: readonly string[] = [
+  'Bash(node -e:*)',
+  'Bash(node --eval:*)',
+  'Bash(node -p:*)',
+  'Bash(node --print:*)',
+  'Bash(npm exec:*)',
+  'Bash(npm x:*)',
+  'Bash(npx gh:*)',
+  'Bash(npx kubectl:*)',
+  'Bash(* git push*)',
+  'Bash(* kubectl *)',
+  'Bash(* docker *)',
+  'Bash(* gh *)',
+  // Shell redirects and scripts must not write the worktree settings directory either (audit M2).
+  'Bash(*.claude/*)',
+];
+
 export class AgentFileError extends Error {}
 
 const REQUIRED_FIELDS = ['name', 'description', 'model', 'tools'] as const;

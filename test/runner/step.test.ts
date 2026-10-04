@@ -138,7 +138,7 @@ describe('runStep', () => {
         expect(outcome.failure).toBe('environment');
         expect(outcome.errors[0]).toMatch(/outside the workspaces root/);
       }
-      await expect(fs.access(deps.claudeJsonPath)).rejects.toThrow();
+      await expect(fs.access(deps.settingsDir)).rejects.toThrow();
       expect(deps.accounting.total().outputTokens).toBe(0);
     } finally {
       await fs.rm(outside, { recursive: true, force: true });
@@ -172,12 +172,11 @@ describe('runStep', () => {
     if (!outcome.ok) expect(outcome.failure).toBe('schema');
   });
 
-  it('trusts the working directory and writes the role settings before spawning', async () => {
+  it('writes the role settings before spawning and never touches the host claude.json', async () => {
     const capture = path.join(dir, 'capture.json');
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
     await runStep(request(), deps);
-    const json = JSON.parse(await fs.readFile(deps.claudeJsonPath, 'utf8'));
-    expect(json.projects[await fs.realpath(dir)].hasTrustDialogAccepted).toBe(true);
+    await expect(fs.access(deps.claudeJsonPath!)).rejects.toThrow();
     const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
     const settingsPath = captured.argv[captured.argv.indexOf('--settings') + 1];
     expect(settingsPath).toBe(path.join(deps.settingsDir, 'dev.settings.json'));
@@ -201,7 +200,7 @@ describe('runStep', () => {
     const outcome = await runStep(request({ cwd: missing }), deps);
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) expect(outcome.failure).toBe('environment');
-    await expect(fs.readFile(deps.claudeJsonPath, 'utf8')).rejects.toThrow();
+    await expect(fs.access(deps.settingsDir)).rejects.toThrow();
   });
 
   it('returns an environment failure when the binary cannot be spawned', async () => {

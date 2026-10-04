@@ -9,7 +9,9 @@ export const ISOLATION_FLAGS: readonly string[] = [
   'stream-json',
   '--verbose',
   '--setting-sources',
-  'project',
+  // Never 'project': the worktree's .claude/settings*.json is agent-writable (audit M2). All policy
+  // arrives through --settings; 'user' reads only the per-step empty HOME, which holds no settings.
+  'user',
   '--strict-mcp-config',
   '--mcp-config',
   '{"mcpServers":{}}',
@@ -19,9 +21,9 @@ export const ISOLATION_FLAGS: readonly string[] = [
 ];
 
 /**
- * Only these host variables reach an agent process (spec §14). HOME is required for the
- * subscription login; the credential stores under it are covered by Read deny rules in the
- * role settings (see role-settings.ts PROTECTED_READ_PATHS).
+ * Only these host variables reach an agent process (spec §14). runStep overrides HOME
+ * with an empty per-step directory (see step-home.ts), so the host credential stores are not reachable;
+ * the Read deny rules in role-settings.ts PROTECTED_READ_PATHS remain as a second layer.
  */
 export const ENV_ALLOWLIST: readonly string[] = ['HOME', 'PATH', 'TERM', 'LANG', 'LC_ALL', 'USER', 'SHELL', 'TMPDIR', 'TZ'];
 
@@ -45,6 +47,8 @@ export interface InvocationInput {
    * The step model wins over the agent file's model.
    */
   agentDefinition?: { description: string; model: string; tools: readonly string[]; body: string };
+  /** Per-step empty HOME (outside the worktree); replaces the host HOME and TMPDIR in the child env. */
+  home?: string;
   /** Claude Code effort level for this step (spec 10A.5 decision 11); absent means the CLI default. */
   effort?: Effort;
 }
@@ -94,6 +98,10 @@ export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessE
   }
 
   const env = sanitizeEnv(hostEnv);
+  if (input.home) {
+    env.HOME = input.home;
+    env.TMPDIR = path.join(input.home, 'tmp');
+  }
   if (input.profile.provider === 'omniroute') {
     if (!input.omniroute) throw new InvocationError('omniroute profile requires baseUrl and token');
     if (input.omniroute.token.trim() === '') {

@@ -2,7 +2,7 @@
   "github": {
     "owner": "your-github-org-or-user"
   },
-  "sandbox": { "enabled": false },
+  "sandbox": { "enabled": true },
   "docker": {
     "bindRewrite": {
       "from": "/root/.teams-ai",
