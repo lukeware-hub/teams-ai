@@ -1,5 +1,7 @@
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import type { FixTasksOutput } from '../../agents/outputs.js';
-import type { Plan, PlanTask } from '../../contracts/plan.js';
+import { DELIVERY_PATH_FIELDS, type Plan, type PlanTask } from '../../contracts/plan.js';
 import type { TestResult } from '../../evidence/junit.js';
 import { buildEvidenceMatrix, readyForValidation, type EvidenceRow } from '../../evidence/matrix.js';
 import type { GateResult } from '../../exec/gate-runner.js';
@@ -24,6 +26,18 @@ export function dedupeJunit(all: TestResult[]): TestResult[] {
 export type Phase4Result = { ok: true; matrix: EvidenceRow[] } | { ok: false; reason: string; fixTasks?: PlanTask[] };
 const tail = (s: string) => s.length > 2000 ? s.slice(-2000) : s;
 
+/** Delivery files listed in the plan that are absent from the checked-out main (roadmap R8.1). */
+export async function missingDelivery(repo: string, plan: Plan): Promise<string[]> {
+  const missing: string[] = [];
+  for (const field of DELIVERY_PATH_FIELDS) {
+    const rel = plan.delivery?.[field];
+    if (!rel) continue;
+    const present = await fs.stat(path.join(repo, rel)).then(() => true, () => false);
+    if (!present) missing.push(`${field}: ${rel}`);
+  }
+  return missing;
+}
+
 export async function runPhase4(deps: PhaseDeps, round: 1 | 2): Promise<Phase4Result> {
   if (!deps.plan || !deps.gates || !deps.tasks) throw new Error('Phase 4 needs plan, gates and tasks');
   const prior = deps.journal.events.find((e) => e.type === OrchEvent.VerificationPassed && e.data.round === round);
@@ -34,6 +48,12 @@ export async function runPhase4(deps: PhaseDeps, round: 1 | 2): Promise<Phase4Re
   if (round === 1 && plannedBefore.length > 0) return { ok: false, reason: 'verification failed; fix tasks already planned', fixTasks: plannedBefore.flatMap((e) => e.data.tasks as PlanTask[]) };
   if (!deps.journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 4 && e.data.round === round)) await deps.journal.fact(OrchEvent.PhaseStarted, { phase: 4, round });
   await checkoutMain(deps);
+  const absent = await missingDelivery(deps.ws.repo, deps.plan);
+  if (absent.length > 0) {
+    const reason = `delivery contract not met on main, missing: ${absent.join(', ')}`;
+    await deps.journal.fact(OrchEvent.VerificationFailed, { round, failedTests: [], uncoveredAcs: [], matrix: [], gate: 'delivery', missingDelivery: absent });
+    return { ok: false, reason };
+  }
   let results: GateResult[] = [], blocking: GateResult | null = null;
   for (let attempt = 0; attempt < 4; attempt++) {
     ({ results, blockingFailure: blocking } = await deps.gates(deps.ws.repo, 'main'));

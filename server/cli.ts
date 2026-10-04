@@ -211,7 +211,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   const target = (opts.target ?? project.deploy.target) === 'kind'
     ? new KindTarget({ exec, secrets, cluster: 'teams-ai', namespace: cfg.executor.kind === 'k8s' ? cfg.executor.namespace : undefined, readFile: (p) => fs.readFile(p, 'utf8') })
     : new DockerLocalTarget({ exec, get: httpGet, secrets, serviceHost: cfg.docker.serviceHost, publishBind: cfg.docker.publishBind });
-  return { cfg, ws, project, spec, firstSpec, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target, gateExecutor: createGateExecutor(cfg.executor, exec) };
+  return { cfg, ws, project, spec, firstSpec, requireDelivery: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target, gateExecutor: createGateExecutor(cfg.executor, exec) };
 }
 
 type Factory = (deps: RunDeps, runId?: string, explicitId?: string) => Promise<Run>;

@@ -1,4 +1,4 @@
-import type { Plan, PlanTask } from '../contracts/plan.js';
+import { DELIVERY_PATH_FIELDS, type Plan, type PlanTask } from '../contracts/plan.js';
 import type { Spec } from '../contracts/spec.js';
 
 export const SCAFFOLD_TASK_ID = 'T0-scaffold';
@@ -8,6 +8,8 @@ export const REQUIRED_BLOCKING_GATES = ['format', 'lint', 'unit-test', 'build', 
 
 export interface PlanCheckOptions {
   firstSpec: boolean;
+  /** New plans must carry `delivery` (roadmap R8.1); false keeps plans without it valid. */
+  requireDelivery?: boolean;
 }
 
 export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): string[] {
@@ -95,6 +97,15 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
   }
   if (plan.commands.typecheck && !blocking.has('typecheck')) {
     errors.push('missing blocking gate typecheck (commands.typecheck is defined)');
+  }
+
+  if (!plan.delivery) {
+    if (opts.requireDelivery) errors.push('delivery is required: list dockerfile, compose, ciWorkflow, releaseWorkflow, e2eSuite and readmeSections');
+  } else {
+    for (const field of DELIVERY_PATH_FIELDS) {
+      if (!plan.delivery[field]) errors.push(`delivery.${field} is required`);
+    }
+    if (!plan.delivery.readmeSections?.length) errors.push('delivery.readmeSections is required (at least one section)');
   }
 
   return errors;

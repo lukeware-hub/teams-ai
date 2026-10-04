@@ -44,6 +44,7 @@ export interface RunDeps {
   project: Project;
   spec: Spec;
   firstSpec: boolean;
+  requireDelivery?: boolean;
   exec: Exec;
   ghExec: Exec;
   runStep: typeof runStepFn;
@@ -393,7 +394,7 @@ export class Run {
 
   private phaseDeps(): PhaseDeps {
     return {
-      journal: this.journal, ws: this.deps.ws, spec: this.deps.spec, project: this.deps.project, specHash: this.deps.spec.specHash!, firstSpec: this.deps.firstSpec, exec: this.deps.exec,
+      journal: this.journal, ws: this.deps.ws, spec: this.deps.spec, project: this.deps.project, specHash: this.deps.spec.specHash!, firstSpec: this.deps.firstSpec, requireDelivery: this.deps.requireDelivery, exec: this.deps.exec,
       runAgent: this.runAgent,
       decider: this.decider(),
       mergeQueue: this.mergeQueue,
