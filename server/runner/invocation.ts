@@ -102,6 +102,8 @@ export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessE
     env.HOME = input.home;
     env.TMPDIR = path.join(input.home, 'tmp');
   }
+  // Plan 38: a host-provided long-lived token replaces the copied credential file for subscription steps only.
+  if (input.profile.provider === 'claude' && (hostEnv.CLAUDE_CODE_OAUTH_TOKEN ?? '').trim() !== '') env.CLAUDE_CODE_OAUTH_TOKEN = hostEnv.CLAUDE_CODE_OAUTH_TOKEN!;
   if (input.profile.provider === 'omniroute') {
     if (!input.omniroute) throw new InvocationError('omniroute profile requires baseUrl and token');
     if (input.omniroute.token.trim() === '') {

@@ -50,7 +50,11 @@ export function isAlive(deps: RunControlDeps, pid: number): boolean {
   return deps.kill(pid, 0);
 }
 
-/** Spec (run API) §5: SIGTERM to the group, poll, then SIGKILL. */
+/**
+ * Spec (run API) §5: SIGTERM to the group, poll, then SIGKILL. The graceful window (timeoutMs, 15 s) is when the orchestrator
+ * drains: it lets only the step already in flight finish and starts no other (plan 38). An agent step that outlasts the window
+ * is killed with the group; the run is then `interrupted` and a resume re-runs that step.
+ */
 export async function stop(deps: RunControlDeps, pid: number, timeoutMs = 15_000): Promise<'terminated' | 'killed' | 'gone'> {
   if (!deps.kill(-pid, 'SIGTERM')) return 'gone';
   for (let waited = 0; waited < timeoutMs; waited += POLL_MS) {

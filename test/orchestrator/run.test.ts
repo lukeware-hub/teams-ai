@@ -278,8 +278,36 @@ describe('Run', () => {
     const types = run.journal.events.map((e) => e.type);
     expect(types.filter((t) => t === 'RUN_STOP_REQUESTED')).toHaveLength(1);
     const states = [...run.journal.state.tasks.values()].map((t) => t.state);
-    expect(states).toContain('merged');
+    // Plan 38: only the dev step that was in flight finishes; the task is not carried on to validate/review/merge.
+    expect(states).not.toContain('merged');
     expect(states).toContain('ready');
+    await run.close();
+  }, 30_000);
+
+  it('plan 38: no STEP_STARTED begins after RUN_STOP_REQUESTED and the run ends RUN_FINISHED drained once the in-flight step returns', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    let devStarted: () => void = () => {};
+    const started = new Promise<void>((r) => (devStarted = r));
+    const script: Script = async (req) => {
+      if (req.kind === 'dev') {
+        devStarted();
+        await gate;
+      }
+      return happy(req);
+    };
+    const run = await Run.create(await withAgents(deps(script, { maxParallel: 1 })));
+    const done = run.execute();
+    await started;
+    await run.requestStop();
+    release();
+    expect(await done).toBe('drained');
+    const types = run.journal.events.map((e) => e.type);
+    const stopAt = types.indexOf('RUN_STOP_REQUESTED');
+    expect(stopAt).toBeGreaterThan(-1);
+    expect(types.slice(stopAt + 1)).not.toContain('STEP_STARTED');
+    expect(types[types.length - 1]).toBe('RUN_FINISHED');
+    expect(run.journal.events[run.journal.events.length - 1]!.data).toMatchObject({ result: 'drained' });
     await run.close();
   }, 30_000);
 

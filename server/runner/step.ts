@@ -12,7 +12,7 @@ import { validateAgentOutput } from '../validators/agent-output.js';
 import type { RefContext, References } from '../validators/references.js';
 import { buildInvocation, ensureTrusted } from './invocation.js';
 import { sandboxPolicyViolation } from './sandbox-policy.js';
-import { createStepHome, removeStepHome, syncBackCredentials } from './step-home.js';
+import { createStepHome, hasOauthToken, hostTokenExpiresAt, removeStepHome, syncBackCredentials } from './step-home.js';
 import { preflightSandbox, runProcess, type ProcessCaps, type RawStepResult, type RunnerBinary } from './process-runner.js';
 import { writeRoleSettings, type RoleSettingsInput } from './role-settings.js';
 import { isRateLimitRejected, type ResultSummary } from './stream-events.js';
@@ -145,12 +145,50 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
     if (missing.length > 0) return environmentFailure(`sandbox tools missing on PATH: ${missing.join(', ')} (apt install bubblewrap socat)`);
   }
 
-  const home = await createStepHome(deps.settingsDir, hostEnv, req.profile.provider === 'claude');
+  const clock = deps.clock ?? (() => new Date());
+  return withRefreshGate(req.profile.provider === 'claude', hostEnv, clock, async () => {
+    const home = await createStepHome(deps.settingsDir, hostEnv, req.profile.provider === 'claude');
+    try {
+      return await runStepIn(req, deps, hostEnv, home);
+    } finally {
+      await syncBackCredentials(home, hostEnv);
+      await removeStepHome(home);
+    }
+  });
+}
+
+/** A stored token that expires within this window is refreshed by one step at a time. */
+export const REFRESH_WINDOW_MS = 5 * 60_000;
+
+let refreshTail: Promise<void> = Promise.resolve();
+
+/**
+ * Plan 38: the CLI refreshes an expired token inside its own step HOME and the server rotates the refresh token, so two steps that
+ * start together on an expired token would each use the same (now stale) refresh token. While the host token is expired or within
+ * REFRESH_WINDOW_MS of expiry, steps run one at a time through this per-process mutex (copy, run, write back); each waiter re-reads
+ * the token after its turn, so once one step has refreshed it the rest run in parallel again. A fresh token (the normal case),
+ * an omniroute step or CLAUDE_CODE_OAUTH_TOKEN never takes the lock.
+ */
+export async function withRefreshGate<T>(claudeLogin: boolean, hostEnv: NodeJS.ProcessEnv, clock: () => Date, fn: () => Promise<T>): Promise<T> {
+  if (!claudeLogin || hasOauthToken(hostEnv)) return fn();
+  const stale = async (): Promise<boolean> => {
+    const at = await hostTokenExpiresAt(hostEnv);
+    return at !== null && at - clock().getTime() < REFRESH_WINDOW_MS;
+  };
+  if (!(await stale())) return fn();
+  const prev = refreshTail;
+  let release: () => void = () => {};
+  refreshTail = new Promise<void>((r) => (release = r));
+  await prev;
+  let released = false;
   try {
-    return await runStepIn(req, deps, hostEnv, home);
+    if (!(await stale())) {
+      release();
+      released = true;
+    }
+    return await fn();
   } finally {
-    await syncBackCredentials(home, hostEnv);
-    await removeStepHome(home);
+    if (!released) release();
   }
 }
 

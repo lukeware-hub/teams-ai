@@ -642,8 +642,10 @@ export class Run {
           this.start(id);
         }
       }
-      // Draining (spec §7): nothing new starts, but tasks already active run to their terminal state.
-      if (this.journal.state.status === 'running' || this.journal.state.status === 'draining') {
+      // Draining (spec §7, plan 38): after a stop request only the step already in flight finishes (a budget drain still lets active tasks run to their end). A task that is mid-pipeline (implementing -> validating -> ...)
+      // is NOT restarted for its next step, or a STEP_STARTED lands after RUN_STOP_REQUESTED and the stop outlives the API's graceful window.
+      // The task stays in its active state in the journal; a resume continues it from there.
+      if (this.journal.state.status === 'running' || (this.journal.state.status === 'draining' && !this.journal.state.stopOnly)) {
         // Tasks left active by a previous process (resume) get a runner too; nothing new is admitted here.
         for (const [id, t] of this.journal.state.tasks) if (ACTIVE_STATES.has(t.state) && !this.runners.has(id)) this.runners.set(id, new TaskRunner(id, this.runnerDeps()));
         for (const [id, r] of this.runners) if (!r.done && !this.inflight.has(id) && ACTIVE_STATES.has(r.task.state)) this.start(id);
