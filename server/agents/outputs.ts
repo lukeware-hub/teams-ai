@@ -6,7 +6,7 @@ import { ID_PATTERNS } from '../core/ids.js';
 import { Project } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 
-export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'dev', 'review', 'deployment', 'report', 'decide', 'spec-gap', 'replan', 'fix-tasks'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'dev', 'review', 'security', 'deployment', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -82,6 +82,23 @@ export const ReviewOutput = z.object({
   ),
 });
 
+/** Security review of one task diff. critical/high findings block the merge; medium/low are recorded only. */
+export const SecurityOutput = z.object({
+  specHash,
+  decision: z.enum(['approve', 'changes']),
+  findings: z.array(
+    z.object({
+      file: z.string().min(1),
+      line: z.number().int().nonnegative().nullable(),
+      severity: z.enum(['critical', 'high', 'medium', 'low']),
+      category: z.string().min(1),
+      problem: z.string().min(1),
+      fix: z.string().min(1),
+    }),
+  ),
+});
+export type SecurityOutput = z.infer<typeof SecurityOutput>;
+
 export const DeploymentOutput = z.object({
   specHash,
   target: z.enum(['docker-local', 'kind']),
@@ -92,6 +109,9 @@ export const DeploymentOutput = z.object({
   secretNames: z.array(z.string().regex(/^[A-Z][A-Z0-9_]*$/)),
   notes: z.string(),
 });
+
+/** `spec readme`: the SM alone writes docs/README.md for a spec that already has code on main. */
+export const ReadmeOutput = z.object({ specHash, readme: z.string().min(1) });
 
 export const ReportOutput = z.object({
   specHash,
@@ -138,8 +158,10 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   plan: PlanOutput,
   dev: DevOutput,
   review: ReviewOutput,
+  security: SecurityOutput,
   deployment: DeploymentOutput,
   report: ReportOutput,
+  readme: ReadmeOutput,
   decide: DecideOutput,
   'spec-gap': SpecGapOutput,
   replan: ReplanOutput,

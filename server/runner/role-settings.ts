@@ -54,6 +54,7 @@ const ROLE_ALLOW: Record<Role, readonly string[]> = {
   front: [...EDIT_TOOLS, ...SUITE_BASH],
   dev: [...EDIT_TOOLS, ...SUITE_BASH],
   test: [...EDIT_TOOLS, ...SUITE_BASH],
+  sec: [],
   devops: [...EDIT_TOOLS],
 };
 

@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import type { DevOutput as DevOutputSchema, OutputOf, ReplanOutput, ReviewOutput as ReviewOutputSchema, SpecGapOutput, StepKind } from '../agents/outputs.js';
+import type { DevOutput as DevOutputSchema, OutputOf, ReplanOutput, ReviewOutput as ReviewOutputSchema, SecurityOutput as SecurityOutputSchema, SpecGapOutput, StepKind } from '../agents/outputs.js';
 
 type DevOutput = z.infer<typeof DevOutputSchema>;
 type ReviewOutput = z.infer<typeof ReviewOutputSchema>;
@@ -30,8 +30,11 @@ import { checkScope } from '../validators/diff-guard.js';
 import { findCycle } from '../validators/plan.js';
 import type { RefContext } from '../validators/references.js';
 import { Intent, OrchEvent, type Journal } from './events.js';
-import { devPack, replanPack, reviewPack, specGapPack, type AgentStepRequest, type PackBase } from './steps.js';
+import { devPack, replanPack, reviewPack, securityPack, specGapPack, type AgentStepRequest, type PackBase } from './steps.js';
 import { worktreeDir, type Workspace } from './workspace.js';
+
+/** The diff is inlined into the sec prompt (the role has no Bash); the rest of a huge diff is read from the worktree. */
+const SECURITY_DIFF_CHARS = 80_000;
 
 export interface TaskRunnerDeps {
   journal: Journal;
@@ -341,7 +344,39 @@ export class TaskRunner {
       return this.fail('review-changes', `Review requested changes:\n${text}`);
     }
     await this.deps.journal.fact(OrchEvent.ReviewApproved, { taskId: this.taskId, criteria: value.criteria });
+    if (!(await this.securityReview(changed, diffStat, code))) return;
     await this.transition('rebasing');
+  }
+
+  /** Runs after Test approves: critical/high findings go back to Dev like review changes; medium/low are journaled only. */
+  private async securityReview(changed: readonly string[], diffStat: string, code: CodeContext): Promise<boolean> {
+    const diff = (await git(this.worktree, ['diff', 'origin/main...HEAD'], this.deps.exec)).slice(0, SECURITY_DIFF_CHARS);
+    const attempt = this.task.attempts + 1;
+    const outcome = await this.deps.runAgent<'security'>({
+      kind: 'security',
+      role: 'sec',
+      pack: securityPack(this.deps.packBase(), this.task.def, { diffStat, changedFiles: changed, diff, code }),
+      cwd: this.worktree,
+      phase: 'phase3',
+      taskId: this.taskId,
+      attempt,
+      refContext: () => this.refContext(),
+      refs: ((v: SecurityOutputSchema) => ({ files: v.findings.map((f) => f.file) })) as never,
+    });
+    if (!outcome.ok) {
+      await this.fail(outcome.failure, outcome.errors.join('\n'));
+      return false;
+    }
+    const value = outcome.value as SecurityOutputSchema;
+    const blocking = value.findings.filter((f) => f.severity === 'critical' || f.severity === 'high');
+    if (value.decision === 'changes' || blocking.length > 0) {
+      await this.deps.journal.fact(OrchEvent.SecurityChanges, { taskId: this.taskId, findings: value.findings });
+      const text = (blocking.length > 0 ? blocking : value.findings).map((f) => `- ${f.file}${f.line === null ? '' : `:${f.line}`} [${f.severity}] ${f.category}: ${f.problem} (fix: ${f.fix})`).join('\n');
+      await this.fail('review-changes', `Security review requested changes:\n${text}`);
+      return false;
+    }
+    await this.deps.journal.fact(OrchEvent.SecurityApproved, { taskId: this.taskId, findings: value.findings });
+    return true;
   }
 
   private async merge(): Promise<void> {

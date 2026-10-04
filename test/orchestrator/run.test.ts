@@ -33,6 +33,8 @@ const happy: Script = async (req) => {
     }
     case 'review':
       return { ok: true, value: { specHash: HASH, decision: 'approve', criteria: [{ id: 'AC-001', status: 'passed', evidence: ['sum::[AC-001] adds'] }], findings: [] }, summary: summary() };
+    case 'security':
+      return { ok: true, value: { specHash: HASH, decision: 'approve', findings: [] }, summary: summary() };
     case 'replan':
       // Not scripted: a failed replan blocks the task, which is what these tests observe.
       return { ok: false, failure: 'code', errors: ['replan not scripted'], summary: summary({ isError: true }), sandboxDisabled: false };

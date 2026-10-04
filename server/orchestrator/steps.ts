@@ -84,6 +84,16 @@ Changed files:\n${opts.changedFiles.join('\n')}\n\nDiff stat:\n${opts.diffStat}`
   return { ...common(base, 'review', 'test'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), code: opts.code, feedback };
 }
 
+/** The diff is inlined because the sec role has no Bash; it reads surrounding files with Read, Grep and Glob. */
+export function securityPack(
+  base: PackBase,
+  task: PlanTask,
+  opts: { diffStat: string; changedFiles: readonly string[]; diff: string; code: CodeContext },
+): ContextPackInput {
+  const feedback = `Changed files:\n${opts.changedFiles.join('\n')}\n\nDiff stat:\n${opts.diffStat}\n\nDiff against origin/main:\n${opts.diff}`;
+  return { ...common(base, 'security', 'sec'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), code: opts.code, feedback };
+}
+
 export function techSpecPack(base: PackBase, opts: { feedback: string | null }): ContextPackInput {
   return {
     ...common(base, 'tech-spec', 'dev'),
@@ -174,6 +184,14 @@ export function fixTasksPack(base: PackBase, opts: { failedTests: readonly strin
     opts.feedback ? `Previous answer was rejected:\n${opts.feedback}` : '',
   ].filter(Boolean).join('\n\n');
   return { ...common(base, 'fix-tasks', 'sm'), criteria: base.spec.acceptanceCriteria, feedback };
+}
+
+export function readmePack(base: PackBase, opts: { tasks: readonly string[]; existing: string | null }): ContextPackInput {
+  return { ...common(base, 'readme', 'sm'), criteria: base.spec.acceptanceCriteria, feedback: [
+    'Write docs/README.md for this project: the Markdown overview a newcomer reads first. Read the repository (package.json, entry points, tests, Dockerfile) with Read, Grep and Glob; state only what the files confirm.',
+    `Delivered tasks:\n${opts.tasks.join('\n') || '- none'}`,
+    opts.existing ? `Current docs/README.md (rewrite it, keep what is still true):\n${opts.existing}` : 'There is no docs/README.md yet.',
+  ].join('\n\n') };
 }
 
 export function reportPack(base: PackBase, opts: { delivered: readonly string[]; blocked: ReadonlyArray<{ taskId: string; reason: string }>; evidence: string; assumptions: readonly string[]; deploy: string; tokens: string }): ContextPackInput {

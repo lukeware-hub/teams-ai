@@ -33,11 +33,12 @@ describe('parseAgentFile', () => {
 });
 
 describe('loadAgents', () => {
-  it('loads all six role files from .claude/agents', async () => {
+  it('loads all seven role files from .claude/agents', async () => {
     const agents = await loadAgents(AGENTS_DIR);
-    expect(Object.keys(agents).sort()).toEqual(['dev', 'devops', 'front', 'po', 'sm', 'test']);
+    expect(Object.keys(agents).sort()).toEqual(['dev', 'devops', 'front', 'po', 'sec', 'sm', 'test']);
     expect(agents.dev.tools).toContain('Bash');
     expect(agents.devops.tools).not.toContain('Bash');
+    expect(agents.sec.tools).toEqual(['Read', 'Grep', 'Glob']);
     expect(agents.sm.model).toBe('sonnet');
     expect(agents.test.model).toBe('sonnet');
   });
