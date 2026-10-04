@@ -14,7 +14,8 @@ import { expandHome, nextRunId, stateFile, workspacePaths } from './orchestrator
 import { runStep } from './runner/step.js';
 import { startApi } from './api/server.js';
 import { onboardingRoutes } from './api/onboarding-routes.js';
-import { defaultRunControl } from './api/run-control.js';
+import { defaultRunControl, isAlive } from './api/run-control.js';
+import { opsRoutes } from './api/ops-routes.js';
 import { runRoutes } from './api/run-routes.js';
 import { refineRoutes } from './api/refine-routes.js';
 import { readProject, runsDir } from './api/run-index.js';
@@ -69,6 +70,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
       routes: [
         ...onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr }),
         ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr }),
+        ...opsRoutes({ index: async () => ({ cfg: (await readUserConfig()).cfg, isAlive: (pid) => isAlive(defaultRunControl(repoRoot), pid) }) }),
         ...refineRoutes({
           registry: new SessionRegistry({
             cfg: async () => (await readUserConfig()).cfg,
