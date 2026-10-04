@@ -28,7 +28,7 @@ Status values: `todo` → `planning` → `approved` → `in progress` → `done`
 
 ## Current item
 
-**R1.1** — Golden run 1 on `todo-api` (in progress).
+**R1.1b** — carry `todo-001-r1` to a result (R1.1 closed incomplete).
 
 ## Pause log
 
@@ -49,16 +49,23 @@ window resets, resume exactly from the entry below.
 
 ## Stage 1 — Golden run 1 (baseline)
 
-### R1.1 Golden run 1 on `todo-api`, `docker-local` — `in progress`
+### R1.1 Golden run 1 on `todo-api`, `docker-local` — `closed, incomplete` (2026-10-04, closed at the human's request)
 
-- Plan: `TEAMS_AI_GH_OWNER=<owner> TEAMS_AI_FIXTURE=todo-api npx tsx scripts/integration/orchestrator.ts`
-  on WSL, defaults (decisions off, OmniRoute off). Creates `<owner>/teams-ai-todo-api`. Expected cost: more than
-  $3 (`hello-001-r1` on hello-app cost $3.33).
-- Checks: reaches `awaiting-validation` with no human input; every AC `passed`; deploy and smoke green; no
-  duplicate PRs; `main` green. Also confirms live the `sec` gate inside a run (plan 13) and the report step that
-  failed in plan 12's live run.
-- Started 2026-10-04 as run `todo-001-r1` (approved by the human).
-- Outcome: _pending_.
+- Plan: `TEAMS_AI_GH_OWNER=<owner> TEAMS_AI_FIXTURE=todo-api npx tsx scripts/integration/orchestrator.ts` on WSL,
+  defaults (decisions off, OmniRoute off); repository `lukeware70X7/teams-ai-todo-api`. Started as run `todo-001-r1`.
+- Outcome: **not a pass.** Phases 1 (tech spec), 2 (plan, 10 tasks T0-scaffold, T1–T8, T9-deploy) and the start of 3
+  ran, then the 5-hour window hit the breaker threshold and the run paused twice (16:56Z, 17:51Z). At closing: 0 tasks
+  merged, T0-scaffold in validating, no verification, deploy or report, no cost total recorded. Not checked: any of the
+  §1.3 criteria (AC `passed`, deploy, smoke, `main` green). The process was killed once with the Claude Code session
+  and resumed (`cli.ts resume`).
+- Finding: a golden run does not fit in one 5-hour window of this account; expect several pauses per run.
+- The run is still alive and resumes by itself; it is carried on in R1.1b. The decision to close R1.1 as incomplete is
+  the human's; the §1.3 criteria for run 1 are still open.
+
+### R1.1b Carry `todo-001-r1` to a result — `in progress`
+
+- Let the live run finish (it resumes after each quota pause), then record here: result, cost, retries, wall time,
+  blocked tasks, and the §1.3 checks. R1.2 and the other items that need run 1's result wait for this.
 
 ### R1.2 Deploy the run 1 result to `kind` — `in progress`
 
