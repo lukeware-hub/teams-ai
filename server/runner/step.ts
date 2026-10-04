@@ -210,7 +210,14 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
     semantic: req.semantic as ReadonlyArray<(value: { specHash: string }) => string[]> | undefined,
   });
   if (!validation.ok) {
-    return { ok: false, failure: 'schema', errors: validation.errors, summary: raw.summary, sandboxDisabled: false };
+    const errors = [...validation.errors];
+    if (raw.summary.structuredOutput === null) {
+      // Without this the only trace of a prose-only answer is "expected object, received null".
+      const known = req.omniroute ? [req.omniroute.token] : [];
+      const text = redactSecrets((raw.summary.resultText ?? '').slice(0, 500), known);
+      errors.push(`no JSON object in the agent result (subtype=${raw.summary.subtype ?? 'none'}, terminal=${raw.summary.terminalReason ?? 'none'}, turns=${raw.summary.numTurns}): ${text || '(empty)'}`);
+    }
+    return { ok: false, failure: 'schema', errors, summary: raw.summary, sandboxDisabled: false };
   }
   return { ok: true, value: validation.value as OutputOf<K>, summary: raw.summary };
 }

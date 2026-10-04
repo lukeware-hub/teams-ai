@@ -13,3 +13,4 @@ web/dist/
 AGENTS.md
 
 reports/
+.env

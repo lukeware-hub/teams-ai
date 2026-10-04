@@ -98,6 +98,24 @@ describe('runStep', () => {
     expect(outcome.summary.structuredSource).toBe('text');
   });
 
+  it('explains a missing JSON object with the agent text, subtype and the secret redacted', async () => {
+    const prose = await writeStream('prose.ndjson', [
+      init,
+      { type: 'result', subtype: 'success', is_error: false, duration_ms: 5, num_turns: 2, result: 'I edited design.md directly. token=sk-secret-123', session_id: 's' },
+    ]);
+    withFake({ FAKE_CLAUDE_FIXTURE: prose });
+    const outcome = await runStep({ ...request(), omniroute: { baseUrl: 'http://x', token: 'sk-secret-123' } } as StepRequest, deps);
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) {
+      expect(outcome.failure).toBe('schema');
+      const text = outcome.errors.join(' ');
+      expect(text).toContain('no JSON object in the agent result');
+      expect(text).toContain('I edited design.md directly');
+      expect(text).toContain('subtype=success');
+      expect(text).not.toContain('sk-secret-123');
+    }
+  });
+
   it('classifies the compaction breaker and discards a valid structured output', async () => {
     const breaker = await writeStream('breaker.ndjson', [
       init,
