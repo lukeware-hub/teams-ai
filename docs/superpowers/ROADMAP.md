@@ -173,7 +173,17 @@ window resets, resume exactly from the entry below.
 - Finding: the UI server's decider has no `onDecision`, so Gate 1 decisions leave no record at all; R5.3 (evals) needs
   them. Fixed 2026-10-04: every Gate 1 decision is now journaled as `DECISION_MADE` in the refine event log
   (`server/refine/cycle.ts`, same record shape as the run journal; `scripts/evals/decisions.ts --runs
-  ~/.teams-ai/workspaces/<project>/refine` reads it); not yet re-run live, so the e2e answers are still unread. Cleaned up:
+  ~/.teams-ai/workspaces/<project>/refine` reads it). Re-run live the same day (real Claude PO/SM/Front, chain `local`
+  only, Qwen2.5-7B Q4_K_M), one cycle, 8 decisions-polling intervals of 15 s, no Jev call. Read from the journal:
+  - `gate1-readiness` (local, 8.1 s): AC-001 = 1.00 and AC-002 = 1.00. AC-001 is "then it answers nicely", a vague
+    criterion that should score low: the 7B model does not discriminate on readiness, so the hint it gives the PO/SM is
+    useless as it stands.
+  - `question-dedup` (3.6 s): unanswered, `exhausted` (the local backend answered below its 0.9 threshold or failed,
+    and the chain has no later entry), so no question was merged; the near-duplicate pair on an empty `name` survived.
+  - `history-contradiction`: not asked (no history chunk was retrieved for this objective).
+  - Conclusion: the plumbing works end to end and is observable; the quality of decisions 2 and 3 on the local 7B model
+    is not good enough to rely on. Next: label these records and run `scripts/evals/decisions.ts` (R5.3); try a larger
+    model or the Jev for 2 and 3 before run 3. The R4.1 code is done; the model choice is an R5.3 outcome. Cleaned up:
   draft removed, config restored.
 
 ### R4.2 Decision 12 (rank candidate plans) — `done` (unit); live check in R5.1
