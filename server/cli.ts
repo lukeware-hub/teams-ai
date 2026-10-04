@@ -18,6 +18,7 @@ import { defaultRunControl } from './api/run-control.js';
 import { runRoutes } from './api/run-routes.js';
 import { refineRoutes } from './api/refine-routes.js';
 import { readProject, runsDir } from './api/run-index.js';
+import { supervise } from './supervisor/supervise.js';
 import { makeRunAgent } from './refine/agent.js';
 import { SessionRegistry } from './refine/registry.js';
 import { createJevValidator } from './refine/jev-validation.js';
@@ -43,6 +44,7 @@ const USAGE = `Usage:
   teams-ai spec readme --project <dir> --spec <id> [--run-id <id>]   the SM writes docs/README.md (docs PR)
   teams-ai spec deploy --project <dir> --spec <id> [--target kind|docker-local] [--run-id <id>]   deploy main again, no agent
   teams-ai status --project <dir> --run <runId> [--json]
+  teams-ai supervise --project <dir> [--interval s]   resume interrupted runs until they finish
   teams-ai ui     [--port N]            start the local web UI (onboarding, status)`;
 
 export interface UiHooks {
@@ -227,7 +229,7 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
     io.stderr('--target must be kind or docker-local');
     return 2;
   }
-  if (!command || (!(completing || readming || deploying || ['run', 'resume', 'status', 'ui'].includes(command))) || (!projectDir && command !== 'ui')) {
+  if (!command || (!(completing || readming || deploying || ['run', 'resume', 'status', 'ui', 'supervise'].includes(command))) || (!projectDir && command !== 'ui')) {
     io.stderr(USAGE);
     if (command && !projectDir) io.stderr('--project <dir> is required');
     return 2;
@@ -242,6 +244,22 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
       return 0;
     }
     if (!projectDir) return 2; // unreachable: the guard above admits a missing --project only for `ui`
+    if (command === 'supervise') {
+      const control = defaultRunControl(path.resolve(path.dirname(new URL(import.meta.url).pathname), '..'));
+      const idx = { cfg: (await readUserConfig()).cfg, isAlive: (pid: number) => control.kill(pid, 0) };
+      const seconds = typeof f.interval === 'string' ? Number(f.interval) : 60;
+      if (!(seconds > 0)) throw new Error('--interval must be a positive number of seconds');
+      let stop = false;
+      const off = (hooks.signals ?? realSignals)(() => {
+        stop = true;
+      });
+      try {
+        await supervise({ idx, control, projectDir: path.resolve(projectDir), intervalMs: seconds * 1000, now: Date.now, log: io.stderr }, () => stop, control.sleep);
+      } finally {
+        off();
+      }
+      return 0;
+    }
     if (command === 'status') {
       const cfg = loadConfig({});
       const project = await readJson(path.join(projectDir, 'docs', 'project.json'), (v) => Project.parse(v));
