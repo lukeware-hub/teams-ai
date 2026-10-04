@@ -1,0 +1,23 @@
+# kind cluster for the `kind` deploy target. Docker Desktop's bridge networks are not routable from WSL, so the
+# service must be reachable through a published host port: the Service is a NodePort pinned to 30080.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+# Registry build path: images are pushed to the in-namespace registry and referenced as registry.teams-ai:5000/<name>:<tag>.
+# That host does not resolve; node containerd redirects it to the registry NodePort (30500, deploy/k8s/overlays/kind).
+# containerd 2.x nodes may need the config_path/hosts.toml form instead of `mirrors`.
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."registry.teams-ai:5000"]
+      endpoint = ["http://localhost:30500"]
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 30080
+        listenAddress: "127.0.0.1"
+        protocol: TCP
+      # The kind overlay publishes the backend Service as NodePort 30787.
+      - containerPort: 30787
+        hostPort: 30787
+        listenAddress: "127.0.0.1"
+        protocol: TCP

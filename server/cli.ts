@@ -14,17 +14,23 @@ import { expandHome, nextRunId, stateFile, workspacePaths } from './orchestrator
 import { runStep } from './runner/step.js';
 import { startApi } from './api/server.js';
 import { onboardingRoutes } from './api/onboarding-routes.js';
-import { defaultRunControl } from './api/run-control.js';
+import { defaultRunControl, isAlive, type RunControlDeps } from './api/run-control.js';
+import { opsRoutes } from './api/ops-routes.js';
 import { runRoutes } from './api/run-routes.js';
 import { refineRoutes } from './api/refine-routes.js';
-import { readProject, runsDir } from './api/run-index.js';
+import { readProject, runsDir, type IndexDeps } from './api/run-index.js';
+import { supervise } from './supervisor/supervise.js';
 import { makeRunAgent } from './refine/agent.js';
 import { SessionRegistry } from './refine/registry.js';
 import { createJevValidator } from './refine/jev-validation.js';
+import { createDecider } from './decide/create-decider.js';
+import { routeReport } from './decide/decisions/report-routing.js';
+import { Accounting } from './budget/accounting.js';
 import { addProject, readUserConfig } from './onboarding/config-store.js';
 import { hasScript, spawnScriptPty } from './onboarding/pty.js';
 import { DockerLocalTarget } from './deploy/docker-local.js';
 import { KindTarget } from './deploy/kind.js';
+import { createGateExecutor } from './exec/gate-executor.js';
 import { httpGet } from './deploy/target.js';
 
 export interface CliIo {
@@ -38,7 +44,9 @@ const USAGE = `Usage:
   teams-ai run    --project <dir> [--spec <id>] [--run-id <id>] [--max-parallel N] [--dry-run] [--draft]
   teams-ai resume --project <dir> --run <runId>
   teams-ai spec readme --project <dir> --spec <id> [--run-id <id>]   the SM writes docs/README.md (docs PR)
+  teams-ai spec deploy --project <dir> --spec <id> [--target kind|docker-local] [--run-id <id>]   deploy main again, no agent
   teams-ai status --project <dir> --run <runId> [--json]
+  teams-ai supervise --project <dir> [--interval s]   resume interrupted runs until they finish
   teams-ai ui     [--port N]            start the local web UI (onboarding, status)`;
 
 export interface UiHooks {
@@ -46,6 +54,8 @@ export interface UiHooks {
   waitForSignal?: () => Promise<void>;
   /** Called with the stop callback; returns a function that removes the handlers. */
   signals?: (onStop: () => void) => () => void;
+  /** Replaces the real run index and process control of `supervise`. */
+  supervision?: { idx: IndexDeps; control: RunControlDeps };
 }
 
 function realSignals(onStop: () => void): () => void {
@@ -64,11 +74,19 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
   const hasDist = await fs.access(path.join(staticDir, 'index.html')).then(() => true, () => false);
   if (!hasDist) io.stderr('web/dist not found: run `npm run web:build` (or `npm run web:dev` for the Vite dev server with /api proxied)');
   const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+  // Decisions asked by the UI server (report routing, Gate 1) chain jev → local only: there is no claude step to escalate to.
+  const uiDecider = async () => createDecider({
+    cfg: (await readUserConfig()).cfg,
+    secrets: await loadSecrets(expandHome(cfg.paths.secrets)),
+    accounting: new Accounting(),
+    runEscalation: async () => { throw new Error('UI-server decisions do not escalate to Claude'); },
+  });
   return startApi(
     {
       routes: [
         ...onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr }),
         ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr }),
+        ...opsRoutes({ index: async () => ({ cfg: (await readUserConfig()).cfg, isAlive: (pid) => isAlive(defaultRunControl(repoRoot), pid) }) }),
         ...refineRoutes({
           registry: new SessionRegistry({
             cfg: async () => (await readUserConfig()).cfg,
@@ -86,6 +104,11 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
             control: defaultRunControl(repoRoot),
             runsDir: async () => runsDir({ cfg: (await readUserConfig()).cfg, isAlive: () => false }),
             register: (dir) => addProject(dir).then(() => undefined),
+            routeReport: async (criteria, report, confidential) =>
+              // The route is only a hint for PO and SM; a broken System 1 must not block reopening the spec.
+              routeReport(criteria, report, await uiDecider(), { confidential }).catch(() => null),
+            // Gate 1 filters only route and drop; a broken System 1 must not fail a refinement cycle.
+            decider: { decide: async (...args) => (await uiDecider()).decide(...args).catch(() => ({ answered: false as const, reason: 'exhausted' as const })) },
           }),
           log: io.stderr,
         }),
@@ -121,7 +144,7 @@ async function readJson<T>(file: string, parse: (v: unknown) => T): Promise<T> {
   return parse(JSON.parse(await fs.readFile(file, 'utf8')));
 }
 
-async function preconditions(exec: Exec, repo: string, specId: string, draft: boolean, complete = false, readme = false): Promise<string[]> {
+async function preconditions(exec: Exec, repo: string, specId: string, draft: boolean, complete = false, readme = false, deploy = false): Promise<string[]> {
   const errors: string[] = [];
   const check = async (label: string, spec: Parameters<Exec>[0], test?: (stdout: string) => boolean) => {
     const r = await exec(spec).catch(() => null);
@@ -130,7 +153,8 @@ async function preconditions(exec: Exec, repo: string, specId: string, draft: bo
   if (!draft) await check('repo/ is not a git clone with origin', { bin: 'git', args: ['-C', repo, 'ls-remote', '--exit-code', 'origin', 'refs/heads/main'], timeoutMs: 60_000 });
   if (!draft) await check('main lacks docs/project.json', { bin: 'git', args: ['-C', repo, 'cat-file', '-e', 'origin/main:docs/project.json'], timeoutMs: 10_000 });
   if (!draft) await check(`main lacks docs/specs/${specId}/spec.json`, { bin: 'git', args: ['-C', repo, 'cat-file', '-e', `origin/main:docs/specs/${specId}/spec.json`], timeoutMs: 10_000 });
-  if (!complete) {
+  if (deploy) await check('docker daemon is not reachable', { bin: 'docker', args: ['version'], timeoutMs: 30_000 });
+  if (!complete && !deploy) {
     await check('claude is not logged in', { bin: 'claude', args: ['auth', 'status', '--json'], timeoutMs: 30_000 }, (out) => /"loggedIn":\s*true/.test(out));
     await check('gh is not logged in', { bin: 'gh', args: ['auth', 'status'], timeoutMs: 30_000 });
     if (!readme) await check('docker daemon is not reachable', { bin: 'docker', args: ['version'], timeoutMs: 30_000 });
@@ -138,7 +162,7 @@ async function preconditions(exec: Exec, repo: string, specId: string, draft: bo
   return errors;
 }
 
-export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: string | undefined, opts: { dryRun: boolean; maxParallel?: number; draft?: boolean; complete?: boolean; readme?: boolean }): Promise<RunDeps> {
+export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: string | undefined, opts: { dryRun: boolean; maxParallel?: number; draft?: boolean; complete?: boolean; readme?: boolean; deploy?: boolean; target?: 'kind' | 'docker-local' }): Promise<RunDeps> {
   const cfgFile = path.join(expandHome('~/.teams-ai'), 'config.json');
   const cfg: Config = loadConfig(await fs.readFile(cfgFile, 'utf8').then(JSON.parse).catch(() => ({})));
   const project = await readJson(path.join(projectDir, 'docs', 'project.json'), (v) => Project.parse(v));
@@ -146,8 +170,9 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   if (!specId) throw new Error('no spec found under docs/specs and no --spec given');
   const spec = await readJson(path.join(projectDir, 'docs', 'specs', specId, 'spec.json'), (v) => Spec.parse(v));
   // A README is written for any spec whose code is on main, whatever its lifecycle status.
-  const allowed = opts.readme ? spec.status !== 'refining' : opts.complete ? spec.status === 'awaiting-validation' : spec.status === 'running';
-  if (!allowed || !spec.specHash) throw new Error(`spec ${specId} is not ${opts.readme ? 'past refinement' : opts.complete ? 'awaiting-validation' : 'running'} (status ${spec.status}); finish Gate 1 first`);
+  // A deploy needs the spec's code on main: delivered (awaiting validation) or done.
+  const allowed = opts.readme ? spec.status !== 'refining' : opts.deploy ? spec.status === 'awaiting-validation' || spec.status === 'done' : opts.complete ? spec.status === 'awaiting-validation' : spec.status === 'running';
+  if (!allowed || !spec.specHash) throw new Error(`spec ${specId} is not ${opts.readme ? 'past refinement' : opts.deploy ? 'delivered (awaiting-validation or done)' : opts.complete ? 'awaiting-validation' : 'running'} (status ${spec.status}); finish Gate 1 first`);
   const ws = workspacePaths(cfg, project.projectId);
   const platformSecrets = await loadSecrets(expandHome(cfg.paths.secrets));
   const secrets = { ...platformSecrets, ...(await loadSecrets(path.posix.join(ws.root, 'secrets'))) };
@@ -164,7 +189,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
     : {};
   const exec: Exec = (s) => execCommand(s.bin === 'git' ? { ...s, env: { ...(s.env ?? {}), ...gitAuth } } : s);
   const ghExec: Exec = (s) => execCommand({ ...s, env: { ...(s.env ?? {}), ...gitAuth } });
-  const errors = await preconditions(exec, ws.repo, specId, opts.draft === true, opts.complete === true, opts.readme === true);
+  const errors = await preconditions(exec, ws.repo, specId, opts.draft === true, opts.complete === true, opts.readme === true, opts.deploy === true);
   if (errors.length > 0) throw new Error(`preconditions failed:\n- ${errors.join('\n- ')}`);
   const agents = await loadAgents(path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '.claude', 'agents'));
   const graphify = new Graphify({ exec, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null) });
@@ -183,10 +208,10 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
     io.stderr('dry run: every agent step answers from the fake claude scenario (set steps in code before use)');
   }
   const bootstrap = opts.draft ? { docsDir: path.join(projectDir, 'docs'), owner: project.github.owner ?? cfg.github.owner } : undefined;
-  const target = project.deploy.target === 'kind'
-    ? new KindTarget({ exec, secrets, cluster: 'teams-ai', readFile: (p) => fs.readFile(p, 'utf8') })
+  const target = (opts.target ?? project.deploy.target) === 'kind'
+    ? new KindTarget({ exec, secrets, cluster: 'teams-ai', namespace: cfg.executor.kind === 'k8s' ? cfg.executor.namespace : undefined, readFile: (p) => fs.readFile(p, 'utf8') })
     : new DockerLocalTarget({ exec, get: httpGet, secrets, serviceHost: cfg.docker.serviceHost, publishBind: cfg.docker.publishBind });
-  return { cfg, ws, project, spec, firstSpec, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target };
+  return { cfg, ws, project, spec, firstSpec, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target, gateExecutor: createGateExecutor(cfg.executor, exec) };
 }
 
 type Factory = (deps: RunDeps, runId?: string, explicitId?: string) => Promise<Run>;
@@ -202,7 +227,14 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
   const projectDir = typeof f.project === 'string' ? f.project : null;
   const completing = command === 'spec' && rest[0] === 'complete';
   const readming = command === 'spec' && rest[0] === 'readme';
-  if (!command || (!(completing || readming || ['run', 'resume', 'status', 'ui'].includes(command))) || (!projectDir && command !== 'ui')) {
+  const deploying = command === 'spec' && rest[0] === 'deploy';
+  const targetFlag = f.target;
+  if (deploying && targetFlag !== undefined && targetFlag !== 'kind' && targetFlag !== 'docker-local') {
+    io.stderr(USAGE);
+    io.stderr('--target must be kind or docker-local');
+    return 2;
+  }
+  if (!command || (!(completing || readming || deploying || ['run', 'resume', 'status', 'ui', 'supervise'].includes(command))) || (!projectDir && command !== 'ui')) {
     io.stderr(USAGE);
     if (command && !projectDir) io.stderr('--project <dir> is required');
     return 2;
@@ -217,6 +249,22 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
       return 0;
     }
     if (!projectDir) return 2; // unreachable: the guard above admits a missing --project only for `ui`
+    if (command === 'supervise') {
+      const control = hooks.supervision?.control ?? defaultRunControl(path.resolve(path.dirname(new URL(import.meta.url).pathname), '..'));
+      const idx = hooks.supervision?.idx ?? { cfg: (await readUserConfig()).cfg, isAlive: (pid: number) => control.kill(pid, 0) };
+      const seconds = typeof f.interval === 'string' ? Number(f.interval) : 60;
+      if (!(seconds > 0)) throw new Error('--interval must be a positive number of seconds');
+      let stop = false;
+      const off = (hooks.signals ?? realSignals)(() => {
+        stop = true;
+      });
+      try {
+        await supervise({ idx, control, projectDir: path.resolve(projectDir), intervalMs: seconds * 1000, now: Date.now, log: io.stderr }, () => stop, control.sleep);
+      } finally {
+        off();
+      }
+      return 0;
+    }
     if (command === 'status') {
       const cfg = loadConfig({});
       const project = await readJson(path.join(projectDir, 'docs', 'project.json'), (v) => Project.parse(v));
@@ -230,12 +278,12 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
       }
       return 0;
     }
-    const load = loadRunDeps(io, projectDir, typeof f.spec === 'string' ? f.spec : undefined, { dryRun: f['dry-run'] === true, draft: f.draft === true, maxParallel: typeof f['max-parallel'] === 'string' ? Number(f['max-parallel']) : undefined, complete: completing, readme: readming });
+    const load = loadRunDeps(io, projectDir, typeof f.spec === 'string' ? f.spec : undefined, { dryRun: f['dry-run'] === true, draft: f.draft === true, maxParallel: typeof f['max-parallel'] === 'string' ? Number(f['max-parallel']) : undefined, complete: completing, readme: readming, deploy: deploying, target: deploying ? (targetFlag as 'kind' | 'docker-local' | undefined) : undefined });
     const deps = factory === defaultFactory ? await load : await load.catch(() => null as unknown as RunDeps);
     const explicitId = typeof f['run-id'] === 'string' ? f['run-id'] : undefined;
     if (explicitId !== undefined && !/^[A-Za-z0-9_.-]+$/.test(explicitId)) throw new Error('--run-id must match ^[A-Za-z0-9_.-]+$');
-    const run = completing || readming
-      ? await Run.create(deps, explicitId ?? await nextRunId(deps.ws, `${deps.spec.specId}-${completing ? 'complete' : 'readme'}`))
+    const run = completing || readming || deploying
+      ? await Run.create(deps, explicitId ?? await nextRunId(deps.ws, `${deps.spec.specId}-${completing ? 'complete' : readming ? 'readme' : 'deploy'}`))
       : await factory(deps, command === 'resume' ? String(f.run) : undefined, explicitId);
     io.stderr(`run ${run.runId} started`);
     const off = (hooks.signals ?? realSignals)(() => {
@@ -244,7 +292,7 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
     });
     let result: ExecuteResult;
     try {
-      result = completing ? await run.completeSpec() : readming ? await run.writeReadme() : await run.execute();
+      result = completing ? await run.completeSpec() : readming ? await run.writeReadme() : deploying ? await run.deployOnly() : await run.execute();
     } finally {
       off();
       await run.close();

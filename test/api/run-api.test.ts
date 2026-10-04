@@ -1,11 +1,13 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { claimLaunch } from '../../server/api/run-index.js';
 import { runRoutes } from '../../server/api/run-routes.js';
 import { startApi } from '../../server/api/server.js';
 import type { RunControlDeps } from '../../server/api/run-control.js';
 import { readUserConfig } from '../../server/onboarding/config-store.js';
+import { superviseTick, type SuperviseDeps } from '../../server/supervisor/supervise.js';
 import { appendEvents, eventLines, writeRun } from '../fixtures/runs/write-run.js';
 import { makeFrozenSpec, makePlan } from '../fixtures/contracts.js';
 
@@ -14,10 +16,14 @@ let home = '';
 let runs = '';
 let api: { port: number; close(): Promise<void> };
 const alive = new Set<number>();
+let control: RunControlDeps;
 let spawns: Array<{ args: string[]; logFile: string }>;
 let signals: Array<[number, string | number]>;
 let onSpawn: (runId: string) => Promise<void>;
+let onSignal: () => void;
+let onSleep: () => Promise<void>;
 let cloned: Array<{ url: string; destination: string }>;
+let resolved: Record<string, string> = {};
 const base = () => `http://127.0.0.1:${api.port}`;
 const post = (p: string, body?: unknown) => fetch(`${base()}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
 
@@ -30,8 +36,11 @@ beforeEach(async () => {
   spawns = [];
   signals = [];
   cloned = [];
+  resolved = {};
   onSpawn = async () => {};
-  const control: RunControlDeps = {
+  onSignal = () => {};
+  onSleep = async () => {};
+  control = {
     spawn: (a) => {
       spawns.push({ args: a.args, logFile: a.logFile });
       const runId = a.args[a.args.indexOf('--run-id') + 1] ?? a.args[a.args.indexOf('--run') + 1]!;
@@ -44,21 +53,43 @@ beforeEach(async () => {
       const p = Math.abs(pid);
       if (!alive.has(p)) return false;
       if (sig === 'SIGTERM' || sig === 'SIGKILL') alive.delete(p);
+      if (sig === 'SIGTERM') onSignal();
       return true;
     },
-    sleep: async () => {},
+    sleep: () => onSleep(),
     cliEntry: () => ({ bin: 'node', prefix: ['cli'] }),
     repoRoot: '/repo',
   };
-  api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, cloneProject: async (url, destination) => { cloned.push({ url, destination }); await fs.cp(HELLO, destination, { recursive: true }); } }) }, 0);
+  api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, resolveHost: async (n) => [resolved[n] ?? '140.82.112.3'], cloneProject: async (url, destination) => { cloned.push({ url, destination }); await fs.cp(HELLO, destination, { recursive: true }); } }) }, 0);
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   await api.close();
   await fs.rm(home, { recursive: true, force: true });
 });
 
 const started = (runId: string) => ({ type: 'RUN_STARTED', data: { runId, specId: 'hello-001', projectId: 'hello-app' } });
 const state = (status: string) => ({ runId: 'x', at: '2026-09-24T10:01:00.000Z', status, tasks: [], tokens: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0.01, steps: 1 } });
+
+/** The supervisor of the same project, sharing the fake process table with the routes. */
+const supervisorDeps = async (): Promise<SuperviseDeps> => ({ idx: { cfg: (await readUserConfig(home)).cfg, home, isAlive: (pid) => alive.has(pid) }, control, projectDir: HELLO, intervalMs: 1000, now: () => 0, log: () => {} });
+
+/** Pauses the launch of `runId` right before it spawns: the route has passed its checks, nothing is spawned yet. */
+function holdLaunch(runId: string): { reached: Promise<void>; release: () => void } {
+  let reached = () => {};
+  let release = () => {};
+  const hit = new Promise<void>((r) => (reached = r));
+  const open = new Promise<void>((r) => (release = r));
+  const realMkdir = fs.mkdir.bind(fs);
+  vi.spyOn(fs, 'mkdir').mockImplementation((async (...args: Parameters<typeof fs.mkdir>) => {
+    if (path.resolve(String(args[0])) === path.resolve(runs, runId)) {
+      reached();
+      await open;
+    }
+    return realMkdir(...args);
+  }) as typeof fs.mkdir);
+  return { reached: hit, release: () => release() };
+}
 
 describe('projects', () => {
   it('lists registered projects with specs and runs', async () => {
@@ -71,7 +102,7 @@ describe('projects', () => {
   });
 
   it('registers a project once and refuses a directory without a valid project.json', async () => {
-    const other = path.join(home, 'proj');
+    const other = path.join(home, '.teams-ai', 'workspaces', 'proj');
     await fs.mkdir(path.join(other, 'docs', 'specs'), { recursive: true });
     await fs.writeFile(path.join(other, 'docs', 'project.json'), await fs.readFile(path.join(HELLO, 'docs', 'project.json'), 'utf8'));
     const ok = await post('/api/projects', { dir: other });
@@ -79,10 +110,18 @@ describe('projects', () => {
     expect(await ok.json()).toMatchObject({ projectId: 'hello-app', dir: other, specs: [] });
     expect((await post('/api/projects', { dir: other })).status).toBe(200);
     expect((await readUserConfig(home)).cfg.projects).toEqual([{ dir: HELLO }, { dir: other }]);
-    const bad = await post('/api/projects', { dir: path.join(home, 'nope') });
+    const bad = await post('/api/projects', { dir: path.join(home, '.teams-ai', 'workspaces', 'nope') });
     expect(bad.status).toBe(400);
     expect((await bad.json()).error).toMatch(/project\.json/);
     expect((await post('/api/projects', { dir: 42 })).status).toBe(400);
+    // Audit M1: a valid project outside paths.workspaces is not registered (HELLO is already listed, so use a copy elsewhere).
+    const outside = path.join(home, 'outside');
+    await fs.mkdir(path.join(outside, 'docs'), { recursive: true });
+    await fs.writeFile(path.join(outside, 'docs', 'project.json'), await fs.readFile(path.join(HELLO, 'docs', 'project.json'), 'utf8'));
+    const refused = await post('/api/projects', { dir: outside });
+    expect(refused.status).toBe(400);
+    expect((await refused.json()).error).toMatch(/paths\.workspaces/);
+    expect((await post('/api/projects', { dir: path.join(other, '..', '..', '..', 'outside') })).status).toBe(400);
     expect((await readUserConfig(home)).cfg.projects).toHaveLength(2);
     expect((await fetch(`${base()}/api/projects/nobody/runs`)).status).toBe(404);
   });
@@ -96,6 +135,26 @@ describe('projects', () => {
     expect(cloned[0]!.destination).toContain(`${path.sep}imports${path.sep}demo-`);
     expect(cloned[1]!.destination).toContain(`${path.sep}imports${path.sep}another-`);
     expect((await readUserConfig(home)).cfg.projects).toHaveLength(3);
+  });
+
+  it('refuses hosts outside the allowlist, private literals, internal names and private resolutions (audit M1)', async () => {
+    const err = async (url: string) => {
+      const r = await post('/api/projects', { url });
+      expect(r.status).toBe(400);
+      return (await r.json()).error as string;
+    };
+    expect(await err('https://evil.example/acme/demo.git')).toMatch(/lista permitida/);
+    expect(await err('http://169.254.169.254/acme/demo.git')).toMatch(/lista permitida/);
+    expect(await err('https://kubernetes.default.svc/acme/demo.git')).toMatch(/lista permitida/);
+    expect(cloned).toHaveLength(0);
+    // A listed host is still refused when it is private or resolves to a private address.
+    await fs.writeFile(path.join(home, '.teams-ai', 'config.json'), JSON.stringify({ paths: { runs: runs.replace(/\\/g, '/') }, projects: [{ dir: HELLO }], github: { allowedHosts: ['github.com', '10.0.0.5', 'git.internal', 'sneaky.example'] } }));
+    expect(await err('http://10.0.0.5/acme/demo.git')).toMatch(/interno/);
+    expect(await err('https://git.internal/acme/demo.git')).toMatch(/interno/);
+    resolved['sneaky.example'] = '169.254.169.254';
+    expect(await err('https://sneaky.example/acme/demo.git')).toMatch(/interno/);
+    expect(cloned).toHaveLength(0);
+    expect((await readUserConfig(home)).cfg.projects).toEqual([{ dir: HELLO }]);
   });
 });
 
@@ -152,6 +211,27 @@ describe('start, resume, stop', () => {
     expect((await r.json()).error).toContain('claude is not logged in');
   }, 15_000);
 
+  it('redacts the ui.log tail with secrets read at request time (audit M3/M4)', async () => {
+    const secrets = path.join(home, '.teams-ai', 'secrets');
+    await fs.mkdir(secrets, { recursive: true });
+    onSpawn = async (runId) => {
+      // Written after startup: a list loaded once at boot would not know it. Short value, base64 form, URL-encoded form.
+      await fs.writeFile(path.join(secrets, 'DB_PASSWORD'), 'p@ss w0rd!');
+      await fs.mkdir(path.join(runs, runId), { recursive: true });
+      const value = 'p@ss w0rd!';
+      await fs.writeFile(path.join(runs, runId, 'ui.log'), `fail ${value} / ${encodeURIComponent(value)} / ${Buffer.from(value).toString('base64')}
+`);
+      alive.clear();
+    };
+    const r = await post('/api/projects/hello-app/specs/hello-001/runs');
+    expect(r.status).toBe(500);
+    const text = JSON.stringify(await r.json());
+    expect(text).not.toContain('p@ss');
+    expect(text).not.toContain(encodeURIComponent('p@ss w0rd!'));
+    expect(text).not.toContain(Buffer.from('p@ss w0rd!').toString('base64'));
+    expect(text).toContain('[REDACTED]');
+  }, 15_000);
+
   it('resume is allowed only for paused:auth or interrupted runs', async () => {
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('paused:auth'));
     await writeRun(runs, 'hello-001-r2', [started('hello-001-r2'), { type: 'RUN_FINISHED', data: { result: 'complete' } }], state('running'));
@@ -178,6 +258,56 @@ describe('start, resume, stop', () => {
     expect((await post('/api/runs/hello-001-r1/stop')).status).toBe(409);
     await writeRun(runs, 'hello-001-r2', [started('hello-001-r2')], state('running'));
     expect((await post('/api/runs/hello-001-r2/stop')).status).toBe(409);
+  });
+
+  it('a run stopped from the UI stays stopped: the supervisor leaves it alone until the user resumes it', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 950);
+    alive.add(950);
+    expect((await post('/api/runs/hello-001-r1/stop')).status).toBe(200);
+    expect(await superviseTick(await supervisorDeps(), new Map())).toEqual([]);
+    expect(spawns).toHaveLength(0);
+    expect((await post('/api/runs/hello-001-r1/resume')).status).toBe(200); // the user's resume lifts the stop
+    alive.delete(5001); // the run dies again later: now it is the supervisor's to bring back
+    expect(await superviseTick(await supervisorDeps(), new Map())).toEqual(['hello-001-r1']);
+    expect(spawns).toHaveLength(2);
+  });
+
+  it('a supervisor scan between the stop signal and the pid cleanup does not resume the run', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 950);
+    alive.add(950);
+    let scan: Promise<string[]> = Promise.resolve([]);
+    onSignal = () => {
+      scan = supervisorDeps().then((d) => superviseTick(d, new Map())); // the process is gone, the route is still waiting on it
+    };
+    onSleep = async () => {
+      await scan;
+    };
+    expect((await post('/api/runs/hello-001-r1/stop')).status).toBe(200);
+    expect(await scan).toEqual([]);
+    expect(spawns).toHaveLength(0);
+  });
+
+  it('a supervisor scan during a UI resume does not spawn a second process for the run', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 111); // dead pid: interrupted
+    const hold = holdLaunch('hello-001-r1');
+    const resume = post('/api/runs/hello-001-r1/resume');
+    await hold.reached;
+    expect(await superviseTick(await supervisorDeps(), new Map())).toEqual([]);
+    hold.release();
+    expect((await resume).status).toBe(200);
+    expect(spawns).toHaveLength(1);
+    expect(await fs.readFile(path.join(runs, 'hello-001-r1', 'pid'), 'utf8')).toBe('5001');
+  });
+
+  it('resume answers 409 while another spawner holds the launch claim of the run, and releases its own claim', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 111);
+    const release = (await claimLaunch(runs, 'hello-001-r1'))!;
+    expect((await post('/api/runs/hello-001-r1/resume')).status).toBe(409);
+    expect(spawns).toHaveLength(0);
+    await release();
+    expect((await post('/api/runs/hello-001-r1/resume')).status).toBe(200);
+    expect(spawns).toHaveLength(1);
+    expect(await claimLaunch(runs, 'hello-001-r1')).not.toBeNull();
   });
 });
 
@@ -289,6 +419,9 @@ describe('run detail, events and steps', () => {
     expect(await (await fetch(`${base()}/api/runs/hello-001-r1/steps/s00001`)).json()).toEqual({ prompt: '# prompt', output: { ok: true, value: { summary: 'x' } } });
     expect((await fetch(`${base()}/api/runs/hello-001-r1/steps/s00002`)).status).toBe(404);
     expect((await fetch(`${base()}/api/runs/hello-001-r1/steps/..%2Fui.log`)).status).toBe(400);
+    // Audit L1: a `..` id never reaches the handler over HTTP (URL parsing collapses it), but the id check must hold on its own.
+    await fs.writeFile(path.join(runs, 'prompt.md'), 'outside');
+    expect((await fetch(`${base()}/api/runs/hello-001-r1/steps/..`)).status).toBe(404);
   });
 
   it('spawns `spec readme` for a finished run and refuses while the spec has an active run', async () => {

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { safeHttpUrl } from '../safeUrl.js';
 
 // Small, dependency-free renderer for the README subset the report step produces. Everything becomes
 // React elements (no raw HTML), and only http(s) links are followed.
@@ -9,7 +10,7 @@ function inline(text: string): ReactNode[] {
     if (part.startsWith('`') && part.endsWith('`') && part.length > 2) return <code key={i}>{part.slice(1, -1)}</code>;
     if (part.startsWith('**') && part.endsWith('**') && part.length > 4) return <strong key={i}>{part.slice(2, -2)}</strong>;
     const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(part);
-    if (link) return /^https?:\/\//.test(link[2]!) ? <a key={i} href={link[2]} target="_blank" rel="noreferrer">{link[1]}</a> : <span key={i}>{link[1]}</span>;
+    if (link) return safeHttpUrl(link[2]) ? <a key={i} href={safeHttpUrl(link[2])} target="_blank" rel="noreferrer">{link[1]}</a> : <span key={i}>{link[1]}</span>;
     return part;
   });
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, type Cli, type Item, type SessionState } from '../api.js';
 import { ItemCard } from './ItemCard.js';
 import { Icon } from './Icons.js';
+import { safeHttpUrl } from '../safeUrl.js';
 import { useSse } from '../useSse.js';
 
 function friendlyLoginReason(reason: string) {
@@ -79,8 +80,8 @@ export function LoginControls({ state, code, onCode, onStart, onSend, onCancel }
       {state.name === 'starting' || state.name === 'verifying' ? <span className="spinner">{state.name === 'starting' ? 'Iniciando…' : 'Verificando…'}</span> : null}
       {state.name === 'awaiting-browser' || state.name === 'awaiting-code' ? (
         <div className="browser-step">
-          {state.url ? (
-            <a className="link-button" href={state.url} target="_blank" rel="noreferrer">
+          {safeHttpUrl(state.url) ? (
+            <a className="link-button" href={safeHttpUrl(state.url)} target="_blank" rel="noreferrer">
               <Icon name="external" size={22} />
               Abrir link
             </a>

@@ -2,14 +2,17 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { OUTPUT_SCHEMAS, toJsonSchema, type OutputOf, type StepKind } from '../agents/outputs.js';
 import type { AgentDefinition } from '../agents/registry.js';
-import { ALWAYS_DENIED } from '../agents/registry.js';
+import { ALWAYS_DENIED, NESTED_DENIED } from '../agents/registry.js';
 import type { Accounting } from '../budget/accounting.js';
 import type { ProviderProfile, Role } from '../config/config.js';
 import type { Effort } from '../decide/decisions/model-tier.js';
+import type { CliErrorInput } from '../decide/decisions/cli-error.js';
 import type { FailureKind } from '../scheduler/retry-policy.js';
 import { validateAgentOutput } from '../validators/agent-output.js';
 import type { RefContext, References } from '../validators/references.js';
 import { buildInvocation, ensureTrusted } from './invocation.js';
+import { sandboxPolicyViolation } from './sandbox-policy.js';
+import { createStepHome, hasOauthToken, hostTokenExpiresAt, removeStepHome, syncBackCredentials } from './step-home.js';
 import { preflightSandbox, runProcess, type ProcessCaps, type RawStepResult, type RunnerBinary } from './process-runner.js';
 import { writeRoleSettings, type RoleSettingsInput } from './role-settings.js';
 import { isRateLimitRejected, type ResultSummary } from './stream-events.js';
@@ -47,21 +50,24 @@ export interface StepDeps {
   binary: RunnerBinary;
   caps: ProcessCaps;
   accounting: Accounting;
-  claudeJsonPath: string;
+  /** Unused since agent steps get their own HOME (trust is recorded in the step home); kept for callers. */
+  claudeJsonPath?: string;
   /** Directory (outside any worktree) where per-role settings files are written. */
   settingsDir: string;
   /** Every step cwd must live under this directory; anything else is never trusted or run. */
   workspacesRoot: string;
   network: Pick<RoleSettingsInput, 'allowedDomains'>;
   /** Config `sandbox`; when disabled the bubblewrap/socat tool check is skipped as well. */
-  sandbox?: { enabled: boolean };
+  sandbox?: { enabled: boolean; unsafeNoSandbox?: boolean };
   hostEnv?: NodeJS.ProcessEnv;
   onEvent?: (line: string) => void;
   clock?: () => Date;
+  /** Spec 10A.5 decision 8: asked only when no deterministic rule matched (the `code` fallthrough). */
+  classifyUnknown?: (input: CliErrorInput) => Promise<FailureKind>;
 }
 
 const QUOTA_TEXT = /usage limit|rate limit|out of .*quota/i;
-const AUTH_TEXT = /not logged in|authentication|invalid api key|please run claude login/i;
+const AUTH_TEXT = /not logged in|authentication|failed to authenticate|oauth session expired|could not be refreshed|invalid api key|please run (claude login|\/login)/i;
 
 /**
  * Order follows spec §12 and the CLI findings: environment → timeout → compaction → (only for a
@@ -132,12 +138,62 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
   if (!(await isInside(deps.workspacesRoot, req.cwd))) {
     return environmentFailure(`cwd ${req.cwd} is outside the workspaces root ${deps.workspacesRoot}`);
   }
+  const violation = sandboxPolicyViolation(deps.sandbox, hostEnv);
+  if (violation) return environmentFailure(violation);
   if (deps.binary.requireSandboxTools && deps.sandbox?.enabled !== false) {
     const missing = await preflightSandbox(hostEnv);
     if (missing.length > 0) return environmentFailure(`sandbox tools missing on PATH: ${missing.join(', ')} (apt install bubblewrap socat)`);
   }
 
-  await ensureTrusted(req.cwd, deps.claudeJsonPath);
+  const clock = deps.clock ?? (() => new Date());
+  return withRefreshGate(req.profile.provider === 'claude', hostEnv, clock, async () => {
+    const home = await createStepHome(deps.settingsDir, hostEnv, req.profile.provider === 'claude');
+    try {
+      return await runStepIn(req, deps, hostEnv, home);
+    } finally {
+      await syncBackCredentials(home, hostEnv);
+      await removeStepHome(home);
+    }
+  });
+}
+
+/** A stored token that expires within this window is refreshed by one step at a time. */
+export const REFRESH_WINDOW_MS = 5 * 60_000;
+
+let refreshTail: Promise<void> = Promise.resolve();
+
+/**
+ * Plan 38: the CLI refreshes an expired token inside its own step HOME and the server rotates the refresh token, so two steps that
+ * start together on an expired token would each use the same (now stale) refresh token. While the host token is expired or within
+ * REFRESH_WINDOW_MS of expiry, steps run one at a time through this per-process mutex (copy, run, write back); each waiter re-reads
+ * the token after its turn, so once one step has refreshed it the rest run in parallel again. A fresh token (the normal case),
+ * an omniroute step or CLAUDE_CODE_OAUTH_TOKEN never takes the lock.
+ */
+export async function withRefreshGate<T>(claudeLogin: boolean, hostEnv: NodeJS.ProcessEnv, clock: () => Date, fn: () => Promise<T>): Promise<T> {
+  if (!claudeLogin || hasOauthToken(hostEnv)) return fn();
+  const stale = async (): Promise<boolean> => {
+    const at = await hostTokenExpiresAt(hostEnv);
+    return at !== null && at - clock().getTime() < REFRESH_WINDOW_MS;
+  };
+  if (!(await stale())) return fn();
+  const prev = refreshTail;
+  let release: () => void = () => {};
+  refreshTail = new Promise<void>((r) => (release = r));
+  await prev;
+  let released = false;
+  try {
+    if (!(await stale())) {
+      release();
+      released = true;
+    }
+    return await fn();
+  } finally {
+    if (!released) release();
+  }
+}
+
+async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, hostEnv: NodeJS.ProcessEnv, home: string): Promise<StepOutcome<OutputOf<K>>> {
+  await ensureTrusted(req.cwd, path.join(home, '.claude.json'));
   const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: req.extraAllow, sandboxEnabled: deps.sandbox?.enabled });
   const invocation = buildInvocation(
     {
@@ -148,8 +204,9 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
       prompt: req.prompt,
       jsonSchema: toJsonSchema(req.kind),
       tools: req.agent.tools,
-      disallowedTools: ALWAYS_DENIED,
+      disallowedTools: [...ALWAYS_DENIED, ...NESTED_DENIED],
       settingsPath,
+      home,
       sessionId: req.sessionId,
       resume: req.resume,
       omniroute: req.omniroute,
@@ -181,11 +238,21 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
     at: (deps.clock ?? (() => new Date()))().toISOString(),
   });
 
-  const failure = classifyFailure(raw);
+  let failure = classifyFailure(raw);
   if (failure) {
     // Agent-controlled text and CLI stderr flow into the event store and UI: never with credentials.
     const known = req.omniroute ? [req.omniroute.token] : [];
     const message = redactSecrets(raw.summary.resultText ?? raw.stderr.slice(0, 500), known);
+    if (failure === 'code' && deps.classifyUnknown) {
+      const s = raw.summary;
+      failure = await deps.classifyUnknown({
+        resultText: s.resultText === null ? null : redactSecrets(s.resultText, known),
+        stderr: redactSecrets(raw.stderr.slice(-2000), known),
+        apiErrorStatus: s.apiErrorStatus,
+        subtype: s.subtype,
+        terminalReason: s.terminalReason,
+      });
+    }
     return { ok: false, failure, errors: [message], summary: raw.summary, sandboxDisabled: raw.sandboxDisabled };
   }
 
@@ -197,7 +264,14 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
     semantic: req.semantic as ReadonlyArray<(value: { specHash: string }) => string[]> | undefined,
   });
   if (!validation.ok) {
-    return { ok: false, failure: 'schema', errors: validation.errors, summary: raw.summary, sandboxDisabled: false };
+    const errors = [...validation.errors];
+    if (raw.summary.structuredOutput === null) {
+      // Without this the only trace of a prose-only answer is "expected object, received null".
+      const known = req.omniroute ? [req.omniroute.token] : [];
+      const text = redactSecrets((raw.summary.resultText ?? '').slice(0, 500), known);
+      errors.push(`no JSON object in the agent result (subtype=${raw.summary.subtype ?? 'none'}, terminal=${raw.summary.terminalReason ?? 'none'}, turns=${raw.summary.numTurns}): ${text || '(empty)'}`);
+    }
+    return { ok: false, failure: 'schema', errors, summary: raw.summary, sandboxDisabled: false };
   }
   return { ok: true, value: validation.value as OutputOf<K>, summary: raw.summary };
 }

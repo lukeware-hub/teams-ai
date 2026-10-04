@@ -21,7 +21,7 @@ was implemented. Web UI block A (`2026-09-24-run-api-execution-ui-design.md`) is
 | 10 | [`2026-09-24-teams-ai-10-run-api-execution-ui.md`](2026-09-24-teams-ai-10-run-api-execution-ui.md) | Implemented — run API, SSE journal stream with `Last-Event-ID` replay, Projects and Execution screens, graceful stop on SIGTERM; live-checked in WSL against the recorded `hello-001-r1` journal (see the plan's Findings). |
 | 11 | [`2026-09-24-teams-ai-11-refinement-ui.md`](2026-09-24-teams-ai-11-refinement-ui.md) | Implemented and unit/integration tested — Gate 1 refinement session (derive/refine cycle, questions, doc patches, secrets), Phase 0 bootstrap, Refinement screen; live-checked in WSL through the derive step's real failure path, blocked by account quota before the happy path (see the plan's Findings). |
 | 12 | [`2026-09-24-teams-ai-12-phases-4-6-validation-ui.md`](2026-09-24-teams-ai-12-phases-4-6-validation-ui.md) | Implemented and live-checked on docker-local (deploy-failed and awaiting-validation -> done paths) — phases 4 (verification + one fix round), 5 (deploy, rollback, smoke gate, deploy-fix tasks), 6 (report merged with awaiting-validation), `spec complete`, Validation screen (see the plan's Findings). |
-| 13 | [`2026-10-04-teams-ai-13-security-review.md`](2026-10-04-teams-ai-13-security-review.md) | Implemented and unit-tested, live check not run — read-only `sec` agent reviews each task diff after Test and before merge; critical/high findings go back to Dev; findings reach the report, Validation screen and task detail. Design: `specs/2026-10-04-security-review-design.md`. |
+| 13 | [`2026-10-04-teams-ai-13-security-review.md`](2026-10-04-teams-ai-13-security-review.md) | Implemented, unit-tested and live-checked with a single `sec` step (seeded command injection returns `critical`; full hello-app run not done) — read-only `sec` agent reviews each task diff after Test and before merge; critical/high findings go back to Dev; findings reach the report, Validation screen and task detail. Design: `specs/2026-10-04-security-review-design.md`. |
 
 Note: plan 6 (knowledge) was originally numbered plan 5, duplicating the decision-layer plan's number; it was
 renumbered to 6 in commit `134bcf3` ("docs: renumber the knowledge plan to 06 (two plans carried the number 05)").
@@ -31,38 +31,5 @@ decision layer and plan 7's orchestrator.
 
 ## Outstanding work
 
-Ordered by what unblocks what. Spec references are to `docs/superpowers/specs/2026-09-23-teams-ai-poc-design.md`.
-
-- **Golden run comparison (spec §1.3) — only run 1 done.** Plan 7 records one live baseline run on hello-app
-  (`hello-001-r1`, decisions off, $3.33). Run 2 (OmniRoute for Test/DevOps, decisions off) and run 3 (decisions
-  on) have not been executed. `decisions.enabled` defaulting to `false` (`server/config/config.ts:108`) is by
-  design for runs 1–2 — it is not a bug; run 3 flips it per run, not in the default.
-- **Decision 8 (CLI error classification) — deterministic rules only.** `classifyFailure`
-  (`server/runner/step.ts:69`) falls through to `code`; the spec says System 1 runs "when rules do not match" with
-  default `other`. Low value until a real run shows misclassified failures; leave for after run 3.
-- **Decision 12 (rank candidate plans) — blocked on the SM contract.** `server/contracts/plan.ts` and
-  `server/agents/outputs.ts` have no notion of multiple candidate plans; the SM authors exactly one. Needs a
-  contract change first.
-- **Decisions 2–4 (Gate 1 readiness, question dedup, contradiction) — blocked on the refinement flow.** No
-  Gate 1 / refinement loop exists in `server/orchestrator/` (spec UI screen 2 "Refinement"); only contracts and
-  config mention it.
-- **Decision 7 (validation report routing) — call site now exists** (Validation → `continue { report }`); the
-  System 1 question that routes the text to PO or SM first is still unwired.
-- **Plan 12 — open items.** Report-step failure in the live run, Validation page losing its buttons after an action error, `kind` target and "Report problem" unchecked; see the plan's Findings.
-- **Plan 10 — items not covered by the live check.** A run has not yet been started, stopped and resumed from
-  the browser (the live check replayed the recorded `hello-001-r1` journal only, to avoid a $3 run); whether
-  SIGTERM reaches the orchestrator through the `tsx` wrapper is therefore unverified — see plan 10 Findings.
-- **`local-logprobs` backend (spec §10A.2a, phase 2) — client built, server not set up.**
-  `server/decide/local-logprobs.ts` talks to a llama.cpp server (`/completion`, one grammar-constrained token per
-  question, probabilities from `top_logprobs`); `createDecider` wires it when `decisions.local.enabled` is true,
-  the stub otherwise. Still to do on the host: build llama.cpp with CUDA in WSL2, download a 7–9B instruct GGUF
-  (suggested start: Qwen2.5-7B-Instruct Q4_K_M), start `llama-server -np 4 -c 8192`, run a real smoke, then let
-  the evals pick the model and the `local` threshold.
-- **Decision evals (spec §10A.6) — not built.** Labeled fixtures are meant to grow from `DECISION_MADE` journal
-  records; the eval harness (accuracy, Brier, ECE, escalation rate, latency per decision and model) does not exist.
-  Depends on having enough journal records, i.e. run 3.
-- **Plan 8 — two live-verification items still open** (see the plan's `## Findings` section):
-  1. A real `claude auth login` transcript (URL line, paste-prompt wording, time to `loggedIn`) has not been
-     recorded on a fresh host / after `claude auth logout` — the live run tested a host that was already logged in.
-  2. The real `gh` device-flow walkthrough (auto-Enter behaviour) has only been exercised by the fake-CLI test,
-     not a real device-flow run.
+Moved to [`../ROADMAP.md`](../ROADMAP.md): the staged backlog to the golden run, the System 1 decision status, and
+the plan-before-implementing workflow.

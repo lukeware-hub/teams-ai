@@ -50,4 +50,12 @@ describe('Phase 5', () => {
     const r = await runPhase5(deps('AC-001: smoke test failed'), 1);
     expect(r.ok ? null : r.fixTask?.origin).toBe('deploy-fix');
   });
+
+  it('with fixTasks off (deploy-only runs) a failure plans no deploy-fix task', async () => {
+    const r = await runPhase5(deps('AC-001: smoke test failed'), 1, { fixTasks: false });
+    expect(r.ok).toBe(false);
+    expect(r.ok ? null : r.fixTask).toBeUndefined();
+    expect(r.ok ? '' : r.reason).toContain('AC-001: smoke test failed');
+    expect(journal.events.some((e) => e.type === 'FIX_TASKS_PLANNED')).toBe(false);
+  });
 });

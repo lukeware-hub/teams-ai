@@ -67,6 +67,7 @@ export interface SessionDeps {
   secretsDir: string;
   retrieval: (query: string) => readonly Hit[];
   validateDocs?: CycleDeps['validateDocs'];
+  decider?: CycleDeps['decider'];
 }
 export interface SecretRow {
   name: string;
@@ -152,7 +153,7 @@ export class RefineSession {
     } as Record<DocFile, string>;
     const present = await loadSecrets(this.deps.secretsDir);
     const names = Object.keys(present).sort();
-    const secrets = names.map((name) => ({ name, present: name in present, hint: name in present ? present[name]!.slice(-4) : null }));
+    const secrets = names.map((name) => ({ name, present: name in present, hint: name in present ? '****' : null }));
     const tokens = { inputTokens: 0, outputTokens: 0, costUsd: 0, steps: 0 };
     for (const e of this.journal.events) {
       if (e.type !== 'STEP_FINISHED') continue;
@@ -184,6 +185,7 @@ export class RefineSession {
         retrieval: this.deps.retrieval,
         secretsDir: this.deps.secretsDir,
         validateDocs: this.deps.validateDocs,
+        decider: this.deps.decider,
       },
       cycle,
     ).finally(() => {

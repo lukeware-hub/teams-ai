@@ -236,6 +236,7 @@ export class TaskRunner {
     if (!outcome.ok) return this.fail(outcome.failure, outcome.errors.join('\n'));
     const value = outcome.value as DevOutput;
     if (value.status === 'spec-gap') return this.specGap(task.def, value.question);
+    if (value.status === 'blocked') return this.block(value.reason);
     this.specGapRounds = 0;
     // Gate artifacts (the JUnit report) are written by the orchestrator, not by the Dev, and are never committed.
     const touched = (await porcelainNames(this.worktree, this.deps.exec)).filter((f) => f !== this.deps.plan.junitPath);

@@ -8,6 +8,7 @@ import type { GateResult } from '../../exec/gate-runner.js';
 import type { Decider } from '../../decide/decider.js';
 import type { EvidenceTask } from '../../evidence/matrix.js';
 import type { DeployTarget } from '../../deploy/target.js';
+import type { E2eRow } from '../../exec/e2e.js';
 import type { SmokeRow } from '../../exec/smoke.js';
 import type { Exec } from '../../exec/command.js';
 import { commitAll, createWorktree, fetch as gitFetch, git } from '../../git/git.js';
@@ -25,6 +26,11 @@ export interface PhaseDeps {
   project: Project;
   specHash: string;
   firstSpec: boolean;
+  /** Phase 2 requires `plan.delivery` from the SM (roadmap R8.1). */
+  requireDelivery?: boolean;
+  /** Phase 2 requires the prescribed security gates (roadmap R8.5). */
+  requireSecurityTooling?: boolean;
+  requireE2e?: boolean;
   exec: Exec;
   runAgent: <K extends StepKind>(req: AgentStepRequest<K>) => Promise<StepOutcome<OutputOf<K>>>;
   mergeQueue: MergeQueue;
@@ -44,7 +50,9 @@ export interface PhaseDeps {
   confidential?: boolean;
   boundaries?: () => Promise<readonly string[]>;
   target?: DeployTarget;
-  smoke?: (contextDir: string, serviceUrl: string) => Promise<{ ok: boolean; rows: SmokeRow[]; detail: string }>;
+  smoke?: (contextDir: string, serviceUrl: string, gateServiceUrl?: string, gateNetwork?: string) => Promise<{ ok: boolean; rows: SmokeRow[]; detail: string }>;
+  /** Post-deploy e2e suite (roadmap R8.4); same arguments as `smoke`. */
+  e2e?: (contextDir: string, serviceUrl: string, gateServiceUrl?: string, gateNetwork?: string) => Promise<{ ok: boolean; rows: E2eRow[]; detail: string }>;
   secretNames?: () => string[];
 }
 
@@ -87,9 +95,9 @@ export async function docsWorktree(deps: PhaseDeps, branch: string, opts: { keep
   return dir;
 }
 
-export const docsCommitKey = (deps: PhaseDeps, phase: 0 | 1 | 2 | 6) => `${deps.spec.specId}-${phase}`;
+export const docsCommitKey = (deps: PhaseDeps, phase: 0 | 1 | 2 | 6 | 7) => `${deps.spec.specId}-${phase}`;
 
-export async function commitAndMergeDocs(deps: PhaseDeps, phase: 0 | 1 | 2 | 6, branch: string, worktree: string, title: string): Promise<PhaseResult> {
+export async function commitAndMergeDocs(deps: PhaseDeps, phase: 0 | 1 | 2 | 6 | 7, branch: string, worktree: string, title: string): Promise<PhaseResult> {
   const key = docsCommitKey(deps, phase);
   if (!deps.journal.isConfirmed(Intent.DocsCommit, key)) {
     const baseSha = await git(worktree, ['rev-parse', 'HEAD'], deps.exec);

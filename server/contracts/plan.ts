@@ -39,7 +39,28 @@ export const Commands = z.object({
   healthcheck: z.string().min(1),
   /** Runs against SERVICE_URL after deploy and must write JUnit to junitPath (spec Phase 5). */
   smoke: z.string().min(1).optional(),
+  /** Black-box e2e suite run after deploy against SERVICE_URL (roadmap R8.4); not the smoke command. */
+  e2e: z.string().min(1).optional(),
 });
+
+/**
+ * Artifacts a generated project must ship (roadmap R8.1). Every field is optional in the schema so a plan
+ * without `delivery` stays valid (default: no contract, today's behavior); `validatePlan` rejects a
+ * present `delivery` that omits a required artifact, and rejects a plan with no `delivery` when called
+ * with `requireDelivery` (new plans). Paths are repository-relative and must exist on main at Phase 4.
+ */
+export const Delivery = z.object({
+  dockerfile: RepoPath.optional(),
+  compose: RepoPath.optional(),
+  ciWorkflow: RepoPath.optional(),
+  releaseWorkflow: RepoPath.optional(),
+  e2eSuite: RepoPath.optional(),
+  /** README headings that must exist, e.g. "Run", "Test", "Environment". */
+  readmeSections: z.array(z.string().min(1)).optional(),
+});
+export type Delivery = z.infer<typeof Delivery>;
+/** Delivery fields holding a file path (checked on main in Phase 4). */
+export const DELIVERY_PATH_FIELDS = ['dockerfile', 'compose', 'ciWorkflow', 'releaseWorkflow', 'e2eSuite'] as const;
 
 export const PlanTask = z.object({
   id: z.string().regex(ID_PATTERNS.TASK_ID),
@@ -72,5 +93,9 @@ export const Plan = z.object({
     healthcheckPath: z.string().startsWith('/'),
     manifests: z.array(RepoPath),
   }),
+  /** Optional; absent means no delivery contract. See `Delivery`. */
+  delivery: Delivery.optional(),
+  /** Criteria with no testable observable behavior over the service interface; the e2e gate skips them (roadmap R8.4). */
+  e2eExemptions: z.array(z.object({ acId: z.string().regex(AC_ID), reason: z.string().min(1) })).optional(),
 });
 export type Plan = z.infer<typeof Plan>;

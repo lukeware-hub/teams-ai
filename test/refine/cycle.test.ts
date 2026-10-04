@@ -4,6 +4,7 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { runCycle } from '../../server/refine/cycle.js';
 import { emptyRefineState } from '../../server/refine/state.js';
+import { makeProject, makeSpec } from '../fixtures/contracts.js';
 
 describe('refinement cycle Jev advisory', () => {
   it('passes grave document findings to the agents without blocking derivation', async () => {
@@ -56,3 +57,57 @@ describe('refinement cycle Jev advisory', () => {
     expect(runAgent).toHaveBeenCalledOnce();
   });
 });
+
+describe('refinement cycle System 1 filters (decisions 2-4)', () => {
+  it('hints not-ready criteria, drops a duplicate question and asks about a contradicted history chunk', async () => {
+    const spec = makeSpec();
+    const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
+    const docs = path.join(root, 'docs');
+    await mkdir(docs, { recursive: true });
+    const draft = {
+      projectId: 'shop', specId: spec.specId, root, docs,
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+      stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
+      specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
+    };
+    await Promise.all([draft.projectMd, draft.briefMd, draft.stackMd, draft.flowMd, draft.designMd].map((f) => writeFile(f, '# doc')));
+    const events: Array<{ type: string; data: Record<string, unknown> }> = [];
+    const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'x', specHash: 'draft', type, kind: 'fact' as const, data }; } };
+    const ok = (value: unknown) => ({ ok: true, value, summary: {} });
+    const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
+    const packs: Record<string, string> = {};
+    const runAgent = vi.fn(async (req: { kind: string; role: string; pack: { feedback?: string } }) => {
+      if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
+      packs[req.role] = String(req.pack.feedback);
+      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [{ text: 'Which port?', blocking: true, relatedAcIds: ['AC-001'] }, { text: 'What port does it listen on?', blocking: true, relatedAcIds: ['AC-001'] }], docPatch: [] });
+      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
+    });
+    const asked: string[] = [];
+    const decider = {
+      decide: async (id: string, _state: string, questions: Record<string, unknown>) => {
+        asked.push(id);
+        const value = id === 'gate1-readiness' ? 0.1 : 0.9;
+        return { answered: true as const, backend: 'jev' as const, escalated: false, answers: Object.fromEntries(Object.keys(questions).map((k) => [k, { type: 'noul' as const, value, probabilities: { yes: value, no: 1 - value }, confidence: 0.9 }])) };
+      },
+    };
+    const hit = { chunkId: 'c1', docId: 'd1', kind: 'spec' as never, title: 'spec-000', heading: 'Ports', snippet: 'the service listens on 8080', text: 'the service listens on 8080', score: 1 };
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [hit], secretsDir: root, decider }, 1);
+    const order = [...new Set(asked)];
+    expect(order).toEqual(['gate1-readiness', 'question-dedup', 'history-contradiction']);
+    expect(asked.filter((id) => id === 'gate1-readiness')).toHaveLength(spec.acceptanceCriteria.length); // one call per criterion
+    expect(asked.filter((id) => id === 'history-contradiction')).toHaveLength(1); // one call per retrieved chunk
+    // Every decision leaves a DECISION_MADE record the eval harness can read (spec 10A.4/10A.6).
+    const made = events.filter((e) => e.type === 'DECISION_MADE').map((e) => e.data as { cycle: number; record: { decisionId: string; backend: string; escalated: boolean; durationMs: number; answers: Record<string, { probabilities: unknown }> } });
+    expect(made.map((m) => m.record.decisionId)).toEqual(asked);
+    expect(made[0]).toMatchObject({ cycle: 1, record: { backend: 'jev', escalated: false } });
+    expect(typeof made[0]!.record.durationMs).toBe('number');
+    expect(Object.keys(made[0]!.record.answers).length).toBeGreaterThan(0);
+    expect(packs.po).toContain('Not ready: ' + spec.acceptanceCriteria.map((c) => c.id).join(', '));
+    const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
+    const texts = (evaluated.data.questions as Array<{ text: string; blocking: boolean }>).map((q) => q.text);
+    expect(texts).toContain('Which port?');
+    expect(texts).not.toContain('What port does it listen on?');
+    expect(texts.some((t) => t.includes('contradict earlier project history (spec-000 › Ports)'))).toBe(true);
+  });
+});
+

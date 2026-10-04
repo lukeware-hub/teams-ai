@@ -8,6 +8,15 @@ export interface DeploymentIntent {
   secretNames: string[];
   /** Directory with the Dockerfile and manifests (the merged main checkout). */
   contextDir: string;
+  /** Repository-relative compose file (`plan.delivery.compose`); when set, docker-local deploys with `docker compose`. */
+  compose?: string;
+  /** Repository-relative path (e.g. `.tools/image.tar`): when set, build also exports the image as an archive there. */
+  imageArchive?: string;
+}
+
+/** Absolute archive path for an intent, or null when no export is requested. */
+export function archivePath(intent: DeploymentIntent): string | null {
+  return intent.imageArchive ? `${intent.contextDir.replaceAll('\\', '/').replace(/\/+$/, '')}/${intent.imageArchive}` : null;
 }
 
 export interface DeployTarget {
@@ -21,9 +30,13 @@ export interface DeployTarget {
   rollback(intent: DeploymentIntent, previous: string): Promise<void>;
   destroy(intent: DeploymentIntent): Promise<void>;
   serviceUrl?(intent: DeploymentIntent): Promise<string> | string;
+  /** The service URL as seen from a gate Job pod (in-cluster Service DNS); absent when the orchestrator's URL already works there. */
+  gateServiceUrl?(intent: DeploymentIntent): Promise<string> | string;
+  /** Docker network a docker-run gate container must join to reach the service by `gateServiceUrl`; absent means the default bridge. */
+  gateNetwork?(intent: DeploymentIntent): string | undefined;
 }
 
-export type DeployStage = 'validate' | 'build' | 'apply' | 'verify' | 'smoke';
+export type DeployStage = 'validate' | 'build' | 'apply' | 'verify' | 'smoke' | 'e2e';
 
 export type DeployResult =
   | { ok: true; previous: string | null }
@@ -93,7 +106,15 @@ export async function runDeployment(
     return { ok: false, stage: 'apply', detail: (err as Error).message, rolledBack: false, rollbackHealthy: null };
   }
   const fail = async (stage: DeployStage, detail: string): Promise<DeployResult> => {
-    if (!previous) return { ok: false, stage, detail, rolledBack: false, rollbackHealthy: null };
+    if (!previous) {
+      // First deploy: nothing to go back to, and the failed stack must not keep running (R8.2).
+      try {
+        await target.destroy(intent);
+        return { ok: false, stage, detail: `${detail}; first deploy failed, the new stack was torn down`, rolledBack: false, rollbackHealthy: null };
+      } catch (err) {
+        return { ok: false, stage, detail: `${detail}; teardown of the failed first deploy failed: ${(err as Error).message}`, rolledBack: false, rollbackHealthy: null };
+      }
+    }
     try {
       await target.rollback(intent, previous);
     } catch (err) {

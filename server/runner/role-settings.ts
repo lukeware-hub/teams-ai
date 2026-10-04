@@ -1,6 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { ALWAYS_DENIED } from '../agents/registry.js';
+import { ALWAYS_DENIED, NESTED_DENIED } from '../agents/registry.js';
 import type { Role } from '../config/config.js';
 
 /**
@@ -41,13 +42,13 @@ const SUITE_BASH = [
   'Bash(head:*)',
   'Bash(tail:*)',
   'Bash(grep:*)',
-  'Bash(find:*)',
   'Bash(wc:*)',
   'Bash(mktemp:*)',
   'Bash(echo:*)',
   'Bash(pwd:*)',
   'Bash(true:*)',
 ] as const;
+// `find` is deliberately absent (audit H3): `-exec` runs any command; use ls/grep.
 const ROLE_ALLOW: Record<Role, readonly string[]> = {
   sm: [],
   po: [],
@@ -77,6 +78,7 @@ export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSet
     // Edit(path) rules cover every file-editing tool; a Write(path) rule is not matched by the file permission checks.
     'Edit(.claude/**)',
     ...ALWAYS_DENIED,
+    ...NESTED_DENIED,
   ];
   return {
     sandbox: { enabled: input.sandboxEnabled ?? true, network: { allowedDomains: [...input.allowedDomains] } },
@@ -84,12 +86,33 @@ export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSet
   };
 }
 
+/** Tail of the queued writes per target file; see `writeRoleSettings`. */
+const pendingWrites = new Map<string, Promise<void>>();
+
 /** Writes `<dir>/<role>.settings.json` (outside any worktree) and returns its path. */
 export async function writeRoleSettings(dir: string, role: Role, input: RoleSettingsInput): Promise<string> {
   await fs.mkdir(dir, { recursive: true });
   const file = path.join(dir, `${role}.settings.json`);
-  const tmp = `${file}.${process.pid}.tmp`;
-  await fs.writeFile(tmp, `${JSON.stringify(buildRoleSettings(role, input), null, 2)}\n`);
-  await fs.rename(tmp, file);
+  const content = `${JSON.stringify(buildRoleSettings(role, input), null, 2)}\n`;
+  // Concurrent steps of one role share `file`. Windows fails renames onto the same target that overlap with EPERM,
+  // so writers of one file run one at a time, and a failed write does not block the next one.
+  const write = (pendingWrites.get(file) ?? Promise.resolve()).then(async () => {
+    // Unique per call, so no writer ever renames or truncates another writer's tmp file (that was ENOENT).
+    const tmp = `${file}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      await fs.writeFile(tmp, content);
+      await fs.rename(tmp, file);
+    } catch (err) {
+      await fs.rm(tmp, { force: true }).catch(() => {});
+      throw err;
+    }
+  });
+  const tail = write.catch(() => {});
+  pendingWrites.set(file, tail);
+  try {
+    await write;
+  } finally {
+    if (pendingWrites.get(file) === tail) pendingWrites.delete(file);
+  }
   return file;
 }

@@ -7,12 +7,17 @@ import { Accounting } from '../budget/accounting.js';
 import { Governor } from '../budget/governor.js';
 import { DEFAULT_BREAKER, QuotaBreaker } from '../budget/quota-breaker.js';
 import { resolveProfile, type Config, type Role } from '../config/config.js';
-import type { Plan, PlanTask } from '../contracts/plan.js';
+import { Plan, type PlanTask } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
 import { createDecider } from '../decide/create-decider.js';
+import type { Decider } from '../decide/decider.js';
+import { classifyCliError } from '../decide/decisions/cli-error.js';
+import { sandboxPolicyViolation } from '../runner/sandbox-policy.js';
 import type { Exec } from '../exec/command.js';
-import { runGates, TAIL_CHARS, type GateResult } from '../exec/gate-runner.js';
+import { TOOLS_GATE } from '../validators/security-tooling.js';
+import { writeToolsInstaller } from './tools-install.js';
+import { runGates, TAIL_CHARS, type GateExecutor, type GateResult } from '../exec/gate-runner.js';
 import { git } from '../git/git.js';
 import { MergeQueue } from '../git/merge-queue.js';
 import type { CodeContext, HandoffSummary } from '../knowledge/context-pack.js';
@@ -27,12 +32,14 @@ import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
 import { CrashInjected, Intent, Journal, OrchEvent, type IntentType, type RunResult } from './events.js';
 export { CrashInjected };
 import { taskMergeSteps, type MergeStepsDeps } from './merge-steps.js';
-import { PAUSED_AUTH, runPhase0, runPhase1, runPhase2, runPhase4, runPhase5, runPhase6, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, type PhaseDeps, type PhaseResult } from './phases/index.js';
+import { PAUSED_AUTH, runPhase0, runWorkflowBootstrap, runPhase1, runPhase2, runPhase4, runPhase5, runPhase6, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, type PhaseDeps, type PhaseResult } from './phases/index.js';
 import { reconcile } from './reconcile.js';
+import { validateDocs } from '../validators/docs.js';
 import { readmePack, runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
 import { TaskRunner, type TaskRunnerDeps } from './task-runner.js';
 import { eventsFile, expandHome, graphDir, nextRunId, runDir, stateFile, stepDir, type Workspace } from './workspace.js';
 import type { DeployTarget } from '../deploy/target.js';
+import { E2E_GATE, runE2e } from '../exec/e2e.js';
 import { runSmoke } from '../exec/smoke.js';
 
 export interface RunDeps {
@@ -41,6 +48,9 @@ export interface RunDeps {
   project: Project;
   spec: Spec;
   firstSpec: boolean;
+  requireDelivery?: boolean;
+  requireSecurityTooling?: boolean;
+  requireE2e?: boolean;
   exec: Exec;
   ghExec: Exec;
   runStep: typeof runStepFn;
@@ -61,6 +71,8 @@ export interface RunDeps {
   /** Spec (refinement) §4: docs to put on main before Phase 1 (`run --draft`). */
   bootstrap?: { docsDir: string; owner: string | undefined };
   target?: DeployTarget;
+  /** Runs gates and smoke; absent means docker over `exec`. */
+  gateExecutor?: GateExecutor;
 }
 
 export type ExecuteResult = RunResult | 'paused:auth';
@@ -119,7 +131,18 @@ export class Run {
     return journal;
   }
 
+  /** Refuse an unsafe or inconsistent configuration before any phase runs. Audit C1: runStep keeps the sandbox check as a backstop. */
+  private static assertSandboxPolicy(deps: RunDeps): void {
+    const violation = sandboxPolicyViolation(deps.cfg.sandbox, process.env);
+    if (violation) throw new Error(violation);
+    // Gate Jobs run in the cluster: a target that only knows 127.0.0.1 would send the smoke gate to its own loopback.
+    if (deps.gateExecutor?.kind === 'k8s' && deps.target && !deps.target.gateServiceUrl) {
+      throw new Error(`executor.kind=k8s needs a deploy target that reports an in-cluster service URL; the ${deps.target.name} target does not (use the kind target, or executor.kind=docker)`);
+    }
+  }
+
   static async create(deps: RunDeps, runId?: string): Promise<Run> {
+    Run.assertSandboxPolicy(deps);
     const id = runId ?? (await nextRunId(deps.ws, deps.spec.specId));
     await fs.mkdir(runDir(deps.ws, id), { recursive: true });
     const journal = await Run.openJournal(deps, id);
@@ -128,13 +151,15 @@ export class Run {
   }
 
   static async resume(deps: RunDeps, runId: string): Promise<Run> {
+    Run.assertSandboxPolicy(deps);
     // The UI marks a run whose process died with `pid.gone`; any resume, CLI or UI, ends that state.
     await fs.rm(path.join(runDir(deps.ws, runId), 'pid.gone'), { force: true });
     const journal = await Run.openJournal(deps, runId);
     const run = new Run(runId, journal, deps);
     await reconcile({ journal, ws: deps.ws, exec: deps.exec, ghExec: deps.ghExec, afterMerge: (taskId, branch) => run.afterMergeOnResume(taskId, branch), log: run.log, currentImage: deps.target?.currentImage.bind(deps.target) });
     // `resume` is the human's signal that the login was redone (spec §7 "resume tries again").
-    if (journal.state.status === 'paused:auth') await journal.fact(RunEvent.RunResumed, {});
+    // A hand resume of a stopped run is journaled too: the supervisor reads a stop as intentional only while it is the last lifecycle event.
+    if (journal.state.status === 'paused:auth' || journal.state.status === 'draining') await journal.fact(RunEvent.RunResumed, { manual: true });
     await run.writeState();
     return run;
   }
@@ -192,8 +217,10 @@ export class Run {
       settingsDir: path.posix.join(runDir(ws, this.runId), 'settings'),
       workspacesRoot: ws.root,
       network: { allowedDomains: ['registry.npmjs.org', ...(cfg.omniroute.enabled ? ['localhost'] : [])] },
-      sandbox: { enabled: cfg.sandbox.enabled },
+      sandbox: { enabled: cfg.sandbox.enabled, unsafeNoSandbox: cfg.sandbox.unsafeNoSandbox },
       clock: this.clock,
+      // cli-error's chain never reaches Claude, so classifying a failed step cannot start another step.
+      classifyUnknown: (input) => classifyCliError(input, this.decider(), { confidential: this.deps.project.confidential }),
     };
   }
 
@@ -248,8 +275,9 @@ export class Run {
     const plan = this.plan!;
     const install = await this.installDeps(worktree);
     if (install) return { results: [install], blockingFailure: install };
+    if (plan.gates.some((g) => g.name === TOOLS_GATE)) await writeToolsInstaller(worktree);
     return runGates(
-      plan.gates.filter((g) => g.blocking),
+      plan.gates.filter((g) => g.blocking && g.name !== E2E_GATE), // the e2e gate runs in Phase 5 only
       {
         worktree,
         image: plan.gateImage,
@@ -264,7 +292,7 @@ export class Run {
         user: containerUser(),
         bindRewrite: this.deps.cfg.docker.bindRewrite,
       },
-      { exec: this.deps.exec, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null), removeFile: (p) => fs.rm(p, { force: true }) },
+      { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null), removeFile: (p) => fs.rm(p, { force: true }) },
     );
   };
 
@@ -306,9 +334,12 @@ export class Run {
     return { source: 'graph', affected };
   };
 
-  private runnerDeps(): TaskRunnerDeps {
+  private system1?: Decider;
+
+  /** One decider per run: task steps and the runner's CLI error classification (decision 8) share its journal. */
+  private decider(): Decider {
     const { cfg, project, spec, secrets } = this.deps;
-    const decider = createDecider({
+    return (this.system1 ??= createDecider({
       cfg,
       secrets,
       accounting: this.accounting,
@@ -329,7 +360,12 @@ export class Run {
       onDecision: (record) => {
         this.journal.fact(OrchEvent.DecisionMade, { record: JSON.parse(JSON.stringify(record)) }).catch((err: Error) => this.log(`decision not journaled: ${err.message}`));
       },
-    });
+    }));
+  }
+
+  private runnerDeps(): TaskRunnerDeps {
+    const { cfg, project, spec } = this.deps;
+    const decider = this.decider();
     return {
       journal: this.journal, ws: this.deps.ws, spec, project, plan: this.plan!, specHash: spec.specHash!, firstSpec: this.deps.firstSpec,
       exec: this.deps.exec,
@@ -365,8 +401,9 @@ export class Run {
 
   private phaseDeps(): PhaseDeps {
     return {
-      journal: this.journal, ws: this.deps.ws, spec: this.deps.spec, project: this.deps.project, specHash: this.deps.spec.specHash!, firstSpec: this.deps.firstSpec, exec: this.deps.exec,
+      journal: this.journal, ws: this.deps.ws, spec: this.deps.spec, project: this.deps.project, specHash: this.deps.spec.specHash!, firstSpec: this.deps.firstSpec, requireDelivery: this.deps.requireDelivery, requireSecurityTooling: this.deps.requireSecurityTooling, requireE2e: this.deps.requireE2e, exec: this.deps.exec,
       runAgent: this.runAgent,
+      decider: this.decider(),
       mergeQueue: this.mergeQueue,
       mergeDeps: this.mergeDeps(),
       packBase: this.packBase,
@@ -377,11 +414,17 @@ export class Run {
       tasks: () => [...this.journal.state.tasks.values()],
       boundaries: async () => (this.deps.graphify ? (await this.deps.graphify.godNodes(graphDir(this.deps.ws, null), 10).catch(() => [])).map((n) => n.label) : []),
       target: this.deps.target,
-      smoke: async (contextDir, url) => {
+      smoke: async (contextDir, url, gateUrl, gateNetwork) => {
         const p = this.plan!;
-        const r = await runSmoke(p, this.deps.spec, { worktree: contextDir, image: p.gateImage, junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-smoke`, user: containerUser(), bindRewrite: this.deps.cfg.docker.bindRewrite }, url, { exec: this.deps.exec, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
+        const r = await runSmoke(p, this.deps.spec, { worktree: contextDir, image: p.gateImage, junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-smoke`, user: containerUser(), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, this.deps.gateExecutor?.kind === 'k8s' || gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
         // The gate's output is the only clue the fix task gets about why a smoke test is missing or failing.
         const tail = r.ok || !r.result ? '' : `\n\nsmoke gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
+        return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
+      },
+      e2e: async (contextDir, url, gateUrl, gateNetwork) => {
+        const p = this.plan!;
+        const r = await runE2e(p, this.deps.spec, { worktree: contextDir, image: p.gateImage, junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-e2e`, user: containerUser(), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, this.deps.gateExecutor?.kind === 'k8s' || gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
+        const tail = r.ok || !r.result ? '' : `\n\ne2e gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
       },
     };
@@ -430,6 +473,12 @@ export class Run {
     return runPhase0({ ...this.phaseDeps(), ghExec: this.deps.ghExec }, this.deps.bootstrap);
   }
 
+  /** R8.3: CI and release workflows land on main for a bootstrapped repository; public for tests. */
+  async executeWorkflows(plan: Plan): Promise<PhaseResult> {
+    if (!this.deps.bootstrap) return { ok: true };
+    return runWorkflowBootstrap(this.phaseDeps(), plan);
+  }
+
   async execute(): Promise<ExecuteResult> {
     const phase0 = await this.executePhase0();
     if (!phase0.ok) return phase0.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase0.reason);
@@ -440,6 +489,8 @@ export class Run {
     const phase2 = await runPhase2(this.phaseDeps(), this.techSpecText);
     if (!phase2.ok) return phase2.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase2.reason);
     this.plan = phase2.plan!;
+    const workflows = await this.executeWorkflows(this.plan);
+    if (!workflows.ok) return this.finish('phase-failed', workflows.reason);
     if (!this.journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 3)) await this.journal.fact(OrchEvent.PhaseStarted, { phase: 3 });
     for (const task of this.plan.tasks) {
       const t = this.journal.state.tasks.get(task.id);
@@ -481,17 +532,39 @@ export class Run {
     const plan = await fs.readFile(rel('docs', 'specs', specId, 'plan.json'), 'utf8').then((t) => JSON.parse(t) as Plan).catch(() => null);
     const existing = await fs.readFile(rel('docs', 'README.md'), 'utf8').catch(() => null);
     let readme = '';
+    let runbook = '';
+    let apiDocs = '';
+    let docsErrors: string[] = [];
     let error = 'readme step failed';
     for (let attempt = 1; attempt <= 2; attempt++) {
-      const out = (await this.runAgent<'readme'>({ kind: 'readme', role: 'sm', pack: readmePack(this.packBase(), { tasks: (plan?.tasks ?? []).map((t) => `- ${t.id}: ${t.title}`), existing }), cwd: wt, phase: 'readme', taskId: null, attempt })) as { ok: boolean; value?: { readme: string }; failure?: string; errors?: string[] };
-      if (out.ok && out.value) { readme = out.value.readme; break; }
+      const out = (await this.runAgent<'readme'>({ kind: 'readme', role: 'sm', pack: readmePack(this.packBase(), { tasks: (plan?.tasks ?? []).map((t) => `- ${t.id}: ${t.title}`), existing, docsErrors }), cwd: wt, phase: 'readme', taskId: null, attempt })) as { ok: boolean; value?: { readme: string; runbook?: string; apiDocs?: string }; failure?: string; errors?: string[] };
+      if (out.ok && out.value) {
+        readme = out.value.readme; runbook = out.value.runbook ?? ''; apiDocs = out.value.apiDocs ?? '';
+        docsErrors = validateDocs({ readme, runbook, apiDocs }, this.deps.spec.features);
+        if (docsErrors.length === 0) break;
+        error = `documentation rejected: ${docsErrors.join('; ')}`; readme = ''; continue;
+      }
       if (out.failure === 'quota' || out.failure === 'auth') { if (await shared.pauseForFailure(this.phaseDeps(), out.failure)) return 'paused:auth'; continue; }
       error = out.errors?.join('; ') ?? error;
     }
     if (!readme) return this.finish('phase-failed', error);
     await fs.writeFile(rel('docs', 'README.md'), `${readme.trimEnd()}\n`);
+    await fs.writeFile(rel('docs', 'RUNBOOK.md'), `${runbook.trimEnd()}\n`);
+    if (apiDocs.trim()) await fs.writeFile(rel('docs', 'API.md'), `${apiDocs.trimEnd()}\n`);
     const merged = await shared.commitAndMergeDocs(this.phaseDeps(), 6, branch, wt, `docs(${specId}): README`);
     return merged.ok ? this.finish('done') : this.finish('phase-failed', merged.reason);
+  }
+
+  /** `spec deploy`: one Phase 5 attempt of the plan on main to this run's target; no agent runs, a failure is only reported. */
+  async deployOnly(): Promise<ExecuteResult> {
+    if (!this.deps.target) return this.finish('phase-failed', 'no deployment target');
+    const specId = this.deps.spec.specId;
+    await git(this.deps.ws.repo, ['fetch', '-q', 'origin'], this.deps.exec);
+    const text = await git(this.deps.ws.repo, ['show', `origin/main:docs/specs/${specId}/plan.json`], this.deps.exec).catch(() => null);
+    if (!text) return this.finish('phase-failed', `main has no docs/specs/${specId}/plan.json`);
+    this.plan = Plan.parse(JSON.parse(text));
+    const p5 = await runPhase5(this.phaseDeps(), 1, { fixTasks: false });
+    return p5.ok ? this.finish('done') : this.finish('deploy-failed', p5.reason);
   }
 
   private async postPhases(): Promise<ExecuteResult> {
@@ -572,8 +645,10 @@ export class Run {
           this.start(id);
         }
       }
-      // Draining (spec §7): nothing new starts, but tasks already active run to their terminal state.
-      if (this.journal.state.status === 'running' || this.journal.state.status === 'draining') {
+      // Draining (spec §7, plan 38): after a stop request only the step already in flight finishes (a budget drain still lets active tasks run to their end). A task that is mid-pipeline (implementing -> validating -> ...)
+      // is NOT restarted for its next step, or a STEP_STARTED lands after RUN_STOP_REQUESTED and the stop outlives the API's graceful window.
+      // The task stays in its active state in the journal; a resume continues it from there.
+      if (this.journal.state.status === 'running' || (this.journal.state.status === 'draining' && !this.journal.state.stopOnly)) {
         // Tasks left active by a previous process (resume) get a runner too; nothing new is admitted here.
         for (const [id, t] of this.journal.state.tasks) if (ACTIVE_STATES.has(t.state) && !this.runners.has(id)) this.runners.set(id, new TaskRunner(id, this.runnerDeps()));
         for (const [id, r] of this.runners) if (!r.done && !this.inflight.has(id) && ACTIVE_STATES.has(r.task.state)) this.start(id);

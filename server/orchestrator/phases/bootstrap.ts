@@ -3,7 +3,9 @@ import path from 'node:path';
 import type { Exec } from '../../exec/command.js';
 import { commitAll, fetch as gitFetch, git } from '../../git/git.js';
 import { ensureRepo, NOT_FOUND } from '../../git/github.js';
+import type { Plan } from '../../contracts/plan.js';
 import { Intent, OrchEvent } from '../events.js';
+import { renderWorkflows, validateWorkflow } from '../workflows.js';
 import { commitAndMergeDocs, docsCommitKey, docsWorktree, type PhaseDeps, type PhaseResult } from './shared.js';
 
 const isRepo = (dir: string) => fs.access(path.join(dir, '.git')).then(() => true, () => false);
@@ -67,4 +69,33 @@ export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docs
     await fs.copyFile(path.join(opts.docsDir, rel), path.join(wt, 'docs', rel));
   }
   return commitAndMergeDocs(deps, 0, branch, wt, `docs(${spec.specId}): spec v${version}`);
+}
+
+/**
+ * R8.3: once the plan exists, commit the rendered CI and release workflows to main through a docs PR.
+ * Files main already carries are never overwritten. The plan only exists after Phase 2, so this runs
+ * right after it rather than inside `runPhase0`.
+ */
+export async function runWorkflowBootstrap(deps: PhaseDeps, plan: Plan): Promise<PhaseResult> {
+  const { journal, spec } = deps;
+  const branch = `docs/${spec.specId}-workflows`;
+  const resumed = journal.isConfirmed(Intent.DocsCommit, docsCommitKey(deps, 7));
+  const wt = await docsWorktree(deps, branch, { keepCommits: resumed });
+  if (!resumed) {
+    let wrote = 0;
+    for (const f of renderWorkflows(plan)) {
+      if (await fs.access(path.join(wt, f.path)).then(() => true, () => false)) continue;
+      const errors = validateWorkflow(f.kind, f.text, plan);
+      if (errors.length > 0) {
+        const reason = `rendered ${f.path} is invalid: ${errors.join('; ')}`;
+        await journal.fact(OrchEvent.PhaseFailed, { phase: 7, reason });
+        return { ok: false, reason };
+      }
+      await fs.mkdir(path.dirname(path.join(wt, f.path)), { recursive: true });
+      await fs.writeFile(path.join(wt, f.path), f.text);
+      wrote += 1;
+    }
+    if (wrote === 0) return { ok: true };
+  }
+  return commitAndMergeDocs(deps, 7, branch, wt, `ci(${spec.specId}): GitHub Actions workflows`);
 }

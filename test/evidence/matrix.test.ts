@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TestResult } from '../../server/evidence/junit.js';
-import { buildEvidenceMatrix, evidenceGate, readyForValidation, verifyClaimedEvidence } from '../../server/evidence/matrix.js';
+import { attachE2e, buildEvidenceMatrix, evidenceGate, readyForValidation, verifyClaimedEvidence } from '../../server/evidence/matrix.js';
 import type { TaskState } from '../../server/pipeline/task-state.js';
 import { makeFrozenSpec, makePlanTask } from '../fixtures/contracts.js';
 
@@ -121,5 +121,20 @@ describe('verifyClaimedEvidence against uncited failures', () => {
     const results = [result('[AC-001] t', 'failed', ['AC-001']), result('[AC-001] t', 'passed', ['AC-001'])];
     const errors = verifyClaimedEvidence([{ id: 'AC-001', status: 'passed', evidence: ['t::[AC-001] t'] }], results);
     expect(errors).toContain('AC-001: cited test id is ambiguous in the JUnit report: t::[AC-001] t');
+  });
+});
+
+describe('attachE2e', () => {
+  const rows = [
+    { criterion: 'AC-001', tasks: [], tests: [], status: 'passed' as const },
+    { criterion: 'AC-002', tasks: [], tests: [], status: 'passed' as const },
+  ];
+  it('adds the e2e status and exemption reason per criterion', () => {
+    const out = attachE2e(rows, [{ acId: 'AC-001', status: 'passed' }, { acId: 'AC-002', status: 'not-applicable', reason: 'devops only' }]);
+    expect(out[0]).toMatchObject({ e2e: 'passed' });
+    expect(out[1]).toMatchObject({ e2e: 'not-applicable', e2eReason: 'devops only' });
+  });
+  it('leaves rows untouched when no e2e ran', () => {
+    expect(attachE2e(rows, undefined)).toEqual(rows);
   });
 });

@@ -124,7 +124,7 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
         if (!SECRET_NAME.test(name)) throw new HttpError(400, 'invalid secret name');
         const value = str(await body(), 'value');
         await (await get(params)).writeSecret(name, value);
-        json(200, { present: true, hint: value.trim().slice(-4) });
+        json(200, { present: true });
       }),
     },
     {

@@ -17,6 +17,7 @@ import type { Hit } from '../knowledge/retrieval.js';
 import type { runStep as runStepFn, StepDeps, StepOutcome, StepRequest } from '../runner/step.js';
 import type { RefContext } from '../validators/references.js';
 import { REQUIRED_BLOCKING_GATES, SCAFFOLD_TASK_ID } from '../validators/plan.js';
+import { securityToolingRules } from '../validators/security-tooling.js';
 import { OrchEvent, type Journal } from './events.js';
 
 export interface PackBase {
@@ -118,7 +119,11 @@ export function coveragePack(base: PackBase, opts: { techSpecText: string }): Co
 export const SMOKE_CONTRACT =
   'commands.smoke runs inside gateImage against a service the orchestrator has ALREADY deployed: the tests read the base URL from process.env.SERVICE_URL, never start, build or restart containers (docker is not available there), and each acceptance criterion with smoke: true needs at least one test whose name carries its id, e.g. "[AC-001] GET /health answers 200"';
 
-export function planRules(firstSpec: boolean): string {
+/** How Phase 5 runs commands.e2e (roadmap R8.4); the Test agent writing the suite and the SM planning it must know it. */
+export const E2E_CONTRACT =
+  'commands.e2e is required and is NOT commands.smoke: it runs the suite at delivery.e2eSuite (the command must reference that path) inside gateImage after the compose stack is deployed and smoke has passed, black-box over HTTP against process.env.SERVICE_URL, no mocks of the service under test, never starting containers; every acceptance criterion needs one test whose name carries its id, e.g. "[AC-001] POST /todos creates a todo", EXCEPT criteria with no testable observable behavior over the service interface (devops-only, build, docs or style rules): list those in plan.e2eExemptions as {acId, reason} (reason of at least 10 characters, at least one criterion stays covered) and they get no e2e test; plan one task owned by dev that creates the suite and depends on the service tasks; a failing e2e blocks the run';
+
+export function planRules(firstSpec: boolean, requireDelivery = false, requireSecurityTooling = false, requireE2e = false): string {
   const lines = [
     'Plan rules (the orchestrator rejects a plan that breaks any of them):',
     `- gates must include these blocking gates: ${REQUIRED_BLOCKING_GATES.join(', ')} (plus a blocking typecheck gate when commands.typecheck exists)`,
@@ -126,7 +131,12 @@ export function planRules(firstSpec: boolean): string {
     '- dependsOn forms a DAG; affectedPaths are repository-relative paths or globs; tasks small enough for one agent step',
     '- gateImage is a glibc-based image (e.g. node:22-bookworm-slim), never an Alpine/musl one: dependencies are installed by the Dev on a Debian host and native optional packages (rollup, esbuild, swc) will not load under musl',
     `- ${SMOKE_CONTRACT}`,
+    requireDelivery
+      ? '- delivery is required: {dockerfile, compose, ciWorkflow, releaseWorkflow, e2eSuite} are repository-relative file paths the project must ship (e.g. Dockerfile, docker-compose.yml, .github/workflows/ci.yml, .github/workflows/release.yml, e2e/) and readmeSections lists the README headings that must exist (e.g. Run, Test, Environment, Architecture, Pipeline); Phase 4 fails if a listed file is missing on main, so assign each one to a task'
+      : '- delivery is optional; when present it must list dockerfile, compose, ciWorkflow, releaseWorkflow, e2eSuite (file paths) and readmeSections (non-empty); Phase 4 fails if a listed file is missing on main',
   ];
+  if (requireSecurityTooling) lines.push(securityToolingRules());
+  if (requireE2e) lines.push(`- ${E2E_CONTRACT}`);
   if (firstSpec) {
     lines.push(
       `- first spec of the project: a task with id ${SCAFFOLD_TASK_ID} (owner dev, no dependsOn) creates the project skeleton, build, test and gate configuration; every other task depends on it directly or indirectly`,
@@ -140,12 +150,12 @@ export function planRules(firstSpec: boolean): string {
 
 export function planPack(
   base: PackBase,
-  opts: { techSpecText: string; godNodes: ReadonlyArray<{ label: string; edges: number }>; feedback: string | null; firstSpec?: boolean },
+  opts: { techSpecText: string; godNodes: ReadonlyArray<{ label: string; edges: number }>; feedback: string | null; firstSpec?: boolean; requireDelivery?: boolean; requireSecurityTooling?: boolean; requireE2e?: boolean },
 ): ContextPackInput {
   const human = (base.spec.tasks ?? []).map((t) => `- ${t.title}: ${t.description}`);
   const nodes = opts.godNodes.map((n) => `- ${n.label} (${n.edges} edges)`);
   const parts = [
-    planRules(opts.firstSpec ?? false),
+    planRules(opts.firstSpec ?? false, opts.requireDelivery ?? false, opts.requireSecurityTooling ?? false, opts.requireE2e ?? false),
     human.length > 0 ? `Human-defined tasks (derive dependencies, keep them):\n${human.join('\n')}` : '',
     nodes.length > 0 ? `Central modules of the current code (graph god-nodes):\n${nodes.join('\n')}` : '',
     opts.feedback ?? '',
@@ -186,18 +196,29 @@ export function fixTasksPack(base: PackBase, opts: { failedTests: readonly strin
   return { ...common(base, 'fix-tasks', 'sm'), criteria: base.spec.acceptanceCriteria, feedback };
 }
 
-export function readmePack(base: PackBase, opts: { tasks: readonly string[]; existing: string | null }): ContextPackInput {
+export const DOCS_STRUCTURE = [
+  'Documentation is a gate; the orchestrator rejects the step unless all three documents pass:',
+  '- `readme` (docs/README.md): headings for run, test, env (environment variables), architecture and pipeline (CI/CD), each with real content (English or Portuguese names).',
+  '- `runbook` (docs/RUNBOOK.md): headings for start, stop, logs and rollback, each with real content.',
+  '- `apiDocs` (docs/API.md): every endpoint named in the spec features, written with its exact path (only needed when the features name endpoints).',
+].join('\n');
+
+export function readmePack(base: PackBase, opts: { tasks: readonly string[]; existing: string | null; docsErrors?: readonly string[] }): ContextPackInput {
   return { ...common(base, 'readme', 'sm'), criteria: base.spec.acceptanceCriteria, feedback: [
     'Write docs/README.md for this project: the Markdown overview a newcomer reads first. Read the repository (package.json, entry points, tests, Dockerfile) with Read, Grep and Glob; state only what the files confirm.',
+    DOCS_STRUCTURE,
+    ...(opts.docsErrors?.length ? [`Your previous documents were rejected, fix every point:\n${opts.docsErrors.map((e) => `- ${e}`).join('\n')}`] : []),
     `Delivered tasks:\n${opts.tasks.join('\n') || '- none'}`,
     opts.existing ? `Current docs/README.md (rewrite it, keep what is still true):\n${opts.existing}` : 'There is no docs/README.md yet.',
   ].join('\n\n') };
 }
 
-export function reportPack(base: PackBase, opts: { delivered: readonly string[]; blocked: ReadonlyArray<{ taskId: string; reason: string }>; evidence: string; assumptions: readonly string[]; deploy: string; tokens: string; security: string }): ContextPackInput {
+export function reportPack(base: PackBase, opts: { delivered: readonly string[]; blocked: ReadonlyArray<{ taskId: string; reason: string }>; evidence: string; assumptions: readonly string[]; deploy: string; tokens: string; security: string; docsErrors?: readonly string[] }): ContextPackInput {
   return { ...common(base, 'report', 'sm'), criteria: base.spec.acceptanceCriteria, feedback: [
     'Write the final report for the human validator. Give concrete exploratory steps for every acceptance criterion.',
     'Also return `readme`: the Markdown for docs/README.md, a short overview of the project (what it is, how to run and test it, the endpoints or commands it exposes, the acceptance criteria it satisfies). Use only facts from the context pack.',
+    DOCS_STRUCTURE,
+    ...(opts.docsErrors?.length ? [`Your previous documents were rejected, fix every point:\n${opts.docsErrors.map((e) => `- ${e}`).join('\n')}`] : []),
     `Delivered tasks: ${opts.delivered.join(', ') || 'none'}`,
     `Blocked tasks:\n${opts.blocked.map((b) => `- ${b.taskId}: ${b.reason}`).join('\n') || '- none'}`,
     `Evidence matrix:\n${opts.evidence}`,

@@ -24,4 +24,5 @@ metadata:
   name: hello-app
 spec:
   selector: { app: hello-app }
-  ports: [{ port: 3000, targetPort: 3000 }]
+  type: NodePort
+  ports: [{ port: 3000, targetPort: 3000, nodePort: 30080 }]

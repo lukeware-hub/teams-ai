@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { runApi, type Report, type RunDetail } from '../api.js';
 
@@ -18,7 +18,7 @@ function writeChecks(runId: string, checks: Record<string, boolean>): void {
   }
 }
 
-export function ValidationView({ detail, specStatus, onReport, onComplete }: { detail: RunDetail; specStatus: string; onReport: (text: string) => void; onComplete: () => void }) {
+export function ValidationView({ detail, specStatus, actionError = null, onReport, onComplete }: { detail: RunDetail; specStatus: string; actionError?: string | null; onReport: (text: string) => void; onComplete: () => void }) {
   const [checks, setChecks] = useState<Record<string, boolean>>(() => readChecks(detail.runId));
   const [text, setText] = useState('');
   const report: Report | null = detail.report;
@@ -125,6 +125,7 @@ export function ValidationView({ detail, specStatus, onReport, onComplete }: { d
                   <th>AC</th>
                   <th>Tasks</th>
                   <th>Tests</th>
+                  <th>E2E</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -134,6 +135,7 @@ export function ValidationView({ detail, specStatus, onReport, onComplete }: { d
                     <td>{r.criterion}</td>
                     <td>{r.tasks.join(', ')}</td>
                     <td>{r.tests.join(', ') || '—'}</td>
+                    <td data-testid={`e2e-${r.criterion}`} title={r.e2eReason}>{r.e2e ?? '—'}{r.e2eReason ? ` (${r.e2eReason})` : ''}</td>
                     <td>{r.status}</td>
                   </tr>
                 ))}
@@ -152,6 +154,7 @@ export function ValidationView({ detail, specStatus, onReport, onComplete }: { d
       <section className="card">
         <h2>Actions</h2>
         {note ? <p data-testid="actions-note" className="hint">{note}</p> : null}
+        {actionError ? <p data-testid="action-error" className="error">{actionError}</p> : null}
         <textarea data-testid="problem-text" value={text} onChange={(e) => setText(e.target.value)} placeholder="What went wrong? This reopens refinement with your report." disabled={!enabled} />
         <p className="controls">
           <button data-testid="report-problem" disabled={!enabled || text.trim() === ''} onClick={() => onReport(text.trim())}>
@@ -172,7 +175,15 @@ export function ValidationPage() {
   const [detail, setDetail] = useState<RunDetail | null>(null);
   const [specStatus, setSpecStatus] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [polling, setPolling] = useState(false);
+  const inFlight = useRef(false); // a double click must send one request, not two (the second would 409 and mask the first's success)
+  const guarded = (call: () => Promise<void>) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setActionError(null);
+    call().catch((e: Error) => setActionError(e.message)).finally(() => { inFlight.current = false; });
+  };
   const load = async () => {
     if (!runId) return;
     const d = await runApi.run(runId);
@@ -197,18 +208,11 @@ export function ValidationPage() {
     <ValidationView
       detail={detail}
       specStatus={specStatus}
-      onReport={(text) => {
-        runApi
-          .reportProblem(detail.projectId, detail.specId, text)
-          .then(() => navigate(`/refine/${detail.projectId}/${detail.specId}`))
-          .catch((e: Error) => setError(e.message));
-      }}
-      onComplete={() => {
-        runApi
-          .complete(detail.projectId, detail.specId)
-          .then(() => setPolling(true))
-          .catch((e: Error) => setError(e.message));
-      }}
+      actionError={actionError}
+      onReport={(text) =>
+        guarded(() => runApi.reportProblem(detail.projectId, detail.specId, text).then(() => navigate(`/refine/${detail.projectId}/${detail.specId}`)))
+      }
+      onComplete={() => guarded(() => runApi.complete(detail.projectId, detail.specId).then(() => setPolling(true)))}
     />
   );
 }

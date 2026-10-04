@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ROLES } from '../../server/config/config.js';
 import { ALWAYS_DENIED } from '../../server/agents/registry.js';
 import { PROTECTED_READ_PATHS, buildRoleSettings, writeRoleSettings } from '../../server/runner/role-settings.js';
@@ -67,6 +67,27 @@ describe('writeRoleSettings', () => {
     const json = JSON.parse(await fs.readFile(file, 'utf8'));
     expect(json.sandbox.enabled).toBe(true);
     expect(json.permissions.deny).toContain('Bash(gh:*)');
+  });
+
+  it('survives concurrent writers of the same role: none rejects, the file is valid JSON, no tmp file is left', async () => {
+    // Concurrent steps of one role share the target file; a shared tmp name made the slower rename fail with ENOENT.
+    const input = { allowedDomains: ['registry.npmjs.org'] };
+    const results = await Promise.allSettled(Array.from({ length: 100 }, () => writeRoleSettings(dir, 'dev', input)));
+    expect(results.filter((r) => r.status === 'rejected')).toEqual([]);
+    const json = JSON.parse(await fs.readFile(path.join(dir, 'dev.settings.json'), 'utf8'));
+    expect(json.sandbox.network.allowedDomains).toEqual(['registry.npmjs.org']);
+    expect(await fs.readdir(dir)).toEqual(['dev.settings.json']);
+  });
+
+  it('removes its tmp file when a write fails and does not block the writer queued behind it', async () => {
+    const rename = vi.spyOn(fs, 'rename').mockRejectedValueOnce(new Error('boom'));
+    const results = await Promise.allSettled([
+      writeRoleSettings(dir, 'dev', { allowedDomains: [] }),
+      writeRoleSettings(dir, 'dev', { allowedDomains: [] }),
+    ]);
+    rename.mockRestore();
+    expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+    expect(await fs.readdir(dir)).toEqual(['dev.settings.json']);
   });
 });
 

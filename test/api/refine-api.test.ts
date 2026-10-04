@@ -68,6 +68,7 @@ beforeEach(async () => {
     control,
     runsDir: async () => `${home}/runs`,
     register: async (dir) => { registered.push(dir); },
+    routeReport: async (_criteria, report) => ({ route: report.includes('/hello') ? 'bug-existing-ac' : 'unclear', confidence: 0.9, source: 'jev' }),
   });
   api = await startApi({ routes: refineRoutes({ registry }) }, 0);
 });
@@ -125,6 +126,7 @@ describe('refine api', () => {
     expect(cont.status).toBe(200);
     const snap2 = await (await fetch(`${base()}/api/refine/hello-app/hello-001`)).json();
     expect(snap2.docs['brief.md']).toContain('broken /hello');
+    expect(snap2.docs['brief.md']).toContain('Routing (System 1, jev): bug-existing-ac (0.90)');
     expect(snap2.state.derived.spec.status).toBe('refining');
   });
 
@@ -138,12 +140,12 @@ describe('refine api', () => {
     await settle();
     const put = await call('PUT', '/api/refine/hello-app/hello-app-001/secrets/DB_URL', { value: 'postgres://secret' });
     expect(put.status).toBe(200);
-    expect(await put.json()).toEqual({ present: true, hint: 'cret' });
+    expect(await put.json()).toEqual({ present: true });
     expect((await call('PUT', '/api/refine/hello-app/hello-app-001/secrets/DB_URL', { value: '' })).status).toBe(400);
     expect(await fs.readFile(`${home}/ws/hello-app/secrets/DB_URL`, 'utf8')).toBe('postgres://secret');
     expect((await (await fetch(`${base()}/api/refine/hello-app/hello-app-001`)).json()).secrets).toEqual([
-      { name: 'CUSTOM_KEY', present: true, hint: 'x' },
-      { name: 'DB_URL', present: true, hint: 'cret' },
+      { name: 'CUSTOM_KEY', present: true, hint: '****' },
+      { name: 'DB_URL', present: true, hint: '****' },
     ]);
   });
 

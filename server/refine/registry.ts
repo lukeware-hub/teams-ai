@@ -14,7 +14,7 @@ import { expandHome, nextRunId, workspacePaths, type Workspace } from '../orches
 import { loadEvents } from '../store/event-store.js';
 import type { RunAgent } from './cycle.js';
 import type { CycleDeps } from './cycle.js';
-import { createFromRepo, createNewProject, draftExists, draftPaths, type Draft } from './draft.js';
+import { createFromRepo, createNewProject, draftExists, draftPaths, type Draft, type RouteReport } from './draft.js';
 import { ConflictError, NotFoundError, RefineSession } from './session.js';
 import { reduceRefineEvents, type RefineStatus } from './state.js';
 
@@ -23,6 +23,8 @@ export interface RegistryDeps {
   home?: string;
   runAgent: RunAgent;
   validateDocs?: CycleDeps['validateDocs'];
+  /** Spec 10A.5 decisions 2–4 for every refinement cycle. */
+  decider?: CycleDeps['decider'];
   secretsDir: string;
   exec: Exec;
   /** Directory of a registered block A project, or null when the id is not registered. */
@@ -30,6 +32,8 @@ export interface RegistryDeps {
   control: RunControlDeps;
   runsDir: () => Promise<string>;
   register: (dir: string) => Promise<void>;
+  /** Spec 10A.5 decision 7: classifies a validation report before refinement reopens; absent means no hint. */
+  routeReport?: RouteReport;
 }
 
 export interface DraftRow {
@@ -59,7 +63,7 @@ export class SessionRegistry {
     const key = `${draft.projectId}/${draft.specId}`;
     const p = (async () => {
       const retrieval = (await exists(ws.knowledgeDb)) ? (q: string) => KnowledgeIndex.open(ws.knowledgeDb).search(q, { k: 5 }) : () => [];
-      const deps = { ws, draft, runAgent: this.deps.runAgent, frontAgent: this.deps.runAgent, secretsDir: ws.secrets, retrieval, validateDocs: this.deps.validateDocs };
+      const deps = { ws, draft, runAgent: this.deps.runAgent, frontAgent: this.deps.runAgent, secretsDir: ws.secrets, retrieval, validateDocs: this.deps.validateDocs, decider: this.deps.decider };
       return create ? RefineSession.create(deps, create) : RefineSession.open(deps);
     })();
     this.sessions.set(key, p);
@@ -120,7 +124,7 @@ export class SessionRegistry {
     if (!spec || (spec.status !== 'awaiting-validation' && spec.status !== 'done')) {
       throw new ConflictError(`spec ${specId} is ${spec?.status ?? 'absent'} on main; only awaiting-validation or done specs continue`);
     }
-    await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'continue', report });
+    await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'continue', report, route: this.deps.routeReport });
     return this.session(draft, ws, 'continue');
   }
 

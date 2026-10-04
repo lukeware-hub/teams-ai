@@ -1,0 +1,60 @@
+# Backs up the teams-ai data PVC to a second PVC. Lives in the single `teams-ai` namespace.
+# Assumes the data PVC is named `teams-ai-data`; change claimName below if the base manifests differ.
+# The data PVC is mounted read-only; ReadWriteOnce volumes need the job on the same node as the pod,
+# which the podAffinity below handles (label app=teams-ai on the teams-ai pod is assumed).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: teams-ai-backup
+  namespace: teams-ai
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: teams-ai-backup
+  namespace: teams-ai
+spec:
+  schedule: "17 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app: teams-ai
+                  topologyKey: kubernetes.io/hostname
+          containers:
+            - name: backup
+              image: busybox:1.36
+              command:
+                - sh
+                - -ec
+                - |
+                  stamp=$(date -u +%Y%m%dT%H%M%SZ)
+                  out=/backup/teams-ai-$stamp.tar.gz
+                  tar -czf "$out.tmp" -C /data .
+                  mv "$out.tmp" "$out"
+                  # retention: keep the newest 7 archives
+                  ls -1t /backup/teams-ai-*.tar.gz | tail -n +8 | xargs -r rm -f
+                  ls -l /backup
+              volumeMounts:
+                - { name: data, mountPath: /data, readOnly: true }
+                - { name: backup, mountPath: /backup }
+          volumes:
+            - name: data
+              persistentVolumeClaim: { claimName: teams-ai-data }
+            - name: backup
+              persistentVolumeClaim: { claimName: teams-ai-backup }

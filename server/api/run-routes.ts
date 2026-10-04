@@ -5,15 +5,18 @@ import type { StepKind } from '../agents/outputs.js';
 import { Accounting } from '../budget/accounting.js';
 import type { Config, Role } from '../config/config.js';
 import { Plan } from '../contracts/plan.js';
+import { loadSecretValues } from '../core/secrets.js';
+import { redactSecrets } from '../core/redact.js';
 import { addProject } from '../onboarding/config-store.js';
 import { expandHome } from '../orchestrator/workspace.js';
 import { execCommand } from '../exec/command.js';
 import { nextRunId } from '../orchestrator/workspace.js';
 import { reduceEvents } from '../pipeline/run-state.js';
 import { EventLogCorruptError, loadEvents, type StoredEvent } from '../store/event-store.js';
+import { refuseCloneHost, type ResolveHost } from './security.js';
 import { tailJournal } from './journal-tail.js';
 import { isAlive, spawnRun, stop, type RunControlDeps } from './run-control.js';
-import { CLAIMS_SPEC, clearPid, listProjects, listRuns, readPid, readProject, runsDir, SAFE_ID, writePid, type IndexDeps, type RunRow } from './run-index.js';
+import { CLAIMS_SPEC, claimLaunch, clearPid, clearStopRequested, listProjects, listRuns, markStopRequested, readPid, readProject, runsDir, SAFE_ID, writePid, type IndexDeps, type RunRow } from './run-index.js';
 import { HttpError, type Route } from './server.js';
 
 export interface RunRoutesDeps {
@@ -22,6 +25,8 @@ export interface RunRoutesDeps {
   control: RunControlDeps;
   log?: (line: string) => void;
   cloneProject?: (url: string, destination: string) => Promise<void>;
+  /** Name resolution for the clone-host check; defaults to the system resolver. */
+  resolveHost?: ResolveHost;
 }
 
 const str = (v: unknown, field: string): string => {
@@ -44,14 +49,18 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     }
     throw new HttpError(404, `unknown project ${projectId}`);
   };
+  const secretsDirOf = (cfg: Config): string => expandHome(cfg.paths.secrets, deps.home);
   const safe = (id: string): string => {
     if (!SAFE_ID.test(id)) throw new HttpError(400, `invalid id ${JSON.stringify(id)}`);
     return id;
   };
   const cloneProject = deps.cloneProject ?? (async (url, destination) => {
     await fs.mkdir(path.dirname(destination), { recursive: true });
-    const result = await execCommand({ bin: 'git', args: ['clone', '--depth', '1', url, destination], cwd: path.dirname(destination), timeoutMs: 120_000 });
-    if (result.exitCode !== 0) throw new HttpError(400, `não foi possível clonar o repositório: ${result.stderr.trim() || 'URL Git inválida'}`);
+    const result = await execCommand({ bin: 'git', args: ['-c', 'http.followRedirects=false', 'clone', '--depth', '1', '--', url, destination], cwd: path.dirname(destination), timeoutMs: 120_000 });
+    if (result.exitCode !== 0) {
+      deps.log?.(`clone failed: ${redactSecrets(result.stderr.trim(), await loadSecretValues(secretsDirOf(await deps.cfg())))}`);
+      throw new HttpError(400, 'não foi possível clonar o repositório');
+    }
   });
   const events = async (runs: string, runId: string): Promise<StoredEvent[]> => {
     const file = path.join(runs, runId, 'events.ndjson');
@@ -113,7 +122,8 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       await deps.control.sleep(200);
     }
     const log = await fs.readFile(path.join(runs, runId, 'ui.log'), 'utf8').catch(() => '');
-    throw new HttpError(500, `run ${runId} did not start: ${log.slice(-500) || 'no output'}`);
+    const tail = redactSecrets(log.slice(-500), await loadSecretValues(secretsDirOf(await deps.cfg())));
+    throw new HttpError(500, `run ${runId} did not start: ${tail || 'no output'}`);
   };
   const launch = async (idx: IndexDeps, o: { projectDir: string; specId: string; runId: string; mode: 'run' | 'resume' | 'complete' | 'readme' }): Promise<void> => {
     const runs = runsDir(idx);
@@ -158,15 +168,23 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           if (!['https:', 'http:'].includes(remote.protocol) || !remote.hostname || !/^\/[^/]+\/[^/]+(?:\.git)?$/.test(repoPath)) {
             throw new HttpError(400, 'use o formato https://servidor/organização/projeto.git');
           }
+          const refused = await refuseCloneHost(remote.hostname, cfg.github.allowedHosts, deps.resolveHost);
+          if (refused) throw new HttpError(400, refused);
           const repoName = path.posix.basename(repoPath).replace(/\.git$/, '').replace(/[^a-zA-Z0-9._-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'project';
           const suffix = createHash('sha256').update(url).digest('hex').slice(0, 8);
           dir = path.resolve(expandHome(path.posix.join(cfg.paths.workspaces, 'imports', `${repoName}-${suffix}`), deps.home));
           await fs.access(path.join(dir, '.git')).catch(async () => cloneProject(url, dir));
         } else {
           dir = path.resolve(str(payload, 'dir'));
+          // Audit M1: only directories inside the workspaces root become projects.
+          const root = path.resolve(expandHome(cfg.paths.workspaces, deps.home));
+          const real = await fs.realpath(dir).catch(() => null);
+          const realRoot = await fs.realpath(root).catch(() => root);
+          // A directory that does not exist is left to the project.json read below.
+          if (real !== null && !real.startsWith(realRoot + path.sep)) throw new HttpError(400, 'o diretório deve estar dentro de paths.workspaces');
         }
         const read = await readProject(dir).catch((err: Error) => {
-          throw new HttpError(400, `${typeof source.url === 'string' ? 'repositório inválido' : 'not a project directory'}: ${err.message.includes('ENOENT') ? 'docs/project.json não foi encontrado' : err.message}`);
+          throw new HttpError(400, `${typeof source.url === 'string' ? 'repositório inválido' : 'not a project directory'}: ${err.message.includes('ENOENT') ? 'docs/project.json não foi encontrado' : 'docs/project.json inválido'}`);
         });
         await addProject(dir, deps.home);
         const idx = await index();
@@ -209,10 +227,20 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       handler: async ({ params, json }) => {
         const idx = await index();
         const runId = safe(params.runId!);
+        const runs = runsDir(idx);
         await exclusive(`run ${runId}`, async () => {
-          const { row, dir } = await findRun(idx, runId);
-          if (row.status !== 'paused:auth' && row.status !== 'interrupted') throw new HttpError(409, `run ${runId} is ${row.status}; only paused:auth or interrupted runs resume`);
-          await launch(idx, { projectDir: dir, specId: row.specId, runId, mode: 'resume' });
+          await events(runs, runId); // 404 before claiming: the claim is a file in the run directory
+          // Shared with the supervisor, which resumes interrupted runs too: whoever holds the claim is the only one to spawn.
+          const release = await claimLaunch(runs, runId);
+          if (!release) throw new HttpError(409, `run ${runId} is already starting`);
+          try {
+            const { row, dir } = await findRun(idx, runId);
+            if (row.status !== 'paused:auth' && row.status !== 'interrupted') throw new HttpError(409, `run ${runId} is ${row.status}; only paused:auth or interrupted runs resume`);
+            await clearStopRequested(runs, runId); // an explicit resume overrides an earlier Stop
+            await launch(idx, { projectDir: dir, specId: row.specId, runId, mode: 'resume' });
+          } finally {
+            await release();
+          }
         });
         json(200, { runId });
       },
@@ -227,6 +255,8 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const runs = runsDir(idx);
         const pid = await readPid(runs, runId);
         if (pid === null || !isAlive(deps.control, pid)) throw new HttpError(409, `run ${runId} has no live process started from the UI`);
+        // Before the signal: once the process is gone, the supervisor must already find the user's intent on disk.
+        await markStopRequested(runs, runId);
         const how = await stop(deps.control, pid);
         await clearPid(runs, runId);
         json(200, { stopped: true, how: how === 'gone' ? 'terminated' : how });

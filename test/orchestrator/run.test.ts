@@ -278,8 +278,36 @@ describe('Run', () => {
     const types = run.journal.events.map((e) => e.type);
     expect(types.filter((t) => t === 'RUN_STOP_REQUESTED')).toHaveLength(1);
     const states = [...run.journal.state.tasks.values()].map((t) => t.state);
-    expect(states).toContain('merged');
+    // Plan 38: only the dev step that was in flight finishes; the task is not carried on to validate/review/merge.
+    expect(states).not.toContain('merged');
     expect(states).toContain('ready');
+    await run.close();
+  }, 30_000);
+
+  it('plan 38: no STEP_STARTED begins after RUN_STOP_REQUESTED and the run ends RUN_FINISHED drained once the in-flight step returns', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    let devStarted: () => void = () => {};
+    const started = new Promise<void>((r) => (devStarted = r));
+    const script: Script = async (req) => {
+      if (req.kind === 'dev') {
+        devStarted();
+        await gate;
+      }
+      return happy(req);
+    };
+    const run = await Run.create(await withAgents(deps(script, { maxParallel: 1 })));
+    const done = run.execute();
+    await started;
+    await run.requestStop();
+    release();
+    expect(await done).toBe('drained');
+    const types = run.journal.events.map((e) => e.type);
+    const stopAt = types.indexOf('RUN_STOP_REQUESTED');
+    expect(stopAt).toBeGreaterThan(-1);
+    expect(types.slice(stopAt + 1)).not.toContain('STEP_STARTED');
+    expect(types[types.length - 1]).toBe('RUN_FINISHED');
+    expect(run.journal.events[run.journal.events.length - 1]!.data).toMatchObject({ result: 'drained' });
     await run.close();
   }, 30_000);
 
@@ -294,10 +322,73 @@ describe('Run', () => {
     await resumed.close();
   });
 
+  it('a hand resume of a stopped run is journaled after the stop, so the supervisor stops treating the stop as current', async () => {
+    const d = await withAgents(deps(happy));
+    const run = await Run.create(d);
+    await run.requestStop();
+    await run.close();
+    const resumed = await Run.resume(d, run.runId);
+    const types = resumed.journal.events.map((e) => e.type);
+    expect(types.lastIndexOf('RUN_RESUMED')).toBeGreaterThan(types.lastIndexOf('RUN_STOP_REQUESTED'));
+    await resumed.close();
+  });
+
+  it('refuses to start or resume a run with the sandbox off unless both opt-ins are set', async () => {
+    const off = deps(happy, { cfg: { ...deps(happy).cfg, sandbox: { enabled: false, unsafeNoSandbox: false } } });
+    await expect(Run.create(off)).rejects.toThrow(/sandbox\.enabled=false is refused/);
+    await expect(Run.resume(off, 'spec-001-r1')).rejects.toThrow(/sandbox\.enabled=false is refused/);
+    expect((await fs.readdir(path.join(remote.root, 'runs')).catch(() => [])).length).toBe(0); // nothing was journaled
+  });
+
+  it('refuses the k8s gate executor with a deploy target that has no in-cluster URL', async () => {
+    const target = { name: 'docker-local' } as never;
+    const d = deps(happy, { target, gateExecutor: { kind: 'k8s', run: async () => { throw new Error('unused'); } } as never });
+    await expect(Run.create(d)).rejects.toThrow(/in-cluster service URL; the docker-local target does not/);
+  });
+
   it('create accepts an explicit run id', async () => {
     const run = await Run.create(await withAgents(deps(happy)), 'spec-001-r7');
     expect(run.runId).toBe('spec-001-r7');
     expect(run.journal.events[0]!.data).toMatchObject({ runId: 'spec-001-r7' });
     await run.close();
   });
+
+  describe('deployOnly (spec deploy)', () => {
+    const noAgent: Script = async (req) => { throw new Error(`deploy-only ran an agent step: ${req.kind}`); };
+    const target = (over: Record<string, unknown> = {}) => ({
+      name: 'kind' as const,
+      validate: async () => [] as string[],
+      build: async () => undefined,
+      apply: async () => ({ previous: null }),
+      verify: async () => ({ healthy: true, detail: 'HTTP 200' }),
+      currentImage: async () => null,
+      rollback: async () => undefined,
+      destroy: async () => undefined,
+      serviceUrl: async () => 'http://127.0.0.1:3000',
+      ...over,
+    });
+
+    it('deploys the plan on main with no agent step and finishes done', async () => {
+      const run = await Run.create(deps(noAgent, { target: target() as never }), 'spec-001-deploy-r1');
+      expect(await run.deployOnly()).toBe('done');
+      expect(run.journal.events.some((e) => e.type === OrchEvent.DeployVerified && e.data.url === 'http://127.0.0.1:3000')).toBe(true);
+      await run.close();
+    });
+
+    it('a failed deploy ends deploy-failed with the reason and plans no fix task', async () => {
+      const run = await Run.create(deps(noAgent, { target: target({ validate: async () => ['kind target requires at least one manifest'] }) as never }), 'spec-001-deploy-r2');
+      expect(await run.deployOnly()).toBe('deploy-failed');
+      const finished = run.journal.events.find((e) => e.type === OrchEvent.RunFinished)!;
+      expect(String(finished.data.reason)).toContain('kind target requires at least one manifest');
+      expect(run.journal.events.some((e) => e.type === 'FIX_TASKS_PLANNED')).toBe(false);
+      await run.close();
+    });
+
+    it('refuses without a deployment target', async () => {
+      const run = await Run.create(deps(noAgent), 'spec-001-deploy-r3');
+      expect(await run.deployOnly()).toBe('phase-failed');
+      await run.close();
+    });
+  });
 });
+

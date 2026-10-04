@@ -24,6 +24,8 @@ export function refinePack(input: {
   history: readonly QuestionRow[];
   rejected: readonly PatchRow[];
   jevValidation?: JevValidationResult;
+  /** Decision 2: criteria System 1 judged not ready; null or absent means no hint. */
+  notReady?: readonly string[] | null;
 }): ContextPackInput {
   const answered = input.history.filter((q) => q.status === 'answered').map((q) => `- [${q.role}] ${q.text}\n  answer: ${q.answer}`);
   const skipped = input.history.filter((q) => q.status === 'skipped').map((q) => `- [${q.role}] ${q.text}`);
@@ -35,7 +37,7 @@ export function refinePack(input: {
     'Treat design.md as the frontend source of truth. Validate distinctive web and mobile direction, responsive states, accessibility, keyboard focus, reduced motion, touch targets, and consistency with project.md, brief.md, stack.md, and flow.md. Reject generic AI-looking UI choices and propose a precise patch when design.md is incomplete or contradictory. Write every new design.md heading, description, label, and patch reason in Brazilian Portuguese; preserve only technical identifiers, file names, code, and color tokens.',
     `Report exactly these checklist ids: ${ids.join(', ') || '(none; Front reports only design.md patches)'}.`,
     input.role === 'front'
-      ? `Patch files: ${DOC_REL['design.md'](input.specId)} only. Do not ask questions; return an empty questions array.`
+      ? `Patch files: ${DOC_REL['design.md'](input.specId)} only. Do not ask questions; return an empty questions array. This is a review, not an implementation task: do not edit or create files, do not run skills, a browser or shell commands, and do not follow your implementation workflow. Read what you need, then reply with the single JSON object and nothing else.`
       : `Patch files: ${DOC_REL['project.md'](input.specId)}, ${DOC_REL['brief.md'](input.specId)}.`,
     `### ${DOC_REL['project.md'](input.specId)}`,
     input.projectMd,
@@ -46,6 +48,7 @@ export function refinePack(input: {
     ...(input.designMd ? ['### design.md (frontend source of truth)', input.designMd] : []),
     '### Jev preflight validation',
     input.jevValidation ? JSON.stringify(input.jevValidation, null, 2) : '(not available)',
+    ...(input.notReady ? ['### System 1 readiness (decision 2, a hint)', input.notReady.length ? `Not ready: ${input.notReady.join(', ')}. Focus questions and patches on these; the other criteria were judged ready.` : 'Every acceptance criterion was judged ready.'] : []),
     '### derived project.json',
     JSON.stringify(input.derived.project, null, 2),
     '### derived spec.json',

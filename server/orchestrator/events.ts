@@ -1,6 +1,6 @@
 import type { HandoffSummary } from '../knowledge/context-pack.js';
 import { applyEvent, emptyRunState, type RunState } from '../pipeline/run-state.js';
-import { EventStore, unconfirmedIntents, type StoredEvent } from '../store/event-store.js';
+import { EventStore, unconfirmedIntents, type EventInput, type StoredEvent } from '../store/event-store.js';
 
 export const OrchEvent = {
   RunStarted: 'RUN_STARTED',
@@ -20,6 +20,7 @@ export const OrchEvent = {
   SecurityChanges: 'SECURITY_CHANGES',
   ReviewProfileChosen: 'REVIEW_PROFILE_CHOSEN',
   ScopeDriftScored: 'SCOPE_DRIFT_SCORED',
+  PlanChosen: 'PLAN_CHOSEN',
   SpecGapAnswered: 'SPEC_GAP_ANSWERED',
   DecisionMade: 'DECISION_MADE',
   MergeLockAcquired: 'MERGE_LOCK_ACQUIRED',
@@ -89,6 +90,7 @@ export class Journal {
   readonly state: RunState;
   private readonly log: StoredEvent[];
   private stepSeq: number;
+  private appendQueue: Promise<unknown> = Promise.resolve();
 
   private constructor(
     private readonly store: EventStore,
@@ -114,12 +116,19 @@ export class Journal {
     if (e.kind === 'fact' && REDUCED.has(e.type)) applyEvent(this.state, { type: e.type, data: e.data });
   }
 
-  private async append(input: {
-    type: string;
-    kind?: 'fact' | 'intent' | 'confirm';
-    intentId?: string;
-    data?: Record<string, unknown>;
-  }): Promise<StoredEvent> {
+  /**
+   * Validate, persist and apply form one critical section per journal. Interleaved, two appends validate
+   * against the same pre-state and both reach the log; the second reduce then throws after its line is on
+   * disk, and no later open can replay the log.
+   */
+  private append(input: EventInput): Promise<StoredEvent> {
+    const run = this.appendQueue.then(() => this.appendSerialized(input));
+    // A rejected append must not poison the ones queued behind it.
+    this.appendQueue = run.catch(() => undefined);
+    return run;
+  }
+
+  private async appendSerialized(input: EventInput): Promise<StoredEvent> {
     // Reduce on a copy first: an event the reducer rejects must never reach the log, or every
     // later open would throw while replaying it.
     if ((input.kind ?? 'fact') === 'fact' && REDUCED.has(input.type)) {
@@ -184,6 +193,7 @@ export class Journal {
   }
 
   close(): Promise<void> {
-    return this.store.close();
+    // Appends issued before close still land first, as they did when they shared the store's queue.
+    return this.appendQueue.then(() => this.store.close());
   }
 }

@@ -1,0 +1,88 @@
+# llama.cpp server, Qwen2.5-7B-Instruct Q4_K_M. CPU by default; the gpu overlay adds the NVIDIA resource.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: llama-models
+  namespace: teams-ai
+spec:
+  accessModes: ['ReadWriteOnce']
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llama
+  namespace: teams-ai
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: { app: llama }
+  template:
+    metadata:
+      labels: { app: llama }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      initContainers:
+        - name: fetch-model
+          image: curlimages/curl:8.10.1
+          command:
+            - sh
+            - -c
+            - |
+              f=/models/Qwen2.5-7B-Instruct-Q4_K_M.gguf
+              [ -s "$f" ] || { curl -fL --retry 5 -o "$f.part" https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf && mv "$f.part" "$f"; }
+          # fsGroup makes the PVC writable for uid 1000: no root needed.
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ['ALL'] }
+          volumeMounts:
+            - { name: models, mountPath: /models }
+      containers:
+        - name: llama
+          image: ghcr.io/ggml-org/llama.cpp:server
+          args:
+            - --host
+            - 0.0.0.0
+            - --port
+            - '8080'
+            - --model
+            - /models/Qwen2.5-7B-Instruct-Q4_K_M.gguf
+            - --ctx-size
+            - '8192'
+          ports:
+            - { name: http, containerPort: 8080 }
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            failureThreshold: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ['ALL'] }
+          resources:
+            requests: { cpu: '2', memory: 8Gi }
+          volumeMounts:
+            - { name: models, mountPath: /models, readOnly: true }
+      volumes:
+        - name: models
+          persistentVolumeClaim: { claimName: llama-models }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llama
+  namespace: teams-ai
+spec:
+  selector: { app: llama }
+  ports:
+    - { name: http, port: 8080, targetPort: http }

@@ -1,3 +1,5 @@
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -223,4 +225,62 @@ describe('EventStore crash recovery', () => {
     expect((await loadEvents(file)).map((e) => e.seq)).toEqual([1]);
     expect(await fs.readFile(file, 'utf8')).toBe(rawEvent(1));
   });
+
+  it('reclaims a stale lock whose reclaimer crashed and left its guard behind', async () => {
+    await writeLines(rawEvent(1));
+    await fs.writeFile(`${file}.lock`, '999999');
+    await fs.writeFile(`${file}.lock.reclaim`, '999998');
+    const reopened = await open();
+    expect((await reopened.append({ type: 'B' })).seq).toBe(2);
+    await expect(fs.access(`${file}.lock.reclaim`)).rejects.toThrow();
+  });
+
+  it('leaves a stale lock alone while a live process holds the reclaim guard', async () => {
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(`${file}.lock`, '999999');
+    await fs.writeFile(`${file}.lock.reclaim`, String(process.ppid));
+    await expect(EventStore.open({ file, runId: 'run-1', specHash: HASH })).rejects.toThrow(EventLogLockedError);
+    expect(await fs.readFile(`${file}.lock`, 'utf8')).toBe('999999');
+  });
+
+  it('lets exactly one of four processes reclaim the same stale lock', async () => {
+    // Each child opens every journal at the same instant as its siblings and stays alive (its locks stay live)
+    // until the parent kills it, so a second opener can only come from a broken reclaim.
+    const contender = `
+      const [storeUrl, ...files] = process.argv.slice(1);
+      const { EventStore } = await import(storeUrl);
+      process.send('ready');
+      const goAt = await new Promise((resolve) => process.once('message', resolve));
+      const opened = [];
+      for (const [i, file] of files.entries()) {
+        while (Date.now() < goAt + i * 20) { /* spin: start together */ }
+        opened.push(await EventStore.open({ file, runId: 'run-1', specHash: 'h' }).then(() => true, () => false));
+      }
+      process.send(opened);
+      await new Promise((resolve) => process.once('disconnect', resolve));
+    `;
+    const journals = Array.from({ length: 40 }, (_, i) => path.join(dir, `r${i}`, 'events.ndjson'));
+    for (const journal of journals) {
+      await fs.mkdir(path.dirname(journal), { recursive: true });
+      await fs.writeFile(`${journal}.lock`, '999999');
+    }
+    const storeUrl = new URL('../../server/store/event-store.ts', import.meta.url).href;
+    const children = Array.from({ length: 4 }, () =>
+      spawn(process.execPath, ['--input-type=module', '-e', contender, storeUrl, ...journals], {
+        env: { ...process.env, NODE_OPTIONS: '--import tsx' },
+        stdio: ['inherit', 'inherit', 'inherit', 'ipc'],
+      }),
+    );
+    try {
+      const next = (child: (typeof children)[number]) => once(child, 'message').then(([message]) => message as unknown);
+      await Promise.all(children.map(next));
+      const goAt = Date.now() + 200;
+      for (const child of children) child.send(goAt);
+      const results = (await Promise.all(children.map(next))) as boolean[][];
+      const openers = journals.map((_, round) => results.filter((opened) => opened[round]).length);
+      expect(openers).toEqual(journals.map(() => 1));
+    } finally {
+      for (const child of children) child.kill();
+    }
+  }, 30_000);
 });

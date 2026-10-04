@@ -42,6 +42,15 @@ export const DecisionConfigSchema = z.object({
 const DECISION_DEFAULTS: Partial<Record<DecisionId, Partial<DecisionConfig>>> = {
   'attempt-progress': { escalateTo: 'sm' },
   'model-tier': { chain: ['jev', 'local'] },
+  // Runs in the UI server, which has no claude step to escalate to; the PO reads the report anyway.
+  'report-routing': { chain: ['jev', 'local'], escalateTo: 'po' },
+  // Spec 10A.5 row 8 escalates to no one; a Claude escalation would itself be a step that can fail.
+  'cli-error': { chain: ['jev', 'local'] },
+  'plan-rank': { escalateTo: 'sm' },
+  // Gate 1 runs in the UI server, which has no claude step to escalate to.
+  'gate1-readiness': { chain: ['jev', 'local'], escalateTo: 'po' },
+  'question-dedup': { chain: ['jev', 'local'], escalateTo: 'sm' },
+  'history-contradiction': { chain: ['jev', 'local'], escalateTo: 'po' },
 };
 
 const PerDecisionSchema = z
@@ -97,10 +106,10 @@ export const Config = z.object({
       maxSchemaRetriesPerStep: positive.default(DEFAULT_POLICY.maxSchemaRetriesPerStep),
     })
     .prefault({}),
-  github: z.object({ owner: z.string().min(1).optional() }).prefault({}),
-  /** The Claude Code sandbox (bubblewrap) for agent steps. Off only where the process already runs inside
-   * an isolation boundary that the sandbox cannot nest in, e.g. as root in the backend container. */
-  sandbox: z.object({ enabled: z.boolean().default(true) }).prefault({}),
+  github: z.object({ owner: z.string().min(1).optional(), /** Hosts `POST /projects` may clone from (audit M1). */ allowedHosts: z.array(z.string().min(1)).default(['github.com']) }).prefault({}),
+  /** The Claude Code sandbox (bubblewrap) for agent steps. Mandatory: `enabled: false` is refused unless
+   * `unsafeNoSandbox` is true AND the env TEAMS_AI_UNSAFE_NO_SANDBOX=1 is set (see runner/sandbox-policy.ts). */
+  sandbox: z.object({ enabled: z.boolean().default(true), unsafeNoSandbox: z.boolean().default(false) }).prefault({}),
   docker: z
     .object({
       /** When the orchestrator itself runs in a container, the daemon it talks to cannot see its paths.
@@ -111,6 +120,21 @@ export const Config = z.object({
       serviceHost: z.string().min(1).default('127.0.0.1'),
       /** Address the deployed container port is published on. */
       publishBind: z.string().min(1).default('127.0.0.1'),
+    })
+    .prefault({}),
+  /** Where quality gates and the smoke suite run: `docker` (default) or Kubernetes Jobs. */
+  executor: z
+    .object({
+      kind: z.enum(['docker', 'k8s']).default('docker'),
+      namespace: z.string().min(1).default('teams-ai'),
+      serviceAccount: z.string().min(1).default('default'),
+      /** PVC holding the workspace; the orchestrator mounts it at `workspaceRoot` (backend.yaml: teams-ai-data at ~/.teams-ai). */
+      workspacePvc: z.string().min(1).default('teams-ai-data'),
+      workspaceRoot: linuxPath.default('/root/.teams-ai'),
+      /** The PVC subPath that `workspaceRoot` is. */
+      workspaceSubPath: z.string().min(1).default('teams-ai'),
+      runAsUser: z.number().int().nonnegative().default(1000),
+      runAsGroup: z.number().int().nonnegative().default(1000),
     })
     .prefault({}),
   /** Directories holding docs/project.json, registered from the UI (spec run API §2). */

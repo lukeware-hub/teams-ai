@@ -67,6 +67,37 @@ describe('Journal', () => {
     await again.close();
   });
 
+  it('serializes concurrent appends: the conflicting one never reaches the log and the next one still lands', async () => {
+    const j = await open();
+    const file = path.join(dir, 'events.ndjson');
+    await j.fact(RunEvent.TaskPlanned, { task: makePlanTask({ id: 'T1' }) });
+    await j.fact(RunEvent.TaskStateChanged, { taskId: 'T1', to: 'ready' });
+    // Unserialized, both validate ready -> implementing against the same pre-state and both are persisted.
+    const settled = await Promise.allSettled([
+      j.fact(RunEvent.TaskStateChanged, { taskId: 'T1', to: 'implementing' }),
+      j.fact(RunEvent.TaskStateChanged, { taskId: 'T1', to: 'implementing' }),
+    ]);
+    expect(settled.map((s) => s.status)).toEqual(['fulfilled', 'rejected']);
+    expect((await fs.readFile(file, 'utf8')).trim().split('\n')).toHaveLength(3);
+    // The rejection must not poison the appends queued behind it.
+    await j.fact(RunEvent.TaskStateChanged, { taskId: 'T1', to: 'validating' });
+    await j.close();
+    const again = await Journal.open({ file, runId: 'spec-r1', specHash: HASH });
+    expect(again.events).toHaveLength(4);
+    expect(again.state.tasks.get('T1')!.state).toBe('validating');
+    await again.close();
+  });
+
+  it('lands an append issued before close even when it is not awaited', async () => {
+    const j = await open();
+    const pending = j.fact(RunEvent.TaskPlanned, { task: makePlanTask({ id: 'T1' }) });
+    await j.close();
+    await expect(pending).resolves.toMatchObject({ seq: 1 });
+    const again = await Journal.open({ file: path.join(dir, 'events.ndjson'), runId: 'spec-r1', specHash: HASH });
+    expect(again.events).toHaveLength(1);
+    await again.close();
+  });
+
   it('allocates step sequence numbers synchronously so concurrent steps never share an id', async () => {
     const j = await open();
     expect([j.allocStepSeq(), j.allocStepSeq(), j.allocStepSeq()]).toEqual([1, 2, 3]);

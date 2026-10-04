@@ -84,6 +84,21 @@ describe('DockerLocalTarget', () => {
   });
 });
 
+describe('KindTarget gate service URL', () => {
+  const mkTarget = (namespace?: string) => new KindTarget({ exec: new FakeExec().exec, secrets: {}, cluster: 'teams-ai', readFile: async () => '', namespace });
+  it('reports the in-cluster Service DNS name for gate pods', () => {
+    expect(mkTarget('teams-ai').gateServiceUrl(intent)).toBe('http://todo-api.teams-ai.svc.cluster.local:3000');
+  });
+  it('adds --namespace to kubectl only when configured', async () => {
+    const plain = new FakeExec();
+    await new KindTarget({ exec: plain.exec, secrets: {}, cluster: 'teams-ai', readFile: async () => '' }).currentImage(intent);
+    expect(plain.lines('kubectl')[0]).not.toContain('--namespace');
+    const ns = new FakeExec();
+    await new KindTarget({ exec: ns.exec, secrets: {}, cluster: 'teams-ai', readFile: async () => '', namespace: 'teams-ai' }).currentImage(intent);
+    expect(ns.lines('kubectl')[0]).toContain('--context kind-teams-ai --namespace teams-ai get deploy');
+  });
+});
+
 describe('KindTarget', () => {
   const manifest = 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: todo-api\nspec:\n  template:\n    spec:\n      containers:\n      - name: app\n        image: {{IMAGE}}\n';
   const mk = (fake: FakeExec, over: Partial<ConstructorParameters<typeof KindTarget>[0]> = {}) =>
@@ -148,6 +163,63 @@ describe('KindTarget', () => {
   });
 });
 
+describe('KindTarget registry build path', () => {
+  const manifest = 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: todo-api\nspec:\n  template:\n    spec:\n      containers:\n      - name: app\n        image: {{IMAGE}}\n';
+  const registry = { buildkitAddr: 'tcp://buildkitd:1234', pushHost: 'registry:5000', pullHost: 'registry.teams-ai:5000', namespace: 'teams-ai' };
+  const mk = (fake: FakeExec, over: Partial<ConstructorParameters<typeof KindTarget>[0]> = {}) =>
+    new KindTarget({ exec: fake.exec, secrets, cluster: 'teams-ai', readFile: async () => manifest, sleep: async () => undefined, registry, ...over });
+
+  it('builds with buildctl and pushes to the in-namespace registry, without docker or kind', async () => {
+    const fake = new FakeExec();
+    await mk(fake).build(intent);
+    expect(fake.calls.map((c) => c.bin)).toEqual(['buildctl']);
+    expect(fake.lines('buildctl')[0]).toBe(
+      '--addr tcp://buildkitd:1234 build --frontend dockerfile.v0 --local context=/home/u/ws/repo --local dockerfile=/home/u/ws/repo ' +
+        '--output type=image,name=registry:5000/todo-api:spec-001-abc1234,push=true,registry.insecure=true',
+    );
+  });
+
+  it('reports a failed build', async () => {
+    const fake = new FakeExec().on((s) => s.bin === 'buildctl', () => ({ exitCode: 1, stderr: 'boom' }));
+    await expect(mk(fake).build(intent)).rejects.toThrow('buildctl build failed: boom');
+  });
+
+  it('deploys by the pull reference, in the namespace, without a kubectl context', async () => {
+    const fake = new FakeExec();
+    await mk(fake).apply(intent);
+    const calls = fake.calls.filter((c) => c.bin === 'kubectl');
+    for (const c of calls) expect(c.args.slice(0, 2)).toEqual(['-n', 'teams-ai']);
+    expect(calls.some((c) => c.args.includes('--context'))).toBe(false);
+    const apply = calls.filter((c) => c.args[2] === 'apply').pop()!;
+    expect(apply.stdin).toContain('image: registry.teams-ai:5000/todo-api:spec-001-abc1234');
+  });
+
+  it('drops a registry host and tag already present in the plan image', async () => {
+    const fake = new FakeExec();
+    await mk(fake).build({ ...intent, image: 'localhost:5000/team/todo-api:latest' });
+    expect(fake.lines('buildctl')[0]).toContain('name=registry:5000/team/todo-api:spec-001-abc1234,');
+  });
+
+  it('verifies with rollout status and an HTTP probe of the in-cluster URL', async () => {
+    const urls: string[] = [];
+    const fake = new FakeExec();
+    const t = mk(fake, { httpGet: async (u) => (urls.push(u), { status: 200 }) });
+    expect(await t.verify(intent)).toMatchObject({ healthy: true });
+    expect(urls).toEqual(['http://todo-api.teams-ai.svc.cluster.local:3000/health']);
+    expect(fake.lines('kubectl')).toEqual(['-n teams-ai rollout status deployment/todo-api --timeout=120s']);
+  });
+
+  it('exposes the in-cluster Service URL for the smoke gate', () => {
+    expect(mk(new FakeExec()).gateServiceUrl(intent)).toBe('http://todo-api.teams-ai.svc.cluster.local:3000');
+  });
+
+  it('keeps the docker build + kind load path when no registry is configured', async () => {
+    const fake = new FakeExec();
+    await new KindTarget({ exec: fake.exec, secrets, cluster: 'teams-ai', readFile: async () => manifest }).build(intent);
+    expect(fake.calls.map((c) => c.bin)).toEqual(['docker', 'kind']);
+  });
+});
+
 describe('runDeployment', () => {
   function target(over: Partial<DeployTarget> = {}, log: string[] = []): DeployTarget {
     return {
@@ -197,7 +269,46 @@ describe('runDeployment', () => {
       intent,
       { smoke: smokeOk, baseUrl: 'u' },
     );
-    expect(r).toEqual({ ok: false, stage: 'verify', detail: 'timeout', rolledBack: false, rollbackHealthy: null });
+    expect(r).toMatchObject({ ok: false, stage: 'verify', rolledBack: false, rollbackHealthy: null });
+    if (!r.ok) expect(r.detail).toBe('timeout; first deploy failed, the new stack was torn down');
+  });
+
+  it('tears the new stack down with destroy when the first deploy fails, never rolling back', async () => {
+    const log: string[] = [];
+    const r = await runDeployment(target({ apply: async () => ({ previous: null }) }, log), intent, { smoke: async () => ({ ok: false, detail: 'x' }), baseUrl: 'u' });
+    expect(r).toMatchObject({ ok: false, stage: 'smoke', rolledBack: false });
+    expect(log).toEqual(['validate', 'build', 'verify', 'destroy']);
+  });
+
+  it('reports a failing teardown of a first deploy instead of rejecting', async () => {
+    const r = await runDeployment(
+      target({ apply: async () => ({ previous: null }), verify: async () => ({ healthy: false, detail: 'down' }), destroy: async () => { throw new Error('compose down failed'); } }),
+      intent,
+      { smoke: smokeOk, baseUrl: 'u' },
+    );
+    expect(r).toMatchObject({ ok: false, stage: 'verify', rolledBack: false });
+    if (!r.ok) expect(r.detail).toBe('down; teardown of the failed first deploy failed: compose down failed');
+  });
+
+  it('docker-local compose: a failed first deploy runs compose down for the project', async () => {
+    const fake = new FakeExec().onArgs('docker', ['compose'], (s) => (s.args.includes('ps') ? { stdout: '' } : {}));
+    const t = new DockerLocalTarget({ exec: fake.exec, get: okGet, secrets });
+    const ci = { ...intent, compose: 'docker-compose.yml' };
+    const r = await runDeployment(Object.assign(Object.create(t), { apply: async () => ({ previous: null }) }) as DeployTarget, ci, { smoke: smokeOk, baseUrl: 'u' });
+    expect(r).toMatchObject({ ok: false, stage: 'verify', rolledBack: false });
+    expect(fake.lines('docker').some((l) => l.startsWith('compose -p ') && l.includes(' down'))).toBe(true);
+  });
+
+  it('kind: a failed first deploy deletes the manifests and the secret', async () => {
+    const manifest = 'kind: Deployment\nmetadata:\n  name: todo-api\nimage: {{IMAGE}}\n';
+    const fake = new FakeExec().onArgs('kubectl', ['--context', 'kind-teams-ai', 'rollout', 'status'], () => ({ exitCode: 1, stderr: 'timed out' }));
+    const t = new KindTarget({ exec: fake.exec, secrets, cluster: 'teams-ai', readFile: async () => manifest, sleep: async () => undefined });
+    const r = await runDeployment(Object.assign(Object.create(t), { apply: async () => ({ previous: null }) }) as DeployTarget, intent, { smoke: smokeOk, baseUrl: 'u' });
+    expect(r).toMatchObject({ ok: false, stage: 'verify', rolledBack: false });
+    const lines = fake.lines('kubectl');
+    expect(lines).toContain('--context kind-teams-ai delete -f - --ignore-not-found');
+    expect(lines.some((l) => l.includes('delete secret todo-api-secrets'))).toBe(true);
+    expect(lines.some((l) => l.includes('rollout undo'))).toBe(false);
   });
 
   it('turns a throwing rollback into a result instead of a rejection', async () => {

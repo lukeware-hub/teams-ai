@@ -98,6 +98,24 @@ describe('runStep', () => {
     expect(outcome.summary.structuredSource).toBe('text');
   });
 
+  it('explains a missing JSON object with the agent text, subtype and the secret redacted', async () => {
+    const prose = await writeStream('prose.ndjson', [
+      init,
+      { type: 'result', subtype: 'success', is_error: false, duration_ms: 5, num_turns: 2, result: 'I edited design.md directly. token=sk-secret-123', session_id: 's' },
+    ]);
+    withFake({ FAKE_CLAUDE_FIXTURE: prose });
+    const outcome = await runStep({ ...request(), omniroute: { baseUrl: 'http://x', token: 'sk-secret-123' } } as StepRequest, deps);
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) {
+      expect(outcome.failure).toBe('schema');
+      const text = outcome.errors.join(' ');
+      expect(text).toContain('no JSON object in the agent result');
+      expect(text).toContain('I edited design.md directly');
+      expect(text).toContain('subtype=success');
+      expect(text).not.toContain('sk-secret-123');
+    }
+  });
+
   it('classifies the compaction breaker and discards a valid structured output', async () => {
     const breaker = await writeStream('breaker.ndjson', [
       init,
@@ -120,6 +138,22 @@ describe('runStep', () => {
     }
   });
 
+  it('asks classifyUnknown only when no rule matched, and uses its answer', async () => {
+    const odd = await writeStream('odd.ndjson', [init, { type: 'result', subtype: 'error_during_execution', is_error: true, api_error_status: 529, duration_ms: 5, num_turns: 1, result: 'Overloaded, retry after 5h', session_id: 's' }]);
+    withFake({ FAKE_CLAUDE_FIXTURE: odd });
+    const seen: unknown[] = [];
+    const outcome = await runStep(request(), { ...deps, classifyUnknown: async (input) => { seen.push(input); return 'quota'; } });
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.failure).toBe('quota');
+    expect(seen).toEqual([expect.objectContaining({ apiErrorStatus: 529, resultText: 'Overloaded, retry after 5h', subtype: 'error_during_execution' })]);
+
+    const capped = await writeStream('capped-no-ask.ndjson', [init, { type: 'result', subtype: 'error_max_turns', is_error: true, duration_ms: 5, num_turns: 25, session_id: 's' }]);
+    withFake({ FAKE_CLAUDE_FIXTURE: capped });
+    seen.length = 0;
+    await runStep(request(), { ...deps, classifyUnknown: async () => 'quota' as const });
+    expect(seen).toEqual([]);
+  });
+
   it('classifies the CLI turn cap as timeout, like the runner cap', async () => {
     // No compaction in this stream: compaction outranks every other classification.
     const capped = await writeStream('max-turns.ndjson', [init, { type: 'result', subtype: 'error_max_turns', is_error: true, duration_ms: 90000, num_turns: 25, session_id: 's' }]);
@@ -138,7 +172,7 @@ describe('runStep', () => {
         expect(outcome.failure).toBe('environment');
         expect(outcome.errors[0]).toMatch(/outside the workspaces root/);
       }
-      await expect(fs.access(deps.claudeJsonPath)).rejects.toThrow();
+      await expect(fs.access(deps.settingsDir)).rejects.toThrow();
       expect(deps.accounting.total().outputTokens).toBe(0);
     } finally {
       await fs.rm(outside, { recursive: true, force: true });
@@ -172,12 +206,11 @@ describe('runStep', () => {
     if (!outcome.ok) expect(outcome.failure).toBe('schema');
   });
 
-  it('trusts the working directory and writes the role settings before spawning', async () => {
+  it('writes the role settings before spawning and never touches the host claude.json', async () => {
     const capture = path.join(dir, 'capture.json');
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
     await runStep(request(), deps);
-    const json = JSON.parse(await fs.readFile(deps.claudeJsonPath, 'utf8'));
-    expect(json.projects[await fs.realpath(dir)].hasTrustDialogAccepted).toBe(true);
+    await expect(fs.access(deps.claudeJsonPath!)).rejects.toThrow();
     const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
     const settingsPath = captured.argv[captured.argv.indexOf('--settings') + 1];
     expect(settingsPath).toBe(path.join(deps.settingsDir, 'dev.settings.json'));
@@ -201,7 +234,7 @@ describe('runStep', () => {
     const outcome = await runStep(request({ cwd: missing }), deps);
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) expect(outcome.failure).toBe('environment');
-    await expect(fs.readFile(deps.claudeJsonPath, 'utf8')).rejects.toThrow();
+    await expect(fs.access(deps.settingsDir)).rejects.toThrow();
   });
 
   it('returns an environment failure when the binary cannot be spawned', async () => {

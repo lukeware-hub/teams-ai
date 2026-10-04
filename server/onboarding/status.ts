@@ -22,7 +22,8 @@ export interface StatusDeps extends ProbeDeps {
 }
 
 export function hint(value: string): string {
-  return value.length >= 8 ? value.slice(-4) : '****';
+  void value;
+  return '****';
 }
 
 /** Spec (onboarding) §4: every item is recomputed live; nothing is cached as "onboarded". */

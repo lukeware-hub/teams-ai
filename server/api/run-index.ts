@@ -6,7 +6,8 @@ import { Spec } from '../contracts/spec.js';
 import { expandHome } from '../orchestrator/workspace.js';
 import { loadEvents } from '../store/event-store.js';
 
-export const SAFE_ID = /^[A-Za-z0-9_.-]+$/;
+/** Run, spec and step ids become path segments: no leading dot, so neither `.` nor `..` matches. */
+export const SAFE_ID = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
 
 export type RunListStatus = 'running' | 'paused:quota' | 'paused:auth' | 'draining' | 'complete' | 'blocked' | 'deadlocked' | 'drained' | 'phase-failed' | 'awaiting-validation' | 'verification-failed' | 'deploy-failed' | 'done' | 'interrupted' | 'unknown';
 const ACTIVE: ReadonlySet<string> = new Set(['running', 'paused:quota', 'paused:auth', 'draining']);
@@ -76,13 +77,50 @@ async function wasInterrupted(runs: string, runId: string): Promise<boolean> {
   );
 }
 
+// The user's Stop, on disk because the supervisor is another process and the journal belongs to the process being
+// stopped. Unlike a RUN_STOP_REQUESTED event (which drains the run for good) it can be lifted: a resume clears it.
+const stopFile = (runs: string, runId: string) => path.join(runs, runId, 'stop-requested');
+export async function markStopRequested(runs: string, runId: string): Promise<void> {
+  await fs.writeFile(stopFile(runs, runId), '');
+}
+export async function clearStopRequested(runs: string, runId: string): Promise<void> {
+  await fs.rm(stopFile(runs, runId), { force: true });
+}
+export async function isStopRequested(runs: string, runId: string): Promise<boolean> {
+  return fs.access(stopFile(runs, runId)).then(
+    () => true,
+    () => false,
+  );
+}
+
+const claimFile = (runs: string, runId: string) => path.join(runs, runId, 'launch-claim');
+/** A launch waits at most ~10 s for the journal; a claim older than this belongs to a spawner that died mid-launch. */
+const CLAIM_TTL_MS = 60_000;
+/** The exclusive (O_EXCL) right to start a process for a run, shared by the resume route and the supervisor so that
+ * exactly one of them spawns. Returns the release function, or null while another spawner holds the claim. */
+export async function claimLaunch(runs: string, runId: string): Promise<(() => Promise<void>) | null> {
+  const file = claimFile(runs, runId);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await (await fs.open(file, 'wx')).close();
+      return () => fs.rm(file, { force: true });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      const since = (await fs.stat(file).catch(() => null))?.mtimeMs ?? 0; // gone already: released just now
+      if (Date.now() - since < CLAIM_TTL_MS) return null;
+      await fs.rm(file, { force: true });
+    }
+  }
+  return null;
+}
+
 interface StateFile {
   at?: string;
   status?: string;
   tokens?: { inputTokens?: number; outputTokens?: number; costUsd?: number };
 }
 
-async function runRow(deps: IndexDeps, runId: string): Promise<RunRow | null> {
+export async function runRow(deps: IndexDeps, runId: string): Promise<RunRow | null> {
   const runs = runsDir(deps);
   const events = await loadEvents(path.join(runs, runId, 'events.ndjson')).catch(() => []);
   const startedAt = events.find((e) => e.type === 'RUN_STARTED');

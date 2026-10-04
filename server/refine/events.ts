@@ -14,6 +14,8 @@ export const RefineEvent = {
   QuestionSkipped: 'QUESTION_SKIPPED',
   SecretWritten: 'SECRET_WRITTEN',
   StartedRun: 'REFINE_STARTED_RUN',
+  /** One System 1 decision of Gate 1; same type and record shape as the run journal, so the eval harness reads both. */
+  DecisionMade: 'DECISION_MADE',
 } as const;
 export interface Question {
   questionId: string;

@@ -21,6 +21,8 @@ export interface GateContext {
   containerWorkdir?: string;
   /** Config `docker.bindRewrite`: the worktree path as the Docker daemon sees it, when the orchestrator runs in a container. */
   bindRewrite?: { from: string; to: string };
+  /** Docker network an egress gate joins instead of the default bridge (the compose project network). */
+  network?: string;
 }
 
 /** Rewrites a bind source for a daemon that sees the orchestrator's filesystem under another root. */
@@ -73,7 +75,7 @@ export function dockerArgs(gate: Gate, ctx: GateContext): DockerInvocation {
     '--name',
     `${ctx.containerName}-${gate.name}`,
     '--network',
-    gate.network === 'egress' ? 'bridge' : 'none',
+    gate.network === 'egress' ? ctx.network ?? 'bridge' : 'none',
     '--cpus',
     String(ctx.cpus),
     '--memory',
@@ -110,8 +112,40 @@ export function classifyGate(r: Pick<GateResult, 'exitCode' | 'timedOut' | 'stde
 
 const tail = (s: string) => (s.length > TAIL_CHARS ? s.slice(-TAIL_CHARS) : s);
 
+/** What a gate run produced; JUnit, redaction, tails and classification stay in `runGate`. */
+export interface GateRunOutcome {
+  exitCode: number | null;
+  timedOut: boolean;
+  durationMs: number;
+  stdout: string;
+  stderr: string;
+}
+
+/** Runs one gate command in the toolchain image against the worktree. A rejection is an infrastructure failure. */
+export interface GateExecutor {
+  readonly kind: 'docker' | 'k8s';
+  run(gate: Gate, ctx: GateContext): Promise<GateRunOutcome>;
+}
+
+export function dockerGateExecutor(exec: Exec): GateExecutor {
+  return {
+    kind: 'docker',
+    async run(gate, ctx) {
+      const invocation = dockerArgs(gate, ctx);
+      const r = await exec({ bin: 'docker', args: invocation.args, env: invocation.env, timeoutMs: ctx.timeoutMs });
+      if (r.timedOut) {
+        // SIGTERM reaches the docker CLI, not PID 1 in the container; make sure nothing keeps running.
+        await exec({ bin: 'docker', args: ['rm', '-f', `${ctx.containerName}-${gate.name}`], timeoutMs: 60_000 }).catch(() => undefined);
+      }
+      return { exitCode: r.exitCode, timedOut: r.timedOut, durationMs: r.durationMs, stdout: r.stdout, stderr: r.stderr };
+    },
+  };
+}
+
 export interface GateDeps {
   exec: Exec;
+  /** Where gates run; defaults to docker over xec. */
+  executor?: GateExecutor;
   readFile: (absolutePath: string) => Promise<string | null>;
   removeFile: (absolutePath: string) => Promise<void>;
   /** Restores the last JUnit report after the run; defaults to the filesystem. */
@@ -135,16 +169,12 @@ export async function runGate(gate: Gate, ctx: GateContext, deps: GateDeps): Pro
   // Tails reach the event store and UI; secret values injected into the container never do.
   const secretValues = Object.values(ctx.secrets);
   const clean = (s: string) => redactSecrets(tail(s), secretValues);
-  const invocation = dockerArgs(gate, ctx);
+  const executor = deps.executor ?? dockerGateExecutor(deps.exec);
   try {
-    const r = await deps.exec({ bin: 'docker', args: invocation.args, env: invocation.env, timeoutMs: ctx.timeoutMs });
+    const r = await executor.run(gate, ctx);
     base = { exitCode: r.exitCode, timedOut: r.timedOut, durationMs: r.durationMs, stdoutTail: clean(r.stdout), stderrTail: clean(r.stderr) };
-    if (r.timedOut) {
-      // SIGTERM reaches the docker CLI, not PID 1 in the container; make sure nothing keeps running.
-      await deps.exec({ bin: 'docker', args: ['rm', '-f', `${ctx.containerName}-${gate.name}`], timeoutMs: 60_000 }).catch(() => undefined);
-    }
   } catch (err) {
-    base = { exitCode: null, timedOut: false, durationMs: Date.now() - started, stdoutTail: '', stderrTail: clean((err as Error).message) };
+    base = { exitCode: null, timedOut: false, durationMs: Date.now() - started, stderrTail: clean((err as Error).message), stdoutTail: '' };
     return { name: gate.name, blocking: gate.blocking, passed: false, junit: null, failure: 'infra', ...base };
   }
   const passed = base.exitCode === 0 && !base.timedOut;

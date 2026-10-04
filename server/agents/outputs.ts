@@ -51,7 +51,8 @@ export const CoverageOutput = z.object({
   coverage: z.array(z.object({ acId, section: z.string().nullable(), covered: z.boolean(), note: z.string() })),
 });
 
-export const PlanOutput = Plan;
+/** Spec 10A.5 decision 12: the SM may add up to two full alternative plans; System 1 ranks them, Phase 2 keeps one. */
+export const PlanOutput = Plan.extend({ alternatives: z.array(Plan).max(2).optional() });
 
 const devCommon = {
   specHash,
@@ -64,6 +65,8 @@ const devCommon = {
 export const DevOutput = z.discriminatedUnion('status', [
   z.object({ ...devCommon, status: z.literal('done'), commitMessage: z.string().min(1) }),
   z.object({ ...devCommon, status: z.literal('spec-gap'), question: z.string().min(1) }),
+  /** The task cannot proceed for a reason outside its paths (deploy environment, missing access): no SM round, no attempt consumed. */
+  z.object({ ...devCommon, status: z.literal('blocked'), reason: z.string().min(1) }),
 ]);
 
 export const ReviewOutput = z.object({
@@ -111,7 +114,7 @@ export const DeploymentOutput = z.object({
 });
 
 /** `spec readme`: the SM alone writes docs/README.md for a spec that already has code on main. */
-export const ReadmeOutput = z.object({ specHash, readme: z.string().min(1) });
+export const ReadmeOutput = z.object({ specHash, readme: z.string().min(1), runbook: z.string().optional(), apiDocs: z.string().optional() });
 
 export const ReportOutput = z.object({
   specHash,
@@ -122,6 +125,10 @@ export const ReportOutput = z.object({
   summary: z.string().min(1),
   /** Markdown for docs/README.md: a project overview the orchestrator commits with the report. */
   readme: z.string().min(1),
+  /** Markdown for docs/RUNBOOK.md (start, stop, logs, rollback); validated by the docs gate. */
+  runbook: z.string().optional(),
+  /** Markdown for docs/API.md listing every endpoint the spec features name. */
+  apiDocs: z.string().optional(),
 });
 
 /** Spec 10A.3: a System 2 answer to typed questions; no probabilities, the value only. */

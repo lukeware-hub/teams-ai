@@ -1,0 +1,24 @@
+{
+  "specId": "todo-001",
+  "specVersion": 1,
+  "specHash": null,
+  "objectives": ["Create, list, complete and delete todos over HTTP"],
+  "features": [
+    "POST /todos with {\"title\":\"X\"} creates a todo {\"id\",\"title\",\"done\":false}",
+    "GET /todos lists every todo in creation order",
+    "PATCH /todos/:id with {\"done\":true} marks a todo done",
+    "DELETE /todos/:id removes a todo",
+    "GET /health returns {\"ok\":true}"
+  ],
+  "acceptanceCriteria": [
+    { "id": "AC-001", "given": "the service is running", "when": "POST /todos is called with {\"title\":\"Buy milk\"}, then without a title", "then": "the first call answers 201 with the new todo (string id, title \"Buy milk\", done false); the second answers 400 and {\"error\":\"title is required\"}", "smoke": true },
+    { "id": "AC-002", "given": "two todos were created", "when": "GET /todos is called", "then": "status 200 and an array with both todos in creation order", "smoke": true },
+    { "id": "AC-003", "given": "a todo exists", "when": "PATCH /todos/:id is called with {\"done\":true}", "then": "status 200 and the todo with done true; an unknown id answers 404 and {\"error\":\"not found\"}", "smoke": false },
+    { "id": "AC-004", "given": "a todo exists", "when": "DELETE /todos/:id is called", "then": "status 204 and the todo no longer appears in GET /todos; an unknown id answers 404 and {\"error\":\"not found\"}", "smoke": false },
+    { "id": "AC-005", "given": "the service is running", "when": "GET /health is called", "then": "status 200 and {\"ok\":true}", "smoke": true }
+  ],
+  "outOfScope": ["Authentication", "Persistence across restarts", "Pagination"],
+  "externalDependencies": [],
+  "status": "running",
+  "validationReports": []
+}
