@@ -1,6 +1,6 @@
 # teams-ai Plan 12 — Phases 4–6 and Validation UI Implementation Plan
 
-**Status: partially implemented — tasks 1–10 done, live check pending (see Findings)**
+**Status: implemented — live-checked on docker-local (see Findings)**
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -2103,12 +2103,22 @@ git commit -m "feat(web): validation screen with report, exploratory script and 
 
 **Files:**
 - Modify: `docs/superpowers/plans/README.md` (append the plan 12 row; move the "Decision 7" bullet under Outstanding work to "call site exists, decision not wired")
-- Modify: this plan's `**Status**` line and a new `## Findings (live run, 2026-10-04, WSL Ubuntu-24.04, docker-local)
+- Modify: this plan's `**Status**` line and a new `## Findings (live run, 2026-10-04, WSL Ubuntu-24.04 + Docker Desktop, docker-local)
 
-Run `hello-001-r9` (copy of `hello-001-r1` without `RUN_FINISHED`, resumed from the UI). The existing plan on `main` predates `commands.smoke`, so this exercised the "smoke missing -> deploy-failed" path.
+Runs `hello-001-r9..r16` were copies of the recorded `hello-001-r1` without its `RUN_FINISHED` line (plus an empty `pid.gone` marker so the API lists them as `interrupted`), resumed from the UI. Final result: `hello-001-r16` ended `awaiting-validation`; "Complete spec" in the browser started `hello-001-complete-r1`, which finished `done`; `main` of the hello-app carries `status: "done"` (docs PR #6).
 
-- Setup: the recorded workspace `origin` (`diego-dm-morais/teams-ai-hello-app`) no longer existed, so the `repo/ is not a git clone with origin` precondition failed. Created private `lukeware70X7/teams-ai-hello-app`, pushed `main`, repointed `origin`. A copied run is only resumable after adding the `pid.gone` marker (`runRow` reads status from it).
-- Phase 4: `VERIFICATION_PASSED` in round 1. Phase 5: container `teams-ai-hello-app` came up on 127.0.0.1:3000 and `/health` answered `{"ok":true}`; every attempt failed at stage `smoke` with `plan.commands.smoke missing`; attempt 2 and 3 rolled back healthy. Phase 6: `REPORT_READY`, `RUN_FINISHED` = `deploy-failed`.
-- `GET /api/runs/hello-001-r9` returns `status: deploy-failed`, `phase: 6`, and a `report` whose `deploy` is `{attempts: 3, lastFailure: {stage: smoke, rolledBack: true, rollbackHealthy: true}}`.
-- Defect: the `deploy-fix` tasks (`T950-deploy-fix-1-r2`, `T950-deploy-fix-4-r1`) end blocked with "Dev reported done but produced no changes against origin/main". The failure is a missing `plan.commands.smoke`, a plan field, not code, so a Dev step cannot fix it and the loop spends all attempts (and Dev tokens) for nothing. Follow-up: when a deploy failure is `plan.commands.smoke missing`, skip the deploy-fix loop and report `deploy-failed` immediately (or route to SM to amend the plan).
-- Not checked: Validation page in a browser, "Complete spec", "Report problem" from the UI, `kind` target (docker-local only), and the `awaiting-validation` happy path, which needs a plan with `commands.smoke`.
+Observed
+- Phase 4 -> 5 -> 6 events appear in the journal; container `teams-ai-hello-app` ran on :3000; the Validation page rendered service URL, smoke rows, evidence, assumptions and cost.
+- First attempts ran the "smoke missing -> deploy-failed" path (plan predated `commands.smoke`): 3 attempts, rollback healthy, report with `deploy-failed`.
+
+Defects found and fixed here (each with a test that failed first)
+1. A `plan.commands.smoke missing` failure planned deploy-fix tasks the Dev cannot satisfy (the plan is not Dev-editable): "Dev reported done but produced no changes". Now ends `deploy-failed` at once (`test/orchestrator/phase5.test.ts`).
+2. Phase 4 dedup by test id was last-wins, so the smoke suite (skipped under the unit gate, same test names) hid the passed unit tests and AC-001/AC-003 became "missing" (`dedupeJunit`, `test/orchestrator/verify-junit.test.ts`).
+3. `findMergedPr` matched any merged PR of a reused branch name; the second run's `docs/<spec>-report` was treated as already merged and the spec never became `awaiting-validation`. It now compares the PR head sha with the branch tip (`test/git/github.test.ts`).
+
+Open
+- Docker Desktop on WSL: host and gate containers need one address both can reach. `127.0.0.1` fails inside the gate container; `172.17.0.1` and `host.docker.internal` fail from the WSL host. Setting `docker.serviceHost` to the WSL VM IP (`hostname -I`) with `publishBind: 0.0.0.0` worked. The compose backend (orchestrator in a container, `host.docker.internal`) was not exercised.
+- The report agent step failed in `r16` (`Invalid input: expected object, received null`), so the Validation page shows an empty exploratory script and a failure summary. Not diagnosed.
+- On a failed action (e.g. 409 on Complete spec) `ValidationPage` replaces the whole screen with the error text; reload is needed to get the buttons back.
+- Smoke test ids render with HTML entities (`&quot;`) because the Node JUnit reporter double-escapes quotes.
+- Not checked: "Report problem" from the UI, `kind` target.
