@@ -237,7 +237,16 @@ window resets, resume exactly from the entry below.
 
 ## Stage 5 — Golden run 3 and the comparison
 
-### R5.1 Golden run 3 on `todo-api` (decisions on) — `todo`
+### R5.1 Golden run 3 on `todo-api` (decisions on) — `in progress` (started 2026-10-04, run `todo-001-r3`)
+
+- Launched 2026-10-04 on WSL from a clean export of commit a557e86 (not the working tree with another session's edits):
+  `TEAMS_AI_GH_OWNER=lukeware70X7 TEAMS_AI_FIXTURE=todo-api TEAMS_AI_PROJECT=todo-api-r3 tsx scripts/integration/orchestrator.ts`
+  from `~/teams-ai-run3`; repository `lukeware70X7/teams-ai-todo-api-r3`; log `~/golden-run-3.log`. Authorized by the human.
+- Deviation from spec §1.3: run 3 is Claude only (no OmniRoute, R3.1 is optional) with System 1 decisions on and the chain
+  `local` then `claude` (`local` only for model-tier and cli-error); the Jev (OpenRouter) is NOT used, to avoid external spend.
+- It is the first live run of the runner-security changes (empty step HOME, mandatory sandbox), of `requireDelivery` (a plan without `delivery` is rejected) and of the Gate 1 / decision journaling.
+- **Restore after the run:** `~/.teams-ai/config.json` was changed to turn decisions on; the original is `~/config.json.bak-run3` (it held only `{ "github": { "owner": "lukeware70X7" } }`).
+- Outcome: _pending_.
 
 - Flip `decisions.enabled` for this run only; the `false` default is by design for runs 1–2.
 
