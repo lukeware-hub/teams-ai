@@ -1,0 +1,127 @@
+# teams-ai — Roadmap and backlog
+
+The single list of what is left until the POC is done. Plan history lives in `plans/README.md`; specs in `specs/`.
+
+## Definition of done
+
+The golden run criteria in spec §1.3 (`specs/2026-09-23-teams-ai-poc-design.md`):
+
+- Three runs on the reference spec (`test/fixtures/todo-api`): 1 baseline (Claude only, decisions off),
+  2 mixed (OmniRoute for Test/DevOps, decisions off), 3 full (OmniRoute + System 1 decisions on).
+- Zero human interaction between Start and `awaiting-validation`.
+- Every acceptance criterion `passed` in JUnit.
+- Green deploy and smoke tests on both `docker-local` and `kind`.
+- Zero duplicate PRs; `main` green after every merge.
+- The three runs compared on tokens, retries, wall time, blocked tasks and escalation rate.
+
+## How we work
+
+1. One item at a time, in order. Pick the first item that is not `done`.
+2. **Plan before implementing.** Every item gets a short plan first: goal, approach, files touched, how it is
+   verified, cost (tokens or dollars). Items with code changes get a plan file in `plans/`; live runs and checks
+   get the plan written into the item below. The human approves the plan before any implementation or paid run.
+3. Implement, verify against the plan's checks, then record the outcome (result, cost, findings) in the item and
+   mark it `done`.
+4. Anything new that comes up goes into the backlog as a new item, not into the current one.
+
+Status values: `todo` → `planning` → `approved` → `in progress` → `done` (or `blocked`, with the reason).
+
+## Current item
+
+**R1.1** — Golden run 1 on `todo-api` (in progress).
+
+## Stage 1 — Golden run 1 (baseline)
+
+### R1.1 Golden run 1 on `todo-api`, `docker-local` — `in progress`
+
+- Plan: `TEAMS_AI_GH_OWNER=<owner> TEAMS_AI_FIXTURE=todo-api npx tsx scripts/integration/orchestrator.ts`
+  on WSL, defaults (decisions off, OmniRoute off). Creates `<owner>/teams-ai-todo-api`. Expected cost: more than
+  $3 (`hello-001-r1` on hello-app cost $3.33).
+- Checks: reaches `awaiting-validation` with no human input; every AC `passed`; deploy and smoke green; no
+  duplicate PRs; `main` green. Also confirms live the `sec` gate inside a run (plan 13) and the report step that
+  failed in plan 12's live run.
+- Started 2026-10-04 as run `todo-001-r1` (approved by the human).
+- Outcome: _pending_.
+
+### R1.2 Deploy the run 1 result to `kind` — `todo`
+
+- `kind` has never run. Needs a plan: second run with `deploy.target: "kind"`, or redeploy only.
+
+## Stage 2 — Browser checks (cheap, on the run 1 result)
+
+### R2.1 "Report problem" from the Validation page (plan 12) — `todo`
+
+- Reopens refinement with the report; with decisions on, `brief.md` shows the decision 7 hint.
+
+### R2.2 Start, stop and resume a run from the browser (plan 10) — `todo`
+
+- SIGTERM through `tsx` is already verified (2026-10-04); the orchestrator's `requestStop()` path under a real run is not.
+
+### R2.3 Real logins on a logged-out host (plan 8) — `todo`
+
+- `claude auth login`: URL line, paste prompt wording, time to `loggedIn`.
+- `gh` device flow: only the fake CLI has exercised the auto-Enter behaviour.
+
+## Stage 3 — Golden run 2
+
+### R3.1 OmniRoute up on the host — `todo`
+
+- `scripts/wsl/omniroute`; `omniroute.enabled` for the run only.
+
+### R3.2 Golden run 2 on `todo-api` (OmniRoute for Test/DevOps, decisions off) — `todo`
+
+## Stage 4 — System 1 ready for run 3
+
+### R4.1 Decisions 2–4 (Gate 1 readiness, question dedup, contradiction) — `todo`
+
+- Approach not chosen yet. Options:
+  - A. Spec questions: one readiness question per AC and checklist item (2), one per question pair (3), one per
+    retrieved history chunk (4), all through the decider. The existing JEV check stays.
+  - B. Route the existing JEV consistency check (`server/refine/jev-validation.ts`) through the decider. No new questions.
+  - C. Decide after reading the refinement cost in run 1 (recommended).
+
+### R4.2 Decision 12 (rank candidate plans) — `blocked`
+
+- Needs the SM contract to allow several candidate plans (`server/contracts/plan.ts`, `server/agents/outputs.ts`).
+  Optional for run 3.
+
+### R4.3 `local-logprobs` backend on the host — `todo` (optional)
+
+- Client built (`server/decide/local-logprobs.ts`). Host: llama.cpp with CUDA in WSL2, a 7–9B instruct GGUF (start
+  with Qwen2.5-7B-Instruct Q4_K_M), `llama-server -np 4 -c 8192`, a real smoke. Jev alone covers run 3.
+
+## Stage 5 — Golden run 3 and the comparison
+
+### R5.1 Golden run 3 on `todo-api` (decisions on) — `todo`
+
+- Flip `decisions.enabled` for this run only; the `false` default is by design for runs 1–2.
+
+### R5.2 Three-run comparison — `todo`
+
+- Tokens, retries, wall time, blocked tasks, escalation rate. Closes the POC.
+
+### R5.3 Decision evals (spec §10A.6) — `todo`
+
+- Harness not built (accuracy, Brier, ECE, escalation rate, latency per decision and model); fixtures from the
+  `DECISION_MADE` records of run 3.
+
+## System 1 decisions (spec §10A.5)
+
+| # | Decision | Status |
+|---|----------|--------|
+| 1 | Gate failure triage | Wired (`gate-triage`) |
+| 2 | Gate 1 readiness per AC / checklist item | Not wired (R4.1). A single JEV consistency check covers part of it, outside the decider |
+| 3 | Question dedup | Deterministic only (normalized text, `server/refine/cycle.ts:154`) (R4.1) |
+| 4 | Contradiction with history | Not wired; partly covered by the same JEV check (R4.1) |
+| 5 | PR risk | Wired (`pr-risk`) |
+| 6 | Attempt progress | Wired (`attempt-progress`) |
+| 7 | Validation report routing | Wired 2026-10-04 as a hint in `brief.md` (`report-routing`); never changes the flow |
+| 8 | CLI error classification | Wired 2026-10-04 (`cli-error`: quota / auth / schema / code; never escalates to Claude) |
+| 9 | Scope drift | Wired (`scope-drift`) |
+| 10–11 | Model tier and effort per task | Wired (`model-tier`) |
+| 12 | Rank candidate plans | Blocked on the SM contract (R4.2) |
+
+## Done log
+
+- 2026-10-04 — Plan 13 live check (`sec` field names fixed); Validation keeps its buttons after an action error;
+  SIGTERM through `tsx` verified; `todo-api` reference spec; decisions 7 and 8 wired. PR #13.
