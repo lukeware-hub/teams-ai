@@ -50,7 +50,8 @@ export function LoginCard({ cli, title, item, onDone }: { cli: Cli; title: strin
   }, [onDone, state.name, url]);
   return (
     <ItemCard title={title} item={item} variant="login" subtitle={cli === 'claude' ? 'Acesse sua conta do Claude de forma rápida e segura.' : 'Conecte sua conta do GitHub para usar seus repositórios.'} icon={cli === 'claude' ? 'claude' : 'github'} illustration={cli === 'claude' ? '/onboarding-claude.png' : '/onboarding-github-login.png'}>
-      <LoginControls state={state} code={code} onCode={setCode} onStart={start} onSend={send} onCancel={() => api.cancel(cli)} />
+      {/* Already logged in and no login running: nothing to start. */}
+      {item?.ok && !url ? null : <LoginControls state={state} code={code} onCode={setCode} onStart={start} onSend={send} onCancel={() => api.cancel(cli)} />}
       {error ? <p className="error">{error}</p> : null}
       {url ? (
         <button type="button" className="link terminal-toggle" aria-expanded={showOutput} onClick={() => setShowOutput((v) => !v)}>

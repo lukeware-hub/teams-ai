@@ -24,6 +24,11 @@ describe('LoginControls', () => {
     expect(screen.getByText('O login demorou demais. Tente novamente.')).toBeTruthy();
   });
 
+  it('hides the login button once the item is logged in', () => {
+    render(<LoginCard cli="gh" title="Login do GitHub CLI" item={{ ok: true, detail: 'octocat' }} onDone={noop} />);
+    expect(screen.queryByText('Entrar')).toBeNull();
+  });
+
   it('shows an API error when starting login fails', async () => {
     const login = vi.spyOn(api, 'login').mockRejectedValue(new Error('HTTP 500'));
     render(<LoginCard cli="claude" title="Login do Claude" item={null} onDone={noop} />);
