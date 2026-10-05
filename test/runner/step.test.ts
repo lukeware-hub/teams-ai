@@ -309,3 +309,15 @@ describe('classifyFailure', () => {
     expect(classifyFailure(raw('{"type":"system","subtype":"init"}', { killedBy: 'environment', sandboxDisabled: true }))).toBe('environment');
   });
 });
+
+describe('jsonFromResultText', () => {
+  it('takes a JSON object from a fenced block or a bare object, nothing else', async () => {
+    const { jsonFromResultText } = await import('../../server/runner/step.js');
+    expect(jsonFromResultText('Done.\n```json\n{"a":1}\n```\nbye')).toEqual({ a: 1 });
+    expect(jsonFromResultText('{"a":1}')).toEqual({ a: 1 });
+    expect(jsonFromResultText('I edited the file directly.')).toBeNull();
+    expect(jsonFromResultText('```json\n[1,2]\n```')).toBeNull();
+    expect(jsonFromResultText('```json\n{broken\n```')).toBeNull();
+    expect(jsonFromResultText(null)).toBeNull();
+  });
+});

@@ -23,11 +23,12 @@ tar --no-same-owner -xzf "$TMP/trivy.tgz" -C "$BIN" trivy
 
 fetch "https://bootstrap.pypa.io/pip/zipapp/pip-24.3.1.pyz" c59df64b826d5baa978829fd1e1b3ea2e748f73dce7cce58d09aa28a1c9323a7 "$TMP/pip.pyz"
 # The gate image (node:22-bookworm) has python3 but no pip, and apt does not work without capabilities: the pinned pip zipapp does.
-python3 "$TMP/pip.pyz" install --quiet --disable-pip-version-check --root-user-action=ignore --target "$ROOT/.tools/py" "semgrep==1.131.0"
+python3 "$TMP/pip.pyz" install --quiet --disable-pip-version-check --root-user-action=ignore --target "$ROOT/.tools/py" "semgrep==1.131.0" "setuptools<81"
 cat > "$BIN/semgrep" <<'WRAP'
 #!/bin/sh
 D="$(cd "$(dirname "$0")/.." && pwd)"
-PYTHONPATH="$D/py" exec python3 -m semgrep "$@"
+# semgrep execs pysemgrep from PATH and imports pkg_resources (setuptools < 81 still ships it).
+PATH="$D/py/bin:$PATH" PYTHONPATH="$D/py" SEMGREP_SEND_METRICS=off SEMGREP_ENABLE_VERSION_CHECK=0 exec python3 "$D/py/bin/semgrep" "$@"
 WRAP
 chmod +x "$BIN/semgrep"
 

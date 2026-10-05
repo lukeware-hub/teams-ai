@@ -156,6 +156,24 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
   });
 }
 
+/**
+ * The CLI leaves `structured_output` null when the agent answers in prose with the JSON in a fenced block (seen live in the
+ * Phase 6 report). The JSON still goes through the same schema, specHash and reference validation, so taking it is safe;
+ * text with no single JSON object stays a schema failure.
+ */
+export function jsonFromResultText(text: string | null): unknown {
+  if (!text) return null;
+  const fenced = /```(?:json)?\s*\n([\s\S]*?)\n```/.exec(text);
+  const candidate = (fenced ? fenced[1]! : text).trim();
+  if (!candidate.startsWith('{') || !candidate.endsWith('}')) return null;
+  try {
+    const value: unknown = JSON.parse(candidate);
+    return typeof value === 'object' && value !== null && !Array.isArray(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 /** A stored token that expires within this window is refreshed by one step at a time. */
 export const REFRESH_WINDOW_MS = 5 * 60_000;
 
@@ -254,7 +272,7 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
   }
 
   const schema = OUTPUT_SCHEMAS[req.kind];
-  const validation = validateAgentOutput(schema, raw.summary.structuredOutput, {
+  const validation = validateAgentOutput(schema, raw.summary.structuredOutput ?? jsonFromResultText(raw.summary.resultText), {
     expectedSpecHash: req.expectedSpecHash,
     refs: req.refs as ((value: { specHash: string }) => References) | undefined,
     refContext: typeof req.refContext === 'function' ? await req.refContext() : req.refContext,
