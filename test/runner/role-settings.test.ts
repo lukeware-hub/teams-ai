@@ -12,6 +12,13 @@ describe('buildRoleSettings', () => {
     expect(s.sandbox).toEqual({ enabled: true, network: { allowedDomains: ['registry.npmjs.org'] } });
   });
 
+  it('adds absolute deny rules for the orchestrator HOME, which the ~ rules do not reach', () => {
+    const deny = buildRoleSettings('dev', { allowedDomains: [], hostHome: '/home/node/' }).permissions.deny;
+    expect(deny).toContain('Read(/home/node/.teams-ai/secrets/**)');
+    expect(deny).toContain('Read(/home/node/.config/gh/**)');
+    expect(buildRoleSettings('dev', { allowedDomains: [] }).permissions.deny.some((d) => d.startsWith('Read(/'))).toBe(false);
+  });
+
   it('denies secrets, credential stores, the settings directory and orchestrator-only commands for every role', () => {
     for (const role of ROLES) {
       const deny = buildRoleSettings(role, { allowedDomains: [] }).permissions.deny;

@@ -193,7 +193,7 @@ export async function withRefreshGate<T>(hostEnv: NodeJS.ProcessEnv, clock: () =
 
 async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, hostEnv: NodeJS.ProcessEnv, home: string): Promise<StepOutcome<OutputOf<K>>> {
   await ensureTrusted(req.cwd, path.join(home, '.claude.json'));
-  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: req.extraAllow, sandboxEnabled: deps.sandbox?.enabled });
+  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: req.extraAllow, sandboxEnabled: deps.sandbox?.enabled, hostHome: hostEnv.HOME });
   const invocation = buildInvocation(
     {
       role: req.role,

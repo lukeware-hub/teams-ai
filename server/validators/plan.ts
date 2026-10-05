@@ -28,6 +28,8 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
   if (plan.specId !== spec.specId) errors.push(`plan specId ${plan.specId} does not match spec ${spec.specId}`);
   // The Dev installs dependencies on the orchestrator's Debian host; an Alpine gate image then fails to load
   // the native optional packages that install picked for glibc (seen live: rollup under vitest).
+  // A leading dash would be read by `docker run` as a flag, not as the image.
+  if (plan.gateImage.startsWith('-')) errors.push(`gateImage ${plan.gateImage} must not start with '-'`);
   if (/(^|[:/-])alpine(\d|[.:-]|$)/i.test(plan.gateImage)) errors.push(`gateImage ${plan.gateImage} is Alpine (musl); use a glibc-based image such as node:22-bookworm-slim`);
 
   const ids = new Set<string>();

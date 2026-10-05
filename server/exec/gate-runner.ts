@@ -80,6 +80,13 @@ export function dockerArgs(gate: Gate, ctx: GateContext): DockerInvocation {
     String(ctx.cpus),
     '--memory',
     ctx.memory,
+    // Gate commands come from the plan (agent-written): no capabilities, no privilege gain, bounded process count.
+    '--cap-drop',
+    'ALL',
+    '--security-opt',
+    'no-new-privileges',
+    '--pids-limit',
+    '512',
   ];
   // The container's own 127.0.0.1 is not the host: egress gates (smoke) reach the service the daemon published through this name.
   if (gate.network === 'egress') args.push('--add-host', 'host.docker.internal:host-gateway');

@@ -1,10 +1,14 @@
-# The whole platform in one container: orchestrator, API and web UI on http://localhost:8787.
-# Gates and docker-local deploys run as sibling containers on the host daemon through the mounted socket; the daemon
-# cannot see this container's paths, so docker/config.json (seeded on first start) rewrites ~/.teams-ai to the data volume.
+# The whole platform: orchestrator, API and web UI on http://localhost:8787, plus a rootless Docker daemon (`dind`).
+# Gates and docker-local deploys run as containers of the nested daemon, never on the host daemon (audit H4): what an
+# agent writes (Dockerfile, docker-compose.yml, gate image) cannot reach the host. The data volume is mounted at the same
+# path in both containers, so a bind source the orchestrator names is the same path for the nested daemon.
 services:
   teams-ai:
     build: .
     image: teams-ai:local
+    depends_on:
+      dind:
+        condition: service_healthy
     ports:
       - '127.0.0.1:8787:8787'
     environment:
@@ -13,23 +17,42 @@ services:
       TEAMS_AI_UI_TOKEN: ${TEAMS_AI_UI_TOKEN:-}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      DOCKER_HOST: tcp://dind:2375
     # The bwrap sandbox of each agent step needs user namespaces, which Docker's default profiles block.
     security_opt:
       - seccomp:unconfined
       - apparmor:unconfined
-    # Lets the non-root `node` user use the docker socket: gid 0 on Docker Desktop, the `docker` gid on Linux.
-    group_add:
-      - '${DOCKER_GID:-0}'
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
+    cap_drop:
+      - ALL
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - teams-ai-data:/home/node/.teams-ai
       - teams-ai-claude:/home/node/.claude
       - teams-ai-gh:/home/node/.config/gh
+
+  dind:
+    image: docker:27-dind-rootless
+    environment:
+      DOCKER_TLS_CERTDIR: ''
+    # Rootless dockerd needs user namespaces and /proc writes; it is not `privileged` and has no host socket.
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+      - systempaths=unconfined
+    # Reachable only from this compose network (no `ports:`).
+    expose:
+      - '2375'
+    volumes:
+      - dind-data:/home/rootless/.local/share/docker
+      - teams-ai-data:/home/node/.teams-ai
+    healthcheck:
+      test: ['CMD', 'docker', '-H', 'tcp://127.0.0.1:2375', 'info']
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
 volumes:
   teams-ai-data:
     name: teams-ai-data
   teams-ai-claude:
   teams-ai-gh:
+  dind-data:

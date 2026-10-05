@@ -65,6 +65,8 @@ export interface RoleSettingsInput {
   extraAllow?: readonly string[];
   /** Config `sandbox.enabled`; defaults to on. */
   sandboxEnabled?: boolean;
+  /** The orchestrator's real HOME: the `~` deny rules resolve against the step HOME, so the real credential stores get absolute rules too. */
+  hostHome?: string;
 }
 
 export interface RoleSettings {
@@ -75,6 +77,7 @@ export interface RoleSettings {
 export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSettings {
   const deny = [
     ...PROTECTED_READ_PATHS.map((p) => `Read(${p})`),
+    ...(input.hostHome ? PROTECTED_READ_PATHS.map((p) => `Read(${input.hostHome!.replace(/\/+$/, '')}/${p.slice(2)})`) : []),
     // Edit(path) rules cover every file-editing tool; a Write(path) rule is not matched by the file permission checks.
     'Edit(.claude/**)',
     ...ALWAYS_DENIED,

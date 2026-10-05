@@ -36,6 +36,8 @@ sibling containers through the mounted docker socket. Removed: `deploy/k8s`, the
 config, and the `kind` deploy target (generated projects deploy with `docker-local` only). The UI needs no token:
 the port is published on the host loopback only (`TEAMS_AI_UI_LOOPBACK_PUBLISHED`).
 
+**Security block (plan 40, 2026-10-05):** code and tests done (rootless `dind` instead of the host socket, gate hardening, absolute secret denies). Open: live check of `docker compose up` with `dind` and of a docker-local deploy through it; the agent-reach probe (needs a `claude` login). Egress stays unrestricted by decision.
+
 ## Pause log
 
 - **2026-10-04, end of the day — stopped by the human; everything saved to `main`.**

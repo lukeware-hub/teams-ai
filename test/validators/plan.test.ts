@@ -180,6 +180,10 @@ describe('validatePlan: gate image', () => {
     }
     expect(validatePlan(makePlan(spec, { gateImage: 'node:22-bookworm-slim' }), spec, { firstSpec: true })).toEqual([]);
   });
+
+  it('rejects an image that docker run would read as a flag', () => {
+    expect(validatePlan(makePlan(spec, { gateImage: '--privileged' }), spec, { firstSpec: true }).join(' ')).toMatch(/must not start with/);
+  });
 });
 
 describe('validatePlan: devops-only criteria need a smoke flag', () => {

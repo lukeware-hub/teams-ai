@@ -1,7 +1,7 @@
 # Base pinned by index digest (node:22-bookworm, read from Docker Hub on 2026-10-04); bump deliberately.
 FROM node:22-bookworm@sha256:363e1587494626837fa7f9a23bdb453d13b0ff3c67c705c2805cfc69c2d2fad7
 
-# The docker CLI talks to the host daemon through the socket compose mounts (gates and docker-local deploys run as sibling containers).
+# The docker CLI talks to the rootless `dind` sidecar over tcp (DOCKER_HOST in docker-compose.yml), never to the host daemon.
 COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker:27-cli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
 

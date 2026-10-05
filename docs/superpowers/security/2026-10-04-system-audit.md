@@ -188,3 +188,12 @@ Fix: pin the base image by digest and the two global packages by exact version, 
 2. H1 and H2 (token plus Origin/Content-Type checks, headers): small, local to `server/api/server.ts`.
 3. H3 documentation change and image hardening; M2 `.claude/` reset; M1 clone and `dir` restrictions.
 4. M3, M4, M5, M6, then the Low items, and finally the spec section 14 rewrite.
+
+## Status update 2026-10-05 (plan 40)
+
+- **H4:** the host Docker socket is no longer mounted; gates and docker-local deploys run on a rootless `dind` sidecar, so an
+  agent-written Dockerfile or compose file cannot reach the host daemon. Backend drops all capabilities; gate containers drop
+  capabilities, set `no-new-privileges` and a pids limit. Not verified live yet.
+- **C1/H3:** absolute `Read` denies for the orchestrator's real HOME added. Still open: whether the sandbox confines reads outside
+  the worktree (probe needs a `claude` login), the agent-readable credential copy, and `docker`/`gh` binaries on the agent PATH.
+- **Egress:** agent steps have no network restriction beyond the sandbox's Bash `allowedDomains` (human decision, accepted risk).
