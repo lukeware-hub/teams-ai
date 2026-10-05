@@ -3,6 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Config } from '../config/config.js';
 import { stepId } from '../core/ids.js';
+import { loadEvents } from '../store/event-store.js';
+import { OrchEvent } from './events.js';
 
 export interface Workspace {
   projectId: string;
@@ -60,18 +62,61 @@ export function stepDir(ws: Workspace, runId: string, seq: number): string {
   return path.posix.join(runDir(ws, runId), 'steps', stepId(seq));
 }
 
-/** `<specId>-r<n>`, n = 1 + the highest existing run number for that spec. */
-export async function nextRunId(ws: Pick<Workspace, 'runs'>, specId: string): Promise<string> {
-  let names: string[] = [];
-  try {
-    names = await fs.readdir(ws.runs);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-  }
+/** The runs of one spec among the run directory `names` (`<specId>-r<n>`), with their numbers. */
+function specRuns(names: readonly string[], specId: string): Array<{ name: string; n: number }> {
   const re = new RegExp(`^${specId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-r(\\d+)$`);
-  const max = names
-    .map((n) => re.exec(n))
-    .filter((m): m is RegExpExecArray => m !== null)
-    .reduce((acc, m) => Math.max(acc, Number(m[1])), 0);
-  return `${specId}-r${max + 1}`;
+  return names.flatMap((name) => {
+    const m = re.exec(name);
+    return m ? [{ name, n: Number(m[1]) }] : [];
+  });
+}
+
+/**
+ * `<specId>-r<n>`, n = 1 + the highest existing run number for that spec. The run directory is created here, without
+ * `recursive`, so callers racing for one number cannot both get it: the loser sees EEXIST and takes the next.
+ */
+export async function nextRunId(ws: Pick<Workspace, 'runs'>, specId: string): Promise<string> {
+  await fs.mkdir(ws.runs, { recursive: true });
+  const highest = specRuns(await fs.readdir(ws.runs), specId).reduce((acc, r) => Math.max(acc, r.n), 0);
+  for (let n = highest + 1; ; n++) {
+    const id = `${specId}-r${n}`;
+    try {
+      await fs.mkdir(path.posix.join(ws.runs, id));
+      return id;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+    }
+  }
+}
+
+/** Is the process named by an event-log lock (`<pid>@<host>`, written by store/event-store.ts) running on this host? */
+async function lockHeld(lockFile: string): Promise<boolean> {
+  const owner = await fs.readFile(lockFile, 'utf8').then((text) => text.trim().split('@'), () => null);
+  if (owner === null) return false;
+  // A lock from another host is a previous container life, which the store reclaims too.
+  if (owner[1] !== undefined && owner[1] !== os.hostname()) return false;
+  try {
+    process.kill(Number.parseInt(owner[0] ?? '', 10), 0);
+    return true;
+  } catch (err) {
+    // Only "no such process" frees the lock; EPERM or an unreadable owner count as held, the safe side for a guard.
+    return (err as NodeJS.ErrnoException).code !== 'ESRCH';
+  }
+}
+
+/**
+ * An older run of this spec, in this project, that is still live; null when there is none. Task branches and worktrees
+ * are named after the spec alone, so the older run keeps them and a newer one must not reset them. A run is live while
+ * its journal holds the lock on its event log: the lock goes with `close()` and with a dead process, so no second lock
+ * file is needed.
+ */
+export async function olderLiveRun(ws: Workspace, specId: string, runId: string): Promise<string | null> {
+  const mine = specRuns([runId], specId)[0]?.n ?? Infinity;
+  for (const { name } of specRuns(await fs.readdir(ws.runs).catch(() => [] as string[]), specId).filter((r) => r.n < mine)) {
+    if (!(await lockHeld(`${eventsFile(ws, name)}.lock`))) continue;
+    // Run numbers are shared by every project that has a spec of this id; only a run of this project owns our worktrees.
+    const started = (await loadEvents(eventsFile(ws, name)).catch(() => [])).find((e) => e.type === OrchEvent.RunStarted);
+    if (started === undefined || started.data.projectId === ws.projectId) return name;
+  }
+  return null;
 }

@@ -5,6 +5,7 @@ import { Project } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 import { expandHome } from '../orchestrator/workspace.js';
 import { loadEvents } from '../store/event-store.js';
+import { probeProcess } from './process-identity.js';
 
 /** Run, spec and step ids become path segments: no leading dot, so neither `.` nor `..` matches. */
 export const SAFE_ID = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
@@ -57,14 +58,44 @@ export async function readProject(dir: string): Promise<{ project: Project; spec
 }
 
 const pidFile = (runs: string, runId: string) => path.join(runs, runId, 'pid');
-export async function readPid(runs: string, runId: string): Promise<number | null> {
-  const t = await fs.readFile(pidFile(runs, runId), 'utf8').catch(() => null);
-  const n = t === null ? NaN : Number(t.trim());
-  return Number.isInteger(n) && n > 0 ? n : null;
+/** The pid file holds a bare number (all it used to hold) or `{"pid":N,"start":"..."}`, where `start` is what the OS
+ * reported for the process when the file was written (see process-identity.ts). */
+function parsePidFile(text: string | null): { pid: number; start?: string } | null {
+  const t = (text ?? '').trim();
+  const n = Number(t);
+  if (Number.isInteger(n) && n > 0) return { pid: n };
+  try {
+    const rec: unknown = JSON.parse(t);
+    const { pid, start } = (typeof rec === 'object' && rec !== null ? rec : {}) as { pid?: unknown; start?: unknown };
+    if (typeof pid === 'number' && Number.isInteger(pid) && pid > 0) return typeof start === 'string' ? { pid, start } : { pid };
+  } catch {
+    /* not JSON either */
+  }
+  return null;
 }
+/** The pid of the run's process. A pid file can outlive its process (reboot, container restart, plain reuse) and the number
+ * then names whatever got it next, so a recorded start that no longer matches the live process retires the file like a dead
+ * pid and returns null: callers must never signal that number. A bare pid, or a pid with no process behind it, comes back
+ * as it is for the liveness check to judge. */
+export async function readPid(runs: string, runId: string): Promise<number | null> {
+  const text = await fs.readFile(pidFile(runs, runId), 'utf8').catch(() => null);
+  const rec = parsePidFile(text);
+  if (rec?.start !== undefined) {
+    const live = await probeProcess(rec.pid);
+    if (live !== null && live.start !== rec.start) {
+      // Retire the file that was judged, not one a launch wrote while the OS was being asked.
+      if ((await fs.readFile(pidFile(runs, runId), 'utf8').catch(() => null)) === text) await clearPid(runs, runId);
+      return null;
+    }
+  }
+  return rec?.pid ?? null;
+}
+/** Records the start of the process next to its pid, but only when that process carries this run's id on its command line;
+ * a pid that is not (or not yet) the run's process is written bare, as before. */
 export async function writePid(runs: string, runId: string, pid: number): Promise<void> {
+  const live = await probeProcess(pid);
   await fs.rm(`${pidFile(runs, runId)}.gone`, { force: true });
-  await fs.writeFile(pidFile(runs, runId), String(pid));
+  await fs.writeFile(pidFile(runs, runId), live?.argv.includes(runId) ? JSON.stringify({ pid, start: live.start }) : String(pid));
 }
 /** The stale pid file becomes `pid.gone`: the run keeps showing interrupted until it is resumed or finished. */
 export async function clearPid(runs: string, runId: string): Promise<void> {
@@ -120,6 +151,18 @@ interface StateFile {
   tokens?: { inputTokens?: number; outputTokens?: number; costUsd?: number };
 }
 
+/** What the pid files say about the process of a run. `interrupted` means it started from the UI and died: a pid file
+ * naming a dead process (retired to `pid.gone` here, so the answer survives) or a `pid.gone` left by an earlier look.
+ * A run with no pid file at all (started from a terminal) is never judged interrupted. The journal cannot tell:
+ * a killed process writes nothing, so a run that did not finish keeps reading as running. */
+export async function runLiveness(deps: IndexDeps, runId: string): Promise<{ alive: boolean; interrupted: boolean }> {
+  const runs = runsDir(deps);
+  const pid = await readPid(runs, runId);
+  const alive = pid !== null && deps.isAlive(pid);
+  if (pid !== null && !alive) await clearPid(runs, runId);
+  return { alive, interrupted: (pid !== null && !alive) || (pid === null && (await wasInterrupted(runs, runId))) };
+}
+
 export async function runRow(deps: IndexDeps, runId: string): Promise<RunRow | null> {
   const runs = runsDir(deps);
   const events = await loadEvents(path.join(runs, runId, 'events.ndjson')).catch(() => []);
@@ -131,10 +174,7 @@ export async function runRow(deps: IndexDeps, runId: string): Promise<RunRow | n
     .readFile(path.join(runs, runId, 'state.json'), 'utf8')
     .then((t) => JSON.parse(t) as StateFile)
     .catch(() => null);
-  const pid = await readPid(runs, runId);
-  const alive = pid !== null && deps.isAlive(pid);
-  if (pid !== null && !alive) await clearPid(runs, runId);
-  const interrupted = (pid !== null && !alive) || (pid === null && (await wasInterrupted(runs, runId)));
+  const { alive, interrupted } = await runLiveness(deps, runId);
   let status: RunListStatus;
   if (finished) status = String(finished.data.result) as RunListStatus;
   else if (!state?.status) status = 'unknown';

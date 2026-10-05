@@ -212,6 +212,12 @@ describe('rewriteBindSource', () => {
     expect(rewriteBindSource('/root/.teams-ai-other/x', rewrite)).toBe('/root/.teams-ai-other/x');
     expect(rewriteBindSource('/root/.teams-ai/x', undefined)).toBe('/root/.teams-ai/x');
   });
+  it('egress gates can reach the host daemon published ports through host.docker.internal; offline gates cannot', () => {
+    const egress = dockerArgs(gate({ name: 'smoke', command: 'x', network: 'egress' }), ctx).args;
+    expect(egress[egress.indexOf('--add-host') + 1]).toBe('host.docker.internal:host-gateway');
+    expect(dockerArgs(gate({ name: 'x', command: 'y' }), ctx).args).not.toContain('--add-host');
+  });
+
   it('dockerArgs binds the rewritten source for both the worktree and its .git', () => {
     const { args } = dockerArgs(gate({ name: 'unit-test', command: 'npm test' }), { ...ctx, bindRewrite: { from: '/home/u/ws', to: '/vol/ws' } });
     expect(args).toContain('type=bind,source=/vol/ws/worktrees/T1-create,target=/work');

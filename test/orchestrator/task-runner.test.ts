@@ -6,6 +6,7 @@ import { execCommand } from '../../server/exec/command.js';
 import type { GateResult } from '../../server/exec/gate-runner.js';
 import { commitAll, createWorktree, git, headSha } from '../../server/git/git.js';
 import { MergeQueue, type MergeOutcome, type MergeSteps } from '../../server/git/merge-queue.js';
+import { buildContextPack } from '../../server/knowledge/context-pack.js';
 import { Intent, Journal, OrchEvent } from '../../server/orchestrator/events.js';
 import type { AgentStepRequest } from '../../server/orchestrator/steps.js';
 import { TaskRunner, type TaskRunnerDeps } from '../../server/orchestrator/task-runner.js';
@@ -236,7 +237,7 @@ describe('TaskRunner: reviewing', () => {
     await r.advance();
     expect(state().state).toBe('rebasing');
     expect(types()).toContain(`fact:${OrchEvent.ReviewApproved}`);
-    expect(agentCalls.at(-1)!.pack.feedback).toContain('src/a.ts');
+    expect(agentCalls.find((c) => c.kind === 'review')!.pack.feedback).toContain('src/a.ts');
   });
 
   it('returns findings to Dev on changes', async () => {
@@ -272,10 +273,68 @@ describe('TaskRunner: security review', () => {
     expect(call).toMatchObject({ role: 'sec', taskId: 'T1' });
     expect(call.model).toBeUndefined();
     expect(call.effort).toBeUndefined();
-    expect(call.pack.feedback).toContain('Diff against origin/main');
-    expect(call.pack.feedback).toContain('src/a.ts');
+    expect(call.pack.changeSet).toContain('Diff against origin/main');
+    expect(call.pack.changeSet).toContain('src/a.ts');
+    expect(call.pack.changeSet).not.toContain('diff truncated');
     expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'review', 'security']);
     expect(types()).toContain(`fact:${OrchEvent.SecurityApproved}`);
+  });
+
+  it('tells sec the diff was cut at the inline limit and where to look for the rest', async () => {
+    const bigDev: Agent = async (req) => {
+      if (req.kind === 'security') return secApprove();
+      await fs.mkdir(path.join(req.cwd, 'src'), { recursive: true });
+      await fs.writeFile(path.join(req.cwd, 'src', 'big.ts'), '// padding that makes the diff larger than the inline limit\n'.repeat(2000));
+      return ok({ specHash: HASH, status: 'done', summary: 'did T1', changedFiles: ['src/big.ts'], commitMessage: 'feat: T1' });
+    };
+    const r = new TaskRunner('T1', deps({ agent: async (req) => (req.kind === 'review' ? approve() : bigDev(req)) }));
+    for (let i = 0; i < 3; i++) await r.advance();
+    const changeSet = agentCalls.find((c) => c.kind === 'security')!.pack.changeSet!;
+    const total = Number(/\[diff truncated: first 80000 of (\d+) characters shown/.exec(changeSet)?.[1]);
+    expect(total).toBeGreaterThan(80_000);
+    expect(changeSet).toContain('affectedPaths');
+    // What sec is shown stays within the limit (plus the headings and the notice), not the whole diff.
+    expect(changeSet.length).toBeLessThan(80_000 + 1000);
+    expect(state().state).toBe('rebasing');
+  });
+
+  describe('under the run budget (budgetTokens 12_000, as in run.ts)', () => {
+    // The sec prompt is buildContextPack(pack), which is what runAgentStep sends: the budget trims the pack, not the request.
+    async function secPrompt(diffChars: number) {
+      const padding = `// ${'p'.repeat(76)}\n`.repeat(Math.ceil(diffChars / 80)); // 80 chars a line, 81 once the diff prefixes it
+      const dev: Agent = async (req) => {
+        if (req.kind === 'review') return approve();
+        if (req.kind === 'security') return secApprove();
+        await fs.mkdir(path.join(req.cwd, 'src'), { recursive: true });
+        await fs.writeFile(path.join(req.cwd, 'src', 'big.ts'), `${padding}// END-OF-FILE\n`);
+        return ok({ specHash: HASH, status: 'done', summary: 'did T1', changedFiles: ['src/big.ts'], commitMessage: 'feat: T1' });
+      };
+      const r = new TaskRunner('T1', deps({ agent: dev, packBase: () => ({ spec, project, specHash: HASH, assumptions: journal.assumptions(), budgetTokens: 12_000 }) }));
+      for (let i = 0; i < 3; i++) await r.advance();
+      const full = await git(r.worktree, ['diff', 'origin/main...HEAD']);
+      return { full, built: buildContextPack(agentCalls.find((c) => c.kind === 'security')!.pack) };
+    }
+
+    it('delivers a 60k-character diff to the sec prompt untouched: the generic budget does not drop it', async () => {
+      const { full, built } = await secPrompt(60_000);
+      expect(full.length).toBeGreaterThan(60_000);
+      expect(full.length).toBeLessThan(62_000);
+      expect(built.text).toContain(full);
+      expect(built.text).not.toContain('diff truncated');
+      expect(built.dropped).toEqual([]);
+      expect(state().state).toBe('rebasing');
+    });
+
+    it('cuts a 100k-character diff at the inline limit and the sec prompt still carries the notice', async () => {
+      const { full, built } = await secPrompt(100_000);
+      expect(full.length).toBeGreaterThan(100_000);
+      expect(built.text).toContain(full.slice(0, 80_000));
+      expect(built.text).toContain(`[diff truncated: first 80000 of ${full.length} characters shown.`);
+      expect(built.text).toContain('affectedPaths');
+      expect(built.text).not.toContain('END-OF-FILE'); // the tail of the diff is the part that was not shown
+      expect(built.dropped).toEqual([]);
+      expect(state().state).toBe('rebasing');
+    });
   });
 
   it('returns critical and high findings to Dev as an attempt, even when the decision says approve', async () => {
@@ -290,6 +349,27 @@ describe('TaskRunner: security review', () => {
     await secured(async () => ok({ specHash: HASH, decision: 'approve', findings: [finding('medium'), finding('low')] }));
     expect(state().state).toBe('rebasing');
     expect(journal.events.find((e) => e.type === OrchEvent.SecurityApproved)!.data.findings).toHaveLength(2);
+  });
+
+  it('does not block on a changes decision whose findings are only medium or low: the severities decide', async () => {
+    await secured(async () => ok({ specHash: HASH, decision: 'changes', findings: [finding('medium'), finding('low')] }));
+    expect(state()).toMatchObject({ state: 'rebasing', attempts: 0 });
+    expect(types()).not.toContain(`fact:${OrchEvent.SecurityChanges}`);
+    expect(journal.events.find((e) => e.type === OrchEvent.SecurityApproved)!.data.findings).toHaveLength(2);
+  });
+
+  it('does not block on a changes decision without findings: there is nothing to send back to Dev', async () => {
+    await secured(async () => ok({ specHash: HASH, decision: 'changes', findings: [] }));
+    expect(state()).toMatchObject({ state: 'rebasing', attempts: 0 });
+    expect(types()).not.toContain(`fact:${OrchEvent.SecurityChanges}`);
+  });
+
+  it('sends only the critical and high findings back to Dev when the review also lists medium ones', async () => {
+    await secured(async () => ok({ specHash: HASH, decision: 'changes', findings: [{ ...finding('medium'), problem: 'permissive CORS' }, finding('critical')] }));
+    expect(state()).toMatchObject({ state: 'implementing', attempts: 1 });
+    expect(journal.lastFeedback('T1')).toContain('user input reaches a shell');
+    expect(journal.lastFeedback('T1')).not.toContain('permissive CORS');
+    expect(journal.events.find((e) => e.type === OrchEvent.SecurityChanges)!.data.findings).toHaveLength(2);
   });
 });
 
@@ -587,5 +667,31 @@ describe('TaskRunner: worktree left by an earlier run', () => {
     const log = await git(r.worktree, ['log', '--format=%H']);
     expect(log).not.toContain(staleSha);
     await expect(fs.access(path.join(r.worktree, 'stale.txt'))).rejects.toThrow();
+  });
+
+  it('blocks the task instead of resetting the worktree of an older run of the spec that is still live', async () => {
+    // Run 1 is live (its journal holds the event-log lock) and has committed work in the T1 worktree.
+    const older = await Journal.open({ file: path.join(remote.root, 'spec-001-r1', 'events.ndjson'), runId: 'spec-001-r1', specHash: HASH });
+    const r0 = new TaskRunner('T1', deps());
+    await createWorktree(remote.repo, r0.worktree, r0.branch, 'origin/main');
+    await fs.writeFile(path.join(r0.worktree, 'live.txt'), 'work of the older run\n');
+    await commitAll(r0.worktree, 'chore: work of the older run');
+    const liveSha = await headSha(r0.worktree);
+
+    // Run 2 of the same spec reaches the same task: it must leave all of that alone.
+    await journal.close();
+    journal = await Journal.open({ file: path.join(remote.root, 'events-run2.ndjson'), runId: 'spec-001-r2', specHash: HASH });
+    await journal.fact(RunEvent.TaskPlanned, { task: T1 });
+    await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T1', to: 'ready' });
+    await new TaskRunner('T1', deps()).advance();
+
+    expect(await headSha(r0.worktree)).toBe(liveSha);
+    await expect(fs.access(path.join(r0.worktree, 'live.txt'))).resolves.toBeUndefined();
+    expect(agentCalls).toHaveLength(0);
+    expect(state().state).toBe('blocked');
+    expect(journal.events.find((e) => e.type === OrchEvent.TaskBlocked)!.data.reason).toContain('spec-001-r1');
+    // No intent either: on resume an unconfirmed WORKTREE_CREATE over an existing worktree counts as this run's own.
+    expect(types()).not.toContain(`intent:${Intent.WorktreeCreate}`);
+    await older.close();
   });
 });

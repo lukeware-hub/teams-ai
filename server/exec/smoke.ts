@@ -9,6 +9,14 @@ export function smokeGate(plan: Plan): Gate | null {
   return plan.commands.smoke ? { name: 'smoke', command: plan.commands.smoke, blocking: true, network: 'egress', secrets: ['SERVICE_URL'] } : null;
 }
 
+/** The smoke gate runs in a container, where 127.0.0.1 is the container itself: point a loopback service URL at the host. */
+export function gateReachableUrl(serviceUrl: string): string {
+  const u = new URL(serviceUrl);
+  if (!['127.0.0.1', 'localhost', '[::1]', '0.0.0.0'].includes(u.hostname)) return serviceUrl;
+  u.hostname = 'host.docker.internal';
+  return u.toString();
+}
+
 export function evaluateSmoke(spec: Spec, junit: readonly TestResult[] | null) {
   const rows: SmokeRow[] = spec.acceptanceCriteria.filter((ac) => ac.smoke).map((ac) => {
     const tests = (junit ?? []).filter((t) => t.acIds.includes(ac.id) && t.status !== 'skipped');

@@ -16,7 +16,7 @@ import { EventLogCorruptError, loadEvents, type StoredEvent } from '../store/eve
 import { refuseCloneHost, type ResolveHost } from './security.js';
 import { tailJournal } from './journal-tail.js';
 import { isAlive, spawnRun, stop, type RunControlDeps } from './run-control.js';
-import { CLAIMS_SPEC, claimLaunch, clearPid, clearStopRequested, listProjects, listRuns, markStopRequested, readPid, readProject, runsDir, SAFE_ID, writePid, type IndexDeps, type RunRow } from './run-index.js';
+import { CLAIMS_SPEC, claimLaunch, clearPid, clearStopRequested, listProjects, listRuns, markStopRequested, readPid, readProject, runLiveness, runsDir, SAFE_ID, writePid, type IndexDeps, type RunRow } from './run-index.js';
 import { HttpError, type Route } from './server.js';
 
 export interface RunRoutesDeps {
@@ -121,6 +121,9 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       if (!isAlive(deps.control, pid)) break;
       await deps.control.sleep(200);
     }
+    // Alive but silent: no pid is written for it, so it would run unmanaged beside the retry this 500 invites.
+    // Stop its group and wait for the exit; the caller releases the spec only after this returns.
+    if (isAlive(deps.control, pid)) await stop(deps.control, pid);
     const log = await fs.readFile(path.join(runs, runId, 'ui.log'), 'utf8').catch(() => '');
     const tail = redactSecrets(log.slice(-500), await loadSecretValues(secretsDirOf(await deps.cfg())));
     throw new HttpError(500, `run ${runId} did not start: ${tail || 'no output'}`);
@@ -145,6 +148,8 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       launching.delete(key);
     }
   };
+  // One writer per spec: start, complete and readme share this key, so none of them launches while another one does.
+  const specKey = (projectId: string, specId: string): string => `spec ${projectId}/${specId}`;
   const P = '/api';
   return [
     { method: 'GET', path: `${P}/projects`, handler: async ({ json }) => json(200, await listProjects(await index())) },
@@ -210,7 +215,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const specId = safe(params.specId!);
         const { specs } = await readProject(dir);
         if (!specs.some((s) => s.specId === specId)) throw new HttpError(404, `unknown spec ${specId}`);
-        const runId = await exclusive(`spec ${params.projectId}/${specId}`, async () => {
+        const runId = await exclusive(specKey(params.projectId!, specId), async () => {
           const rows = await listRuns(idx, params.projectId!);
           const active = rows.find((r) => r.specId === specId && CLAIMS_SPEC.has(r.status));
           if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status})`);
@@ -269,11 +274,12 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const idx = await index();
         const dir = await projectDir(idx, params.projectId!);
         const specId = safe(params.specId!);
-        const read = await readProject(dir);
-        const spec = read.specs.find((s) => s.specId === specId);
-        if (!spec) throw new HttpError(404, `unknown spec ${specId}`);
-        if (spec.status !== 'awaiting-validation') throw new HttpError(409, `spec ${specId} is ${spec.status}; only awaiting-validation specs complete`);
-        const runId = await exclusive(`complete ${params.projectId}/${specId}`, async () => {
+        const runId = await exclusive(specKey(params.projectId!, specId), async () => {
+          // Read under the lock: another writer of this spec may be changing the clone or its status.
+          const read = await readProject(dir);
+          const spec = read.specs.find((s) => s.specId === specId);
+          if (!spec) throw new HttpError(404, `unknown spec ${specId}`);
+          if (spec.status !== 'awaiting-validation') throw new HttpError(409, `spec ${specId} is ${spec.status}; only awaiting-validation specs complete`);
           const rows = await listRuns(idx, params.projectId!);
           const active = rows.find((r) => r.specId === specId && CLAIMS_SPEC.has(r.status));
           if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status})`);
@@ -296,7 +302,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const specId = String(started?.data.specId ?? '');
         const dir = await projectDir(idx, projectId);
         // Same rule as spec completion: one writer per spec, because the docs PR resets the shared clone to main.
-        const id = await exclusive(`readme ${projectId}/${specId}`, async () => {
+        const id = await exclusive(specKey(projectId, specId), async () => {
           const rows = await listRuns(idx, projectId);
           const active = rows.find((r) => r.specId === specId && CLAIMS_SPEC.has(r.status));
           if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status}); the README is written when it ends`);
@@ -320,6 +326,8 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const projectId = String(startedEv?.data.projectId ?? '');
         const finished = [...evs].reverse().find((e) => e.type === 'RUN_FINISHED') ?? null;
         const state = reduceEvents(evs);
+        // A process that died leaves no RUN_FINISHED, so the journal alone reads as running forever; the run list asks the pid files.
+        const interrupted = finished === null && (await runLiveness(idx, runId)).interrupted;
         const spec = await projectDir(idx, projectId)
           .then(readProject)
           .then((p) => p.specs.find((s) => s.specId === specId) ?? null)
@@ -347,7 +355,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           projectId,
           repoUrl,
           readme,
-          status: finished ? String(finished.data.result) : state.status,
+          status: finished ? String(finished.data.result) : interrupted ? 'interrupted' : state.status,
           state: { status: state.status, order: state.order, tasks: state.order.map((id) => state.tasks.get(id)) },
           finished: finished?.data ?? null,
           tokens: tokensOf(evs),

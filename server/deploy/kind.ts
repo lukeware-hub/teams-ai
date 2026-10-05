@@ -115,7 +115,8 @@ export class KindTarget implements DeployTarget {
 
   private async render(intent: DeploymentIntent, image: string): Promise<string> {
     const docs: string[] = [];
-    for (const m of intent.manifests) docs.push((await this.deps.readFile(path.join(intent.contextDir, m))).replaceAll('{{IMAGE}}', image));
+    // The plan's manifests list is shared across targets and may also name the Dockerfile or deployment.json: kubectl only takes YAML.
+    for (const m of intent.manifests.filter((f) => /\.ya?ml$/i.test(f))) docs.push((await this.deps.readFile(path.join(intent.contextDir, m))).replaceAll('{{IMAGE}}', image));
     return docs.join('\n---\n');
   }
 

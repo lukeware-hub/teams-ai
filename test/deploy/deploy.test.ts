@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import path from 'node:path';
 import { DockerLocalTarget } from '../../server/deploy/docker-local.js';
 import { KindTarget } from '../../server/deploy/kind.js';
 import { runDeployment, waitHealthy, type DeploymentIntent, type DeployTarget, type HttpGet } from '../../server/deploy/target.js';
@@ -103,6 +104,14 @@ describe('KindTarget', () => {
   const manifest = 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: todo-api\nspec:\n  template:\n    spec:\n      containers:\n      - name: app\n        image: {{IMAGE}}\n';
   const mk = (fake: FakeExec, over: Partial<ConstructorParameters<typeof KindTarget>[0]> = {}) =>
     new KindTarget({ exec: fake.exec, secrets, cluster: 'teams-ai', readFile: async () => manifest, sleep: async () => undefined, ...over });
+
+  it('applies only the YAML manifests: the plan list is shared with targets that also list the Dockerfile', async () => {
+    const fake = new FakeExec();
+    const read: string[] = [];
+    const t = mk(fake, { readFile: async (f: string) => { read.push(f); return manifest; } });
+    await t.apply({ ...intent, manifests: ['Dockerfile', 'deploy/k8s.yaml', 'deployment.json', 'deploy/extra.yml'] });
+    expect(read.map((f) => path.basename(f))).toEqual(['k8s.yaml', 'extra.yml']);
+  });
 
   it('loads the image, renders and applies manifests in the kind context, remembers the previous image', async () => {
     const fake = new FakeExec().onArgs('kubectl', ['--context', 'kind-teams-ai', 'get', 'deploy'], () => ({ stdout: 'todo-api:spec-001-old0000' }));

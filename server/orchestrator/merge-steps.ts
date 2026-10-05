@@ -3,7 +3,7 @@ import type { AcceptanceCriterion, Spec } from '../contracts/spec.js';
 import { redactSecrets } from '../core/redact.js';
 import type { Exec } from '../exec/command.js';
 import type { GateResult } from '../exec/gate-runner.js';
-import { changedFiles, fetch as gitFetch, git, headSha, push, rebaseOnto, remoteMainSha, removeWorktree } from '../git/git.js';
+import { changedFiles, fetch as gitFetch, git, headSha, push, rebaseOnto, remoteMainSha, removeWorktree, withRepoLock } from '../git/git.js';
 import { ensurePr, findMergedPr, mergePr } from '../git/github.js';
 import type { MergeSteps } from '../git/merge-queue.js';
 import type { HandoffSummary } from '../knowledge/context-pack.js';
@@ -110,6 +110,18 @@ function common(deps: MergeStepsDeps, worktree: string, branch: string, title: s
   };
 }
 
+/**
+ * Moves the main checkout of ws.repo to origin/main. checkout and reset --hard rewrite its index and work tree,
+ * so they run under the repo lock and never interleave with another locked git operation on that repo.
+ * Only the two raw git calls sit inside it: gitFetch and removeWorktree take the (non-reentrant) lock themselves.
+ */
+function resetMainCheckout(deps: MergeStepsDeps): Promise<void> {
+  return withRepoLock(deps.ws.repo, async () => {
+    await git(deps.ws.repo, ['checkout', '-q', 'main'], deps.exec);
+    await git(deps.ws.repo, ['reset', '-q', '--hard', 'origin/main'], deps.exec);
+  });
+}
+
 /** Spec (orchestrator) §4.4 last row: the real MergeSteps for a task branch. */
 export function taskMergeSteps(deps: MergeStepsDeps, task: PlanTask, worktree: string, branch: string, spec: Spec, summary: string): MergeSteps {
   let gateResults: GateResult[] = [];
@@ -132,8 +144,7 @@ export function taskMergeSteps(deps: MergeStepsDeps, task: PlanTask, worktree: s
     },
     afterMerge: async () => {
       await gitFetch(deps.ws.repo, deps.exec);
-      await git(deps.ws.repo, ['checkout', '-q', 'main'], deps.exec);
-      await git(deps.ws.repo, ['reset', '-q', '--hard', 'origin/main'], deps.exec);
+      await resetMainCheckout(deps);
       if (deps.graphify) await deps.graphify.update(deps.ws.repo, graphDir(deps.ws, null));
       await base.cleanup();
       deps.handoffs.push({ taskId: task.id, title: task.title, summary: redactSecrets(summary, deps.secretValues()), changedFiles: changed, mergedAt: deps.clock().toISOString() });
@@ -148,8 +159,7 @@ export function docsMergeSteps(deps: MergeStepsDeps, branch: string, worktree: s
     ...base,
     afterMerge: async () => {
       await gitFetch(deps.ws.repo, deps.exec);
-      await git(deps.ws.repo, ['checkout', '-q', 'main'], deps.exec);
-      await git(deps.ws.repo, ['reset', '-q', '--hard', 'origin/main'], deps.exec);
+      await resetMainCheckout(deps);
       await base.cleanup();
     },
   };

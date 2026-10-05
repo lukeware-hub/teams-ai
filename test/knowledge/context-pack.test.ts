@@ -47,12 +47,14 @@ describe('buildContextPack', () => {
       code: { source: 'graph', nodes: [{ label: 'createTodo()', file: 'src/todos/create.ts', line: 10 }], affected: [{ label: 'router.ts', relation: 'imports', file: 'src/router.ts', line: 3 }], truncated: false },
       retrieval: [{ chunkId: 'spec-001#2', docId: 'spec-001', kind: 'spec', title: 'Spec 1', heading: 'Decisions', snippet: 'max [discount] 5', text: 'The maximum discount is 5 percent.', score: 1 }],
       feedback: 'Gate unit-test failed: [AC-001] returns 500',
+      changeSet: 'Changed files:\nsrc/todos/create.ts',
     });
     expect(pack.sections).toEqual([...SECTION_ORDER]);
     expect(pack.text).toContain('src/todos/create.ts:10');
     expect(pack.text).toContain('router.ts [imports]');
     expect(pack.text).toContain('Spec 1 › Decisions');
     expect(pack.text.indexOf('## Feedback')).toBeGreaterThan(pack.text.indexOf('## Retrieved context'));
+    expect(pack.text.indexOf('## Change set under review')).toBeGreaterThan(pack.text.indexOf('## Feedback'));
   });
 
   it('drops the lowest-priority sections whole when over budget and reports them', () => {
@@ -76,6 +78,35 @@ describe('buildContextPack', () => {
     expect(pack.sections).toEqual([...NEVER_DROP]);
     expect(pack.dropped).toContain('!over-budget');
     expect(pack.tokens).toBeGreaterThan(10);
+  });
+
+  it('keeps the change set whole and outside the budget: only the context around it is trimmed', () => {
+    const big = 'x'.repeat(4000);
+    const around: ContextPackInput = {
+      ...base,
+      budgetTokens: 1200,
+      techSpecExcerpt: big,
+      adrs: [{ id: 'ADR-001', title: 'Stack', text: big }],
+      retrieval: [{ chunkId: 'c', docId: 'd', kind: 'spec', title: 't', heading: null, snippet: 's', text: big, score: 1 }],
+      feedback: 'keep me',
+    };
+    // 144k chars, thirty times the budget, with a truncation notice at its end: both must survive.
+    const changeSet = `Diff against origin/main:\n${'+ one more line\n'.repeat(9000)}[diff truncated: first 144000 of 200000 characters shown.]`;
+    const pack = buildContextPack({ ...around, changeSet });
+    expect(pack.text).toContain(changeSet);
+    expect(pack.sections).toEqual(['principles', 'contract', 'task', 'criteria', 'feedback', 'change-set']);
+    // The change set neither pushes other sections out nor trips the over-budget flag.
+    expect(pack.dropped).toEqual(buildContextPack(around).dropped);
+    expect(pack.dropped).toEqual(['retrieval', 'adrs', 'tech-spec']);
+    expect(pack.tokens).toBe(estimateTokens(pack.text));
+    expect(pack.tokens - estimateTokens(changeSet)).toBeLessThanOrEqual(1200);
+  });
+
+  it('never drops the change set, not even when the budget is impossible for the rest', () => {
+    const pack = buildContextPack({ ...base, budgetTokens: 10, changeSet: 'Diff against origin/main:\n+ x' });
+    expect(pack.sections).toEqual([...NEVER_DROP, 'change-set']);
+    expect(pack.text).toContain('Diff against origin/main:\n+ x');
+    expect(pack.dropped).toEqual(['!over-budget']);
   });
 
   it('caps handoffs to the newest six and cuts long summaries', () => {

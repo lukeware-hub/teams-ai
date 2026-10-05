@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { runApi, type Report, type RunDetail } from '../api.js';
 import { ValidationPage, ValidationView } from './Validation.js';
 
@@ -70,15 +70,187 @@ describe('ValidationView', () => {
   });
 });
 
+const COMPLETION = 'hello-001-complete-r1';
+const specs = (status: string) => [{ projectId: 'hello-app', specs: [{ specId: 'hello-001', status }] }] as never;
+/** Moves the router to another run without leaving the page component, like a link between two runs does. */
+function Jump({ to }: { to: string }) {
+  const navigate = useNavigate();
+  return <button data-testid="jump" onClick={() => navigate(to)}>jump</button>;
+}
+const page = (path = '/validate/hello-001-r1') =>
+  render(
+    <MemoryRouter initialEntries={[path]}>
+      <Jump to="/validate/hello-001-r2" />
+      <Routes><Route path="/validate/:runId" element={<ValidationPage />} /></Routes>
+    </MemoryRouter>,
+  );
+/** Only the poll interval is faked: Testing Library's waits and the mocked promises keep running on real timers. */
+const fakePollTimer = () => vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+const tick = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+/** Clicks Complete spec, then lets React commit so the poll interval exists before the clock moves. */
+const clickComplete = async () => {
+  fireEvent.click(await screen.findByTestId('complete-spec'));
+  await tick(0);
+};
+
 describe('ValidationPage', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
   it('sends one complete request on a double click', async () => {
     vi.spyOn(runApi, 'run').mockResolvedValue(detail());
-    vi.spyOn(runApi, 'projects').mockResolvedValue([{ projectId: 'hello-app', specs: [{ specId: 'hello-001', status: 'awaiting-validation' }] }] as never);
-    const complete = vi.spyOn(runApi, 'complete').mockImplementation(() => new Promise((r) => setTimeout(() => r(undefined as never), 20)));
-    render(<MemoryRouter initialEntries={['/validate/hello-001-r1']}><Routes><Route path="/validate/:runId" element={<ValidationPage />} /></Routes></MemoryRouter>);
+    vi.spyOn(runApi, 'projects').mockResolvedValue(specs('awaiting-validation'));
+    const complete = vi.spyOn(runApi, 'complete').mockImplementation(() => new Promise((r) => setTimeout(() => r({ runId: COMPLETION }), 20)));
+    page();
     const btn = await screen.findByTestId('complete-spec');
     fireEvent.click(btn);
     fireEvent.click(btn);
     await waitFor(() => expect(complete).toHaveBeenCalledTimes(1));
+  });
+
+  describe('after Complete spec', () => {
+    const completion = (over: Partial<RunDetail>) => detail({ runId: COMPLETION, report: null, phase: 6, ...over });
+
+    it('follows the completion run itself and stops polling with its failure when it ends phase-failed', async () => {
+      fakePollTimer();
+      const run = vi.spyOn(runApi, 'run').mockImplementation(async (id) => (id === COMPLETION ? completion({ status: 'phase-failed', finished: { result: 'phase-failed', reason: 'the docs PR was refused' } }) : detail()));
+      vi.spyOn(runApi, 'projects').mockResolvedValue(specs('awaiting-validation'));
+      vi.spyOn(runApi, 'complete').mockResolvedValue({ runId: COMPLETION });
+      page();
+      await clickComplete();
+      await tick(5000);
+      const failure = await screen.findByTestId('action-error');
+      expect(failure.textContent).toContain(COMPLETION);
+      expect(failure.textContent).toContain('phase-failed');
+      expect(failure.textContent).toContain('the docs PR was refused');
+      // The buttons stay usable: the spec is still awaiting validation, so the user can try again.
+      expect((screen.getByTestId('complete-spec') as HTMLButtonElement).disabled).toBe(false);
+      const calls = run.mock.calls.length;
+      await tick(60_000);
+      expect(run.mock.calls.length).toBe(calls);
+    });
+
+    it('stops polling when the completion run was interrupted, says so, and leaves the buttons enabled for a retry', async () => {
+      fakePollTimer();
+      const run = vi.spyOn(runApi, 'run').mockImplementation(async (id) => (id === COMPLETION ? completion({ status: 'interrupted' }) : detail()));
+      vi.spyOn(runApi, 'projects').mockResolvedValue(specs('awaiting-validation'));
+      const complete = vi.spyOn(runApi, 'complete').mockResolvedValue({ runId: COMPLETION });
+      page();
+      await clickComplete();
+      await tick(5000);
+      const notice = await screen.findByTestId('action-error');
+      expect(notice.textContent).toContain(`completion run ${COMPLETION} was interrupted`);
+      expect(notice.textContent).not.toContain('ended');
+      expect((screen.getByTestId('complete-spec') as HTMLButtonElement).disabled).toBe(false);
+      const calls = run.mock.calls.length;
+      await tick(60_000);
+      expect(run.mock.calls.length).toBe(calls);
+      // Retry: the click starts a new completion run, which is followed again.
+      complete.mockResolvedValue({ runId: 'hello-001-complete-r2' });
+      fireEvent.click(screen.getByTestId('complete-spec'));
+      await waitFor(() => expect(complete).toHaveBeenCalledTimes(2));
+      await tick(0);
+      await tick(5000);
+      expect(run).toHaveBeenCalledWith('hello-001-complete-r2');
+    });
+
+    it('keeps following a live completion run, then reloads the spec and stops once it is done', async () => {
+      fakePollTimer();
+      const now = { completion: 'running', spec: 'awaiting-validation' };
+      const run = vi.spyOn(runApi, 'run').mockImplementation(async (id) => (id === COMPLETION ? completion({ status: now.completion }) : detail()));
+      vi.spyOn(runApi, 'projects').mockImplementation(async () => specs(now.spec));
+      vi.spyOn(runApi, 'complete').mockResolvedValue({ runId: COMPLETION });
+      page();
+      await clickComplete();
+      await tick(5000);
+      await tick(5000);
+      expect(run).toHaveBeenCalledWith(COMPLETION);
+      expect(screen.queryByTestId('action-error')).toBeNull();
+      expect(screen.getByTestId('complete-spec')).toBeTruthy();
+      now.completion = 'done';
+      now.spec = 'done';
+      await tick(5000);
+      await waitFor(() => expect(screen.getByTestId('actions-note').textContent).toContain('already done'));
+      const calls = run.mock.calls.length;
+      await tick(60_000);
+      expect(run.mock.calls.length).toBe(calls);
+    });
+
+    it('clears an action error left by a refused click once the reload after the completion succeeds', async () => {
+      fakePollTimer();
+      const now = { completion: 'running', spec: 'awaiting-validation' };
+      vi.spyOn(runApi, 'run').mockImplementation(async (id) => (id === COMPLETION ? completion({ status: now.completion }) : detail()));
+      vi.spyOn(runApi, 'projects').mockImplementation(async () => specs(now.spec));
+      const complete = vi.spyOn(runApi, 'complete')
+        .mockResolvedValueOnce({ runId: COMPLETION })
+        .mockRejectedValueOnce(new Error('409 spec hello-001 already has run hello-001-complete-r1 (running)'));
+      page();
+      await clickComplete();
+      expect(complete).toHaveBeenCalledTimes(1);
+      fireEvent.click(screen.getByTestId('complete-spec'));
+      expect((await screen.findByTestId('action-error')).textContent).toContain('409');
+      now.completion = 'done';
+      now.spec = 'done';
+      await tick(5000);
+      await waitFor(() => expect(screen.queryByTestId('action-error')).toBeNull());
+      expect(screen.getByTestId('actions-note').textContent).toContain('already done');
+    });
+
+    it('retries the reload on the next tick when it fails after the completion run is done', async () => {
+      fakePollTimer();
+      let reloads = 0;
+      vi.spyOn(runApi, 'run').mockImplementation(async (id) => (id === COMPLETION ? completion({ status: 'done' }) : detail()));
+      vi.spyOn(runApi, 'projects').mockImplementation(async () => {
+        reloads += 1;
+        if (reloads === 2) throw new Error('network down');
+        return specs(reloads === 1 ? 'awaiting-validation' : 'done');
+      });
+      vi.spyOn(runApi, 'complete').mockResolvedValue({ runId: COMPLETION });
+      page();
+      await clickComplete();
+      await tick(5000);
+      expect(screen.queryByTestId('actions-note')?.textContent ?? '').not.toContain('already done');
+      await tick(5000);
+      await waitFor(() => expect(screen.getByTestId('actions-note').textContent).toContain('already done'));
+    });
+  });
+
+  describe('when the run in the address changes', () => {
+    it('drops the previous load error', async () => {
+      vi.spyOn(runApi, 'projects').mockResolvedValue(specs('awaiting-validation'));
+      vi.spyOn(runApi, 'run').mockImplementation(async (id) => {
+        if (id === 'broken') throw new Error('run broken is gone');
+        return detail({ runId: id });
+      });
+      page('/validate/broken');
+      expect(await screen.findByText('run broken is gone')).toBeTruthy();
+      fireEvent.click(screen.getByTestId('jump'));
+      expect(await screen.findByText('hello-001-r2')).toBeTruthy();
+      expect(screen.queryByText('run broken is gone')).toBeNull();
+    });
+
+    it('shows loading instead of the previous run while the next one loads', async () => {
+      vi.spyOn(runApi, 'projects').mockResolvedValue(specs('awaiting-validation'));
+      vi.spyOn(runApi, 'run').mockImplementation((id) => (id === 'hello-001-r2' ? new Promise<RunDetail>(() => undefined) : Promise.resolve(detail({ runId: id }))));
+      page();
+      expect(await screen.findByText('hello-001-r1')).toBeTruthy();
+      fireEvent.click(screen.getByTestId('jump'));
+      expect(await screen.findByText(/loading/i)).toBeTruthy();
+      expect(screen.queryByText('hello-001-r1')).toBeNull();
+    });
+
+    it('ignores a late answer for the run it left', async () => {
+      let late!: (d: RunDetail) => void;
+      vi.spyOn(runApi, 'projects').mockResolvedValue(specs('awaiting-validation'));
+      vi.spyOn(runApi, 'run').mockImplementation((id) => (id === 'slow' ? new Promise<RunDetail>((r) => { late = r; }) : Promise.resolve(detail({ runId: id }))));
+      page('/validate/slow');
+      fireEvent.click(screen.getByTestId('jump'));
+      expect(await screen.findByText('hello-001-r2')).toBeTruthy();
+      await act(async () => { late(detail({ runId: 'slow' })); });
+      expect(screen.queryByText('slow')).toBeNull();
+      expect(screen.getByText('hello-001-r2')).toBeTruthy();
+    });
   });
 });

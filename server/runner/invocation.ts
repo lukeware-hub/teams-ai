@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { ProviderProfile, Role } from '../config/config.js';
+import { updateFileAtomic } from '../core/atomic-write.js';
 import type { Effort } from '../decide/decisions/model-tier.js';
 
 /** Flags fixed by the CLI spike (docs/superpowers/spikes/2026-09-23-cli-findings.md). */
@@ -117,41 +118,27 @@ export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessE
   return { args, env, cwd: input.cwd, stdin: input.prompt };
 }
 
-// Writes to ~/.claude.json are serialized in-process and made atomic (temp file + rename), because
-// parallel steps trust their worktrees at the same time and the CLI reads the file at startup.
-let trustQueue: Promise<unknown> = Promise.resolve();
+// Writes to ~/.claude.json go through `updateFileAtomic`: serialized per file in this process and atomic (temp file +
+// rename), because parallel steps trust their worktrees at the same time and the CLI reads the file at startup.
+// The claude CLI also saves this file on its own, and no lock keeps it out: the file is read again right before the
+// rename and the change redone if it moved, which narrows that window but cannot close it.
 
 /**
  * Project-level permissions.allow is ignored until the workspace is trusted
  * (findings row 5b). The orchestrator trusts every worktree it creates, keyed by its resolved path.
  */
-export function ensureTrusted(dir: string, claudeJsonPath: string): Promise<void> {
-  const work = async () => {
-    // Key by the resolved real path when the directory exists (symlinks, trailing slashes);
-    // otherwise keep the caller's spelling so a foreign-platform path is not rewritten.
-    let key = dir;
-    try {
-      key = await fs.realpath(dir);
-    } catch {
-      key = dir;
-    }
-    let json: Record<string, unknown> = {};
-    try {
-      json = JSON.parse(await fs.readFile(claudeJsonPath, 'utf8')) as Record<string, unknown>;
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-    }
+export async function ensureTrusted(dir: string, claudeJsonPath: string): Promise<void> {
+  // Key by the resolved real path when the directory exists (symlinks, trailing slashes);
+  // otherwise keep the caller's spelling so a foreign-platform path is not rewritten.
+  const key = await fs.realpath(dir).catch(() => dir);
+  await fs.mkdir(path.dirname(claudeJsonPath), { recursive: true });
+  await updateFileAtomic(claudeJsonPath, (current) => {
+    const json: Record<string, unknown> = current === undefined ? {} : (JSON.parse(current) as Record<string, unknown>);
     const projects = (json.projects ?? {}) as Record<string, Record<string, unknown>>;
     projects[key] = { ...(projects[key] ?? {}), hasTrustDialogAccepted: true };
     json.projects = projects;
-    await fs.mkdir(path.dirname(claudeJsonPath), { recursive: true });
-    const tmp = `${claudeJsonPath}.${process.pid}.tmp`;
-    await fs.writeFile(tmp, `${JSON.stringify(json, null, 2)}\n`);
-    await fs.rename(tmp, claudeJsonPath);
-  };
-  const result = trustQueue.then(work, work);
-  trustQueue = result.catch(() => undefined);
-  return result;
+    return `${JSON.stringify(json, null, 2)}\n`;
+  });
 }
 
 /**
@@ -159,22 +146,12 @@ export function ensureTrusted(dir: string, claudeJsonPath: string): Promise<void
  * without bound and a directory recreated later at the same path does not inherit the trust.
  * Other settings stored under the project entry are kept.
  */
-export function removeTrusted(dir: string, claudeJsonPath: string): Promise<void> {
-  const work = async () => {
-    let json: Record<string, unknown>;
-    try {
-      json = JSON.parse(await fs.readFile(claudeJsonPath, 'utf8')) as Record<string, unknown>;
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
-      throw err;
-    }
+export async function removeTrusted(dir: string, claudeJsonPath: string): Promise<void> {
+  const real = await fs.realpath(dir).catch(() => dir);
+  await updateFileAtomic(claudeJsonPath, (current) => {
+    if (current === undefined) return undefined;
+    const json = JSON.parse(current) as Record<string, unknown>;
     const projects = (json.projects ?? {}) as Record<string, Record<string, unknown>>;
-    let real = dir;
-    try {
-      real = await fs.realpath(dir);
-    } catch {
-      real = dir;
-    }
     let changed = false;
     for (const key of new Set([dir, real])) {
       const entry = projects[key];
@@ -184,13 +161,8 @@ export function removeTrusted(dir: string, claudeJsonPath: string): Promise<void
       else projects[key] = rest;
       changed = true;
     }
-    if (!changed) return;
+    if (!changed) return undefined;
     json.projects = projects;
-    const tmp = `${claudeJsonPath}.${process.pid}.tmp`;
-    await fs.writeFile(tmp, `${JSON.stringify(json, null, 2)}\n`);
-    await fs.rename(tmp, claudeJsonPath);
-  };
-  const result = trustQueue.then(work, work);
-  trustQueue = result.catch(() => undefined);
-  return result;
+    return `${JSON.stringify(json, null, 2)}\n`;
+  });
 }

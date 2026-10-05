@@ -1,8 +1,8 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { execCommand } from '../../server/exec/command.js';
-import { commitAll, createWorktree, git, headSha } from '../../server/git/git.js';
+import { execCommand, type CommandSpec } from '../../server/exec/command.js';
+import { commitAll, createWorktree, git, headSha, withRepoLock } from '../../server/git/git.js';
 import { MergeQueue } from '../../server/git/merge-queue.js';
 import { Intent, Journal, OrchEvent } from '../../server/orchestrator/events.js';
 import { docsMergeSteps, prBody, taskMergeSteps, type MergeStepsDeps } from '../../server/orchestrator/merge-steps.js';
@@ -144,5 +144,32 @@ describe('docsMergeSteps', () => {
     expect(sha2).not.toBe(sha1);
     expect(await git(remote.repo, ['ls-remote', 'origin', 'refs/heads/task/spec-001-T1'])).toContain(sha2);
     expect(journal.events.filter((e) => e.kind === 'intent' && e.type === Intent.Push)).toHaveLength(2);
+  });
+});
+
+describe('afterMerge and the repo lock', () => {
+  // git() prepends `-c key=value` pairs; the subcommand follows the last one.
+  const subcommand = (s: CommandSpec) => s.args[s.args.lastIndexOf('-c') + 2];
+
+  // checkout and reset --hard rewrite the index and work tree of ws.repo, which other runners read and
+  // lock around (fetch, worktree add/remove). No other repo-lock holder may run during or between them.
+  it.each(['task', 'docs'] as const)('%s steps run checkout and reset under the repo lock', async (kind) => {
+    const timeline: string[] = [];
+    const rivals: Promise<void>[] = [];
+    const fake = new FakeExec().on((s) => s.bin === 'git', async (s) => {
+      const name = subcommand(s);
+      if (name !== 'checkout' && name !== 'reset') return {};
+      timeline.push(`${name} start`);
+      // A rival queues for the lock while the command is in flight; run unlocked, it gets in before the command ends.
+      rivals.push(withRepoLock(remote.repo, async () => { timeline.push(`rival of ${name}`); }));
+      await new Promise((r) => setImmediate(r));
+      timeline.push(`${name} end`);
+      return {};
+    });
+    const d = deps({ exec: fake.exec });
+    const steps = kind === 'task' ? taskMergeSteps(d, task, worktree, 'task/spec-001-T1', spec, 's') : docsMergeSteps(d, 'docs/spec-001', worktree, 'docs');
+    await steps.afterMerge!();
+    await Promise.all(rivals);
+    expect(timeline).toEqual(['checkout start', 'checkout end', 'reset start', 'reset end', 'rival of checkout', 'rival of reset']);
   });
 });

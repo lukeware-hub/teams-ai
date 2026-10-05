@@ -85,9 +85,10 @@ export const ReviewOutput = z.object({
   ),
 });
 
-/** Security review of one task diff. critical/high findings block the merge; medium/low are recorded only. */
+/** Security review of one task diff. The severities decide: critical/high findings block the merge, medium/low are recorded only. */
 export const SecurityOutput = z.object({
   specHash,
+  /** The reviewer's own summary of its findings: `changes` exactly when one is critical or high. The orchestrator blocks on `blockingFindings`, never on this label. */
   decision: z.enum(['approve', 'changes']),
   findings: z.array(
     z.object({
@@ -101,6 +102,11 @@ export const SecurityOutput = z.object({
   ),
 });
 export type SecurityOutput = z.infer<typeof SecurityOutput>;
+
+/** The one blocking rule of a security review, restated in .claude/agents/sec.md: only critical and high findings go back to Dev. */
+export function blockingFindings(review: Pick<SecurityOutput, 'findings'>): SecurityOutput['findings'] {
+  return review.findings.filter((f) => f.severity === 'critical' || f.severity === 'high');
+}
 
 export const DeploymentOutput = z.object({
   specHash,

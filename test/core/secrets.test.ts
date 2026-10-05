@@ -38,6 +38,16 @@ describe('writeSecret', () => {
     expect((await fs.readdir(target)).filter((f) => f.endsWith('.tmp'))).toEqual([]);
   });
 
+  it('survives concurrent writers of one secret: none rejects, the value is one complete write, no tmp file is left', async () => {
+    // The tmp name was <name>.<pid>.tmp, shared by every concurrent writer of the same secret in this process.
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-secrets-'));
+    const values = Array.from({ length: 100 }, (_, i) => `sk-or-v1-${i}-${'x'.repeat(200)}`);
+    const results = await Promise.allSettled(values.map((value) => writeSecret(dir, 'OPENROUTER_API_KEY', value)));
+    expect(results.filter((r) => r.status === 'rejected')).toEqual([]);
+    expect(values).toContain((await loadSecrets(dir)).OPENROUTER_API_KEY);
+    expect(await fs.readdir(dir)).toEqual(['OPENROUTER_API_KEY']);
+  });
+
   it('replaces an existing value atomically and rejects bad names and multi-line values', async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-secrets-'));
     await writeSecret(dir, 'OPENROUTER_API_KEY', 'sk-or-v1-old');

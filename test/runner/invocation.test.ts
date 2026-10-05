@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ENV_ALLOWLIST,
   ISOLATION_FLAGS,
@@ -142,6 +142,7 @@ describe('ensureTrusted', () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-trust-'));
   });
   afterEach(async () => {
+    vi.restoreAllMocks();
     await fs.rm(dir, { recursive: true, force: true });
   });
 
@@ -188,6 +189,60 @@ describe('ensureTrusted', () => {
     await Promise.all(Array.from({ length: 10 }, (_, i) => ensureTrusted(`/home/u/ws/wt${i}`, file)));
     const json = JSON.parse(await fs.readFile(file, 'utf8'));
     expect(Object.keys(json.projects)).toHaveLength(10);
+    expect(await fs.readdir(dir)).toEqual(['.claude.json']);
+  });
+
+  it('survives many concurrent ensureTrusted and removeTrusted calls: none rejects, valid JSON, no tmp file is left', async () => {
+    const file = path.join(dir, '.claude.json');
+    const stale = Array.from({ length: 25 }, (_, i) => `/home/u/ws/stale${i}`);
+    await fs.writeFile(file, JSON.stringify({ projects: Object.fromEntries(stale.map((d) => [d, { hasTrustDialogAccepted: true }])) }));
+    const fresh = Array.from({ length: 50 }, (_, i) => `/home/u/ws/wt${i}`);
+    const results = await Promise.allSettled([...fresh.map((d) => ensureTrusted(d, file)), ...stale.map((d) => removeTrusted(d, file))]);
+    expect(results.filter((r) => r.status === 'rejected')).toEqual([]);
+    const json = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(Object.keys(json.projects).sort()).toEqual([...fresh].sort());
+    expect(await fs.readdir(dir)).toEqual(['.claude.json']);
+  });
+
+  it('does not make a hung write to one file hold up the writes to other files', async () => {
+    const stuck = path.join(dir, 'stuck.json');
+    const free = path.join(dir, 'free.json');
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const rename = fs.rename.bind(fs);
+    vi.spyOn(fs, 'rename').mockImplementation(async (from, to) => {
+      if (String(to) === stuck) await gate;
+      return rename(from, to);
+    });
+    const hung = ensureTrusted('/home/u/ws/a', stuck);
+    try {
+      const outcome = await Promise.race([
+        ensureTrusted('/home/u/ws/b', free).then(() => 'done'),
+        new Promise<string>((resolve) => setTimeout(resolve, 2000, 'blocked')),
+      ]);
+      expect(outcome).toBe('done');
+    } finally {
+      release();
+      await hung;
+    }
+  });
+
+  it('keeps a write that another process lands between its read and its rename', async () => {
+    const file = path.join(dir, '.claude.json');
+    await fs.writeFile(file, JSON.stringify({ theme: 'dark', projects: {} }));
+    const writeFile = fs.writeFile.bind(fs);
+    let injected = false;
+    vi.spyOn(fs, 'writeFile').mockImplementation(async (target, data, options) => {
+      await writeFile(target, data, options);
+      if (!injected && String(target).endsWith('.tmp')) {
+        injected = true; // the claude CLI saves ~/.claude.json while ensureTrusted sits between its read and its rename
+        await writeFile(file, JSON.stringify({ theme: 'dark', numStartups: 7, projects: {} }));
+      }
+    });
+    await ensureTrusted('/home/u/ws/wt', file);
+    const json = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(json.numStartups).toBe(7);
+    expect(json.projects['/home/u/ws/wt'].hasTrustDialogAccepted).toBe(true);
     expect(await fs.readdir(dir)).toEqual(['.claude.json']);
   });
 });

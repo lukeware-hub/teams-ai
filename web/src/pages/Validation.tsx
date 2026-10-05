@@ -169,14 +169,22 @@ export function ValidationView({ detail, specStatus, actionError = null, onRepor
   );
 }
 
+/** A run that has not ended: running, draining or paused (the Run page applies the same test to the README writer). */
+const isLive = (status: string) => ['running', 'draining'].includes(status) || status.startsWith('paused');
+
 export function ValidationPage() {
   const { runId } = useParams<{ runId: string }>();
+  // Keyed by run: moving to another run remounts, so the previous run's detail, errors, poll and late answers cannot leak into it.
+  return runId ? <ValidationRun key={runId} runId={runId} /> : <main><p>Loading…</p></main>;
+}
+
+function ValidationRun({ runId }: { runId: string }) {
   const navigate = useNavigate();
   const [detail, setDetail] = useState<RunDetail | null>(null);
   const [specStatus, setSpecStatus] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [polling, setPolling] = useState(false);
+  const [completion, setCompletion] = useState<string | null>(null); // the run that completes the spec, followed until it ends
   const inFlight = useRef(false); // a double click must send one request, not two (the second would 409 and mask the first's success)
   const guarded = (call: () => Promise<void>) => {
     if (inFlight.current) return;
@@ -185,23 +193,33 @@ export function ValidationPage() {
     call().catch((e: Error) => setActionError(e.message)).finally(() => { inFlight.current = false; });
   };
   const load = async () => {
-    if (!runId) return;
     const d = await runApi.run(runId);
     setDetail(d);
     const projects = await runApi.projects();
     setSpecStatus(projects.find((p) => p.projectId === d.projectId)?.specs.find((s) => s.specId === d.specId)?.status ?? '');
+    setActionError(null); // whatever an earlier click reported is stale once the page matches the server again
   };
   useEffect(() => {
     load().catch((e: Error) => setError(e.message));
   }, [runId]);
+  // The spec turns done only if the completion run succeeds, so follow that run itself: waiting on the spec alone never ends when it fails.
   useEffect(() => {
-    if (!polling) return;
-    const id = setInterval(() => load().catch(() => undefined), 5000);
-    return () => clearInterval(id);
-  }, [polling]);
-  useEffect(() => {
-    if (specStatus === 'done') setPolling(false);
-  }, [specStatus]);
+    if (!completion) return;
+    const timer = setInterval(() => {
+      runApi
+        .run(completion)
+        .then(async (run) => {
+          if (isLive(run.status)) return;
+          if (run.status === 'done') await load();
+          // Interrupted: its process died, so it will never finish; the spec is unchanged and Complete spec can be tried again.
+          else if (run.status === 'interrupted') setActionError(`The completion run ${completion} was interrupted.`);
+          else setActionError(`The completion run ${completion} ended ${run.status}${typeof run.finished?.reason === 'string' ? `: ${run.finished.reason}` : ''}.`);
+          setCompletion(null);
+        })
+        .catch(() => undefined); // transient: the next tick asks again
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [completion]);
   if (error) return <main><p className="error">{error}</p></main>;
   if (!detail) return <main><p>Loading…</p></main>;
   return (
@@ -212,7 +230,7 @@ export function ValidationPage() {
       onReport={(text) =>
         guarded(() => runApi.reportProblem(detail.projectId, detail.specId, text).then(() => navigate(`/refine/${detail.projectId}/${detail.specId}`)))
       }
-      onComplete={() => guarded(() => runApi.complete(detail.projectId, detail.specId).then(() => setPolling(true)))}
+      onComplete={() => guarded(() => runApi.complete(detail.projectId, detail.specId).then((started) => setCompletion(started.runId)))}
     />
   );
 }

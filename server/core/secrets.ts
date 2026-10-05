@@ -1,5 +1,6 @@
 import { promises as fs, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { writeFileAtomic } from './atomic-write.js';
 
 export const SECRET_NAME = /^[A-Z][A-Z0-9_]*$/;
 
@@ -45,7 +46,8 @@ export function loadSecretValuesSync(dir: string): string[] {
 
 /**
  * Spec (onboarding) §4: one file per secret, mode 0600 in a 0700 directory, written through a temp
- * file and rename so a crash never leaves a half-written token. The value is trimmed (editors add a
+ * file and rename (`writeFileAtomic`, so concurrent writers of one secret cannot trip over each other)
+ * so a crash never leaves a half-written token. The value is trimmed (editors add a
  * newline) and must be a single line; `loadSecrets` reads it back unchanged.
  */
 export async function writeSecret(dir: string, name: string, value: string): Promise<void> {
@@ -55,9 +57,5 @@ export async function writeSecret(dir: string, name: string, value: string): Pro
   if (/[\r\n]/.test(trimmed)) throw new RangeError(`secret ${name} must be a single line`);
   await fs.mkdir(dir, { recursive: true, mode: 0o700 });
   await fs.chmod(dir, 0o700).catch(() => undefined);
-  const target = path.join(dir, name);
-  const tmp = path.join(dir, `.${name}.${process.pid}.tmp`);
-  await fs.writeFile(tmp, trimmed, { mode: 0o600 });
-  await fs.chmod(tmp, 0o600).catch(() => undefined);
-  await fs.rename(tmp, target);
+  await writeFileAtomic(path.join(dir, name), trimmed, { mode: 0o600 });
 }

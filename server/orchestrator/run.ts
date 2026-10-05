@@ -18,7 +18,7 @@ import type { Exec } from '../exec/command.js';
 import { TOOLS_GATE } from '../validators/security-tooling.js';
 import { writeToolsInstaller } from './tools-install.js';
 import { runGates, TAIL_CHARS, type GateExecutor, type GateResult } from '../exec/gate-runner.js';
-import { git } from '../git/git.js';
+import { fetch as gitFetch, git, withRepoLock } from '../git/git.js';
 import { MergeQueue } from '../git/merge-queue.js';
 import type { CodeContext, HandoffSummary } from '../knowledge/context-pack.js';
 import { grepFallback, MIN_COVERAGE, type Graphify } from '../knowledge/graphify.js';
@@ -33,6 +33,7 @@ import { CrashInjected, Intent, Journal, OrchEvent, type IntentType, type RunRes
 export { CrashInjected };
 import { taskMergeSteps, type MergeStepsDeps } from './merge-steps.js';
 import { PAUSED_AUTH, runPhase0, runWorkflowBootstrap, runPhase1, runPhase2, runPhase4, runPhase5, runPhase6, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, type PhaseDeps, type PhaseResult } from './phases/index.js';
+import { withMainSnapshot } from './phases/shared.js';
 import { reconcile } from './reconcile.js';
 import { validateDocs } from '../validators/docs.js';
 import { readmePack, runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
@@ -40,7 +41,7 @@ import { TaskRunner, type TaskRunnerDeps } from './task-runner.js';
 import { eventsFile, expandHome, graphDir, nextRunId, runDir, stateFile, stepDir, type Workspace } from './workspace.js';
 import type { DeployTarget } from '../deploy/target.js';
 import { E2E_GATE, runE2e } from '../exec/e2e.js';
-import { runSmoke } from '../exec/smoke.js';
+import { gateReachableUrl, runSmoke } from '../exec/smoke.js';
 
 export interface RunDeps {
   cfg: Config;
@@ -315,7 +316,7 @@ export class Run {
     const g = this.deps.graphify;
     const terms = [task.title, ...task.affectedPaths].map((t) => t.split(/[^a-zA-Z0-9]+/).filter((w) => w.length > 2)).flat().slice(0, 6);
     if (g) {
-      const tracked = await g.trackedFiles(this.deps.ws.repo).catch(() => [] as string[]);
+      const tracked = await withRepoLock(this.deps.ws.repo, () => g.trackedFiles(this.deps.ws.repo)).catch(() => [] as string[]);
       const cov = await g.coverage(graphDir(this.deps.ws, null), tracked).catch(() => null);
       if (cov && cov.ratio >= MIN_COVERAGE) {
         const q = await g.query(graphDir(this.deps.ws, null), `${task.title} ${task.description}`, 2000);
@@ -348,7 +349,8 @@ export class Run {
         const profile = resolveProfile(cfg, role, project);
         const release = await this.governor.acquire();
         try {
-          const out = (await this.deps.runStep<'decide'>({ kind: 'decide', role, agent: this.deps.agents[role], profile, model: profile.model, cwd: this.deps.ws.repo, prompt, expectedSpecHash: spec.specHash!, phase: 'decide', taskId: null, attempt: 0 }, this.stepDeps())) as StepOutcome<DecideOutput>;
+          // Inside the governor slot, so the snapshot lives only while the step runs; it keeps afterMerge off the agent's tree.
+          const out = await withMainSnapshot(this.deps.ws, this.deps.exec, async (cwd) => (await this.deps.runStep<'decide'>({ kind: 'decide', role, agent: this.deps.agents[role], profile, model: profile.model, cwd, prompt, expectedSpecHash: spec.specHash!, phase: 'decide', taskId: null, attempt: 0 }, this.stepDeps())) as StepOutcome<DecideOutput>);
           this.breaker.observe(out.summary.rateLimit);
           if (!out.ok && out.failure === 'quota') this.breaker.onQuotaFailure(out.summary.rateLimit);
           return out;
@@ -389,7 +391,7 @@ export class Run {
           const nodes = await g.godNodes(graphDir(this.deps.ws, null), 10).catch(() => []);
           if (nodes.length > 0) return nodes.map((n) => n.label);
         }
-        return (await git(this.deps.ws.repo, ['ls-tree', '--name-only', 'origin/main'], this.deps.exec)).split('\n').filter((l) => l !== '');
+        return (await this.gitLocked(['ls-tree', '--name-only', 'origin/main'])).split('\n').filter((l) => l !== '');
       },
     };
   }
@@ -416,7 +418,7 @@ export class Run {
       target: this.deps.target,
       smoke: async (contextDir, url, gateUrl, gateNetwork) => {
         const p = this.plan!;
-        const r = await runSmoke(p, this.deps.spec, { worktree: contextDir, image: p.gateImage, junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-smoke`, user: containerUser(), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, this.deps.gateExecutor?.kind === 'k8s' || gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
+        const r = await runSmoke(p, this.deps.spec, { worktree: contextDir, image: p.gateImage, junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-smoke`, user: containerUser(), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, this.deps.gateExecutor?.kind === 'k8s' || gateNetwork ? gateUrl ?? url : gateReachableUrl(url), { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
         // The gate's output is the only clue the fix task gets about why a smoke test is missing or failing.
         const tail = r.ok || !r.result ? '' : `\n\nsmoke gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
@@ -457,11 +459,21 @@ export class Run {
     if (this.journal.state.status === 'paused:quota') await this.journal.fact(RunEvent.RunResumed, {});
   }
 
+  /**
+   * A git command on the main repo, queued behind every other locked operation on it: afterMerge's checkout and
+   * reset --hard rewrite its index and work tree while other tasks read it. gitFetch and removeWorktree take the
+   * (non-reentrant) lock themselves, so those are called bare, never through here.
+   */
+  private gitLocked(args: readonly string[]): Promise<string> {
+    const { ws, exec } = this.deps;
+    return withRepoLock(ws.repo, () => git(ws.repo, args, exec));
+  }
+
   private async loadAdrs(): Promise<void> {
-    const list = await git(this.deps.ws.repo, ['ls-tree', '--name-only', 'origin/main', 'docs/adr/'], this.deps.exec).catch(() => '');
+    const list = await this.gitLocked(['ls-tree', '--name-only', 'origin/main', 'docs/adr/']).catch(() => '');
     this.adrs = [];
     for (const rel of list.split('\n').filter((l) => l.endsWith('.md'))) {
-      const text = await git(this.deps.ws.repo, ['show', `origin/main:${rel}`], this.deps.exec).catch(() => '');
+      const text = await this.gitLocked(['show', `origin/main:${rel}`]).catch(() => '');
       const id = /ADR-\d{3}/.exec(rel)?.[0] ?? rel;
       this.adrs.push({ id, title: text.split('\n')[0]?.replace(/^#\s*/, '') ?? id, text: text.slice(0, 4000) });
     }
@@ -559,8 +571,8 @@ export class Run {
   async deployOnly(): Promise<ExecuteResult> {
     if (!this.deps.target) return this.finish('phase-failed', 'no deployment target');
     const specId = this.deps.spec.specId;
-    await git(this.deps.ws.repo, ['fetch', '-q', 'origin'], this.deps.exec);
-    const text = await git(this.deps.ws.repo, ['show', `origin/main:docs/specs/${specId}/plan.json`], this.deps.exec).catch(() => null);
+    await gitFetch(this.deps.ws.repo, this.deps.exec);
+    const text = await this.gitLocked(['show', `origin/main:docs/specs/${specId}/plan.json`]).catch(() => null);
     if (!text) return this.finish('phase-failed', `main has no docs/specs/${specId}/plan.json`);
     this.plan = Plan.parse(JSON.parse(text));
     const p5 = await runPhase5(this.phaseDeps(), 1, { fixTasks: false });

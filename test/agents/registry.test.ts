@@ -69,4 +69,17 @@ describe('settings directory protection', () => {
     expect(agents.sm.body).toMatch(/assumption/i);
     expect(agents.sm.body).not.toMatch(/never an assumption during a run/);
   });
+
+  it('the sec prompt states the one blocking rule the task runner enforces: severities decide, medium and low never block', async () => {
+    const { sec } = await loadAgents(AGENTS_DIR);
+    expect(sec.body).toMatch(/exactly when at least one finding is `critical` or `high`/);
+    expect(sec.body).toMatch(/`medium` and `low` findings never block/);
+  });
+
+  it('the sec prompt names the notice the task runner appends to a cut diff and what to do about it', async () => {
+    const { sec } = await loadAgents(AGENTS_DIR);
+    expect(sec.body).toContain('[diff truncated');
+    expect(sec.body).toMatch(/affectedPaths/);
+    expect(sec.body).toMatch(/Change set under review/);
+  });
 });

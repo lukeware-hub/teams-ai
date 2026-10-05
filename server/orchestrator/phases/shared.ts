@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { OutputOf, StepKind } from '../../agents/outputs.js';
@@ -11,7 +12,7 @@ import type { DeployTarget } from '../../deploy/target.js';
 import type { E2eRow } from '../../exec/e2e.js';
 import type { SmokeRow } from '../../exec/smoke.js';
 import type { Exec } from '../../exec/command.js';
-import { commitAll, createWorktree, fetch as gitFetch, git } from '../../git/git.js';
+import { commitAll, createWorktree, fetch as gitFetch, git, removeWorktree, withRepoLock } from '../../git/git.js';
 import type { MergeQueue } from '../../git/merge-queue.js';
 import type { StepOutcome } from '../../runner/step.js';
 import { Intent, OrchEvent, type Journal } from '../events.js';
@@ -73,7 +74,8 @@ export const specDir = (specId: string) => path.posix.join('docs', 'specs', spec
 export async function readDocs(repo: string, specId: string, exec?: Exec): Promise<{ techSpecText: string | null; plan: Plan | null }> {
   const show = async (rel: string) => {
     try {
-      return await git(repo, ['show', `origin/main:${rel}`], exec);
+      // Queued behind whatever else holds the repo lock (afterMerge's checkout and reset, a fetch), never beside it.
+      return await withRepoLock(repo, () => git(repo, ['show', `origin/main:${rel}`], exec));
     } catch {
       return null;
     }
@@ -132,6 +134,32 @@ export async function readInWorktree(worktree: string, rel: string): Promise<str
 
 export async function checkoutMain(deps: PhaseDeps): Promise<string> {
   await gitFetch(deps.ws.repo, deps.exec);
-  await git(deps.ws.repo, ['checkout', '-q', '--detach', 'origin/main'], deps.exec);
-  return (await git(deps.ws.repo, ['rev-parse', '--short', 'HEAD'], deps.exec)).trim();
+  // checkout rewrites the index and work tree of ws.repo, so it shares the repo lock with afterMerge. The rev-parse that
+  // names the result stays inside it, or another locked move of HEAD could slip in between. gitFetch takes the
+  // (non-reentrant) lock itself, hence the call above is outside.
+  return withRepoLock(deps.ws.repo, async () => {
+    await git(deps.ws.repo, ['checkout', '-q', '--detach', 'origin/main'], deps.exec);
+    return (await git(deps.ws.repo, ['rev-parse', '--short', 'HEAD'], deps.exec)).trim();
+  });
+}
+
+/**
+ * Runs `fn` with a private, detached checkout of origin/main as its directory and removes the checkout afterwards.
+ * Agent steps that only read the repository (SM, decider escalation) run here, not in the main checkout of ws.repo:
+ * afterMerge rewrites that one (checkout + reset --hard) while the steps of other tasks are in flight, and an agent
+ * reading it then sees a tree that changes under it. The snapshot is out of afterMerge's reach.
+ *
+ * The repo lock covers only the git commands that touch the repository's bookkeeping, never `fn`: an agent step
+ * lasts minutes, and every fetch, worktree add and merge of every task queues behind that lock. The lock is not
+ * reentrant and removeWorktree takes it itself, so it is called bare; so is `fn`.
+ */
+export async function withMainSnapshot<T>(ws: Workspace, exec: Exec, fn: (dir: string) => Promise<T>): Promise<T> {
+  const dir = path.posix.join(ws.worktrees, `snapshot__${randomUUID().slice(0, 8)}`);
+  try {
+    await withRepoLock(ws.repo, () => git(ws.repo, ['worktree', 'add', '--detach', dir, 'origin/main'], exec));
+    return await fn(dir);
+  } finally {
+    // A leftover costs disk only, and must not turn a finished agent step into a failure or hide the step's own error.
+    await removeWorktree(ws.repo, dir, exec).catch(() => undefined);
+  }
 }

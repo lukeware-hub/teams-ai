@@ -91,6 +91,15 @@ function holdLaunch(runId: string): { reached: Promise<void>; release: () => voi
   return { reached: hit, release: () => release() };
 }
 
+/** Registers a copy of the hello project whose spec is awaiting validation, the only status `complete` accepts. */
+async function useAwaitingValidationProject(): Promise<void> {
+  const project = path.join(home, 'project');
+  await fs.cp(HELLO, project, { recursive: true });
+  const file = path.join(project, 'docs', 'specs', 'hello-001', 'spec.json');
+  await fs.writeFile(file, JSON.stringify({ ...JSON.parse(await fs.readFile(file, 'utf8')), status: 'awaiting-validation' }));
+  await fs.writeFile(path.join(home, '.teams-ai', 'config.json'), JSON.stringify({ paths: { runs: runs.replace(/\\/g, '/') }, projects: [{ dir: project }] }));
+}
+
 describe('projects', () => {
   it('lists registered projects with specs and runs', async () => {
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 1);
@@ -192,6 +201,45 @@ describe('start, resume, stop', () => {
     expect(spawns).toHaveLength(1);
   });
 
+  // One writer per spec: while one of start, complete and readme is launching, the other two answer 409.
+  const WRITERS = {
+    start: { url: '/api/projects/hello-app/specs/hello-001/runs', runId: 'hello-001-r2' },
+    complete: { url: '/api/projects/hello-app/specs/hello-001/complete', runId: 'hello-001-complete-r1' },
+    readme: { url: '/api/runs/hello-001-r1/readme', runId: 'hello-001-readme-r1' },
+  };
+  it.each([
+    ['start', 'complete'],
+    ['complete', 'readme'],
+    ['readme', 'start'],
+  ] as const)('while %s is launching, %s on the same spec answers 409 and only one process is spawned', async (first, second) => {
+    await useAwaitingValidationProject();
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), { type: 'RUN_FINISHED', data: { result: 'awaiting-validation' } }], state('running'));
+    onSpawn = async (runId) => {
+      await writeRun(runs, runId, [started(runId)], state('running'));
+    };
+    const hold = holdLaunch(WRITERS[first].runId);
+    const winner = post(WRITERS[first].url);
+    await hold.reached; // inside its critical section, nothing spawned yet
+    const loser = await post(WRITERS[second].url);
+    hold.release();
+    expect((await winner).status).toBeLessThan(300);
+    expect(loser.status).toBe(409);
+    expect(spawns).toHaveLength(1);
+  });
+
+  it('complete refuses an unknown spec (404) and a spec not awaiting validation (409) without keeping the spec locked', async () => {
+    const complete = '/api/projects/hello-app/specs/hello-001/complete';
+    expect((await post('/api/projects/hello-app/specs/nope/complete')).status).toBe(404);
+    expect((await post(complete)).status).toBe(409); // the fixture spec is running
+    expect(spawns).toHaveLength(0);
+    await useAwaitingValidationProject();
+    onSpawn = async (runId) => {
+      await writeRun(runs, runId, [started(runId)], state('running'));
+    };
+    expect((await post(complete)).status).toBe(202);
+    expect(spawns).toHaveLength(1);
+  });
+
   it('refuses to start while the spec has an active run, or for an unknown spec', async () => {
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 900);
     alive.add(900);
@@ -231,6 +279,26 @@ describe('start, resume, stop', () => {
     expect(text).not.toContain(Buffer.from('p@ss w0rd!').toString('base64'));
     expect(text).toContain('[REDACTED]');
   }, 15_000);
+
+  it('stops a child that is alive but has written no journal when the wait ends: no orphan, no second run beside it', async () => {
+    const start = '/api/projects/hello-app/specs/hello-001/runs';
+    let retry: Promise<Response> | undefined;
+    onSignal = () => {
+      retry = post(start); // arrives while the first request is still waiting for the child to exit
+    };
+    onSleep = async () => {
+      await retry;
+    };
+    expect((await post(start)).status).toBe(500); // the child stays alive and silent for the whole wait
+    expect(signals).toContainEqual([-5001, 'SIGTERM']);
+    expect((await retry!).status).toBe(409); // the spec was not released while the child was still exiting
+    expect([...alive]).toEqual([]);
+    onSpawn = async (runId) => {
+      await writeRun(runs, runId, [started(runId)], state('running'));
+    };
+    expect((await post(start)).status).toBe(200); // released afterwards
+    expect([...alive]).toEqual([5002]); // the retry is the only live process
+  });
 
   it('resume is allowed only for paused:auth or interrupted runs', async () => {
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('paused:auth'));
@@ -368,6 +436,29 @@ describe('run detail, events and steps', () => {
     expect(d.tokens).toEqual({ inputTokens: 100, outputTokens: 20, cacheReadTokens: 5, cacheWriteTokens: 0, costUsd: 0.5, steps: 1 });
     expect(d.acceptanceCriteria.map((a: { id: string }) => a.id)).toEqual(['AC-001', 'AC-002', 'AC-003']);
     expect((await fetch(`${base()}/api/runs/nope`)).status).toBe(404);
+  });
+
+  it('detail reports interrupted when the process of an unfinished run died, with or without a state snapshot', async () => {
+    // A completion run writes no state.json until it finishes, so the dead pid alone must say that it was interrupted.
+    await writeRun(runs, 'hello-001-complete-r1', [started('hello-001-complete-r1')], null, 111); // pid 111 is not alive
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 112);
+    for (const id of ['hello-001-complete-r1', 'hello-001-r1']) {
+      const d = await (await fetch(`${base()}/api/runs/${id}`)).json();
+      expect(d).toMatchObject({ status: 'interrupted', finished: null });
+      // The first look retired the pid file to pid.gone: the run keeps showing interrupted until it is resumed.
+      await expect(fs.access(path.join(runs, id, 'pid.gone'))).resolves.toBeUndefined();
+      expect((await (await fetch(`${base()}/api/runs/${id}`)).json()).status).toBe('interrupted');
+    }
+  });
+
+  it('detail keeps the journal status while the process is alive and the result once the run finished', async () => {
+    alive.add(900);
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 900);
+    await writeRun(runs, 'hello-001-r2', [started('hello-001-r2'), { type: 'RUN_FINISHED', data: { result: 'done' } }], state('running'), 111); // dead pid, but it finished
+    await writeRun(runs, 'hello-001-r3', [started('hello-001-r3')], state('running')); // started from a terminal: no pid file, nothing to judge by
+    expect((await (await fetch(`${base()}/api/runs/hello-001-r1`)).json()).status).toBe('running');
+    expect((await (await fetch(`${base()}/api/runs/hello-001-r2`)).json()).status).toBe('done');
+    expect((await (await fetch(`${base()}/api/runs/hello-001-r3`)).json()).status).toBe('running');
   });
 
   it('returns the persisted plan artifact when the run project contains plan.json', async () => {

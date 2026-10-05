@@ -81,6 +81,8 @@ export function dockerArgs(gate: Gate, ctx: GateContext): DockerInvocation {
     '--memory',
     ctx.memory,
   ];
+  // The container's own 127.0.0.1 is not the host: egress gates (smoke) reach the service the daemon published through this name.
+  if (gate.network === 'egress') args.push('--add-host', 'host.docker.internal:host-gateway');
   if (ctx.user) args.push('--user', ctx.user, '-e', 'HOME=/tmp');
   args.push(
     '--mount',

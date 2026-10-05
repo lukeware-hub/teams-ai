@@ -30,7 +30,9 @@ Test judges a task diff against acceptance criteria; nobody judged it for vulner
 | Step kind | `security` (`STEP_KINDS`, `OUTPUT_SCHEMAS.security`) |
 | Model tier | Not overridden by decision 10: a security review is never downgraded to a smaller tier. |
 
-Because `sec` has no Bash it cannot run `git diff`; the orchestrator inlines `git diff origin/main...HEAD` into the prompt, cut at 80,000 characters. Anything beyond the cut is read from the worktree with `Read`.
+Because `sec` has no Bash it cannot run `git diff`; the orchestrator inlines `git diff origin/main...HEAD` into the prompt, cut at 80,000 characters. Anything beyond the cut is read from the worktree with `Read`. A cut diff ends with a `[diff truncated: first 80000 of N characters shown. ...]` notice that sends `sec` to the changed files and the task's `affectedPaths`.
+
+The changed files, the diff stat and the diff travel as the context pack's pinned `change-set` section (`ContextPackInput.changeSet`, built by `securityPack`). The generic token budget (`budgetTokens`, 12,000 in `run.ts`) never drops that section, notice included, and does not count it: it only trims the context around it (retrieval, code, ADRs, ...). Carried as droppable feedback, a diff that alone outgrew the budget (about 40,000 characters) was dropped whole with its notice, and `sec` was left to review code it had not been shown.
 
 ## 3. Contract
 
@@ -41,7 +43,7 @@ Because `sec` has no Bash it cannot run `git diff`; the orchestrator inlines `gi
   findings: [{ file, line | null, severity: 'critical'|'high'|'medium'|'low', category, problem, fix }] }
 ```
 
-The orchestrator blocks when `decision === 'changes'` **or** any finding is `critical`/`high`; severity wins over a lenient `decision`. References are validated like the review step: every `file` must exist in the worktree.
+Only severity blocks: the orchestrator blocks when at least one finding is `critical` or `high` (`blockingFindings` in `server/agents/outputs.ts`), and for no other reason. `decision` is the reviewer's own label for that outcome (`changes` exactly when it lists a `critical` or `high` finding, as `.claude/agents/sec.md` instructs) and is never read to decide. A `changes` decision whose findings are only `medium`/`low`, or none, does not block; an `approve` that lists a `critical`/`high` finding still does. The feedback sent back to Dev lists the blocking findings only; `SECURITY_CHANGES` and `SECURITY_APPROVED` keep all of them. References are validated like the review step: every `file` must exist in the worktree.
 
 ## 4. Flow
 

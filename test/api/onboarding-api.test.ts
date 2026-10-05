@@ -113,6 +113,24 @@ describe('api server', () => {
     expect(JSON.parse(await fs.readFile(path.join(home, '.teams-ai', 'config.json'), 'utf8'))).toEqual({ github: { owner: 'diego-dm-morais' } });
   });
 
+  it('a config.json it cannot parse is left alone and the routes say why, not "internal error"', async () => {
+    const file = path.join(home, '.teams-ai', 'config.json');
+    const broken = '{ "github": { "owner": '; // cut off mid-write
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, broken);
+    const reason = /config\.json is not valid JSON/;
+    const put = await fetch(`${base()}/api/onboarding/github-owner`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ owner: 'diego-dm-morais' }) });
+    expect(put.status).toBe(500);
+    expect(((await put.json()) as { error: string }).error).toMatch(reason);
+    const orgs = await fetch(`${base()}/api/onboarding/github-organizations`);
+    expect(orgs.status).toBe(500);
+    expect(((await orgs.json()) as { error: string }).error).toMatch(reason);
+    const status = (await (await fetch(`${base()}/api/onboarding/status`)).json()) as { items: Record<string, { ok: boolean; detail: string }> };
+    expect(status.items.githubOwner!.ok).toBe(false);
+    expect(status.items.githubOwner!.detail).toMatch(reason);
+    expect(await fs.readFile(file, 'utf8')).toBe(broken);
+  });
+
   it('GET /github-organizations lists unique organizations and the saved owner', async () => {
     const r = await fetch(`${base()}/api/onboarding/github-organizations`);
     expect(r.status).toBe(200);

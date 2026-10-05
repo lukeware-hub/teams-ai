@@ -252,6 +252,8 @@ export class RefineSession {
     if (this.state.status === 'started') throw new ConflictError('session already started a run');
     if (this.starting) throw new ConflictError('a start is already in progress');
     if (this.running) await this.running;
+    // Another freeze may have passed the same checks while this one awaited the running cycle.
+    if (this.starting) throw new ConflictError('a start is already in progress');
     if (this.state.status !== 'ready' || this.state.stale) {
       throw new ConflictError(`session is ${this.state.status}${this.state.stale ? ' (stale)' : ''}; evaluate until ready`);
     }

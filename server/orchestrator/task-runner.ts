@@ -1,4 +1,5 @@
 import type { z } from 'zod';
+import { blockingFindings } from '../agents/outputs.js';
 import type { DevOutput as DevOutputSchema, OutputOf, ReplanOutput, ReviewOutput as ReviewOutputSchema, SecurityOutput as SecurityOutputSchema, SpecGapOutput, StepKind } from '../agents/outputs.js';
 
 type DevOutput = z.infer<typeof DevOutputSchema>;
@@ -30,8 +31,9 @@ import { checkScope } from '../validators/diff-guard.js';
 import { findCycle } from '../validators/plan.js';
 import type { RefContext } from '../validators/references.js';
 import { Intent, OrchEvent, type Journal } from './events.js';
+import { withMainSnapshot } from './phases/shared.js';
 import { devPack, replanPack, reviewPack, securityPack, specGapPack, type AgentStepRequest, type PackBase } from './steps.js';
-import { worktreeDir, type Workspace } from './workspace.js';
+import { olderLiveRun, worktreeDir, type Workspace } from './workspace.js';
 
 /** The diff is inlined into the sec prompt (the role has no Bash); the rest of a huge diff is read from the worktree. */
 const SECURITY_DIFF_CHARS = 80_000;
@@ -179,14 +181,22 @@ export class TaskRunner {
     return this.deps.journal.events.filter((e) => e.type === OrchEvent.Feedback && e.data.taskId === this.taskId && e.data.attempt === true).map((e) => String(e.data.text));
   }
 
-  private async ensureWorktree(): Promise<void> {
+  /** False when the task was blocked instead: an older run of this spec is live and owns the worktree. */
+  private async ensureWorktree(): Promise<boolean> {
     const { journal, ws, exec } = this.deps;
     await gitFetch(ws.repo, exec);
     const confirmed = journal.isConfirmed(Intent.WorktreeCreate, this.taskId);
     if (confirmed) {
       // This run already created it (resume after a crash): keep whatever the Dev committed there.
       await createWorktree(ws.repo, this.worktree, this.branch, 'origin/main', exec);
-      return;
+      return true;
+    }
+    // Branch and worktree are named after the spec, not the run, so the reset below would wipe the live work of an
+    // older run of it. Checked before the intent: on resume an unconfirmed one over an existing worktree is taken as ours.
+    const older = await olderLiveRun(ws, this.deps.spec.specId, journal.events[0]!.runId);
+    if (older !== null) {
+      await this.block(`Run ${older} of spec ${this.deps.spec.specId} is still live and owns ${this.worktree}; not resetting it.`);
+      return false;
     }
     await journal.intent(Intent.WorktreeCreate, this.taskId, { worktree: this.worktree, branch: this.branch });
     // First touch by this run: a worktree or branch of the same name is a leftover from an earlier run of
@@ -196,6 +206,7 @@ export class TaskRunner {
     await removeWorktree(ws.repo, this.worktree, exec);
     await createWorktree(ws.repo, this.worktree, this.branch, 'origin/main', exec, { reset: true });
     await journal.confirm(Intent.WorktreeCreate, this.taskId, {});
+    return true;
   }
 
   private async refContext(): Promise<RefContext> {
@@ -212,7 +223,7 @@ export class TaskRunner {
   }
 
   private async implement(): Promise<void> {
-    await this.ensureWorktree();
+    if (!(await this.ensureWorktree())) return;
     const task = this.task;
     const attempt = task.attempts + 1;
     const commitKey = `${this.taskId}:a${attempt}`;
@@ -263,7 +274,8 @@ export class TaskRunner {
       this.specGapRounds = 0;
       return this.fail('code', `spec-gap rounds exhausted (${this.maxSpecGapRounds}); last question: ${question}`);
     }
-    const outcome = await this.deps.runAgent<'spec-gap'>({ kind: 'spec-gap', role: 'sm', pack: specGapPack(this.deps.packBase(), task, { question }), cwd: this.deps.ws.repo, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts + 1 });
+    // The SM only reads the repo. It reads a snapshot of origin/main, so another task's merge cannot rewrite the tree under it.
+    const outcome = await withMainSnapshot(this.deps.ws, this.deps.exec, (cwd) => this.deps.runAgent<'spec-gap'>({ kind: 'spec-gap', role: 'sm', pack: specGapPack(this.deps.packBase(), task, { question }), cwd, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts + 1 }));
     if (!outcome.ok) return this.fail(outcome.failure, outcome.errors.join('\n'));
     const value = outcome.value as SpecGapOutput;
     await this.deps.journal.fact(OrchEvent.SpecGapAnswered, { taskId: this.taskId, question, answer: value.answer, assumption: value.assumption });
@@ -351,7 +363,11 @@ export class TaskRunner {
 
   /** Runs after Test approves: critical/high findings go back to Dev like review changes; medium/low are journaled only. */
   private async securityReview(changed: readonly string[], diffStat: string, code: CodeContext): Promise<boolean> {
-    const diff = (await git(this.worktree, ['diff', 'origin/main...HEAD'], this.deps.exec)).slice(0, SECURITY_DIFF_CHARS);
+    const full = await git(this.worktree, ['diff', 'origin/main...HEAD'], this.deps.exec);
+    // sec has no Bash and cannot tell a short diff from a cut one: say so, or it approves code it never saw.
+    const diff = full.length > SECURITY_DIFF_CHARS
+      ? `${full.slice(0, SECURITY_DIFF_CHARS)}\n[diff truncated: first ${SECURITY_DIFF_CHARS} of ${full.length} characters shown. The changes after the cut were not shown: read the changed files and the task's affectedPaths to review them.]`
+      : full;
     const attempt = this.task.attempts + 1;
     const outcome = await this.deps.runAgent<'security'>({
       kind: 'security',
@@ -369,10 +385,11 @@ export class TaskRunner {
       return false;
     }
     const value = outcome.value as SecurityOutputSchema;
-    const blocking = value.findings.filter((f) => f.severity === 'critical' || f.severity === 'high');
-    if (value.decision === 'changes' || blocking.length > 0) {
+    // One rule: the severities decide. `decision` is the reviewer's own label and neither adds to this nor lifts it.
+    const blocking = blockingFindings(value);
+    if (blocking.length > 0) {
       await this.deps.journal.fact(OrchEvent.SecurityChanges, { taskId: this.taskId, findings: value.findings });
-      const text = (blocking.length > 0 ? blocking : value.findings).map((f) => `- ${f.file}${f.line === null ? '' : `:${f.line}`} [${f.severity}] ${f.category}: ${f.problem} (fix: ${f.fix})`).join('\n');
+      const text = blocking.map((f) => `- ${f.file}${f.line === null ? '' : `:${f.line}`} [${f.severity}] ${f.category}: ${f.problem} (fix: ${f.fix})`).join('\n');
       await this.fail('review-changes', `Security review requested changes:\n${text}`);
       return false;
     }
@@ -485,7 +502,9 @@ export class TaskRunner {
   /** Returns false only for an early replan the SM could not produce; the policy path blocks instead. */
   private async replan(opts: { early?: boolean } = {}): Promise<boolean> {
     const history = this.deps.journal.events.filter((e) => e.type === OrchEvent.Feedback && e.data.taskId === this.taskId).map((e) => String(e.data.text));
-    const outcome = await this.deps.runAgent<'replan'>({ kind: 'replan', role: 'sm', pack: replanPack(this.deps.packBase(), this.task.def, { history, boundaries: await this.deps.boundaries(), atomic: this.task.bootstrapsFrozenPaths }), cwd: this.deps.ws.repo, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts });
+    const boundaries = await this.deps.boundaries();
+    // Same as the spec-gap step: the SM reads a snapshot of origin/main, not the main checkout that afterMerge rewrites.
+    const outcome = await withMainSnapshot(this.deps.ws, this.deps.exec, (cwd) => this.deps.runAgent<'replan'>({ kind: 'replan', role: 'sm', pack: replanPack(this.deps.packBase(), this.task.def, { history, boundaries, atomic: this.task.bootstrapsFrozenPaths }), cwd, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts }));
     if (!outcome.ok) {
       if (outcome.failure === 'quota' || outcome.failure === 'auth') {
         await this.fail(outcome.failure, outcome.errors.join('\n'));

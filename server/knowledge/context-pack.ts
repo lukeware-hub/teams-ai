@@ -36,6 +36,11 @@ export interface ContextPackInput {
   code?: CodeContext;
   retrieval?: readonly Hit[];
   feedback?: string;
+  /**
+   * What the step judges and cannot do without: the changed files and diff a security review reads. Rendered last,
+   * never dropped and kept out of `budgetTokens`, which only trims the context around it. The caller bounds its size.
+   */
+  changeSet?: string;
   budgetTokens: number;
 }
 
@@ -59,9 +64,11 @@ export const SECTION_ORDER = [
   'code',
   'retrieval',
   'feedback',
+  'change-set',
 ] as const;
 type Section = (typeof SECTION_ORDER)[number];
 
+/** Present in every pack. The optional `change-set` is never dropped either: it is simply absent from DROP_ORDER. */
 export const NEVER_DROP: readonly Section[] = ['principles', 'contract', 'task', 'criteria'];
 /** Drop order when over budget; feedback last because a retry is useless without it. */
 const DROP_ORDER: readonly Section[] = ['retrieval', 'code', 'adrs', 'tech-spec', 'objectives', 'handoffs', 'assumptions', 'feedback'];
@@ -124,6 +131,7 @@ function render(input: ContextPackInput): Map<Section, string> {
     out.set('retrieval', `## Retrieved context\n${input.retrieval.map((h) => `### ${h.title}${h.heading ? ` › ${h.heading}` : ''} (${h.kind})\n${h.text}`).join('\n')}`);
   }
   if (input.feedback) out.set('feedback', `## Feedback from the previous attempt\n${input.feedback}`);
+  if (input.changeSet) out.set('change-set', `## Change set under review\n${input.changeSet}`);
   return out;
 }
 
@@ -137,14 +145,16 @@ function assemble(sections: Map<Section, string>, dropped: string[]): string {
 export function buildContextPack(input: ContextPackInput): ContextPack {
   const sections = render(input);
   const dropped: string[] = [];
+  // The change set is outside DROP_ORDER and outside the budget, so a diff bigger than the whole budget cannot push itself out.
+  const budget = input.budgetTokens + estimateTokens(sections.get('change-set') ?? '');
   let text = assemble(sections, dropped);
   for (const s of DROP_ORDER) {
-    if (estimateTokens(text) <= input.budgetTokens) break;
+    if (estimateTokens(text) <= budget) break;
     if (!sections.has(s)) continue;
     sections.delete(s);
     dropped.push(s);
     text = assemble(sections, dropped);
   }
-  if (estimateTokens(text) > input.budgetTokens) dropped.push('!over-budget');
+  if (estimateTokens(text) > budget) dropped.push('!over-budget');
   return { text, tokens: estimateTokens(text), sections: SECTION_ORDER.filter((s) => sections.has(s)), dropped };
 }

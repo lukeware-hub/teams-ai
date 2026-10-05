@@ -1,3 +1,4 @@
+import { ConfigError } from '../config/config.js';
 import { loadSecretValuesSync, SECRET_NAME, writeSecret } from '../core/secrets.js';
 import { redactSecrets } from '../core/redact.js';
 import { GITHUB_OWNER, readUserConfig, setGithubOwner } from '../onboarding/config-store.js';
@@ -41,6 +42,11 @@ const str = (v: unknown, field: string): string => {
   return (v as Record<string, string>)[field]!;
 };
 
+/** A config.json the user has to fix (not JSON, not a config) is reported with the reason; the server hides any other error as "internal error". */
+const configProblem = (err: unknown): never => {
+  throw err instanceof ConfigError ? new HttpError(500, err.message) : err;
+};
+
 export function onboardingRoutes(deps: OnboardingDeps): Route[] {
   const ob = new Onboarding(deps);
   const P = '/api/onboarding';
@@ -52,7 +58,7 @@ export function onboardingRoutes(deps: OnboardingDeps): Route[] {
       handler: async ({ json }) => {
         const result = await ghOrganizations(deps);
         if (!result.ok) throw new HttpError(400, result.detail);
-        json(200, { organizations: result.organizations, owner: (await readUserConfig(deps.home)).cfg.github.owner ?? null });
+        json(200, { organizations: result.organizations, owner: (await readUserConfig(deps.home).catch(configProblem)).cfg.github.owner ?? null });
       },
     },
     {
@@ -61,7 +67,7 @@ export function onboardingRoutes(deps: OnboardingDeps): Route[] {
       handler: async ({ body, json }) => {
         const owner = str(await body(), 'owner');
         if (!GITHUB_OWNER.test(owner)) throw new HttpError(400, 'owner is not a GitHub login');
-        await setGithubOwner(owner, deps.home);
+        await setGithubOwner(owner, deps.home).catch(configProblem);
         json(200, { item: await computeItem(deps, 'githubOwner') });
       },
     },

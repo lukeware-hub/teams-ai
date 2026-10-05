@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseAgentFile } from '../../server/agents/registry.js';
 import { Accounting } from '../../server/budget/accounting.js';
 import type { RawStepResult } from '../../server/runner/process-runner.js';
@@ -181,10 +181,26 @@ describe('runStep', () => {
 
   it('classifies a kill by timeout and keeps the partial usage', async () => {
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('killed-partial'), FAKE_CLAUDE_HANG_AFTER: '4' });
-    const outcome = await runStep(request(), { ...deps, caps: { ...deps.caps, timeoutMs: 300 } });
-    expect(outcome.ok).toBe(false);
-    if (!outcome.ok) expect(outcome.failure).toBe('timeout');
-    expect(deps.accounting.total().outputTokens).toBe(50);
+    // The runner's timeout runs from the spawn of a real Node process; a short real timeout fires before the child has
+    // printed anything when the machine is loaded. Fake only that timer and fire it once the last of the four lines
+    // has arrived, so "output, then timeout" holds whatever the load.
+    const timeoutMs = 60_000;
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let lines = 0;
+      const outcome = await runStep(request(), {
+        ...deps,
+        caps: { ...deps.caps, timeoutMs },
+        onEvent: () => {
+          if (++lines === 4) vi.advanceTimersByTime(timeoutMs);
+        },
+      });
+      expect(outcome.ok).toBe(false);
+      if (!outcome.ok) expect(outcome.failure).toBe('timeout');
+      expect(deps.accounting.total().outputTokens).toBe(50);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('keeps a successful output even when the rate limit reading is not allowed', async () => {

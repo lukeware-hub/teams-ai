@@ -85,14 +85,18 @@ Changed files:\n${opts.changedFiles.join('\n')}\n\nDiff stat:\n${opts.diffStat}`
   return { ...common(base, 'review', 'test'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), code: opts.code, feedback };
 }
 
-/** The diff is inlined because the sec role has no Bash; it reads surrounding files with Read, Grep and Glob. */
+/**
+ * The diff is inlined because the sec role has no Bash; it reads surrounding files with Read, Grep and Glob.
+ * It travels as the pinned change set: as droppable feedback, a diff that alone outgrew the 12k-token budget
+ * (about 40k characters) was dropped whole, and the truncation notice at its end went with it.
+ */
 export function securityPack(
   base: PackBase,
   task: PlanTask,
   opts: { diffStat: string; changedFiles: readonly string[]; diff: string; code: CodeContext },
 ): ContextPackInput {
-  const feedback = `Changed files:\n${opts.changedFiles.join('\n')}\n\nDiff stat:\n${opts.diffStat}\n\nDiff against origin/main:\n${opts.diff}`;
-  return { ...common(base, 'security', 'sec'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), code: opts.code, feedback };
+  const changeSet = `Changed files:\n${opts.changedFiles.join('\n')}\n\nDiff stat:\n${opts.diffStat}\n\nDiff against origin/main:\n${opts.diff}`;
+  return { ...common(base, 'security', 'sec'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), code: opts.code, changeSet };
 }
 
 export function techSpecPack(base: PackBase, opts: { feedback: string | null }): ContextPackInput {

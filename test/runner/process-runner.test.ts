@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Invocation } from '../../server/runner/invocation.js';
 import { preflightSandbox, runProcess, type RunnerBinary } from '../../server/runner/process-runner.js';
 
@@ -52,12 +52,22 @@ describe('runProcess', () => {
   });
 
   it('kills a hanging process at the timeout and reports the partial stream', async () => {
-    const started = Date.now();
-    const result = await runProcess(fake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_HANG_AFTER: '1' }), inv(), { ...caps, timeoutMs: 400 });
-    expect(result.killedBy).toBe('timeout');
-    expect(result.summary.found).toBe(false);
-    expect(result.parsed.events).toHaveLength(1);
-    expect(Date.now() - started).toBeLessThan(4_000);
+    // The timeout runs from the spawn of a real Node process; a short real timeout fires before the child has printed
+    // anything when the machine is loaded. Fake only that timer and fire it once the child's one line has arrived.
+    const timeoutMs = 60_000;
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const started = Date.now();
+      const result = await runProcess(fake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_HANG_AFTER: '1' }), inv(), { ...caps, timeoutMs }, () => {
+        vi.advanceTimersByTime(timeoutMs);
+      });
+      expect(result.killedBy).toBe('timeout');
+      expect(result.summary.found).toBe(false);
+      expect(result.parsed.events).toHaveLength(1);
+      expect(Date.now() - started).toBeLessThan(4_000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('counts turns by distinct assistant message id, not by content block', async () => {

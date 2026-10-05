@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DevOutput, OUTPUT_SCHEMAS, RefineOutput, ReviewOutput, STEP_KINDS, toJsonSchema } from '../../server/agents/outputs.js';
+import { DevOutput, OUTPUT_SCHEMAS, RefineOutput, ReviewOutput, SecurityOutput, STEP_KINDS, blockingFindings, toJsonSchema } from '../../server/agents/outputs.js';
 
 const HASH = `sha256:${'a'.repeat(64)}`;
 
@@ -81,6 +81,25 @@ describe('dev output JSON Schema carries the status-dependent requirements', () 
     expect(OUTPUT_SCHEMAS.replan.safeParse({ specHash: HASH, replacements: [task] }).success).toBe(true);
     expect(OUTPUT_SCHEMAS.replan.safeParse({ specHash: HASH, replacements: [] }).success).toBe(false);
     expect(OUTPUT_SCHEMAS.replan.safeParse({ specHash: HASH, replacements: [task, task, task, task] }).success).toBe(false);
+  });
+});
+
+describe('security output', () => {
+  const finding = (severity: string) => ({ file: 'src/a.ts', line: 3, severity, category: 'injection', problem: 'user input reaches a shell', fix: 'use execFile' });
+  const review = (decision: 'approve' | 'changes', ...severities: string[]) => SecurityOutput.parse({ specHash: HASH, decision, findings: severities.map(finding) });
+
+  it('blocks on critical and high findings alone: the severities decide, the decision never overrides them', () => {
+    expect(blockingFindings(review('changes', 'critical', 'medium')).map((f) => f.severity)).toEqual(['critical']);
+    expect(blockingFindings(review('approve', 'low', 'high')).map((f) => f.severity)).toEqual(['high']);
+    expect(blockingFindings(review('changes', 'medium', 'low'))).toEqual([]);
+    expect(blockingFindings(review('changes'))).toEqual([]);
+    expect(blockingFindings(review('approve', 'medium'))).toEqual([]);
+  });
+
+  it('keeps the field names the sec agent must use', () => {
+    const wrong = { specHash: HASH, decision: 'changes', findings: [{ file: 'a.js', line: 1, issue: 'injection', fix: 'f' }] };
+    expect(SecurityOutput.safeParse(wrong).success).toBe(false);
+    expect(SecurityOutput.safeParse({ specHash: HASH, decision: 'approve', findings: [{ ...finding('low'), severity: 'minor' }] }).success).toBe(false);
   });
 });
 
