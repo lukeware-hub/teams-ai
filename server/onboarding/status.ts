@@ -4,6 +4,8 @@ import { claudeStatus, ghOwner, ghStatus, ghToken, openrouterKey, type ProbeDeps
 
 export type ItemName = 'claude' | 'githubOwner' | 'ghLogin' | 'githubToken' | 'openrouterKey';
 export const ITEM_NAMES: readonly ItemName[] = ['claude', 'githubOwner', 'ghLogin', 'githubToken', 'openrouterKey'];
+/** Not needed to run: the Jev (OpenRouter) is optional, so its item never holds back `allOk`. */
+export const OPTIONAL_ITEMS: readonly ItemName[] = ['openrouterKey'];
 
 export interface Item {
   ok: boolean;
@@ -58,5 +60,5 @@ export async function computeStatus(d: StatusDeps): Promise<Status> {
     ITEM_NAMES.map(async (name) => [name, await computeItem(d, name).catch((err: Error) => ({ ok: false, detail: err.message }))] as const),
   );
   const items = Object.fromEntries(entries) as Record<ItemName, Item>;
-  return { items, allOk: ITEM_NAMES.every((n) => items[n].ok) };
+  return { items, allOk: ITEM_NAMES.every((n) => OPTIONAL_ITEMS.includes(n) || items[n].ok) };
 }

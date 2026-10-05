@@ -44,6 +44,24 @@ describe('status', () => {
     expect(s.items.githubOwner.detail).toContain('not set');
   });
 
+  it('does not wait for the optional OpenRouter key', async () => {
+    home = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-home-'));
+    const secretsDir = path.join(home, 'secrets');
+    await writeSecret(secretsDir, 'GITHUB_TOKEN', TOKEN);
+    await setGithubOwner('diego-dm-morais', home);
+    const exec = new FakeExec()
+      .onArgs('claude', ['auth', 'status'], () => ({ stdout: JSON.stringify({ loggedIn: true, email: 'a@b.c', subscriptionType: 'max' }) }))
+      .onArgs('gh', ['auth', 'status'], () => ({ stderr: '✓ Logged in to github.com account lukeware70X7' }))
+      .onArgs('gh', ['api', 'users/diego-dm-morais'], () => ({ stdout: JSON.stringify({ login: 'diego-dm-morais', type: 'User' }) }))
+      .onArgs('gh', ['api', 'user'], () => ({ stdout: `HTTP/2.0 200 OK
+X-Oauth-Scopes: repo
+
+${JSON.stringify({ login: 'diego-dm-morais' })}` }));
+    const s = await computeStatus({ exec: exec.exec, fetch: (async () => new Response('', { status: 500 })) as typeof fetch, home, secretsDir });
+    expect(s.items.openrouterKey.ok).toBe(false);
+    expect(s.allOk).toBe(true);
+  });
+
   it('turns green when every probe answers and exposes hints, not values', async () => {
     home = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-home-'));
     const secretsDir = path.join(home, 'secrets');

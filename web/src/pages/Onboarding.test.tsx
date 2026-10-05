@@ -47,4 +47,18 @@ describe('Onboarding GitHub flow', () => {
     await waitFor(() => expect(screen.getByTestId('card-Token do GitHub')).toBeTruthy());
     expect(api.owner).toHaveBeenCalledWith('acme');
   });
+
+  it('lets the optional OpenRouter (Jev) step be skipped', async () => {
+    const s: Status = { items: { ...status(true, true).items, githubToken: item(true, 'ok'), claude: item(true, 'ok'), openrouterKey: item(false, 'HTTP 402') }, allOk: false };
+    vi.spyOn(api, 'status').mockResolvedValue(s);
+    vi.spyOn(api, 'organizations').mockResolvedValue({ organizations: [], owner: 'acme' });
+    render(<Onboarding />);
+    await screen.findByTestId('card-Login do GitHub CLI');
+    for (let i = 0; i < 4; i++) {
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Próximo' }).hasAttribute('disabled')).toBe(false));
+      fireEvent.click(screen.getByRole('button', { name: 'Próximo' }));
+    }
+    await screen.findByTestId('card-Chave do OpenRouter (Jev, opcional)');
+    expect(screen.getByRole('button', { name: 'Próximo' }).hasAttribute('disabled')).toBe(false);
+  });
 });
