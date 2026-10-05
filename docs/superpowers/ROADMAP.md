@@ -315,6 +315,14 @@ window resets, resume exactly from the entry below.
   4. Cutover and removal: only after the stack runs and a smoke passes in the namespace; removal list shown to the
      human first, volumes with logins only with an explicit yes.
 - Plan 31 (`plans/2026-10-04-teams-ai-31-k8s-cutover.md`) fixes the stages: build image, recreate kind, secrets and data, apply, prove with the R2.2 cycle and a Job gate, then reconfirm and remove. Nothing is applied or removed until the human gives the go for stage 1, and a second explicit go for stage 6 (the volumes with the claude and gh logins). Superseded line:
+- **Progress 2026-10-05 (human gave autonomy for local-cluster envs and secrets):** stages 1–4 done. Image built from a clean
+  export of `main` and loaded; kind `teams-ai` recreated with the three host ports; Secrets `github-token`, `openrouter-api-key`,
+  `gemini-api-key` and a random `ui-token` created from host files (values never printed); `kubectl apply -k overlays/kind`.
+  Defect found and fixed (3f0abdf): the backend pod crash-looped because the UI refuses a non-loopback bind without
+  `TEAMS_AI_UI_TOKEN`; `backend.yaml` now reads it from Secret `ui-token`. Backend, buildkitd, registry and llama Running; UI answers
+  200 on `localhost:30787`; `scripts/smoke/local-logprobs.ts` passes against the in-cluster llama (CPU). OmniRoute is scaled to 0 (optional;
+  its Secret was removed because the encryption key is not known). **Not done:** Secret `claude-credentials` (held back while golden run
+  4 uses the host login, to avoid two consumers of one refresh token), data copy into the PVC, stage 5 proof, real egress CIDRs, stage 6.
 - (old) Not started. First action when R1.1b ends: turn the open questions above into a plan file in `plans/`.
 
 ## Stage 7 — Production readiness (workflow, 2026-10-04)
