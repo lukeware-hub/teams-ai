@@ -81,7 +81,7 @@ describe('classifyGate', () => {
     expect(classifyGate({ exitCode: 137, timedOut: false, stderrTail: '' })).toBe('infra');
     expect(classifyGate({ exitCode: 1, timedOut: false, stderrTail: 'Cannot connect to the Docker daemon at unix:///var/run/docker.sock' })).toBe('infra');
     expect(classifyGate({ exitCode: 1, timedOut: false, stderrTail: 'write /work/x: no space left on device' })).toBe('infra');
-    expect(classifyGate({ exitCode: null, timedOut: true, stderrTail: '' })).toBe('infra');
+    expect(classifyGate({ exitCode: null, timedOut: true, stderrTail: '' })).toBe('code');
   });
 
   it('does not mistake a test\'s own ENOENT or heap message for infra', () => {
@@ -139,7 +139,7 @@ describe('runGate', () => {
     const f = files({});
     const fake = new FakeExec().onArgs('docker', ['run'], () => ({ exitCode: null, timedOut: true }));
     const r = await runGate(gate({ name: 'unit-test', command: 'npm test' }), ctx, { exec: fake.exec, ...f.deps });
-    expect(r.failure).toBe('infra');
+    expect(r.failure).toBe('code');
     expect(fake.lines('docker')).toContain('rm -f gate-T1-create-a1-unit-test');
   });
 

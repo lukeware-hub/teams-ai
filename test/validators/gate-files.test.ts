@@ -26,3 +26,13 @@ describe('gateFileErrors', () => {
     expect(gateFileErrors(plan([gate('lint', 'node --check smoke/smoke.mjs', false)], []), repo)).toEqual([]);
   });
 });
+
+describe('gateTerminationErrors', () => {
+  it('rejects a gate that imports a repo module without process.exit(0), accepts one that exits', async () => {
+    const { gateTerminationErrors } = await import('../../server/validators/gate-files.js');
+    const bad = plan([gate('build', `node -e "import('./server.mjs').then(m=>console.log(typeof m.handler))"`)], []);
+    expect(gateTerminationErrors(bad)[0]).toMatch(/gate build loads a repo module but never calls process\.exit\(0\)/);
+    const ok = plan([gate('build', `node -e "import('./server.mjs').then(()=>process.exit(0))"`), gate('t', 'npm test')], []);
+    expect(gateTerminationErrors(ok)).toEqual([]);
+  });
+});

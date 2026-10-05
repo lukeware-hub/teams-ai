@@ -30,3 +30,19 @@ export function gateFileErrors(plan: Plan, repoFiles: ReadonlySet<string>): stri
   }
   return errors;
 }
+
+/**
+ * A gate that imports a repo module and then never calls process.exit(0) hangs when that module starts a server at import time
+ * (live: a build gate `import('./server.mjs').then(...)` on the not-yet-refactored fixture ran into the 15 min timeout, was retried
+ * as infra, and blocked the scaffold). Ending the check with an explicit exit keeps it bounded.
+ */
+export function gateTerminationErrors(plan: Plan): string[] {
+  const errors: string[] = [];
+  for (const gate of plan.gates) {
+    if (!gate.blocking) continue;
+    if (/(?:import|require)\(\s*['"]\.{1,2}\//.test(gate.command) && !/process\.exit\(\s*0\s*\)/.test(gate.command)) {
+      errors.push(`gate ${gate.name} loads a repo module but never calls process.exit(0): if the module starts a server at import time the gate never ends. Finish the check with process.exit(0)`);
+    }
+  }
+  return errors;
+}

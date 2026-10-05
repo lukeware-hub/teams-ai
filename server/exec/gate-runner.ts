@@ -113,7 +113,8 @@ export function dockerArgs(gate: Gate, ctx: GateContext): DockerInvocation {
 }
 
 export function classifyGate(r: Pick<GateResult, 'exitCode' | 'timedOut' | 'stderrTail'>): 'infra' | 'code' {
-  if (r.timedOut) return 'infra';
+  // A gate that ran into its timeout hung on its own command; repeating it as an infra retry only multiplies the wait.
+  if (r.timedOut) return 'code';
   if (r.exitCode === 137 || r.exitCode === 125) return 'infra';
   if (INFRA_PATTERNS.some((p) => p.test(r.stderrTail))) return 'infra';
   return 'code';

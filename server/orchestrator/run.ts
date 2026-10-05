@@ -283,7 +283,7 @@ export class Run {
         junitPath: plan.junitPath,
         cpus: 2,
         memory: '2g',
-        timeoutMs: 15 * 60_000,
+        timeoutMs: 10 * 60_000,
         secrets: this.deps.secrets,
         containerName: `teams-ai-${this.runId}-${branch.replace(/\//g, '__')}`,
         // Files the gate writes into the bind-mounted worktree (the JUnit report) must stay owned by the
