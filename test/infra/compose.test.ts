@@ -27,8 +27,8 @@ describe('docker-compose.yml (audit H4)', () => {
     expect(dind.volumes).toContain('teams-ai-data:/home/node/.teams-ai');
   });
 
-  it('publishes the UI on the host loopback only and drops every capability', () => {
-    expect(platform.ports).toEqual(['127.0.0.1:8787:8787']);
+  it('publishes the UI on the host loopback unless TEAMS_AI_UI_BIND says otherwise, and drops every capability', () => {
+    expect(platform.ports).toEqual(['${TEAMS_AI_UI_BIND:-127.0.0.1}:8787:8787']);
     expect(platform.cap_drop).toEqual(['ALL']);
   });
 

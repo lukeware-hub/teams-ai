@@ -10,10 +10,12 @@ services:
       dind:
         condition: service_healthy
     ports:
-      - '127.0.0.1:8787:8787'
+      # Loopback by default; the LAN needs TEAMS_AI_UI_BIND=0.0.0.0 and a TEAMS_AI_UI_TOKEN (both in .env, which git ignores).
+      - '${TEAMS_AI_UI_BIND:-127.0.0.1}:8787:8787'
     environment:
       # The port below is published on the host loopback only, so the UI needs no token (server/api/auth.ts).
-      TEAMS_AI_UI_LOOPBACK_PUBLISHED: '1'
+      TEAMS_AI_UI_LOOPBACK_PUBLISHED: ${TEAMS_AI_UI_LOOPBACK_PUBLISHED:-1}
+      TEAMS_AI_ALLOWED_HOSTS: ${TEAMS_AI_ALLOWED_HOSTS:-}
       TEAMS_AI_UI_TOKEN: ${TEAMS_AI_UI_TOKEN:-}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
