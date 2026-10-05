@@ -42,16 +42,6 @@ if ! have gh; then
   need_sudo apt-get update -y && need_sudo apt-get install -y gh
 fi
 
-echo "== kind + kubectl"
-if ! have kind; then
-  curl -fsSLo /tmp/kind "https://kind.sigs.k8s.io/dl/v0.29.0/kind-linux-amd64"
-  need_sudo install -m 755 /tmp/kind /usr/local/bin/kind
-fi
-if ! have kubectl; then
-  curl -fsSLo /tmp/kubectl "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-  need_sudo install -m 755 /tmp/kubectl /usr/local/bin/kubectl
-fi
-
 echo "== gitleaks + osv-scanner"
 if ! have gitleaks; then
   curl -fsSL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz | tar -xz -C /tmp gitleaks

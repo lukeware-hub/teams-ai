@@ -20,7 +20,7 @@ export function archivePath(intent: DeploymentIntent): string | null {
 }
 
 export interface DeployTarget {
-  readonly name: 'docker-local' | 'kind';
+  readonly name: 'docker-local';
   validate(intent: DeploymentIntent): Promise<string[]>;
   build(intent: DeploymentIntent): Promise<void>;
   apply(intent: DeploymentIntent): Promise<{ previous: string | null }>;

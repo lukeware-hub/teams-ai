@@ -1,7 +1,6 @@
 # The whole platform in one container: orchestrator, API and web UI on http://localhost:8787.
 # Gates and docker-local deploys run as sibling containers on the host daemon through the mounted socket; the daemon
 # cannot see this container's paths, so docker/config.json (seeded on first start) rewrites ~/.teams-ai to the data volume.
-# Put TEAMS_AI_UI_TOKEN in .env (see .env.example).
 services:
   teams-ai:
     build: .
@@ -9,7 +8,9 @@ services:
     ports:
       - '127.0.0.1:8787:8787'
     environment:
-      TEAMS_AI_UI_TOKEN: ${TEAMS_AI_UI_TOKEN:?set TEAMS_AI_UI_TOKEN in .env}
+      # The port below is published on the host loopback only, so the UI needs no token (server/api/auth.ts).
+      TEAMS_AI_UI_LOOPBACK_PUBLISHED: '1'
+      TEAMS_AI_UI_TOKEN: ${TEAMS_AI_UI_TOKEN:-}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
     # The bwrap sandbox of each agent step needs user namespaces, which Docker's default profiles block.

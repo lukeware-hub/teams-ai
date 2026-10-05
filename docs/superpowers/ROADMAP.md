@@ -33,7 +33,8 @@ Status values: `todo` → `planning` → `approved` → `in progress` → `done`
 **R6.1 superseded (human, 2026-10-05): the platform runs as ONE container from `docker-compose.yml`, no Kubernetes.**
 `docker compose up -d --build`, UI on `http://localhost:8787` (token in `.env`). Gates and docker-local deploys run as
 sibling containers through the mounted docker socket. Removed: `deploy/k8s`, the Job gate executor and the `executor`
-config. Still open: whether the `kind` deploy target for generated projects goes too.
+config, and the `kind` deploy target (generated projects deploy with `docker-local` only). The UI needs no token:
+the port is published on the host loopback only (`TEAMS_AI_UI_LOOPBACK_PUBLISHED`).
 
 ## Pause log
 

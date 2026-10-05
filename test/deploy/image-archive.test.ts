@@ -3,7 +3,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DockerLocalTarget } from '../../server/deploy/docker-local.js';
-import { KindTarget } from '../../server/deploy/kind.js';
 import { archivePath, type DeploymentIntent } from '../../server/deploy/target.js';
 import { deployIntent } from '../../server/orchestrator/phases/deploy.js';
 import { writeToolsInstaller } from '../../server/orchestrator/tools-install.js';
@@ -28,19 +27,6 @@ describe('image archive export', () => {
   it('archivePath is null without a request and absolute with one', () => {
     expect(archivePath({ ...intent, imageArchive: undefined })).toBeNull();
     expect(archivePath(intent)).toBe(ARCHIVE);
-  });
-
-  it('kind registry build adds an OCI output at the archive path', async () => {
-    const fake = new FakeExec();
-    await new KindTarget({ exec: fake.exec, secrets: {}, cluster: 'teams-ai', readFile: async () => '', sleep: async () => undefined, registry }).build(intent);
-    expect(fake.lines('mkdir')).toEqual(['-p /home/u/ws/repo/.tools']);
-    expect(fake.lines('buildctl')[0]).toContain(`--output type=image,name=registry:5000/todo-api:spec-001-abc1234,push=true,registry.insecure=true --output type=oci,dest=${ARCHIVE}`);
-  });
-
-  it('kind without registry saves the built image', async () => {
-    const fake = new FakeExec();
-    await new KindTarget({ exec: fake.exec, secrets: {}, cluster: 'teams-ai', readFile: async () => '', sleep: async () => undefined }).build(intent);
-    expect(fake.lines('docker')).toContain(`save -o ${ARCHIVE} todo-api:spec-001-abc1234`);
   });
 
   it('docker-local saves the built image', async () => {

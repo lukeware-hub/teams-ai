@@ -110,7 +110,7 @@ export function blockingFindings(review: Pick<SecurityOutput, 'findings'>): Secu
 
 export const DeploymentOutput = z.object({
   specHash,
-  target: z.enum(['docker-local', 'kind']),
+  target: z.enum(['docker-local']),
   image: z.string().min(1),
   port: z.number().int().min(1).max(65535),
   healthcheckPath: z.string().startsWith('/'),

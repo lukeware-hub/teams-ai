@@ -29,7 +29,6 @@ import { Accounting } from './budget/accounting.js';
 import { addProject, readUserConfig } from './onboarding/config-store.js';
 import { hasScript, spawnScriptPty } from './onboarding/pty.js';
 import { DockerLocalTarget } from './deploy/docker-local.js';
-import { KindTarget } from './deploy/kind.js';
 import { httpGet } from './deploy/target.js';
 
 export interface CliIo {
@@ -43,7 +42,7 @@ const USAGE = `Usage:
   teams-ai run    --project <dir> [--spec <id>] [--run-id <id>] [--max-parallel N] [--dry-run] [--draft]
   teams-ai resume --project <dir> --run <runId>
   teams-ai spec readme --project <dir> --spec <id> [--run-id <id>]   the SM writes docs/README.md (docs PR)
-  teams-ai spec deploy --project <dir> --spec <id> [--target kind|docker-local] [--run-id <id>]   deploy main again, no agent
+  teams-ai spec deploy --project <dir> --spec <id> [--target docker-local] [--run-id <id>]   deploy main again, no agent
   teams-ai status --project <dir> --run <runId> [--json]
   teams-ai supervise --project <dir> [--interval s]   resume interrupted runs until they finish
   teams-ai ui     [--port N]            start the local web UI (onboarding, status)`;
@@ -161,7 +160,7 @@ async function preconditions(exec: Exec, repo: string, specId: string, draft: bo
   return errors;
 }
 
-export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: string | undefined, opts: { dryRun: boolean; maxParallel?: number; draft?: boolean; complete?: boolean; readme?: boolean; deploy?: boolean; target?: 'kind' | 'docker-local' }): Promise<RunDeps> {
+export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: string | undefined, opts: { dryRun: boolean; maxParallel?: number; draft?: boolean; complete?: boolean; readme?: boolean; deploy?: boolean; target?: 'docker-local' }): Promise<RunDeps> {
   const cfgFile = path.join(expandHome('~/.teams-ai'), 'config.json');
   const cfg: Config = loadConfig(await fs.readFile(cfgFile, 'utf8').then(JSON.parse).catch(() => ({})));
   const project = await readJson(path.join(projectDir, 'docs', 'project.json'), (v) => Project.parse(v));
@@ -207,9 +206,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
     io.stderr('dry run: every agent step answers from the fake claude scenario (set steps in code before use)');
   }
   const bootstrap = opts.draft ? { docsDir: path.join(projectDir, 'docs'), owner: project.github.owner ?? cfg.github.owner } : undefined;
-  const target = (opts.target ?? project.deploy.target) === 'kind'
-    ? new KindTarget({ exec, secrets, cluster: 'teams-ai', readFile: (p) => fs.readFile(p, 'utf8') })
-    : new DockerLocalTarget({ exec, get: httpGet, secrets, serviceHost: cfg.docker.serviceHost, publishBind: cfg.docker.publishBind });
+  const target = new DockerLocalTarget({ exec, get: httpGet, secrets, serviceHost: cfg.docker.serviceHost, publishBind: cfg.docker.publishBind });
   return { cfg, ws, project, spec, firstSpec, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target };
 }
 
@@ -228,9 +225,9 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
   const readming = command === 'spec' && rest[0] === 'readme';
   const deploying = command === 'spec' && rest[0] === 'deploy';
   const targetFlag = f.target;
-  if (deploying && targetFlag !== undefined && targetFlag !== 'kind' && targetFlag !== 'docker-local') {
+  if (deploying && targetFlag !== undefined && targetFlag !== 'docker-local') {
     io.stderr(USAGE);
-    io.stderr('--target must be kind or docker-local');
+    io.stderr('--target must be docker-local');
     return 2;
   }
   if (!command || (!(completing || readming || deploying || ['run', 'resume', 'status', 'ui', 'supervise'].includes(command))) || (!projectDir && command !== 'ui')) {
@@ -277,7 +274,7 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
       }
       return 0;
     }
-    const load = loadRunDeps(io, projectDir, typeof f.spec === 'string' ? f.spec : undefined, { dryRun: f['dry-run'] === true, draft: f.draft === true, maxParallel: typeof f['max-parallel'] === 'string' ? Number(f['max-parallel']) : undefined, complete: completing, readme: readming, deploy: deploying, target: deploying ? (targetFlag as 'kind' | 'docker-local' | undefined) : undefined });
+    const load = loadRunDeps(io, projectDir, typeof f.spec === 'string' ? f.spec : undefined, { dryRun: f['dry-run'] === true, draft: f.draft === true, maxParallel: typeof f['max-parallel'] === 'string' ? Number(f['max-parallel']) : undefined, complete: completing, readme: readming, deploy: deploying, target: deploying ? (targetFlag as 'docker-local' | undefined) : undefined });
     const deps = factory === defaultFactory ? await load : await load.catch(() => null as unknown as RunDeps);
     const explicitId = typeof f['run-id'] === 'string' ? f['run-id'] : undefined;
     if (explicitId !== undefined && !/^[A-Za-z0-9_.-]+$/.test(explicitId)) throw new Error('--run-id must match ^[A-Za-z0-9_.-]+$');

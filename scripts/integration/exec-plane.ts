@@ -3,7 +3,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { Gate } from '../../server/contracts/plan.js';
 import { DockerLocalTarget } from '../../server/deploy/docker-local.js';
-import { KindTarget } from '../../server/deploy/kind.js';
 import { httpGet, runDeployment, type DeploymentIntent } from '../../server/deploy/target.js';
 import { execCommand } from '../../server/exec/command.js';
 import { runGates } from '../../server/exec/gate-runner.js';
@@ -56,11 +55,5 @@ console.log('  ', JSON.stringify(await runDeployment(local, intent, { smoke, bas
 await local.destroy(intent);
 await execCommand({ bin: 'docker', args: ['rmi', '-f', `${intent.image}:${intent.tag}`], timeoutMs: 60_000 }); // no image left behind
 
-if (process.env.KIND_CLUSTER) {
-  console.log(`== kind deploy (${process.env.KIND_CLUSTER})`);
-  const kind = new KindTarget({ exec: execCommand, secrets: {}, cluster: process.env.KIND_CLUSTER, readFile: (p) => fs.readFile(p, 'utf8') });
-  console.log('  ', JSON.stringify(await runDeployment(kind, intent, { smoke: async () => ({ ok: true, detail: 'in-cluster probe is the smoke' }), baseUrl: '' })));
-  await kind.destroy(intent);
-}
 await execCommand({ bin: 'docker', args: ['rmi', '-f', `${intent.image}:${intent.tag}`], timeoutMs: 60_000 }).catch(() => undefined);
 await fs.rm(work, { recursive: true, force: true });

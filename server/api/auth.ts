@@ -16,10 +16,14 @@ export function tokenEquals(given: string, expected: string): boolean {
   return timingSafeEqual(a, b);
 }
 
+/** Set in a container whose port is published on the host loopback only (docker-compose.yml): the bind is 0.0.0.0 but
+ * nothing outside the host reaches it, so it is treated like a loopback bind. Host and cross-site checks still apply. */
+export const LOOPBACK_PUBLISHED_ENV = 'TEAMS_AI_UI_LOOPBACK_PUBLISHED';
+
 /** Returns the effective token (null = auth disabled) or throws when the configuration is unsafe. */
-export function resolveAuth(token: string | undefined, host: string, warn: (line: string) => void): string | null {
+export function resolveAuth(token: string | undefined, host: string, warn: (line: string) => void, loopbackPublished = process.env[LOOPBACK_PUBLISHED_ENV] === '1'): string | null {
   if (token) return token;
-  if (!isLoopbackHost(host)) throw new Error(`refusing to listen on ${host} without ${TOKEN_ENV}: set a bearer token or bind to loopback`);
+  if (!isLoopbackHost(host) && !loopbackPublished) throw new Error(`refusing to listen on ${host} without ${TOKEN_ENV}: set a bearer token or bind to loopback`);
   warn(`warning: ${TOKEN_ENV} is not set; the API is unauthenticated (loopback only)`);
   return null;
 }

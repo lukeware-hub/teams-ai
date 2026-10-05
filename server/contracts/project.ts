@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ID_PATTERNS } from '../core/ids.js';
 
-export const DeployTarget = z.enum(['docker-local', 'kind']);
+export const DeployTarget = z.enum(['docker-local']);
 export type DeployTarget = z.infer<typeof DeployTarget>;
 
 export const Persona = z.object({

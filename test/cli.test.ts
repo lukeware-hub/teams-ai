@@ -28,7 +28,7 @@ describe('teams-ai cli', () => {
     const a = io(['spec', 'deploy', '--project', '/nowhere', '--spec', 's', '--target', 'aws']);
     expect(await main(a.io)).toBe(2);
     expect(a.err.join('\n')).toContain('spec deploy');
-    expect(a.err.join('\n')).toContain('--target must be kind or docker-local');
+    expect(a.err.join('\n')).toContain('--target must be docker-local');
     const b = io(['spec', 'deploy']);
     expect(await main(b.io)).toBe(2);
     expect(b.err.join('\n')).toContain('--project');

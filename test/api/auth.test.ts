@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { isLoopbackHost, tokenEquals } from '../../server/api/auth.js';
+import { isLoopbackHost, resolveAuth, tokenEquals } from '../../server/api/auth.js';
 import { startApi, type Route } from '../../server/api/server.js';
 
 const routes: Route[] = [
@@ -43,6 +43,10 @@ describe('api bearer auth', () => {
   });
   it('refuses to start on a non-loopback host without a token', async () => {
     await expect(startApi({ routes, token: '', host: '0.0.0.0' }, 0)).rejects.toThrow(/TEAMS_AI_UI_TOKEN/);
+  });
+  it('accepts a 0.0.0.0 bind without a token only when the port is published on the host loopback', () => {
+    expect(() => resolveAuth(undefined, '0.0.0.0', () => undefined, false)).toThrow(/TEAMS_AI_UI_TOKEN/);
+    expect(resolveAuth(undefined, '0.0.0.0', () => undefined, true)).toBeNull();
   });
   it('opts out on loopback without a token, with a warning', async () => {
     const lines: string[] = [];

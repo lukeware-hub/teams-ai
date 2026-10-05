@@ -24,8 +24,6 @@ export const REQUIRED_TOOLS: ReadonlyArray<{ name: string; minVersion?: string; 
   { name: 'claude', minVersion: '2.1.0' },
   { name: 'gh' },
   { name: 'docker' },
-  { name: 'kind' },
-  { name: 'kubectl' },
   { name: 'gitleaks' },
   { name: 'osv-scanner' },
   { name: 'graphify' },

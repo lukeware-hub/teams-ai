@@ -22,7 +22,7 @@ version_of() {
   esac
 }
 
-tools=(node npm git claude gh docker kind kubectl gitleaks osv-scanner graphify nvidia-smi llama-server)
+tools=(node npm git claude gh docker gitleaks osv-scanner graphify nvidia-smi llama-server)
 first=1
 printf '{"host":{"kernel":"%s","distro":"%s","onLinuxFs":%s},"tools":[' \
   "$(uname -r)" "${WSL_DISTRO_NAME:-unknown}" \
