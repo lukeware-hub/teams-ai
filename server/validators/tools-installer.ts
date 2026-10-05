@@ -22,6 +22,8 @@ export const PINNED_TOOLS = {
   },
 } as const;
 export const SEMGREP_VERSION = '1.131.0';
+export const PIP_PYZ_URL = 'https://bootstrap.pypa.io/pip/zipapp/pip-24.3.1.pyz';
+export const PIP_PYZ_SHA256 = 'c59df64b826d5baa978829fd1e1b3ea2e748f73dce7cce58d09aa28a1c9323a7';
 
 /** Deterministic installer for the scanner gates; same input, same bytes (golden-file tested). */
 export function renderToolsInstaller(): string {
@@ -43,15 +45,17 @@ fetch() {
 }
 
 fetch "${g.url}" ${g.sha256} "$TMP/gitleaks.tgz"
-tar -xzf "$TMP/gitleaks.tgz" -C "$BIN" gitleaks
+tar --no-same-owner -xzf "$TMP/gitleaks.tgz" -C "$BIN" gitleaks
 
 fetch "${o.url}" ${o.sha256} "$BIN/osv-scanner"
 chmod +x "$BIN/osv-scanner"
 
 fetch "${t.url}" ${t.sha256} "$TMP/trivy.tgz"
-tar -xzf "$TMP/trivy.tgz" -C "$BIN" trivy
+tar --no-same-owner -xzf "$TMP/trivy.tgz" -C "$BIN" trivy
 
-python3 -m pip install --quiet --disable-pip-version-check --target "$ROOT/.tools/py" "semgrep==${SEMGREP_VERSION}"
+fetch "${PIP_PYZ_URL}" ${PIP_PYZ_SHA256} "$TMP/pip.pyz"
+# The gate image (node:22-bookworm) has python3 but no pip, and apt does not work without capabilities: the pinned pip zipapp does.
+python3 "$TMP/pip.pyz" install --quiet --disable-pip-version-check --root-user-action=ignore --target "$ROOT/.tools/py" "semgrep==${SEMGREP_VERSION}"
 cat > "$BIN/semgrep" <<'WRAP'
 #!/bin/sh
 D="$(cd "$(dirname "$0")/.." && pwd)"

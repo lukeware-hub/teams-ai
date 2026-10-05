@@ -13,15 +13,17 @@ fetch() {
 }
 
 fetch "https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz" a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb "$TMP/gitleaks.tgz"
-tar -xzf "$TMP/gitleaks.tgz" -C "$BIN" gitleaks
+tar --no-same-owner -xzf "$TMP/gitleaks.tgz" -C "$BIN" gitleaks
 
 fetch "https://github.com/google/osv-scanner/releases/download/v2.2.2/osv-scanner_linux_amd64" c799274b682e0437c802d4714a136ad09b39c65547c460049ba5358d28afa576 "$BIN/osv-scanner"
 chmod +x "$BIN/osv-scanner"
 
 fetch "https://github.com/aquasecurity/trivy/releases/download/v0.75.0/trivy_0.75.0_Linux-64bit.tar.gz" c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f "$TMP/trivy.tgz"
-tar -xzf "$TMP/trivy.tgz" -C "$BIN" trivy
+tar --no-same-owner -xzf "$TMP/trivy.tgz" -C "$BIN" trivy
 
-python3 -m pip install --quiet --disable-pip-version-check --target "$ROOT/.tools/py" "semgrep==1.131.0"
+fetch "https://bootstrap.pypa.io/pip/zipapp/pip-24.3.1.pyz" c59df64b826d5baa978829fd1e1b3ea2e748f73dce7cce58d09aa28a1c9323a7 "$TMP/pip.pyz"
+# The gate image (node:22-bookworm) has python3 but no pip, and apt does not work without capabilities: the pinned pip zipapp does.
+python3 "$TMP/pip.pyz" install --quiet --disable-pip-version-check --root-user-action=ignore --target "$ROOT/.tools/py" "semgrep==1.131.0"
 cat > "$BIN/semgrep" <<'WRAP'
 #!/bin/sh
 D="$(cd "$(dirname "$0")/.." && pwd)"

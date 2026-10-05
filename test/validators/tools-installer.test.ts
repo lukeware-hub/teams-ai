@@ -12,7 +12,7 @@ describe('renderToolsInstaller', () => {
     expect(renderToolsInstaller()).toBe(out);
     expect(out).not.toContain('\r');
     for (const t of Object.values(PINNED_TOOLS)) expect(out).toContain(`"${t.url}" ${t.sha256}`);
-    expect(out.match(/^fetch "/gm)).toHaveLength(3);
+    expect(out.match(/^fetch "/gm)).toHaveLength(4);
     expect(out).toContain('semgrep==');
   });
 });
