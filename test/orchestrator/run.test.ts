@@ -340,12 +340,6 @@ describe('Run', () => {
     expect((await fs.readdir(path.join(remote.root, 'runs')).catch(() => [])).length).toBe(0); // nothing was journaled
   });
 
-  it('refuses the k8s gate executor with a deploy target that has no in-cluster URL', async () => {
-    const target = { name: 'docker-local' } as never;
-    const d = deps(happy, { target, gateExecutor: { kind: 'k8s', run: async () => { throw new Error('unused'); } } as never });
-    await expect(Run.create(d)).rejects.toThrow(/in-cluster service URL; the docker-local target does not/);
-  });
-
   it('create accepts an explicit run id', async () => {
     const run = await Run.create(await withAgents(deps(happy)), 'spec-001-r7');
     expect(run.runId).toBe('spec-001-r7');

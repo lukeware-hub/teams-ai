@@ -1,0 +1,10 @@
+{
+  "github": { "owner": "your-github-org-or-user" },
+  "docker": {
+    "bindRewrite": { "from": "/home/node/.teams-ai", "to": "/var/lib/docker/volumes/teams-ai-data/_data" },
+    "serviceHost": "host.docker.internal",
+    "publishBind": "0.0.0.0"
+  },
+  "decisions": { "local": { "enabled": false } },
+  "projects": []
+}

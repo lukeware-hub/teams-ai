@@ -122,21 +122,6 @@ export const Config = z.object({
       publishBind: z.string().min(1).default('127.0.0.1'),
     })
     .prefault({}),
-  /** Where quality gates and the smoke suite run: `docker` (default) or Kubernetes Jobs. */
-  executor: z
-    .object({
-      kind: z.enum(['docker', 'k8s']).default('docker'),
-      namespace: z.string().min(1).default('teams-ai'),
-      serviceAccount: z.string().min(1).default('default'),
-      /** PVC holding the workspace; the orchestrator mounts it at `workspaceRoot` (backend.yaml: teams-ai-data at ~/.teams-ai). */
-      workspacePvc: z.string().min(1).default('teams-ai-data'),
-      workspaceRoot: linuxPath.default('/root/.teams-ai'),
-      /** The PVC subPath that `workspaceRoot` is. */
-      workspaceSubPath: z.string().min(1).default('teams-ai'),
-      runAsUser: z.number().int().nonnegative().default(1000),
-      runAsGroup: z.number().int().nonnegative().default(1000),
-    })
-    .prefault({}),
   /** Directories holding docs/project.json, registered from the UI (spec run API §2). */
   projects: z.array(z.object({ dir: z.string().min(1) })).default([]),
   omniroute: z

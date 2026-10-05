@@ -30,7 +30,6 @@ import { addProject, readUserConfig } from './onboarding/config-store.js';
 import { hasScript, spawnScriptPty } from './onboarding/pty.js';
 import { DockerLocalTarget } from './deploy/docker-local.js';
 import { KindTarget } from './deploy/kind.js';
-import { createGateExecutor } from './exec/gate-executor.js';
 import { httpGet } from './deploy/target.js';
 
 export interface CliIo {
@@ -209,9 +208,9 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   }
   const bootstrap = opts.draft ? { docsDir: path.join(projectDir, 'docs'), owner: project.github.owner ?? cfg.github.owner } : undefined;
   const target = (opts.target ?? project.deploy.target) === 'kind'
-    ? new KindTarget({ exec, secrets, cluster: 'teams-ai', namespace: cfg.executor.kind === 'k8s' ? cfg.executor.namespace : undefined, readFile: (p) => fs.readFile(p, 'utf8') })
+    ? new KindTarget({ exec, secrets, cluster: 'teams-ai', readFile: (p) => fs.readFile(p, 'utf8') })
     : new DockerLocalTarget({ exec, get: httpGet, secrets, serviceHost: cfg.docker.serviceHost, publishBind: cfg.docker.publishBind });
-  return { cfg, ws, project, spec, firstSpec, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target, gateExecutor: createGateExecutor(cfg.executor, exec) };
+  return { cfg, ws, project, spec, firstSpec, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target };
 }
 
 type Factory = (deps: RunDeps, runId?: string, explicitId?: string) => Promise<Run>;

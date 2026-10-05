@@ -30,7 +30,10 @@ Status values: `todo` → `planning` → `approved` → `in progress` → `done`
 
 ## Current item
 
-**R1.2 / R7.1** — run 1 ended `deploy-failed` (smoke cannot reach the service in docker-local); next is the Job-based gate and smoke runner in Kubernetes.
+**R6.1 superseded (human, 2026-10-05): the platform runs as ONE container from `docker-compose.yml`, no Kubernetes.**
+`docker compose up -d --build`, UI on `http://localhost:8787` (token in `.env`). Gates and docker-local deploys run as
+sibling containers through the mounted docker socket. Removed: `deploy/k8s`, the Job gate executor and the `executor`
+config. Still open: whether the `kind` deploy target for generated projects goes too.
 
 ## Pause log
 
@@ -287,7 +290,7 @@ window resets, resume exactly from the entry below.
 
 ## Stage 6 — Everything in Kubernetes
 
-### R6.1 Run the whole stack as pods in one namespace — `approved to plan, awaiting go` (plan 31 written 2026-10-04)
+### R6.1 Run the whole stack as pods in one namespace — `dropped` (2026-10-05, replaced by a single compose container)
 
 - Goal (human, 2026-10-04): application, back, front, OmniRoute and the local model all run in the same Kubernetes
   namespace, every pod reaching every other and the internet (ingress and egress open); nothing left installed

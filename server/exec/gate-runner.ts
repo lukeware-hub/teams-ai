@@ -125,7 +125,7 @@ export interface GateRunOutcome {
 
 /** Runs one gate command in the toolchain image against the worktree. A rejection is an infrastructure failure. */
 export interface GateExecutor {
-  readonly kind: 'docker' | 'k8s';
+  readonly kind: 'docker';
   run(gate: Gate, ctx: GateContext): Promise<GateRunOutcome>;
 }
 
