@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { Gate } from '../contracts/plan.js';
 import { redactSecrets } from '../core/redact.js';
-import { parseJUnit, type TestResult } from '../evidence/junit.js';
+import { parseJUnit, parseTap, type TestResult } from '../evidence/junit.js';
 import type { Exec } from './command.js';
 
 export interface GateContext {
@@ -175,12 +175,14 @@ export async function runGate(gate: Gate, ctx: GateContext, deps: GateDeps): Pro
   await deps.removeFile(report);
 
   let base: Omit<GateResult, 'name' | 'blocking' | 'passed' | 'junit' | 'failure'>;
+  let stdout = '';
   // Tails reach the event store and UI; secret values injected into the container never do.
   const secretValues = Object.values(ctx.secrets);
   const clean = (s: string) => redactSecrets(tail(s), secretValues);
   const executor = deps.executor ?? dockerGateExecutor(deps.exec);
   try {
     const r = await executor.run(gate, ctx);
+    stdout = r.stdout;
     base = { exitCode: r.exitCode, timedOut: r.timedOut, durationMs: r.durationMs, stdoutTail: clean(r.stdout), stderrTail: clean(r.stderr) };
   } catch (err) {
     base = { exitCode: null, timedOut: false, durationMs: Date.now() - started, stderrTail: clean((err as Error).message), stdoutTail: '' };
@@ -195,6 +197,10 @@ export async function runGate(gate: Gate, ctx: GateContext, deps: GateDeps): Pro
     } catch {
       junit = null;
     }
+  }
+  if (junit === null && passed) {
+    const tap = parseTap(stdout);
+    if (tap.length > 0) junit = tap;
   }
   return { name: gate.name, blocking: gate.blocking, passed, junit, failure: passed ? null : classifyGate(base), ...base };
 }

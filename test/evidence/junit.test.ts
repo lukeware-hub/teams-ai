@@ -66,3 +66,12 @@ describe('parseJUnit', () => {
     expect(() => parseJUnit('<testsuites><testsuite>')).toThrow(JUnitParseError);
   });
 });
+
+describe('parseTap', () => {
+  it('reads top-level ok / not ok lines with their [AC-xxx] tags and ignores indented subtests', async () => {
+    const { parseTap } = await import('../../server/evidence/junit.js');
+    const tap = ['TAP version 13', '# Subtest: [AC-001] a', '    ok 1 - inner', 'ok 1 - [AC-001] GET /hello answers 200', 'not ok 2 - [AC-003] bad path', 'ok 3 - [AC-002] later # SKIP not now', '1..3'].join('\n');
+    expect(parseTap(tap).map((t) => [t.acIds, t.status])).toEqual([[['AC-001'], 'passed'], [['AC-003'], 'failed'], [['AC-002'], 'skipped']]);
+    expect(parseTap('no tap here')).toEqual([]);
+  });
+});

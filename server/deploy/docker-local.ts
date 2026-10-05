@@ -26,14 +26,27 @@ export class DockerLocalTarget implements DeployTarget {
     return `teams-ai-${intent.projectId}`.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
   }
 
-  /** The app's compose service is named after the project (devops.md contract). */
-  private service(intent: DeploymentIntent) {
-    return intent.projectId;
+  private readonly services = new Map<string, string>();
+
+  /**
+   * The app's compose service. devops.md asks for the project id, but an agent may name it otherwise (live: `hello` for project
+   * `hello-d7`, which failed the first deploy at verify); the compose file is the truth: the project id if it is a service, else the
+   * only service; with several services and none named like the project, the project id (so the failure names it).
+   */
+  private async service(intent: DeploymentIntent): Promise<string> {
+    const key = `${intent.contextDir}/${intent.compose}`;
+    const known = this.services.get(key);
+    if (known) return known;
+    const r = await this.compose(intent, ['config', '--services'], imageRef(intent), 60_000);
+    const names = r.exitCode === 0 ? r.stdout.split(/\s+/).filter((n) => n !== '') : [];
+    const chosen = names.includes(intent.projectId) ? intent.projectId : names.length === 1 ? names[0]! : intent.projectId;
+    this.services.set(key, chosen);
+    return chosen;
   }
 
   /** Smoke gate runs on the compose project's default network and reaches the app by its service name. */
-  gateServiceUrl(intent: DeploymentIntent) {
-    return intent.compose ? `http://${this.service(intent)}:${intent.port}` : this.baseUrl(intent);
+  async gateServiceUrl(intent: DeploymentIntent) {
+    return intent.compose ? `http://${await this.service(intent)}:${intent.port}` : this.baseUrl(intent);
   }
 
   gateNetwork(intent: DeploymentIntent) {
@@ -74,7 +87,7 @@ export class DockerLocalTarget implements DeployTarget {
 
   async currentImage(intent: DeploymentIntent): Promise<string | null> {
     if (intent.compose) {
-      const ps = await this.compose(intent, ['ps', '-q', this.service(intent)], null, 60_000);
+      const ps = await this.compose(intent, ['ps', '-q', await this.service(intent)], null, 60_000);
       const id = ps.stdout.trim().split(/\s+/)[0];
       if (ps.exitCode !== 0 || !id) return null;
       const r = await this.docker(['inspect', '--format', '{{.Config.Image}}', id], undefined, 60_000);
@@ -134,9 +147,9 @@ export class DockerLocalTarget implements DeployTarget {
   async verify(intent: DeploymentIntent) {
     if (intent.compose) {
       // `up --wait` already gated on the compose healthcheck; re-read it so a later crash is not masked by the HTTP check.
-      const ps = await this.compose(intent, ['ps', '-q', this.service(intent)], null, 60_000);
+      const ps = await this.compose(intent, ['ps', '-q', await this.service(intent)], null, 60_000);
       const id = ps.stdout.trim().split(/\s+/)[0];
-      if (!id) return { healthy: false, detail: `compose service ${this.service(intent)} is not running` };
+      if (!id) return { healthy: false, detail: `compose service ${await this.service(intent)} is not running` };
       const h = await this.docker(['inspect', '--format', '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}', id], undefined, 60_000);
       const status = h.stdout.trim();
       if (status === 'unhealthy' || status === 'starting') return { healthy: false, detail: `compose healthcheck ${status}` };

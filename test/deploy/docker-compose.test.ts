@@ -58,12 +58,12 @@ describe('DockerLocalTarget with a compose file', () => {
     expect(fake.lines('docker')).toEqual([`${P} down -v`]);
   });
 
-  it('reports the service name URL and the project network for the smoke gate', () => {
+  it('reports the service name URL and the project network for the smoke gate', async () => {
     const t = mk(new FakeExec());
-    expect(t.gateServiceUrl(intent)).toBe('http://Todo-Api:3000');
+    expect(await t.gateServiceUrl(intent)).toBe('http://Todo-Api:3000');
     expect(t.gateNetwork(intent)).toBe('teams-ai-todo-api_default');
     const { compose: _c, ...plain } = intent;
-    expect(t.gateServiceUrl(plain)).toBe('http://127.0.0.1:3000');
+    expect(await t.gateServiceUrl(plain)).toBe('http://127.0.0.1:3000');
     expect(t.gateNetwork(plain)).toBeUndefined();
   });
 
@@ -72,5 +72,23 @@ describe('DockerLocalTarget with a compose file', () => {
     const ctx = { worktree: '/w', image: 'img', junitPath: 'j', cpus: 1, memory: '1g', timeoutMs: 1, secrets: {}, containerName: 'c' };
     expect(dockerArgs(gate, { ...ctx, network: 'p_default' }).args).toContain('p_default');
     expect(dockerArgs(gate, ctx).args).toContain('bridge');
+  });
+});
+
+describe('DockerLocalTarget: the compose service name', () => {
+
+  it('uses the only service of the compose file when it is not named like the project (live: hello for hello-d7)', async () => {
+    const fake = new FakeExec().on((s) => s.args.includes('--services'), () => ({ stdout: 'hello\n' })).on((s) => s.args.includes('ps'), () => ({ stdout: 'abc\n' })).onArgs('docker', ['inspect'], () => ({ stdout: 'healthy\n' }));
+    const target = mk(fake);
+    expect(await target.gateServiceUrl!({ ...intent, projectId: 'hello-d7' })).toBe('http://hello:3000');
+    expect((await target.verify({ ...intent, projectId: 'hello-d7' })).healthy).toBe(true);
+    expect(fake.lines('docker').find((l) => l.includes(' ps '))).toContain('ps -q hello');
+  });
+
+  it('prefers the service named like the project and falls back to the project id', async () => {
+    const both = new FakeExec().on((s) => s.args.includes('--services'), () => ({ stdout: 'db\nTodo-Api\n' }));
+    expect(await mk(both).gateServiceUrl!(intent)).toBe('http://Todo-Api:3000');
+    const several = new FakeExec().on((s) => s.args.includes('--services'), () => ({ stdout: 'db\nweb\n' }));
+    expect(await mk(several).gateServiceUrl!(intent)).toBe('http://Todo-Api:3000');
   });
 });

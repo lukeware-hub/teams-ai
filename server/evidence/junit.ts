@@ -44,6 +44,23 @@ function collectCases(container: XmlNode, suiteName: string, out: RawCase[]): vo
   for (const child of asNodes(container.testsuites)) collectCases(child, ownName, out);
 }
 
+/**
+ * TAP is the default output of `node --test` outside a terminal; a smoke/e2e command that does not write JUnit still reports every
+ * test this way (live: all `ok` lines, yet "no smoke test" for each criterion). Only top-level `ok`/`not ok` lines count: subtests
+ * are indented and roll up into their parent.
+ */
+export function parseTap(text: string): TestResult[] {
+  const out: TestResult[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const m = /^(not )?ok \d+(?: -)? (.*)$/.exec(line);
+    if (!m) continue;
+    const skipped = /#\s*(skip|todo)\b/i.test(m[2]!);
+    const name = m[2]!.replace(/\s+#\s*(skip|todo)\b.*$/i, '').trim();
+    out.push({ id: `tap::${name}`, name, classname: 'tap', status: skipped ? 'skipped' : m[1] ? 'failed' : 'passed', acIds: extractAcIds(name) });
+  }
+  return out;
+}
+
 export function parseJUnit(xml: string): TestResult[] {
   const validation = XMLValidator.validate(xml);
   if (validation !== true) {
