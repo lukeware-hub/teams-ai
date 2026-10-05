@@ -1,4 +1,5 @@
 import { DELIVERY_PATH_FIELDS, type Plan, type PlanTask } from '../contracts/plan.js';
+import { gateFileErrors } from './gate-files.js';
 import type { Spec } from '../contracts/spec.js';
 import { validateE2e } from './e2e.js';
 import { validateSecurityGates } from './security-tooling.js';
@@ -16,6 +17,8 @@ export interface PlanCheckOptions {
   requireSecurityTooling?: boolean;
   /** New plans must carry a post-deploy e2e gate (roadmap R8.4); false keeps older plans valid. */
   requireE2e?: boolean;
+  /** Files already tracked on main; when given, blocking gates may only name files that exist or that a root task creates. */
+  repoFiles?: ReadonlySet<string>;
 }
 
 export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): string[] {
@@ -31,6 +34,8 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
   // A leading dash would be read by `docker run` as a flag, not as the image.
   if (plan.gateImage.startsWith('-')) errors.push(`gateImage ${plan.gateImage} must not start with '-'`);
   if (/(^|[:/-])alpine(\d|[.:-]|$)/i.test(plan.gateImage)) errors.push(`gateImage ${plan.gateImage} is Alpine (musl); use a glibc-based image such as node:22-bookworm-slim`);
+
+  if (opts.repoFiles) errors.push(...gateFileErrors(plan, opts.repoFiles));
 
   const ids = new Set<string>();
   let duplicates = false;

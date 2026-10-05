@@ -6,6 +6,7 @@ import type { StepOutcome } from '../../runner/step.js';
 import { canonicalJson } from '../../contracts/hash.js';
 import { RunEvent } from '../../pipeline/run-state.js';
 import { validatePlan } from '../../validators/plan.js';
+import { git } from '../../git/git.js';
 import { rankPlans } from '../../decide/decisions/plan-rank.js';
 import { Intent, OrchEvent } from '../events.js';
 import { planPack } from '../steps.js';
@@ -31,6 +32,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
   await deps.journal.fact(OrchEvent.PhaseStarted, { phase: 2 });
   const worktree = await docsWorktree(deps, branch);
   const max = deps.maxPhaseAttempts ?? 3;
+  const repoFiles = new Set((await git(worktree, ['ls-files'], deps.exec)).split('\n').filter((f) => f !== ''));
   let feedback: string | null = null;
   for (let attempt = 1; attempt <= max; attempt++) {
     const out: StepOutcome<OutputOf<'plan'>> = await deps.runAgent<'plan'>({
@@ -41,7 +43,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
       phase: 'phase2',
       taskId: null,
       attempt,
-      semantic: [((p: Plan) => validatePlan(p, deps.spec, { firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e })) as never],
+      semantic: [((p: Plan) => validatePlan(p, deps.spec, { firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e, repoFiles })) as never],
     });
     if (!out.ok) {
       if (out.failure === 'quota' || out.failure === 'auth') {
@@ -53,7 +55,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
       continue;
     }
     const { alternatives = [], ...primary } = out.value as Plan & { alternatives?: Plan[] };
-    const valid = alternatives.filter((p) => p.specHash === deps.specHash && validatePlan(p, deps.spec, { firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e }).length === 0);
+    const valid = alternatives.filter((p) => p.specHash === deps.specHash && validatePlan(p, deps.spec, { firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e, repoFiles }).length === 0);
     const candidates: Plan[] = [primary, ...valid];
     let plan: Plan = primary;
     if (candidates.length > 1) {
