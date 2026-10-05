@@ -120,6 +120,8 @@ export const Config = z.object({
       bindRewrite: z.object({ from: linuxPath, to: z.string().min(1) }).optional(),
       /** Host the orchestrator and the smoke gate use to reach a locally deployed service (docker-local target). */
       serviceHost: z.string().min(1).default('127.0.0.1'),
+      /** The daemon is rootless (the `dind` sidecar): gate containers run as its mapped root, not as this process's uid. */
+      rootless: z.boolean().default(false),
       /** Address the deployed container port is published on. */
       publishBind: z.string().min(1).default('127.0.0.1'),
     })

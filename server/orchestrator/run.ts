@@ -82,7 +82,10 @@ export type ExecuteResult = RunResult | 'paused:auth';
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** `uid:gid` of this process on POSIX hosts; undefined on Windows, where Docker Desktop maps ownership itself. */
-export function containerUser(): string | undefined {
+export function containerUser(rootless = false): string | undefined {
+  // A rootless daemon maps its own user to root inside containers: the files this process owns belong to "root" there,
+  // and any other uid (even the same number) is a subuid that cannot write them.
+  if (rootless) return undefined;
   return typeof process.getuid === 'function' && typeof process.getgid === 'function' ? `${process.getuid()}:${process.getgid()}` : undefined;
 }
 
@@ -285,7 +288,7 @@ export class Run {
         containerName: `teams-ai-${this.runId}-${branch.replace(/\//g, '__')}`,
         // Files the gate writes into the bind-mounted worktree (the JUnit report) must stay owned by the
         // orchestrator user, or the next attempt cannot remove them (EACCES on the first live run).
-        user: containerUser(),
+        user: containerUser(this.deps.cfg.docker.rootless),
         bindRewrite: this.deps.cfg.docker.bindRewrite,
       },
       { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null), removeFile: (p) => fs.rm(p, { force: true }) },
@@ -410,14 +413,14 @@ export class Run {
       target: this.deps.target,
       smoke: async (contextDir, url, gateUrl, gateNetwork) => {
         const p = this.plan!;
-        const r = await runSmoke(p, this.deps.spec, { worktree: contextDir, image: p.gateImage, junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-smoke`, user: containerUser(), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : gateReachableUrl(url), { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
+        const r = await runSmoke(p, this.deps.spec, { worktree: contextDir, image: p.gateImage, junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-smoke`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : gateReachableUrl(url), { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
         // The gate's output is the only clue the fix task gets about why a smoke test is missing or failing.
         const tail = r.ok || !r.result ? '' : `\n\nsmoke gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
       },
       e2e: async (contextDir, url, gateUrl, gateNetwork) => {
         const p = this.plan!;
-        const r = await runE2e(p, this.deps.spec, { worktree: contextDir, image: p.gateImage, junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-e2e`, user: containerUser(), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
+        const r = await runE2e(p, this.deps.spec, { worktree: contextDir, image: p.gateImage, junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-e2e`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
         const tail = r.ok || !r.result ? '' : `\n\ne2e gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
       },

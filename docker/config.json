@@ -1,6 +1,7 @@
 {
   "docker": {
     "serviceHost": "dind",
+    "rootless": true,
     "publishBind": "0.0.0.0"
   },
   "decisions": { "local": { "enabled": false } },
