@@ -6,20 +6,22 @@ import { BACKEND_NAMES, DECISION_IDS, type DecisionConfig, type DecisionId } fro
 export const ROLES = ['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops'] as const;
 export type Role = (typeof ROLES)[number];
 
-export const ProviderProfile = z.object({
-  provider: z.enum(['claude', 'omniroute']),
-  model: z.string().min(1),
-});
-export type ProviderProfile = z.infer<typeof ProviderProfile>;
+/** Every role runs the Claude Code CLI; strict, so a leftover `provider` key is refused instead of ignored. */
+export const RoleProfile = z
+  .object({
+    model: z.string().min(1),
+  })
+  .strict();
+export type RoleProfile = z.infer<typeof RoleProfile>;
 
-const CLAUDE_DEFAULTS: Record<Role, ProviderProfile> = {
-  sm: { provider: 'claude', model: 'opus' },
-  po: { provider: 'claude', model: 'opus' },
-  front: { provider: 'claude', model: 'opus' },
-  dev: { provider: 'claude', model: 'opus' },
-  test: { provider: 'claude', model: 'sonnet' },
-  sec: { provider: 'claude', model: 'sonnet' },
-  devops: { provider: 'claude', model: 'sonnet' },
+const CLAUDE_DEFAULTS: Record<Role, RoleProfile> = {
+  sm: { model: 'opus' },
+  po: { model: 'opus' },
+  front: { model: 'opus' },
+  dev: { model: 'opus' },
+  test: { model: 'sonnet' },
+  sec: { model: 'sonnet' },
+  devops: { model: 'sonnet' },
 };
 
 const positive = z.number().int().min(1);
@@ -75,9 +77,9 @@ export const StepBudget = z.object({
 });
 
 const RolesSchema = z
-  .object(Object.fromEntries(ROLES.map((r) => [r, ProviderProfile.default(CLAUDE_DEFAULTS[r])])) as Record<
+  .object(Object.fromEntries(ROLES.map((r) => [r, RoleProfile.default(CLAUDE_DEFAULTS[r])])) as Record<
     Role,
-    z.ZodDefault<typeof ProviderProfile>
+    z.ZodDefault<typeof RoleProfile>
   >)
   .strict();
 
@@ -124,17 +126,11 @@ export const Config = z.object({
     .prefault({}),
   /** Directories holding docs/project.json, registered from the UI (spec run API §2). */
   projects: z.array(z.object({ dir: z.string().min(1) })).default([]),
-  omniroute: z
-    .object({
-      baseUrl: z.string().url().default('http://localhost:20128'),
-      enabled: z.boolean().default(false),
-    })
-    .prefault({}),
   decisions: z
     .object({
       /** Off for runs 1 and 2 (spec §1.3); every decision then takes its System 2 path or default. */
       enabled: z.boolean().default(false),
-      /** Spec 10A.5 decision 10: tier names map to the role's Claude models; OmniRoute pins are never replaced. */
+      /** Spec 10A.5 decision 10: tier names map to the role's Claude models. */
       modelTiers: z
         .object({ small: z.string().min(1).default('haiku'), medium: z.string().min(1).default('sonnet'), large: z.string().min(1).default('opus') })
         .prefault({}),
@@ -181,15 +177,6 @@ export function loadConfig(json: unknown): Config {
 }
 
 export const DEFAULT_CONFIG: Config = loadConfig({});
-
-/** OmniRoute is never used for confidential projects or while disabled (spec §10). */
-export function resolveProfile(cfg: Config, role: Role, project: { confidential: boolean }): ProviderProfile {
-  const profile = cfg.roles[role];
-  if (profile.provider === 'omniroute' && (project.confidential || !cfg.omniroute.enabled)) {
-    return CLAUDE_DEFAULTS[role];
-  }
-  return profile;
-}
 
 /** A disabled layer switches every decision off without touching its other settings (spec 10A.0). */
 export function resolveDecision(cfg: Config, id: DecisionId): DecisionConfig {

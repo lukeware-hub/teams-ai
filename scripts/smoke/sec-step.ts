@@ -23,7 +23,7 @@ const outcome = await runStep(
     kind: 'security',
     role: 'sec',
     agent,
-    profile: { provider: 'claude', model },
+    profile: { model },
     model,
     cwd,
     prompt: `Review task T1 (adds greet(name) in ${VULNERABLE_FILE}, which echoes a greeting for a user-supplied name). Read ${VULNERABLE_FILE} and report findings. specHash "${specHash}".`,

@@ -212,7 +212,7 @@ describe('SM steps of a task', () => {
       code: async () => ({ source: 'none' }),
       impact: async () => ({ source: 'none' }),
       decider: { decide: async () => ({ answered: false, reason: 'disabled' }) },
-      tierModel: () => null,
+      tierModel: (_role, tier) => ({ small: 'haiku', medium: 'sonnet', large: 'opus' })[tier],
       policy: DEFAULT_POLICY,
       packBase: () => ({ spec, project, specHash: HASH, assumptions: journal.assumptions(), budgetTokens: 8000 }),
       handoffs: () => [],

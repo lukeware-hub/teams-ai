@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs probes p1..p5 sequentially and writes a combined log; p6 needs OmniRoute and is run separately.
+# Runs probes p1..p5 sequentially and writes a combined log.
 set -uo pipefail
 cd "$(dirname "$0")/../../.."
 LOG="${1:-/tmp/probes.log}"

@@ -85,7 +85,7 @@ function deps(over: Partial<TaskRunnerDeps> & { agent?: Agent; merge?: Partial<M
     code: async () => ({ source: 'none' }),
     impact: async () => ({ source: 'none' }),
     decider: { decide: async () => ({ answered: false, reason: 'disabled' }) },
-    tierModel: () => null,
+    tierModel: (_role, tier) => ({ small: 'haiku', medium: 'sonnet', large: 'opus' })[tier],
     policy: DEFAULT_POLICY,
     packBase: () => ({ spec, project, specHash: HASH, assumptions: journal.assumptions(), budgetTokens: 8000 }),
     handoffs: () => [],
@@ -552,13 +552,6 @@ describe('TaskRunner: model tier', () => {
     expect(agentCalls.map((c) => [c.kind, c.model, c.effort])).toEqual([['dev', 'haiku', 'low'], ['dev', 'sonnet', 'medium']]);
   });
 
-  it('leaves model unset when the role is not on a claude profile (OmniRoute pin kept)', async () => {
-    const r = new TaskRunner('T1', deps({ decider: tierDecider, tierModel: () => null }));
-    await r.advance();
-    expect(agentCalls[0]!.model).toBeUndefined();
-    expect(agentCalls[0]!.effort).toBeUndefined();
-  });
-
   it('with the decision off nothing is set', async () => {
     const r = new TaskRunner('T1', deps({ tierModel: (_role, tier) => tiers[tier]! }));
     await r.advance();
@@ -606,15 +599,6 @@ describe('TaskRunner: final review fixes', () => {
     expect(journal.events.find((e) => e.type === OrchEvent.TaskBlocked)).toBeUndefined();
   });
 
-  it('model tier: effort is not applied when the role is off the claude profile, and one decision serves dev and review', async () => {
-    const calls: string[] = [];
-    const tierDecider = { decide: async (id: string) => { calls.push(id); return id === 'model-tier' ? { answered: true as const, backend: 'jev' as const, escalated: false, answers: { tier: { type: 'choice' as const, value: 'small', probabilities: { small: 0.9 }, confidence: 0.9 }, effort: { type: 'score' as const, value: 0, probabilities: {}, confidence: 0.9 } } } : { answered: false as const, reason: 'disabled' as const }; } };
-    const agent: Agent = async (req) => (req.kind === 'review' ? approve() : devDone()(req));
-    const r = new TaskRunner('T1', deps({ agent, decider: tierDecider, tierModel: () => null }));
-    await r.advance(); await r.advance(); await r.advance();
-    expect(agentCalls.map((c) => [c.kind, c.model, c.effort])).toEqual([['dev', undefined, undefined], ['review', undefined, undefined], ['security', undefined, undefined]]);
-    expect(calls.filter((id) => id === 'model-tier')).toHaveLength(1);
-  });
 });
 
 describe('TaskRunner: replanning the scaffold task', () => {

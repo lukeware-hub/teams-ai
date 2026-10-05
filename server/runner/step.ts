@@ -4,7 +4,7 @@ import { OUTPUT_SCHEMAS, toJsonSchema, type OutputOf, type StepKind } from '../a
 import type { AgentDefinition } from '../agents/registry.js';
 import { ALWAYS_DENIED, NESTED_DENIED } from '../agents/registry.js';
 import type { Accounting } from '../budget/accounting.js';
-import type { ProviderProfile, Role } from '../config/config.js';
+import type { RoleProfile, Role } from '../config/config.js';
 import type { Effort } from '../decide/decisions/model-tier.js';
 import type { CliErrorInput } from '../decide/decisions/cli-error.js';
 import type { FailureKind } from '../scheduler/retry-policy.js';
@@ -22,7 +22,7 @@ export interface StepRequest {
   kind: StepKind;
   role: Role;
   agent: AgentDefinition;
-  profile: ProviderProfile;
+  profile: RoleProfile;
   model: string;
   cwd: string;
   prompt: string;
@@ -36,7 +36,6 @@ export interface StepRequest {
   attempt: number;
   sessionId?: string;
   resume?: boolean;
-  omniroute?: { baseUrl: string; token: string; compactWindow?: number };
   /** Extra allow rules for this step's role settings (from the plan's commands). */
   extraAllow?: readonly string[];
   effort?: Effort;
@@ -146,8 +145,8 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
   }
 
   const clock = deps.clock ?? (() => new Date());
-  return withRefreshGate(req.profile.provider === 'claude', hostEnv, clock, async () => {
-    const home = await createStepHome(deps.settingsDir, hostEnv, req.profile.provider === 'claude');
+  return withRefreshGate(hostEnv, clock, async () => {
+    const home = await createStepHome(deps.settingsDir, hostEnv);
     try {
       return await runStepIn(req, deps, hostEnv, home);
     } finally {
@@ -166,11 +165,11 @@ let refreshTail: Promise<void> = Promise.resolve();
  * Plan 38: the CLI refreshes an expired token inside its own step HOME and the server rotates the refresh token, so two steps that
  * start together on an expired token would each use the same (now stale) refresh token. While the host token is expired or within
  * REFRESH_WINDOW_MS of expiry, steps run one at a time through this per-process mutex (copy, run, write back); each waiter re-reads
- * the token after its turn, so once one step has refreshed it the rest run in parallel again. A fresh token (the normal case),
- * an omniroute step or CLAUDE_CODE_OAUTH_TOKEN never takes the lock.
+ * the token after its turn, so once one step has refreshed it the rest run in parallel again. A fresh token (the normal case)
+ * or CLAUDE_CODE_OAUTH_TOKEN never takes the lock.
  */
-export async function withRefreshGate<T>(claudeLogin: boolean, hostEnv: NodeJS.ProcessEnv, clock: () => Date, fn: () => Promise<T>): Promise<T> {
-  if (!claudeLogin || hasOauthToken(hostEnv)) return fn();
+export async function withRefreshGate<T>(hostEnv: NodeJS.ProcessEnv, clock: () => Date, fn: () => Promise<T>): Promise<T> {
+  if (hasOauthToken(hostEnv)) return fn();
   const stale = async (): Promise<boolean> => {
     const at = await hostTokenExpiresAt(hostEnv);
     return at !== null && at - clock().getTime() < REFRESH_WINDOW_MS;
@@ -209,7 +208,6 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
       home,
       sessionId: req.sessionId,
       resume: req.resume,
-      omniroute: req.omniroute,
       agentDefinition: req.agent,
       effort: req.effort,
     },
@@ -229,7 +227,7 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
     taskId: req.taskId,
     attempt: req.attempt,
     stepKind: req.kind,
-    provider: req.profile.provider,
+    provider: 'claude',
     model: req.model,
     usage: raw.summary.usage,
     costUsd: raw.summary.costUsd,
@@ -241,13 +239,12 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
   let failure = classifyFailure(raw);
   if (failure) {
     // Agent-controlled text and CLI stderr flow into the event store and UI: never with credentials.
-    const known = req.omniroute ? [req.omniroute.token] : [];
-    const message = redactSecrets(raw.summary.resultText ?? raw.stderr.slice(0, 500), known);
+    const message = redactSecrets(raw.summary.resultText ?? raw.stderr.slice(0, 500));
     if (failure === 'code' && deps.classifyUnknown) {
       const s = raw.summary;
       failure = await deps.classifyUnknown({
-        resultText: s.resultText === null ? null : redactSecrets(s.resultText, known),
-        stderr: redactSecrets(raw.stderr.slice(-2000), known),
+        resultText: s.resultText === null ? null : redactSecrets(s.resultText),
+        stderr: redactSecrets(raw.stderr.slice(-2000)),
         apiErrorStatus: s.apiErrorStatus,
         subtype: s.subtype,
         terminalReason: s.terminalReason,
@@ -267,8 +264,7 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
     const errors = [...validation.errors];
     if (raw.summary.structuredOutput === null) {
       // Without this the only trace of a prose-only answer is "expected object, received null".
-      const known = req.omniroute ? [req.omniroute.token] : [];
-      const text = redactSecrets((raw.summary.resultText ?? '').slice(0, 500), known);
+        const text = redactSecrets((raw.summary.resultText ?? '').slice(0, 500));
       errors.push(`no JSON object in the agent result (subtype=${raw.summary.subtype ?? 'none'}, terminal=${raw.summary.terminalReason ?? 'none'}, turns=${raw.summary.numTurns}): ${text || '(empty)'}`);
     }
     return { ok: false, failure: 'schema', errors, summary: raw.summary, sandboxDisabled: false };

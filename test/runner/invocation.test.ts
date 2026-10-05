@@ -16,7 +16,7 @@ import {
 const base: InvocationInput = {
   role: 'dev',
   model: 'opus',
-  profile: { provider: 'claude', model: 'opus' },
+  profile: { model: 'opus' },
   cwd: '/home/u/ws/worktrees/T1-create',
   prompt: 'Implement T1',
   jsonSchema: { type: 'object', properties: { specHash: { type: 'string' } }, required: ['specHash'] },
@@ -77,30 +77,6 @@ describe('buildInvocation', () => {
     expect(Object.keys(inv.env).sort()).toEqual(['HOME', 'LANG', 'PATH', 'TERM']);
     expect(inv.env).not.toHaveProperty('GITHUB_TOKEN');
     expect(inv.env).not.toHaveProperty('ANTHROPIC_API_KEY');
-  });
-
-  it('adds the OmniRoute variables only for an omniroute profile', () => {
-    const inv = buildInvocation(
-      {
-        ...base,
-        profile: { provider: 'omniroute', model: 'kimi/k2' },
-        model: 'kimi/k2',
-        omniroute: { baseUrl: 'http://localhost:20128', token: 'oma_live_x', compactWindow: 200000 },
-      },
-      hostEnv,
-    );
-    expect(inv.env.ANTHROPIC_BASE_URL).toBe('http://localhost:20128');
-    expect(inv.env.ANTHROPIC_AUTH_TOKEN).toBe('oma_live_x');
-    expect(inv.env.ANTHROPIC_MODEL).toBe('kimi/k2');
-    expect(inv.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe('200000');
-    expect(buildInvocation(base, hostEnv).env).not.toHaveProperty('ANTHROPIC_BASE_URL');
-  });
-
-  it('refuses an omniroute profile without connection details or with an empty token', () => {
-    expect(() => buildInvocation({ ...base, profile: { provider: 'omniroute', model: 'x' } }, hostEnv)).toThrow(InvocationError);
-    expect(() =>
-      buildInvocation({ ...base, profile: { provider: 'omniroute', model: 'x' }, omniroute: { baseUrl: 'http://localhost:20128', token: '  ' } }, hostEnv),
-    ).toThrow(/token/);
   });
 
   it('refuses an empty prompt or a missing settings path', () => {

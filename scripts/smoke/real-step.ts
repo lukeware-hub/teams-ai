@@ -12,19 +12,14 @@ const accounting = new Accounting();
 const breaker = new QuotaBreaker();
 const specHash = `sha256:${'a'.repeat(64)}`;
 
-const provider = process.env.SMOKE_PROVIDER === 'omniroute' ? 'omniroute' : 'claude';
-if (provider === 'omniroute' && !process.env.OMNIROUTE_TOKEN) {
-  console.error('OMNIROUTE_TOKEN is required for the omniroute provider (an empty token could fall back to the subscription login)');
-  process.exit(2);
-}
-const model = process.env.SMOKE_MODEL ?? (provider === 'omniroute' ? 'kimi/k2' : 'sonnet');
+const model = process.env.SMOKE_MODEL ?? 'sonnet';
 
 const outcome = await runStep(
   {
     kind: 'dev',
     role: 'dev',
     agent,
-    profile: { provider, model },
+    profile: { model },
     model,
     cwd,
     prompt: `Do not touch any file. Return status "done", summary "smoke", commitMessage "chore: smoke", changedFiles [] and specHash "${specHash}".`,
@@ -32,7 +27,6 @@ const outcome = await runStep(
     phase: 'smoke',
     taskId: null,
     attempt: 1,
-    omniroute: provider === 'omniroute' ? { baseUrl: 'http://localhost:20128', token: process.env.OMNIROUTE_TOKEN!, compactWindow: 120000 } : undefined,
   },
   {
     binary: { bin: 'claude', prefixArgs: [], env: {}, requireSandboxTools: process.platform === 'linux' },
@@ -51,7 +45,6 @@ breaker.observe(outcome.summary.rateLimit);
 console.log(
   JSON.stringify(
     {
-      provider,
       model,
       ok: outcome.ok,
       failure: outcome.ok ? null : outcome.failure,

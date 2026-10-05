@@ -57,7 +57,7 @@ async function deps(fake: (req: { kind: string; prompt: string }) => Promise<Ste
       network: { allowedDomains: [] },
     },
     agents,
-    profile: () => ({ provider: 'claude', model: 'sonnet' }),
+    profile: () => ({ model: 'sonnet' }),
     governor: new Governor(3),
     breaker: new QuotaBreaker(),
     journal,
@@ -233,6 +233,6 @@ describe('runAgentStep', () => {
     const inner = d.runStep;
     d.runStep = (async (req, sd) => { seen.push(req); return inner(req, sd); }) as AgentStepDeps['runStep'];
     await runAgentStep({ kind: 'dev', role: 'dev', pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1, model: 'haiku', effort: 'low' }, d);
-    expect(seen[0]).toMatchObject({ model: 'haiku', effort: 'low', profile: { provider: 'claude', model: 'sonnet' } });
+    expect(seen[0]).toMatchObject({ model: 'haiku', effort: 'low', profile: { model: 'sonnet' } });
   });
 });

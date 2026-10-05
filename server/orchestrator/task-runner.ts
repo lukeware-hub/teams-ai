@@ -55,7 +55,7 @@ export interface TaskRunnerDeps {
   impact: (worktree: string, branch: string, changed: readonly string[], depth: number) => Promise<CodeContext>;
   decider: Pick<Decider, 'decide'>;
   /** Model name for a tier on this role's Claude profile; null when the role runs on another provider. */
-  tierModel: (role: Role, tier: ModelTier) => string | null;
+  tierModel: (role: Role, tier: ModelTier) => string;
   policy: PolicyConfig;
   packBase: () => PackBase;
   handoffs: () => readonly HandoffSummary[];
@@ -128,8 +128,6 @@ export class TaskRunner {
     const chosen = this.tierChoice!;
     if (!chosen.tier || !chosen.effort) return {};
     const model = this.deps.tierModel(role, chosen.tier);
-    // An off-profile role (OmniRoute pin) keeps its model and gets no --effort: the flag is Claude Code's.
-    if (model === null) return {};
     return { model, effort: chosen.effort };
   }
 

@@ -75,7 +75,7 @@ describe('C1 per-step HOME', () => {
     await fs.rm(dir, { recursive: true, force: true });
   });
   const request = (over: Partial<StepRequest> = {}): StepRequest => ({
-    kind: 'dev', role: 'dev', agent: devAgent, profile: { provider: 'claude', model: 'opus' }, model: 'opus',
+    kind: 'dev', role: 'dev', agent: devAgent, profile: { model: 'opus' }, model: 'opus',
     cwd: dir, prompt: 'go', expectedSpecHash: HASH, phase: 'tasks', taskId: 'T1', attempt: 1, ...over,
   });
 
@@ -108,16 +108,4 @@ await import(${JSON.stringify(FAKE.replace(/\\/g, '/'))});`,
     await expect(fs.access(probed.home)).rejects.toThrow();
   });
 
-  it('gives omniroute steps no credential file', async () => {
-    const probe = path.join(dir, 'probe.mjs');
-    await fs.writeFile(
-      probe,
-      `import {existsSync,writeFileSync} from 'node:fs';import {join} from 'node:path';
-writeFileSync(process.env.PROBE_OUT,JSON.stringify({cred:existsSync(join(process.env.HOME,'.claude','.credentials.json'))}));
-await import(${JSON.stringify(FAKE.replace(/\\/g, '/'))});`,
-    );
-    deps.binary = { ...deps.binary, prefixArgs: [probe], env: { ...deps.binary.env, PROBE_OUT: path.join(dir, 'probe.json') } };
-    await runStep(request({ profile: { provider: 'omniroute', model: 'm' }, omniroute: { baseUrl: 'http://x', token: 't' } }), deps);
-    expect(JSON.parse(await fs.readFile(path.join(dir, 'probe.json'), 'utf8')).cred).toBe(false);
-  });
 });

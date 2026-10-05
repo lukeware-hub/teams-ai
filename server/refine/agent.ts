@@ -3,7 +3,7 @@ import { loadAgents } from '../agents/registry.js';
 import { Accounting } from '../budget/accounting.js';
 import { Governor } from '../budget/governor.js';
 import { DEFAULT_BREAKER, QuotaBreaker } from '../budget/quota-breaker.js';
-import { resolveProfile, type Config } from '../config/config.js';
+import type { Config } from '../config/config.js';
 import { loadSecrets } from '../core/secrets.js';
 import { runAgentStep } from '../orchestrator/steps.js';
 import { expandHome } from '../orchestrator/workspace.js';
@@ -42,7 +42,7 @@ export async function makeRunAgent(w: AgentWiring): Promise<RunAgent> {
         hostEnv: w.hostEnv,
       },
       agents,
-      profile: (role) => resolveProfile(w.cfg, role, { confidential: false }),
+      profile: (role) => w.cfg.roles[role],
       governor,
       breaker,
       journal: ctx.journal,

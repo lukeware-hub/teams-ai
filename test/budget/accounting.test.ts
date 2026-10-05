@@ -28,9 +28,9 @@ describe('Accounting', () => {
   it('filters by role, phase, task and provider', () => {
     const acc = new Accounting();
     acc.record(rec({}));
-    acc.record(rec({ role: 'test', stepKind: 'review', provider: 'omniroute', costUsd: null }));
+    acc.record(rec({ role: 'test', stepKind: 'review', provider: 'openrouter', costUsd: null }));
     expect(acc.total({ role: 'test' }).steps).toBe(1);
-    expect(acc.total({ provider: 'omniroute' }).costUsd).toBe(0);
+    expect(acc.total({ provider: 'openrouter' }).costUsd).toBe(0);
     expect(acc.total({ taskId: 'T9-none' }).steps).toBe(0);
   });
 

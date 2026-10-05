@@ -28,15 +28,14 @@ export async function hostTokenExpiresAt(hostEnv: NodeJS.ProcessEnv): Promise<nu
  * Creates the empty HOME of one agent step, outside the worktree (audit C1). It starts empty so that
  * `~/.teams-ai/secrets`, `~/.config/gh`, `~/.kube` and friends do not exist for the agent. The only
  * thing copied in is what the `claude` CLI needs to log in with the subscription: a read-only copy
- * of `~/.claude/.credentials.json` (CLI 2.x reads it from $HOME/.claude; omniroute steps authenticate
- * through ANTHROPIC_AUTH_TOKEN and get no credential file at all).
+ * of `~/.claude/.credentials.json` (CLI 2.x reads it from $HOME/.claude).
  */
-export async function createStepHome(parentDir: string, hostEnv: NodeJS.ProcessEnv, withClaudeLogin: boolean): Promise<string> {
+export async function createStepHome(parentDir: string, hostEnv: NodeJS.ProcessEnv): Promise<string> {
   await fs.mkdir(parentDir, { recursive: true });
   const home = await fs.mkdtemp(path.join(parentDir, 'home-'));
   await fs.mkdir(path.join(home, 'tmp'), { recursive: true });
   const hostHome = hostEnv.HOME;
-  if (withClaudeLogin && hostHome && !hasOauthToken(hostEnv)) {
+  if (hostHome && !hasOauthToken(hostEnv)) {
     const source = path.join(hostHome, '.claude', '.credentials.json');
     try {
       const data = await fs.readFile(source);

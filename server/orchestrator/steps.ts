@@ -4,7 +4,7 @@ import { toJsonSchema, type OutputOf, type StepKind } from '../agents/outputs.js
 import type { AgentDefinition } from '../agents/registry.js';
 import type { Governor } from '../budget/governor.js';
 import type { QuotaBreaker } from '../budget/quota-breaker.js';
-import type { ProviderProfile, Role } from '../config/config.js';
+import type { RoleProfile, Role } from '../config/config.js';
 import type { Plan, PlanTask } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
@@ -255,8 +255,7 @@ export interface AgentStepDeps {
   runStep: typeof runStepFn;
   stepDeps: StepDeps;
   agents: Record<Role, AgentDefinition>;
-  profile: (role: Role) => ProviderProfile;
-  omniroute?: StepRequest['omniroute'];
+  profile: (role: Role) => RoleProfile;
   governor: Governor;
   breaker: QuotaBreaker;
   journal: Pick<Journal, 'allocStepSeq' | 'fact'>;
@@ -307,7 +306,6 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
         phase: req.phase,
         taskId: req.taskId,
         attempt: req.attempt,
-        omniroute: profile.provider === 'omniroute' ? deps.omniroute : undefined,
         extraAllow: req.extraAllow,
       },
       deps.stepDeps,

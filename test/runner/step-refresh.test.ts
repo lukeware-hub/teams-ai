@@ -59,7 +59,7 @@ afterEach(async () => {
 });
 
 const request = (over: Partial<StepRequest> = {}): StepRequest => ({
-  kind: 'dev', role: 'dev', agent: devAgent, profile: { provider: 'claude', model: 'opus' }, model: 'opus', cwd: dir, prompt: 'go',
+  kind: 'dev', role: 'dev', agent: devAgent, profile: { model: 'opus' }, model: 'opus', cwd: dir, prompt: 'go',
   expectedSpecHash: HASH, phase: 'tasks', taskId: 'T1', attempt: 1, ...over,
 });
 
@@ -84,14 +84,10 @@ describe('CLAUDE_CODE_OAUTH_TOKEN passthrough (plan 38)', () => {
   it('does not copy the credential file and hands the token to the claude child', async () => {
     await fs.writeFile(path.join(host, '.claude', '.credentials.json'), cred(NOW.getTime() + 1, 'r1'));
     const env = { HOME: host, PATH: 'p', CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-x' };
-    const home = await createStepHome(path.join(dir, 'homes'), env, true);
+    const home = await createStepHome(path.join(dir, 'homes'), env);
     await expect(fs.access(path.join(home, '.claude', '.credentials.json'))).rejects.toThrow();
-    const inv = buildInvocation({ role: 'dev', model: 'opus', profile: { provider: 'claude', model: 'opus' }, cwd: dir, prompt: 'p', jsonSchema: {}, tools: ['Read'], disallowedTools: [], settingsPath: 's', home }, env);
+    const inv = buildInvocation({ role: 'dev', model: 'opus', profile: { model: 'opus' }, cwd: dir, prompt: 'p', jsonSchema: {}, tools: ['Read'], disallowedTools: [], settingsPath: 's', home }, env);
     expect(inv.env.CLAUDE_CODE_OAUTH_TOKEN).toBe('sk-ant-oat01-x');
   });
 
-  it('is not passed to omniroute steps', () => {
-    const inv = buildInvocation({ role: 'dev', model: 'm', profile: { provider: 'omniroute', model: 'm' } as never, cwd: dir, prompt: 'p', jsonSchema: {}, tools: [], disallowedTools: [], settingsPath: 's', omniroute: { baseUrl: 'http://x', token: 't' } }, { HOME: host, CLAUDE_CODE_OAUTH_TOKEN: 'sk' });
-    expect(inv.env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
-  });
 });

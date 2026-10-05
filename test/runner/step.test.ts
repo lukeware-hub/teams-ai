@@ -38,7 +38,7 @@ const request = (over: Partial<StepRequest> = {}): StepRequest => ({
   kind: 'dev',
   role: 'dev',
   agent: devAgent,
-  profile: { provider: 'claude', model: 'opus' },
+  profile: { model: 'opus' },
   model: 'opus',
   cwd: dir,
   prompt: 'Implement it',
@@ -104,7 +104,7 @@ describe('runStep', () => {
       { type: 'result', subtype: 'success', is_error: false, duration_ms: 5, num_turns: 2, result: 'I edited design.md directly. token=sk-secret-123', session_id: 's' },
     ]);
     withFake({ FAKE_CLAUDE_FIXTURE: prose });
-    const outcome = await runStep({ ...request(), omniroute: { baseUrl: 'http://x', token: 'sk-secret-123' } } as StepRequest, deps);
+    const outcome = await runStep(request(), deps);
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) {
       expect(outcome.failure).toBe('schema');

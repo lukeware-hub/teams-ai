@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { ProviderProfile, Role } from '../config/config.js';
+import type { RoleProfile, Role } from '../config/config.js';
 import { updateFileAtomic } from '../core/atomic-write.js';
 import type { Effort } from '../decide/decisions/model-tier.js';
 
@@ -31,7 +31,7 @@ export const ENV_ALLOWLIST: readonly string[] = ['HOME', 'PATH', 'TERM', 'LANG',
 export interface InvocationInput {
   role: Role;
   model: string;
-  profile: ProviderProfile;
+  profile: RoleProfile;
   cwd: string;
   prompt: string;
   jsonSchema: object;
@@ -41,7 +41,6 @@ export interface InvocationInput {
   settingsPath: string;
   sessionId?: string;
   resume?: boolean;
-  omniroute?: { baseUrl: string; token: string; compactWindow?: number };
   /**
    * Inline agent definition (`--agents` JSON). Agents in `.claude/agents` are loaded from the
    * process cwd, which is the product worktree, so the orchestrator ships the role definition itself.
@@ -103,18 +102,8 @@ export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessE
     env.HOME = input.home;
     env.TMPDIR = path.join(input.home, 'tmp');
   }
-  // Plan 38: a host-provided long-lived token replaces the copied credential file for subscription steps only.
-  if (input.profile.provider === 'claude' && (hostEnv.CLAUDE_CODE_OAUTH_TOKEN ?? '').trim() !== '') env.CLAUDE_CODE_OAUTH_TOKEN = hostEnv.CLAUDE_CODE_OAUTH_TOKEN!;
-  if (input.profile.provider === 'omniroute') {
-    if (!input.omniroute) throw new InvocationError('omniroute profile requires baseUrl and token');
-    if (input.omniroute.token.trim() === '') {
-      throw new InvocationError('omniroute token must not be empty (an empty token could fall back to the subscription login)');
-    }
-    env.ANTHROPIC_BASE_URL = input.omniroute.baseUrl;
-    env.ANTHROPIC_AUTH_TOKEN = input.omniroute.token;
-    env.ANTHROPIC_MODEL = input.model;
-    if (input.omniroute.compactWindow) env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = String(input.omniroute.compactWindow);
-  }
+  // Plan 38: a host-provided long-lived token replaces the copied credential file.
+  if ((hostEnv.CLAUDE_CODE_OAUTH_TOKEN ?? '').trim() !== '') env.CLAUDE_CODE_OAUTH_TOKEN = hostEnv.CLAUDE_CODE_OAUTH_TOKEN!;
   return { args, env, cwd: input.cwd, stdin: input.prompt };
 }
 

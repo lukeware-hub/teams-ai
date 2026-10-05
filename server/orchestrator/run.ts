@@ -6,7 +6,7 @@ import type { OutputOf, StepKind } from '../agents/outputs.js';
 import { Accounting } from '../budget/accounting.js';
 import { Governor } from '../budget/governor.js';
 import { DEFAULT_BREAKER, QuotaBreaker } from '../budget/quota-breaker.js';
-import { resolveProfile, type Config, type Role } from '../config/config.js';
+import type { Config, Role } from '../config/config.js';
 import { Plan, type PlanTask } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
@@ -213,7 +213,7 @@ export class Run {
       claudeJsonPath: this.deps.claudeJsonPath ?? expandHome('~/.claude.json'),
       settingsDir: path.posix.join(runDir(ws, this.runId), 'settings'),
       workspacesRoot: ws.root,
-      network: { allowedDomains: ['registry.npmjs.org', ...(cfg.omniroute.enabled ? ['localhost'] : [])] },
+      network: { allowedDomains: ['registry.npmjs.org'] },
       sandbox: { enabled: cfg.sandbox.enabled, unsafeNoSandbox: cfg.sandbox.unsafeNoSandbox },
       clock: this.clock,
       // cli-error's chain never reaches Claude, so classifying a failed step cannot start another step.
@@ -222,18 +222,17 @@ export class Run {
   }
 
   private agentDeps(): AgentStepDeps {
-    const { cfg, project, secrets } = this.deps;
+    const { cfg } = this.deps;
     return {
       runStep: this.deps.runStep,
       stepDeps: this.stepDeps(),
       agents: this.deps.agents,
-      profile: (role) => resolveProfile(cfg, role, project),
-      omniroute: cfg.omniroute.enabled ? { baseUrl: cfg.omniroute.baseUrl, token: secrets.OMNIROUTE_TOKEN ?? '' } : undefined,
+      profile: (role) => cfg.roles[role],
       governor: this.governor,
       breaker: this.breaker,
       journal: this.journal,
       stepDir: (seq) => stepDir(this.deps.ws, this.runId, seq),
-      secretValues: () => Object.values(secrets),
+      secretValues: () => Object.values(this.deps.secrets),
       specHash: this.deps.spec.specHash!,
     };
   }
@@ -342,7 +341,7 @@ export class Run {
       accounting: this.accounting,
       runEscalation: async ({ role, prompt }) => {
         // A Claude escalation is a claude process like any other step: governed and breaker-observed (spec §7).
-        const profile = resolveProfile(cfg, role, project);
+        const profile = cfg.roles[role];
         const release = await this.governor.acquire();
         try {
           // Inside the governor slot, so the snapshot lives only while the step runs; it keeps afterMerge off the agent's tree.
@@ -374,10 +373,7 @@ export class Run {
       code: this.code,
       impact: this.impact,
       decider,
-      tierModel: (role, tier) => {
-        const profile = resolveProfile(cfg, role, project);
-        return profile.provider === 'claude' ? cfg.decisions.modelTiers[tier] : null;
-      },
+      tierModel: (_role, tier) => cfg.decisions.modelTiers[tier],
       policy: { ...DEFAULT_POLICY, ...cfg.retry },
       packBase: this.packBase,
       handoffs: () => this.handoffs,

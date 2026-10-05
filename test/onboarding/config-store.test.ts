@@ -27,11 +27,11 @@ describe('config store', () => {
     expect(userConfigFile(home)).toBe(path.join(home, '.teams-ai', 'config.json'));
     expect((await readUserConfig(home)).cfg.github.owner).toBeUndefined();
     await fs.mkdir(path.join(home, '.teams-ai'), { recursive: true });
-    await fs.writeFile(userConfigFile(home), JSON.stringify({ omniroute: { enabled: true }, github: { owner: 'old' } }));
+    await fs.writeFile(userConfigFile(home), JSON.stringify({ concurrency: { maxParallel: 2 }, github: { owner: 'old' } }));
     const cfg = await setGithubOwner('diego-dm-morais', home);
     expect(cfg.github.owner).toBe('diego-dm-morais');
     const raw = JSON.parse(await fs.readFile(userConfigFile(home), 'utf8'));
-    expect(raw).toEqual({ omniroute: { enabled: true }, github: { owner: 'diego-dm-morais' } });
+    expect(raw).toEqual({ concurrency: { maxParallel: 2 }, github: { owner: 'diego-dm-morais' } });
   });
 
   it('survives concurrent writers: none rejects, config.json is valid JSON, no tmp file is left', async () => {
@@ -76,7 +76,7 @@ describe('config store', () => {
   });
 
   it('loses neither the owner, a project nor an untouched key when setGithubOwner and addProject run at once', async () => {
-    await homeWithConfig(JSON.stringify({ omniroute: { enabled: true }, github: { owner: 'old', allowedHosts: ['github.com'] } }));
+    await homeWithConfig(JSON.stringify({ concurrency: { maxParallel: 2 }, github: { owner: 'old', allowedHosts: ['github.com'] } }));
     const dirs = Array.from({ length: 20 }, (_, i) => `/home/u/proj-${i}`);
     await Promise.all([
       ...dirs.slice(0, 10).map((dir) => addProject(dir, home)),
@@ -86,7 +86,7 @@ describe('config store', () => {
     const raw = JSON.parse(await fs.readFile(userConfigFile(home), 'utf8'));
     expect(dirsOf(raw)).toEqual([...dirs].sort());
     expect(raw.github).toEqual({ owner: 'diego-dm-morais', allowedHosts: ['github.com'] });
-    expect(raw.omniroute).toEqual({ enabled: true });
+    expect(raw.concurrency).toEqual({ maxParallel: 2 });
   });
 
   it('refuses to write over a config.json it cannot parse: the file stays as it was and the error names it', async () => {

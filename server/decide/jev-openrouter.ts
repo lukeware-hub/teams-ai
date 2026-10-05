@@ -15,7 +15,7 @@ import {
 /**
  * Spec 10A.2: Jev through OpenRouter's System One API. Same request/response shapes as TypeSafe's
  * own API; not an OpenAI-compatible chat endpoint, so it is called directly, never through
- * OmniRoute or a Claude Code process.
+ * a Claude Code process.
  */
 export interface JevDeps {
   fetch: typeof fetch;

@@ -25,7 +25,7 @@ The quota breaker pauses runs when a subscription window reaches 95 percent util
 status `paused:quota`. The pause ends by itself when the window resets (or after a probe backoff of 5, 10, 20,
 40, 60 minutes); the run continues without action. Check how many are paused: `teams_ai_quota_paused` in
 `/metrics`. Do not resume by hand while paused; the orchestrator refuses to start steps until the breaker closes.
-If it is urgent, switch the provider (OpenRouter/OmniRoute) in the project config and resume.
+There is no second agent provider: wait for the reset.
 
 ## Reading the journal
 Each run has `runs/<runId>/events.ndjson` (one JSON event per line: `seq`, `at`, `type`, `kind`, `data`),
