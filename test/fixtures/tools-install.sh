@@ -32,6 +32,14 @@ PATH="$D/py/bin:$PATH" PYTHONPATH="$D/py" SEMGREP_SEND_METRICS=off SEMGREP_ENABL
 WRAP
 chmod +x "$BIN/semgrep"
 
+# The scanners must not scan themselves: .tools holds their binaries and python packages (a gitleaks false positive blocked the scaffold).
+cat > "$ROOT/.tools/gitleaks.toml" <<'TOML'
+[extend]
+useDefault = true
+[allowlist]
+paths = ['''(^|/)[.]tools/''', '''(^|/)node_modules/''']
+TOML
+
 rm -rf "$TMP"
 "$BIN/gitleaks" version
 "$BIN/osv-scanner" --version

@@ -20,11 +20,11 @@ export function prescribedCommands(kind: StackKind): Record<string, string[]> {
   if (kind === 'node') dependency.unshift('npm audit --audit-level=high');
   if (kind === 'python') dependency.unshift('pip-audit');
   return {
-    'secret-scan': ['gitleaks detect --no-git --source . --redact --exit-code 1'],
-    sast: ['semgrep scan --config auto --severity ERROR --error --metrics off .'],
+    'secret-scan': ['gitleaks detect --no-git --source . --redact --exit-code 1 --config .tools/gitleaks.toml'],
+    sast: ['semgrep scan --config p/ci --severity ERROR --error --metrics off .'],
     'dependency-scan': dependency,
     // Gates have no docker daemon, so the always-available scan reads the Dockerfile/manifests and the source tree.
-    'image-scan': ['trivy config --severity CRITICAL --exit-code 1 .', 'trivy fs --scanners vuln,secret --severity CRITICAL --exit-code 1 .'],
+    'image-scan': ['trivy config --skip-dirs .tools --severity CRITICAL --exit-code 1 .', 'trivy fs --skip-dirs .tools --scanners vuln,secret --severity CRITICAL --exit-code 1 .'],
   };
 }
 

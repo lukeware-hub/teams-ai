@@ -13,7 +13,7 @@ function secureGates(over: Record<string, Partial<Gate>> = {}, drop: string[] = 
   const sec = [
     { name: 'security-tools', command: 'sh .tools/install.sh', blocking: true, network: 'egress' },
     { name: 'secret-scan', command: `${P} gitleaks detect --no-git --source . --redact --exit-code 1`, blocking: true },
-    { name: 'sast', command: `${P} semgrep scan --config auto --severity ERROR --error --metrics off .`, blocking: true, network: 'egress' },
+    { name: 'sast', command: `${P} semgrep scan --config p/ci --severity ERROR --error --metrics off .`, blocking: true, network: 'egress' },
     { name: 'dependency-scan', command: `${P} npm audit --audit-level=high`, blocking: true, network: 'egress' },
     { name: 'image-scan', command: prescribedCommands('node')['image-scan']!.map((c) => `${P} ${c}`).join(' && '), blocking: true, network: 'egress' },
   ];
@@ -117,7 +117,7 @@ describe('stack classification and pack text', () => {
   it('planRules states the exact commands only when required', () => {
     expect(planRules(false, false, false)).not.toContain('gitleaks');
     const text = planRules(false, false, true);
-    for (const s of ['security-tools', 'gitleaks detect --no-git --source . --redact --exit-code 1', 'semgrep scan --config auto --severity ERROR --error', 'npm audit --audit-level=high', 'pip-audit', 'osv-scanner scan source -r .', 'trivy config', 'trivy fs', '--severity CRITICAL --exit-code 1', '.tools/bin']) {
+    for (const s of ['security-tools', 'gitleaks detect --no-git --source . --redact --exit-code 1', 'semgrep scan --config p/ci --severity ERROR --error', 'npm audit --audit-level=high', 'pip-audit', 'osv-scanner scan source -r .', 'trivy config', 'trivy fs', '--severity CRITICAL --exit-code 1', '.tools/bin']) {
       expect(text).toContain(s);
     }
   });
