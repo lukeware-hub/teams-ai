@@ -6,13 +6,13 @@ The single list of what is left until the POC is done. Plan history lives in `pl
 
 The golden run criteria in spec §1.3 (`specs/2026-09-23-teams-ai-poc-design.md`):
 
-- Three runs on the reference spec (`test/fixtures/todo-api`): 1 baseline (Claude only, decisions off),
-  2 mixed (OmniRoute for Test/DevOps, decisions off), 3 full (OmniRoute + System 1 decisions on).
+- Two runs on the reference spec (`test/fixtures/todo-api`), agents on the Claude Code CLI only: run 1 baseline
+  (decisions off) and run 3 full (System 1 decisions on). The old run 2 (OmniRoute) was dropped on 2026-10-05.
 - Zero human interaction between Start and `awaiting-validation`.
 - Every acceptance criterion `passed` in JUnit.
-- Green deploy and smoke tests on both `docker-local` and `kind`.
+- Green deploy and smoke tests on `docker-local` (the `kind` target was dropped on 2026-10-05).
 - Zero duplicate PRs; `main` green after every merge.
-- The three runs compared on tokens, retries, wall time, blocked tasks and escalation rate.
+- The two runs compared on tokens, retries, wall time, blocked tasks and escalation rate.
 - Every generated project ships the full delivery contract (Stage 8): code, docs, unit and e2e tests, security scans,
   GitHub Actions, image build and push, and a local docker infra that starts.
 
@@ -45,7 +45,7 @@ the port is published on the host loopback only (`TEAMS_AI_UI_LOOPBACK_PUBLISHED
   - **R6.1 cutover (plan 31): NOT started.** The human gave the go for stages 1–5, but the background build was cut off before anything ran (`~/cutover-12.log` has only its first line): the kind cluster `teams-ai` and the image `teams-ai-backend:local` are the old ones. Restart at stage 1. Stage 6 (removal) still needs a second explicit yes.
   - **Egress of agent steps:** the human answered "open for now", but the change was NOT applied: a local commit of the kind-overlay patch was dropped unpushed after the human rejected the command that would publish it. `main` keeps the default-deny allowlist (plan 23) with placeholder CIDRs, so agent steps have no external egress in the cluster. Ask again before applying.
   - Another session (`teams-ai-a5`) has about 44 uncommitted files in the main working tree (concurrency, atomic writes, smoke host fix, kind.ts YAML, sec diff in the pack, Validation page); they are NOT in `main` and not mine. Its changes overlap files of the Stage 7–8 work, so expect conflicts when it commits.
-  - Still open: R8.7 (golden run on the full contract), R2.3 (real logins), real egress CIDRs, the three-run comparison (R5.2) and the decision evals with data (R5.3), OmniRoute is optional (R3.1). Resume from this entry: after the login is redone, start with golden run 3.
+  - Still open: R8.7 (golden run on the full contract), R2.3 (real logins), real egress CIDRs, the two-run comparison (R5.2) and the decision evals with data (R5.3). Resume from this entry: after the login is redone, start with golden run 3.
 
 Rule (goal set 2026-10-04): when the 5-hour token window reaches 90 %, record the pause here and stop; when the
 window resets, resume exactly from the entry below.
@@ -67,7 +67,7 @@ window resets, resume exactly from the entry below.
 ### R1.1 Golden run 1 on `todo-api`, `docker-local` — `closed, incomplete` (2026-10-04, closed at the human's request)
 
 - Plan: `TEAMS_AI_GH_OWNER=<owner> TEAMS_AI_FIXTURE=todo-api npx tsx scripts/integration/orchestrator.ts` on WSL,
-  defaults (decisions off, OmniRoute off); repository `lukeware70X7/teams-ai-todo-api`. Started as run `todo-001-r1`.
+  defaults (decisions off); repository `lukeware70X7/teams-ai-todo-api`. Started as run `todo-001-r1`.
 - Outcome: **not a pass.** Phases 1 (tech spec), 2 (plan, 10 tasks T0-scaffold, T1–T8, T9-deploy) and the start of 3
   ran, then the 5-hour window hit the breaker threshold and the run paused twice (16:56Z, 17:51Z). At closing: 0 tasks
   merged, T0-scaffold in validating, no verification, deploy or report, no cost total recorded. Not checked: any of the
@@ -96,7 +96,7 @@ window resets, resume exactly from the entry below.
   blocking notice is carried as a spec-gap question, which burned 3 spec-gap rounds.
 - R1.2 and the comparison now use this result as the run 1 data point.
 
-### R1.2 Deploy the run 1 result to `kind` — `in progress`
+### R1.2 Deploy the run 1 result to `kind` — `dropped` (2026-10-05, no `kind` target; the docker-local equivalent is `spec deploy --target docker-local`)
 
 - `kind` has never run. Phase 5 is deterministic (no agent) once the plan carries the image, port, healthcheck and
   manifests, so a deploy-only command costs no tokens.
@@ -154,26 +154,20 @@ window resets, resume exactly from the entry below.
 - `claude auth login`: URL line, paste prompt wording, time to `loggedIn`.
 - `gh` device flow: only the fake CLI has exercised the auto-Enter behaviour.
 
-## Stage 3 — Golden run 2
+## Stage 3 — Golden run 2 — `dropped` (2026-10-05)
 
-### R3.1 OmniRoute provider — `optional` (human decision, 2026-10-04; not a blocker)
+### R3.1 OmniRoute provider — `dropped` (human decision, 2026-10-05)
 
-- Decision: OmniRoute is an optional, parameterized provider. The default for every role is the Claude Code CLI
-  (`CLAUDE_DEFAULTS` in `server/config/config.ts`). OmniRoute is used only when ALL hold: a role's profile is set to
-  `provider: "omniroute"`, `omniroute.enabled` is true, and the project is not `confidential`; otherwise `resolveProfile`
-  returns the Claude profile for that role. So with the parameter off, Claude is the effective fallback.
-- Not implemented, and not required by this decision: automatic failover from Claude to OmniRoute when the Claude quota
-  runs out (today the quota breaker pauses the run until the window reopens). If wanted, it is a new item.
-- State: container `omniroute` 3.8.51 up and healthy on `http://localhost:20128` (`OMNIROUTE_VERSION=3.8.51 bash
-  scripts/wsl/omniroute/up.sh`; the old example tag 4.12.0 did not exist). Nothing else is needed until someone chooses to
-  turn the parameter on: then open the dashboard, add a provider, pin a model, create a key with compression disabled and
-  save it as `OMNIROUTE_TOKEN` in `~/.teams-ai/secrets`.
-- Effect on the definition of done: spec §1.3 run 2 ("Mixed", OmniRoute for Test/DevOps) is conditional on this
-  parameter being turned on. Without it the golden runs are 1 (baseline) and 3 (decisions on), both Claude only.
+- Agents run only through the Claude Code CLI. Removed in plan 39 (`plans/2026-10-05-teams-ai-39-remove-omniroute.md`):
+  the `omniroute` provider and config block, `resolveProfile`, the runner env injection, `scripts/wsl/omniroute/`,
+  the p6 probe, the spec §10 gateway rules, and on the WSL host the `omniroute` container, the `omniroute-data`
+  volume, its image and the `OMNIROUTE_*` secrets. A leftover `provider` key in a role profile is now a config error.
+  The Jev (OpenRouter) and the local llama.cpp decision backends stay.
+- Not replaced: failover when the Claude quota runs out stays the quota breaker pause.
 
-### R3.2 Golden run 2 on `todo-api` (OmniRoute for Test/DevOps, decisions off) — `conditional on R3.1`
+### R3.2 Golden run 2 (OmniRoute for Test/DevOps) — `dropped`
 
-- Only if the OmniRoute parameter is turned on. Skipped otherwise; the three-run comparison (R5.2) then compares runs 1 and 3.
+- Nothing to run; the comparison (R5.2) is between runs 1 and 3.
 
 ## Stage 4 — System 1 ready for run 3
 
@@ -255,7 +249,7 @@ window resets, resume exactly from the entry below.
 - Launched 2026-10-04 on WSL from a clean export of commit a557e86 (not the working tree with another session's edits):
   `TEAMS_AI_GH_OWNER=lukeware70X7 TEAMS_AI_FIXTURE=todo-api TEAMS_AI_PROJECT=todo-api-r3 tsx scripts/integration/orchestrator.ts`
   from `~/teams-ai-run3`; repository `lukeware70X7/teams-ai-todo-api-r3`; log `~/golden-run-3.log`. Authorized by the human.
-- Deviation from spec §1.3: run 3 is Claude only (no OmniRoute, R3.1 is optional) with System 1 decisions on and the chain
+- Deviation from spec §1.3: run 3 is Claude only (OmniRoute was dropped, R3.1) with System 1 decisions on and the chain
   `local` then `claude` (`local` only for model-tier and cli-error); the Jev (OpenRouter) is NOT used, to avoid external spend.
 - It is the first live run of the runner-security changes (empty step HOME, mandatory sandbox), of `requireDelivery` (a plan without `delivery` is rejected) and of the Gate 1 / decision journaling.
 - **Restore after the run:** `~/.teams-ai/config.json` was changed to turn decisions on; the original is `~/config.json.bak-run3` (it held only `{ "github": { "owner": "lukeware70X7" } }`).
@@ -277,7 +271,7 @@ window resets, resume exactly from the entry below.
 
 - Flip `decisions.enabled` for this run only; the `false` default is by design for runs 1–2.
 
-### R5.2 Three-run comparison — `todo`
+### R5.2 Two-run comparison — `todo`
 
 - Tokens, retries, wall time, blocked tasks, escalation rate. Closes the POC.
 

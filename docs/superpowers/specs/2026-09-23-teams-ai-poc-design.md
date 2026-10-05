@@ -27,12 +27,11 @@ Using a reference spec (a small TODO REST API with 4–5 acceptance criteria):
 
 - Zero human interaction between "Start" and `awaiting-validation`.
 - Every acceptance criterion has `passed` evidence in JUnit output.
-- Successful deploy to both `docker-local` and `kind`, with green acceptance smoke tests against the running service.
+- Successful deploy to `docker-local` (the `kind` target was dropped on 2026-10-05), with green acceptance smoke tests against the running service.
 - Zero duplicate PRs; `main` stays green after every merge.
-- Three runs compared on tokens, retries, wall time, blocked tasks and escalation rate:
-  1. Baseline — Claude only, System 1 layer disabled.
-  2. Mixed — OmniRoute for Test/DevOps, System 1 disabled.
-  3. Full — OmniRoute for Test/DevOps, System 1 layer enabled (see 10A).
+- Two runs compared on tokens, retries, wall time, blocked tasks and escalation rate (agents are Claude Code CLI only, 2026-10-05):
+  1. Baseline — System 1 layer disabled.
+  2. Full — System 1 layer enabled (see 10A).
 
 ### 1.4 Non-goals
 
@@ -57,9 +56,8 @@ Using a reference spec (a small TODO REST API with 4–5 acceptance criteria):
 | Failure policy | Dev retries up to 3 times per task → SM replans once → task becomes `blocked`; dependents stop, independents continue. |
 | Parallelism | SM declares `dependsOn` and `affectedPaths`; orchestrator runs independent tasks in parallel, max 3. |
 | Merge | Serialized merge queue owned by the orchestrator. No human merge approval. |
-| Deploy targets | Pluggable `DeployTarget` interface; POC ships `docker-local` and `kind` adapters. |
+| Deploy targets | Pluggable `DeployTarget` interface; POC ships the `docker-local` adapter only (docker compose). |
 | Models | Per-role, configurable: `opus` for SM/PO/Dev, `sonnet` for Test/DevOps (Claude subscription). |
-| Free LLMs | OmniRoute gateway, per-role provider profile; POC uses it for Test, DevOps and report steps with a pinned model. |
 | Knowledge | Structured JSON contract (lookup by ID) + graphify code graph + BM25 text retrieval (SQLite FTS5). |
 | Fast decisions | System One decision layer (Choice / Score / Noul): Jev via OpenRouter as primary, a local 7–9B llama.cpp model with logprobs as fallback (confidential projects, outages), low confidence escalates to Claude agents. |
 
@@ -83,7 +81,7 @@ teams-ai/
 │  ├─ git/                  git controller + merge queue (idempotent)
 │  ├─ evidence/             JUnit XML parser → AC evidence matrix
 │  ├─ knowledge/            context pack builder, graphify wrapper, FTS5 retrieval
-│  ├─ deploy/               DeployTarget interface + docker-local, kind adapters
+│  ├─ deploy/               DeployTarget interface + docker-local adapter
 │  ├─ budget/               token accounting, budgets, concurrency governor, quota breaker
 │  ├─ decide/               System 1 decision layer: choice/score/noul, backends, policies, calibration
 │  ├─ store/                state.json + events.ndjson persistence
@@ -135,8 +133,8 @@ claude -p \
 ```
 
 - `--setting-sources project` and `--strict-mcp-config` prevent the user's global plugins, hooks and MCP servers from being loaded into agent runs (token leakage and behavior contamination). `--bare` is not usable because it requires `ANTHROPIC_API_KEY`.
-- The environment is sanitized: no GitHub token, no cloud credentials, no secrets. For OmniRoute-profile roles the runner adds `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_MODEL` and `CLAUDE_CODE_AUTO_COMPACT_WINDOW`.
-- The Claude Code sandbox restricts filesystem access to the working directory and network access to an allowlist (package registries, OmniRoute on localhost). `~/.teams-ai/secrets/` is explicitly denied.
+- The environment is sanitized: no GitHub token, no cloud credentials, no secrets.
+- The Claude Code sandbox restricts filesystem access to the working directory and network access to an allowlist (package registries). `~/.teams-ai/secrets/` is explicitly denied.
 - Refinement steps are the only ones that keep a session (`--session-id` / `--resume`), so the chat has continuity.
 - Exact flag behavior is verified in the first implementation task (see 12).
 
@@ -147,8 +145,8 @@ claude -p \
 | PO | opus | Refinement (product readiness), AC coverage check of the tech spec |
 | SM | opus | Refinement (execution readiness), plan/DAG, replan, final report |
 | Dev | opus | Tech spec, stack ADR, implementation, unit tests, fixes, conflict resolution |
-| Test | sonnet → OmniRoute (run 2) | Review of commands/gates in plan, diff review, acceptance tests, integrated verification |
-| DevOps | sonnet → OmniRoute (run 2) | Repo bootstrap intent, infra files (Dockerfile, manifests), deployment intent |
+| Test | sonnet | Review of commands/gates in plan, diff review, acceptance tests, integrated verification |
+| DevOps | sonnet | Repo bootstrap intent, infra files (Dockerfile, manifests), deployment intent |
 
 Agents only edit files and return structured JSON. They never run git remote operations, `gh`, `docker` or `kubectl`.
 
@@ -163,9 +161,9 @@ All contract files live in the product repository under `docs/` and are versione
 - `constraints[]` — free-text constraints
 - `stack` — optional; when set, the Dev agent must use this stack instead of choosing one
 - `principles[]` — the project constitution: non-negotiable rules loaded by every agent (test conventions, security rules, style)
-- `deploy.target` — `docker-local` | `kind`
+- `deploy.target` — `docker-local`
 - `github.owner` — optional override
-- `confidential` — boolean; when `true`, OmniRoute profiles are disabled for this project
+- `confidential` — boolean; when `true`, the `jev-openrouter` decision backend is not called for this project
 
 ### 4.2 `docs/specs/<specId>/spec.json` (human layer, per spec)
 
@@ -268,7 +266,7 @@ For each task:
 Test runs the full suite plus all acceptance tests on `main`. Failures make SM create fix tasks (one round only), which go through Phase 3.
 
 ### Phase 5 — Deploy
-DevOps provides deployment intent (manifests and `deployment.json`, already merged via the infrastructure task). The orchestrator runs `validate → apply → readiness → healthcheck → smoke [AC-* with smoke=true]` against the service URL. On failure: rollback to the previous image tag (`kubectl rollout undo` for kind, previous tag for compose), then DevOps fixes via a PR through the merge queue; up to 3 deploy attempts. If exhausted, the run ends with `deploy-failed` in the report.
+DevOps provides deployment intent (manifests and `deployment.json`, already merged via the infrastructure task). The orchestrator runs `validate → apply → readiness → healthcheck → smoke [AC-* with smoke=true]` against the service URL. On failure: rollback to the previous image tag (previous image tag for compose), then DevOps fixes via a PR through the merge queue; up to 3 deploy attempts. If exhausted, the run ends with `deploy-failed` in the report.
 
 ### Phase 6 — Report
 SM produces the report: delivered tasks, blocked tasks with reasons, service URL, evidence matrix, assumptions log, token usage, and an exploratory test script derived from the ACs. The spec moves to `awaiting-validation`.
@@ -358,18 +356,13 @@ Root causes addressed: **ambiguity** (agents invent when the spec has gaps) and 
 - The orchestrator routes it to SM, which decides using principles and ADRs, and records the decision in an **assumptions log** (`docs/specs/<id>/assumptions.md`, one entry per decision with task, question, decision and rationale). The task resumes with the explicit decision in its context pack. A spec gap does not consume a task attempt.
 - Agents never ask the human mid-run. Assumptions are listed on the Validation screen and in the report, so the human validates them together with the exploratory test; a wrong assumption is reported and flows back to Gate 1.
 
-## 10. Provider profiles and OmniRoute
+## 10. Provider
 
-- Each role has a provider profile: `{provider: "claude" | "omniroute", model}`.
-- `claude`: no extra environment; uses the WSL Claude Code login.
-- `omniroute`: OmniRoute runs as a pinned-version container in WSL on `localhost:20128`. The runner injects `ANTHROPIC_BASE_URL=http://localhost:20128`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_MODEL` (a pinned model — never `auto` combos, to keep attempts reproducible) and `CLAUDE_CODE_AUTO_COMPACT_WINDOW` matching the model's real context window.
-- OmniRoute compression is disabled for agent traffic (header `x-omniroute-compression: off` or a compression-free combo), because RTK/Caveman compression can truncate test output and rewrite structured content.
-- The Claude subscription is **never** routed through OmniRoute (Anthropic's terms restrict subscription credentials to official clients; risk of account suspension). OmniRoute serves only non-Claude providers.
-- Projects with `confidential: true` cannot use OmniRoute profiles (free tiers may log or train on prompts) nor the `jev-openrouter` decision backend (10A.2); their decisions use the local backend or escalate.
-- `OPENROUTER_API_KEY` (for the decision layer only, 10A.2) is stored in `~/.teams-ai/secrets/` and never reaches agent processes or OmniRoute.
-- If OmniRoute is unavailable, the affected role falls back to its Claude profile and the fallback is recorded.
-- The model that actually served a request is taken from OmniRoute logs (`X-OmniRoute-Decision`), since the CLI does not expose response headers.
-- Run 1 (baseline) uses Claude for all roles; run 2 switches Test and DevOps (and the report step) to OmniRoute.
+- Every role runs the Claude Code CLI: the role profile is `{model}` only (no `provider` key; a leftover one is refused by the config schema). Authentication is the WSL Claude Code login, or `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`.
+- There is no gateway and no non-Claude agent provider. OmniRoute was dropped on 2026-10-05 (plan 39).
+- Projects with `confidential: true` do not call the `jev-openrouter` decision backend (10A.2); their decisions use the local backend or escalate.
+- `OPENROUTER_API_KEY` (for the decision layer only, 10A.2) is stored in `~/.teams-ai/secrets/` and never reaches agent processes.
+- Both golden runs use Claude for every role; run 2 differs only by the System 1 layer being on.
 
 ## 10A. System 1 decision layer
 
@@ -403,11 +396,11 @@ Per-decision config: `{enabled, chain: ['jev', 'local', 'claude'], thresholds: {
 
 - **Endpoint:** `POST https://openrouter.ai/api/v1/systemone`, `Authorization: Bearer <OPENROUTER_API_KEY>`. Request `{model: "typesafe/jev-1.13", state, questions}`; response `{id, model, provider, answers, usage: {input_tokens, output_tokens, cost}}`. Same shapes as TypeSafe's own API, so the `@typesafe-ai/sdk` client pointed at base URL `https://openrouter.ai/api` also works; the POC uses plain `fetch` to avoid a dependency.
 - **Model pinned** to `typesafe/jev-1.13` (never an alias) so decisions are reproducible across attempts.
-- **Not an OpenAI-compatible chat endpoint.** It is called directly, never through OmniRoute or through a Claude Code process.
+- **Not an OpenAI-compatible chat endpoint.** It is called directly, never through a Claude Code process.
 - **Key:** `OPENROUTER_API_KEY` lives in `~/.teams-ai/secrets/`, is read by the orchestrator only, and is never injected into agent processes. It is redacted from logs like every other secret.
 - **Probabilities and confidence** come from the model (trained for calibration), so no post-hoc calibration is needed; 10A.4 still logs outcomes to verify it.
 - **Retries:** exponential backoff on 429/529, at most 3 tries; then the backend reports "unavailable" and the chain continues.
-- **Confidential projects:** the backend is never called; the state would leave the machine. `confidential: true` therefore covers OmniRoute and Jev alike (see §10).
+- **Confidential projects:** the backend is never called; the state would leave the machine. `confidential: true` therefore keeps Jev off (see §10).
 - **Cost accounting:** `usage.cost` is recorded in `budget/accounting` under provider `openrouter`, role `system1`, keyed by decision id.
 - **State size cap:** states are truncated or summarized by the caller (e.g. diff stats + changed symbols instead of a full diff) to stay well under the 32k-token context.
 
@@ -447,7 +440,7 @@ Rule: **deterministic rules first, System 1 second, System 2 on low confidence.*
 | 7 | Validation report routing: `bug-existing-ac` / `new-requirement` / `environment` / `unclear` | Choice | After human validation report | Sets the continuation mode of the spec; `unclear` → PO asks the human | PO |
 | 8 | CLI error classification: `usage-limit` / `auth-expired` / `network` / `invalid-output` / `other` | Choice | Runner, when rules do not match | Feeds the quota breaker and pause states | — (falls back to `other` → generic retry) |
 | 9 | Scope drift: one Noul per out-of-scope item, one for changes not required by referenced ACs | Noul | Phase 3, before review | High values force the `deep` review profile (9A.3) | Test |
-| 10 | Model tier per task: `small` / `medium` / `large` (mapped to the role's configured models, e.g. haiku / sonnet / opus, or the OmniRoute pin) | Choice | Phase 3, before each Dev/Test step, from the task, its ACs and the declared file set | Selects the model for attempt 1; attempt 2 onward always moves one tier up, so a misclassified task self-corrects through the attempt budget | — (default: the role's configured model) |
+| 10 | Model tier per task: `small` / `medium` / `large` (mapped to the role's configured models, e.g. haiku / sonnet / opus) | Choice | Phase 3, before each Dev/Test step, from the task, its ACs and the declared file set | Selects the model for attempt 1; attempt 2 onward always moves one tier up, so a misclassified task self-corrects through the attempt budget | — (default: the role's configured model) |
 | 11 | Reasoning effort per task: `low` / `medium` / `high` / `max` | Score | Same call as decision 10 | Sets the Claude Code effort level for the step; attempt 2 onward raises it one level | — (default: the CLI default) |
 | 12 | Rank candidate plans or approaches when SM enumerates more than one (one Score per candidate on AC coverage and risk) | Score | Phase 2 (planning) and replan | Picks the highest-scoring candidate; SM still authors every candidate, System 1 never invents a path | SM |
 
@@ -486,7 +479,6 @@ Fastify serves REST + SSE, bound to `127.0.0.1`, no authentication. SSE supports
 | Review returns `changes` | Return findings to Dev | Yes |
 | Rebase conflict | Dev resolves | Yes |
 | Usage quota exhausted | Global `paused:quota`, automatic resume | No |
-| OmniRoute unavailable | Fall back to Claude profile for that role | No |
 | Docker / GitHub / network transient error | Backoff on idempotent operation | No |
 | Output with `specHash` mismatch or unresolved reference | Same as schema failure (re-run up to 2 times) | Only after those 2 |
 | Auto-compaction detected inside a step | Discard output, replan task smaller; if the task already came from a replan, block it | No |
@@ -505,7 +497,7 @@ Raw agent streams are stored per step in `runs/<runId>/steps/<stepId>.ndjson`. W
 
 1. **Unit (Vitest, every commit, no LLM):** scheduler (DAG, `maxParallel`, path overlap, deadlock, retry→replan→blocked); validators (valid/invalid fixture per output type); pipeline transitions and replay (kill at each state, verify resume); evidence parser (zero tests, AC without test, failing test, malformed XML); merge queue under simulated concurrency with `main` advancing; budget and circuit breaker with a fake clock; frozen-file rejection; context pack builder (including dependency handoff summaries); `specHash` echo mismatch; reference validation (unknown AC/task/file/test/ADR); scope guard (files outside `affectedPaths` without justification); spec-gap routing and assumptions log; compaction-detected step handling.
 2. **Runner contract:** a fake `claude` binary (via `CLAUDE_BIN`) replays recorded stream-json fixtures — success, invalid JSON, quota error, timeout, oversized output. A record mode captures real outputs to create fixtures.
-3. **Integration (on demand):** git controller against a local bare repository and a fake `gh` (create PR twice, merge twice → idempotent); deploy adapters against real Docker and kind with a "hello" fixture app exposing a healthcheck and a smoke test.
+3. **Integration (on demand):** git controller against a local bare repository and a fake `gh` (create PR twice, merge twice → idempotent); deploy adapters against real Docker with a "hello" fixture app exposing a healthcheck and a smoke test.
 4. **Agent evals (on demand, consume tokens):** small set of context packs per role; outputs must pass schema and semantic validation; pass rate tracked per role and provider.
 5. **Decision evals (on demand):** see 10A.6; Jev calls cost cents, the local backend is free. Unit tests for the decide layer use fake backends returning fixed distributions or "unavailable" to test thresholds, chain fall-through, confidential skipping, escalation and disabled mode; the Jev HTTP client is tested against a recorded response fixture, never the live API.
 6. **Golden run:** see 1.3.
@@ -522,8 +514,7 @@ Raw agent streams are stored per step in `runs/<runId>/steps/<stepId>.ndjson`. W
 
 - Ubuntu distribution on WSL2 (currently only `docker-desktop` exists).
 - Docker Desktop with WSL integration enabled for that distribution.
-- Inside Ubuntu: Node LTS, Claude Code CLI (logged in), `gh` (authenticated), `kind`, `kubectl`, `gitleaks`, `osv-scanner`, `graphify`.
-- OmniRoute container (pinned version) for runs 2 and 3.
+- Inside Ubuntu: Node LTS, Claude Code CLI (logged in), `gh` (authenticated), `gitleaks`, `osv-scanner`, `graphify`.
 - NVIDIA driver with CUDA support for WSL2; llama.cpp server built with CUDA inside Ubuntu; a 7–9B GGUF model (Q4_K_M/Q5_K_M) for the System 1 layer.
 - teams-ai and `~/.teams-ai/` located on the Linux filesystem, not under `/mnt/c`.
 
@@ -545,7 +536,6 @@ Raw agent streams are stored per step in `runs/<runId>/steps/<stepId>.ndjson`. W
 - Availability of a turn cap flag (`--max-turns` is not listed in `--help` for CLI 2.1.280); the runner's own cap is the primary mechanism regardless.
 - Format of usage-limit errors in stream-json, to parse reset times.
 - How auto-compaction surfaces in stream-json events, for compaction detection (9A.1).
-- `--json-schema` reliability with non-Claude models through OmniRoute.
 - graphify language coverage for likely product stacks.
 - llama.cpp server logprobs API shape for restricted-label next-token probabilities, and prompt-cache reuse across parallel slots.
-- Which 7–9B model gives the best accuracy/ECE on the decision evals within 8 GB VRAM, alongside Docker and kind on the same host.
+- Which 7–9B model gives the best accuracy/ECE on the decision evals within 8 GB VRAM, alongside Docker on the same host.
