@@ -118,6 +118,9 @@ spec:
             # their own pods (audit C1, plan 20): both opt-ins are set on purpose and the refusal in runStep stays for others.
             - { name: TEAMS_AI_UNSAFE_NO_SANDBOX, value: '1' }
             - { name: HOME, value: /home/node }
+            # The UI refuses a non-loopback bind without a bearer token (Secret ui-token, see secrets-templates).
+            - name: TEAMS_AI_UI_TOKEN
+              valueFrom: { secretKeyRef: { name: ui-token, key: TEAMS_AI_UI_TOKEN } }
           readinessProbe:
             tcpSocket: { port: http }
             periodSeconds: 5
