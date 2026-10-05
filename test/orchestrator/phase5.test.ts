@@ -21,7 +21,7 @@ afterEach(async () => {
   await remote.cleanup();
 });
 
-function deps(smokeDetail: string): PhaseDeps {
+function deps(smokeDetail: string, destroyed: string[] = []): PhaseDeps {
   const ws = { projectId: 'shop', root: remote.root, repo: remote.repo, worktrees: path.join(remote.root, 'wt'), graph: '', knowledgeDb: '', secrets: path.join(remote.root, 'secrets'), runs: remote.root };
   const target = {
     name: 'docker-local' as const,
@@ -31,7 +31,7 @@ function deps(smokeDetail: string): PhaseDeps {
     verify: async () => ({ healthy: true, detail: 'HTTP 200' }),
     currentImage: async () => null,
     rollback: async () => undefined,
-    destroy: async () => undefined,
+    destroy: async () => { destroyed.push('destroyed'); },
     serviceUrl: async () => 'http://127.0.0.1:3000',
   };
   return { journal, ws, spec, project, specHash: HASH, firstSpec: true, exec: execCommand, plan: makePlan(spec), target, smoke: async () => ({ ok: false, rows: [], detail: smokeDetail, result: null }) } as unknown as PhaseDeps;
@@ -49,6 +49,13 @@ describe('Phase 5', () => {
   it('any other smoke failure still plans a deploy-fix task for the Dev', async () => {
     const r = await runPhase5(deps('AC-001: smoke test failed'), 1);
     expect(r.ok ? null : r.fixTask?.origin).toBe('deploy-fix');
+  });
+
+  it('a first deploy (no previous image) that fails the smoke takes its stack down, so it cannot hold the port for the next attempt or project', async () => {
+    const destroyed: string[] = [];
+    const r = await runPhase5(deps('AC-001: smoke test failed', destroyed), 1);
+    expect(r.ok).toBe(false);
+    expect(destroyed).toEqual(['destroyed']);
   });
 
   it('with fixTasks off (deploy-only runs) a failure plans no deploy-fix task', async () => {

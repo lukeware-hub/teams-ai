@@ -74,12 +74,12 @@ export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fix
     healthcheck = (await deps.target.verify(intent)).detail;
   }
   let url: string; let gateUrl: string | undefined; let gateNet: string | undefined; try { url = await (deps.target.serviceUrl ? deps.target.serviceUrl(intent) : ''); gateUrl = deps.target.gateServiceUrl ? await deps.target.gateServiceUrl(intent) : undefined; gateNet = deps.target.gateNetwork?.(intent); } catch (e) { return failed('verify', (e as Error).message, false, null, previous); }
-  const s = await deps.smoke(deps.ws.repo, url, gateUrl, gateNet); if (!s.ok) { let rb = false; let rh: boolean | null = null; if (previous) { await deps.target.rollback(intent, previous); rb = true; rh = (await deps.target.verify(intent)).healthy; } return failed('smoke', s.detail, rb, rh, previous); }
+  const s = await deps.smoke(deps.ws.repo, url, gateUrl, gateNet); if (!s.ok) { let rb = false; let rh: boolean | null = null; if (previous) { await deps.target.rollback(intent, previous); rb = true; rh = (await deps.target.verify(intent)).healthy; } else await deps.target.destroy(intent).catch(() => undefined); return failed('smoke', s.detail, rb, rh, previous); }
   // The e2e suite runs only against a deployment whose smoke already passed (roadmap R8.4). Legacy plans without commands.e2e skip it unless the run requires it.
   let e2eRows: E2eRow[] | undefined;
   if (deps.e2e && (e2eCommand(deps.plan) || deps.requireE2e)) {
     const e = await deps.e2e(deps.ws.repo, url, gateUrl, gateNet);
-    if (!e.ok) { let rb = false; let rh: boolean | null = null; if (previous) { await deps.target.rollback(intent, previous); rb = true; rh = (await deps.target.verify(intent)).healthy; } return failed('e2e', e.detail, rb, rh, previous); }
+    if (!e.ok) { let rb = false; let rh: boolean | null = null; if (previous) { await deps.target.rollback(intent, previous); rb = true; rh = (await deps.target.verify(intent)).healthy; } else await deps.target.destroy(intent).catch(() => undefined); return failed('e2e', e.detail, rb, rh, previous); }
     e2eRows = e.rows;
   }
   await deps.journal.fact(OrchEvent.DeployVerified, { attempt, url, smoke: s.rows, healthcheck, tag, ...(e2eRows ? { e2e: e2eRows } : {}) }); return { ok: true, url, smoke: s.rows, healthcheck, ...(e2eRows ? { e2e: e2eRows } : {}) };
