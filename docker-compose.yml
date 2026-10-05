@@ -38,6 +38,9 @@ services:
       - seccomp:unconfined
       - apparmor:unconfined
       - systempaths=unconfined
+    # rootlesskit builds its tap device in a user namespace.
+    devices:
+      - /dev/net/tun
     # Reachable only from this compose network (no `ports:`).
     expose:
       - '2375'
