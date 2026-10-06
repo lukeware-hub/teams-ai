@@ -369,11 +369,11 @@ export function ProjectsView(p: {
       {pendingDelete ? (
         <Dialog title="Excluir refinamento" onClose={() => setPendingDelete(null)}>
           <p>Excluir o refinamento de {pendingDelete.projectId} / {pendingDelete.specId}? O projeto volta a poder ser criado do zero. Essa ação não pode ser desfeita.</p>
-          <div className="projects-form-actions">
+          <div className="dialog-actions">
             <button type="button" className="secondary" data-testid="delete-cancel" onClick={() => setPendingDelete(null)}>Cancelar</button>
             <button
               type="button"
-              className="project-action project-action-danger"
+              className="danger-button"
               data-testid="delete-confirm"
               onClick={() => {
                 p.onDelete(pendingDelete.projectId, pendingDelete.specId);
