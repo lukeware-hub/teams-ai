@@ -52,6 +52,7 @@ export function ProjectsView(p: {
   onNewProject: (projectId: string, name: string, description: string) => void;
   onNewSpec: (projectId: string, specId: string, description: string) => void;
   onContinue: (projectId: string, specId: string) => void;
+  onDelete: (projectId: string, specId: string) => void;
 }) {
   const [repoUrl, setRepoUrl] = useState('');
   const [newProjectId, setNewProjectId] = useState('');
@@ -74,6 +75,9 @@ export function ProjectsView(p: {
   const unregistered = openDrafts.filter((d) => !d.registered && matches(d.projectId, d.specId));
   const total = plural(p.projects.length, 'projeto', 'projetos');
   const toggle = (next: 'new' | 'git') => setPanel(panel === next ? null : next);
+  const deleteDraft = (projectId: string, specId: string) => {
+    if (window.confirm(`Excluir o refinamento de ${projectId} / ${specId}? O projeto volta a poder ser criado do zero. Essa ação não pode ser desfeita.`)) p.onDelete(projectId, specId);
+  };
   return (
     <main className="projects-shell">
       <header className="projects-header">
@@ -319,6 +323,10 @@ export function ProjectsView(p: {
                       <span className="project-row-id">{d.specId}</span>
                       {chip(d.state)}
                       <span className="project-row-actions">
+                        <button type="button" className="project-action project-action-danger" data-testid={`delete-${d.projectId}-${d.specId}`} aria-label={`Excluir refinamento de ${d.specId}`} onClick={() => deleteDraft(d.projectId, d.specId)}>
+                          <Icon name="trash" size={14} />
+                          Excluir
+                        </button>
                         <Link className="project-action secondary" data-testid={`refine-${d.projectId}-${d.specId}`} aria-label={`Abrir refinamento de ${d.specId}`} to={`/refine/${d.projectId}/${d.specId}`}>
                           Abrir
                           <Icon name="arrow-right" size={14} />
@@ -344,6 +352,10 @@ export function ProjectsView(p: {
                 <span className="project-row-id">{d.projectId} / {d.specId}</span>
                 {chip(d.state)}
                 <span className="project-row-actions">
+                  <button type="button" className="project-action project-action-danger" data-testid={`delete-${d.projectId}-${d.specId}`} aria-label={`Excluir refinamento de ${d.projectId} / ${d.specId}`} onClick={() => deleteDraft(d.projectId, d.specId)}>
+                    <Icon name="trash" size={14} />
+                    Excluir
+                  </button>
                   <Link className="project-action secondary" data-testid={`refine-${d.projectId}-${d.specId}`} aria-label={`Abrir refinamento de ${d.projectId} / ${d.specId}`} to={`/refine/${d.projectId}/${d.specId}`}>
                     Abrir
                     <Icon name="arrow-right" size={14} />
@@ -414,6 +426,7 @@ export function Projects() {
       onNewProject={(id, name, description) => void go(() => refineApi.newProject(id, name, description))()}
       onNewSpec={(p, s, description) => void go(() => refineApi.newSpec(p, s, description))()}
       onContinue={(p, s) => void go(() => refineApi.continueSpec(p, s))()}
+      onDelete={(p, s) => void act(() => refineApi.delete(p, s))()}
     />
   );
 }

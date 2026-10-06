@@ -64,6 +64,14 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     },
     { method: 'GET', path: S, handler: wrap(async ({ params, json }) => json(200, await (await get(params)).snapshot())) },
     {
+      method: 'DELETE',
+      path: S,
+      handler: wrap(async ({ params, json }) => {
+        await registry.deleteDraft(params.projectId!, params.specId!);
+        json(200, { ok: true });
+      }),
+    },
+    {
       method: 'PUT',
       path: `${S}/docs/:file`,
       handler: wrap(async ({ params, body, json }) => {

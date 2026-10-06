@@ -24,10 +24,10 @@ const runs = {
 
 describe('ProjectsView', () => {
   it('shows one action per spec status and per run status', () => {
-    const on = { start: vi.fn(), resume: vi.fn(), stop: vi.fn(), add: vi.fn(), newProject: vi.fn(), newSpec: vi.fn(), cont: vi.fn() };
+    const on = { start: vi.fn(), resume: vi.fn(), stop: vi.fn(), add: vi.fn(), newProject: vi.fn(), newSpec: vi.fn(), cont: vi.fn(), del: vi.fn() };
     render(
       <MemoryRouter>
-        <ProjectsView projects={projects} runs={runs} drafts={[]} error={null} onStart={on.start} onResume={on.resume} onStop={on.stop} onAdd={on.add} onNewProject={on.newProject} onNewSpec={on.newSpec} onContinue={on.cont} />
+        <ProjectsView projects={projects} runs={runs} drafts={[]} error={null} onStart={on.start} onResume={on.resume} onStop={on.stop} onAdd={on.add} onNewProject={on.newProject} onNewSpec={on.newSpec} onContinue={on.cont} onDelete={on.del} />
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByTestId('start-hello-001'));
@@ -45,7 +45,7 @@ describe('ProjectsView', () => {
     const onAdd = vi.fn();
     render(
       <MemoryRouter>
-        <ProjectsView projects={[]} runs={{}} drafts={[]} error="not a project directory" onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={onAdd} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} />
+        <ProjectsView projects={[]} runs={{}} drafts={[]} error="not a project directory" onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={onAdd} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} onDelete={vi.fn()} />
       </MemoryRouter>,
     );
     expect(screen.getByText('Seus projetos aparecem aqui.')).toBeTruthy();
@@ -57,7 +57,7 @@ describe('ProjectsView', () => {
     expect(screen.getByText('not a project directory')).toBeTruthy();
   });
   it('offers new project, new spec, continue spec and open refinement', () => {
-    const on = { start: vi.fn(), resume: vi.fn(), stop: vi.fn(), add: vi.fn(), newProject: vi.fn(), newSpec: vi.fn(), cont: vi.fn() };
+    const on = { start: vi.fn(), resume: vi.fn(), stop: vi.fn(), add: vi.fn(), newProject: vi.fn(), newSpec: vi.fn(), cont: vi.fn(), del: vi.fn() };
     const drafts = [
       { projectId: 'hello-app', specId: 'hello-003', state: 'answering' as const, registered: true },
       { projectId: 'fresh', specId: 'fresh-001', state: 'drafting' as const, registered: false },
@@ -77,6 +77,7 @@ describe('ProjectsView', () => {
           onNewProject={on.newProject}
           onNewSpec={on.newSpec}
           onContinue={on.cont}
+          onDelete={on.del}
         />
       </MemoryRouter>,
     );
@@ -96,13 +97,21 @@ describe('ProjectsView', () => {
     expect(screen.getByTestId('refine-hello-app-hello-003').getAttribute('href')).toBe('/refine/hello-app/hello-003');
     expect(screen.getByTestId('refine-fresh-fresh-001').getAttribute('href')).toBe('/refine/fresh/fresh-001');
     expect(screen.queryByTestId('refine-hello-app-hello-004')).toBeNull();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    fireEvent.click(screen.getByTestId('delete-fresh-fresh-001'));
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('fresh / fresh-001'));
+    expect(on.del).not.toHaveBeenCalled();
+    confirmSpy.mockReturnValue(true);
+    fireEvent.click(screen.getByTestId('delete-hello-app-hello-003'));
+    expect(on.del).toHaveBeenCalledWith('hello-app', 'hello-003');
+    confirmSpy.mockRestore();
   });
   it('an awaiting-validation spec links to the validation page of its last run', () => {
     const awaiting = [{ projectId: 'hello-app', dir: '/p/hello', specs: [{ specId: 'hello-009', status: 'awaiting-validation', activeRunId: null }] }];
     const awaitingRuns = { 'hello-app': [{ runId: 'hello-009-r1', specId: 'hello-009', projectId: 'hello-app', status: 'awaiting-validation', at: '2026-09-24T11:00:00.000Z', tokens: 1, cost: 0, stoppable: false }] };
     render(
       <MemoryRouter>
-        <ProjectsView projects={awaiting} runs={awaitingRuns} drafts={[]} error={null} onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={vi.fn()} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} />
+        <ProjectsView projects={awaiting} runs={awaitingRuns} drafts={[]} error={null} onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={vi.fn()} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} onDelete={vi.fn()} />
       </MemoryRouter>,
     );
     expect(screen.getByTestId('validate-hello-009').getAttribute('href')).toBe('/runs/hello-009-r1/validation');
@@ -110,7 +119,7 @@ describe('ProjectsView', () => {
   it('opens one creation form at a time and keeps what was typed', () => {
     render(
       <MemoryRouter>
-        <ProjectsView projects={projects} runs={runs} drafts={[]} error={null} onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={vi.fn()} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} />
+        <ProjectsView projects={projects} runs={runs} drafts={[]} error={null} onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={vi.fn()} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} onDelete={vi.fn()} />
       </MemoryRouter>,
     );
     const newProject = screen.getByRole('button', { name: 'Novo projeto' });
@@ -130,7 +139,7 @@ describe('ProjectsView', () => {
     const two = [...projects, { projectId: 'shop', dir: '/p/loja', specs: [{ specId: 'shop-001', status: 'done', activeRunId: null }] }];
     render(
       <MemoryRouter>
-        <ProjectsView projects={two} runs={runs} drafts={[]} error={null} onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={vi.fn()} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} />
+        <ProjectsView projects={two} runs={runs} drafts={[]} error={null} onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={vi.fn()} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} onDelete={vi.fn()} />
       </MemoryRouter>,
     );
     const filter = screen.getByLabelText('Filtrar projetos') as HTMLInputElement;
@@ -155,7 +164,7 @@ describe('ProjectsView', () => {
     const seven = { 'hello-app': Array.from({ length: 7 }, (_, i) => ({ runId: `hello-001-r${7 - i}`, specId: 'hello-001', projectId: 'hello-app', status: 'complete', at: null, tokens: 10, cost: 0.1, stoppable: false })) };
     render(
       <MemoryRouter>
-        <ProjectsView projects={projects} runs={seven} drafts={[]} error={null} onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={vi.fn()} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} />
+        <ProjectsView projects={projects} runs={seven} drafts={[]} error={null} onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={vi.fn()} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} onDelete={vi.fn()} />
       </MemoryRouter>,
     );
     const runLinks = () => screen.queryAllByRole('link').filter((a) => /^\/runs\/hello-001-r\d+$/.test(a.getAttribute('href') ?? '')).map((a) => a.textContent);

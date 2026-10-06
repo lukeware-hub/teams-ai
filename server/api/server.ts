@@ -20,7 +20,7 @@ export interface RouteContext {
 }
 
 export interface Route {
-  method: 'GET' | 'POST' | 'PUT';
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
   /** Literal segments or `:name` parameters, e.g. `/api/runs/:runId/events`. */
   path: string;
   handler: (ctx: RouteContext) => Promise<void>;

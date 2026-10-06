@@ -1,4 +1,4 @@
-export type IconName = 'claude' | 'github' | 'user' | 'external' | 'send' | 'close' | 'chevron' | 'terminal' | 'check' | 'file' | 'clipboard' | 'shield' | 'clock' | 'list' | 'lock' | 'home' | 'copy' | 'download' | 'play' | 'info' | 'lightbulb' | 'sun' | 'moon' | 'monitor' | 'arrow-left' | 'arrow-right' | 'search' | 'plus' | 'refresh' | 'alert' | 'chevron-right' | 'stop' | 'code' | 'server';
+export type IconName = 'claude' | 'github' | 'user' | 'external' | 'send' | 'close' | 'chevron' | 'terminal' | 'check' | 'file' | 'clipboard' | 'shield' | 'clock' | 'list' | 'lock' | 'home' | 'copy' | 'download' | 'play' | 'info' | 'lightbulb' | 'sun' | 'moon' | 'monitor' | 'arrow-left' | 'arrow-right' | 'search' | 'plus' | 'refresh' | 'alert' | 'chevron-right' | 'stop' | 'code' | 'server' | 'trash';
 
 export function Icon({ name, size = 24 }: { name: IconName; size?: number }) {
   const common = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true };
@@ -46,6 +46,7 @@ export function Icon({ name, size = 24 }: { name: IconName; size?: number }) {
   if (name === 'code') return <svg {...common}><path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 5.5l-3 13" /></svg>;
   if (name === 'server') return <svg {...common}><rect x="3.5" y="4" width="17" height="6.5" rx="1.5" /><rect x="3.5" y="13.5" width="17" height="6.5" rx="1.5" /><path d="M7.5 7.25h.01M7.5 16.75h.01" /></svg>;
   if (name === 'stop') return <svg {...common}><rect x="6.5" y="6.5" width="11" height="11" rx="1.5" /></svg>;
+  if (name === 'trash') return <svg {...common}><path d="M5 7h14M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m3 0-.9 13.1a2 2 0 0 1-2 1.9H8.9a2 2 0 0 1-2-1.9L6 7M10 11v6M14 11v6" /></svg>;
   if (name === 'terminal') {
     return <svg {...common}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="m7 9 3 3-3 3M13 15h4" /></svg>;
   }

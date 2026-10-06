@@ -152,6 +152,17 @@ export class SessionRegistry {
     return { runId };
   }
 
+  /** Discards a draft that never started a run, so the user can begin that spec's refinement again from scratch. */
+  async deleteDraft(projectId: string, specId: string): Promise<void> {
+    const session = await this.get(projectId, specId);
+    session.ensureCanEvaluate();
+    const ws = await this.ws(projectId);
+    const draft = draftPaths(ws, specId);
+    await session.close();
+    this.sessions.delete(`${projectId}/${specId}`);
+    await fs.rm(draft.root, { recursive: true, force: true });
+  }
+
   async list(): Promise<DraftRow[]> {
     const cfg = await this.deps.cfg();
     const root = expandHome(cfg.paths.workspaces, this.deps.home);

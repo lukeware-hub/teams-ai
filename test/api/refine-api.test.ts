@@ -202,6 +202,28 @@ describe('refine api', () => {
     expect(registered).toHaveLength(1);
   });
 
+  it('deletes a draft that never started, refuses a started one, and 404s a missing one', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    const draftRoot = `${home}/ws/hello-app/refine/hello-app-001`;
+    expect(await fs.access(draftRoot).then(() => true, () => false)).toBe(true);
+    const del = await call('DELETE', '/api/refine/hello-app/hello-app-001');
+    expect(del.status).toBe(200);
+    expect(await fs.access(draftRoot).then(() => true, () => false)).toBe(false);
+    expect((await fetch(`${base()}/api/refine`)).status).toBe(200);
+    expect(await (await fetch(`${base()}/api/refine`)).json()).toEqual([]);
+    expect((await call('DELETE', '/api/refine/hello-app/hello-app-001')).status).toBe(404);
+
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    script['derive/po'] = [derived];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
+    await settle();
+    await call('POST', '/api/refine/hello-app/hello-app-001/start');
+    expect((await call('DELETE', '/api/refine/hello-app/hello-app-001')).status).toBe(409);
+    expect(await fs.access(draftRoot).then(() => true, () => false)).toBe(true);
+  });
+
   it('a child that dies before writing its journal reports 500 with the log tail and leaves the session retryable', async () => {
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     script['derive/po'] = [derived];
