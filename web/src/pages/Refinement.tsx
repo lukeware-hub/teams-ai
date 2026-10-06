@@ -220,8 +220,8 @@ export function RefinementView(p: ViewProps) {
           <button data-testid="evaluate" className="primary refine-action" disabled={locked} onClick={p.onEvaluate}>
           <Icon name="check" size={18} />{st.cycle === 0 ? 'Avaliar' : 'Reavaliar'}
           </button>
+          {st.status === 'evaluating' && <span className="spinner">Avaliando…</span>}
         </div>
-        {st.status === 'evaluating' && <span className="spinner">Avaliando…</span>}
       </section>
       <section className="conversation panel-card">
         <div className="section-heading">

@@ -89,7 +89,8 @@
 .refine-workspace .doc-actions { display: grid; gap: 0.75rem; margin-top: 1rem; }
 .refine-action, .refine-start { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border-color: var(--accent); color: var(--on-accent); background: var(--accent); }
 .refine-action:hover:not(:disabled), .refine-start:hover:not(:disabled) { border-color: var(--accent-hover); background: var(--accent-hover); }
-.refine-workspace .doc-actions .refine-action { width: 100%; }
+.refine-workspace .doc-actions .refine-action { width: 100%; box-sizing: border-box; justify-self: stretch; }
+.refine-workspace .doc-actions .spinner { justify-self: center; color: var(--ink-soft); font-size: 0.8125rem; }
 .refine-workspace h4 { display: flex; align-items: center; gap: 0.55rem; margin: 1.25rem 0 0.7rem; color: var(--ink); }
 .refine-workspace h4 > svg { color: var(--ink-soft); }
 .quality-checks { display: grid; gap: 0.3rem; }
