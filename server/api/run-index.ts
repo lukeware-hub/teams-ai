@@ -184,31 +184,40 @@ export async function runRow(deps: IndexDeps, runId: string): Promise<RunRow | n
   return { runId, specId, projectId: projectId ?? '', status, at: state?.at ?? finished?.at ?? null, tokens, cost: state?.tokens?.costUsd ?? 0, stoppable: alive && ACTIVE.has(status) };
 }
 
-async function specIdsOf(deps: IndexDeps, projectId: string): Promise<Set<string>> {
+async function specsOf(deps: IndexDeps, projectId: string): Promise<Map<string, string>> {
   for (const { dir } of deps.cfg.projects) {
     const read = await readProject(dir).catch(() => null);
-    if (read?.project.projectId === projectId) return new Set(read.specs.map((s) => s.specId));
+    if (read?.project.projectId === projectId) return new Map(read.specs.map((s) => [s.specId, s.status]));
   }
-  return new Set();
+  return new Map();
 }
 
 export async function listRuns(deps: IndexDeps, projectId: string): Promise<RunRow[]> {
   const runs = runsDir(deps);
   const names = (await fs.readdir(runs).catch(() => [] as string[])).filter((n) => SAFE_ID.test(n));
   // A run that crashed before RUN_STARTED has no project in its journal; its id still names the spec.
-  const specIds = await specIdsOf(deps, projectId);
+  const specs = await specsOf(deps, projectId);
   const rows: RunRow[] = [];
   for (const runId of names) {
     const row = await runRow(deps, runId);
     if (!row) continue;
-    if (row.projectId === projectId || (row.projectId === '' && specIds.has(row.specId))) rows.push({ ...row, projectId });
+    if (row.projectId === projectId || (row.projectId === '' && specs.has(row.specId))) rows.push({ ...row, projectId });
   }
   // newest first: runs without a state snapshot (just started) on top, then by state timestamp, then by the numeric suffix
   const suffix = (r: RunRow) => Number(/-r(\d+)$/.exec(r.runId)?.[1] ?? 0);
-  return rows.sort((a, b) => {
+  rows.sort((a, b) => {
     if ((a.at === null) !== (b.at === null)) return a.at === null ? -1 : 1;
     return (b.at ?? '').localeCompare(a.at ?? '') || suffix(b) - suffix(a);
   });
+  // Concluding a spec runs a new `complete` run and never touches the journal of the run that delivered it, which would
+  // read "awaiting validation" forever. The newest such run takes the spec's status; older runs keep their own.
+  const settled = new Set<string>();
+  for (const row of rows) {
+    if (row.status !== 'awaiting-validation' || settled.has(row.specId)) continue;
+    settled.add(row.specId);
+    if (specs.get(row.specId) === 'done') row.status = 'done';
+  }
+  return rows;
 }
 
 export async function listProjects(deps: IndexDeps): Promise<ProjectRow[]> {

@@ -115,6 +115,22 @@ describe('projects', () => {
     expect(rows[0]).toMatchObject({ runId: 'hello-001-r1', status: 'interrupted', stoppable: false });
   });
 
+  it('shows the run that delivered a concluded spec as done, not awaiting validation', async () => {
+    await useAwaitingValidationProject();
+    const specFile = path.join(home, 'project', 'docs', 'specs', 'hello-001', 'spec.json');
+    const finished = { type: 'RUN_FINISHED', data: { result: 'awaiting-validation' } };
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), finished], state('awaiting-validation'), 1);
+    await writeRun(runs, 'hello-001-r2', [started('hello-001-r2'), finished], state('awaiting-validation'), 2);
+    const status = async (): Promise<Record<string, string>> => Object.fromEntries((await (await fetch(`${base()}/api/projects/hello-app/runs`)).json()).map((r: { runId: string; status: string }) => [r.runId, r.status]));
+    expect(await status()).toEqual({ 'hello-001-r1': 'awaiting-validation', 'hello-001-r2': 'awaiting-validation' });
+    await fs.writeFile(specFile, JSON.stringify({ ...JSON.parse(await fs.readFile(specFile, 'utf8')), status: 'done' }));
+    // only the newest run delivered the spec; the older one keeps what its journal says
+    expect(await status()).toEqual({ 'hello-001-r1': 'awaiting-validation', 'hello-001-r2': 'done' });
+    // the single-run endpoint answers with the same status as the list
+    const detail = async (runId: string): Promise<string> => (await (await fetch(`${base()}/api/runs/${runId}`)).json()).status;
+    expect([await detail('hello-001-r1'), await detail('hello-001-r2')]).toEqual(['awaiting-validation', 'done']);
+  });
+
   it('registers a project once and refuses a directory without a valid project.json', async () => {
     const other = path.join(home, '.teams-ai', 'workspaces', 'proj');
     await fs.mkdir(path.join(other, 'docs', 'specs'), { recursive: true });

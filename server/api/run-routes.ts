@@ -390,13 +390,16 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           : null;
         const report = [...evs].reverse().find((e) => e.type === 'REPORT_READY')?.data.report ?? null;
         const phase = [...evs].reverse().find((e) => e.type === 'PHASE_STARTED')?.data.phase ?? 0;
+        let status: string = finished ? String(finished.data.result) : interrupted ? 'interrupted' : state.status;
+        // Same answer as the run list: a run that delivered a concluded spec is done (see listRuns).
+        if (status === 'awaiting-validation') status = (await listRuns(idx, projectId)).find((r) => r.runId === runId)?.status ?? status;
         json(200, {
           runId,
           specId,
           projectId,
           repoUrl,
           readme,
-          status: finished ? String(finished.data.result) : interrupted ? 'interrupted' : state.status,
+          status,
           state: { status: state.status, order: state.order, tasks: state.order.map((id) => state.tasks.get(id)) },
           finished: finished?.data ?? null,
           tokens: tokensOf(evs),
