@@ -130,6 +130,20 @@ export function RefinementView(p: ViewProps) {
   const [secretValues, setSecretValues] = useState<Record<string, string>>({});
   const [newSecrets, setNewSecrets] = useState<Array<{ id: number; name: string; value: string }>>([]);
   useEffect(() => setDocs(snap.docs), [snap.docs]);
+  const copyDoc = (text: string) => {
+    if (navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(text);
+      return;
+    }
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try { document.execCommand('copy'); } finally { document.body.removeChild(ta); }
+  };
   const evaluating = busy || st.status === 'evaluating';
   const locked = evaluating || st.status === 'started';
   const jevAdvisory = st.error?.startsWith('Jev bloqueou') ?? false;
@@ -183,7 +197,7 @@ export function RefinementView(p: ViewProps) {
         </div>
         <p data-testid="doc-impact" className="hint">{docImpact[tab]}</p>
         <div className="document-editor">
-          <button type="button" className="editor-copy" aria-label="Copiar documento" onClick={() => void navigator.clipboard?.writeText(docs[tab] ?? '')}><Icon name="copy" size={19} /></button>
+          <button type="button" className="editor-copy" aria-label="Copiar documento" onClick={() => copyDoc(docs[tab] ?? '')}><Icon name="copy" size={19} /></button>
           <textarea
           aria-label={`${tab} editor`}
           data-testid={`doc-${tab}`}
