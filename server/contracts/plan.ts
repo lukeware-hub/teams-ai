@@ -69,7 +69,7 @@ export const PlanTask = z.object({
   criteriaRefs: z.array(z.string().regex(AC_ID)),
   dependsOn: z.array(z.string().regex(ID_PATTERNS.TASK_ID)),
   affectedPaths: z.array(RepoPath).min(1),
-  owner: z.enum(['dev', 'devops']),
+  owner: z.enum(['dev', 'devops', 'front']),
   /** Set by the orchestrator, never by the SM: plan task, Phase 4 fix task, Phase 5 deploy-fix task. */
   origin: z.enum(['plan', 'fix', 'deploy-fix']).default('plan'),
 });
@@ -100,5 +100,12 @@ export const Plan = z.object({
   delivery: Delivery.optional(),
   /** Criteria with no testable observable behavior over the service interface; the e2e gate skips them (roadmap R8.4). */
   e2eExemptions: z.array(z.object({ acId: z.string().regex(AC_ID), reason: z.string().min(1) })).optional(),
+  /** Lockfile for whatever package manager the stack uses, declared by the SM (never a fixed per-language name,
+   * so no stack is assumed); checked for existence on main at Phase 4 (roadmap R10.2). */
+  lockfilePath: RepoPath.optional(),
+  /** Where the `coverage` gate's command writes `{"linesPct": N}` (roadmap R10.2); required when coverage is required. */
+  coveragePath: RepoPath.optional(),
+  /** Paths the coverage tool's own ignore mechanism already excluded from the denominator, with a reviewable reason. */
+  coverageExemptions: z.array(z.object({ path: RepoPath, reason: z.string().min(1) })).optional(),
 });
 export type Plan = z.infer<typeof Plan>;

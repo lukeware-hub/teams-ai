@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { Gate } from '../contracts/plan.js';
 import { redactSecrets } from '../core/redact.js';
+import { COVERAGE_GATE, coveragePasses, parseCoverageSummary } from './coverage.js';
 import { parseJUnit, parseTap, type TestResult } from '../evidence/junit.js';
 import type { Exec } from './command.js';
 
@@ -23,6 +24,8 @@ export interface GateContext {
   bindRewrite?: { from: string; to: string };
   /** Docker network an egress gate joins instead of the default bridge (the compose project network). */
   network?: string;
+  /** Where the `coverage` gate's command writes `{"linesPct": N}` (roadmap R10.2); undefined when coverage is not required. */
+  coveragePath?: string;
 }
 
 /** Rewrites a bind source for a daemon that sees the orchestrator's filesystem under another root. */
@@ -169,6 +172,15 @@ function junitFile(ctx: GateContext): string {
   return file;
 }
 
+/** Null when coveragePath was never set (coverage not required this run); the `coverage` gate then always fails closed. */
+function coverageFile(ctx: GateContext): string | null {
+  if (!ctx.coveragePath) return null;
+  const root = ctx.worktree.replace(/\\/g, '/');
+  const file = path.posix.normalize(path.posix.join(root, ctx.coveragePath.replace(/\\/g, '/')));
+  if (!file.startsWith(`${root}/`)) throw new Error(`coveragePath escapes the worktree: ${ctx.coveragePath}`);
+  return file;
+}
+
 export async function runGate(gate: Gate, ctx: GateContext, deps: GateDeps): Promise<GateResult> {
   const started = Date.now();
   const report = junitFile(ctx);
@@ -203,7 +215,20 @@ export async function runGate(gate: Gate, ctx: GateContext, deps: GateDeps): Pro
     const tap = parseTap(stdout);
     if (tap.length > 0) junit = tap;
   }
-  return { name: gate.name, blocking: gate.blocking, passed, junit, failure: passed ? null : classifyGate(base), ...base };
+  // The coverage gate's exit code alone proves nothing: a stack-agnostic command could exit 0 without ever
+  // writing the summary, or below the floor. Read the normalized signal and fail closed on anything unverifiable.
+  let finalPassed = passed;
+  let failure: GateResult['failure'] = passed ? null : classifyGate(base);
+  if (passed && gate.name === COVERAGE_GATE) {
+    const file = coverageFile(ctx);
+    const raw = file !== null ? await deps.readFile(file) : null;
+    const summary = raw !== null ? parseCoverageSummary(raw) : null;
+    if (!coveragePasses(summary)) {
+      finalPassed = false;
+      failure = 'code';
+    }
+  }
+  return { name: gate.name, blocking: gate.blocking, passed: finalPassed, junit, failure, ...base };
 }
 
 export async function runGates(

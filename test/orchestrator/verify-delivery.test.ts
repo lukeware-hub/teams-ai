@@ -8,7 +8,8 @@ import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 
 const spec = makeFrozenSpec();
 const delivery = { dockerfile: 'Dockerfile', compose: 'docker-compose.yml', ciWorkflow: '.github/workflows/ci.yml', releaseWorkflow: '.github/workflows/release.yml', e2eSuite: 'e2e/run.test.ts', readmeSections: ['Run'] };
-const ALL = { Dockerfile: 'FROM node', 'docker-compose.yml': 'services: {}', '.github/workflows/ci.yml': 'on: push', '.github/workflows/release.yml': 'on: push', 'e2e/run.test.ts': '//' };
+const PINNED_DOCKERFILE = 'FROM node:22-bookworm@sha256:363e1587494626837fa7f9a23bdb453d13b0ff3c67c705c2805cfc69c2d2fad7';
+const ALL = { Dockerfile: PINNED_DOCKERFILE, 'docker-compose.yml': 'services: {}', '.github/workflows/ci.yml': 'on: push', '.github/workflows/release.yml': 'on: push', 'e2e/run.test.ts': '//' };
 
 let remote: Remote;
 let journal: Journal;
@@ -31,7 +32,7 @@ async function setup(files: Record<string, string>, withDelivery = true) {
 
 describe('Phase 4 delivery contract', () => {
   it('fails with the missing files named, before any gate runs', async () => {
-    const deps = await setup({ Dockerfile: 'FROM node', 'docker-compose.yml': 'x' });
+    const deps = await setup({ Dockerfile: PINNED_DOCKERFILE, 'docker-compose.yml': 'x' });
     const res = await runPhase4(deps, 1);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.reason).toBe('delivery contract not met on main, missing: ciWorkflow: .github/workflows/ci.yml, releaseWorkflow: .github/workflows/release.yml, e2eSuite: e2e/run.test.ts; fix tasks planned');
@@ -39,7 +40,7 @@ describe('Phase 4 delivery contract', () => {
   });
 
   it('plans a devops fix task for missing infra and a dev task for the e2e suite in round 1', async () => {
-    const deps = await setup({ Dockerfile: 'FROM node' });
+    const deps = await setup({ Dockerfile: PINNED_DOCKERFILE });
     const res = await runPhase4(deps, 1);
     expect(res.ok).toBe(false);
     if (res.ok) return;
@@ -84,6 +85,53 @@ describe('Phase 4 delivery contract', () => {
 
   it('ignores the contract for a plan without delivery', async () => {
     const deps = await setup({ 'a.txt': 'a' }, false);
+    await runPhase4(deps, 1).catch(() => undefined);
+    expect(gateCalls).toBeGreaterThan(0);
+  });
+
+  it('plans a devops fix task for an unpinned base image (roadmap R10.2)', async () => {
+    const deps = await setup({ ...ALL, Dockerfile: 'FROM node:latest' });
+    const res = await runPhase4(deps, 1);
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.reason).toContain('dockerfilePinning: Dockerfile');
+      expect(res.fixTasks?.[0]).toMatchObject({ owner: 'devops', affectedPaths: ['Dockerfile'] });
+      expect(res.fixTasks?.[0].description).toContain('unpinned base image(s): node:latest');
+    }
+    expect(gateCalls).toBe(0);
+  });
+
+  it('moves on to the gates when the base image is pinned', async () => {
+    const deps = await setup(ALL);
+    await runPhase4(deps, 1).catch(() => undefined);
+    expect(gateCalls).toBeGreaterThan(0);
+  });
+
+  it('plans a dev fix task for a missing lockfile, with no fixed filename assumed', async () => {
+    remote = await makeRemote(ALL);
+    journal = await Journal.open({ file: path.join(remote.root, 'events.ndjson'), runId: 'r1', specHash: spec.specHash! });
+    const deps = {
+      journal, ws: { repo: remote.repo }, spec, exec: execCommand, firstSpec: true,
+      plan: makePlan(spec, { delivery, lockfilePath: 'poetry.lock' }), tasks: () => [],
+      gates: async () => { gateCalls++; return { results: [], blockingFailure: null }; },
+    } as unknown as PhaseDeps;
+    const res = await runPhase4(deps, 1);
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.reason).toContain('lockfilePath: poetry.lock');
+      expect(res.fixTasks?.[0]).toMatchObject({ owner: 'dev', affectedPaths: ['poetry.lock'] });
+    }
+  });
+
+  it('accepts a plan whose lockfile is present on main', async () => {
+    remote = await makeRemote({ ...ALL, 'poetry.lock': 'x' });
+    journal = await Journal.open({ file: path.join(remote.root, 'events.ndjson'), runId: 'r1', specHash: spec.specHash! });
+    gateCalls = 0;
+    const deps = {
+      journal, ws: { repo: remote.repo }, spec, exec: execCommand, firstSpec: true,
+      plan: makePlan(spec, { delivery, lockfilePath: 'poetry.lock' }), tasks: () => [],
+      gates: async () => { gateCalls++; return { results: [], blockingFailure: null }; },
+    } as unknown as PhaseDeps;
     await runPhase4(deps, 1).catch(() => undefined);
     expect(gateCalls).toBeGreaterThan(0);
   });

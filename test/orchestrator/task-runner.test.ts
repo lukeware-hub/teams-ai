@@ -174,6 +174,26 @@ describe('TaskRunner: implementing', () => {
     expect(journal.state.status).toBe('paused:quota');
     expect(state()).toMatchObject({ state: 'implementing', attempts: 0 });
   });
+
+  it('a front-owned task runs the implement step as role front, not dev', async () => {
+    const front = makePlanTask({ id: 'T2', criteriaRefs: ['AC-001'], affectedPaths: ['web/src/x.tsx'], owner: 'front' });
+    await journal.fact(RunEvent.TaskPlanned, { task: front });
+    await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T2', to: 'ready' });
+    const r = new TaskRunner('T2', deps({ plan: makePlan(spec, { tasks: [T1, front] }) }));
+    await r.advance();
+    expect(agentCalls[0]).toMatchObject({ kind: 'dev', role: 'front', taskId: 'T2' });
+    expect(agentCalls[0]!.pack.role).toBe('front');
+  });
+
+  it('a devops-owned task runs the implement step as role devops, not dev', async () => {
+    const infra = makePlanTask({ id: 'T3', criteriaRefs: ['AC-001'], affectedPaths: ['Dockerfile'], owner: 'devops' });
+    await journal.fact(RunEvent.TaskPlanned, { task: infra });
+    await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T3', to: 'ready' });
+    const r = new TaskRunner('T3', deps({ plan: makePlan(spec, { tasks: [T1, infra] }) }));
+    await r.advance();
+    expect(agentCalls[0]).toMatchObject({ kind: 'dev', role: 'devops', taskId: 'T3' });
+    expect(agentCalls[0]!.pack.role).toBe('devops');
+  });
 });
 
 describe('TaskRunner: validating', () => {

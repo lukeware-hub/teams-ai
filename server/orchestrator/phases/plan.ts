@@ -38,12 +38,12 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
     const out: StepOutcome<OutputOf<'plan'>> = await deps.runAgent<'plan'>({
       kind: 'plan',
       role: 'sm',
-      pack: planPack(deps.packBase(), { techSpecText, godNodes: await deps.godNodes(), feedback, firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e }),
+      pack: planPack(deps.packBase(), { techSpecText, godNodes: await deps.godNodes(), feedback, firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e, requireCoverage: deps.requireCoverage }),
       cwd: worktree,
       phase: 'phase2',
       taskId: null,
       attempt,
-      semantic: [((p: Plan) => validatePlan(p, deps.spec, { firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e, repoFiles })) as never],
+      semantic: [((p: Plan) => validatePlan(p, deps.spec, { firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e, requireCoverage: deps.requireCoverage, repoFiles })) as never],
     });
     if (!out.ok) {
       if (out.failure === 'quota' || out.failure === 'auth') {
@@ -55,7 +55,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
       continue;
     }
     const { alternatives = [], ...primary } = out.value as Plan & { alternatives?: Plan[] };
-    const valid = alternatives.filter((p) => p.specHash === deps.specHash && validatePlan(p, deps.spec, { firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e, repoFiles }).length === 0);
+    const valid = alternatives.filter((p) => p.specHash === deps.specHash && validatePlan(p, deps.spec, { firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e, requireCoverage: deps.requireCoverage, repoFiles }).length === 0);
     const candidates: Plan[] = [primary, ...valid];
     let plan: Plan = primary;
     if (candidates.length > 1) {

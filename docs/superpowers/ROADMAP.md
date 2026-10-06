@@ -474,6 +474,19 @@ unit-tested with fixtures. Each one needs a plan file in `plans/` before impleme
 
 - Rootless `dind` on a GitHub runner is unproven; do it once the `dind` live check of plan 40 is closed.
 
+## Stage 10 - Agent quality (2026-10-06)
+
+### R10.1 Route tasks to the owning role; repair agent prompts; distill skill guidance - `done` (plan 46, 2026-10-06)
+
+- Built: `PlanTask.owner` now allows `front`; `TaskRunner.implement()` dispatches the task's actual owner instead of always `dev`, so `devops`- and `front`-owned tasks finally run as that role. `front.md`'s 8 dead skill references removed; `model:`/`effort:` frontmatter across all 7 agent files corrected to state what actually runs. Durable rules distilled (not live-loaded) from the installed `impeccable`, `superpowers:test-driven-development` and `security-review` skills into `front.md`, `dev.md`, `sec.md` and `test.md`.
+- Open: the real-CLI smoke check was blocked by "Sandbox disabled: Windows sandbox is not active" before any API call (zero cost, pre-existing Windows-host limitation, same failure mode as `todo-001-r4`); not retried from WSL. No live skill-loading mechanism was built (needs its own spike - see the plan's Out of scope).
+
+### R10.2 Absolute, stack-agnostic quality rules: coverage, lockfile, pinned base image, license scan - `done` (plan 47, 2026-10-06)
+
+- Built: `requireCoverage` (new flag, same shape as `requireDelivery`/`requireSecurityTooling`/`requireE2e`, on by default in `cli.ts`): a blocking `coverage` gate whose command writes `plan.coveragePath` as `{"linesPct": N}`; `gate-runner.ts` fails the gate below 80% even on exit 0, and fails closed if the file is missing or malformed; `coverageExemptions` is the escape valve (path + reason >=10 chars). `plan.lockfilePath` (agent-declared, no fixed per-language filename) and Dockerfile `FROM`-line pinning are checked statically in Phase 4 (`verify.ts`), unconditional once declared. `license-scan` joined `security-tooling.ts`'s existing gate set under `requireSecurityTooling`, with no tool prescribed (no universal license scanner exists, unlike `osv-scanner` for vulnerabilities).
+- Mid-session the human added a standing constraint - neither the agents nor teams-ai may be fixed to a stack - which revised the lockfile and license-scan designs (both now let the agent declare the path/command itself) before any code was written for them.
+- Open: no real paid run yet proving the SM actually plans a conforming `coverage`/`license-scan` gate end to end.
+
 ## System 1 decisions (spec §10A.5)
 
 | # | Decision | Status |

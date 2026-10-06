@@ -60,6 +60,13 @@ export const NESTED_DENIED: readonly string[] = [
 
 export class AgentFileError extends Error {}
 
+/**
+ * `model:` and `effort:` in an agent file's frontmatter are descriptive only. The real model always comes from
+ * `server/config/config.ts` (`CLAUDE_DEFAULTS`); `buildInvocation` (`server/runner/invocation.ts:83,88`) sends
+ * `input.model` (the step's model), never `fields.model`. `effort:` isn't even carried into `AgentDefinition`
+ * below - it is parsed into `fields` and dropped. The real effort, when any is set, comes only from the
+ * model-tier decision (`server/decide/decisions/model-tier.ts`, off by default) on implement and review steps.
+ */
 const REQUIRED_FIELDS = ['name', 'description', 'model', 'tools'] as const;
 
 export function parseAgentFile(text: string, expectedRole: Role): AgentDefinition {

@@ -8,6 +8,7 @@ import type { GateResult } from '../../exec/gate-runner.js';
 import { RunEvent } from '../../pipeline/run-state.js';
 import type { StepOutcome } from '../../runner/step.js';
 import { SCAFFOLD_TASK_ID, validatePlan } from '../../validators/plan.js';
+import { unpinnedBaseImages } from '../../validators/pinned-image.js';
 import { OrchEvent } from '../events.js';
 import { fixTasksPack } from '../steps.js';
 import { checkoutMain, pauseForFailure, PAUSED_AUTH, type PhaseDeps } from './shared.js';
@@ -26,7 +27,7 @@ export function dedupeJunit(all: TestResult[]): TestResult[] {
 export type Phase4Result = { ok: true; matrix: EvidenceRow[] } | { ok: false; reason: string; fixTasks?: PlanTask[] };
 const tail = (s: string) => s.length > 2000 ? s.slice(-2000) : s;
 
-interface MissingItem { field: string; target: string }
+interface MissingItem { field: string; target: string; detail?: string }
 
 async function missingItems(repo: string, plan: Plan): Promise<MissingItem[]> {
   const missing: MissingItem[] = [];
@@ -45,6 +46,21 @@ async function missingItems(repo: string, plan: Plan): Promise<MissingItem[]> {
     const headings = readme.split(/\r?\n/).filter((l) => /^#{1,6}\s/.test(l)).map((l) => l.toLowerCase());
     for (const section of sections) if (!headings.some((h) => h.includes(section.toLowerCase()))) missing.push({ field: 'readmeSections', target: section });
   }
+  // The lockfile's name is never assumed (roadmap R10.2): the SM names its own stack's file, this only checks
+  // that the path it named is actually on main.
+  if (plan.lockfilePath) {
+    const present = await fs.stat(path.join(repo, plan.lockfilePath)).then(() => true, () => false);
+    if (!present) missing.push({ field: 'lockfilePath', target: plan.lockfilePath });
+  }
+  // Not a missing file, but reported through the same fix-task path: the Dockerfile exists but a FROM line is
+  // unpinned (roadmap R10.2).
+  if (plan.delivery?.dockerfile) {
+    const text = await fs.readFile(path.join(repo, plan.delivery.dockerfile), 'utf8').catch(() => null);
+    if (text !== null) {
+      const unpinned = unpinnedBaseImages(text);
+      if (unpinned.length > 0) missing.push({ field: 'dockerfilePinning', target: plan.delivery.dockerfile, detail: `unpinned base image(s): ${unpinned.join(', ')}` });
+    }
+  }
   return missing;
 }
 
@@ -53,9 +69,9 @@ export async function missingDelivery(repo: string, plan: Plan): Promise<string[
   return (await missingItems(repo, plan)).map((m) => `${m.field}: ${m.target}`);
 }
 
-const DEVOPS_FIELDS = new Set(['dockerfile', 'compose', 'ciWorkflow', 'releaseWorkflow']);
+const DEVOPS_FIELDS = new Set(['dockerfile', 'compose', 'ciWorkflow', 'releaseWorkflow', 'dockerfilePinning']);
 
-/** Deterministic fix tasks for a missing delivery: devops owns Dockerfile, compose and workflows; the dev owns the e2e suite and README. */
+/** Deterministic fix tasks for a missing delivery: devops owns Dockerfile, compose and workflows; the dev owns the e2e suite, lockfile and README. */
 function deliveryFixTasks(items: readonly MissingItem[], existing: number, dependsOn: string[]): PlanTask[] {
   const groups: Array<{ owner: 'dev' | 'devops'; items: MissingItem[] }> = [
     { owner: 'devops', items: items.filter((m) => DEVOPS_FIELDS.has(m.field)) },
@@ -66,7 +82,7 @@ function deliveryFixTasks(items: readonly MissingItem[], existing: number, depen
     return {
       id: `T900-fix-${existing + i + 1}`,
       title: `Deliver missing ${g.owner === 'devops' ? 'infrastructure' : 'e2e suite and docs'} files`,
-      description: `The delivery contract is not met on main. Provide: ${g.items.map((m) => `${m.field} ${m.target}`).join('; ')}. Use the plan's delivery paths exactly.`,
+      description: `The delivery contract is not met on main. Provide: ${g.items.map((m) => `${m.field} ${m.target}${m.detail ? ` (${m.detail})` : ''}`).join('; ')}. Use the plan's delivery paths exactly.`,
       criteriaRefs: [],
       dependsOn,
       affectedPaths: paths.length ? paths : ['docs/README.md'],

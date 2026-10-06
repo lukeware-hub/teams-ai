@@ -15,6 +15,7 @@ function secureGates(over: Record<string, Partial<Gate>> = {}, drop: string[] = 
     { name: 'secret-scan', command: `${P} gitleaks detect --no-git --source . --redact --exit-code 1`, blocking: true },
     { name: 'sast', command: `${P} semgrep scan --config p/ci --severity ERROR --error --metrics off .`, blocking: true, network: 'egress' },
     { name: 'dependency-scan', command: `${P} npm audit --audit-level=high`, blocking: true, network: 'egress' },
+    { name: 'license-scan', command: `${P} license-checker --summary --onlyAllow "MIT;Apache-2.0;ISC;BSD-2-Clause;BSD-3-Clause"`, blocking: true },
     { name: 'image-scan', command: prescribedCommands('node')['image-scan']!.map((c) => `${P} ${c}`).join(' && '), blocking: true, network: 'egress' },
   ];
   return [...base, ...sec]
@@ -40,15 +41,23 @@ describe('validatePlan security tooling', () => {
   });
 
   it('rejects each missing gate', () => {
-    for (const name of ['security-tools', 'secret-scan', 'sast', 'dependency-scan', 'image-scan']) {
+    for (const name of ['security-tools', 'secret-scan', 'sast', 'dependency-scan', 'license-scan', 'image-scan']) {
       expect(check(withGates(secureGates({}, [name]))), name).toEqual(expect.arrayContaining([expect.stringContaining(`gate ${name}`)]));
     }
   });
 
   it('rejects non-blocking security gates', () => {
-    for (const name of ['security-tools', 'secret-scan', 'sast', 'dependency-scan', 'image-scan']) {
+    for (const name of ['security-tools', 'secret-scan', 'sast', 'dependency-scan', 'license-scan', 'image-scan']) {
       expect(check(withGates(secureGates({ [name]: { blocking: false } }))), name).toEqual(expect.arrayContaining([expect.stringContaining('must be blocking')]));
     }
+  });
+
+  it('accepts any license-scan command (no tool prescribed)', () => {
+    expect(check(withGates(secureGates({ 'license-scan': { command: 'pip-licenses --fail-on="GPL"' } })))).toEqual([]);
+  });
+
+  it('rejects a weakened license-scan command', () => {
+    expect(check(withGates(secureGates({ 'license-scan': { command: 'license-checker || true' } })))).toEqual([expect.stringContaining('ignores findings')]);
   });
 
   it('rejects a command that is not the prescribed tool', () => {
@@ -104,6 +113,14 @@ describe('validatePlan security tooling', () => {
     gates.unshift(i!);
     expect(check(withGates(gates)).join('\n')).toContain('image-scan must come after build');
   });
+
+  it('orders license-scan after dependency-scan', () => {
+    const gates = secureGates();
+    const license = gates.findIndex((g) => g.name === 'license-scan');
+    const [l] = gates.splice(license, 1);
+    gates.unshift(l!);
+    expect(check(withGates(gates)).join('\n')).toContain('license-scan must come after dependency-scan');
+  });
 });
 
 describe('stack classification and pack text', () => {
@@ -117,7 +134,7 @@ describe('stack classification and pack text', () => {
   it('planRules states the exact commands only when required', () => {
     expect(planRules(false, false, false)).not.toContain('gitleaks');
     const text = planRules(false, false, true);
-    for (const s of ['security-tools', 'gitleaks detect --no-git --source . --redact --exit-code 1', 'semgrep scan --config p/ci --severity ERROR --error', 'npm audit --audit-level=high', 'pip-audit', 'osv-scanner scan source -r .', 'trivy config', 'trivy fs', '--severity CRITICAL --exit-code 1', '.tools/bin']) {
+    for (const s of ['security-tools', 'gitleaks detect --no-git --source . --redact --exit-code 1', 'semgrep scan --config p/ci --severity ERROR --error', 'npm audit --audit-level=high', 'pip-audit', 'osv-scanner scan source -r .', 'trivy config', 'trivy fs', '--severity CRITICAL --exit-code 1', '.tools/bin', 'license-scan', 'license-checker']) {
       expect(text).toContain(s);
     }
   });

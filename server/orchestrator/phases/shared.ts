@@ -32,6 +32,8 @@ export interface PhaseDeps {
   /** Phase 2 requires the prescribed security gates (roadmap R8.5). */
   requireSecurityTooling?: boolean;
   requireE2e?: boolean;
+  /** Phase 2 requires a coverage gate clearing the line-coverage floor (roadmap R10.2). */
+  requireCoverage?: boolean;
   exec: Exec;
   runAgent: <K extends StepKind>(req: AgentStepRequest<K>) => Promise<StepOutcome<OutputOf<K>>>;
   mergeQueue: MergeQueue;

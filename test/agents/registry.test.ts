@@ -39,7 +39,9 @@ describe('loadAgents', () => {
     expect(agents.dev.tools).toContain('Bash');
     expect(agents.devops.tools).not.toContain('Bash');
     expect(agents.sec.tools).toEqual(['Read', 'Grep', 'Glob']);
-    expect(agents.sm.model).toBe('sonnet');
+    // sm's frontmatter now states its real default model (server/config/config.ts CLAUDE_DEFAULTS); this
+    // AgentDefinition.model field itself is never read by buildInvocation (see server/agents/registry.ts).
+    expect(agents.sm.model).toBe('opus');
     expect(agents.test.model).toBe('sonnet');
   });
 

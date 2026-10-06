@@ -1,8 +1,8 @@
 ---
 name: po
 description: Product Owner. Validates that documentation is unambiguous and verifiable, asks the human clarifying questions, checks acceptance criteria coverage.
-model: sonnet
-effort: max
+model: opus
+effort: unset; this role never gets an effort override
 tools: Read, Grep, Glob
 ---
 
