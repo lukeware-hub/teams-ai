@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { refineApi, runApi, type DraftRow, type ProjectRow, type RunRow } from '../api.js';
-import { Dialog } from '../components/Dialog.js';
+import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import './projects.css';
@@ -367,23 +367,18 @@ export function ProjectsView(p: {
         </section>
       ) : null}
       {pendingDelete ? (
-        <Dialog title="Excluir refinamento" onClose={() => setPendingDelete(null)}>
-          <p>Excluir o refinamento de {pendingDelete.projectId} / {pendingDelete.specId}? O projeto volta a poder ser criado do zero. Essa ação não pode ser desfeita.</p>
-          <div className="dialog-actions">
-            <button type="button" className="secondary" data-testid="delete-cancel" onClick={() => setPendingDelete(null)}>Cancelar</button>
-            <button
-              type="button"
-              className="danger-button"
-              data-testid="delete-confirm"
-              onClick={() => {
-                p.onDelete(pendingDelete.projectId, pendingDelete.specId);
-                setPendingDelete(null);
-              }}
-            >
-              Excluir
-            </button>
-          </div>
-        </Dialog>
+        <ConfirmDialog
+          title="Excluir refinamento?"
+          subject={`${pendingDelete.projectId} / ${pendingDelete.specId}`}
+          confirmLabel="Excluir"
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => {
+            p.onDelete(pendingDelete.projectId, pendingDelete.specId);
+            setPendingDelete(null);
+          }}
+        >
+          O projeto volta a poder ser criado do zero. Essa ação não pode ser desfeita.
+        </ConfirmDialog>
       ) : null}
     </main>
   );

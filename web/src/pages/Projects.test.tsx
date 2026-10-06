@@ -98,14 +98,14 @@ describe('ProjectsView', () => {
     expect(screen.getByTestId('refine-fresh-fresh-001').getAttribute('href')).toBe('/refine/fresh/fresh-001');
     expect(screen.queryByTestId('refine-hello-app-hello-004')).toBeNull();
     fireEvent.click(screen.getByTestId('delete-fresh-fresh-001'));
-    expect(screen.getByRole('dialog').textContent).toContain('fresh / fresh-001');
+    expect(screen.getByRole('alertdialog').textContent).toContain('fresh / fresh-001');
     fireEvent.click(screen.getByTestId('delete-cancel'));
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(on.del).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('delete-hello-app-hello-003'));
     fireEvent.click(screen.getByTestId('delete-confirm'));
     expect(on.del).toHaveBeenCalledWith('hello-app', 'hello-003');
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
   });
   it('an awaiting-validation spec links to the validation page of its last run', () => {
     const awaiting = [{ projectId: 'hello-app', dir: '/p/hello', specs: [{ specId: 'hello-009', status: 'awaiting-validation', activeRunId: null }] }];

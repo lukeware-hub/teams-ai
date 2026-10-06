@@ -213,9 +213,22 @@ td.num { color: var(--ink); font-weight: 500; }
 .dialog-close { display: grid; flex: 0 0 auto; place-items: center; width: 2rem; height: 2rem; padding: 0; border-color: transparent; color: var(--ink-soft); background: transparent; }
 .dialog-close:hover:not(:disabled) { color: var(--ink); background: var(--surface-muted); }
 .dialog-body { display: grid; gap: 0.9rem; padding: 1.1rem 1.25rem 1.25rem; overflow: auto; color: var(--ink); line-height: 1.55; overflow-wrap: anywhere; }
-.dialog-actions { display: flex; justify-content: flex-end; gap: 0.625rem; margin-top: 0.5rem; }
-.danger-button { display: inline-flex; align-items: center; justify-content: center; border-color: var(--bad); color: var(--surface); background: var(--bad); }
-.danger-button:hover:not(:disabled) { border-color: var(--bad); background: var(--bad); filter: brightness(0.92); }
+.confirm { display: grid; justify-items: center; gap: 0.5rem; width: min(100%, 24rem); padding: 1.75rem 1.5rem 1.25rem; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 24px 48px -12px rgb(0 0 0 / 0.35); text-align: center; animation: confirm-in 220ms var(--ease-out); }
+.confirm-icon { display: grid; place-items: center; width: 3rem; height: 3rem; margin-bottom: 0.5rem; border-radius: 14px; color: var(--bad); background: var(--bad-soft); box-shadow: inset 0 0 0 1px var(--bad-line); }
+.confirm h2 { margin: 0; color: var(--ink); font-size: 1.125rem; font-weight: 650; letter-spacing: -0.01em; line-height: 1.3; text-wrap: balance; }
+.confirm-subject { max-width: 100%; padding: 0.2rem 0.55rem; border-radius: 8px; color: var(--ink); background: var(--surface-muted); font-size: 0.8125rem; overflow-wrap: anywhere; }
+.confirm p { margin: 0.25rem 0 0; color: var(--ink-soft); font-size: 0.875rem; line-height: 1.55; text-wrap: balance; }
+.confirm-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.625rem; width: 100%; margin-top: 1.25rem; }
+.confirm-actions button { height: 2.5rem; border-radius: 10px; font-size: 0.875rem; font-weight: 600; transition: background-color var(--duration-fast) ease, transform 120ms var(--ease-out), box-shadow var(--duration-fast) ease; }
+.confirm-actions button:active:not(:disabled) { transform: scale(0.97); filter: none; }
+.confirm-actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.confirm-cancel { border-color: var(--line-strong); color: var(--ink); background: var(--surface); }
+.confirm-danger { border-color: transparent; color: var(--surface); background: var(--bad); box-shadow: 0 1px 2px rgb(0 0 0 / 0.2), inset 0 1px 0 rgb(255 255 255 / 0.18); }
+.confirm-danger:hover:not(:disabled) { background: var(--bad); filter: brightness(0.93); }
+.confirm-danger:focus-visible { outline-color: var(--bad); }
+.dialog-backdrop:has(.confirm) { backdrop-filter: blur(6px); animation: backdrop-in 180ms ease-out; }
+@keyframes confirm-in { from { opacity: 0; transform: translateY(8px) scale(0.96); } }
+@keyframes backdrop-in { from { opacity: 0; } }
 @keyframes dialog-in { from { opacity: 0; transform: scale(0.96); } }
 
 /* Long-form content (README) */
@@ -239,7 +252,7 @@ td.num { color: var(--ink); font-weight: 500; }
   .info-tip::after, .dialog-close::after { content: ''; position: absolute; inset: -13px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .dialog { animation: none; }
+  .dialog, .confirm, .dialog-backdrop:has(.confirm) { animation: none; }
 }
 
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
