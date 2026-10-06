@@ -130,7 +130,8 @@ export function RefinementView(p: ViewProps) {
   const [secretValues, setSecretValues] = useState<Record<string, string>>({});
   const [newSecrets, setNewSecrets] = useState<Array<{ id: number; name: string; value: string }>>([]);
   useEffect(() => setDocs(snap.docs), [snap.docs]);
-  const locked = busy || st.status === 'evaluating' || st.status === 'started';
+  const evaluating = busy || st.status === 'evaluating';
+  const locked = evaluating || st.status === 'started';
   const jevAdvisory = st.error?.startsWith('Jev bloqueou') ?? false;
   const pending = [...st.questions.filter((q) => q.status === 'pending')].sort((a, b) => Number(b.blocking) - Number(a.blocking));
   const current = pending[0];
@@ -229,7 +230,9 @@ export function RefinementView(p: ViewProps) {
             <span className="session-spinner" aria-hidden="true">•••</span>
           </div>
         )}
-        {current ? (
+        {evaluating ? (
+          <p className="muted">Avaliando… As perguntas e as sugestões aparecem aqui quando a avaliação terminar.</p>
+        ) : current ? (
           <div className="question card-inner">
             <div className="question-meta">
               <span className={`badge ${current.role}`}>{current.role.toUpperCase()}</span>
@@ -268,7 +271,7 @@ export function RefinementView(p: ViewProps) {
         ) : (
           <p className="muted">Nenhuma pergunta em aberto.</p>
         )}
-        {st.patches
+        {(evaluating ? [] : st.patches)
           .filter((x) => x.status === 'pending')
           .map((x, i) => (
             <div key={x.patchId} className="patch">
@@ -280,7 +283,7 @@ export function RefinementView(p: ViewProps) {
               </div>
               <pre className="diff">{x.diff}</pre>
               <div className="patch-actions">
-              <button type="button" className="patch-accept" data-testid={`accept-${x.patchId}`} onClick={() => p.onAccept(x.patchId)}>
+              <button type="button" className="patch-accept" data-testid={`accept-${x.patchId}`} disabled={locked} onClick={() => p.onAccept(x.patchId)}>
                 Aceitar
               </button>
               <input
@@ -290,7 +293,7 @@ export function RefinementView(p: ViewProps) {
                 value={reasons[x.patchId] ?? ''}
                 onChange={(e) => setReasons({ ...reasons, [x.patchId]: e.target.value })}
               />
-              <button type="button" className="patch-reject" data-testid={`reject-${x.patchId}`} onClick={() => p.onReject(x.patchId, reasons[x.patchId] || null)}>
+              <button type="button" className="patch-reject" data-testid={`reject-${x.patchId}`} disabled={locked} onClick={() => p.onReject(x.patchId, reasons[x.patchId] || null)}>
                 Rejeitar
               </button>
               </div>

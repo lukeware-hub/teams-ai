@@ -93,14 +93,25 @@ describe('RefinementView', () => {
     expect(screen.queryByText(/spec.objectives: too small/)).toBeNull();
   });
 
-  it('keeps pending patch decisions available while an evaluation is visible', () => {
-    render(
+  it('shows no question and no patch decision while an evaluation runs: the server refuses them, and they show up once it ends', () => {
+    const { rerender } = render(
       <MemoryRouter>
-        <RefinementView snap={base({ status: 'evaluating', questions: [] })} busy={true} {...on()} />
+        <RefinementView snap={base({ status: 'evaluating' })} busy={true} {...on()} />
       </MemoryRouter>,
     );
+    expect(screen.queryByTestId('answer')).toBeNull();
+    expect(screen.queryByTestId('accept-sm-c1-0')).toBeNull();
+    expect(screen.queryByTestId('reject-sm-c1-0')).toBeNull();
+    expect(screen.getByText(/aparecem aqui quando a avaliação terminar/)).toBeTruthy();
+    rerender(
+      <MemoryRouter>
+        <RefinementView snap={base({ status: 'answering' })} busy={false} {...on()} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('answer')).toBeTruthy();
     expect((screen.getByTestId('accept-sm-c1-0') as HTMLButtonElement).disabled).toBe(false);
     expect((screen.getByTestId('reject-sm-c1-0') as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByText(/aparecem aqui quando a avaliação terminar/)).toBeNull();
   });
 
   it('explains that Jev findings are advisory and keeps re-evaluation available', () => {
