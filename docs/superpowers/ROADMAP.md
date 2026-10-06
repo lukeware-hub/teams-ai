@@ -479,6 +479,34 @@ unit-tested with fixtures. Each one needs a plan file in `plans/` before impleme
 - Built: `.claude/agents/sm.md` refine step gets a "Service and bounded-context decomposition" rule - default to one edge service (`<primary-capability>-service`) with bounded contexts separated internally (hexagonal/ports-and-adapters), physical split recorded as an ADR-style `docPatch`, never a question; a question is only legitimate when the docs mandate something teams-ai cannot deliver (separate repos per context, several independently deployable services), phrased as a pipeline limitation, not an open choice.
 - Prompt-only change (no runtime code, no test); verified by reading the diff and grepping the new section into `sm.md`. No live skill-loading mechanism involved, same distillation pattern as R10.1.
 
+## Stage 11 - Spec-driven backlog (2026-10-06, plan 50)
+
+The docs (project, briefing, stack, flow, design) stay the only hand-edited truth; the agents break them into an organized, prioritized backlog of specs, the human selects what to implement, an automatic queue runs it, and a doc change after refinement re-derives what has not started. Design, decisions and risks: `plans/2026-10-06-teams-ai-50-spec-driven-backlog.md`. Each item below gets its own plan and approval before implementation.
+
+### R11.0 Prerequisite fixes found while planning - `approved` (plan 50)
+
+- Context pack drops the docs whole over budget; resume can run the wrong spec; `firstSpec` counts directories; project dir resolved by first registered dir and a live pid without `state.json` reads `unknown`. One commit each.
+
+### R11.1 Backlog outline from the docs, shown in the UI - `approved` (plan 50)
+
+- Explicit "Quebrar em backlog" mode; `backlog` agent step; deterministic validators; panel grouped by epic with P0-P3 priority and dependencies; the human adjusts priority by writing in `briefing.md`.
+
+### R11.2 Detailed specs for every backlog item, anticipated in the cycles - `todo`
+
+- `spec` step per item, only when its input hash changed; new `planned` status; global AC ids; generated `brief.md` and `spec.json` per item.
+
+### R11.3 Select, start and publish planned specs - `todo`
+
+- Selection with dependency closure; freeze at run start; Phase 0 publishes every `planned` spec absent from main.
+
+### R11.4 Automatic spec queue - `todo`
+
+- Persisted queue, disk-only reconciler tick in the UI server, stop at first failure, pause on interruption, cost confirmation and cap.
+
+### R11.5 Docs sync after refinement - `todo`
+
+- Re-derive `planned` specs whose sources changed, add and retire items, adjustment specs for started or delivered specs.
+
 ## System 1 decisions (spec §10A.5)
 
 | # | Decision | Status |
