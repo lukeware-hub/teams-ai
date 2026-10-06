@@ -1,6 +1,6 @@
 # Plan 45 - Describe the project or the new spec when creating it
 
-Status: proposed, waiting for approval. Roadmap item R9.7.
+Status: done (2026-10-06), with the two follow-ups below. Roadmap item R9.7.
 
 ## Goal
 Smaller than first drafted (human, 2026-10-06: "do not change much, only improve usability"). Two cases:
@@ -30,3 +30,14 @@ Smaller than first drafted (human, 2026-10-06: "do not change much, only improve
 ## Verify
 `npm test` for the files above, `npm run test:web`, then in the browser: create a spec with a description on `hello-d12`
 and see it in the brief tab; click Avaliar once (spends a little quota) and check the agents use it.
+
+## Follow-ups done in the same plan (human approved, 2026-10-06)
+- **Overlapping patches:** accepting a patch now drops the pending patches it made stale (journal `PATCH_DROPPED`), and the
+  conflict message is in Portuguese (`server/refine/session.ts`). Before, PO and SM edits to the same text left red
+  "no longer applies" errors on click.
+- **Blank stack.md / flow.md are filled by the SM on the first evaluation**, with no question to the human: the SM prompt
+  asks for one patch per blank file (`server/refine/packs.ts`) and `runCycle` writes it straight away when the file still
+  equals the template (`server/refine/cycle.ts`, journal `DOC_EDITED` with source `autofill`). The PO is told not to touch them.
+- Checked live on a throwaway project: both files filled, no question about them, the Mermaid fence kept. The first
+  evaluation of that project failed once in the Front agent step ("no JSON object in the agent result") and passed on the
+  retry; not reproduced, cause not established (the failed text is stored cut at 500 characters).

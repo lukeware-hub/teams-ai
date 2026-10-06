@@ -460,6 +460,10 @@ unit-tested with fixtures. Each one needs a plan file in `plans/` before impleme
 ### R9.3 Quickstart docs and GitHub token link - `done` (plan 44, 2026-10-06)
 
 - Built: "Comece em 5 minutos" in the README; token creation link in the Onboarding.
+### R9.7 Describe the project or spec when creating it; stack/flow filled by the SM - `done` (plan 45, 2026-10-06)
+
+- Built: optional description on "Novo projeto" and "Nova spec" (top of `brief.md`); blank stack.md/flow.md filled by the SM on the first evaluation; pending patches made stale by an accepted one are dropped.
+- Open: a Front agent step failed once with "no JSON object in the agent result" and passed on retry; the runner keeps only 500 characters of the failed text, so the cause is unknown. No retry on schema failure exists.
 ### R9.4 Prebuilt image in GHCR - `todo`
 
 - `task up` would pull instead of building (first start drops from minutes to a download). Needs a publish workflow, a decision on package visibility and a change to `docker-compose.yml` that keeps `test/infra/compose.test.ts` true.

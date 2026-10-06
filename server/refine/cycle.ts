@@ -9,7 +9,8 @@ import type { AgentStepRequest } from '../orchestrator/steps.js';
 import type { StepOutcome } from '../runner/step.js';
 import { mergeChecklist, type ChecklistItem } from './checklist.js';
 import { derivePack, postProcessDerived } from './derive.js';
-import { draftHash, readDerived, readDoc, writeDerived, type DocFile, type Draft } from './draft.js';
+import { sha256 } from '../contracts/hash.js';
+import { DOC_REL, draftHash, flowTemplate, readDerived, readDoc, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
 import type { JevValidationResult } from './jev-validation.js';
 import { refinePack } from './packs.js';
@@ -56,6 +57,9 @@ function recorded(decider: Pick<Decider, 'decide'>, journal: Pick<Journal, 'fact
     },
   };
 }
+
+const BLANK_FILES = ['stack.md', 'flow.md'] as const;
+const BLANK_TEMPLATE: Record<(typeof BLANK_FILES)[number], () => string> = { 'stack.md': stackTemplate, 'flow.md': flowTemplate };
 
 /** Spec (refinement) §3.2: derive → Front → PO ∥ SM → merge questions → check patches → checklist. */
 export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
@@ -218,6 +222,15 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
   for (const [role, out] of [['po', po.value], ['sm', sm.value]] as const) {
     let i = 0;
     for (const p of out.docPatch) {
+      // A stack.md or flow.md that is still the blank template is filled by the SM straight away: nobody has anything
+      // to review in a placeholder, and asking the human what to put there is the friction this avoids.
+      const blank = role === 'sm' ? BLANK_FILES.find((f) => DOC_REL[f](draft.specId) === p.file && docs[f] === BLANK_TEMPLATE[f]()) : undefined;
+      if (blank && p.replace.trim() !== '' && p.replace.trim() !== BLANK_TEMPLATE[blank]().trim()) {
+        await writeDoc(draft, blank, p.replace);
+        docs[blank] = await readDoc(draft, blank);
+        await journal.fact(RefineEvent.DocEdited, { file: blank, hash: sha256(docs[blank]), source: 'autofill' });
+        continue;
+      }
       const c = checkPatch(p, draft.specId, docs);
       if (c.ok && c.file === 'design.md') {
         discardedPatches.push({ role, file: p.file, reason: 'design.md is reviewable only by front' });

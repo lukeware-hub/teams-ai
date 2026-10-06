@@ -126,6 +126,42 @@ describe('RefineSession', () => {
     expect(await readDoc(draft(), 'project.md')).toBe('# Hello\n\n## Folks\n');
   });
 
+  it('accepting a patch drops the pending patches it made stale, with a message in Portuguese', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    script['derive/po'] = [derived];
+    script['refine/po'] = [refineOut(green(PO), [], [{ file: 'docs/project.md', find: '## Vision', replace: '## Visão', reason: 'r' }])];
+    script['refine/sm'] = [refineOut(green(SM), [], [{ file: 'docs/project.md', find: '## Vision', replace: '## Objetivo', reason: 'r' }, { file: 'docs/project.md', find: '## Personas', replace: '## Pessoas', reason: 'r' }])];
+    await s.evaluate();
+    await s.accept('po-c1-0');
+    const byId = Object.fromEntries(s.state.patches.map((x) => [x.patchId, x.status]));
+    expect(byId).toEqual({ 'po-c1-0': 'accepted', 'sm-c1-0': 'dropped', 'sm-c1-1': 'pending' });
+    expect(s.state.patches.find((x) => x.patchId === 'sm-c1-0')?.decision).toMatch(/outra alteração/);
+    await expect(s.accept('sm-c1-0')).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it('fills a stack.md or flow.md that is still the blank template, straight from the SM patch; an edited one is left to the usual patch flow', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    script['derive/po'] = [derived];
+    script['refine/po'] = [refineOut(green(PO))];
+    script['refine/sm'] = [refineOut(green(SM), [], [
+      { file: 'docs/stack.md', find: '# Stack', replace: '# Stack\n\n- Runtime: Node 22\n', reason: 'preencher' },
+      { file: 'docs/flow.md', find: '# Application flow', replace: '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n', reason: 'preencher' },
+    ])];
+    await s.evaluate();
+    expect(await readDoc(draft(), 'stack.md')).toBe('# Stack\n\n- Runtime: Node 22\n');
+    expect(await readDoc(draft(), 'flow.md')).toContain('flowchart TD');
+    expect(s.state.patches.filter((x) => x.status === 'pending')).toHaveLength(0);
+    expect(s.state.discarded).toHaveLength(0);
+
+    // the next cycle: stack.md is no longer the template, so a patch to it is an ordinary one for the human
+    script['derive/po'] = [derived];
+    script['refine/po'] = [refineOut(green(PO))];
+    script['refine/sm'] = [refineOut(green(SM), [], [{ file: 'docs/stack.md', find: 'Node 22', replace: 'Node 24', reason: 'r' }])];
+    await s.evaluate();
+    expect(await readDoc(draft(), 'stack.md')).toContain('Node 22');
+    expect(s.state.patches.find((x) => x.file === 'stack.md')?.status).toBe('pending');
+  });
+
   it('replays after a restart and turns an open cycle into an interrupted error', async () => {
     const s = await RefineSession.create(deps(), 'new-project');
     script['derive/po'] = [derived];

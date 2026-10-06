@@ -83,6 +83,8 @@ export interface Snapshot {
   tokens: { inputTokens: number; outputTokens: number; costUsd: number; steps: number };
 }
 
+const COVERED = 'Este ajuste já foi coberto por outra alteração e foi descartado.';
+
 export class RefineSession {
   private running: Promise<void> | null = null;
   /** Set synchronously by `freeze()`, before any await, so a second concurrent `start` never slips
@@ -226,12 +228,18 @@ export class RefineSession {
     const before = await readDoc(this.deps.draft, p.file);
     const after = applyPatch(before, p);
     if (after === null) {
-      await this.journal.fact(RefineEvent.PatchDropped, { patchId, reason: 'find no longer matches the document' });
-      throw new ConflictError(`patch ${patchId} no longer applies; dropped`);
+      await this.journal.fact(RefineEvent.PatchDropped, { patchId, reason: COVERED });
+      throw new ConflictError(`Este ajuste (${patchId}) já foi coberto por outra alteração e foi descartado.`);
     }
     await writeDoc(this.deps.draft, p.file, after);
     await this.journal.fact(RefineEvent.DocEdited, { file: p.file, hash: sha256(after), source: 'patch' });
     await this.journal.fact(RefineEvent.PatchAccepted, { patchId });
+    // PO and SM often propose overlapping edits: the ones this change made stale leave the list now, instead of failing on click.
+    for (const other of this.state.patches) {
+      if (other.status === 'pending' && other.file === p.file && applyPatch(after, other) === null) {
+        await this.journal.fact(RefineEvent.PatchDropped, { patchId: other.patchId, reason: COVERED });
+      }
+    }
   }
 
   async reject(patchId: string, reason: string | null): Promise<void> {
