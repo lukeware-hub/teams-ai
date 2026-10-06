@@ -133,8 +133,8 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
   return errors;
 }
 
-export function findCycle(tasks: readonly PlanTask[]): string[] | null {
-  const byId = new Map<string, PlanTask>();
+export function findCycle(tasks: ReadonlyArray<{ id: string; dependsOn: readonly string[] }>): string[] | null {
+  const byId = new Map<string, { id: string; dependsOn: readonly string[] }>();
   for (const task of tasks) if (!byId.has(task.id)) byId.set(task.id, task);
   const color = new Map<string, 'visiting' | 'done'>();
   const stack: string[] = [];
