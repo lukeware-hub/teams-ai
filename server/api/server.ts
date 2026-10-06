@@ -220,6 +220,7 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
       await match.route.handler({ req, res, params: match.params, body: () => readBody(req), json, sse });
     } catch (err) {
       const status = err instanceof HttpError ? err.status : 500;
+      if (!(err instanceof HttpError)) log(`${req.method} ${url.pathname} failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);
       if (!res.headersSent) json(status, { error: err instanceof HttpError ? err.message : 'internal error' });
       else done(status);
     }
