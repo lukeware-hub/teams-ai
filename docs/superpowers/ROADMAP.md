@@ -489,9 +489,11 @@ The docs (project, briefing, stack, flow, design) stay the only hand-edited trut
 - Built (one commit each): `server/refine/fit-pack.ts` sizes the derive/refine budget from the real pack (cap 120k tokens) and the cycle fails in pt-BR instead of reaching an agent without the docs; `specForRun` + `chooseSpecId` resume a run under its own spec; `server/orchestrator/first-spec.ts` decides the first spec from `origin/main` (nothing but `docs/` and `.github/` there) when several spec dirs exist; the run routes pick the registered dir that holds the spec and a live run without `state.json` reads `running`.
 - Open: draft-root spec statuses still go stale after freeze (nothing updates the root), so "a dependency was delivered" must come from run journals in R11.3; a full `npm test` showed one timing flake in `refine-api.test.ts` that passes alone 3 of 3.
 
-### R11.1 Backlog outline from the docs, shown in the UI - `approved` (plan 50)
+### R11.1 Backlog outline from the docs, shown in the UI - `code done, live check pending` (plan 50, 2026-10-06)
 
 - Explicit "Quebrar em backlog" mode; `backlog` agent step; deterministic validators; panel grouped by epic with P0-P3 priority and dependencies; the human adjusts priority by writing in `briefing.md`.
+- Built (one commit per task): `server/contracts/backlog.ts` and `server/validators/backlog.ts` (keys, reserved keys, epics, dependencies and cycles, a dependency never lower priority, 60 items, every `flow.md` section cited, `rankItems`); step kind `backlog`; `server/refine/backlog.ts` (`backlogPack`, `postProcessBacklog` with stable keys, `renderBacklogMd`); `BACKLOG_ENABLED` and `BACKLOG_DERIVED` in the journal and the shared reducer; a backlog branch in `runCycle` (one retry carrying the rejection, writes `project.json` and a generated `docs/backlog.md`, PO and SM review the backlog with the same checklist); `POST /api/refine/:p/:s/backlog`; `BacklogPanel` and the button; policy in `po.md` and `sm.md`. Start is refused in backlog mode until R11.3.
+- Open: the live cycle on the Kayron docs (spends quota, needs the human's ok) is the real test of the breakdown quality, the coverage rule and the priorities; the container still runs the older image until it is rebuilt; once a single-spec session turns backlog mode on, its old spec.json and tasks blocks stay visible until it is re-evaluated; `refine-api.test.ts` still shows a timing flake in full parallel runs (passes alone).
 
 ### R11.2 Detailed specs for every backlog item, anticipated in the cycles - `todo`
 
