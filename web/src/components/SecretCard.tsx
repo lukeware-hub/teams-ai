@@ -12,8 +12,8 @@ const COPY = {
     replace: 'Substituir token salvo',
   },
   OPENROUTER_API_KEY: {
-    subtitle: 'Obrigatória: habilita o Jev, que revisa a consistência dos documentos antes de cada avaliação.',
-    info: 'O Jev é um assistente de IA acessado pelo OpenRouter, que confere documentos e agiliza decisões simples. Sem a chave, o refinamento não inicia.',
+    subtitle: 'Obrigatória: o Jev revisa a consistência dos documentos e decide pontos do refinamento.',
+    info: 'O Jev é um assistente de IA acessado pelo OpenRouter. No refinamento ele confere se os documentos são consistentes e classifica e decide pontos da avaliação, como critérios ainda não prontos e perguntas repetidas. Sem a chave, o refinamento não inicia.',
     field: 'Cole a chave de API',
     replace: 'Substituir chave salva',
   },

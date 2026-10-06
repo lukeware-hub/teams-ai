@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { ConfigError, DEFAULT_CONFIG, loadConfig, resolveDecision } from '../../server/config/config.js';
+import { DECISION_IDS } from '../../server/decide/types.js';
 
 describe('decisions config', () => {
   it('defaults: layer off, Jev pinned, gate-triage chain and thresholds from spec 10A.0', () => {
@@ -46,5 +48,12 @@ describe('decisions config', () => {
   it('model tiers default to haiku / sonnet / opus and must be non-empty', () => {
     expect(DEFAULT_CONFIG.decisions.modelTiers).toEqual({ small: 'haiku', medium: 'sonnet', large: 'opus' });
     expect(() => loadConfig({ decisions: { modelTiers: { small: '' } } })).toThrow(ConfigError);
+  });
+
+  it('the Docker config turns on only the three refinement decisions Jev takes', () => {
+    const cfg = loadConfig(JSON.parse(readFileSync(new URL('../../docker/config.json', import.meta.url), 'utf8')));
+    const enabled = DECISION_IDS.filter((id) => resolveDecision(cfg, id).enabled);
+    expect(enabled).toEqual(['gate1-readiness', 'question-dedup', 'history-contradiction']);
+    for (const id of enabled) expect(resolveDecision(cfg, id).chain).toEqual(['jev', 'local']);
   });
 });

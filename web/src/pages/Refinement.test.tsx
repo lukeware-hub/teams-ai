@@ -114,13 +114,13 @@ describe('RefinementView', () => {
     expect(screen.queryByText(/aparecem aqui quando a avaliação terminar/)).toBeNull();
   });
 
-  it('explains that Jev findings are advisory and keeps re-evaluation available', () => {
+  it('explains that Jev is required in refinement and keeps re-evaluation available', () => {
     render(
       <MemoryRouter>
         <RefinementView snap={base({ status: 'error', error: 'Jev bloqueou a derivação: flow_covers_scope', questions: [], patches: [] })} busy={false} {...on()} />
       </MemoryRouter>,
     );
-    expect(screen.getByText(/O Jev atua como auxiliar/)).toBeTruthy();
+    expect(screen.getByText(/O Jev é obrigatório no refinamento/)).toBeTruthy();
     expect((screen.getByTestId('evaluate') as HTMLButtonElement).disabled).toBe(false);
   });
 

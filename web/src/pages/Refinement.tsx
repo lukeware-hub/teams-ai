@@ -63,8 +63,8 @@ const checkDetail = (detail: string) => {
 };
 const criterionText = (c: AcceptanceCriterion) => `${c.id}: dado ${c.given}, quando ${c.when}, então ${c.then}`;
 const startInfo = 'Os agentes passam a planejar, implementar, testar e publicar o projeto com base nestes documentos. Fica disponível com a lista atualizada e atendida, sem perguntas obrigatórias ou sugestões pendentes.';
-const jevInfo = 'O Jev é um assistente de IA que confere se os cinco documentos estão consistentes entre si. Os apontamentos dele orientam a revisão: ajuste o que fizer sentido e reavalie.';
-const evaluationInfo = 'Cada clique em Avaliar abre uma rodada: o Jev confere a consistência dos documentos, o Claude gera o spec.json e o project.json, e os agentes PO, SM e Front revisam e sugerem ajustes.';
+const jevInfo = 'O Jev é obrigatório no refinamento. Ele confere se os cinco documentos estão consistentes entre si e classifica e decide pontos da avaliação: critérios de aceite ainda não prontos, perguntas repetidas e contradições com o histórico do projeto. Sem ele, a avaliação não inicia. Ajuste o que fizer sentido e reavalie.';
+const evaluationInfo = 'Cada clique em Avaliar abre uma rodada: o Jev confere a consistência dos documentos, o Claude gera o spec.json e o project.json, os agentes PO, SM e Front revisam e sugerem ajustes, e o Jev também aponta critérios ainda não prontos, descarta perguntas repetidas e sinaliza contradições com o histórico.';
 const patchInfo = 'Mudança proposta por um agente: linhas com - saem e linhas com + entram. Aceitar aplica a mudança no documento; Rejeitar a descarta, e o motivo opcional fica no histórico.';
 const jsonDownload = (value: unknown) => `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(value, null, 2))}`;
 
@@ -233,7 +233,7 @@ export function RefinementView(p: ViewProps) {
             A lista de verificação está desatualizada: houve mudanças depois da última avaliação.
           </p>
         )}
-        {jevAdvisory && <p className="notice">O Jev atua como auxiliar: seus apontamentos serão considerados por Claude, PO e SM. <InfoTip text={jevInfo} /></p>}
+        {jevAdvisory && <p className="notice">O Jev é obrigatório no refinamento: ele valida os documentos e decide pontos da avaliação, e seus apontamentos são considerados por Claude, PO e SM. <InfoTip text={jevInfo} /></p>}
         <div className="doc-actions">
           <span className="save-hint"><Icon name="info" size={18} />As alterações são salvas automaticamente ao sair do editor.</span>
           <button data-testid="evaluate" className="primary refine-action" disabled={locked} onClick={p.onEvaluate}>
