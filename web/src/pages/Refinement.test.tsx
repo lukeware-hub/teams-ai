@@ -34,6 +34,26 @@ const base = (over: Partial<Snapshot['state']>): Snapshot => ({
 const on = () => ({ onSaveDoc: vi.fn(), onEvaluate: vi.fn(), onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn() });
 const event = (seq: number, type: string, data: Record<string, unknown>): StoredEvent => ({ seq, at: '', runId: 'hello-app/hello-001', specHash: 'draft', type, kind: 'fact', data });
 
+describe('RefinementView backlog mode', () => {
+  const backlog = { enabled: true, project: null, epics: [{ key: 'core', title: 'Núcleo' }], cycle: 1, items: [{ key: 'base', title: 'Fundação', epic: 'core', scope: 'Esqueleto', priority: 'P0' as const, rationale: 'tudo depende', dependsOn: [], sources: [{ doc: 'brief.md', heading: 'Objectives' }], size: 'S' as const, rank: 1 }] };
+  const ready = { status: 'ready' as const, questions: [], patches: [], discarded: [], derived: null };
+
+  it('offers to break the docs into a backlog, and asks the page to enable it', () => {
+    const h = { ...on(), onEnableBacklog: vi.fn() };
+    render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog: null })} busy={false} {...h} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('enable-backlog'));
+    expect(h.onEnableBacklog).toHaveBeenCalledOnce();
+  });
+
+  it('shows the backlog and keeps Start disabled even when the session is ready', () => {
+    render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog })} busy={false} {...on()} /></MemoryRouter>);
+    expect(screen.getByTestId('item-base')).toBeTruthy();
+    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/backlog está pronto para revisão/i)).toBeTruthy();
+    expect(screen.queryByTestId('enable-backlog')).toBeNull();
+  });
+});
+
 describe('RefinementView', () => {
   it('shows the blocking question first without a skip button, patches with accept/reject, and disables Start while answering', () => {
     const h = on();

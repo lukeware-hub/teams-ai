@@ -5,6 +5,7 @@ import { applyToSnapshot, type LiveSnapshot } from '../refine/reducer.js';
 import { useJournal } from '../useSse.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
+import { BacklogPanel } from '../refine/BacklogPanel.js';
 import './refine.css';
 
 type DocFile = 'project.md' | 'brief.md' | 'stack.md' | 'flow.md' | 'design.md';
@@ -113,6 +114,7 @@ export interface ViewProps {
   busy: boolean;
   onSaveDoc(file: DocFile, text: string): void;
   onEvaluate(): void;
+  onEnableBacklog?(): void;
   onAnswer(id: string, text: string): void;
   onSkip(id: string): void;
   onAccept(id: string): void;
@@ -167,7 +169,7 @@ export function RefinementView(p: ViewProps) {
   const jevAdvisory = st.error?.startsWith('Jev bloqueou') ?? false;
   const pending = [...st.questions.filter((q) => q.status === 'pending')].sort((a, b) => Number(b.blocking) - Number(a.blocking));
   const current = pending[0];
-  const canStart = st.status === 'ready' && !st.stale && !busy;
+  const canStart = st.status === 'ready' && !st.stale && !busy && !st.backlog?.enabled;
   const derivedThisCycle = (p.events ?? []).some((e) => e.type === 'DERIVED' && Number(e.data.cycle) === st.cycle);
   const jevEvent = (p.events ?? []).find((e) => e.type === 'REFINE_DOCS_VALIDATED' && Number(e.data.cycle) === st.cycle);
   const jevDown = jevEvent?.data.available === false;
@@ -190,6 +192,8 @@ export function RefinementView(p: ViewProps) {
       ? 'Clique em Reavaliar para atualizar a lista de verificação com as últimas mudanças.'
       : st.patches.some((x) => x.status === 'pending')
         ? 'Revise as sugestões de alteração abaixo e aceite ou rejeite cada uma.'
+        : st.backlog?.enabled && st.status === 'ready'
+          ? 'O backlog está pronto para revisão. Para mudar prioridades ou cortes, escreva no briefing.md e reavalie; iniciar a execução a partir do backlog chega no próximo passo.'
         : canStart
           ? 'Tudo pronto. Clique em Iniciar análise para os agentes desenvolverem o projeto.'
           : st.cycle === 0
@@ -396,6 +400,7 @@ export function RefinementView(p: ViewProps) {
           </dl>
         </div>
         <div className="quality-checks"><h5>Produto (PO)</h5><Checklist items={st.checklist} role="po" /><h5>Técnico (SM)</h5><Checklist items={st.checklist} role="sm" /></div>
+        <BacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} onEnable={p.onEnableBacklog} />
         <h4><Icon name="file" size={20} />Arquivos gerados<InfoTip text="Versão estruturada dos documentos, gerada pelo Claude a cada avaliação. O project.json descreve o projeto; o spec.json, esta demanda, com tarefas e critérios de aceite." /></h4>
         {st.derived?.spec && <p data-testid="spec-type">Tipo da demanda: <strong>{typeLabel[st.derived.spec.type] ?? st.derived.spec.type}</strong></p>}
         {st.derived?.spec.type === 'bug' && st.derived.spec.bug && (
@@ -481,7 +486,7 @@ export function RefinementPage() {
     <main className="refine-page">
       <header className="refine-breadcrumb"><a href="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></a><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} rascunho</span>
         <span className="refine-start-group">
-          <button data-testid="start" className="primary refine-start refine-top-action" disabled={snap.state.status !== 'ready' || snap.state.stale} onClick={act(() => refineApi.start(projectId, specId).then(({ runId }) => navigate(`/runs/${runId}`)))}>
+          <button data-testid="start" className="primary refine-start refine-top-action" disabled={snap.state.status !== 'ready' || snap.state.stale || snap.state.backlog?.enabled === true} onClick={act(() => refineApi.start(projectId, specId).then(({ runId }) => navigate(`/runs/${runId}`)))}>
             <Icon name="play" size={18} />Iniciar análise
           </button>
           <InfoTip text={startInfo} />
@@ -498,6 +503,7 @@ export function RefinementPage() {
         busy={snap.state.status === 'evaluating'}
         onSaveDoc={(f, t) => act(() => refineApi.saveDoc(projectId, specId, f, t))()}
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
+        onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}
         onAnswer={(id, t) => act(() => refineApi.answer(projectId, specId, id, t))()}
         onSkip={(id) => act(() => refineApi.skip(projectId, specId, id))()}
         onAccept={(id) => act(() => refineApi.accept(projectId, specId, id))()}
