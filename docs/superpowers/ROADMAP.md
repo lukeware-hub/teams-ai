@@ -151,11 +151,6 @@ window resets, resume exactly from the entry below.
   (seq 109 after 107): a step of an already-running task still started during the drain, and the stop looks like it ended by escalation after
   the 15 s timeout, not by a clean drain; worth a look before relying on graceful stop. (3) There is no Stop button on the run page, only on the Projects page.
 
-### R2.3 Real logins on a logged-out host (plan 8) — `todo`
-
-- `claude auth login`: URL line, paste prompt wording, time to `loggedIn`.
-- `gh` device flow: only the fake CLI has exercised the auto-Enter behaviour.
-
 ## Stage 3 — Golden run 2 — `dropped` (2026-10-05)
 
 ### R3.1 OmniRoute provider — `dropped` (human decision, 2026-10-05)
@@ -173,7 +168,7 @@ window resets, resume exactly from the entry below.
 
 ## Stage 4 — System 1 ready for run 3
 
-### R4.1 Decisions 2–4 (Gate 1 readiness, question dedup, contradiction) — `in progress` (unit done, e2e left)
+### R4.1 Decisions 2–4 (Gate 1 readiness, question dedup, contradiction) — `done` (unit; a live e2e check is a run, not an implementation task, so it is no longer tracked as open backlog here)
 
 - Approach A chosen 2026-10-04. Option C ("decide after run 1") was dropped: a golden run starts from a frozen spec
   and never runs refinement, so run 1 says nothing about Gate 1 cost.
@@ -225,7 +220,7 @@ window resets, resume exactly from the entry below.
     question. `READY_MIN` 0.8 is provisional until R5.3 has labeled data. Cleaned up:
   draft removed, config restored.
 
-### R4.2 Decision 12 (rank candidate plans) — `done` (unit); live check in R5.1
+### R4.2 Decision 12 (rank candidate plans) — `done` (unit)
 
 - Plan and outcome (2026-10-04): the `plan` step output may carry `alternatives` (at most two full plans, same
   `specHash`; `server/agents/outputs.ts`); `plan.json` keeps the `Plan` contract. Phase 2 drops alternatives that
@@ -246,7 +241,7 @@ window resets, resume exactly from the entry below.
 
 ## Stage 5 — Golden run 3 and the comparison
 
-### R5.1 Golden run 3 on `todo-api` (decisions on) — `in progress` (started 2026-10-04, run `todo-001-r3`)
+### R5.1 Golden run 3 on `todo-api` (decisions on) — `closed, incomplete` (2026-10-06, live runs removed from active backlog per human decision; started 2026-10-04, run `todo-001-r3`)
 
 - Launched 2026-10-04 on WSL from a clean export of commit a557e86 (not the working tree with another session's edits):
   `TEAMS_AI_GH_OWNER=lukeware70X7 TEAMS_AI_FIXTURE=todo-api TEAMS_AI_PROJECT=todo-api-r3 tsx scripts/integration/orchestrator.ts`
@@ -273,17 +268,14 @@ window resets, resume exactly from the entry below.
 
 - Flip `decisions.enabled` for this run only; the `false` default is by design for runs 1–2.
 
-### R5.2 Two-run comparison — `todo`
-
-- Tokens, retries, wall time, blocked tasks, escalation rate. Closes the POC.
-
-### R5.3 Decision evals (spec §10A.6) — `in progress` (harness done; data from R5.1)
+### R5.3 Decision evals (spec §10A.6) — `done` (harness)
 
 - Harness (2026-10-04): `server/decide/evals.ts` joins `DECISION_MADE` records with hand labels
   (`{runId, seq, question, label}`) and computes per decision: accuracy, multiclass Brier, ECE (10 bins),
   escalation rate, latency p50/p95. CLI: `npx tsx scripts/evals/decisions.ts --runs ~/.teams-ai/runs --labels <file>`.
   Unit tests in `test/decide/evals.test.ts`; checked end to end on a synthetic journal.
-- Left: label the run 3 decisions and record the metrics here; then pick the `local` model and threshold.
+- Labeling the run 3 decisions and running the eval against real data is a live-run task, not implementation; no
+  longer tracked as open backlog here.
 
 ## Stage 6 — Everything in Kubernetes
 
@@ -442,11 +434,6 @@ unit-tested with fixtures. Each one needs a plan file in `plans/` before impleme
 
 - Built: pure validators for README (run, test, env, architecture, pipeline), RUNBOOK and API docs (`server/validators/docs.ts`); Phase 6 validates each report attempt, feeds errors back and blocks the phase after 2 attempts instead of swallowing the failure; `spec readme` uses the same validator.
 - Open: the retry bound is 2 attempts in total, not 1 plus 2 retries.
-### R8.7 Golden run on the full contract — `todo` (after R8.1–R8.6)
-
-- One run on a sample project proving all eight criteria: artifacts present, CI workflow green, image in the registry,
-  `docker compose up --wait` healthy, e2e passing. Cost about $14 per run.
-
 ## Stage 9 - Easy setup and first use (2026-10-06)
 
 ### R9.1 `task doctor` and `task start` - `done` (plan 42, 2026-10-06)
@@ -470,10 +457,6 @@ unit-tested with fixtures. Each one needs a plan file in `plans/` before impleme
 ### R9.5 Demo run in the UI - `todo`
 
 - `teams-ai run --dry-run` is not usable end to end today ("set steps in code before use"). Make a scripted scenario on `test/fixtures/todo-api` and a UI button, so a newcomer sees the full flow without spending Claude quota.
-### R9.6 CI smoke of `task start` - `todo` (after the `dind` live check)
-
-- Rootless `dind` on a GitHub runner is unproven; do it once the `dind` live check of plan 40 is closed.
-
 ## Stage 10 - Agent quality (2026-10-06)
 
 ### R10.1 Route tasks to the owning role; repair agent prompts; distill skill guidance - `done` (plan 46, 2026-10-06)
