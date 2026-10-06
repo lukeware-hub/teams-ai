@@ -235,7 +235,7 @@ export function RefinementView(p: ViewProps) {
         </div>
         <p className="next-step"><Icon name="lightbulb" size={20} /><span><b>Próximo passo:</b> {nextStep}</span></p>
         {busy && (
-          <div className="claude-session" role="status" aria-live="polite">
+          <div className={`claude-session${jevEvent?.data.available === false ? ' claude-session-bad' : ''}`} role="status" aria-live="polite">
             <span className="live-dot" aria-hidden="true" />
             <div>
               <b>Avaliação em andamento <InfoTip text={evaluationInfo} /></b>
