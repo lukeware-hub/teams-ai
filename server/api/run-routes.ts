@@ -45,11 +45,16 @@ export function githubRepoUrl(remote: string): string | null {
 
 export function runRoutes(deps: RunRoutesDeps): Route[] {
   const index = async (): Promise<IndexDeps> => ({ cfg: await deps.cfg(), home: deps.home, isAlive: (pid) => isAlive(deps.control, pid) });
-  const projectDir = async (idx: IndexDeps, projectId: string): Promise<string> => {
+  /** Every draft registers its own root, so one project can have several directories: the spec decides which holds it. */
+  const projectDir = async (idx: IndexDeps, projectId: string, specId?: string): Promise<string> => {
+    let first: string | null = null;
     for (const { dir } of idx.cfg.projects) {
       const read = await readProject(dir).catch(() => null);
-      if (read?.project.projectId === projectId) return dir;
+      if (read?.project.projectId !== projectId) continue;
+      first ??= dir;
+      if (specId === undefined || read.specs.some((s) => s.specId === specId)) return dir;
     }
+    if (first !== null) return first;
     throw new HttpError(404, `unknown project ${projectId}`);
   };
   const secretsDirOf = (cfg: Config): string => expandHome(cfg.paths.secrets, deps.home);
@@ -109,7 +114,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     const projectId = String(evs.find((e) => e.type === 'RUN_STARTED')?.data.projectId ?? '');
     const row = (await listRuns(idx, projectId)).find((r) => r.runId === runId);
     if (!row) throw new HttpError(404, `unknown run ${runId}`);
-    return { row, dir: await projectDir(idx, projectId) };
+    return { row, dir: await projectDir(idx, projectId, row.specId) };
   };
   const waitForJournal = async (runs: string, runId: string, pid: number, timeoutMs = 10_000): Promise<void> => {
     const file = path.join(runs, runId, 'events.ndjson');
@@ -214,8 +219,8 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       path: `${P}/projects/:projectId/specs/:specId/runs`,
       handler: async ({ params, json }) => {
         const idx = await index();
-        const dir = await projectDir(idx, params.projectId!);
         const specId = safe(params.specId!);
+        const dir = await projectDir(idx, params.projectId!, specId);
         const { specs } = await readProject(dir);
         if (!specs.some((s) => s.specId === specId)) throw new HttpError(404, `unknown spec ${specId}`);
         const runId = await exclusive(specKey(params.projectId!, specId), async () => {
@@ -275,8 +280,8 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       path: `${P}/projects/:projectId/specs/:specId/complete`,
       handler: async ({ params, json }) => {
         const idx = await index();
-        const dir = await projectDir(idx, params.projectId!);
         const specId = safe(params.specId!);
+        const dir = await projectDir(idx, params.projectId!, specId);
         const runId = await exclusive(specKey(params.projectId!, specId), async () => {
           // Read under the lock: another writer of this spec may be changing the clone or its status.
           const read = await readProject(dir);
@@ -303,7 +308,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const started = evs.find((e) => e.type === 'RUN_STARTED');
         const projectId = String(started?.data.projectId ?? '');
         const specId = String(started?.data.specId ?? '');
-        const dir = await projectDir(idx, projectId);
+        const dir = await projectDir(idx, projectId, specId);
         // Same rule as spec completion: one writer per spec, because the docs PR resets the shared clone to main.
         const id = await exclusive(specKey(projectId, specId), async () => {
           const rows = await listRuns(idx, projectId);
@@ -321,8 +326,8 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       path: `${P}/projects/:projectId/specs/:specId/deploy`,
       handler: async ({ params, json }) => {
         const idx = await index();
-        const dir = await projectDir(idx, params.projectId!);
         const specId = safe(params.specId!);
+        const dir = await projectDir(idx, params.projectId!, specId);
         // Deploys main again with no agent (spec deploy); same one-writer-per-spec rule as complete and readme.
         const runId = await exclusive(specKey(params.projectId!, specId), async () => {
           const read = await readProject(dir);
@@ -369,11 +374,11 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const state = reduceEvents(evs);
         // A process that died leaves no RUN_FINISHED, so the journal alone reads as running forever; the run list asks the pid files.
         const interrupted = finished === null && (await runLiveness(idx, runId)).interrupted;
-        const spec = await projectDir(idx, projectId)
+        const spec = await projectDir(idx, projectId, specId)
           .then(readProject)
           .then((p) => p.specs.find((s) => s.specId === specId) ?? null)
           .catch(() => null);
-        const project = await projectDir(idx, projectId).catch(() => null);
+        const project = await projectDir(idx, projectId, specId).catch(() => null);
         const plan = project
           ? await fs.readFile(path.join(project, 'docs', 'specs', specId, 'plan.json'), 'utf8')
               .then((text) => Plan.safeParse(JSON.parse(text)).data ?? null)

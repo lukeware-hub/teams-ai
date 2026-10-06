@@ -189,6 +189,19 @@ describe('projects', () => {
 });
 
 describe('start, resume, stop', () => {
+  it('starts a spec from the registered directory that holds it when several directories share the project id', async () => {
+    const other = path.join(home, 'other-draft'); // every draft registers its own root; this one has no spec of its own
+    await fs.cp(HELLO, other, { recursive: true });
+    await fs.rm(path.join(other, 'docs', 'specs', 'hello-001'), { recursive: true });
+    await fs.writeFile(path.join(home, '.teams-ai', 'config.json'), JSON.stringify({ paths: { runs: runs.replace(/\\/g, '/') }, projects: [{ dir: other }, { dir: HELLO }] }));
+    onSpawn = async (runId) => {
+      await writeRun(runs, runId, [started(runId)], state('running'));
+    };
+    const r = await post('/api/projects/hello-app/specs/hello-001/runs');
+    expect(r.status).toBe(200);
+    expect(spawns[0]!.args).toEqual(['cli', 'run', '--project', HELLO, '--spec', 'hello-001', '--run-id', 'hello-001-r1']);
+  });
+
   it('starts a run: computes the next id, spawns the CLI, waits for the journal, writes the pid', async () => {
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), { type: 'RUN_FINISHED', data: { result: 'complete' } }], state('running'));
     onSpawn = async (runId) => {

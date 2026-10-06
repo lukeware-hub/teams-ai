@@ -177,7 +177,8 @@ export async function runRow(deps: IndexDeps, runId: string): Promise<RunRow | n
   const { alive, interrupted } = await runLiveness(deps, runId);
   let status: RunListStatus;
   if (finished) status = String(finished.data.result) as RunListStatus;
-  else if (!state?.status) status = 'unknown';
+  // Phases 0-2 journal before the first state snapshot: a live process is running, not unknown (the spec must stay claimed).
+  else if (!state?.status) status = alive ? 'running' : 'unknown';
   else if (interrupted) status = 'interrupted';
   else status = state.status as RunListStatus;
   const tokens = (state?.tokens?.inputTokens ?? 0) + (state?.tokens?.outputTokens ?? 0);

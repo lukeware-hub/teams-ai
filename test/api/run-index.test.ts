@@ -53,6 +53,14 @@ describe('run index', () => {
     await expect(fs.access(path.join(runs, 'hello-001-r3', 'pid'))).rejects.toThrow();
   });
 
+  it('reads a run whose process is alive but has not written state.json yet as running, so its spec is already claimed', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], null, 900); // Phases 0-2 write the journal before any state snapshot
+    alive.add(900);
+    const rows = await listRuns(deps(), 'hello-app');
+    expect(rows.map((r) => [r.runId, r.status, r.stoppable])).toEqual([['hello-001-r1', 'running', true]]);
+    expect((await listProjects(deps()))[0]!.specs).toEqual([{ specId: 'hello-001', status: 'running', activeRunId: 'hello-001-r1' }]);
+  });
+
   it('listProjects reports specs with their active run and skips unreadable dirs', async () => {
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('paused:quota'), 1);
     const d = deps();
