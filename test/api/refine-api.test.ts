@@ -126,6 +126,14 @@ describe('refine api', () => {
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/answers', { questionId: 'nope', text: 'x' })).status).toBe(404);
   });
 
+  it('concurrent first reads of a draft share one session instead of failing on the journal lock', async () => {
+    expect((await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' })).status).toBe(200);
+    await registry.close();
+    const [a, b] = await Promise.all([registry.get('hello-app', 'hello-app-001'), registry.get('hello-app', 'hello-app-001')]);
+    expect(a).toBe(b);
+    expect((await fetch(`${base()}/api/refine/hello-app/hello-app-001`)).status).toBe(200);
+  });
+
   it('backlog mode: enabling is idempotent, an evaluation derives the backlog, and starting waits for the next step', async () => {
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     const url = '/api/refine/hello-app/hello-app-001';

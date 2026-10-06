@@ -67,7 +67,8 @@ export class SessionRegistry {
       return create ? RefineSession.create(deps, create) : RefineSession.open(deps);
     })();
     this.sessions.set(key, p);
-    p.catch(() => this.sessions.delete(key));
+    // Only drop the entry this attempt added: a later attempt's entry must survive this one failing.
+    p.catch(() => { if (this.sessions.get(key) === p) this.sessions.delete(key); });
     return p;
   }
 
@@ -79,7 +80,8 @@ export class SessionRegistry {
     const ws = await this.ws(projectId);
     const draft = draftPaths(ws, specId);
     if (!(await draftExists(draft))) throw new NotFoundError(`no refinement session for ${projectId}/${specId}`);
-    return this.session(draft, ws);
+    // A concurrent get may have opened it during the awaits above; opening twice would fail on the journal lock.
+    return this.sessions.get(`${projectId}/${specId}`) ?? this.session(draft, ws);
   }
 
   async newProject(projectId: string, name: string, description?: string): Promise<RefineSession> {
