@@ -10,6 +10,7 @@ import { execCommand, type Exec } from './exec/command.js';
 import { gitAuthEnv, withGitAuth } from './git/auth.js';
 import { Graphify } from './knowledge/graphify.js';
 import { KnowledgeIndex } from './knowledge/retrieval.js';
+import { isFirstSpec } from './orchestrator/first-spec.js';
 import { Run, type ExecuteResult, type RunDeps } from './orchestrator/run.js';
 import { expandHome, nextRunId, specForRun, stateFile, workspacePaths } from './orchestrator/workspace.js';
 import { runStep } from './runner/step.js';
@@ -190,7 +191,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   // creates ws.repo underneath it — so ensure it exists before SQLite tries to open a file inside it.
   await fs.mkdir(ws.root, { recursive: true });
   const knowledge = KnowledgeIndex.open(ws.knowledgeDb);
-  const firstSpec = (await fs.readdir(path.join(projectDir, 'docs', 'specs'))).length === 1;
+  const firstSpec = await isFirstSpec({ specDirs: await fs.readdir(path.join(projectDir, 'docs', 'specs')), specId, repo: ws.repo, exec });
   let binary: RunDeps['binary'] = { bin: io.env.CLAUDE_BIN ?? 'claude', prefixArgs: [], env: {}, requireSandboxTools: process.platform === 'linux' };
   let step = runStep;
   if (opts.dryRun) {
