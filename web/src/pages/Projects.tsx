@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { refineApi, runApi, type DraftRow, type ProjectRow, type RunRow } from '../api.js';
+import { Dialog } from '../components/Dialog.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import './projects.css';
@@ -75,9 +76,8 @@ export function ProjectsView(p: {
   const unregistered = openDrafts.filter((d) => !d.registered && matches(d.projectId, d.specId));
   const total = plural(p.projects.length, 'projeto', 'projetos');
   const toggle = (next: 'new' | 'git') => setPanel(panel === next ? null : next);
-  const deleteDraft = (projectId: string, specId: string) => {
-    if (window.confirm(`Excluir o refinamento de ${projectId} / ${specId}? O projeto volta a poder ser criado do zero. Essa ação não pode ser desfeita.`)) p.onDelete(projectId, specId);
-  };
+  const [pendingDelete, setPendingDelete] = useState<{ projectId: string; specId: string } | null>(null);
+  const deleteDraft = (projectId: string, specId: string) => setPendingDelete({ projectId, specId });
   return (
     <main className="projects-shell">
       <header className="projects-header">
@@ -365,6 +365,25 @@ export function ProjectsView(p: {
             ))}
           </ul>
         </section>
+      ) : null}
+      {pendingDelete ? (
+        <Dialog title="Excluir refinamento" onClose={() => setPendingDelete(null)}>
+          <p>Excluir o refinamento de {pendingDelete.projectId} / {pendingDelete.specId}? O projeto volta a poder ser criado do zero. Essa ação não pode ser desfeita.</p>
+          <div className="projects-form-actions">
+            <button type="button" className="secondary" data-testid="delete-cancel" onClick={() => setPendingDelete(null)}>Cancelar</button>
+            <button
+              type="button"
+              className="project-action project-action-danger"
+              data-testid="delete-confirm"
+              onClick={() => {
+                p.onDelete(pendingDelete.projectId, pendingDelete.specId);
+                setPendingDelete(null);
+              }}
+            >
+              Excluir
+            </button>
+          </div>
+        </Dialog>
       ) : null}
     </main>
   );
