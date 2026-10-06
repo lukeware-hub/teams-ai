@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG } from '../../server/config/config.js';
-import { eventsFile, expandHome, graphDir, nextRunId, olderLiveRun, stepDir, workspacePaths, worktreeDir } from '../../server/orchestrator/workspace.js';
+import { eventsFile, expandHome, graphDir, nextRunId, olderLiveRun, specForRun, stepDir, workspacePaths, worktreeDir } from '../../server/orchestrator/workspace.js';
 import { EventStore } from '../../server/store/event-store.js';
 
 let dir = '';
@@ -101,5 +101,17 @@ describe('olderLiveRun', () => {
     expect(await olderLiveRun(ws, 'checkout', 'checkout-r2')).toBeNull();
     await fs.writeFile(lock, `${process.pid}@${os.hostname()}`); // control: the same file, held by a live process here
     expect(await olderLiveRun(ws, 'checkout', 'checkout-r2')).toBe('checkout-r1');
+  });
+});
+
+describe('specForRun', () => {
+  it('reads the spec a run belongs to from its RUN_STARTED, and is null for a run that never started', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-runs-'));
+    const ws = { ...workspacePaths(DEFAULT_CONFIG, 'shop', '/home/u'), runs: dir };
+    const store = await EventStore.open({ file: eventsFile(ws, 'a-001-z-r1'), runId: 'a-001-z-r1', specHash: 'h' });
+    await store.append({ type: 'RUN_STARTED', data: { runId: 'a-001-z-r1', specId: 'a-001-z', projectId: 'shop' } });
+    await store.close();
+    expect(await specForRun(ws, 'a-001-z-r1')).toBe('a-001-z');
+    expect(await specForRun(ws, 'never-r1')).toBeNull();
   });
 });

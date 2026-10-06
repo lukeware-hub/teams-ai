@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { main } from '../server/cli.js';
+import { chooseSpecId, main } from '../server/cli.js';
 import { loadConfig } from '../server/config/config.js';
 import type { RunControlDeps, SpawnArgs } from '../server/api/run-control.js';
 import { writeRun } from './fixtures/runs/write-run.js';
@@ -142,5 +142,15 @@ describe('teams-ai cli', () => {
     );
     expect(code).toBe(0);
     expect(reached).toBe(true);
+  });
+});
+
+describe('chooseSpecId', () => {
+  const dirs = ['a-001', 'a-001-z'];
+  it('prefers --spec, then the spec of the run being resumed, then the last spec directory', () => {
+    expect(chooseSpecId('a-001', 'a-001-z', dirs)).toBe('a-001');
+    expect(chooseSpecId(undefined, 'a-001', dirs)).toBe('a-001');
+    expect(chooseSpecId(undefined, null, dirs)).toBe('a-001-z');
+    expect(chooseSpecId(undefined, null, [])).toBeUndefined();
   });
 });

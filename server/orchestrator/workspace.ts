@@ -89,6 +89,12 @@ export async function nextRunId(ws: Pick<Workspace, 'runs'>, specId: string): Pr
   }
 }
 
+/** The spec a run belongs to, from the RUN_STARTED it journals first; null when the run never started. */
+export async function specForRun(ws: Workspace, runId: string): Promise<string | null> {
+  const started = (await loadEvents(eventsFile(ws, runId)).catch(() => [])).find((e) => e.type === OrchEvent.RunStarted);
+  return typeof started?.data.specId === 'string' ? started.data.specId : null;
+}
+
 /** Is the process named by an event-log lock (`<pid>@<host>`, written by store/event-store.ts) running on this host? */
 async function lockHeld(lockFile: string): Promise<boolean> {
   const owner = await fs.readFile(lockFile, 'utf8').then((text) => text.trim().split('@'), () => null);

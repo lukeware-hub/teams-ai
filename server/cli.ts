@@ -11,7 +11,7 @@ import { gitAuthEnv, withGitAuth } from './git/auth.js';
 import { Graphify } from './knowledge/graphify.js';
 import { KnowledgeIndex } from './knowledge/retrieval.js';
 import { Run, type ExecuteResult, type RunDeps } from './orchestrator/run.js';
-import { expandHome, nextRunId, stateFile, workspacePaths } from './orchestrator/workspace.js';
+import { expandHome, nextRunId, specForRun, stateFile, workspacePaths } from './orchestrator/workspace.js';
 import { runStep } from './runner/step.js';
 import { startApi } from './api/server.js';
 import { onboardingRoutes } from './api/onboarding-routes.js';
@@ -161,18 +161,22 @@ async function preconditions(exec: Exec, repo: string, specId: string, draft: bo
   return errors;
 }
 
-export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: string | undefined, opts: { dryRun: boolean; maxParallel?: number; draft?: boolean; complete?: boolean; readme?: boolean; deploy?: boolean; target?: 'docker-local' }): Promise<RunDeps> {
+/** Which spec a command works on: `--spec`, else the spec of the run being resumed, else the last spec directory. */
+export const chooseSpecId = (explicit: string | undefined, fromRun: string | null, dirs: readonly string[]): string | undefined => explicit ?? fromRun ?? [...dirs].sort().at(-1);
+
+export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: string | undefined, opts: { dryRun: boolean; maxParallel?: number; resumeRun?: string; draft?: boolean; complete?: boolean; readme?: boolean; deploy?: boolean; target?: 'docker-local' }): Promise<RunDeps> {
   const cfgFile = path.join(expandHome('~/.teams-ai'), 'config.json');
   const cfg: Config = loadConfig(await fs.readFile(cfgFile, 'utf8').then(JSON.parse).catch(() => ({})));
   const project = await readJson(path.join(projectDir, 'docs', 'project.json'), (v) => Project.parse(v));
-  const specId = specIdArg ?? (await fs.readdir(path.join(projectDir, 'docs', 'specs'))).sort().at(-1);
+  const ws = workspacePaths(cfg, project.projectId);
+  const fromRun = opts.resumeRun ? await specForRun(ws, opts.resumeRun) : null;
+  const specId = chooseSpecId(specIdArg, fromRun, await fs.readdir(path.join(projectDir, 'docs', 'specs')));
   if (!specId) throw new Error('no spec found under docs/specs and no --spec given');
   const spec = await readJson(path.join(projectDir, 'docs', 'specs', specId, 'spec.json'), (v) => Spec.parse(v));
   // A README is written for any spec whose code is on main, whatever its lifecycle status.
   // A deploy needs the spec's code on main: delivered (awaiting validation) or done.
   const allowed = opts.readme ? spec.status !== 'refining' : opts.deploy ? spec.status === 'awaiting-validation' || spec.status === 'done' : opts.complete ? spec.status === 'awaiting-validation' : spec.status === 'running';
   if (!allowed || !spec.specHash) throw new Error(`spec ${specId} is not ${opts.readme ? 'past refinement' : opts.deploy ? 'delivered (awaiting-validation or done)' : opts.complete ? 'awaiting-validation' : 'running'} (status ${spec.status}); finish Gate 1 first`);
-  const ws = workspacePaths(cfg, project.projectId);
   const platformSecrets = await loadSecrets(expandHome(cfg.paths.secrets));
   const secrets = { ...platformSecrets, ...(await loadSecrets(path.posix.join(ws.root, 'secrets'))) };
   const gitAuth = gitAuthEnv(platformSecrets.GITHUB_TOKEN);
@@ -265,7 +269,7 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
       }
       return 0;
     }
-    const load = loadRunDeps(io, projectDir, typeof f.spec === 'string' ? f.spec : undefined, { dryRun: f['dry-run'] === true, draft: f.draft === true, maxParallel: typeof f['max-parallel'] === 'string' ? Number(f['max-parallel']) : undefined, complete: completing, readme: readming, deploy: deploying, target: deploying ? (targetFlag as 'docker-local' | undefined) : undefined });
+    const load = loadRunDeps(io, projectDir, typeof f.spec === 'string' ? f.spec : undefined, { dryRun: f['dry-run'] === true, resumeRun: command === 'resume' ? String(f.run) : undefined, draft: f.draft === true, maxParallel: typeof f['max-parallel'] === 'string' ? Number(f['max-parallel']) : undefined, complete: completing, readme: readming, deploy: deploying, target: deploying ? (targetFlag as 'docker-local' | undefined) : undefined });
     const deps = factory === defaultFactory ? await load : await load.catch(() => null as unknown as RunDeps);
     const explicitId = typeof f['run-id'] === 'string' ? f['run-id'] : undefined;
     if (explicitId !== undefined && !/^[A-Za-z0-9_.-]+$/.test(explicitId)) throw new Error('--run-id must match ^[A-Za-z0-9_.-]+$');
