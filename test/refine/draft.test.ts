@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execCommand } from '../../server/exec/command.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
-import { createFromRepo, createNewProject, draftHash, draftPaths, readDerived, readDoc, renderBriefMd, writeDoc } from '../../server/refine/draft.js';
+import { briefTemplate, createFromRepo, createNewProject, draftHash, draftPaths, readDerived, readDoc, renderBriefMd, writeDoc } from '../../server/refine/draft.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 
@@ -53,6 +53,26 @@ describe('draft', () => {
     await createFromRepo(d2, remote.repo, execCommand, { kind: 'new-spec' });
     expect(await readDoc(d2, 'brief.md')).toContain('## Objectives');
     expect(await readDerived(d2)).toBeNull();
+  });
+
+  it('puts the description the user wrote on top of the brief of a new spec, and keeps the template when there is none', async () => {
+    remote = await makeRemote({ 'docs/project.json': JSON.stringify(makeProject()) });
+    const withText = draftPaths(ws, 'hello-010');
+    await createFromRepo(withText, remote.repo, execCommand, { kind: 'new-spec', description: '  Let users reset a password by e-mail.  ' });
+    const brief = await readDoc(withText, 'brief.md');
+    expect(brief.startsWith('## Description\n\nLet users reset a password by e-mail.\n\n## Type')).toBe(true);
+    const blank = draftPaths(ws, 'hello-011');
+    await createFromRepo(blank, remote.repo, execCommand, { kind: 'new-spec', description: '   ' });
+    expect(await readDoc(blank, 'brief.md')).toBe(briefTemplate());
+  });
+
+  it('a new project brief starts with the description too', async () => {
+    const d = draftPaths(ws, 'shop-001');
+    await createNewProject(d, 'Shop', 'A small shop for handmade soap.');
+    expect((await readDoc(d, 'brief.md')).startsWith('## Description\n\nA small shop for handmade soap.\n\n## Type')).toBe(true);
+    const plain = draftPaths(ws, 'shop-002');
+    await createNewProject(plain, 'Shop');
+    expect(await readDoc(plain, 'brief.md')).toBe(briefTemplate());
   });
 
   it('renderBriefMd lists every acceptance criterion with its id', () => {

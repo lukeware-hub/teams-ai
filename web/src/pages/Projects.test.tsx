@@ -83,11 +83,13 @@ describe('ProjectsView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Novo projeto' }));
     fireEvent.change(screen.getByTestId('new-project-id'), { target: { value: 'shop' } });
     fireEvent.change(screen.getByTestId('new-project-name'), { target: { value: 'Shop' } });
+    fireEvent.change(screen.getByTestId('new-project-description'), { target: { value: 'A shop for soap' } });
     fireEvent.click(screen.getByTestId('new-project'));
-    expect(on.newProject).toHaveBeenCalledWith('shop', 'Shop');
+    expect(on.newProject).toHaveBeenCalledWith('shop', 'Shop', 'A shop for soap');
     fireEvent.change(screen.getByTestId('new-spec-id-hello-app'), { target: { value: 'hello-005' } });
+    fireEvent.change(screen.getByTestId('new-spec-description-hello-app'), { target: { value: 'Greet in Portuguese' } });
     fireEvent.click(screen.getByTestId('new-spec-hello-app'));
-    expect(on.newSpec).toHaveBeenCalledWith('hello-app', 'hello-005');
+    expect(on.newSpec).toHaveBeenCalledWith('hello-app', 'hello-005', 'Greet in Portuguese');
     fireEvent.click(screen.getByTestId('continue-hello-000'));
     expect(on.cont).toHaveBeenCalledWith('hello-app', 'hello-000');
     expect(screen.queryByTestId('continue-hello-001')).toBeNull();

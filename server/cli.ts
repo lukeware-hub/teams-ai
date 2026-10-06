@@ -7,6 +7,7 @@ import { Project } from './contracts/project.js';
 import { Spec } from './contracts/spec.js';
 import { loadSecrets } from './core/secrets.js';
 import { execCommand, type Exec } from './exec/command.js';
+import { gitAuthEnv, withGitAuth } from './git/auth.js';
 import { Graphify } from './knowledge/graphify.js';
 import { KnowledgeIndex } from './knowledge/retrieval.js';
 import { Run, type ExecuteResult, type RunDeps } from './orchestrator/run.js';
@@ -91,7 +92,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
             runAgent: await makeRunAgent({ cfg, agentsDir: path.join(repoRoot, '.claude', 'agents'), hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), workspacesRoot: expandHome(cfg.paths.workspaces) }),
             validateDocs: createJevValidator(cfg, async () => loadSecrets(expandHome(cfg.paths.secrets))),
             secretsDir: expandHome(cfg.paths.secrets),
-            exec: execCommand,
+            exec: withGitAuth(execCommand, expandHome(cfg.paths.secrets)),
             projectDir: async (projectId) => {
               for (const { dir } of (await readUserConfig()).cfg.projects) {
                 const read = await readProject(dir).catch(() => null);
@@ -174,17 +175,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   const ws = workspacePaths(cfg, project.projectId);
   const platformSecrets = await loadSecrets(expandHome(cfg.paths.secrets));
   const secrets = { ...platformSecrets, ...(await loadSecrets(path.posix.join(ws.root, 'secrets'))) };
-  // The orchestrator authenticates to GitHub as the token's user (spec §10 GITHUB_TOKEN), for `gh` and for
-  // git over HTTPS alike; the interactive `gh auth login` may belong to a different account. The helper reads
-  // the token from the environment, so it never appears on a command line or in a remote URL.
-  const gitAuth: Record<string, string> = platformSecrets.GITHUB_TOKEN
-    ? {
-        GH_TOKEN: platformSecrets.GITHUB_TOKEN,
-        GIT_CONFIG_COUNT: '1',
-        GIT_CONFIG_KEY_0: 'credential.helper',
-        GIT_CONFIG_VALUE_0: '!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f',
-      }
-    : {};
+  const gitAuth = gitAuthEnv(platformSecrets.GITHUB_TOKEN);
   const exec: Exec = (s) => execCommand(s.bin === 'git' ? { ...s, env: { ...(s.env ?? {}), ...gitAuth } } : s);
   const ghExec: Exec = (s) => execCommand({ ...s, env: { ...(s.env ?? {}), ...gitAuth } });
   const errors = await preconditions(exec, ws.repo, specId, opts.draft === true, opts.complete === true, opts.readme === true, opts.deploy === true);

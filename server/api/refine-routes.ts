@@ -43,13 +43,16 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       path: `${P}/projects/new`,
       handler: wrap(async ({ body, json }) => {
         const b = await body();
-        json(200, await idOf(await registry.newProject(str(b, 'projectId'), str(b, 'name'))));
+        json(200, await idOf(await registry.newProject(str(b, 'projectId'), str(b, 'name'), str(b, 'description', true))));
       }),
     },
     {
       method: 'POST',
       path: `${P}/projects/:projectId/specs`,
-      handler: wrap(async ({ params, body, json }) => json(200, await idOf(await registry.newSpec(params.projectId!, str(await body(), 'specId'))))),
+      handler: wrap(async ({ params, body, json }) => {
+        const b = await body();
+        json(200, await idOf(await registry.newSpec(params.projectId!, str(b, 'specId'), str(b, 'description', true))));
+      }),
     },
     {
       method: 'POST',

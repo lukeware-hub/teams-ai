@@ -115,16 +115,32 @@ export function renderBriefMd(s: Spec, validationReport?: string, routing?: Repo
 
 export const draftExists = (d: Draft): Promise<boolean> => fs.access(d.briefMd).then(() => true, () => false);
 
-export async function createNewProject(d: Draft, name: string): Promise<void> {
+export const MAX_DESCRIPTION = 20_000;
+
+/** The text the user wrote when creating a project or a spec: trimmed, and refused when it is too long to be a brief. */
+export function cleanDescription(text: string | undefined): string {
+  const t = (text ?? '').trim();
+  if (t.length > MAX_DESCRIPTION) throw new RangeError(`description must have at most ${MAX_DESCRIPTION} characters`);
+  return t;
+}
+
+/** The description goes on top of the brief, where the user sees it first and PO and SM read it with the rest. */
+const briefWith = (description: string): string => (description === '' ? briefTemplate() : `## Description
+
+${description}
+
+${briefTemplate()}`);
+
+export async function createNewProject(d: Draft, name: string, description = ''): Promise<void> {
   await fs.mkdir(path.dirname(d.briefMd), { recursive: true });
   await fs.writeFile(d.projectMd, projectTemplate(name));
-  await fs.writeFile(d.briefMd, briefTemplate());
+  await fs.writeFile(d.briefMd, briefWith(cleanDescription(description)));
   await fs.writeFile(d.stackMd, stackTemplate());
   await fs.writeFile(d.flowMd, flowTemplate());
   await fs.writeFile(docPath(d, 'design.md'), designTemplate());
 }
 
-export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: { kind: 'new-spec' } | { kind: 'continue'; report?: string; route?: RouteReport }): Promise<void> {
+export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: { kind: 'new-spec'; description?: string } | { kind: 'continue'; report?: string; route?: RouteReport }): Promise<void> {
   await gitFetch(repo, exec);
   const files = (await git(repo, ['ls-tree', '-r', '--name-only', 'origin/main', 'docs/'], exec)).split('\n').filter((f) => f !== '');
   for (const rel of files) {
@@ -141,7 +157,7 @@ export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: {
     await fs.writeFile(d.projectMd, renderProjectMd(project));
   }
   if (mode.kind === 'new-spec') {
-    await fs.writeFile(d.briefMd, briefTemplate());
+    await fs.writeFile(d.briefMd, briefWith(cleanDescription(mode.description)));
     return;
   }
   const spec = Spec.parse(JSON.parse(await fs.readFile(d.specJson, 'utf8')));

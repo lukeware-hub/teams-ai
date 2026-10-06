@@ -49,13 +49,15 @@ export function ProjectsView(p: {
   onResume: (runId: string) => void;
   onStop: (runId: string) => void;
   onAdd: (dir: string) => void;
-  onNewProject: (projectId: string, name: string) => void;
-  onNewSpec: (projectId: string, specId: string) => void;
+  onNewProject: (projectId: string, name: string, description: string) => void;
+  onNewSpec: (projectId: string, specId: string, description: string) => void;
   onContinue: (projectId: string, specId: string) => void;
 }) {
   const [repoUrl, setRepoUrl] = useState('');
   const [newProjectId, setNewProjectId] = useState('');
   const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectDescription, setNewProjectDescription] = useState('');
+  const [newSpecDescription, setNewSpecDescription] = useState<Record<string, string>>({});
   const [newSpecId, setNewSpecId] = useState<Record<string, string>>({});
   const [panel, setPanel] = useState<'new' | 'git' | null>(null);
   const [query, setQuery] = useState('');
@@ -97,16 +99,22 @@ export function ProjectsView(p: {
           aria-labelledby="new-project-title"
           onSubmit={(e) => {
             e.preventDefault();
-            p.onNewProject(newProjectId, newProjectName);
+            p.onNewProject(newProjectId, newProjectName, newProjectDescription);
           }}
         >
           <div>
             <h2 id="new-project-title">Novo projeto</h2>
-            <p className="projects-form-hint">Defina um ID (letras minúsculas, números e hífens) e um nome. Em seguida, você segue para o refinamento guiado.</p>
+            <p className="projects-form-hint">Defina um ID (letras minúsculas, números e hífens) e um nome. Se quiser, descreva o projeto com suas palavras: os agentes usam o texto para começar o refinamento e fazer as perguntas.</p>
           </div>
           <div className="projects-form-fields">
             <label><span>ID do projeto</span><input data-testid="new-project-id" autoFocus value={newProjectId} onChange={(e) => setNewProjectId(e.target.value)} placeholder="ex.: portal-interno" /></label>
             <label><span>Nome do projeto</span><input data-testid="new-project-name" value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="ex.: Portal interno" /></label>
+          </div>
+          <label className="projects-form-description">
+            <span>Descrição (opcional)</span>
+            <textarea data-testid="new-project-description" rows={5} value={newProjectDescription} onChange={(e) => setNewProjectDescription(e.target.value)} placeholder="O que é, para quem serve, o que precisa fazer e o que fica de fora." />
+          </label>
+          <div className="projects-form-actions">
             <button data-testid="new-project" className="primary-button" type="submit" disabled={newProjectId.trim() === '' || newProjectName.trim() === ''}>Criar projeto</button>
           </div>
         </form>
@@ -172,6 +180,7 @@ export function ProjectsView(p: {
         const showAll = allRuns[pr.projectId] ?? false;
         const drafts = openDrafts.filter((d) => d.projectId === pr.projectId);
         const specDraft = newSpecId[pr.projectId] ?? '';
+        const specDescription = newSpecDescription[pr.projectId] ?? '';
         return (
           <article className="card project-panel" key={pr.projectId} aria-labelledby={`project-${pr.projectId}`}>
             <header className="project-panel-header">
@@ -188,10 +197,10 @@ export function ProjectsView(p: {
                   <InfoTip label="Especificações" text={HELP.specs} />
                 </div>
                 <form
-                  className="project-new-spec"
+                  className={`project-new-spec${specDraft.trim() === '' ? '' : ' with-description'}`}
                   onSubmit={(e) => {
                     e.preventDefault();
-                    p.onNewSpec(pr.projectId, specDraft);
+                    p.onNewSpec(pr.projectId, specDraft, specDescription);
                   }}
                 >
                   <input data-testid={`new-spec-id-${pr.projectId}`} aria-label="ID da nova spec" value={specDraft} onChange={(e) => setNewSpecId({ ...newSpecId, [pr.projectId]: e.target.value })} placeholder="ID da nova spec" />
@@ -199,6 +208,9 @@ export function ProjectsView(p: {
                     <Icon name="plus" size={14} />
                     Nova spec
                   </button>
+                  {specDraft.trim() === '' ? null : (
+                    <textarea data-testid={`new-spec-description-${pr.projectId}`} aria-label="Descrição da nova spec" rows={5} value={specDescription} onChange={(e) => setNewSpecDescription({ ...newSpecDescription, [pr.projectId]: e.target.value })} placeholder="Descreva a nova spec com suas palavras (opcional). Os documentos do projeto já estão carregados; os agentes validam o texto e fazem as perguntas." />
+                  )}
                 </form>
               </div>
               {pr.specs.length === 0 ? (
@@ -399,8 +411,8 @@ export function Projects() {
       onResume={(r) => void act(() => runApi.resumeRun(r))()}
       onStop={(r) => void act(() => runApi.stopRun(r))()}
       onAdd={(d) => void act(() => runApi.addProject(d))()}
-      onNewProject={(id, name) => void go(() => refineApi.newProject(id, name))()}
-      onNewSpec={(p, s) => void go(() => refineApi.newSpec(p, s))()}
+      onNewProject={(id, name, description) => void go(() => refineApi.newProject(id, name, description))()}
+      onNewSpec={(p, s, description) => void go(() => refineApi.newSpec(p, s, description))()}
       onContinue={(p, s) => void go(() => refineApi.continueSpec(p, s))()}
     />
   );

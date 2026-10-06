@@ -87,6 +87,8 @@ describe('refine api', () => {
     expect(created.status).toBe(200);
     expect(await created.json()).toEqual({ sessionId: 'hello-app/hello-app-001' });
     expect((await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' })).status).toBe(409);
+    expect((await call('POST', '/api/projects/new', { projectId: 'other-app', name: 'Other', description: 'x'.repeat(20_001) })).status).toBe(400);
+    expect((await call('POST', '/api/projects/new', { projectId: 'other-app', name: 'Other', description: 'x'.repeat(20_001) })).status).toBe(400);
     expect(await (await fetch(`${base()}/api/refine`)).json()).toEqual([{ projectId: 'hello-app', specId: 'hello-app-001', state: 'drafting', registered: false }]);
     expect((await call('PUT', '/api/refine/hello-app/hello-app-001/docs/spec.json', { text: 'x' })).status).toBe(400);
     expect((await call('PUT', '/api/refine/hello-app/hello-app-001/docs/brief.md', { text: '## Objectives\n- ship' })).status).toBe(200);
@@ -122,6 +124,12 @@ describe('refine api', () => {
     const snap = await (await fetch(`${base()}/api/refine/hello-app/hello-002`)).json();
     expect(snap.docs['project.md']).toContain('## Personas');
     expect((await call('POST', '/api/projects/hello-app/specs/hello-002/continue')).status).toBe(409);
+    const described = await call('POST', '/api/projects/hello-app/specs', { specId: 'hello-003', description: 'Greet in Portuguese too.' });
+    expect(described.status).toBe(200);
+    const snap3 = await (await fetch(`${base()}/api/refine/hello-app/hello-003`)).json();
+    expect(snap3.docs['brief.md']).toMatch(/^## Description\n\nGreet in Portuguese too\.\n\n## Type/);
+    expect((await call('POST', '/api/projects/hello-app/specs', { specId: 'hello-004', description: 'x'.repeat(20_001) })).status).toBe(400);
+    expect((await call('POST', '/api/projects/hello-app/specs', { specId: 'hello-005', description: 42 })).status).toBe(400);
     const cont = await call('POST', '/api/projects/hello-app/specs/hello-001/continue', { report: 'broken /hello' });
     expect(cont.status).toBe(200);
     const snap2 = await (await fetch(`${base()}/api/refine/hello-app/hello-001`)).json();

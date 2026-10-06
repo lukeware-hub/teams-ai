@@ -14,7 +14,7 @@ import { expandHome, nextRunId, workspacePaths, type Workspace } from '../orches
 import { loadEvents } from '../store/event-store.js';
 import type { RunAgent } from './cycle.js';
 import type { CycleDeps } from './cycle.js';
-import { createFromRepo, createNewProject, draftExists, draftPaths, type Draft, type RouteReport } from './draft.js';
+import { cleanDescription, createFromRepo, createNewProject, draftExists, draftPaths, type Draft, type RouteReport } from './draft.js';
 import { ConflictError, NotFoundError, RefineSession } from './session.js';
 import { reduceRefineEvents, type RefineStatus } from './state.js';
 
@@ -82,15 +82,16 @@ export class SessionRegistry {
     return this.session(draft, ws);
   }
 
-  async newProject(projectId: string, name: string): Promise<RefineSession> {
+  async newProject(projectId: string, name: string, description?: string): Promise<RefineSession> {
     slug(projectId, 'projectId');
+    cleanDescription(description);
     if (name.trim() === '') throw new RangeError('name must not be empty');
     const ws = await this.ws(projectId);
     const draft = draftPaths(ws, `${projectId}-001`);
     if ((await this.deps.projectDir(projectId)) || (await draftExists(draft)) || (await exists(ws.repo))) {
       throw new ConflictError(`project ${projectId} already exists; register it instead`);
     }
-    await createNewProject(draft, name);
+    await createNewProject(draft, name, description);
     return this.session(draft, ws, 'new-project');
   }
 
@@ -103,14 +104,15 @@ export class SessionRegistry {
     return text === null ? null : Spec.parse(JSON.parse(text));
   }
 
-  async newSpec(projectId: string, specId: string): Promise<RefineSession> {
+  async newSpec(projectId: string, specId: string, description?: string): Promise<RefineSession> {
     slug(projectId, 'projectId');
     slug(specId, 'specId');
+    cleanDescription(description);
     const ws = await this.ws(projectId);
     const draft = draftPaths(ws, specId);
     if (await draftExists(draft)) throw new ConflictError(`spec ${specId} already has a refinement session`);
     if (await this.specOnMain(ws, specId)) throw new ConflictError(`spec ${specId} already exists on main`);
-    await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'new-spec' });
+    await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'new-spec', description });
     return this.session(draft, ws, 'new-spec');
   }
 

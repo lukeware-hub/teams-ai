@@ -231,8 +231,8 @@ export interface DraftRow {
 const send = (method: string, p: string, body?: unknown) => authFetch(`${R}${p}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
 export const refineApi = {
   list: () => authFetch(`${R}/refine`).then((r) => json<DraftRow[]>(r)),
-  newProject: (projectId: string, name: string) => send('POST', '/projects/new', { projectId, name }).then((r) => json<{ sessionId: string }>(r)),
-  newSpec: (projectId: string, specId: string) => send('POST', `/projects/${encodeURIComponent(projectId)}/specs`, { specId }).then((r) => json<{ sessionId: string }>(r)),
+  newProject: (projectId: string, name: string, description = '') => send('POST', '/projects/new', { projectId, name, description }).then((r) => json<{ sessionId: string }>(r)),
+  newSpec: (projectId: string, specId: string, description = '') => send('POST', `/projects/${encodeURIComponent(projectId)}/specs`, { specId, description }).then((r) => json<{ sessionId: string }>(r)),
   continueSpec: (projectId: string, specId: string, report?: string) =>
     send('POST', `/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/continue`, { report }).then((r) => json<{ sessionId: string }>(r)),
   snapshot: (p: string, s: string) => authFetch(`${R}/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}`).then((r) => json<Snapshot>(r)),
