@@ -1,3 +1,4 @@
+import type { Backlog, BacklogItem } from '../contracts/backlog.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
 import type { ChecklistItem } from './checklist.js';
@@ -14,6 +15,15 @@ export interface PatchRow extends PendingPatch {
   status: 'pending' | 'accepted' | 'rejected' | 'dropped';
   decision: string | null;
 }
+/** Backlog mode: the docs broken into epics and ranked items (browser-safe, shared with the web reducer). */
+export interface BacklogState {
+  enabled: boolean;
+  project: Project | null;
+  epics: Backlog['epics'];
+  items: Array<BacklogItem & { rank: number }>;
+  cycle: number;
+}
+
 export interface RefineState {
   status: RefineStatus;
   stale: boolean;
