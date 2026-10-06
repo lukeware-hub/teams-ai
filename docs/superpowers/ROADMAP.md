@@ -473,6 +473,12 @@ unit-tested with fixtures. Each one needs a plan file in `plans/` before impleme
 - Mid-session the human added a standing constraint - neither the agents nor teams-ai may be fixed to a stack - which revised the lockfile and license-scan designs (both now let the agent declare the path/command itself) before any code was written for them.
 - Open: no real paid run yet proving the SM actually plans a conforming `coverage`/`license-scan` gate end to end.
 
+### R10.3 SM decides service/bounded-context decomposition during refine instead of asking the human - `done` (plan 49, 2026-10-06)
+
+- Prompted by a live refinement session (lukeware-kayron-hub, surgical-case-service spec) where the SM asked the human an open architecture question - how many `<capability>-service` repos, mandatory split or not - that teams-ai's own delivery contract already answers: `plan.delivery` ships exactly one repository, one Dockerfile, one compose service and one `SERVICE_URL` per spec (`devops.md`), so there is no multi-repo/multi-service delivery path to ask about today.
+- Built: `.claude/agents/sm.md` refine step gets a "Service and bounded-context decomposition" rule - default to one edge service (`<primary-capability>-service`) with bounded contexts separated internally (hexagonal/ports-and-adapters), physical split recorded as an ADR-style `docPatch`, never a question; a question is only legitimate when the docs mandate something teams-ai cannot deliver (separate repos per context, several independently deployable services), phrased as a pipeline limitation, not an open choice.
+- Prompt-only change (no runtime code, no test); verified by reading the diff and grepping the new section into `sm.md`. No live skill-loading mechanism involved, same distillation pattern as R10.1.
+
 ## System 1 decisions (spec §10A.5)
 
 | # | Decision | Status |
