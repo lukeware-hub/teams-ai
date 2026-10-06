@@ -13,6 +13,7 @@ import { execCommand } from '../exec/command.js';
 import { nextRunId } from '../orchestrator/workspace.js';
 import { reduceEvents } from '../pipeline/run-state.js';
 import { EventLogCorruptError, loadEvents, type StoredEvent } from '../store/event-store.js';
+import { httpGet, type HttpGet } from '../deploy/target.js';
 import { refuseCloneHost, type ResolveHost } from './security.js';
 import { tailJournal } from './journal-tail.js';
 import { isAlive, spawnRun, stop, type RunControlDeps } from './run-control.js';
@@ -27,6 +28,8 @@ export interface RunRoutesDeps {
   cloneProject?: (url: string, destination: string) => Promise<void>;
   /** Name resolution for the clone-host check; defaults to the system resolver. */
   resolveHost?: ResolveHost;
+  /** Probe of the deployed service for the validation page; the real one is fetch with a timeout. */
+  httpGet?: HttpGet;
 }
 
 const str = (v: unknown, field: string): string => {
@@ -128,7 +131,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     const tail = redactSecrets(log.slice(-500), await loadSecretValues(secretsDirOf(await deps.cfg())));
     throw new HttpError(500, `run ${runId} did not start: ${tail || 'no output'}`);
   };
-  const launch = async (idx: IndexDeps, o: { projectDir: string; specId: string; runId: string; mode: 'run' | 'resume' | 'complete' | 'readme' }): Promise<void> => {
+  const launch = async (idx: IndexDeps, o: { projectDir: string; specId: string; runId: string; mode: 'run' | 'resume' | 'complete' | 'readme' | 'deploy' }): Promise<void> => {
     const runs = runsDir(idx);
     await fs.mkdir(path.join(runs, o.runId), { recursive: true });
     const { pid } = spawnRun(deps.control, { ...o, logFile: path.join(runs, o.runId, 'ui.log') });
@@ -311,6 +314,44 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           return next;
         });
         json(202, { runId: id });
+      },
+    },
+    {
+      method: 'POST',
+      path: `${P}/projects/:projectId/specs/:specId/deploy`,
+      handler: async ({ params, json }) => {
+        const idx = await index();
+        const dir = await projectDir(idx, params.projectId!);
+        const specId = safe(params.specId!);
+        // Deploys main again with no agent (spec deploy); same one-writer-per-spec rule as complete and readme.
+        const runId = await exclusive(specKey(params.projectId!, specId), async () => {
+          const read = await readProject(dir);
+          const spec = read.specs.find((s) => s.specId === specId);
+          if (!spec) throw new HttpError(404, `unknown spec ${specId}`);
+          if (spec.status !== 'awaiting-validation' && spec.status !== 'done') throw new HttpError(409, `spec ${specId} is ${spec.status}; only delivered specs deploy again`);
+          const rows = await listRuns(idx, params.projectId!);
+          const active = rows.find((r) => r.specId === specId && CLAIMS_SPEC.has(r.status));
+          if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status})`);
+          const id = await nextRunId({ runs: runsDir(idx) }, `${specId}-deploy`);
+          await launch(idx, { projectDir: dir, specId, runId: id, mode: 'deploy' });
+          return id;
+        });
+        json(202, { runId });
+      },
+    },
+    {
+      method: 'GET',
+      path: `${P}/runs/:runId/service`,
+      handler: async ({ params, json }) => {
+        const idx = await index();
+        const evs = await events(runsDir(idx), safe(params.runId!));
+        const deployed = [...evs].reverse().find((e) => e.type === 'DEPLOY_VERIFIED');
+        if (!deployed) throw new HttpError(404, 'this run has no deployed service');
+        // Reports from before the health path was recorded only prove the host answers: any HTTP status then means online.
+        const healthPath = typeof deployed.data.healthcheckPath === 'string' ? deployed.data.healthcheckPath : null;
+        const res = await (deps.httpGet ?? httpGet)(`${String(deployed.data.url)}${healthPath ?? '/'}`, 3000);
+        const online = res !== null && (healthPath === null || (res.status >= 200 && res.status < 400));
+        json(200, { online, status: res?.status ?? null, checkedAt: new Date().toISOString() });
       },
     },
     {

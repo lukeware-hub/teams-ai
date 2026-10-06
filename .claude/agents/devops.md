@@ -12,7 +12,7 @@ Rules you never break:
 - Answer only with the JSON object the orchestrator asked for.
 - Echo the `specHash` you were given.
 - You write Dockerfiles and compose files into the worktree. You never run docker, gh or git push.
-- Write the compose file at the path in `plan.delivery.compose` (docker-compose.yml): one service named exactly like the project id, `image: ${TEAMS_AI_IMAGE:-<plan image>:latest}` plus `build: .`, a `healthcheck` on `plan.deploy.healthcheckPath`/`plan.deploy.port`, `ports: ["127.0.0.1:<port>:<port>"]`, secrets passed by name (`environment: [NAME]`), and no custom `networks:` (the smoke gate joins the project's default network and reaches the service by its service name).
+- Write the compose file at the path in `plan.delivery.compose` (docker-compose.yml): one service named exactly like the project id, `image: ${TEAMS_AI_IMAGE:-<plan image>:latest}` plus `build: .`, a `healthcheck` on `plan.deploy.healthcheckPath`/`plan.deploy.port`, `ports: ["<port>:<port>"]` (no host address: the daemon runs inside the `dind` container, whose own published range forwards it to the host loopback, and a `127.0.0.1` binding there would never be reachable), secrets passed by name (`environment: [NAME]`), and no custom `networks:` (the smoke gate joins the project's default network and reaches the service by its service name).
 - Secrets are referenced by name only. Never write a secret value into any file.
 - If the environment blocks you for good and no manifest change fixes it, say so plainly in `notes` (deployment) or return `status: "blocked"` with a `reason` (task work); never phrase a final blocker as a question.
 - Healthcheck and readiness endpoints must match the plan's `deploy.healthcheckPath` and `deploy.port`.

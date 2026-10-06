@@ -1,0 +1,179 @@
+# https://taskfile.dev - run `task` to list every command.
+version: '3'
+
+tasks:
+  default:
+    desc: List all tasks
+    silent: true
+    cmds:
+      - task --list
+
+  # ---- Docker platform (recommended) ----
+  setup:
+    desc: Create .env from .env.example if it does not exist
+    status:
+      - test -f .env
+    cmds:
+      - cp .env.example .env
+
+  up:
+    desc: Build and start the whole platform (UI on http://localhost:8787)
+    deps: [setup]
+    cmds:
+      - docker compose up -d --build
+
+  doctor:
+    desc: Check the prerequisites and say how to fix what is missing (messages in pt-br)
+    silent: true
+    cmds:
+      - task: doctor:docker
+      - task: doctor:daemon
+      - task: doctor:compose
+      - echo "Tudo certo. Rode 'task start' para subir o Teams AI."
+
+  doctor:docker:
+    internal: true
+    silent: true
+    preconditions:
+      - sh: docker --version
+        msg: "FALHA: o Docker não está instalado. Instale o Docker Desktop (winget install --id Docker.DockerDesktop -e) e abra um novo terminal."
+
+  doctor:daemon:
+    internal: true
+    silent: true
+    preconditions:
+      - sh: docker info
+        msg: "FALHA: o Docker está instalado, mas parado. Abra o Docker Desktop e espere aparecer 'Engine running'."
+
+  doctor:compose:
+    internal: true
+    silent: true
+    preconditions:
+      - sh: docker compose version
+        msg: "FALHA: o 'docker compose' (v2) não foi encontrado. Atualize o Docker Desktop."
+
+  start:
+    desc: Check prerequisites, start the platform, wait until it is healthy and open the UI
+    cmds:
+      - task: doctor
+      - task: setup
+      - docker compose up -d --build --wait
+      - echo "Teams AI no ar em http://localhost:8787"
+      - cmd: cmd.exe /c start "" http://localhost:8787
+        platforms: [windows]
+        ignore_error: true
+      - cmd: open http://localhost:8787
+        platforms: [darwin]
+        ignore_error: true
+      - cmd: xdg-open http://localhost:8787
+        platforms: [linux]
+        ignore_error: true
+
+  down:
+    desc: Stop the platform (keeps data, logins and workspaces)
+    cmds:
+      - docker compose down
+
+  restart:
+    desc: Restart the orchestrator container
+    cmds:
+      - docker compose restart teams-ai
+
+  ps:
+    desc: Show service status and health
+    cmds:
+      - docker compose ps
+
+  logs:
+    desc: Follow the orchestrator logs
+    cmds:
+      - docker compose logs -f teams-ai
+
+  logs:dind:
+    desc: Follow the nested Docker daemon logs
+    cmds:
+      - docker compose logs -f dind
+
+  shell:
+    desc: Open a shell inside the orchestrator container
+    interactive: true
+    cmds:
+      - docker compose exec teams-ai bash
+
+  login:claude:
+    desc: Log in to Claude Code inside the container
+    interactive: true
+    cmds:
+      - docker compose exec teams-ai claude auth login
+
+  login:gh:
+    desc: Log in to GitHub CLI inside the container
+    interactive: true
+    cmds:
+      - docker compose exec teams-ai gh auth login
+
+  cli:
+    desc: 'Run the teams-ai CLI in the container, e.g. task cli -- status --project <dir> --run <id>'
+    cmds:
+      - docker compose exec teams-ai npm run teams-ai -- {{.CLI_ARGS}}
+
+  reset:
+    desc: DELETE all containers, volumes, logins and workspaces
+    prompt: This removes ALL teams-ai data, including Claude and GitHub logins. Continue?
+    cmds:
+      - docker compose down -v
+
+  # ---- Development (run inside WSL2 Ubuntu or any Linux, see README) ----
+  install:
+    desc: Install backend and web dependencies
+    cmds:
+      - npm ci
+      - npm run web:install
+
+  ui:
+    desc: Start the UI and API from source on port 8787
+    cmds:
+      - npm run ui -- --port 8787
+
+  web:dev:
+    desc: Vite dev server for the web UI
+    cmds:
+      - npm run web:dev
+
+  web:build:
+    desc: Type-check and build the web UI
+    cmds:
+      - npm run web:build
+
+  typecheck:
+    desc: TypeScript check
+    cmds:
+      - npm run typecheck
+
+  test:
+    desc: Backend tests
+    cmds:
+      - npm test
+
+  test:web:
+    desc: Web UI tests
+    cmds:
+      - npm run test:web
+
+  check:
+    desc: What CI runs - typecheck, backend tests, web tests, web build
+    cmds:
+      - task: typecheck
+      - task: test
+      - task: test:web
+      - task: web:build
+
+  wsl:setup:
+    desc: Install the toolchain on Ubuntu (WSL2)
+    cmds:
+      - bash scripts/wsl/setup-ubuntu.sh
+
+  wsl:check:
+    desc: Report which tools are installed (JSON)
+    cmds:
+      - bash scripts/wsl/check-tools.sh

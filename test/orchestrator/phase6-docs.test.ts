@@ -67,6 +67,12 @@ describe('Phase 6 documentation gate', () => {
     expect(await git(remote.repo, ['show', 'origin/main:docs/RUNBOOK.md'], execCommand)).toContain('Rollback');
   });
 
+  it('puts the deploy port, health path, kind and docs path into report.service', async () => {
+    await journal.fact(OrchEvent.DeployVerified, { attempt: 1, url: 'http://dind:3000', smoke: [], healthcheck: 'HTTP 200', tag: 't', port: 3000, healthcheckPath: '/health', kind: 'api', docsPath: '/docs' });
+    const r = await p6(async () => report(GOOD));
+    expect(r.report.service).toMatchObject({ url: 'http://dind:3000', port: 3000, healthcheckPath: '/health', kind: 'api', docsPath: '/docs' });
+  });
+
   it('feeds validator errors back and accepts the corrected docs', async () => {
     let n = 0;
     const r = await p6(async () => report(++n === 1 ? { readme: '# App', runbook: GOOD.runbook } : GOOD));

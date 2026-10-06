@@ -130,6 +130,7 @@ export const E2E_CONTRACT =
 export function planRules(firstSpec: boolean, requireDelivery = false, requireSecurityTooling = false, requireE2e = false): string {
   const lines = [
     'Plan rules (the orchestrator rejects a plan that breaks any of them):',
+    '- deploy.kind is "api" or "front" (what the service is); an api sets deploy.docsPath to the path that serves its Swagger/OpenAPI page (for example /docs); deploy.port must be inside 3000-3019, the range the platform publishes to the host so the human can open the service',
     `- gates must include these blocking gates: ${REQUIRED_BLOCKING_GATES.join(', ')} (plus a blocking typecheck gate when commands.typecheck exists)`,
     '- every acceptance criterion is covered by at least one task (criteriaRefs); every task has at least one criterion or is infrastructure',
     '- dependsOn forms a DAG; affectedPaths are repository-relative paths or globs; tasks small enough for one agent step',
@@ -220,6 +221,7 @@ export function readmePack(base: PackBase, opts: { tasks: readonly string[]; exi
 export function reportPack(base: PackBase, opts: { delivered: readonly string[]; blocked: ReadonlyArray<{ taskId: string; reason: string }>; evidence: string; assumptions: readonly string[]; deploy: string; tokens: string; security: string; docsErrors?: readonly string[] }): ContextPackInput {
   return { ...common(base, 'report', 'sm'), criteria: base.spec.acceptanceCriteria, feedback: [
     'Write the final report for the human validator. Give concrete exploratory steps for every acceptance criterion.',
+    'Write `summary`, `assumptions`, `blocked[].reason` and `exploratoryScript` entirely in Brazilian Portuguese (pt-BR), in plain words a non-developer can follow; no English sentences. Each exploratory step says what to do and what should happen, in one short sentence (for example: "Abra http://localhost:3000/health no navegador. Deve aparecer {"ok":true}."). Keep commands, URLs, status codes and JSON between backticks, untranslated.',
     'Also return `readme`: the Markdown for docs/README.md, a short overview of the project (what it is, how to run and test it, the endpoints or commands it exposes, the acceptance criteria it satisfies). Use only facts from the context pack.',
     DOCS_STRUCTURE,
     ...(opts.docsErrors?.length ? [`Your previous documents were rejected, fix every point:\n${opts.docsErrors.map((e) => `- ${e}`).join('\n')}`] : []),

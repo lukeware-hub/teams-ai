@@ -447,6 +447,29 @@ unit-tested with fixtures. Each one needs a plan file in `plans/` before impleme
 - One run on a sample project proving all eight criteria: artifacts present, CI workflow green, image in the registry,
   `docker compose up --wait` healthy, e2e passing. Cost about $14 per run.
 
+## Stage 9 - Easy setup and first use (2026-10-06)
+
+### R9.1 `task doctor` and `task start` - `done` (plan 42, 2026-10-06)
+
+- Built: prerequisite checks with pt-br fixes as Task preconditions; `start` brings the stack up with `--wait` and opens the UI.
+- Open: no port 8787 or `/dev/net/tun` check; checked by hand only (Task preconditions have no unit test).
+### R9.2 Windows prerequisites installer - `done` (plan 43, 2026-10-06; not run end to end)
+
+- Built: `scripts/windows/install.ps1` (idempotent: WSL2/Ubuntu, Git, Docker Desktop, Task).
+- Open: run it twice on a clean Windows machine.
+### R9.3 Quickstart docs and GitHub token link - `done` (plan 44, 2026-10-06)
+
+- Built: "Comece em 5 minutos" in the README; token creation link in the Onboarding.
+### R9.4 Prebuilt image in GHCR - `todo`
+
+- `task up` would pull instead of building (first start drops from minutes to a download). Needs a publish workflow, a decision on package visibility and a change to `docker-compose.yml` that keeps `test/infra/compose.test.ts` true.
+### R9.5 Demo run in the UI - `todo`
+
+- `teams-ai run --dry-run` is not usable end to end today ("set steps in code before use"). Make a scripted scenario on `test/fixtures/todo-api` and a UI button, so a newcomer sees the full flow without spending Claude quota.
+### R9.6 CI smoke of `task start` - `todo` (after the `dind` live check)
+
+- Rootless `dind` on a GitHub runner is unproven; do it once the `dind` live check of plan 40 is closed.
+
 ## System 1 decisions (spec §10A.5)
 
 | # | Decision | Status |

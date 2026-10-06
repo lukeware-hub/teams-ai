@@ -77,7 +77,75 @@ describe('ValidationView', () => {
   });
 });
 
-const COMPLETION = 'hello-001-complete-r1';
+describe('ValidationView service card', () => {
+  const withService = (svc: Partial<NonNullable<Report['service']>>) => detail({ report: { ...report, service: { ...report.service!, url: 'http://dind:3000', ...svc } } });
+  const view = (d: RunDetail, extra: { serviceStatus?: { online: boolean; status: number | null; checkedAt: string } | null; specStatus?: string; onStartService?: () => void; onRecheck?: () => void; startingService?: boolean } = {}) =>
+    render(<MemoryRouter><ValidationView detail={d} specStatus={extra.specStatus ?? 'awaiting-validation'} serviceStatus={extra.serviceStatus ?? null} onStartService={extra.onStartService ?? vi.fn()} onRecheckService={extra.onRecheck ?? vi.fn()} startingService={extra.startingService ?? false} onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
+  const online = { online: true, status: 200, checkedAt: '2026-10-06T10:00:00.000Z' };
+  const offline = { online: false, status: null, checkedAt: '2026-10-06T10:00:00.000Z' };
+
+  it('an online api offers the Swagger button and no start button', () => {
+    view(withService({ port: 3000, kind: 'api', docsPath: '/docs' }), { serviceStatus: online });
+    expect(screen.getByTestId('service-online').textContent).toContain('No ar');
+    expect(screen.getByTestId('open-docs').getAttribute('href')).toBe(`http://${window.location.hostname}:3000/docs`);
+    expect(screen.queryByTestId('open-app')).toBeNull();
+    expect(screen.queryByTestId('start-service')).toBeNull();
+  });
+
+  it('an online front-end offers the app button', () => {
+    view(withService({ port: 3001, kind: 'front' }), { serviceStatus: online });
+    expect(screen.getByTestId('open-app').getAttribute('href')).toBe(`http://${window.location.hostname}:3001`);
+    expect(screen.queryByTestId('open-docs')).toBeNull();
+  });
+
+  it('an offline service says so, hides the open buttons and offers to start it', () => {
+    const start = vi.fn();
+    view(withService({ port: 3000, kind: 'api', docsPath: '/docs' }), { serviceStatus: offline, onStartService: start });
+    expect(screen.getByTestId('service-online').textContent).toContain('Fora do ar');
+    expect(screen.queryByTestId('open-docs')).toBeNull();
+    fireEvent.click(screen.getByTestId('start-service'));
+    expect(start).toHaveBeenCalled();
+  });
+
+  it('start is disabled while a deploy runs, and while the spec is not delivered', () => {
+    const { unmount } = view(withService({ port: 3000 }), { serviceStatus: offline, startingService: true });
+    expect((screen.getByTestId('start-service') as HTMLButtonElement).disabled).toBe(true);
+    unmount();
+    view(withService({ port: 3000 }), { serviceStatus: offline, specStatus: 'running' });
+    expect((screen.getByTestId('start-service') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('a port outside the published range gets no open button but says why', () => {
+    view(withService({ port: 8080, url: 'http://dind:8080', kind: 'api', docsPath: '/docs' }), { serviceStatus: online });
+    expect(screen.queryByTestId('open-docs')).toBeNull();
+    expect(screen.getByTestId('service-unpublished').textContent).toContain('3000');
+  });
+
+  it('while the first check is pending it shows Verificando and no start button', () => {
+    view(withService({ port: 3000 }), { serviceStatus: null });
+    expect(screen.getByTestId('service-online').textContent).toContain('Verificando');
+    expect(screen.queryByTestId('start-service')).toBeNull();
+  });
+
+  it('recheck asks for a new status', () => {
+    const recheck = vi.fn();
+    view(withService({ port: 3000 }), { serviceStatus: online, onRecheck: recheck });
+    fireEvent.click(screen.getByTestId('recheck-service'));
+    expect(recheck).toHaveBeenCalled();
+  });
+});
+
+describe('ValidationView text', () => {
+  it('shows text between backticks as code, without the backticks', () => {
+    const r = { ...report, exploratoryScript: [{ acId: 'AC-001', steps: ['Rode `curl -i http://localhost:3000/health` e veja `{"ok":true}`.'] }] };
+    render(<MemoryRouter><ValidationView detail={detail({ report: r })} specStatus="awaiting-validation" onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
+    const li = screen.getByTestId('step-AC-001-0').closest('li')!;
+    expect(li.querySelectorAll('code').length).toBe(2);
+    expect(li.textContent).toBe('Rode curl -i http://localhost:3000/health e veja {"ok":true}.');
+  });
+});
+
+const COMPLETION ='hello-001-complete-r1';
 const specs = (status: string) => [{ projectId: 'hello-app', specs: [{ specId: 'hello-001', status }] }] as never;
 /** Moves the router to another run without leaving the page component, like a link between two runs does. */
 function Jump({ to }: { to: string }) {
@@ -115,6 +183,45 @@ describe('ValidationPage', () => {
     fireEvent.click(btn);
     fireEvent.click(btn);
     await waitFor(() => expect(complete).toHaveBeenCalledTimes(1));
+  });
+
+  describe('Subir serviço', () => {
+    const DEPLOY = 'hello-001-deploy-r1';
+    const status = (online: boolean) => ({ online, status: online ? 200 : null, checkedAt: '2026-10-06T10:00:00.000Z' });
+
+    it('starts the deploy run, follows it to its end and asks again whether the service answers', async () => {
+      fakePollTimer();
+      vi.spyOn(runApi, 'run').mockImplementation(async (id) => (id === DEPLOY ? detail({ runId: DEPLOY, status: 'done', report: null }) : detail()));
+      vi.spyOn(runApi, 'projects').mockResolvedValue(specs('awaiting-validation'));
+      const check = vi.spyOn(runApi, 'serviceStatus').mockResolvedValueOnce(status(false)).mockResolvedValue(status(true));
+      const deploy = vi.spyOn(runApi, 'deployAgain').mockResolvedValue({ runId: DEPLOY });
+      page();
+      fireEvent.click(await screen.findByTestId('start-service'));
+      await tick(0);
+      expect(deploy).toHaveBeenCalledWith('hello-app', 'hello-001');
+      expect((screen.getByTestId('start-service') as HTMLButtonElement).disabled).toBe(true);
+      await tick(4000);
+      await waitFor(() => expect(screen.getByTestId('service-online').textContent).toContain('No ar'));
+      expect(check).toHaveBeenCalledTimes(2);
+      expect(screen.queryByTestId('start-service')).toBeNull();
+    });
+
+    it('shows how the deploy run ended when it did not come up', async () => {
+      fakePollTimer();
+      vi.spyOn(runApi, 'run').mockImplementation(async (id) => (id === DEPLOY ? detail({ runId: DEPLOY, status: 'deploy-failed', report: null, finished: { result: 'deploy-failed', reason: 'smoke failed' } }) : detail()));
+      vi.spyOn(runApi, 'projects').mockResolvedValue(specs('awaiting-validation'));
+      vi.spyOn(runApi, 'serviceStatus').mockResolvedValue(status(false));
+      vi.spyOn(runApi, 'deployAgain').mockResolvedValue({ runId: DEPLOY });
+      page();
+      fireEvent.click(await screen.findByTestId('start-service'));
+      await tick(0);
+      await tick(4000);
+      const failure = await screen.findByTestId('action-error');
+      expect(failure.textContent).toContain(DEPLOY);
+      expect(failure.textContent).toContain('deploy falhou');
+      expect(failure.textContent).toContain('smoke failed');
+      expect((screen.getByTestId('start-service') as HTMLButtonElement).disabled).toBe(false);
+    });
   });
 
   describe('after Complete spec', () => {

@@ -110,6 +110,14 @@ describe('Plan', () => {
     expect(Plan.safeParse({ ...plan, deploy: { ...plan.deploy, port: 0 } }).success).toBe(false);
   });
 
+  it('accepts the optional deploy kind and docs path, and rejects bad ones', () => {
+    const plan = makePlan(freezeSpec(makeSpec()));
+    expect(Plan.safeParse({ ...plan, deploy: { ...plan.deploy, kind: 'api', docsPath: '/docs' } }).success).toBe(true);
+    expect(Plan.safeParse({ ...plan, deploy: { ...plan.deploy, kind: 'front' } }).success).toBe(true);
+    expect(Plan.safeParse({ ...plan, deploy: { ...plan.deploy, kind: 'mobile' } }).success).toBe(false);
+    expect(Plan.safeParse({ ...plan, deploy: { ...plan.deploy, docsPath: 'docs' } }).success).toBe(false);
+  });
+
   it('rejects malformed task ids', () => {
     const plan = makePlan(freezeSpec(makeSpec()));
     const bad = { ...plan, tasks: [{ ...plan.tasks[0], id: 'scaffold' }] };

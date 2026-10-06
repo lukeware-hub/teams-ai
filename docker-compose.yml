@@ -43,9 +43,13 @@ services:
     # rootlesskit builds its tap device in a user namespace.
     devices:
       - /dev/net/tun
-    # Reachable only from this compose network (no `ports:`).
+    # The Docker API is reachable only from this compose network.
     expose:
       - '2375'
+    # Services a spec deploys (docker-local) listen inside this daemon; the range is forwarded to the host loopback so the
+    # browser can open them. A plan's deploy.port must fall inside it.
+    ports:
+      - '127.0.0.1:3000-3019:3000-3019'
     volumes:
       - dind-data:/home/rootless/.local/share/docker
       - teams-ai-data:/home/node/.teams-ai

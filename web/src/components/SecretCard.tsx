@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { api, type Item } from '../api.js';
 import { ItemCard } from './ItemCard.js';
 
+const GITHUB_TOKEN_URL = 'https://github.com/settings/tokens/new?scopes=repo,workflow&description=teams-ai';
+
 const COPY = {
   GITHUB_TOKEN: {
     subtitle: 'Cole um token de acesso pessoal para o Teams AI publicar código em seu nome.',
@@ -52,6 +54,11 @@ export function SecretCard({ name, title, item, onSaved }: { name: 'GITHUB_TOKEN
           {busy ? 'Verificando…' : 'Salvar e verificar'}
         </button>
       </form>
+      {name === 'GITHUB_TOKEN' ? (
+        <p>
+          <a href={GITHUB_TOKEN_URL} target="_blank" rel="noreferrer">Criar o token já com as permissões certas (repo e workflow)</a>
+        </p>
+      ) : null}
       {error ? <p className="error">{error}</p> : null}
     </ItemCard>
   );

@@ -45,6 +45,8 @@ describe('Onboarding GitHub flow', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Próximo' }).hasAttribute('disabled')).toBe(false));
     fireEvent.click(screen.getByRole('button', { name: 'Próximo' }));
     await waitFor(() => expect(screen.getByTestId('card-Token do GitHub')).toBeTruthy());
+    const tokenLink = screen.getByRole('link', { name: /Criar o token/ });
+    expect(tokenLink.getAttribute('href')).toContain('scopes=repo,workflow');
     expect(api.owner).toHaveBeenCalledWith('acme');
   });
 

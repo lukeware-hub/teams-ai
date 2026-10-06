@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { runApi, type AcceptanceCriterion, type Report, type RunDetail } from '../api.js';
+import { runApi, type AcceptanceCriterion, type Report, type RunDetail, type ServiceStatus } from '../api.js';
+import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
+import { PUBLISHED_PORTS, serviceLinks } from '../run/serviceLinks.js';
+import './validation.css';
 
 /** Run and spec statuses in the words the Run page uses for them. */
 const STATUS_LABEL: Record<string, string> = {
@@ -37,6 +40,52 @@ const SEVERITY: Record<string, { label: string; tone: string }> = {
   medium: { label: 'Gravidade média', tone: 'tone-warn' },
   low: { label: 'Gravidade baixa', tone: '' },
 };
+/** Agent text marks commands, URLs and JSON with backticks: show them as code instead of loose quote marks. */
+function Rich({ text }: { text: string }) {
+  const parts = text.split(/`([^`]+)`/);
+  if (parts.length === 1) return <>{text}</>;
+  return <>{parts.map((p, i) => (i % 2 ? <code key={i}>{p}</code> : p))}</>;
+}
+/** Is the service up, where to open it, and a button to bring it up when it is not. */
+function ServiceControls({ service, status, starting, canStart, onStart, onRecheck }: { service: NonNullable<Report['service']>; status: ServiceStatus | null; starting: boolean; canStart: boolean; onStart: () => void; onRecheck: () => void }) {
+  const links = serviceLinks(service, window.location.hostname);
+  const checking = status === null;
+  const online = status?.online === true;
+  const label = checking ? 'Verificando' : online ? 'No ar' : 'Fora do ar';
+  const tone = checking ? 'neutral' : online ? 'good' : 'bad';
+  const open = (href: string, testId: string, text: string, primary: boolean) => (
+    <a className={`${primary ? 'primary-button' : 'link-button'} run-action`} data-testid={testId} href={href} target="_blank" rel="noreferrer">
+      {text}
+      <Icon name="external" size={16} />
+    </a>
+  );
+  return (
+    <div className="service-controls">
+      <div className="service-status">
+        <span data-testid="service-online" className={`status-pill tone-${tone}`}>{label}</span>
+        <button type="button" className="link-button" data-testid="recheck-service" onClick={onRecheck} disabled={checking}>
+          <Icon name="refresh" size={14} />
+          Verificar de novo
+        </button>
+      </div>
+      <div className="service-actions">
+        {online && links.docsUrl ? open(links.docsUrl, 'open-docs', 'Abrir Swagger', true) : null}
+        {online && links.appUrl && !links.docsUrl ? open(links.appUrl, 'open-app', service.kind === 'front' ? 'Abrir aplicação' : 'Abrir serviço', true) : null}
+        {!checking && !online ? (
+          <button type="button" className="primary-button" data-testid="start-service" disabled={starting || !canStart} onClick={onStart}>
+            <Icon name="play" size={16} />
+            {starting ? 'Subindo o serviço…' : 'Subir serviço'}
+          </button>
+        ) : null}
+      </div>
+      {!links.appUrl ? (
+        <p data-testid="service-unpublished" className="hint">
+          Este serviço usa uma porta fora da faixa que o Teams AI publica no seu computador ({PUBLISHED_PORTS.from} a {PUBLISHED_PORTS.to}), por isso não dá para abri-lo daqui.
+        </p>
+      ) : null}
+    </div>
+  );
+}
 const healthText = (text: string) => text.replace(/^HTTP (\d+) after (\d+) attempts$/, (_, code: string, n: string) => `HTTP ${code} na ${n}ª tentativa`);
 const criterionText = (c: AcceptanceCriterion) => `Dado ${c.given}, quando ${c.when}, então ${c.then}`;
 function deployFailure(deploy: Report['deploy']): string {
@@ -62,7 +111,15 @@ function writeChecks(runId: string, checks: Record<string, boolean>): void {
   }
 }
 
-export function ValidationView({ detail, specStatus, actionError = null, onReport, onComplete }: { detail: RunDetail; specStatus: string; actionError?: string | null; onReport: (text: string) => void; onComplete: () => void }) {
+interface ServiceProps {
+  /** null until the first check answers. */
+  serviceStatus?: ServiceStatus | null;
+  startingService?: boolean;
+  onStartService?: () => void;
+  onRecheckService?: () => void;
+}
+
+export function ValidationView({ detail, specStatus, actionError = null, serviceStatus = null, startingService = false, onStartService = () => undefined, onRecheckService = () => undefined, onReport, onComplete }: { detail: RunDetail; specStatus: string; actionError?: string | null; onReport: (text: string) => void; onComplete: () => void } & ServiceProps) {
   const [checks, setChecks] = useState<Record<string, boolean>>(() => readChecks(detail.runId));
   const [text, setText] = useState('');
   const report: Report | null = detail.report;
@@ -74,151 +131,219 @@ export function ValidationView({ detail, specStatus, actionError = null, onRepor
   const enabled = specStatus === 'awaiting-validation' && report?.result === 'awaiting-validation';
   const specState = specStatus ? ` e a especificação está “${statusLabel(specStatus)}”` : '';
   const note = enabled ? null : specStatus === 'done' ? 'Esta especificação já foi concluída.' : report ? `Ações indisponíveis: a execução terminou como “${statusLabel(report.result)}”${specState}.` : 'As ações ficam disponíveis quando a execução gerar o relatório.';
+  const steps = report?.exploratoryScript.flatMap((b) => b.steps.map((_, i) => `${b.acId}-${i}`)) ?? [];
+  const stepsDone = steps.filter((id) => checks[id]).length;
   return (
-    <main>
-      <p>
-        <Link to={`/runs/${detail.runId}`}>← Execução</Link> · <Link to="/projects">Projetos</Link>
-      </p>
-      <h1>
-        Validação <small className="hint">{detail.runId}</small>
-      </h1>
-      <p className="hint">Confira o serviço publicado e siga o roteiro de teste. Depois, conclua a especificação ou relate um problema.</p>
-      {!report ? (
-        <p>Ainda não há relatório: a execução está na fase {detail.phase} ({statusLabel(detail.status)}).</p>
-      ) : (
-        <>
-          <section className="card">
-            <h2>Serviço publicado</h2>
-            {report.service ? (
-              <>
-                <p>
-                  <a data-testid="service-url" href={report.service.url} target="_blank" rel="noreferrer">
-                    {report.service.url}
-                  </a>{' '}
-                  <span className="hint">Verificação de saúde: {healthText(report.service.healthcheck)}</span>{' '}
-                  <InfoTip text="Chamada automática feita logo após a publicação para confirmar que o serviço está no ar e respondendo." />
-                </p>
+    <main className="run-page validation-page">
+      <nav className="refine-breadcrumb" aria-label="Navegação">
+        <Link to="/projects" aria-label="Voltar para projetos">
+          <Icon name="home" size={16} />
+          <span>Projetos</span>
+        </Link>
+        <span aria-hidden="true">›</span>
+        <strong>{detail.projectId}</strong>
+        <span aria-hidden="true">›</span>
+        <Link to={`/runs/${detail.runId}`}>{detail.runId}</Link>
+        <span aria-hidden="true">›</span>
+        <span>Validação</span>
+      </nav>
+      <header className="card run-head">
+        <div className="run-head-main">
+          <h1>Validação</h1>
+          <div className="run-meta">
+            <span className={`status-pill tone-${enabled ? 'neutral' : specStatus === 'done' ? 'good' : 'warn'}`}>{statusLabel(specStatus || detail.status)}</span>
+            <span className="hint">
+              {detail.runId} / {detail.specId}
+            </span>
+          </div>
+          <p className="validation-lead">Confira o serviço publicado e siga o roteiro de teste. Depois, conclua a especificação ou relate um problema.</p>
+        </div>
+        <div className="run-actions">
+          <Link className="link-button run-action" to={`/runs/${detail.runId}`}>
+            <Icon name="arrow-left" size={16} />
+            Execução
+          </Link>
+        </div>
+      </header>
+      {!report ? <p className="hint">Ainda não há relatório: a execução está na fase {detail.phase} ({statusLabel(detail.status)}).</p> : null}
+      <div className="run-grid">
+        <div className="run-col">
+          {report ? (
+            <>
+              <section className="card">
+                <div className="run-panel-head">
+                  <h2>Serviço publicado</h2>
+                </div>
+                {report.service ? (
+                  <>
+                    <ServiceControls service={report.service} status={serviceStatus} starting={startingService} canStart={specStatus === 'awaiting-validation' || specStatus === 'done'} onStart={onStartService} onRecheck={onRecheckService} />
+                    <div className="service-line">
+                      <a className="service-url" data-testid="service-url" href={report.service.url} target="_blank" rel="noreferrer">
+                        {report.service.url}
+                        <Icon name="external" size={14} />
+                      </a>
+                      <span className="hint">Verificação de saúde: {healthText(report.service.healthcheck)}</span>
+                      <InfoTip text="Chamada automática feita logo após a publicação para confirmar que o serviço está no ar e respondendo." />
+                    </div>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Critério</th>
+                          <th>Teste rápido <InfoTip text="Smoke test: teste automático curto, rodado no serviço publicado, que confirma o essencial de cada critério." /></th>
+                          <th>Resultado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {report.service.smoke.map((s) => (
+                          <tr key={s.acId} data-testid={`smoke-${s.acId}`} className={`result-${s.status}`}>
+                            <td className="task-id">{s.acId}</td>
+                            <td className="mono">{s.testId ?? '—'}</td>
+                            <td><ResultChip status={s.status} /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </>
+                ) : (
+                  <p data-testid="deploy-failure" className="error">
+                    {deployFailure(report.deploy)}
+                  </p>
+                )}
+              </section>
+              <section className="card">
+                <div className="plan-title">
+                  <div className="run-panel-head">
+                    <h2>Roteiro de teste manual</h2>
+                    <InfoTip text="Passos sugeridos para você conferir cada critério de aceite no serviço publicado. As marcações ficam salvas só neste navegador." />
+                  </div>
+                  {steps.length ? <span className="hint">{stepsDone} de {steps.length} {steps.length === 1 ? 'passo conferido' : 'passos conferidos'}</span> : null}
+                </div>
+                {report.exploratoryScript.length === 0 ? <p className="hint">Nenhum passo sugerido.</p> : null}
+                {report.exploratoryScript.map((block) => {
+                  const criterion = detail.acceptanceCriteria.find((c) => c.id === block.acId);
+                  return (
+                    <div key={block.acId} className="step-group">
+                      <h3>{block.acId}</h3>
+                      {criterion ? <p className="hint">{criterionText(criterion)}</p> : null}
+                      <ul className="step-list">
+                        {block.steps.map((s, i) => {
+                          const id = `${block.acId}-${i}`;
+                          return (
+                            <li key={id} className={checks[id] ? 'step-done' : ''}>
+                              <label>
+                                <input type="checkbox" data-testid={`step-${id}`} checked={Boolean(checks[id])} onChange={() => toggle(id)} />
+                                <span><Rich text={s} /></span>
+                              </label>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </section>
+              <section className="card">
+                <div className="plan-title">
+                  <div className="run-panel-head">
+                    <h2>Evidências por critério</h2>
+                    <InfoTip text="Para cada critério de aceite: as tarefas que o implementaram e os testes automáticos que comprovam que ele funciona." />
+                  </div>
+                </div>
                 <table>
                   <thead>
                     <tr>
                       <th>Critério</th>
-                      <th>Teste rápido <InfoTip text="Smoke test: teste automático curto, rodado no serviço publicado, que confirma o essencial de cada critério." /></th>
+                      <th>Tarefas</th>
+                      <th>Testes</th>
+                      <th>Teste E2E <InfoTip text="Teste ponta a ponta: simula uma pessoa usando o serviço publicado, do início ao fim do fluxo." /></th>
                       <th>Resultado</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {report.service.smoke.map((s) => (
-                      <tr key={s.acId} data-testid={`smoke-${s.acId}`} className={`result-${s.status}`}>
-                        <td>{s.acId}</td>
-                        <td>{s.testId ?? '—'}</td>
-                        <td><ResultChip status={s.status} /></td>
+                    {report.evidence.map((r) => (
+                      <tr key={r.criterion} data-testid={`evidence-${r.criterion}`} className={`result-${r.status}`}>
+                        <td className="task-id">{r.criterion}</td>
+                        <td className="mono">{r.tasks.join(', ')}</td>
+                        <td className="mono">{r.tests.join(', ') || '—'}</td>
+                        <td data-testid={`e2e-${r.criterion}`} title={r.e2eReason}>{r.e2e ? <ResultChip status={r.e2e} /> : '—'}{r.e2eReason ? ` (${r.e2eReason})` : ''}</td>
+                        <td><ResultChip status={r.status} /></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              </>
-            ) : (
-              <p data-testid="deploy-failure" className="error">
-                {deployFailure(report.deploy)}
-              </p>
-            )}
-          </section>
-          <section className="card">
-            <h2>Roteiro de teste manual <InfoTip text="Passos sugeridos para você conferir cada critério de aceite no serviço publicado. As marcações ficam salvas só neste navegador." /></h2>
-            {report.exploratoryScript.length === 0 ? <p className="hint">Nenhum passo sugerido.</p> : null}
-            {report.exploratoryScript.map((block) => {
-              const criterion = detail.acceptanceCriteria.find((c) => c.id === block.acId);
-              return (
-                <div key={block.acId}>
-                  <h3>{block.acId}</h3>
-                  {criterion ? <p className="hint">{criterionText(criterion)}</p> : null}
-                  <ul>
-                    {block.steps.map((s, i) => {
-                      const id = `${block.acId}-${i}`;
-                      return (
-                        <li key={id}>
-                          <label>
-                            <input type="checkbox" data-testid={`step-${id}`} checked={Boolean(checks[id])} onChange={() => toggle(id)} /> {s}
-                          </label>
-                        </li>
-                      );
-                    })}
+              </section>
+              {report.securityFindings?.length ? (
+                <section className="card">
+                  <div className="run-panel-head">
+                    <h2>Segurança</h2>
+                  </div>
+                  <ul className="finding-list" data-testid="security-findings">
+                    {report.securityFindings.map((f, i) => (
+                      <li key={i} data-testid={`security-${i}`}>
+                        <span className={`status-chip ${SEVERITY[f.severity]?.tone ?? ''}`}>{SEVERITY[f.severity]?.label ?? f.severity}</span>{' '}
+                        {f.taskId ? `${f.taskId} · ` : ''}{f.file}{f.line === null ? '' : `:${f.line}`} · {f.category}: {f.problem} <span className="hint">Correção sugerida: {f.fix}</span>
+                      </li>
+                    ))}
                   </ul>
+                </section>
+              ) : null}
+              <section className="card">
+                <div className="run-panel-head">
+                  <h2>Suposições dos agentes</h2>
+                  <InfoTip text="Decisões que os agentes tomaram sozinhos quando a especificação não deixava claro. Se alguma estiver errada, relate um problema." />
                 </div>
-              );
-            })}
-          </section>
+                <ul className="finding-list" data-testid="assumptions">{report.assumptions.length ? report.assumptions.map((a, i) => <li key={i}><Rich text={a} /></li>) : <li className="hint">Nenhuma suposição registrada.</li>}</ul>
+              </section>
+              <section className="card">
+                <div className="run-panel-head">
+                  <h2>Tarefas bloqueadas</h2>
+                  <InfoTip text="Tarefas que os agentes não conseguiram concluir, com o motivo. Os critérios ligados a elas aparecem como bloqueados nas evidências." />
+                </div>
+                <ul className="finding-list">{report.blocked.length ? report.blocked.map((b) => <li key={b.taskId} data-testid={`blocked-${b.taskId}`}><strong className="task-id">{b.taskId}</strong>: <Rich text={b.reason} /></li>) : <li className="hint">Nenhuma tarefa bloqueada.</li>}</ul>
+              </section>
+            </>
+          ) : null}
+        </div>
+        <aside className="run-col run-aside">
           <section className="card">
-            <h2>Suposições dos agentes <InfoTip text="Decisões que os agentes tomaram sozinhos quando a especificação não deixava claro. Se alguma estiver errada, relate um problema." /></h2>
-            <ul data-testid="assumptions">{report.assumptions.length ? report.assumptions.map((a, i) => <li key={i}>{a}</li>) : <li className="hint">Nenhuma suposição registrada.</li>}</ul>
+            <div className="run-panel-head">
+              <h2>Sua decisão</h2>
+              <InfoTip text="Concluir finaliza a entrega e marca a especificação como concluída. Relatar problema reabre o refinamento com o seu relato, para os agentes corrigirem." />
+            </div>
+            {note ? <p data-testid="actions-note" className="hint">{note}</p> : null}
+            {actionError ? <p data-testid="action-error" className="error">{actionError}</p> : null}
+            <textarea className="validation-problem" data-testid="problem-text" aria-label="Descrição do problema" rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder="O que deu errado? O refinamento será reaberto com este relato." disabled={!enabled} />
+            <div className="validation-actions">
+              <button className="primary-button" data-testid="complete-spec" disabled={!enabled} onClick={onComplete}>
+                <Icon name="check" size={16} />
+                Concluir especificação
+              </button>
+              <button className="secondary" data-testid="report-problem" disabled={!enabled || text.trim() === ''} onClick={() => onReport(text.trim())}>
+                <Icon name="alert" size={16} />
+                Relatar problema
+              </button>
+            </div>
           </section>
-          <section className="card">
-            <h2>Tarefas bloqueadas <InfoTip text="Tarefas que os agentes não conseguiram concluir, com o motivo. Os critérios ligados a elas aparecem como bloqueados nas evidências." /></h2>
-            <ul>{report.blocked.length ? report.blocked.map((b) => <li key={b.taskId} data-testid={`blocked-${b.taskId}`}><strong>{b.taskId}</strong>: {b.reason}</li>) : <li className="hint">Nenhuma tarefa bloqueada.</li>}</ul>
-          </section>
-          {report.securityFindings?.length ? (
+          {report ? (
             <section className="card">
-              <h2>Segurança</h2>
-              <ul data-testid="security-findings">
-                {report.securityFindings.map((f, i) => (
-                  <li key={i} data-testid={`security-${i}`}>
-                    <span className={`status-chip ${SEVERITY[f.severity]?.tone ?? ''}`}>{SEVERITY[f.severity]?.label ?? f.severity}</span> {f.taskId ? `${f.taskId} · ` : ''}{f.file}{f.line === null ? '' : `:${f.line}`} · {f.category}: {f.problem} <span className="hint">Correção sugerida: {f.fix}</span>
-                  </li>
-                ))}
-              </ul>
+              <div className="run-panel-head">
+                <h2>Resumo</h2>
+              </div>
+              <p className="validation-summary"><Rich text={report.summary} /></p>
+              <dl className="usage-totals">
+                <div>
+                  <dt>Custo estimado <InfoTip text="Estimativa em dólares das chamadas aos modelos de IA nesta execução, calculada pelos preços de API." /></dt>
+                  <dd className="usage-total-cost">US$ {report.tokens.total.costUsd.toFixed(2)}</dd>
+                </div>
+                <div>
+                  <dt>Tokens <InfoTip text="Volume de texto processado pelos modelos de IA: entrada é o que eles leram, saída é o que escreveram. O custo cresce com os tokens." /></dt>
+                  <dd>{report.tokens.total.inputTokens} de entrada, {report.tokens.total.outputTokens} de saída</dd>
+                </div>
+              </dl>
             </section>
           ) : null}
-          <section className="card">
-            <h2>Evidências por critério <InfoTip text="Para cada critério de aceite: as tarefas que o implementaram e os testes automáticos que comprovam que ele funciona." /></h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>Critério</th>
-                  <th>Tarefas</th>
-                  <th>Testes</th>
-                  <th>Teste E2E <InfoTip text="Teste ponta a ponta: simula uma pessoa usando o serviço publicado, do início ao fim do fluxo." /></th>
-                  <th>Resultado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {report.evidence.map((r) => (
-                  <tr key={r.criterion} data-testid={`evidence-${r.criterion}`} className={`result-${r.status}`}>
-                    <td>{r.criterion}</td>
-                    <td>{r.tasks.join(', ')}</td>
-                    <td>{r.tests.join(', ') || '—'}</td>
-                    <td data-testid={`e2e-${r.criterion}`} title={r.e2eReason}>{r.e2e ? <ResultChip status={r.e2e} /> : '—'}{r.e2eReason ? ` (${r.e2eReason})` : ''}</td>
-                    <td><ResultChip status={r.status} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-          <section className="card">
-            <h2>Resumo</h2>
-            <p>{report.summary}</p>
-            <p className="hint">
-              Custo estimado: US$ {report.tokens.total.costUsd.toFixed(2)}{' '}
-              <InfoTip text="Estimativa em dólares das chamadas aos modelos de IA nesta execução, calculada pelos preços de API." />
-              {' · '}Tokens: {report.tokens.total.inputTokens} de entrada, {report.tokens.total.outputTokens} de saída{' '}
-              <InfoTip text="Volume de texto processado pelos modelos de IA: entrada é o que eles leram, saída é o que escreveram. O custo cresce com os tokens." />
-            </p>
-          </section>
-        </>
-      )}
-      <section className="card">
-        <h2>Sua decisão <InfoTip text="Concluir finaliza a entrega e marca a especificação como concluída. Relatar problema reabre o refinamento com o seu relato, para os agentes corrigirem." /></h2>
-        {note ? <p data-testid="actions-note" className="hint">{note}</p> : null}
-        {actionError ? <p data-testid="action-error" className="error">{actionError}</p> : null}
-        <textarea data-testid="problem-text" aria-label="Descrição do problema" value={text} onChange={(e) => setText(e.target.value)} placeholder="O que deu errado? O refinamento será reaberto com este relato." disabled={!enabled} />
-        <p className="controls">
-          <button data-testid="report-problem" disabled={!enabled || text.trim() === ''} onClick={() => onReport(text.trim())}>
-            Relatar problema
-          </button>
-          <button data-testid="complete-spec" disabled={!enabled} onClick={onComplete}>
-            Concluir especificação
-          </button>
-        </p>
-      </section>
+        </aside>
+      </div>
     </main>
   );
 }
@@ -238,6 +363,8 @@ function ValidationRun({ runId }: { runId: string }) {
   const [specStatus, setSpecStatus] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [serviceStatus, setServiceStatus] = useState<ServiceStatus | null>(null);
+  const [deployRun, setDeployRun] = useState<string | null>(null); // the run that brings the service back up
   const [completion, setCompletion] = useState<string | null>(null); // the run that completes the spec, followed until it ends
   const inFlight = useRef(false); // a double click must send one request, not two (the second would 409 and mask the first's success)
   const guarded = (call: () => Promise<void>) => {
@@ -274,6 +401,26 @@ function ValidationRun({ runId }: { runId: string }) {
     }, 5000);
     return () => clearInterval(timer);
   }, [completion]);
+  const checkService = () => runApi.serviceStatus(runId).then(setServiceStatus).catch(() => setServiceStatus({ online: false, status: null, checkedAt: '' }));
+  useEffect(() => {
+    void checkService();
+  }, [runId]);
+  // The deploy run brings the service up with no agent; follow it to its end, then ask again whether the service answers.
+  useEffect(() => {
+    if (!deployRun) return;
+    const timer = setInterval(() => {
+      runApi
+        .run(deployRun)
+        .then(async (run) => {
+          if (isLive(run.status)) return;
+          if (run.status !== 'done') setActionError(`A subida do serviço (${deployRun}) terminou como “${statusLabel(run.status)}”${typeof run.finished?.reason === 'string' ? `: ${run.finished.reason}` : ''}.`);
+          setDeployRun(null);
+          await checkService();
+        })
+        .catch(() => undefined); // transient: the next tick asks again
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [deployRun]);
   if (error) return <main><p className="error">{error}</p></main>;
   if (!detail) return <main><p>Carregando…</p></main>;
   return (
@@ -281,6 +428,10 @@ function ValidationRun({ runId }: { runId: string }) {
       detail={detail}
       specStatus={specStatus}
       actionError={actionError}
+      serviceStatus={serviceStatus}
+      startingService={deployRun !== null}
+      onRecheckService={() => { setServiceStatus(null); void checkService(); }}
+      onStartService={() => guarded(() => runApi.deployAgain(detail.projectId, detail.specId).then((started) => setDeployRun(started.runId)))}
       onReport={(text) =>
         guarded(() => runApi.reportProblem(detail.projectId, detail.specId, text).then(() => navigate(`/refine/${detail.projectId}/${detail.specId}`)))
       }

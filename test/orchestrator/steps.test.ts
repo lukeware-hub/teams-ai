@@ -7,7 +7,7 @@ import { Accounting } from '../../server/budget/accounting.js';
 import { Governor } from '../../server/budget/governor.js';
 import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
-import { devPack, outputContract, planPack, reportPack, reviewPack, runAgentStep, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
+import { devPack, outputContract, planPack, planRules, reportPack, reviewPack, runAgentStep, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
 import type { StepOutcome } from '../../server/runner/step.js';
 import type { ResultSummary } from '../../server/runner/stream-events.js';
 import { makePlanTask, makeProject, makeFrozenSpec } from '../fixtures/contracts.js';
@@ -97,6 +97,20 @@ describe('packs', () => {
     const opts = { delivered: ['T1'], blocked: [], evidence: '[]', assumptions: [], deploy: '{}', tokens: '{}' };
     expect(reportPack(base, { ...opts, security: '- T1 src/a.ts:3 [low] logging: verbose log' }).feedback).toContain('[low] logging: verbose log');
     expect(reportPack(base, { ...opts, security: '' }).feedback).toContain('Security findings left by the sec review');
+  });
+
+  it('report pack asks for the human-facing report fields in Brazilian Portuguese, with steps as action plus expected result', () => {
+    const f = reportPack(base, { delivered: ['T1'], blocked: [], evidence: '[]', assumptions: [], deploy: '{}', tokens: '{}', security: '' }).feedback;
+    expect(f).toContain('Brazilian Portuguese (pt-BR)');
+    expect(f).toContain('`summary`, `assumptions`, `blocked[].reason` and `exploratoryScript`');
+    expect(f).toContain('what to do and what should happen');
+  });
+
+  it('plan rules tell the SM to name the deploy kind and docs path and to keep the port in the published range', () => {
+    const rules = planRules(true);
+    expect(rules).toContain('deploy.kind');
+    expect(rules).toContain('deploy.docsPath');
+    expect(rules).toContain('3000-3019');
   });
 
   it('plan pack carries every criterion, the human tasks and god nodes', () => {

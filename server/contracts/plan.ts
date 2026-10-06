@@ -92,6 +92,9 @@ export const Plan = z.object({
     port: z.number().int().min(1).max(65535),
     healthcheckPath: z.string().startsWith('/'),
     manifests: z.array(RepoPath),
+    /** What the validation page offers: `api` opens the docs path (Swagger), `front` opens the app. */
+    kind: z.enum(['api', 'front']).optional(),
+    docsPath: z.string().startsWith('/').optional(),
   }),
   /** Optional; absent means no delivery contract. See `Delivery`. */
   delivery: Delivery.optional(),

@@ -18,8 +18,13 @@ describe('docker-compose.yml (audit H4)', () => {
   it('points the orchestrator at the nested rootless daemon, reachable only inside the compose network', () => {
     expect(platform.environment.DOCKER_HOST).toBe('tcp://dind:2375');
     expect(dind.image).toMatch(/dind-rootless/);
-    expect(dind.ports).toBeUndefined();
+    expect(dind.expose).toEqual(['2375']);
     expect(platform.depends_on.dind.condition).toBe('service_healthy');
+  });
+
+  it('publishes only the deployed-service port range, on the host loopback, and never the Docker API', () => {
+    expect(dind.ports).toEqual(['127.0.0.1:3000-3019:3000-3019']);
+    expect(JSON.stringify(dind.ports)).not.toContain('2375');
   });
 
   it('shares the data volume at the same path, so bind sources need no rewrite', () => {

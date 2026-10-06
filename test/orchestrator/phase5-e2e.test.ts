@@ -47,6 +47,22 @@ describe('Phase 5 e2e gate', () => {
     expect(journal.events.find((e) => e.type === OrchEvent.DeployVerified)?.data.e2e).toEqual(ROWS);
   });
 
+  it('records the port, health path, kind and docs path of the service for the validation page', async () => {
+    const withLinks = { ...plan, deploy: { ...plan.deploy, kind: 'api' as const, docsPath: '/docs' } };
+    const { deps } = setup({ smokeOk: true, e2eOk: true, plan: withLinks });
+    await runPhase5(deps, 1);
+    expect(journal.events.find((e) => e.type === OrchEvent.DeployVerified)?.data).toMatchObject({ port: plan.deploy.port, healthcheckPath: plan.deploy.healthcheckPath, kind: 'api', docsPath: '/docs' });
+  });
+
+  it('leaves kind and docs path out when the plan does not name them', async () => {
+    const { deps } = setup({ smokeOk: true, e2eOk: true });
+    await runPhase5(deps, 1);
+    const data = journal.events.find((e) => e.type === OrchEvent.DeployVerified)!.data;
+    expect(data).toMatchObject({ port: plan.deploy.port });
+    expect('kind' in data).toBe(false);
+    expect('docsPath' in data).toBe(false);
+  });
+
   it('never runs e2e when smoke fails', async () => {
     const { deps, order } = setup({ smokeOk: false, e2eOk: true });
     const r = await runPhase5(deps, 1);

@@ -6,6 +6,7 @@ import { claimLaunch } from '../../server/api/run-index.js';
 import { runRoutes } from '../../server/api/run-routes.js';
 import { startApi } from '../../server/api/server.js';
 import type { RunControlDeps } from '../../server/api/run-control.js';
+import type { HttpGet } from '../../server/deploy/target.js';
 import { readUserConfig } from '../../server/onboarding/config-store.js';
 import { superviseTick, type SuperviseDeps } from '../../server/supervisor/supervise.js';
 import { appendEvents, eventLines, writeRun } from '../fixtures/runs/write-run.js';
@@ -23,6 +24,8 @@ let onSpawn: (runId: string) => Promise<void>;
 let onSignal: () => void;
 let onSleep: () => Promise<void>;
 let cloned: Array<{ url: string; destination: string }>;
+let probe: HttpGet;
+let probed: string[];
 let resolved: Record<string, string> = {};
 const base = () => `http://127.0.0.1:${api.port}`;
 const post = (p: string, body?: unknown) => fetch(`${base()}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -36,6 +39,8 @@ beforeEach(async () => {
   spawns = [];
   signals = [];
   cloned = [];
+  probed = [];
+  probe = async () => ({ status: 200 });
   resolved = {};
   onSpawn = async () => {};
   onSignal = () => {};
@@ -60,7 +65,7 @@ beforeEach(async () => {
     cliEntry: () => ({ bin: 'node', prefix: ['cli'] }),
     repoRoot: '/repo',
   };
-  api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, resolveHost: async (n) => [resolved[n] ?? '140.82.112.3'], cloneProject: async (url, destination) => { cloned.push({ url, destination }); await fs.cp(HELLO, destination, { recursive: true }); } }) }, 0);
+  api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, httpGet: async (u, t) => { probed.push(u); return probe(u, t); }, resolveHost: async (n) => [resolved[n] ?? '140.82.112.3'], cloneProject: async (url, destination) => { cloned.push({ url, destination }); await fs.cp(HELLO, destination, { recursive: true }); } }) }, 0);
 });
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -238,6 +243,47 @@ describe('start, resume, stop', () => {
     };
     expect((await post(complete)).status).toBe(202);
     expect(spawns).toHaveLength(1);
+  });
+
+  it('deploy again spawns spec deploy for a delivered spec, and refuses an unknown spec (404) or a running one (409)', async () => {
+    const url = '/api/projects/hello-app/specs/hello-001/deploy';
+    expect((await post('/api/projects/hello-app/specs/nope/deploy')).status).toBe(404);
+    expect((await post(url)).status).toBe(409); // the fixture spec is running
+    expect(spawns).toHaveLength(0);
+    await useAwaitingValidationProject();
+    onSpawn = async (runId) => {
+      await writeRun(runs, runId, [started(runId)], state('running'));
+    };
+    const ok = await post(url);
+    expect(ok.status).toBe(202);
+    expect(await ok.json()).toEqual({ runId: 'hello-001-deploy-r1' });
+    expect(spawns[0]!.args).toEqual(expect.arrayContaining(['spec', 'deploy', '--spec', 'hello-001', '--run-id', 'hello-001-deploy-r1']));
+    expect((await post(url)).status).toBe(409); // its own run now holds the spec
+  });
+
+  it('service status probes the deployed health url and says whether it answers', async () => {
+    const deployed = { type: 'DEPLOY_VERIFIED', data: { attempt: 1, url: 'http://dind:3000', smoke: [], healthcheck: 'HTTP 200', tag: 't', port: 3000, healthcheckPath: '/health' } };
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), deployed], state('running'));
+    expect(await (await fetch(base() + '/api/runs/hello-001-r1/service')).json()).toMatchObject({ online: true, status: 200 });
+    expect(probed).toEqual(['http://dind:3000/health']);
+    probe = async () => null;
+    expect(await (await fetch(base() + '/api/runs/hello-001-r1/service')).json()).toMatchObject({ online: false, status: null });
+    probe = async () => ({ status: 503 });
+    expect(await (await fetch(base() + '/api/runs/hello-001-r1/service')).json()).toMatchObject({ online: false, status: 503 });
+  });
+
+  it('service status of an older run without a health path counts any HTTP answer as online', async () => {
+    const deployed = { type: 'DEPLOY_VERIFIED', data: { attempt: 1, url: 'http://dind:3000', smoke: [], healthcheck: 'HTTP 200', tag: 't' } };
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), deployed], state('running'));
+    probe = async () => ({ status: 404 });
+    expect(await (await fetch(base() + '/api/runs/hello-001-r1/service')).json()).toMatchObject({ online: true, status: 404 });
+    probe = async () => null;
+    expect(await (await fetch(base() + '/api/runs/hello-001-r1/service')).json()).toMatchObject({ online: false, status: null });
+  });
+
+  it('service status is 404 for a run that never deployed', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'));
+    expect((await fetch(base() + '/api/runs/hello-001-r1/service')).status).toBe(404);
   });
 
   it('refuses to start while the spec has an active run, or for an unknown spec', async () => {
