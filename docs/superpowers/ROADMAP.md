@@ -454,9 +454,9 @@ unit-tested with fixtures. Each one needs a plan file in `plans/` before impleme
 ### R9.4 Prebuilt image in GHCR - `todo`
 
 - `task up` would pull instead of building (first start drops from minutes to a download). Needs a publish workflow, a decision on package visibility and a change to `docker-compose.yml` that keeps `test/infra/compose.test.ts` true.
-### R9.5 Demo run in the UI - `todo`
+### R9.5 Demo run in the UI - `rejected` (2026-10-06, human decision: no canned/fake data, only real executions)
 
-- `teams-ai run --dry-run` is not usable end to end today ("set steps in code before use"). Make a scripted scenario on `test/fixtures/todo-api` and a UI button, so a newcomer sees the full flow without spending Claude quota.
+- Plan 48 scoped a safe, zero-cost way to do this (a static, typechecked NDJSON journal replayed through the existing Run page, no process/git/Docker/Claude touched) but the human rejected the premise outright: a scripted run always looks successful, which is exactly the wrong thing to show when the real golden run (R5.1) has never finished. Not pursued in any form.
 ## Stage 10 - Agent quality (2026-10-06)
 
 ### R10.1 Route tasks to the owning role; repair agent prompts; distill skill guidance - `done` (plan 46, 2026-10-06)
