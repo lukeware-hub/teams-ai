@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { buildContextPack } from '../../server/knowledge/context-pack.js';
 import { runCycle } from '../../server/refine/cycle.js';
 import { emptyRefineState } from '../../server/refine/state.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
@@ -108,6 +109,42 @@ describe('refinement cycle System 1 filters (decisions 2-4)', () => {
     expect(texts).toContain('Which port?');
     expect(texts).not.toContain('What port does it listen on?');
     expect(texts.some((t) => t.includes('contradict earlier project history (spec-000 › Ports)'))).toBe(true);
+  });
+});
+
+
+describe('refinement cycle with large documents', () => {
+  const setup = async (brief: string) => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
+    const docs = path.join(root, 'docs');
+    await mkdir(docs, { recursive: true });
+    const draft = {
+      projectId: 'big', specId: 'big-001', root, docs,
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+      stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
+      specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
+    };
+    await Promise.all([draft.projectMd, draft.stackMd, draft.flowMd, draft.designMd].map((f) => writeFile(f, '# doc')));
+    await writeFile(draft.briefMd, brief);
+    const events: Array<{ type: string; data: Record<string, unknown> }> = [];
+    const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'x', specHash: 'draft', type, kind: 'fact' as const, data }; } };
+    const runAgent = vi.fn().mockResolvedValue({ ok: false, failure: 'test', errors: [], summary: {}, sandboxDisabled: false });
+    return { draft, journal, events, runAgent, root };
+  };
+
+  it('never lets the derive pack drop the documents when they exceed the default budget', async () => {
+    const { draft, journal, runAgent, root } = await setup(`# Brief\n${'x'.repeat(100_000)}`);
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1);
+    const built = buildContextPack(runAgent.mock.calls[0]![0].pack);
+    expect(built.dropped).toEqual([]);
+    expect(built.sections).toContain('feedback');
+  });
+
+  it('fails the cycle in Portuguese, without calling an agent, when the documents cannot fit', async () => {
+    const { draft, journal, events, runAgent, root } = await setup(`# Brief\n${'x'.repeat(700_000)}`);
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1);
+    expect(runAgent).not.toHaveBeenCalled();
+    expect(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason).toMatch(/grandes demais/);
   });
 });
 

@@ -9,6 +9,7 @@ import type { AgentStepRequest } from '../orchestrator/steps.js';
 import type { StepOutcome } from '../runner/step.js';
 import { mergeChecklist, type ChecklistItem } from './checklist.js';
 import { derivePack, postProcessDerived } from './derive.js';
+import { fitPackBudget, PackTooLargeError } from './fit-pack.js';
 import { sha256 } from '../contracts/hash.js';
 import { DOC_REL, draftHash, flowTemplate, readDerived, readDoc, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
@@ -65,6 +66,16 @@ const BLANK_TEMPLATE: Record<(typeof BLANK_FILES)[number], () => string> = { 'st
 
 /** Spec (refinement) §3.2: derive → Front → PO ∥ SM → merge questions → check patches → checklist. */
 export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
+  try {
+    await runCycleSteps(deps, cycle);
+  } catch (err) {
+    // Documents beyond the pack cap fail the cycle with a readable reason instead of reaching an agent without them.
+    if (!(err instanceof PackTooLargeError)) throw err;
+    await deps.journal.fact(RefineEvent.CycleFailed, { cycle, reason: err.message });
+  }
+}
+
+async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const { draft, journal } = deps;
   const decider = deps.decider ? recorded(deps.decider, journal, cycle) : undefined;
   const hash = await draftHash(draft);
@@ -95,7 +106,7 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
     {
       kind: 'derive',
       role: 'po',
-      pack: derivePack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, specId: draft.specId, jevValidation }),
+      pack: fitPackBudget(derivePack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, specId: draft.specId, jevValidation })),
       cwd: draft.root,
       phase: 'refine',
       taskId: null,
@@ -121,10 +132,10 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
   const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];
   if (deps.frontAgent) {
     const review = await deps.frontAgent({ kind: 'refine', role: 'front',
-      pack: refinePack({ role: 'front', specHash: hash, principles: deps.principles(), specId: draft.specId,
+      pack: fitPackBudget(refinePack({ role: 'front', specHash: hash, principles: deps.principles(), specId: draft.specId,
         projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'],
         derived: checked.value, retrieval: [], history: journal.state.questions,
-        rejected: journal.state.patches.filter((p) => p.status === 'rejected'), jevValidation }),
+        rejected: journal.state.patches.filter((p) => p.status === 'rejected'), jevValidation })),
       cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, ctx);
     if (!review.ok) { await fail(`front validation failed: ${review.failure}: ${review.errors.join('; ')}`); return; }
     let i = 0;
@@ -153,7 +164,7 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
       {
         kind: 'refine',
         role,
-        pack: refinePack({
+        pack: fitPackBudget(refinePack({
           role,
           specHash: hash,
           principles: deps.principles(),
@@ -169,7 +180,7 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
           rejected: state.patches.filter((p) => p.status === 'rejected'),
           jevValidation,
           notReady,
-        }),
+        })),
         cwd: draft.root,
         phase: 'refine',
         taskId: null,
