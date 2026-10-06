@@ -229,13 +229,14 @@ export class TaskRunner {
       // Crash between the commit confirm and the state change: the work is committed, do not run Dev again.
       return this.transition('validating');
     }
-    const pack = devPack(this.deps.packBase(), task.def, { code: await this.deps.code(this.worktree, task.def), handoffs: this.deps.handoffs(), feedback: this.deps.journal.lastFeedback(this.taskId) });
+    const owner = task.def.owner;
+    const pack = devPack(this.deps.packBase(), task.def, { code: await this.deps.code(this.worktree, task.def), handoffs: this.deps.handoffs(), feedback: this.deps.journal.lastFeedback(this.taskId) }, owner);
     const outcome = await this.deps.runAgent<'dev'>({
       kind: 'dev',
-      role: 'dev',
+      role: owner,
       pack,
       cwd: this.worktree,
-      ...(await this.stepOverrides('dev', attempt)),
+      ...(await this.stepOverrides(owner, attempt)),
       phase: 'phase3',
       taskId: this.taskId,
       attempt,

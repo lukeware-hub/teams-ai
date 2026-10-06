@@ -52,6 +52,7 @@ export interface RunDeps {
   requireDelivery?: boolean;
   requireSecurityTooling?: boolean;
   requireE2e?: boolean;
+  requireCoverage?: boolean;
   exec: Exec;
   ghExec: Exec;
   runStep: typeof runStepFn;
@@ -281,6 +282,7 @@ export class Run {
         worktree,
         image: plan.gateImage,
         junitPath: plan.junitPath,
+        coveragePath: plan.coveragePath,
         cpus: 2,
         memory: '2g',
         timeoutMs: 10 * 60_000,
@@ -398,7 +400,7 @@ export class Run {
 
   private phaseDeps(): PhaseDeps {
     return {
-      journal: this.journal, ws: this.deps.ws, spec: this.deps.spec, project: this.deps.project, specHash: this.deps.spec.specHash!, firstSpec: this.deps.firstSpec, requireDelivery: this.deps.requireDelivery, requireSecurityTooling: this.deps.requireSecurityTooling, requireE2e: this.deps.requireE2e, exec: this.deps.exec,
+      journal: this.journal, ws: this.deps.ws, spec: this.deps.spec, project: this.deps.project, specHash: this.deps.spec.specHash!, firstSpec: this.deps.firstSpec, requireDelivery: this.deps.requireDelivery, requireSecurityTooling: this.deps.requireSecurityTooling, requireE2e: this.deps.requireE2e, requireCoverage: this.deps.requireCoverage, exec: this.deps.exec,
       runAgent: this.runAgent,
       decider: this.decider(),
       mergeQueue: this.mergeQueue,

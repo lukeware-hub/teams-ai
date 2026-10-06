@@ -85,6 +85,17 @@ const RULES: Rule[] = [
     },
     egress: () => true,
   },
+  {
+    // No tool is prescribed (roadmap R10.2): license scanners are per-ecosystem (license-checker for node,
+    // pip-licenses for python, go-licenses for go, ...) and there is no universal one the way osv-scanner is for
+    // vulnerabilities. Any command qualifies; most license tools read already-resolved dependency metadata and
+    // need no network, so none is required here either.
+    name: 'license-scan',
+    what: 'a license-compatibility check of the project\'s dependencies (no tool is prescribed; pick whatever your stack offers)',
+    allowed: () => true,
+    extra: () => [],
+    egress: () => false,
+  },
 ];
 
 /** Errors for a plan whose security gates are missing, non-blocking, disarmed or not the prescribed tools. */
@@ -122,6 +133,9 @@ export function validateSecurityGates(plan: Plan): string[] {
   const build = index('build');
   const image = index('image-scan');
   if (build >= 0 && image >= 0 && image < build) errors.push('gate image-scan must come after build');
+  const dependency = index('dependency-scan');
+  const license = index('license-scan');
+  if (dependency >= 0 && license >= 0 && license < dependency) errors.push('gate license-scan must come after dependency-scan');
   return errors;
 }
 
@@ -131,12 +145,13 @@ export function securityToolingRules(): string {
   const py = prescribedCommands('python');
   const other = prescribedCommands('other');
   return [
-    `- security gates are required, all blocking, in this order: ${TOOLS_GATE}, secret-scan, sast, dependency-scan, image-scan (image-scan after build)`,
+    `- security gates are required, all blocking, in this order: ${TOOLS_GATE}, secret-scan, sast, dependency-scan, license-scan, image-scan (license-scan after dependency-scan, image-scan after build)`,
     `  - ${TOOLS_GATE} (network egress): command exactly \`${INSTALLER_COMMAND}\`; the orchestrator renders ${INSTALLER_PATH} (pinned versions, sha256-checked) before gates run and it installs gitleaks, semgrep, osv-scanner and trivy into ${TOOLS_DIR} of the worktree (gates are separate containers, only the worktree persists; add .tools/ to .gitignore); gateImage must therefore have curl, tar, sha256sum and python3/pip (e.g. node:22-bookworm, not -slim). Every other security gate command starts with ${PATH_PREFIX} so it finds them`,
     `  - secret-scan: ${PATH_PREFIX} ${other['secret-scan']![0]}`,
     `  - sast (egress, rules are downloaded): ${PATH_PREFIX} ${other.sast![0]}`,
     `  - dependency-scan (egress): node stacks ${PATH_PREFIX} ${node['dependency-scan']![0]} (or ${node['dependency-scan']![1]}); python stacks ${py['dependency-scan']![0]} (or ${py['dependency-scan']![1]}); other stacks ${other['dependency-scan']![0]}`,
+    '  - license-scan (after dependency-scan): no tool is prescribed, use whatever your stack offers to list each dependency\'s license (e.g. `license-checker` for node, `pip-licenses` for python, `go-licenses` for go); fail the command on a copyleft license (GPL, AGPL, LGPL) unless the project\'s own ADRs say otherwise',
     `  - image-scan (egress, after build): ${other['image-scan']!.map((c) => `${PATH_PREFIX} ${c}`).join(' && ')} (each command needs its own PATH prefix; gates have no docker, so the Dockerfile, manifests and source tree are scanned instead of an image)`,
-    '  - never weaken a security gate: no `|| true`, no `--exit-code 0`, no non-blocking gates; other tools are rejected',
+    '  - never weaken a security gate: no `|| true`, no `--exit-code 0`, no non-blocking gates; other tools are rejected (license-scan excepted - its tool is never prescribed)',
   ].join('\n');
 }

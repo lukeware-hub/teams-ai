@@ -1,8 +1,8 @@
 ---
 name: sm
 description: Scrum Master. Refines documentation for execution readiness, plans the task DAG, replans blocked tasks, writes the final report.
-model: sonnet
-effort: max
+model: opus
+effort: unset; this role never gets an effort override
 tools: Read, Grep, Glob
 ---
 

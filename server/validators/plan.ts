@@ -1,6 +1,7 @@
 import { DELIVERY_PATH_FIELDS, type Plan, type PlanTask } from '../contracts/plan.js';
 import { gateFileErrors, gateTerminationErrors } from './gate-files.js';
 import type { Spec } from '../contracts/spec.js';
+import { validateCoverage } from './coverage.js';
 import { validateE2e } from './e2e.js';
 import { validateSecurityGates } from './security-tooling.js';
 
@@ -17,6 +18,8 @@ export interface PlanCheckOptions {
   requireSecurityTooling?: boolean;
   /** New plans must carry a post-deploy e2e gate (roadmap R8.4); false keeps older plans valid. */
   requireE2e?: boolean;
+  /** New plans must carry a `coverage` gate clearing the line-coverage floor (roadmap R10.2); false keeps older plans valid. */
+  requireCoverage?: boolean;
   /** Files already tracked on main; when given, blocking gates may only name files that exist or that a root task creates. */
   repoFiles?: ReadonlySet<string>;
 }
@@ -115,6 +118,7 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
 
   if (opts.requireSecurityTooling) errors.push(...validateSecurityGates(plan));
   if (opts.requireE2e) errors.push(...validateE2e(plan, spec));
+  if (opts.requireCoverage) errors.push(...validateCoverage(plan));
 
   if (!plan.delivery) {
     if (opts.requireDelivery) errors.push('delivery is required: list dockerfile, compose, ciWorkflow, releaseWorkflow, e2eSuite and readmeSections');
@@ -124,6 +128,7 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
     }
     if (!plan.delivery.readmeSections?.length) errors.push('delivery.readmeSections is required (at least one section)');
   }
+  if (opts.requireDelivery && !plan.lockfilePath) errors.push('lockfilePath is required (the stack\'s own lockfile, committed on main)');
 
   return errors;
 }

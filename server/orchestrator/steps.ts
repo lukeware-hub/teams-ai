@@ -63,9 +63,10 @@ export function devPack(
   base: PackBase,
   task: PlanTask,
   opts: { code: CodeContext; handoffs: readonly HandoffSummary[]; feedback: string | null },
+  role: Role = 'dev',
 ): ContextPackInput {
   return {
-    ...common(base, 'dev', 'dev'),
+    ...common(base, 'dev', role),
     task,
     criteria: criteriaOf(base.spec, task.criteriaRefs),
     handoffs: opts.handoffs,
@@ -127,21 +128,34 @@ export const SMOKE_CONTRACT =
 export const E2E_CONTRACT =
   'commands.e2e is required and is NOT commands.smoke: it runs the suite at delivery.e2eSuite (the command must reference that path) inside gateImage after the compose stack is deployed and smoke has passed, black-box over HTTP against process.env.SERVICE_URL, no mocks of the service under test, never starting containers; every acceptance criterion needs one test whose name carries its id, e.g. "[AC-001] POST /todos creates a todo", EXCEPT criteria with no testable observable behavior over the service interface (devops-only, build, docs or style rules): list those in plan.e2eExemptions as {acId, reason} (reason of at least 10 characters, at least one criterion stays covered) and they get no e2e test; plan one task owned by dev that creates the suite and depends on the service tasks; a failing e2e blocks the run';
 
-export function planRules(firstSpec: boolean, requireDelivery = false, requireSecurityTooling = false, requireE2e = false): string {
+/** The coverage gate is stack-agnostic by contract, never by prescribed tool (roadmap R10.2): whatever the stack's
+ * own coverage tool is, the gate's command must end by writing coveragePath as one line of JSON, {"linesPct": N};
+ * the orchestrator reads only that number, never the tool's own report format, and fails the gate below 80 even
+ * when the command's own exit code is 0. coverageExemptions lists paths the tool's own ignore mechanism already
+ * excluded from the denominator, each with a reason of at least 10 characters. */
+export const COVERAGE_CONTRACT =
+  'gate "coverage" (blocking) runs the test suite with whatever coverage tool the stack has, then writes plan.coveragePath as one line of JSON {"linesPct": <number>}; the orchestrator fails the gate when linesPct is below 80, or the file is missing or malformed, regardless of the command\'s own exit code; a path the tool\'s own config already excludes from coverage goes in plan.coverageExemptions as {path, reason} (reason of at least 10 characters)';
+
+export function planRules(firstSpec: boolean, requireDelivery = false, requireSecurityTooling = false, requireE2e = false, requireCoverage = false): string {
   const lines = [
     'Plan rules (the orchestrator rejects a plan that breaks any of them):',
     '- deploy.kind is "api" or "front" (what the service is); an api sets deploy.docsPath to the path that serves its Swagger/OpenAPI page (for example /docs); deploy.port must be inside 3000-3019, the range the platform publishes to the host so the human can open the service',
     `- gates must include these blocking gates: ${REQUIRED_BLOCKING_GATES.join(', ')} (plus a blocking typecheck gate when commands.typecheck exists)`,
     '- every acceptance criterion is covered by at least one task (criteriaRefs); every task has at least one criterion or is infrastructure',
     '- dependsOn forms a DAG; affectedPaths are repository-relative paths or globs; tasks small enough for one agent step',
+    '- owner is dev, devops or front: use front only when every affectedPaths entry is UI code (e.g. web/src/**); use devops only for Dockerfile, deploy manifests, CI/release workflows and docker-compose; everything else is dev',
     '- gateImage is a glibc-based image (e.g. node:22-bookworm-slim), never an Alpine/musl one: dependencies are installed by the Dev on a Debian host and native optional packages (rollup, esbuild, swc) will not load under musl',
     `- ${SMOKE_CONTRACT}`,
     requireDelivery
       ? '- delivery is required: {dockerfile, compose, ciWorkflow, releaseWorkflow, e2eSuite} are repository-relative file paths the project must ship (e.g. Dockerfile, docker-compose.yml, .github/workflows/ci.yml, .github/workflows/release.yml, e2e/) and readmeSections lists the README headings that must exist (e.g. Run, Test, Environment, Architecture, Pipeline); Phase 4 fails if a listed file is missing on main, so assign each one to a task'
       : '- delivery is optional; when present it must list dockerfile, compose, ciWorkflow, releaseWorkflow, e2eSuite (file paths) and readmeSections (non-empty); Phase 4 fails if a listed file is missing on main',
+    requireDelivery
+      ? '- lockfilePath is required: the repository-relative path of whatever lockfile the stack\'s own package manager produces (package-lock.json, poetry.lock, go.sum, Cargo.lock, ... - name the real one, there is no fixed list); Phase 4 fails if it is missing on main. Every FROM line in the Dockerfile must carry a @sha256 digest or an explicit non-latest tag (never a bare image or image:latest); Phase 4 fails on an unpinned base image'
+      : '- when delivery.dockerfile is present, every FROM line must carry a @sha256 digest or an explicit non-latest tag (never a bare image or image:latest)',
   ];
   if (requireSecurityTooling) lines.push(securityToolingRules());
   if (requireE2e) lines.push(`- ${E2E_CONTRACT}`);
+  if (requireCoverage) lines.push(`- ${COVERAGE_CONTRACT}`);
   if (firstSpec) {
     lines.push(
       `- first spec of the project: a task with id ${SCAFFOLD_TASK_ID} (owner dev, no dependsOn) creates the project skeleton, build, test and gate configuration; every other task depends on it directly or indirectly`,
@@ -155,12 +169,12 @@ export function planRules(firstSpec: boolean, requireDelivery = false, requireSe
 
 export function planPack(
   base: PackBase,
-  opts: { techSpecText: string; godNodes: ReadonlyArray<{ label: string; edges: number }>; feedback: string | null; firstSpec?: boolean; requireDelivery?: boolean; requireSecurityTooling?: boolean; requireE2e?: boolean },
+  opts: { techSpecText: string; godNodes: ReadonlyArray<{ label: string; edges: number }>; feedback: string | null; firstSpec?: boolean; requireDelivery?: boolean; requireSecurityTooling?: boolean; requireE2e?: boolean; requireCoverage?: boolean },
 ): ContextPackInput {
   const human = (base.spec.tasks ?? []).map((t) => `- ${t.title}: ${t.description}`);
   const nodes = opts.godNodes.map((n) => `- ${n.label} (${n.edges} edges)`);
   const parts = [
-    planRules(opts.firstSpec ?? false, opts.requireDelivery ?? false, opts.requireSecurityTooling ?? false, opts.requireE2e ?? false),
+    planRules(opts.firstSpec ?? false, opts.requireDelivery ?? false, opts.requireSecurityTooling ?? false, opts.requireE2e ?? false, opts.requireCoverage ?? false),
     human.length > 0 ? `Human-defined tasks (derive dependencies, keep them):\n${human.join('\n')}` : '',
     nodes.length > 0 ? `Central modules of the current code (graph god-nodes):\n${nodes.join('\n')}` : '',
     opts.feedback ?? '',
