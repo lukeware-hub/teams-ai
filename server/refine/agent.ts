@@ -40,6 +40,7 @@ export async function makeRunAgent(w: AgentWiring): Promise<RunAgent> {
         workspacesRoot: w.workspacesRoot,
         network: { allowedDomains: [] },
         hostEnv: w.hostEnv,
+        signal: ctx.signal,
       },
       agents,
       profile: (role) => w.cfg.roles[role],

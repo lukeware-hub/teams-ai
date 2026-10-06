@@ -60,6 +60,8 @@ export interface StepDeps {
   sandbox?: { enabled: boolean; unsafeNoSandbox?: boolean };
   hostEnv?: NodeJS.ProcessEnv;
   onEvent?: (line: string) => void;
+  /** Aborting kills the agent process (and its process group). */
+  signal?: AbortSignal;
   clock?: () => Date;
   /** Spec 10A.5 decision 8: asked only when no deterministic rule matched (the `code` fallthrough). */
   classifyUnknown?: (input: CliErrorInput) => Promise<FailureKind>;
@@ -234,7 +236,7 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
 
   let raw: RawStepResult;
   try {
-    raw = await runProcess(deps.binary, invocation, deps.caps, deps.onEvent);
+    raw = await runProcess(deps.binary, invocation, deps.caps, deps.onEvent, deps.signal);
   } catch (err) {
     return environmentFailure(`spawn failed: ${(err as Error).message}`);
   }

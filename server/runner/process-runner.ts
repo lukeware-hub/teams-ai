@@ -21,7 +21,7 @@ export interface ProcessCaps {
   killGraceMs?: number;
 }
 
-export type KillReason = 'timeout' | 'turns' | 'environment' | null;
+export type KillReason = 'timeout' | 'turns' | 'environment' | 'aborted' | null;
 
 export interface RawStepResult {
   parsed: ParsedStream;
@@ -76,6 +76,7 @@ export function runProcess(
   invocation: Invocation,
   caps: ProcessCaps,
   onEvent?: (line: string) => void,
+  abortSignal?: AbortSignal,
 ): Promise<RawStepResult> {
   return new Promise((resolve, reject) => {
     const started = Date.now();
@@ -117,10 +118,14 @@ export function runProcess(
     };
 
     const timer = setTimeout(() => kill('timeout'), caps.timeoutMs);
+    const onAbort = () => kill('aborted');
+    if (abortSignal?.aborted) onAbort();
+    else abortSignal?.addEventListener('abort', onAbort, { once: true });
 
     const finish = (code: number | null) => {
       if (settled) return;
       settled = true;
+      abortSignal?.removeEventListener('abort', onAbort);
       clearTimeout(timer);
       if (graceTimer) clearTimeout(graceTimer);
       if (drainTimer) clearTimeout(drainTimer);

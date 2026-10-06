@@ -77,6 +77,12 @@ describe('runProcess', () => {
     expect(result.turns).toBe(1);
   });
 
+  it('kills the process when the abort signal fires', async () => {
+    const ctl = new AbortController();
+    const result = await runProcess(fake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_HANG_AFTER: '1' }), inv(), caps, () => ctl.abort(), ctl.signal);
+    expect(result.killedBy).toBe('aborted');
+  });
+
   it('kills the process when the turn cap is exceeded', async () => {
     const result = await runProcess(fake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_DELAY_MS: '20', FAKE_CLAUDE_HANG_AFTER: '2' }), inv(), { ...caps, maxTurns: 0 });
     expect(result.killedBy).toBe('turns');

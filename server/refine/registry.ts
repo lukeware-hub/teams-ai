@@ -155,7 +155,8 @@ export class SessionRegistry {
   /** Discards a draft that never started a run, so the user can begin that spec's refinement again from scratch. */
   async deleteDraft(projectId: string, specId: string): Promise<void> {
     const session = await this.get(projectId, specId);
-    session.ensureCanEvaluate();
+    if (session.state.status === 'started') throw new ConflictError('session already started a run');
+    await session.abort();
     const ws = await this.ws(projectId);
     const draft = draftPaths(ws, specId);
     await session.close();

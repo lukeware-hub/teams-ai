@@ -46,6 +46,7 @@ export function ProjectsView(p: {
   runs: Record<string, RunRow[]>;
   drafts: DraftRow[];
   error: string | null;
+  deleteError?: { projectId: string; specId: string; message: string } | null;
   onStart: (projectId: string, specId: string) => void;
   onResume: (runId: string) => void;
   onStop: (runId: string) => void;
@@ -361,6 +362,7 @@ export function ProjectsView(p: {
                     <Icon name="arrow-right" size={14} />
                   </Link>
                 </span>
+                {p.deleteError?.projectId === d.projectId && p.deleteError.specId === d.specId ? <p className="error" role="alert">{p.deleteError.message}</p> : null}
               </li>
             ))}
           </ul>
@@ -389,6 +391,7 @@ export function Projects() {
   const [runs, setRuns] = useState<Record<string, RunRow[]>>({});
   const [drafts, setDrafts] = useState<DraftRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<{ projectId: string; specId: string; message: string } | null>(null);
   const navigate = useNavigate();
   const refresh = useCallback(async () => {
     try {
@@ -440,7 +443,16 @@ export function Projects() {
       onNewProject={(id, name, description) => void go(() => refineApi.newProject(id, name, description))()}
       onNewSpec={(p, s, description) => void go(() => refineApi.newSpec(p, s, description))()}
       onContinue={(p, s) => void go(() => refineApi.continueSpec(p, s))()}
-      onDelete={(p, s) => void act(() => refineApi.delete(p, s))()}
+      deleteError={deleteError}
+      onDelete={(p, s) => void (async () => {
+        setDeleteError(null);
+        try {
+          await refineApi.delete(p, s);
+        } catch (e) {
+          setDeleteError({ projectId: p, specId: s, message: (e as Error).message });
+        }
+        await refresh();
+      })()}
     />
   );
 }

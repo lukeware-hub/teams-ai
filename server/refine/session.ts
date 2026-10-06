@@ -87,6 +87,7 @@ const COVERED = 'Este ajuste já foi coberto por outra alteração e foi descart
 
 export class RefineSession {
   private running: Promise<void> | null = null;
+  private abortCtl: AbortController | null = null;
   /** Set synchronously by `freeze()`, before any await, so a second concurrent `start` never slips
    *  through the window between freezing the spec and the run being marked started. */
   private starting = false;
@@ -177,8 +178,10 @@ export class RefineSession {
   async evaluate(): Promise<void> {
     this.ensureCanEvaluate();
     const cycle = this.state.cycle + 1;
+    const ctl = (this.abortCtl = new AbortController());
     this.running = runCycle(
       {
+        signal: ctl.signal,
         draft: this.deps.draft,
         journal: this.journal,
         runAgent: this.deps.runAgent,
@@ -192,8 +195,15 @@ export class RefineSession {
       cycle,
     ).finally(() => {
       this.running = null;
+      this.abortCtl = null;
     });
     await this.running;
+  }
+
+  /** Kills the agent processes of a running evaluation and waits for the cycle to wind down. */
+  async abort(): Promise<void> {
+    this.abortCtl?.abort();
+    await this.running?.catch(() => undefined);
   }
 
   private question(id: string) {

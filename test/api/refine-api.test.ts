@@ -7,6 +7,7 @@ import type { RunControlDeps } from '../../server/api/run-control.js';
 import { startApi } from '../../server/api/server.js';
 import { execCommand } from '../../server/exec/command.js';
 import { readUserConfig } from '../../server/onboarding/config-store.js';
+import type { RunAgent } from '../../server/refine/cycle.js';
 import { SessionRegistry } from '../../server/refine/registry.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 import { makeFakeRunAgent, type Script } from '../fixtures/fake-run-agent.js';
@@ -18,6 +19,9 @@ let api: { port: number; close(): Promise<void> };
 let registry: SessionRegistry;
 let script: Script;
 let remote: Remote | null = null;
+let fakeAgent: RunAgent;
+let hangAgent: boolean;
+let agentStarted: boolean;
 let spawns: Array<{ args: string[]; logFile: string }>;
 let registered: string[];
 const base = () => `http://127.0.0.1:${api.port}`;
@@ -38,6 +42,9 @@ beforeEach(async () => {
   await fs.mkdir(`${home}/.teams-ai`, { recursive: true });
   await fs.writeFile(`${home}/.teams-ai/config.json`, JSON.stringify({ paths: { workspaces: `${home}/ws`, runs: `${home}/runs`, secrets: `${home}/secrets` }, projects: [] }));
   script = {};
+  fakeAgent = makeFakeRunAgent(script);
+  hangAgent = false;
+  agentStarted = false;
   spawns = [];
   registered = [];
   spawnShouldFail = false;
@@ -61,7 +68,13 @@ beforeEach(async () => {
   registry = new SessionRegistry({
     cfg: async () => (await readUserConfig(home)).cfg,
     home,
-    runAgent: makeFakeRunAgent(script),
+    runAgent: ((req, ctx) => {
+      if (!hangAgent) return fakeAgent(req, ctx);
+      return new Promise((resolve) => {
+        agentStarted = true;
+        ctx.signal?.addEventListener('abort', () => resolve({ ok: false, failure: 'timeout', errors: ['aborted'], summary: { usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, costUsd: 0, durationMs: 0, numTurns: 0, rateLimit: null }, sandboxDisabled: false } as never));
+      });
+    }) as RunAgent,
     secretsDir: `${home}/secrets`,
     exec: execCommand,
     projectDir: async (projectId) => (registered.find((d) => d.includes(`/${projectId}/refine/`)) ?? null),
@@ -222,6 +235,18 @@ describe('refine api', () => {
     await call('POST', '/api/refine/hello-app/hello-app-001/start');
     expect((await call('DELETE', '/api/refine/hello-app/hello-app-001')).status).toBe(409);
     expect(await fs.access(draftRoot).then(() => true, () => false)).toBe(true);
+  });
+
+  it('force-deletes a draft whose evaluation is running, aborting only that session', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    await call('POST', '/api/projects/new', { projectId: 'other-app', name: 'Other' });
+    hangAgent = true;
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/evaluate')).status).toBe(202);
+    for (let i = 0; i < 100 && !agentStarted; i++) await new Promise((r) => setTimeout(r, 20));
+    expect(agentStarted).toBe(true);
+    expect((await call('DELETE', '/api/refine/hello-app/hello-app-001')).status).toBe(200);
+    expect(await fs.access(`${home}/ws/hello-app/refine/hello-app-001`).then(() => true, () => false)).toBe(false);
+    expect(await fs.access(`${home}/ws/other-app/refine/other-app-001`).then(() => true, () => false)).toBe(true);
   });
 
   it('a child that dies before writing its journal reports 500 with the log tail and leaves the session retryable', async () => {

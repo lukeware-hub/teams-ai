@@ -19,7 +19,7 @@ import type { RefineState } from './state.js';
 
 export type RunAgent = <K extends StepKind>(
   req: AgentStepRequest<K>,
-  ctx: { journal: Pick<Journal, 'allocStepSeq' | 'fact'>; stepDir: (seq: number) => string; specHash: string },
+  ctx: { journal: Pick<Journal, 'allocStepSeq' | 'fact'>; stepDir: (seq: number) => string; specHash: string; signal?: AbortSignal },
 ) => Promise<StepOutcome<OutputOf<K>>>;
 
 export interface CycleJournal extends Pick<Journal, 'allocStepSeq' | 'fact'> {
@@ -37,6 +37,8 @@ export interface CycleDeps {
   validateDocs?: (docs: { project: string; briefing: string; stack: string; flow: string }) => Promise<JevValidationResult>;
   /** Spec 10A.5 decisions 2–4; absent (or the layer off) leaves the cycle as it was. */
   decider?: Pick<Decider, 'decide'>;
+  /** Aborting kills the agent steps this cycle has running. */
+  signal?: AbortSignal;
 }
 
 const MAX_DEDUP_PAIRS = 20;
@@ -67,7 +69,7 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
   const decider = deps.decider ? recorded(deps.decider, journal, cycle) : undefined;
   const hash = await draftHash(draft);
   await journal.fact(RefineEvent.CycleStarted, { cycle, draftHash: hash });
-  const ctx = { journal, stepDir: draft.steps, specHash: hash };
+  const ctx = { journal, stepDir: draft.steps, specHash: hash, signal: deps.signal };
   const docs: Record<DocFile, string> = {
     'project.md': await readDoc(draft, 'project.md'),
     'brief.md': await readDoc(draft, 'brief.md'),
