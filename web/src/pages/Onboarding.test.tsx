@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { api, type Item, type Status } from '../api.js';
 import { Onboarding } from './Onboarding.js';
@@ -30,7 +31,7 @@ describe('Onboarding GitHub flow', () => {
       return { item: item(ownerSaved, 'acme (Organization)') };
     });
 
-    render(<Onboarding />);
+    render(<MemoryRouter><Onboarding /></MemoryRouter>);
     const githubCard = await screen.findByTestId('card-Login do GitHub CLI');
     fireEvent.click(within(githubCard).getByRole('button', { name: 'Entrar' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Próximo' }).hasAttribute('disabled')).toBe(false));
@@ -54,7 +55,7 @@ describe('Onboarding GitHub flow', () => {
     const s: Status = { items: { ...status(true, true).items, githubToken: item(true, 'ok'), claude: item(true, 'ok'), openrouterKey: item(false, 'HTTP 402') }, allOk: false };
     vi.spyOn(api, 'status').mockResolvedValue(s);
     vi.spyOn(api, 'organizations').mockResolvedValue({ organizations: [], owner: 'acme' });
-    render(<Onboarding />);
+    render(<MemoryRouter><Onboarding /></MemoryRouter>);
     await screen.findByTestId('card-Login do GitHub CLI');
     for (let i = 0; i < 4; i++) {
       await waitFor(() => expect(screen.getByRole('button', { name: 'Próximo' }).hasAttribute('disabled')).toBe(false));
@@ -62,5 +63,14 @@ describe('Onboarding GitHub flow', () => {
     }
     await screen.findByTestId('card-Chave do OpenRouter (Jev, opcional)');
     expect(screen.getByRole('button', { name: 'Próximo' }).hasAttribute('disabled')).toBe(false);
+  });
+
+  it('opens straight on the OpenRouter step from the refine page link, even when everything else is ready', async () => {
+    const ready: Status = { items: { ...status(true, true).items, githubToken: item(true, 'ok'), claude: item(true, 'ok'), openrouterKey: item(false, 'HTTP 401') }, allOk: true };
+    vi.spyOn(api, 'status').mockResolvedValue(ready);
+    vi.spyOn(api, 'organizations').mockResolvedValue({ organizations: [], owner: 'acme' });
+    render(<MemoryRouter initialEntries={['/onboarding?item=openrouter']}><Onboarding /></MemoryRouter>);
+    await screen.findByTestId('card-Chave do OpenRouter (Jev, opcional)');
+    await waitFor(() => expect(screen.queryByText('Tudo pronto para começar')).toBeNull());
   });
 });

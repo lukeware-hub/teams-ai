@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { refineApi, type AcceptanceCriterion, type ChecklistItem, type Snapshot, type StoredEvent } from '../api.js';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { api, refineApi, type AcceptanceCriterion, type ChecklistItem, type Snapshot, type StoredEvent } from '../api.js';
 import { applyToSnapshot, type LiveSnapshot } from '../refine/reducer.js';
 import { useJournal } from '../useSse.js';
 import { Icon } from '../components/Icons.js';
@@ -68,9 +68,27 @@ const evaluationInfo = 'Cada clique em Avaliar abre uma rodada: o Jev confere a 
 const patchInfo = 'Mudança proposta por um agente: linhas com - saem e linhas com + entram. Aceitar aplica a mudança no documento; Rejeitar a descarta, e o motivo opcional fica no histórico.';
 const jsonDownload = (value: unknown) => `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(value, null, 2))}`;
 
+/** Re-checks the OpenRouter connection and links to the onboarding step where a new key is entered. */
+export function JevActions() {
+  const [check, setCheck] = useState<{ checking: boolean; ok?: boolean; detail?: string }>({ checking: false });
+  const validate = () => {
+    setCheck({ checking: true });
+    api.status()
+      .then((s) => setCheck({ checking: false, ok: s.items.openrouterKey.ok, detail: s.items.openrouterKey.detail }))
+      .catch(() => setCheck({ checking: false, ok: false, detail: 'Não foi possível validar a conexão agora.' }));
+  };
+  return (
+    <span className="jev-actions">
+      <button type="button" data-testid="jev-validate" disabled={check.checking} onClick={validate}>{check.checking ? 'Validando…' : 'Validar conexão'}</button>
+      <Link to="/onboarding?item=openrouter">Informar nova chave</Link>
+      {check.ok !== undefined && <span data-testid="jev-validate-result">{check.ok ? 'Conexão com o OpenRouter funcionando. Clique em Reavaliar.' : `Falha na conexão: ${check.detail ?? 'chave inválida.'}`}</span>}
+    </span>
+  );
+}
+
 function currentClaudeStage(events: StoredEvent[], cycle: number, jevEvent: StoredEvent | undefined, derived: boolean): string {
   if (!jevEvent) return 'Jev está validando os cinco documentos do projeto.';
-  if (jevEvent.data.available === false) return 'Jev indisponível: confira a chave do OpenRouter. A avaliação continua sem ele.';
+  if (jevEvent.data.available === false) return 'Jev indisponível: confira a chave do OpenRouter. A avaliação não continua sem ele.';
   if (jevEvent.data.decision === 'blocked') return 'Jev encontrou pontos importantes para revisão; PO e SM vão avaliá-los.';
   if (jevEvent.data.decision === 'review') return 'Jev encontrou pontos para revisão; Claude está analisando os documentos.';
 
@@ -152,6 +170,7 @@ export function RefinementView(p: ViewProps) {
   const canStart = st.status === 'ready' && !st.stale && !busy;
   const derivedThisCycle = (p.events ?? []).some((e) => e.type === 'DERIVED' && Number(e.data.cycle) === st.cycle);
   const jevEvent = (p.events ?? []).find((e) => e.type === 'REFINE_DOCS_VALIDATED' && Number(e.data.cycle) === st.cycle);
+  const jevDown = jevEvent?.data.available === false;
   const claudeStage = currentClaudeStage(p.events ?? [], st.cycle, jevEvent, derivedThisCycle);
   const criteria = st.derived?.spec.acceptanceCriteria ?? [];
   const listState = st.status === 'evaluating'
@@ -235,7 +254,7 @@ export function RefinementView(p: ViewProps) {
         </div>
         <p className="next-step"><Icon name="lightbulb" size={20} /><span><b>Próximo passo:</b> {nextStep}</span></p>
         {busy && (
-          <div className={`claude-session${jevEvent?.data.available === false ? ' claude-session-bad' : ''}`} role="status" aria-live="polite">
+          <div className={`claude-session${jevDown ? ' claude-session-bad' : ''}`} role="status" aria-live="polite">
             <span className="live-dot" aria-hidden="true" />
             <div>
               <b>Avaliação em andamento <InfoTip text={evaluationInfo} /></b>
@@ -468,7 +487,12 @@ export function RefinementPage() {
           <InfoTip text={startInfo} />
         </span>
       </header>
-      {(error || snap.state.status === 'error') && <p className="error refine-page-error" role="alert">{errorText(error ?? snap.state.error)}</p>}
+      {(error || snap.state.status === 'error') && (
+        <div className="error refine-page-error" role="alert">
+          <p>{errorText(error ?? snap.state.error)}</p>
+          {(error ?? snap.state.error)?.startsWith('Jev indisponível') && <JevActions />}
+        </div>
+      )}
       <RefinementView
         snap={snap}
         busy={snap.state.status === 'evaluating'}

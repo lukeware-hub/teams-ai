@@ -1,9 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
-import type { Snapshot } from '../api.js';
+import { api, type Item, type Snapshot, type Status } from '../api.js';
 import type { StoredEvent } from '../api.js';
-import { RefinementView } from './Refinement.js';
+import { JevActions, RefinementView } from './Refinement.js';
 
 const green = (ids: string[]) => ids.map((id) => ({ id, role: (id.startsWith('po') ? 'po' : 'sm') as 'po' | 'sm', passed: true, detail: 'ok' }));
 const ALL = ['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions', 'sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions'];
@@ -142,6 +142,20 @@ describe('RefinementView', () => {
     expect(screen.getByText(/derivando project\.json e spec\.json/)).toBeTruthy();
   });
 
+  it('turns the evaluation card red when Jev is unavailable', () => {
+    render(
+      <MemoryRouter>
+        <RefinementView
+          snap={base({ status: 'evaluating', questions: [], patches: [] })}
+          busy={true}
+          events={[event(1, 'REFINE_DOCS_VALIDATED', { cycle: 1, available: false })]}
+          {...on()}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('status').className).toContain('claude-session-bad');
+  });
+
   it('shows the demand type, bug details, and downloadable derived JSON', () => {
     render(
       <MemoryRouter>
@@ -170,5 +184,24 @@ describe('RefinementView', () => {
     expect(screen.getByTestId('bug-details').textContent).toContain('GET /todos');
     expect(screen.getByTestId('download-spec-json').getAttribute('download')).toBe('spec.json');
     expect(screen.getByTestId('download-project-json').getAttribute('download')).toBe('project.json');
+  });
+});
+
+describe('JevActions', () => {
+  const status = (openrouterKey: Item) => ({ items: { openrouterKey }, allOk: false }) as unknown as Status;
+
+  it('links to the OpenRouter onboarding step and reports a failed connection check', async () => {
+    vi.spyOn(api, 'status').mockResolvedValue(status({ ok: false, detail: 'OPENROUTER_API_KEY not set' }));
+    render(<MemoryRouter><JevActions /></MemoryRouter>);
+    expect(screen.getByText('Informar nova chave').getAttribute('href')).toBe('/onboarding?item=openrouter');
+    fireEvent.click(screen.getByTestId('jev-validate'));
+    expect((await screen.findByTestId('jev-validate-result')).textContent).toContain('Falha na conexão: OPENROUTER_API_KEY not set');
+  });
+
+  it('confirms a working connection', async () => {
+    vi.spyOn(api, 'status').mockResolvedValue(status({ ok: true, detail: 'ok' }));
+    render(<MemoryRouter><JevActions /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('jev-validate'));
+    expect((await screen.findByTestId('jev-validate-result')).textContent).toContain('Conexão com o OpenRouter funcionando');
   });
 });

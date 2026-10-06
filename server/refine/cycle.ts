@@ -84,7 +84,11 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
     jevValidation = await deps.validateDocs({ project: docs['project.md'], briefing: docs['brief.md'], stack: docs['stack.md'], flow: docs['flow.md'] }).catch(() => ({ available: false, decision: 'review' as const, consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false }));
     const validation = jevValidation;
     await journal.fact(RefineEvent.DocsValidated, { cycle, backend: 'jev', ...validation });
-    // Jev is advisory here: its findings are passed to Claude, PO, and SM for review.
+    // Jev findings are advisory (passed to Claude, PO, and SM), but Jev itself is required: no agent runs without it.
+    if (!validation.available) {
+      await fail('Jev indisponível: confira a chave do OpenRouter.');
+      return;
+    }
   }
 
   const d = await deps.runAgent<'derive'>(

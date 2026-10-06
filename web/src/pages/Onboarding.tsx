@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api, type Item, type ItemName, type Status } from '../api.js';
 import { Icon } from '../components/Icons.js';
 import { LoginCard } from '../components/LoginCard.js';
@@ -13,7 +13,8 @@ const OPTIONAL: readonly ItemName[] = ['openrouterKey'];
 
 export function Onboarding({ compact = false }: { compact?: boolean }) {
   const totalSteps = 6;
-  const [step, setStep] = useState(0);
+  const focusOpenrouter = useSearchParams()[0].get('item') === 'openrouter'; // deep link from the refine page
+  const [step, setStep] = useState(focusOpenrouter ? STEP_ITEMS.indexOf('openrouterKey') : 0);
   const [status, setStatus] = useState<Status | null>(null);
   const [organizations, setOrganizations] = useState<string[]>([]);
   const [organizationOwner, setOrganizationOwner] = useState<string | null>(null);
@@ -46,8 +47,8 @@ export function Onboarding({ compact = false }: { compact?: boolean }) {
     return () => { active = false; };
   }, [githubLoggedIn]);
   useEffect(() => {
-    if (status?.allOk) setStep(totalSteps - 1);
-  }, [status?.allOk]);
+    if (status?.allOk && !focusOpenrouter) setStep(totalSteps - 1);
+  }, [status?.allOk, focusOpenrouter]);
   const currentName = STEP_ITEMS[step];
   const canAdvance = currentName !== undefined && (OPTIONAL.includes(currentName) || item(currentName)?.ok === true);
   const next = () => {

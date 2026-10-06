@@ -111,3 +111,31 @@ describe('refinement cycle System 1 filters (decisions 2-4)', () => {
   });
 });
 
+describe('refinement cycle Jev requirement', () => {
+  it('fails before any agent runs when Jev is unavailable', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
+    const docs = path.join(root, 'docs');
+    await mkdir(docs, { recursive: true });
+    const draft = {
+      projectId: 'demo', specId: 'demo-001', root, docs,
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+      stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
+      specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
+    };
+    await Promise.all([draft.projectMd, draft.briefMd, draft.stackMd, draft.flowMd, draft.designMd].map((f) => writeFile(f, '# doc')));
+    const events: Array<{ type: string; data: Record<string, unknown> }> = [];
+    const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'demo/demo-001', specHash: 'draft', type, kind: 'fact' as const, data }; } };
+    const runAgent = vi.fn();
+    await runCycle({
+      draft,
+      journal,
+      runAgent: runAgent as never,
+      principles: () => [],
+      retrieval: () => [],
+      secretsDir: root,
+      validateDocs: async () => ({ available: false, decision: 'review' as const, consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false }),
+    }, 1);
+    expect(runAgent).not.toHaveBeenCalled();
+    expect(events.find((event) => event.type === 'REFINE_CYCLE_FAILED')?.data.reason).toBe('Jev indisponível: confira a chave do OpenRouter.');
+  });
+});

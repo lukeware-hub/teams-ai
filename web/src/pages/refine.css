@@ -24,6 +24,10 @@
 .claude-session { display: flex; align-items: center; gap: 0.7rem; margin: 0 0 1rem; padding: 0.7rem 0.8rem; border: 1px solid var(--good-line); border-radius: var(--radius-lg); color: var(--good); background: var(--good-soft); }
 .claude-session-bad { border-color: var(--bad-line); color: var(--bad); background: var(--bad-soft); }
 .claude-session-bad .live-dot { background: var(--bad); box-shadow: 0 0 0 4px var(--bad-line); }
+.jev-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.8rem; margin-top: 0.5rem; }
+.jev-actions a { color: inherit; font-weight: 600; text-decoration: underline; }
+.jev-actions button { padding: 0.2rem 0.6rem; border: 1px solid currentColor; border-radius: var(--radius-md); color: inherit; background: transparent; font-size: 0.75rem; font-weight: 600; cursor: pointer; }
+.jev-actions button:disabled { opacity: 0.6; cursor: default; }
 .claude-session > div { display: grid; flex: 1; gap: 0.15rem; }
 .claude-session b { font-size: 0.8125rem; }
 .claude-session > div > span { font-size: 0.75rem; line-height: 1.35; }
