@@ -265,22 +265,26 @@ export function RefinementView(p: ViewProps) {
             )}
             <label className="field-label" htmlFor="refinement-answer">Sua resposta</label>
             <textarea id="refinement-answer" data-testid="answer" value={answer} onChange={(e) => setAnswer(e.target.value)} />
-            <button
-              data-testid={`answer-${current.questionId}`}
-              disabled={locked || answer.trim() === ''}
-              onClick={() => {
-                p.onAnswer(current.questionId, answer);
-                setAnswer('');
-              }}
-            >
-              Responder
-            </button>
-            {!current.blocking && (
-              <button data-testid={`skip-${current.questionId}`} disabled={locked} onClick={() => p.onSkip(current.questionId)}>
-                Ignorar
-              </button>
-            )}
-            <small>{pending.length === 1 ? 'Esta é a última pergunta em aberto.' : pending.length === 2 ? 'Mais 1 pergunta depois desta.' : `Mais ${pending.length - 1} perguntas depois desta.`}</small>
+            <div className="question-actions">
+              <div className="question-actions-buttons">
+                <button
+                  data-testid={`answer-${current.questionId}`}
+                  disabled={locked || answer.trim() === ''}
+                  onClick={() => {
+                    p.onAnswer(current.questionId, answer);
+                    setAnswer('');
+                  }}
+                >
+                  Responder
+                </button>
+                {!current.blocking && (
+                  <button data-testid={`skip-${current.questionId}`} disabled={locked} onClick={() => p.onSkip(current.questionId)}>
+                    Ignorar
+                  </button>
+                )}
+              </div>
+              <small>{pending.length === 1 ? 'Esta é a última pergunta em aberto.' : pending.length === 2 ? 'Mais 1 pergunta depois desta.' : `Mais ${pending.length - 1} perguntas depois desta.`}</small>
+            </div>
           </div>
         ) : (
           <p className="muted">Nenhuma pergunta em aberto.</p>

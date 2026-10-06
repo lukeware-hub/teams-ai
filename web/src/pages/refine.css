@@ -118,6 +118,9 @@
 .refine-start-group { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; }
 .refine-start-group .refine-start { flex: 1 1 auto; }
 .conversation .refine-start-group { margin-top: 1.25rem; }
+.question-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 0.75rem; }
+.question-actions-buttons { display: flex; align-items: center; gap: 0.5rem; }
+.question-actions small { color: var(--ink-soft); }
 .question-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
 .question-meta .tag { margin-left: 0; }
 .question-criteria { display: block; color: var(--ink-soft); line-height: 1.6; }
