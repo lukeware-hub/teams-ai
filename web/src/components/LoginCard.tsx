@@ -82,9 +82,9 @@ export function LoginControls({ state, code, onCode, onStart, onSend, onCancel }
     const timer = setTimeout(() => setCopied(false), 1600);
     return () => clearTimeout(timer);
   }, [copied]);
-  const copyCode = () => {
-    if (!state.code) return;
-    void navigator.clipboard?.writeText(state.code);
+  const copyCode = (value: string | null) => {
+    if (!value) return;
+    void navigator.clipboard?.writeText(value);
     setCopied(true);
   };
   return (
@@ -106,7 +106,7 @@ export function LoginControls({ state, code, onCode, onStart, onSend, onCancel }
           {state.name === 'awaiting-browser' && state.code ? (
             <p>
               Digite este código na página:{' '}
-              <button type="button" className="code-copy" aria-label="Copiar código" onClick={copyCode}>
+              <button type="button" className="code-copy" aria-label="Copiar código" onClick={() => copyCode(state.code)}>
                 <code data-testid="one-time-code">{state.code}</code>
                 <Icon name="copy" size={16} />
               </button>
