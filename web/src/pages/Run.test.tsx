@@ -50,11 +50,13 @@ describe('RunView', () => {
     render(view());
     expect(screen.getByTestId('status').textContent).toContain('paused:quota');
     expect(screen.getByTestId('paused-until').textContent).toMatch(/até \d{2}:\d{2}/);
-    expect(screen.getAllByTestId('phase').map((p) => p.textContent)).toEqual(['1 concluído', '2 concluído', '3 em execução']);
+    // The fixture ends paused for quota, so the phase the journal still has running reads as paused.
+    expect(screen.getAllByTestId('phase').map((p) => p.textContent)).toEqual(['1 · Especificação técnica concluída', '2 · Plano concluída', '3 · Implementação pausada']);
     expect(screen.getByTestId('group-merged').textContent).toContain('T1');
     expect(screen.getByTestId('group-ready').textContent).toContain('T2');
     expect(screen.getByTestId('tokens-dev').textContent).toContain('4100');
-    expect(screen.getByTestId('evidence-AC-001').textContent).toContain('sum::[AC-001] adds');
+    expect(screen.getByTestId('evidence-AC-001').textContent).toContain('adds');
+    expect(screen.getByTestId('evidence-AC-001').querySelector('[title="sum::[AC-001] adds"]')).not.toBeNull();
     expect(screen.getByTestId('evidence-AC-002').textContent).toContain('nenhum teste');
   });
   it('selecting a task shows attempts, gates, review and the PR; a step expands to its artifacts', async () => {
@@ -142,7 +144,7 @@ describe('RunView', () => {
       expect(screen.getByTestId('redeploy-error').textContent).toBe('boom');
     });
 
-    it('groups tasks blocked for the same reason into one translated cause', () => {
+    it('groups tasks blocked for the same reason into one translated cause, with the reason in a dialog', () => {
       const reason = 'Dev reported done but produced no changes against origin/main. Implement the task or return spec-gap.';
       const blocked = [{ taskId: 'T950-deploy-fix-1-r2', reason }, { taskId: 'T950-deploy-fix-4-r1', reason }];
       render(view({ events: [ev(1, 'RUN_FINISHED', { result: 'blocked', reason: null, merged: [], blocked, tokens: {} })], ended: true, detail: { ...detail, status: 'blocked' } }));
@@ -151,12 +153,137 @@ describe('RunView', () => {
       expect(groups[0]!.textContent).toContain('T950-deploy-fix-1-r2');
       expect(groups[0]!.textContent).toContain('T950-deploy-fix-4-r1');
       expect(groups[0]!.textContent).toContain('não alterou nada');
-      expect(groups[0]!.textContent).toContain(reason);
+      // The row stays one line; the full reason is read in the dialog.
+      expect(groups[0]!.textContent).not.toContain(reason);
+      const trigger = screen.getByRole('button', { name: 'Ver detalhe do bloqueio de T950-deploy-fix-1-r2, T950-deploy-fix-4-r1' });
+      fireEvent.click(trigger);
+      const dialog = screen.getByRole('dialog', { name: 'Por que 2 tarefas ficaram bloqueadas' });
+      expect(dialog.textContent).toContain(reason);
+      expect(dialog.textContent).toContain('Sistema');
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Fechar' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+      fireEvent.click(trigger);
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('shows a translated scope violation and keeps the raw text apart', () => {
+      const reason = 'Scope violation:\nfrozen files modified: package.json';
+      render(view({ events: [ev(1, 'RUN_FINISHED', { result: 'blocked', reason: null, merged: [], blocked: [{ taskId: 'T3', reason }], tokens: {} })], ended: true, detail: { ...detail, status: 'blocked' } }));
+      fireEvent.click(screen.getByRole('button', { name: 'Ver detalhe do bloqueio de T3' }));
+      const dialog = screen.getByRole('dialog', { name: 'Por que T3 ficou bloqueada' });
+      expect(dialog.textContent).toContain('arquivos protegidos foram alterados: package.json');
+      expect(dialog.querySelector('pre')!.textContent).toBe(reason);
+    });
+
+    it('moves the task counters and the bar segments as live events arrive', () => {
+      const progress = () => ({
+        merged: screen.getByTestId('task-progress').textContent,
+        active: screen.queryByTestId('task-active')?.textContent ?? null,
+        blocked: screen.queryByTestId('task-blocked')?.textContent ?? null,
+        segments: [...document.querySelectorAll('.run-progress-bar span')].map((s) => s.className),
+      });
+      const planned = (seq: number, id: string) => ev(seq, 'TASK_PLANNED', { task: { id, title: id, description: 'd', criteriaRefs: ['AC-001'], dependsOn: [], affectedPaths: ['src'], owner: 'dev', origin: 'plan' }, replan: false });
+      const start = [planned(1, 'T11'), planned(2, 'T12'), planned(3, 'T13'), ev(4, 'TASK_STATE_CHANGED', { taskId: 'T11', to: 'ready' }), ev(5, 'TASK_STATE_CHANGED', { taskId: 'T11', to: 'implementing' })];
+      const { rerender } = render(view({ events: start, ended: false, detail: { ...detail, status: 'running' } }));
+      expect(progress()).toMatchObject({ merged: '0 de 3 tarefas mescladas', active: '1 em andamento', blocked: null, segments: ['seg-active'] });
+      const merged = [...start, ev(6, 'TASK_STATE_CHANGED', { taskId: 'T11', to: 'validating' }), ev(7, 'TASK_STATE_CHANGED', { taskId: 'T11', to: 'reviewing' }), ev(8, 'TASK_STATE_CHANGED', { taskId: 'T11', to: 'rebasing' }), ev(9, 'TASK_STATE_CHANGED', { taskId: 'T11', to: 'merging' }), ev(10, 'TASK_STATE_CHANGED', { taskId: 'T11', to: 'merged' }), ev(11, 'TASK_STATE_CHANGED', { taskId: 'T12', to: 'blocked' })];
+      rerender(view({ events: merged, ended: false, detail: { ...detail, status: 'running' } }));
+      expect(progress()).toMatchObject({ merged: '1 de 3 tarefas mescladas', active: null, blocked: '1 bloqueada', segments: ['seg-merged', 'seg-blocked'] });
     });
 
     it('shows no banner for a healthy run', () => {
       render(view());
       expect(screen.queryByTestId('outcome-banner')).toBeNull();
+    });
+
+    // hello-001-r4: T2 blocked on the security gate, verification failed twice on missing files, then the report agent failed.
+    const gateReason = "The frozen 'security-tools' gate (`sh .tools/install.sh`) exits 2 at its last step.";
+    const reportReason = 'Phase 6 blocked: (root): Invalid input: expected object, received null; no JSON object in the agent result';
+    const phaseFailed: StoredEvent[] = [
+      ...events,
+      ev(1, 'RUN_RESUMED', {}),
+      ev(2, 'TASK_STATE_CHANGED', { taskId: 'T2', to: 'blocked' }),
+      ev(3, 'TASK_BLOCKED', { taskId: 'T2', reason: gateReason }),
+      ev(4, 'PHASE_STARTED', { phase: 4, round: 1 }),
+      ev(5, 'VERIFICATION_FAILED', { round: 1, failedTests: [], uncoveredAcs: [], matrix: [], missingDelivery: ['compose: docker-compose.yml'] }),
+      ev(6, 'PHASE_STARTED', { phase: 4, round: 2 }),
+      ev(7, 'VERIFICATION_FAILED', { round: 2, failedTests: [], uncoveredAcs: [], matrix: [], missingDelivery: ['compose: docker-compose.yml'] }),
+      ev(8, 'PHASE_STARTED', { phase: 6 }),
+      ev(9, 'PHASE_FAILED', { phase: 6, reason: reportReason }),
+      ev(10, 'RUN_FINISHED', { result: 'phase-failed', reason: reportReason, merged: ['T1'], blocked: [{ taskId: 'T2', reason: gateReason }], tokens: {} }),
+    ];
+    const failedView = (props: Partial<Parameters<typeof RunView>[0]> = {}) => view({ events: phaseFailed, ended: true, detail: { ...detail, status: 'phase-failed' }, ...props });
+
+    it('lists each phase once, retried and implicitly finished phases included, with no duplicate keys', () => {
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      render(failedView());
+      expect(logged.mock.calls.flat().join(' ')).not.toMatch(/same key/);
+      logged.mockRestore();
+      const rows = screen.getAllByTestId('phase');
+      expect(rows.map((r) => r.querySelector('.phase-name')!.textContent)).toEqual(['1 · Especificação técnica', '2 · Plano', '3 · Implementação', '4 · Verificação', '6 · Relatório']);
+      expect(rows[2]!.textContent).toContain('com bloqueios');
+      expect(rows[3]!.textContent).toContain('falhou');
+      expect(rows[3]!.textContent).toContain('2ª tentativa');
+      expect(rows[3]!.textContent).toContain('O que fazer:');
+      expect(rows[3]!.textContent).toContain('resolva os bloqueios');
+    });
+
+    it('opens a failed phase in a dialog with what happened, who resolves it and the raw reason', () => {
+      render(failedView());
+      const trigger = screen.getByRole('button', { name: 'Ver detalhe da falha em 6 · Relatório' });
+      fireEvent.click(trigger);
+      const dialog = screen.getByRole('dialog', { name: '6 · Relatório falhou' });
+      expect(dialog.textContent).toContain('O relatório final não foi gerado');
+      expect(dialog.querySelector('pre')!.textContent).toBe(reportReason);
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+      fireEvent.click(screen.getByRole('button', { name: 'Ver detalhe da falha em 4 · Verificação' }));
+      expect(screen.getByRole('dialog').textContent).toContain('delivery contract not met on main, missing: compose: docker-compose.yml');
+      fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('says at the top what stopped the run, why, what came before and what to do', () => {
+      render(failedView());
+      const banner = screen.getByTestId('outcome-banner');
+      expect(banner.querySelector('h2')!.textContent).toBe('A run parou na fase 6 · Relatório.');
+      expect(banner.textContent).toContain('O relatório final não foi gerado');
+      expect(screen.getByTestId('outcome-before').textContent).toContain('T2 ficou bloqueada');
+      expect(screen.getByTestId('outcome-owner').textContent).toBe('Sistema');
+      expect(screen.getByTestId('outcome-hint').textContent).toContain('Reprocesse');
+      expect(screen.getByTestId('cause-group').textContent).toContain('As ferramentas de segurança não rodam no ambiente do gate');
+      fireEvent.click(screen.getByTestId('outcome-detail'));
+      expect(screen.getByRole('dialog', { name: 'Detalhe técnico' }).querySelector('pre')!.textContent).toBe(reportReason);
+    });
+
+    it('offers Reprocessar only when wired, disabled while the new run starts, with its error inline', () => {
+      const onReprocess = vi.fn();
+      const { rerender } = render(failedView());
+      expect(screen.queryByTestId('reprocess')).toBeNull();
+      rerender(failedView({ reprocessAction: { onReprocess, busy: false, error: null } }));
+      expect(screen.getByTestId('reprocess').textContent).toBe('Reprocessar');
+      fireEvent.click(screen.getByTestId('reprocess'));
+      expect(onReprocess).toHaveBeenCalledTimes(1);
+      rerender(failedView({ reprocessAction: { onReprocess, busy: true, error: 'Esta spec já tem a run hello-001-r5 (em execução).' } }));
+      expect((screen.getByTestId('reprocess') as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByTestId('reprocess').textContent).toBe('Iniciando nova run…');
+      expect(screen.getByTestId('reprocess-error').textContent).toContain('hello-001-r5');
+    });
+
+    it('names the usage panel and every metric plainly, with the raw role id kept beside the name', () => {
+      render(view());
+      expect(screen.getByRole('heading', { name: 'Consumo dos modelos' })).toBeTruthy();
+      expect(screen.getByTestId('tokens-dev').textContent).toContain('Desenvolvimento');
+      expect(screen.getByTestId('tokens-dev').querySelector('.usage-id')!.textContent).toBe('dev');
+      expect(screen.getByTestId('tokens-system1').textContent).toContain('Decisões automáticas');
+      for (const label of ['Tarefas mescladas', 'Custo estimado', 'Tokens de entrada', 'Contexto em cache', 'Tokens de saída', 'Etapas', 'Por agente', 'Por fase']) {
+        expect(screen.getAllByRole('button', { name: new RegExp(`^${label}: `) }).length).toBeGreaterThan(0);
+      }
+      expect(screen.getByTestId('task-progress').textContent).toBe('1 de 2 tarefas mescladas');
     });
   });
 });

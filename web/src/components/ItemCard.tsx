@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Item } from '../api.js';
 import { Icon, type IconName } from './Icons.js';
+import { InfoTip } from './InfoTip.js';
 
 function friendlyDetail(detail: string) {
   const normalized = detail.trim().toLowerCase();
@@ -11,10 +12,15 @@ function friendlyDetail(detail: string) {
   if (normalized === 'github_token not set') return 'Token do GitHub ainda não informado';
   if (normalized === 'openrouter_api_key not set') return 'Chave do OpenRouter ainda não informada';
   if (normalized === 'unknown account (team)') return 'Conta Claude conectada (equipe)';
+  // The owner check reports "login (Organization|User)" and the token check "login · scopes: …".
+  const owner = /^(.+) \((Organization|User)\)$/.exec(detail.trim());
+  if (owner) return `${owner[1]} (${owner[2] === 'Organization' ? 'organização' : 'conta pessoal'})`;
+  const token = /^(.+) · scopes: (.+)$/.exec(detail.trim());
+  if (token) return `${token[1]} · permissões: ${token[2] === 'none' ? 'não informadas' : token[2]}`;
   return detail;
 }
 
-export function ItemCard({ title, item, children, variant = 'default', subtitle, icon, illustration }: { title: string; item: Item | null; children?: ReactNode; variant?: 'default' | 'login'; subtitle?: string; icon?: IconName; illustration?: string }) {
+export function ItemCard({ title, item, children, variant = 'default', subtitle, info, icon, illustration }: { title: string; item: Item | null; children?: ReactNode; variant?: 'default' | 'login'; subtitle?: string; info?: string; icon?: IconName; illustration?: string }) {
   const status = item === null ? 'checking' : item.ok ? 'ok' : 'todo';
   const statusLabel = status === 'checking' ? 'Verificando' : status === 'ok' ? 'Concluído' : 'Pendente';
   return (
@@ -22,7 +28,10 @@ export function ItemCard({ title, item, children, variant = 'default', subtitle,
       <header className="onboarding-card-header">
         {icon ? <span className={`card-icon card-icon-${icon}`}><Icon name={icon} size={variant === 'login' ? 38 : 24} /></span> : <span className="dot" aria-label={status === 'checking' ? 'verificando' : status === 'ok' ? 'concluído' : 'pendente'} />}
         <div className="card-title-block">
-          <h2>{title}</h2>
+          <div className="card-title-row">
+            <h2>{title}</h2>
+            {info ? <InfoTip text={info} /> : null}
+          </div>
           {subtitle ? <p className="card-subtitle">{subtitle}</p> : null}
         </div>
         <span className="status-chip">{statusLabel}</span>

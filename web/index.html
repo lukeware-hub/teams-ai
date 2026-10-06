@@ -1,9 +1,17 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>teams-ai</title>
+    <title>Teams AI</title>
+    <script>
+      // Apply the saved theme before the first paint, so a dark choice never flashes light. Mirrors src/theme.ts.
+      try {
+        var pref = localStorage.getItem('teams-ai.theme');
+        var dark = pref === 'dark' || (pref === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

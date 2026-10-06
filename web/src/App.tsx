@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router-dom';
 import { refineApi, runApi } from './api.js';
+import { ThemeSwitch } from './components/ThemeSwitch.js';
 import { Onboarding } from './pages/Onboarding.js';
 import { Projects } from './pages/Projects.js';
 import { RefinementPage } from './pages/Refinement.js';
@@ -15,12 +16,18 @@ export function Home() {
       .then(([p, d]) => setTo(p.length > 0 || d.length > 0 ? '/projects' : '/onboarding'))
       .catch(() => setTo('/onboarding'));
   }, []);
-  return to ? <Navigate to={to} replace /> : <p>Loading…</p>;
+  return to ? <Navigate to={to} replace /> : <p className="hint">Carregando…</p>;
 }
 
 export function App() {
   return (
     <BrowserRouter>
+      <header className="app-bar">
+        <Link className="app-brand" to="/">
+          Teams AI
+        </Link>
+        <ThemeSwitch />
+      </header>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/onboarding" element={<Onboarding />} />

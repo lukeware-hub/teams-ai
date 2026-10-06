@@ -2,6 +2,21 @@ import { useState } from 'react';
 import { api, type Item } from '../api.js';
 import { ItemCard } from './ItemCard.js';
 
+const COPY = {
+  GITHUB_TOKEN: {
+    subtitle: 'Cole um token de acesso pessoal para o Teams AI publicar código em seu nome.',
+    info: 'Crie o token no GitHub, em Settings › Developer settings. Ele fica guardado só neste computador e nunca é repassado aos agentes.',
+    field: 'Cole o token de acesso',
+    replace: 'Substituir token salvo',
+  },
+  OPENROUTER_API_KEY: {
+    subtitle: 'Opcional: habilita o Jev, que revisa a consistência dos documentos.',
+    info: 'O Jev é um assistente de IA acessado pelo OpenRouter, que confere documentos e agiliza decisões simples. Sem a chave, o Teams AI funciona normalmente, só que sem ele.',
+    field: 'Cole a chave de API',
+    replace: 'Substituir chave salva',
+  },
+};
+
 export function SecretCard({ name, title, item, onSaved }: { name: 'GITHUB_TOKEN' | 'OPENROUTER_API_KEY'; title: string; item: Item | null; onSaved: (item: Item) => void }) {
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
@@ -19,8 +34,9 @@ export function SecretCard({ name, title, item, onSaved }: { name: 'GITHUB_TOKEN
       setBusy(false);
     }
   };
+  const copy = COPY[name];
   return (
-    <ItemCard title={title} item={item} variant="login" subtitle={name === 'GITHUB_TOKEN' ? 'Informe um token para validar o acesso aos seus repositórios.' : 'Informe a chave para habilitar os recursos de IA.'} icon={name === 'GITHUB_TOKEN' ? 'github' : 'user'} illustration={name === 'GITHUB_TOKEN' ? '/onboarding-github-token.png' : '/onboarding-openrouter.png'}>
+    <ItemCard title={title} item={item} variant="login" subtitle={copy.subtitle} info={copy.info} icon={name === 'GITHUB_TOKEN' ? 'github' : 'user'} illustration={name === 'GITHUB_TOKEN' ? '/onboarding-github-token.png' : '/onboarding-openrouter.png'}>
       <form
         className="secret-form"
         onSubmit={(e) => {
@@ -29,7 +45,7 @@ export function SecretCard({ name, title, item, onSaved }: { name: 'GITHUB_TOKEN
         }}
       >
         <label className="secret-field">
-          <span>{item?.secret?.set ? 'Substituir token salvo' : 'Cole o token de acesso'}</span>
+          <span>{item?.secret?.set ? copy.replace : copy.field}</span>
           <input type="password" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Cole o valor aqui…" autoComplete="off" />
         </label>
         <button type="submit" className="primary-button" disabled={busy || value.trim() === ''}>

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { StoredEvent } from '../api.js';
-import { deployOutcome, evidence, explainStop, lastDeployFailure, pausedUntil, phases, runState, stopSummary, taskDetail, tokens } from './selectors.js';
+import { blockedSummary, deployOutcome, evidence, explainPhase, explainStop, firstSentence, lastDeployFailure, pausedUntil, phases, phaseTitle, runState, stopSummary, taskDetail, tokens } from './selectors.js';
 
 // jsdom gives import.meta.url an http: scheme; vitest runs with cwd = web/
 const events: StoredEvent[] = readFileSync(path.resolve('../test/fixtures/runs/hello-run.ndjson'), 'utf8')
@@ -19,10 +19,10 @@ describe('run selectors', () => {
     expect(s.tasks.get('T2')).toMatchObject({ state: 'ready', attempts: 0 });
   });
   it('phases 1 and 2 are done, 3 is running', () => {
-    expect(phases(events).map((p) => [p.phase, p.result])).toEqual([
-      [1, 'done'],
-      [2, 'done'],
-      [3, 'running'],
+    expect(phases(events).map((p) => [p.phase, p.result, p.attempt])).toEqual([
+      [1, 'done', 1],
+      [2, 'done', 1],
+      [3, 'running', 1],
     ]);
   });
   it('paused until comes from the last quota pause', () => {
@@ -70,7 +70,7 @@ describe('run selectors', () => {
 it('phases 4-6 end on their own events', () => {
   const evs = (list: Array<[string, Record<string, unknown>]>) => list.map(([type, data], i) => ({ seq: i + 1, at: '2026-09-24T10:00:00.000Z', runId: 'r', specHash: 'h', type, kind: 'fact' as const, data }));
   const out = phases(evs([['PHASE_STARTED', { phase: 4, round: 1 }], ['VERIFICATION_FAILED', { round: 1 }], ['PHASE_STARTED', { phase: 4, round: 2 }], ['VERIFICATION_PASSED', { round: 2 }], ['PHASE_STARTED', { phase: 5 }], ['DEPLOY_FAILED', { attempt: 1, stage: 'apply' }], ['DEPLOY_VERIFIED', { attempt: 2, url: 'http://x' }], ['PHASE_STARTED', { phase: 6 }], ['REPORT_READY', {}]]));
-  expect(out.map((p) => [p.phase, p.result])).toEqual([[4, 'running'], [4, 'done'], [5, 'done'], [6, 'done']]);
+  expect(out.map((p) => [p.phase, p.result, p.attempt])).toEqual([[4, 'done', 2], [5, 'done', 1], [6, 'done', 1]]);
   expect(deployOutcome(evs([['DEPLOY_FAILED', { attempt: 1, stage: 'apply', detail: 'busy' }], ['DEPLOY_VERIFIED', { attempt: 2, url: 'http://x' }]]))).toEqual({ attempts: 2, verified: { url: 'http://x' }, lastFailure: null });
 });
 
@@ -112,5 +112,115 @@ describe('stopped run explanations', () => {
   it('phase 5 is failed on the first DEPLOY_FAILED with no later verification', () => {
     const out = phases(evs([['PHASE_STARTED', { phase: 5 }], ['DEPLOY_FAILED', { attempt: 1, stage: 'smoke', detail: 'plan.commands.smoke missing' }], ['PHASE_STARTED', { phase: 6 }]]));
     expect(out.find((p) => p.phase === 5)).toMatchObject({ result: 'failed', reason: 'plan.commands.smoke missing' });
+  });
+
+  it('stopSummary names the phase a phase-failed run stopped at and explains its reason', () => {
+    const reason = 'Phase 6 blocked: (root): Invalid input: expected object, received null; no JSON object in the agent result (subtype=success, terminal=completed, turns=1): ```json\n{"blocked":[{"reason":"The frozen \'security-tools\' gate exits 2"}]}';
+    const s = stopSummary({ status: 'phase-failed', reason, causes: [], deployFailure: null, failedPhase: 6 });
+    // The quoted agent text names the security gate, but the phase's own prefix wins.
+    expect(s).toMatchObject({ what: 'A run parou na fase 6 · Relatório.', title: 'O relatório final não foi gerado', owner: 'Sistema', raw: reason });
+    expect(s!.hint).toContain('Reprocesse');
+    const unknown = stopSummary({ status: 'failed', reason: 'Something odd happened. More detail here.', causes: [], deployFailure: null, failedPhase: null });
+    expect(unknown).toMatchObject({ what: 'A run falhou.', title: 'Something odd happened.' });
+    expect(unknown!.hint).toContain('reprocesse');
+  });
+
+  it('stopSummary tells a missing delivery apart from failing tests', () => {
+    const delivery = stopSummary({ status: 'verification-failed', reason: 'delivery contract not met on main, missing: compose: docker-compose.yml', causes: [], deployFailure: null });
+    expect(delivery!.title).toBe('Faltam arquivos de entrega na main');
+    const tests = stopSummary({ status: 'verification-failed', reason: 'verification failed in round 2: 2 failing tests, 0 uncovered criteria', causes: [], deployFailure: null });
+    expect(tests!.title).toBe('Os testes de aceitação não passaram');
+  });
+
+  it('explains the security-tools gate failure an agent described, and the phases the orchestrator names', () => {
+    expect(explainStop("The frozen 'security-tools' gate (`sh .tools/install.sh`, plan.json) exits 2 at its last step")).toMatchObject({ owner: 'Sistema', title: expect.stringContaining('ferramentas de segurança') });
+    expect(explainStop('The security-tools gate fails while it installs gitleaks, before it scans any code.')).toMatchObject({ title: expect.stringContaining('ferramentas de segurança') });
+    expect(explainStop('Phase 1 exhausted 3 attempts; uncovered: AC-002')).toMatchObject({ owner: 'Você' });
+    expect(explainStop('gh repo view failed: HTTP 401')).toMatchObject({ owner: 'Você' });
+    expect(explainPhase({ phase: 5, reason: 'container exited 137' })).toMatchObject({ title: 'container exited 137', hint: expect.stringContaining('deploy') });
+    expect(explainPhase({ phase: 2, reason: null }).title).toBe('2 · Plano falhou');
+  });
+
+  it('blockedSummary ties a failure to the tasks that blocked on their own', () => {
+    const cascade = (id: string) => ({ taskId: id, reason: 'a dependency is blocked' });
+    expect(blockedSummary([{ taskId: 'T0-scaffold', reason: 'gate fails' }, cascade('T1'), cascade('T2')])).toMatch(/^T0-scaffold ficou bloqueada e travou outras 2 tarefas\. /);
+    expect(blockedSummary([{ taskId: 'T1', reason: 'x' }, { taskId: 'T2', reason: 'y' }, cascade('T3')])).toMatch(/^2 tarefas ficaram bloqueadas e travaram outra tarefa\. /);
+    expect(blockedSummary([cascade('T1')])).toBeNull();
+    expect(blockedSummary([])).toBeNull();
+  });
+
+  it('firstSentence gives a one-line title for a long explanation', () => {
+    expect(firstSentence('It failed. Then it stopped.')).toBe('It failed.');
+    expect(firstSentence('Runs `.tools/bin/semgrep --version` in plan.json and exits 2. Nobody can fix it.')).toBe('Runs `.tools/bin/semgrep --version` in plan.json and exits 2.');
+    expect(firstSentence('no period here\nsecond line')).toBe('no period here');
+    expect(firstSentence('x'.repeat(300))).toHaveLength(160);
+    expect(firstSentence('x'.repeat(300)).endsWith('…')).toBe(true);
+  });
+});
+
+describe('phase rows', () => {
+  const evs = (list: Array<[string, Record<string, unknown>]>) => list.map(([type, data], i) => ({ seq: i + 1, at: `2026-10-05T10:00:${String(i).padStart(2, '0')}.000Z`, runId: 'r', specHash: 'h', type, kind: 'fact' as const, data }));
+
+  it('a retried phase is one row: the latest attempt wins and the attempts are counted', () => {
+    const out = phases(evs([['PHASE_STARTED', { phase: 1 }], ['PHASE_STARTED', { phase: 1 }], ['DOCS_MERGED', { phase: 1 }]]));
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ phase: 1, attempt: 2, result: 'done', startedAt: '2026-10-05T10:00:01.000Z' });
+  });
+
+  it('a phase followed by the start of another one counts as done', () => {
+    const out = phases(evs([['PHASE_STARTED', { phase: 3 }], ['PHASE_STARTED', { phase: 4, round: 1 }]]));
+    expect(out.map((p) => [p.phase, p.result])).toEqual([
+      [3, 'done'],
+      [4, 'running'],
+    ]);
+  });
+
+  it('a run shaped like hello-001-r4 reads 1, 2, 3 done and 4 (second attempt) and 6 failed', () => {
+    const out = phases(
+      evs([
+        ['PHASE_STARTED', { phase: 1 }],
+        ['DOCS_MERGED', { phase: 1 }],
+        ['PHASE_STARTED', { phase: 2 }],
+        ['DOCS_MERGED', { phase: 2 }],
+        ['PHASE_STARTED', { phase: 3 }],
+        ['PHASE_STARTED', { phase: 4, round: 1 }],
+        ['VERIFICATION_FAILED', { round: 1, missingDelivery: ['compose: docker-compose.yml'] }],
+        ['PHASE_STARTED', { phase: 4, round: 2 }],
+        ['VERIFICATION_FAILED', { round: 2, failedTests: [], uncoveredAcs: [], missingDelivery: ['compose: docker-compose.yml', 'e2eSuite: e2e/hello.e2e.mjs'] }],
+        ['PHASE_STARTED', { phase: 6 }],
+        ['PHASE_FAILED', { phase: 6, reason: 'Phase 6 blocked: no JSON object in the agent result' }],
+        ['RUN_FINISHED', { result: 'phase-failed', reason: 'Phase 6 blocked: no JSON object in the agent result' }],
+      ]),
+    );
+    expect(out.map((p) => [p.phase, p.result, p.attempt])).toEqual([
+      [1, 'done', 1],
+      [2, 'done', 1],
+      [3, 'done', 1],
+      [4, 'failed', 2],
+      [6, 'failed', 1],
+    ]);
+    expect(out[3]!.reason).toBe('delivery contract not met on main, missing: compose: docker-compose.yml, e2eSuite: e2e/hello.e2e.mjs');
+    expect(out[4]!.reason).toBe('Phase 6 blocked: no JSON object in the agent result');
+  });
+
+  it('a later event never turns a failed phase into a success', () => {
+    const out = phases(evs([['PHASE_STARTED', { phase: 6 }], ['PHASE_FAILED', { phase: 6, reason: 'docs merge failed at push: denied' }], ['REPORT_READY', { merged: false }], ['RUN_FINISHED', { result: 'phase-failed', reason: 'x' }]]));
+    expect(out[0]).toMatchObject({ result: 'failed', reason: 'docs merge failed at push: denied' });
+  });
+
+  it('the CI workflows fail without a start of their own and still get a row', () => {
+    const out = phases(evs([['PHASE_STARTED', { phase: 2 }], ['DOCS_MERGED', { phase: 2 }], ['PHASE_FAILED', { phase: 7, reason: 'rendered .github/workflows/ci.yml is invalid: no jobs' }]]));
+    expect(out.map((p) => [p.phase, p.result])).toEqual([
+      [2, 'done'],
+      [7, 'failed'],
+    ]);
+    expect(phaseTitle(7)).toBe('Workflows de CI');
+    expect(phaseTitle(4)).toBe('4 · Verificação');
+    expect(phaseTitle(9)).toBe('Fase 9');
+  });
+
+  it('a run stopped by the user leaves its phase interrupted, not failed', () => {
+    const out = phases(evs([['PHASE_STARTED', { phase: 3 }], ['RUN_FINISHED', { result: 'drained', reason: null }]]));
+    expect(out[0]).toMatchObject({ result: 'stopped', reason: null });
   });
 });

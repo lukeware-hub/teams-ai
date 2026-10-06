@@ -84,6 +84,8 @@ Two ink levels carry text. A third "even quieter" gray is how the current file r
 | `accent-2` | ≈`#7b4fef` | Ramp end. Never used alone. |
 | `gradient-primary` | ≈`linear-gradient(115deg, #4a54e8 0%, #7b4fef 100%)` | **The onboarding flow only** — see §3.3 |
 | `accent-hover` | `#3949ad` | Accent hover |
+| `accent-text` | `#4357c7` | Accent **as text** — links, active tab, quiet actions. Equals `accent` in light; the dark theme splits them because a fill that carries white text is too dark to read as text (§3.10). |
+| `on-accent` | `#ffffff` | Text on an `accent` fill |
 | `accent-ink` | `#2f3f9e` | Accent text on `accent-soft` — 7.96:1 |
 | `accent-soft` | ≈`#eef1fe` | Tinted ground: icon tiles, active tab, guidance callout, chips |
 | `accent-soft-hover` | ≈`#e2e6fa` | Its hover |
@@ -112,7 +114,7 @@ Never on text, a card, a border, a chip, a heading, or an icon.
 |---|---|---|---|---|
 | good | `#197044` | `#e7f7ee` | `#cce8da` | 5.50:1 |
 | bad | `#b8272c` | `#fdeceb` | `#f5cfcd` | 5.46:1 |
-| warn | `#96620d` | ≈`#fff4e5` | — | to verify |
+| warn | `#96620d` | `#fff4e5` | `#f2dfbd` | 4.78:1 |
 | info | — | `#ddf4ff` | — | — |
 
 Display-only greens, which never carry text: `good-bright` ≈`#22c55e` (check glyph, confetti), `good-live` `#2f9e61` (pulsing session dot). `bad-ink` `#7a2426` for body text inside a failure block.
@@ -149,9 +151,9 @@ Terminal, a closed palette: `term-bg` `#14181f` · `term-line` `#2d3545` · `ter
 | `good` on `good-soft` | 5.50 | pass |
 | `bad` on `bad-soft` | 5.46 | pass |
 | `ink-faint` on `surface` | 3.12 | **non-text only** — gutter digits exempted |
-| white on `gradient-primary` | **to verify at both ends** | the violet end is the light end; if it drops under 4.5:1, the ramp darkens, not the label |
-| `violet` on `violet-soft` | **to verify** | glyph only, so 3:1 suffices |
-| `warn` on the sampled `#fff4e5` | **to verify** | |
+| white on `gradient-primary` | 5.64 (start) · 4.99 (end) | pass at both ends |
+| `violet` on `violet-soft` | 4.46 | pass — glyph only, 3:1 suffices |
+| `warn` on `warn-soft` | 4.78 | pass |
 
 ### 3.8 Consolidation map
 
@@ -185,7 +187,35 @@ Every one of the 92 current colors resolves to a role above.
 - **State color is never the only signal.** Every colored state also has a shape, glyph or word.
 - **Tone comes from state, never from a container.** A chip in a login card and a chip in a table read the same state token. Deriving tone from an ancestor is what produced a success-green `Pendente` in the shipped screen — fixed in `a60a961`; the rule exists so it cannot return by another route.
 - **Hover changes ground, focus changes border.** Two signals, two jobs.
-- **Light, not dark**, from the use scene: a developer at a desk, daytime, beside a terminal.
+- **Light by default**, from the use scene: a developer at a desk, daytime, beside a terminal. Dark is the user's choice, never a screen's (§3.10).
+
+### 3.10 Themes
+
+The user picks the theme in the app bar (§25): **Claro** (default), **Escuro**, or **Sistema** (follows `prefers-color-scheme` and keeps following it while the page is open). The choice is stored per browser under `teams-ai.theme` and applied by an inline script in `index.html` before the first paint, so a dark choice never flashes light. The resolved theme is `data-theme="light|dark"` on `<html>`.
+
+Dark remaps **the same roles**; no screen carries theme-specific selectors, and no screen picks a theme for itself. Every value below is measured on `surface` unless noted.
+
+| Role | Dark value | Note |
+|---|---|---|
+| `bg` | `#0e1116` | Neutral near-black with a cool cast — not navy |
+| `surface` | `#161a21` | |
+| `surface-sunken` | `#12161c` | Insets sit darker than their panel |
+| `surface-muted` | `#1f242d` | |
+| `line` · `line-strong` | `#262c36` · `#3a4250` | Borders carry the edges; shadows barely read on dark |
+| `ink` | `#e5e9f0` | 14.33:1 |
+| `ink-soft` | `#9aa4b5` | 6.94:1 |
+| `ink-faint` | `#6b7586` | 3.75:1, non-text only |
+| `accent` | `#5468dd` | Fill only — white on it 4.77:1 |
+| `accent-text` | `#9eaaff` | 8.01:1 |
+| `accent-ink` / `accent-soft` | `#b7c0ff` / `#1d2340` | 8.78:1 |
+| `good` / `good-soft` | `#57c98f` / `#13281f` | 7.52:1 |
+| `bad` / `bad-soft` / `bad-ink` | `#f0787c` / `#2e1719` / `#f4b6b8` | 6.13:1 · 9.76:1 |
+| `warn` / `warn-soft` | `#e3ac4f` / `#2c2213` | 7.64:1 |
+| `violet` / `violet-soft` | `#a597f5` / `#241f3f` | 6.21:1 |
+
+- Shadows collapse to a 1–2px dark edge; elevation in dark comes from `surface` over `bg` plus the `line` border.
+- Illustrations were drawn for a light ground: in dark they sit on a light plate (`art-plate`) instead of multiplying into the ground.
+- The terminal palette (§3.6) is the same in both themes; in dark `term-bg` drops to `#0b0e12` so it still reads as a separate surface.
 
 ---
 
@@ -329,7 +359,7 @@ Both references use them: the onboarding progress cube and success check, and th
 | Radius | `radius-tile` 14px (48px box) · 16px (56px box) |
 | Ground | a `-soft` token: `accent-soft`, `violet-soft`, `good-soft`, `warn-soft` |
 | Glyph | 28px at 56px box · 24px at 48px box, in the matching base color |
-| Border | 1px of the matching `-line` token, **or** `shadow-tile` — never both |
+| Border | 1px of the matching `-line` token, or none — tiles carry no shadow |
 
 A tile carries **one** glyph. **A tile is never decoration hunting for content: if the glyph does not name the thing the tile sits beside, delete the tile.** The 4.2rem brand tile in the current onboarding build is that failure — 67px of ornament pushing every title off the left guide.
 
@@ -442,17 +472,17 @@ Blur until the copy is unreadable. The primary element, the secondary element an
 
 | Role | Value | Use |
 |---|---|---|
-| `radius-xs` | 6px | Chips, inline code |
-| `radius-sm` | 8px | Small controls |
-| `radius-md` | 10px | Inputs, buttons, file rows |
-| `radius-lg` | 12px | Editor, inset boxes, empty-state boxes, callouts |
-| `radius-tile` | 14px | Icon tiles |
-| `radius-xl` | 18px | Panels and cards |
-| `radius-2xl` | 20px | The onboarding content card |
+| `radius-xs` | 4px | Tiny marks |
+| `radius-sm` | 6px | Inline code, small controls, segmented-control items |
+| `radius-md` | 8px | Inputs, buttons, file rows, callouts |
+| `radius-lg` | 10px | Editor, inset boxes, lists, empty-state boxes |
+| `radius-tile` | 12px | Icon tiles |
+| `radius-xl` | 12px | Panels and cards |
+| `radius-2xl` | 16px | The onboarding content card |
 | `radius-pill` | 999px | Pills, tracks |
 | `radius-circle` | 50% | Dots |
 
-Replaces 15 arbitrary values including `9px`, `14px`, `16px`, `1.1rem`, `24px` and the compound `24px 24px 1.2rem 1.2rem`.
+Replaces 15 arbitrary values including `9px`, `14px`, `16px`, `1.1rem`, `24px` and the compound `24px 24px 1.2rem 1.2rem`. The scale was tightened one step after review: 18–20px panels read as a template rather than a tool.
 
 **Nesting rule.** One frame owns the largest radius on a screen; nothing inside may equal or exceed it. A nested radius should be roughly `outer − padding` so the curves stay concentric — the reference's 12px editor inside an 18px panel with 24px padding obeys this; a 12px inner inside a 14px outer would not.
 
@@ -464,13 +494,12 @@ Softer and wider than the current build, matching the references' near-invisible
 
 | Role | Value | Use |
 |---|---|---|
-| `shadow-card` | ≈`0 1px 2px rgb(24 34 53 / .03), 0 12px 32px rgb(24 34 53 / .05)` | Panels and cards |
-| `shadow-tile` | ≈`0 4px 12px rgb(24 34 53 / .06)` | Icon tiles, illustration elements |
-| `shadow-button` | ≈`0 2px 6px rgb(67 87 199 / .22)` | The flat primary action |
-| `shadow-primary` | ≈`0 6px 16px rgb(90 79 235 / .28)` | **The onboarding gradient button only** |
-| `shadow-pop` | `0 12px 28px rgb(24 34 53 / .14)` | Overlays, menus, toasts |
+| `shadow-card` | `0 1px 2px rgb(24 34 53 / .04), 0 2px 8px rgb(24 34 53 / .04)` | Panels and cards |
+| `shadow-button` | `0 1px 2px rgb(24 34 53 / .08)` | Raised controls: the flat primary, the selected theme option |
+| `shadow-primary` | `0 4px 12px rgb(74 84 232 / .22)` | **The onboarding gradient button only** |
+| `shadow-pop` | `0 10px 24px rgb(24 34 53 / .16)` | Overlays, menus, tooltips |
 
-Rings are **state**, not depth: `ring-focus` `0 0 0 3px rgb(67 87 199 / .28)`.
+Rings are **state**, not depth: `ring-focus` `0 0 0 3px rgb(67 87 199 / .22)`. The colored glow under buttons and the 32px card bloom were removed after review: they were the strongest "generated" tell on the screens.
 
 **Rules**
 
@@ -607,7 +636,7 @@ Shape: inline-flex, 6px gap, 5px/10px padding, `radius-pill`, `meta` size at wei
 | accent | `accent-ink` | `accent-soft` |
 | info | `ink` | `info-soft` |
 
-**Dot or icon?** A dot for a state that is simply on or off — `Atual`, `Concluído`. An icon where the chip names a capability or a count — `Editável` with a pencil, `0 em aberto` with a clock. Replaces nine implementations. Tone is assigned by the element's own state class — never by an ancestor.
+**Dot or icon?** A dot for a state that is simply on or off — `Atual`, `Concluído`. An icon where the chip names a capability or a count — `Editável` with a pencil, `0 em aberto` with a clock. Replaces nine implementations. Tone is assigned by the element's own state class — never by an ancestor. In code the tones are `tone-good`, `tone-bad`, `tone-warn` and `tone-neutral`; `tone-neutral` is the **accent** tone and marks work in progress (`em execução`, `finalizando`).
 
 ### 11.5 Callout
 
@@ -724,11 +753,19 @@ Light-on-dark needs compensation on all three axes: one step more leading, sligh
 
 ### 11.17 Progress
 
-Track 6px, `radius-pill`, `surface-muted`. Fill `radius-pill`, `transform: scaleX()` from the left, `duration-slow` `ease-out`. In the onboarding flow the fill is `gradient-primary`; anywhere else it is flat `accent`.
+Track 6px, `radius-pill`, `surface-muted`. Fill `radius-pill`, `transform: scaleX()` from the left, `duration-slow` `ease-out`. In the onboarding flow the fill is `gradient-primary`; anywhere else it is flat `accent`, except a bar that counts finished work (the run's merged tasks), which fills in `good`.
 
 ### 11.18 Browser surfaces
 
-The parts nobody drew still carry the design, and shipping them as browser defaults is the cheapest tell that a page was assembled rather than built. All themed: text selection (`accent-ink` on `accent-soft`), caret (`accent`), form `accent-color`, focus ring, link underline offset and thickness, scrollbars on the editor and the terminal, tabular figures wherever numbers are compared.
+The parts nobody drew still carry the design, and shipping them as browser defaults is the cheapest tell that a page was assembled rather than built. All themed: text selection (`accent-ink` on `accent-soft`), caret (`accent`), form `accent-color`, focus ring, link underline offset and thickness, scrollbars on the editor and the terminal, tabular figures wherever numbers are compared. `color-scheme` follows the theme so native controls and scrollbars switch with it.
+
+### 11.19 Info tip
+
+Every metric, status or term a first-time user could misread carries an explanation one hover away: a 14px `info` glyph in `ink-faint` beside its label (`InfoTip`). Hover or keyboard focus shows a bubble — `tooltip-bg` / `tooltip-ink`, `radius-md`, `shadow-pop`, max 17rem, one or two short sentences — positioned `fixed` so scrolling tables and clipped lists never cut it. `Escape` dismisses it. The explanation is the button's accessible name, and the bubble exists only while shown.
+
+- One tip per concept, beside the concept's label — never on every repetition of it.
+- The label itself must already be the best short name; the tip explains, it does not rescue a cryptic label.
+- Plain Portuguese, no jargon the tip itself would need to explain.
 
 ---
 
@@ -777,6 +814,8 @@ Three cascade layers: **tokens → primitives → app**.
 | `app` | layout, composition, screen rules | no |
 
 Explicit layering means a surface rule wins over a primitive without a specificity contest. 209 selectors in one flat file is how a container selector came to beat a state selector. Adoption is incremental: legacy class names may alias onto a family's single definition, so the system lands without touching JSX.
+
+**Files today.** `web/src/styles.css` holds the tokens (both themes) and the primitives and is imported first by `main.tsx`; each screen's rules live beside it — `pages/onboarding.css`, `pages/projects.css`, `pages/refine.css`, `pages/run.css` — imported by the page, so they come later in the cascade than the primitives they compose.
 
 ### 14.2 Selectors
 
@@ -1044,8 +1083,9 @@ Every screen outside the onboarding flow shares this shell.
 | Column gap | 24px |
 | Panel gap (stacked) | 20px |
 | Page title | **None** where the breadcrumb names the thing |
+| App bar | 52px, full width, `surface` with a `line` bottom rule: the product name `Teams AI` at the left (links to `/`), the theme control at the right (§3.10) — a three-option segmented control (sun, moon, monitor icons, each with an `aria-label`, the selected one raised with `shadow-button`). Shown on every screen, onboarding included. |
 
-**No global nav bar.** The breadcrumb is the navigation. A product with five screens does not need a sidebar, and the reference does not have one.
+**No navigation links in the app bar.** The breadcrumb is the navigation. A product with five screens does not need a sidebar, and the reference does not have one; the bar exists only for identity and the theme choice.
 
 ## 26. Refinement — `/refine/:projectId/:specId`
 

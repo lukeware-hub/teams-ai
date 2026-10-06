@@ -20,7 +20,7 @@ describe('ValidationView', () => {
     const sec = { taskId: 'T1', file: 'src/a.ts', line: 3, severity: 'high' as const, category: 'injection', problem: 'user input reaches a shell', fix: 'use execFile' };
     const withSec = { ...detail(), report: { ...report, securityFindings: [sec] } };
     const { unmount } = render(<MemoryRouter><ValidationView detail={withSec} specStatus="awaiting-validation" onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
-    expect(screen.getByTestId('security-findings').textContent).toContain('[high]');
+    expect(screen.getByTestId('security-findings').textContent).toContain('Gravidade alta');
     expect(screen.getByTestId('security-0').textContent).toContain('src/a.ts:3');
     unmount();
     render(<MemoryRouter><ValidationView detail={detail()} specStatus="awaiting-validation" onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
@@ -32,9 +32,9 @@ describe('ValidationView', () => {
     const on = { report: vi.fn(), complete: vi.fn() };
     render(<MemoryRouter><ValidationView detail={detail()} specStatus="awaiting-validation" onReport={on.report} onComplete={on.complete} /></MemoryRouter>);
     expect(screen.getByTestId('service-url').getAttribute('href')).toBe('http://127.0.0.1:3000');
-    expect(screen.getByTestId('smoke-AC-001').textContent).toContain('passed');
-    expect(screen.getByTestId('e2e-AC-001').textContent).toBe('passed');
-    expect(screen.getByTestId('e2e-AC-002').textContent).toContain('not-applicable (devops only)');
+    expect(screen.getByTestId('smoke-AC-001').textContent).toContain('Passou');
+    expect(screen.getByTestId('e2e-AC-001').textContent).toBe('Passou');
+    expect(screen.getByTestId('e2e-AC-002').textContent).toContain('Não se aplica (devops only)');
     const step = screen.getByTestId('step-AC-001-0') as HTMLInputElement;
     fireEvent.click(step);
     expect(step.checked).toBe(true);
@@ -52,10 +52,10 @@ describe('ValidationView', () => {
     const failed: Report = { ...report, result: 'deploy-failed', service: null, deploy: { attempts: 3, lastFailure: { attempt: 3, stage: 'smoke', detail: 'AC-001: no smoke test', rolledBack: true, rollbackHealthy: true } } };
     render(<MemoryRouter><ValidationView detail={detail({ status: 'deploy-failed', report: failed })} specStatus="running" onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
     expect(screen.getByTestId('deploy-failure').textContent).toContain('smoke');
-    expect(screen.getByTestId('deploy-failure').textContent).toContain('rolled back');
+    expect(screen.getByTestId('deploy-failure').textContent).toContain('versão anterior restaurada');
     expect((screen.getByTestId('complete-spec') as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByTestId('report-problem') as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId('actions-note').textContent).toContain('deploy-failed');
+    expect(screen.getByTestId('actions-note').textContent).toContain('deploy falhou');
   });
 
   it('shows an action error next to the buttons without hiding them', () => {
@@ -66,7 +66,14 @@ describe('ValidationView', () => {
 
   it('without a report yet it says so', () => {
     render(<MemoryRouter><ValidationView detail={detail({ report: null, status: 'running', phase: 3 })} specStatus="running" onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
-    expect(screen.getByText(/no report yet/i)).toBeTruthy();
+    expect(screen.getByText(/ainda não há relatório/i)).toBeTruthy();
+  });
+
+  it('spells out the criterion under its script steps and the healthcheck in plain words', () => {
+    const criteria = [{ id: 'AC-001', given: 'a visitor', when: 'they open /', then: 'they see the list', smoke: true }];
+    render(<MemoryRouter><ValidationView detail={detail({ acceptanceCriteria: criteria })} specStatus="awaiting-validation" onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
+    expect(screen.getByText('Dado a visitor, quando they open /, então they see the list')).toBeTruthy();
+    expect(screen.getByText(/HTTP 200 na 1ª tentativa/)).toBeTruthy();
   });
 });
 
@@ -123,7 +130,7 @@ describe('ValidationPage', () => {
       await tick(5000);
       const failure = await screen.findByTestId('action-error');
       expect(failure.textContent).toContain(COMPLETION);
-      expect(failure.textContent).toContain('phase-failed');
+      expect(failure.textContent).toContain('fase falhou');
       expect(failure.textContent).toContain('the docs PR was refused');
       // The buttons stay usable: the spec is still awaiting validation, so the user can try again.
       expect((screen.getByTestId('complete-spec') as HTMLButtonElement).disabled).toBe(false);
@@ -141,8 +148,8 @@ describe('ValidationPage', () => {
       await clickComplete();
       await tick(5000);
       const notice = await screen.findByTestId('action-error');
-      expect(notice.textContent).toContain(`completion run ${COMPLETION} was interrupted`);
-      expect(notice.textContent).not.toContain('ended');
+      expect(notice.textContent).toContain(`execução de conclusão ${COMPLETION} foi interrompida`);
+      expect(notice.textContent).not.toContain('terminou');
       expect((screen.getByTestId('complete-spec') as HTMLButtonElement).disabled).toBe(false);
       const calls = run.mock.calls.length;
       await tick(60_000);
@@ -172,7 +179,7 @@ describe('ValidationPage', () => {
       now.completion = 'done';
       now.spec = 'done';
       await tick(5000);
-      await waitFor(() => expect(screen.getByTestId('actions-note').textContent).toContain('already done'));
+      await waitFor(() => expect(screen.getByTestId('actions-note').textContent).toContain('já foi concluída'));
       const calls = run.mock.calls.length;
       await tick(60_000);
       expect(run.mock.calls.length).toBe(calls);
@@ -195,7 +202,7 @@ describe('ValidationPage', () => {
       now.spec = 'done';
       await tick(5000);
       await waitFor(() => expect(screen.queryByTestId('action-error')).toBeNull());
-      expect(screen.getByTestId('actions-note').textContent).toContain('already done');
+      expect(screen.getByTestId('actions-note').textContent).toContain('já foi concluída');
     });
 
     it('retries the reload on the next tick when it fails after the completion run is done', async () => {
@@ -211,9 +218,9 @@ describe('ValidationPage', () => {
       page();
       await clickComplete();
       await tick(5000);
-      expect(screen.queryByTestId('actions-note')?.textContent ?? '').not.toContain('already done');
+      expect(screen.queryByTestId('actions-note')?.textContent ?? '').not.toContain('já foi concluída');
       await tick(5000);
-      await waitFor(() => expect(screen.getByTestId('actions-note').textContent).toContain('already done'));
+      await waitFor(() => expect(screen.getByTestId('actions-note').textContent).toContain('já foi concluída'));
     });
   });
 
@@ -237,7 +244,7 @@ describe('ValidationPage', () => {
       page();
       expect(await screen.findByText('hello-001-r1')).toBeTruthy();
       fireEvent.click(screen.getByTestId('jump'));
-      expect(await screen.findByText(/loading/i)).toBeTruthy();
+      expect(await screen.findByText(/carregando/i)).toBeTruthy();
       expect(screen.queryByText('hello-001-r1')).toBeNull();
     });
 

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Item, type ItemName, type Status } from '../api.js';
+import { Icon } from '../components/Icons.js';
 import { LoginCard } from '../components/LoginCard.js';
 import { OwnerCard } from '../components/OwnerCard.js';
 import { SecretCard } from '../components/SecretCard.js';
+import './onboarding.css';
 
 const STEP_ITEMS: readonly ItemName[] = ['ghLogin', 'githubOwner', 'githubToken', 'claude', 'openrouterKey'];
 /** Same as the server's OPTIONAL_ITEMS: the Jev (OpenRouter) key may be skipped. */
@@ -60,11 +62,11 @@ export function Onboarding({ compact = false }: { compact?: boolean }) {
       case 4: return <SecretCard name="OPENROUTER_API_KEY" title="Chave do OpenRouter (Jev, opcional)" item={item('openrouterKey')} onSaved={patch('openrouterKey')} />;
       default: return (
         <section className="welcome-card" aria-labelledby="welcome-title">
-          <span className="welcome-icon" aria-hidden="true">✓</span>
+          <span className="welcome-icon" aria-hidden="true"><Icon name="check" size={28} /></span>
           <p className="setup-kicker">Configuração concluída</p>
           <h2 id="welcome-title">Tudo pronto para começar</h2>
           <p>O Teams AI está conectado às suas ferramentas e pronto para ajudar a organizar projetos, executar tarefas e acompanhar o trabalho da equipe.</p>
-          <Link className="primary-button" to="/projects">Ir para projetos</Link>
+          <Link className="primary-button" to="/projects">Ir para projetos<Icon name="arrow-right" size={16} /></Link>
           <div className="welcome-visual" aria-hidden="true"><img className="welcome-art" src="/onboarding-complete.png" alt="" /></div>
         </section>
       );
@@ -88,8 +90,8 @@ export function Onboarding({ compact = false }: { compact?: boolean }) {
       </header>
       <div className="setup-grid">{stepContent()}</div>
       <nav className="onboarding-navigation" aria-label="Navegação da configuração">
-        <button type="button" className="secondary" onClick={() => setStep((current) => current - 1)} disabled={step === 0}>Voltar</button>
-        {step < totalSteps - 1 ? <button type="button" className="primary-button" onClick={next} disabled={!canAdvance}>Próximo</button> : null}
+        <button type="button" className="secondary" onClick={() => setStep((current) => current - 1)} disabled={step === 0}><Icon name="arrow-left" size={16} />Voltar</button>
+        {step < totalSteps - 1 ? <button type="button" className="primary-button" onClick={next} disabled={!canAdvance}>Próximo<Icon name="arrow-right" size={16} /></button> : null}
       </nav>
     </main>
   );

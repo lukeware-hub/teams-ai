@@ -43,30 +43,96 @@ export function runState(events: StoredEvent[]) {
   return reduceEvents(events);
 }
 
-export function phases(events: StoredEvent[]) {
-  const out: Array<{ phase: number; startedAt: string; endedAt: string | null; result: 'done' | 'failed' | 'running'; reason: string | null }> = [];
+export type PhaseResult = 'done' | 'failed' | 'running' | 'stopped';
+export interface PhaseRow {
+  phase: number;
+  /** 1 on the first start; a retried phase (a resume, the second verification round) counts up. */
+  attempt: number;
+  startedAt: string;
+  endedAt: string | null;
+  result: PhaseResult;
+  reason: string | null;
+}
+
+const PHASE_NAMES: Record<number, string> = { 0: 'Preparação do repositório', 1: 'Especificação técnica', 2: 'Plano', 3: 'Implementação', 4: 'Verificação', 5: 'Deploy', 6: 'Relatório', 7: 'Workflows de CI' };
+
+/** "4 · Verificação". The CI workflows (7) are published between phases 2 and 3, so their number would only mislead. */
+export function phaseTitle(phase: number): string {
+  const name = PHASE_NAMES[phase];
+  if (!name) return `Fase ${phase}`;
+  return phase <= 6 ? `${phase} · ${name}` : name;
+}
+
+const SUCCESS_RESULTS = new Set(['complete', 'awaiting-validation', 'done']);
+
+/** The round-2 verdict in the server's own wording (phases/verify.ts), plus the ids it names. */
+function verificationReason(d: Record<string, unknown>): string {
+  const missing = (d.missingDelivery as string[] | undefined) ?? [];
+  if (missing.length) return `delivery contract not met on main, missing: ${missing.join(', ')}`;
+  const failed = (d.failedTests as string[] | undefined) ?? [];
+  const uncovered = (d.uncoveredAcs as string[] | undefined) ?? [];
+  return [`verification failed in round 2: ${failed.length} failing tests, ${uncovered.length} uncovered criteria`, failed.length ? `failing: ${failed.join(', ')}` : '', uncovered.length ? `uncovered: ${uncovered.join(', ')}` : ''].filter(Boolean).join('\n');
+}
+
+/** One row per phase in the order phases first started; a retried phase keeps its place and shows its latest attempt. */
+export function phases(events: StoredEvent[]): PhaseRow[] {
+  const rows = new Map<number, PhaseRow>();
+  let current: PhaseRow | null = null;
   let deployFailure: string | null = null;
+  // Only a running row ends: a later event never turns a failure into a success.
+  const end = (row: PhaseRow | null | undefined, at: string, result: PhaseResult, reason: string | null = null) => {
+    if (row?.result === 'running') Object.assign(row, { endedAt: at, result, reason });
+  };
   for (const e of events) {
-    if (e.type === 'PHASE_STARTED') {
-      // Phase 5 never gets its own end event when the deploy gave up; the next phase starting is the proof.
-      const prev = out.at(-1);
-      if (prev && prev.phase === 5 && prev.result === 'running' && deployFailure !== null) Object.assign(prev, { endedAt: e.at, result: 'failed', reason: deployFailure });
-      out.push({ phase: Number(e.data.phase), startedAt: e.at, endedAt: null, result: 'running', reason: null });
+    const d = e.data;
+    switch (e.type) {
+      case 'PHASE_STARTED': {
+        const phase = Number(d.phase);
+        // Phases 1-3 journal no success of their own, and Phase 5 gives up without one: another phase starting is the proof it ended.
+        if (current && current.phase !== phase) end(current, e.at, current.phase === 5 && deployFailure !== null ? 'failed' : 'done', current.phase === 5 ? deployFailure : null);
+        current = { phase, attempt: (rows.get(phase)?.attempt ?? 0) + 1, startedAt: e.at, endedAt: null, result: 'running', reason: null };
+        rows.set(phase, current);
+        break;
+      }
+      case 'PHASE_FAILED': {
+        const phase = Number(d.phase);
+        // The CI workflows (7) fail without ever journaling a start; the failure still gets its row.
+        if (!rows.has(phase)) rows.set(phase, { phase, attempt: 1, startedAt: e.at, endedAt: null, result: 'running', reason: null });
+        end(rows.get(phase), e.at, 'failed', String(d.reason ?? ''));
+        break;
+      }
+      case 'DOCS_MERGED':
+        end(rows.get(Number(d.phase)), e.at, 'done');
+        break;
+      case 'VERIFICATION_PASSED':
+        end(rows.get(4), e.at, 'done');
+        break;
+      case 'VERIFICATION_FAILED':
+        if (Number(d.round) === 2) end(rows.get(4), e.at, 'failed', verificationReason(d));
+        break;
+      case 'DEPLOY_FAILED':
+        deployFailure = String(d.detail ?? '');
+        if (Number(d.attempt) >= 3) end(rows.get(5), e.at, 'failed', deployFailure);
+        break;
+      case 'DEPLOY_VERIFIED':
+        deployFailure = null;
+        end(rows.get(5), e.at, 'done');
+        break;
+      case 'REPORT_READY':
+        end(rows.get(6), e.at, 'done');
+        break;
+      case 'RUN_FINISHED': {
+        const result = String(d.result);
+        if (SUCCESS_RESULTS.has(result)) end(current, e.at, 'done');
+        else if (result === 'drained') end(current, e.at, 'stopped');
+        else end(current, e.at, 'failed', d.reason ? String(d.reason) : null);
+        break;
+      }
+      default:
+        break;
     }
-    if (e.type === 'DEPLOY_FAILED') deployFailure = String(e.data.detail ?? '');
-    if (e.type === 'DEPLOY_VERIFIED') deployFailure = null;
-    const cur = out.at(-1);
-    if (!cur) continue;
-    if (e.type === 'DOCS_MERGED' && Number(e.data.phase) === cur.phase) Object.assign(cur, { endedAt: e.at, result: 'done' });
-    if (e.type === 'PHASE_FAILED' && Number(e.data.phase) === cur.phase) Object.assign(cur, { endedAt: e.at, result: 'failed', reason: String(e.data.reason ?? '') });
-    if (e.type === 'VERIFICATION_PASSED' && cur.phase === 4) Object.assign(cur, { endedAt: e.at, result: 'done' });
-    if (e.type === 'VERIFICATION_FAILED' && cur.phase === 4 && Number(e.data.round) === 2) Object.assign(cur, { endedAt: e.at, result: 'failed', reason: 'verification failed' });
-    if (e.type === 'DEPLOY_VERIFIED' && cur.phase === 5) Object.assign(cur, { endedAt: e.at, result: 'done' });
-    if (e.type === 'DEPLOY_FAILED' && cur.phase === 5 && Number(e.data.attempt) >= 3) Object.assign(cur, { endedAt: e.at, result: 'failed', reason: String(e.data.detail ?? '') });
-    if (e.type === 'REPORT_READY' && cur.phase === 6) Object.assign(cur, { endedAt: e.at, result: 'done' });
-    if (e.type === 'RUN_FINISHED' && cur.result === 'running') Object.assign(cur, { endedAt: e.at, result: ['complete', 'awaiting-validation', 'done'].includes(String(e.data.result)) ? 'done' : 'failed', reason: e.data.reason ? String(e.data.reason) : null });
   }
-  return out;
+  return [...rows.values()];
 }
 
 export function deployOutcome(events: StoredEvent[]) {
@@ -258,8 +324,19 @@ export interface StopExplanation {
   owner: StopOwner;
 }
 
-// First match wins. Reasons are the orchestrator's English strings (server/orchestrator/task-runner.ts, phases/deploy.ts).
+// First match wins. Reasons are the orchestrator's English strings (server/orchestrator/task-runner.ts, phases/*.ts);
+// the anchored ones come first so a failure that quotes an agent's text is matched by its own prefix.
 const STOP_RULES: Array<[RegExp, StopExplanation]> = [
+  [/^gh repo view failed/, { title: 'Não foi possível consultar o repositório no GitHub', hint: 'Confira se o GitHub CLI está autenticado e tem acesso ao repositório, depois reprocesse a spec.', owner: 'Você' }],
+  [/^Phase 1 exhausted/, { title: 'A especificação técnica não cobriu todos os critérios de aceitação', hint: 'Deixe mais claros na spec os critérios citados no detalhe técnico e reprocesse.', owner: 'Você' }],
+  [/^Phase 2 exhausted/, { title: 'O plano de tarefas não passou na validação', hint: 'Leia o último motivo no detalhe técnico. Se ele apontar algo ambíguo na spec, ajuste e reprocesse.', owner: 'Sistema' }],
+  [/^rendered \S+ is invalid/, { title: 'Os workflows de CI gerados a partir do plano são inválidos', hint: 'Revise os comandos do plan.json na main e reprocesse a spec.', owner: 'Plano' }],
+  [/^docs merge failed/, { title: 'O PR de documentação não entrou na main', hint: 'Confira as permissões e a proteção de branch do repositório e reprocesse a spec.', owner: 'Você' }],
+  [/^Phase 6 blocked: documentation rejected/, { title: 'A documentação gerada no relatório foi rejeitada', hint: 'Reprocesse a spec. Se a falha se repetir, o motivo da rejeição está no detalhe técnico.', owner: 'Sistema' }],
+  [/^Phase 6 blocked/, { title: 'O relatório final não foi gerado', hint: 'O Scrum Master não devolveu o relatório no formato esperado. Reprocesse a spec para gerar o relatório de novo.', owner: 'Sistema' }],
+  [/^delivery contract not met/, { title: 'Faltam arquivos de entrega na main', hint: 'Veja no detalhe técnico quais arquivos faltaram. Se as tarefas ficaram bloqueadas, resolva os bloqueios antes de reprocessar.', owner: 'Sistema' }],
+  [/^verification failed in round 2/, { title: 'Os testes de aceitação não passaram', hint: 'Veja na matriz de evidências quais critérios falharam e reporte o problema na tela de validação.', owner: 'Sistema' }],
+  [/^fix-tasks rejected twice/, { title: 'O Scrum Master não conseguiu planejar as correções', hint: 'Leia o motivo no detalhe técnico e reprocesse a spec.', owner: 'Sistema' }],
   [/plan\.commands\.smoke missing/, { title: 'O plano não define commands.smoke', hint: 'Falta o comando dos testes de fumaça no plan.json. Nenhum agente edita o plano durante a run: adicione commands.smoke ao plano na main e tente de novo.', owner: 'Plano' }],
   [/produced no changes against origin\/main/, { title: 'O Dev disse que terminou, mas não alterou nada', hint: 'A tarefa não gerou diferença em relação à main. Costuma ser um problema que código não resolve (ex.: um campo faltando no plano); repetir a tarefa só gasta tokens.', owner: 'Sistema' }],
   [/^Scope violation:/, { title: 'O Dev mexeu em arquivos fora do escopo da tarefa', hint: 'A mudança foi rejeitada antes do merge. Revise os caminhos permitidos da tarefa no plano.', owner: 'Sistema' }],
@@ -271,6 +348,8 @@ const STOP_RULES: Array<[RegExp, StopExplanation]> = [
   [/^Merge (refused|queue)/, { title: 'O merge foi recusado', hint: 'O GitHub ou a fila de merge recusou a mudança várias vezes. Confira permissões e proteção de branch do repositório.', owner: 'Você' }],
   [/^Task token budget exceeded/, { title: 'A tarefa estourou o orçamento de tokens', hint: 'Divida a tarefa em partes menores no plano ou aumente o limite por tarefa.', owner: 'Sistema' }],
   [/^replan (rejected|failed)/, { title: 'O replanejamento da tarefa falhou', hint: 'O Scrum Master não conseguiu dividir a tarefa. Veja o detalhe técnico.', owner: 'Sistema' }],
+  // An agent's own words, not an orchestrator string (runs hello-001-r4 and r5): last, so no prefix above is shadowed.
+  [/security-tools'? gate/i, { title: 'As ferramentas de segurança não rodam no ambiente do gate', hint: 'O gate security-tools falha antes de analisar o código, e os arquivos dele são protegidos: nenhum agente consegue corrigir. Ajuste a imagem ou o instalador do gate e reprocesse a spec.', owner: 'Sistema' }],
 ];
 
 /** A pt-BR explanation of a raw stop reason, or null when it is not one the UI knows (callers then show it raw). */
@@ -278,7 +357,33 @@ export function explainStop(reason: string): StopExplanation | null {
   return STOP_RULES.find(([re]) => re.test(reason))?.[1] ?? null;
 }
 
-const STOP_STATUSES = new Set(['deploy-failed', 'verification-failed', 'blocked', 'phase-failed', 'deadlocked']);
+/** The first sentence of a free-text reason, cut to `max` characters: a one-line title for a long explanation. */
+export function firstSentence(text: string, max = 160): string {
+  const line = text.trim().split('\n', 1)[0] ?? '';
+  const sentence = /^.*?[.!?](?=\s|$)/.exec(line)?.[0] ?? line;
+  return sentence.length > max ? `${sentence.slice(0, max - 1).trimEnd()}…` : sentence;
+}
+
+const NEXT_STEP = 'Veja o detalhe técnico. Quando a causa estiver resolvida, reprocesse a spec.';
+const DEPLOY_NEXT_STEP = 'O orquestrador esgotou as tentativas de deploy. Veja o detalhe técnico e os logs do container.';
+
+/** What a failed phase row says: the known explanation of its reason, else the reason's first sentence and a generic next step. */
+export function explainPhase(row: { phase: number; reason: string | null }): StopExplanation {
+  const reason = row.reason ?? '';
+  return explainStop(reason) ?? { title: reason ? firstSentence(reason) : `${phaseTitle(row.phase)} falhou`, hint: row.phase === 5 ? DEPLOY_NEXT_STEP : NEXT_STEP, owner: 'Sistema' };
+}
+
+/** One sentence tying a failed run to the tasks that blocked on their own, or null when none did. */
+export function blockedSummary(blocked: Array<{ taskId: string; reason: string }>): string | null {
+  const roots = rootBlockers(blocked);
+  if (!roots.length) return null;
+  const others = blocked.length - roots.length;
+  const stuck = others === 1 ? 'outra tarefa' : `outras ${others} tarefas`;
+  if (roots.length === 1) return `${roots[0]!.taskId} ficou bloqueada${others ? ` e travou ${stuck}` : ''}. Sem resolver esse bloqueio, reprocessar tende a repetir a falha.`;
+  return `${roots.length} tarefas ficaram bloqueadas${others ? ` e travaram ${stuck}` : ''}. Sem resolver esses bloqueios, reprocessar tende a repetir a falha.`;
+}
+
+const STOP_STATUSES = new Set(['deploy-failed', 'verification-failed', 'blocked', 'phase-failed', 'deadlocked', 'failed']);
 
 export interface StopSummary {
   what: string;
@@ -291,26 +396,30 @@ export interface StopSummary {
 }
 
 /** What the outcome banner says about a run that ended without success, or null while it is fine. */
-export function stopSummary(input: { status: string; reason: string | null; causes: Array<{ taskId: string; reason: string }>; deployFailure: DeployFailure | null }): StopSummary | null {
+export function stopSummary(input: { status: string; reason: string | null; causes: Array<{ taskId: string; reason: string }>; deployFailure: DeployFailure | null; failedPhase?: number | null }): StopSummary | null {
   const { status, reason, causes, deployFailure } = input;
   if (!STOP_STATUSES.has(status)) return null;
   if (status === 'deploy-failed') {
     const f = deployFailure;
     const raw = f ? f.detail : (reason ?? '');
-    const generic: StopExplanation = { title: f ? `Falha no estágio ${f.stage}` : 'O deploy falhou', hint: 'O orquestrador esgotou as tentativas de deploy. Veja o detalhe técnico e os logs do container.', owner: 'Sistema' };
+    const generic: StopExplanation = { title: f ? `Falha no estágio ${f.stage}` : 'O deploy falhou', hint: DEPLOY_NEXT_STEP, owner: 'Sistema' };
     const why = explainStop(raw) ?? explainStop(reason ?? '') ?? generic;
     const rollback = f?.rolledBack ? (f.rollbackHealthy === false ? 'Rollback feito, mas a versão anterior não respondeu ao healthcheck.' : 'Rollback feito e saudável: a versão anterior continua no ar.') : null;
     return { what: f ? `O deploy falhou no estágio ${f.stage} (tentativa ${f.attempt}).` : 'O deploy falhou.', ...why, raw, rollback, action: 'redeploy' };
   }
   if (status === 'verification-failed') {
-    return { what: 'A verificação (fase 4) não passou depois de duas rodadas.', title: 'Os testes de aceitação não passaram', hint: 'Veja a matriz de evidências abaixo e reporte o problema na tela de validação.', owner: 'Sistema', raw: reason ?? '', rollback: null, action: null };
+    // The verdict is either missing delivery files or failing tests; the reason says which.
+    const why = explainStop(reason ?? '');
+    return { what: 'A verificação (fase 4) não passou depois de duas rodadas.', title: why?.title ?? 'Os testes de aceitação não passaram', hint: why?.hint ?? 'Veja a matriz de evidências abaixo e reporte o problema na tela de validação.', owner: why?.owner ?? 'Sistema', raw: reason ?? '', rollback: null, action: null };
   }
   if (status === 'deadlocked') {
-    return { what: 'Nenhuma tarefa pode avançar.', title: 'Todas as tarefas restantes dependem de uma tarefa bloqueada', hint: 'Corrija a tarefa bloqueada primeiro (veja "Por que parou").', owner: 'Você', raw: reason ?? '', rollback: null, action: null };
+    return { what: 'Nenhuma tarefa pode avançar.', title: 'Todas as tarefas restantes dependem de uma tarefa bloqueada', hint: 'Resolva primeiro a tarefa bloqueada (veja Tarefas bloqueadas) e reprocesse a spec.', owner: 'Você', raw: reason ?? '', rollback: null, action: null };
   }
-  if (status === 'phase-failed') {
+  if (status === 'phase-failed' || status === 'failed') {
     const why = explainStop(reason ?? '');
-    return { what: 'Uma fase da run falhou.', title: why?.title ?? 'Falha na fase', hint: why?.hint ?? 'Veja o detalhe técnico.', owner: why?.owner ?? 'Sistema', raw: reason ?? '', rollback: null, action: null };
+    const where = input.failedPhase === undefined || input.failedPhase === null ? null : phaseTitle(input.failedPhase);
+    const what = where ? `A run parou na fase ${where}.` : status === 'failed' ? 'A run falhou.' : 'Uma fase da run falhou.';
+    return { what, title: why?.title ?? (reason ? firstSentence(reason) : 'O orquestrador não registrou o motivo'), hint: why?.hint ?? NEXT_STEP, owner: why?.owner ?? 'Sistema', raw: reason ?? '', rollback: null, action: null };
   }
   const first = causes[0];
   const why = (first ? explainStop(first.reason) : null) ?? { title: first ? 'Tarefa bloqueada' : 'Tarefas bloqueadas', hint: 'Abra a tarefa para ver o motivo.', owner: 'Sistema' as StopOwner };

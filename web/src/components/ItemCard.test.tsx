@@ -15,4 +15,13 @@ describe('ItemCard', () => {
     expect(screen.getByText('…c9Zk')).toBeTruthy();
     expect(document.body.textContent).not.toContain('ghp_');
   });
+
+  it('explains the step beside its title and translates the owner and token details', () => {
+    const { rerender } = render(<ItemCard title="Organização do GitHub" info="Onde ficam os repositórios." item={{ ok: true, detail: 'acme (Organization)' }} />);
+    expect(screen.getByRole('button', { name: 'Onde ficam os repositórios.' })).toBeTruthy();
+    expect(screen.getByText('acme (organização)')).toBeTruthy();
+    rerender(<ItemCard title="Token do GitHub" item={{ ok: true, detail: 'diego · scopes: repo, workflow' }} />);
+    expect(screen.getByText('diego · permissões: repo, workflow')).toBeTruthy();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
 });

@@ -5,6 +5,11 @@ import { Icon } from './Icons.js';
 import { safeHttpUrl } from '../safeUrl.js';
 import { useSse } from '../useSse.js';
 
+const LOGIN_INFO: Record<Cli, string> = {
+  gh: 'O GitHub CLI (gh) é a ferramenta de linha de comando que o Teams AI usa para criar repositórios e pull requests. Este login também lista as organizações da sua conta.',
+  claude: 'Os agentes que refinam, programam e testam suas demandas rodam no Claude Code. Este login conecta a sua conta do Claude a este computador.',
+};
+
 function friendlyLoginReason(reason: string) {
   const normalized = reason.trim().toLowerCase();
   if (normalized.includes('cancel')) return 'Login cancelado. Você pode tentar novamente.';
@@ -49,7 +54,7 @@ export function LoginCard({ cli, title, item, onDone }: { cli: Cli; title: strin
     onDone();
   }, [onDone, state.name, url]);
   return (
-    <ItemCard title={title} item={item} variant="login" subtitle={cli === 'claude' ? 'Acesse sua conta do Claude de forma rápida e segura.' : 'Conecte sua conta do GitHub para usar seus repositórios.'} icon={cli === 'claude' ? 'claude' : 'github'} illustration={cli === 'claude' ? '/onboarding-claude.png' : '/onboarding-github-login.png'}>
+    <ItemCard title={title} item={item} variant="login" subtitle={cli === 'claude' ? 'Conecte sua conta do Claude para os agentes de IA trabalharem.' : 'Conecte sua conta do GitHub para usar seus repositórios.'} info={LOGIN_INFO[cli]} icon={cli === 'claude' ? 'claude' : 'github'} illustration={cli === 'claude' ? '/onboarding-claude.png' : '/onboarding-github-login.png'}>
       {/* Already logged in and no login running: nothing to start. */}
       {item?.ok && !url ? null : <LoginControls state={state} code={code} onCode={setCode} onStart={start} onSend={send} onCancel={() => api.cancel(cli)} />}
       {error ? <p className="error">{error}</p> : null}

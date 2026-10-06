@@ -48,6 +48,9 @@ describe('ProjectsView', () => {
         <ProjectsView projects={[]} runs={{}} drafts={[]} error="not a project directory" onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={onAdd} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} />
       </MemoryRouter>,
     );
+    expect(screen.getByText('Seus projetos aparecem aqui.')).toBeTruthy();
+    expect(screen.queryByLabelText('URL do repositório')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Importar do Git' }));
     fireEvent.change(screen.getByLabelText('URL do repositório'), { target: { value: 'https://github.com/acme/demo.git' } });
     fireEvent.click(screen.getByText('Baixar e adicionar'));
     expect(onAdd).toHaveBeenCalledWith('https://github.com/acme/demo.git');
@@ -77,6 +80,7 @@ describe('ProjectsView', () => {
         />
       </MemoryRouter>,
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Novo projeto' }));
     fireEvent.change(screen.getByTestId('new-project-id'), { target: { value: 'shop' } });
     fireEvent.change(screen.getByTestId('new-project-name'), { target: { value: 'Shop' } });
     fireEvent.click(screen.getByTestId('new-project'));
@@ -100,5 +104,67 @@ describe('ProjectsView', () => {
       </MemoryRouter>,
     );
     expect(screen.getByTestId('validate-hello-009').getAttribute('href')).toBe('/runs/hello-009-r1/validation');
+  });
+  it('opens one creation form at a time and keeps what was typed', () => {
+    render(
+      <MemoryRouter>
+        <ProjectsView projects={projects} runs={runs} drafts={[]} error={null} onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={vi.fn()} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} />
+      </MemoryRouter>,
+    );
+    const newProject = screen.getByRole('button', { name: 'Novo projeto' });
+    expect(newProject.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(newProject);
+    expect(newProject.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.change(screen.getByTestId('new-project-id'), { target: { value: 'shop' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Importar do Git' }));
+    expect(newProject.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByTestId('new-project-id')).toBeNull();
+    expect(screen.getByLabelText('URL do repositório')).toBeTruthy();
+    fireEvent.click(newProject);
+    expect(screen.queryByLabelText('URL do repositório')).toBeNull();
+    expect((screen.getByTestId('new-project-id') as HTMLInputElement).value).toBe('shop');
+  });
+  it('filters projects by id, directory, spec and run, and clears the filter from the empty state', () => {
+    const two = [...projects, { projectId: 'shop', dir: '/p/loja', specs: [{ specId: 'shop-001', status: 'done', activeRunId: null }] }];
+    render(
+      <MemoryRouter>
+        <ProjectsView projects={two} runs={runs} drafts={[]} error={null} onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={vi.fn()} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} />
+      </MemoryRouter>,
+    );
+    const filter = screen.getByLabelText('Filtrar projetos') as HTMLInputElement;
+    const shown = () => screen.queryAllByRole('heading', { level: 2 }).map((h) => h.textContent);
+    expect(shown()).toEqual(['hello-app', 'shop']);
+    expect(screen.getByText('2 projetos')).toBeTruthy();
+    fireEvent.change(filter, { target: { value: 'LOJA' } });
+    expect(shown()).toEqual(['shop']);
+    expect(screen.getByText('1 de 2 projetos')).toBeTruthy();
+    fireEvent.change(filter, { target: { value: 'hello-000-r1' } });
+    expect(shown()).toEqual(['hello-app']);
+    fireEvent.change(filter, { target: { value: 'shop-001' } });
+    expect(shown()).toEqual(['shop']);
+    fireEvent.change(filter, { target: { value: 'nada' } });
+    expect(shown()).toEqual([]);
+    expect(screen.getByText('Nenhum projeto corresponde a “nada”.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Limpar filtro' }));
+    expect(filter.value).toBe('');
+    expect(shown()).toEqual(['hello-app', 'shop']);
+  });
+  it('lists the five latest runs and expands to all of them', () => {
+    const seven = { 'hello-app': Array.from({ length: 7 }, (_, i) => ({ runId: `hello-001-r${7 - i}`, specId: 'hello-001', projectId: 'hello-app', status: 'complete', at: null, tokens: 10, cost: 0.1, stoppable: false })) };
+    render(
+      <MemoryRouter>
+        <ProjectsView projects={projects} runs={seven} drafts={[]} error={null} onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={vi.fn()} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} />
+      </MemoryRouter>,
+    );
+    const runLinks = () => screen.queryAllByRole('link').filter((a) => /^\/runs\/hello-001-r\d+$/.test(a.getAttribute('href') ?? '')).map((a) => a.textContent);
+    expect(runLinks()).toEqual(['hello-001-r7', 'hello-001-r6', 'hello-001-r5', 'hello-001-r4', 'hello-001-r3']);
+    const more = screen.getByRole('button', { name: 'Mostrar todas (7)' });
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(more);
+    expect(runLinks()).toHaveLength(7);
+    expect(more.textContent).toBe('Mostrar menos');
+    expect(more.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(more);
+    expect(runLinks()).toHaveLength(5);
   });
 });

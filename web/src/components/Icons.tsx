@@ -1,4 +1,4 @@
-export type IconName = 'claude' | 'github' | 'user' | 'external' | 'send' | 'close' | 'chevron' | 'terminal' | 'check' | 'file' | 'clipboard' | 'shield' | 'clock' | 'list' | 'lock' | 'home' | 'copy' | 'download' | 'play' | 'info' | 'lightbulb';
+export type IconName = 'claude' | 'github' | 'user' | 'external' | 'send' | 'close' | 'chevron' | 'terminal' | 'check' | 'file' | 'clipboard' | 'shield' | 'clock' | 'list' | 'lock' | 'home' | 'copy' | 'download' | 'play' | 'info' | 'lightbulb' | 'sun' | 'moon' | 'monitor' | 'arrow-left' | 'arrow-right' | 'search' | 'plus' | 'refresh' | 'alert' | 'chevron-right' | 'stop' | 'code' | 'server';
 
 export function Icon({ name, size = 24 }: { name: IconName; size?: number }) {
   const common = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true };
@@ -33,6 +33,19 @@ export function Icon({ name, size = 24 }: { name: IconName; size?: number }) {
   if (name === 'play') return <svg {...common} fill="currentColor" stroke="none"><path d="m8 5 11 7-11 7z" /></svg>;
   if (name === 'info') return <svg {...common}><circle cx="12" cy="12" r="8.5" /><path d="M12 11v5M12 8h.01" /></svg>;
   if (name === 'lightbulb') return <svg {...common}><path d="M9 18h6M10 21h4M8.5 14.5a6 6 0 1 1 7 0c-.8.6-1.2 1.3-1.3 2.5h-4.4c-.1-1.2-.5-1.9-1.3-2.5Z" /></svg>;
+  if (name === 'sun') return <svg {...common}><circle cx="12" cy="12" r="4" /><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4" /></svg>;
+  if (name === 'moon') return <svg {...common}><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" /></svg>;
+  if (name === 'monitor') return <svg {...common}><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8M12 16v4" /></svg>;
+  if (name === 'arrow-left') return <svg {...common}><path d="M19 12H5M11 6l-6 6 6 6" /></svg>;
+  if (name === 'arrow-right') return <svg {...common}><path d="M5 12h14M13 6l6 6-6 6" /></svg>;
+  if (name === 'search') return <svg {...common}><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>;
+  if (name === 'plus') return <svg {...common}><path d="M12 5v14M5 12h14" /></svg>;
+  if (name === 'refresh') return <svg {...common}><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4" /></svg>;
+  if (name === 'alert') return <svg {...common}><path d="M12 4 21 19.5H3z" /><path d="M12 10v4M12 17h.01" /></svg>;
+  if (name === 'chevron-right') return <svg {...common}><path d="m9 6 6 6-6 6" /></svg>;
+  if (name === 'code') return <svg {...common}><path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 5.5l-3 13" /></svg>;
+  if (name === 'server') return <svg {...common}><rect x="3.5" y="4" width="17" height="6.5" rx="1.5" /><rect x="3.5" y="13.5" width="17" height="6.5" rx="1.5" /><path d="M7.5 7.25h.01M7.5 16.75h.01" /></svg>;
+  if (name === 'stop') return <svg {...common}><rect x="6.5" y="6.5" width="11" height="11" rx="1.5" /></svg>;
   if (name === 'terminal') {
     return <svg {...common}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="m7 9 3 3-3 3M13 15h4" /></svg>;
   }
