@@ -43,7 +43,7 @@ export function refinePack(input: {
   const rejected = input.rejected.map((p) => `- ${DOC_REL[p.file](input.specId)}: "${p.find.slice(0, 80)}" → rejected${p.decision ? `: ${p.decision}` : ''}`);
   const ids = input.role === 'po' ? PO_ITEMS : input.role === 'sm' ? SM_ITEMS : [];
   const feedback = [
-    'Write every user-facing question, checklist detail, patch reason, and explanation in Brazilian Portuguese. Keep technical identifiers, file names, HTTP status codes, and checklist ids unchanged.',
+    'LANGUAGE (mandatory): write every question, checklist detail, patch reason, summary, and explanation 100% in Brazilian Portuguese, even when project.md, brief.md, the acceptance criteria, or this prompt are in English. Never copy English sentences into a question; translate the idea. Keep only technical identifiers, JSON keys, file names, HTTP status codes, and checklist ids unchanged.',
     'Review flow.md as the business and application flow contract. Check that create, validate, persist, list, search, detail, update, delete, error, health, and persistence flows agree with project.md and brief.md. Ask a question or propose a patch when a flow is missing, ambiguous, or contradictory.',
     'Treat design.md as the frontend source of truth. Validate distinctive web and mobile direction, responsive states, accessibility, keyboard focus, reduced motion, touch targets, and consistency with project.md, brief.md, stack.md, and flow.md. Reject generic AI-looking UI choices and propose a precise patch when design.md is incomplete or contradictory. Write every new design.md heading, description, label, and patch reason in Brazilian Portuguese; preserve only technical identifiers, file names, code, and color tokens.',
     ...blankDocsRule(input),
