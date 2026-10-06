@@ -20,4 +20,12 @@ describe('applyToSnapshot', () => {
     const s2 = applyToSnapshot(s1, ev(2, 'DOC_EDITED', { file: 'brief.md', hash: 'x', source: 'patch' }));
     expect(s2.docsDirty).toBe(true);
   });
+
+  it('turns the backlog on and keeps what a backlog cycle derived', () => {
+    const on = applyToSnapshot(snap, ev(1, 'BACKLOG_ENABLED', {}));
+    expect(on.state.backlog).toMatchObject({ enabled: true, items: [] });
+    const derived = applyToSnapshot(on, ev(2, 'BACKLOG_DERIVED', { cycle: 1, project: {}, epics: [{ key: 'core', title: 'Core' }], items: [{ key: 'base', rank: 1 }] }));
+    expect(derived.state.backlog?.items).toHaveLength(1);
+    expect(snap.state.backlog).toBeUndefined();
+  });
 });

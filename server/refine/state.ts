@@ -35,6 +35,7 @@ export interface RefineState {
   discarded: Array<{ cycle: number; role: string; file: string; reason: string }>;
   error: string | null;
   runId: string | null;
+  backlog: BacklogState | null;
 }
 
 export const emptyRefineState = (): RefineState => ({
@@ -48,6 +49,7 @@ export const emptyRefineState = (): RefineState => ({
   discarded: [],
   error: null,
   runId: null,
+  backlog: null,
 });
 
 const STICKY: ReadonlySet<RefineStatus> = new Set(['evaluating', 'error', 'started']);
@@ -116,6 +118,13 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
     case RefineEvent.DocEdited:
     case RefineEvent.SecretWritten:
       if (s.derived) s.stale = true;
+      break;
+    case RefineEvent.BacklogEnabled:
+      s.backlog = s.backlog ? { ...s.backlog, enabled: true } : { enabled: true, project: null, epics: [], items: [], cycle: 0 };
+      if (s.derived || s.checklist.length > 0) s.stale = true;
+      break;
+    case RefineEvent.BacklogDerived:
+      s.backlog = { enabled: true, project: d.project as Project, epics: d.epics as BacklogState['epics'], items: d.items as BacklogState['items'], cycle: Number(d.cycle) };
       break;
     case RefineEvent.StartedRun:
       s.status = 'started';

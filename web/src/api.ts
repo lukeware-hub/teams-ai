@@ -201,6 +201,27 @@ export interface DerivedDoc {
   } & Record<string, unknown>;
   project: unknown;
 }
+export type Priority = 'P0' | 'P1' | 'P2' | 'P3';
+export interface BacklogViewItem {
+  key: string;
+  title: string;
+  epic: string;
+  scope: string;
+  priority: Priority;
+  rationale: string;
+  dependsOn: string[];
+  sources: Array<{ doc: string; heading: string }>;
+  size: 'S' | 'M' | 'L';
+  rank: number;
+}
+/** Backlog mode: the docs broken into epics and ranked items; absent or null when the session is a single spec. */
+export interface BacklogView {
+  enabled: boolean;
+  project: unknown;
+  epics: Array<{ key: string; title: string }>;
+  items: BacklogViewItem[];
+  cycle: number;
+}
 export interface RefineState {
   status: RefineStatus;
   stale: boolean;
@@ -212,6 +233,7 @@ export interface RefineState {
   discarded: Array<{ cycle: number; role: string; file: string; reason: string }>;
   error: string | null;
   runId: string | null;
+  backlog?: BacklogView | null;
 }
 export interface Snapshot {
   projectId: string;

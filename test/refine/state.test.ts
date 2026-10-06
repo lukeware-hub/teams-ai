@@ -40,3 +40,24 @@ describe('reduceRefineEvents', () => {
     expect(reduceRefineEvents([{ type: RefineEvent.StartedRun, data: { runId: 's-r1' } }])).toMatchObject({ status: 'started', runId: 's-r1' });
   });
 });
+
+describe('backlog events', () => {
+  const backlogItem = { key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'brief.md', heading: 'Objectives' }], size: 'S', rank: 1 };
+  const derivedBacklog = { cycle: 1, project: makeProject(), epics: [{ key: 'core', title: 'Core' }], items: [backlogItem] };
+  it('leaves a journal without backlog events with no backlog', () => {
+    expect(reduceRefineEvents(cycle(1)).backlog).toBeNull();
+  });
+  it('enabling is idempotent and only makes an already evaluated session stale', () => {
+    const fresh = reduceRefineEvents([{ type: RefineEvent.BacklogEnabled, data: {} }, { type: RefineEvent.BacklogEnabled, data: {} }]);
+    expect(fresh.backlog).toMatchObject({ enabled: true, items: [], project: null });
+    expect(fresh.stale).toBe(false);
+    const evaluated = reduceRefineEvents([...cycle(1), { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: allGreen, questions: [], discardedPatches: [] } }, { type: RefineEvent.BacklogEnabled, data: {} }]);
+    expect(evaluated).toMatchObject({ stale: true, status: 'ready' });
+  });
+  it('keeps the derived backlog and clears staleness when the cycle is evaluated', () => {
+    const s = reduceRefineEvents([{ type: RefineEvent.BacklogEnabled, data: {} }, { type: RefineEvent.CycleStarted, data: { cycle: 1, draftHash: 'h' } }, { type: RefineEvent.BacklogDerived, data: derivedBacklog }, { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: allGreen, questions: [], discardedPatches: [] } }]);
+    expect(s.backlog).toMatchObject({ enabled: true, cycle: 1, epics: [{ key: 'core' }], items: [{ key: 'base', rank: 1 }] });
+    expect(s.stale).toBe(false);
+    expect(s.status).toBe('ready');
+  });
+});
