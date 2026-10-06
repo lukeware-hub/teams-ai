@@ -1,12 +1,13 @@
 import { z } from 'zod';
 import { HASH_PATTERN } from '../contracts/hash.js';
 import { ADR_ID, Plan, PlanTask } from '../contracts/plan.js';
+import { Backlog } from '../contracts/backlog.js';
 import { AC_ID } from '../contracts/spec.js';
 import { ID_PATTERNS } from '../core/ids.js';
 import { Project } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 
-export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'dev', 'review', 'security', 'deployment', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'dev', 'review', 'security', 'deployment', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -37,6 +38,10 @@ export const RefineOutput = z.object({
 /** Spec (refinement) §3.2 step 1: Markdown → project.json + spec.json; the orchestrator re-validates and forces status/hash/version. */
 export const DeriveOutput = z.object({ specHash, project: Project, spec: Spec });
 export type DeriveOutput = z.infer<typeof DeriveOutput>;
+
+/** Backlog mode: the docs broken into epics and prioritized items; the orchestrator validates it and ranks the items. */
+export const BacklogOutput = z.object({ specHash, project: Project, backlog: Backlog });
+export type BacklogOutput = z.infer<typeof BacklogOutput>;
 
 export const TechSpecOutput = z.object({
   specHash,
@@ -179,6 +184,7 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   'spec-gap': SpecGapOutput,
   replan: ReplanOutput,
   'fix-tasks': FixTasksOutput,
+  backlog: BacklogOutput,
 };
 
 export type OutputOf<K extends StepKind> = z.infer<(typeof OUTPUT_SCHEMAS)[K]>;

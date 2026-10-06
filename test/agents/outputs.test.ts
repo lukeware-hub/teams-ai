@@ -113,3 +113,17 @@ describe('derive output', () => {
     expect(OUTPUT_SCHEMAS.derive).toBe(DeriveOutput);
   });
 });
+
+describe('backlog output', () => {
+  it('is a step kind whose output carries a project and a backlog, and leaves derive untouched', async () => {
+    const { BacklogOutput, DeriveOutput } = await import('../../server/agents/outputs.js');
+    const { makeProject } = await import('../fixtures/contracts.js');
+    expect(STEP_KINDS).toContain('backlog');
+    const backlog = { epics: [{ key: 'core', title: 'Core' }], items: [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'brief.md', heading: 'Objectives' }], size: 'S' }] };
+    expect(BacklogOutput.safeParse({ specHash: HASH, project: makeProject(), backlog }).success).toBe(true);
+    expect(BacklogOutput.safeParse({ specHash: HASH, project: makeProject(), backlog: { ...backlog, items: [] } }).success).toBe(false);
+    expect(OUTPUT_SCHEMAS.backlog).toBe(BacklogOutput);
+    expect(OUTPUT_SCHEMAS.derive).toBe(DeriveOutput);
+    expect(JSON.stringify(toJsonSchema('backlog'))).toContain('"dependsOn"');
+  });
+});
