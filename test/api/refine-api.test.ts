@@ -126,6 +126,29 @@ describe('refine api', () => {
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/answers', { questionId: 'nope', text: 'x' })).status).toBe(404);
   });
 
+  it('backlog mode: enabling is idempotent, an evaluation derives the backlog, and starting waits for the next step', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    const url = '/api/refine/hello-app/hello-app-001';
+    expect((await call('POST', `${url}/backlog`)).status).toBe(200);
+    expect((await call('POST', `${url}/backlog`)).status).toBe(200);
+    expect((await snapshot()).state.backlog).toMatchObject({ enabled: true, items: [] });
+    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'brief.md', heading: 'Objectives' }], size: 'S' }];
+    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    expect((await call('POST', `${url}/evaluate`)).status).toBe(202);
+    await settle();
+    const snap = await snapshot();
+    expect(snap.state.status).toBe('ready');
+    expect(snap.state.backlog.items).toEqual([expect.objectContaining({ key: 'base', rank: 1, priority: 'P0' })]);
+    expect(snap.state.derived).toBeNull();
+    const start = await call('POST', `${url}/start`);
+    expect(start.status).toBe(409);
+    expect(JSON.stringify(await start.json())).toMatch(/backlog/i);
+    expect(spawns).toEqual([]);
+    expect((await call('POST', '/api/refine/hello-app/nope-001/backlog')).status).toBe(404);
+  });
+
   it('new spec and continue spec copy docs from the project clone and enforce status rules', async () => {
     const spec = { ...makeSpec({ specId: 'hello-001' }), status: 'awaiting-validation', specHash: `sha256:${'a'.repeat(64)}` };
     remote = await makeRemote({ 'docs/project.json': JSON.stringify(HELLO_PROJECT), 'docs/specs/hello-001/spec.json': JSON.stringify(spec) });

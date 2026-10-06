@@ -175,6 +175,13 @@ export class RefineSession {
     await this.journal.fact(RefineEvent.DocEdited, { file, hash: sha256(text), source: 'human' });
   }
 
+  /** Backlog mode: the next evaluations break the docs into a prioritized backlog instead of deriving one spec. */
+  async enableBacklog(): Promise<void> {
+    this.guard();
+    if (this.state.backlog?.enabled) return;
+    await this.journal.fact(RefineEvent.BacklogEnabled, {});
+  }
+
   async evaluate(): Promise<void> {
     this.ensureCanEvaluate();
     const cycle = this.state.cycle + 1;
@@ -186,7 +193,7 @@ export class RefineSession {
         journal: this.journal,
         runAgent: this.deps.runAgent,
         frontAgent: this.deps.frontAgent,
-        principles: () => this.state.derived?.project.principles ?? [],
+        principles: () => this.state.derived?.project.principles ?? this.state.backlog?.project?.principles ?? [],
         retrieval: this.deps.retrieval,
         secretsDir: this.deps.secretsDir,
         validateDocs: this.deps.validateDocs,
@@ -267,6 +274,7 @@ export class RefineSession {
 
   /** Spec (refinement) §3.6 steps 1–2. */
   async freeze(): Promise<{ spec: Spec; project: Project }> {
+    if (this.state.backlog?.enabled) throw new ConflictError('O início a partir do backlog ainda não está disponível: por enquanto o backlog serve para organizar e priorizar.');
     if (this.state.status === 'started') throw new ConflictError('session already started a run');
     if (this.starting) throw new ConflictError('a start is already in progress');
     if (this.running) await this.running;

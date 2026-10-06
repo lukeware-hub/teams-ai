@@ -95,6 +95,14 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     },
     {
       method: 'POST',
+      path: `${S}/backlog`,
+      handler: wrap(async ({ params, json }) => {
+        await (await get(params)).enableBacklog();
+        json(200, { ok: true });
+      }),
+    },
+    {
+      method: 'POST',
       path: `${S}/answers`,
       handler: wrap(async ({ params, body, json }) => {
         const b = await body();
