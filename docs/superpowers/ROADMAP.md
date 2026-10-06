@@ -483,9 +483,11 @@ unit-tested with fixtures. Each one needs a plan file in `plans/` before impleme
 
 The docs (project, briefing, stack, flow, design) stay the only hand-edited truth; the agents break them into an organized, prioritized backlog of specs, the human selects what to implement, an automatic queue runs it, and a doc change after refinement re-derives what has not started. Design, decisions and risks: `plans/2026-10-06-teams-ai-50-spec-driven-backlog.md`. Each item below gets its own plan and approval before implementation.
 
-### R11.0 Prerequisite fixes found while planning - `approved` (plan 50)
+### R11.0 Prerequisite fixes found while planning - `done` (plan 50, 2026-10-06)
 
-- Context pack drops the docs whole over budget; resume can run the wrong spec; `firstSpec` counts directories; project dir resolved by first registered dir and a live pid without `state.json` reads `unknown`. One commit each.
+- Found: the context pack drops the docs whole over budget; resume can run the wrong spec; `firstSpec` counts directories; the project dir is the first registered one and a live pid without `state.json` reads `unknown`.
+- Built (one commit each): `server/refine/fit-pack.ts` sizes the derive/refine budget from the real pack (cap 120k tokens) and the cycle fails in pt-BR instead of reaching an agent without the docs; `specForRun` + `chooseSpecId` resume a run under its own spec; `server/orchestrator/first-spec.ts` decides the first spec from `origin/main` (nothing but `docs/` and `.github/` there) when several spec dirs exist; the run routes pick the registered dir that holds the spec and a live run without `state.json` reads `running`.
+- Open: draft-root spec statuses still go stale after freeze (nothing updates the root), so "a dependency was delivered" must come from run journals in R11.3; a full `npm test` showed one timing flake in `refine-api.test.ts` that passes alone 3 of 3.
 
 ### R11.1 Backlog outline from the docs, shown in the UI - `approved` (plan 50)
 
