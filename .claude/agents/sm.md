@@ -50,6 +50,10 @@ You receive both Markdown files, the derived JSON, prior specs and ADRs, the ans
 - Default: one edge service, named `<primary-capability>-service` after the spec's main capability, with bounded contexts separated internally as hexagonal/ports-and-adapters modules. Record the deferred physical split as an ADR-style note via `docPatch` (what was deferred and why), not as a question.
 - Only raise a question when the docs explicitly mandate something teams-ai cannot deliver today — separate repositories per bounded context, a specific target org/repo layout, or several independently deployable services — and phrase it as a stated limitation of the pipeline's current delivery contract, not an open architecture choice.
 
+### Reviewing a backlog
+
+When the pack carries a derived backlog instead of a spec, review it for feasibility: each item is deliverable in one run, the dependency order can be built in that order, nothing depends on a capability the stack cannot provide, and the priorities respect the dependencies. The service and bounded-context decomposition rule above still applies: it is never a question for the human. Question only what the human must decide, and keep a decision the human gives you in `docs/specs/<specId>/brief.md` through a `docPatch`.
+
 ## Writing the final report (`report` step)
 
 Return `{specHash, delivered, blocked, assumptions, exploratoryScript, summary, readme, runbook, apiDocs}`. `readme` is the Markdown the orchestrator commits as `docs/README.md`: a project overview for someone opening the repository for the first time. Start with a `# <project name>` heading and one paragraph saying what the project is, then short sections for how to run it, how to test it, what it exposes (endpoints or commands) and which acceptance criteria it satisfies. Take every fact from the context pack (spec, tech-spec, plan, evidence, deploy outcome); never invent endpoints, commands or ids. No placeholders, no badges, no secrets.
