@@ -12,8 +12,8 @@ const COPY = {
     replace: 'Substituir token salvo',
   },
   OPENROUTER_API_KEY: {
-    subtitle: 'Opcional: habilita o Jev, que revisa a consistência dos documentos.',
-    info: 'O Jev é um assistente de IA acessado pelo OpenRouter, que confere documentos e agiliza decisões simples. Sem a chave, o Teams AI funciona normalmente, só que sem ele.',
+    subtitle: 'Obrigatória: habilita o Jev, que revisa a consistência dos documentos antes de cada avaliação.',
+    info: 'O Jev é um assistente de IA acessado pelo OpenRouter, que confere documentos e agiliza decisões simples. Sem a chave, o refinamento não inicia.',
     field: 'Cole a chave de API',
     replace: 'Substituir chave salva',
   },

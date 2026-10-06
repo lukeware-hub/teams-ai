@@ -100,7 +100,7 @@ Principais peças:
 - Um PC com Windows 10 (22H2) ou Windows 11, com virtualização ativada na BIOS/UEFI. Recomendado: 16 GB de RAM e 30 GB livres em disco.
 - Uma **assinatura do Claude** que funcione com o Claude Code (Pro, Max ou Team). O projeto não usa `ANTHROPIC_API_KEY`.
 - Uma **conta no GitHub** (usuário ou organização) onde os projetos gerados serão criados, e um token de acesso pessoal dela.
-- Opcional: uma chave da OpenRouter (só para a camada de decisão).
+- Uma **chave da OpenRouter**: o Jev, que confere a consistência dos documentos, depende dela. Sem a chave, o refinamento não inicia.
 
 Por que não rodar direto no Windows? O orquestrador é um programa Linux: a UI usa o `script` do util-linux, as etapas dos
 agentes usam sandboxes `bubblewrap` e os gates rodam em contêineres Linux. No Windows, ele roda dentro do Docker Desktop
@@ -299,9 +299,9 @@ Cada item é recalculado ao vivo.
 | **GitHub owner** | Informe o usuário ou a organização do GitHub que será dono dos repositórios gerados. |
 | **Login do GitHub (`gh`)** | Faça login do `gh` pelo terminal embutido (`gh auth login`) ou rode `task login:gh`. |
 | **Token do GitHub** | Cole um token de acesso pessoal (clássico: `repo` e `workflow`; ou fine-grained com permissão para criar repositórios e acessar conteúdo, pull requests e workflows). Fica guardado em `~/.teams-ai/secrets` e nunca é exibido de novo. |
-| **Chave da OpenRouter** | Opcional. Só para a camada de decisão. Vazia, não bloqueia nada. |
+| **Chave da OpenRouter** | Cole a chave de API do OpenRouter. O Jev confere os documentos antes de cada avaliação, e o refinamento não inicia sem ele. |
 
-Quando todos os itens obrigatórios estiverem verdes, está tudo pronto.
+Quando todos os itens estiverem verdes, está tudo pronto.
 
 ## Usando o Teams AI
 

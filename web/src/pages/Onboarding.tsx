@@ -8,8 +8,6 @@ import { SecretCard } from '../components/SecretCard.js';
 import './onboarding.css';
 
 const STEP_ITEMS: readonly ItemName[] = ['ghLogin', 'githubOwner', 'githubToken', 'claude', 'openrouterKey'];
-/** Same as the server's OPTIONAL_ITEMS: the Jev (OpenRouter) key may be skipped. */
-const OPTIONAL: readonly ItemName[] = ['openrouterKey'];
 
 export function Onboarding({ compact = false }: { compact?: boolean }) {
   const totalSteps = 6;
@@ -23,7 +21,7 @@ export function Onboarding({ compact = false }: { compact?: boolean }) {
   const refresh = useCallback(() => void api.status().then(setStatus), []);
   useEffect(refresh, [refresh]);
   const item = (n: ItemName): Item | null => status?.items[n] ?? null;
-  const patch = (n: ItemName) => (it: Item) => setStatus((s) => (s ? { ...s, items: { ...s.items, [n]: it }, allOk: Object.entries({ ...s.items, [n]: it }).every(([k, v]) => OPTIONAL.includes(k as ItemName) || v.ok) } : s));
+  const patch = (n: ItemName) => (it: Item) => setStatus((s) => (s ? { ...s, items: { ...s.items, [n]: it }, allOk: Object.values({ ...s.items, [n]: it }).every((v) => v.ok) } : s));
   const githubLoggedIn = status?.items.ghLogin.ok === true;
   useEffect(() => {
     if (!githubLoggedIn) {
@@ -50,7 +48,7 @@ export function Onboarding({ compact = false }: { compact?: boolean }) {
     if (status?.allOk && !focusOpenrouter) setStep(totalSteps - 1);
   }, [status?.allOk, focusOpenrouter]);
   const currentName = STEP_ITEMS[step];
-  const canAdvance = currentName !== undefined && (OPTIONAL.includes(currentName) || item(currentName)?.ok === true);
+  const canAdvance = currentName !== undefined && item(currentName)?.ok === true;
   const next = () => {
     if (step < totalSteps - 1 && canAdvance) setStep((current) => current + 1);
   };
@@ -60,7 +58,7 @@ export function Onboarding({ compact = false }: { compact?: boolean }) {
       case 1: return <OwnerCard organizations={organizations} initialOwner={organizationOwner} loading={organizationsLoading} loadError={organizationsError} item={item('githubOwner')} onSaved={patch('githubOwner')} />;
       case 2: return <SecretCard name="GITHUB_TOKEN" title="Token do GitHub" item={item('githubToken')} onSaved={patch('githubToken')} />;
       case 3: return <LoginCard cli="claude" title="Login do Claude" item={item('claude')} onDone={refresh} />;
-      case 4: return <SecretCard name="OPENROUTER_API_KEY" title="Chave do OpenRouter (Jev, opcional)" item={item('openrouterKey')} onSaved={patch('openrouterKey')} />;
+      case 4: return <SecretCard name="OPENROUTER_API_KEY" title="Chave do OpenRouter (Jev)" item={item('openrouterKey')} onSaved={patch('openrouterKey')} />;
       default: return (
         <section className="welcome-card" aria-labelledby="welcome-title">
           <span className="welcome-icon" aria-hidden="true"><Icon name="check" size={28} /></span>

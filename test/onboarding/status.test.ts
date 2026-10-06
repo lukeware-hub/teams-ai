@@ -44,7 +44,7 @@ describe('status', () => {
     expect(s.items.githubOwner.detail).toContain('not set');
   });
 
-  it('does not wait for the optional OpenRouter key', async () => {
+  it('waits for the OpenRouter key: every other item green is not enough', async () => {
     home = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-home-'));
     const secretsDir = path.join(home, 'secrets');
     await writeSecret(secretsDir, 'GITHUB_TOKEN', TOKEN);
@@ -59,7 +59,7 @@ X-Oauth-Scopes: repo
 ${JSON.stringify({ login: 'diego-dm-morais' })}` }));
     const s = await computeStatus({ exec: exec.exec, fetch: (async () => new Response('', { status: 500 })) as typeof fetch, home, secretsDir });
     expect(s.items.openrouterKey.ok).toBe(false);
-    expect(s.allOk).toBe(true);
+    expect(s.allOk).toBe(false);
   });
 
   it('turns green when every probe answers and exposes hints, not values', async () => {

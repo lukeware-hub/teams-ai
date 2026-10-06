@@ -51,7 +51,7 @@ describe('Onboarding GitHub flow', () => {
     expect(api.owner).toHaveBeenCalledWith('acme');
   });
 
-  it('lets the optional OpenRouter (Jev) step be skipped', async () => {
+  it('does not let the OpenRouter (Jev) step be skipped until the key is valid', async () => {
     const s: Status = { items: { ...status(true, true).items, githubToken: item(true, 'ok'), claude: item(true, 'ok'), openrouterKey: item(false, 'HTTP 402') }, allOk: false };
     vi.spyOn(api, 'status').mockResolvedValue(s);
     vi.spyOn(api, 'organizations').mockResolvedValue({ organizations: [], owner: 'acme' });
@@ -61,16 +61,16 @@ describe('Onboarding GitHub flow', () => {
       await waitFor(() => expect(screen.getByRole('button', { name: 'Próximo' }).hasAttribute('disabled')).toBe(false));
       fireEvent.click(screen.getByRole('button', { name: 'Próximo' }));
     }
-    await screen.findByTestId('card-Chave do OpenRouter (Jev, opcional)');
-    expect(screen.getByRole('button', { name: 'Próximo' }).hasAttribute('disabled')).toBe(false);
+    await screen.findByTestId('card-Chave do OpenRouter (Jev)');
+    expect(screen.getByRole('button', { name: 'Próximo' }).hasAttribute('disabled')).toBe(true);
   });
 
   it('opens straight on the OpenRouter step from the refine page link, even when everything else is ready', async () => {
-    const ready: Status = { items: { ...status(true, true).items, githubToken: item(true, 'ok'), claude: item(true, 'ok'), openrouterKey: item(false, 'HTTP 401') }, allOk: true };
+    const ready: Status = { items: { ...status(true, true).items, githubToken: item(true, 'ok'), claude: item(true, 'ok'), openrouterKey: item(true, 'ok') }, allOk: true };
     vi.spyOn(api, 'status').mockResolvedValue(ready);
     vi.spyOn(api, 'organizations').mockResolvedValue({ organizations: [], owner: 'acme' });
     render(<MemoryRouter initialEntries={['/onboarding?item=openrouter']}><Onboarding /></MemoryRouter>);
-    await screen.findByTestId('card-Chave do OpenRouter (Jev, opcional)');
+    await screen.findByTestId('card-Chave do OpenRouter (Jev)');
     await waitFor(() => expect(screen.queryByText('Tudo pronto para começar')).toBeNull());
   });
 });
