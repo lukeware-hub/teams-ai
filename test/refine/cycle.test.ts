@@ -1,10 +1,11 @@
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { buildContextPack } from '../../server/knowledge/context-pack.js';
 import { runCycle } from '../../server/refine/cycle.js';
 import { emptyRefineState } from '../../server/refine/state.js';
+import type { BacklogItem } from '../../server/contracts/backlog.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 
 describe('refinement cycle Jev advisory', () => {
@@ -113,25 +114,25 @@ describe('refinement cycle System 1 filters (decisions 2-4)', () => {
 });
 
 
-describe('refinement cycle with large documents', () => {
-  const setup = async (brief: string) => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
-    const docs = path.join(root, 'docs');
-    await mkdir(docs, { recursive: true });
-    const draft = {
-      projectId: 'big', specId: 'big-001', root, docs,
-      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
-      stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
-      specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
-    };
-    await Promise.all([draft.projectMd, draft.stackMd, draft.flowMd, draft.designMd].map((f) => writeFile(f, '# doc')));
-    await writeFile(draft.briefMd, brief);
-    const events: Array<{ type: string; data: Record<string, unknown> }> = [];
-    const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'x', specHash: 'draft', type, kind: 'fact' as const, data }; } };
-    const runAgent = vi.fn().mockResolvedValue({ ok: false, failure: 'test', errors: [], summary: {}, sandboxDisabled: false });
-    return { draft, journal, events, runAgent, root };
+const setup = async (brief: string) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
+  const docs = path.join(root, 'docs');
+  await mkdir(docs, { recursive: true });
+  const draft = {
+    projectId: 'big', specId: 'big-001', root, docs,
+    projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+    stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
+    specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
   };
+  await Promise.all([draft.projectMd, draft.stackMd, draft.flowMd, draft.designMd].map((f) => writeFile(f, '# doc')));
+  await writeFile(draft.briefMd, brief);
+  const events: Array<{ type: string; data: Record<string, unknown> }> = [];
+  const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'x', specHash: 'draft', type, kind: 'fact' as const, data }; } };
+  const runAgent = vi.fn().mockResolvedValue({ ok: false, failure: 'test', errors: [], summary: {}, sandboxDisabled: false });
+  return { draft, journal, events, runAgent, root };
+};
 
+describe('refinement cycle with large documents', () => {
   it('never lets the derive pack drop the documents when they exceed the default budget', async () => {
     const { draft, journal, runAgent, root } = await setup(`# Brief\n${'x'.repeat(100_000)}`);
     await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1);
@@ -174,5 +175,63 @@ describe('refinement cycle Jev requirement', () => {
     }, 1);
     expect(runAgent).not.toHaveBeenCalled();
     expect(events.find((event) => event.type === 'REFINE_CYCLE_FAILED')?.data.reason).toBe('Jev indisponível: confira a chave do OpenRouter.');
+  });
+});
+
+describe('refinement cycle in backlog mode', () => {
+  const item = (key: string, over: Partial<BacklogItem> = {}): BacklogItem => ({ key, title: `Item ${key}`, epic: 'core', scope: `Entrega ${key}`, priority: 'P1', rationale: 'valor', dependsOn: [], sources: [{ doc: 'brief.md', heading: 'Objectives' }], size: 'M', ...over });
+  const raw = (items: BacklogItem[]) => ({ project: makeProject(), backlog: { epics: [{ key: 'core', title: 'Core' }], items } });
+  const ok = (value: unknown) => ({ ok: true, value, summary: {} });
+  const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
+  const agent = (backlogAnswers: unknown[]) => {
+    const answers = [...backlogAnswers];
+    const packs: Array<{ kind: string; role: string; feedback: string }> = [];
+    const fn = vi.fn(async (req: { kind: string; role: string; pack: { feedback?: string } }) => {
+      packs.push({ kind: req.kind, role: req.role, feedback: String(req.pack.feedback) });
+      if (req.kind === 'backlog') return ok(answers.shift());
+      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [] });
+      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
+    });
+    return { fn, packs };
+  };
+  const on = (journal: { state: { backlog: unknown } }) => { journal.state.backlog = { enabled: true, project: null, epics: [], items: [], cycle: 0 }; };
+
+  it('runs the backlog step instead of derive, journals the ranked backlog and writes project.json and backlog.md', async () => {
+    const { draft, journal, events, root } = await setup('# Briefing');
+    on(journal);
+    const { fn, packs } = agent([raw([item('casos', { dependsOn: ['base'] }), item('base', { priority: 'P0' })])]);
+    await runCycle({ draft, journal, runAgent: fn as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1);
+    expect(packs.map((p) => p.kind)).toEqual(['backlog', 'refine', 'refine']);
+    const derived = events.find((e) => e.type === 'BACKLOG_DERIVED')!.data as { items: Array<{ key: string; rank: number }> };
+    expect(derived.items.map((i) => [i.key, i.rank])).toEqual([['base', 1], ['casos', 2]]);
+    expect(events.some((e) => e.type === 'DERIVED')).toBe(false);
+    expect(events.some((e) => e.type === 'REFINE_EVALUATED')).toBe(true);
+    expect(JSON.parse(await readFile(draft.projectJson, 'utf8')).projectId).toBe(makeProject().projectId);
+    expect(await readFile(path.join(draft.docs, 'backlog.md'), 'utf8')).toContain('Item base');
+    const po = packs.find((p) => p.role === 'po' && p.kind === 'refine')!;
+    expect(po.feedback).toContain('### derived backlog');
+    expect(po.feedback).not.toContain('### derived spec.json');
+  });
+
+  it('asks once more with the rejection when the first backlog breaks a rule', async () => {
+    const { draft, journal, events, root } = await setup('# Briefing');
+    on(journal);
+    const { fn, packs } = agent([raw([item('a', { dependsOn: ['zzz'] })]), raw([item('a')])]);
+    await runCycle({ draft, journal, runAgent: fn as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1);
+    const asks = packs.filter((p) => p.kind === 'backlog');
+    expect(asks).toHaveLength(2);
+    expect(asks[0]!.feedback).not.toContain('zzz');
+    expect(asks[1]!.feedback).toMatch(/dependência desconhecida zzz/);
+    expect(events.some((e) => e.type === 'BACKLOG_DERIVED')).toBe(true);
+  });
+
+  it('fails the cycle when the second backlog still breaks a rule, and runs no review', async () => {
+    const { draft, journal, events, root } = await setup('# Briefing');
+    on(journal);
+    const { fn, packs } = agent([raw([item('a', { dependsOn: ['zzz'] })]), raw([item('a', { dependsOn: ['zzz'] })])]);
+    await runCycle({ draft, journal, runAgent: fn as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1);
+    expect(packs.map((p) => p.kind)).toEqual(['backlog', 'backlog']);
+    expect(String(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason)).toMatch(/^backlog: .*zzz/);
+    expect(events.some((e) => e.type === 'BACKLOG_DERIVED')).toBe(false);
   });
 });

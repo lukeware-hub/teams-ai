@@ -1,5 +1,7 @@
-import type { DeriveOutput, OutputOf, RefineOutput, StepKind } from '../agents/outputs.js';
+import type { BacklogOutput, DeriveOutput, OutputOf, RefineOutput, StepKind } from '../agents/outputs.js';
 import type { z } from 'zod';
+import type { Project } from '../contracts/project.js';
+import type { AcceptanceCriterion, Spec } from '../contracts/spec.js';
 import { loadSecrets } from '../core/secrets.js';
 import type { Hit } from '../knowledge/retrieval.js';
 import type { Journal } from '../orchestrator/events.js';
@@ -9,14 +11,15 @@ import type { AgentStepRequest } from '../orchestrator/steps.js';
 import type { StepOutcome } from '../runner/step.js';
 import { mergeChecklist, type ChecklistItem } from './checklist.js';
 import { derivePack, postProcessDerived } from './derive.js';
+import { backlogPack, postProcessBacklog, renderBacklogMd, type BacklogCheck } from './backlog.js';
 import { fitPackBudget, PackTooLargeError } from './fit-pack.js';
 import { sha256 } from '../contracts/hash.js';
-import { DOC_REL, draftHash, flowTemplate, readDerived, readDoc, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
+import { DOC_REL, draftHash, flowTemplate, readDerived, readDoc, stackTemplate, writeBacklogMd, writeDerived, writeDoc, writeProject, type DocFile, type Draft } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
 import type { JevValidationResult } from './jev-validation.js';
 import { refinePack } from './packs.js';
 import { applyPatch, checkPatch, patchId, unifiedDiff } from './patches.js';
-import type { RefineState } from './state.js';
+import type { BacklogState, RefineState } from './state.js';
 
 export type RunAgent = <K extends StepKind>(
   req: AgentStepRequest<K>,
@@ -102,39 +105,86 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     }
   }
 
-  const d = await deps.runAgent<'derive'>(
-    {
-      kind: 'derive',
-      role: 'po',
-      pack: fitPackBudget(derivePack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, specId: draft.specId, jevValidation })),
-      cwd: draft.root,
-      phase: 'refine',
-      taskId: null,
-      attempt: cycle,
-    },
-    ctx,
-  );
-  if (!d.ok) {
-    await fail(`derive failed: ${d.failure}: ${d.errors.join('; ')}`);
-    return;
+  const backlogMode = journal.state.backlog?.enabled === true;
+  let derived: { project: Project; spec: Spec | null };
+  let backlog: BacklogState | null = null;
+  let criteria: readonly AcceptanceCriterion[] = [];
+  let objectives: readonly string[] = [];
+  let secretNames: string[] = [];
+  if (backlogMode) {
+    // Backlog mode: the PO breaks the five docs into prioritized items instead of deriving one spec. One retry carries the rejection.
+    let rejection: string[] | undefined;
+    let accepted: Extract<BacklogCheck, { ok: true }> | null = null;
+    for (let attempt = 1; attempt <= 2 && !accepted; attempt++) {
+      const out = await deps.runAgent<'backlog'>(
+        {
+          kind: 'backlog',
+          role: 'po',
+          pack: fitPackBudget(backlogPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous: journal.state.backlog, jevValidation, rejection })),
+          cwd: draft.root,
+          phase: 'refine',
+          taskId: null,
+          attempt: cycle,
+        },
+        ctx,
+      );
+      if (!out.ok) {
+        await fail(`backlog failed: ${out.failure}: ${out.errors.join('; ')}`);
+        return;
+      }
+      const checked = postProcessBacklog(out.value as BacklogOutput, journal.state.backlog, docs['flow.md']);
+      if (checked.ok) accepted = checked;
+      else rejection = checked.issues;
+    }
+    if (!accepted) {
+      await fail(`backlog: ${rejection!.join('; ')}`);
+      return;
+    }
+    const { project, backlog: ranked } = accepted.value;
+    await writeProject(draft, project);
+    await writeBacklogMd(draft, renderBacklogMd(ranked));
+    await journal.fact(RefineEvent.BacklogDerived, { cycle, project, epics: ranked.epics, items: ranked.items });
+    backlog = { enabled: true, project, epics: ranked.epics, items: ranked.items, cycle };
+    derived = { project, spec: null };
+    objectives = ranked.epics.map((e) => e.title);
+  } else {
+    const d = await deps.runAgent<'derive'>(
+      {
+        kind: 'derive',
+        role: 'po',
+        pack: fitPackBudget(derivePack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, specId: draft.specId, jevValidation })),
+        cwd: draft.root,
+        phase: 'refine',
+        taskId: null,
+        attempt: cycle,
+      },
+      ctx,
+    );
+    if (!d.ok) {
+      await fail(`derive failed: ${d.failure}: ${d.errors.join('; ')}`);
+      return;
+    }
+    const checked = postProcessDerived(d.value as DeriveOutput, previous?.spec ?? null, draft.specId);
+    if (!checked.ok) {
+      await fail(`derive: ${checked.issues.join('; ')}`);
+      return;
+    }
+    await writeDerived(draft, checked.value);
+    await journal.fact(RefineEvent.Derived, { cycle, ...checked.value });
+    derived = checked.value;
+    criteria = checked.value.spec.acceptanceCriteria;
+    objectives = checked.value.spec.objectives;
+    secretNames = checked.value.spec.externalDependencies.flatMap((dep) => dep.secretNames);
   }
-  const checked = postProcessDerived(d.value as DeriveOutput, previous?.spec ?? null, draft.specId);
-  if (!checked.ok) {
-    await fail(`derive: ${checked.issues.join('; ')}`);
-    return;
-  }
-  await writeDerived(draft, checked.value);
-  await journal.fact(RefineEvent.Derived, { cycle, ...checked.value });
-  const dctx = { confidential: checked.value.project.confidential };
-  const criteria = checked.value.spec.acceptanceCriteria;
-  const notReady = deps.decider ? await notReadyCriteria(criteria, decider!, dctx) : null;
+  const dctx = { confidential: derived.project.confidential };
+  const notReady = !backlogMode && deps.decider ? await notReadyCriteria(criteria, decider!, dctx) : null;
 
   const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];
   if (deps.frontAgent) {
     const review = await deps.frontAgent({ kind: 'refine', role: 'front',
       pack: fitPackBudget(refinePack({ role: 'front', specHash: hash, principles: deps.principles(), specId: draft.specId,
         projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'],
-        derived: checked.value, retrieval: [], history: journal.state.questions,
+        derived, backlog, retrieval: [], history: journal.state.questions,
         rejected: journal.state.patches.filter((p) => p.status === 'rejected'), jevValidation })),
       cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, ctx);
     if (!review.ok) { await fail(`front validation failed: ${review.failure}: ${review.errors.join('; ')}`); return; }
@@ -158,7 +208,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   }
 
   const state = journal.state;
-  const retrieval = deps.retrieval(checked.value.spec.objectives.join(' '));
+  const retrieval = backlogMode ? [] : deps.retrieval(objectives.join(' '));
   const step = (role: 'po' | 'sm') =>
     deps.runAgent<'refine'>(
       {
@@ -174,7 +224,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           stackMd: docs['stack.md'],
           flowMd: docs['flow.md'],
           designMd: docs['design.md'],
-          derived: checked.value,
+          derived,
+          backlog,
           retrieval,
           history: state.questions,
           rejected: state.patches.filter((p) => p.status === 'rejected'),
@@ -230,7 +281,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     for (let i = merged.length - 1; i >= 0; i--) if (dropped.has(merged[i]!)) merged.splice(i, 1);
     // Decision 4: history that the new spec contradicts becomes a blocking question for the human.
     const hits = retrieval.slice(0, MAX_HISTORY_CHUNKS);
-    for (const i of await contradictedChunks(criteria, checked.value.spec.objectives, hits.map((h) => h.text), decider!, dctx)) {
+    for (const i of await contradictedChunks(criteria, objectives, hits.map((h) => h.text), decider!, dctx)) {
       const h = hits[i]!;
       merged.push({ questionId: `po-c${cycle}-${counters.po++}`, role: 'po', text: `The new spec seems to contradict earlier project history (${h.title}${h.heading ? ` › ${h.heading}` : ''}): "${h.snippet}". Which one holds?`, blocking: true, relatedAcIds: [], cycle });
     }
@@ -273,10 +324,13 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
 
   const checklist: ChecklistItem[] = mergeChecklist(po.value.checklist, sm.value.checklist);
   const present = await loadSecrets(deps.secretsDir);
-  const missing = checked.value.spec.externalDependencies.flatMap((dep) => dep.secretNames).filter((n) => !(n in present));
+  const missing = secretNames.filter((n) => !(n in present));
   const secretsItem = checklist.find((i) => i.id === 'sm.dependencies-and-secrets')!;
-  secretsItem.passed = missing.length === 0;
-  secretsItem.detail = missing.length === 0 ? 'every listed secret is present' : `missing secrets: ${missing.join(', ')}`;
+  // Backlog mode lists no secrets yet (each spec will), so the SM's own judgement of the docs stands.
+  if (!backlogMode) {
+    secretsItem.passed = missing.length === 0;
+    secretsItem.detail = missing.length === 0 ? 'every listed secret is present' : `missing secrets: ${missing.join(', ')}`;
+  }
   const pendingBlocking = state.questions.filter((q) => q.status === 'pending' && q.blocking).length + merged.filter((q) => q.blocking).length;
   const openItem = checklist.find((i) => i.id === 'sm.no-open-questions')!;
   openItem.passed = pendingBlocking === 0;

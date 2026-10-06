@@ -38,4 +38,16 @@ describe('refinePack', () => {
   it('does not add the review-only rule for po', () => {
     expect(refinePack({ ...base, role: 'po' }).feedback).not.toContain('not an implementation task');
   });
+
+  it('reviews the derived backlog instead of a spec in backlog mode, and keeps criteria empty', () => {
+    const backlog = { enabled: true, project: null, epics: [{ key: 'core', title: 'Núcleo' }], items: [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'brief.md', heading: 'x' }], size: 'S', rank: 1 }], cycle: 1 };
+    const pack = refinePack({ ...base, role: 'po', derived: { project: {}, spec: null }, backlog } as never);
+    expect(pack.feedback).toContain('### derived backlog');
+    expect(pack.feedback).toContain('"key": "base"');
+    expect(pack.feedback).not.toContain('### derived spec.json');
+    expect(pack.feedback).toContain('Backlog mode');
+    expect(pack.criteria).toEqual([]);
+    expect(pack.objectives).toEqual(['Núcleo']);
+    expect(refinePack({ ...base, role: 'po' }).feedback).not.toContain('Backlog mode');
+  });
 });

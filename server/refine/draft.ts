@@ -195,6 +195,11 @@ export async function writeDerived(d: Draft, v: { project: Project; spec: Spec }
   await fs.writeFile(d.specJson, withNewline(JSON.stringify(v.spec, null, 2)));
 }
 
+/** Backlog mode derives the project but no spec yet: project.json alone. */
+export const writeProject = (d: Draft, project: Project): Promise<void> => fs.writeFile(d.projectJson, withNewline(JSON.stringify(project, null, 2)));
+
+export const writeBacklogMd = (d: Draft, text: string): Promise<void> => fs.writeFile(path.posix.join(d.docs, 'backlog.md'), withNewline(text));
+
 export async function draftHash(d: Draft): Promise<string> {
   const [project, brief, stack, flow, design] = await Promise.all([readDoc(d, 'project.md'), readDoc(d, 'brief.md'), readDoc(d, 'stack.md'), readDoc(d, 'flow.md'), readDoc(d, 'design.md')]);
   return sha256(canonicalJson({ project, brief, stack, flow, design }));

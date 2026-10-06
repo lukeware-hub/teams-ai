@@ -83,3 +83,18 @@ export function postProcessBacklog(out: { project: unknown; backlog: unknown }, 
   if (rules.length > 0) return { ok: false, issues: rules };
   return { ok: true, value: { project: project.data, backlog: { epics: backlog.data.epics, items: rankItems(items) } } };
 }
+
+/** The backlog as a Markdown view for people (and later agents); generated, never edited by hand. */
+export function renderBacklogMd(backlog: Pick<BacklogState, 'epics' | 'items'>): string {
+  const byKey = new Map(backlog.items.map((i) => [i.key, i]));
+  const parts = ['# Backlog', '', '> Gerado pelos agentes a partir dos documentos; não edite. Para mudar prioridades ou cortes, escreva no briefing.md e reavalie.', ''];
+  for (const epic of backlog.epics) {
+    const items = backlog.items.filter((i) => i.epic === epic.key).sort((a, b) => a.rank - b.rank);
+    if (items.length === 0) continue;
+    parts.push(`## ${epic.title}`, '', '| # | Prioridade | Spec | Tamanho | Depende de |', '|---|---|---|---|---|');
+    for (const i of items) parts.push(`| ${i.rank} | ${i.priority} | ${i.key} | ${i.size} | ${i.dependsOn.map((d) => byKey.get(d)?.key ?? d).join(', ') || '-'} |`);
+    parts.push('');
+    for (const i of items) parts.push(`### ${i.key}: ${i.title}`, '', `- Escopo: ${i.scope}`, `- Por quê: ${i.rationale}`, `- Origem: ${i.sources.map((s) => `${s.doc} › ${s.heading}`).join('; ')}`, '');
+  }
+  return parts.join('\n');
+}

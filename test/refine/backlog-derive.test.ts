@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BacklogItem } from '../../server/contracts/backlog.js';
 import { buildContextPack } from '../../server/knowledge/context-pack.js';
-import { backlogPack, postProcessBacklog } from '../../server/refine/backlog.js';
+import { backlogPack, postProcessBacklog, renderBacklogMd } from '../../server/refine/backlog.js';
 import { fitPackBudget } from '../../server/refine/fit-pack.js';
 import type { BacklogState } from '../../server/refine/state.js';
 import { makeProject } from '../fixtures/contracts.js';
@@ -67,5 +67,18 @@ describe('postProcessBacklog', () => {
       expect(out.value.backlog.items.map((i) => i.key)).toContain('opme');
       expect(out.value.backlog.items.find((i) => i.key === 'outro')!.dependsOn).toEqual(['opme']);
     }
+  });
+});
+
+describe('renderBacklogMd', () => {
+  it('lists each epic with its ranked items, dependencies and sources', () => {
+    const p = previous([item('base', { priority: 'P0', title: 'Fundação' }), item('casos', { dependsOn: ['base'], title: 'Abertura de casos', sources: [{ doc: 'flow.md', heading: '2. Abertura do caso' }] })]);
+    const md = renderBacklogMd(p);
+    expect(md).toContain('## Core');
+    expect(md).toContain('| 1 | P0 | base | M | - |');
+    expect(md).toContain('| 2 | P1 | casos | M | base |');
+    expect(md).toContain('### casos: Abertura de casos');
+    expect(md).toContain('flow.md › 2. Abertura do caso');
+    expect(md).toMatch(/não edite/);
   });
 });
