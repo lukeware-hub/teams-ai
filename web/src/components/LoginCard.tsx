@@ -76,6 +76,17 @@ export function LoginCard({ cli, title, item, onDone }: { cli: Cli; title: strin
 
 export function LoginControls({ state, code, onCode, onStart, onSend, onCancel }: { state: SessionState; code: string; onCode: (v: string) => void; onStart: () => void; onSend: () => void; onCancel: () => void }) {
   const live = state.name === 'starting' || state.name === 'awaiting-browser' || state.name === 'awaiting-code' || state.name === 'verifying';
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1600);
+    return () => clearTimeout(timer);
+  }, [copied]);
+  const copyCode = () => {
+    if (!state.code) return;
+    void navigator.clipboard?.writeText(state.code);
+    setCopied(true);
+  };
   return (
     <div className={`controls login-controls${state.name === 'awaiting-code' ? ' with-code' : ''}`}>
       {!live ? (
@@ -94,7 +105,12 @@ export function LoginControls({ state, code, onCode, onStart, onSend, onCancel }
           ) : null}
           {state.name === 'awaiting-browser' && state.code ? (
             <p>
-              Digite este código na página: <code data-testid="one-time-code">{state.code}</code>
+              Digite este código na página:{' '}
+              <button type="button" className="code-copy" aria-label="Copiar código" onClick={copyCode}>
+                <code data-testid="one-time-code">{state.code}</code>
+                <Icon name="copy" size={16} />
+              </button>
+              {copied ? <span className="code-copy-toast">Copiado!</span> : null}
             </p>
           ) : null}
         </div>
