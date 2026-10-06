@@ -106,11 +106,13 @@ export function LoginControls({ state, code, onCode, onStart, onSend, onCancel }
           {state.name === 'awaiting-browser' && state.code ? (
             <p>
               Digite este código na página:{' '}
-              <button type="button" className="code-copy" aria-label="Copiar código" onClick={() => copyCode(state.code)}>
-                <code data-testid="one-time-code">{state.code}</code>
-                <Icon name="copy" size={16} />
-              </button>
-              {copied ? <span className="code-copy-toast">Copiado!</span> : null}
+              <span className="code-copy-anchor">
+                <button type="button" className="code-copy" aria-label="Copiar código" onClick={() => copyCode(state.code)}>
+                  <code data-testid="one-time-code">{state.code}</code>
+                  <Icon name="copy" size={16} />
+                </button>
+                {copied ? <span className="code-copy-toast">Copiado!</span> : null}
+              </span>
             </p>
           ) : null}
         </div>

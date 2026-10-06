@@ -71,7 +71,8 @@
 .code-copy { position: relative; display: inline-flex; align-items: center; gap: 0.5rem; min-height: 2.25rem; padding: 0.3rem 0.7rem; border: 1px solid var(--accent-line); border-radius: var(--radius-md); color: var(--accent-ink); background: var(--accent-soft); cursor: pointer; }
 .code-copy:hover { background: var(--accent-line); }
 .code-copy svg { color: var(--ink-soft); }
-.code-copy-toast { color: var(--accent-text); font-size: 0.8125rem; font-weight: 600; }
+.code-copy-anchor { position: relative; display: inline-flex; }
+.code-copy-toast { position: absolute; left: calc(100% + 0.6rem); top: 50%; transform: translateY(-50%); white-space: nowrap; color: var(--accent-text); font-size: 0.8125rem; font-weight: 600; }
 .code-form { display: grid; grid-column: 2; grid-row: 1; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 0.7rem; width: 100%; min-width: 0; margin: 0; padding: 0.9rem; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface-sunken); }
 .code-label, .secret-field { display: grid; gap: 0.38rem; min-width: 0; color: var(--ink-soft); font-size: 0.8125rem; font-weight: 600; }
 .code-label input, .secret-field input { width: 100%; min-width: 0; }
