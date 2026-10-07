@@ -40,6 +40,13 @@ describe('specPack', () => {
     expect(pack.feedback).toContain('pedido registrado');
     expect(pack.feedback).toContain('bug details are required');
   });
+
+  it('asks for criteria that hold on one shared deploy: relative times and only the data the test creates', () => {
+    // Live check: criteria with fixed calendar dates or an empty database failed review cycle after cycle.
+    const pack = specPack({ specHash: HASH, principles: [], docs, batch: [item('opme', 1)], all: [item('opme', 1)], previous: {}, rejection: {} });
+    expect(pack.feedback).toMatch(/never a fixed calendar date/);
+    expect(pack.feedback).toMatch(/never assume an empty database/);
+  });
 });
 
 describe('preplanPack', () => {

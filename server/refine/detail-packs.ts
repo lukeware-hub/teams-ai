@@ -17,6 +17,8 @@ const SPEC_RULES = [
   'Write the spec of each backlog item below: one entry per item, with the same `key`. Derive it only from the item and the doc sections it cites; invent nothing they do not say, and leave to other items what their scope covers.',
   '- objectives: what the item delivers, each one verifiable. features: the capabilities it ships. outOfScope: what it leaves to other items or out of the product.',
   '- acceptanceCriteria: Given/When/Then, each one testable end to end; set `smoke: true` on the one or two that prove the slice works after a deploy. The orchestrator numbers criteria across the backlog: echo the previous id of a criterion you keep or edit, and use any AC-nnn id for a new one.',
+  '- Time in criteria: state instants relative to a reference instant the test controls (for example "15 days after the loan"), never a fixed calendar date and never the real clock, unless the docs fix the date.',
+  '- One end-to-end suite checks the criteria of every spec on one shared deploy, and the data of earlier tests stays there: never assume an empty database or exact global counts; assert only on data the test itself creates (a unique prefix, the ids it got back), and leave a case that needs a clean state to integration tests.',
   '- externalDependencies: the services the item needs, with the secret names (UPPER_SNAKE_CASE) it reads.',
   '- type is feature unless the item fixes a bug, which then needs its bug details.',
 ].join('\n');

@@ -7,7 +7,7 @@ import { sectionText } from './sections.js';
 export type BacklogDocs = Record<(typeof BACKLOG_DOCS)[number], string>;
 
 /** Bumped when what goes into a hash changes, so every item is re-derived once. */
-const HASH_VERSION = 1;
+const HASH_VERSION = 2;
 
 const cited = (item: Pick<BacklogItem, 'sources'>, docs: BacklogDocs) => item.sources.map((s) => ({ doc: s.doc, heading: s.heading, text: sectionText(docs[s.doc], s.heading) }));
 
