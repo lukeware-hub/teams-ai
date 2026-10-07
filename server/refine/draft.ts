@@ -134,13 +134,23 @@ export const draftExists = async (d: Draft): Promise<boolean> => (await exists(d
  * later session continues from the same file. An existing briefing is kept and the draft's own demand is appended under
  * its heading (a bare template adds nothing). Idempotent: reopening a session finishes a move a crash cut short.
  */
+/** Shifts every markdown heading in `text` down one level, so an appended brief's own sections (## Type, ## Objectives...)
+ * never collide with the target briefing's own `##` structure once they sit under its "## Nova demanda" heading. */
+function demoteHeadings(text: string): string {
+  return text
+    .split('\n')
+    .map((line) => (/^#{1,5} /.test(line) ? `#${line}` : line))
+    .join('\n');
+}
+
 export async function moveBriefingToProject(d: Draft): Promise<void> {
   const brief = await fs.readFile(d.briefMd, 'utf8').catch(() => null);
   if (brief !== null) {
     const briefing = await fs.readFile(briefingPath(d), 'utf8').catch(() => null);
+    const demoted = demoteHeadings(brief.trim());
     if (briefing === null) await fs.rename(d.briefMd, briefingPath(d));
-    else if (brief.trim() !== briefTemplate().trim() && !briefing.includes(brief.trim())) {
-      await fs.writeFile(briefingPath(d), withNewline(`${briefing.trimEnd()}\n\n## Nova demanda (${d.specId})\n\n${brief.trim()}`));
+    else if (brief.trim() !== briefTemplate().trim() && !briefing.includes(demoted)) {
+      await fs.writeFile(briefingPath(d), withNewline(`${briefing.trimEnd()}\n\n## Nova demanda (${d.specId})\n\n${demoted}`));
     }
   }
   // Only the single-spec files go; anything else in the spec directory stays, and the directory goes once empty.

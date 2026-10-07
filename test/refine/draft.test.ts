@@ -110,7 +110,7 @@ describe('draft', () => {
     expect(await readDoc(d, 'brief.md')).toBe('## Prioridades\n- P0 primeiro\n');
   });
 
-  it('keeps an existing docs/briefing.md and appends the new demand under its own heading, once', async () => {
+  it('keeps an existing docs/briefing.md and appends the new demand under its own heading, once, with its own headings demoted a level', async () => {
     const d = draftPaths(ws, 'hello-002');
     await createNewProject(d, 'Hello App', 'Add a goodbye endpoint.');
     await fs.writeFile(`${d.docs}/briefing.md`, '# Briefing\n\n## Prioridades\n\n- P0 primeiro\n');
@@ -118,7 +118,12 @@ describe('draft', () => {
     await moveBriefingToProject(d);
     const once = await fs.readFile(`${d.docs}/briefing.md`, 'utf8');
     expect(once.startsWith('# Briefing\n\n## Prioridades\n\n- P0 primeiro\n\n## Nova demanda (hello-002)\n\n')).toBe(true);
-    expect(once).toContain(brief.trim());
+    // The brief's own `##` sections (Description, Type, Objectives...) must not collide with the briefing's own `##`
+    // level: appended a level down, so the briefing's structure (## Prioridades, ## Nova demanda) stays the only ## level.
+    expect(once).not.toContain('\n## Description');
+    expect(once).toContain('\n### Description\n\nAdd a goodbye endpoint.');
+    expect(once).toContain('\n### Type\n\nfeature');
+    expect(once).toContain('\n### Acceptance criteria\n\n- AC-001');
     // A crash after the append and before the cleanup: the next move finishes it without appending twice.
     await fs.mkdir(`${d.docs}/specs/hello-002`, { recursive: true });
     await fs.writeFile(d.briefMd, brief);

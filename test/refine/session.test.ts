@@ -45,7 +45,7 @@ describe('RefineSession', () => {
     await fs.mkdir(path.dirname(draft().briefMd), { recursive: true });
     await fs.writeFile(draft().briefMd, '## Description\n\nOutra demanda.\n');
     const again = await RefineSession.open(deps());
-    expect(await fs.readFile(`${draft().docs}/briefing.md`, 'utf8')).toContain('## Nova demanda (hello-001)\n\n## Description\n\nOutra demanda.');
+    expect(await fs.readFile(`${draft().docs}/briefing.md`, 'utf8')).toContain('## Nova demanda (hello-001)\n\n### Description\n\nOutra demanda.');
     await expect(fs.access(draft().briefMd)).rejects.toThrow();
     await again.close();
   });
