@@ -74,3 +74,16 @@ O humano pediu para construir, em paralelo, o que faltava: uma spec `failed` pod
 ### Pendência para o humano
 
 - Mesma lista de antes (apagar os projetos de teste), mais: decidir se vale investigar o gerador de tarefas de correção da Fase 4 (ids reusados) antes ou depois do R11.5a/repair loop — provavelmente o repair loop completo resolve isso por tabela, já que ele classificaria a causa e replanejaria direito.
+
+## Continuação 3 — dois bugs retroativos do retry corrigidos (2026-10-07, mesma sessão)
+
+A `r4` (continuação acima) falhou, na revalidação do plano inteiro pela Fase 4, por dois motivos retroativos — rejeitando tarefas **já mescladas** em runs anteriores, não as novas:
+
+1. **`.dockerignore` não contava como infra** (`server/validators/plan.ts`, `isInfraPath`, do commit `ca5a40a` desta sessão): a tarefa T1 (devops, real, já mesclada) escreveu `.dockerignore`, e a lista de padrões de infra não o reconhecia. Corrigido em `82831a1`, com teste.
+2. **`firstSpec` virava `false` ao tentar de novo a spec 1**, depois que o próprio scaffold dela já estava em main: uma run nova (retry = run-id novo, sem `--run`) não tinha resposta própria e perguntava de novo a `isFirstSpec()`, que olhava `main` e via muito mais que `docs/.github` — concluindo (erradamente) que não era mais a primeira spec, e rejeitando a própria `T0-scaffold` já entregue. Corrigido em `7b75d13`: nova `firstSpecForSpec(ws, specId, runId)` (`server/orchestrator/workspace.ts`) procura, entre as runs anteriores dessa mesma spec neste projeto, uma resposta já gravada, antes de perguntar a main de novo.
+
+Suíte inteira verde (145 arquivos / 1253 testes + web 138), `tsc` limpo, container reconstruído a partir de `7b75d13`.
+
+**Retry ao vivo (run `r5`, depois do rebuild):** as 12 tarefas (T0-scaffold a T10, mais `T900-fix-1`) foram mescladas — nenhuma bloqueada, nenhum dos dois bugs reapareceu. A spec falhou de novo, mas por um motivo diferente e **fora do escopo** desta continuação: o critério AC-012 (o livro continua gravado depois de `docker compose down` sem `-v`) segue sem evidência porque o teste que prova isso (`tests/integration/persistencia-compose.test.ts`, rodado por `npm run test:compose`) precisa de Docker de verdade e não é executado dentro do gate da Fase 4 (sandbox do agente). Não é um bug pontual — é uma decisão de arquitetura do gate (que testes de integração com Docker real a Fase 4 consegue rodar), maior que o escopo travado desta tarefa. Custo desta rodada: ~US$ 1,13 (run `r5`).
+
+**Estado do backlog após esta continuação:** ainda 0/8 specs `done`. A spec 1 chegou, pela primeira vez, a ter o plano inteiro entregue (12/12 tarefas); falta só fechar a lacuna de evidência do AC-012 para ela completar e o programa seguir sozinho pelas 7 restantes.
