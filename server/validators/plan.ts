@@ -66,6 +66,24 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
       covered.add(ref);
     }
   }
+  // planRules tells the agent "use devops only for Dockerfile, deploy manifests, CI/release workflows and docker-compose",
+  // but nothing enforced it: an SM-planned devops task that actually touches app or test code gets no Bash at all
+  // (ROLE_ALLOW.devops carries none) and loops GATE_FAILED -> TASK_REPLANNED on format/typecheck it cannot run itself.
+  const manifestRoots = new Set((plan.deploy.manifests ?? []).map((m) => m.split('/')[0]));
+  const isInfraPath = (p: string): boolean => {
+    const base = p.split('/').at(-1) ?? p;
+    if (/^Dockerfile(\..+)?$/.test(base)) return true;
+    if (base === 'deployment.json') return true;
+    if (/^docker-compose(\..+)?\.ya?ml$/i.test(base)) return true;
+    if (p.startsWith('.github/workflows/')) return true;
+    return manifestRoots.has(p.split('/')[0]);
+  };
+  for (const task of plan.tasks) {
+    if (task.owner !== 'devops') continue;
+    for (const p of task.affectedPaths) {
+      if (!isInfraPath(p)) errors.push(`task ${task.id} is owned by devops but ${p} is not infra (Dockerfile, deploy manifests, a CI/release workflow or docker-compose); use dev`);
+    }
+  }
   for (const ac of acIds) {
     if (!covered.has(ac)) errors.push(`acceptance criterion ${ac} is not covered by any task`);
   }

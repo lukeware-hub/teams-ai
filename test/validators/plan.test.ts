@@ -5,7 +5,7 @@ import { REQUIRED_GATES, makeFrozenSpec, makePlan, makePlanTask } from '../fixtu
 
 const spec = makeFrozenSpec();
 const withTasks = (tasks: Plan['tasks']): Plan => ({ ...makePlan(spec), tasks });
-const devops = makePlanTask({ id: 'T9-infra', owner: 'devops', dependsOn: ['T0-scaffold'] });
+const devops = makePlanTask({ id: 'T9-infra', owner: 'devops', dependsOn: ['T0-scaffold'], affectedPaths: ['Dockerfile'] });
 
 describe('validatePlan', () => {
   it('accepts the fixture plan', () => {
@@ -183,6 +183,29 @@ describe('validatePlan: gate image', () => {
 
   it('rejects an image that docker run would read as a flag', () => {
     expect(validatePlan(makePlan(spec, { gateImage: '--privileged' }), spec, { firstSpec: true }).join(' ')).toMatch(/must not start with/);
+  });
+});
+
+describe('validatePlan: a devops task only touches infra', () => {
+  // Live finding (R11.2 program run, 2026-10-07): an SM-planned fix task owned by devops but writing a
+  // TypeScript test file could not run prettier/tsc/vitest at all (ROLE_ALLOW.devops carries no Bash),
+  // and it looped GATE_FAILED -> TASK_REPLANNED on the same mistake. planRules already promises the agent
+  // "use devops only for Dockerfile, deploy manifests, CI/release workflows and docker-compose"; nothing enforced it.
+  it('rejects a devops task whose affectedPaths are not infra', () => {
+    const task = makePlanTask({ id: 'T900-fix-1', owner: 'devops', dependsOn: ['T0-scaffold'], affectedPaths: ['tests/unit/plataforma/persistencia-volume.test.ts'] });
+    const errors = validatePlan(withTasks([...makePlan(spec).tasks, task]), spec, { firstSpec: true }).join('\n');
+    expect(errors).toMatch(/T900-fix-1.*devops.*persistencia-volume\.test\.ts/);
+  });
+  it('accepts Dockerfile, deployment.json, docker-compose.yml, a CI workflow and a path under a declared deploy manifest', () => {
+    const paths = ['Dockerfile', 'Dockerfile.prod', 'deployment.json', 'docker-compose.yml', '.github/workflows/ci.yml', 'deploy/new-manifest.yaml'];
+    for (const p of paths) {
+      const task = makePlanTask({ id: 'T900-fix-1', owner: 'devops', dependsOn: ['T0-scaffold'], affectedPaths: [p] });
+      expect(validatePlan(withTasks([...makePlan(spec).tasks, task]), spec, { firstSpec: true }).join('\n'), p).not.toMatch(/only touches infra|is not infra/);
+    }
+  });
+  it('a dev task may touch anything', () => {
+    const task = makePlanTask({ id: 'T900-fix-1', owner: 'dev', dependsOn: ['T0-scaffold'], affectedPaths: ['tests/unit/plataforma/persistencia-volume.test.ts'] });
+    expect(validatePlan(withTasks([...makePlan(spec).tasks, task]), spec, { firstSpec: true })).toEqual([]);
   });
 });
 
