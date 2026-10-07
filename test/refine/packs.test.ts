@@ -40,8 +40,12 @@ describe('refinePack', () => {
   });
 
   it('reviews the derived backlog instead of a spec in backlog mode, and keeps criteria empty', () => {
-    const backlog = { enabled: true, project: null, epics: [{ key: 'core', title: 'Núcleo' }], items: [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'brief.md', heading: 'x' }], size: 'S', rank: 1 }], cycle: 1 };
-    const pack = refinePack({ ...base, role: 'po', derived: { project: {}, spec: null }, backlog } as never);
+    const backlog = { enabled: true, project: null, epics: [{ key: 'core', title: 'Núcleo' }], items: [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'x' }], size: 'S', rank: 1 }], cycle: 1 };
+    const pack = refinePack({ ...base, role: 'po', derived: { project: {}, spec: null }, backlog, projectBriefing: true, rejected: [{ file: 'brief.md', find: 'old', decision: 'no' }] } as never);
+    expect(pack.feedback).toContain('### docs/briefing.md');
+    expect(pack.feedback).toContain('Patch files: docs/project.md, docs/briefing.md.');
+    expect(pack.feedback).toContain('- docs/briefing.md: "old" → rejected: no');
+    expect(pack.feedback).not.toContain('brief.md');
     expect(pack.feedback).toContain('### derived backlog');
     expect(pack.feedback).toContain('"key": "base"');
     expect(pack.feedback).not.toContain('### derived spec.json');

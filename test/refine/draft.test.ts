@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execCommand } from '../../server/exec/command.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
-import { briefTemplate, createFromRepo, createNewProject, draftHash, draftPaths, readDerived, readDoc, renderBriefMd, writeDoc } from '../../server/refine/draft.js';
+import { briefTemplate, createFromRepo, createNewProject, DOC_REL, draftExists, draftHash, draftPaths, moveBriefingToProject, readDerived, readDoc, renderBriefMd, writeDoc } from '../../server/refine/draft.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 
@@ -90,6 +90,63 @@ describe('draft', () => {
     expect(unclear).toContain('PO: ask the human');
     expect(renderBriefMd(makeSpec(), 'x')).not.toContain('Routing');
     expect(renderBriefMd(makeSpec(), 'x', null)).not.toContain('Routing');
+  });
+
+  it('backlog mode moves the brief to the target project docs/briefing.md, and reads and writes follow it', async () => {
+    const d = draftPaths(ws, 'hello-001');
+    await createNewProject(d, 'Hello App', 'Ship a hello endpoint.');
+    await fs.writeFile(d.specJson, '{}');
+    const before = await readDoc(d, 'brief.md');
+    const hash = await draftHash(d);
+    await moveBriefingToProject(d);
+    expect(await fs.readFile(`${d.docs}/briefing.md`, 'utf8')).toBe(before);
+    await expect(fs.access(`${d.docs}/specs/hello-001`)).rejects.toThrow();
+    expect(await readDoc(d, 'brief.md')).toBe(before);
+    expect(await draftHash(d)).toBe(hash);
+    expect(await draftExists(d)).toBe(true);
+    await writeDoc(d, 'brief.md', '## Prioridades\n- P0 primeiro');
+    expect(await fs.readFile(`${d.docs}/briefing.md`, 'utf8')).toBe('## Prioridades\n- P0 primeiro\n');
+    await moveBriefingToProject(d);
+    expect(await readDoc(d, 'brief.md')).toBe('## Prioridades\n- P0 primeiro\n');
+  });
+
+  it('keeps an existing docs/briefing.md and appends the new demand under its own heading, once', async () => {
+    const d = draftPaths(ws, 'hello-002');
+    await createNewProject(d, 'Hello App', 'Add a goodbye endpoint.');
+    await fs.writeFile(`${d.docs}/briefing.md`, '# Briefing\n\n## Prioridades\n\n- P0 primeiro\n');
+    const brief = await readDoc(d, 'brief.md');
+    await moveBriefingToProject(d);
+    const once = await fs.readFile(`${d.docs}/briefing.md`, 'utf8');
+    expect(once.startsWith('# Briefing\n\n## Prioridades\n\n- P0 primeiro\n\n## Nova demanda (hello-002)\n\n')).toBe(true);
+    expect(once).toContain(brief.trim());
+    // A crash after the append and before the cleanup: the next move finishes it without appending twice.
+    await fs.mkdir(`${d.docs}/specs/hello-002`, { recursive: true });
+    await fs.writeFile(d.briefMd, brief);
+    await moveBriefingToProject(d);
+    expect(await fs.readFile(`${d.docs}/briefing.md`, 'utf8')).toBe(once);
+    await expect(fs.access(d.briefMd)).rejects.toThrow();
+  });
+
+  it('drops a bare template brief instead of appending it, and keeps other files of the spec directory', async () => {
+    const d = draftPaths(ws, 'hello-003');
+    await createNewProject(d, 'Hello App');
+    await fs.writeFile(`${d.docs}/briefing.md`, '# Briefing\n');
+    await fs.writeFile(d.specJson, '{}');
+    await fs.writeFile(`${d.docs}/specs/hello-003/plan.json`, '{}');
+    await moveBriefingToProject(d);
+    expect(await fs.readFile(`${d.docs}/briefing.md`, 'utf8')).toBe('# Briefing\n');
+    await expect(fs.access(d.briefMd)).rejects.toThrow();
+    await expect(fs.access(d.specJson)).rejects.toThrow();
+    expect(await fs.readFile(`${d.docs}/specs/hello-003/plan.json`, 'utf8')).toBe('{}');
+  });
+
+  it('a single-spec draft keeps its own brief even when the target project has a briefing', async () => {
+    const d = draftPaths(ws, 'hello-004');
+    await createNewProject(d, 'Hello App');
+    await fs.writeFile(`${d.docs}/briefing.md`, '# Briefing\n');
+    expect(await readDoc(d, 'brief.md')).toBe(briefTemplate());
+    expect(DOC_REL['brief.md']('hello-004')).toBe('docs/specs/hello-004/brief.md');
+    expect(DOC_REL['brief.md']('hello-004', true)).toBe('docs/briefing.md');
   });
 
   it('renders the work item type and bug details', () => {

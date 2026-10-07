@@ -13,6 +13,11 @@ describe('patches', () => {
     expect(checkPatch({ file: 'docs/project.md', find: 'slow', replace: 'y', reason: 'r' }, 'hello-001', docs)).toEqual({ ok: false, reason: 'find not found in project.md' });
     expect(checkPatch({ file: 'docs/specs/hello-001/brief.md', find: '- ship', replace: 'y', reason: 'r' }, 'hello-001', docs)).toEqual({ ok: false, reason: 'find occurs 2 times in brief.md' });
   });
+  it('in backlog mode a briefing patch targets the target project docs/briefing.md', () => {
+    expect(checkPatch({ file: 'docs/briefing.md', find: '## Objectives', replace: '## Goals', reason: 'r' }, 'hello-001', docs, true)).toEqual({ ok: true, file: 'brief.md' });
+    expect(checkPatch({ file: 'docs/specs/hello-001/brief.md', find: '## Objectives', replace: '## Goals', reason: 'r' }, 'hello-001', docs, true)).toEqual({ ok: false, reason: 'unknown file docs/specs/hello-001/brief.md' });
+    expect(checkPatch({ file: 'docs/briefing.md', find: '## Objectives', replace: '## Goals', reason: 'r' }, 'hello-001', docs)).toEqual({ ok: false, reason: 'unknown file docs/briefing.md' });
+  });
   it('applies exactly once and yields a unified diff naming the file', () => {
     expect(applyPatch('a fast b', { find: 'fast', replace: 'slow' })).toBe('a slow b');
     expect(applyPatch('a b', { find: 'fast', replace: 'slow' })).toBeNull();

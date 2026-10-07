@@ -42,7 +42,7 @@ describe('reduceRefineEvents', () => {
 });
 
 describe('backlog events', () => {
-  const backlogItem = { key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'brief.md', heading: 'Objectives' }], size: 'S', rank: 1 };
+  const backlogItem = { key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S', rank: 1 };
   const derivedBacklog = { cycle: 1, project: makeProject(), epics: [{ key: 'core', title: 'Core' }], items: [backlogItem] };
   it('leaves a journal without backlog events with no backlog', () => {
     expect(reduceRefineEvents(cycle(1)).backlog).toBeNull();

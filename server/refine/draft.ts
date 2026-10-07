@@ -19,6 +19,8 @@ export interface Draft {
   projectMd: string;
   projectJson: string;
   briefMd: string;
+  /** Backlog mode: the target project's briefing, one hand-edited file for the whole project. */
+  briefingMd?: string;
   stackMd: string;
   flowMd: string;
   designMd?: string;
@@ -28,9 +30,12 @@ export interface Draft {
 }
 export type DocFile = 'project.md' | 'brief.md' | 'stack.md' | 'flow.md' | 'design.md';
 
-export const DOC_REL: Record<DocFile, (specId: string) => string> = {
+export const BRIEFING_REL = 'docs/briefing.md';
+
+/** `brief.md` is the briefing: the draft's own file for one spec, or the target project's `docs/briefing.md` in backlog mode. */
+export const DOC_REL: Record<DocFile, (specId: string, projectBriefing?: boolean) => string> = {
   'project.md': () => 'docs/project.md',
-  'brief.md': (specId) => `docs/specs/${specId}/brief.md`,
+  'brief.md': (specId, projectBriefing = false) => (projectBriefing ? BRIEFING_REL : `docs/specs/${specId}/brief.md`),
   'stack.md': () => 'docs/stack.md',
   'flow.md': () => 'docs/flow.md',
   'design.md': () => 'docs/design.md',
@@ -48,6 +53,7 @@ export function draftPaths(ws: Workspace, specId: string): Draft {
     projectMd: path.posix.join(docs, 'project.md'),
     projectJson: path.posix.join(docs, 'project.json'),
     briefMd: path.posix.join(docs, 'specs', specId, 'brief.md'),
+    briefingMd: path.posix.join(docs, 'briefing.md'),
     stackMd: path.posix.join(docs, 'stack.md'),
     flowMd: path.posix.join(docs, 'flow.md'),
     designMd: path.posix.join(docs, 'design.md'),
@@ -113,7 +119,35 @@ export function renderBriefMd(s: Spec, validationReport?: string, routing?: Repo
   return parts.join('\n');
 }
 
-export const draftExists = (d: Draft): Promise<boolean> => fs.access(d.briefMd).then(() => true, () => false);
+const exists = (file: string): Promise<boolean> => fs.access(file).then(() => true, () => false);
+const briefingPath = (d: Draft): string => d.briefingMd ?? path.posix.join(d.docs, 'briefing.md');
+
+/** The briefing a draft edits: its own brief.md for one spec, else the target project's docs/briefing.md (backlog mode). */
+async function briefPath(d: Draft): Promise<string> {
+  return (await exists(d.briefMd)) || !(await exists(briefingPath(d))) ? d.briefMd : briefingPath(d);
+}
+
+export const draftExists = async (d: Draft): Promise<boolean> => (await exists(d.briefMd)) || exists(briefingPath(d));
+
+/**
+ * Backlog mode: the draft's brief becomes the target project's `docs/briefing.md`, so the five docs live together and a
+ * later session continues from the same file. An existing briefing is kept and the draft's own demand is appended under
+ * its heading (a bare template adds nothing). Idempotent: reopening a session finishes a move a crash cut short.
+ */
+export async function moveBriefingToProject(d: Draft): Promise<void> {
+  const brief = await fs.readFile(d.briefMd, 'utf8').catch(() => null);
+  if (brief !== null) {
+    const briefing = await fs.readFile(briefingPath(d), 'utf8').catch(() => null);
+    if (briefing === null) await fs.rename(d.briefMd, briefingPath(d));
+    else if (brief.trim() !== briefTemplate().trim() && !briefing.includes(brief.trim())) {
+      await fs.writeFile(briefingPath(d), withNewline(`${briefing.trimEnd()}\n\n## Nova demanda (${d.specId})\n\n${brief.trim()}`));
+    }
+  }
+  // Only the single-spec files go; anything else in the spec directory stays, and the directory goes once empty.
+  await fs.rm(d.briefMd, { force: true });
+  await fs.rm(d.specJson, { force: true });
+  await fs.rmdir(path.posix.dirname(d.briefMd)).catch(() => undefined);
+}
 
 export const MAX_DESCRIPTION = 20_000;
 
@@ -172,7 +206,7 @@ export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: {
 
 export async function readDoc(d: Draft, file: DocFile): Promise<string> {
   try {
-    return await fs.readFile(docPath(d, file), 'utf8');
+    return await fs.readFile(file === 'brief.md' ? await briefPath(d) : docPath(d, file), 'utf8');
   } catch (err) {
     // Older drafts predate design.md; treat the new contract as its migration default.
     if (file === 'design.md' && (err as NodeJS.ErrnoException).code === 'ENOENT') return designTemplate();
@@ -181,7 +215,7 @@ export async function readDoc(d: Draft, file: DocFile): Promise<string> {
 }
 /** Docs end with a newline: they are copied verbatim into the project repo, where a format gate will check them. */
 const withNewline = (text: string): string => (text.endsWith('\n') ? text : `${text}\n`);
-export const writeDoc = (d: Draft, file: DocFile, text: string): Promise<void> => fs.writeFile(docPath(d, file), withNewline(text));
+export const writeDoc = async (d: Draft, file: DocFile, text: string): Promise<void> => fs.writeFile(file === 'brief.md' ? await briefPath(d) : docPath(d, file), withNewline(text));
 
 export async function readDerived(d: Draft): Promise<{ project: Project; spec: Spec } | null> {
   const read = (f: string) => fs.readFile(f, 'utf8').then(JSON.parse, () => null);

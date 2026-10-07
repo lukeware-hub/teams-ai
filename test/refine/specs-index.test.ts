@@ -6,7 +6,7 @@ const backlog: Pick<BacklogState, 'epics' | 'items'> = {
   epics: [{ key: 'core', title: 'Núcleo' }, { key: 'fin', title: 'Financeiro' }],
   items: [
     { key: 'cobranca', title: 'Cobrança', epic: 'fin', scope: 'Gerar cobrança', priority: 'P2', rationale: 'depois do núcleo', dependsOn: ['casos'], sources: [{ doc: 'flow.md', heading: '16. Faturamento' }], size: 'L', rank: 3 },
-    { key: 'base', title: 'Fundação', epic: 'core', scope: 'Esqueleto', priority: 'P0', rationale: 'tudo depende', dependsOn: [], sources: [{ doc: 'brief.md', heading: 'Objectives' }], size: 'S', rank: 1 },
+    { key: 'base', title: 'Fundação', epic: 'core', scope: 'Esqueleto', priority: 'P0', rationale: 'tudo depende', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S', rank: 1 },
     { key: 'casos', title: 'Abertura de casos', epic: 'core', scope: 'Abrir caso', priority: 'P1', rationale: 'fluxo principal', dependsOn: ['base'], sources: [{ doc: 'flow.md', heading: '2. Abertura do caso' }], size: 'M', rank: 2 },
   ],
 };

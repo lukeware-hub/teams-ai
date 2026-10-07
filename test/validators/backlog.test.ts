@@ -10,7 +10,7 @@ const item = (key: string, over: Partial<BacklogItem> = {}): BacklogItem => ({
   priority: 'P1',
   rationale: 'valor',
   dependsOn: [],
-  sources: [{ doc: 'brief.md', heading: 'Objectives' }],
+  sources: [{ doc: 'briefing.md', heading: 'Objectives' }],
   size: 'M',
   ...over,
 });

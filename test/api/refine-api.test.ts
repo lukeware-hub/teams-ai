@@ -140,7 +140,13 @@ describe('refine api', () => {
     expect((await call('POST', `${url}/backlog`)).status).toBe(200);
     expect((await call('POST', `${url}/backlog`)).status).toBe(200);
     expect((await snapshot()).state.backlog).toMatchObject({ enabled: true, items: [] });
-    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'brief.md', heading: 'Objectives' }], size: 'S' }];
+    // The brief became the target project's docs/briefing.md, and the session still opens from disk afterwards.
+    const draftDocs = `${home}/ws/hello-app/refine/hello-app-001/docs`;
+    expect(await fs.readFile(`${draftDocs}/briefing.md`, 'utf8')).toBe((await snapshot()).docs['brief.md']);
+    await expect(fs.access(`${draftDocs}/specs/hello-app-001`)).rejects.toThrow();
+    await registry.close();
+    expect((await fetch(`${base()}${url}`)).status).toBe(200);
+    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
     script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
     script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];

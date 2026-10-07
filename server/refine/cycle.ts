@@ -187,12 +187,12 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       pack: fitPackBudget(refinePack({ role: 'front', specHash: hash, principles: deps.principles(), specId: draft.specId,
         projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'],
         derived, backlog, retrieval: [], history: journal.state.questions,
-        rejected: journal.state.patches.filter((p) => p.status === 'rejected'), jevValidation })),
+        rejected: journal.state.patches.filter((p) => p.status === 'rejected'), jevValidation, projectBriefing: backlogMode })),
       cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, ctx);
     if (!review.ok) { await fail(`front validation failed: ${review.failure}: ${review.errors.join('; ')}`); return; }
     let i = 0;
     for (const p of (review.value as z.infer<typeof RefineOutput>).docPatch) {
-      const c = checkPatch(p, draft.specId, docs);
+      const c = checkPatch(p, draft.specId, docs, backlogMode);
       if (!c.ok) {
         discardedPatches.push({ role: 'front', file: p.file, reason: c.reason });
         continue;
@@ -233,6 +233,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           rejected: state.patches.filter((p) => p.status === 'rejected'),
           jevValidation,
           notReady,
+          projectBriefing: backlogMode,
         })),
         cwd: draft.root,
         phase: 'refine',
@@ -301,7 +302,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         await journal.fact(RefineEvent.DocEdited, { file: blank, hash: sha256(docs[blank]), source: 'autofill' });
         continue;
       }
-      const c = checkPatch(p, draft.specId, docs);
+      const c = checkPatch(p, draft.specId, docs, backlogMode);
       if (c.ok && c.file === 'design.md') {
         discardedPatches.push({ role, file: p.file, reason: 'design.md is reviewable only by front' });
         continue;

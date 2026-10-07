@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { ID_PATTERNS } from '../core/ids.js';
 
-/** The five docs, by the names the refinement uses internally (`brief.md` is the briefing). */
-export const BACKLOG_DOCS = ['project.md', 'brief.md', 'stack.md', 'flow.md', 'design.md'] as const;
+/** The target project's five docs, by their file names under `docs/` (backlog mode keeps the briefing in `docs/briefing.md`). */
+export const BACKLOG_DOCS = ['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md'] as const;
 export const PRIORITIES = ['P0', 'P1', 'P2', 'P3'] as const;
 
 const slug = z.string().regex(ID_PATTERNS.SLUG).max(40);

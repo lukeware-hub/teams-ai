@@ -7,7 +7,7 @@ import type { Hit } from '../knowledge/retrieval.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import { EventStore, type StoredEvent } from '../store/event-store.js';
 import { runCycle, type CycleDeps, type RunAgent } from './cycle.js';
-import { designTemplate, flowTemplate, readDerived, readDoc, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
+import { designTemplate, flowTemplate, moveBriefingToProject, readDerived, readDoc, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
 import { DRAFT_HASH, RefineEvent } from './events.js';
 import { applyPatch } from './patches.js';
 import { applyRefineEvent, emptyRefineState, type RefineState } from './state.js';
@@ -108,6 +108,8 @@ export class RefineSession {
     const journal = await RefineJournal.open(deps.draft.events, { projectId: deps.draft.projectId, specId: deps.draft.specId });
     // Spec §8: a cycle cut by a restart is failed, never resumed; nothing was charged as an attempt.
     if (journal.state.status === 'evaluating') await journal.fact(RefineEvent.CycleFailed, { cycle: journal.state.cycle, reason: 'interrupted' });
+    // A crash between enabling backlog mode and moving the briefing: finish the move.
+    if (journal.state.backlog?.enabled) await moveBriefingToProject(deps.draft);
     // A continued spec carries its JSON from main before any cycle has derived one.
     if (!journal.state.derived) journal.state.derived = await readDerived(deps.draft);
     return new RefineSession(deps, journal);
@@ -175,11 +177,13 @@ export class RefineSession {
     await this.journal.fact(RefineEvent.DocEdited, { file, hash: sha256(text), source: 'human' });
   }
 
-  /** Backlog mode: the next evaluations break the docs into a prioritized backlog instead of deriving one spec. */
+  /** Backlog mode: the next evaluations break the docs into a prioritized backlog instead of deriving one spec, and the
+   *  briefing becomes the target project's docs/briefing.md. */
   async enableBacklog(): Promise<void> {
     this.guard();
     if (this.state.backlog?.enabled) return;
     await this.journal.fact(RefineEvent.BacklogEnabled, {});
+    await moveBriefingToProject(this.deps.draft);
   }
 
   async evaluate(): Promise<void> {

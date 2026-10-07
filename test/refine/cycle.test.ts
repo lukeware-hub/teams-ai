@@ -179,7 +179,7 @@ describe('refinement cycle Jev requirement', () => {
 });
 
 describe('refinement cycle in backlog mode', () => {
-  const item = (key: string, over: Partial<BacklogItem> = {}): BacklogItem => ({ key, title: `Item ${key}`, epic: 'core', scope: `Entrega ${key}`, priority: 'P1', rationale: 'valor', dependsOn: [], sources: [{ doc: 'brief.md', heading: 'Objectives' }], size: 'M', ...over });
+  const item = (key: string, over: Partial<BacklogItem> = {}): BacklogItem => ({ key, title: `Item ${key}`, epic: 'core', scope: `Entrega ${key}`, priority: 'P1', rationale: 'valor', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'M', ...over });
   const raw = (items: BacklogItem[]) => ({ project: makeProject(), backlog: { epics: [{ key: 'core', title: 'Core' }], items } });
   const ok = (value: unknown) => ({ ok: true, value, summary: {} });
   const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));

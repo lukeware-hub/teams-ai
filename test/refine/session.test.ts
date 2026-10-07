@@ -33,6 +33,23 @@ beforeEach(async () => {
 afterEach(() => fs.rm(root, { recursive: true, force: true }));
 
 describe('RefineSession', () => {
+  it('backlog mode moves the brief to the target project docs/briefing.md, and a reopen finishes an interrupted move', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    const brief = await readDoc(draft(), 'brief.md');
+    await s.enableBacklog();
+    expect(await fs.readFile(`${draft().docs}/briefing.md`, 'utf8')).toBe(brief);
+    await expect(fs.access(draft().briefMd)).rejects.toThrow();
+    expect((await s.snapshot()).docs['brief.md']).toBe(brief);
+    await s.close();
+    // A crash between BACKLOG_ENABLED and the move leaves a brief behind; opening the session again finishes the move.
+    await fs.mkdir(path.dirname(draft().briefMd), { recursive: true });
+    await fs.writeFile(draft().briefMd, '## Description\n\nOutra demanda.\n');
+    const again = await RefineSession.open(deps());
+    expect(await fs.readFile(`${draft().docs}/briefing.md`, 'utf8')).toContain('## Nova demanda (hello-001)\n\n## Description\n\nOutra demanda.');
+    await expect(fs.access(draft().briefMd)).rejects.toThrow();
+    await again.close();
+  });
+
   it('migrates an existing draft that predates design.md', async () => {
     const design = path.join(draft().docs, 'design.md');
     await fs.rm(design);

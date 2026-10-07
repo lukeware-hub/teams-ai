@@ -8,7 +8,7 @@ import { makeProject } from '../fixtures/contracts.js';
 
 const HASH = `sha256:${'a'.repeat(64)}`;
 const item = (key: string, over: Partial<BacklogItem> = {}): BacklogItem => ({
-  key, title: `Item ${key}`, epic: 'core', scope: `Entrega ${key}`, priority: 'P1', rationale: 'valor', dependsOn: [], sources: [{ doc: 'brief.md', heading: 'Objectives' }], size: 'M', ...over,
+  key, title: `Item ${key}`, epic: 'core', scope: `Entrega ${key}`, priority: 'P1', rationale: 'valor', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'M', ...over,
 });
 const raw = (items: BacklogItem[]) => ({ project: makeProject(), backlog: { epics: [{ key: 'core', title: 'Core' }], items } });
 const previous = (items: BacklogItem[]): BacklogState => ({ enabled: true, project: makeProject(), epics: [{ key: 'core', title: 'Core' }], items: items.map((i, n) => ({ ...i, rank: n + 1 })), cycle: 1 });
@@ -25,6 +25,9 @@ describe('backlogPack', () => {
     expect(pack.feedback).toContain('%% 7. OPME');
     expect(pack.feedback).toMatch(/binding/);
     expect(pack.outputContract).toContain('"backlog"');
+    // The briefing is the target project's docs/briefing.md: the agents cite and read it by that name only.
+    expect(pack.feedback).toContain('### briefing.md');
+    expect(pack.feedback).not.toContain('brief.md');
   });
 
   it('lists the previous keys so they stay stable, and the last rejection when there is one', () => {
@@ -79,6 +82,7 @@ describe('renderBacklogMd', () => {
     expect(md).toContain('| 2 | P1 | casos | M | base |');
     expect(md).toContain('### casos: Abertura de casos');
     expect(md).toContain('flow.md › 2. Abertura do caso');
+    expect(md).toContain('briefing.md › Objectives');
     expect(md).toMatch(/não edite/);
   });
 });

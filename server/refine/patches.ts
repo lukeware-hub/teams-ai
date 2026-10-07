@@ -21,8 +21,8 @@ export type PatchCheck = { ok: true; file: DocFile } | { ok: false; reason: stri
 const count = (text: string, find: string): number => (find === '' ? 0 : text.split(find).length - 1);
 
 /** Spec (refinement) §3.4: only known Markdown files, and `find` must occur exactly once. */
-export function checkPatch(p: DocPatchIn, specId: string, docs: Partial<Record<DocFile, string>>): PatchCheck {
-  const file = (Object.keys(DOC_REL) as DocFile[]).find((f) => DOC_REL[f](specId) === p.file);
+export function checkPatch(p: DocPatchIn, specId: string, docs: Partial<Record<DocFile, string>>, projectBriefing = false): PatchCheck {
+  const file = (Object.keys(DOC_REL) as DocFile[]).find((f) => DOC_REL[f](specId, projectBriefing) === p.file);
   if (!file) return { ok: false, reason: `unknown file ${p.file}` };
   const text = docs[file];
   if (text === undefined) return { ok: false, reason: `document not loaded: ${file}` };
