@@ -62,7 +62,10 @@ function common(deps: MergeStepsDeps, worktree: string, branch: string, title: s
     alreadyMerged: async () => findMergedPr({ cwd: repo, head: branch, base: 'main', headSha: await headSha(worktree, deps.exec).catch(() => undefined) }, deps.ghExec),
     rebase: async () => {
       await gitFetch(repo, deps.exec);
-      return rebaseOnto(worktree, 'origin/main', deps.exec);
+      const r = await rebaseOnto(worktree, 'origin/main', deps.exec);
+      // A worktree whose commit (or lack of one) left it exactly on baseSha has nothing to push or PR:
+      // content already identical to main, typically a retry of a Phase 0 whose docs already merged.
+      return r.ok && (await headSha(worktree, deps.exec)) === r.baseSha ? { ...r, empty: true } : r;
     },
     gates: async () => {
       if (!runGates) return { ok: true };

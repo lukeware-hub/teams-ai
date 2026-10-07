@@ -5,7 +5,9 @@ export interface MergeSteps {
   /** PR number if this branch already merged (crash between merge and confirm); the queue then does nothing. */
   alreadyMerged(): Promise<number | null>;
   /** Rebase onto the current main; `baseSha` is the main commit the branch now sits on. */
-  rebase(): Promise<{ ok: boolean; conflicts?: string[]; baseSha?: string }>;
+  /** `empty` is true when the rebase left the branch with zero commits ahead of `baseSha` (identical content
+   *  already on main, e.g. a retried run whose Phase 0 docs were already merged): no PR can exist for nothing. */
+  rebase(): Promise<{ ok: boolean; conflicts?: string[]; baseSha?: string; empty?: boolean }>;
   gates(): Promise<{ ok: boolean; detail?: string; failure?: GateResult }>;
   push(): Promise<void>;
   ensurePr(): Promise<{ number: number }>;
@@ -66,6 +68,15 @@ export class MergeQueue {
       if (merged !== null) return { ok: true, pr: merged, already: true };
       const rebase = await steps.rebase();
       if (!rebase.ok) return { ok: false, stage, conflicts: rebase.conflicts ?? [] };
+      if (rebase.empty) {
+        try {
+          await steps.afterMerge?.();
+        } catch (err) {
+          if ((err as { fatal?: boolean }).fatal === true) throw err;
+          return { ok: true, pr: 0, already: true, warning: `afterMerge: ${(err as Error).message}` };
+        }
+        return { ok: true, pr: 0, already: true };
+      }
       stage = 'gates';
       const gates = await steps.gates();
       if (!gates.ok) return { ok: false, stage, detail: gates.detail, gateFailure: gates.failure };

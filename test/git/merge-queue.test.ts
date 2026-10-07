@@ -63,6 +63,17 @@ describe('MergeQueue', () => {
     expect(log.filter((l) => l === 'merge')).toHaveLength(1);
   });
 
+  it('treats a rebase that collapsed to no commits ahead of main as already applied, skipping gates/push/PR/merge', async () => {
+    // Live finding (R11.2 program run, 2026-10-07): retrying a run whose docs Phase 0 already merged identical
+    // content produced a worktree with zero commits ahead of origin/main after rebase (same content, same tree).
+    // `gh pr create` then refused with "No commits between main and <branch>", failing the whole phase.
+    const log: string[] = [];
+    const q = new MergeQueue();
+    const r = await q.enqueue('T1', steps({ rebase: async () => (log.push('rebase'), { ok: true, baseSha: 'main1', empty: true }) }, log));
+    expect(r).toEqual({ ok: true, pr: 0, already: true });
+    expect(log).toEqual(['check', 'rebase', 'after']);
+  });
+
   it('stops at a rebase conflict and reports the files', async () => {
     const log: string[] = [];
     const q = new MergeQueue();

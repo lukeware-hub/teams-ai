@@ -131,6 +131,24 @@ describe('docsMergeSteps', () => {
     expect(gh.prs[0]!.title).toBe('docs(spec-001): technical spec');
     await expect(fs.access(docsWt)).rejects.toThrow();
   });
+  it('a docs branch with identical content already on main needs no PR: rebase reports empty, the queue skips straight to cleanup', async () => {
+    // Live finding (R11.2 program run, 2026-10-07): retrying a run whose Phase 0 docs were already merged
+    // wrote the same spec.json bytes into a fresh worktree; commitAll returned null (nothing staged), so the
+    // branch sat exactly on origin/main with zero commits ahead, and `gh pr create` refused with
+    // "No commits between main and <branch>", failing the whole phase for a retry that had nothing new to do.
+    const docsWt = path.join(remote.root, 'wt', 'docs__spec-001-retry');
+    await createWorktree(remote.repo, docsWt, 'docs/spec-001-retry', 'origin/main');
+    const mainSha = await headSha(remote.repo);
+    expect(await commitAll(docsWt, 'docs: no-op retry')).toBeNull();
+    expect(await headSha(docsWt)).toBe(mainSha);
+    const gates = async () => { throw new Error('gates must not run for an empty docs branch'); };
+    const steps = docsMergeSteps(deps({ gates }), 'docs/spec-001-retry', docsWt, 'docs(spec-001): retry');
+    const out = await new MergeQueue().enqueue('docs-retry', steps);
+    expect(out).toEqual({ ok: true, pr: 0, already: true });
+    expect(gh.prs).toEqual([]);
+    await expect(fs.access(docsWt)).rejects.toThrow();
+  });
+
   it('pushes and merges again on a second pass when the head changed (merge refused, main moved)', async () => {
     const d = deps();
     const first = taskMergeSteps(d, task, worktree, 'task/spec-001-T1', spec, 'did T1');
