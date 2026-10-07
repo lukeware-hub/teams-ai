@@ -161,6 +161,21 @@ describe('mergedByPriorRuns', () => {
     const ws = { ...workspacePaths(DEFAULT_CONFIG, 'shop', '/home/u'), runs: dir };
     expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r1')).toEqual(new Set());
   });
+
+  // Live finding (R11.3/4 program run, r4-r7, 2026-10-07): T900-fix-1, planned by Phase 4 for a criterion a prior
+  // run found uncovered, was inherited as already-merged by every retry. Once the criterion's own wording changed
+  // (an owner correction to an unprovable AC), Phase 4 never got a fresh chance to plan a fix for it again: the old
+  // fix task stayed adopted as done, silently answering for a criterion it was never re-checked against.
+  it('never adopts a T900-fix-* task: a fix task answers one verification attempt, never carried into a retry', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-runs-'));
+    const ws = { ...workspacePaths(DEFAULT_CONFIG, 'shop', '/home/u'), runs: dir };
+    const open = (id: string) => EventStore.open({ file: eventsFile(ws, id), runId: id, specHash: 'h' });
+    const r1 = await open('a-001-r1');
+    await r1.append({ type: 'RUN_STARTED', data: { runId: 'a-001-r1', specId: 'a-001', projectId: 'shop' } });
+    await r1.append({ type: 'RUN_FINISHED', data: { result: 'verification-failed', reason: 'x', merged: ['T0-scaffold', 'T900-fix-1'], blocked: [], tokens: {} } });
+    await r1.close();
+    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r2')).toEqual(new Set(['T0-scaffold']));
+  });
 });
 
 describe('firstSpecForSpec', () => {

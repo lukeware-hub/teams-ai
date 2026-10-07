@@ -155,7 +155,10 @@ export async function mergedByPriorRuns(ws: Workspace, specId: string, runId: st
     const started = events.find((e) => e.type === OrchEvent.RunStarted);
     if (started !== undefined && started.data.projectId !== ws.projectId) continue; // run numbers are shared across projects with the same spec id
     const finished = [...events].reverse().find((e) => e.type === OrchEvent.RunFinished);
-    for (const id of (finished?.data.merged as string[] | undefined) ?? []) merged.add(id);
+    // A T900-fix-* task answers one verification attempt's own findings (Phase 4 plans it fresh every round already,
+    // within a run); carrying it into a retry as "already done" would stop a later attempt from ever replanning a
+    // fix for a criterion whose own wording or evidence requirements changed since.
+    for (const id of (finished?.data.merged as string[] | undefined) ?? []) if (!id.startsWith('T900-fix-')) merged.add(id);
   }
   return merged;
 }
