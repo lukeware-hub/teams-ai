@@ -91,6 +91,42 @@ describe('phase 0', () => {
     await resumed.close();
   });
 
+  it('publishes a backlog item: its whole spec directory without brief.md, the docs main lacks, and nothing main already has', { timeout: 60_000 }, async () => {
+    // Spec 1 already delivered and published; the draft still holds its stale planned copy and spec 2 planned on main.
+    await remote.cleanup();
+    remote = await makeRemote({
+      'README.md': 'seed',
+      'docs/specs/hello-000/spec.json': '{"status":"done"}',
+      'docs/specs/hello-001/spec.json': '{"status":"planned"}',
+    });
+    draftDocs = path.join(remote.root, 'draft', 'docs');
+    const write = async (rel: string, text: string) => {
+      await fs.mkdir(path.dirname(path.join(draftDocs, rel)), { recursive: true });
+      await fs.writeFile(path.join(draftDocs, rel), text);
+    };
+    await write('project.md', '# Hello');
+    await write('project.json', JSON.stringify(project));
+    await write('briefing.md', '# Briefing');
+    await write('backlog.md', '# Backlog');
+    await write('specs.json', '[]');
+    await write('specs/hello-000/spec.json', '{"status":"planned"}');
+    await write('specs/hello-001/spec.json', JSON.stringify(spec));
+    await write('specs/hello-001/spec.md', '# Spec');
+    await write('specs/hello-001/preplan.json', '{"tasks":[]}');
+    const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
+    exec.onArgs('gh', ['repo', 'view'], () => ({ stdout: JSON.stringify({ nameWithOwner: 'o/hello-app', url: remote.origin }) }));
+    new FakeGh().install(exec);
+    const run = await Run.create(deps(exec, remote.repo), 'hello-001-r1');
+    expect(await run.executePhase0()).toEqual({ ok: true });
+    const show = (rel: string) => git(remote.repo, ['show', `origin/main:docs/${rel}`], execCommand);
+    expect(await show('specs/hello-001/spec.json')).toContain('"specHash"');
+    expect(await show('specs/hello-001/spec.md')).toBe('# Spec');
+    expect(await show('specs/hello-001/preplan.json')).toBe('{"tasks":[]}');
+    for (const rel of ['briefing.md', 'backlog.md', 'specs.json']) expect(await show(rel)).toBeTruthy();
+    expect(await show('specs/hello-000/spec.json')).toBe('{"status":"done"}');
+    await run.close();
+  });
+
   it('resuming after Phase 0 already merged does not open a second, empty docs PR', { timeout: 60_000 }, async () => {
     const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
     exec.onArgs('gh', ['repo', 'view'], () => ({ stdout: JSON.stringify({ nameWithOwner: 'o/hello-app', url: remote.origin }) }));

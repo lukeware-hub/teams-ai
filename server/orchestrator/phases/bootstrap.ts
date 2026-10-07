@@ -64,11 +64,31 @@ export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docs
   // A crash after the commit is confirmed but before it merges must never let a resumed
   // recreate-worktree silently reset the branch and lose it (spec (orchestrator) §6 crash recovery).
   const wt = await docsWorktree(deps, branch, { keepCommits: journal.isConfirmed(Intent.DocsCommit, docsCommitKey(deps, 0)) });
-  for (const rel of ['project.md', 'project.json', `specs/${spec.specId}/brief.md`, `specs/${spec.specId}/spec.json`]) {
-    await fs.mkdir(path.dirname(path.join(wt, 'docs', rel)), { recursive: true });
-    await fs.copyFile(path.join(opts.docsDir, rel), path.join(wt, 'docs', rel));
+  // The project docs and this run's own spec directory always go (main may hold its planned copy: the frozen one replaces it);
+  // everything else the draft has (briefing, stack, flow, design, backlog, the index, the other planned specs) only when main
+  // lacks it, so a spec already delivered keeps the status main gave it.
+  const own = `specs/${spec.specId}/`;
+  for (const rel of await listFiles(opts.docsDir)) {
+    const target = path.join(wt, 'docs', rel);
+    const owned = rel === 'project.md' || rel === 'project.json' || rel.startsWith(own);
+    if (!owned && (await exists(target))) continue;
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.copyFile(path.join(opts.docsDir, rel), target);
   }
   return commitAndMergeDocs(deps, 0, branch, wt, `docs(${spec.specId}): spec v${version}`);
+}
+
+const exists = (p: string) => fs.access(p).then(() => true, () => false);
+
+/** Every file under `dir`, as `/`-separated relative paths. */
+async function listFiles(dir: string, rel = ''): Promise<string[]> {
+  const out: string[] = [];
+  for (const e of await fs.readdir(path.join(dir, rel), { withFileTypes: true })) {
+    const child = rel === '' ? e.name : `${rel}/${e.name}`;
+    if (e.isDirectory()) out.push(...(await listFiles(dir, child)));
+    else if (e.isFile()) out.push(child);
+  }
+  return out;
 }
 
 /**
