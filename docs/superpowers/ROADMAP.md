@@ -481,7 +481,7 @@ unit-tested with fixtures. Each one needs a plan file in `plans/` before impleme
 
 ## Stage 11 - Spec-driven backlog (2026-10-06, plan 50)
 
-The docs (project, briefing, stack, flow, design) stay the only hand-edited truth; the agents break them into an organized, prioritized backlog of specs, the human selects what to implement, an automatic queue runs it, and a doc change after refinement re-derives what has not started. Design, decisions and risks: `plans/2026-10-06-teams-ai-50-spec-driven-backlog.md`. Each item below gets its own plan and approval before implementation.
+The docs (project, briefing, stack, flow, design) stay the only hand-edited truth. From them the agents derive a backlog of specs, from each spec a plan and from each plan the tasks; once refinement ends they implement the whole backlog on their own and mark each spec done, and the human only watches a live screen. Refinement (SM and PO, guided by Jev) is the decisive moment. Design, decisions, trio protocol and risks: `plans/2026-10-06-teams-ai-50-spec-driven-backlog.md` (second round, 2026-10-06). Each item below gets its own plan and approval before implementation.
 
 ### R11.0 Prerequisite fixes found while planning - `done` (plan 50, 2026-10-06)
 
@@ -495,19 +495,41 @@ The docs (project, briefing, stack, flow, design) stay the only hand-edited trut
 - Built (one commit per task): `server/contracts/backlog.ts` and `server/validators/backlog.ts` (keys, reserved keys, epics, dependencies and cycles, a dependency never lower priority, 60 items, every `flow.md` section cited, `rankItems`); step kind `backlog`; `server/refine/backlog.ts` (`backlogPack`, `postProcessBacklog` with stable keys, `renderBacklogMd`); `BACKLOG_ENABLED` and `BACKLOG_DERIVED` in the journal and the shared reducer; a backlog branch in `runCycle` (one retry carrying the rejection, writes `project.json` and a generated `docs/backlog.md`, PO and SM review the backlog with the same checklist); `POST /api/refine/:p/:s/backlog`; `BacklogPanel` and the button; policy in `po.md` and `sm.md`. Start is refused in backlog mode until R11.3.
 - Open: the live cycle on the Kayron docs (spends quota, needs the human's ok) is the real test of the breakdown quality, the coverage rule and the priorities; the container still runs the older image until it is rebuilt; once a single-spec session turns backlog mode on, its old spec.json and tasks blocks stay visible until it is re-evaluated; `refine-api.test.ts` still shows a timing flake in full parallel runs (passes alone).
 
-### R11.2 Detailed specs for every backlog item, anticipated in the cycles - `todo`
+### R11.1b `specs.json` index on the screen and on main - `todo`
 
-- `spec` step per item, only when its input hash changed; new `planned` status; global AC ids; generated `brief.md` and `spec.json` per item.
+- In backlog mode "Arquivos gerados" shows `specs.json` (the ordered list: id, title, epic, priority, rank, dependsOn, sources) instead of the single `spec.json`, and the same index is written as `docs/specs.json`. It is generated and carries no lifecycle state: `docs/specs/<id>/spec.json` stays the unit of freezing, status and PR and run links, because dozens of readers key on it and one shared file would be the single place every spec's status change collides.
 
-### R11.3 Select, start and publish planned specs - `todo`
+### R11.P Prove one spec end to end on the Docker platform - `planning` (needs the human's go: a paid run with GitHub side effects)
 
-- Selection with dependency closure; freeze at run start; Phase 0 publishes every `planned` spec absent from main.
+- Why: no live run has ever reached `awaiting-validation` (golden run 1 failed at the smoke for US$ 14.34; runs r3 to r5 died on the WSL login and sandbox). Program autonomy would stack on an unproven single run, so this comes first and runs beside R11.1b and R11.2.
+- Readiness checked read-only on 2026-10-06: `claude` 2.1.281 logged in and `bwrap` present in the container, `gh` logged in with scopes repo and read:org and admin of the owner `lukeware-kayron-hub`, dind 27.5.1 reachable, the OpenRouter key present. System 1 decisions at run time are off in `config.json` (only the Gate 1 ones are on).
+- Plan: a throwaway project created from the UI ("Novo projeto"), a tiny description (one service with `/health` and one endpoint, 3 to 4 tasks), refine to ready, Start, follow the Run page and the container logs. Record in this item every human touch, failed step and gate, the time and the cost.
+- Cost and limits: unknown; the reference is US$ 14.34 for the 10-task `todo-api` before the Stage 8 contract. Abort at US$ 25 or at the first stop only a human can clear. The Claude quota window is shared with the human's own refinement sessions.
+- Side effects: a private GitHub repository under `lukeware-kayron-hub`, its PRs, and a container deployed through dind.
+- Success: the one-run criteria of spec 1.3 (every AC passed in JUnit, green deploy and smoke, zero duplicate PRs, main green after every merge), or a precise defect list to fix before R11.4.
 
-### R11.4 Automatic spec queue - `todo`
+### R11.2 Detailed specs and a pre-plan for every backlog item, anticipated in the cycles - `todo`
 
-- Persisted queue, disk-only reconciler tick in the UI server, stop at first failure, pause on interruption, cost confirmation and cap.
+- `spec` step per item and `preplan` step per spec (modules, tasks, risks), each only when its input hash changed; new `planned` status; global AC ids; generated `brief.md` and `spec.json`; a spec tree with a coverage matrix doc section -> spec -> acceptance criterion -> task. The real plan is still made by the SM at execution against the actual code (it depends on the repository graph); deviations from the pre-plan are journaled and shown.
 
-### R11.5 Docs sync after refinement - `todo`
+### R11.3 Freeze and publish planned specs - `todo`
+
+- A spec is frozen when its run starts; Phase 0 publishes `docs/specs.json`, every `planned` spec absent from main and the docs coherently (today it copies four files).
+
+### R11.4 Autonomous program controller - `todo`
+
+- Reads `docs/specs.json` and runs the specs one after another by priority and dependency. Parallelism stays inside a spec (3 tasks without overlapping `affectedPaths`): the shared clone, the single compose stack and the account-wide quota make parallel specs unsafe and no faster. Persisted ledger; restart-safe (container restart policy, resume of the run in flight); a spec is marked done on its own when verification, deploy and smoke pass.
+- Repair loop on failure (human decision 2026-10-06: isolate, review, fix, adjust and continue): isolate the spec, Jev classifies the cause (code, plan, spec or docs, infrastructure, authentication), the SM replans or opens fix tasks, the PO proposes a docs adjustment when the spec itself is wrong, retry within a bound, and keep going with the specs that do not depend on it; a final report lists what remains. A human is needed only for login, credentials and Jev's `human` class.
+
+### R11.5 Autonomy hardening - `todo`
+
+- Jev decision routing (below in plan 50): every decision point is classified `auto` (decided from docs, ADRs or precedent and recorded as an assumption), `po`, `sm` or `human`; run-time decisions enabled after evals; cumulative README, RUNBOOK and API docs (today the last spec overwrites them, `report.ts:57`); a rebase-conflict resolver step (none exists, the task owner retries three times and then it blocks); a spec to PR ledger (`prs` in `report.json`, `Spec: <id>` in PR bodies and labels); the reserved backlog keys follow every branch suffix.
+
+### R11.6 Live program dashboard - `todo`
+
+- One screen that follows the whole program: the backlog tree with spec and task states, the current step, PRs, a decision timeline (who decided what and Jev's class), cost and quota; built on the run journals' SSE and the program ledger.
+
+### R11.7 Docs sync after refinement - `todo`
 
 - Re-derive `planned` specs whose sources changed, add and retire items, adjustment specs for started or delivered specs.
 

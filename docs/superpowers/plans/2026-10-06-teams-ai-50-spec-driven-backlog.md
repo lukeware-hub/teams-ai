@@ -1,7 +1,7 @@
 # Plan 50 - Spec-driven backlog: break the docs down, organize, prioritize, select, queue
 
-Status: approved by the human on 2026-10-06 (design, roadmap, Stage 0 and R11.1 detail). Roadmap items R11.0-R11.5.
-Each later item (R11.2 onward) gets its own plan and approval before implementation.
+Status: approved by the human on 2026-10-06 (design, roadmap, Stage 0 and R11.1 detail); second round of decisions the same day, recorded at the end (roadmap items R11.0-R11.7 and R11.P).
+Each later item gets its own plan and approval before implementation.
 
 ## Goal
 
@@ -84,3 +84,22 @@ Per task `npx vitest run <file>`; before each push `npm test`, `npm run test:web
 Kayron docs in a throwaway project (spends quota; ask first): every flow section is a source of some item, priorities and
 dependencies are coherent and acyclic, editing a decision in `briefing.md` changes the ranking while keys stay stable. A
 project without backlog mode behaves exactly as today.
+
+## Second round (2026-10-06): autonomy after refinement
+
+The human's vision: the five docs are the source of truth; from them the agents suggest the backlog of specs, from each spec the plan, from each plan the tasks; the management agents then implement the complete backlog 100% on their own and mark it done, while the human only watches a screen. The decisive moment is refinement, with the SM and Jev. The roadmap above is reordered accordingly (R11.1b, R11.P, R11.2 to R11.7).
+
+Decisions:
+1. **Trio protocol** (the human: "Jev guides and classifies the decisions, the other two follow their responsibilities"; defined here).
+   - PO owns what and why: objectives, acceptance criteria, priority P0-P3, scope cuts, product value.
+   - SM owns how and when: slicing into deliverable specs under the delivery contract, dependency order, pre-plan and tasks, feasibility, service decomposition, repair planning, reports.
+   - Jev owns judgement and routing and never writes docs or specs. For every decision point (a question an agent would put to the human, a PO and SM disagreement, a failure in a run, an ambiguity in the docs) it returns a class and a confidence: `auto` (answerable from the docs, ADRs, the delivery contract or precedent: the owner decides, records it as an assumption and goes on, nothing is asked), `po`, `sm`, or `human` (irreversible, business-critical, legal, credentials, or an ambiguity the docs cannot settle). It also checks consistency (docs against backlog against specs, coverage). Below a decision's confidence floor the existing chain escalates (jev, local, claude) and, still unsure, the class becomes `human`.
+   - Every classification is journaled as `DECISION_MADE` (it already exists), so the screen shows who decided what and why. Build: new decisions in `server/decide/decisions/` (question routing; spec-level failure triage extending `gate-triage` and `cli-error`), switched on per decision in `config.json` after an eval; the run-time ones are off today.
+2. **Completion is automatic:** a spec is marked done when verification, deploy and smoke pass; the validation data stays available on the screen.
+3. **Failure policy:** isolate, review, fix, adjust and continue (the repair loop of R11.4), not "stop at the first failure".
+4. **Prove one spec live first** (R11.P).
+5. **`specs.json` is a generated index** (order, priority, dependencies, sources), shown in "Arquivos gerados" and written as `docs/specs.json`; per-spec `docs/specs/<id>/spec.json` stays the unit of freezing, status and PR and run links.
+6. **A pre-plan at refinement, the real plan at execution:** the real plan reads the repository graph and files, which spec 5 cannot know before specs 1 to 4 exist; the pre-plan is the reviewed contract and deviations are journaled.
+7. **Independence is not parallelism:** specs run one after another by priority and dependency (each plans on a main that already holds the previous ones); parallelism stays inside a spec.
+
+Code audit behind these (2026-10-06): a `Run` is bound to one spec (`deps.spec` in about 50 places) and its process exits after it; nothing starts specs, and `supervise` only resumes interrupted runs and is not started by the container; the clone is shared and reset (`merge-steps.ts:118`), the merge queue and locks live in one process (`git.ts:66`), one compose stack and port per project (`docker-local.ts:14`), `firstSpec` is fixed at start; Phase 6 overwrites README, RUNBOOK and API (`report.ts:57`); a rebase conflict has no resolver, the owner retries three times, one replan, then blocked; a blocked task ends the run and drops its dependents; a failed verification or deploy leaves the spec `running`; PR numbers live only in run journals; the container has no restart policy. What still needs a human: an expired login, credentials, and Jev's `human` class.
