@@ -2,12 +2,13 @@ import { z } from 'zod';
 import { HASH_PATTERN } from '../contracts/hash.js';
 import { ADR_ID, Plan, PlanTask } from '../contracts/plan.js';
 import { Backlog } from '../contracts/backlog.js';
-import { AC_ID } from '../contracts/spec.js';
+import { Preplan } from '../contracts/preplan.js';
+import { AC_ID, AcceptanceCriterion, BugDetails, ExternalDependency, SpecType } from '../contracts/spec.js';
 import { ID_PATTERNS } from '../core/ids.js';
 import { Project } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 
-export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'dev', 'review', 'security', 'deployment', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'dev', 'review', 'security', 'deployment', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -42,6 +43,27 @@ export type DeriveOutput = z.infer<typeof DeriveOutput>;
 /** Backlog mode: the docs broken into epics and prioritized items; the orchestrator validates it and ranks the items. */
 export const BacklogOutput = z.object({ specHash, project: Project, backlog: Backlog });
 export type BacklogOutput = z.infer<typeof BacklogOutput>;
+
+/** Backlog detailing (PO): the spec of up to three backlog items per call; the orchestrator owns ids, status and provenance. */
+export const ItemSpec = z.object({
+  key: z.string().regex(ID_PATTERNS.SLUG),
+  type: SpecType.default('feature'),
+  bug: BugDetails.optional(),
+  objectives: z.array(z.string().min(1)).min(1),
+  features: z.array(z.string().min(1)),
+  acceptanceCriteria: z.array(AcceptanceCriterion).min(1),
+  outOfScope: z.array(z.string().min(1)),
+  externalDependencies: z.array(ExternalDependency),
+});
+export type ItemSpec = z.infer<typeof ItemSpec>;
+export const SpecDetailOutput = z.object({ specHash, specs: z.array(ItemSpec).min(1).max(3) });
+export type SpecDetailOutput = z.infer<typeof SpecDetailOutput>;
+
+/** Backlog detailing (SM): the pre-plan of up to three specs per call; the orchestrator adds specId, specRev and inputHash. */
+export const ItemPreplan = Preplan.pick({ modules: true, tasks: true, risks: true }).extend({ key: z.string().regex(ID_PATTERNS.SLUG) });
+export type ItemPreplan = z.infer<typeof ItemPreplan>;
+export const PreplanOutput = z.object({ specHash, preplans: z.array(ItemPreplan).min(1).max(3) });
+export type PreplanOutput = z.infer<typeof PreplanOutput>;
 
 export const TechSpecOutput = z.object({
   specHash,
@@ -185,6 +207,8 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   replan: ReplanOutput,
   'fix-tasks': FixTasksOutput,
   backlog: BacklogOutput,
+  spec: SpecDetailOutput,
+  preplan: PreplanOutput,
 };
 
 export type OutputOf<K extends StepKind> = z.infer<(typeof OUTPUT_SCHEMAS)[K]>;

@@ -127,3 +127,25 @@ describe('backlog output', () => {
     expect(JSON.stringify(toJsonSchema('backlog'))).toContain('"dependsOn"');
   });
 });
+
+describe('spec and preplan outputs', () => {
+  it('are step kinds carrying one to three backlog items each, without the fields the orchestrator owns', async () => {
+    const { PreplanOutput, SpecDetailOutput } = await import('../../server/agents/outputs.js');
+    expect(STEP_KINDS).toEqual(expect.arrayContaining(['spec', 'preplan']));
+    const item = { key: 'opme', objectives: ['o'], features: ['f'], acceptanceCriteria: [{ id: 'AC-001', given: 'g', when: 'w', then: 't' }], outOfScope: [], externalDependencies: [] };
+    expect(SpecDetailOutput.parse({ specHash: HASH, specs: [item] }).specs[0]!.type).toBe('feature');
+    expect(SpecDetailOutput.safeParse({ specHash: HASH, specs: [item, item, item, item] }).success).toBe(false);
+    expect(SpecDetailOutput.safeParse({ specHash: HASH, specs: [] }).success).toBe(false);
+    const pre = { key: 'opme', modules: [{ name: 'opme', purpose: 'p' }], tasks: [{ id: 'P1', title: 't', module: 'opme', owner: 'dev', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] };
+    expect(PreplanOutput.safeParse({ specHash: HASH, preplans: [pre] }).success).toBe(true);
+    expect(PreplanOutput.safeParse({ specHash: HASH, preplans: [pre, pre, pre, pre] }).success).toBe(false);
+    expect(OUTPUT_SCHEMAS.spec).toBe(SpecDetailOutput);
+    expect(OUTPUT_SCHEMAS.preplan).toBe(PreplanOutput);
+    const specSchema = JSON.stringify(toJsonSchema('spec'));
+    expect(specSchema).toContain('"acceptanceCriteria"');
+    for (const owned of ['"specId"', '"status"', '"derivedFrom"', '"specVersion"']) expect(specSchema).not.toContain(owned);
+    const preplanSchema = JSON.stringify(toJsonSchema('preplan'));
+    expect(preplanSchema).toContain('"criteriaRefs"');
+    for (const owned of ['"specId"', '"specRev"', '"inputHash"']) expect(preplanSchema).not.toContain(owned);
+  });
+});
