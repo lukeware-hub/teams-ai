@@ -196,8 +196,10 @@ describe('validatePlan: a devops task only touches infra', () => {
     const errors = validatePlan(withTasks([...makePlan(spec).tasks, task]), spec, { firstSpec: true }).join('\n');
     expect(errors).toMatch(/T900-fix-1.*devops.*persistencia-volume\.test\.ts/);
   });
-  it('accepts Dockerfile, deployment.json, docker-compose.yml, a CI workflow and a path under a declared deploy manifest', () => {
-    const paths = ['Dockerfile', 'Dockerfile.prod', 'deployment.json', 'docker-compose.yml', '.github/workflows/ci.yml', 'deploy/new-manifest.yaml'];
+  it('accepts Dockerfile, deployment.json, docker-compose.yml, .dockerignore, a CI workflow and a path under a declared deploy manifest', () => {
+    // Live finding (R11.3/4 program run, r4, 2026-10-07): a devops task touching the real .dockerignore
+    // it had already shipped in an earlier merged task was rejected as "not infra".
+    const paths = ['Dockerfile', 'Dockerfile.prod', 'deployment.json', 'docker-compose.yml', '.dockerignore', '.github/workflows/ci.yml', 'deploy/new-manifest.yaml'];
     for (const p of paths) {
       const task = makePlanTask({ id: 'T900-fix-1', owner: 'devops', dependsOn: ['T0-scaffold'], affectedPaths: [p] });
       expect(validatePlan(withTasks([...makePlan(spec).tasks, task]), spec, { firstSpec: true }).join('\n'), p).not.toMatch(/only touches infra|is not infra/);

@@ -31,6 +31,7 @@ export function isInfraPath(p: string, manifests: readonly string[]): boolean {
   if (base === 'deployment.json') return true;
   if (/^docker-compose(\..+)?\.ya?ml$/i.test(base)) return true;
   if (p.startsWith('.github/workflows/')) return true;
+  if (base === '.dockerignore') return true;
   const manifestRoots = new Set(manifests.map((m) => m.split('/')[0]));
   return manifestRoots.has(p.split('/')[0]);
 }
