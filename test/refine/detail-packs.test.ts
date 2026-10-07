@@ -6,13 +6,13 @@ import { preplanPack, specPack } from '../../server/refine/detail-packs.js';
 import type { BacklogDocs } from '../../server/refine/details.js';
 import type { BacklogState } from '../../server/refine/state.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
-import { KAYRON_FLOW } from '../fixtures/kayron-flow.js';
+import { NUMBERED_MERMAID_FLOW } from '../fixtures/numbered-mermaid-flow.js';
 
 const HASH = `sha256:${'a'.repeat(64)}`;
 const item = (key: string, rank: number, over: Partial<BacklogItem> = {}) => ({
   key, title: `Item ${key}`, epic: 'core', scope: `Entrega ${key}`, priority: 'P1' as const, rationale: 'valor', dependsOn: [], sources: [{ doc: 'flow.md' as const, heading: '7. OPME' }], size: 'M' as const, rank, ...over,
 });
-const docs: BacklogDocs = { 'project.md': '# Kayron\n\n## Personas\n\n- Médico auditor', 'briefing.md': '# Briefing\n\n## Prioridades\n\n- OPME é P2', 'stack.md': '# Stack\n\n- Node 22\n- Postgres 16', 'flow.md': KAYRON_FLOW, 'design.md': '# Design' };
+const docs: BacklogDocs = { 'project.md': '# Clínica\n\n## Personas\n\n- Médico auditor', 'briefing.md': '# Briefing\n\n## Prioridades\n\n- OPME é P2', 'stack.md': '# Stack\n\n- Node 22\n- Postgres 16', 'flow.md': NUMBERED_MERMAID_FLOW, 'design.md': '# Design' };
 const ac = (id: string, then: string) => ({ id, given: 'g', when: 'w', then, smoke: false });
 const count = (text: string, needle: string) => text.split(needle).length - 1;
 

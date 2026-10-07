@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { BacklogItem } from '../../server/contracts/backlog.js';
 import { batches, preplanInputHash, sourceHashes, specInputHash, type BacklogDocs } from '../../server/refine/details.js';
-import { KAYRON_FLOW } from '../fixtures/kayron-flow.js';
+import { NUMBERED_MERMAID_FLOW } from '../fixtures/numbered-mermaid-flow.js';
 
 const item = (key: string, over: Partial<BacklogItem> = {}): BacklogItem => ({
   key, title: `Item ${key}`, epic: 'core', scope: `Entrega ${key}`, priority: 'P1', rationale: 'valor', dependsOn: [], sources: [{ doc: 'flow.md', heading: '7. OPME' }], size: 'M', ...over,
 });
 const docs = (over: Partial<BacklogDocs> = {}): BacklogDocs => ({
-  'project.md': '# Kayron\n\n## Personas\n\n- Médico',
+  'project.md': '# Clínica\n\n## Personas\n\n- Médico',
   'briefing.md': '# Briefing\n\n## Prioridades\n\n- OPME é P2',
   'stack.md': '# Stack\n\n- Node 22',
-  'flow.md': KAYRON_FLOW,
+  'flow.md': NUMBERED_MERMAID_FLOW,
   'design.md': '# Design',
   ...over,
 });
@@ -20,7 +20,7 @@ describe('specInputHash', () => {
   it('changes only for the items citing an edited section', () => {
     const opme = item('opme');
     const caso = item('caso', { sources: [{ doc: 'flow.md', heading: '1. Caso' }] });
-    const edited = docs({ 'flow.md': KAYRON_FLOW.replace('O1[Cotação]', 'O1[Cotação em 3 fornecedores]') });
+    const edited = docs({ 'flow.md': NUMBERED_MERMAID_FLOW.replace('O1[Cotação]', 'O1[Cotação em 3 fornecedores]') });
     expect(specInputHash(opme, edited)).not.toBe(specInputHash(opme, docs()));
     expect(specInputHash(caso, edited)).toBe(specInputHash(caso, docs()));
   });

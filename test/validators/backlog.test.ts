@@ -68,7 +68,7 @@ describe('Backlog schema', () => {
 
 describe('flowHeadings', () => {
   it('reads numbered mermaid section comments and level 2-3 markdown headings, not the title or separators', () => {
-    const flow = ['# Fluxo', '', '```mermaid', '%% ====', '%% KAYRON HUB — V4', '%% 0. GOVERNANÇA DA PLATAFORMA', '%% ====', 'flowchart TD', '%% 7. OPME', '```', '', '## Regras gerais', '### Detalhe'].join('\n');
+    const flow = ['# Fluxo', '', '```mermaid', '%% ====', '%% CLÍNICA — V4', '%% 0. GOVERNANÇA DA PLATAFORMA', '%% ====', 'flowchart TD', '%% 7. OPME', '```', '', '## Regras gerais', '### Detalhe'].join('\n');
     expect(flowHeadings(flow)).toEqual(['0. GOVERNANÇA DA PLATAFORMA', '7. OPME', 'Regras gerais', 'Detalhe']);
   });
 

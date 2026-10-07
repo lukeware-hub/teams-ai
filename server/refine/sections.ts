@@ -1,6 +1,7 @@
 /**
- * Sections of the target project's docs, as backlog items cite them: numbered mermaid comments (`%% 7. OPME`, the
- * Kayron flow.md style) and markdown headings. Browser-safe: the refinement screen matches citations too.
+ * Sections of the target project's docs, as backlog items cite them: markdown headings and numbered mermaid comments
+ * (`%% 2. Checkout`, a common way to split a large mermaid flow). Browser-safe: the refinement screen matches
+ * citations too.
  */
 export interface DocSection {
   heading: string;
@@ -23,7 +24,7 @@ const within = (big: readonly string[], small: readonly string[]) => small.every
 
 /**
  * A cited heading matches a doc heading by whole words, never part of one, and numbered headings only match the same
- * number: "1. Caso" never matches "11. Caso clínico". A citation may abbreviate a heading ("OPME" for "7. OPME"); it
+ * number: "1. Caso" never matches "11. Caso clínico". A citation may abbreviate a heading ("Checkout" for "2. Checkout"); it
  * may say more than the heading only when both are numbered alike or neither is, so "Pagamento do caso" never stands
  * for "3. Pagamento". Under three characters a citation matches nothing.
  */
@@ -88,8 +89,8 @@ export function docSections(doc: string): DocSection[] {
 }
 
 /**
- * The text of the section a citation names: the same heading, else the same words under any section number ("OPME" for
- * "7. OPME"), else the one with the most words in common and, on a tie, the smallest, so a broad heading never stands
+ * The text of the section a citation names: the same heading, else the same words under any section number ("Checkout" for
+ * "2. Checkout"), else the one with the most words in common and, on a tie, the smallest, so a broad heading never stands
  * in for a precise one. Null if none.
  */
 export function sectionText(doc: string, heading: string): string | null {
