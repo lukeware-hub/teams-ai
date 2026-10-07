@@ -14,13 +14,15 @@ import { derivePack, postProcessDerived } from './derive.js';
 import { backlogPack, postProcessBacklog, renderBacklogMd, type BacklogCheck } from './backlog.js';
 import { fitPackBudget, PackTooLargeError } from './fit-pack.js';
 import { sha256 } from '../contracts/hash.js';
+import { flowHeadings } from '../validators/backlog.js';
+import { detailBacklog, removeRetired } from './detail-cycle.js';
 import { DOC_REL, draftHash, flowTemplate, readDerived, readDoc, stackTemplate, writeBacklogMd, writeDerived, writeDoc, writeProject, writeSpecsIndex, type DocFile, type Draft } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
 import { buildSpecsIndex } from './specs-index.js';
 import type { JevValidationResult } from './jev-validation.js';
 import { refinePack } from './packs.js';
 import { applyPatch, checkPatch, patchId, unifiedDiff } from './patches.js';
-import type { BacklogState, RefineState } from './state.js';
+import { applyRefineEvent, type BacklogState, type RefineState } from './state.js';
 
 export type RunAgent = <K extends StepKind>(
   req: AgentStepRequest<K>,
@@ -113,42 +115,63 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   let objectives: readonly string[] = [];
   let secretNames: string[] = [];
   if (backlogMode) {
-    // Backlog mode: the PO breaks the five docs into prioritized items instead of deriving one spec. One retry carries the rejection.
-    let rejection: string[] | undefined;
-    let accepted: Extract<BacklogCheck, { ok: true }> | null = null;
-    for (let attempt = 1; attempt <= 2 && !accepted; attempt++) {
-      const out = await deps.runAgent<'backlog'>(
-        {
-          kind: 'backlog',
-          role: 'po',
-          pack: fitPackBudget(backlogPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous: journal.state.backlog, jevValidation, rejection })),
-          cwd: draft.root,
-          phase: 'refine',
-          taskId: null,
-          attempt: cycle,
-        },
-        ctx,
-      );
-      if (!out.ok) {
-        await fail(`backlog failed: ${out.failure}: ${out.errors.join('; ')}`);
+    const before = journal.state.backlog;
+    if (before?.project && before.items.length > 0 && before.draftHash === hash) {
+      // The docs did not change since the outline was derived: asking again would only reword it.
+      backlog = before;
+    } else {
+      // Backlog mode: the PO breaks the five docs into prioritized items instead of deriving one spec. One retry carries the rejection.
+      let rejection: string[] | undefined;
+      let accepted: Extract<BacklogCheck, { ok: true }> | null = null;
+      for (let attempt = 1; attempt <= 2 && !accepted; attempt++) {
+        const out = await deps.runAgent<'backlog'>(
+          {
+            kind: 'backlog',
+            role: 'po',
+            pack: fitPackBudget(backlogPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous: before, jevValidation, rejection })),
+            cwd: draft.root,
+            phase: 'refine',
+            taskId: null,
+            attempt: cycle,
+          },
+          ctx,
+        );
+        if (!out.ok) {
+          await fail(`backlog failed: ${out.failure}: ${out.errors.join('; ')}`);
+          return;
+        }
+        const checked = postProcessBacklog(out.value as BacklogOutput, before, docs['flow.md']);
+        if (checked.ok) accepted = checked;
+        else rejection = checked.issues;
+      }
+      if (!accepted) {
+        await fail(`backlog: ${rejection!.join('; ')}`);
         return;
       }
-      const checked = postProcessBacklog(out.value as BacklogOutput, journal.state.backlog, docs['flow.md']);
-      if (checked.ok) accepted = checked;
-      else rejection = checked.issues;
+      const { project, backlog: ranked } = accepted.value;
+      await writeProject(draft, project);
+      await writeBacklogMd(draft, renderBacklogMd(ranked));
+      await writeSpecsIndex(draft, buildSpecsIndex(draft.specId, ranked));
+      const outline = { cycle, project, epics: ranked.epics, items: ranked.items, flowHeadings: flowHeadings(docs['flow.md']), draftHash: hash };
+      await journal.fact(RefineEvent.BacklogDerived, outline);
+      await removeRetired(draft, before, ranked.items);
+      // The same merge the reducer makes: the detail of items that still exist carries over.
+      const merged = { ...journal.state, backlog: before };
+      applyRefineEvent(merged, { type: RefineEvent.BacklogDerived, data: outline });
+      backlog = merged.backlog!;
     }
-    if (!accepted) {
-      await fail(`backlog: ${rejection!.join('; ')}`);
-      return;
+    if (backlog.detail) {
+      const backlogDocs = { 'project.md': docs['project.md'], 'briefing.md': docs['brief.md'], 'stack.md': docs['stack.md'], 'flow.md': docs['flow.md'], 'design.md': docs['design.md'] };
+      const detailed = await detailBacklog(deps, { cycle, hash, docs: backlogDocs, backlog, ctx });
+      if (!detailed.ok) {
+        await fail(detailed.reason);
+        return;
+      }
+      backlog = detailed.backlog;
+      secretNames = Object.values(backlog.specs ?? {}).flatMap((row) => row.spec?.externalDependencies.flatMap((dep) => dep.secretNames) ?? []);
     }
-    const { project, backlog: ranked } = accepted.value;
-    await writeProject(draft, project);
-    await writeBacklogMd(draft, renderBacklogMd(ranked));
-    await writeSpecsIndex(draft, buildSpecsIndex(draft.specId, ranked));
-    await journal.fact(RefineEvent.BacklogDerived, { cycle, project, epics: ranked.epics, items: ranked.items });
-    backlog = { enabled: true, project, epics: ranked.epics, items: ranked.items, cycle };
-    derived = { project, spec: null };
-    objectives = ranked.epics.map((e) => e.title);
+    derived = { project: backlog.project!, spec: null };
+    objectives = backlog.epics.map((e) => e.title);
   } else {
     const d = await deps.runAgent<'derive'>(
       {
@@ -187,7 +210,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       pack: fitPackBudget(refinePack({ role: 'front', specHash: hash, principles: deps.principles(), specId: draft.specId,
         projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'],
         derived, backlog, retrieval: [], history: journal.state.questions,
-        rejected: journal.state.patches.filter((p) => p.status === 'rejected'), jevValidation, projectBriefing: backlogMode })),
+        rejected: journal.state.patches.filter((p) => p.status === 'rejected'), jevValidation, projectBriefing: backlogMode, cycle })),
       cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, ctx);
     if (!review.ok) { await fail(`front validation failed: ${review.failure}: ${review.errors.join('; ')}`); return; }
     let i = 0;
@@ -234,6 +257,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           jevValidation,
           notReady,
           projectBriefing: backlogMode,
+          cycle,
         })),
         cwd: draft.root,
         phase: 'refine',
@@ -329,8 +353,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const present = await loadSecrets(deps.secretsDir);
   const missing = secretNames.filter((n) => !(n in present));
   const secretsItem = checklist.find((i) => i.id === 'sm.dependencies-and-secrets')!;
-  // Backlog mode lists no secrets yet (each spec will), so the SM's own judgement of the docs stands.
-  if (!backlogMode) {
+  // An outline lists no secrets yet (its specs will), so the SM's own judgement of the docs stands until detailing.
+  if (!backlogMode || backlog?.detail) {
     secretsItem.passed = missing.length === 0;
     secretsItem.detail = missing.length === 0 ? 'every listed secret is present' : `missing secrets: ${missing.join(', ')}`;
   }
