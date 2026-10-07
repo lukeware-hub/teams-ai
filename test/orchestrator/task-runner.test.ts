@@ -651,6 +651,25 @@ describe('TaskRunner: replanning the scaffold task', () => {
   });
 });
 
+describe('TaskRunner: a replan cannot hand devops a task it has no Bash to run', () => {
+  // Live finding (R11.2 program run, 2026-10-07): a devops-owned replacement that only touched a test file
+  // got no Bash at all (ROLE_ALLOW.devops carries none) and looped GATE_FAILED -> replan on the same mistake.
+  const failGates: TaskRunnerDeps['gates'] = async () => {
+    const g = gate('unit-test', { passed: false, exitCode: 1, failure: 'code', junit: null });
+    return { results: [g], blockingFailure: g };
+  };
+
+  it('rejects a devops replacement whose affectedPaths are not infra', async () => {
+    const bad = makePlanTask({ id: 'T1-r1', criteriaRefs: ['AC-001'], owner: 'devops', affectedPaths: ['tests/unit/x.test.ts'], dependsOn: [] });
+    const agent: Agent = async (req) => (req.kind === 'replan' ? ok({ specHash: HASH, replacements: [bad] }) : devDone()(req));
+    const r = new TaskRunner('T1', deps({ agent, gates: failGates }));
+    for (let i = 0; i < 6; i++) await r.advance();
+    expect(journal.state.tasks.get('T1')!.state).toBe('blocked');
+    expect(journal.events.find((e) => e.type === OrchEvent.TaskBlocked && e.data.taskId === 'T1')!.data.reason).toMatch(/devops but tests\/unit\/x\.test\.ts is not infra/);
+    expect(journal.state.tasks.has('T1-r1')).toBe(false);
+  });
+});
+
 describe('TaskRunner: worktree left by an earlier run', () => {
   it('starts a new run from origin/main, discarding the stale branch and its commits', async () => {
     // A previous run of this spec left the task worktree behind, with a commit main never took.

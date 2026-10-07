@@ -28,7 +28,7 @@ import type { StepOutcome } from '../runner/step.js';
 import { decideOnFailure, type Failure, type FailureKind, type PolicyConfig } from '../scheduler/retry-policy.js';
 import { redactSecrets } from '../core/redact.js';
 import { checkScope } from '../validators/diff-guard.js';
-import { findCycle } from '../validators/plan.js';
+import { devopsOwnerErrors, findCycle } from '../validators/plan.js';
 import type { RefContext } from '../validators/references.js';
 import { Intent, OrchEvent, type Journal } from './events.js';
 import { withMainSnapshot } from './phases/shared.js';
@@ -535,6 +535,7 @@ export class TaskRunner {
     // The scaffold makes the gates runnable; a piece of it cannot pass them (seen live: a scripts-only
     // replacement failed lint/typecheck/build for lack of the toolchain its sibling task owned).
     if (this.task.bootstrapsFrozenPaths && replacements.length !== 1) errors.push(`${this.taskId} is the scaffold task and must be replanned into exactly one task, got ${replacements.length}`);
+    errors.push(...devopsOwnerErrors(replacements, this.deps.plan.deploy.manifests));
     for (const r of replacements) {
       if (known.has(r.id)) errors.push(`replacement ${r.id} reuses an existing task id`);
       for (const d of r.dependsOn) {
