@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG } from '../../server/config/config.js';
-import { eventsFile, expandHome, firstSpecForRun, graphDir, mergedByPriorRuns, nextRunId, olderLiveRun, specForRun, stepDir, workspacePaths, worktreeDir } from '../../server/orchestrator/workspace.js';
+import { eventsFile, expandHome, firstSpecForRun, firstSpecForSpec, graphDir, mergedByPriorRuns, nextRunId, olderLiveRun, specForRun, stepDir, workspacePaths, worktreeDir } from '../../server/orchestrator/workspace.js';
 import { EventStore } from '../../server/store/event-store.js';
 
 let dir = '';
@@ -160,5 +160,51 @@ describe('mergedByPriorRuns', () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-runs-'));
     const ws = { ...workspacePaths(DEFAULT_CONFIG, 'shop', '/home/u'), runs: dir };
     expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r1')).toEqual(new Set());
+  });
+});
+
+describe('firstSpecForSpec', () => {
+  // Live finding (R11.3/4 program run, r4, 2026-10-07): retrying the project's first spec with a fresh run id (no
+  // --run, so no resume answer) re-asked isFirstSpec(), which by then saw far more than docs/.github on main (the
+  // scaffold this very spec had already merged) and answered false, rejecting its own T0-scaffold task on replan.
+  it('is true once any earlier run of this spec in this project recorded firstSpec true, regardless of what main looks like now', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-runs-'));
+    const ws = { ...workspacePaths(DEFAULT_CONFIG, 'shop', '/home/u'), runs: dir };
+    const open = (id: string) => EventStore.open({ file: eventsFile(ws, id), runId: id, specHash: 'h' });
+    const r1 = await open('a-001-r1');
+    await r1.append({ type: 'RUN_STARTED', data: { runId: 'a-001-r1', specId: 'a-001', projectId: 'shop', firstSpec: true } });
+    await r1.close();
+    expect(await firstSpecForSpec(ws, 'a-001', 'a-001-r2')).toBe(true);
+  });
+
+  it('is false once an earlier run recorded firstSpec false and none recorded true', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-runs-'));
+    const ws = { ...workspacePaths(DEFAULT_CONFIG, 'shop', '/home/u'), runs: dir };
+    const open = (id: string) => EventStore.open({ file: eventsFile(ws, id), runId: id, specHash: 'h' });
+    const r1 = await open('a-002-r1');
+    await r1.append({ type: 'RUN_STARTED', data: { runId: 'a-002-r1', specId: 'a-002', projectId: 'shop', firstSpec: false } });
+    await r1.close();
+    expect(await firstSpecForSpec(ws, 'a-002', 'a-002-r2')).toBe(false);
+  });
+
+  it('is null with no earlier run, or when none of them recorded the field', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-runs-'));
+    const ws = { ...workspacePaths(DEFAULT_CONFIG, 'shop', '/home/u'), runs: dir };
+    expect(await firstSpecForSpec(ws, 'a-003', 'a-003-r1')).toBeNull();
+    const open = (id: string) => EventStore.open({ file: eventsFile(ws, id), runId: id, specHash: 'h' });
+    const r1 = await open('a-003-r1');
+    await r1.append({ type: 'RUN_STARTED', data: { runId: 'a-003-r1', specId: 'a-003', projectId: 'shop' } });
+    await r1.close();
+    expect(await firstSpecForSpec(ws, 'a-003', 'a-003-r2')).toBeNull();
+  });
+
+  it('ignores a run of the same spec id in another project', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-runs-'));
+    const ws = { ...workspacePaths(DEFAULT_CONFIG, 'shop', '/home/u'), runs: dir };
+    const open = (id: string) => EventStore.open({ file: eventsFile(ws, id), runId: id, specHash: 'h' });
+    const r1 = await open('a-004-r1');
+    await r1.append({ type: 'RUN_STARTED', data: { runId: 'a-004-r1', specId: 'a-004', projectId: 'other-shop', firstSpec: true } });
+    await r1.close();
+    expect(await firstSpecForSpec(ws, 'a-004', 'a-004-r2')).toBeNull();
   });
 });

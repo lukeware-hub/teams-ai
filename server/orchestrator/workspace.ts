@@ -104,6 +104,27 @@ export async function firstSpecForRun(ws: Workspace, runId: string): Promise<boo
   return typeof started?.data.firstSpec === 'boolean' ? started.data.firstSpec : null;
 }
 
+/**
+ * Whether any earlier run of this spec in this project recorded `firstSpec`; null when none exists or none recorded
+ * it. A fresh run (a retry, not a `--run` resume) has no answer of its own to carry forward, and asking main directly
+ * would answer false once the spec's own earlier run already merged its scaffold onto it.
+ */
+export async function firstSpecForSpec(ws: Workspace, specId: string, runId: string): Promise<boolean | null> {
+  const mine = specRuns([runId], specId)[0]?.n ?? Infinity;
+  let answer: boolean | null = null;
+  for (const { name, n } of specRuns(await fs.readdir(ws.runs).catch(() => [] as string[]), specId)) {
+    if (n >= mine) continue;
+    const events = await loadEvents(eventsFile(ws, name)).catch(() => []);
+    const started = events.find((e) => e.type === OrchEvent.RunStarted);
+    if (started === undefined || started.data.projectId !== ws.projectId) continue;
+    if (typeof started.data.firstSpec === 'boolean') {
+      if (started.data.firstSpec) return true;
+      answer = false;
+    }
+  }
+  return answer;
+}
+
 /** Is the process named by an event-log lock (`<pid>@<host>`, written by store/event-store.ts) running on this host? */
 async function lockHeld(lockFile: string): Promise<boolean> {
   const owner = await fs.readFile(lockFile, 'utf8').then((text) => text.trim().split('@'), () => null);
