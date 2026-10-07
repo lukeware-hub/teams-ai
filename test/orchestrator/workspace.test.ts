@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG } from '../../server/config/config.js';
-import { eventsFile, expandHome, firstSpecForRun, graphDir, nextRunId, olderLiveRun, specForRun, stepDir, workspacePaths, worktreeDir } from '../../server/orchestrator/workspace.js';
+import { eventsFile, expandHome, firstSpecForRun, graphDir, mergedByPriorRuns, nextRunId, olderLiveRun, specForRun, stepDir, workspacePaths, worktreeDir } from '../../server/orchestrator/workspace.js';
 import { EventStore } from '../../server/store/event-store.js';
 
 let dir = '';
@@ -132,5 +132,33 @@ describe('specForRun', () => {
     expect(await firstSpecForRun(ws, 'a-002-y-r1')).toBe(false);
     expect(await firstSpecForRun(ws, 'a-003-z-r1')).toBeNull();
     expect(await firstSpecForRun(ws, 'never-r1')).toBeNull();
+  });
+});
+
+describe('mergedByPriorRuns', () => {
+  it('unions the merged task ids of every earlier run of the same spec in this project, ignoring later and other-project runs', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-runs-'));
+    const ws = { ...workspacePaths(DEFAULT_CONFIG, 'shop', '/home/u'), runs: dir };
+    const open = (id: string) => EventStore.open({ file: eventsFile(ws, id), runId: id, specHash: 'h' });
+    const r1 = await open('a-001-r1');
+    await r1.append({ type: 'RUN_STARTED', data: { runId: 'a-001-r1', specId: 'a-001', projectId: 'shop' } });
+    await r1.append({ type: 'RUN_FINISHED', data: { result: 'verification-failed', reason: 'x', merged: ['T0-scaffold', 'T1'], blocked: [], tokens: {} } });
+    await r1.close();
+    const r2 = await open('a-001-r2');
+    await r2.append({ type: 'RUN_STARTED', data: { runId: 'a-001-r2', specId: 'a-001', projectId: 'shop' } });
+    await r2.append({ type: 'RUN_FINISHED', data: { result: 'verification-failed', reason: 'x', merged: ['T2'], blocked: [], tokens: {} } });
+    await r2.close();
+    // A later run (r3, the one asking) must never see itself, and a run from another project sharing the same spec id must not count.
+    const other = await open('a-001-r4');
+    await other.append({ type: 'RUN_STARTED', data: { runId: 'a-001-r4', specId: 'a-001', projectId: 'other-shop' } });
+    await other.append({ type: 'RUN_FINISHED', data: { result: 'verification-failed', reason: 'x', merged: ['T9'], blocked: [], tokens: {} } });
+    await other.close();
+    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r3')).toEqual(new Set(['T0-scaffold', 'T1', 'T2']));
+  });
+
+  it('is empty for a spec with no earlier runs', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-runs-'));
+    const ws = { ...workspacePaths(DEFAULT_CONFIG, 'shop', '/home/u'), runs: dir };
+    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r1')).toEqual(new Set());
   });
 });

@@ -120,6 +120,26 @@ async function lockHeld(lockFile: string): Promise<boolean> {
 }
 
 /**
+ * R11.4 retry: which of this spec's tasks were already merged by an earlier run of it in this project. A fresh run's
+ * journal starts every task `planned` again, so without this a retry redoes everything an earlier attempt already
+ * delivered. Unions every earlier run's own `RUN_FINISHED.merged`, not just the latest, since each attempt's own list
+ * only ever names what that attempt itself merged.
+ */
+export async function mergedByPriorRuns(ws: Workspace, specId: string, runId: string): Promise<Set<string>> {
+  const mine = specRuns([runId], specId)[0]?.n ?? Infinity;
+  const merged = new Set<string>();
+  for (const { name, n } of specRuns(await fs.readdir(ws.runs).catch(() => [] as string[]), specId)) {
+    if (n >= mine) continue;
+    const events = await loadEvents(eventsFile(ws, name)).catch(() => []);
+    const started = events.find((e) => e.type === OrchEvent.RunStarted);
+    if (started !== undefined && started.data.projectId !== ws.projectId) continue; // run numbers are shared across projects with the same spec id
+    const finished = [...events].reverse().find((e) => e.type === OrchEvent.RunFinished);
+    for (const id of (finished?.data.merged as string[] | undefined) ?? []) merged.add(id);
+  }
+  return merged;
+}
+
+/**
  * An older run of this spec, in this project, that is still live; null when there is none. Task branches and worktrees
  * are named after the spec alone, so the older run keeps them and a newer one must not reset them. A run is live while
  * its journal holds the lock on its event log: the lock goes with `close()` and with a dead process, so no second lock
