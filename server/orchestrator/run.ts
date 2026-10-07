@@ -38,7 +38,7 @@ import { reconcile } from './reconcile.js';
 import { validateDocs } from '../validators/docs.js';
 import { readmePack, runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
 import { TaskRunner, type TaskRunnerDeps } from './task-runner.js';
-import { eventsFile, expandHome, graphDir, nextRunId, runDir, stateFile, stepDir, type Workspace } from './workspace.js';
+import { eventsFile, expandHome, graphDir, mergedByPriorRuns, nextRunId, runDir, stateFile, stepDir, type Workspace } from './workspace.js';
 import type { DeployTarget } from '../deploy/target.js';
 import { E2E_GATE, runE2e } from '../exec/e2e.js';
 import { gateReachableUrl, runSmoke } from '../exec/smoke.js';
@@ -501,9 +501,12 @@ export class Run {
     const workflows = await this.executeWorkflows(this.plan);
     if (!workflows.ok) return this.finish('phase-failed', workflows.reason);
     if (!this.journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 3)) await this.journal.fact(OrchEvent.PhaseStarted, { phase: 3 });
+    // R11.4 retry: a fresh run's journal starts every task 'planned'; one an earlier run of this spec already merged
+    // is adopted as 'merged' straight away instead of redone (Phase 4 still proves it from the current repo's JUnit).
+    const inherited = await mergedByPriorRuns(this.deps.ws, this.deps.spec.specId, this.runId);
     for (const task of this.plan.tasks) {
       const t = this.journal.state.tasks.get(task.id);
-      if (t && t.state === 'planned') await this.journal.fact(RunEvent.TaskStateChanged, { taskId: task.id, to: 'ready' });
+      if (t && t.state === 'planned') await this.journal.fact(RunEvent.TaskStateChanged, { taskId: task.id, to: inherited.has(task.id) ? 'merged' : 'ready' });
     }
     const phase3 = await this.loop({ final: false });
     if (phase3 !== 'complete') return phase3;
