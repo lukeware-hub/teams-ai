@@ -160,7 +160,7 @@ describe('phase helpers on the main checkout', () => {
     await probe.settle();
     expect(docs.techSpecText).toContain('# Tech spec');
     expect(docs.plan?.specId).toBe('spec-001');
-    expect(probe.started()).toHaveLength(2);
+    expect(probe.started()).toHaveLength(3); // tech-spec.md, plan.json, preplan.json
     expect(probe.interleaved()).toEqual([]);
   });
 });

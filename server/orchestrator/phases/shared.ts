@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { OutputOf, StepKind } from '../../agents/outputs.js';
 import { Plan } from '../../contracts/plan.js';
+import { Preplan } from '../../contracts/preplan.js';
 import type { Project } from '../../contracts/project.js';
 import type { Spec } from '../../contracts/spec.js';
 import type { GateResult } from '../../exec/gate-runner.js';
@@ -73,7 +74,7 @@ export type PhaseResult = { ok: true } | { ok: false; reason: string };
 export const specDir = (specId: string) => path.posix.join('docs', 'specs', specId);
 
 /** What main already carries for this spec; lets a resumed run skip finished phases. */
-export async function readDocs(repo: string, specId: string, exec?: Exec): Promise<{ techSpecText: string | null; plan: Plan | null }> {
+export async function readDocs(repo: string, specId: string, exec?: Exec): Promise<{ techSpecText: string | null; plan: Plan | null; preplan: Preplan | null }> {
   const show = async (rel: string) => {
     try {
       // Queued behind whatever else holds the repo lock (afterMerge's checkout and reset, a fetch), never beside it.
@@ -84,7 +85,16 @@ export async function readDocs(repo: string, specId: string, exec?: Exec): Promi
   };
   const techSpecText = await show(`${specDir(specId)}/tech-spec.md`);
   const planText = await show(`${specDir(specId)}/plan.json`);
-  return { techSpecText, plan: planText === null ? null : Plan.parse(JSON.parse(planText)) };
+  // A backlog item's preplan.json is reviewed context for Phase 2, never the plan itself (R11.4); absent for single-spec projects.
+  const preplanText = await show(`${specDir(specId)}/preplan.json`);
+  return { techSpecText, plan: planText === null ? null : Plan.parse(JSON.parse(planText)), preplan: preplanText === null ? null : Preplan.parse(JSON.parse(preplanText)) };
+}
+
+/** Acceptance criteria the pre-plan's tasks cover that no real-plan task covers: a deviation worth surfacing, not a rejection. */
+export function preplanDeviation(preplan: Preplan, plan: Pick<Plan, 'tasks'>): string[] {
+  const covered = new Set(plan.tasks.flatMap((t) => t.criteriaRefs));
+  const expected = new Set(preplan.tasks.flatMap((t) => t.criteriaRefs));
+  return [...expected].filter((id) => !covered.has(id));
 }
 
 export async function docsWorktree(deps: PhaseDeps, branch: string, opts: { keepCommits?: boolean } = {}): Promise<string> {

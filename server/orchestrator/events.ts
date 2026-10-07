@@ -21,6 +21,8 @@ export const OrchEvent = {
   ReviewProfileChosen: 'REVIEW_PROFILE_CHOSEN',
   ScopeDriftScored: 'SCOPE_DRIFT_SCORED',
   PlanChosen: 'PLAN_CHOSEN',
+  /** R11.4: the real plan's acceptance-criterion coverage differs from the backlog pre-plan it was shown, even if the plan is still valid. */
+  PreplanDeviation: 'PREPLAN_DEVIATION',
   SpecGapAnswered: 'SPEC_GAP_ANSWERED',
   DecisionMade: 'DECISION_MADE',
   MergeLockAcquired: 'MERGE_LOCK_ACQUIRED',

@@ -136,6 +136,7 @@ describe('Phase 2', () => {
     const plan = makePlan(spec);
     const r = await runPhase2(deps(async () => ok(plan)), '# Tech spec');
     expect(r.ok).toBe(true);
+    expect(journal.events.some((e) => e.type === OrchEvent.PreplanDeviation)).toBe(false);
     await git(remote.repo, ['fetch', '-q', 'origin']);
     expect(JSON.parse(await git(remote.repo, ['show', 'origin/main:docs/specs/spec-001/plan.json'])).tasks.map((t: { id: string }) => t.id)).toEqual(plan.tasks.map((t) => t.id));
     expect([...journal.state.tasks.keys()]).toEqual(plan.tasks.map((t) => t.id));
@@ -157,6 +158,27 @@ describe('Phase 2', () => {
     expect(written.stack).toBe('node-alt');
     expect(written.alternatives).toBeUndefined();
     expect(journal.events.some((e) => e.type === OrchEvent.PlanChosen && e.data.index === 1 && e.data.candidates === 2)).toBe(true);
+  });
+
+  it('passes a preplan.json on main as context and journals which of its criteria the real plan dropped', async () => {
+    await git(remote.repo, ['fetch', '-q', 'origin']);
+    await fs.writeFile(path.join(remote.repo, 'docs', 'specs', 'spec-001', 'preplan.json'), JSON.stringify({
+      specId: 'spec-001', specRev: HASH, inputHash: HASH,
+      modules: [{ name: 'core', purpose: 'p' }],
+      tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'dev', criteriaRefs: spec.acceptanceCriteria.map((c) => c.id), dependsOn: [] }],
+      risks: [],
+    }));
+    await git(remote.repo, ['add', '-A'], execCommand);
+    await git(remote.repo, ['commit', '-q', '-m', 'preplan'], execCommand);
+    await git(remote.repo, ['push', '-q', 'origin', 'main'], execCommand);
+    const plan = { ...makePlan(spec), tasks: makePlan(spec).tasks.map((t) => ({ ...t, criteriaRefs: t.criteriaRefs.filter((id) => id !== spec.acceptanceCriteria[0]!.id) })) };
+    const r = await runPhase2(deps(async (req) => {
+      expect(req.pack.feedback).toContain('"specId": "spec-001"'); // the preplan JSON reaches the pack
+      return ok(plan);
+    }), '# Tech spec');
+    expect(r.ok).toBe(true);
+    const deviation = journal.events.find((e) => e.type === OrchEvent.PreplanDeviation);
+    expect(deviation?.data.missingCriteria).toEqual([spec.acceptanceCriteria[0]!.id]);
   });
 
   it('feeds validation errors back and fails after the retries', async () => {

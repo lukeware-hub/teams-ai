@@ -10,7 +10,7 @@ import { git } from '../../git/git.js';
 import { rankPlans } from '../../decide/decisions/plan-rank.js';
 import { Intent, OrchEvent } from '../events.js';
 import { planPack } from '../steps.js';
-import { PAUSED_AUTH, commitAndMergeDocs, docsCommitKey, docsWorktree, pauseForFailure, readDocs, specDir, type PhaseDeps, type PhaseResult } from './shared.js';
+import { PAUSED_AUTH, commitAndMergeDocs, docsCommitKey, docsWorktree, pauseForFailure, preplanDeviation, readDocs, specDir, type PhaseDeps, type PhaseResult } from './shared.js';
 
 /** Spec (orchestrator) §4.3. */
 export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<PhaseResult & { plan?: Plan }> {
@@ -19,6 +19,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
     await journalTasks(deps, existing.plan);
     return { ok: true, plan: existing.plan };
   }
+  const preplan = existing.preplan;
   const branch = `docs/${deps.spec.specId}-plan`;
   if (deps.journal.isConfirmed(Intent.DocsCommit, docsCommitKey(deps, 2))) {
     const worktree = await docsWorktree(deps, branch, { keepCommits: true });
@@ -38,7 +39,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
     const out: StepOutcome<OutputOf<'plan'>> = await deps.runAgent<'plan'>({
       kind: 'plan',
       role: 'sm',
-      pack: planPack(deps.packBase(), { techSpecText, godNodes: await deps.godNodes(), feedback, firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e, requireCoverage: deps.requireCoverage }),
+      pack: planPack(deps.packBase(), { techSpecText, preplan, godNodes: await deps.godNodes(), feedback, firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e, requireCoverage: deps.requireCoverage }),
       cwd: worktree,
       phase: 'phase2',
       taskId: null,
@@ -68,6 +69,10 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
     await fs.writeFile(path.join(worktree, rel), `${JSON.stringify(JSON.parse(canonicalJson(plan)), null, 2)}\n`);
     const merged = await commitAndMergeDocs(deps, 2, branch, worktree, `docs(${deps.spec.specId}): plan`);
     if (!merged.ok) return merged;
+    if (preplan) {
+      const missingCriteria = preplanDeviation(preplan, plan);
+      if (missingCriteria.length > 0) await deps.journal.fact(OrchEvent.PreplanDeviation, { missingCriteria });
+    }
     await journalTasks(deps, plan);
     return { ok: true, plan };
   }
