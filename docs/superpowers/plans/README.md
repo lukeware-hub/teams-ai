@@ -56,7 +56,7 @@ was implemented. Web UI block A (`2026-09-24-run-api-execution-ui-design.md`) is
 | 46 | [`2026-10-06-teams-ai-46-agent-routing-and-skills.md`](2026-10-06-teams-ai-46-agent-routing-and-skills.md) | Done — tasks route to the owning role (`front`/`devops`/`dev`), agent prompts repaired, skill guidance distilled; ROADMAP R10.1. |
 | 47 | [`2026-10-06-teams-ai-47-absolute-quality-gates.md`](2026-10-06-teams-ai-47-absolute-quality-gates.md) | Done — stack-agnostic coverage/lockfile/pinned-image/license-scan rules; ROADMAP R10.2. |
 | 48 | [`2026-10-06-teams-ai-48-ui-demo-run.md`](2026-10-06-teams-ai-48-ui-demo-run.md) | Planning — not yet approved for implementation; ROADMAP R9.5. |
-| 51 | [`2026-10-06-teams-ai-51-spec-and-preplan-per-item.md`](2026-10-06-teams-ai-51-spec-and-preplan-per-item.md) | In progress — a spec and a pre-plan for every backlog item; ROADMAP R11.2. |
+| 51 | [`2026-10-06-teams-ai-51-spec-and-preplan-per-item.md`](2026-10-06-teams-ai-51-spec-and-preplan-per-item.md) | Code done, live check pending — a spec and a pre-plan for every backlog item; ROADMAP R11.2. |
 
 Plans 17 and 19 never existed (not a gap in this audit - no file was ever created at those numbers).
 
