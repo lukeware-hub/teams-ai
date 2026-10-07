@@ -124,9 +124,9 @@ export function computeSpecHash(spec: Spec): string {
 export class SpecFrozenError extends Error {}
 
 export function freezeSpec(spec: Spec): Spec {
-  if (spec.status !== 'refining') {
+  if (spec.status !== 'refining' && spec.status !== 'planned') {
     throw new SpecFrozenError(
-      `spec ${spec.specId} is ${spec.status}; only refining specs can be frozen`,
+      `spec ${spec.specId} is ${spec.status}; only refining or planned specs can be frozen`,
     );
   }
   const next: Spec = { ...spec, specVersion: spec.specVersion + 1, status: 'running' };

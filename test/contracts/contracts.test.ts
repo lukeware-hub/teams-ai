@@ -104,8 +104,17 @@ describe('Spec', () => {
     expect(frozen.specHash).toBe(computeSpecHash(frozen));
   });
 
-  it('refuses to freeze a spec that is not refining', () => {
+  it('freezes a planned spec at its turn, keeping its provenance', () => {
+    const planned = makeSpec({ status: 'planned' });
+    const frozen = freezeSpec(planned);
+    expect(frozen.status).toBe('running');
+    expect(frozen.specVersion).toBe(planned.specVersion + 1);
+    expect(frozen.specHash).toBe(computeSpecHash(frozen));
+  });
+
+  it('refuses to freeze a spec that is neither refining nor planned', () => {
     expect(() => freezeSpec(makeSpec({ status: 'running' }))).toThrow(SpecFrozenError);
+    expect(() => freezeSpec(makeSpec({ status: 'done' }))).toThrow(SpecFrozenError);
   });
 });
 
