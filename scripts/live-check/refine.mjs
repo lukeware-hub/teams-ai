@@ -29,7 +29,7 @@ const S = (p) => `/refine/${p}/${p}-001`;
 const clip = (t, n = 160) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const draftRoot = (p) => `/home/node/.teams-ai/workspaces/${p}/refine/${p}-001`;
-const sh = (cmd) => execFileSync('docker', ['exec', CONTAINER, 'sh', '-c', cmd], { encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } });
+const sh = (cmd) => execFileSync('docker', ['exec', CONTAINER, 'sh', '-c', cmd], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, env: { ...process.env, MSYS_NO_PATHCONV: '1' } });
 
 async function summary(p) {
   const { status, json } = await api('GET', S(p));
