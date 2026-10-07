@@ -56,6 +56,16 @@ describe('validateBacklog', () => {
     expect(check(b, ['7. OPME', '8. Logística'])).toEqual([expect.stringMatching(/Logística/)]);
     expect(check(backlog([item('l', { sources: [{ doc: 'flow.md', heading: '8. LOGISTICA OPME' }] })]), ['8. Logística'])).toEqual([]);
   });
+
+  it('rejects a flow.md citation that names no section, listing the sections', () => {
+    // A title comment of the diagram (`%% AGENDA CLÍNICA`) is not a section; kept verbatim, it failed every review.
+    const b = backlog([item('base', { sources: [{ doc: 'flow.md', heading: 'AGENDA CLÍNICA' }, { doc: 'flow.md', heading: '1. Cadastro' }] })]);
+    expect(check(b, ['1. Cadastro'])).toEqual([expect.stringMatching(/item base cita flow\.md › "AGENDA CLÍNICA".*"1\. Cadastro"/)]);
+  });
+
+  it('leaves flow.md citations alone when flow.md has no sections', () => {
+    expect(check(backlog([item('a', { sources: [{ doc: 'flow.md', heading: 'Fluxo' }] })]))).toEqual([]);
+  });
 });
 
 describe('Backlog schema', () => {

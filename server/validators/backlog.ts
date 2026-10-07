@@ -1,5 +1,6 @@
 import type { Backlog, BacklogItem, Priority } from '../contracts/backlog.js';
 import { itemCites } from '../refine/coverage.js';
+import { resolveHeading } from '../refine/sections.js';
 import { findCycle } from './plan.js';
 
 export const MAX_ITEMS = 60;
@@ -47,6 +48,15 @@ export function validateBacklog(backlog: Backlog, opts: { flowHeadings: readonly
   if (cycle) errors.push(`ciclo de dependências: ${cycle.join(' -> ')}`);
   for (const heading of opts.flowHeadings) {
     if (!backlog.items.some((i) => itemCites(i, heading, opts.flowHeadings))) errors.push(`seção do flow.md sem nenhum item: "${heading}"`);
+  }
+  // A citation of something that is not a section (a diagram title comment) would be kept verbatim cycle after cycle.
+  if (opts.flowHeadings.length > 0) {
+    const sections = opts.flowHeadings.map((h) => `"${h}"`).join(', ');
+    for (const i of backlog.items) {
+      for (const s of i.sources) {
+        if (s.doc === 'flow.md' && resolveHeading(s.heading, opts.flowHeadings) === null) errors.push(`item ${i.key} cita flow.md › "${s.heading}", que não é uma seção do flow.md; as seções são ${sections}`);
+      }
+    }
   }
   return errors;
 }
