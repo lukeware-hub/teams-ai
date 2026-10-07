@@ -92,3 +92,14 @@ describe('refinePack in detail mode', () => {
     expect(pack.feedback).toContain('item item-1: sem pré-plano válido');
   });
 });
+
+describe('refinePack digest provenance', () => {
+  it('marks a cited section the docs no longer have', () => {
+    const H = `sha256:${'1'.repeat(64)}`;
+    const item = { key: 'fat', title: 'Faturamento', epic: 'core', scope: 's', priority: 'P2', rationale: 'r', dependsOn: [], sources: [{ doc: 'flow.md', heading: '9. Faturamento' }], size: 'M', rank: 1 };
+    const spec = { ...makeSpec({ specId: 'k-fat' }), derivedFrom: { backlogKey: 'fat', inputHash: H, docsHash: H, sources: [{ doc: 'flow.md', heading: '9. Faturamento', hash: null }] } };
+    const backlog = { enabled: true, project: null, epics: [{ key: 'core', title: 'Núcleo' }], items: [item], cycle: 1, detail: true, flowHeadings: [], specs: { fat: { inputHash: H, specId: 'k-fat', rev: H, spec, issues: [], cycle: 2 } }, preplans: {} };
+    const pack = refinePack({ ...base, role: 'po', derived: { project: {}, spec: null }, backlog, projectBriefing: true, cycle: 3 } as never);
+    expect(pack.feedback).toContain('seção não encontrada: flow.md › 9. Faturamento');
+  });
+});

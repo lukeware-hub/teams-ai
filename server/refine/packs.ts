@@ -38,6 +38,8 @@ function backlogDigest(b: BacklogState): string {
     const pre = b.preplans?.[i.key];
     const status = !spec ? 'sem spec' : !spec.spec ? 'erro na spec' : pre?.preplan && pre.specRev === spec.rev ? 'planejada' : 'em refinamento';
     const lines = [`- [${i.rank}] ${i.priority} ${i.key}: ${i.title} (épico ${i.epic}; depende de: ${i.dependsOn.join(', ') || '-'}; fontes: ${i.sources.map((s) => `${s.doc} › ${s.heading}`).join('; ')}) — ${status}`];
+    // A citation the docs no longer answer leaves the PO without its context: the review decides what to do with it.
+    for (const s of spec?.spec?.derivedFrom?.sources ?? []) if (s.hash === null) lines.push(`  seção não encontrada: ${s.doc} › ${s.heading}`);
     for (const c of spec?.spec?.acceptanceCriteria ?? []) lines.push(`  ${c.id}${c.smoke ? ' (smoke)' : ''}: ${clip(`Given ${c.given}, when ${c.when}, then ${c.then}`, 100)}`);
     for (const t of pre?.preplan?.tasks ?? []) lines.push(`  ${t.id} [${t.criteriaRefs.join(', ')}] ${clip(t.title, 80)} · ${t.module}`);
     for (const issue of [...(spec?.issues ?? []), ...(pre?.issues ?? [])]) lines.push(`  problema: ${clip(issue, 160)}`);

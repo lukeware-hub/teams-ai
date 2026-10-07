@@ -45,3 +45,10 @@ describe('agent policy for the backlog', () => {
     expect(po).toContain('(`refine` step)');
   });
 });
+
+describe('front agent policy', () => {
+  it('names the target project briefing of backlog mode among the sources of truth', async () => {
+    const front = (await loadAgents(AGENTS)).front.body;
+    expect(front).toContain('docs/briefing.md');
+  });
+});
