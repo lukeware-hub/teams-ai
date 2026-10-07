@@ -29,7 +29,7 @@ const PREPLAN_RULES = [
   '- tasks (1-12): ids P1, P2 ... in execution order; owner dev, devops or front; `module` is one of the modules; dependsOn lists earlier task ids of the same pre-plan. Every task cites at least one acceptance criterion id of its own spec in criteriaRefs, and every criterion is cited by some task.',
   '- The spec marked FIRST also carries the walking skeleton (repository scaffold, local docker infra, CI), cited against its smoke criterion. The others build on what the specs they depend on deliver.',
   '- risks (0-5): what could break the plan, and the mitigation.',
-  '- Follow stack.md.',
+  '- Follow stack.md and the technical decisions in project.md.',
 ].join('\n');
 
 const criteriaLines = (spec: Pick<Spec, 'acceptanceCriteria'>) => spec.acceptanceCriteria.map((c) => `- ${c.id}${c.smoke ? ' (smoke)' : ''}: Given ${c.given}, when ${c.when}, then ${c.then}`).join('\n');
@@ -68,10 +68,11 @@ export function specPack(input: {
   return { kind: 'spec', role: 'po', specHash: input.specHash, principles: input.principles, outputContract: outputContract('spec'), criteria: [], feedback, budgetTokens: 16_000 };
 }
 
-/** The SM's pack for the pre-plans of up to three specs: stack.md and each spec with its criteria. */
+/** The SM's pack for the pre-plans of up to three specs: project.md, stack.md and each spec with its criteria. */
 export function preplanPack(input: {
   specHash: string;
   principles: readonly string[];
+  projectMd: string;
   stackMd: string;
   batch: ReadonlyArray<{ item: RankedItem; spec: Spec; first: boolean; previous: Preplan | null; rejection: readonly string[] }>;
 }): ContextPackInput {
@@ -84,6 +85,6 @@ export function preplanPack(input: {
     ...(previous ? ['Previous pre-plan (keep what still holds):', JSON.stringify({ modules: previous.modules, tasks: previous.tasks, risks: previous.risks }, null, 2)] : []),
     ...(rejection.length ? ['Your last attempt for this spec was rejected; fix every point:', rejection.map((r) => `- ${r}`).join('\n')] : []),
   ].join('\n'));
-  const feedback = [PREPLAN_RULES, '### stack.md', input.stackMd, '# Specs', ...specs].join('\n\n');
+  const feedback = [PREPLAN_RULES, '### docs/project.md', input.projectMd, '### stack.md', input.stackMd, '# Specs', ...specs].join('\n\n');
   return { kind: 'preplan', role: 'sm', specHash: input.specHash, principles: input.principles, outputContract: outputContract('preplan'), criteria: [], feedback, budgetTokens: 12_000 };
 }

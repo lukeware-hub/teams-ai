@@ -201,7 +201,7 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
   };
   const runPreplans = (batch: readonly Item[], rejection: Record<string, string[]>) => call(() => deps.runAgent<'preplan'>({
     kind: 'preplan', role: 'sm', cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle,
-    pack: fitPackBudget(preplanPack({ specHash: hash, principles: deps.principles(), stackMd: docs['stack.md'], batch: batch.map((i) => ({ item: i, spec: specs[i.key]!.spec!, first: i.rank === 1, previous: preplans[i.key]?.preplan ?? null, rejection: rejection[i.key] ?? [] })) })),
+    pack: fitPackBudget(preplanPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], stackMd: docs['stack.md'], batch: batch.map((i) => ({ item: i, spec: specs[i.key]!.spec!, first: i.rank === 1, previous: preplans[i.key]?.preplan ?? null, rejection: rejection[i.key] ?? [] })) })),
   }, ctx) as Promise<StepOutcome<PreplanOutput>>);
   const preplanTodo = items.filter((i) => planHash.has(i.key) && (!preplans[i.key] || preplans[i.key]!.inputHash !== planHash.get(i.key) || preplans[i.key]!.preplan === null));
   await runBatches(preplanTodo, runPreplans, (v: PreplanOutput, key) => v.preplans.find((p) => p.key === key), acceptPreplan, failPreplan);

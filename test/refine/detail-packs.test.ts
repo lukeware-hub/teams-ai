@@ -46,7 +46,7 @@ describe('preplanPack', () => {
   it('carries stack.md, each spec with its criterion ids, the scaffold carrier, the previous pre-plan and the rejection', () => {
     const spec = { ...makeSpec({ specId: 'k-001-opme' }), acceptanceCriteria: [ac('AC-047', 'pedido registrado'), { ...ac('AC-048', 'saúde ok'), smoke: true }] } as Spec;
     const previous = { specId: 'k-001-opme', specRev: HASH, inputHash: HASH, modules: [{ name: 'opme', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Cadastro antigo', module: 'opme', owner: 'dev' as const, criteriaRefs: ['AC-047'], dependsOn: [] }], risks: [] };
-    const pack = preplanPack({ specHash: HASH, principles: [], stackMd: docs['stack.md'], batch: [{ item: item('opme', 1), spec, first: true, previous, rejection: ['critério AC-048 sem nenhuma tarefa'] }, { item: item('consumo', 2), spec: { ...spec, specId: 'k-001-consumo' }, first: false, previous: null, rejection: [] }] });
+    const pack = preplanPack({ specHash: HASH, principles: [], projectMd: docs['project.md'], stackMd: docs['stack.md'], batch: [{ item: item('opme', 1), spec, first: true, previous, rejection: ['critério AC-048 sem nenhuma tarefa'] }, { item: item('consumo', 2), spec: { ...spec, specId: 'k-001-consumo' }, first: false, previous: null, rejection: [] }] });
     expect(pack).toMatchObject({ kind: 'preplan', role: 'sm', specHash: HASH });
     expect(pack.outputContract).toContain('"criteriaRefs"');
     expect(pack.feedback).toContain('Postgres 16');
@@ -57,6 +57,14 @@ describe('preplanPack', () => {
     expect(pack.feedback).toContain('Cadastro antigo');
     expect(pack.feedback).toContain('critério AC-048 sem nenhuma tarefa');
     expect(pack.feedback).toMatch(/do not read files/);
+  });
+
+  it('carries project.md, so the pre-plans follow its technical decisions', () => {
+    // A pre-plan without project.md compared dates with the database clock against a "clock port" decided there.
+    const projectMd = '# Agenda\n\n## Decisões técnicas\n\n- O serviço lê o horário atual por uma porta de relógio.';
+    const pack = preplanPack({ specHash: HASH, principles: [], projectMd, stackMd: docs['stack.md'], batch: [{ item: item('opme', 1), spec: makeSpec({ specId: 'k-001-opme' }), first: true, previous: null, rejection: [] }] });
+    expect(pack.feedback).toContain('porta de relógio');
+    expect(pack.feedback).toMatch(/technical decisions in project\.md/);
   });
 });
 
