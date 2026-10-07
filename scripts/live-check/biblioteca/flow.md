@@ -16,4 +16,5 @@ flowchart TD
   E3 -- Não --> E5[Empréstimo encerrado no prazo]
 %% 3. Relatórios
   R0[Livros emprestados, com os atrasados primeiro] --> R1[Total de livros por situação: disponível, emprestado]
+  R1 --> R2[Total de empréstimos atrasados]
 ```
