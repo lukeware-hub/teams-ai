@@ -17,6 +17,12 @@ export const RefineEvent = {
   /** Backlog mode: the human asked the agents to break the docs into a prioritized backlog of specs. */
   BacklogEnabled: 'BACKLOG_ENABLED',
   BacklogDerived: 'BACKLOG_DERIVED',
+  /** The human asked for the detailing: from now on each cycle derives the spec and pre-plan of every changed item. */
+  BacklogDetailEnabled: 'BACKLOG_DETAIL_ENABLED',
+  /** One backlog item's spec (or why it failed): `{cycle, key, specId, inputHash, rev, spec|null, issues, highWater}`. */
+  SpecDerived: 'SPEC_DERIVED',
+  /** One backlog item's pre-plan (or why it failed): `{cycle, key, inputHash, specRev, preplan|null, issues}`. */
+  PreplanDerived: 'PREPLAN_DERIVED',
   /** One System 1 decision of Gate 1; same type and record shape as the run journal, so the eval harness reads both. */
   DecisionMade: 'DECISION_MADE',
 } as const;

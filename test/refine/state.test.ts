@@ -54,6 +54,38 @@ describe('backlog events', () => {
     const evaluated = reduceRefineEvents([...cycle(1), { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: allGreen, questions: [], discardedPatches: [] } }, { type: RefineEvent.BacklogEnabled, data: {} }]);
     expect(evaluated).toMatchObject({ stale: true, status: 'ready' });
   });
+  it('detailing: rows per item, the highest criterion number ever used, a merge that drops removed items, and ready only with full coverage', () => {
+    const ac = (id: string) => ({ id, given: 'g', when: 'w', then: 't', smoke: false });
+    const H = `sha256:${'1'.repeat(64)}`;
+    const REV = `sha256:${'2'.repeat(64)}`;
+    const spec = { ...makeSpec({ specId: 'p-001-base' }), acceptanceCriteria: [ac('AC-047')] };
+    const preplan = { specId: 'p-001-base', specRev: REV, inputHash: H, modules: [{ name: 'm', purpose: 'p' }], tasks: [{ id: 'P1', title: 't', module: 'm', owner: 'dev', criteriaRefs: ['AC-047'], dependsOn: [] }], risks: [] };
+    const evaluated = { type: RefineEvent.Evaluated, data: { cycle: 2, checklist: allGreen, questions: [], discardedPatches: [] } };
+    const outline = [{ type: RefineEvent.BacklogEnabled, data: {} }, { type: RefineEvent.BacklogDerived, data: { ...derivedBacklog, flowHeadings: [], draftHash: 'h1' } }];
+    const detailed = [
+      ...outline,
+      { type: RefineEvent.BacklogDetailEnabled, data: {} },
+      { type: RefineEvent.CycleStarted, data: { cycle: 2, draftHash: 'h1' } },
+      { type: RefineEvent.SpecDerived, data: { cycle: 2, key: 'base', specId: 'p-001-base', inputHash: H, rev: REV, spec, issues: [], highWater: 52 } },
+    ];
+    const waiting = reduceRefineEvents([...detailed, evaluated]);
+    expect(waiting.backlog).toMatchObject({ detail: true, flowHeadings: [], draftHash: 'h1', acHighWater: 52, specs: { base: { specId: 'p-001-base', rev: REV } } });
+    expect(waiting.status).toBe('drafting');
+    const ready = reduceRefineEvents([...detailed, { type: RefineEvent.PreplanDerived, data: { cycle: 2, key: 'base', inputHash: H, specRev: REV, preplan, issues: [] } }, evaluated]);
+    expect(ready.status).toBe('ready');
+    expect(ready.backlog?.preplans?.base?.preplan?.tasks[0]?.id).toBe('P1');
+    const reshaped = reduceRefineEvents([...detailed, { type: RefineEvent.BacklogDerived, data: { ...derivedBacklog, cycle: 3, items: [{ ...backlogItem, key: 'outro' }], flowHeadings: [], draftHash: 'h2' } }]);
+    expect(reshaped.backlog?.specs).toEqual({});
+    expect(reshaped.backlog).toMatchObject({ detail: true, acHighWater: 52, draftHash: 'h2' });
+  });
+
+  it('a doc edit or an accepted patch makes a derived backlog stale', () => {
+    const outline = [{ type: RefineEvent.BacklogEnabled, data: {} }, { type: RefineEvent.BacklogDerived, data: derivedBacklog }, { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: allGreen, questions: [], discardedPatches: [] } }];
+    expect(reduceRefineEvents(outline).stale).toBe(false);
+    expect(reduceRefineEvents([...outline, { type: RefineEvent.DocEdited, data: { file: 'flow.md', hash: 'x', source: 'human' } }]).stale).toBe(true);
+    expect(reduceRefineEvents([...outline, { type: RefineEvent.PatchProposed, data: patch('po-c1-0') }, { type: RefineEvent.PatchAccepted, data: { patchId: 'po-c1-0' } }]).stale).toBe(true);
+  });
+
   it('keeps the derived backlog and clears staleness when the cycle is evaluated', () => {
     const s = reduceRefineEvents([{ type: RefineEvent.BacklogEnabled, data: {} }, { type: RefineEvent.CycleStarted, data: { cycle: 1, draftHash: 'h' } }, { type: RefineEvent.BacklogDerived, data: derivedBacklog }, { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: allGreen, questions: [], discardedPatches: [] } }]);
     expect(s.backlog).toMatchObject({ enabled: true, cycle: 1, epics: [{ key: 'core' }], items: [{ key: 'base', rank: 1 }] });

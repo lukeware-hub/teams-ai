@@ -1,7 +1,9 @@
 import type { Backlog, BacklogItem } from '../contracts/backlog.js';
+import type { Preplan } from '../contracts/preplan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
 import type { ChecklistItem } from './checklist.js';
+import { coverageGaps } from './coverage.js';
 import { RefineEvent, type Question } from './events.js';
 import type { PendingPatch } from './patches.js';
 
@@ -15,6 +17,25 @@ export interface PatchRow extends PendingPatch {
   status: 'pending' | 'accepted' | 'rejected' | 'dropped';
   decision: string | null;
 }
+/** One backlog item's derived spec; `spec` is null when the last attempt failed (`issues` says why). */
+export interface SpecRow {
+  inputHash: string;
+  specId: string;
+  /** The spec's hash: a pre-plan is current only for this revision. */
+  rev: string | null;
+  spec: Spec | null;
+  issues: string[];
+  cycle: number;
+}
+/** One backlog item's pre-plan; `preplan` is null when the last attempt failed. */
+export interface PreplanRow {
+  inputHash: string;
+  specRev: string;
+  preplan: Preplan | null;
+  issues: string[];
+  cycle: number;
+}
+
 /** Backlog mode: the docs broken into epics and ranked items (browser-safe, shared with the web reducer). */
 export interface BacklogState {
   enabled: boolean;
@@ -22,6 +43,16 @@ export interface BacklogState {
   epics: Backlog['epics'];
   items: Array<BacklogItem & { rank: number }>;
   cycle: number;
+  /** Detailing asked for ("Detalhar specs"): each cycle derives the spec and pre-plan of every changed item. */
+  detail?: boolean;
+  /** The flow.md sections the outline had to cover, as of its last derivation. */
+  flowHeadings?: string[];
+  /** The docs' hash the outline was derived from. */
+  draftHash?: string;
+  specs?: Record<string, SpecRow>;
+  preplans?: Record<string, PreplanRow>;
+  /** The highest acceptance criterion number ever allocated, so a removed number is never reused. */
+  acHighWater?: number;
 }
 
 export interface RefineState {
@@ -61,9 +92,17 @@ export function computeStatus(s: RefineState): RefineStatus {
   const pendingPatch = s.patches.some((p) => p.status === 'pending');
   const pendingAny = pendingPatch || s.questions.some((q) => q.status === 'pending');
   const green = s.checklist.length > 0 && s.checklist.every((i) => i.passed);
-  if (green && !pendingBlocking && !pendingPatch) return 'ready';
+  // A detailed backlog is ready only when every section, spec, criterion and task is accounted for.
+  const covered = !s.backlog?.detail || coverageGaps(s.backlog).length === 0;
+  if (green && covered && !pendingBlocking && !pendingPatch) return 'ready';
   return pendingAny ? 'answering' : 'drafting';
 }
+
+/** Something was derived from the docs (one spec or a backlog), so editing the docs makes it stale. */
+const hasDerivation = (s: RefineState): boolean => s.derived !== null || (s.backlog?.items.length ?? 0) > 0;
+
+const keep = <T>(rows: Record<string, T> | undefined, keys: ReadonlySet<string>): Record<string, T> | undefined =>
+  rows && Object.fromEntries(Object.entries(rows).filter(([k]) => keys.has(k)));
 
 export function applyRefineEvent(s: RefineState, e: { type: string; data: Record<string, unknown> }): void {
   const d = e.data;
@@ -101,7 +140,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
         p.status = e.type === RefineEvent.PatchAccepted ? 'accepted' : e.type === RefineEvent.PatchRejected ? 'rejected' : 'dropped';
         p.decision = (d.reason as string | null | undefined) ?? null;
       }
-      if (e.type === RefineEvent.PatchAccepted && s.derived) s.stale = true;
+      if (e.type === RefineEvent.PatchAccepted && hasDerivation(s)) s.stale = true;
       s.status = computeStatus(s);
       break;
     }
@@ -117,14 +156,46 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
     }
     case RefineEvent.DocEdited:
     case RefineEvent.SecretWritten:
-      if (s.derived) s.stale = true;
+      if (hasDerivation(s)) s.stale = true;
       break;
     case RefineEvent.BacklogEnabled:
       s.backlog = s.backlog ? { ...s.backlog, enabled: true } : { enabled: true, project: null, epics: [], items: [], cycle: 0 };
       if (s.derived || s.checklist.length > 0) s.stale = true;
       break;
-    case RefineEvent.BacklogDerived:
-      s.backlog = { enabled: true, project: d.project as Project, epics: d.epics as BacklogState['epics'], items: d.items as BacklogState['items'], cycle: Number(d.cycle) };
+    case RefineEvent.BacklogDerived: {
+      // Merge: the detail of items that still exist survives a new outline; removed items take their rows with them.
+      const prev = s.backlog;
+      const items = d.items as BacklogState['items'];
+      const keys = new Set(items.map((i) => i.key));
+      s.backlog = {
+        ...prev,
+        enabled: true,
+        project: d.project as Project,
+        epics: d.epics as BacklogState['epics'],
+        items,
+        cycle: Number(d.cycle),
+        flowHeadings: (d.flowHeadings as string[] | undefined) ?? prev?.flowHeadings,
+        draftHash: (d.draftHash as string | undefined) ?? prev?.draftHash,
+        specs: keep(prev?.specs, keys),
+        preplans: keep(prev?.preplans, keys),
+      };
+      break;
+    }
+    case RefineEvent.BacklogDetailEnabled:
+      if (s.backlog) s.backlog = { ...s.backlog, detail: true };
+      s.status = computeStatus(s);
+      break;
+    case RefineEvent.SpecDerived:
+      if (s.backlog) {
+        const row: SpecRow = { inputHash: String(d.inputHash), specId: String(d.specId), rev: (d.rev as string | null) ?? null, spec: (d.spec as Spec | null) ?? null, issues: (d.issues as string[]) ?? [], cycle: Number(d.cycle) };
+        s.backlog = { ...s.backlog, specs: { ...s.backlog.specs, [String(d.key)]: row }, acHighWater: Math.max(s.backlog.acHighWater ?? 0, Number(d.highWater ?? 0)) };
+      }
+      break;
+    case RefineEvent.PreplanDerived:
+      if (s.backlog) {
+        const row: PreplanRow = { inputHash: String(d.inputHash), specRev: String(d.specRev), preplan: (d.preplan as Preplan | null) ?? null, issues: (d.issues as string[]) ?? [], cycle: Number(d.cycle) };
+        s.backlog = { ...s.backlog, preplans: { ...s.backlog.preplans, [String(d.key)]: row } };
+      }
       break;
     case RefineEvent.StartedRun:
       s.status = 'started';
