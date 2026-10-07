@@ -509,18 +509,21 @@ The docs (project, briefing, stack, flow, design) stay the only hand-edited trut
 - Side effects: a private GitHub repository under `lukeware-kayron-hub`, its PRs, and a container deployed through dind.
 - Success: the one-run criteria of spec 1.3 (every AC passed in JUnit, green deploy and smoke, zero duplicate PRs, main green after every merge), or a precise defect list to fix before R11.4.
 
-### R11.2 Detailed specs and a pre-plan for every backlog item, anticipated in the cycles - `todo`
+### R11.2 Detailed specs and a pre-plan for every backlog item, anticipated in the cycles - `in progress` (plan 51, 2026-10-06)
 
-- `spec` step per item and `preplan` step per spec (modules, tasks, risks), each only when its input hash changed; new `planned` status; global AC ids; generated `brief.md` and `spec.json`; a spec tree with a coverage matrix doc section -> spec -> acceptance criterion -> task. The real plan is still made by the SM at execution against the actual code (it depends on the repository graph); deviations from the pre-plan are journaled and shown.
+- `spec` step per item and `preplan` step per spec (modules, tasks, risks), each only when its input hash changed; new `planned` status; global AC ids; generated `spec.md` and `spec.json`; a spec tree with a coverage matrix doc section -> spec -> acceptance criterion -> task. The real plan is still made by the SM at execution against the actual code (it depends on the repository graph); deviations from the pre-plan are journaled and shown (run-time code, so in R11.3).
+- Decisions (human, 2026-10-06): in backlog mode the target project's briefing becomes `docs/briefing.md` (today the per-draft `docs/specs/<draftId>/brief.md`); the generated per-item Markdown is `spec.md`, never `brief.md`, so it is never mistaken for the hand-edited briefing; the pre-plan is `preplan.json`, never `plan.json` (Phase 2 reuses a `plan.json` found on main as the real plan); AC ids keep the `AC-\d{3}` format and are numbered across the backlog; an explicit "Detalhar specs" trigger once the outline is ready, then only items whose inputs changed are re-derived.
 
 ### R11.3 Freeze and publish planned specs - `todo`
 
 - A spec is frozen when its run starts; Phase 0 publishes `docs/specs.json`, every `planned` spec absent from main and the docs coherently (today it copies four files).
+- Audit 2026-10-06: on an existing repo Phase 0 copies only project.md, project.json, brief.md and spec.json (`server/orchestrator/phases/bootstrap.ts:63-71`), so stack.md, flow.md and design.md never reach main. R11.3 also publishes the target project's `docs/briefing.md` and `docs/backlog.md`, and Phase 2 receives `preplan.json` and journals the deviations from it.
 
 ### R11.4 Autonomous program controller - `todo`
 
 - Reads `docs/specs.json` and runs the specs one after another by priority and dependency. Parallelism stays inside a spec (3 tasks without overlapping `affectedPaths`): the shared clone, the single compose stack and the account-wide quota make parallel specs unsafe and no faster. Persisted ledger; restart-safe (container restart policy, resume of the run in flight); a spec is marked done on its own when verification, deploy and smoke pass.
 - Repair loop on failure (human decision 2026-10-06: isolate, review, fix, adjust and continue): isolate the spec, Jev classifies the cause (code, plan, spec or docs, infrastructure, authentication), the SM replans or opens fix tasks, the PO proposes a docs adjustment when the spec itself is wrong, retry within a bound, and keep going with the specs that do not depend on it; a final report lists what remains. A human is needed only for login, credentials and Jev's `human` class.
+- Audit correction (2026-10-06): a blocked task does not end the run. It blocks only its dependents, verification accepts criteria whose only tasks are blocked (`server/evidence/matrix.ts:36,57-58`), and the spec can reach `awaiting-validation` with work missing. Automatic completion therefore requires zero blocked tasks and every acceptance criterion passed in JUnit, besides green deploy and smoke, and reuses the `spec complete` path (`server/api/run-routes.ts:279-299`).
 
 ### R11.5 Autonomy hardening - `todo`
 
@@ -533,6 +536,10 @@ The docs (project, briefing, stack, flow, design) stay the only hand-edited trut
 ### R11.7 Docs sync after refinement - `todo`
 
 - Re-derive `planned` specs whose sources changed, add and retire items, adjustment specs for started or delivered specs.
+
+### R11.8 Acceptance criterion ids collide across the specs of one repo - `todo` (found 2026-10-06)
+
+- Phase 4 matches criteria against the JUnit of the whole repo on main (`server/orchestrator/phases/verify.ts:121-126`, `server/evidence/matrix.ts:32`) while single-spec mode numbers criteria per spec, so a later spec's `AC-001` can be "proven" by an earlier spec's `[AC-001]` tests. Backlog mode gets global ids in R11.2; single-spec projects with several specs still need a fix (number above the repo's highest id, or scope the match to the spec's own tests).
 
 ## System 1 decisions (spec §10A.5)
 
