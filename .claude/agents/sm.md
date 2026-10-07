@@ -41,7 +41,7 @@ You receive the task, the feedback from every failed attempt, its acceptance cri
 
 ## Refining the documentation (`refine` step)
 
-You receive both Markdown files, the derived JSON, prior specs and ADRs, the answered and skipped questions, and the patches the human rejected with their reasons. Return `{specHash, checklist, questions, docPatch}`. Report exactly these checklist ids: `sm.dependencies-and-secrets`, `sm.constraints-clear`, `sm.tasks-feasible`, `sm.no-open-questions` (the orchestrator overrides the first and the last from what it observes). Ask one question per ambiguity; do not repeat a question already answered or skipped. Each `docPatch` targets `docs/project.md` or `docs/specs/<specId>/brief.md` and its `find` is a verbatim excerpt that occurs exactly once; never propose again a patch the human rejected.
+You receive both Markdown files, the derived JSON, prior specs and ADRs, the answered and skipped questions, and the patches the human rejected with their reasons. Return `{specHash, checklist, questions, docPatch}`. Report exactly these checklist ids: `sm.dependencies-and-secrets`, `sm.constraints-clear`, `sm.tasks-feasible`, `sm.no-open-questions` (the orchestrator overrides the first and the last from what it observes). Ask one question per ambiguity; do not repeat a question already answered or skipped. Each `docPatch` targets `docs/project.md` or the briefing (`docs/specs/<specId>/brief.md`; in backlog mode the target project's `docs/briefing.md`) and its `find` is a verbatim excerpt that occurs exactly once; never propose again a patch the human rejected.
 
 ### Service and bounded-context decomposition
 
@@ -52,7 +52,16 @@ You receive both Markdown files, the derived JSON, prior specs and ADRs, the ans
 
 ### Reviewing a backlog
 
-When the pack carries a derived backlog instead of a spec, review it for feasibility: each item is deliverable in one run, the dependency order can be built in that order, nothing depends on a capability the stack cannot provide, and the priorities respect the dependencies. The service and bounded-context decomposition rule above still applies: it is never a question for the human. Question only what the human must decide, and keep a decision the human gives you in `docs/specs/<specId>/brief.md` through a `docPatch`.
+When the pack carries a derived backlog instead of a spec, review it for feasibility: each item is deliverable in one run, the dependency order can be built in that order, nothing depends on a capability the stack cannot provide, and the priorities respect the dependencies. The service and bounded-context decomposition rule above still applies: it is never a question for the human. Question only what the human must decide, and keep a decision the human gives you in the target project's `docs/briefing.md` through a `docPatch`. Once the backlog is detailed, also read each pre-plan in the digest: it is deliverable and covers every criterion of its spec.
+
+## Pre-planning a backlog spec (`preplan` step)
+
+Only after the human asked for the detailing. You receive the target project's `stack.md` and up to three specs with their acceptance criteria, which spec carries the walking skeleton (marked FIRST), each spec's previous pre-plan and last rejection. Everything is in the pack: do not read files or use tools. Return `{specHash, preplans}` with one entry per spec, under the spec's `key`.
+- `modules` (1-8): the parts of the one service the spec ships that its tasks touch; the decomposition rule above applies.
+- `tasks` (1-12): ids `P1`, `P2` ... in execution order; owner `dev`, `devops` or `front`; `module` is one of the modules; `dependsOn` lists earlier task ids of the same pre-plan. Every task cites at least one acceptance criterion of its own spec in `criteriaRefs`, and every criterion is cited by some task.
+- The FIRST spec also carries the walking skeleton: repository scaffold, local docker infra and CI, cited against its smoke criterion. The other specs build on what the specs they depend on deliver.
+- `risks` (0-5): what could break the plan, and the mitigation.
+- This pre-plan is the contract the human reviews; the real plan is made at execution against the code (the `plan` step), and deviations from the pre-plan are recorded.
 
 ## Writing the final report (`report` step)
 

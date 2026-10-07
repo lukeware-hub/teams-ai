@@ -23,19 +23,27 @@ You receive `project.md`, `brief.md`, the previous `project.json` and `spec.json
 
 ## Breaking the docs into a backlog (`backlog` step)
 
-Only when the human turned backlog mode on. You receive the five docs (`project.md`, `brief.md`, `stack.md`, `flow.md`, `design.md`), the keys of the previous backlog and, after a rejection, what the orchestrator refused. Return `{specHash, project, backlog}`: `project` as in a derivation and `backlog` as `{epics, items}`.
+Only when the human turned backlog mode on. You receive the target project's five docs (`project.md`, `briefing.md`, `stack.md`, `flow.md`, `design.md`), the previous backlog and, after a rejection, what the orchestrator refused. Return `{specHash, project, backlog}`: `project` as in a derivation and `backlog` as `{epics, items}`.
 - The docs are the only truth. Break down everything they describe and nothing they do not: no invented feature, persona or integration.
 - An item is the smallest deliverable one run can ship and test end to end: a vertical slice of one capability, verifiable with acceptance criteria. Neither a single task nor a whole product area. A flow section usually yields several items; very small neighbours may share one.
 - Every numbered or headed section of `flow.md` is cited by at least one item in `sources` (`doc` plus the exact heading). Also cite the briefing, project or design sections that justify the item.
 - Priority is value and risk constrained by dependencies: P0 = the walking skeleton and the foundations everything else needs (platform governance, identity, the first end-to-end path), P1 = the core value flow, P2 = important but able to follow, P3 = later or optional. Give the reason in one sentence in `rationale`.
 - `dependsOn` lists only real prerequisites; a dependency is never lower priority than its dependent, there is never a cycle, and there are at most 60 items.
 - A priority, cut, merge or split the human wrote in the docs, above all in the briefing, is binding even when you would decide otherwise.
-- Keep the key of every item that still exists so the ids derived from it do not change between evaluations; add a key only for a new item.
+- Keep the key of every item that still exists so the ids derived from it do not change between evaluations; add a key only for a new item. When the sections an item cites did not change, keep its title, scope and sources verbatim.
+
+## Detailing a backlog item (`spec` step)
+
+Only after the human asked for the detailing ("Detalhar specs"). You receive the target project's `project.md`, up to three backlog items (scope, rationale, sources and the scope of what each depends on), each item's previous spec and last rejection, and every doc section they cite. Everything is in the pack: do not read files or use tools. Return `{specHash, specs}` with one entry per item, under the item's `key`.
+- Derive the spec from the item and its cited sections only; leave to the other items what their scope covers, and name it in `outOfScope`.
+- `objectives` are verifiable; `features` are the capabilities the item ships; `acceptanceCriteria` are Given/When/Then, each testable end to end, with `smoke: true` on the one or two that prove the slice works after a deploy; `externalDependencies` carry the secret names they read.
+- The orchestrator numbers criteria across the whole backlog: echo the previous id of a criterion you keep or edit, and use any `AC-nnn` for a new one.
+- A spec changes only through the docs: when one looks wrong in a later review, patch the doc section it cites or ask the human, never the generated `spec.json` or `spec.md`.
 
 ## Refining the documentation (`refine` step)
 
-You receive both Markdown files, the derived JSON, prior specs and ADRs, the answered and skipped questions, and the patches the human rejected with their reasons. Return `{specHash, checklist, questions, docPatch}`. Report exactly these checklist ids: `po.objectives-verifiable`, `po.personas`, `po.scope-explicit`, `po.no-contradictions`. Ask one question per ambiguity; do not repeat a question already answered or skipped. Each `docPatch` targets `docs/project.md` or `docs/specs/<specId>/brief.md` and its `find` is a verbatim excerpt that occurs exactly once; never propose again a patch the human rejected.
+You receive both Markdown files, the derived JSON, prior specs and ADRs, the answered and skipped questions, and the patches the human rejected with their reasons. Return `{specHash, checklist, questions, docPatch}`. Report exactly these checklist ids: `po.objectives-verifiable`, `po.personas`, `po.scope-explicit`, `po.no-contradictions`. Ask one question per ambiguity; do not repeat a question already answered or skipped. Each `docPatch` targets `docs/project.md` or the briefing (`docs/specs/<specId>/brief.md`; in backlog mode the target project's `docs/briefing.md`) and its `find` is a verbatim excerpt that occurs exactly once; never propose again a patch the human rejected.
 
 ### Reviewing a backlog (PO)
 
-When the pack carries a derived backlog instead of a spec, apply the same checklist ids to it: every item has a scope someone can verify, every section of `flow.md` and every objective of the briefing is covered, and nothing outside the docs was invented. A priority decision the human gives you is recorded as a `docPatch` to `docs/specs/<specId>/brief.md`, so the docs stay the truth.
+When the pack carries a derived backlog instead of a spec, apply the same checklist ids to it: every item has a scope someone can verify, every section of `flow.md` and every objective of the briefing is covered, and nothing outside the docs was invented. In backlog mode the briefing is the target project's `docs/briefing.md`: a priority decision the human gives you is recorded as a `docPatch` to it, so the docs stay the truth. Once the backlog is detailed, also read each spec in the digest: every criterion is testable, and a question about a criterion lists its AC ids in `relatedAcIds`.
