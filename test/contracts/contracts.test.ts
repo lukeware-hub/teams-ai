@@ -86,6 +86,16 @@ describe('Spec', () => {
     expect(computeSpecHash(moved)).toBe(computeSpecHash(spec));
   });
 
+  it('parses a planned spec and keeps its provenance out of the hash', () => {
+    const spec = makeSpec();
+    const derivedFrom = { backlogKey: 'opme', inputHash: `sha256:${'b'.repeat(64)}`, docsHash: `sha256:${'c'.repeat(64)}`, sources: [{ doc: 'flow.md' as const, heading: '7. OPME', hash: `sha256:${'d'.repeat(64)}` }, { doc: 'briefing.md' as const, heading: 'Fora do mapa', hash: null }] };
+    const planned = Spec.parse({ ...spec, status: 'planned', derivedFrom });
+    expect(planned.status).toBe('planned');
+    expect(planned.derivedFrom).toEqual(derivedFrom);
+    expect(computeSpecHash(planned)).toBe(computeSpecHash(spec));
+    expect(Spec.safeParse({ ...spec, derivedFrom: { ...derivedFrom, sources: [{ doc: 'brief.md', heading: 'x', hash: null }] } }).success).toBe(false);
+  });
+
   it('freezes a refining spec', () => {
     const frozen = freezeSpec(makeSpec());
     expect(frozen.status).toBe('running');

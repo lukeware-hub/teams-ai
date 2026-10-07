@@ -19,6 +19,12 @@ describe('postProcessDerived', () => {
     expect(out.value.spec).toMatchObject({ specId: 'hello-001', status: 'refining', specHash: null, specVersion: 2 });
     expect(out.value.spec.validationReports).toHaveLength(1);
   });
+  it('drops a provenance the agent invents: only backlog detailing writes derivedFrom', () => {
+    const derivedFrom = { backlogKey: 'x', inputHash: `sha256:${'d'.repeat(64)}`, docsHash: `sha256:${'e'.repeat(64)}`, sources: [{ doc: 'flow.md', heading: 'h', hash: null }] };
+    const out = postProcessDerived({ project: PROJECT, spec: { ...prev, derivedFrom } }, prev, 'hello-001');
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.value.spec.derivedFrom).toBeUndefined();
+  });
   it('reports zod issues with paths', () => {
     const out = postProcessDerived({ project: { ...PROJECT, personas: [] }, spec: prev }, null, 'hello-001');
     expect(out.ok).toBe(false);

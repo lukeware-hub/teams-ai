@@ -84,6 +84,8 @@ export function postProcessDerived(out: { project: unknown; spec: unknown }, pre
     specHash: null,
     specVersion: previous?.specVersion ?? 0,
     validationReports: previous?.validationReports ?? [],
+    // Only backlog detailing records where a spec comes from; one the agent fills in here would be invented.
+    derivedFrom: undefined,
   });
   const issues = [
     ...(p.success ? [] : p.error.issues.map((i) => `project.${i.path.join('.')}: ${i.message}`)),

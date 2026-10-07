@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ID_PATTERNS } from '../core/ids.js';
+import { BacklogSource } from './backlog.js';
 import { canonicalJson, sha256 } from './hash.js';
 import { AC_ID, HASH_PATTERN } from './patterns.js';
 
@@ -39,6 +40,8 @@ export type BugDetails = z.infer<typeof BugDetails>;
 
 export const SpecStatus = z.enum([
   'refining',
+  /** Backlog mode: derived during refinement with its pre-plan, complete but not frozen; it can still be re-derived. */
+  'planned',
   'running',
   'paused:quota',
   'paused:auth',
@@ -51,6 +54,16 @@ export const ValidationReport = z.object({
   at: z.iso.datetime(),
   text: z.string().min(1),
 });
+
+/** Backlog mode: where a derived spec comes from, so a later sync re-derives only what the docs changed. */
+export const SpecProvenance = z.object({
+  backlogKey: z.string().regex(ID_PATTERNS.SLUG),
+  inputHash: z.string().regex(HASH_PATTERN),
+  docsHash: z.string().regex(HASH_PATTERN),
+  /** Each cited section with the hash of its text; null when the heading was not found in the doc. */
+  sources: z.array(BacklogSource.extend({ hash: z.string().regex(HASH_PATTERN).nullable() })).min(1),
+});
+export type SpecProvenance = z.infer<typeof SpecProvenance>;
 
 export const Spec = z
   .object({
@@ -67,6 +80,7 @@ export const Spec = z
     tasks: z.array(HumanTask).optional(),
     status: SpecStatus,
     validationReports: z.array(ValidationReport).default([]),
+    derivedFrom: SpecProvenance.optional(),
   })
   .superRefine((spec, ctx) => {
     if (spec.type === 'bug' && !spec.bug) {
