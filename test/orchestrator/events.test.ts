@@ -58,7 +58,8 @@ describe('Journal', () => {
   it('refuses an event the reducer rejects and leaves the log untouched', async () => {
     const j = await open();
     await j.fact(RunEvent.TaskPlanned, { task: makePlanTask({ id: 'T1' }) });
-    await expect(j.fact(RunEvent.TaskStateChanged, { taskId: 'T1', to: 'merged' })).rejects.toThrow();
+    // 'merged' is now a legitimate adoption from 'planned' (R11.4 retry); 'reviewing' is still not a valid jump.
+    await expect(j.fact(RunEvent.TaskStateChanged, { taskId: 'T1', to: 'reviewing' })).rejects.toThrow();
     expect(j.events).toHaveLength(1);
     expect(j.state.tasks.get('T1')!.state).toBe('planned');
     await j.close();

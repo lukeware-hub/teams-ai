@@ -34,7 +34,8 @@ describe('reduceEvents', () => {
   it('applies valid transitions and rejects invalid ones', () => {
     const state = reduceEvents([planned('T1-a'), moved('T1-a', 'ready'), moved('T1-a', 'implementing')]);
     expect(state.tasks.get('T1-a')!.state).toBe('implementing');
-    expect(() => reduceEvents([planned('T1-a'), moved('T1-a', 'merged')])).toThrow(InvalidTransitionError);
+    // 'merged' is a legitimate adoption from 'planned' (R11.4 retry); 'reviewing' is not a valid jump from 'planned'.
+    expect(() => reduceEvents([planned('T1-a'), moved('T1-a', 'reviewing')])).toThrow(InvalidTransitionError);
   });
 
   it('counts attempts and per-gate retries', () => {

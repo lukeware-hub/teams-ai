@@ -22,7 +22,8 @@ export const ACTIVE_STATES: ReadonlySet<TaskState> = new Set<TaskState>([
 ]);
 
 const TRANSITIONS: Record<TaskState, readonly TaskState[]> = {
-  planned: ['ready', 'blocked', 'superseded'],
+  // 'merged' here is not a step forward: it adopts what an earlier run of the same spec already merged (R11.4 retry).
+  planned: ['ready', 'merged', 'blocked', 'superseded'],
   ready: ['implementing', 'blocked', 'superseded'],
   implementing: ['validating', 'blocked', 'superseded'],
   validating: ['reviewing', 'implementing', 'blocked', 'superseded'],

@@ -25,6 +25,10 @@ describe('task state machine', () => {
     expect(canTransition('merging', 'rebasing')).toBe(true);
   });
 
+  it('allows a planned task to be adopted as merged (R11.4: a retry inherits what an earlier run of the same spec already merged)', () => {
+    expect(canTransition('planned', 'merged')).toBe(true);
+  });
+
   it('forbids skipping review', () => {
     expect(canTransition('validating', 'merging')).toBe(false);
     expect(() => assertTransition('validating', 'merging')).toThrow(InvalidTransitionError);
