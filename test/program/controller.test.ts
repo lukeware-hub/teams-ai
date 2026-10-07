@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { newProgram, tick, type Program, type ProgramEffects, type RunOutcome } from '../../server/program/controller.js';
+import { newProgram, retryItem, tick, type Program, type ProgramEffects, type RunOutcome } from '../../server/program/controller.js';
 
 const entry = (key: string, rank: number, dependsOn: string[] = []) => ({ specId: `d-${key}`, key, rank, dependsOn: dependsOn.map((k) => `d-${k}`) });
 const NOW = new Date('2026-10-07T12:00:00Z');
@@ -122,5 +122,29 @@ describe('program controller', () => {
     };
     await tick(newProgram('d', [entry('a', 1)], NOW), fx, save);
     expect(order[0]).toBe('launch saw 1 saves, last running');
+  });
+
+  it('retryItem clears a failed item back to pending and un-blocks its dependents, so the next tick gives it another try', () => {
+    let p = newProgram('d', [entry('a', 1), entry('b', 2, ['a']), entry('c', 3)], NOW);
+    p.items[0] = { ...p.items[0]!, status: 'failed', reason: 'verification-failed: AC-003', runId: 'd-a-r1', finishedAt: NOW.toISOString() };
+    p.items[1] = { ...p.items[1]!, status: 'blocked', reason: 'depends on a, which failed', finishedAt: NOW.toISOString() };
+    p.items[2] = { ...p.items[2]!, status: 'done' };
+    p.status = 'finished';
+    const retried = retryItem(p, 'd-a', new Date('2026-10-07T15:00:00Z'));
+    expect(retried.items[0]).toMatchObject({ status: 'pending', reason: null, runId: null, finishedAt: null });
+    expect(retried.items[1]).toMatchObject({ status: 'pending', reason: null });
+    expect(retried.items[2].status).toBe('done'); // a finished item never resets just because something else retries
+    expect(retried.status).toBe('running');
+  });
+
+  it('refuses to retry an item that is not failed', () => {
+    const p = newProgram('d', [entry('a', 1)], NOW);
+    expect(() => retryItem(p, 'd-a', NOW)).toThrow(/not failed/);
+  });
+
+  it('refuses to retry an unknown spec id', () => {
+    const p = newProgram('d', [entry('a', 1)], NOW);
+    p.items[0]!.status = 'failed';
+    expect(() => retryItem(p, 'd-zzz', NOW)).toThrow(/unknown/);
   });
 });

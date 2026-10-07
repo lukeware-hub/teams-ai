@@ -206,6 +206,19 @@ describe('refine api', () => {
     expect((await call('POST', `${url}/evaluate`)).status).toBe(409);
     expect((await call('POST', `${url}/start`)).status).toBe(409);
     expect(spawns).toHaveLength(1);
+
+    // R11.4 continuation: the item failed verification; retry clears it and launches a new run.
+    const programFile = `${home}/ws/hello-app/refine/hello-app-001/program.json`;
+    const failedProgram = JSON.parse(await fs.readFile(programFile, 'utf8'));
+    failedProgram.status = 'finished';
+    failedProgram.items[0] = { ...failedProgram.items[0], status: 'failed', reason: 'verification-failed: AC-002 missing', finishedAt: new Date().toISOString() };
+    await fs.writeFile(programFile, JSON.stringify(failedProgram, null, 2));
+    const retried = await call('POST', `${url}/program/hello-app-001-base/retry`);
+    expect(retried.status).toBe(200);
+    const retriedBody = await retried.json();
+    expect(retriedBody.program.items[0]).toMatchObject({ status: 'running', reason: null });
+    expect(retriedBody.program.items[0].runId).not.toBe(body.runId);
+    expect(spawns).toHaveLength(2);
   });
 
   it('a program whose first run cannot launch leaves no ledger and the session able to start again', async () => {

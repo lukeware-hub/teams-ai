@@ -169,6 +169,12 @@ export class SessionRegistry {
     return this.programs.read(projectId, specId);
   }
 
+  /** R11.4 continuation: retries one failed item of a started program. */
+  async retryProgramItem(projectId: string, specId: string, itemSpecId: string): Promise<Program> {
+    await this.get(projectId, specId);
+    return this.programs.retry(projectId, specId, itemSpecId);
+  }
+
   /** One reconciliation of every started backlog program: the UI server calls it on a timer and once at boot. */
   async tickPrograms(): Promise<void> {
     for (const row of await this.list()) {

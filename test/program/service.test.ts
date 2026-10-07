@@ -105,3 +105,24 @@ describe('program service tick', () => {
     expect(await s.tick('shop', 'd')).toBeNull();
   });
 });
+
+describe('program service retry', () => {
+  it('clears a failed item and launches it again', async () => {
+    await fs.mkdir(path.join(root, 'draft', 'docs', 'specs', 'd-a'), { recursive: true });
+    await fs.writeFile(path.join(root, 'draft', 'docs', 'specs', 'd-a', 'spec.json'), JSON.stringify(makeFrozenSpec({ specId: 'd-a' })));
+    await fs.writeFile(path.join(root, 'draft', 'program.json'), JSON.stringify({
+      version: 1, draftId: 'd', status: 'finished', updatedAt: '',
+      items: [{ specId: 'd-a', key: 'a', rank: 1, dependsOn: [], status: 'failed', runId: 'd-a-r1', completeRunId: null, startedAt: '2026-10-07T00:00:00Z', finishedAt: '2026-10-07T01:00:00Z', reason: 'verification-failed', resumes: 0 }],
+    }));
+    const s = service();
+    const program = await s.retry('shop', 'd', 'd-a');
+    expect(program.status).toBe('running');
+    expect(program.items[0]).toMatchObject({ status: 'running', reason: null });
+    expect(program.items[0]!.runId).toMatch(/^d-a-r\d+$/);
+  });
+
+  it('refuses to retry on a draft with no program', async () => {
+    const s = service();
+    await expect(s.retry('shop', 'd', 'd-a')).rejects.toThrow(/no program/);
+  });
+});

@@ -7,7 +7,7 @@ import { Spec } from '../contracts/spec.js';
 import { writeFileAtomic } from '../core/atomic-write.js';
 import { nextRunId } from '../orchestrator/workspace.js';
 import { loadEvents } from '../store/event-store.js';
-import { newProgram, tick, type Program, type ProgramEffects, type ProgramEntry, type RunOutcome } from './controller.js';
+import { newProgram, retryItem, tick, type Program, type ProgramEffects, type ProgramEntry, type RunOutcome } from './controller.js';
 
 export interface ProgramServiceDeps {
   cfg: () => Promise<Config>;
@@ -51,6 +51,15 @@ export class ProgramService {
 
   async read(projectId: string, draftId: string): Promise<Program | null> {
     return readProgram(await this.deps.draftRoot(projectId, draftId));
+  }
+
+  /** R11.4 continuation: clears a failed item back to pending (and un-blocks its dependents) and takes a tick. */
+  async retry(projectId: string, draftId: string, specId: string): Promise<Program> {
+    const root = await this.deps.draftRoot(projectId, draftId);
+    const program = await readProgram(root);
+    if (program === null) throw new RangeError(`no program for ${projectId}/${draftId}`);
+    await writeProgram(root, retryItem(program, specId, this.now()));
+    return (await this.tick(projectId, draftId)) ?? (await readProgram(root))!;
   }
 
   /** One reconciliation of this draft's program; null when there is none, it is finished, or a tick is already running. */

@@ -69,6 +69,24 @@ export function newProgram(draftId: string, entries: readonly ProgramEntry[], no
   return { version: 1, draftId, status: 'running', items, updatedAt: now.toISOString() };
 }
 
+/**
+ * R11.4 continuation: clears a `failed` item back to `pending` so the next `tick()` gives it another try, and
+ * un-blocks whatever was `blocked` on it (or transitively on those), letting `tick()`'s own block-detection pass
+ * re-derive who is still blocked by another cause. No cause classification, no replanning: a human or a future Jev
+ * routing (R11.5/R11.5a) decides whether a retry is warranted; this only clears the ledger for one.
+ */
+export function retryItem(program: Program, specId: string, now: Date): Program {
+  const p: Program = structuredClone(program);
+  const item = p.items.find((i) => i.specId === specId);
+  if (!item) throw new RangeError(`unknown spec ${specId}`);
+  if (item.status !== 'failed') throw new RangeError(`item ${specId} is not failed (it is ${item.status})`);
+  Object.assign(item, { status: 'pending', runId: null, completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0 });
+  for (const i of p.items) if (i.status === 'blocked') Object.assign(i, { status: 'pending', reason: null, finishedAt: null });
+  p.status = 'running';
+  p.updatedAt = now.toISOString();
+  return p;
+}
+
 const IN_FLIGHT: ReadonlySet<ItemStatus> = new Set(['running', 'completing']);
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
