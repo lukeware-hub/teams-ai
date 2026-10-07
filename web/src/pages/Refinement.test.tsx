@@ -45,6 +45,16 @@ describe('RefinementView backlog mode', () => {
     expect(h.onEnableBacklog).toHaveBeenCalledOnce();
   });
 
+  it('offers specs.json instead of spec.json and tasks, and project.json from the backlog run', () => {
+    const withProject = { ...backlog, project: { projectId: 'hello-app' } };
+    render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog: withProject })} busy={false} {...on()} /></MemoryRouter>);
+    const specs = screen.getByTestId('download-specs-json') as HTMLAnchorElement;
+    expect(decodeURIComponent(specs.href)).toContain('"specId": "hello-001-base"');
+    expect(screen.queryByTestId('download-spec-json')).toBeNull();
+    expect(screen.queryByText(/Nenhuma tarefa gerada/)).toBeNull();
+    expect(screen.getByTestId('download-project-json')).toBeTruthy();
+  });
+
   it('shows the backlog and keeps Start disabled even when the session is ready', () => {
     render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog })} busy={false} {...on()} /></MemoryRouter>);
     expect(screen.getByTestId('item-base')).toBeTruthy();

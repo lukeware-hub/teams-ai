@@ -5,6 +5,7 @@ import { applyToSnapshot, type LiveSnapshot } from '../refine/reducer.js';
 import { useJournal } from '../useSse.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
+import { buildSpecsIndex } from '@server/refine/specs-index';
 import { BacklogPanel } from '../refine/BacklogPanel.js';
 import './refine.css';
 
@@ -170,6 +171,10 @@ export function RefinementView(p: ViewProps) {
   const pending = [...st.questions.filter((q) => q.status === 'pending')].sort((a, b) => Number(b.blocking) - Number(a.blocking));
   const current = pending[0];
   const canStart = st.status === 'ready' && !st.stale && !busy && !st.backlog?.enabled;
+  const backlogOn = st.backlog?.enabled === true;
+  // Backlog mode lists specs, not one spec: the generated index replaces spec.json and the tasks of a single spec.
+  const specsIndex = backlogOn && (st.backlog?.items.length ?? 0) > 0 ? buildSpecsIndex(snap.specId, st.backlog as never) : null;
+  const projectJson = backlogOn ? st.backlog?.project ?? null : st.derived?.project ?? null;
   const derivedThisCycle = (p.events ?? []).some((e) => e.type === 'DERIVED' && Number(e.data.cycle) === st.cycle);
   const jevEvent = (p.events ?? []).find((e) => e.type === 'REFINE_DOCS_VALIDATED' && Number(e.data.cycle) === st.cycle);
   const jevDown = jevEvent?.data.available === false;
@@ -402,6 +407,8 @@ export function RefinementView(p: ViewProps) {
         <div className="quality-checks"><h5>Produto (PO)</h5><Checklist items={st.checklist} role="po" /><h5>Técnico (SM)</h5><Checklist items={st.checklist} role="sm" /></div>
         <BacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} onEnable={p.onEnableBacklog} />
         <h4><Icon name="file" size={20} />Arquivos gerados<InfoTip text="Versão estruturada dos documentos, gerada pelo Claude a cada avaliação. O project.json descreve o projeto; o spec.json, esta demanda, com tarefas e critérios de aceite." /></h4>
+        {!backlogOn && (
+          <>
         {st.derived?.spec && <p data-testid="spec-type">Tipo da demanda: <strong>{typeLabel[st.derived.spec.type] ?? st.derived.spec.type}</strong></p>}
         {st.derived?.spec.type === 'bug' && st.derived.spec.bug && (
           <div data-testid="bug-details" className="notice bug-details">
@@ -415,10 +422,20 @@ export function RefinementView(p: ViewProps) {
           <summary><span>spec.json</span>{st.derived ? <a data-testid="download-spec-json" href={jsonDownload(st.derived.spec)} download="spec.json" aria-label="Baixar spec.json" onClick={(e) => e.stopPropagation()}><Icon name="download" size={18} /></a> : <span className="file-status">Aguardando avaliação</span>}</summary>
           {st.derived ? <pre>{JSON.stringify(st.derived.spec, null, 2)}</pre> : <p className="file-empty">Será gerado após a avaliação.</p>}
         </details>
+          </>
+        )}
+        {backlogOn && (
+          <details>
+            <summary><span>specs.json</span>{specsIndex ? <a data-testid="download-specs-json" href={jsonDownload(specsIndex)} download="specs.json" aria-label="Baixar specs.json" onClick={(e) => e.stopPropagation()}><Icon name="download" size={18} /></a> : <span className="file-status">Aguardando avaliação</span>}</summary>
+            {specsIndex ? <pre>{JSON.stringify(specsIndex, null, 2)}</pre> : <p className="file-empty">Será gerado após a avaliação.</p>}
+          </details>
+        )}
         <details>
-          <summary><span>project.json</span>{st.derived ? <a data-testid="download-project-json" href={jsonDownload(st.derived.project)} download="project.json" aria-label="Baixar project.json" onClick={(e) => e.stopPropagation()}><Icon name="download" size={18} /></a> : <span className="file-status">Aguardando avaliação</span>}</summary>
-          {st.derived ? <pre>{JSON.stringify(st.derived.project, null, 2)}</pre> : <p className="file-empty">Será gerado após a avaliação.</p>}
+          <summary><span>project.json</span>{projectJson ? <a data-testid="download-project-json" href={jsonDownload(projectJson)} download="project.json" aria-label="Baixar project.json" onClick={(e) => e.stopPropagation()}><Icon name="download" size={18} /></a> : <span className="file-status">Aguardando avaliação</span>}</summary>
+          {projectJson ? <pre>{JSON.stringify(projectJson, null, 2)}</pre> : <p className="file-empty">Será gerado após a avaliação.</p>}
         </details>
+        {!backlogOn && (
+          <>
         <h4><Icon name="list" size={20} />Tarefas<InfoTip text="Tarefas descritas no briefing, extraídas a cada avaliação. Na execução, o SM as usa para montar o plano de trabalho." /></h4>
         <ul className="quality-tasks">
           {(st.derived?.spec.tasks ?? []).map((t, i) => (
@@ -428,6 +445,8 @@ export function RefinementView(p: ViewProps) {
           ))}
         </ul>
         {(st.derived?.spec.tasks ?? []).length === 0 && <div className="quality-empty"><Icon name="clipboard" size={26} /><strong>Nenhuma tarefa gerada ainda.</strong><span>As tarefas aparecerão aqui após a avaliação.</span></div>}
+          </>
+        )}
         <div className="secrets-heading"><h4><Icon name="lock" size={20} />Segredos<InfoTip text="Chaves e senhas de serviços externos que o projeto usa, como a URL de um banco de dados. Ficam salvas neste computador e o valor nunca volta a ser exibido." /></h4><button type="button" className="secondary add-secret" onClick={() => setNewSecrets((rows) => [...rows, { id: Date.now(), name: '', value: '' }])}><Icon name="plus" size={16} />Adicionar segredo</button></div>
         <ul className="quality-secrets">
           {snap.secrets.map((s) => (

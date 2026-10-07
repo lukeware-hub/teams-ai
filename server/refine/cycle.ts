@@ -14,8 +14,9 @@ import { derivePack, postProcessDerived } from './derive.js';
 import { backlogPack, postProcessBacklog, renderBacklogMd, type BacklogCheck } from './backlog.js';
 import { fitPackBudget, PackTooLargeError } from './fit-pack.js';
 import { sha256 } from '../contracts/hash.js';
-import { DOC_REL, draftHash, flowTemplate, readDerived, readDoc, stackTemplate, writeBacklogMd, writeDerived, writeDoc, writeProject, type DocFile, type Draft } from './draft.js';
+import { DOC_REL, draftHash, flowTemplate, readDerived, readDoc, stackTemplate, writeBacklogMd, writeDerived, writeDoc, writeProject, writeSpecsIndex, type DocFile, type Draft } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
+import { buildSpecsIndex } from './specs-index.js';
 import type { JevValidationResult } from './jev-validation.js';
 import { refinePack } from './packs.js';
 import { applyPatch, checkPatch, patchId, unifiedDiff } from './patches.js';
@@ -143,6 +144,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     const { project, backlog: ranked } = accepted.value;
     await writeProject(draft, project);
     await writeBacklogMd(draft, renderBacklogMd(ranked));
+    await writeSpecsIndex(draft, buildSpecsIndex(draft.specId, ranked));
     await journal.fact(RefineEvent.BacklogDerived, { cycle, project, epics: ranked.epics, items: ranked.items });
     backlog = { enabled: true, project, epics: ranked.epics, items: ranked.items, cycle };
     derived = { project, spec: null };

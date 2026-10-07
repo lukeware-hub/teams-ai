@@ -198,6 +198,9 @@ export async function writeDerived(d: Draft, v: { project: Project; spec: Spec }
 /** Backlog mode derives the project but no spec yet: project.json alone. */
 export const writeProject = (d: Draft, project: Project): Promise<void> => fs.writeFile(d.projectJson, withNewline(JSON.stringify(project, null, 2)));
 
+/** `docs/specs.json`: the generated index of the backlog's specs (structure only; each spec keeps its own spec.json). */
+export const writeSpecsIndex = (d: Draft, index: unknown): Promise<void> => fs.writeFile(path.posix.join(d.docs, 'specs.json'), withNewline(JSON.stringify(index, null, 2)));
+
 export const writeBacklogMd = (d: Draft, text: string): Promise<void> => fs.writeFile(path.posix.join(d.docs, 'backlog.md'), withNewline(text));
 
 export async function draftHash(d: Draft): Promise<string> {

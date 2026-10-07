@@ -208,6 +208,8 @@ describe('refinement cycle in backlog mode', () => {
     expect(events.some((e) => e.type === 'REFINE_EVALUATED')).toBe(true);
     expect(JSON.parse(await readFile(draft.projectJson, 'utf8')).projectId).toBe(makeProject().projectId);
     expect(await readFile(path.join(draft.docs, 'backlog.md'), 'utf8')).toContain('Item base');
+    const index = JSON.parse(await readFile(path.join(draft.docs, 'specs.json'), 'utf8')) as { specs: Array<{ specId: string; rank: number; dependsOn: string[] }> };
+    expect(index.specs.map((x) => [x.rank, x.specId, x.dependsOn])).toEqual([[1, 'big-001-base', []], [2, 'big-001-casos', ['big-001-base']]]);
     const po = packs.find((p) => p.role === 'po' && p.kind === 'refine')!;
     expect(po.feedback).toContain('### derived backlog');
     expect(po.feedback).not.toContain('### derived spec.json');
