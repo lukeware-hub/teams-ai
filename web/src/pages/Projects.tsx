@@ -193,7 +193,10 @@ export function ProjectsView(p: {
                 <h2 id={`project-${pr.projectId}`}>{pr.projectId}</h2>
                 <code>{pr.dir}</code>
               </div>
-              <p className="project-facts">{plural(pr.specs.length, 'spec', 'specs')} · {plural(runs.length, 'execução', 'execuções')}</p>
+              <p className="project-facts">
+                {plural(pr.specs.length, 'spec', 'specs')} · {plural(runs.length, 'execução', 'execuções')}
+                {pr.specs.length === 0 ? null : ` · ${Math.round((pr.specs.filter((s) => s.status === 'done' || s.status === 'complete').length / pr.specs.length) * 100)}% concluído`}
+              </p>
             </header>
             <section className="project-section">
               <div className="project-section-heading">
