@@ -169,7 +169,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         return;
       }
       backlog = detailed.backlog;
-      secretNames = Object.values(backlog.specs ?? {}).flatMap((row) => row.spec?.externalDependencies.flatMap((dep) => dep.secretNames) ?? []);
+      secretNames = [...new Set(Object.values(backlog.specs ?? {}).flatMap((row) => row.spec?.externalDependencies.flatMap((dep) => dep.secretNames) ?? []))];
     }
     derived = { project: backlog.project!, spec: null };
     objectives = backlog.epics.map((e) => e.title);
