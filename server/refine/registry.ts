@@ -2,6 +2,8 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { RunControlDeps } from '../api/run-control.js';
 import { spawnRun, waitForRunJournal } from '../api/run-control.js';
+import { ProgramService, programFile } from '../program/service.js';
+import type { Program } from '../program/controller.js';
 import { writePid } from '../api/run-index.js';
 import { HttpError } from '../api/server.js';
 import type { Config } from '../config/config.js';
@@ -53,7 +55,18 @@ const exists = (p: string) => fs.access(p).then(() => true, () => false);
 export class SessionRegistry {
   private readonly sessions = new Map<string, Promise<RefineSession>>();
 
-  constructor(protected readonly deps: RegistryDeps) {}
+  private readonly programs: ProgramService;
+
+  constructor(protected readonly deps: RegistryDeps) {
+    this.programs = new ProgramService({
+      cfg: deps.cfg,
+      home: deps.home,
+      control: deps.control,
+      register: deps.register,
+      draftRoot: async (projectId, draftId) => draftPaths(await this.ws(projectId), draftId).root,
+      freezeItem: async (projectId, draftId, specId) => void (await (await this.get(projectId, draftId)).freezeItem(specId)),
+    });
+  }
 
   protected async ws(projectId: string): Promise<Workspace> {
     return workspacePaths(await this.deps.cfg(), projectId, this.deps.home);
@@ -132,9 +145,42 @@ export class SessionRegistry {
     return this.session(draft, ws, 'continue');
   }
 
+  /** R11.4: starts the program of a detailed backlog; the first item's run is the one the screen follows. */
+  private async startProgram(projectId: string, specId: string, session: RefineSession): Promise<{ runId: string; program: Program }> {
+    const entries = await session.freezeProgram();
+    try {
+      const program = await this.programs.start(projectId, specId, entries);
+      const runId = program.items.find((i) => i.runId !== null)?.runId ?? null;
+      if (runId === null) {
+        // Nothing was launched (docker or the login are down): drop the ledger so the next start begins clean.
+        await fs.rm(programFile(draftPaths(await this.ws(projectId), specId).root), { force: true });
+        throw new HttpError(500, `o programa não iniciou nenhuma run: ${program.items.find((i) => i.reason)?.reason ?? 'sem motivo registrado'}`);
+      }
+      await session.markStarted(runId);
+      return { runId, program };
+    } catch (err) {
+      session.failStart();
+      throw err;
+    }
+  }
+
+  async program(projectId: string, specId: string): Promise<Program | null> {
+    await this.get(projectId, specId);
+    return this.programs.read(projectId, specId);
+  }
+
+  /** One reconciliation of every started backlog program: the UI server calls it on a timer and once at boot. */
+  async tickPrograms(): Promise<void> {
+    for (const row of await this.list()) {
+      if (row.state !== 'started') continue;
+      await this.programs.tick(row.projectId, row.specId).catch((err) => console.error(`program ${row.projectId}/${row.specId}: ${err instanceof Error ? err.message : String(err)}`));
+    }
+  }
+
   /** Spec (refinement) §3.6: freeze the spec, spawn `run --draft`, register the draft root as a project. */
-  async start(projectId: string, specId: string): Promise<{ runId: string }> {
+  async start(projectId: string, specId: string): Promise<{ runId: string; program?: Program }> {
     const session = await this.get(projectId, specId);
+    if (session.state.backlog?.enabled) return this.startProgram(projectId, specId, session);
     const ws = await this.ws(projectId);
     const draft = draftPaths(ws, specId);
     await session.freeze();

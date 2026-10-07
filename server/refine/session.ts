@@ -1,8 +1,11 @@
 import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import { sha256 } from '../contracts/hash.js';
 import type { Project } from '../contracts/project.js';
-import { freezeSpec, type Spec } from '../contracts/spec.js';
+import { freezeSpec, Spec } from '../contracts/spec.js';
+import { writeFileAtomic } from '../core/atomic-write.js';
 import { loadSecrets, SECRET_NAME, writeSecret } from '../core/secrets.js';
+import type { ProgramEntry } from '../program/controller.js';
 import type { Hit } from '../knowledge/retrieval.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import { EventStore, type StoredEvent } from '../store/event-store.js';
@@ -11,6 +14,7 @@ import { maxCriterionInDraft } from './detail-cycle.js';
 import { designTemplate, flowTemplate, moveBriefingToProject, readDerived, readDoc, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
 import { DRAFT_HASH, RefineEvent } from './events.js';
 import { applyPatch } from './patches.js';
+import { buildSpecsIndex } from './specs-index.js';
 import { applyRefineEvent, emptyRefineState, type RefineState } from './state.js';
 
 export type { RunAgent } from './cycle.js';
@@ -312,6 +316,38 @@ export class RefineSession {
       this.starting = false;
       throw err;
     }
+  }
+
+  /**
+   * R11.4: the whole backlog is detailed, reviewed and ready, so the program may run it. Nothing is frozen here (each spec
+   * freezes at its turn, `freezeItem`); this checks the gate, takes the `starting` lock and hands back the items in rank order.
+   */
+  async freezeProgram(): Promise<ProgramEntry[]> {
+    const backlog = this.state.backlog;
+    if (!backlog?.enabled) throw new ConflictError('Esta sessão não está em modo backlog.');
+    if (this.state.status === 'started') throw new ConflictError('session already started a run');
+    if (this.starting) throw new ConflictError('a start is already in progress');
+    if (this.running) await this.running;
+    if (this.starting) throw new ConflictError('a start is already in progress');
+    if (!backlog.detail) throw new ConflictError('Detalhe as specs do backlog antes de iniciar: o início a partir do backlog usa as specs planejadas.');
+    if (this.state.status !== 'ready' || this.state.stale) {
+      throw new ConflictError(`session is ${this.state.status}${this.state.stale ? ' (stale)' : ''}; evaluate until ready`);
+    }
+    this.starting = true;
+    return buildSpecsIndex(this.deps.draft.specId, backlog).specs.map((s) => ({ specId: s.specId, key: s.key, rank: s.rank, dependsOn: s.dependsOn }));
+  }
+
+  /** R11.4: freezes one planned item spec at its turn (specVersion+1, running, specHash) in the draft, where its run reads it. Idempotent. */
+  async freezeItem(specId: string): Promise<Spec> {
+    if (!this.state.backlog || !buildSpecsIndex(this.deps.draft.specId, this.state.backlog).specs.some((s) => s.specId === specId)) throw new NotFoundError(`${specId} is not a spec of this backlog`);
+    const file = path.posix.join(this.deps.draft.docs, 'specs', specId, 'spec.json');
+    const spec = Spec.parse(JSON.parse(await fs.readFile(file, 'utf8')));
+    // A crash after the freeze and before the launch leaves it frozen: the second attempt keeps that freeze.
+    if (spec.status === 'running' && spec.specHash) return spec;
+    const frozen = freezeSpec(spec);
+    await writeFileAtomic(file, `${JSON.stringify(frozen, null, 2)}
+`);
+    return frozen;
   }
 
   async markStarted(runId: string): Promise<void> {

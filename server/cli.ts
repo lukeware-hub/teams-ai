@@ -58,6 +58,9 @@ export interface UiHooks {
   supervision?: { idx: IndexDeps; control: RunControlDeps };
 }
 
+/** How often the program controller looks at every started backlog (a delivered spec is noticed within this). */
+const PROGRAM_TICK_MS = 15_000;
+
 function realSignals(onStop: () => void): () => void {
   process.on('SIGTERM', onStop);
   process.on('SIGINT', onStop);
@@ -81,35 +84,40 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     accounting: new Accounting(),
     runEscalation: async () => { throw new Error('UI-server decisions do not escalate to Claude'); },
   });
-  return startApi(
+  const registry = new SessionRegistry({
+    cfg: async () => (await readUserConfig()).cfg,
+    runAgent: await makeRunAgent({ cfg, agentsDir: path.join(repoRoot, '.claude', 'agents'), hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), workspacesRoot: expandHome(cfg.paths.workspaces) }),
+    validateDocs: createJevValidator(cfg, async () => loadSecrets(expandHome(cfg.paths.secrets))),
+    secretsDir: expandHome(cfg.paths.secrets),
+    exec: withGitAuth(execCommand, expandHome(cfg.paths.secrets)),
+    projectDir: async (projectId) => {
+      for (const { dir } of (await readUserConfig()).cfg.projects) {
+        const read = await readProject(dir).catch(() => null);
+        if (read?.project.projectId === projectId) return dir;
+      }
+      return null;
+    },
+    control: defaultRunControl(repoRoot),
+    runsDir: async () => runsDir({ cfg: (await readUserConfig()).cfg, isAlive: () => false }),
+    register: (dir) => addProject(dir).then(() => undefined),
+    routeReport: async (criteria, report, confidential) =>
+      // The route is only a hint for PO and SM; a broken System 1 must not block reopening the spec.
+      routeReport(criteria, report, await uiDecider(), { confidential }).catch(() => null),
+    // Gate 1 filters only route and drop; a broken System 1 must not fail a refinement cycle.
+    decider: { decide: async (...args) => (await uiDecider()).decide(...args).catch(() => ({ answered: false as const, reason: 'exhausted' as const })) },
+  });
+  // R11.4: the program ledgers of started backlogs are reconciled here, so a restart of the container picks every one up again.
+  const programTimer = setInterval(() => void registry.tickPrograms(), PROGRAM_TICK_MS);
+  programTimer.unref();
+  setTimeout(() => void registry.tickPrograms(), 5_000).unref();
+  const api = await startApi(
     {
       routes: [
         ...onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr }),
         ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr }),
         ...opsRoutes({ index: async () => ({ cfg: (await readUserConfig()).cfg, isAlive: (pid) => isAlive(defaultRunControl(repoRoot), pid) }) }),
         ...refineRoutes({
-          registry: new SessionRegistry({
-            cfg: async () => (await readUserConfig()).cfg,
-            runAgent: await makeRunAgent({ cfg, agentsDir: path.join(repoRoot, '.claude', 'agents'), hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), workspacesRoot: expandHome(cfg.paths.workspaces) }),
-            validateDocs: createJevValidator(cfg, async () => loadSecrets(expandHome(cfg.paths.secrets))),
-            secretsDir: expandHome(cfg.paths.secrets),
-            exec: withGitAuth(execCommand, expandHome(cfg.paths.secrets)),
-            projectDir: async (projectId) => {
-              for (const { dir } of (await readUserConfig()).cfg.projects) {
-                const read = await readProject(dir).catch(() => null);
-                if (read?.project.projectId === projectId) return dir;
-              }
-              return null;
-            },
-            control: defaultRunControl(repoRoot),
-            runsDir: async () => runsDir({ cfg: (await readUserConfig()).cfg, isAlive: () => false }),
-            register: (dir) => addProject(dir).then(() => undefined),
-            routeReport: async (criteria, report, confidential) =>
-              // The route is only a hint for PO and SM; a broken System 1 must not block reopening the spec.
-              routeReport(criteria, report, await uiDecider(), { confidential }).catch(() => null),
-            // Gate 1 filters only route and drop; a broken System 1 must not fail a refinement cycle.
-            decider: { decide: async (...args) => (await uiDecider()).decide(...args).catch(() => ({ answered: false as const, reason: 'exhausted' as const })) },
-          }),
+          registry,
           log: io.stderr,
         }),
       ],
@@ -118,6 +126,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     },
     port,
   );
+  return { port: api.port, close: async () => { clearInterval(programTimer); await api.close(); } };
 }
 
 function flags(argv: string[]): Record<string, string | true> {

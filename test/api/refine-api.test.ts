@@ -188,7 +188,49 @@ describe('refine api', () => {
     expect(snap.state.backlog).toMatchObject({ detail: true, specs: { base: { specId: 'hello-app-001-base', spec: { acceptanceCriteria: [{ id: 'AC-001' }] } } }, preplans: { base: { preplan: { tasks: [{ id: 'P1' }] } } } });
     const dir = `${home}/ws/hello-app/refine/hello-app-001/docs/specs/hello-app-001-base`;
     expect(JSON.parse(await fs.readFile(`${dir}/spec.json`, 'utf8')).status).toBe('planned');
+    // Detailed and ready: Start now starts the program, which freezes and launches the first item.
+    const started = await call('POST', `${url}/start`);
+    expect(started.status).toBe(200);
+    const body = await started.json();
+    expect(body.runId).toMatch(/^hello-app-001-base-r\d+$/);
+    expect(body.program.items).toEqual([expect.objectContaining({ key: 'base', specId: 'hello-app-001-base', status: 'running', runId: body.runId })]);
+    expect(spawns.at(-1)!.args).toEqual(expect.arrayContaining(['run', '--spec', 'hello-app-001-base', '--run-id', body.runId, '--draft']));
+    const frozen = JSON.parse(await fs.readFile(`${dir}/spec.json`, 'utf8'));
+    expect(frozen).toMatchObject({ status: 'running', specVersion: 1 });
+    expect(frozen.specHash).toMatch(/^sha256:/);
+    expect(JSON.parse(await fs.readFile(`${home}/ws/hello-app/refine/hello-app-001/program.json`, 'utf8')).items[0].runId).toBe(body.runId);
+    expect(registered).toContain(`${home}/ws/hello-app/refine/hello-app-001`);
+    expect((await (await fetch(`${base()}${url}/program`)).json()).program.items[0].status).toBe('running');
+    // The docs are read-only from now on, and a second start does not launch another run.
+    expect((await snapshot()).state.status).toBe('started');
+    expect((await call('POST', `${url}/evaluate`)).status).toBe(409);
     expect((await call('POST', `${url}/start`)).status).toBe(409);
+    expect(spawns).toHaveLength(1);
+  });
+
+  it('a program whose first run cannot launch leaves no ledger and the session able to start again', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    const url = '/api/refine/hello-app/hello-app-001';
+    await call('POST', `${url}/backlog`);
+    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
+    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }, { checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }, { checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', `${url}/evaluate`);
+    await settle();
+    await call('POST', `${url}/backlog/detail`);
+    script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
+    script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
+    await call('POST', `${url}/evaluate`);
+    await settle();
+    spawnShouldFail = true;
+    const failed = await call('POST', `${url}/start`);
+    expect(failed.status).toBe(500);
+    expect(JSON.stringify(await failed.json())).toMatch(/nenhuma run/);
+    await expect(fs.access(`${home}/ws/hello-app/refine/hello-app-001/program.json`)).rejects.toThrow();
+    expect((await snapshot()).state.status).toBe('ready');
+    spawnShouldFail = false;
+    expect((await call('POST', `${url}/start`)).status).toBe(200);
   });
 
   it('refuses to detail an outline the docs changed after it was reviewed', async () => {
