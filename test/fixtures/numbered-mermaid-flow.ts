@@ -1,10 +1,10 @@
-/** The shape of the Kayron Hub flow.md: numbered mermaid comments between separators, then markdown sections. */
-export const KAYRON_FLOW = [
+/** A flow.md split into numbered mermaid comments between separators, then markdown sections: one common shape of a large flow. */
+export const NUMBERED_MERMAID_FLOW = [
   '# Fluxo',
   '',
   '```mermaid',
   '%% ====',
-  '%% KAYRON HUB — V4',
+  '%% CLÍNICA — V4',
   '%% 0. GOVERNANÇA DA PLATAFORMA',
   '%% ====',
   'flowchart TD',
