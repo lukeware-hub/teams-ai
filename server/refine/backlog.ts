@@ -15,6 +15,7 @@ const RULES = [
   '- dependsOn lists the keys an item cannot ship without. A dependency is never lower priority than its dependent, there are no cycles, and there are at most 60 items.',
   '- Treat any explicit priority, cut, merge or split instruction written in the docs (above all briefing.md) as binding.',
   '- key: a short slug. Keep the key of every item that still exists in the previous backlog so the ids derived from them stay stable.',
+  '- When the sections an item cites did not change, keep its title, scope and sources verbatim from the previous backlog: a reworded item has its spec and pre-plan derived again.',
   'Also return `project`: the project.json derived from project.md, exactly as in a normal derivation.',
 ].join('\n');
 
@@ -31,7 +32,7 @@ export function backlogPack(input: {
   /** What the validators rejected in the last attempt of this cycle. */
   rejection?: readonly string[];
 }): ContextPackInput {
-  const previous = input.previous?.items.length ? JSON.stringify({ epics: input.previous.epics, items: input.previous.items.map((i) => ({ key: i.key, title: i.title, epic: i.epic, priority: i.priority })) }, null, 2) : '(none)';
+  const previous = input.previous?.items.length ? JSON.stringify({ epics: input.previous.epics, items: input.previous.items.map((i) => ({ key: i.key, title: i.title, epic: i.epic, priority: i.priority, scope: i.scope, sources: i.sources })) }, null, 2) : '(none)';
   const feedback = [
     RULES,
     '### docs/project.md',
