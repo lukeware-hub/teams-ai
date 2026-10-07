@@ -158,10 +158,14 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
     case RefineEvent.SecretWritten:
       if (hasDerivation(s)) s.stale = true;
       break;
-    case RefineEvent.BacklogEnabled:
+    case RefineEvent.BacklogEnabled: {
+      // `acFloor`: the highest criterion id in the draft before the briefing move removed this draft's own spec.json.
+      const floor = Number(d.acFloor ?? 0);
       s.backlog = s.backlog ? { ...s.backlog, enabled: true } : { enabled: true, project: null, epics: [], items: [], cycle: 0 };
+      if (floor > 0) s.backlog = { ...s.backlog, acHighWater: Math.max(s.backlog.acHighWater ?? 0, floor) };
       if (s.derived || s.checklist.length > 0) s.stale = true;
       break;
+    }
     case RefineEvent.BacklogDerived: {
       // Merge: the detail of items that still exist survives a new outline; removed items take their rows with them.
       const prev = s.backlog;

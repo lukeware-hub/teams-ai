@@ -50,6 +50,16 @@ describe('RefineSession', () => {
     await again.close();
   });
 
+  it('keeps the criterion ids of the spec it continues as the floor of the backlog numbering', async () => {
+    const s = await RefineSession.create(deps(), 'continue');
+    const continued = { ...makeSpec({ specId: 'hello-001' }), acceptanceCriteria: [{ id: 'AC-040', given: 'g', when: 'w', then: 't', smoke: true }] };
+    await fs.writeFile(draft().specJson, JSON.stringify(continued));
+    await s.enableBacklog();
+    await expect(fs.access(draft().specJson)).rejects.toThrow();
+    expect(s.state.backlog?.acHighWater).toBe(40);
+    await s.close();
+  });
+
   it('migrates an existing draft that predates design.md', async () => {
     const design = path.join(draft().docs, 'design.md');
     await fs.rm(design);

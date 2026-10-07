@@ -79,6 +79,11 @@ describe('backlog events', () => {
     expect(reshaped.backlog).toMatchObject({ detail: true, acHighWater: 52, draftHash: 'h2' });
   });
 
+  it('starts the criterion numbering at the floor recorded when backlog mode was turned on', () => {
+    const s = reduceRefineEvents([{ type: RefineEvent.BacklogEnabled, data: { acFloor: 40 } }, { type: RefineEvent.BacklogDerived, data: derivedBacklog }]);
+    expect(s.backlog?.acHighWater).toBe(40);
+  });
+
   it('a doc edit or an accepted patch makes a derived backlog stale', () => {
     const outline = [{ type: RefineEvent.BacklogEnabled, data: {} }, { type: RefineEvent.BacklogDerived, data: derivedBacklog }, { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: allGreen, questions: [], discardedPatches: [] } }];
     expect(reduceRefineEvents(outline).stale).toBe(false);

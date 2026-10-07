@@ -7,6 +7,7 @@ import type { Hit } from '../knowledge/retrieval.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import { EventStore, type StoredEvent } from '../store/event-store.js';
 import { runCycle, type CycleDeps, type RunAgent } from './cycle.js';
+import { maxCriterionInDraft } from './detail-cycle.js';
 import { designTemplate, flowTemplate, moveBriefingToProject, readDerived, readDoc, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
 import { DRAFT_HASH, RefineEvent } from './events.js';
 import { applyPatch } from './patches.js';
@@ -182,7 +183,8 @@ export class RefineSession {
   async enableBacklog(): Promise<void> {
     this.guard();
     if (this.state.backlog?.enabled) return;
-    await this.journal.fact(RefineEvent.BacklogEnabled, {});
+    // The move removes this draft's own spec.json (a continued spec's, on main): its criterion ids stay the numbering floor.
+    await this.journal.fact(RefineEvent.BacklogEnabled, { acFloor: await maxCriterionInDraft(this.deps.draft) });
     await moveBriefingToProject(this.deps.draft);
   }
 
