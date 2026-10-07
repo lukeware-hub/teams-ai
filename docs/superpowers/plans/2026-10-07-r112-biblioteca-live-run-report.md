@@ -101,3 +101,13 @@ Suíte inteira verde (145 arquivos / 1253 testes + web 138), `tsc` limpo, contai
 **Custo desta continuação:** ~US$ 1,94 (r8) + custo parcial de r9 (não fechado) + zero IA na construção dos fixes de código.
 
 **Estado no momento em que parei:** `r112-biblioteca-001-cadastro-livros-r9` ainda rodando (Fase 5, corrigindo deploy). Nenhuma spec `done` ainda, mas pela primeira vez uma spec passou de Verificação para Deploy. Recomendo ao próximo passo: só acompanhar essa run até o fim (sem mexer em nada), ou investigar se falhar de novo nessa fase.
+
+## Continuação 5 (2026-10-07, ~19:15–19:50 UTC): AC-006/AC-007 + 1ª spec `done`
+
+**Achado real (teams-ai, não o projeto de teste):** `commands.smoke` e `commands.e2e`, gerados pelo SM no plano, nunca escreviam o `reports/junit.xml` que `plan.junitPath` espera (só `commands.test` tinha os flags `--reporter=junit --outputFile.junit=...`). Por isso `evaluateSmoke`/`evaluateE2e` sempre viam "zero testes" para qualquer critério marcado `smoke: true`, mesmo com a suíte rodando e passando (os testes `[AC-006]`/`[AC-007]` já existiam e já passavam). Corrigido como ajuste do projeto de teste (os dois comandos, PR #34, commit `009f4fa` em `biblioteca-escolar`) — **candidato a virar regra do teams-ai** (`SMOKE_CONTRACT`/`E2E_CONTRACT` em `server/orchestrator/steps.ts` não exigem explicitamente o reporter JUnit; um validador estrutural seria mais robusto que confiar só no prompt). Registrado para decisão futura, não construído agora.
+
+**Esgotamento do sandbox:** confirmado como transiente (sem vazamento de processo), não é bug do teams-ai. Reiniciar o container (feito pelo coordenador) resolveu.
+
+**Resultado ao vivo:** `r11` chegou a `awaiting-validation` pela primeira vez — verificação, deploy e smoke todos passaram. O controlador completou a spec sozinho (`complete-r1`, `done`) e já iniciou a spec 2 (`validacao-isbn`) automaticamente, sem intervenção manual. **Primeira spec do backlog `r112-biblioteca` entregue de ponta a ponta.**
+
+**Custo desta continuação:** ~US$ 2,13 (r11) + custo da run de conclusão (mínimo, sem chamada de agente).
