@@ -3,7 +3,7 @@ import { findCycle } from './plan.js';
 
 export const MAX_ITEMS = 60;
 /** Keys that would collide with run ids and docs branches (`<spec>-complete`, `docs/<spec>-v2`, `<spec>-r1` ...). */
-const RESERVED_KEY = /^(primary|complete|readme|deploy|report|workflows|done|v\d+|r\d+)$/;
+const RESERVED_KEY = /^(primary|plan|complete|readme|deploy|report|workflows|done|v\d+|r\d+)$/;
 const PRIORITY_RANK: Record<Priority, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
 
 const norm = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();

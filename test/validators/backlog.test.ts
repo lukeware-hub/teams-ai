@@ -24,7 +24,7 @@ describe('validateBacklog', () => {
 
   it('rejects duplicate and reserved keys', () => {
     expect(check(backlog([item('a'), item('a')]))).toEqual(expect.arrayContaining([expect.stringMatching(/duplicada.*a/)]));
-    for (const key of ['primary', 'complete', 'report', 'v2', 'r1']) {
+    for (const key of ['primary', 'plan', 'complete', 'report', 'v2', 'r1']) {
       expect(check(backlog([item(key)])), key).toEqual(expect.arrayContaining([expect.stringMatching(/reservada/)]));
     }
   });
