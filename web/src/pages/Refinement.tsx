@@ -1,12 +1,13 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, refineApi, type AcceptanceCriterion, type ChecklistItem, type Snapshot, type StoredEvent } from '../api.js';
+import { api, refineApi, type AcceptanceCriterion, type ChecklistItem, type ProgramView, type Snapshot, type StoredEvent } from '../api.js';
 import { applyToSnapshot, type LiveSnapshot } from '../refine/reducer.js';
 import { useJournal } from '../useSse.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { buildSpecsIndex } from '@server/refine/specs-index';
 import { BacklogPanel } from '../refine/BacklogPanel.js';
+import { canStartRun, ProgramPanel } from '../refine/ProgramPanel.js';
 import { SpecTree } from '../refine/SpecTree.js';
 import './refine.css';
 
@@ -130,6 +131,8 @@ export interface ViewProps {
   onSecret(name: string, value: string): void;
   onStart(): void;
   startInHeader?: boolean;
+  /** The ledger of the program that runs a started backlog. */
+  program?: ProgramView | null;
   events?: StoredEvent[];
 }
 
@@ -177,7 +180,7 @@ export function RefinementView(p: ViewProps) {
   const jevAdvisory = st.error?.startsWith('Jev bloqueou') ?? false;
   const pending = [...st.questions.filter((q) => q.status === 'pending')].sort((a, b) => Number(b.blocking) - Number(a.blocking));
   const current = pending[0];
-  const canStart = st.status === 'ready' && !st.stale && !busy && !st.backlog?.enabled;
+  const canStart = canStartRun(st, busy);
   const backlogOn = st.backlog?.enabled === true;
   // Backlog mode lists specs, not one spec: the generated index replaces spec.json and the tasks of a single spec.
   const specsIndex = backlogOn && (st.backlog?.items.length ?? 0) > 0 ? buildSpecsIndex(snap.specId, st.backlog as never) : null;
@@ -196,7 +199,9 @@ export function RefinementView(p: ViewProps) {
       : st.stale
         ? { label: 'Desatualizada', tone: 'warn' }
         : { label: 'Atual', tone: 'ok' };
-  const nextStep = st.status === 'evaluating'
+  const nextStep = st.status === 'started' && st.backlog?.enabled
+    ? 'Os agentes estão executando o backlog, uma spec por vez. Acompanhe cada uma abaixo; clique no link da run para ver os detalhes.'
+    : st.status === 'evaluating'
     ? 'Aguarde o fim da avaliação; o andamento aparece logo abaixo.'
     : jevAdvisory
     ? 'O Jev apontou pontos nos documentos. Ajuste o que fizer sentido e clique em Reavaliar.'
@@ -208,7 +213,7 @@ export function RefinementView(p: ViewProps) {
         ? 'Revise as sugestões de alteração abaixo e aceite ou rejeite cada uma.'
         : st.backlog?.enabled && st.status === 'ready'
           ? st.backlog.detail
-            ? 'O backlog detalhado está pronto para revisão: cada item tem spec e pré-plano. Para mudar algo, escreva nos documentos e reavalie; iniciar a execução a partir do backlog chega no próximo passo.'
+            ? 'O backlog detalhado está pronto: cada item tem spec e pré-plano. Para mudar algo, escreva nos documentos e reavalie; clique em Iniciar para os agentes executarem o backlog inteiro, uma spec por vez.'
             : 'O backlog está pronto para revisão. Para mudar prioridades ou cortes, escreva no briefing.md e reavalie; quando o esboço estiver certo, clique em Detalhar specs para gerar a spec e o pré-plano de cada item.'
         : st.backlog?.detail
           ? 'Detalhamento pedido: clique em Reavaliar para gerar a spec e o pré-plano de cada item; o que faltar aparece em vermelho na cobertura.'
@@ -419,6 +424,7 @@ export function RefinementView(p: ViewProps) {
         </div>
         <div className="quality-checks"><h5>Produto (PO)</h5><Checklist items={st.checklist} role="po" /><h5>Técnico (SM)</h5><Checklist items={st.checklist} role="sm" /></div>
         <BacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} ready={st.status === 'ready' && !st.stale} onEnable={p.onEnableBacklog} onDetail={p.onEnableDetail} />
+        {p.program && st.backlog && <ProgramPanel program={p.program} titles={Object.fromEntries(st.backlog.items.map((i) => [i.key, i.title]))} />}
         {st.backlog?.detail && <SpecTree backlog={st.backlog} />}
         <h4><Icon name="file" size={20} />Arquivos gerados<InfoTip text="Versão estruturada dos documentos, gerada pelo Claude a cada avaliação. O project.json descreve o projeto; o spec.json, esta demanda, com tarefas e critérios de aceite." /></h4>
         {!backlogOn && (
@@ -482,6 +488,7 @@ export function RefinementPage() {
   const navigate = useNavigate();
   const [snap, setSnap] = useState<LiveSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [program, setProgram] = useState<ProgramView | null>(null);
   const applied = useRef(0);
   const { events } = useJournal(snap ? refineApi.events(projectId, specId) : null);
   const load = () =>
@@ -492,6 +499,15 @@ export function RefinementPage() {
   useEffect(() => {
     void load();
   }, [projectId, specId]);
+  // The program ledger moves with the runs, not with the refinement journal: poll it while a started backlog is on screen.
+  const following = snap?.state.status === 'started' && snap.state.backlog?.enabled === true;
+  useEffect(() => {
+    if (!following) return;
+    const poll = () => refineApi.program(projectId, specId).then((r) => setProgram(r.program)).catch(() => undefined);
+    void poll();
+    const timer = setInterval(() => void poll(), 5_000);
+    return () => clearInterval(timer);
+  }, [following, projectId, specId]);
   useEffect(() => {
     if (!snap) return;
     let next: LiveSnapshot = snap;
@@ -499,7 +515,8 @@ export function RefinementPage() {
       if (e.seq <= applied.current) continue;
       applied.current = e.seq;
       next = applyToSnapshot(next, e);
-      if (e.type === 'REFINE_STARTED_RUN') navigate(`/runs/${String(e.data.runId)}`);
+      // A started backlog stays here: its program panel follows every spec, each with its own run link.
+      if (e.type === 'REFINE_STARTED_RUN' && !next.state.backlog?.enabled) navigate(`/runs/${String(e.data.runId)}`);
     }
     if (next !== snap) {
       if (next.docsDirty) void load();
@@ -515,11 +532,12 @@ export function RefinementPage() {
     setError(null);
     f().catch((e: Error) => setError(e.message));
   };
+  const startRun = act(() => refineApi.start(projectId, specId).then(({ runId, program: started }) => (started ? (setProgram(started), load()) : navigate(`/runs/${runId}`))));
   return (
     <main className="refine-page">
       <header className="refine-breadcrumb"><a href="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></a><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} rascunho</span>
         <span className="refine-start-group">
-          <button data-testid="start" className="primary refine-start refine-top-action" disabled={snap.state.status !== 'ready' || snap.state.stale || snap.state.backlog?.enabled === true} onClick={act(() => refineApi.start(projectId, specId).then(({ runId }) => navigate(`/runs/${runId}`)))}>
+          <button data-testid="start" className="primary refine-start refine-top-action" disabled={!canStartRun(snap.state, snap.state.status === 'evaluating')} onClick={startRun}>
             <Icon name="play" size={18} />Iniciar análise
           </button>
           <InfoTip text={startInfo} />
@@ -543,8 +561,9 @@ export function RefinementPage() {
         onAccept={(id) => act(() => refineApi.accept(projectId, specId, id))()}
         onReject={(id, r) => act(() => refineApi.reject(projectId, specId, id, r))()}
         onSecret={(n, v) => act(() => refineApi.secret(projectId, specId, n, v).then(load))()}
-        onStart={act(() => refineApi.start(projectId, specId).then(({ runId }) => navigate(`/runs/${runId}`)))}
+        onStart={startRun}
         startInHeader
+        program={program}
         events={events}
       />
     </main>

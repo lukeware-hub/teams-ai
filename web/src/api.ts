@@ -247,6 +247,27 @@ export interface BacklogView {
   preplans?: Record<string, { inputHash: string; specRev: string; preplan: PreplanView | null; issues: string[]; cycle: number }>;
   acHighWater?: number;
 }
+/** One spec of the program that runs the backlog (server/program/controller.ts). */
+export interface ProgramViewItem {
+  specId: string;
+  key: string;
+  rank: number;
+  dependsOn: string[];
+  status: 'pending' | 'running' | 'completing' | 'done' | 'failed' | 'blocked';
+  runId: string | null;
+  completeRunId: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  reason: string | null;
+  resumes: number;
+}
+export interface ProgramView {
+  version: 1;
+  draftId: string;
+  status: 'running' | 'finished';
+  items: ProgramViewItem[];
+  updatedAt: string;
+}
 export interface RefineState {
   status: RefineStatus;
   stale: boolean;
@@ -294,6 +315,7 @@ export const refineApi = {
   reject: (p: string, s: string, patchId: string, reason: string | null) =>
     send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/patches/${encodeURIComponent(patchId)}/reject`, { reason: reason ?? undefined }).then((r) => json<{ ok: true }>(r)),
   secret: (p: string, s: string, name: string, value: string) => send('PUT', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/secrets/${encodeURIComponent(name)}`, { value }).then((r) => json<{ present: boolean; hint: string }>(r)),
-  start: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/start`).then((r) => json<{ runId: string }>(r)),
+  start: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/start`).then((r) => json<{ runId: string; program?: ProgramView }>(r)),
+  program: (p: string, s: string) => authFetch(`${R}/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/program`).then((r) => json<{ program: ProgramView | null }>(r)),
   events: (p: string, s: string) => `${R}/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/events`,
 };

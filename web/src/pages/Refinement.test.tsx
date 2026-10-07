@@ -85,6 +85,30 @@ describe('RefinementView backlog mode', () => {
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('enables Start for a detailed, ready backlog and asks the page to start the program', () => {
+    const REV = `sha256:${'2'.repeat(64)}`;
+    const spec = { specId: 'hello-001-base', type: 'feature', objectives: ['o'], features: [], acceptanceCriteria: [{ id: 'AC-007', given: 'g', when: 'w', then: 't', smoke: true }], outOfScope: [], externalDependencies: [] };
+    const preplan = { specId: 'hello-001-base', specRev: REV, inputHash: 'h', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-007'], dependsOn: [] }], risks: [] };
+    const detailed = { ...backlog, detail: true, flowHeadings: [], specs: { base: { inputHash: 'h', specId: 'hello-001-base', rev: REV, spec, issues: [], cycle: 2 } }, preplans: { base: { inputHash: 'h', specRev: REV, preplan, issues: [], cycle: 2 } } };
+    const h = on();
+    render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog: detailed as never })} busy={false} {...h} /></MemoryRouter>);
+    const start = screen.getByTestId('start') as HTMLButtonElement;
+    expect(start.disabled).toBe(false);
+    fireEvent.click(start);
+    expect(h.onStart).toHaveBeenCalledOnce();
+    expect(screen.getByText(/clique em Iniciar para os agentes executarem o backlog inteiro/)).toBeTruthy();
+  });
+
+  it('a started backlog shows the program of specs and says the agents are executing it', () => {
+    const detailed = { ...backlog, detail: true, flowHeadings: [], specs: {}, preplans: {} };
+    const program = { version: 1 as const, draftId: 'hello-001', status: 'running' as const, updatedAt: '', items: [{ specId: 'hello-001-base', key: 'base', rank: 1, dependsOn: [], status: 'running' as const, runId: 'hello-001-base-r1', completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0 }] };
+    render(<MemoryRouter><RefinementView snap={base({ ...ready, status: 'started', runId: 'hello-001-base-r1', backlog: detailed as never })} busy={false} program={program} {...on()} /></MemoryRouter>);
+    expect(screen.getByTestId('program-item-base').textContent).toContain('Fundação');
+    expect(screen.getByRole('link', { name: 'hello-001-base-r1' }).getAttribute('href')).toBe('/runs/hello-001-base-r1');
+    expect(screen.getByText(/executando o backlog, uma spec por vez/)).toBeTruthy();
+    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('in backlog mode reads criteria from the item specs even with an old single-spec derivation, and says what detailing needs next', () => {
     const REV = `sha256:${'2'.repeat(64)}`;
     const spec = { specId: 'hello-001-base', type: 'feature', objectives: ['o'], features: [], acceptanceCriteria: [{ id: 'AC-007', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] };
