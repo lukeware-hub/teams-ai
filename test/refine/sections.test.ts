@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { docSections, headingMatches, sectionText } from '../../server/refine/sections.js';
+import { docSections, headingMatches, resolveHeading, sectionText } from '../../server/refine/sections.js';
 import { KAYRON_FLOW } from '../fixtures/kayron-flow.js';
 
 describe('docSections', () => {
@@ -45,6 +45,24 @@ describe('sectionText', () => {
     expect(sectionText(KAYRON_FLOW, '11. Caso')).toBe('%% 11. Caso clínico\n  K0[Prontuário] --> K1[Alta]');
     expect(sectionText(KAYRON_FLOW, 'Caso')).toBe('%% 1. Caso\n  C0[Abrir caso] --> C1[Triagem]');
     expect(sectionText(`## Caso clínico geral\n\n${'texto '.repeat(50)}\n\n${KAYRON_FLOW}`, 'Clínico')).toBe('%% 11. Caso clínico\n  K0[Prontuário] --> K1[Alta]');
+  });
+
+  it('lets an unnumbered citation only abbreviate a numbered heading, never stand for a smaller one', () => {
+    expect(headingMatches('Caso clínico', '1. Caso')).toBe(false);
+    expect(headingMatches('Pagamento do caso', '3. Pagamento')).toBe(false);
+    expect(headingMatches('Faturamento de OPME', '7. OPME')).toBe(false);
+    expect(headingMatches('OPME', '7. OPME')).toBe(true);
+    expect(headingMatches('Governança', '0. GOVERNANÇA DA PLATAFORMA')).toBe(true);
+    expect(sectionText(KAYRON_FLOW, 'Caso clínico — alta')).toBeNull();
+  });
+
+  it('resolves a citation to one heading: exact, then the same words, then the most words in common', () => {
+    const headings = ['1. Caso', 'Pagamento do caso', '3. Pagamento', '11. Caso clínico'];
+    expect(resolveHeading('Pagamento do caso', headings)).toBe('Pagamento do caso');
+    expect(resolveHeading('Caso clínico', headings)).toBe('11. Caso clínico');
+    expect(resolveHeading('Caso', headings)).toBe('1. Caso');
+    expect(resolveHeading('Pagamento', headings)).toBe('3. Pagamento');
+    expect(resolveHeading('Faturamento', headings)).toBeNull();
   });
 
   it('loads in the browser: no node: imports', async () => {

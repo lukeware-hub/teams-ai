@@ -22,9 +22,10 @@ function parts(s: string): { number: string | null; words: string[] } {
 const within = (big: readonly string[], small: readonly string[]) => small.every((t) => big.includes(t));
 
 /**
- * A cited heading matches a doc heading when the words of one are all words of the other (whole words, never part of
- * one) and, when both are numbered, the numbers are equal: "1. Caso" never matches "11. Caso clínico". Under three
- * characters a citation matches nothing.
+ * A cited heading matches a doc heading by whole words, never part of one, and numbered headings only match the same
+ * number: "1. Caso" never matches "11. Caso clínico". A citation may abbreviate a heading ("OPME" for "7. OPME"); it
+ * may say more than the heading only when both are numbered alike or neither is, so "Pagamento do caso" never stands
+ * for "3. Pagamento". Under three characters a citation matches nothing.
  */
 export function headingMatches(cited: string, heading: string): boolean {
   if (normHeading(cited).length < 3) return false;
@@ -32,7 +33,28 @@ export function headingMatches(cited: string, heading: string): boolean {
   const b = parts(heading);
   if (a.number !== null && b.number !== null && a.number !== b.number) return false;
   if (a.words.length === 0 || b.words.length === 0) return a.number !== null && a.number === b.number;
-  return within(b.words, a.words) || within(a.words, b.words);
+  const oneSideNumbered = (a.number === null) !== (b.number === null);
+  return within(b.words, a.words) || (!oneSideNumbered && within(a.words, b.words));
+}
+
+/** How well a heading answers a citation: the same heading, then the same words, then the most words in common; null when it does not match. */
+function score(cited: string, heading: string): number | null {
+  if (normHeading(cited) === normHeading(heading)) return 3_000;
+  const a = parts(cited);
+  const b = parts(heading);
+  if (a.words.length > 0 && (a.number === null || a.number === b.number) && a.words.join(' ') === b.words.join(' ')) return 2_000;
+  if (!headingMatches(cited, heading)) return null;
+  return 1_000 + a.words.filter((w) => b.words.includes(w)).length;
+}
+
+/** The one heading a citation names among `headings`, the closest on a tie, or null: a citation covers one section only. */
+export function resolveHeading(cited: string, headings: readonly string[]): string | null {
+  let best: { heading: string; score: number } | null = null;
+  for (const heading of headings) {
+    const s = score(cited, heading);
+    if (s !== null && (!best || s > best.score || (s === best.score && parts(heading).words.length < parts(best.heading).words.length))) best = { heading, score: s };
+  }
+  return best?.heading ?? null;
 }
 
 /**
@@ -67,18 +89,14 @@ export function docSections(doc: string): DocSection[] {
 
 /**
  * The text of the section a citation names: the same heading, else the same words under any section number ("OPME" for
- * "7. OPME"), else the smallest section that matches, so a broad heading never stands in for a precise one. Null if none.
+ * "7. OPME"), else the one with the most words in common and, on a tie, the smallest, so a broad heading never stands
+ * in for a precise one. Null if none.
  */
 export function sectionText(doc: string, heading: string): string | null {
-  const sections = docSections(doc);
-  const exact = sections.find((s) => normHeading(s.heading) === normHeading(heading));
-  if (exact) return exact.text;
-  const cited = parts(heading);
-  const sameWords = sections.find((s) => {
-    const p = parts(s.heading);
-    return (cited.number === null || cited.number === p.number) && p.words.join(' ') === cited.words.join(' ') && cited.words.length > 0;
-  });
-  if (sameWords) return sameWords.text;
-  const matches = sections.filter((s) => headingMatches(heading, s.heading)).sort((x, y) => x.text.length - y.text.length);
-  return matches[0]?.text ?? null;
+  let best: { section: DocSection; score: number } | null = null;
+  for (const section of docSections(doc)) {
+    const s = score(heading, section.heading);
+    if (s !== null && (!best || s > best.score || (s === best.score && section.text.length < best.section.text.length))) best = { section, score: s };
+  }
+  return best?.section.text ?? null;
 }

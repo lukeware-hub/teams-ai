@@ -52,6 +52,14 @@ describe('coverageGaps with numbered sections', () => {
     const b = backlog({ flowHeadings: ['1. Caso', '11. Caso clínico'], detail: false, items: [item('clinico', [{ doc: 'flow.md', heading: '11. Caso clínico' }], 1)] });
     expect(coverageGaps(b)).toContain('seção do flow.md sem nenhum item: "1. Caso"');
   });
+
+  it('counts a citation for the one section it names in a markdown flow', () => {
+    const b = backlog({
+      flowHeadings: ['1. Caso', 'Pagamento do caso', '3. Pagamento'], detail: false,
+      items: [item('caso', [{ doc: 'flow.md', heading: '1. Caso' }], 1), item('pagto', [{ doc: 'flow.md', heading: 'Pagamento do caso' }], 2)],
+    });
+    expect(coverageGaps(b).filter((g) => g.startsWith('seção'))).toEqual(['seção do flow.md sem nenhum item: "3. Pagamento"']);
+  });
 });
 
 describe('coverageMatrix', () => {
@@ -67,8 +75,8 @@ describe('coverageMatrix', () => {
 
 describe('itemCites', () => {
   it('reads flow.md citations only, leniently', () => {
-    expect(itemCites(item('a', [{ doc: 'flow.md', heading: '7 opme' }], 1), '7. OPME')).toBe(true);
-    expect(itemCites(item('a', [{ doc: 'briefing.md', heading: '7. OPME' }], 1), '7. OPME')).toBe(false);
+    expect(itemCites(item('a', [{ doc: 'flow.md', heading: '7 opme' }], 1), '7. OPME', ['7. OPME'])).toBe(true);
+    expect(itemCites(item('a', [{ doc: 'briefing.md', heading: '7. OPME' }], 1), '7. OPME', ['7. OPME'])).toBe(false);
   });
 
   it('loads in the browser: no node: imports and only type imports of the hashing contracts', async () => {

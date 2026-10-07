@@ -46,7 +46,7 @@ export function validateBacklog(backlog: Backlog, opts: { flowHeadings: readonly
   const cycle = findCycle(backlog.items.map((i) => ({ id: i.key, dependsOn: i.dependsOn })));
   if (cycle) errors.push(`ciclo de dependências: ${cycle.join(' -> ')}`);
   for (const heading of opts.flowHeadings) {
-    if (!backlog.items.some((i) => itemCites(i, heading))) errors.push(`seção do flow.md sem nenhum item: "${heading}"`);
+    if (!backlog.items.some((i) => itemCites(i, heading, opts.flowHeadings))) errors.push(`seção do flow.md sem nenhum item: "${heading}"`);
   }
   return errors;
 }

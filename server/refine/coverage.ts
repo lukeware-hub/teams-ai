@@ -1,5 +1,5 @@
 import type { BacklogItem } from '../contracts/backlog.js';
-import { headingMatches } from './sections.js';
+import { resolveHeading } from './sections.js';
 import type { BacklogState } from './state.js';
 
 /**
@@ -7,9 +7,9 @@ import type { BacklogState } from './state.js';
  * shared reducer gates `ready` on it and the refinement screen draws the same tree.
  */
 
-/** An item covers a flow.md section when one of its flow.md citations names it (lenient match). */
-export const itemCites = (item: Pick<BacklogItem, 'sources'>, heading: string): boolean =>
-  item.sources.some((s) => s.doc === 'flow.md' && headingMatches(s.heading, heading));
+/** An item covers a flow.md section when one of its flow.md citations resolves to that section among all of them. */
+export const itemCites = (item: Pick<BacklogItem, 'sources'>, heading: string, headings: readonly string[]): boolean =>
+  item.sources.some((s) => s.doc === 'flow.md' && resolveHeading(s.heading, headings) === heading);
 
 export interface CoverageMatrix {
   sections: Array<{ heading: string; items: string[] }>;
@@ -21,7 +21,7 @@ const byRank = (b: BacklogState) => [...b.items].sort((x, y) => x.rank - y.rank)
 export function coverageMatrix(b: BacklogState): CoverageMatrix {
   const items = byRank(b);
   return {
-    sections: (b.flowHeadings ?? []).map((heading) => ({ heading, items: items.filter((i) => itemCites(i, heading)).map((i) => i.key) })),
+    sections: (b.flowHeadings ?? []).map((heading) => ({ heading, items: items.filter((i) => itemCites(i, heading, b.flowHeadings ?? [])).map((i) => i.key) })),
     items: items.map((i) => {
       const spec = b.specs?.[i.key]?.spec ?? null;
       const tasks = b.preplans?.[i.key]?.preplan?.tasks ?? [];
@@ -34,7 +34,7 @@ export function coverageMatrix(b: BacklogState): CoverageMatrix {
 export function coverageGaps(b: BacklogState): string[] {
   const gaps: string[] = [];
   for (const heading of b.flowHeadings ?? []) {
-    if (!b.items.some((i) => itemCites(i, heading))) gaps.push(`seção do flow.md sem nenhum item: "${heading}"`);
+    if (!b.items.some((i) => itemCites(i, heading, b.flowHeadings ?? []))) gaps.push(`seção do flow.md sem nenhum item: "${heading}"`);
   }
   for (const item of byRank(b)) {
     const spec = b.specs?.[item.key];
