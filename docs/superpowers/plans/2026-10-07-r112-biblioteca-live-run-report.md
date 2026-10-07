@@ -1,6 +1,6 @@
 # Relatório — execução ponta a ponta do backlog `r112-biblioteca` (R11.3/R11.4 live check)
 
-Status: **concluído** (o programa terminou; a primeira spec falhou e bloqueou as demais, por design). Projeto de teste descartável, 8 specs planejadas, flow em Mermaid. Objetivo: rodar o programa (R11.4) do início ao fim pela tela, corrigindo bugs reais do teams-ai pelo caminho, sem gerar bug novo.
+Status: **concluído** (o programa terminou; a primeira spec falhou de novo, numa segunda tentativa, e bloqueou as demais, por design). Projeto de teste descartável, 8 specs planejadas, flow em Mermaid. Objetivo: rodar o programa (R11.4) do início ao fim pela tela, corrigindo bugs reais do teams-ai pelo caminho, sem gerar bug novo. Ver "Continuação: mecanismo de retry" abaixo para a segunda rodada.
 
 ## Resumo executivo
 
@@ -51,3 +51,26 @@ Status: **concluído** (o programa terminou; a primeira spec falhou e bloqueou a
 - **Pendências para o humano:**
   1. Apagar os projetos de teste `r112-agenda`, `r112-biblioteca`, `r112-biblioteca-001` e o repositório `lukeware-kayron-hub/biblioteca-escolar` quando terminar de revisar.
   2. Decidir a ordem dos próximos itens: R11.5a (Jev no refinamento), o repair loop (R11.4 continuação / R11.5), ou investigar o flake do rolldown se ele se repetir.
+
+## Continuação: mecanismo de retry (R11.4, sessão seguinte)
+
+O humano pediu para construir, em paralelo, o que faltava: uma spec `failed` poder ser retomada sem refazer o que outra tentativa já mesclou. Escopo travado por decisão: só o mecanismo, sem Jev, sem classificação de causa, sem replanejamento de docs (isso é R11.5/R11.5a).
+
+### Construído (4 peças, cada uma com teste primeiro, suíte inteira verde, commits próprios)
+
+1. **`planned` → `merged` passa a ser uma transição válida** (`server/pipeline/task-state.ts`) — adotar uma tarefa já mesclada por uma run anterior não é um passo de execução, é herdar um fato. Dois testes que usavam essa transição como exemplo de "inválida" foram trocados para outro exemplo (`planned → reviewing`), ainda inválido.
+2. **`mergedByPriorRuns`** (`server/orchestrator/workspace.ts`) — lê, de todas as runs anteriores da mesma spec neste projeto (ignorando runs de outro projeto que por acaso reusam o mesmo número, igual a `olderLiveRun` já fazia), o `RUN_FINISHED.merged` de cada uma e junta num só conjunto.
+3. **`Run.execute` herda tarefas já mescladas** (`server/orchestrator/run.ts`) — ao virar as tarefas planejadas para `ready`, as que já foram mescladas antes viram `merged` direto; a Fase 4 continua provando tudo pelo JUnit atual do repositório (o código já está lá, de antes).
+4. **Ação de retry no programa** (`server/program/controller.ts`, `service.ts`, `registry.ts`, rota `POST /api/refine/:p/:s/program/:itemSpecId/retry`) — `retryItem` limpa um item `failed` de volta para `pending` e desbloqueia o que dependia dele (o próprio `tick()` rebloqueia o que ainda depender de outra causa); nenhuma UI nova.
+
+### Resultado ao vivo (retry de `cadastro-livros`, run `r4`, depois do rebuild do container)
+
+- **O mecanismo funcionou de ponta a ponta:** a run nasceu já sabendo que T0 a T6 estavam mescladas (não refez nenhuma), e executou só T4, T7, T8, T9, T10 — exatamente o que faltava. T4 (que travava com "Cannot find native binding" na tentativa anterior) passou dessa vez sem nenhuma mudança de código: reforça a hipótese já registrada de corrida no `npm ci` concorrente, não resolvida, mas também não reproduzida de novo.
+- **Todas as 11 tarefas (T0 a T10) chegaram a `merged`.** Ainda assim a spec terminou `verification-failed`: o AC-012 (persistência depois de `docker compose down`) ficou sem evidência porque o teste que o cobre é de integração, fora do JUnit que a Fase 4 lê; a Fase 4 tentou gerar 2 tarefas de correção automática para isso e as duas foram rejeitadas pelos validadores (um dos achados da sessão anterior: `owner: devops` só mexe em infra) porque o SM reusou ids de tarefas já existentes (`T1`, `T0-scaffold`) em vez de pedir ids novos.
+- **Não corrigido:** o gerador de tarefas de correção da Fase 4 reusando ids existentes. É um achado novo, de uma causa diferente do T4, fora do escopo travado desta continuação (não é o mecanismo de retry, que está provado funcionando). Fica registrado para outra rodada.
+- **Programa:** `finished` de novo; item 1 `failed`, itens 2-8 `blocked` em cascata. Custo da run `r4`: US$ 8,38.
+- **Custo desta continuação:** ~US$ 8,38 (a run ao vivo) + 0 em chamadas de IA para o código (TDD local, sem gastar quota de agente).
+
+### Pendência para o humano
+
+- Mesma lista de antes (apagar os projetos de teste), mais: decidir se vale investigar o gerador de tarefas de correção da Fase 4 (ids reusados) antes ou depois do R11.5a/repair loop — provavelmente o repair loop completo resolve isso por tabela, já que ele classificaria a causa e replanejaria direito.
