@@ -95,6 +95,15 @@ export async function specForRun(ws: Workspace, runId: string): Promise<string |
   return typeof started?.data.specId === 'string' ? started.data.specId : null;
 }
 
+/**
+ * Whether the run was the spec that scaffolds the project, as it journaled it when it started; null for a run that never
+ * started or predates the field. Asking main again on a resume would answer "no" once the run's own scaffold has merged.
+ */
+export async function firstSpecForRun(ws: Workspace, runId: string): Promise<boolean | null> {
+  const started = (await loadEvents(eventsFile(ws, runId)).catch(() => [])).find((e) => e.type === OrchEvent.RunStarted);
+  return typeof started?.data.firstSpec === 'boolean' ? started.data.firstSpec : null;
+}
+
 /** Is the process named by an event-log lock (`<pid>@<host>`, written by store/event-store.ts) running on this host? */
 async function lockHeld(lockFile: string): Promise<boolean> {
   const owner = await fs.readFile(lockFile, 'utf8').then((text) => text.trim().split('@'), () => null);

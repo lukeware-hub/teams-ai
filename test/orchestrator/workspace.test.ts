@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG } from '../../server/config/config.js';
-import { eventsFile, expandHome, graphDir, nextRunId, olderLiveRun, specForRun, stepDir, workspacePaths, worktreeDir } from '../../server/orchestrator/workspace.js';
+import { eventsFile, expandHome, firstSpecForRun, graphDir, nextRunId, olderLiveRun, specForRun, stepDir, workspacePaths, worktreeDir } from '../../server/orchestrator/workspace.js';
 import { EventStore } from '../../server/store/event-store.js';
 
 let dir = '';
@@ -113,5 +113,24 @@ describe('specForRun', () => {
     await store.close();
     expect(await specForRun(ws, 'a-001-z-r1')).toBe('a-001-z');
     expect(await specForRun(ws, 'never-r1')).toBeNull();
+  });
+
+  it('reads whether the run was the first spec from its RUN_STARTED, null when it did not record it', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-runs-'));
+    const ws = { ...workspacePaths(DEFAULT_CONFIG, 'shop', '/home/u'), runs: dir };
+    const open = (id: string) => EventStore.open({ file: eventsFile(ws, id), runId: id, specHash: 'h' });
+    const first = await open('a-001-x-r1');
+    await first.append({ type: 'RUN_STARTED', data: { runId: 'a-001-x-r1', specId: 'a-001-x', projectId: 'shop', firstSpec: true } });
+    await first.close();
+    const later = await open('a-002-y-r1');
+    await later.append({ type: 'RUN_STARTED', data: { runId: 'a-002-y-r1', specId: 'a-002-y', projectId: 'shop', firstSpec: false } });
+    await later.close();
+    const old = await open('a-003-z-r1');
+    await old.append({ type: 'RUN_STARTED', data: { runId: 'a-003-z-r1', specId: 'a-003-z', projectId: 'shop' } });
+    await old.close();
+    expect(await firstSpecForRun(ws, 'a-001-x-r1')).toBe(true);
+    expect(await firstSpecForRun(ws, 'a-002-y-r1')).toBe(false);
+    expect(await firstSpecForRun(ws, 'a-003-z-r1')).toBeNull();
+    expect(await firstSpecForRun(ws, 'never-r1')).toBeNull();
   });
 });

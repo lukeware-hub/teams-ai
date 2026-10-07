@@ -147,7 +147,7 @@ export class Run {
     const id = runId ?? (await nextRunId(deps.ws, deps.spec.specId));
     await fs.mkdir(runDir(deps.ws, id), { recursive: true });
     const journal = await Run.openJournal(deps, id);
-    await journal.fact(OrchEvent.RunStarted, { runId: id, specId: deps.spec.specId, projectId: deps.project.projectId });
+    await journal.fact(OrchEvent.RunStarted, { runId: id, specId: deps.spec.specId, projectId: deps.project.projectId, firstSpec: deps.firstSpec });
     return new Run(id, journal, deps);
   }
 
