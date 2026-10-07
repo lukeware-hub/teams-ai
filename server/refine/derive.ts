@@ -52,9 +52,9 @@ export function derivePack(input: {
 
 export type DeriveCheck = { ok: true; value: { project: Project; spec: Spec } } | { ok: false; issues: string[] };
 
-const acNum = (id: string) => Number(id.slice(3));
-const acId = (n: number) => `AC-${String(n).padStart(3, '0')}`;
-const sameText = (a: AcceptanceCriterion, b: AcceptanceCriterion) => a.given === b.given && a.when === b.when && a.then === b.then;
+export const acNum = (id: string) => Number(id.slice(3));
+export const acId = (n: number) => `AC-${String(n).padStart(3, '0')}`;
+export const sameText = (a: AcceptanceCriterion, b: AcceptanceCriterion) => a.given === b.given && a.when === b.when && a.then === b.then;
 
 /** Spec (refinement) §3.2 step 1: the orchestrator, not the agent, owns ids, status, hash and version. */
 export function postProcessDerived(out: { project: unknown; spec: unknown }, previous: Spec | null, specId: string): DeriveCheck {
