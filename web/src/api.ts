@@ -214,6 +214,25 @@ export interface BacklogViewItem {
   size: 'S' | 'M' | 'L';
   rank: number;
 }
+/** A backlog item's derived spec, as the detailing writes it. */
+export interface ItemSpecView {
+  specId: string;
+  type: string;
+  objectives: string[];
+  features: string[];
+  acceptanceCriteria: AcceptanceCriterion[];
+  outOfScope: string[];
+  externalDependencies: Array<{ name: string; purpose?: string; secretNames: string[] }>;
+}
+/** The SM's pre-plan of one backlog spec. */
+export interface PreplanView {
+  specId: string;
+  specRev: string;
+  inputHash: string;
+  modules: Array<{ name: string; purpose: string }>;
+  tasks: Array<{ id: string; title: string; module: string; owner: string; criteriaRefs: string[]; dependsOn: string[] }>;
+  risks: Array<{ risk: string; mitigation: string }>;
+}
 /** Backlog mode: the docs broken into epics and ranked items; absent or null when the session is a single spec. */
 export interface BacklogView {
   enabled: boolean;
@@ -221,6 +240,12 @@ export interface BacklogView {
   epics: Array<{ key: string; title: string }>;
   items: BacklogViewItem[];
   cycle: number;
+  /** "Detalhar specs" was asked: every item gets a spec and a pre-plan. */
+  detail?: boolean;
+  flowHeadings?: string[];
+  specs?: Record<string, { inputHash: string; specId: string; rev: string | null; spec: ItemSpecView | null; issues: string[]; cycle: number }>;
+  preplans?: Record<string, { inputHash: string; specRev: string; preplan: PreplanView | null; issues: string[]; cycle: number }>;
+  acHighWater?: number;
 }
 export interface RefineState {
   status: RefineStatus;

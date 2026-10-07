@@ -62,6 +62,44 @@ describe('RefinementView backlog mode', () => {
     expect(screen.getByText(/backlog está pronto para revisão/i)).toBeTruthy();
     expect(screen.queryByTestId('enable-backlog')).toBeNull();
   });
+
+  it('asks the page to detail a ready outline, and describes the briefing as the project briefing', () => {
+    const h = { ...on(), onEnableDetail: vi.fn() };
+    render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog })} busy={false} {...h} /></MemoryRouter>);
+    expect(screen.getByText(/clique em Detalhar specs/)).toBeTruthy();
+    fireEvent.click(screen.getByTestId('detail-specs'));
+    expect(h.onEnableDetail).toHaveBeenCalledOnce();
+    expect(screen.getByTestId('doc-impact').textContent).toMatch(/Briefing do projeto/);
+  });
+
+  it('in detail mode draws the coverage tree, finds question criteria in the item specs, and keeps Start disabled', () => {
+    const REV = `sha256:${'2'.repeat(64)}`;
+    const spec = { specId: 'hello-001-base', type: 'feature', objectives: ['o'], features: [], acceptanceCriteria: [{ id: 'AC-007', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] };
+    const preplan = { specId: 'hello-001-base', specRev: REV, inputHash: 'h', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-007'], dependsOn: [] }], risks: [] };
+    const detailed = { ...backlog, detail: true, flowHeadings: [], specs: { base: { inputHash: 'h', specId: 'hello-001-base', rev: REV, spec, issues: [], cycle: 2 } }, preplans: { base: { inputHash: 'h', specRev: REV, preplan, issues: [], cycle: 2 } } };
+    const question = { questionId: 'po-c2-0', role: 'po' as const, text: 'Qual porta?', blocking: true, relatedAcIds: ['AC-007'], cycle: 2, status: 'pending' as const, answer: null };
+    const { container } = render(<MemoryRouter><RefinementView snap={base({ ...ready, status: 'answering', questions: [question], backlog: detailed as never })} busy={false} {...on()} /></MemoryRouter>);
+    expect(screen.getByTestId('spec-tree')).toBeTruthy();
+    const criteria = container.querySelector('.question-criteria') as HTMLElement;
+    expect(criteria.querySelector('[aria-label^="AC-007: dado o serviço no ar, quando GET /health, então 200"]')).toBeTruthy();
+    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('tells which agent details the specs and which pre-plans them', () => {
+    const stage = (kind: string, role: string) => {
+      const { unmount } = render(
+        <MemoryRouter>
+          <RefinementView snap={base({ status: 'evaluating', questions: [], patches: [], backlog: { ...backlog, detail: true } as never })} busy events={[event(1, 'REFINE_CYCLE_STARTED', { cycle: 1 }), event(2, 'REFINE_DOCS_VALIDATED', { cycle: 1, available: true }), event(3, 'STEP_STARTED', { stepId: 's1', kind, role, attempt: 1 })]} {...on()} />
+        </MemoryRouter>,
+      );
+      const text = document.body.textContent ?? '';
+      unmount();
+      return text;
+    };
+    expect(stage('spec', 'po')).toMatch(/PO está detalhando a spec de cada item do backlog/);
+    expect(stage('preplan', 'sm')).toMatch(/SM está fazendo o pré-plano de cada spec/);
+    expect(stage('backlog', 'po')).toMatch(/PO está quebrando os documentos em backlog/);
+  });
 });
 
 describe('RefinementView', () => {

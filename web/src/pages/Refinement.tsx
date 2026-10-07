@@ -7,6 +7,7 @@ import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { buildSpecsIndex } from '@server/refine/specs-index';
 import { BacklogPanel } from '../refine/BacklogPanel.js';
+import { SpecTree } from '../refine/SpecTree.js';
 import './refine.css';
 
 type DocFile = 'project.md' | 'brief.md' | 'stack.md' | 'flow.md' | 'design.md';
@@ -37,6 +38,8 @@ const docImpact: Record<DocFile, string> = {
   'flow.md': 'Fluxos de uso e regras de negócio, passo a passo. Base dos critérios de aceite e dos testes.',
   'design.md': 'Contrato visual: cores, tipografia, componentes e acessibilidade. Seguido pelo agente Front, que cuida da interface.',
 };
+/** Backlog mode: the briefing is the target project's docs/briefing.md, one file for the whole backlog. */
+const briefingImpact = 'Briefing do projeto (docs/briefing.md): objetivos, prioridades, cortes e decisões que valem para todo o backlog. Os agentes seguem o que estiver escrito aqui.';
 const docName = (file: string) => docLabel[file.split('/').pop() as DocFile] ?? file;
 const roleInfo: Record<'po' | 'sm', string> = {
   po: 'Pergunta do PO (Product Owner), o agente que revisa objetivos, critérios de aceite e o fluxo de negócio.',
@@ -101,6 +104,9 @@ function currentClaudeStage(events: StoredEvent[], cycle: number, jevEvent: Stor
     if (event.type === 'STEP_FINISHED') started.delete(String(event.data.stepId));
   }
   const active = [...started.values()];
+  if (active.some((step) => step.kind === 'backlog')) return 'PO está quebrando os documentos em backlog, com épicos e prioridades.';
+  if (active.some((step) => step.kind === 'spec')) return 'PO está detalhando a spec de cada item do backlog.';
+  if (active.some((step) => step.kind === 'preplan')) return 'SM está fazendo o pré-plano de cada spec.';
   if (active.some((step) => step.kind === 'derive')) return 'Claude está derivando project.json e spec.json a partir dos cinco documentos.';
   const roles = active.filter((step) => step.kind === 'refine').map((step) => step.role);
   if (roles.includes('front')) return 'Front está revisando o contrato visual, responsividade e acessibilidade.';
@@ -116,6 +122,7 @@ export interface ViewProps {
   onSaveDoc(file: DocFile, text: string): void;
   onEvaluate(): void;
   onEnableBacklog?(): void;
+  onEnableDetail?(): void;
   onAnswer(id: string, text: string): void;
   onSkip(id: string): void;
   onAccept(id: string): void;
@@ -179,7 +186,8 @@ export function RefinementView(p: ViewProps) {
   const jevEvent = (p.events ?? []).find((e) => e.type === 'REFINE_DOCS_VALIDATED' && Number(e.data.cycle) === st.cycle);
   const jevDown = jevEvent?.data.available === false;
   const claudeStage = currentClaudeStage(p.events ?? [], st.cycle, jevEvent, derivedThisCycle);
-  const criteria = st.derived?.spec.acceptanceCriteria ?? [];
+  // A detailed backlog numbers criteria across its item specs, so a question may cite any of them.
+  const criteria = st.derived?.spec.acceptanceCriteria ?? Object.values(st.backlog?.specs ?? {}).flatMap((row) => row.spec?.acceptanceCriteria ?? []);
   const listState = st.status === 'evaluating'
     ? { label: 'Avaliando', tone: 'tone-neutral' }
     : st.cycle === 0
@@ -198,7 +206,9 @@ export function RefinementView(p: ViewProps) {
       : st.patches.some((x) => x.status === 'pending')
         ? 'Revise as sugestões de alteração abaixo e aceite ou rejeite cada uma.'
         : st.backlog?.enabled && st.status === 'ready'
-          ? 'O backlog está pronto para revisão. Para mudar prioridades ou cortes, escreva no briefing.md e reavalie; iniciar a execução a partir do backlog chega no próximo passo.'
+          ? st.backlog.detail
+            ? 'O backlog detalhado está pronto para revisão: cada item tem spec e pré-plano. Para mudar algo, escreva nos documentos e reavalie; iniciar a execução a partir do backlog chega no próximo passo.'
+            : 'O backlog está pronto para revisão. Para mudar prioridades ou cortes, escreva no briefing.md e reavalie; quando o esboço estiver certo, clique em Detalhar specs para gerar a spec e o pré-plano de cada item.'
         : canStart
           ? 'Tudo pronto. Clique em Iniciar análise para os agentes desenvolverem o projeto.'
           : st.cycle === 0
@@ -223,7 +233,7 @@ export function RefinementView(p: ViewProps) {
             </button>
           ))}
         </div>
-        <p data-testid="doc-impact" className="hint">{docImpact[tab]}</p>
+        <p data-testid="doc-impact" className="hint">{backlogOn && tab === 'brief.md' ? briefingImpact : docImpact[tab]}</p>
         <div className="document-editor">
           <button type="button" className="editor-copy" aria-label="Copiar documento" onClick={() => copyDoc(docs[tab] ?? '')}><Icon name="copy" size={19} /></button>
           <textarea
@@ -405,7 +415,8 @@ export function RefinementView(p: ViewProps) {
           </dl>
         </div>
         <div className="quality-checks"><h5>Produto (PO)</h5><Checklist items={st.checklist} role="po" /><h5>Técnico (SM)</h5><Checklist items={st.checklist} role="sm" /></div>
-        <BacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} onEnable={p.onEnableBacklog} />
+        <BacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} ready={st.status === 'ready'} onEnable={p.onEnableBacklog} onDetail={p.onEnableDetail} />
+        {st.backlog?.detail && <SpecTree backlog={st.backlog} />}
         <h4><Icon name="file" size={20} />Arquivos gerados<InfoTip text="Versão estruturada dos documentos, gerada pelo Claude a cada avaliação. O project.json descreve o projeto; o spec.json, esta demanda, com tarefas e critérios de aceite." /></h4>
         {!backlogOn && (
           <>
@@ -523,6 +534,7 @@ export function RefinementPage() {
         onSaveDoc={(f, t) => act(() => refineApi.saveDoc(projectId, specId, f, t))()}
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}
+        onEnableDetail={act(() => refineApi.enableDetail(projectId, specId))}
         onAnswer={(id, t) => act(() => refineApi.answer(projectId, specId, id, t))()}
         onSkip={(id) => act(() => refineApi.skip(projectId, specId, id))()}
         onAccept={(id) => act(() => refineApi.accept(projectId, specId, id))()}

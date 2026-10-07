@@ -15,3 +15,19 @@
 .bk-p2 { color: var(--warn); background: var(--warn-soft); }
 .bk-p3 { color: var(--ink-soft); background: var(--surface-muted); }
 .bk-meta { flex: none; color: var(--ink-faint); font-size: 0.75rem; }
+.backlog-detail { display: flex; align-items: center; gap: 0.5rem; margin: 0; }
+.bk-planned { color: var(--good); background: var(--good-soft); }
+.bk-refining { color: var(--ink-soft); background: var(--surface-muted); }
+.bk-error { color: var(--bad); background: var(--bad-soft); }
+.backlog-item .bk-body .bk-issue { color: var(--bad); }
+.spec-tree { display: grid; gap: 0.6rem; margin: 1rem 0; }
+.spec-tree h4 { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0; }
+.tree-gaps { display: grid; gap: 0.25rem; margin: 0; padding: 0.6rem 0.8rem 0.6rem 1.6rem; border: 1px solid var(--bad); border-radius: var(--radius-md); color: var(--bad); background: var(--bad-soft); font-size: 0.8125rem; }
+.tree-sections { display: grid; gap: 0.3rem; margin: 0; padding-left: 1.2rem; font-size: 0.8125rem; }
+.tree-sections li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+.tree-chip { padding: 0.05rem 0.45rem; border-radius: var(--radius-pill); background: var(--surface-muted); }
+.tree-item { border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
+.tree-item summary { display: flex; align-items: center; gap: 0.5rem; padding: 0.45rem 0.65rem; cursor: pointer; }
+.tree-item summary code { color: var(--ink-faint); font-size: 0.75rem; }
+.tree-item ul { display: grid; gap: 0.25rem; margin: 0; padding: 0 0.65rem 0.6rem 1.6rem; font-size: 0.8125rem; }
+.spec-tree .gap { color: var(--bad); }

@@ -51,3 +51,36 @@ describe('BacklogPanel', () => {
     expect(screen.queryByTestId('epic-fin')).toBeNull();
   });
 });
+
+describe('BacklogPanel detailing', () => {
+  const REV = `sha256:${'2'.repeat(64)}`;
+  const items = [item('base', { rank: 1 }), item('casos', { rank: 2 }), item('cobranca', { epic: 'fin', rank: 3 })];
+
+  it('offers Detalhar specs once the outline is ready, with the expected number of agent calls', () => {
+    const onDetail = vi.fn();
+    const { rerender } = render(<BacklogPanel backlog={view(items)} evaluating={false} locked={false} ready={false} onDetail={onDetail} />);
+    expect((screen.getByTestId('detail-specs') as HTMLButtonElement).disabled).toBe(true);
+    rerender(<BacklogPanel backlog={view(items)} evaluating={false} locked={false} ready onDetail={onDetail} />);
+    const button = screen.getByTestId('detail-specs') as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    // Two epics: one call each for the specs and for the pre-plans, then the PO and SM reviews.
+    expect(button.textContent).toMatch(/~6 chamadas/);
+    fireEvent.click(button);
+    expect(onDetail).toHaveBeenCalledOnce();
+  });
+
+  it('marks each item planned, in refinement or failed once detailed, and no longer offers the button', () => {
+    const spec = { specId: 'p-base', type: 'feature', objectives: ['o'], features: [], acceptanceCriteria: [{ id: 'AC-001', given: 'g', when: 'w', then: 't', smoke: true }], outOfScope: [], externalDependencies: [] };
+    const preplan = { specId: 'p-base', specRev: REV, inputHash: 'h', modules: [{ name: 'm', purpose: 'p' }], tasks: [{ id: 'P1', title: 't', module: 'm', owner: 'dev', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] };
+    const detailed = {
+      ...view(items), detail: true,
+      specs: { base: { inputHash: 'h', specId: 'p-base', rev: REV, spec, issues: [], cycle: 2 }, casos: { inputHash: 'h', specId: 'p-casos', rev: null, spec: null, issues: ['schema'], cycle: 2 } },
+      preplans: { base: { inputHash: 'h', specRev: REV, preplan, issues: [], cycle: 2 } },
+    } as BacklogView;
+    render(<BacklogPanel backlog={detailed} evaluating={false} locked={false} ready onDetail={vi.fn()} />);
+    expect(screen.queryByTestId('detail-specs')).toBeNull();
+    expect(within(screen.getByTestId('item-base')).getByText('planejada')).toBeTruthy();
+    expect(within(screen.getByTestId('item-casos')).getByText('erro')).toBeTruthy();
+    expect(within(screen.getByTestId('item-cobranca')).getByText('em refinamento')).toBeTruthy();
+  });
+});
