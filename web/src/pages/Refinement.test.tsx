@@ -85,6 +85,23 @@ describe('RefinementView backlog mode', () => {
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('in backlog mode reads criteria from the item specs even with an old single-spec derivation, and says what detailing needs next', () => {
+    const REV = `sha256:${'2'.repeat(64)}`;
+    const spec = { specId: 'hello-001-base', type: 'feature', objectives: ['o'], features: [], acceptanceCriteria: [{ id: 'AC-007', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] };
+    const detailed = { ...backlog, detail: true, flowHeadings: [], specs: { base: { inputHash: 'h', specId: 'hello-001-base', rev: REV, spec, issues: [], cycle: 2 } }, preplans: {} };
+    const question = { questionId: 'po-c2-0', role: 'po' as const, text: 'Qual porta?', blocking: false, relatedAcIds: ['AC-007'], cycle: 2, status: 'pending' as const, answer: null };
+    const oldSingleSpec = { spec: { type: 'feature' as const, acceptanceCriteria: [{ id: 'AC-001', given: 'g', when: 'w', then: 't', smoke: false }], externalDependencies: [] }, project: {} };
+    const { container } = render(<MemoryRouter><RefinementView snap={base({ ...ready, status: 'answering', questions: [question], derived: oldSingleSpec, backlog: detailed as never })} busy={false} {...on()} /></MemoryRouter>);
+    expect((container.querySelector('.question-criteria') as HTMLElement).querySelector('[aria-label^="AC-007: dado o serviço no ar"]')).toBeTruthy();
+    expect(screen.getByLabelText('briefing.md editor')).toBeTruthy();
+  });
+
+  it('in detail mode with coverage gaps tells the human to reevaluate and read the gaps', () => {
+    const detailed = { ...backlog, detail: true, flowHeadings: [], specs: {}, preplans: {} };
+    render(<MemoryRouter><RefinementView snap={base({ ...ready, status: 'drafting', backlog: detailed as never })} busy={false} {...on()} /></MemoryRouter>);
+    expect(screen.getByText(/clique em Reavaliar para gerar a spec e o pré-plano de cada item/)).toBeTruthy();
+  });
+
   it('tells which agent details the specs and which pre-plans them', () => {
     const stage = (kind: string, role: string) => {
       const { unmount } = render(

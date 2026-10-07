@@ -52,3 +52,17 @@ describe('front agent policy', () => {
     expect(front).toContain('docs/briefing.md');
   });
 });
+
+describe('changing a detailed spec', () => {
+  it('goes through the briefing or a question in the PO policy and in the review pack, never a patch the pack does not allow', async () => {
+    const po = (await loadAgents(AGENTS)).po.body;
+    const detailing = po.slice(po.indexOf('## Detailing a backlog item'), po.indexOf('## Refining the documentation'));
+    expect(detailing).toContain('docs/briefing.md');
+    expect(detailing).not.toContain('patch the doc section it cites');
+    const { refinePack } = await import('../../server/refine/packs.js');
+    const backlog = { enabled: true, project: null, epics: [{ key: 'core', title: 'Núcleo' }], items: [], cycle: 1, detail: true, flowHeadings: [], specs: {}, preplans: {} };
+    const pack = refinePack({ role: 'po', specHash: `sha256:${'a'.repeat(64)}`, principles: [], specId: 's-1', projectMd: '# p', briefMd: '# b', derived: { project: {}, spec: null }, backlog, retrieval: [], history: [], rejected: [], projectBriefing: true, cycle: 2 } as never);
+    expect(pack.feedback).not.toContain('patch the doc section it cites');
+    expect(pack.feedback).toMatch(/record the decision in docs\/briefing\.md/);
+  });
+});

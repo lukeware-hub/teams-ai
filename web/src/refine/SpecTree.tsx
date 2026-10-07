@@ -25,13 +25,13 @@ export function SpecTree({ backlog }: { backlog: BacklogView }) {
       </h4>
       {gaps.length > 0 && (
         <ul className="tree-gaps" data-testid="tree-gaps">
-          {gaps.map((g) => <li key={g}>{g}</li>)}
+          {gaps.map((g, n) => <li key={n}>{g}</li>)}
         </ul>
       )}
       {matrix.sections.length > 0 && (
         <ol className="tree-sections">
           {matrix.sections.map((s, n) => (
-            <li key={s.heading} data-testid={`tree-section-${n}`} className={s.items.length > 0 ? '' : 'gap'}>
+            <li key={n} data-testid={`tree-section-${n}`} className={s.items.length > 0 ? '' : 'gap'}>
               <b>{s.heading}</b>
               {s.items.length > 0 ? s.items.map((k) => <span key={k} className="tree-chip">{titles.get(k) ?? k}</span>) : <span>sem item</span>}
             </li>

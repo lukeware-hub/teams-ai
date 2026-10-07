@@ -63,8 +63,8 @@ describe('BacklogPanel detailing', () => {
     rerender(<BacklogPanel backlog={view(items)} evaluating={false} locked={false} ready onDetail={onDetail} />);
     const button = screen.getByTestId('detail-specs') as HTMLButtonElement;
     expect(button.disabled).toBe(false);
-    // Two epics: one call each for the specs and for the pre-plans, then the PO and SM reviews.
-    expect(button.textContent).toMatch(/~6 chamadas/);
+    // Two epics: one call each for the specs and for the pre-plans, then the Front, PO and SM reviews.
+    expect(button.textContent).toMatch(/~7 chamadas/);
     fireEvent.click(button);
     expect(onDetail).toHaveBeenCalledOnce();
   });

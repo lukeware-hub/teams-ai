@@ -5,14 +5,14 @@ import './backlog.css';
 
 const SIZE = { S: 'pequena', M: 'média', L: 'grande' } as const;
 const HELP = 'Os agentes quebram os cinco documentos em specs organizadas em épicos e priorizadas de P0 (base de tudo) a P3 (depois). Gasta uma avaliação. Para mudar prioridade ou cortes, escreva no briefing.md e reavalie. Com o esboço certo, Detalhar specs gera a spec (PO) e o pré-plano com tarefas (SM) de cada item; depois, cada avaliação refaz só o que os documentos mudaram. O início da execução a partir do backlog chega no próximo passo.';
-const DETAIL_HELP = 'Gera a spec (objetivos, critérios de aceite) e o pré-plano (módulos, tarefas, riscos) de cada item, três itens por chamada de agente dentro de cada épico. A estimativa conta essas chamadas e a revisão do PO e do SM.';
+const DETAIL_HELP = 'Gera a spec (objetivos, critérios de aceite) e o pré-plano (módulos, tarefas, riscos) de cada item, três itens por chamada de agente dentro de cada épico. A estimativa conta essas chamadas e as revisões do Front, do PO e do SM.';
 
-/** Spec and pre-plan calls (three items of one epic per call) plus the PO and SM reviews. */
+/** Spec and pre-plan calls (three items of one epic per call) plus the Front, PO and SM reviews. */
 function estimatedCalls(backlog: BacklogView): number {
   const perEpic = new Map<string, number>();
   for (const i of backlog.items) perEpic.set(i.epic, (perEpic.get(i.epic) ?? 0) + 1);
   const batches = [...perEpic.values()].reduce((n, count) => n + Math.ceil(count / 3), 0);
-  return batches * 2 + 2;
+  return batches * 2 + 3;
 }
 
 /** Where a detailed item stands: spec and current pre-plan, a failed attempt, or still being derived. */
@@ -68,7 +68,7 @@ export function BacklogPanel({ backlog, evaluating, locked, ready = false, onEna
                     <p>Por quê: {i.rationale}</p>
                     {i.dependsOn.length > 0 && <p>Depende de: {i.dependsOn.map((d) => titles.get(d) ?? d).join(', ')}</p>}
                     <p>Origem: {i.sources.map((s) => `${s.doc} › ${s.heading}`).join('; ')}</p>
-                    {[...(backlog.specs?.[i.key]?.issues ?? []), ...(backlog.preplans?.[i.key]?.issues ?? [])].map((issue) => <p key={issue} className="bk-issue">Problema: {issue}</p>)}
+                    {[...(backlog.specs?.[i.key]?.issues ?? []), ...(backlog.preplans?.[i.key]?.issues ?? [])].map((issue, n) => <p key={n} className="bk-issue">Problema: {issue}</p>)}
                   </div>
                 </details>
               </li>

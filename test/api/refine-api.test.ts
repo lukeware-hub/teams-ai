@@ -191,6 +191,22 @@ describe('refine api', () => {
     expect((await call('POST', `${url}/start`)).status).toBe(409);
   });
 
+  it('refuses to detail an outline the docs changed after it was reviewed', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    const url = '/api/refine/hello-app/hello-app-001';
+    await call('POST', `${url}/backlog`);
+    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
+    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', `${url}/evaluate`);
+    await settle();
+    expect((await snapshot()).state.status).toBe('ready');
+    expect((await call('PUT', `${url}/docs/flow.md`, { text: '# Fluxo\n\nMudou depois do esboço.\n' })).status).toBe(200);
+    expect((await snapshot()).state.stale).toBe(true);
+    expect((await call('POST', `${url}/backlog/detail`)).status).toBe(409);
+  });
+
   it('new spec and continue spec copy docs from the project clone and enforce status rules', async () => {
     const spec = { ...makeSpec({ specId: 'hello-001' }), status: 'awaiting-validation', specHash: `sha256:${'a'.repeat(64)}` };
     remote = await makeRemote({ 'docs/project.json': JSON.stringify(HELLO_PROJECT), 'docs/specs/hello-001/spec.json': JSON.stringify(spec) });

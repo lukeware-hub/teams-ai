@@ -186,8 +186,9 @@ export function RefinementView(p: ViewProps) {
   const jevEvent = (p.events ?? []).find((e) => e.type === 'REFINE_DOCS_VALIDATED' && Number(e.data.cycle) === st.cycle);
   const jevDown = jevEvent?.data.available === false;
   const claudeStage = currentClaudeStage(p.events ?? [], st.cycle, jevEvent, derivedThisCycle);
-  // A detailed backlog numbers criteria across its item specs, so a question may cite any of them.
-  const criteria = st.derived?.spec.acceptanceCriteria ?? Object.values(st.backlog?.specs ?? {}).flatMap((row) => row.spec?.acceptanceCriteria ?? []);
+  // A detailed backlog numbers criteria across its item specs, so a question may cite any of them; a single-spec
+  // derivation left in the journal from before backlog mode no longer counts.
+  const criteria = backlogOn ? Object.values(st.backlog?.specs ?? {}).flatMap((row) => row.spec?.acceptanceCriteria ?? []) : st.derived?.spec.acceptanceCriteria ?? [];
   const listState = st.status === 'evaluating'
     ? { label: 'Avaliando', tone: 'tone-neutral' }
     : st.cycle === 0
@@ -209,6 +210,8 @@ export function RefinementView(p: ViewProps) {
           ? st.backlog.detail
             ? 'O backlog detalhado está pronto para revisão: cada item tem spec e pré-plano. Para mudar algo, escreva nos documentos e reavalie; iniciar a execução a partir do backlog chega no próximo passo.'
             : 'O backlog está pronto para revisão. Para mudar prioridades ou cortes, escreva no briefing.md e reavalie; quando o esboço estiver certo, clique em Detalhar specs para gerar a spec e o pré-plano de cada item.'
+        : st.backlog?.detail
+          ? 'Detalhamento pedido: clique em Reavaliar para gerar a spec e o pré-plano de cada item; o que faltar aparece em vermelho na cobertura.'
         : canStart
           ? 'Tudo pronto. Clique em Iniciar análise para os agentes desenvolverem o projeto.'
           : st.cycle === 0
@@ -237,7 +240,7 @@ export function RefinementView(p: ViewProps) {
         <div className="document-editor">
           <button type="button" className="editor-copy" aria-label="Copiar documento" onClick={() => copyDoc(docs[tab] ?? '')}><Icon name="copy" size={19} /></button>
           <textarea
-          aria-label={`${tab} editor`}
+          aria-label={`${docLabel[tab]} editor`}
           data-testid={`doc-${tab}`}
           value={docs[tab] ?? ''}
           readOnly={locked}
@@ -415,7 +418,7 @@ export function RefinementView(p: ViewProps) {
           </dl>
         </div>
         <div className="quality-checks"><h5>Produto (PO)</h5><Checklist items={st.checklist} role="po" /><h5>Técnico (SM)</h5><Checklist items={st.checklist} role="sm" /></div>
-        <BacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} ready={st.status === 'ready'} onEnable={p.onEnableBacklog} onDetail={p.onEnableDetail} />
+        <BacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} ready={st.status === 'ready' && !st.stale} onEnable={p.onEnableBacklog} onDetail={p.onEnableDetail} />
         {st.backlog?.detail && <SpecTree backlog={st.backlog} />}
         <h4><Icon name="file" size={20} />Arquivos gerados<InfoTip text="Versão estruturada dos documentos, gerada pelo Claude a cada avaliação. O project.json descreve o projeto; o spec.json, esta demanda, com tarefas e critérios de aceite." /></h4>
         {!backlogOn && (

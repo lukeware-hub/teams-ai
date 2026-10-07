@@ -194,8 +194,9 @@ export class RefineSession {
     this.guard();
     const backlog = this.state.backlog;
     if (backlog?.detail) return;
-    if (!backlog?.enabled || backlog.items.length === 0 || this.state.status !== 'ready') {
-      throw new ConflictError('Detalhar specs pede um backlog avaliado e pronto: avalie até o esboço ficar pronto.');
+    // A stale outline is one the human has not seen yet: the next evaluation would re-derive and detail it in one go.
+    if (!backlog?.enabled || backlog.items.length === 0 || this.state.status !== 'ready' || this.state.stale) {
+      throw new ConflictError(`Detalhar specs pede um backlog avaliado e pronto: avalie até o esboço ficar pronto.${this.state.stale ? ' Os documentos mudaram depois da última avaliação.' : ''}`);
     }
     await this.journal.fact(RefineEvent.BacklogDetailEnabled, {});
   }
