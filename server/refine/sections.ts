@@ -14,11 +14,25 @@ const FENCE = /^\s*```/;
 
 export const normHeading = (s: string): string => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
-/** A cited heading matches a doc heading when either contains the other; under three characters it matches nothing. */
+/** A heading as its section number (when it starts with one) and its words. */
+function parts(s: string): { number: string | null; words: string[] } {
+  const tokens = normHeading(s).split(' ').filter((t) => t !== '');
+  return /^\d+$/.test(tokens[0] ?? '') ? { number: tokens[0]!, words: tokens.slice(1) } : { number: null, words: tokens };
+}
+const within = (big: readonly string[], small: readonly string[]) => small.every((t) => big.includes(t));
+
+/**
+ * A cited heading matches a doc heading when the words of one are all words of the other (whole words, never part of
+ * one) and, when both are numbered, the numbers are equal: "1. Caso" never matches "11. Caso clínico". Under three
+ * characters a citation matches nothing.
+ */
 export function headingMatches(cited: string, heading: string): boolean {
-  const given = normHeading(cited);
-  const wanted = normHeading(heading);
-  return given.length >= 3 && (given.includes(wanted) || wanted.includes(given));
+  if (normHeading(cited).length < 3) return false;
+  const a = parts(cited);
+  const b = parts(heading);
+  if (a.number !== null && b.number !== null && a.number !== b.number) return false;
+  if (a.words.length === 0 || b.words.length === 0) return a.number !== null && a.number === b.number;
+  return within(b.words, a.words) || within(a.words, b.words);
 }
 
 /**
@@ -51,9 +65,20 @@ export function docSections(doc: string): DocSection[] {
   });
 }
 
-/** The text of the section a citation names, preferring an exact heading over one that merely contains it; null if none. */
+/**
+ * The text of the section a citation names: the same heading, else the same words under any section number ("OPME" for
+ * "7. OPME"), else the smallest section that matches, so a broad heading never stands in for a precise one. Null if none.
+ */
 export function sectionText(doc: string, heading: string): string | null {
   const sections = docSections(doc);
   const exact = sections.find((s) => normHeading(s.heading) === normHeading(heading));
-  return (exact ?? sections.find((s) => headingMatches(heading, s.heading)))?.text ?? null;
+  if (exact) return exact.text;
+  const cited = parts(heading);
+  const sameWords = sections.find((s) => {
+    const p = parts(s.heading);
+    return (cited.number === null || cited.number === p.number) && p.words.join(' ') === cited.words.join(' ') && cited.words.length > 0;
+  });
+  if (sameWords) return sameWords.text;
+  const matches = sections.filter((s) => headingMatches(heading, s.heading)).sort((x, y) => x.text.length - y.text.length);
+  return matches[0]?.text ?? null;
 }

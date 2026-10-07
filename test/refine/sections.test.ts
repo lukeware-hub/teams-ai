@@ -33,6 +33,20 @@ describe('sectionText', () => {
     expect(headingMatches('Faturamento', '7. OPME')).toBe(false);
   });
 
+  it('never matches a different section number, nor part of a word', () => {
+    expect(headingMatches('1. Caso', '11. Caso clínico')).toBe(false);
+    expect(headingMatches('11. Caso', '1. Caso')).toBe(false);
+    expect(headingMatches('Caso', 'Fluxo de casos')).toBe(false);
+    expect(headingMatches('Caso', '11. Caso clínico')).toBe(true);
+    expect(headingMatches('7. OPME e materiais', '7. OPME')).toBe(true);
+  });
+
+  it('resolves a citation to its own section: same number, then the same words, then the smallest match', () => {
+    expect(sectionText(KAYRON_FLOW, '11. Caso')).toBe('%% 11. Caso clínico\n  K0[Prontuário] --> K1[Alta]');
+    expect(sectionText(KAYRON_FLOW, 'Caso')).toBe('%% 1. Caso\n  C0[Abrir caso] --> C1[Triagem]');
+    expect(sectionText(`## Caso clínico geral\n\n${'texto '.repeat(50)}\n\n${KAYRON_FLOW}`, 'Clínico')).toBe('%% 11. Caso clínico\n  K0[Prontuário] --> K1[Alta]');
+  });
+
   it('loads in the browser: no node: imports', async () => {
     expect(await fs.readFile('server/refine/sections.ts', 'utf8')).not.toMatch(/from 'node:/);
   });

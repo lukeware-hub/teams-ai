@@ -47,6 +47,13 @@ describe('coverageGaps', () => {
   });
 });
 
+describe('coverageGaps with numbered sections', () => {
+  it('does not let an item citing "11. Caso clínico" cover "1. Caso"', () => {
+    const b = backlog({ flowHeadings: ['1. Caso', '11. Caso clínico'], detail: false, items: [item('clinico', [{ doc: 'flow.md', heading: '11. Caso clínico' }], 1)] });
+    expect(coverageGaps(b)).toContain('seção do flow.md sem nenhum item: "1. Caso"');
+  });
+});
+
 describe('coverageMatrix', () => {
   it('maps each flow section to the items citing it and each criterion to its pre-plan tasks', () => {
     const m = coverageMatrix(backlog({ flowHeadings: ['1. Caso', '7. OPME', '9. Faturamento'] }));
