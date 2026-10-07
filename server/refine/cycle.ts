@@ -153,8 +153,9 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       await writeBacklogMd(draft, renderBacklogMd(ranked));
       await writeSpecsIndex(draft, buildSpecsIndex(draft.specId, ranked));
       const outline = { cycle, project, epics: ranked.epics, items: ranked.items, flowHeadings: flowHeadings(docs['flow.md']), draftHash: hash };
-      await journal.fact(RefineEvent.BacklogDerived, outline);
+      // Remove first: the outline event drops the rows that name the retired items' directories.
       await removeRetired(draft, before, ranked.items);
+      await journal.fact(RefineEvent.BacklogDerived, outline);
       // The same merge the reducer makes: the detail of items that still exist carries over.
       const merged = { ...journal.state, backlog: before };
       applyRefineEvent(merged, { type: RefineEvent.BacklogDerived, data: outline });

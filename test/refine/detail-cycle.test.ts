@@ -179,3 +179,96 @@ describe('backlog detailing in the refinement cycle', () => {
     expect(Object.keys(journal.state.backlog?.specs ?? {}).sort()).toEqual(['caso', 'opme', 'triagem']);
   });
 });
+
+describe('backlog detailing failure paths', () => {
+  const quota = { ok: false, failure: 'quota', errors: ['janela de 5 horas'], summary: {}, sandboxDisabled: false };
+  const detailed = async () => {
+    const env = await setup();
+    const agent = fakeAgent(() => OUTLINE);
+    await env.run(agent, 1);
+    await env.journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    return { ...env, agent };
+  };
+
+  it('fails the cycle with the reason when a batch throws, and starts no call after the error', async () => {
+    const { journal, events, run } = await setup();
+    let thrown = false;
+    let callsAfterError = 0;
+    const agent = fakeAgent(() => OUTLINE.map((i, n) => ({ ...i, epic: epics[n]!.key })), () => {
+      if (thrown) callsAfterError += 1;
+      return undefined;
+    });
+    await run(agent, 1);
+    await journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    const fact = journal.fact;
+    journal.fact = async (type: string, data: Record<string, unknown> = {}) => {
+      if (type === RefineEvent.SpecDerived && data.key === 'caso') {
+        thrown = true;
+        throw new Error('disco cheio');
+      }
+      return fact(type, data);
+    };
+    const from = agent.calls.length;
+    await run(agent, 2);
+    expect(callsAfterError).toBe(0);
+    expect(agent.kinds(from).every((k) => k === 'spec')).toBe(true);
+    expect(String(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason)).toMatch(/disco cheio/);
+  });
+
+  it('records the valid items of a batch before retrying the invalid one', async () => {
+    const { journal, events, run } = await setup();
+    let recordedBeforeRetry: boolean | null = null;
+    const agent = fakeAgent(() => OUTLINE, (req, n) => {
+      const fb = String(req.pack.feedback);
+      if (req.kind === 'spec' && n === 1 && fb.includes('## Item caso:')) return ok({ specHash: H, specs: [{ ...itemSpec('caso'), type: 'bug' }, itemSpec('triagem')] });
+      if (req.kind === 'spec' && fb.includes('rejected')) {
+        recordedBeforeRetry = events.some((e) => e.type === 'SPEC_DERIVED' && e.data.key === 'triagem' && e.data.spec !== null);
+        return quota;
+      }
+      return undefined;
+    });
+    await run(agent, 1);
+    await journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    await run(agent, 2);
+    expect(recordedBeforeRetry).toBe(true);
+  });
+
+  it('ignores a generated spec.json it cannot read instead of failing every cycle', async () => {
+    const { journal, events, run, itemDir, agent } = await detailed();
+    await mkdir(itemDir('caso'), { recursive: true });
+    await writeFile(`${itemDir('caso')}/spec.json`, '{"specId": "big-001-ca');
+    await run(agent, 2);
+    expect(events.filter((e) => e.type === 'REFINE_CYCLE_FAILED')).toEqual([]);
+    expect(journal.state.status).toBe('ready');
+  });
+
+  it('numbers criteria above the ids of the target project specs already in the draft', async () => {
+    const { run, itemDir, docs, agent } = await detailed();
+    await mkdir(`${docs}/specs/outra-001`, { recursive: true });
+    await writeFile(`${docs}/specs/outra-001/spec.json`, JSON.stringify({ acceptanceCriteria: [{ id: 'AC-040' }] }));
+    await run(agent, 2);
+    expect(JSON.parse(await readFile(`${itemDir('caso')}/spec.json`, 'utf8')).acceptanceCriteria[0].id).toBe('AC-041');
+  });
+
+  it('writes a spec back to refining on disk when its spec or its pre-plan fails again', async () => {
+    const { run, itemDir, draft, journal } = await detailed();
+    let failing = false;
+    const agent = fakeAgent(() => OUTLINE, (req) => {
+      const fb = String(req.pack.feedback);
+      if (!failing) return undefined;
+      if (req.kind === 'preplan' && fb.includes('## Spec opme:')) return ok({ specHash: H, preplans: fb.split(/^## Spec /m).slice(1).map((s) => ({ ...preplanFor(s), tasks: [{ id: 'P1', title: 'x', module: 'm', owner: 'dev', criteriaRefs: ['AC-099'], dependsOn: [] }] })) });
+      if (req.kind === 'spec' && fb.includes('## Item fat:')) return ok({ specHash: H, specs: [{ ...itemSpec('fat'), type: 'bug' }] });
+      return undefined;
+    });
+    await run(agent, 2);
+    expect(JSON.parse(await readFile(`${itemDir('opme')}/spec.json`, 'utf8')).status).toBe('planned');
+    failing = true;
+    await writeFile(draft.stackMd, '# Stack\n\n- Node 22\n- Postgres 16');
+    await writeFile(draft.flowMd, FLOW.replace('D --> E', 'D --> E2[Nota fiscal]'));
+    await run(agent, 3);
+    expect(JSON.parse(await readFile(`${itemDir('opme')}/spec.json`, 'utf8')).status).toBe('refining');
+    expect(JSON.parse(await readFile(`${itemDir('fat')}/spec.json`, 'utf8')).status).toBe('refining');
+    expect(JSON.parse(await readFile(`${itemDir('caso')}/spec.json`, 'utf8')).status).toBe('planned');
+    expect(journal.state.status).not.toBe('ready');
+  });
+});
