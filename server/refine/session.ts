@@ -186,6 +186,18 @@ export class RefineSession {
     await moveBriefingToProject(this.deps.draft);
   }
 
+  /** Backlog detailing ("Detalhar specs"): from the next evaluation on, every item gets its spec and pre-plan. The human
+   *  reviews the outline first, so only a ready outline can be detailed. */
+  async enableDetail(): Promise<void> {
+    this.guard();
+    const backlog = this.state.backlog;
+    if (backlog?.detail) return;
+    if (!backlog?.enabled || backlog.items.length === 0 || this.state.status !== 'ready') {
+      throw new ConflictError('Detalhar specs pede um backlog avaliado e pronto: avalie até o esboço ficar pronto.');
+    }
+    await this.journal.fact(RefineEvent.BacklogDetailEnabled, {});
+  }
+
   async evaluate(): Promise<void> {
     this.ensureCanEvaluate();
     const cycle = this.state.cycle + 1;

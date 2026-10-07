@@ -163,6 +163,34 @@ describe('refine api', () => {
     expect((await call('POST', '/api/refine/hello-app/nope-001/backlog')).status).toBe(404);
   });
 
+  it('backlog detailing: refused until the outline is ready, then every item gets a spec and a pre-plan and the session is ready', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    const url = '/api/refine/hello-app/hello-app-001';
+    expect((await call('POST', `${url}/backlog`)).status).toBe(200);
+    expect((await call('POST', `${url}/backlog/detail`)).status).toBe(409);
+    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
+    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }, { checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }, { checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', `${url}/evaluate`);
+    await settle();
+    expect((await snapshot()).state.status).toBe('ready');
+    expect((await call('POST', `${url}/backlog/detail`)).status).toBe(200);
+    expect((await call('POST', `${url}/backlog/detail`)).status).toBe(200);
+    script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
+    script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
+    // The docs did not change, so the outline is not asked again: there is no second backlog answer scripted.
+    expect((await call('POST', `${url}/evaluate`)).status).toBe(202);
+    await settle();
+    const snap = await snapshot();
+    expect(snap.state.error).toBeNull();
+    expect(snap.state.status).toBe('ready');
+    expect(snap.state.backlog).toMatchObject({ detail: true, specs: { base: { specId: 'hello-app-001-base', spec: { acceptanceCriteria: [{ id: 'AC-001' }] } } }, preplans: { base: { preplan: { tasks: [{ id: 'P1' }] } } } });
+    const dir = `${home}/ws/hello-app/refine/hello-app-001/docs/specs/hello-app-001-base`;
+    expect(JSON.parse(await fs.readFile(`${dir}/spec.json`, 'utf8')).status).toBe('planned');
+    expect((await call('POST', `${url}/start`)).status).toBe(409);
+  });
+
   it('new spec and continue spec copy docs from the project clone and enforce status rules', async () => {
     const spec = { ...makeSpec({ specId: 'hello-001' }), status: 'awaiting-validation', specHash: `sha256:${'a'.repeat(64)}` };
     remote = await makeRemote({ 'docs/project.json': JSON.stringify(HELLO_PROJECT), 'docs/specs/hello-001/spec.json': JSON.stringify(spec) });
