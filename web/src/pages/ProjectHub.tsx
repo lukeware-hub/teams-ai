@@ -40,7 +40,10 @@ export function ProjectHubView(p: {
   }
   if (!p.project) return <main className="projects-shell" />;
   const pr = p.project;
-  const percent = pr.specs.length === 0 ? null : Math.round((pr.specs.filter((s) => s.status === 'done' || s.status === 'complete').length / pr.specs.length) * 100);
+  const doneCount = pr.specs.filter((s) => s.status === 'done' || s.status === 'complete').length;
+  const percent = pr.specs.length === 0 ? null : Math.round((doneCount / pr.specs.length) * 100);
+  const activeRuns = p.runs.filter((r) => ACTIVE.has(r.status));
+  const totalCost = p.runs.reduce((sum, r) => sum + r.cost, 0);
   return (
     <main className="projects-shell project-hub">
       <Link className="project-hub-back" to="/projects">
@@ -53,16 +56,37 @@ export function ProjectHubView(p: {
           <p className="project-hub-desc">{pr.description}</p>
           <code>{pr.dir}</code>
         </div>
-        <p className="project-facts">
-          {plural(pr.specs.length, 'spec', 'specs')} · {plural(p.runs.length, 'execução', 'execuções')}
-          {percent === null ? null : ` · ${percent}% concluído`}
-        </p>
+        {percent === null ? null : (
+          <div className="project-hub-progress" role="img" aria-label={`${percent}% concluído`}>
+            <div className="project-hub-progress-bar"><span style={{ width: `${percent}%` }} /></div>
+            <span className="project-hub-progress-label">{percent}%</span>
+          </div>
+        )}
       </header>
+      <div className="project-hub-stats">
+        <div className="project-hub-stat">
+          <span className="project-hub-stat-value">{pr.specs.length}</span>
+          <span className="project-hub-stat-label">{plural(pr.specs.length, 'spec', 'specs')}</span>
+        </div>
+        <div className="project-hub-stat">
+          <span className="project-hub-stat-value">{p.runs.length}</span>
+          <span className="project-hub-stat-label">{plural(p.runs.length, 'execução', 'execuções')}</span>
+        </div>
+        <div className={`project-hub-stat${activeRuns.length > 0 ? ' is-live' : ''}`}>
+          <span className="project-hub-stat-value">{activeRuns.length}</span>
+          <span className="project-hub-stat-label">em andamento</span>
+        </div>
+        <div className="project-hub-stat">
+          <span className="project-hub-stat-value">{money(totalCost)}</span>
+          <span className="project-hub-stat-label">custo total</span>
+        </div>
+      </div>
       {p.error ? <p className="error" role="alert">{p.error}</p> : null}
       <section className="card project-panel">
         <div className="project-section">
           <div className="project-section-heading">
             <div className="project-section-title">
+              <span className="project-section-icon"><Icon name="list" size={14} /></span>
               <h3>Especificações</h3>
               <InfoTip label="Especificações" text={HELP.specs} />
             </div>
@@ -93,22 +117,22 @@ export function ProjectHubView(p: {
                   {chip(s.activeRunId ? (p.runs.find((r) => r.runId === s.activeRunId)?.status ?? 'running') : s.status === 'running' ? 'idle' : s.status)}
                   <span className="project-row-actions">
                     {CONTINUABLE.has(s.status) ? (
-                      <button type="button" className="project-action" data-testid={`continue-${s.specId}`} aria-label={`Continuar spec ${s.specId}`} onClick={() => p.onContinue(s.specId)}>
+                      <button type="button" className="project-action secondary" data-testid={`continue-${s.specId}`} aria-label={`Continuar spec ${s.specId}`} onClick={() => p.onContinue(s.specId)}>
                         Continuar spec
                       </button>
                     ) : null}
                     {s.activeRunId ? (
-                      <Link className="project-action secondary" data-testid={`open-${s.specId}`} aria-label={`Abrir execução de ${s.specId}`} to={`/runs/${s.activeRunId}`}>
+                      <Link className="project-action primary" data-testid={`open-${s.specId}`} aria-label={`Abrir execução de ${s.specId}`} to={`/runs/${s.activeRunId}`}>
                         Abrir execução
                         <Icon name="arrow-right" size={14} />
                       </Link>
                     ) : s.status === 'awaiting-validation' ? (
-                      <Link className="project-action secondary" data-testid={`validate-${s.specId}`} aria-label={`Validar ${s.specId}`} to={`/runs/${lastRunOf(s.specId)}/validation`}>
+                      <Link className="project-action primary" data-testid={`validate-${s.specId}`} aria-label={`Validar ${s.specId}`} to={`/runs/${lastRunOf(s.specId)}/validation`}>
                         Validar
                         <Icon name="arrow-right" size={14} />
                       </Link>
                     ) : s.status === 'done' ? null : (
-                      <button type="button" className="project-action secondary" data-testid={`start-${s.specId}`} aria-label={`Iniciar execução de ${s.specId}`} onClick={() => p.onStart(s.specId)}>
+                      <button type="button" className="project-action primary" data-testid={`start-${s.specId}`} aria-label={`Iniciar execução de ${s.specId}`} onClick={() => p.onStart(s.specId)}>
                         <Icon name="play" size={14} />
                         Iniciar execução
                       </button>
@@ -123,6 +147,7 @@ export function ProjectHubView(p: {
       <section className="card project-panel">
         <div className="project-section">
           <div className="project-section-title">
+            <span className="project-section-icon"><Icon name="code" size={14} /></span>
             <h3>Execuções</h3>
           </div>
           {p.runs.length === 0 ? (
@@ -143,7 +168,7 @@ export function ProjectHubView(p: {
                   </thead>
                   <tbody>
                     {(showAll ? p.runs : p.runs.slice(0, RECENT_RUNS)).map((r) => (
-                      <tr key={r.runId}>
+                      <tr key={r.runId} className={ACTIVE.has(r.status) ? 'is-live' : ''}>
                         <td><Link className="project-run-link" to={`/runs/${r.runId}`}>{r.runId}</Link></td>
                         <td>{r.specId}</td>
                         <td>{chip(r.status)}</td>
@@ -184,6 +209,7 @@ export function ProjectHubView(p: {
         <section className="card project-panel">
           <div className="project-section">
             <div className="project-section-title">
+              <span className="project-section-icon"><Icon name="file" size={14} /></span>
               <h3>Refinamentos em andamento</h3>
               <InfoTip label="Refinamentos em andamento" text={HELP.drafts} />
             </div>
@@ -197,7 +223,7 @@ export function ProjectHubView(p: {
                       <Icon name="trash" size={14} />
                       Excluir
                     </button>
-                    <Link className="project-action secondary" data-testid={`refine-${d.specId}`} aria-label={`Abrir refinamento de ${d.specId}`} to={`/refine/${pr.projectId}/${d.specId}`}>
+                    <Link className="project-action primary" data-testid={`refine-${d.specId}`} aria-label={`Abrir refinamento de ${d.specId}`} to={`/refine/${pr.projectId}/${d.specId}`}>
                       Abrir
                       <Icon name="arrow-right" size={14} />
                     </Link>
