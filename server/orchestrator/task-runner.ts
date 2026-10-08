@@ -72,6 +72,10 @@ export interface TaskRunnerDeps {
   secretValues?: () => readonly string[];
   /** Refused merges tolerated per task before they count as an infra failure (default 3). */
   maxMergeRefusals?: number;
+  /** Connection string for the ephemeral test database the orchestrator provisioned for this run, when one
+   * was needed (spec declares a DATABASE_URL secret); null when none was provisioned. Sent as extraEnv to
+   * Dev and Test so their own sandboxed processes can reach it without ever getting Docker access themselves. */
+  testDatabaseUrl?: string | null;
 }
 
 const TAIL = 2000;
@@ -259,6 +263,7 @@ export class TaskRunner {
       phase: 'phase3',
       taskId: this.taskId,
       attempt,
+      extraEnv: this.deps.testDatabaseUrl ? { DATABASE_URL: this.deps.testDatabaseUrl } : undefined,
       refContext: () => this.refContext(),
       refs: ((v: DevOutput) => ({ files: v.changedFiles })) as never,
     });
@@ -365,6 +370,7 @@ export class TaskRunner {
       phase: 'phase3',
       taskId: this.taskId,
       attempt: this.task.attempts + 1,
+      extraEnv: this.deps.testDatabaseUrl ? { DATABASE_URL: this.deps.testDatabaseUrl } : undefined,
       refContext: () => this.refContext(),
       refs: ((v: ReviewOutput) => ({ acIds: v.criteria.map((c) => c.id), files: v.findings.map((f) => f.file) })) as never,
     });

@@ -114,6 +114,25 @@ describe('TaskRunner: implementing', () => {
     expect(agentCalls[0]!.pack.feedback).toBeUndefined();
   });
 
+  it('passes the ephemeral test database URL as extraEnv to Dev and Test when one was provisioned for this run', async () => {
+    const agent: Agent = async (req) => {
+      if (req.kind === 'review') return approve();
+      return devDone()(req);
+    };
+    const r = new TaskRunner('T1', deps({ agent, testDatabaseUrl: 'postgres://u:p@dind:55432/t' }));
+    for (let i = 0; i < 3; i++) await r.advance();
+    const dev = agentCalls.find((c) => c.kind === 'dev')!;
+    const review = agentCalls.find((c) => c.kind === 'review')!;
+    expect(dev.extraEnv).toEqual({ DATABASE_URL: 'postgres://u:p@dind:55432/t' });
+    expect(review.extraEnv).toEqual({ DATABASE_URL: 'postgres://u:p@dind:55432/t' });
+  });
+
+  it('sends no extraEnv to Dev when no test database was provisioned for this run', async () => {
+    const r = new TaskRunner('T1', deps());
+    await r.advance();
+    expect(agentCalls[0]!.extraEnv).toBeUndefined();
+  });
+
   it('routes a spec-gap to the SM, journals the assumption and re-runs Dev with the answer, no attempt consumed', async () => {
     let devCalls = 0;
     const agent: Agent = async (req) => {
