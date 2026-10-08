@@ -420,9 +420,9 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
           <span>Projetos</span>
         </Link>
         <span aria-hidden="true">›</span>
-        <strong>{detail.projectId}</strong>
+        <Link to={`/projects/${detail.projectId}`}>{detail.projectId}</Link>
         <span aria-hidden="true">›</span>
-        <span>{detail.runId}</span>
+        <strong>{detail.runId}</strong>
       </nav>
       <header className="card run-head">
         <div className="run-head-main">

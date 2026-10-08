@@ -59,6 +59,12 @@ describe('RunView', () => {
     expect(screen.getByTestId('evidence-AC-001').querySelector('[title="sum::[AC-001] adds"]')).not.toBeNull();
     expect(screen.getByTestId('evidence-AC-002').textContent).toContain('nenhum teste');
   });
+  it('breadcrumb links the project id to its project hub', () => {
+    render(view());
+    const nav = screen.getByRole('navigation', { name: 'Navegação' });
+    expect(screen.getByRole('link', { name: 'hello-app' }).getAttribute('href')).toBe('/projects/hello-app');
+    expect(nav.contains(screen.getByRole('link', { name: 'hello-app' }))).toBe(true);
+  });
   it('selecting a task shows attempts, gates, review and the PR; a step expands to its artifacts', async () => {
     const loadStep = vi.fn(async () => ({ prompt: '# the prompt', output: { ok: true, value: { summary: 'did T1' } } }));
     render(view({ loadStep }));
