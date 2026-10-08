@@ -111,3 +111,31 @@ Suíte inteira verde (145 arquivos / 1253 testes + web 138), `tsc` limpo, contai
 **Resultado ao vivo:** `r11` chegou a `awaiting-validation` pela primeira vez — verificação, deploy e smoke todos passaram. O controlador completou a spec sozinho (`complete-r1`, `done`) e já iniciou a spec 2 (`validacao-isbn`) automaticamente, sem intervenção manual. **Primeira spec do backlog `r112-biblioteca` entregue de ponta a ponta.**
 
 **Custo desta continuação:** ~US$ 2,13 (r11) + custo da run de conclusão (mínimo, sem chamada de agente).
+
+## Continuação 6 — investigação: "Failed to create bridge sockets" em T6/T7 (`listagem-livros`) não é flake, é política de rede do sandbox
+
+**Contexto:** `listagem-livros` falhou duas vezes seguidas (`r1`, e `r2` logo após reiniciar o container do zero) sempre nas mesmas tarefas, T6 e T7, com o mesmo erro do sandbox do `claude` CLI ("Failed to create bridge sockets after 5 attempts"), enquanto T1-T5 e T900-fix-1 da mesma spec passam sem esse erro. Pedido do humano: investigar a causa raiz antes de corrigir, por ser potencialmente uma questão de política de rede/segurança do sandbox.
+
+**Causa raiz encontrada — confirmada, não é transiente:**
+
+Todo passo de agente Dev/Test/devops/front roda dentro do sandbox do `claude` CLI (bubblewrap + socat) com uma política de rede **fixa e idêntica para toda tarefa de todo spec**, definida em `server/orchestrator/run.ts:220`:
+
+```ts
+network: { allowedDomains: ['registry.npmjs.org'] },
+```
+
+Não existe hoje nenhum mecanismo para uma tarefa específica pedir mais acesso de rede que isso — não há campo no plano, no gate, nem no `StepDeps` que amplie `allowedDomains` por tarefa. O único outro lugar do código que toca `network`/`egress` é o schema dos **gates** (`server/orchestrator/steps.ts`, `security-tools`/`secret-scan`/`dependency-scan`), mas gates rodam fora do sandbox do `claude` (em `gateImage`, via a esteira de verificação do orquestrador, não pelo agente), e isso é um caminho totalmente separado.
+
+T6 e T7, pelo próprio relato do Dev/Test bloqueado, precisam rodar (dentro da própria sessão do agente, via Bash, para o agente se autoverificar antes de reportar `done` — regra explícita do papel Dev: "run the project's own test command... before reporting done") um teste de integração contra um PostgreSQL real (`DATABASE_URL`, host `postgres`, a própria stack docker-compose do projeto) e, no caso de T7, a suíte de ponta a ponta contra `SERVICE_URL` (o serviço já implantado). Nem `postgres` nem o host do `SERVICE_URL` são `registry.npmjs.org`, e nenhum dos dois é sequer um domínio externo de verdade — são nomes de serviço da rede interna do `docker-compose` do projeto, numa rede Docker à qual o sandbox isolado do agente não tem rota nem visibilidade (é uma namespace de rede própria, separada da rede do deploy).
+
+**Por que é determinístico, não um flake:** toda vez que uma tarefa pedir, de dentro do seu próprio Bash sandboxed, uma conexão a qualquer coisa fora de `registry.npmjs.org` — em particular a um Postgres real ou a um serviço implantado — a tentativa de estabelecer essa rota bate nesse teto fixo. Reiniciar o container não muda a política (`allowedDomains` é hardcoded no código, não um estado que se esgota), por isso o erro se repetiu de forma idêntica logo depois do restart: não foi coincidência, é a mesma tarefa batendo na mesma parede de novo.
+
+**Por que só agora apareceu com essa frequência:** a spec 1 (`cadastro-livros`) tinha decisões do dono que isentavam criteria como esse de teste automatizado dentro do gate do agente (AC-011/AC-012 viraram `not-applicable`, cobertos só pelo gate de integração do orquestrador, não pela autoverificação do Dev). `listagem-livros` (e provavelmente `emprestimos`/`devolucoes`, que têm o mesmo tipo de critério) não teve esse ajuste — então T6/T7 tentam mesmo rodar o teste de integração/e2e por conta própria, onde esbarram na política.
+
+**Não é seguro eu corrigir sozinho:** ampliar `allowedDomains` por tarefa, ou dar à sessão do agente uma rota para a rede do docker-compose do projeto, muda a postura de isolamento de rede do sandbox dos agentes — é exatamente o tipo de decisão de segurança que a diretiva pediu para eu não aplicar sem voltar a confirmar.
+
+**Recomendação (duas saídas independentes, não excludentes):**
+1. **Sem mudar a política do sandbox:** generalizar o que já funcionou no AC-012/AC-006/AC-007 — nenhuma tarefa de agente deveria tentar rodar `test:integration`/`test:e2e` contra serviços reais por conta própria; isso é trabalho do gate do orquestrador (Fase 4/5), que já roda fora do sandbox restrito e pode ter `network: egress` quando o gate pedir. O papel do Dev deveria se autoverificar só com o que o sandbox permite (testes unitários, mocks) e deixar a prova de integração para o gate — isso é uma mudança na política/prompt dos papéis (`.claude/agents/dev.md`, `.claude/agents/test.md`) e/ou na regra do plano (como já fizemos para critérios de persistência), não uma mudança de rede.
+2. **Se o produto realmente quiser** que o Dev rode testes de integração/e2e dentro da própria sessão sandboxada (hoje ele tenta e falha), isso pede uma decisão explícita de ampliar a rede do sandbox por tarefa (ex.: permitir o host do `DATABASE_URL`/`SERVICE_URL` do próprio deploy do projeto, nunca domínios arbitrários) — mudança de política de segurança, fica para o humano decidir com seu próprio plano e aprovação.
+
+Nenhuma correção foi aplicada. Nenhuma das runs em andamento (`validacao-isbn`, etc.) foi tocada.
