@@ -53,6 +53,8 @@ const DECISION_DEFAULTS: Partial<Record<DecisionId, Partial<DecisionConfig>>> = 
   'gate1-readiness': { chain: ['jev', 'local'], escalateTo: 'po' },
   'question-dedup': { chain: ['jev', 'local'], escalateTo: 'sm' },
   'history-contradiction': { chain: ['jev', 'local'], escalateTo: 'po' },
+  // Plan 53 (R11.5a slice 1): shadow mode until an eval exists; off unless a session turns it on explicitly.
+  'question-routing': { enabled: false, chain: ['jev', 'local'], escalateTo: 'po' },
 };
 
 const PerDecisionSchema = z

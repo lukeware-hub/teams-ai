@@ -7,6 +7,7 @@ import type { Hit } from '../knowledge/retrieval.js';
 import type { Journal } from '../orchestrator/events.js';
 import type { Decider } from '../decide/decider.js';
 import { contradictedChunks, duplicatePairs, notReadyCriteria } from '../decide/decisions/gate1.js';
+import { routeQuestion } from '../decide/decisions/question-routing.js';
 import type { AgentStepRequest } from '../orchestrator/steps.js';
 import type { StepOutcome } from '../runner/step.js';
 import { mergeChecklist, type ChecklistItem } from './checklist.js';
@@ -316,6 +317,14 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       merged.push({ questionId: `po-c${cycle}-${counters.po++}`, role: 'po', text: `The new spec seems to contradict earlier project history (${h.title}${h.heading ? ` › ${h.heading}` : ''}): "${h.snippet}". Which one holds?`, blocking: true, relatedAcIds: [], cycle });
     }
   }
+  // Plan 53 (R11.5a slice 1): a shadow-mode hint, off by default (`question-routing` disabled in config until an
+  // eval exists). Never drops or answers a question; routed questions still reach the human exactly as before.
+  const questionRouting: Record<string, { route: string; confidence: number | null }> = {};
+  if (deps.decider) {
+    const blocking = merged.filter((q) => q.blocking);
+    const routed = await Promise.all(blocking.map((q) => routeQuestion(criteria, q.text, decider!, dctx)));
+    blocking.forEach((q, i) => { const r = routed[i]; if (r) questionRouting[q.questionId] = { route: r.route, confidence: r.confidence }; });
+  }
 
   // R11.10: PO and SM reading the same docs often propose the identical edit; accepting both would duplicate the
   // text. The first role to propose it (po, by iteration order) wins; a byte-identical later one is dropped.
@@ -375,5 +384,5 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const openItem = checklist.find((i) => i.id === 'sm.no-open-questions')!;
   openItem.passed = pendingBlocking === 0;
   openItem.detail = pendingBlocking === 0 ? 'no blocking question open' : `${pendingBlocking} blocking question(s) open`;
-  await journal.fact(RefineEvent.Evaluated, { cycle, checklist, questions: merged, discardedPatches });
+  await journal.fact(RefineEvent.Evaluated, { cycle, checklist, questions: merged, discardedPatches, questionRouting });
 }

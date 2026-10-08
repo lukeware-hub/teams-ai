@@ -1,6 +1,6 @@
 # Plan 53 - Jev-central refinement, slice 1: question routing (auto/po/sm/human)
 
-Status: planning (2026-10-08). Roadmap item R11.5a, first of six ordered sub-items.
+Status: done (2026-10-08). Roadmap item R11.5a, first of six ordered sub-items.
 
 ## Goal
 
