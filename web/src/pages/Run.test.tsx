@@ -286,4 +286,53 @@ describe('RunView', () => {
       expect(screen.getByTestId('task-progress').textContent).toBe('1 de 2 tarefas mescladas');
     });
   });
+
+  describe('blocked mid-run (no RUN_FINISHED yet)', () => {
+    const ev = (seq: number, type: string, data: Record<string, unknown>): StoredEvent => ({ seq: 20_000 + seq, at: '2026-10-08T10:00:00.000Z', runId: 'hello-001-r9', specHash: 'h', type, kind: 'fact' as const, data });
+    const planned = (seq: number, id: string) => ev(seq, 'TASK_PLANNED', { task: { id, title: id, description: 'd', criteriaRefs: ['AC-001'], dependsOn: [], affectedPaths: ['src'], owner: 'dev', origin: 'plan' }, replan: false });
+    const reason = 'Scope violation:\nfrozen files modified: plan.json';
+    const stuck = [
+      planned(1, 'T6'),
+      planned(2, 'T7'),
+      ev(3, 'TASK_STATE_CHANGED', { taskId: 'T6', to: 'blocked' }),
+      ev(4, 'TASK_BLOCKED', { taskId: 'T6', reason }),
+      ev(5, 'TASK_STATE_CHANGED', { taskId: 'T7', to: 'ready' }),
+      ev(6, 'TASK_STATE_CHANGED', { taskId: 'T7', to: 'implementing' }),
+    ];
+
+    it('shows the cause of a task blocked mid-run, before the run itself ever stops', () => {
+      render(view({ events: stuck, ended: false, detail: { ...detail, status: 'running' } }));
+      expect(screen.queryByTestId('outcome-banner')).toBeNull();
+      const group = screen.getByTestId('cause-group');
+      expect(group.textContent).toContain('T6');
+      expect(group.textContent).toContain('O Dev mexeu em arquivos fora do escopo da tarefa');
+      fireEvent.click(screen.getByRole('button', { name: 'Ver detalhe do bloqueio de T6' }));
+      expect(screen.getByRole('dialog').textContent).toContain('arquivos protegidos foram alterados: plan.json');
+    });
+
+    it('points at Parar execução while other tasks keep going, and drops the hint once the run actually stops', () => {
+      const { rerender } = render(view({ events: stuck, ended: false, detail: { ...detail, status: 'running' }, stopAction: { onStop: vi.fn(), busy: false, error: null } }));
+      expect(screen.getByTestId('block-cause-live-hint').textContent).toContain('pare a execução');
+      rerender(view({ events: [...stuck, ev(7, 'RUN_FINISHED', { result: 'blocked', reason: null, merged: [], blocked: [{ taskId: 'T6', reason }], tokens: {} })], ended: true, detail: { ...detail, status: 'blocked' }, stopAction: { onStop: vi.fn(), busy: false, error: null } }));
+      expect(screen.queryByTestId('block-cause-live-hint')).toBeNull();
+    });
+
+    it('offers Parar execução only while the run is actually stoppable, wired to the action', () => {
+      const onStop = vi.fn();
+      const { rerender } = render(view({ events: stuck, ended: false, detail: { ...detail, status: 'running' } }));
+      expect(screen.queryByTestId('stop')).toBeNull();
+      rerender(view({ events: stuck, ended: false, detail: { ...detail, status: 'running' }, stopAction: { onStop, busy: false, error: null } }));
+      expect(screen.getByTestId('stop').textContent).toBe('Parar execução');
+      fireEvent.click(screen.getByTestId('stop'));
+      expect(onStop).toHaveBeenCalledTimes(1);
+      rerender(view({ events: stuck, ended: false, detail: { ...detail, status: 'running' }, stopAction: { onStop, busy: true, error: null } }));
+      expect((screen.getByTestId('stop') as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByTestId('stop').textContent).toBe('Parando…');
+      rerender(view({ events: stuck, ended: false, detail: { ...detail, status: 'running' }, stopAction: { onStop, busy: false, error: 'falhou' } }));
+      expect(screen.getByTestId('stop-error').textContent).toBe('falhou');
+      // a draining run (the stop already requested) has nothing left to stop
+      rerender(view({ events: [...stuck, ev(7, 'RUN_STOP_REQUESTED', {})], ended: false, detail: { ...detail, status: 'draining' }, stopAction: { onStop, busy: false, error: null } }));
+      expect(screen.queryByTestId('stop')).toBeNull();
+    });
+  });
 });

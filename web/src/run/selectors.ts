@@ -427,6 +427,18 @@ export function stopSummary(input: { status: string; reason: string | null; caus
   return { what: n === 1 ? '1 tarefa ficou bloqueada.' : `${n} tarefas ficaram bloqueadas.`, ...why, raw: first?.reason ?? reason ?? '', rollback: null, action: null };
 }
 
+/** Every one of `taskIds` currently sitting blocked, with the reason its own TASK_BLOCKED event carries. Unlike
+ * `stopSummary`'s `causes` (built from `RUN_FINISHED.blocked`), this works while the run is still active, so a task
+ * stuck mid-run shows its cause immediately instead of only once the whole run eventually stops. */
+export function liveBlocked(events: StoredEvent[], taskIds: Iterable<string>): Array<{ taskId: string; reason: string }> {
+  const reasons = new Map<string, string>();
+  for (const e of events) if (e.type === 'TASK_BLOCKED') reasons.set(String(e.data.taskId), String(e.data.reason));
+  return [...taskIds].flatMap((taskId) => {
+    const reason = reasons.get(taskId);
+    return reason === undefined ? [] : [{ taskId, reason }];
+  });
+}
+
 /** The tasks whose block has its own real cause, filtering out the ones that are only blocked because
  * something upstream failed (a pure dependency cascade, with no diagnostic value of its own). */
 export function rootBlockers(blocked: Array<{ taskId: string; reason: string }>): Array<{ taskId: string; reason: string }> {

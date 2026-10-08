@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { StoredEvent } from '../api.js';
-import { blockedSummary, deployOutcome, evidence, explainPhase, explainStop, firstSentence, lastDeployFailure, pausedUntil, phases, phaseTitle, runState, stopSummary, taskDetail, tokens } from './selectors.js';
+import { blockedSummary, deployOutcome, evidence, explainPhase, explainStop, firstSentence, lastDeployFailure, liveBlocked, pausedUntil, phases, phaseTitle, runState, stopSummary, taskDetail, tokens } from './selectors.js';
 
 // jsdom gives import.meta.url an http: scheme; vitest runs with cwd = web/
 const events: StoredEvent[] = readFileSync(path.resolve('../test/fixtures/runs/hello-run.ndjson'), 'utf8')
@@ -147,6 +147,27 @@ describe('stopped run explanations', () => {
     expect(blockedSummary([{ taskId: 'T1', reason: 'x' }, { taskId: 'T2', reason: 'y' }, cascade('T3')])).toMatch(/^2 tarefas ficaram bloqueadas e travaram outra tarefa\. /);
     expect(blockedSummary([cascade('T1')])).toBeNull();
     expect(blockedSummary([])).toBeNull();
+  });
+
+  it('liveBlocked reads each blocked task\'s own reason mid-run, with no RUN_FINISHED yet', () => {
+    const evs = (list: Array<[string, Record<string, unknown>]>) => list.map(([type, data], i) => ({ seq: i + 1, at: '2026-10-08T10:00:00.000Z', runId: 'r', specHash: 'h', type, kind: 'fact' as const, data }));
+    const running = evs([
+      ['TASK_BLOCKED', { taskId: 'T6', reason: 'Scope violation:\nfrozen files modified: plan.json' }],
+      ['TASK_BLOCKED', { taskId: 'T7', reason: 'a dependency is blocked' }],
+    ]);
+    expect(liveBlocked(running, ['T6', 'T7'])).toEqual([
+      { taskId: 'T6', reason: 'Scope violation:\nfrozen files modified: plan.json' },
+      { taskId: 'T7', reason: 'a dependency is blocked' },
+    ]);
+    // a task that never blocked, or one blocked but not in the requested id set, is left out
+    expect(liveBlocked(running, ['T6'])).toEqual([{ taskId: 'T6', reason: 'Scope violation:\nfrozen files modified: plan.json' }]);
+    expect(liveBlocked(running, ['T9'])).toEqual([]);
+    // the latest TASK_BLOCKED for a task wins, in case it blocked, resumed and blocked again on a different cause
+    const reblocked = evs([
+      ['TASK_BLOCKED', { taskId: 'T6', reason: 'first reason' }],
+      ['TASK_BLOCKED', { taskId: 'T6', reason: 'second reason' }],
+    ]);
+    expect(liveBlocked(reblocked, ['T6'])).toEqual([{ taskId: 'T6', reason: 'second reason' }]);
   });
 
   it('firstSentence gives a one-line title for a long explanation', () => {

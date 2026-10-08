@@ -7,7 +7,7 @@ import { InfoTip } from '../components/InfoTip.js';
 import { Markdown } from '../components/Markdown.js';
 import { safeHttpUrl } from '../safeUrl.js';
 import { TaskDetail } from '../components/TaskDetail.js';
-import { blockedSummary, evidence, explainBlockReason, explainPhase, explainStop, firstSentence, lastDeployFailure, mergedPrs, pausedUntil, phases, phaseTitle, rootBlockers, runState, stopSummary, tokens, type PhaseRow, type StopOwner } from '../run/selectors.js';
+import { blockedSummary, evidence, explainBlockReason, explainPhase, explainStop, firstSentence, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phases, phaseTitle, rootBlockers, runState, stopSummary, tokens, type PhaseRow, type StopOwner } from '../run/selectors.js';
 import { useJournal } from '../useSse.js';
 import './run.css';
 
@@ -291,9 +291,20 @@ export interface ReprocessAction {
   error: string | null;
 }
 
+/** Requests a graceful stop: in-flight steps finish, nothing new starts. The only way to turn a run stuck on a
+ * blocked task (other tasks still progressing, so the run itself never settles on its own) into one that has
+ * finished and can be reprocessed. */
+export interface StopAction {
+  onStop: () => void;
+  busy: boolean;
+  error: string | null;
+}
+
 type DetailTarget = { kind: 'outcome' } | { kind: 'phase'; phase: number } | { kind: 'cause'; reason: string };
 
-export function RunView({ detail, events, ended, error, loadStep, readmeAction, redeployAction, reprocessAction }: { detail: RunDetail; events: StoredEvent[]; ended: boolean; error: string | null; loadStep: (stepId: string) => Promise<{ prompt: string; output: unknown }>; readmeAction?: ReadmeAction; redeployAction?: RedeployAction; reprocessAction?: ReprocessAction }) {
+const STOPPABLE = new Set(['running', 'paused:quota', 'paused:auth']);
+
+export function RunView({ detail, events, ended, error, loadStep, readmeAction, redeployAction, reprocessAction, stopAction }: { detail: RunDetail; events: StoredEvent[]; ended: boolean; error: string | null; loadStep: (stepId: string) => Promise<{ prompt: string; output: unknown }>; readmeAction?: ReadmeAction; redeployAction?: RedeployAction; reprocessAction?: ReprocessAction; stopAction?: StopAction }) {
   const unique = events.filter((e, i) => events.findIndex((x) => x.seq === e.seq) === i);
   const state = runState(unique);
   const finished = [...unique].reverse().find((e) => e.type === 'RUN_FINISHED');
@@ -307,7 +318,9 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   const [opened, setOpened] = useState<(DetailTarget & { opener: HTMLElement }) | null>(null);
   const openDetail = (target: DetailTarget) => (e: ReactMouseEvent<HTMLButtonElement>) => setOpened({ ...target, opener: e.currentTarget });
   const groups = ORDER.map((s) => [s, state.order.filter((id) => state.tasks.get(id)!.state === s)] as const).filter(([, ids]) => ids.length);
-  const blocked = (finished?.data.blocked as Array<{ taskId: string; reason: string }> | undefined) ?? [];
+  // Before the run finishes, RUN_FINISHED.blocked does not exist yet: a task stuck mid-run still shows its own cause,
+  // from its own TASK_BLOCKED event, instead of waiting for the whole run to stop before anyone can see why.
+  const blocked = (finished?.data.blocked as Array<{ taskId: string; reason: string }> | undefined) ?? liveBlocked(unique, state.order.filter((id) => state.tasks.get(id)!.state === 'blocked'));
   const causes = rootBlockers(blocked);
   // Tasks blocked for the same reason are one cause, listed once with all their ids.
   const causeGroups = causes.reduce<Array<{ reason: string; taskIds: string[] }>>((acc, c) => {
@@ -413,6 +426,12 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
           </div>
         </div>
         <div className="run-actions">
+          {stopAction && STOPPABLE.has(status) ? (
+            <button type="button" className="secondary run-action" data-testid="stop" disabled={stopAction.busy} onClick={stopAction.onStop}>
+              <Icon name="stop" size={16} />
+              {stopAction.busy ? 'Parando…' : 'Parar execução'}
+            </button>
+          ) : null}
           {detail.report ? (
             <Link className="link-button run-action" data-testid="validation-link" to={`/runs/${detail.runId}/validation`}>
               Validação
@@ -427,6 +446,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
             </a>
           ) : null}
         </div>
+        {stopAction?.error ? <p className="error" data-testid="stop-error">{stopAction.error}</p> : null}
         {totalTasks ? (
           <div className="run-progress">
             <div className="run-progress-bar" role="progressbar" aria-label="Tarefas mescladas" aria-valuemin={0} aria-valuemax={totalTasks} aria-valuenow={doneTasks} aria-valuetext={`${doneTasks} de ${totalTasks} mescladas, ${tally.active} em andamento, ${tally.blocked} bloqueadas`}>
@@ -541,6 +561,11 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                 <h2>Tarefas bloqueadas</h2>
                 <InfoTip label="Tarefas bloqueadas" text={TIP.blocked} />
               </div>
+              {!stop && stopAction && STOPPABLE.has(status) ? (
+                <p className="hint" data-testid="block-cause-live-hint">
+                  A run continua com as outras tarefas. Veja o motivo em cada uma; se nenhuma vai se resolver sozinha, pare a execução para liberar o reprocessamento.
+                </p>
+              ) : null}
               <ul className="cause-list">
                 {causeGroups.map((g) => (
                   <li key={g.reason} data-testid="cause-group" className="cause-row">
@@ -735,6 +760,8 @@ function RunScreen({ runId }: { runId: string | undefined }) {
   const [readmeError, setReadmeError] = useState<string | null>(null);
   const [reprocessing, setReprocessing] = useState(false);
   const [reprocessFailure, setReprocessFailure] = useState<string | null>(null);
+  const [stopping, setStopping] = useState(false);
+  const [stopFailure, setStopFailure] = useState<string | null>(null);
   useEffect(() => {
     if (runId)
       runApi
@@ -781,6 +808,18 @@ function RunScreen({ runId }: { runId: string | undefined }) {
         setReprocessFailure(reprocessError(e.message));
       });
   };
+  const stopExecution = () => {
+    if (!runId) return;
+    setStopping(true);
+    setStopFailure(null);
+    runApi
+      .stopRun(runId)
+      .then(() => setStopping(false))
+      .catch((e: Error) => {
+        setStopping(false);
+        setStopFailure(e.message);
+      });
+  };
   const { events, ended, error } = useJournal(runId && detail ? runApi.runEvents(runId) : null);
   if (loadError)
     return (
@@ -803,6 +842,7 @@ function RunScreen({ runId }: { runId: string | undefined }) {
       loadStep={(stepId) => runApi.step(runId, stepId)}
       readmeAction={{ onGenerate: generateReadme, busy: writerRun !== null, error: readmeError }}
       reprocessAction={{ onReprocess: reprocess, busy: reprocessing, error: reprocessFailure }}
+      stopAction={{ onStop: stopExecution, busy: stopping, error: stopFailure }}
     />
   );
 }
