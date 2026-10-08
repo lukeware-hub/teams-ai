@@ -46,10 +46,14 @@ export function ProjectHubView(p: {
   const totalCost = p.runs.reduce((sum, r) => sum + r.cost, 0);
   return (
     <main className="projects-shell project-hub">
-      <Link className="project-hub-back" to="/projects">
-        <Icon name="arrow-left" size={14} />
-        Projetos
-      </Link>
+      <nav className="refine-breadcrumb" aria-label="Navegação">
+        <Link to="/projects" aria-label="Voltar para projetos">
+          <Icon name="home" size={16} />
+          <span>Projetos</span>
+        </Link>
+        <span aria-hidden="true">›</span>
+        <strong>{pr.projectId}</strong>
+      </nav>
       <header className="card project-hub-header">
         <div className="project-panel-title">
           <h1>{pr.name || pr.projectId}</h1>

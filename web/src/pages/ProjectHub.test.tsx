@@ -42,6 +42,17 @@ describe('ProjectHubView', () => {
     expect(screen.queryByTestId('stop-hello-001-r1')).toBeNull();
     expect(screen.getByText('US$ 3.33')).toBeTruthy();
   });
+  it('shows the same breadcrumb as the run page: Projetos › project id', () => {
+    const o = on();
+    render(
+      <MemoryRouter>
+        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onDeleteDraft={o.deleteDraft} />
+      </MemoryRouter>,
+    );
+    const nav = screen.getByRole('navigation', { name: 'Navegação' });
+    expect(nav.querySelector('a')?.getAttribute('href')).toBe('/projects');
+    expect(nav.querySelector('strong')?.textContent).toBe('hello-app');
+  });
   it('creates a new spec, continues one and opens its refinements, with delete', () => {
     const o = on();
     const drafts = [
