@@ -49,6 +49,9 @@ export interface TaskRunnerDeps {
   exec: Exec;
   runAgent: <K extends StepKind>(req: AgentStepRequest<K>) => Promise<StepOutcome<OutputOf<K>>>;
   gates: (worktree: string, branch: string) => Promise<{ results: GateResult[]; blockingFailure: GateResult | null }>;
+  /** A fresh worktree from origin/main has no node_modules; install before the Dev starts so its own self-verification
+   * (running the project's test command, per its rules) does not fall through to a dependency tree outside the worktree. */
+  installDeps: (worktree: string) => Promise<GateResult | null>;
   mergeQueue: MergeQueue;
   mergeSteps: (task: PlanTask, worktree: string, branch: string) => MergeSteps;
   code: (worktree: string, task: PlanTask) => Promise<CodeContext>;
@@ -222,6 +225,18 @@ export class TaskRunner {
 
   private async implement(): Promise<void> {
     if (!(await this.ensureWorktree())) return;
+    const install = await this.deps.installDeps(this.worktree);
+    if (install) {
+      const triage = await triageGateFailure({ name: install.name, command: this.deps.plan.commands.install, blocking: true, network: 'none', secrets: [] }, install, this.deps.decider, this.ctx);
+      const delta = [
+        `Gate ${install.name} failed (${triage.kind}, exit ${install.exitCode})`,
+        install.stderrTail ? `stderr (tail):\n${this.clean(tail(install.stderrTail))}` : '',
+        install.stdoutTail ? `stdout (tail):\n${this.clean(tail(install.stdoutTail))}` : '',
+      ]
+        .filter((s) => s !== '')
+        .join('\n\n');
+      return this.fail(triage.kind, delta, install.name);
+    }
     const task = this.task;
     const attempt = task.attempts + 1;
     const commitKey = `${this.taskId}:a${attempt}`;

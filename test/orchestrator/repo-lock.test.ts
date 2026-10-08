@@ -207,6 +207,7 @@ describe('SM steps of a task', () => {
       journal, ws: wsOf(), spec, project, plan, specHash: HASH, firstSpec: false, exec,
       runAgent: (async (req) => agent(req)) as TaskRunnerDeps['runAgent'],
       gates: async () => ({ results: [], blockingFailure: null }),
+      installDeps: async () => null,
       mergeQueue: new MergeQueue(),
       mergeSteps: () => { throw new Error('these tests never reach the merge'); },
       code: async () => ({ source: 'none' }),

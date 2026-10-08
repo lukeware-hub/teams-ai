@@ -80,6 +80,7 @@ function deps(over: Partial<TaskRunnerDeps> & { agent?: Agent; merge?: Partial<M
     exec: execCommand,
     runAgent: (async (req) => { agentCalls.push(req); return agent(req); }) as TaskRunnerDeps['runAgent'],
     gates: async () => ({ results: [gate('unit-test')], blockingFailure: null }),
+    installDeps: async () => null,
     mergeQueue: new MergeQueue(),
     mergeSteps: () => steps,
     code: async () => ({ source: 'none' }),
@@ -193,6 +194,44 @@ describe('TaskRunner: implementing', () => {
     await r.advance();
     expect(agentCalls[0]).toMatchObject({ kind: 'dev', role: 'devops', taskId: 'T3' });
     expect(agentCalls[0]!.pack.role).toBe('devops');
+  });
+});
+
+describe('TaskRunner: installing dependencies before the Dev starts', () => {
+  // A fresh worktree from origin/main never has node_modules (R11.2 live check, 2026-10-07): the Dev's own
+  // rules make it run the project's test command to self-verify before reporting done, and with nothing
+  // installed Node's resolver climbed out of the worktree and picked up teams-ai's own dependency tree
+  // instead, failing on a native binding teams-ai's copy doesn't even need. Installing before the Dev
+  // starts (not only in the gate afterwards) closes that window.
+  it('installs dependencies in the worktree before the Dev agent runs', async () => {
+    const calls: string[] = [];
+    const installDeps: TaskRunnerDeps['installDeps'] = async (worktree) => {
+      calls.push(`install:${worktree}`);
+      return null;
+    };
+    const agent: Agent = async (req) => {
+      calls.push(`agent:${req.kind}`);
+      return devDone()(req);
+    };
+    const r = new TaskRunner('T1', deps({ agent, installDeps }));
+    await r.advance();
+    expect(calls[0]).toBe(`install:${r.worktree}`);
+    expect(calls[1]).toBe('agent:dev');
+    expect(state().state).toBe('validating');
+  });
+
+  it('a failing install fails the task like a blocking gate, without ever calling the Dev agent', async () => {
+    let devCalled = false;
+    const agent: Agent = async (req) => {
+      if (req.kind === 'dev') devCalled = true;
+      return devDone()(req);
+    };
+    const installDeps: TaskRunnerDeps['installDeps'] = async () => gate('install', { passed: false, exitCode: 1, failure: 'code', junit: null, stderrTail: 'npm ERR! network timeout' });
+    const r = new TaskRunner('T1', deps({ agent, installDeps }));
+    await r.advance();
+    expect(devCalled).toBe(false);
+    expect(state()).toMatchObject({ state: 'implementing', attempts: 1 });
+    expect(journal.lastFeedback('T1')).toContain('npm ERR! network timeout');
   });
 });
 

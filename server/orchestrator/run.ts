@@ -373,6 +373,7 @@ export class Run {
       exec: this.deps.exec,
       runAgent: this.runAgent,
       gates: this.gates,
+      installDeps: (worktree) => this.installDeps(worktree),
       mergeQueue: this.mergeQueue,
       mergeSteps: (task, worktree, branch) => taskMergeSteps(this.mergeDeps(), task, worktree, branch, spec, this.summaryOf(task.id)),
       code: this.code,
