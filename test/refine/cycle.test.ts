@@ -4,8 +4,10 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { buildContextPack } from '../../server/knowledge/context-pack.js';
 import { runCycle } from '../../server/refine/cycle.js';
+import { draftPaths, createNewProject } from '../../server/refine/draft.js';
 import { emptyRefineState } from '../../server/refine/state.js';
 import type { BacklogItem } from '../../server/contracts/backlog.js';
+import type { Workspace } from '../../server/orchestrator/workspace.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 
 describe('refinement cycle Jev advisory', () => {
@@ -57,6 +59,32 @@ describe('refinement cycle Jev advisory', () => {
     expect(events.some((event) => event.type === 'REFINE_DOCS_VALIDATED')).toBe(true);
     expect(events.some((event) => event.type === 'REFINE_CYCLE_FAILED' && String(event.data.reason).startsWith('Jev bloqueou'))).toBe(false);
     expect(runAgent).toHaveBeenCalledOnce();
+  });
+});
+
+describe('refinement cycle acceptance criterion ids (R11.8)', () => {
+  it('numbers a new spec above a sibling spec already copied into the draft, instead of restarting at AC-001', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
+    const ws = { projectId: 'shop', root, repo: `${root}/repo`, worktrees: `${root}/wt`, graph: `${root}/g`, knowledgeDb: `${root}/k.sqlite`, secrets: `${root}/secrets`, runs: `${root}/runs` } as Workspace;
+    const draft = draftPaths(ws, 'shop-002');
+    await createNewProject(draft, 'Shop');
+    // A sibling spec of the same project, copied from main into the draft the way createFromRepo does for a new spec.
+    const siblingDir = path.join(draft.docs, 'specs', 'shop-001');
+    await mkdir(siblingDir, { recursive: true });
+    await writeFile(path.join(siblingDir, 'spec.json'), JSON.stringify({ ...makeSpec(), specId: 'shop-001', acceptanceCriteria: [{ id: 'AC-001', given: 'g', when: 'w', then: 't', smoke: false }] }));
+    const events: Array<{ type: string; data: Record<string, unknown> }> = [];
+    const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'shop/shop-002', specHash: 'draft', type, kind: 'fact' as const, data }; } };
+    const ok = (value: unknown) => ({ ok: true, value, summary: {} });
+    const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
+    const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
+      if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...makeSpec(), specId: 'shop-002', acceptanceCriteria: [{ id: 'AC-001', given: 'g', when: 'w', then: 't2', smoke: false }] } });
+      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [] });
+      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
+    });
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1);
+    const derived = events.find((e) => e.type === 'DERIVED')!;
+    const ids = (derived.data.spec as { acceptanceCriteria: Array<{ id: string }> }).acceptanceCriteria.map((c) => c.id);
+    expect(ids).toEqual(['AC-002']);
   });
 });
 

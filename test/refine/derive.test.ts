@@ -19,6 +19,17 @@ describe('postProcessDerived', () => {
     expect(out.value.spec).toMatchObject({ specId: 'hello-001', status: 'refining', specHash: null, specVersion: 2 });
     expect(out.value.spec.validationReports).toHaveLength(1);
   });
+  it('numbers a brand-new spec above the floor of a sibling spec already on main (R11.8)', () => {
+    const out = postProcessDerived(
+      { project: PROJECT, spec: { ...prev, status: 'running', specHash: null, specVersion: 0, validationReports: [], acceptanceCriteria: [ac('AC-001', 'one'), ac('AC-002', 'two')] } },
+      null,
+      'hello-002',
+      5,
+    );
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.value.spec.acceptanceCriteria.map((c) => c.id)).toEqual(['AC-006', 'AC-007']);
+  });
   it('drops a provenance the agent invents: only backlog detailing writes derivedFrom', () => {
     const derivedFrom = { backlogKey: 'x', inputHash: `sha256:${'d'.repeat(64)}`, docsHash: `sha256:${'e'.repeat(64)}`, sources: [{ doc: 'flow.md', heading: 'h', hash: null }] };
     const out = postProcessDerived({ project: PROJECT, spec: { ...prev, derivedFrom } }, prev, 'hello-001');

@@ -56,8 +56,13 @@ export const acNum = (id: string) => Number(id.slice(3));
 export const acId = (n: number) => `AC-${String(n).padStart(3, '0')}`;
 export const sameText = (a: AcceptanceCriterion, b: AcceptanceCriterion) => a.given === b.given && a.when === b.when && a.then === b.then;
 
-/** Spec (refinement) §3.2 step 1: the orchestrator, not the agent, owns ids, status, hash and version. */
-export function postProcessDerived(out: { project: unknown; spec: unknown }, previous: Spec | null, specId: string): DeriveCheck {
+/**
+ * Spec (refinement) §3.2 step 1: the orchestrator, not the agent, owns ids, status, hash and version.
+ * `floor` (roadmap R11.8) is the highest criterion id already used by any other spec of the same project (single-spec
+ * projects with several specs): without it a second spec renumbers from AC-001 again and Phase 4 matches its tests
+ * against the JUnit of the whole repo, so an earlier spec's `AC-001` would wrongly "prove" this one's criterion too.
+ */
+export function postProcessDerived(out: { project: unknown; spec: unknown }, previous: Spec | null, specId: string, floor = 0): DeriveCheck {
   const p = Project.safeParse(out.project);
   const raw = typeof out.spec === 'object' && out.spec !== null ? (out.spec as Record<string, unknown>) : {};
   // Ids are renumbered before the Spec schema runs, since the schema rejects duplicates the agent may produce.
@@ -66,12 +71,14 @@ export function postProcessDerived(out: { project: unknown; spec: unknown }, pre
   let criteria: AcceptanceCriterion[] = [];
   if (acs.success) {
     const used = new Set<string>();
-    let max = Math.max(0, ...prevAcs.map((c) => acNum(c.id)), ...acs.data.map((c) => acNum(c.id)));
+    let max = Math.max(0, floor, ...prevAcs.map((c) => acNum(c.id)), ...acs.data.map((c) => acNum(c.id)));
     criteria = acs.data.map((c) => {
       const kept = prevAcs.find((pc) => sameText(pc, c) && !used.has(pc.id));
       let id = kept ? kept.id : c.id;
       const takenByOther = !kept && prevAcs.some((pc) => pc.id === id && !sameText(pc, c));
-      if (used.has(id) || takenByOther) id = acId(++max);
+      // Below the floor and not this spec's own retained id: a sibling spec already owns that number (R11.8).
+      const belowFloor = !kept && acNum(id) <= floor;
+      if (used.has(id) || takenByOther || belowFloor) id = acId(++max);
       used.add(id);
       return { ...c, id };
     });

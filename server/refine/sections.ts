@@ -15,6 +15,11 @@ const FENCE = /^\s*```/;
 
 export const normHeading = (s: string): string => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
+/** R11.11: `flow.md` must be a mermaid diagram (the template already is); a plain-markdown flow has no diagram to read numbered sections from. */
+export function flowIsMermaid(flow: string): boolean {
+  return /^\s*```\s*mermaid\b/im.test(flow);
+}
+
 /** A heading as its section number (when it starts with one) and its words. */
 function parts(s: string): { number: string | null; words: string[] } {
   const tokens = normHeading(s).split(' ').filter((t) => t !== '');

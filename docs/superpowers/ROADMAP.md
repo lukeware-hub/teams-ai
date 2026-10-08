@@ -563,9 +563,11 @@ The docs (project, briefing, stack, flow, design) stay the only hand-edited trut
 
 - Re-derive `planned` specs whose sources changed, add and retire items, adjustment specs for started or delivered specs.
 
-### R11.8 Acceptance criterion ids collide across the specs of one repo - `todo` (found 2026-10-06)
+### R11.8 Acceptance criterion ids collide across the specs of one repo - `done` (unit, 2026-10-08)
 
 - Phase 4 matches criteria against the JUnit of the whole repo on main (`server/orchestrator/phases/verify.ts:121-126`, `server/evidence/matrix.ts:32`) while single-spec mode numbers criteria per spec, so a later spec's `AC-001` can be "proven" by an earlier spec's `[AC-001]` tests. Backlog mode gets global ids in R11.2; single-spec projects with several specs still need a fix (number above the repo's highest id, or scope the match to the spec's own tests).
+- Built: `createFromRepo` already copies every sibling spec directory from `origin/main` into the draft (`docs/specs/<id>/spec.json`), the same layout `maxCriterionInDraft` (R11.2) scans; `postProcessDerived` (`server/refine/derive.ts`) now takes a `floor` argument and renumbers any new criterion id at or below it, not only ids colliding with this spec's own previous version; `runCycle` (`server/refine/cycle.ts`) computes the floor with `maxCriterionInDraft(draft)` before deriving. Unit tests: `test/refine/derive.test.ts` (floor renumbering) and `test/refine/cycle.test.ts` (end-to-end: a sibling spec copied into the draft pushes a brand-new spec's `AC-001` to `AC-002`).
+- Open: no live check (needs a real multi-spec single-spec project); the first-derive-of-this-spec id can still coincide with a *different* spec's id if that id was never reflected in the floor scan window (edge case, not seen in practice).
 
 ### R11.9 Any project size - `todo` (human, 2026-10-07: teams-ai builds any software of any complexity, never tied to one target project)
 
@@ -578,9 +580,11 @@ The docs (project, briefing, stack, flow, design) stay the only hand-edited trut
 - Candidates: the outline review judges structure only and leaves detail to the spec step; dedupe PO and SM patches; one briefing heading per decision so citations stay narrow; `dependsOn` only in the pre-plan input hash; Jev routing (R11.5) answering from the docs.
 - Second live-check session (2026-10-07): neither project reached `ready` after detailing in 4 more cycles each (agenda US$ 4.7-5.8 per cycle, because every decision lands in briefing › Decisões, which all 9 items cite). The reviews find real gaps every cycle, so the loop needs a stop rule, not only less noise: put the delivery contract (how the e2e suite runs: one compose, fresh volume or not, reachable side services) in the spec and review packs so agents stop asking the owner; criteria verified only through what the item and its dependencies deliver; and R11.5a.
 
-### R11.11 `flow.md` is a mermaid diagram - `todo` (human decision, 2026-10-07)
+### R11.11 `flow.md` is a mermaid diagram - `partial` (human decision, 2026-10-07; detector built 2026-10-08)
 
 - The target project's `flow.md` must be drawn in mermaid (the template already is). Plan how refinement holds that: a check (Jev preflight or a validator) that flags a `flow.md` without a mermaid block, the SM converting it through a patch, and flow sections read from the diagram (numbered mermaid comments today; decide on `subgraph` titles). Markdown headings in `flow.md` stop counting as flow sections once it lands.
+- Built: `flowIsMermaid(flow)` (`server/refine/sections.ts`), a pure detector for a `` ```mermaid `` fence, with unit tests (`test/refine/sections.test.ts`).
+- Open, deliberately not done in this pass: not wired as a blocking cycle check. Wiring it would fail every test (and real project) whose `flow.md` has no mermaid fence yet — `setup()` in `test/refine/cycle.test.ts` alone uses a plain-markdown `flow.md` in 3 cycle tests, backlog mode included — so enforcement needs its own small plan: where it blocks (Jev preflight vs. a deterministic gate before derive/backlog), whether an existing project is grandfathered or the SM is asked to convert it through a patch, and the `flowHeadings()` markdown-heading fallback (`server/validators/backlog.ts`) is still untouched (15 files read it; dropping it is a second, separate decision the roadmap itself leaves open — "decide on `subgraph` titles").
 
 ## System 1 decisions (spec §10A.5)
 

@@ -15,7 +15,7 @@ import { backlogPack, postProcessBacklog, renderBacklogMd, type BacklogCheck } f
 import { fitPackBudget, PackTooLargeError } from './fit-pack.js';
 import { sha256 } from '../contracts/hash.js';
 import { flowHeadings } from '../validators/backlog.js';
-import { detailBacklog, removeRetired } from './detail-cycle.js';
+import { detailBacklog, maxCriterionInDraft, removeRetired } from './detail-cycle.js';
 import { DOC_REL, draftHash, flowTemplate, readDerived, readDoc, stackTemplate, writeBacklogMd, writeDerived, writeDoc, writeProject, writeSpecsIndex, type DocFile, type Draft } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
 import { buildSpecsIndex } from './specs-index.js';
@@ -190,7 +190,9 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       await fail(`derive failed: ${d.failure}: ${d.errors.join('; ')}`);
       return;
     }
-    const checked = postProcessDerived(d.value as DeriveOutput, previous?.spec ?? null, draft.specId);
+    // A sibling spec of the same project (copied into the draft from main) may already use higher ids (R11.8).
+    const floor = await maxCriterionInDraft(draft);
+    const checked = postProcessDerived(d.value as DeriveOutput, previous?.spec ?? null, draft.specId, floor);
     if (!checked.ok) {
       await fail(`derive: ${checked.issues.join('; ')}`);
       return;

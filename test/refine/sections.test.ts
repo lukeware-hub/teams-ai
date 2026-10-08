@@ -1,7 +1,19 @@
 import { promises as fs } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { docSections, headingMatches, resolveHeading, sectionText } from '../../server/refine/sections.js';
+import { docSections, flowIsMermaid, headingMatches, resolveHeading, sectionText } from '../../server/refine/sections.js';
 import { NUMBERED_MERMAID_FLOW } from '../fixtures/numbered-mermaid-flow.js';
+
+describe('flowIsMermaid (R11.11)', () => {
+  it('accepts a flow with a mermaid code fence', () => {
+    expect(flowIsMermaid('# Flow\n\n```mermaid\nflowchart TD\n  A --> B\n```\n')).toBe(true);
+  });
+  it('rejects a flow written only in markdown headings, with no diagram', () => {
+    expect(flowIsMermaid('# Flow\n\n## 1. Checkout\n\nUser pays.\n')).toBe(false);
+  });
+  it('is case-insensitive and tolerates leading indentation on the fence', () => {
+    expect(flowIsMermaid('# Flow\n\n  ```MERMAID\nflowchart TD\n```\n')).toBe(true);
+  });
+});
 
 describe('docSections', () => {
   it('cuts numbered mermaid sections at the next numbered comment or the closing fence', () => {
