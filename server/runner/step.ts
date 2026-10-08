@@ -39,6 +39,8 @@ export interface StepRequest {
   /** Extra allow rules for this step's role settings (from the plan's commands). */
   extraAllow?: readonly string[];
   effort?: Effort;
+  /** Env entries the orchestrator provisioned for this one step (e.g. an ephemeral test database's DATABASE_URL). */
+  extraEnv?: Readonly<Record<string, string>>;
 }
 
 export type StepOutcome<T> =
@@ -230,6 +232,7 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
       resume: req.resume,
       agentDefinition: req.agent,
       effort: req.effort,
+      extraEnv: req.extraEnv,
     },
     hostEnv,
   );

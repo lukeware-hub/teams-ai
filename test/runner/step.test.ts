@@ -236,6 +236,14 @@ describe('runStep', () => {
     expect(captured.prompt).toBe('Implement it');
   });
 
+  it('passes extraEnv through to the child process', async () => {
+    const capture = path.join(dir, 'capture.json');
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
+    await runStep(request({ extraEnv: { DATABASE_URL: 'postgres://u:p@dind:55432/t' } }), deps);
+    const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
+    expect(captured.env.DATABASE_URL).toBe('postgres://u:p@dind:55432/t');
+  });
+
   it('sends the role agent definition inline with the step model', async () => {
     const capture = path.join(dir, 'capture.json');
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });

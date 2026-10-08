@@ -79,6 +79,14 @@ describe('buildInvocation', () => {
     expect(inv.env).not.toHaveProperty('ANTHROPIC_API_KEY');
   });
 
+  it('adds explicit extraEnv entries even though they are not host env or on the allowlist', () => {
+    // An ephemeral test database the orchestrator provisions (never a host secret): the step needs its
+    // own DATABASE_URL, which sanitizeEnv would otherwise strip since it is not in ENV_ALLOWLIST.
+    const inv = buildInvocation({ ...base, extraEnv: { DATABASE_URL: 'postgres://u:p@dind:55432/t' } }, hostEnv);
+    expect(inv.env.DATABASE_URL).toBe('postgres://u:p@dind:55432/t');
+    expect(inv.env.HOME).toBe('/home/u'); // allowlisted host env still comes through
+  });
+
   it('refuses an empty prompt or a missing settings path', () => {
     expect(() => buildInvocation({ ...base, prompt: '  ' }, hostEnv)).toThrow(InvocationError);
     expect(() => buildInvocation({ ...base, settingsPath: '' }, hostEnv)).toThrow(/settings/);

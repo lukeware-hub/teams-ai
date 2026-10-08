@@ -268,6 +268,8 @@ export interface AgentStepRequest<K extends StepKind> {
   /** Spec 10A.5 decisions 10/11: per-step model and effort; absent means the role profile. */
   model?: string;
   effort?: Effort;
+  /** Env entries the orchestrator provisioned for this one step (e.g. an ephemeral test database's DATABASE_URL). */
+  extraEnv?: Readonly<Record<string, string>>;
 }
 
 export interface AgentStepDeps {
@@ -326,6 +328,7 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
         taskId: req.taskId,
         attempt: req.attempt,
         extraAllow: req.extraAllow,
+        extraEnv: req.extraEnv,
       },
       deps.stepDeps,
     );

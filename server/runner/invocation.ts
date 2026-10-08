@@ -51,6 +51,10 @@ export interface InvocationInput {
   home?: string;
   /** Claude Code effort level for this step (spec 10A.5 decision 11); absent means the CLI default. */
   effort?: Effort;
+  /** Env entries the orchestrator sets explicitly (e.g. an ephemeral test database's DATABASE_URL), never read
+   * from the host: these are not secrets leaking in, they are resources the orchestrator itself provisioned
+   * for this one step. Bypasses ENV_ALLOWLIST; never put a real platform secret here. */
+  extraEnv?: Readonly<Record<string, string>>;
 }
 
 export interface Invocation {
@@ -104,6 +108,7 @@ export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessE
   }
   // Plan 38: a host-provided long-lived token replaces the copied credential file.
   if ((hostEnv.CLAUDE_CODE_OAUTH_TOKEN ?? '').trim() !== '') env.CLAUDE_CODE_OAUTH_TOKEN = hostEnv.CLAUDE_CODE_OAUTH_TOKEN!;
+  if (input.extraEnv) Object.assign(env, input.extraEnv);
   return { args, env, cwd: input.cwd, stdin: input.prompt };
 }
 
