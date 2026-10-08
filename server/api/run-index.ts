@@ -221,16 +221,23 @@ export async function listRuns(deps: IndexDeps, projectId: string): Promise<RunR
   return rows;
 }
 
+/** `<specId>-complete-rN`, the run id `spec complete` always requests (run-routes.ts, program/service.ts). */
+const COMPLETE_RUN = /-complete-r\d+$/;
+
 export async function listProjects(deps: IndexDeps): Promise<ProjectRow[]> {
   const out: ProjectRow[] = [];
   for (const { dir } of deps.cfg.projects) {
     const read = await readProject(dir).catch(() => null);
     if (!read) continue;
     const runs = await listRuns(deps, read.project.projectId);
+    // `spec complete` finishes by merging `status: done` onto main; the draft root this project reads its specs
+    // from keeps whatever status the freeze left it, since nothing patches it back once that merge lands. The
+    // completion run's own journal is ground truth for whether the spec is actually done.
+    const completed = new Set(runs.filter((r) => r.status === 'done' && COMPLETE_RUN.test(r.runId)).map((r) => r.specId));
     out.push({
       projectId: read.project.projectId,
       dir,
-      specs: read.specs.map((s) => ({ specId: s.specId, status: s.status, activeRunId: runs.find((r) => r.specId === s.specId && CLAIMS_SPEC.has(r.status))?.runId ?? null })),
+      specs: read.specs.map((s) => ({ specId: s.specId, status: completed.has(s.specId) ? 'done' : s.status, activeRunId: runs.find((r) => r.specId === s.specId && CLAIMS_SPEC.has(r.status))?.runId ?? null })),
     });
   }
   return out;

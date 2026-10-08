@@ -69,6 +69,19 @@ describe('run index', () => {
     expect(rows).toEqual([{ projectId: 'hello-app', dir: HELLO, specs: [{ specId: 'hello-001', status: 'running', activeRunId: 'hello-001-r1' }] }]);
   });
 
+  it('listProjects reports a spec as done once its complete run finished, even while the registered dir still has the pre-merge status', async () => {
+    await writeRun(runs, 'hello-001-complete-r1', [started('hello-001-complete-r1'), { type: 'RUN_FINISHED', data: { result: 'done' } }], state('running'));
+    const rows = await listProjects(deps());
+    expect(rows[0]!.specs).toEqual([{ specId: 'hello-001', status: 'done', activeRunId: null }]);
+  });
+
+  it('does not count a readme or deploy run finishing "done" as the spec itself being done', async () => {
+    await writeRun(runs, 'hello-001-readme-r1', [started('hello-001-readme-r1'), { type: 'RUN_FINISHED', data: { result: 'done' } }], state('running'));
+    await writeRun(runs, 'hello-001-deploy-r1', [started('hello-001-deploy-r1'), { type: 'RUN_FINISHED', data: { result: 'done' } }], state('running'));
+    const rows = await listProjects(deps());
+    expect(rows[0]!.specs).toEqual([{ specId: 'hello-001', status: 'running', activeRunId: null }]);
+  });
+
   it('SAFE_ID rejects path tricks', () => {
     expect(SAFE_ID.test('hello-001-r1')).toBe(true);
     expect(SAFE_ID.test('../x')).toBe(false);
