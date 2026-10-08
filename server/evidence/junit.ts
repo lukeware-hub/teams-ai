@@ -46,13 +46,18 @@ function collectCases(container: XmlNode, suiteName: string, out: RawCase[]): vo
 
 /**
  * TAP is the default output of `node --test` outside a terminal; a smoke/e2e command that does not write JUnit still reports every
- * test this way (live: all `ok` lines, yet "no smoke test" for each criterion). Only top-level `ok`/`not ok` lines count: subtests
- * are indented and roll up into their parent.
+ * test this way. `ok`/`not ok` lines count at any indentation: the idiomatic way to write one `[AC-xxx]` test per criterion is
+ * `test('[AC-xxx] ...', ...)` nested inside a `describe(...)` block (the convention `test.md`/`sm.md` lead agents to), and Node's
+ * test runner indents every nested subtest's own `ok`/`not ok` line under its parent's. Requiring zero indentation (as this used
+ * to) silently credited only the parent `describe`'s rollup line, which carries no `[AC-xxx]` tag, so every criterion read back
+ * as "no smoke test" even though the suite passed in full (live, R8.7 golden run, 2026-10-08: TAP showed `# pass 3, # fail 0` and
+ * the deploy still failed at smoke). An untagged rollup line is harmless here: `evaluateSmoke`/`evaluateE2e` only match rows whose
+ * `acIds` includes the specific criterion, so a parent line with no tag is simply never selected by either.
  */
 export function parseTap(text: string): TestResult[] {
   const out: TestResult[] = [];
   for (const line of text.split(/\r?\n/)) {
-    const m = /^(not )?ok \d+(?: -)? (.*)$/.exec(line);
+    const m = /^\s*(not )?ok \d+(?: -)? (.*)$/.exec(line);
     if (!m) continue;
     const skipped = /#\s*(skip|todo)\b/i.test(m[2]!);
     const name = m[2]!.replace(/\s+#\s*(skip|todo)\b.*$/i, '').trim();
