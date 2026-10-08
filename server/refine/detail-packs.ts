@@ -32,6 +32,7 @@ const PREPLAN_RULES = [
   '- The spec marked FIRST also carries the walking skeleton (repository scaffold, local docker infra, CI), cited against its smoke criterion. The others build on what the specs they depend on deliver.',
   '- risks (0-5): what could break the plan, and the mitigation.',
   '- Follow stack.md and the technical decisions in project.md.',
+  '- Delivery contract (teams-ai, fixed, not a choice to ask about): one compose stack serves the whole program; it is not torn down or recreated between specs, so a dependent service another spec already added (database, mail catcher, queue) is still running and reachable by its compose service name on the same network — plan to reuse it, never a task to stand it up again or to reset its data.',
 ].join('\n');
 
 const criteriaLines = (spec: Pick<Spec, 'acceptanceCriteria'>) => spec.acceptanceCriteria.map((c) => `- ${c.id}${c.smoke ? ' (smoke)' : ''}: Given ${c.given}, when ${c.when}, then ${c.then}`).join('\n');
