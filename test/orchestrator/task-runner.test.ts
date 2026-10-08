@@ -754,6 +754,28 @@ describe('TaskRunner: replanning the scaffold task', () => {
     expect(journal.state.tasks.get('T0-scaffold')!.state).toBe('superseded');
     expect(journal.state.tasks.get('T0-scaffold-r1')).toMatchObject({ replanned: true, bootstrapsFrozenPaths: true });
   });
+
+  // Live finding (R11.P, 2026-10-08): a zero-dependency project's scaffold task failed `npm ci` (EUSAGE,
+  // no manifest yet) on every attempt because installDeps ran before the Dev ever got to write package.json;
+  // the Dev was never invoked, so nothing could change between attempts and the task died after its replan.
+  it('never calls installDeps for the scaffold task, so the Dev gets to write the manifest first', async () => {
+    await journal.fact(RunEvent.TaskPlanned, { task: scaffold });
+    await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T0-scaffold', to: 'ready' });
+    let devCalled = false;
+    const agent: Agent = async (req) => {
+      if (req.kind === 'security') return secApprove();
+      if (req.kind !== 'dev') return devDone()(req);
+      devCalled = true;
+      await fs.mkdir(path.join(req.cwd, 'scripts'), { recursive: true });
+      await fs.writeFile(path.join(req.cwd, 'scripts', 'install.mjs'), `// ${Date.now()}\n`);
+      return ok({ specHash: HASH, status: 'done', summary: 'scaffolded', changedFiles: ['scripts/install.mjs'], commitMessage: 'feat: scaffold' });
+    };
+    const installDeps: TaskRunnerDeps['installDeps'] = async () => gate('install', { passed: false, exitCode: 1, failure: 'code', junit: null, stderrTail: 'npm error EUSAGE' });
+    const r = new TaskRunner('T0-scaffold', deps({ agent, installDeps }));
+    await r.advance();
+    expect(devCalled).toBe(true);
+    expect(journal.state.tasks.get('T0-scaffold')!.state).toBe('validating');
+  });
 });
 
 describe('TaskRunner: a replan cannot hand devops a task it has no Bash to run', () => {

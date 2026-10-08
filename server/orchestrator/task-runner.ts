@@ -248,7 +248,13 @@ export class TaskRunner {
 
   private async implement(): Promise<void> {
     if (!(await this.ensureWorktree())) return;
-    const install = await this.deps.installDeps(this.worktree);
+    // The scaffold task's job is to create the manifest and lockfile from nothing: on its first attempts the
+    // worktree has neither, so the install command fails deterministically (e.g. `npm ci` prints its own usage
+    // text) before the Dev is ever invoked to write one, and nothing can change between attempts because the
+    // Dev never ran (live, R11.P, 2026-10-08: a zero-dependency project's scaffold task died this way, identically,
+    // across every attempt and its one replan). Skip the pre-Dev call for it; `gates()` still installs for real
+    // once the Dev has committed the manifest it wrote.
+    const install = this.task.bootstrapsFrozenPaths ? null : await this.deps.installDeps(this.worktree);
     if (install) {
       const triage = await triageGateFailure({ name: install.name, command: this.deps.plan.commands.install, blocking: true, network: 'none', secrets: [] }, install, this.deps.decider, this.ctx);
       const delta = [
