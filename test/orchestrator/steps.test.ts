@@ -113,6 +113,14 @@ describe('packs', () => {
     expect(rules).toContain('3000-3019');
   });
 
+  it('plan rules tell the SM to publish any datastore service port, not just the app port', () => {
+    // A Postgres/MySQL/Redis compose service the app depends on must be reachable the same way the app itself is
+    // (serviceHost:port), or integration tests against a real database have no route to it at all.
+    const rules = planRules(true);
+    expect(rules).toMatch(/datastore|database service/i);
+    expect(rules).toMatch(/publish(es)? its (own )?port/i);
+  });
+
   it('plan pack carries every criterion, the human tasks and god nodes', () => {
     const p = planPack(
       { ...base, spec: { ...spec, tasks: [{ title: 'Login', description: 'basic login' }] } },
