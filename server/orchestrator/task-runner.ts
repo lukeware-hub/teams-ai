@@ -37,6 +37,10 @@ import { olderLiveRun, worktreeDir, type Workspace } from './workspace.js';
 
 /** The diff is inlined into the sec prompt (the role has no Bash); the rest of a huge diff is read from the worktree. */
 const SECURITY_DIFF_CHARS = 80_000;
+/** The claude CLI's own sandbox (bubblewrap/socat) occasionally fails to start, denying every tool call for that
+ * step; a transient infra flake, never a reason in the task's own files, so it is worth one more try instead of
+ * blocking the task at once (spec 10A.5-adjacent: `environment` failures already retry without an attempt). */
+const SANDBOX_INIT_FAILURE = /failed to create bridge sockets/i;
 
 export interface TaskRunnerDeps {
   journal: Journal;
@@ -261,7 +265,10 @@ export class TaskRunner {
     if (!outcome.ok) return this.fail(outcome.failure, outcome.errors.join('\n'));
     const value = outcome.value as DevOutput;
     if (value.status === 'spec-gap') return this.specGap(task.def, value.question);
-    if (value.status === 'blocked') return this.block(value.reason);
+    if (value.status === 'blocked') {
+      if (SANDBOX_INIT_FAILURE.test(value.reason)) return this.fail('environment', value.reason, 'dev-sandbox-init');
+      return this.block(value.reason);
+    }
     this.specGapRounds = 0;
     // Gate artifacts (the JUnit report) are written by the orchestrator, not by the Dev, and are never committed.
     const touched = (await porcelainNames(this.worktree, this.deps.exec)).filter((f) => f !== this.deps.plan.junitPath);

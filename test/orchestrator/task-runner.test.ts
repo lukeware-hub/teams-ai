@@ -140,6 +140,24 @@ describe('TaskRunner: implementing', () => {
     expect(agentCalls.map((c) => c.kind)).toEqual(['dev']);
   });
 
+  it('a blocked Dev citing a sandbox startup failure is retried, not blocked, without spending an attempt', async () => {
+    // "Failed to create bridge sockets" is the claude CLI's own sandbox init failing, a known transient flake of
+    // this session (unrelated to network policy or installed dependencies) — one extra try is cheap and often works.
+    let devCalls = 0;
+    const agent: Agent = async (req) => {
+      if (req.kind !== 'dev') return devDone()(req);
+      devCalls += 1;
+      if (devCalls === 1) return ok({ specHash: HASH, status: 'blocked', summary: 'no shell', changedFiles: [], reason: "Failed to create bridge sockets after 5 attempts; Bash was denied." });
+      return devDone()(req);
+    };
+    const r = new TaskRunner('T1', deps({ agent }));
+    for (let i = 0; i < 2; i++) await r.advance();
+    expect(state()).toMatchObject({ state: 'validating', attempts: 0 });
+    expect(journal.events.some((e) => e.type === OrchEvent.TaskBlocked)).toBe(false);
+    expect(journal.events.find((e) => e.type === RunEvent.InfraRetry)!.data).toMatchObject({ taskId: 'T1' });
+    expect(devCalls).toBe(2);
+  });
+
   it('caps spec-gap rounds at three per attempt', async () => {
     const agent: Agent = async (req) =>
       req.kind === 'spec-gap' ? ok({ specHash: HASH, answer: 'a', assumption: 'T1: q → a' }) : ok({ specHash: HASH, status: 'spec-gap', summary: 's', changedFiles: [], question: 'q' });
