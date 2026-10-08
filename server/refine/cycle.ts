@@ -16,6 +16,7 @@ import { backlogPack, postProcessBacklog, renderBacklogMd, type BacklogCheck } f
 import { fitPackBudget, PackTooLargeError } from './fit-pack.js';
 import { sha256 } from '../contracts/hash.js';
 import { flowHeadings } from '../validators/backlog.js';
+import { flowIsMermaid } from './sections.js';
 import { detailBacklog, maxCriterionInDraft, removeRetired } from './detail-cycle.js';
 import { DOC_REL, draftHash, flowTemplate, readDerived, readDoc, stackTemplate, writeBacklogMd, writeDerived, writeDoc, writeProject, writeSpecsIndex, type DocFile, type Draft } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
@@ -384,5 +385,9 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const openItem = checklist.find((i) => i.id === 'sm.no-open-questions')!;
   openItem.passed = pendingBlocking === 0;
   openItem.detail = pendingBlocking === 0 ? 'no blocking question open' : `${pendingBlocking} blocking question(s) open`;
+  // R11.11: flow.md must be a mermaid diagram (the template already is); deterministic, not left to the SM's own say-so.
+  const flowItem = checklist.find((i) => i.id === 'sm.flow-is-mermaid')!;
+  flowItem.passed = flowIsMermaid(docs['flow.md']);
+  flowItem.detail = flowItem.passed ? 'flow.md has a mermaid diagram' : 'flow.md has no ```mermaid block; it must be a diagram, not markdown headings';
   await journal.fact(RefineEvent.Evaluated, { cycle, checklist, questions: merged, discardedPatches, questionRouting });
 }

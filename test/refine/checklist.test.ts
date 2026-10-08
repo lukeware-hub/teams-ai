@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mergeChecklist, PO_ITEMS, SM_ITEMS } from '../../server/refine/checklist.js';
 
 describe('mergeChecklist', () => {
-  it('returns the eight fixed ids, filling omitted ones as not reported and ignoring foreign ids', () => {
+  it('returns the fixed ids, filling omitted ones as not reported and ignoring foreign ids', () => {
     const items = mergeChecklist(
       [{ id: 'po.personas', passed: true, detail: 'two personas' }, { id: 'sm.constraints-clear', passed: true, detail: 'nope' }],
       [{ id: 'sm.constraints-clear', passed: false, detail: 'vague' }],

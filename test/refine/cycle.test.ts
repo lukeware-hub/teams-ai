@@ -88,6 +88,46 @@ describe('refinement cycle acceptance criterion ids (R11.8)', () => {
   });
 });
 
+describe('refinement cycle flow.md must be mermaid (R11.11)', () => {
+  const build = async (flow: string) => {
+    const spec = makeSpec();
+    const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
+    const docs = path.join(root, 'docs');
+    await mkdir(docs, { recursive: true });
+    const draft = {
+      projectId: 'shop', specId: spec.specId, root, docs,
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+      stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
+      specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
+    };
+    await Promise.all([draft.projectMd, draft.briefMd, draft.stackMd, draft.designMd].map((f) => writeFile(f, '# doc')));
+    await writeFile(draft.flowMd, flow);
+    const events: Array<{ type: string; data: Record<string, unknown> }> = [];
+    const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'x', specHash: 'draft', type, kind: 'fact' as const, data }; } };
+    const ok = (value: unknown) => ({ ok: true, value, summary: {} });
+    const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
+    const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
+      if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
+      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [] });
+      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions', 'sm.flow-is-mermaid']), questions: [], docPatch: [] });
+    });
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1);
+    const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
+    return (evaluated.data.checklist as Array<{ id: string; passed: boolean; detail: string }>).find((i) => i.id === 'sm.flow-is-mermaid')!;
+  };
+
+  it('fails deterministically, overriding the agent, when flow.md has no mermaid fence', async () => {
+    const item = await build('# Flow\n\n## 1. Checkout\n\nUser pays.\n');
+    expect(item).toMatchObject({ passed: false });
+    expect(item.detail).toMatch(/mermaid/);
+  });
+
+  it('passes when flow.md has a mermaid fence', async () => {
+    const item = await build('# Flow\n\n```mermaid\nflowchart TD\n  A --> B\n```\n');
+    expect(item).toMatchObject({ passed: true });
+  });
+});
+
 describe('refinement cycle patch dedup (R11.10)', () => {
   it('drops an SM patch byte-identical to one PO already proposed this cycle, keeping PO\'s', async () => {
     const spec = makeSpec();

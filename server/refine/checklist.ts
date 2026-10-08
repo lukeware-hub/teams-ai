@@ -1,5 +1,5 @@
 export const PO_ITEMS = ['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions'] as const;
-export const SM_ITEMS = ['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions'] as const;
+export const SM_ITEMS = ['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions', 'sm.flow-is-mermaid'] as const;
 export type ChecklistId = (typeof PO_ITEMS)[number] | (typeof SM_ITEMS)[number];
 export interface ChecklistItem {
   id: ChecklistId;

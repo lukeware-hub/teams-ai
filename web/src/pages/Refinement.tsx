@@ -55,12 +55,15 @@ const checkLabel: Record<string, string> = {
   'sm.constraints-clear': 'Restrições técnicas claras',
   'sm.tasks-feasible': 'Tarefas viáveis',
   'sm.no-open-questions': 'Sem perguntas obrigatórias em aberto',
+  'sm.flow-is-mermaid': 'flow.md é um diagrama mermaid',
 };
 /** The server writes these details itself; details written by the agents pass through unchanged. */
 const checkDetail = (detail: string) => {
   if (detail === 'not reported') return 'O agente não avaliou este item.';
   if (detail === 'every listed secret is present') return 'Todos os segredos necessários estão salvos.';
   if (detail === 'no blocking question open') return 'Nenhuma pergunta obrigatória em aberto.';
+  if (detail === 'flow.md has a mermaid diagram') return 'flow.md tem um diagrama mermaid.';
+  if (detail === 'flow.md has no ```mermaid block; it must be a diagram, not markdown headings') return 'flow.md precisa ser um diagrama mermaid, não títulos em markdown.';
   const missing = /^missing secrets: (.+)$/.exec(detail);
   if (missing) return `Faltam segredos: ${missing[1]}.`;
   const open = /^(\d+) blocking question\(s\) open$/.exec(detail);
