@@ -1,3 +1,5 @@
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import type { z } from 'zod';
 import { blockingFindings } from '../agents/outputs.js';
 import type { DevOutput as DevOutputSchema, OutputOf, ReplanOutput, ReviewOutput as ReviewOutputSchema, SecurityOutput as SecurityOutputSchema, SpecGapOutput, StepKind } from '../agents/outputs.js';
@@ -231,6 +233,19 @@ export class TaskRunner {
     };
   }
 
+  /** The Dev's own sandbox has no tool to remove a file (Bash's rm/git rm are denied), so it asks the orchestrator instead. */
+  private async deleteFiles(paths: string[]): Promise<void> {
+    const base = path.resolve(this.worktree);
+    for (const p of paths) {
+      const resolved = path.resolve(base, p);
+      const rel = path.relative(base, resolved);
+      if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
+        throw new Error(`deletedFiles path escapes the worktree: ${p}`);
+      }
+      await fs.rm(resolved, { force: true });
+    }
+  }
+
   private async implement(): Promise<void> {
     if (!(await this.ensureWorktree())) return;
     const install = await this.deps.installDeps(this.worktree);
@@ -275,6 +290,7 @@ export class TaskRunner {
       return this.block(value.reason);
     }
     this.specGapRounds = 0;
+    await this.deleteFiles(value.deletedFiles ?? []);
     // Gate artifacts (the JUnit report) are written by the orchestrator, not by the Dev, and are never committed.
     const touched = (await porcelainNames(this.worktree, this.deps.exec)).filter((f) => f !== this.deps.plan.junitPath);
     const scope = checkScope({ changedFiles: touched, affectedPaths: task.def.affectedPaths, frozenPaths: this.deps.plan.frozenPaths, scopeJustification: value.scopeJustification, allowFrozen: this.deps.firstSpec && task.bootstrapsFrozenPaths });

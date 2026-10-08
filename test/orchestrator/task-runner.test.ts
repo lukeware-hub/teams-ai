@@ -114,6 +114,35 @@ describe('TaskRunner: implementing', () => {
     expect(agentCalls[0]!.pack.feedback).toBeUndefined();
   });
 
+  it('deletes files the Dev lists in deletedFiles before committing', async () => {
+    await journal.close();
+    await remote.cleanup();
+    remote = await makeRemote({
+      'docs/project.json': JSON.stringify(project),
+      'docs/specs/spec-001/spec.json': JSON.stringify(spec),
+      'src/old.ts': '// stale\n',
+    });
+    journal = await Journal.open({ file: path.join(remote.root, 'events.ndjson'), runId: 'spec-001-r1', specHash: HASH });
+    await journal.fact(RunEvent.TaskPlanned, { task: T1 });
+    await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T1', to: 'ready' });
+    const devDeletes: Agent = async (req) => {
+      if (req.kind === 'security') return secApprove();
+      await fs.mkdir(path.join(req.cwd, 'src'), { recursive: true });
+      await fs.writeFile(path.join(req.cwd, 'src', 'a.ts'), `// ${Date.now()}\n`);
+      return ok({
+        specHash: HASH, status: 'done', summary: 'did T1', changedFiles: ['src/a.ts'],
+        deletedFiles: ['src/old.ts'], commitMessage: 'feat: T1',
+      });
+    };
+    const r = new TaskRunner('T1', deps({ agent: devDeletes }));
+    await r.advance();
+    expect(state().state).toBe('validating');
+    await expect(fs.access(path.join(r.worktree, 'src', 'old.ts'))).rejects.toThrow();
+    expect(await git(r.worktree, ['show', '--stat', '-1', '--format='])).toContain('old.ts');
+    const event = journal.events.find((e) => e.type === OrchEvent.DevCommitted)!.data as { changedFiles: string[] };
+    expect(event.changedFiles).toContain('src/old.ts');
+  });
+
   it('passes the ephemeral test database URL as extraEnv to Dev and Test when one was provisioned for this run', async () => {
     const agent: Agent = async (req) => {
       if (req.kind === 'review') return approve();

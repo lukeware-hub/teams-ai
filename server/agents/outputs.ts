@@ -90,7 +90,8 @@ const devCommon = {
 
 /** A discriminated union so the generated JSON Schema tells the model which fields each status requires. */
 export const DevOutput = z.discriminatedUnion('status', [
-  z.object({ ...devCommon, status: z.literal('done'), commitMessage: z.string().min(1) }),
+  /** Deleted paths the Dev's own sandbox has no tool to remove (Bash's rm/git rm are denied); the orchestrator deletes them before committing. */
+  z.object({ ...devCommon, status: z.literal('done'), commitMessage: z.string().min(1), deletedFiles: z.array(z.string().min(1)).optional() }),
   z.object({ ...devCommon, status: z.literal('spec-gap'), question: z.string().min(1) }),
   /** The task cannot proceed for a reason outside its paths (deploy environment, missing access): no SM round, no attempt consumed. */
   z.object({ ...devCommon, status: z.literal('blocked'), reason: z.string().min(1) }),
