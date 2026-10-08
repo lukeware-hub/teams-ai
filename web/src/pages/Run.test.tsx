@@ -335,4 +335,44 @@ describe('RunView', () => {
       expect(screen.queryByTestId('stop')).toBeNull();
     });
   });
+
+  describe('a dead process the journal alone would still read as running', () => {
+    // The process died without writing RUN_FINISHED: events keep arriving via the SSE tail replay, the stream never
+    // "ends", and the reducer's own state.status stays whatever it was last ('running') - only the server's pid
+    // check (detail.status) knows the run is actually dead.
+    const ghost = [...events]; // the hello-run fixture: no RUN_FINISHED, state.status reads 'paused:quota' from its own events
+
+    it('trusts the server over the live journal once it says interrupted, even with events still arriving and the stream not ended', () => {
+      render(view({ events: ghost, ended: false, detail: { ...detail, status: 'interrupted' } }));
+      expect(screen.getByTestId('status').textContent).toContain('interrompida');
+      expect(screen.getByTestId('interrupted-hint')).toBeTruthy();
+    });
+
+    it('offers Retomar for an interrupted run, wired to the action', () => {
+      const onResume = vi.fn();
+      const { rerender } = render(view({ events: ghost, ended: false, detail: { ...detail, status: 'running' }, resumeAction: { onResume, busy: false, error: null } }));
+      expect(screen.queryByTestId('resume')).toBeNull();
+      rerender(view({ events: ghost, ended: false, detail: { ...detail, status: 'interrupted' }, resumeAction: { onResume, busy: false, error: null } }));
+      expect(screen.getByTestId('resume').textContent).toBe('Retomar');
+      fireEvent.click(screen.getByTestId('resume'));
+      expect(onResume).toHaveBeenCalledTimes(1);
+      rerender(view({ events: ghost, ended: false, detail: { ...detail, status: 'interrupted' }, resumeAction: { onResume, busy: true, error: null } }));
+      expect((screen.getByTestId('resume') as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByTestId('resume').textContent).toBe('Retomando…');
+      rerender(view({ events: ghost, ended: false, detail: { ...detail, status: 'interrupted' }, resumeAction: { onResume, busy: false, error: 'falhou' } }));
+      expect(screen.getByTestId('resume-error').textContent).toBe('falhou');
+    });
+
+    it('also offers Retomar once a RUN_PAUSED(auth) event expires the Claude session, but not for a quota pause (that lifts on its own)', () => {
+      const ev2 = (seq: number, type: string, data: Record<string, unknown>): StoredEvent => ({ seq: 30_000 + seq, at: '2026-10-08T10:00:00.000Z', runId: 'hello-001-r9', specHash: 'h', type, kind: 'fact' as const, data });
+      const onResume = vi.fn();
+      const auth = [ev2(1, 'RUN_PAUSED', { reason: 'auth' })];
+      const { rerender } = render(view({ events: auth, ended: false, detail: { ...detail, status: 'paused:auth' }, resumeAction: { onResume, busy: false, error: null } }));
+      expect(screen.getByTestId('status').textContent).toContain('paused:auth');
+      expect(screen.getByTestId('resume')).toBeTruthy();
+      const quota = [ev2(1, 'RUN_PAUSED', { reason: 'quota', until: '2026-10-08T12:00:00.000Z' })];
+      rerender(view({ events: quota, ended: false, detail: { ...detail, status: 'paused:quota' }, resumeAction: { onResume, busy: false, error: null } }));
+      expect(screen.queryByTestId('resume')).toBeNull();
+    });
+  });
 });

@@ -300,16 +300,29 @@ export interface StopAction {
   error: string | null;
 }
 
+/** Resumes the same run id (unlike Reprocessar, which starts a new one): the only move for a run the journal alone
+ * reads as still going, but whose process actually died without ever writing RUN_FINISHED. */
+export interface ResumeAction {
+  onResume: () => void;
+  busy: boolean;
+  error: string | null;
+}
+
 type DetailTarget = { kind: 'outcome' } | { kind: 'phase'; phase: number } | { kind: 'cause'; reason: string };
 
 const STOPPABLE = new Set(['running', 'paused:quota', 'paused:auth']);
+// Same condition as the project hub's own Retomar button (project-shared.tsx's ACTIVE/resume gating): a dead
+// process (interrupted) or an expired Claude session (paused:auth) resume; a quota pause lifts on its own.
+const RESUMABLE = new Set(['interrupted', 'paused:auth']);
 
-export function RunView({ detail, events, ended, error, loadStep, readmeAction, redeployAction, reprocessAction, stopAction }: { detail: RunDetail; events: StoredEvent[]; ended: boolean; error: string | null; loadStep: (stepId: string) => Promise<{ prompt: string; output: unknown }>; readmeAction?: ReadmeAction; redeployAction?: RedeployAction; reprocessAction?: ReprocessAction; stopAction?: StopAction }) {
+export function RunView({ detail, events, ended, error, loadStep, readmeAction, redeployAction, reprocessAction, stopAction, resumeAction }: { detail: RunDetail; events: StoredEvent[]; ended: boolean; error: string | null; loadStep: (stepId: string) => Promise<{ prompt: string; output: unknown }>; readmeAction?: ReadmeAction; redeployAction?: RedeployAction; reprocessAction?: ReprocessAction; stopAction?: StopAction; resumeAction?: ResumeAction }) {
   const unique = events.filter((e, i) => events.findIndex((x) => x.seq === e.seq) === i);
   const state = runState(unique);
   const finished = [...unique].reverse().find((e) => e.type === 'RUN_FINISHED');
   // The journal wins while it streams; before the first event and after the stream ends the server's snapshot is authoritative.
-  const status = finished ? String(finished.data.result) : ended || unique.length === 0 ? detail.status : state.status;
+  // Except for 'interrupted': a dead process writes nothing, so the journal alone would read as running forever.
+  // Only the server can tell (it checks the pid), and `detail` is re-fetched periodically to pick that up live.
+  const status = finished ? String(finished.data.result) : detail.status === 'interrupted' ? 'interrupted' : ended || unique.length === 0 ? detail.status : state.status;
   const until = pausedUntil(unique);
   const t = tokens(unique);
   const phaseList = phases(unique);
@@ -423,9 +436,16 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
               {detail.projectId} / {detail.specId}
             </span>
             {until ? <span data-testid="paused-until" className="hint">pausada até {hhmm(until)}</span> : null}
+            {status === 'interrupted' ? <span data-testid="interrupted-hint" className="hint">o processo não está mais rodando; use Retomar</span> : null}
           </div>
         </div>
         <div className="run-actions">
+          {resumeAction && RESUMABLE.has(status) ? (
+            <button type="button" className="primary-button run-action" data-testid="resume" disabled={resumeAction.busy} onClick={resumeAction.onResume}>
+              <Icon name="play" size={16} />
+              {resumeAction.busy ? 'Retomando…' : 'Retomar'}
+            </button>
+          ) : null}
           {stopAction && STOPPABLE.has(status) ? (
             <button type="button" className="secondary run-action" data-testid="stop" disabled={stopAction.busy} onClick={stopAction.onStop}>
               <Icon name="stop" size={16} />
@@ -446,6 +466,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
             </a>
           ) : null}
         </div>
+        {resumeAction?.error ? <p className="error" data-testid="resume-error">{resumeAction.error}</p> : null}
         {stopAction?.error ? <p className="error" data-testid="stop-error">{stopAction.error}</p> : null}
         {totalTasks ? (
           <div className="run-progress">
@@ -746,6 +767,13 @@ const reprocessError = (message: string) => {
   return live ? `Esta spec já tem a run ${live[1]} (${statusLabel(live[2]!)}). Abra essa run em vez de iniciar outra.` : `Não foi possível reprocessar: ${message}`;
 };
 
+// The stop route answers 409 in English when the pid file is gone: the process already died (the status pill should
+// already say "interrompida" by the next poll) or it was never spawned by this UI (started from a terminal).
+const stopError = (message: string) =>
+  /has no live process started from the UI/.test(message)
+    ? 'Esse processo já não está rodando (ou nunca foi iniciado por esta UI). Atualize a página; se a run continuar como interrompida, use Retomar.'
+    : `Não foi possível parar: ${message}`;
+
 export function RunPage() {
   const { runId } = useParams<{ runId: string }>();
   // Reprocessar opens the new run on this same route: a fresh instance keeps none of the old run's state.
@@ -762,12 +790,23 @@ function RunScreen({ runId }: { runId: string | undefined }) {
   const [reprocessFailure, setReprocessFailure] = useState<string | null>(null);
   const [stopping, setStopping] = useState(false);
   const [stopFailure, setStopFailure] = useState<string | null>(null);
+  const [resuming, setResuming] = useState(false);
+  const [resumeFailure, setResumeFailure] = useState<string | null>(null);
   useEffect(() => {
     if (runId)
       runApi
         .run(runId)
         .then(setDetail)
         .catch((e: Error) => setLoadError(e.message));
+  }, [runId]);
+  // A dead process writes nothing to the journal, so the live SSE tail alone would read as running forever; only the
+  // server can tell (it checks the pid), hence this periodic re-fetch of its one-shot status.
+  useEffect(() => {
+    if (!runId) return;
+    const id = setInterval(() => {
+      runApi.run(runId).then(setDetail).catch(() => undefined);
+    }, 7000);
+    return () => clearInterval(id);
   }, [runId]);
   // The README is written by a separate `spec readme` run; follow it until it ends, then reload this run's README.
   useEffect(() => {
@@ -817,7 +856,23 @@ function RunScreen({ runId }: { runId: string | undefined }) {
       .then(() => setStopping(false))
       .catch((e: Error) => {
         setStopping(false);
-        setStopFailure(e.message);
+        setStopFailure(stopError(e.message));
+      });
+  };
+  const resumeExecution = () => {
+    if (!runId) return;
+    setResuming(true);
+    setResumeFailure(null);
+    runApi
+      .resumeRun(runId)
+      .then(() => runApi.run(runId))
+      .then((d) => {
+        setResuming(false);
+        setDetail(d);
+      })
+      .catch((e: Error) => {
+        setResuming(false);
+        setResumeFailure(e.message);
       });
   };
   const { events, ended, error } = useJournal(runId && detail ? runApi.runEvents(runId) : null);
@@ -843,6 +898,7 @@ function RunScreen({ runId }: { runId: string | undefined }) {
       readmeAction={{ onGenerate: generateReadme, busy: writerRun !== null, error: readmeError }}
       reprocessAction={{ onReprocess: reprocess, busy: reprocessing, error: reprocessFailure }}
       stopAction={{ onStop: stopExecution, busy: stopping, error: stopFailure }}
+      resumeAction={{ onResume: resumeExecution, busy: resuming, error: resumeFailure }}
     />
   );
 }
