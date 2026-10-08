@@ -66,7 +66,11 @@ describe('run index', () => {
     const d = deps();
     d.cfg = loadConfig({ ...JSON.parse(JSON.stringify(d.cfg)), projects: [{ dir: HELLO }, { dir: path.join(home, 'missing') }] });
     const rows = await listProjects(d);
-    expect(rows).toEqual([{ projectId: 'hello-app', dir: HELLO, specs: [{ specId: 'hello-001', status: 'running', activeRunId: 'hello-001-r1' }] }]);
+    expect(rows).toEqual([{
+      projectId: 'hello-app', dir: HELLO, name: 'Hello app',
+      description: 'A tiny HTTP service that greets by name, used to exercise the orchestrator end to end.',
+      specs: [{ specId: 'hello-001', status: 'running', activeRunId: 'hello-001-r1' }],
+    }]);
   });
 
   it('listProjects reports a spec as done once its complete run finished, even while the registered dir still has the pre-merge status', async () => {

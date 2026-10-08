@@ -37,6 +37,8 @@ export interface SpecRow {
 export interface ProjectRow {
   projectId: string;
   dir: string;
+  name: string;
+  description: string;
   specs: SpecRow[];
 }
 export interface RunRow {
@@ -148,6 +150,7 @@ const jsonPost = (p: string, body?: unknown) => authFetch(`${R}${p}`, { method: 
 export const runApi = {
   projects: () => authFetch(`${R}/projects`).then((r) => json<ProjectRow[]>(r)),
   addProject: (url: string) => jsonPost('/projects', { url }).then((r) => json<ProjectRow>(r)),
+  deleteProject: (projectId: string) => authFetch(`${R}/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE', headers: { 'content-type': 'application/json' } }).then((r) => json<{ deleted: true }>(r)),
   runs: (projectId: string) => authFetch(`${R}/projects/${encodeURIComponent(projectId)}/runs`).then((r) => json<RunRow[]>(r)),
   startRun: (projectId: string, specId: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/runs`).then((r) => json<{ runId: string }>(r)),
   resumeRun: (runId: string) => jsonPost(`/runs/${encodeURIComponent(runId)}/resume`).then((r) => json<{ runId: string }>(r)),

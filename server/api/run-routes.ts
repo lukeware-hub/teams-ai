@@ -7,8 +7,8 @@ import type { Config, Role } from '../config/config.js';
 import { Plan } from '../contracts/plan.js';
 import { loadSecretValues } from '../core/secrets.js';
 import { redactSecrets } from '../core/redact.js';
-import { addProject } from '../onboarding/config-store.js';
-import { expandHome } from '../orchestrator/workspace.js';
+import { addProject, removeProjectDirs } from '../onboarding/config-store.js';
+import { expandHome, workspacePaths } from '../orchestrator/workspace.js';
 import { execCommand } from '../exec/command.js';
 import { nextRunId } from '../orchestrator/workspace.js';
 import { reduceEvents } from '../pipeline/run-state.js';
@@ -17,7 +17,7 @@ import { httpGet, type HttpGet } from '../deploy/target.js';
 import { refuseCloneHost, type ResolveHost } from './security.js';
 import { tailJournal } from './journal-tail.js';
 import { isAlive, spawnRun, stop, type RunControlDeps } from './run-control.js';
-import { CLAIMS_SPEC, claimLaunch, clearPid, clearStopRequested, listProjects, listRuns, markStopRequested, readPid, readProject, runLiveness, runsDir, SAFE_ID, writePid, type IndexDeps, type RunRow } from './run-index.js';
+import { CLAIMS_SPEC, claimLaunch, clearPid, clearStopRequested, listProjects, listRuns, markStopRequested, readPid, readProject, runLiveness, runRow, runsDir, SAFE_ID, writePid, type IndexDeps, type RunRow } from './run-index.js';
 import { HttpError, type Route } from './server.js';
 
 export interface RunRoutesDeps {
@@ -202,7 +202,37 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         await addProject(dir, deps.home);
         const idx = await index();
         const rows = await listProjects(idx);
-        json(200, rows.find((r) => r.dir === dir) ?? { projectId: read.project.projectId, dir, specs: [] });
+        json(200, rows.find((r) => r.dir === dir) ?? { projectId: read.project.projectId, dir, name: read.project.name, description: read.project.vision, specs: [] });
+      },
+    },
+    {
+      method: 'DELETE',
+      path: `${P}/projects/:projectId`,
+      handler: async ({ params, json }) => {
+        const idx = await index();
+        const projectId = params.projectId!;
+        const dirs: string[] = [];
+        const specIds = new Set<string>();
+        for (const { dir } of idx.cfg.projects) {
+          const read = await readProject(dir).catch(() => null);
+          if (read?.project.projectId !== projectId) continue;
+          dirs.push(dir);
+          for (const s of read.specs) specIds.add(s.specId);
+        }
+        if (dirs.length === 0) throw new HttpError(404, `unknown project ${projectId}`);
+        const active = (await listRuns(idx, projectId)).find((r) => CLAIMS_SPEC.has(r.status));
+        if (active) throw new HttpError(409, `project ${projectId} has an active run (${active.runId}); stop it before deleting`);
+        const ws = workspacePaths(idx.cfg, projectId, deps.home);
+        await fs.rm(ws.root, { recursive: true, force: true });
+        for (const dir of dirs) await fs.rm(dir, { recursive: true, force: true });
+        const runs = runsDir(idx);
+        const runNames = (await fs.readdir(runs).catch(() => [] as string[])).filter((n) => SAFE_ID.test(n));
+        for (const runId of runNames) {
+          const row = await runRow(idx, runId).catch(() => null);
+          if (row && (row.projectId === projectId || specIds.has(row.specId))) await fs.rm(path.join(runs, runId), { recursive: true, force: true });
+        }
+        await removeProjectDirs(dirs, deps.home);
+        json(200, { deleted: true });
       },
     },
     {

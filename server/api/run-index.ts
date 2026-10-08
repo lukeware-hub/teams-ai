@@ -33,6 +33,8 @@ export interface SpecRow {
 export interface ProjectRow {
   projectId: string;
   dir: string;
+  name: string;
+  description: string;
   specs: SpecRow[];
 }
 export interface IndexDeps {
@@ -237,6 +239,8 @@ export async function listProjects(deps: IndexDeps): Promise<ProjectRow[]> {
     out.push({
       projectId: read.project.projectId,
       dir,
+      name: read.project.name,
+      description: read.project.vision,
       specs: read.specs.map((s) => ({ specId: s.specId, status: completed.has(s.specId) ? 'done' : s.status, activeRunId: runs.find((r) => r.specId === s.specId && CLAIMS_SPEC.has(r.status))?.runId ?? null })),
     });
   }

@@ -70,3 +70,9 @@ export async function setGithubOwner(owner: string, home?: string): Promise<Conf
 export async function addProject(dir: string, home?: string): Promise<Config> {
   return updateUserConfig(home, (raw, cfg) => (cfg.projects.some((p) => p.dir === dir) ? undefined : { ...raw, projects: [...cfg.projects, { dir }] }));
 }
+
+/** Drops every `dirs` entry from `projects`; used when a project is deleted, after its directories are removed from disk. */
+export async function removeProjectDirs(dirs: readonly string[], home?: string): Promise<Config> {
+  const set = new Set(dirs);
+  return updateUserConfig(home, (raw, cfg) => (cfg.projects.some((p) => set.has(p.dir)) ? { ...raw, projects: cfg.projects.filter((p) => !set.has(p.dir)) } : undefined));
+}

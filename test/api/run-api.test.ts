@@ -29,6 +29,7 @@ let probed: string[];
 let resolved: Record<string, string> = {};
 const base = () => `http://127.0.0.1:${api.port}`;
 const post = (p: string, body?: unknown) => fetch(`${base()}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+const del = (p: string) => fetch(`${base()}${p}`, { method: 'DELETE', headers: { 'content-type': 'application/json' } });
 
 beforeEach(async () => {
   home = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-runapi-'));
@@ -109,7 +110,11 @@ describe('projects', () => {
   it('lists registered projects with specs and runs', async () => {
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 1);
     const projects = await (await fetch(`${base()}/api/projects`)).json();
-    expect(projects).toEqual([{ projectId: 'hello-app', dir: HELLO, specs: [{ specId: 'hello-001', status: 'running', activeRunId: 'hello-001-r1' }] }]);
+    expect(projects).toEqual([{
+      projectId: 'hello-app', dir: HELLO, name: 'Hello app',
+      description: 'A tiny HTTP service that greets by name, used to exercise the orchestrator end to end.',
+      specs: [{ specId: 'hello-001', status: 'running', activeRunId: 'hello-001-r1' }],
+    }]);
     const rows = await (await fetch(`${base()}/api/projects/hello-app/runs`)).json();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ runId: 'hello-001-r1', status: 'interrupted', stoppable: false });
@@ -185,6 +190,39 @@ describe('projects', () => {
     expect(await err('https://sneaky.example/acme/demo.git')).toMatch(/interno/);
     expect(cloned).toHaveLength(0);
     expect((await readUserConfig(home)).cfg.projects).toEqual([{ dir: HELLO }]);
+  });
+
+  it('deletes a project from disk: its directory, workspace root, runs and config entry', async () => {
+    const project = path.join(home, 'project');
+    await fs.cp(HELLO, project, { recursive: true });
+    await fs.writeFile(path.join(home, '.teams-ai', 'config.json'), JSON.stringify({ paths: { runs: runs.replace(/\\/g, '/') }, projects: [{ dir: project }] }));
+    const ws = path.join(home, '.teams-ai', 'workspaces', 'hello-app');
+    await fs.mkdir(ws, { recursive: true });
+    await fs.writeFile(path.join(ws, 'marker.txt'), 'x');
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), { type: 'RUN_FINISHED', data: { result: 'done' } }], state('done'), 1);
+    const exists = (p: string) => fs.access(p).then(() => true, () => false);
+    const res = await del('/api/projects/hello-app');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ deleted: true });
+    expect(await exists(project)).toBe(false);
+    expect(await exists(ws)).toBe(false);
+    expect(await exists(path.join(runs, 'hello-001-r1'))).toBe(false);
+    expect((await readUserConfig(home)).cfg.projects).toEqual([]);
+  });
+
+  it('refuses to delete a project with an active run', async () => {
+    const project = path.join(home, 'project');
+    await fs.cp(HELLO, project, { recursive: true });
+    await fs.writeFile(path.join(home, '.teams-ai', 'config.json'), JSON.stringify({ paths: { runs: runs.replace(/\\/g, '/') }, projects: [{ dir: project }] }));
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 1);
+    alive.add(1);
+    const res = await del('/api/projects/hello-app');
+    expect(res.status).toBe(409);
+    expect(await fs.access(project).then(() => true, () => false)).toBe(true);
+  });
+
+  it('404s deleting an unknown project', async () => {
+    expect((await del('/api/projects/nobody')).status).toBe(404);
   });
 });
 

@@ -3,6 +3,7 @@ import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router-dom';
 import { refineApi, runApi } from './api.js';
 import { ThemeSwitch } from './components/ThemeSwitch.js';
 import { Onboarding } from './pages/Onboarding.js';
+import { ProjectHub } from './pages/ProjectHub.js';
 import { Projects } from './pages/Projects.js';
 import { RefinementPage } from './pages/Refinement.js';
 import { RunPage } from './pages/Run.js';
@@ -33,6 +34,7 @@ export function App() {
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/status" element={<StatusPage />} />
         <Route path="/projects" element={<Projects />} />
+        <Route path="/projects/:projectId" element={<ProjectHub />} />
         <Route path="/runs/:runId" element={<RunPage />} />
         <Route path="/refine/:projectId/:specId" element={<RefinementPage />} />
         <Route path="/runs/:runId/validation" element={<ValidationPage />} />

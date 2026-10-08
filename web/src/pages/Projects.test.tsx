@@ -7,6 +7,8 @@ const projects = [
   {
     projectId: 'hello-app',
     dir: '/p/hello',
+    name: 'Hello app',
+    description: 'A tiny HTTP service that greets by name.',
     specs: [
       { specId: 'hello-001', status: 'running', activeRunId: null },
       { specId: 'hello-002', status: 'running', activeRunId: 'hello-002-r1' },
@@ -14,38 +16,30 @@ const projects = [
     ],
   },
 ];
-const runs = {
-  'hello-app': [
-    { runId: 'hello-002-r1', specId: 'hello-002', projectId: 'hello-app', status: 'running', at: '2026-09-24T10:00:00.000Z', tokens: 1500, cost: 0.25, stoppable: true },
-    { runId: 'hello-001-r1', specId: 'hello-001', projectId: 'hello-app', status: 'paused:auth', at: '2026-09-24T09:00:00.000Z', tokens: 100, cost: 0.01, stoppable: false },
-    { runId: 'hello-000-r1', specId: 'hello-000', projectId: 'hello-app', status: 'complete', at: '2026-09-23T09:00:00.000Z', tokens: 9000, cost: 3.33, stoppable: false },
-  ],
-};
+const on = () => ({ add: vi.fn(), newProject: vi.fn(), deleteDraft: vi.fn(), deleteProject: vi.fn() });
 
 describe('ProjectsView', () => {
-  it('shows one action per spec status and per run status', () => {
-    const on = { start: vi.fn(), resume: vi.fn(), stop: vi.fn(), add: vi.fn(), newProject: vi.fn(), newSpec: vi.fn(), cont: vi.fn(), del: vi.fn() };
+  it('shows name, description, percent complete and the Abrir/Excluir actions', () => {
+    const o = on();
     render(
       <MemoryRouter>
-        <ProjectsView projects={projects} runs={runs} drafts={[]} error={null} onStart={on.start} onResume={on.resume} onStop={on.stop} onAdd={on.add} onNewProject={on.newProject} onNewSpec={on.newSpec} onContinue={on.cont} onDelete={on.del} />
+        <ProjectsView projects={projects} drafts={[]} error={null} onAdd={o.add} onNewProject={o.newProject} onDeleteDraft={o.deleteDraft} onDeleteProject={o.deleteProject} />
       </MemoryRouter>,
     );
-    fireEvent.click(screen.getByTestId('start-hello-001'));
-    expect(on.start).toHaveBeenCalledWith('hello-app', 'hello-001');
-    expect(screen.getByTestId('open-hello-002').getAttribute('href')).toBe('/runs/hello-002-r1');
-    expect(screen.queryByTestId('start-hello-000')).toBeNull();
-    fireEvent.click(screen.getByTestId('resume-hello-001-r1'));
-    expect(on.resume).toHaveBeenCalledWith('hello-001-r1');
-    fireEvent.click(screen.getByTestId('stop-hello-002-r1'));
-    expect(on.stop).toHaveBeenCalledWith('hello-002-r1');
-    expect(screen.queryByTestId('stop-hello-001-r1')).toBeNull();
-    expect(screen.getByText('US$ 3.33')).toBeTruthy();
+    expect(screen.getByText('Hello app')).toBeTruthy();
+    expect(screen.getByText('A tiny HTTP service that greets by name.')).toBeTruthy();
+    expect(screen.getByText('33% concluído', { exact: false })).toBeTruthy();
+    expect(screen.getByTestId('open-project-hello-app').getAttribute('href')).toBe('/projects/hello-app');
+    fireEvent.click(screen.getByTestId('delete-project-hello-app'));
+    expect(screen.getByRole('alertdialog').textContent).toContain('Hello app');
+    fireEvent.click(screen.getByTestId('delete-confirm'));
+    expect(o.deleteProject).toHaveBeenCalledWith('hello-app');
   });
   it('submits a directory to add and shows the error', () => {
-    const onAdd = vi.fn();
+    const o = on();
     render(
       <MemoryRouter>
-        <ProjectsView projects={[]} runs={{}} drafts={[]} error="not a project directory" onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={onAdd} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} onDelete={vi.fn()} />
+        <ProjectsView projects={[]} drafts={[]} error="not a project directory" onAdd={o.add} onNewProject={o.newProject} onDeleteDraft={o.deleteDraft} onDeleteProject={o.deleteProject} />
       </MemoryRouter>,
     );
     expect(screen.getByText('Seus projetos aparecem aqui.')).toBeTruthy();
@@ -53,32 +47,18 @@ describe('ProjectsView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Importar do Git' }));
     fireEvent.change(screen.getByLabelText('URL do repositório'), { target: { value: 'https://github.com/acme/demo.git' } });
     fireEvent.click(screen.getByText('Baixar e adicionar'));
-    expect(onAdd).toHaveBeenCalledWith('https://github.com/acme/demo.git');
+    expect(o.add).toHaveBeenCalledWith('https://github.com/acme/demo.git');
     expect(screen.getByText('not a project directory')).toBeTruthy();
   });
-  it('offers new project, new spec, continue spec and open refinement', () => {
-    const on = { start: vi.fn(), resume: vi.fn(), stop: vi.fn(), add: vi.fn(), newProject: vi.fn(), newSpec: vi.fn(), cont: vi.fn(), del: vi.fn() };
+  it('creates a new project and offers unregistered drafts with delete and open', () => {
+    const o = on();
     const drafts = [
       { projectId: 'hello-app', specId: 'hello-003', state: 'answering' as const, registered: true },
       { projectId: 'fresh', specId: 'fresh-001', state: 'drafting' as const, registered: false },
-      { projectId: 'hello-app', specId: 'hello-004', state: 'started' as const, registered: true },
     ];
     render(
       <MemoryRouter>
-        <ProjectsView
-          projects={projects}
-          runs={runs}
-          drafts={drafts}
-          error={null}
-          onStart={on.start}
-          onResume={on.resume}
-          onStop={on.stop}
-          onAdd={on.add}
-          onNewProject={on.newProject}
-          onNewSpec={on.newSpec}
-          onContinue={on.cont}
-          onDelete={on.del}
-        />
+        <ProjectsView projects={projects} drafts={drafts} error={null} onAdd={o.add} onNewProject={o.newProject} onDeleteDraft={o.deleteDraft} onDeleteProject={o.deleteProject} />
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Novo projeto' }));
@@ -86,41 +66,24 @@ describe('ProjectsView', () => {
     fireEvent.change(screen.getByTestId('new-project-name'), { target: { value: 'Shop' } });
     fireEvent.change(screen.getByTestId('new-project-description'), { target: { value: 'A shop for soap' } });
     fireEvent.click(screen.getByTestId('new-project'));
-    expect(on.newProject).toHaveBeenCalledWith('shop', 'Shop', 'A shop for soap');
-    fireEvent.change(screen.getByTestId('new-spec-id-hello-app'), { target: { value: 'hello-005' } });
-    fireEvent.change(screen.getByTestId('new-spec-description-hello-app'), { target: { value: 'Greet in Portuguese' } });
-    fireEvent.click(screen.getByTestId('new-spec-hello-app'));
-    expect(on.newSpec).toHaveBeenCalledWith('hello-app', 'hello-005', 'Greet in Portuguese');
-    fireEvent.click(screen.getByTestId('continue-hello-000'));
-    expect(on.cont).toHaveBeenCalledWith('hello-app', 'hello-000');
-    expect(screen.queryByTestId('continue-hello-001')).toBeNull();
-    expect(screen.getByTestId('refine-hello-app-hello-003').getAttribute('href')).toBe('/refine/hello-app/hello-003');
+    expect(o.newProject).toHaveBeenCalledWith('shop', 'Shop', 'A shop for soap');
+    // a registered project's own draft (hello-003) is not an "unregistered" one: it lives in the project hub, not here
+    expect(screen.queryByTestId('refine-hello-app-hello-003')).toBeNull();
     expect(screen.getByTestId('refine-fresh-fresh-001').getAttribute('href')).toBe('/refine/fresh/fresh-001');
-    expect(screen.queryByTestId('refine-hello-app-hello-004')).toBeNull();
     fireEvent.click(screen.getByTestId('delete-fresh-fresh-001'));
     expect(screen.getByRole('alertdialog').textContent).toContain('fresh / fresh-001');
     fireEvent.click(screen.getByTestId('delete-cancel'));
     expect(screen.queryByRole('alertdialog')).toBeNull();
-    expect(on.del).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByTestId('delete-hello-app-hello-003'));
+    expect(o.deleteDraft).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('delete-fresh-fresh-001'));
     fireEvent.click(screen.getByTestId('delete-confirm'));
-    expect(on.del).toHaveBeenCalledWith('hello-app', 'hello-003');
-    expect(screen.queryByRole('alertdialog')).toBeNull();
-  });
-  it('an awaiting-validation spec links to the validation page of its last run', () => {
-    const awaiting = [{ projectId: 'hello-app', dir: '/p/hello', specs: [{ specId: 'hello-009', status: 'awaiting-validation', activeRunId: null }] }];
-    const awaitingRuns = { 'hello-app': [{ runId: 'hello-009-r1', specId: 'hello-009', projectId: 'hello-app', status: 'awaiting-validation', at: '2026-09-24T11:00:00.000Z', tokens: 1, cost: 0, stoppable: false }] };
-    render(
-      <MemoryRouter>
-        <ProjectsView projects={awaiting} runs={awaitingRuns} drafts={[]} error={null} onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={vi.fn()} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} onDelete={vi.fn()} />
-      </MemoryRouter>,
-    );
-    expect(screen.getByTestId('validate-hello-009').getAttribute('href')).toBe('/runs/hello-009-r1/validation');
+    expect(o.deleteDraft).toHaveBeenCalledWith('fresh', 'fresh-001');
   });
   it('opens one creation form at a time and keeps what was typed', () => {
+    const o = on();
     render(
       <MemoryRouter>
-        <ProjectsView projects={projects} runs={runs} drafts={[]} error={null} onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={vi.fn()} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} onDelete={vi.fn()} />
+        <ProjectsView projects={projects} drafts={[]} error={null} onAdd={o.add} onNewProject={o.newProject} onDeleteDraft={o.deleteDraft} onDeleteProject={o.deleteProject} />
       </MemoryRouter>,
     );
     const newProject = screen.getByRole('button', { name: 'Novo projeto' });
@@ -136,47 +99,28 @@ describe('ProjectsView', () => {
     expect(screen.queryByLabelText('URL do repositório')).toBeNull();
     expect((screen.getByTestId('new-project-id') as HTMLInputElement).value).toBe('shop');
   });
-  it('filters projects by id, directory, spec and run, and clears the filter from the empty state', () => {
-    const two = [...projects, { projectId: 'shop', dir: '/p/loja', specs: [{ specId: 'shop-001', status: 'done', activeRunId: null }] }];
+  it('filters projects by id, name, description, directory and spec, and clears the filter from the empty state', () => {
+    const o = on();
+    const two = [...projects, { projectId: 'shop', dir: '/p/loja', name: 'Soap shop', description: 'Sells soap', specs: [{ specId: 'shop-001', status: 'done', activeRunId: null }] }];
     render(
       <MemoryRouter>
-        <ProjectsView projects={two} runs={runs} drafts={[]} error={null} onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={vi.fn()} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} onDelete={vi.fn()} />
+        <ProjectsView projects={two} drafts={[]} error={null} onAdd={o.add} onNewProject={o.newProject} onDeleteDraft={o.deleteDraft} onDeleteProject={o.deleteProject} />
       </MemoryRouter>,
     );
     const filter = screen.getByLabelText('Filtrar projetos') as HTMLInputElement;
     const shown = () => screen.queryAllByRole('heading', { level: 2 }).map((h) => h.textContent);
-    expect(shown()).toEqual(['hello-app', 'shop']);
+    expect(shown()).toEqual(['Hello app', 'Soap shop']);
     expect(screen.getByText('2 projetos')).toBeTruthy();
-    fireEvent.change(filter, { target: { value: 'LOJA' } });
-    expect(shown()).toEqual(['shop']);
+    fireEvent.change(filter, { target: { value: 'sells soap' } });
+    expect(shown()).toEqual(['Soap shop']);
     expect(screen.getByText('1 de 2 projetos')).toBeTruthy();
-    fireEvent.change(filter, { target: { value: 'hello-000-r1' } });
-    expect(shown()).toEqual(['hello-app']);
     fireEvent.change(filter, { target: { value: 'shop-001' } });
-    expect(shown()).toEqual(['shop']);
+    expect(shown()).toEqual(['Soap shop']);
     fireEvent.change(filter, { target: { value: 'nada' } });
     expect(shown()).toEqual([]);
     expect(screen.getByText('Nenhum projeto corresponde a “nada”.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Limpar filtro' }));
     expect(filter.value).toBe('');
-    expect(shown()).toEqual(['hello-app', 'shop']);
-  });
-  it('lists the five latest runs and expands to all of them', () => {
-    const seven = { 'hello-app': Array.from({ length: 7 }, (_, i) => ({ runId: `hello-001-r${7 - i}`, specId: 'hello-001', projectId: 'hello-app', status: 'complete', at: null, tokens: 10, cost: 0.1, stoppable: false })) };
-    render(
-      <MemoryRouter>
-        <ProjectsView projects={projects} runs={seven} drafts={[]} error={null} onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onAdd={vi.fn()} onNewProject={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} onDelete={vi.fn()} />
-      </MemoryRouter>,
-    );
-    const runLinks = () => screen.queryAllByRole('link').filter((a) => /^\/runs\/hello-001-r\d+$/.test(a.getAttribute('href') ?? '')).map((a) => a.textContent);
-    expect(runLinks()).toEqual(['hello-001-r7', 'hello-001-r6', 'hello-001-r5', 'hello-001-r4', 'hello-001-r3']);
-    const more = screen.getByRole('button', { name: 'Mostrar todas (7)' });
-    expect(more.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(more);
-    expect(runLinks()).toHaveLength(7);
-    expect(more.textContent).toBe('Mostrar menos');
-    expect(more.getAttribute('aria-expanded')).toBe('true');
-    fireEvent.click(more);
-    expect(runLinks()).toHaveLength(5);
+    expect(shown()).toEqual(['Hello app', 'Soap shop']);
   });
 });
