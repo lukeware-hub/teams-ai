@@ -317,6 +317,10 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     }
   }
 
+  // R11.10: PO and SM reading the same docs often propose the identical edit; accepting both would duplicate the
+  // text. The first role to propose it (po, by iteration order) wins; a byte-identical later one is dropped.
+  const proposedPatches = new Set<string>();
+  const patchKey = (file: string, p: { find: string; replace: string }) => `${file}\u0000${p.find.trim()}\u0000${p.replace.trim()}`;
   for (const [role, out] of [['po', po.value], ['sm', sm.value]] as const) {
     let i = 0;
     for (const p of out.docPatch) {
@@ -338,6 +342,12 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         discardedPatches.push({ role, file: p.file, reason: c.reason });
         continue;
       }
+      const key = patchKey(c.file, p);
+      if (proposedPatches.has(key)) {
+        discardedPatches.push({ role, file: p.file, reason: 'the same change was already proposed this cycle' });
+        continue;
+      }
+      proposedPatches.add(key);
       const after = applyPatch(docs[c.file], p)!;
       await journal.fact(RefineEvent.PatchProposed, {
         patchId: patchId(role, cycle, i++),
