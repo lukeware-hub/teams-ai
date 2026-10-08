@@ -101,6 +101,30 @@ async function withAgents(d: RunDeps): Promise<RunDeps> {
 }
 
 describe('Run', () => {
+  it("lets a step's sandbox reach the deployed service's own host, not just npm's registry", async () => {
+    // cfg.docker.serviceHost (dind in this teams-ai setup) is where the orchestrator and the gates already reach a
+    // deployed service (server/deploy/docker-local.ts); the agent's own sandbox denied it (`server/orchestrator/run.ts:220`
+    // allowed only registry.npmjs.org), so a Dev/Test step could install dependencies but never reach SERVICE_URL itself.
+    const seen: string[][] = [];
+    const script: Script = async (req) => {
+      if (req.kind === 'dev') return happy(req);
+      return happy(req);
+    };
+    const d = deps(script, { cfg: loadConfig({ paths: { workspaces: '/tmp/ws', runs: '/tmp/runs', secrets: '/tmp/none' }, docker: { serviceHost: 'dind' } }) });
+    const wrapped: RunDeps['runStep'] = (async (req: StepRequest, stepDeps: { network: { allowedDomains: readonly string[] }; accounting: Accounting }) => {
+      seen.push([...stepDeps.network.allowedDomains]);
+      return d.runStep(req, stepDeps as never);
+    }) as RunDeps['runStep'];
+    const run = await Run.create(await withAgents({ ...d, runStep: wrapped }));
+    await run.execute();
+    expect(seen.length).toBeGreaterThan(0);
+    for (const domains of seen) {
+      expect(domains).toContain('dind');
+      expect(domains).toContain('registry.npmjs.org');
+    }
+    await run.close();
+  });
+
   it('runs two independent tasks in parallel to merged and finishes complete', async () => {
     const run = await Run.create(await withAgents(deps(happy)));
     expect(await run.execute()).toBe('complete');

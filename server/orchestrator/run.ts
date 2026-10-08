@@ -217,7 +217,10 @@ export class Run {
       claudeJsonPath: this.deps.claudeJsonPath ?? expandHome('~/.claude.json'),
       settingsDir: path.posix.join(runDir(ws, this.runId), 'settings'),
       workspacesRoot: ws.root,
-      network: { allowedDomains: ['registry.npmjs.org'] },
+      // registry.npmjs.org lets a step install dependencies; cfg.docker.serviceHost is where the orchestrator and the
+      // gates already reach a deployed service (server/deploy/docker-local.ts), so a step's own sandbox needs the same
+      // route to test against SERVICE_URL itself — never a wider one (no internet host, no datastore port).
+      network: { allowedDomains: ['registry.npmjs.org', cfg.docker.serviceHost] },
       sandbox: { enabled: cfg.sandbox.enabled, unsafeNoSandbox: cfg.sandbox.unsafeNoSandbox },
       clock: this.clock,
       // cli-error's chain never reaches Claude, so classifying a failed step cannot start another step.
