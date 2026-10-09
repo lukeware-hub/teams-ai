@@ -60,6 +60,19 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## 5. Quality Rules
+
+**Same rules the teams-ai agents follow (`QUALITY_RULES` in `server/agents/registry.ts`).**
+
+- Code comments: plain and very short, one sentence at most, easy to understand.
+- Documentation: clear, simple and direct; no acronyms, no abbreviations, no references to look up elsewhere; each point summed up in one sentence with its context.
+- Code: clear, objective, simple and bug-free; always apply:
+  - KISS (keep it simple): smallest working solution, short functions, no needless variables; prefer the language's native features over hand-written logic.
+  - YAGNI (you aren't gonna need it): build only what is used now; remove commented-out and unused code.
+  - DRY (don't repeat yourself): no duplicated logic or ambiguity; split into small, reusable, clearly named functions.
+
+Delivery goals to keep in mind in every decision: code quality, security, very low cost, very high performance, infrastructure, architecture, evolution, fewest failures (no hidden or future bugs) and delivery.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
