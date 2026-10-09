@@ -47,6 +47,13 @@ export async function git(cwd: string, args: readonly string[], exec: Exec = exe
   return r.stdout.trim();
 }
 
+/** A file at a revision byte for byte: `git()` trims its output, which drops the final newline. */
+export async function showFile(cwd: string, rev: string, rel: string, exec: Exec = execCommand): Promise<string> {
+  const r = await run(cwd, ['show', `${rev}:${rel}`], exec);
+  if (r.exitCode !== 0) throw new GitError(`git show ${rev}:${rel} failed (${r.exitCode}): ${r.stderr.trim()}`);
+  return r.stdout;
+}
+
 export const headSha = (cwd: string, exec: Exec = execCommand) => git(cwd, ['rev-parse', 'HEAD'], exec);
 export const currentBranch = (cwd: string, exec: Exec = execCommand) => git(cwd, ['branch', '--show-current'], exec);
 

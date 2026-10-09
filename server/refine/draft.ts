@@ -6,7 +6,7 @@ import { Project } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 import { stepId } from '../core/ids.js';
 import type { Exec } from '../exec/command.js';
-import { fetch as gitFetch, git } from '../git/git.js';
+import { fetch as gitFetch, git, showFile } from '../git/git.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import type { ReportRouting } from '../decide/decisions/report-routing.js';
 
@@ -194,7 +194,7 @@ export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: {
   for (const rel of files) {
     const target = path.posix.join(d.root, rel);
     await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, await git(repo, ['show', `origin/main:${rel}`], exec));
+    await fs.writeFile(target, await showFile(repo, 'origin/main', rel, exec));
   }
   await fs.mkdir(path.dirname(d.briefMd), { recursive: true });
   if (!files.includes('docs/stack.md')) await fs.writeFile(d.stackMd, stackTemplate());

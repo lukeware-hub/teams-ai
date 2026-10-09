@@ -94,6 +94,14 @@ describe('phase 0', () => {
       await run.close();
     });
 
+    it('publishes a doc only the draft changed when its base copy lost the final newline main has', { timeout: 60_000 }, async () => {
+      // Drafts created before the byte-for-byte copy keep a base without the final newline.
+      const run = await setup({ 'flow.md': '# Flow v1\n' }, { 'flow.md': '# Flow v1' }, { 'flow.md': '# Flow v2\n' });
+      expect(await run.executePhase0()).toEqual({ ok: true });
+      expect(await show('flow.md')).toBe('# Flow v2');
+      await run.close();
+    });
+
     it('stops on a doc that both main and the draft changed', { timeout: 60_000 }, async () => {
       const run = await setup({ 'flow.md': '# Flow from another spec' }, { 'flow.md': '# Flow v1' }, { 'flow.md': '# Flow v2' });
       const result = await run.executePhase0();

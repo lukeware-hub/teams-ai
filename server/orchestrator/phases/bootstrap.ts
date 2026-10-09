@@ -77,8 +77,8 @@ export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docs
       if (hasBase && main !== null) {
         const [base, draft] = await Promise.all([read(path.join(baseDir, rel)), read(source)]);
         // Unchanged, or a doc the base never had (a sibling spec main delivered meanwhile): main's copy stays.
-        if (draft === base || base === null) continue;
-        if (main !== base && main !== draft) {
+        if (same(draft, base) || base === null) continue;
+        if (!same(main, base) && !same(main, draft)) {
           const reason = `docs conflict: ${rel} changed on main since this spec was created; start this spec again under a new id, created from the current main`;
           await journal.fact(OrchEvent.PhaseFailed, { phase: 0, reason });
           return { ok: false, reason };
@@ -93,6 +93,8 @@ export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docs
 
 const exists = (p: string) => fs.access(p).then(() => true, () => false);
 const read = (p: string) => fs.readFile(p, 'utf8').catch(() => null);
+/** Trailing whitespace is not a change: older base copies lost the final newline main keeps. */
+const same = (a: string | null, b: string | null) => a?.trimEnd() === b?.trimEnd();
 
 /** Every file under `dir`, as `/`-separated relative paths. */
 async function listFiles(dir: string, rel = ''): Promise<string[]> {

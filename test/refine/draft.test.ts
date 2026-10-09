@@ -32,6 +32,16 @@ describe('draft', () => {
     expect(await fs.readFile(d.projectJson, 'utf8')).toBe(compact);
   });
 
+  it('copies the docs of main byte for byte, final newline included, into the draft and its base copy', async () => {
+    const json = `${JSON.stringify(makeProject(), null, 2)}\n`;
+    remote = await makeRemote({ 'docs/project.json': json, 'docs/flow.md': '# Flow\n\n' });
+    const d = draftPaths(ws, 'hello-024');
+    await createFromRepo(d, remote.repo, execCommand, { kind: 'new-spec' });
+    expect(await fs.readFile(d.projectJson, 'utf8')).toBe(json);
+    expect(await readBase(d, 'project.json')).toBe(json);
+    expect(await readBase(d, 'flow.md')).toBe('# Flow\n\n');
+  });
+
   it('keeps the base copy in a hidden folder the agents do not search', () => {
     expect(draftPaths(ws, 'hello-023').base).toBe(`${root}/refine/hello-023/.base/docs`);
   });

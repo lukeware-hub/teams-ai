@@ -159,6 +159,13 @@ export async function markAwaitingValidation(projectDir: string, specId: string,
 `);
 }
 
+/** A draft root whose spec main lacks (Phase 0 stopped before publishing it) publishes it first, also when started again. */
+export async function startsAsDraft(exec: Exec, projectDir: string, ws: { root: string; repo: string }, specId: string): Promise<boolean> {
+  if (!path.resolve(projectDir).startsWith(path.resolve(ws.root, 'refine') + path.sep)) return false;
+  const r = await exec({ bin: 'git', args: ['-C', ws.repo, 'cat-file', '-e', `origin/main:docs/specs/${specId}/spec.json`], timeoutMs: 10_000 }).catch(() => null);
+  return r?.exitCode !== 0;
+}
+
 async function readJson<T>(file: string, parse: (v: unknown) => T): Promise<T> {
   return parse(JSON.parse(await fs.readFile(file, 'utf8')));
 }
@@ -202,7 +209,8 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   const gitAuth = gitAuthEnv(platformSecrets.GITHUB_TOKEN);
   const exec: Exec = (s) => execCommand(s.bin === 'git' ? { ...s, env: { ...(s.env ?? {}), ...gitAuth } } : s);
   const ghExec: Exec = (s) => execCommand({ ...s, env: { ...(s.env ?? {}), ...gitAuth } });
-  const errors = await preconditions(exec, ws.repo, specId, opts.draft === true, opts.complete === true, opts.readme === true, opts.deploy === true);
+  const draft = opts.draft === true || (!opts.complete && !opts.readme && !opts.deploy && (await startsAsDraft(exec, projectDir, ws, specId)));
+  const errors = await preconditions(exec, ws.repo, specId, draft, opts.complete === true, opts.readme === true, opts.deploy === true);
   if (errors.length > 0) throw new Error(`preconditions failed:\n- ${errors.join('\n- ')}`);
   const agents = await loadAgents(path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '.claude', 'agents'));
   const graphify = new Graphify({ exec, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null) });
@@ -223,7 +231,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
     step = scenario.wrap(runStep);
     io.stderr('dry run: every agent step answers from the fake claude scenario (set steps in code before use)');
   }
-  const bootstrap = opts.draft ? { docsDir: path.join(projectDir, 'docs'), owner: project.github.owner ?? cfg.github.owner } : undefined;
+  const bootstrap = draft ? { docsDir: path.join(projectDir, 'docs'), owner: project.github.owner ?? cfg.github.owner } : undefined;
   const target = new DockerLocalTarget({ exec, get: httpGet, secrets, serviceHost: cfg.docker.serviceHost, publishBind: cfg.docker.publishBind });
   return { cfg, ws, project, spec, firstSpec, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, requireCoverage: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target };
 }

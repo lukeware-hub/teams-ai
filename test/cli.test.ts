@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { chooseSpecId, main, markAwaitingValidation } from '../server/cli.js';
+import { chooseSpecId, main, markAwaitingValidation, startsAsDraft } from '../server/cli.js';
 import { loadConfig } from '../server/config/config.js';
 import type { RunControlDeps, SpawnArgs } from '../server/api/run-control.js';
 import { writeRun } from './fixtures/runs/write-run.js';
@@ -152,6 +152,18 @@ describe('chooseSpecId', () => {
     expect(chooseSpecId(undefined, 'a-001', dirs)).toBe('a-001');
     expect(chooseSpecId(undefined, null, dirs)).toBe('a-001-z');
     expect(chooseSpecId(undefined, null, [])).toBeUndefined();
+  });
+});
+
+describe('startsAsDraft', () => {
+  const ws = { root: path.resolve('/ws/shop'), repo: path.resolve('/ws/shop/repo') };
+  const exec = (exitCode: number) => async () => ({ exitCode, stdout: '', stderr: '', timedOut: false, durationMs: 0, signal: null, truncated: false });
+  it('publishes again a refinement whose spec main lacks, and never a spec already on main or a project outside the refinements', async () => {
+    const draftRoot = path.join(ws.root, 'refine', 'list-users');
+    expect(await startsAsDraft(exec(128), draftRoot, ws, 'list-users')).toBe(true); // Phase 0 stopped before main had it
+    expect(await startsAsDraft(exec(0), draftRoot, ws, 'list-users')).toBe(false);
+    expect(await startsAsDraft(exec(128), path.resolve('/imports/shop'), ws, 'list-users')).toBe(false);
+    expect(await startsAsDraft(exec(128), ws.repo, ws, 'list-users')).toBe(false);
   });
 });
 
