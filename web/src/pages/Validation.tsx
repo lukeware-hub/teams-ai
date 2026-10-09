@@ -177,7 +177,7 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                 </div>
                 {report.service ? (
                   <>
-                    <ServiceControls service={report.service} status={serviceStatus} starting={startingService} canStart={specStatus === 'awaiting-validation' || specStatus === 'done'} onStart={onStartService} onRecheck={onRecheckService} />
+                    <ServiceControls service={report.service} status={serviceStatus} starting={startingService} canStart={specStatus === 'awaiting-validation'} onStart={onStartService} onRecheck={onRecheckService} />
                     <table>
                       <thead>
                         <tr>

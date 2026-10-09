@@ -29,7 +29,7 @@ export interface RunRow {
   stoppable: boolean;
   kind: RunKind;
   n: number;
-  /** The spec was concluded: this agent or completion run can no longer be resumed or redone. */
+  /** The spec was concluded: the run is read-only and nothing new starts for that spec. */
   locked: boolean;
 }
 export interface SpecRow {
@@ -233,9 +233,8 @@ export async function listRuns(deps: IndexDeps, projectId: string): Promise<RunR
       row.status = 'done';
     }
   }
-  // Deploy and README runs stay usable on a concluded spec; agent and completion runs become read-only.
   const concluded = concludedSpecs(specs, rows);
-  for (const row of rows) row.locked = concluded.has(row.specId) && (row.kind === 'run' || row.kind === 'complete');
+  for (const row of rows) row.locked = concluded.has(row.specId);
   return rows;
 }
 

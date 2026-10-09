@@ -112,7 +112,10 @@ describe('ValidationView service card', () => {
     const { unmount } = view(withService({ port: 3000 }), { serviceStatus: offline, startingService: true });
     expect((screen.getByTestId('start-service') as HTMLButtonElement).disabled).toBe(true);
     unmount();
-    view(withService({ port: 3000 }), { serviceStatus: offline, specStatus: 'running' });
+    const running = view(withService({ port: 3000 }), { serviceStatus: offline, specStatus: 'running' });
+    expect((screen.getByTestId('start-service') as HTMLButtonElement).disabled).toBe(true);
+    running.unmount();
+    view(withService({ port: 3000 }), { serviceStatus: offline, specStatus: 'done' }); // a concluded spec is read-only
     expect((screen.getByTestId('start-service') as HTMLButtonElement).disabled).toBe(true);
   });
 

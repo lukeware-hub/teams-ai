@@ -721,7 +721,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
             <header>
               <h2>README do projeto</h2>
               <span className="run-readme-path">docs/README.md</span>
-              {readmeAction ? (
+              {readmeAction && !detail.locked ? (
                 <button type="button" className="secondary run-readme-action" data-testid="readme-generate" disabled={readmeAction.busy} onClick={readmeAction.onGenerate}>
                   {readmeAction.busy ? 'O sm está escrevendo…' : detail.readme ? 'Reescrever com o sm' : 'Gerar README com o sm'}
                 </button>

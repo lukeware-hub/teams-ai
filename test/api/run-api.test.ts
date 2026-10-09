@@ -420,7 +420,7 @@ describe('start, resume, stop', () => {
     expect([...alive]).toEqual([5002]); // the retry is the only live process
   });
 
-  it('a concluded spec is read-only: no resume of its runs, no new run, while deploy still works beside an old interrupted run', async () => {
+  it('a concluded spec is read-only: no resume of its runs, no new run, no deploy and no README', async () => {
     await useAwaitingValidationProject(); // concluded by its completion run, as a draft root that never sees the merged done
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 901); // dead pid: interrupted
     await writeRun(runs, 'hello-001-complete-r1', [started('hello-001-complete-r1'), { type: 'RUN_FINISHED', data: { result: 'done' } }], state('running'));
@@ -432,10 +432,12 @@ describe('start, resume, stop', () => {
     expect((await start.json()).error).toContain('concluded');
     expect(spawns).toHaveLength(0);
     expect((await (await fetch(`${base()}/api/runs/hello-001-r1`)).json()).locked).toBe(true);
-    onSpawn = async (runId) => {
-      await writeRun(runs, runId, [started(runId)], state('running'));
-    };
-    expect((await post('/api/projects/hello-app/specs/hello-001/deploy')).status).toBe(202);
+    for (const url of ['/api/projects/hello-app/specs/hello-001/deploy', '/api/runs/hello-001-r1/readme']) {
+      const r = await post(url);
+      expect(r.status, url).toBe(409);
+      expect((await r.json()).error).toContain('concluded');
+    }
+    expect(spawns).toHaveLength(0);
   });
 
   it('resume is allowed only for paused:auth or interrupted runs', async () => {

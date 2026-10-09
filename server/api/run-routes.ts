@@ -18,6 +18,7 @@ import { refuseCloneHost, type ResolveHost } from './security.js';
 import { tailJournal } from './journal-tail.js';
 import { abandonLaunch, isAlive, spawnRun, stop, type RunControlDeps } from './run-control.js';
 import { claimLaunch, claimsSpec, concludedSpecs, clearPid, clearStopRequested, listProjects, listRuns, markStopRequested, readPid, readProject, runLiveness, runRow, runsDir, SAFE_ID, writePid, type IndexDeps, type RunRow } from './run-index.js';
+import type { Spec } from '../contracts/spec.js';
 import { HttpError, type Route } from './server.js';
 
 export interface RunRoutesDeps {
@@ -160,6 +161,10 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       launching.delete(key);
     }
   };
+  // A concluded spec is read-only: no new run of any kind starts for it.
+  const refuseConcluded = (specs: Spec[], rows: RunRow[], specId: string): void => {
+    if (concludedSpecs(new Map(specs.map((s) => [s.specId, s.status])), rows).has(specId)) throw new HttpError(409, `spec ${specId} is concluded; create a new spec`);
+  };
   // One writer per spec: start, complete and readme share this key, so none of them launches while another one does.
   const specKey = (projectId: string, specId: string): string => `spec ${projectId}/${specId}`;
   const P = '/api';
@@ -260,7 +265,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         if (!specs.some((s) => s.specId === specId)) throw new HttpError(404, `unknown spec ${specId}`);
         const runId = await exclusive(specKey(params.projectId!, specId), async () => {
           const rows = await listRuns(idx, params.projectId!);
-          if (concludedSpecs(new Map(specs.map((s) => [s.specId, s.status])), rows).has(specId)) throw new HttpError(409, `spec ${specId} is concluded; create a new spec`);
+          refuseConcluded(specs, rows, specId);
           const active = rows.find((r) => r.specId === specId && claimsSpec(r));
           if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status})`);
           const id = await nextRunId({ runs: runsDir(idx), projectId: params.projectId! }, specId);
@@ -349,6 +354,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         // Same rule as spec completion: one writer per spec, because the docs PR resets the shared clone to main.
         const id = await exclusive(specKey(projectId, specId), async () => {
           const rows = await listRuns(idx, projectId);
+          refuseConcluded((await readProject(dir)).specs, rows, specId);
           const active = rows.find((r) => r.specId === specId && claimsSpec(r));
           if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status}); the README is written when it ends`);
           const next = await nextRunId({ runs: runsDir(idx), projectId }, specId, 'readme');
@@ -370,8 +376,9 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           const read = await readProject(dir);
           const spec = read.specs.find((s) => s.specId === specId);
           if (!spec) throw new HttpError(404, `unknown spec ${specId}`);
-          if (spec.status !== 'awaiting-validation' && spec.status !== 'done') throw new HttpError(409, `spec ${specId} is ${spec.status}; only delivered specs deploy again`);
           const rows = await listRuns(idx, params.projectId!);
+          refuseConcluded(read.specs, rows, specId);
+          if (spec.status !== 'awaiting-validation') throw new HttpError(409, `spec ${specId} is ${spec.status}; only delivered specs deploy again`);
           const active = rows.find((r) => r.specId === specId && claimsSpec(r));
           if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status})`);
           const id = await nextRunId({ runs: runsDir(idx), projectId: params.projectId! }, specId, 'deploy');

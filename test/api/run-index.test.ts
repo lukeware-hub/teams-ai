@@ -110,7 +110,7 @@ describe('run index', () => {
     expect(rows[0]!.specs).toEqual([{ specId: 'hello-001', status: 'running', activeRunId: null }]);
   });
 
-  it('fills kind and number, and locks the agent and completion runs of a concluded spec but not its deploy or readme runs', async () => {
+  it('fills kind and number, and locks every run of a concluded spec', async () => {
     const done = (runId: string) => [started(runId), { type: 'RUN_FINISHED', data: { result: 'done' } }];
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 111); // dead pid: interrupted
     await writeRun(runs, 'hello-001-complete-r1', done('hello-001-complete-r1'), state('running'));
@@ -120,8 +120,8 @@ describe('run index', () => {
     expect(Object.fromEntries(rows.map((r) => [r.runId, [r.kind, r.n, r.locked]]))).toEqual({
       'hello-001-r1': ['run', 1, true],
       'hello-001-complete-r1': ['complete', 1, true],
-      'hello-001-deploy-r2': ['deploy', 2, false],
-      'hello-001-readme-r3': ['readme', 3, false],
+      'hello-001-deploy-r2': ['deploy', 2, true],
+      'hello-001-readme-r3': ['readme', 3, true],
     });
     // the locked interrupted run no longer holds the concluded spec
     expect((await listProjects(deps()))[0]!.specs).toEqual([{ specId: 'hello-001', status: 'done', activeRunId: null }]);
