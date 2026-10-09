@@ -236,6 +236,13 @@ export const writeDoc = async (d: Draft, file: DocFile, text: string): Promise<v
 export const readBase = (d: Draft, rel: string): Promise<string | null> =>
   d.base ? fs.readFile(path.posix.join(d.base, rel), 'utf8').catch(() => null) : Promise.resolve(null);
 
+/** In an existing project, project.json changes only when project.md changed. */
+export async function keepBaseProject(d: Draft, derived: Project): Promise<Project> {
+  const [baseJson, baseMd] = await Promise.all([readBase(d, 'project.json'), readBase(d, 'project.md')]);
+  if (baseJson === null || baseMd === null) return derived;
+  return (await fs.readFile(d.projectMd, 'utf8')) === baseMd ? Project.parse(JSON.parse(baseJson)) : derived;
+}
+
 export async function readDerived(d: Draft): Promise<{ project: Project; spec: Spec } | null> {
   const read = (f: string) => fs.readFile(f, 'utf8').then(JSON.parse, () => null);
   const [p, s] = await Promise.all([read(d.projectJson), read(d.specJson)]);

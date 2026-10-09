@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execCommand } from '../../server/exec/command.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
-import { briefTemplate, createFromRepo, createNewProject, DOC_REL, draftExists, draftHash, draftPaths, moveBriefingToProject, readBase, readDerived, readDoc, renderBriefMd, writeDoc } from '../../server/refine/draft.js';
+import { briefTemplate, createFromRepo, createNewProject, DOC_REL, draftExists, draftHash, draftPaths, keepBaseProject, moveBriefingToProject, readBase, readDerived, readDoc, renderBriefMd, writeDoc } from '../../server/refine/draft.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 
@@ -23,6 +23,22 @@ afterEach(async () => {
 });
 
 describe('draft', () => {
+  it('an existing project keeps its project.json until project.md changes', async () => {
+    const original = makeProject({ name: 'Original' });
+    remote = await makeRemote({ 'docs/project.json': JSON.stringify(original) });
+    const d = draftPaths(ws, 'hello-021');
+    await createFromRepo(d, remote.repo, execCommand, { kind: 'new-spec' });
+    const rewritten = { ...original, name: 'Rewritten by the agent' };
+    expect((await keepBaseProject(d, rewritten)).name).toBe('Original');
+    await writeDoc(d, 'project.md', `${await readDoc(d, 'project.md')}
+- New constraint
+`);
+    expect((await keepBaseProject(d, rewritten)).name).toBe('Rewritten by the agent');
+    const fresh = draftPaths(ws, 'shop-021');
+    await createNewProject(fresh, 'Shop');
+    expect((await keepBaseProject(fresh, rewritten)).name).toBe('Rewritten by the agent');
+  });
+
   it('a new or continued spec keeps a base copy of the docs it started from; a new project has none', async () => {
     remote = await makeRemote({ 'docs/project.json': JSON.stringify(makeProject()), 'docs/flow.md': '# Flow' });
     const d = draftPaths(ws, 'hello-020');

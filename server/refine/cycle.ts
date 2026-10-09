@@ -18,7 +18,7 @@ import { sha256 } from '../contracts/hash.js';
 import { flowHeadings } from '../validators/backlog.js';
 import { flowIsMermaid } from './sections.js';
 import { detailBacklog, maxCriterionInDraft, removeRetired } from './detail-cycle.js';
-import { DOC_REL, draftHash, flowTemplate, readDerived, readDoc, stackTemplate, writeBacklogMd, writeDerived, writeDoc, writeProject, writeSpecsIndex, type DocFile, type Draft } from './draft.js';
+import { DOC_REL, draftHash, flowTemplate, keepBaseProject, readDerived, readDoc, stackTemplate, writeBacklogMd, writeDerived, writeDoc, writeProject, writeSpecsIndex, type DocFile, type Draft } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
 import { buildSpecsIndex } from './specs-index.js';
 import type { JevValidationResult } from './jev-validation.js';
@@ -150,7 +150,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         await fail(`backlog: ${rejection!.join('; ')}`);
         return;
       }
-      const { project, backlog: ranked } = accepted.value;
+      const { backlog: ranked } = accepted.value;
+      const project = await keepBaseProject(draft, accepted.value.project);
       await writeProject(draft, project);
       await writeBacklogMd(draft, renderBacklogMd(ranked));
       await writeSpecsIndex(draft, buildSpecsIndex(draft.specId, ranked));
@@ -199,6 +200,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       await fail(`derive: ${checked.issues.join('; ')}`);
       return;
     }
+    checked.value.project = await keepBaseProject(draft, checked.value.project);
     await writeDerived(draft, checked.value);
     await journal.fact(RefineEvent.Derived, { cycle, ...checked.value });
     derived = checked.value;
