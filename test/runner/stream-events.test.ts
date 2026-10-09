@@ -74,6 +74,17 @@ describe('summarizeStream step profile', () => {
     expect(profile.toolResultChars).toBe(2);
   });
 
+  it('flags a tool result that says the sandbox could not start', () => {
+    const text = [
+      JSON.stringify({ type: 'system', subtype: 'init', session_id: 's' }),
+      JSON.stringify({ type: 'assistant', message: { id: 'm1', content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'npm test' } }] } }),
+      JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', is_error: true, content: [{ type: 'text', text: 'Failed to create bridge sockets after 5 attempts' }] }] } }),
+      JSON.stringify({ type: 'result', subtype: 'success', is_error: false, num_turns: 2, result: '{}', session_id: 's', usage: {} }),
+    ].join('\n');
+    expect(summarizeStream(parseStreamJson(text)).profile).toMatchObject({ toolCalls: { Bash: 1 }, sandboxInitFailed: true });
+    expect(summarizeStream(parseStreamJson(fixture('real-turns'))).profile!.sandboxInitFailed).toBeUndefined();
+  });
+
   it('reads thinking tokens and API time from the result, and still profiles a stream without one', () => {
     const real = summarizeStream(parseStreamJson(fixture('real-json-schema'))).profile!;
     expect(real).toMatchObject({ thinkingTokens: 0, durationApiMs: 2357, toolCalls: {} });

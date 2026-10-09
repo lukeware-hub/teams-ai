@@ -18,19 +18,25 @@ const ctx = { confidential: false };
 
 describe('heuristicTier', () => {
   const t = (over: Parameters<typeof makePlanTask>[0]) => makePlanTask({ affectedPaths: ['src/a.ts'], criteriaRefs: ['AC-001'], ...over });
+  const ac = (n: number) => Array.from({ length: n }, (_, i) => `AC-${String(i + 1).padStart(3, '0')}`);
 
   it('sizes a task from what the plan says about it', () => {
-    expect(heuristicTier(t({ id: 'T9-readme', title: 'Write the README', description: 'Document the endpoints.' }), 1).tier).toBe('small');
-    expect(heuristicTier(t({ id: 'T2-list', title: 'List todos', description: 'x'.repeat(600), criteriaRefs: ['AC-001', 'AC-002'] }), 1).tier).toBe('medium');
-    expect(heuristicTier(t({ id: 'T3-big', title: 'Big', criteriaRefs: ['AC-001', 'AC-002', 'AC-003', 'AC-004'] }), 1).tier).toBe('large');
-    expect(heuristicTier(t({ id: 'T4-many', title: 'Many files', affectedPaths: ['a', 'b', 'c', 'd', 'e', 'f'] }), 1).tier).toBe('large');
+    expect(heuristicTier(t({ id: 'T9-readme', title: 'Write the README', description: 'x'.repeat(900) }), 1).tier).toBe('small');
+    expect(heuristicTier(t({ id: 'T2-list', title: 'List todos', description: 'x'.repeat(1500), criteriaRefs: ac(4) }), 1).tier).toBe('medium');
+    expect(heuristicTier(t({ id: 'T4-docker', title: 'Docker deploy', affectedPaths: ['a', 'b', 'c', 'd'], criteriaRefs: [] }), 1).tier).toBe('medium');
+    expect(heuristicTier(t({ id: 'T3-big', title: 'Big', criteriaRefs: ac(6) }), 1).tier).toBe('large');
+    expect(heuristicTier(t({ id: 'T4-many', title: 'Many files', affectedPaths: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] }), 1).tier).toBe('large');
+    expect(heuristicTier(t({ id: 'T4-long', title: 'Long', description: 'x'.repeat(2600) }), 1).tier).toBe('large');
   });
 
-  it('keeps risky work on the large tier whatever its size', () => {
-    for (const title of ['Add login', 'Rotate the session token', 'Database migration', 'Scaffold the project']) {
+  it('keeps the scaffold and risky work on the large tier, judging by the title and paths only', () => {
+    expect(heuristicTier(t({ id: 'T0-scaffold', title: 'Project skeleton' }), 1).tier).toBe('large');
+    for (const title of ['Add login', 'Rotate the session token', 'Database migration']) {
       expect(heuristicTier(t({ id: 'T1-x', title }), 1).tier).toBe('large');
     }
-    expect(heuristicTier(t({ id: 'T1-x', title: 'Block list', description: 'Show the clock' }), 1).tier).toBe('small');
+    expect(heuristicTier(t({ id: 'T1-x', title: 'Store', affectedPaths: ['src/auth/store.ts'] }), 1).tier).toBe('large');
+    // package-lock, crypto.randomUUID and docker login in a description are not risk.
+    expect(heuristicTier(t({ id: 'T1-x', title: 'Block list', description: 'Commit package-lock, use crypto.randomUUID, docker login.' }), 1).tier).toBe('small');
   });
 
   it('moves one tier up per failed attempt and never sets an effort', () => {

@@ -188,6 +188,23 @@ describe('TaskRunner: implementing', () => {
     expect(agentCalls.map((c) => c.kind)).toEqual(['dev']);
   });
 
+  it('retries a blocked Dev whose tool result shows the sandbox failing to start, whatever language it reports in', async () => {
+    let devCalls = 0;
+    const agent: Agent = async (req) => {
+      if (req.kind !== 'dev') return devDone()(req);
+      devCalls += 1;
+      if (devCalls === 1) {
+        const out = ok({ specHash: HASH, status: 'blocked', summary: 'sem shell', changedFiles: [], reason: 'O Bash foi negado e o sandbox falhou ao inicializar.' });
+        return { ...out, summary: { ...out.summary, profile: { thinkingTokens: 0, durationApiMs: 0, toolCalls: { Bash: 1 }, toolResultChars: 80, sandboxInitFailed: true } } };
+      }
+      return devDone()(req);
+    };
+    const r = new TaskRunner('T1', deps({ agent }));
+    for (let i = 0; i < 2; i++) await r.advance();
+    expect(state()).toMatchObject({ state: 'validating', attempts: 0 });
+    expect(devCalls).toBe(2);
+  });
+
   it('a blocked Dev citing a sandbox startup failure is retried, not blocked, without spending an attempt', async () => {
     // "Failed to create bridge sockets" is the claude CLI's own sandbox init failing, a known transient flake of
     // this session (unrelated to network policy or installed dependencies) — one extra try is cheap and often works.

@@ -318,7 +318,7 @@ export class TaskRunner {
     const value = outcome.value as DevOutput;
     if (value.status === 'spec-gap') return this.specGap(task.def, value.question);
     if (value.status === 'blocked') {
-      if (SANDBOX_INIT_FAILURE.test(value.reason)) return this.fail('environment', value.reason, 'dev-sandbox-init');
+      if (SANDBOX_INIT_FAILURE.test(value.reason) || outcome.summary.profile?.sandboxInitFailed) return this.fail('environment', value.reason, 'dev-sandbox-init');
       return this.block(value.reason);
     }
     this.specGapRounds = 0;

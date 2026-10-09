@@ -91,6 +91,8 @@ export interface StepProfile {
   toolCalls: Record<string, number>;
   /** Characters of tool results the agent read back, a proxy for the context a tool adds per turn. */
   toolResultChars: number;
+  /** A tool result said the CLI's own sandbox could not start (the agent may report it in any language, the tool result does not). */
+  sandboxInitFailed?: boolean;
 }
 
 export interface ResultSummary {
@@ -237,19 +239,25 @@ const textLength = (content: unknown): number => {
 };
 
 /** Tool calls and tool-result sizes, from the assistant and user messages of the stream. */
-function toolActivity(events: readonly StreamEvent[]): Pick<StepProfile, 'toolCalls' | 'toolResultChars'> {
+const SANDBOX_INIT_FAILURE = /failed to create bridge sockets/i;
+
+function toolActivity(events: readonly StreamEvent[]): Pick<StepProfile, 'toolCalls' | 'toolResultChars' | 'sandboxInitFailed'> {
   const toolCalls: Record<string, number> = {};
   let toolResultChars = 0;
+  let sandboxInitFailed = false;
   for (const e of events) {
     if (e.type !== 'assistant' && e.type !== 'user') continue;
     const content = (e as { message?: { content?: unknown } }).message?.content;
     if (!Array.isArray(content)) continue;
     for (const block of content as Array<{ type?: string; name?: string; content?: unknown }>) {
       if (block?.type === 'tool_use' && typeof block.name === 'string') toolCalls[block.name] = (toolCalls[block.name] ?? 0) + 1;
-      else if (block?.type === 'tool_result') toolResultChars += textLength(block.content);
+      else if (block?.type === 'tool_result') {
+        toolResultChars += textLength(block.content);
+        if (SANDBOX_INIT_FAILURE.test(JSON.stringify(block.content ?? ''))) sandboxInitFailed = true;
+      }
     }
   }
-  return { toolCalls, toolResultChars };
+  return { toolCalls, toolResultChars, ...(sandboxInitFailed ? { sandboxInitFailed } : {}) };
 }
 
 export function summarizeStream(parsed: ParsedStream): ResultSummary {
