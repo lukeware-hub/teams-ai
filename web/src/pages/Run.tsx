@@ -394,7 +394,9 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   // The journal wins while it streams; before the first event and after the stream ends the server's snapshot is authoritative.
   // Except for 'interrupted': a dead process writes nothing, so the journal alone would read as running forever.
   // Only the server can tell (it checks the pid), and `detail` is re-fetched periodically to pick that up live.
-  const status = finished ? String(finished.data.result) : detail.status === 'interrupted' ? 'interrupted' : ended || unique.length === 0 ? detail.status : state.status;
+  // The server turns the delivering run done once its spec is concluded; the journal never records that.
+  const result = finished ? String(finished.data.result) : null;
+  const status = result === 'awaiting-validation' && detail.status === 'done' ? 'done' : result ?? (detail.status === 'interrupted' ? 'interrupted' : ended || unique.length === 0 ? detail.status : state.status);
   const until = pausedUntil(unique);
   const t = tokens(unique);
   const phaseList = phases(unique);

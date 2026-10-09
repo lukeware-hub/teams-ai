@@ -34,15 +34,30 @@ export function useJournal(url: string | null) {
     setEnded(false);
     let es: EventSource | null = null;
     let stopped = false;
+    // A replay sends hundreds of events at once: they are applied in one render per batch, not one per event.
+    let pending: StoredEvent[] = [];
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const flush = () => {
+      clearTimeout(timer);
+      timer = undefined;
+      const batch = pending;
+      pending = [];
+      setEvents((list) => {
+        const seen = new Set(list.map((x) => x.seq));
+        const fresh = batch.filter((ev) => !seen.has(ev.seq) && seen.add(ev.seq));
+        return fresh.length === 0 ? list : [...list, ...fresh];
+      });
+    };
     void ensureSession().then(() => {
       if (stopped) return;
       const source = new EventSource(url);
       es = source;
       source.addEventListener('journal', (e) => {
-        const ev = JSON.parse((e as MessageEvent).data) as StoredEvent;
-        setEvents((list) => (list.some((x) => x.seq === ev.seq) ? list : [...list, ev]));
+        pending.push(JSON.parse((e as MessageEvent).data) as StoredEvent);
+        timer ??= setTimeout(flush, 50);
       });
       source.addEventListener('end', () => {
+        flush();
         setEnded(true);
         source.close();
       });
@@ -51,6 +66,7 @@ export function useJournal(url: string | null) {
     });
     return () => {
       stopped = true;
+      clearTimeout(timer);
       es?.close();
     };
   }, [url]);

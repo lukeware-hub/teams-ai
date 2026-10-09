@@ -152,6 +152,14 @@ describe('RunView', () => {
       expect(screen.queryByTestId('resume')).toBeNull();
     });
 
+    it('shows the delivering run as concluded once the server says its spec is, though its journal ended awaiting validation', () => {
+      const delivered = [ev(1, 'RUN_FINISHED', { result: 'awaiting-validation', reason: null, merged: [], blocked: [], tokens: {} })];
+      const { rerender } = render(view({ events: delivered, ended: true, detail: { ...detail, status: 'awaiting-validation' } }));
+      expect(screen.getByTestId('status').textContent).toContain('aguardando validação');
+      rerender(view({ events: delivered, ended: true, detail: { ...detail, status: 'done', locked: true } }));
+      expect(screen.getByTestId('status').textContent).toContain('concluído');
+    });
+
     it('offers retry deploy only when an action is wired, disabled while it starts', () => {
       const onRedeploy = vi.fn();
       const { rerender } = render(view({ events: deployFailed, ended: true, detail: { ...detail, status: 'deploy-failed' } }));

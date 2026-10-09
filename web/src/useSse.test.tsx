@@ -94,4 +94,25 @@ describe('useJournal reconnection (audit M5)', () => {
     await waitFor(() => expect(result.current.ended).toBe(true));
     expect(es.closed).toBe(true);
   });
+  it('renders a replay of many events in a few batches, not once per event, and applies the batch before the end', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+    let renders = 0;
+    const { result } = renderHook(() => {
+      renders += 1;
+      return useJournal('/api/x/events');
+    });
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const es = FakeEventSource.instances[0]!;
+    const before = renders;
+    // The browser delivers each server-sent message in its own task.
+    for (let seq = 1; seq <= 300; seq += 1) {
+      es.listeners.journal!({ data: JSON.stringify({ seq, type: 'X' }) } as MessageEvent);
+      await Promise.resolve();
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    es.listeners.end!({} as MessageEvent);
+    await waitFor(() => expect(result.current.ended).toBe(true));
+    expect(result.current.events).toHaveLength(300);
+    expect(renders - before).toBeLessThan(100); // one render per event would be 300
+  });
 });
