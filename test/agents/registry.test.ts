@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { ALWAYS_DENIED, AgentFileError, ROLE_TOOL_POLICY, loadAgents, parseAgentFile } from '../../server/agents/registry.js';
+import { ALWAYS_DENIED, AgentFileError, QUALITY_RULES, ROLE_TOOL_POLICY, loadAgents, parseAgentFile } from '../../server/agents/registry.js';
 
 const AGENTS_DIR = path.resolve('.claude/agents');
 
@@ -68,6 +68,16 @@ describe('settings directory protection', () => {
   it('every agent prompt requires 100% Brazilian Portuguese for human-readable text', async () => {
     const agents = await loadAgents(AGENTS_DIR);
     for (const def of Object.values(agents)) expect(def.body).toMatch(/Brazilian Portuguese \(pt-BR\), 100%/);
+  });
+
+  it('every agent prompt carries the shared quality rules and delivery goals', async () => {
+    const agents = await loadAgents(AGENTS_DIR);
+    for (const def of Object.values(agents)) {
+      expect(def.body).toContain(QUALITY_RULES);
+      expect(def.body).toMatch(/KISS/);
+      expect(def.body).toMatch(/YAGNI/);
+      expect(def.body).toMatch(/DRY/);
+    }
   });
 
   it('the SM prompt tells the agent to decide spec gaps and log assumptions, never to ask the human mid-run', async () => {

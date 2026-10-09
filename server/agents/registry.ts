@@ -96,6 +96,26 @@ export function parseAgentFile(text: string, expectedRole: Role): AgentDefinitio
   return { role: expectedRole, description: fields.description!, model: fields.model!, tools, body };
 }
 
+/** Shared rules every role follows, whatever its job; appended to each agent prompt. */
+export const QUALITY_RULES = `Quality rules for every role:
+- Code comments: plain and very short, one sentence at most, easy to understand.
+- Documentation: clear, simple and direct; no acronyms, no abbreviations, no references to look up elsewhere; each point summed up in one sentence with its context.
+- Code: clear, objective, simple and bug-free; always apply:
+  - KISS (keep it simple): smallest working solution, short functions, no needless variables; prefer the language's native features over hand-written logic.
+  - YAGNI (you aren't gonna need it): build only what is used now; remove commented-out and unused code.
+  - DRY (don't repeat yourself): no duplicated logic or ambiguity; split into small, reusable, clearly named functions.
+
+Delivery goals to keep in mind in every decision:
+- Code quality: readable, consistent and easy to change.
+- Security: no vulnerabilities; validate input, protect secrets, least privilege.
+- Very low cost: the cheapest software to run and maintain.
+- Very high performance: fast and light on resources.
+- Infrastructure: simple, reproducible and reliable.
+- Architecture: clear boundaries, low coupling.
+- Evolution: easy to extend without rewriting.
+- Fewest failures: no hidden bugs and nothing that breaks later; cover edge cases.
+- Delivery: complete, verified and working as asked.`;
+
 export async function loadAgents(dir: string): Promise<Record<Role, AgentDefinition>> {
   const out = {} as Record<Role, AgentDefinition>;
   for (const role of ROLES) {
@@ -106,7 +126,8 @@ export async function loadAgents(dir: string): Promise<Record<Role, AgentDefinit
     } catch {
       throw new AgentFileError(`missing agent file ${file}`);
     }
-    out[role] = parseAgentFile(text, role);
+    const def = parseAgentFile(text, role);
+    out[role] = { ...def, body: `${def.body}\n\n${QUALITY_RULES}` };
   }
   return out;
 }
