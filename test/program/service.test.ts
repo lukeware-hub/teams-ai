@@ -19,7 +19,7 @@ async function journal(runId: string, events: Array<{ type: string; data: Record
   await store.close();
 }
 const started = (specId: string) => ({ type: 'RUN_STARTED', data: { runId: 'x', specId, projectId: 'shop' } });
-const finished = (result: string, extra: Record<string, unknown> = {}) => ({ type: 'RUN_FINISHED', data: { result, reason: null, merged: [], blocked: [], ...extra } });
+const finished = (result: string, extra: Record<string, unknown> = {}) => ({ type: 'RUN_FINISHED', data: { result, reason: null, merged: [], blocked: [], tokens: { costUsd: null }, ...extra } });
 
 function service() {
   const control: RunControlDeps = {
@@ -54,7 +54,7 @@ describe('program service outcomes', () => {
     await journal('a-r1', [started('a'), finished('awaiting-validation')]);
     await journal('b-r1', [started('b'), finished('awaiting-validation', { blocked: [{ taskId: 'T3', reason: 'tests never passed' }] })]);
     const s = service();
-    expect(await s.outcome('a-r1')).toEqual({ kind: 'delivered' });
+    expect(await s.outcome('a-r1')).toEqual({ kind: 'delivered', costUsd: null });
     const b = await s.outcome('b-r1');
     expect(b).toMatchObject({ kind: 'failed' });
     expect(JSON.stringify(b)).toMatch(/T3.*tests never passed/);
@@ -65,9 +65,19 @@ describe('program service outcomes', () => {
     await journal('c-r1', [started('c'), finished('verification-failed', { reason: 'AC-004 missing' })]);
     await journal('d-r1', [started('d'), finished('deploy-failed', { reason: 'smoke 500' })]);
     const s = service();
-    expect(await s.outcome('a-complete-r1')).toEqual({ kind: 'done' });
-    expect(await s.outcome('c-r1')).toEqual({ kind: 'failed', reason: 'verification-failed: AC-004 missing' });
-    expect(await s.outcome('d-r1')).toEqual({ kind: 'failed', reason: 'deploy-failed: smoke 500' });
+    expect(await s.outcome('a-complete-r1')).toEqual({ kind: 'done', costUsd: null });
+    expect(await s.outcome('c-r1')).toEqual({ kind: 'failed', reason: 'verification-failed: AC-004 missing', costUsd: null });
+    expect(await s.outcome('d-r1')).toEqual({ kind: 'failed', reason: 'deploy-failed: smoke 500', costUsd: null });
+  });
+
+  it('surfaces the run\'s cost from RUN_FINISHED on every terminal outcome', async () => {
+    await journal('a-r1', [started('a'), finished('awaiting-validation', { tokens: { costUsd: 1.5 } })]);
+    await journal('a-complete-r1', [started('a'), finished('done', { tokens: { costUsd: 0.25 } })]);
+    await journal('c-r1', [started('c'), finished('verification-failed', { reason: 'boom', tokens: { costUsd: 2 } })]);
+    const s = service();
+    expect(await s.outcome('a-r1')).toEqual({ kind: 'delivered', costUsd: 1.5 });
+    expect(await s.outcome('a-complete-r1')).toEqual({ kind: 'done', costUsd: 0.25 });
+    expect(await s.outcome('c-r1')).toEqual({ kind: 'failed', reason: 'verification-failed: boom', costUsd: 2 });
   });
 
   it('a run that never got going or whose process died without finishing is interrupted, resumable', async () => {

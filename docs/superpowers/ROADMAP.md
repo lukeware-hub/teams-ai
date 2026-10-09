@@ -590,9 +590,11 @@ The docs (project, briefing, stack, flow, design) stay the only hand-edited trut
 
 - Jev decision routing (below in plan 50): every decision point is classified `auto` (decided from docs, ADRs or precedent and recorded as an assumption), `po`, `sm` or `human`; run-time decisions enabled after evals; cumulative README, RUNBOOK and API docs (today the last spec overwrites them, `report.ts:57`); a rebase-conflict resolver step (none exists, the task owner retries three times and then it blocks); a spec to PR ledger (`prs` in `report.json`, `Spec: <id>` in PR bodies and labels); the reserved backlog keys follow every branch suffix.
 
-### R11.6 Live program dashboard - `todo`
+### R11.6 Live program dashboard - `partial`
 
 - One screen that follows the whole program: the backlog tree with spec and task states, the current step, PRs, a decision timeline (who decided what and Jev's class), cost and quota; built on the run journals' SSE and the program ledger.
+- Built (2026-10-08, cost slice, no plan+approval gate — see the process note on R11.5a): `ProgramItem.costUsd` (`server/program/controller.ts`), summed from the delivering run's and the `spec complete` run's `RUN_FINISHED.tokens.costUsd` (`server/program/service.ts` reads it alongside the existing blocked-task check), kept across a retry since it tracks cumulative spend, recorded on `delivered`/`done`/`failed` alike so a failed attempt's spend is not lost. `ProgramPanel` (`web/src/refine/ProgramPanel.tsx`) shows per-item cost and the program's running total. Unit tests: `test/program/controller.test.ts` (accumulates across the delivering + completion run; recorded on failure too), `test/program/service.test.ts` (surfaces the real `tokens.costUsd` on every terminal outcome).
+- Open: current step, PRs, the decision timeline (`DECISION_MADE` events already exist per run — R8.7/R11.P's own event streams confirm it) and quota are still untouched; the panel still polls rather than following the run journals' SSE live.
 
 ### R11.7 Docs sync after refinement - `todo`
 

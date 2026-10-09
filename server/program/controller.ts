@@ -23,6 +23,8 @@ export interface ProgramItem {
   reason: string | null;
   /** Resumes of an interrupted run so far. */
   resumes: number;
+  /** Sum of the delivering run's and (once it runs) the `spec complete` run's cost; null until the first one finishes. */
+  costUsd: number | null;
 }
 
 export interface Program {
@@ -38,10 +40,10 @@ export type RunOutcome =
   /** The process is gone and the journal never finished: resumable. */
   | { kind: 'interrupted' }
   /** The run ended `awaiting-validation` with no blocked task: ready to complete. */
-  | { kind: 'delivered' }
+  | { kind: 'delivered'; costUsd?: number | null }
   /** A `complete` run ended `done`. */
-  | { kind: 'done' }
-  | { kind: 'failed'; reason: string };
+  | { kind: 'done'; costUsd?: number | null }
+  | { kind: 'failed'; reason: string; costUsd?: number | null };
 
 export interface ProgramEffects {
   now(): Date;
@@ -65,7 +67,7 @@ export interface ProgramEntry {
 export const MAX_RESUMES = 3;
 
 export function newProgram(draftId: string, entries: readonly ProgramEntry[], now: Date): Program {
-  const items = [...entries].sort((a, b) => a.rank - b.rank).map((e): ProgramItem => ({ ...e, dependsOn: [...e.dependsOn], status: 'pending', runId: null, completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0 }));
+  const items = [...entries].sort((a, b) => a.rank - b.rank).map((e): ProgramItem => ({ ...e, dependsOn: [...e.dependsOn], status: 'pending', runId: null, completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0, costUsd: null }));
   return { version: 1, draftId, status: 'running', items, updatedAt: now.toISOString() };
 }
 
@@ -99,10 +101,15 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
     await save(p);
   };
   let dirty = false;
-  const fail = (item: ProgramItem, reason: string) => {
+  const addCost = (item: ProgramItem, costUsd: number | null | undefined) => {
+    if (costUsd == null) return;
+    item.costUsd = (item.costUsd ?? 0) + costUsd;
+  };
+  const fail = (item: ProgramItem, reason: string, costUsd?: number | null) => {
     item.status = 'failed';
     item.reason = reason;
     item.finishedAt = stamp();
+    addCost(item, costUsd);
     dirty = true;
   };
   const resume = async (item: ProgramItem, runId: string, what: string) => {
@@ -128,9 +135,10 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
         continue;
       }
       const o = await fx.outcome(item.runId);
-      if (o.kind === 'failed') fail(item, o.reason);
+      if (o.kind === 'failed') fail(item, o.reason, o.costUsd);
       else if (o.kind === 'interrupted') await resume(item, item.runId, 'the run');
       else if (o.kind === 'delivered') {
+        addCost(item, o.costUsd);
         try {
           item.completeRunId = (await fx.completeSpec(item.specId)).runId;
           item.status = 'completing';
@@ -153,8 +161,9 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
       if (o.kind === 'done') {
         item.status = 'done';
         item.finishedAt = stamp();
+        addCost(item, o.costUsd);
         dirty = true;
-      } else if (o.kind === 'failed') fail(item, `completion failed: ${o.reason}`);
+      } else if (o.kind === 'failed') fail(item, `completion failed: ${o.reason}`, o.costUsd);
       else if (o.kind === 'interrupted') await resume(item, item.completeRunId, 'the completion');
     }
   }

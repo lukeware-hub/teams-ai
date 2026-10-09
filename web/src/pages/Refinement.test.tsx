@@ -101,7 +101,7 @@ describe('RefinementView backlog mode', () => {
 
   it('a started backlog shows the program of specs and says the agents are executing it', () => {
     const detailed = { ...backlog, detail: true, flowHeadings: [], specs: {}, preplans: {} };
-    const program = { version: 1 as const, draftId: 'hello-001', status: 'running' as const, updatedAt: '', items: [{ specId: 'hello-001-base', key: 'base', rank: 1, dependsOn: [], status: 'running' as const, runId: 'hello-001-base-r1', completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0 }] };
+    const program = { version: 1 as const, draftId: 'hello-001', status: 'running' as const, updatedAt: '', items: [{ specId: 'hello-001-base', key: 'base', rank: 1, dependsOn: [], status: 'running' as const, runId: 'hello-001-base-r1', completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0, costUsd: null }] };
     render(<MemoryRouter><RefinementView snap={base({ ...ready, status: 'started', runId: 'hello-001-base-r1', backlog: detailed as never })} busy={false} program={program} {...on()} /></MemoryRouter>);
     expect(screen.getByTestId('program-item-base').textContent).toContain('Fundação');
     expect(screen.getByRole('link', { name: 'hello-001-base-r1' }).getAttribute('href')).toBe('/runs/hello-001-base-r1');

@@ -263,6 +263,7 @@ export interface ProgramViewItem {
   finishedAt: string | null;
   reason: string | null;
   resumes: number;
+  costUsd: number | null;
 }
 export interface ProgramView {
   version: 1;

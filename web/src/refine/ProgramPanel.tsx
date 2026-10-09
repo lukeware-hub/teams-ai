@@ -16,11 +16,18 @@ export function canStartRun(st: Pick<RefineState, 'status' | 'stale' | 'backlog'
 }
 
 /** The program that runs the backlog: every spec with where it stands, the run to follow and why one failed or waits. */
+const fmtCost = (v: number) => `US$ ${v.toFixed(2)}`;
+
 export function ProgramPanel({ program, titles }: { program: ProgramView; titles: Record<string, string> }) {
   const done = program.items.filter((i) => i.status === 'done').length;
+  const totalCost = program.items.reduce((sum, i) => sum + (i.costUsd ?? 0), 0);
   return (
     <div className="backlog-panel program-panel" data-testid="program-panel">
-      <h4><Icon name="play" size={20} />Execução do backlog · {done} de {program.items.length} concluídas<InfoTip text={HELP} /></h4>
+      <h4>
+        <Icon name="play" size={20} />Execução do backlog · {done} de {program.items.length} concluídas
+        {totalCost > 0 && <span className="bk-meta" data-testid="program-total-cost"> · {fmtCost(totalCost)}</span>}
+        <InfoTip text={HELP} />
+      </h4>
       {program.status === 'finished' && <p className="muted">Programa encerrado{program.items.some((i) => i.status === 'failed' || i.status === 'blocked') ? ': há specs que falharam ou ficaram bloqueadas.' : '.'}</p>}
       <ol className="backlog-items">
         {[...program.items].sort((a, b) => a.rank - b.rank).map((i) => (
@@ -29,6 +36,7 @@ export function ProgramPanel({ program, titles }: { program: ProgramView; titles
               <span className={`bk-chip ${CLASS[i.status]}`}>{LABEL[i.status]}</span>
               <b>{titles[i.key] ?? i.key}</b>
               <span className="bk-meta">#{i.rank}</span>
+              {i.costUsd != null && <span className="bk-meta" data-testid={`program-item-cost-${i.key}`}>{fmtCost(i.costUsd)}</span>}
               {i.runId && <Link to={`/runs/${i.runId}`}>{i.runId}</Link>}
             </div>
             {i.reason && <p className="bk-issue">{i.reason}</p>}

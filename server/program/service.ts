@@ -137,7 +137,7 @@ export class ProgramService {
     if (!row) return { kind: 'running' };
     const finished = async () => {
       const events = await loadEvents(path.join(runsDirOf(idx), runId, 'events.ndjson')).catch(() => []);
-      return [...events].reverse().find((e) => e.type === 'RUN_FINISHED')?.data as { reason?: string | null; blocked?: Array<{ taskId: string; reason: string }> } | undefined;
+      return [...events].reverse().find((e) => e.type === 'RUN_FINISHED')?.data as { reason?: string | null; blocked?: Array<{ taskId: string; reason: string }>; tokens?: { costUsd?: number | null } } | undefined;
     };
     switch (row.status) {
       case 'running':
@@ -148,17 +148,20 @@ export class ProgramService {
       case 'interrupted':
       case 'unknown':
         return { kind: 'interrupted' };
-      case 'done':
-        return { kind: 'done' };
+      case 'done': {
+        const data = await finished();
+        return { kind: 'done', costUsd: data?.tokens?.costUsd ?? null };
+      }
       case 'awaiting-validation': {
         const data = await finished();
         const blocked = data?.blocked ?? [];
+        const costUsd = data?.tokens?.costUsd ?? null;
         // Verification accepts criteria whose only tasks are blocked, so a delivered spec still needs zero blocked tasks.
-        return blocked.length === 0 ? { kind: 'delivered' } : { kind: 'failed', reason: `finished with ${blocked.length} blocked task(s): ${blocked.map((b) => `${b.taskId} (${b.reason})`).join('; ').slice(0, 400)}` };
+        return blocked.length === 0 ? { kind: 'delivered', costUsd } : { kind: 'failed', reason: `finished with ${blocked.length} blocked task(s): ${blocked.map((b) => `${b.taskId} (${b.reason})`).join('; ').slice(0, 400)}`, costUsd };
       }
       default: {
         const data = await finished();
-        return { kind: 'failed', reason: `${row.status}${data?.reason ? `: ${String(data.reason).slice(0, 400)}` : ''}` };
+        return { kind: 'failed', reason: `${row.status}${data?.reason ? `: ${String(data.reason).slice(0, 400)}` : ''}`, costUsd: data?.tokens?.costUsd ?? null };
       }
     }
   }

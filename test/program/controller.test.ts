@@ -58,6 +58,26 @@ describe('program controller', () => {
     expect(p.items[1]!.status).toBe('running');
   });
 
+  it('sums the delivering run\'s and the completion run\'s cost onto the item (R11.6)', async () => {
+    const { fx } = world({ 'd-a-r1': { kind: 'delivered', costUsd: 1.5 }, 'd-a-complete-r1': { kind: 'done', costUsd: 0.25 } });
+    let p = newProgram('d', [entry('a', 1)], NOW);
+    p = await tick(p, fx, save); // start a
+    expect(p.items[0]!.costUsd).toBeNull();
+    p = await tick(p, fx, save); // delivered: adds 1.5, starts completion
+    expect(p.items[0]!.costUsd).toBe(1.5);
+    p = await tick(p, fx, save); // completion done: adds 0.25
+    expect(p.items[0]!.costUsd).toBe(1.75);
+  });
+
+  it('records cost on a failed outcome too, so partial spend is not lost', async () => {
+    const { fx } = world({ 'd-a-r1': { kind: 'failed', reason: 'boom', costUsd: 3 } });
+    let p = newProgram('d', [entry('a', 1)], NOW);
+    p = await tick(p, fx, save);
+    p = await tick(p, fx, save);
+    expect(p.items[0]!.status).toBe('failed');
+    expect(p.items[0]!.costUsd).toBe(3);
+  });
+
   it('isolates a failed item, blocks only its dependents and goes on with the others', async () => {
     const { fx, calls } = world({ 'd-a-r1': { kind: 'failed', reason: 'verification-failed: AC-003' } });
     let p = newProgram('d', [entry('a', 1), entry('b', 2, ['a']), entry('c', 3), entry('d', 4, ['b'])], NOW);

@@ -5,7 +5,7 @@ import type { ProgramView } from '../api.js';
 import { canStartRun, ProgramPanel } from './ProgramPanel.js';
 
 const item = (key: string, over: Partial<ProgramView['items'][number]> = {}): ProgramView['items'][number] => ({
-  specId: `d-${key}`, key, rank: 1, dependsOn: [], status: 'pending', runId: null, completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0, ...over,
+  specId: `d-${key}`, key, rank: 1, dependsOn: [], status: 'pending', runId: null, completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0, costUsd: null, ...over,
 });
 const program = (items: ProgramView['items'], status: ProgramView['status'] = 'running'): ProgramView => ({ version: 1, draftId: 'd', status, items, updatedAt: '2026-10-07T12:00:00Z' });
 const titles = { a: 'Cadastro de livros', b: 'Empréstimos', c: 'Relatórios' };
