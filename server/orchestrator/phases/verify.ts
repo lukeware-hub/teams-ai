@@ -8,6 +8,7 @@ import type { GateResult } from '../../exec/gate-runner.js';
 import { RunEvent } from '../../pipeline/run-state.js';
 import type { StepOutcome } from '../../runner/step.js';
 import { SCAFFOLD_TASK_ID, validatePlan } from '../../validators/plan.js';
+import { missingReadmeSections } from '../../validators/docs.js';
 import { unpinnedBaseImages } from '../../validators/pinned-image.js';
 import { OrchEvent } from '../events.js';
 import { fixTasksPack } from '../steps.js';
@@ -42,10 +43,7 @@ async function missingItems(repo: string, plan: Plan): Promise<MissingItem[]> {
   // file exists (a rerun, `spec readme`, an earlier docs PR) its headings must carry the planned sections.
   const sections = plan.delivery?.readmeSections ?? [];
   const readme = sections.length ? await fs.readFile(path.join(repo, 'docs', 'README.md'), 'utf8').catch(() => null) : null;
-  if (readme !== null) {
-    const headings = readme.split(/\r?\n/).filter((l) => /^#{1,6}\s/.test(l)).map((l) => l.toLowerCase());
-    for (const section of sections) if (!headings.some((h) => h.includes(section.toLowerCase()))) missing.push({ field: 'readmeSections', target: section });
-  }
+  if (readme !== null) for (const section of missingReadmeSections(readme, sections)) missing.push({ field: 'readmeSections', target: section });
   // The lockfile's name is never assumed (roadmap R10.2): the SM names its own stack's file, this only checks
   // that the path it named is actually on main.
   if (plan.lockfilePath) {

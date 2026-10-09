@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { featureEndpoints, validateApiDocs, validateDocs, validateReadme, validateRunbook } from '../../server/validators/docs.js';
+import { featureEndpoints, missingReadmeSections, validateApiDocs, validateDocs, validateReadme, validateRunbook } from '../../server/validators/docs.js';
 
 const body = 'Some real explanatory text that is long enough to count.';
 const md = (...titles: string[]) => titles.map((t) => `## ${t}\n\n${body}\n`).join('\n');
@@ -45,5 +45,20 @@ describe('validateDocs', () => {
   it('combines the three files', () => {
     expect(validateDocs({ readme: GOOD_README, runbook: GOOD_RUNBOOK, apiDocs: '/health' }, ['GET /health'])).toEqual([]);
     expect(validateDocs({ readme: GOOD_README, runbook: undefined, apiDocs: null }, ['GET /health']).length).toBeGreaterThan(1);
+  });
+  it('also requires every other section the plan lists, so the README passes the next verification', () => {
+    expect(validateDocs({ readme: GOOD_README, runbook: GOOD_RUNBOOK, apiDocs: '/health' }, ['GET /health'], ['Environment', 'Monitoring'])).toEqual([
+      'docs/README.md is missing a "Monitoring" section the plan requires (add a heading naming it)',
+    ]);
+  });
+});
+
+describe('missingReadmeSections', () => {
+  it('accepts the usual names of the standard sections, the same ones the README validator accepts', () => {
+    const readme = md('Executar (run)', 'Testar (test)', 'Variáveis de ambiente (env)', 'Arquitetura', 'Pipeline (CI/CD)');
+    expect(missingReadmeSections(readme, ['Run', 'Test', 'Environment', 'Architecture', 'Pipeline'])).toEqual([]);
+  });
+  it('names each planned section no heading carries; any other section is matched by its own word', () => {
+    expect(missingReadmeSections(md('Run', 'Security notes'), ['Run', 'Test', 'Security', 'Monitoring'])).toEqual(['Test', 'Monitoring']);
   });
 });

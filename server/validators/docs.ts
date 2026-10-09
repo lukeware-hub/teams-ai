@@ -60,8 +60,30 @@ export function validateApiDocs(md: string | null, features: readonly string[]):
   return endpoints.filter((e) => !md.includes(e)).map((e) => `docs/API.md does not document endpoint ${e}`);
 }
 
+/** The standard README section a planned name stands for, when it is one of the five. */
+const standardSection = (name: string): RegExp | undefined => Object.values(README_SECTIONS).find((re) => re.test(name));
+
+/**
+ * The planned README sections no heading carries. A standard one is found by any of its usual names, the same rule the
+ * README validator applies, so the README the report writes always passes the next verification; any other by its own word.
+ */
+export function missingReadmeSections(md: string, planned: readonly string[]): string[] {
+  const titles = sections(md).map((s) => s.title);
+  return planned.filter((name) => {
+    const re = standardSection(name);
+    return !titles.some((t) => (re ? re.test(t) : t.toLowerCase().includes(name.toLowerCase())));
+  });
+}
+
 export interface DocsInput { readme: string; runbook: string | null | undefined; apiDocs: string | null | undefined }
 
-export function validateDocs(d: DocsInput, features: readonly string[]): string[] {
-  return [...validateReadme(d.readme), ...validateRunbook(d.runbook ?? ''), ...validateApiDocs(d.apiDocs ?? null, features)];
+/** `readmeSections`: the plan's delivery sections; the standard five are already required with their content. */
+export function validateDocs(d: DocsInput, features: readonly string[], readmeSections: readonly string[] = []): string[] {
+  const planned = missingReadmeSections(d.readme, readmeSections.filter((s) => !standardSection(s)));
+  return [
+    ...validateReadme(d.readme),
+    ...planned.map((s) => `docs/README.md is missing a "${s}" section the plan requires (add a heading naming it)`),
+    ...validateRunbook(d.runbook ?? ''),
+    ...validateApiDocs(d.apiDocs ?? null, features),
+  ];
 }

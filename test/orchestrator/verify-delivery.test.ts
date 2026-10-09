@@ -77,6 +77,15 @@ describe('Phase 4 delivery contract', () => {
     expect(gateCalls).toBeGreaterThan(0);
   });
 
+  it('accepts the README the report writes, whose headings give the planned sections their usual names', async () => {
+    // The report validator accepts these names; Phase 4 must too, or every next spec fails on a README that passed.
+    const readme = '# P\n\n## Executar (run)\n\n## Variáveis de ambiente (env)\n';
+    const deps = await setup({ ...ALL, 'docs/README.md': readme });
+    deps.plan = makePlan(spec, { delivery: { ...delivery, readmeSections: ['Run', 'Environment'] } });
+    await runPhase4(deps, 1).catch(() => undefined);
+    expect(gateCalls).toBeGreaterThan(0);
+  });
+
   it('moves on to the gates when every listed file is on main', async () => {
     const deps = await setup(ALL);
     await runPhase4(deps, 1).catch(() => undefined);

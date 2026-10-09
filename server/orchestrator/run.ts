@@ -587,10 +587,10 @@ export class Run {
     let docsErrors: string[] = [];
     let error = 'readme step failed';
     for (let attempt = 1; attempt <= 2; attempt++) {
-      const out = (await this.runAgent<'readme'>({ kind: 'readme', role: 'sm', pack: readmePack(this.packBase(), { tasks: (plan?.tasks ?? []).map((t) => `- ${t.id}: ${t.title}`), existing, docsErrors }), cwd: wt, phase: 'readme', taskId: null, attempt })) as { ok: boolean; value?: { readme: string; runbook?: string; apiDocs?: string }; failure?: string; errors?: string[] };
+      const out = (await this.runAgent<'readme'>({ kind: 'readme', role: 'sm', pack: readmePack(this.packBase(), { readmeSections: plan?.delivery?.readmeSections, tasks: (plan?.tasks ?? []).map((t) => `- ${t.id}: ${t.title}`), existing, docsErrors }), cwd: wt, phase: 'readme', taskId: null, attempt })) as { ok: boolean; value?: { readme: string; runbook?: string; apiDocs?: string }; failure?: string; errors?: string[] };
       if (out.ok && out.value) {
         readme = out.value.readme; runbook = out.value.runbook ?? ''; apiDocs = out.value.apiDocs ?? '';
-        docsErrors = validateDocs({ readme, runbook, apiDocs }, this.deps.spec.features);
+        docsErrors = validateDocs({ readme, runbook, apiDocs }, this.deps.spec.features, plan?.delivery?.readmeSections);
         if (docsErrors.length === 0) break;
         error = `documentation rejected: ${docsErrors.join('; ')}`; readme = ''; continue;
       }

@@ -65,14 +65,26 @@ function common(base: PackBase, kind: StepKind, role: Role): Common {
   };
 }
 
+/** How the e2e suite must be written; any task that writes it gets this, whatever role owns it. */
+export const e2eSuiteRules = (suite: string): string =>
+  `When you write or change the e2e suite (${suite}): it runs black-box over HTTP against process.env.SERVICE_URL after the deploy, one test per acceptance criterion with its id in the name (for example "[AC-001] POST /todos creates a todo"), no mocks of the service under test, and it never starts, builds or restarts containers. The deployed service keeps the data of earlier runs and specs: never assume an empty store or a fixed count; create the data each test needs with unique values and assert only on that data, and prove a behavior that needs no data with a request no stored record can match (for example a filter or page no record reaches). Never skip a test: a skipped test counts as a criterion without an e2e test and fails the deploy.`;
+
+/** The task touches the suite itself or a file of its folder. */
+function writesE2eSuite(task: PlanTask, suite: string): boolean {
+  const dir = suite.endsWith('/') ? suite : `${path.posix.dirname(suite)}/`;
+  return task.affectedPaths.some((p) => p === suite || (dir !== './' && p.startsWith(dir)));
+}
+
 export function devPack(
   base: PackBase,
   task: PlanTask,
-  opts: { code: CodeContext; handoffs: readonly HandoffSummary[]; feedback: string | null },
+  opts: { code: CodeContext; handoffs: readonly HandoffSummary[]; feedback: string | null; e2eSuite?: string },
   role: Role = 'dev',
 ): ContextPackInput {
+  const shared = common(base, 'dev', role);
   return {
-    ...common(base, 'dev', role),
+    ...shared,
+    principles: opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [...shared.principles, e2eSuiteRules(opts.e2eSuite)] : shared.principles,
     task,
     criteria: criteriaOf(base.spec, task.criteriaRefs),
     handoffs: opts.handoffs,
@@ -252,22 +264,28 @@ export const DOCS_STRUCTURE = [
   '- `apiDocs` (docs/API.md): every endpoint named in the spec features, written with its exact path (only needed when the features name endpoints).',
 ].join('\n');
 
-export function readmePack(base: PackBase, opts: { tasks: readonly string[]; existing: string | null; docsErrors?: readonly string[] }): ContextPackInput {
+/** The plan's delivery sections the README must carry; the validator checks them the same way. */
+const plannedSections = (sections: readonly string[] | undefined): string[] =>
+  sections?.length ? [`docs/README.md also needs a heading naming each section the plan lists: ${sections.join(', ')}.`] : [];
+
+export function readmePack(base: PackBase, opts: { tasks: readonly string[]; existing: string | null; docsErrors?: readonly string[]; readmeSections?: readonly string[] }): ContextPackInput {
   return { ...common(base, 'readme', 'sm'), criteria: base.spec.acceptanceCriteria, feedback: [
     'Write docs/README.md for this project: the Markdown overview a newcomer reads first. Read the repository (package.json, entry points, tests, Dockerfile) with Read, Grep and Glob; state only what the files confirm.',
     DOCS_STRUCTURE,
+    ...plannedSections(opts.readmeSections),
     ...(opts.docsErrors?.length ? [`Your previous documents were rejected, fix every point:\n${opts.docsErrors.map((e) => `- ${e}`).join('\n')}`] : []),
     `Delivered tasks:\n${opts.tasks.join('\n') || '- none'}`,
     opts.existing ? `Current docs/README.md (rewrite it, keep what is still true):\n${opts.existing}` : 'There is no docs/README.md yet.',
   ].join('\n\n') };
 }
 
-export function reportPack(base: PackBase, opts: { delivered: readonly string[]; blocked: ReadonlyArray<{ taskId: string; reason: string }>; evidence: string; assumptions: readonly string[]; deploy: string; hostUrl: string | null; tokens: string; security: string; docsErrors?: readonly string[] }): ContextPackInput {
+export function reportPack(base: PackBase, opts: { delivered: readonly string[]; blocked: ReadonlyArray<{ taskId: string; reason: string }>; evidence: string; assumptions: readonly string[]; deploy: string; hostUrl: string | null; tokens: string; security: string; docsErrors?: readonly string[]; readmeSections?: readonly string[] }): ContextPackInput {
   return { ...common(base, 'report', 'sm'), criteria: base.spec.acceptanceCriteria, feedback: [
     'Write the final report for the human validator. Give concrete exploratory steps for every acceptance criterion.',
     'Write `summary`, `assumptions`, `blocked[].reason` and `exploratoryScript` entirely in Brazilian Portuguese (pt-BR), in plain words a non-developer can follow; no English sentences. Each exploratory step says what to do and what should happen, in one short sentence (for example: "Abra /health no endereço do serviço. Deve aparecer {"ok":true}."). Keep commands, URLs, status codes and JSON between backticks, untranslated.',
     'Also return `readme`: the Markdown for docs/README.md, a short overview of the project (what it is, how to run and test it, the endpoints or commands it exposes, the acceptance criteria it satisfies). Use only facts from the context pack.',
     DOCS_STRUCTURE,
+    ...plannedSections(opts.readmeSections),
     ...(opts.docsErrors?.length ? [`Your previous documents were rejected, fix every point:\n${opts.docsErrors.map((e) => `- ${e}`).join('\n')}`] : []),
     `Delivered tasks: ${opts.delivered.join(', ') || 'none'}`,
     `Blocked tasks:\n${opts.blocked.map((b) => `- ${b.taskId}: ${b.reason}`).join('\n') || '- none'}`,

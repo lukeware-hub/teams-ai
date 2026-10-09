@@ -7,7 +7,7 @@ import { Accounting } from '../../server/budget/accounting.js';
 import { Governor } from '../../server/budget/governor.js';
 import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
-import { devPack, devResumePrompt, outputContract, planPack, planRules, reportPack, reviewPack, runAgentStep, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
+import { devPack, devResumePrompt, outputContract, planPack, planRules, readmePack, reportPack, reviewPack, runAgentStep, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
 import { saveSession } from '../../server/runner/session-store.js';
 import type { StepOutcome } from '../../server/runner/step.js';
 import type { ResultSummary } from '../../server/runner/stream-events.js';
@@ -93,6 +93,17 @@ describe('packs', () => {
     expect(p.specHash).toBe(HASH);
   });
 
+  it('a task that writes the e2e suite gets its rules, whatever role owns it; other tasks do not', () => {
+    const opts = { code: { source: 'none' as const }, handoffs: [], feedback: null, e2eSuite: 'test/e2e/api.test.mjs' };
+    const suiteTask = { ...task, affectedPaths: ['test/e2e/api.test.mjs', 'test/e2e/helpers.mjs'] };
+    const rules = devPack(base, suiteTask, opts).principles.join('\n');
+    expect(rules).toContain('keeps the data of earlier runs');
+    expect(rules).toContain('Never skip a test');
+    expect(devPack(base, { ...task, affectedPaths: ['test/e2e/**'] }, opts).principles.join('\n')).toContain('Never skip a test');
+    expect(devPack(base, { ...task, affectedPaths: ['src/app.mjs'] }, opts).principles).toEqual(base.project.principles);
+    expect(devPack(base, suiteTask, { ...opts, e2eSuite: undefined }).principles).toEqual(base.project.principles);
+  });
+
   it('review pack puts the diff and impact radius in feedback and code', () => {
     const junit = [{ id: 'test::[AC-001] adds', name: '[AC-001] adds', classname: 'test', status: 'passed' as const, acIds: ['AC-001'] }];
     const p = reviewPack(base, task, { diffStat: ' src/a.ts | 2 +-', changedFiles: ['src/a.ts'], diff: '+const a = 1;', junit, code: { source: 'graph', affected: [] }, profile: 'standard' });
@@ -117,6 +128,14 @@ describe('packs', () => {
     expect(f).toContain('Brazilian Portuguese (pt-BR)');
     expect(f).toContain('`summary`, `assumptions`, `blocked[].reason` and `exploratoryScript`');
     expect(f).toContain('what to do and what should happen');
+  });
+
+  it('report and readme packs name the README sections the plan requires, so the first answer already carries them', () => {
+    const opts = { delivered: ['T1'], blocked: [], evidence: '[]', assumptions: [], deploy: '{}', hostUrl: null, tokens: '{}', security: '' };
+    const line = 'docs/README.md also needs a heading naming each section the plan lists: Run, Monitoring.';
+    expect(reportPack(base, { ...opts, readmeSections: ['Run', 'Monitoring'] }).feedback).toContain(line);
+    expect(readmePack(base, { tasks: [], existing: null, readmeSections: ['Run', 'Monitoring'] }).feedback).toContain(line);
+    expect(reportPack(base, opts).feedback).not.toContain('also needs a heading');
   });
 
   it('report pack hands the agent the browser url and keeps the internal deploy url out of the text', () => {
