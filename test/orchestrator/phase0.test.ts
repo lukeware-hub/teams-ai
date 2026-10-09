@@ -59,7 +59,7 @@ describe('phase 0', () => {
           await fs.writeFile(path.join(dir, rel), text);
         }
       };
-      await put(path.join(remote.root, 'draft', 'base', 'docs'), base);
+      await put(path.join(remote.root, 'draft', '.base', 'docs'), base);
       await put(draftDocs, { ...draft, 'specs/hello-001/spec.json': JSON.stringify(spec) });
       const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
       exec.onArgs('gh', ['repo', 'view'], () => ({ stdout: JSON.stringify({ nameWithOwner: 'o/hello-app', url: remote.origin }) }));
@@ -80,6 +80,17 @@ describe('phase 0', () => {
       expect(await show('project.md')).toBe('# Main');
       expect(await show('stack.md')).toBe('# Stack');
       expect(await show('specs/hello-001/spec.json')).toContain('"specHash"');
+      await run.close();
+    });
+
+    it('keeps what main has for a doc the base never had, such as a sibling spec main delivered meanwhile', { timeout: 60_000 }, async () => {
+      const run = await setup(
+        { 'project.md': '# P', 'specs/hello-000/spec.json': '{"status":"done"}' },
+        { 'project.md': '# P' },
+        { 'project.md': '# P', 'specs/hello-000/spec.json': '{"status":"awaiting-validation"}' },
+      );
+      expect(await run.executePhase0()).toEqual({ ok: true });
+      expect(await show('specs/hello-000/spec.json')).toBe('{"status":"done"}');
       await run.close();
     });
 

@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { canonicalJson, sha256 } from '../contracts/hash.js';
 import { Project } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
@@ -60,7 +61,7 @@ export function draftPaths(ws: Workspace, specId: string): Draft {
     flowMd: path.posix.join(docs, 'flow.md'),
     designMd: path.posix.join(docs, 'design.md'),
     specJson: path.posix.join(docs, 'specs', specId, 'spec.json'),
-    base: path.posix.join(root, 'base', 'docs'),
+    base: path.posix.join(root, '.base', 'docs'),
     events: path.posix.join(root, 'events.ndjson'),
     steps: (seq) => path.posix.join(root, 'steps', stepId(seq)),
   };
@@ -251,12 +252,17 @@ export async function readDerived(d: Draft): Promise<{ project: Project; spec: S
 }
 
 export async function writeDerived(d: Draft, v: { project: Project; spec: Spec }): Promise<void> {
-  await fs.writeFile(d.projectJson, withNewline(JSON.stringify(v.project, null, 2)));
+  await writeProject(d, v.project);
   await fs.writeFile(d.specJson, withNewline(JSON.stringify(v.spec, null, 2)));
 }
 
 /** Backlog mode derives the project but no spec yet: project.json alone. */
-export const writeProject = (d: Draft, project: Project): Promise<void> => fs.writeFile(d.projectJson, withNewline(JSON.stringify(project, null, 2)));
+/** An unchanged project keeps the base file's exact bytes, so the start does not see a reformatted copy as a change. */
+export async function writeProject(d: Draft, project: Project): Promise<void> {
+  const base = await readBase(d, 'project.json');
+  const same = base !== null && isDeepStrictEqual(Project.parse(JSON.parse(base)), project);
+  await fs.writeFile(d.projectJson, same ? base : withNewline(JSON.stringify(project, null, 2)));
+}
 
 /** `docs/specs.json`: the generated index of the backlog's specs (structure only; each spec keeps its own spec.json). */
 export const writeSpecsIndex = (d: Draft, index: unknown): Promise<void> => fs.writeFile(path.posix.join(d.docs, 'specs.json'), withNewline(JSON.stringify(index, null, 2)));

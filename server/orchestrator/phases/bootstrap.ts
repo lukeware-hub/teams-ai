@@ -67,7 +67,7 @@ export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docs
   // changed it or main lacks it, and a doc main changed meanwhile stops the start; without one, the project docs always go
   // and everything else only when main lacks it, so a spec already delivered keeps the status main gave it.
   const own = `specs/${spec.specId}/`;
-  const baseDir = path.join(path.dirname(opts.docsDir), 'base', 'docs');
+  const baseDir = path.join(path.dirname(opts.docsDir), '.base', 'docs');
   const hasBase = await exists(baseDir);
   for (const rel of await listFiles(opts.docsDir)) {
     const source = path.join(opts.docsDir, rel);
@@ -76,9 +76,10 @@ export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docs
       const main = await read(target);
       if (hasBase && main !== null) {
         const [base, draft] = await Promise.all([read(path.join(baseDir, rel)), read(source)]);
-        if (draft === base) continue;
+        // Unchanged, or a doc the base never had (a sibling spec main delivered meanwhile): main's copy stays.
+        if (draft === base || base === null) continue;
         if (main !== base && main !== draft) {
-          const reason = `docs conflict: ${rel} changed on main since this spec was created; create the spec again from the current main`;
+          const reason = `docs conflict: ${rel} changed on main since this spec was created; start this spec again under a new id, created from the current main`;
           await journal.fact(OrchEvent.PhaseFailed, { phase: 0, reason });
           return { ok: false, reason };
         }

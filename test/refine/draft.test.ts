@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execCommand } from '../../server/exec/command.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
-import { briefTemplate, createFromRepo, createNewProject, DOC_REL, draftExists, draftHash, draftPaths, keepBaseProject, moveBriefingToProject, readBase, readDerived, readDoc, renderBriefMd, writeDoc } from '../../server/refine/draft.js';
+import { briefTemplate, createFromRepo, createNewProject, DOC_REL, draftExists, draftHash, draftPaths, keepBaseProject, moveBriefingToProject, readBase, readDerived, readDoc, renderBriefMd, writeDerived, writeDoc } from '../../server/refine/draft.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 
@@ -23,6 +23,19 @@ afterEach(async () => {
 });
 
 describe('draft', () => {
+  it('keeps the base project.json bytes when the project is unchanged, so the start does not publish a reformatted copy', async () => {
+    const compact = JSON.stringify(makeProject());
+    remote = await makeRemote({ 'docs/project.json': compact });
+    const d = draftPaths(ws, 'hello-022');
+    await createFromRepo(d, remote.repo, execCommand, { kind: 'new-spec' });
+    await writeDerived(d, { project: await keepBaseProject(d, makeProject({ name: 'Other' })), spec: makeSpec({ specId: 'hello-022' }) });
+    expect(await fs.readFile(d.projectJson, 'utf8')).toBe(compact);
+  });
+
+  it('keeps the base copy in a hidden folder the agents do not search', () => {
+    expect(draftPaths(ws, 'hello-023').base).toBe(`${root}/refine/hello-023/.base/docs`);
+  });
+
   it('an existing project keeps its project.json until project.md changes', async () => {
     const original = makeProject({ name: 'Original' });
     remote = await makeRemote({ 'docs/project.json': JSON.stringify(original) });
