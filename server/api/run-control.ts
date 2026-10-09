@@ -86,6 +86,12 @@ export async function waitForRunJournal(deps: RunControlDeps, runs: string, runI
   throw new Error(`run ${runId} did not start: ${log.slice(-500) || 'no output'}`);
 }
 
+/** A new launch that did not start leaves nothing behind: its process group is stopped and its run directory removed. */
+export async function abandonLaunch(deps: RunControlDeps, runs: string, runId: string, pid: number): Promise<void> {
+  if (isAlive(deps, pid)) await stop(deps, pid);
+  await fs.rm(path.join(runs, runId), { recursive: true, force: true });
+}
+
 export function defaultRunControl(repoRoot: string): RunControlDeps {
   return {
     spawn: (a) => {

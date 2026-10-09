@@ -35,6 +35,7 @@ export async function superviseTick(d: SuperviseDeps, backoff: Backoff): Promise
   const runs = runsDir(d.idx);
   const resumed: string[] = [];
   for (const row of await listRuns(d.idx, project.projectId)) {
+    if (row.locked) continue; // a concluded spec's runs are read-only
     if (row.status !== 'interrupted') {
       if (row.stoppable && d.now() >= (backoff.get(row.runId)?.nextAt ?? 0)) backoff.delete(row.runId); // stayed alive past the backoff window: forget it
       continue;

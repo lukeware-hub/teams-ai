@@ -140,6 +140,17 @@ describe('RunView', () => {
       expect(screen.getByTestId('outcome-hint').textContent).toContain('commands.smoke');
     });
 
+    it('a run of a concluded spec is read-only: no retry deploy, Reprocessar or Retomar, and the notice says why', () => {
+      const actions = { redeployAction: { onRedeploy: vi.fn(), busy: false, error: null }, reprocessAction: { onReprocess: vi.fn(), busy: false, error: null }, resumeAction: { onResume: vi.fn(), busy: false, error: null } };
+      const { rerender } = render(view({ events: deployFailed, ended: true, detail: { ...detail, status: 'deploy-failed', locked: true }, ...actions }));
+      expect(screen.queryByTestId('redeploy')).toBeNull();
+      expect(screen.queryByTestId('reprocess')).toBeNull();
+      expect(screen.getByTestId('locked-notice').textContent).toContain('somente leitura');
+      expect(screen.getByRole('link', { name: 'nova spec no projeto' }).getAttribute('href')).toBe(`/projects/${detail.projectId}`);
+      rerender(view({ events: [], ended: false, detail: { ...detail, status: 'interrupted', locked: true }, ...actions }));
+      expect(screen.queryByTestId('resume')).toBeNull();
+    });
+
     it('offers retry deploy only when an action is wired, disabled while it starts', () => {
       const onRedeploy = vi.fn();
       const { rerender } = render(view({ events: deployFailed, ended: true, detail: { ...detail, status: 'deploy-failed' } }));

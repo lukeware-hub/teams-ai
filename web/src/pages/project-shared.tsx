@@ -1,12 +1,16 @@
 // Shared between the project list (Projects.tsx) and the per-project hub (ProjectHub.tsx): status vocabulary,
 // chips and small formatters used by both screens' specs and runs rows.
-export const CONTINUABLE = new Set(['awaiting-validation', 'done']);
+// A concluded spec is read-only: the next delivery is a new spec.
+export const CONTINUABLE = new Set(['awaiting-validation']);
 export const ACTIVE = new Set(['running', 'paused:quota', 'paused:auth', 'draining']);
 export const RECENT_RUNS = 5;
 export const money = (n: number) => `US$ ${n.toFixed(2)}`;
 // Thousands split by a narrow space: a dot or a comma would read as a decimal point next to the US$ amounts.
 export const grouped = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+export const when = (at: string | null) => (at ? new Date(at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+const KIND_NAME: Record<string, string> = { run: 'Execução', complete: 'Conclusão', deploy: 'Deploy', readme: 'README' };
+export const runName = (r: { kind: string; n: number }) => `${KIND_NAME[r.kind] ?? 'Execução'} #${r.n}`;
 
 // Spec and run states are feminine (a spec, a execução); refinement states masculine (o refinamento).
 // 'idle' is not a server status: a spec frozen for running ('running') with no run in progress.
@@ -26,7 +30,7 @@ export const TONE: Record<string, string> = {
 export const chip = (status: string) => <span className={TONE[status] ? `status-pill tone-${TONE[status]}` : 'status-pill'}>{LABEL[status] ?? status}</span>;
 
 export const HELP = {
-  specs: 'Cada spec descreve uma entrega do projeto. O status mostra a etapa: pronta para executar, em execução, pausada, aguardando validação ou concluída. Continuar spec reabre a spec para um novo refinamento.',
+  specs: 'Cada spec descreve uma entrega do projeto. O status mostra a etapa: pronta para executar, em execução, pausada, aguardando validação ou concluída. Continuar spec reabre uma spec aguardando validação para um novo refinamento. Uma spec concluída fica somente leitura; a próxima entrega começa em Nova spec.',
   runStatus: 'Pausada por cota: continua sozinha quando o limite de uso renovar. Aguardando login: a sessão do Claude expirou; entre de novo e use Retomar. Interrompida: o processo parou; use Retomar. Finalizando: encerrando depois de Parar.',
   tokens: 'Total de tokens lidos e escritos pelos modelos de IA nesta execução.',
   cost: 'Custo estimado das chamadas aos modelos de IA nesta execução, em dólares.',

@@ -253,6 +253,7 @@ describe('refine api', () => {
     expect(failed.status).toBe(500);
     expect(JSON.stringify(await failed.json())).toMatch(/nenhuma run/);
     await expect(fs.access(`${home}/ws/hello-app/refine/hello-app-001/program.json`)).rejects.toThrow();
+    expect(await fs.readdir(`${home}/runs`).catch(() => [])).toEqual([]); // the failed launch left no run directory
     expect((await snapshot()).state.status).toBe('ready');
     spawnShouldFail = false;
     expect((await call('POST', `${url}/start`)).status).toBe(200);
@@ -276,7 +277,8 @@ describe('refine api', () => {
 
   it('new spec and continue spec copy docs from the project clone and enforce status rules', async () => {
     const spec = { ...makeSpec({ specId: 'hello-001' }), status: 'awaiting-validation', specHash: `sha256:${'a'.repeat(64)}` };
-    remote = await makeRemote({ 'docs/project.json': JSON.stringify(HELLO_PROJECT), 'docs/specs/hello-001/spec.json': JSON.stringify(spec) });
+    const concluded = { ...spec, specId: 'hello-009', status: 'done' };
+    remote = await makeRemote({ 'docs/project.json': JSON.stringify(HELLO_PROJECT), 'docs/specs/hello-001/spec.json': JSON.stringify(spec), 'docs/specs/hello-009/spec.json': JSON.stringify(concluded) });
     await fs.mkdir(`${home}/ws/hello-app`, { recursive: true });
     await fs.cp(remote.repo, `${home}/ws/hello-app/repo`, { recursive: true });
     expect((await call('POST', '/api/projects/hello-app/specs', { specId: 'hello-001' })).status).toBe(409);
@@ -285,6 +287,9 @@ describe('refine api', () => {
     const snap = await (await fetch(`${base()}/api/refine/hello-app/hello-002`)).json();
     expect(snap.docs['project.md']).toContain('## Personas');
     expect((await call('POST', '/api/projects/hello-app/specs/hello-002/continue')).status).toBe(409);
+    const closed = await call('POST', '/api/projects/hello-app/specs/hello-009/continue');
+    expect(closed.status).toBe(409); // a concluded spec is read-only; the next delivery is a new spec
+    expect((await closed.json()).error).toContain('concluded');
     const described = await call('POST', '/api/projects/hello-app/specs', { specId: 'hello-003', description: 'Greet in Portuguese too.' });
     expect(described.status).toBe(200);
     const snap3 = await (await fetch(`${base()}/api/refine/hello-app/hello-003`)).json();
@@ -409,6 +414,7 @@ describe('refine api', () => {
     expect(failed.status).toBe(500);
     expect((await failed.json()).error).toContain('docker daemon is not reachable');
     expect((await snapshot()).state.status).toBe('ready'); // never got to StartedRun; not stuck as 'started'
+    await expect(fs.access(`${home}/runs/hello-app--hello-app-001--run-1`)).rejects.toThrow(); // no empty run left to list
 
     spawnShouldFail = false;
     const retried = await call('POST', '/api/refine/hello-app/hello-app-001/start');

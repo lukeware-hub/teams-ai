@@ -374,6 +374,9 @@ describe('start, resume, stop', () => {
     const r = await post('/api/projects/hello-app/specs/hello-001/runs');
     expect(r.status).toBe(500);
     expect((await r.json()).error).toContain('claude is not logged in');
+    // nothing is left behind to show up as a run
+    await expect(fs.access(path.join(runs, 'hello-app--hello-001--run-1'))).rejects.toThrow();
+    expect(await (await fetch(`${base()}/api/projects/hello-app/runs`)).json()).toEqual([]);
   }, 15_000);
 
   it('redacts the ui.log tail with secrets read at request time (audit M3/M4)', async () => {
@@ -415,6 +418,24 @@ describe('start, resume, stop', () => {
     };
     expect((await post(start)).status).toBe(200); // released afterwards
     expect([...alive]).toEqual([5002]); // the retry is the only live process
+  });
+
+  it('a concluded spec is read-only: no resume of its runs, no new run, while deploy still works beside an old interrupted run', async () => {
+    await useAwaitingValidationProject(); // concluded by its completion run, as a draft root that never sees the merged done
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 901); // dead pid: interrupted
+    await writeRun(runs, 'hello-001-complete-r1', [started('hello-001-complete-r1'), { type: 'RUN_FINISHED', data: { result: 'done' } }], state('running'));
+    const resume = await post('/api/runs/hello-001-r1/resume');
+    expect(resume.status).toBe(409);
+    expect((await resume.json()).error).toContain('concluded');
+    const start = await post('/api/projects/hello-app/specs/hello-001/runs');
+    expect(start.status).toBe(409);
+    expect((await start.json()).error).toContain('concluded');
+    expect(spawns).toHaveLength(0);
+    expect((await (await fetch(`${base()}/api/runs/hello-001-r1`)).json()).locked).toBe(true);
+    onSpawn = async (runId) => {
+      await writeRun(runs, runId, [started(runId)], state('running'));
+    };
+    expect((await post('/api/projects/hello-app/specs/hello-001/deploy')).status).toBe(202);
   });
 
   it('resume is allowed only for paused:auth or interrupted runs', async () => {

@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { isAlive, spawnRun, waitForRunJournal, type RunControlDeps } from '../api/run-control.js';
-import { claimLaunch, clearStopRequested, CLAIMS_SPEC, listRuns, runRow, runsDir as runsDirOf, writePid, type IndexDeps } from '../api/run-index.js';
+import { abandonLaunch, isAlive, spawnRun, waitForRunJournal, type RunControlDeps } from '../api/run-control.js';
+import { claimLaunch, claimsSpec, clearStopRequested, listRuns, runRow, runsDir as runsDirOf, writePid, type IndexDeps } from '../api/run-index.js';
 import type { Config } from '../config/config.js';
 import { Spec } from '../contracts/spec.js';
 import { writeFileAtomic } from '../core/atomic-write.js';
@@ -87,13 +87,17 @@ export class ProgramService {
       const runs = runsDirOf(await this.index());
       await fs.mkdir(path.join(runs, runId), { recursive: true });
       const { pid } = spawnRun(control, { projectDir: root, specId, runId, mode, ...(mode === 'run' ? { draft: true } : {}), logFile: path.join(runs, runId, 'ui.log') });
-      await waitForRunJournal(control, runs, runId, pid);
+      await waitForRunJournal(control, runs, runId, pid).catch(async (err: unknown) => {
+        // A resume keeps its directory: it holds the run's journal.
+        if (mode !== 'resume') await abandonLaunch(control, runs, runId, pid);
+        throw err;
+      });
       await writePid(runs, runId, pid);
       this.deps.log?.(`program ${draftId}: run ${runId} ${mode} pid ${pid}`);
     };
     return {
       now: () => this.now(),
-      findActiveRun: async (specId) => (await listRuns(await this.index(), projectId)).find((r) => r.specId === specId && CLAIMS_SPEC.has(r.status))?.runId ?? null,
+      findActiveRun: async (specId) => (await listRuns(await this.index(), projectId)).find((r) => r.specId === specId && claimsSpec(r))?.runId ?? null,
       startRun: async (specId) => {
         await this.deps.freezeItem(projectId, draftId, specId);
         const runs = runsDirOf(await this.index());

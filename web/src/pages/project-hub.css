@@ -24,3 +24,11 @@
 /* Runs in flight stand out from the history instead of blending into the table. */
 .project-table tr.is-live td { background: var(--good-soft); }
 .project-table tr.is-live td:first-child { box-shadow: inset 3px 0 0 var(--good-live); }
+
+/* Every spec concluded: point at the next step, a new spec. */
+.project-hub-note { margin: 0; padding: 0.625rem 0.875rem; border: 1px solid var(--good-line); border-radius: var(--radius-lg); color: var(--ink); background: var(--good-soft); font-size: 0.875rem; }
+
+/* Runs of a concluded spec are history: muted, with a read-only mark instead of actions. */
+.project-table tr.is-locked td { color: var(--ink-soft); }
+.project-run-when { color: var(--ink-soft); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.project-run-locked { display: inline-flex; align-items: center; gap: 0.375rem; color: var(--ink-faint); font-size: 0.8125rem; white-space: nowrap; }

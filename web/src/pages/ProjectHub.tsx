@@ -4,7 +4,7 @@ import { refineApi, runApi, type DraftRow, type NameRequest, type NameSuggestion
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
-import { ACTIVE, CONTINUABLE, HELP, RECENT_RUNS, chip, grouped, money, plural } from './project-shared.js';
+import { ACTIVE, CONTINUABLE, HELP, RECENT_RUNS, chip, grouped, money, plural, runName, when } from './project-shared.js';
 import './projects.css';
 import './project-hub.css';
 
@@ -51,7 +51,7 @@ export function ProjectHubView(p: {
       setSuggesting(false);
     }
   };
-  const lastRunOf = (specId: string) => p.runs.find((r) => r.specId === specId && !r.runId.includes('-complete-'))?.runId ?? '';
+  const lastRunOf = (specId: string) => p.runs.find((r) => r.specId === specId && r.kind === 'run')?.runId ?? '';
   if (p.notFound) {
     return (
       <main className="projects-shell">
@@ -67,6 +67,8 @@ export function ProjectHubView(p: {
   const pr = p.project;
   const doneCount = pr.specs.filter((s) => s.status === 'done' || s.status === 'complete').length;
   const percent = pr.specs.length === 0 ? null : Math.round((doneCount / pr.specs.length) * 100);
+  const allConcluded = percent === 100;
+  const agentRuns = p.runs.filter((r) => r.kind === 'run').length;
   const activeRuns = p.runs.filter((r) => ACTIVE.has(r.status));
   const totalCost = p.runs.reduce((sum, r) => sum + r.cost, 0);
   return (
@@ -98,8 +100,8 @@ export function ProjectHubView(p: {
           <span className="project-hub-stat-label">{plural(pr.specs.length, 'spec', 'specs')}</span>
         </div>
         <div className="project-hub-stat">
-          <span className="project-hub-stat-value">{p.runs.length}</span>
-          <span className="project-hub-stat-label">{plural(p.runs.length, 'execução', 'execuções')}</span>
+          <span className="project-hub-stat-value">{agentRuns}</span>
+          <span className="project-hub-stat-label">{plural(agentRuns, 'execução', 'execuções')}</span>
         </div>
         <div className={`project-hub-stat${activeRuns.length > 0 ? ' is-live' : ''}`}>
           <span className="project-hub-stat-value">{activeRuns.length}</span>
@@ -120,7 +122,7 @@ export function ProjectHubView(p: {
               <InfoTip label="Especificações" text={HELP.specs} />
             </div>
             {creating ? null : (
-              <button type="button" className="project-action" data-testid="open-new-spec" onClick={() => setCreating(true)}>
+              <button type="button" className={allConcluded ? 'project-action primary' : 'project-action'} data-testid="open-new-spec" onClick={() => setCreating(true)}>
                 <Icon name="plus" size={14} />
                 Nova spec
               </button>
@@ -153,6 +155,7 @@ export function ProjectHubView(p: {
               </div>
             </form>
           ) : null}
+          {allConcluded && !creating ? <p className="project-hub-note" data-testid="all-concluded">Todas as specs foram concluídas. Crie uma nova spec para a próxima entrega.</p> : null}
           {pr.specs.length === 0 ? (
             <p className="project-empty">Nenhuma spec criada ainda. Use Nova spec para criar a primeira.</p>
           ) : (
@@ -177,7 +180,13 @@ export function ProjectHubView(p: {
                         Validar
                         <Icon name="arrow-right" size={14} />
                       </Link>
-                    ) : s.status === 'done' ? null : (
+                    ) : s.status === 'done' ? (
+                      lastRunOf(s.specId) ? (
+                        <Link className="project-action secondary" data-testid={`validation-${s.specId}`} aria-label={`Ver validação de ${s.specId}`} to={`/runs/${lastRunOf(s.specId)}/validation`}>
+                          Ver validação
+                        </Link>
+                      ) : null
+                    ) : (
                       <button type="button" className="project-action primary" data-testid={`start-${s.specId}`} aria-label={`Iniciar execução de ${s.specId}`} onClick={() => p.onStart(s.specId)}>
                         <Icon name="play" size={14} />
                         Iniciar execução
@@ -206,6 +215,7 @@ export function ProjectHubView(p: {
                     <tr>
                       <th scope="col">Execução</th>
                       <th scope="col">Spec</th>
+                      <th scope="col">Quando</th>
                       <th scope="col">Status <InfoTip text={HELP.runStatus} /></th>
                       <th scope="col" className="num">Tokens <InfoTip text={HELP.tokens} /></th>
                       <th scope="col" className="num">Custo <InfoTip text={HELP.cost} /></th>
@@ -214,21 +224,28 @@ export function ProjectHubView(p: {
                   </thead>
                   <tbody>
                     {(showAll ? p.runs : p.runs.slice(0, RECENT_RUNS)).map((r) => (
-                      <tr key={r.runId} className={ACTIVE.has(r.status) ? 'is-live' : ''}>
-                        <td><Link className="project-run-link" to={`/runs/${r.runId}`}>{r.runId}</Link></td>
+                      <tr key={r.runId} className={ACTIVE.has(r.status) ? 'is-live' : r.locked ? 'is-locked' : ''}>
+                        <td><Link className="project-run-link" to={`/runs/${r.runId}`} title={r.runId}>{runName(r)}</Link></td>
                         <td>{r.specId}</td>
+                        <td className="project-run-when">{when(r.at)}</td>
                         <td>{chip(r.status)}</td>
                         <td className="num">{grouped(r.tokens)}</td>
                         <td className="num">{money(r.cost)}</td>
                         <td>
                           <span className="project-run-actions">
+                            {r.locked ? (
+                              <span className="project-run-locked" data-testid={`locked-${r.runId}`} title="A spec foi concluída: esta execução não pode ser retomada nem reprocessada.">
+                                <Icon name="lock" size={14} />
+                                Somente leitura
+                              </span>
+                            ) : null}
                             {r.stoppable && ACTIVE.has(r.status) ? (
                               <button type="button" className="project-action project-action-danger" data-testid={`stop-${r.runId}`} aria-label={`Parar ${r.runId}`} onClick={() => p.onStop(r.runId)}>
                                 <Icon name="stop" size={14} />
                                 Parar
                               </button>
                             ) : null}
-                            {r.status === 'paused:auth' || r.status === 'interrupted' ? (
+                            {!r.locked && (r.status === 'paused:auth' || r.status === 'interrupted') ? (
                               <button type="button" className="project-action secondary" data-testid={`resume-${r.runId}`} aria-label={`Retomar ${r.runId}`} onClick={() => p.onResume(r.runId)}>
                                 <Icon name="play" size={14} />
                                 Retomar

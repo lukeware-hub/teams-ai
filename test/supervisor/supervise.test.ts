@@ -71,6 +71,13 @@ describe('supervise', () => {
     expect(logs.join('\n')).toContain('hello-001-r5 skipped');
   });
 
+  it('never resumes an interrupted run of a concluded spec', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 111); // dead pid: interrupted
+    await writeRun(runs, 'hello-001-complete-r1', [started('hello-001-complete-r1'), { type: 'RUN_FINISHED', data: { result: 'done' } }], state('running'));
+    expect(await superviseTick(deps(), new Map())).toEqual([]);
+    expect(spawned).toHaveLength(0);
+  });
+
   it('a stop is intentional only while it is the last lifecycle event', async () => {
     const stop = { type: 'RUN_STOP_REQUESTED' };
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), stop, { type: 'RUN_RESUMED' }], state('running'), 111); // hand resume, then crashed

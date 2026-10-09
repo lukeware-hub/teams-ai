@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { Config } from '../config/config.js';
 import { Project } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
-import { parseRunId } from '../core/ids.js';
+import { parseRunId, type RunKind } from '../core/ids.js';
 import { expandHome } from '../orchestrator/workspace.js';
 import { loadEvents } from '../store/event-store.js';
 import { probeProcess } from './process-identity.js';
@@ -15,6 +15,8 @@ export type RunListStatus = 'running' | 'paused:quota' | 'paused:auth' | 'draini
 const ACTIVE: ReadonlySet<string> = new Set(['running', 'paused:quota', 'paused:auth', 'draining']);
 /** A spec with an interrupted run is resumed, not restarted: the UI offers Resume instead of Start. */
 export const CLAIMS_SPEC: ReadonlySet<string> = new Set([...ACTIVE, 'interrupted']);
+/** A locked run belongs to a concluded spec: read-only, so it never holds the spec. */
+export const claimsSpec = (r: RunRow): boolean => !r.locked && CLAIMS_SPEC.has(r.status);
 
 export interface RunRow {
   runId: string;
@@ -25,6 +27,10 @@ export interface RunRow {
   tokens: number;
   cost: number;
   stoppable: boolean;
+  kind: RunKind;
+  n: number;
+  /** The spec was concluded: this agent or completion run can no longer be resumed or redone. */
+  locked: boolean;
 }
 export interface SpecRow {
   specId: string;
@@ -188,7 +194,7 @@ export async function runRow(deps: IndexDeps, runId: string): Promise<RunRow | n
   else if (interrupted) status = 'interrupted';
   else status = state.status as RunListStatus;
   const tokens = (state?.tokens?.inputTokens ?? 0) + (state?.tokens?.outputTokens ?? 0);
-  return { runId, specId, projectId: projectId ?? '', status, at: state?.at ?? finished?.at ?? launchLog?.mtime.toISOString() ?? null, tokens, cost: state?.tokens?.costUsd ?? 0, stoppable: alive && ACTIVE.has(status) };
+  return { runId, specId, projectId: projectId ?? '', status, at: state?.at ?? finished?.at ?? launchLog?.mtime.toISOString() ?? null, tokens, cost: state?.tokens?.costUsd ?? 0, stoppable: alive && ACTIVE.has(status), kind: parsed?.kind ?? 'run', n: parsed?.n ?? 0, locked: false };
 }
 
 async function specsOf(deps: IndexDeps, projectId: string): Promise<Map<string, string>> {
@@ -211,10 +217,9 @@ export async function listRuns(deps: IndexDeps, projectId: string): Promise<RunR
     if (row.projectId === projectId || (row.projectId === '' && specs.has(row.specId))) rows.push({ ...row, projectId });
   }
   // newest first: runs without a state snapshot (just started) on top, then by state timestamp, then by the numeric suffix
-  const suffix = (r: RunRow) => parseRunId(r.runId)?.n ?? 0;
   rows.sort((a, b) => {
     if ((a.at === null) !== (b.at === null)) return a.at === null ? -1 : 1;
-    return (b.at ?? '').localeCompare(a.at ?? '') || suffix(b) - suffix(a);
+    return (b.at ?? '').localeCompare(a.at ?? '') || b.n - a.n;
   });
   // Concluding a spec runs a new `complete` run and never touches the journal of the run that delivered it, which would
   // read "awaiting validation" forever. The newest such run turns done once the spec is: its spec file says so, or a
@@ -222,13 +227,22 @@ export async function listRuns(deps: IndexDeps, projectId: string): Promise<RunR
   const completed = new Set([...specs].filter(([, status]) => status === 'done').map(([specId]) => specId));
   const settled = new Set<string>();
   for (const row of rows) {
-    if (row.status === 'done' && parseRunId(row.runId)?.kind === 'complete') completed.add(row.specId);
+    if (row.status === 'done' && row.kind === 'complete') completed.add(row.specId);
     else if (row.status === 'awaiting-validation' && completed.has(row.specId) && !settled.has(row.specId)) {
       settled.add(row.specId);
       row.status = 'done';
     }
   }
+  // Deploy and README runs stay usable on a concluded spec; agent and completion runs become read-only.
+  const concluded = concludedSpecs(specs, rows);
+  for (const row of rows) row.locked = concluded.has(row.specId) && (row.kind === 'run' || row.kind === 'complete');
   return rows;
+}
+
+/** A spec is concluded when its spec file says done or one of its completion runs finished done. */
+export function concludedSpecs(specs: ReadonlyMap<string, string>, rows: readonly RunRow[]): Set<string> {
+  const done = [...specs].filter(([, status]) => status === 'done').map(([specId]) => specId);
+  return new Set([...done, ...rows.filter((r) => r.kind === 'complete' && r.status === 'done').map((r) => r.specId)]);
 }
 
 
@@ -241,13 +255,13 @@ export async function listProjects(deps: IndexDeps): Promise<ProjectRow[]> {
     // `spec complete` finishes by merging `status: done` onto main; the draft root this project reads its specs
     // from keeps whatever status the freeze left it, since nothing patches it back once that merge lands. The
     // completion run's own journal is ground truth for whether the spec is actually done.
-    const completed = new Set(runs.filter((r) => r.status === 'done' && parseRunId(r.runId)?.kind === 'complete').map((r) => r.specId));
+    const completed = concludedSpecs(new Map(read.specs.map((s) => [s.specId, s.status])), runs);
     out.push({
       projectId: read.project.projectId,
       dir,
       name: read.project.name,
       description: read.project.vision,
-      specs: read.specs.map((s) => ({ specId: s.specId, status: completed.has(s.specId) ? 'done' : s.status, activeRunId: runs.find((r) => r.specId === s.specId && CLAIMS_SPEC.has(r.status))?.runId ?? null })),
+      specs: read.specs.map((s) => ({ specId: s.specId, status: completed.has(s.specId) ? 'done' : s.status, activeRunId: runs.find((r) => r.specId === s.specId && claimsSpec(r))?.runId ?? null })),
     });
   }
   return out;

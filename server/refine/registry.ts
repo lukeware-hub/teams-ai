@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { RunControlDeps } from '../api/run-control.js';
-import { spawnRun, waitForRunJournal } from '../api/run-control.js';
+import { abandonLaunch, spawnRun, waitForRunJournal } from '../api/run-control.js';
 import { ProgramService, programFile } from '../program/service.js';
 import type { Program } from '../program/controller.js';
 import { writePid } from '../api/run-index.js';
@@ -158,9 +158,8 @@ export class SessionRegistry {
     const draft = draftPaths(ws, specId);
     if (await draftExists(draft)) throw new ConflictError(`spec ${specId} already has a refinement session`);
     const spec = await this.specOnMain(ws, specId);
-    if (!spec || (spec.status !== 'awaiting-validation' && spec.status !== 'done')) {
-      throw new ConflictError(`spec ${specId} is ${spec?.status ?? 'absent'} on main; only awaiting-validation or done specs continue`);
-    }
+    if (spec?.status === 'done') throw new ConflictError(`spec ${specId} is concluded; create a new spec`);
+    if (spec?.status !== 'awaiting-validation') throw new ConflictError(`spec ${specId} is ${spec?.status ?? 'absent'} on main; only awaiting-validation specs continue`);
     await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'continue', report, route: this.deps.routeReport });
     return this.session(draft, ws, 'continue');
   }
@@ -217,6 +216,7 @@ export class SessionRegistry {
     try {
       await waitForRunJournal(this.deps.control, runs, runId, pid);
     } catch (err) {
+      await abandonLaunch(this.deps.control, runs, runId, pid);
       session.failStart();
       throw new HttpError(500, err instanceof Error ? err.message : String(err));
     }

@@ -110,6 +110,29 @@ describe('run index', () => {
     expect(rows[0]!.specs).toEqual([{ specId: 'hello-001', status: 'running', activeRunId: null }]);
   });
 
+  it('fills kind and number, and locks the agent and completion runs of a concluded spec but not its deploy or readme runs', async () => {
+    const done = (runId: string) => [started(runId), { type: 'RUN_FINISHED', data: { result: 'done' } }];
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 111); // dead pid: interrupted
+    await writeRun(runs, 'hello-001-complete-r1', done('hello-001-complete-r1'), state('running'));
+    await writeRun(runs, 'hello-001-deploy-r2', done('hello-001-deploy-r2'), state('running'));
+    await writeRun(runs, 'hello-001-readme-r3', done('hello-001-readme-r3'), state('running'));
+    const rows = await listRuns(deps(), 'hello-app');
+    expect(Object.fromEntries(rows.map((r) => [r.runId, [r.kind, r.n, r.locked]]))).toEqual({
+      'hello-001-r1': ['run', 1, true],
+      'hello-001-complete-r1': ['complete', 1, true],
+      'hello-001-deploy-r2': ['deploy', 2, false],
+      'hello-001-readme-r3': ['readme', 3, false],
+    });
+    // the locked interrupted run no longer holds the concluded spec
+    expect((await listProjects(deps()))[0]!.specs).toEqual([{ specId: 'hello-001', status: 'done', activeRunId: null }]);
+  });
+
+  it('leaves every run unlocked while the spec is not concluded', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), { type: 'RUN_FINISHED', data: { result: 'awaiting-validation' } }], state('running'));
+    await writeRun(runs, 'hello-001-complete-r1', [started('hello-001-complete-r1'), { type: 'RUN_FINISHED', data: { result: 'phase-failed' } }], state('running'));
+    expect((await listRuns(deps(), 'hello-app')).map((r) => r.locked)).toEqual([false, false]);
+  });
+
   it('SAFE_ID rejects path tricks', () => {
     expect(SAFE_ID.test('hello-001-r1')).toBe(true);
     expect(SAFE_ID.test('../x')).toBe(false);

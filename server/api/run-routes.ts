@@ -16,8 +16,8 @@ import { EventLogCorruptError, loadEvents, type StoredEvent } from '../store/eve
 import { httpGet, type HttpGet } from '../deploy/target.js';
 import { refuseCloneHost, type ResolveHost } from './security.js';
 import { tailJournal } from './journal-tail.js';
-import { isAlive, spawnRun, stop, type RunControlDeps } from './run-control.js';
-import { CLAIMS_SPEC, claimLaunch, clearPid, clearStopRequested, listProjects, listRuns, markStopRequested, readPid, readProject, runLiveness, runRow, runsDir, SAFE_ID, writePid, type IndexDeps, type RunRow } from './run-index.js';
+import { abandonLaunch, isAlive, spawnRun, stop, type RunControlDeps } from './run-control.js';
+import { claimLaunch, claimsSpec, concludedSpecs, clearPid, clearStopRequested, listProjects, listRuns, markStopRequested, readPid, readProject, runLiveness, runRow, runsDir, SAFE_ID, writePid, type IndexDeps, type RunRow } from './run-index.js';
 import { HttpError, type Route } from './server.js';
 
 export interface RunRoutesDeps {
@@ -140,7 +140,11 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     const runs = runsDir(idx);
     await fs.mkdir(path.join(runs, o.runId), { recursive: true });
     const { pid } = spawnRun(deps.control, { ...o, logFile: path.join(runs, o.runId, 'ui.log') });
-    await waitForJournal(runs, o.runId, pid);
+    await waitForJournal(runs, o.runId, pid).catch(async (err: unknown) => {
+      // A resume keeps its directory: it holds the run's journal.
+      if (o.mode !== 'resume') await abandonLaunch(deps.control, runs, o.runId, pid);
+      throw err;
+    });
     await writePid(runs, o.runId, pid);
     deps.log?.(`run ${o.runId} ${o.mode} pid ${pid}`);
   };
@@ -220,7 +224,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           for (const s of read.specs) specIds.add(s.specId);
         }
         if (dirs.length === 0) throw new HttpError(404, `unknown project ${projectId}`);
-        const active = (await listRuns(idx, projectId)).find((r) => CLAIMS_SPEC.has(r.status));
+        const active = (await listRuns(idx, projectId)).find(claimsSpec);
         if (active) throw new HttpError(409, `project ${projectId} has an active run (${active.runId}); stop it before deleting`);
         const ws = workspacePaths(idx.cfg, projectId, deps.home);
         await fs.rm(ws.root, { recursive: true, force: true });
@@ -256,7 +260,8 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         if (!specs.some((s) => s.specId === specId)) throw new HttpError(404, `unknown spec ${specId}`);
         const runId = await exclusive(specKey(params.projectId!, specId), async () => {
           const rows = await listRuns(idx, params.projectId!);
-          const active = rows.find((r) => r.specId === specId && CLAIMS_SPEC.has(r.status));
+          if (concludedSpecs(new Map(specs.map((s) => [s.specId, s.status])), rows).has(specId)) throw new HttpError(409, `spec ${specId} is concluded; create a new spec`);
+          const active = rows.find((r) => r.specId === specId && claimsSpec(r));
           if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status})`);
           const id = await nextRunId({ runs: runsDir(idx), projectId: params.projectId! }, specId);
           await launch(idx, { projectDir: dir, specId, runId: id, mode: 'run' });
@@ -279,6 +284,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           if (!release) throw new HttpError(409, `run ${runId} is already starting`);
           try {
             const { row, dir } = await findRun(idx, runId);
+            if (row.locked) throw new HttpError(409, `run ${runId} belongs to concluded spec ${row.specId}; create a new spec`);
             if (row.status !== 'paused:auth' && row.status !== 'interrupted') throw new HttpError(409, `run ${runId} is ${row.status}; only paused:auth or interrupted runs resume`);
             await clearStopRequested(runs, runId); // an explicit resume overrides an earlier Stop
             await launch(idx, { projectDir: dir, specId: row.specId, runId, mode: 'resume' });
@@ -320,7 +326,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           if (!spec) throw new HttpError(404, `unknown spec ${specId}`);
           if (spec.status !== 'awaiting-validation') throw new HttpError(409, `spec ${specId} is ${spec.status}; only awaiting-validation specs complete`);
           const rows = await listRuns(idx, params.projectId!);
-          const active = rows.find((r) => r.specId === specId && CLAIMS_SPEC.has(r.status));
+          const active = rows.find((r) => r.specId === specId && claimsSpec(r));
           if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status})`);
           const id = await nextRunId({ runs: runsDir(idx), projectId: params.projectId! }, specId, 'complete');
           await launch(idx, { projectDir: dir, specId, runId: id, mode: 'complete' });
@@ -343,7 +349,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         // Same rule as spec completion: one writer per spec, because the docs PR resets the shared clone to main.
         const id = await exclusive(specKey(projectId, specId), async () => {
           const rows = await listRuns(idx, projectId);
-          const active = rows.find((r) => r.specId === specId && CLAIMS_SPEC.has(r.status));
+          const active = rows.find((r) => r.specId === specId && claimsSpec(r));
           if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status}); the README is written when it ends`);
           const next = await nextRunId({ runs: runsDir(idx), projectId }, specId, 'readme');
           await launch(idx, { projectDir: dir, specId, runId: next, mode: 'readme' });
@@ -366,7 +372,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           if (!spec) throw new HttpError(404, `unknown spec ${specId}`);
           if (spec.status !== 'awaiting-validation' && spec.status !== 'done') throw new HttpError(409, `spec ${specId} is ${spec.status}; only delivered specs deploy again`);
           const rows = await listRuns(idx, params.projectId!);
-          const active = rows.find((r) => r.specId === specId && CLAIMS_SPEC.has(r.status));
+          const active = rows.find((r) => r.specId === specId && claimsSpec(r));
           if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status})`);
           const id = await nextRunId({ runs: runsDir(idx), projectId: params.projectId! }, specId, 'deploy');
           await launch(idx, { projectDir: dir, specId, runId: id, mode: 'deploy' });
@@ -427,8 +433,9 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const report = [...evs].reverse().find((e) => e.type === 'REPORT_READY')?.data.report ?? null;
         const phase = [...evs].reverse().find((e) => e.type === 'PHASE_STARTED')?.data.phase ?? 0;
         let status: string = finished ? String(finished.data.result) : interrupted ? 'interrupted' : state.status;
-        // Same answer as the run list: a run that delivered a concluded spec is done (see listRuns).
-        if (status === 'awaiting-validation') status = (await listRuns(idx, projectId)).find((r) => r.runId === runId)?.status ?? status;
+        // Same answer as the run list: a run that delivered a concluded spec is done and locked (see listRuns). A live run is neither.
+        const row = finished || interrupted ? (await listRuns(idx, projectId)).find((r) => r.runId === runId) : undefined;
+        if (status === 'awaiting-validation') status = row?.status ?? status;
         json(200, {
           runId,
           specId,
@@ -436,6 +443,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           repoUrl,
           readme,
           status,
+          locked: row?.locked ?? false,
           state: { status: state.status, order: state.order, tasks: state.order.map((id) => state.tasks.get(id)) },
           finished: finished?.data ?? null,
           tokens: tokensOf(evs),

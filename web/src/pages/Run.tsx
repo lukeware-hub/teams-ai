@@ -420,7 +420,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   const stop = stopSummary({ status, reason: finished?.data.reason ? String(finished.data.reason) : null, causes, deployFailure: lastDeployFailure(unique) ?? detail.report?.deploy?.lastFailure ?? null, failedPhase });
   // A blocked or deadlocked run's banner already leads with its blocked tasks.
   const before = stop && status !== 'blocked' && status !== 'deadlocked' ? blockedSummary(blocked) : null;
-  const redeploying = stop?.action === 'redeploy' && redeployAction !== undefined;
+  const redeploying = !detail.locked && stop?.action === 'redeploy' && redeployAction !== undefined;
   const prs = mergedPrs(unique);
   const totalTasks = state.order.length;
   // Merged is the only finished state, so the bar also shows work in flight and blocked work: otherwise a run
@@ -546,7 +546,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
           </div>
         </div>
         <div className="run-actions">
-          {resumeAction && RESUMABLE.has(status) ? (
+          {resumeAction && !detail.locked && RESUMABLE.has(status) ? (
             <button type="button" className="primary-button run-action" data-testid="resume" disabled={resumeAction.busy} onClick={resumeAction.onResume}>
               <Icon name="play" size={16} />
               {resumeAction.busy ? 'Retomando…' : 'Retomar'}
@@ -573,6 +573,11 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
           ) : null}
         </div>
         {resumeAction?.error ? <p className="error" data-testid="resume-error">{resumeAction.error}</p> : null}
+        {detail.locked ? (
+          <p className="hint" data-testid="locked-notice">
+            Esta execução é somente leitura porque a spec foi concluída. Para a próxima entrega, crie uma <Link to={`/projects/${detail.projectId}`}>nova spec no projeto</Link>.
+          </p>
+        ) : null}
         {stopAction?.error ? <p className="error" data-testid="stop-error">{stopAction.error}</p> : null}
         {totalTasks ? (
           <div className="run-progress">
@@ -657,7 +662,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                       {redeployAction.busy ? 'Iniciando o deploy…' : 'Tentar deploy de novo'}
                     </button>
                   ) : null}
-                  {reprocessAction ? (
+                  {reprocessAction && !detail.locked ? (
                     <span className="outcome-action">
                       <button type="button" className={redeploying ? 'secondary' : 'primary-button'} data-testid="reprocess" disabled={reprocessAction.busy} onClick={reprocessAction.onReprocess}>
                         <Icon name="refresh" size={16} />

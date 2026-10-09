@@ -50,6 +50,10 @@ export interface RunRow {
   tokens: number;
   cost: number;
   stoppable: boolean;
+  kind: 'run' | 'complete' | 'readme' | 'deploy';
+  n: number;
+  /** The spec was concluded: the run is read-only. */
+  locked: boolean;
 }
 export interface StoredEvent {
   seq: number;
@@ -136,6 +140,8 @@ export interface RunDetail {
   repoUrl?: string | null;
   readme?: string | null;
   status: string;
+  /** The spec was concluded: the run is read-only. */
+  locked?: boolean;
   phase: number;
   report: Report | null;
   state: { status: string; order: string[]; tasks: TaskRow[] };
