@@ -27,15 +27,20 @@ export function ProjectHubView(p: {
   const [specDraft, setSpecDraft] = useState('');
   const [specDescription, setSpecDescription] = useState('');
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
-  const [describing, setDescribing] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [idShown, setIdShown] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
-  const suggestSpecId = async () => {
+  const closeNewSpec = () => {
+    setCreating(false);
+    setIdShown(false);
+    setSpecDraft('');
+    setSpecDescription('');
+    setSuggestError(null);
+  };
+  const continueNewSpec = async () => {
+    setIdShown(true);
     if (!p.onSuggestName || !p.project) return;
-    if (specDescription.trim() === '') {
-      setDescribing(true);
-      return;
-    }
     setSuggesting(true);
     setSuggestError(null);
     try {
@@ -114,30 +119,40 @@ export function ProjectHubView(p: {
               <h3>Especificações</h3>
               <InfoTip label="Especificações" text={HELP.specs} />
             </div>
-            <form
-              className={`project-new-spec${specDraft.trim() === '' && !describing ? '' : ' with-description'}`}
-              onSubmit={(e) => {
-                e.preventDefault();
-                p.onNewSpec(specDraft, specDescription);
-              }}
-            >
-              <input data-testid="new-spec-id" aria-label="ID da nova spec" value={specDraft} onChange={(e) => setSpecDraft(e.target.value)} placeholder="ID da nova spec (ex.: user-login)" />
-              {p.onSuggestName ? (
-                <button type="button" className="project-action secondary" data-testid="suggest-spec-id" disabled={suggesting} onClick={() => void suggestSpecId()}>
-                  <Icon name="lightbulb" size={14} />
-                  {suggesting ? 'Sugerindo…' : 'Sugerir ID'}
-                </button>
-              ) : null}
-              <button className="project-action" data-testid="new-spec" type="submit" disabled={specDraft.trim() === ''}>
+            {creating ? null : (
+              <button type="button" className="project-action" data-testid="open-new-spec" onClick={() => setCreating(true)}>
                 <Icon name="plus" size={14} />
                 Nova spec
               </button>
-              {specDraft.trim() === '' && !describing ? null : (
-                <textarea data-testid="new-spec-description" aria-label="Descrição da nova spec" rows={5} autoFocus={describing && specDescription === ''} value={specDescription} onChange={(e) => setSpecDescription(e.target.value)} placeholder="Descreva a nova spec com suas palavras. Os documentos do projeto já estão carregados; os agentes validam o texto e fazem as perguntas. Com a descrição preenchida, Sugerir ID propõe um ID em inglês." />
-              )}
-              {suggestError ? <span className="error" role="alert">{suggestError}</span> : null}
-            </form>
+            )}
           </div>
+          {creating ? (
+            <form
+              className="project-new-spec"
+              onSubmit={(e) => {
+                e.preventDefault();
+                p.onNewSpec(specDraft.trim(), specDescription);
+              }}
+            >
+              <label htmlFor="new-spec-description">Descreva o serviço</label>
+              <textarea id="new-spec-description" data-testid="new-spec-description" rows={5} autoFocus value={specDescription} onChange={(e) => setSpecDescription(e.target.value)} placeholder="Ex.: listar todos os usuários com o e-mail mascarado. Os documentos do projeto entram como contexto; só esta spec passa pelo refinamento." />
+              {idShown ? (
+                <>
+                  <label htmlFor="new-spec-id">ID da spec</label>
+                  <input id="new-spec-id" data-testid="new-spec-id" value={specDraft} disabled={suggesting} onChange={(e) => setSpecDraft(e.target.value)} placeholder={suggesting ? 'Sugerindo…' : 'ex.: list-users'} />
+                </>
+              ) : null}
+              {suggestError ? <span className="error" role="alert">{suggestError}</span> : null}
+              <div className="project-new-spec-actions">
+                <button type="button" className="project-action secondary" data-testid="cancel-new-spec" onClick={closeNewSpec}>Cancelar</button>
+                {idShown ? (
+                  <button type="submit" className="project-action" data-testid="new-spec" disabled={suggesting || specDraft.trim() === '' || specDescription.trim() === ''}>Começar refinamento</button>
+                ) : (
+                  <button type="button" className="project-action" data-testid="continue-new-spec" disabled={specDescription.trim() === ''} onClick={() => void continueNewSpec()}>Continuar</button>
+                )}
+              </div>
+            </form>
+          ) : null}
           {pr.specs.length === 0 ? (
             <p className="project-empty">Nenhuma spec criada ainda. Use Nova spec para criar a primeira.</p>
           ) : (

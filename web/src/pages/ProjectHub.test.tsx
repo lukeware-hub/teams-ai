@@ -42,7 +42,7 @@ describe('ProjectHubView', () => {
     expect(screen.queryByTestId('stop-hello-001-r1')).toBeNull();
     expect(screen.getByText('US$ 3.33')).toBeTruthy();
   });
-  it('suggests a spec id from the description', async () => {
+  it('creates a spec from a description: Continuar suggests the id, which stays editable', async () => {
     const o = on();
     const suggest = vi.fn(async () => ({ id: 'user-login' }));
     render(
@@ -51,14 +51,36 @@ describe('ProjectHubView', () => {
       </MemoryRouter>,
     );
     expect(screen.queryByTestId('new-spec-description')).toBeNull();
-    fireEvent.click(screen.getByTestId('suggest-spec-id'));
-    expect(suggest).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('open-new-spec'));
+    expect((screen.getByTestId('continue-new-spec') as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByTestId('new-spec-description'), { target: { value: 'Entrar com e-mail e senha' } });
-    fireEvent.click(screen.getByTestId('suggest-spec-id'));
+    fireEvent.click(screen.getByTestId('continue-new-spec'));
     await waitFor(() => expect((screen.getByTestId('new-spec-id') as HTMLInputElement).value).toBe('user-login'));
     expect(suggest).toHaveBeenCalledWith({ kind: 'spec', projectId: 'hello-app', name: '', description: 'Entrar com e-mail e senha' });
+    fireEvent.change(screen.getByTestId('new-spec-id'), { target: { value: 'user-sign-in' } });
     fireEvent.click(screen.getByTestId('new-spec'));
-    expect(o.newSpec).toHaveBeenCalledWith('user-login', 'Entrar com e-mail e senha');
+    expect(o.newSpec).toHaveBeenCalledWith('user-sign-in', 'Entrar com e-mail e senha');
+  });
+  it('a failed suggestion leaves the id field to fill by hand, and Cancelar closes the panel', async () => {
+    const o = on();
+    const suggest = vi.fn(async () => {
+      throw new Error('IA indisponível');
+    });
+    render(
+      <MemoryRouter>
+        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onDeleteDraft={o.deleteDraft} onSuggestName={suggest} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByTestId('open-new-spec'));
+    fireEvent.change(screen.getByTestId('new-spec-description'), { target: { value: 'Listar usuários' } });
+    fireEvent.click(screen.getByTestId('continue-new-spec'));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('IA indisponível'));
+    expect((screen.getByTestId('new-spec') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByTestId('new-spec-id'), { target: { value: 'list-users' } });
+    fireEvent.click(screen.getByTestId('new-spec'));
+    expect(o.newSpec).toHaveBeenCalledWith('list-users', 'Listar usuários');
+    fireEvent.click(screen.getByTestId('cancel-new-spec'));
+    expect(screen.queryByTestId('new-spec-description')).toBeNull();
   });
   it('shows the same breadcrumb as the run page: Projetos › project id', () => {
     const o = on();
@@ -81,8 +103,10 @@ describe('ProjectHubView', () => {
         <ProjectHubView project={project} notFound={false} runs={runs} drafts={drafts} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
-    fireEvent.change(screen.getByTestId('new-spec-id'), { target: { value: 'hello-005' } });
+    fireEvent.click(screen.getByTestId('open-new-spec'));
     fireEvent.change(screen.getByTestId('new-spec-description'), { target: { value: 'Greet in Portuguese' } });
+    fireEvent.click(screen.getByTestId('continue-new-spec'));
+    fireEvent.change(screen.getByTestId('new-spec-id'), { target: { value: 'hello-005' } });
     fireEvent.click(screen.getByTestId('new-spec'));
     expect(o.newSpec).toHaveBeenCalledWith('hello-005', 'Greet in Portuguese');
     fireEvent.click(screen.getByTestId('continue-hello-000'));

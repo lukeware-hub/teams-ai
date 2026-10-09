@@ -68,10 +68,11 @@
 .project-section-title { display: flex; align-items: center; gap: 0.25rem; min-width: 0; }
 .project-section-title h2 { flex: 0 1 auto; font-size: 1.125rem; line-height: 1.3; }
 .project-section-title h3 { margin: 0; color: var(--ink); font-size: 0.875rem; font-weight: 600; letter-spacing: 0; text-transform: none; }
-.project-new-spec { display: flex; flex-wrap: nowrap; align-items: center; gap: 0.5rem; }
-.project-new-spec input { flex: 0 1 13rem; min-width: 0; height: 2rem; font-size: 0.8125rem; }
-.project-new-spec.with-description { flex: 1 1 100%; flex-wrap: wrap; }
-.project-new-spec textarea { flex: 1 1 100%; min-width: 0; font-size: 0.8125rem; resize: vertical; }
+.project-new-spec { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.75rem; }
+.project-new-spec label { font-size: 0.8125rem; font-weight: 600; }
+.project-new-spec input { width: 100%; max-width: 24rem; min-width: 0; height: 2rem; font-size: 0.8125rem; }
+.project-new-spec textarea { width: 100%; min-width: 0; font-size: 0.8125rem; resize: vertical; }
+.project-new-spec-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
 .project-empty { margin: 0; padding: 0.75rem 1rem; border: 1px solid var(--line); border-radius: var(--radius-lg); color: var(--ink-soft); background: var(--surface-sunken); font-size: 0.875rem; }
 
 /* Spec and draft rows share the list's columns, so ids, chips and actions line up from row to row.
