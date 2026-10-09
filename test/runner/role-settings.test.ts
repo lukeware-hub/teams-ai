@@ -34,6 +34,8 @@ describe('buildRoleSettings', () => {
       expect.arrayContaining(['Bash(npm:*)', 'Bash(npx:*)', 'Bash(node:*)', 'Bash(git status:*)', 'Bash(git diff:*)']),
     );
     expect(buildRoleSettings('test', { allowedDomains: [] }).permissions.allow).toContain('Bash(npm:*)');
+    // `mkdir -p reports && npm test` is denied unless every segment matches a rule (todo-api-r10: T3 blocked on it).
+    expect(buildRoleSettings('dev', { allowedDomains: [] }).permissions.allow).toContain('Bash(mkdir:*)');
     expect(buildRoleSettings('devops', { allowedDomains: [] }).permissions.allow).not.toContain('Bash(npm:*)');
     expect(buildRoleSettings('sm', { allowedDomains: [] }).permissions.allow).toEqual([]);
   });

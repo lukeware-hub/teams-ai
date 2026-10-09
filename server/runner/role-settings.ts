@@ -44,6 +44,7 @@ const SUITE_BASH = [
   'Bash(grep:*)',
   'Bash(wc:*)',
   'Bash(mktemp:*)',
+  'Bash(mkdir:*)',
   'Bash(echo:*)',
   'Bash(pwd:*)',
   'Bash(true:*)',
