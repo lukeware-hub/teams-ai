@@ -81,6 +81,39 @@ export async function duplicatePairs(pairs: readonly QuestionPair[], decider: Pi
   return p.map((v) => v !== null && v >= DUPLICATE_MIN);
 }
 
+export interface DocPatchLike {
+  find: string;
+  replace: string;
+}
+
+export interface PatchPair {
+  a: DocPatchLike;
+  b: DocPatchLike;
+}
+
+/**
+ * R11.5a item 2: PO and SM proposing the same edit in different words. R11.10 already drops a byte-identical
+ * later patch on the same file; this catches a paraphrase of it (same resulting meaning, different wording) that
+ * byte comparison cannot see. Only called for a later patch that already failed the byte-identical check.
+ */
+export async function duplicatePatches(pairs: readonly PatchPair[], decider: Pick<Decider, 'decide'>, ctx: DecideContext): Promise<boolean[] | null> {
+  if (pairs.length === 0) return [];
+  const p = await Promise.all(
+    pairs.map((q) =>
+      noul(
+        decider,
+        'patch-dedup',
+        `Edit A:\nfind: ${q.a.find}\nreplace: ${q.a.replace}\n\nEdit B:\nfind: ${q.b.find}\nreplace: ${q.b.replace}`,
+        'Does edit B make the same change in substance as edit A (same resulting document content and meaning), even if the wording of the find/replace text differs?',
+        { true: 'Yes, the two edits produce the same resulting content.', false: 'No, the edits differ in what they actually change.' },
+        ctx,
+      ),
+    ),
+  );
+  if (p.every((v) => v === null)) return null;
+  return p.map((v) => v !== null && v >= DUPLICATE_MIN);
+}
+
 /** Decision 4: indexes of history chunks the new spec contradicts. */
 export async function contradictedChunks(criteria: readonly AcceptanceCriterion[], objectives: readonly string[], chunks: readonly string[], decider: Pick<Decider, 'decide'>, ctx: DecideContext): Promise<number[]> {
   const spec = ['new spec objectives:', ...objectives.map((o) => `- ${o}`), 'new spec acceptance criteria:', ...criteria.map((c) => `- ${acLine(c)}`)].join('\n');

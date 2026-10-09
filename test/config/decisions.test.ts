@@ -50,10 +50,10 @@ describe('decisions config', () => {
     expect(() => loadConfig({ decisions: { modelTiers: { small: '' } } })).toThrow(ConfigError);
   });
 
-  it('the Docker config turns on only the three refinement decisions Jev takes', () => {
+  it('the Docker config turns on only the refinement decisions Jev takes', () => {
     const cfg = loadConfig(JSON.parse(readFileSync(new URL('../../docker/config.json', import.meta.url), 'utf8')));
     const enabled = DECISION_IDS.filter((id) => resolveDecision(cfg, id).enabled);
-    expect(enabled).toEqual(['gate1-readiness', 'question-dedup', 'history-contradiction']);
+    expect(enabled).toEqual(['gate1-readiness', 'question-dedup', 'history-contradiction', 'patch-dedup']);
     for (const id of enabled) expect(resolveDecision(cfg, id).chain).toEqual(['jev', 'local']);
   });
 });

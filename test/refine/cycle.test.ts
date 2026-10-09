@@ -162,6 +162,82 @@ describe('refinement cycle patch dedup (R11.10)', () => {
   });
 });
 
+describe('refinement cycle patch dedup (R11.5a item 2)', () => {
+  it('drops a paraphrased patch on the same file when the decision says it is the same change', async () => {
+    const spec = makeSpec();
+    const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
+    const docs = path.join(root, 'docs');
+    await mkdir(docs, { recursive: true });
+    const draft = {
+      projectId: 'shop', specId: spec.specId, root, docs,
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+      stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
+      specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
+    };
+    await writeFile(draft.briefMd, '# Brief\n\nTODO: port.\n');
+    await Promise.all([draft.projectMd, draft.stackMd, draft.flowMd, draft.designMd].map((f) => writeFile(f, '# doc')));
+    const events: Array<{ type: string; data: Record<string, unknown> }> = [];
+    const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'x', specHash: 'draft', type, kind: 'fact' as const, data }; } };
+    const ok = (value: unknown) => ({ ok: true, value, summary: {} });
+    const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
+    const poPatch = { file: `docs/specs/${spec.specId}/brief.md`, find: 'TODO: port.', replace: 'Port: 8080.', reason: 'fill it in' };
+    const smPatch = { file: `docs/specs/${spec.specId}/brief.md`, find: 'TODO: port.', replace: 'The service listens on port 8080.', reason: 'state the port' };
+    const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
+      if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
+      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [poPatch] });
+      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [smPatch] });
+    });
+    const decider = {
+      decide: async (id: string, _state: string, questions: Record<string, unknown>) => {
+        if (id !== 'patch-dedup') return { answered: false as const, reason: 'disabled' as const };
+        return { answered: true as const, backend: 'jev' as const, escalated: false, answers: Object.fromEntries(Object.keys(questions).map((k) => [k, { type: 'noul' as const, value: 0.9, probabilities: { yes: 0.9, no: 0.1 }, confidence: 0.9 }])) };
+      },
+    };
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root, decider }, 1);
+    const proposed = events.filter((e) => e.type === 'PATCH_PROPOSED');
+    expect(proposed).toHaveLength(1);
+    expect(proposed[0]!.data.role).toBe('po');
+    const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
+    const discarded = evaluated.data.discardedPatches as Array<{ role: string; reason: string }>;
+    expect(discarded).toContainEqual({ role: 'sm', file: smPatch.file, reason: 'a near-duplicate of a patch already proposed this cycle (same change in substance)' });
+  });
+
+  it('keeps both patches when the decision says they differ', async () => {
+    const spec = makeSpec();
+    const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
+    const docs = path.join(root, 'docs');
+    await mkdir(docs, { recursive: true });
+    const draft = {
+      projectId: 'shop', specId: spec.specId, root, docs,
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+      stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
+      specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
+    };
+    await writeFile(draft.briefMd, '# Brief\n\nTODO: port.\nTODO: auth.\n');
+    await Promise.all([draft.projectMd, draft.stackMd, draft.flowMd, draft.designMd].map((f) => writeFile(f, '# doc')));
+    const events: Array<{ type: string; data: Record<string, unknown> }> = [];
+    const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'x', specHash: 'draft', type, kind: 'fact' as const, data }; } };
+    const ok = (value: unknown) => ({ ok: true, value, summary: {} });
+    const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
+    const poPatch = { file: `docs/specs/${spec.specId}/brief.md`, find: 'TODO: port.', replace: 'Port: 8080.', reason: 'fill it in' };
+    const smPatch = { file: `docs/specs/${spec.specId}/brief.md`, find: 'TODO: auth.', replace: 'No authentication required.', reason: 'state the auth' };
+    const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
+      if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
+      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [poPatch] });
+      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [smPatch] });
+    });
+    const decider = {
+      decide: async (id: string, _state: string, questions: Record<string, unknown>) => {
+        if (id !== 'patch-dedup') return { answered: false as const, reason: 'disabled' as const };
+        return { answered: true as const, backend: 'jev' as const, escalated: false, answers: Object.fromEntries(Object.keys(questions).map((k) => [k, { type: 'noul' as const, value: 0.1, probabilities: { yes: 0.1, no: 0.9 }, confidence: 0.9 }])) };
+      },
+    };
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root, decider }, 1);
+    const proposed = events.filter((e) => e.type === 'PATCH_PROPOSED');
+    expect(proposed).toHaveLength(2);
+  });
+});
+
 describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
   it('journals a routing hint per blocking question without changing which questions reach the human', async () => {
     const spec = makeSpec();

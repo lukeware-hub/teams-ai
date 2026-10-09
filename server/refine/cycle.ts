@@ -6,7 +6,7 @@ import { loadSecrets } from '../core/secrets.js';
 import type { Hit } from '../knowledge/retrieval.js';
 import type { Journal } from '../orchestrator/events.js';
 import type { Decider } from '../decide/decider.js';
-import { contradictedChunks, duplicatePairs, notReadyCriteria } from '../decide/decisions/gate1.js';
+import { contradictedChunks, duplicatePairs, duplicatePatches, notReadyCriteria } from '../decide/decisions/gate1.js';
 import { routeQuestion } from '../decide/decisions/question-routing.js';
 import type { AgentStepRequest } from '../orchestrator/steps.js';
 import type { StepOutcome } from '../runner/step.js';
@@ -331,6 +331,9 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   // text. The first role to propose it (po, by iteration order) wins; a byte-identical later one is dropped.
   const proposedPatches = new Set<string>();
   const patchKey = (file: string, p: { find: string; replace: string }) => `${file}\u0000${p.find.trim()}\u0000${p.replace.trim()}`;
+  // R11.5a item 2: a paraphrase of an already-accepted patch on the same file (same resulting content, different
+  // wording), which the byte-identical check above cannot catch. One per file, so the comparison set stays small.
+  const acceptedByFile = new Map<string, Array<{ find: string; replace: string }>>();
   for (const [role, out] of [['po', po.value], ['sm', sm.value]] as const) {
     let i = 0;
     for (const p of out.docPatch) {
@@ -357,7 +360,16 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         discardedPatches.push({ role, file: p.file, reason: 'the same change was already proposed this cycle' });
         continue;
       }
+      const priorOnFile = acceptedByFile.get(c.file) ?? [];
+      if (deps.decider && priorOnFile.length > 0) {
+        const dup = await duplicatePatches(priorOnFile.map((a) => ({ a, b: p })), decider!, dctx);
+        if (dup?.some((v) => v)) {
+          discardedPatches.push({ role, file: p.file, reason: 'a near-duplicate of a patch already proposed this cycle (same change in substance)' });
+          continue;
+        }
+      }
       proposedPatches.add(key);
+      acceptedByFile.set(c.file, [...priorOnFile, { find: p.find, replace: p.replace }]);
       const after = applyPatch(docs[c.file], p)!;
       await journal.fact(RefineEvent.PatchProposed, {
         patchId: patchId(role, cycle, i++),
