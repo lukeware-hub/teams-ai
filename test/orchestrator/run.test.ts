@@ -181,6 +181,30 @@ describe('Run', () => {
     await run.close();
   }, 30_000);
 
+  it('hands the API key to the agent steps only, keeps it out of the gate secrets, and requires it when claude.auth is api-key', async () => {
+    const seen: Array<string | undefined> = [];
+    const base = await withAgents(deps(happy, { maxParallel: 1, secrets: { ANTHROPIC_API_KEY: 'sk-key', OTHER: 'v' } }));
+    base.cfg = loadConfig({ ...JSON.parse(JSON.stringify(base.cfg)), claude: { auth: 'api-key' } });
+    base.runStep = (async (req: StepRequest, sd: { apiKey?: string }) => {
+      seen.push(sd.apiKey);
+      return happy(req);
+    }) as unknown as RunDeps['runStep'];
+    const run = await Run.create(base);
+    await run.execute();
+    expect(seen.length).toBeGreaterThan(0);
+    expect(new Set(seen)).toEqual(new Set(['sk-key']));
+    expect((run as unknown as { deps: RunDeps }).deps.secrets).toEqual({ OTHER: 'v' });
+    await run.close();
+    await expect(Run.create({ ...base, secrets: {} })).rejects.toThrow(/ANTHROPIC_API_KEY/);
+    // On the default login the key is never handed over, even when it is stored.
+    seen.length = 0;
+    const sub = { ...base, cfg: loadConfig({ ...JSON.parse(JSON.stringify(base.cfg)), claude: { auth: 'subscription' } }) };
+    const run2 = await Run.create(sub);
+    await run2.execute();
+    expect(new Set(seen)).toEqual(new Set([undefined]));
+    await run2.close();
+  }, 90_000);
+
   it('caps a task by cost when perTaskCostUsd is set, whatever the token count', async () => {
     const heavy = (costUsd: number): Script => async (req) =>
       req.kind === 'dev' ? { ...(await happy(req)), summary: summary({ costUsd, usage: { inputTokens: 60_000, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 } }) } : happy(req);

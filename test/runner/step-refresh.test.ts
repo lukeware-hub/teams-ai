@@ -91,3 +91,19 @@ describe('CLAUDE_CODE_OAUTH_TOKEN passthrough (plan 38)', () => {
   });
 
 });
+
+describe('ANTHROPIC_API_KEY (claude.auth api-key, R11.13 slice 12)', () => {
+  it('copies no credential file and hands the key to the claude child', async () => {
+    await fs.writeFile(path.join(host, '.claude', '.credentials.json'), cred(NOW.getTime() + 1, 'r1'));
+    const env = { HOME: host, PATH: 'p', ANTHROPIC_API_KEY: 'sk-ant-api03-x' };
+    const home = await createStepHome(path.join(dir, 'homes'), env);
+    await expect(fs.access(path.join(home, '.claude', '.credentials.json'))).rejects.toThrow();
+    const inv = buildInvocation({ role: 'dev', model: 'opus', profile: { model: 'opus' }, cwd: dir, prompt: 'p', jsonSchema: {}, tools: ['Read'], disallowedTools: [], settingsPath: 's', home, apiKey: 'sk-ant-api03-x' }, env);
+    expect(inv.env.ANTHROPIC_API_KEY).toBe('sk-ant-api03-x');
+  });
+
+  it('never passes a key from the host env through the allowlist', () => {
+    const inv = buildInvocation({ role: 'dev', model: 'opus', profile: { model: 'opus' }, cwd: dir, prompt: 'p', jsonSchema: {}, tools: ['Read'], disallowedTools: [], settingsPath: 's' }, { HOME: host, PATH: 'p', ANTHROPIC_API_KEY: 'sk-from-the-host' });
+    expect(inv.env.ANTHROPIC_API_KEY).toBeUndefined();
+  });
+});

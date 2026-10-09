@@ -36,7 +36,23 @@ export function modelTierState(task: PlanTask, attempt: number): string {
 export interface ModelTierResult {
   tier: ModelTier | null;
   effort: Effort | null;
-  source: 'default' | BackendName;
+  source: 'default' | 'heuristic' | BackendName;
+}
+
+/** Work whose mistakes are costly and subtle: an attempt on a smaller model is not worth the retry. */
+const RISKY = /\b(auth\w*|login|session|password|token|crypt\w*|secret|permission|payment|billing|migrat\w*|schema|concurren\w*|lock|queue|transaction|scaffold)\b/i;
+
+/**
+ * R11.13 slice 6: a free, deterministic stand-in for the decision backends (which are off, or cost money): the tier from
+ * what the plan already says about the task. It only reads the task, so the same plan always routes the same way, and it
+ * leans large on anything it cannot place; attempt 2 onward moves a tier up like the decision does.
+ */
+export function heuristicTier(task: PlanTask, attempt: number): ModelTierResult {
+  const text = `${task.id} ${task.title} ${task.description} ${task.affectedPaths.join(' ')}`;
+  let tier: ModelTier = 'medium';
+  if (RISKY.test(text) || task.affectedPaths.length >= 6 || task.criteriaRefs.length >= 4 || task.description.length > 1200) tier = 'large';
+  else if (task.criteriaRefs.length <= 1 && task.affectedPaths.length <= 2 && task.description.length <= 400) tier = 'small';
+  return { tier: bump(MODEL_TIERS, MODEL_TIERS.indexOf(tier), Math.max(0, attempt - 1)), effort: null, source: 'heuristic' };
 }
 
 const bump = <T extends readonly string[]>(levels: T, idx: number, steps: number): T[number] => levels[Math.min(levels.length - 1, idx + steps)]!;

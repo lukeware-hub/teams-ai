@@ -292,6 +292,17 @@ describe('runStep', () => {
     expect(deps.accounting.records().map((r) => r.costUsd)).toEqual([0.37, second.summary.costUsd]);
   });
 
+  it('hands the step only the API key the config chose, and drops one that sits in the host env', async () => {
+    const capture = path.join(dir, 'capture.json');
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
+    deps.hostEnv = { ...deps.hostEnv, ANTHROPIC_API_KEY: 'sk-from-the-host' };
+    await runStep(request(), deps);
+    expect(JSON.parse(await fs.readFile(capture, 'utf8')).env.ANTHROPIC_API_KEY).toBeUndefined();
+    deps.apiKey = 'sk-ant-api03-chosen';
+    await runStep(request(), deps);
+    expect(JSON.parse(await fs.readFile(capture, 'utf8')).env.ANTHROPIC_API_KEY).toBe('sk-ant-api03-chosen');
+  });
+
   it('never gives a review step the file-editing tools', async () => {
     const capture = path.join(dir, 'capture.json');
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });

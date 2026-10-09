@@ -61,6 +61,8 @@ export interface RunDeps {
   graphify: Graphify | null;
   knowledge: KnowledgeIndex | null;
   secrets: Record<string, string>;
+  /** Set by the run itself from `secrets.ANTHROPIC_API_KEY`: the key is for agent steps only and is kept out of `secrets`. */
+  apiKey?: string;
   fetch?: typeof fetch;
   clock?: () => Date;
   sleep?: (ms: number) => Promise<void>;
@@ -91,6 +93,21 @@ export function containerUser(rootless = false): string | undefined {
 }
 
 /** Spec (orchestrator) §2.2: one tick loop, runners return through the journal. */
+/**
+ * R11.13 slice 12: the Claude Console key reaches the agent steps and nothing else. Gates, the smoke and e2e runs and the
+ * deployed service get `secrets` without it, so a plan that names ANTHROPIC_API_KEY as a gate secret finds nothing to read.
+ */
+function withApiKeySplit(deps: RunDeps): RunDeps {
+  const { ANTHROPIC_API_KEY: key, ...secrets } = deps.secrets;
+  return { ...deps, secrets, ...(key && key.trim() !== '' ? { apiKey: key } : {}) };
+}
+
+function assertApiKey(deps: RunDeps): void {
+  if (deps.cfg.claude.auth === 'api-key' && !(deps.secrets.ANTHROPIC_API_KEY ?? '').trim()) {
+    throw new Error('claude.auth is "api-key" but the secret ANTHROPIC_API_KEY is not set (store it with the other secrets)');
+  }
+}
+
 export class Run {
   readonly accounting = new Accounting();
   private readonly governor: Governor;
@@ -106,12 +123,15 @@ export class Run {
   private adrs: Array<{ id: string; title: string; text: string }> = [];
   private readonly runners = new Map<string, TaskRunner>();
   private readonly inflight = new Map<string, Promise<void>>();
+  private readonly deps: RunDeps;
 
   private constructor(
     readonly runId: string,
     readonly journal: Journal,
-    private readonly deps: RunDeps,
+    rawDeps: RunDeps,
   ) {
+    this.deps = withApiKeySplit(rawDeps);
+    const deps = this.deps;
     this.clock = deps.clock ?? (() => new Date());
     this.sleep = deps.sleep ?? defaultSleep;
     this.log = deps.log ?? ((l) => process.stderr.write(`${l}\n`));
@@ -144,6 +164,7 @@ export class Run {
 
   static async create(deps: RunDeps, runId?: string): Promise<Run> {
     Run.assertSandboxPolicy(deps);
+    assertApiKey(deps);
     const id = runId ?? (await nextRunId(deps.ws, deps.spec.specId));
     await fs.mkdir(runDir(deps.ws, id), { recursive: true });
     const journal = await Run.openJournal(deps, id);
@@ -153,6 +174,7 @@ export class Run {
 
   static async resume(deps: RunDeps, runId: string): Promise<Run> {
     Run.assertSandboxPolicy(deps);
+    assertApiKey(deps);
     // The UI marks a run whose process died with `pid.gone`; any resume, CLI or UI, ends that state.
     await fs.rm(path.join(runDir(deps.ws, runId), 'pid.gone'), { force: true });
     const journal = await Run.openJournal(deps, runId);
@@ -224,8 +246,13 @@ export class Run {
       sandbox: { enabled: cfg.sandbox.enabled, unsafeNoSandbox: cfg.sandbox.unsafeNoSandbox },
       clock: this.clock,
       // cli-error's chain never reaches Claude, so classifying a failed step cannot start another step.
+      ...(cfg.claude.auth === 'api-key' && this.deps.apiKey ? { apiKey: this.deps.apiKey } : {}),
       classifyUnknown: (input) => classifyCliError(input, this.decider(), { confidential: this.deps.project.confidential }),
     };
+  }
+
+  private secretValues(): string[] {
+    return [...Object.values(this.deps.secrets), ...(this.deps.apiKey ? [this.deps.apiKey] : [])];
   }
 
   private agentDeps(): AgentStepDeps {
@@ -240,7 +267,8 @@ export class Run {
       journal: this.journal,
       stepDir: (seq) => stepDir(this.deps.ws, this.runId, seq),
       sessionDir: (taskId) => sessionDir(this.deps.ws, this.runId, taskId),
-      secretValues: () => Object.values(this.deps.secrets),
+      stepModel: (kind) => cfg.routing.stepModels[kind],
+      secretValues: () => this.secretValues(),
       specHash: this.deps.spec.specHash!,
     };
   }
@@ -306,7 +334,7 @@ export class Run {
   };
 
   private mergeDeps(): MergeStepsDeps {
-    return { journal: this.journal, ws: this.deps.ws, exec: this.deps.exec, ghExec: this.deps.ghExec, gates: this.gates, graphify: this.deps.graphify, secretValues: () => Object.values(this.deps.secrets), handoffs: this.handoffs, clock: this.clock };
+    return { journal: this.journal, ws: this.deps.ws, exec: this.deps.exec, ghExec: this.deps.ghExec, gates: this.gates, graphify: this.deps.graphify, secretValues: () => this.secretValues(), handoffs: this.handoffs, clock: this.clock };
   }
 
   private packBase = (): PackBase => ({
@@ -388,6 +416,7 @@ export class Run {
       impact: this.impact,
       decider,
       tierModel: (_role, tier) => cfg.decisions.modelTiers[tier],
+      routing: cfg.routing,
       policy: { ...DEFAULT_POLICY, ...cfg.retry },
       packBase: this.packBase,
       handoffs: () => this.handoffs,

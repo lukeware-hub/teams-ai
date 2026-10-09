@@ -315,6 +315,8 @@ export interface AgentStepDeps {
   stepDir: (seq: number) => string;
   /** Where a task's session transcript is kept; `AgentStepRequest.session` has no effect without it. */
   sessionDir?: (taskId: string) => string;
+  /** A model for every step of one kind, ahead of the role profile (config `routing.stepModels`). */
+  stepModel?: (kind: StepKind) => string | undefined;
   secretValues: () => readonly string[];
   specHash: string;
 }
@@ -331,10 +333,13 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
   const pack = resume ? resumedPack(req.session!.resumePrompt) : buildContextPack(req.pack);
   const dir = deps.stepDir(seq);
   await fs.mkdir(dir, { recursive: true });
+  const profile = deps.profile(req.role);
+  const model = req.model ?? deps.stepModel?.(req.kind) ?? profile.model;
   await deps.journal.fact(OrchEvent.StepStarted, {
     stepId: id,
     kind: req.kind,
     role: req.role,
+    model,
     taskId: req.taskId,
     attempt: req.attempt,
     tokens: pack.tokens,
@@ -342,7 +347,6 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
   });
   await fs.writeFile(path.join(dir, 'prompt.md'), pack.text);
   const clean = (s: string) => redactSecrets(s, deps.secretValues());
-  const profile = deps.profile(req.role);
   const release = await deps.governor.acquire();
   let outcome: StepOutcome<OutputOf<K>>;
   try {
@@ -352,7 +356,7 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
         role: req.role,
         agent: deps.agents[req.role],
         profile,
-        model: req.model ?? profile.model,
+        model,
         effort: req.effort,
         cwd: req.cwd,
         prompt: pack.text,

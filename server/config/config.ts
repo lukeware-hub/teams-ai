@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { STEP_KINDS } from '../agents/outputs.js';
 import { DEFAULT_MAX_PARALLEL } from '../scheduler/scheduler.js';
 import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
 import { BACKEND_NAMES, DECISION_IDS, type DecisionConfig, type DecisionId } from '../decide/types.js';
@@ -101,6 +102,25 @@ export const Config = z.object({
       observeOnly: z.boolean().default(true),
     })
     .prefault({}),
+  /**
+   * Which model a step runs on, beyond the role profile (R11.13 slices 6 and 10). Defaults change nothing a run does.
+   * `tiers`: the Dev's model per task size; `shadow` journals the choice (MODEL_TIER_CHOSEN) without applying it, `on` applies it.
+   * `stepModels`: a model for every step of one kind (e.g. the refinement checklists), whatever the role profile says.
+   */
+  routing: z
+    .object({
+      tiers: z.enum(['off', 'shadow', 'on']).default('shadow'),
+      models: z.object({ small: z.string().min(1).default('sonnet'), medium: z.string().min(1).default('sonnet'), large: z.string().min(1).default('opus') }).prefault({}),
+      stepModels: z.partialRecord(z.enum(STEP_KINDS), z.string().min(1)).default({}),
+    })
+    .prefault({}),
+  /**
+   * How agent steps log in to Claude (R11.13 slice 12). `subscription` (default): the host login, copied into each step HOME.
+   * `api-key`: the Claude Console key stored as the secret ANTHROPIC_API_KEY, passed to the agent steps only. Steps then bill
+   * the Console organization (Max plans include monthly API credits) and leave the 5h/7d window alone, and no refresh token
+   * rotates between concurrent steps. Cap the spend with a workspace limit in the Console.
+   */
+  claude: z.object({ auth: z.enum(['subscription', 'api-key']).default('subscription') }).prefault({}),
   concurrency: z
     .object({
       maxParallel: positive.default(DEFAULT_MAX_PARALLEL),

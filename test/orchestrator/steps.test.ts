@@ -195,6 +195,23 @@ describe('runAgentStep', () => {
     expect(await fs.readFile(path.join(dir, 'steps', '2', 'prompt.md'), 'utf8')).toBe(devResumePrompt('gate failed'));
   });
 
+  it('runs a step kind on the model routing.stepModels names, ahead of the role profile and behind an explicit model', async () => {
+    const models: string[] = [];
+    const d = await deps(async () => ({ ok: true, value: {}, summary: summary() }));
+    d.runStep = (async (req) => {
+      models.push(req.model);
+      return { ok: true, value: { specHash: HASH, status: 'done', summary: 'ok', changedFiles: [], commitMessage: 'feat: x' }, summary: summary() };
+    }) as AgentStepDeps['runStep'];
+    d.stepModel = (kind) => (kind === 'dev' ? 'haiku' : undefined);
+    const req = { kind: 'dev' as const, role: 'dev' as const, pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1 };
+    await runAgentStep(req, d);
+    await runAgentStep({ ...req, model: 'opus' }, d);
+    d.stepModel = () => undefined;
+    await runAgentStep(req, d);
+    // The fake role profile is `{ model: 'sonnet' }`.
+    expect(models).toEqual(['haiku', 'opus', 'sonnet']);
+  });
+
   it('ignores the session when the runner has nowhere to keep it', async () => {
     const seen: Array<{ sessionId?: string; sessionStore?: string }> = [];
     const d = await deps(async () => ({ ok: true, value: {}, summary: summary() }));

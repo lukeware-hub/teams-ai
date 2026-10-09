@@ -28,7 +28,8 @@ export async function makeRunAgent(w: AgentWiring): Promise<RunAgent> {
   const accounting = new Accounting();
   const binary = { bin: w.hostEnv.CLAUDE_BIN ?? 'claude', prefixArgs: [], env: {}, requireSandboxTools: process.platform === 'linux' };
   return async (req, ctx) => {
-    const secrets = await loadSecrets(w.secretsDir);
+    const { ANTHROPIC_API_KEY: apiKey, ...secrets } = await loadSecrets(w.secretsDir);
+    if (w.cfg.claude.auth === 'api-key' && !apiKey) throw new Error('claude.auth is "api-key" but the secret ANTHROPIC_API_KEY is not set');
     return runAgentStep(req, {
       runStep: w.runStep ?? runStepFn,
       stepDeps: {
@@ -40,6 +41,7 @@ export async function makeRunAgent(w: AgentWiring): Promise<RunAgent> {
         workspacesRoot: w.workspacesRoot,
         network: { allowedDomains: [] },
         hostEnv: w.hostEnv,
+        ...(w.cfg.claude.auth === 'api-key' && apiKey ? { apiKey } : {}),
         signal: ctx.signal,
       },
       agents,
@@ -48,7 +50,8 @@ export async function makeRunAgent(w: AgentWiring): Promise<RunAgent> {
       breaker,
       journal: ctx.journal,
       stepDir: ctx.stepDir,
-      secretValues: () => Object.values(secrets),
+      secretValues: () => [...Object.values(secrets), ...(apiKey ? [apiKey] : [])],
+      stepModel: (kind) => w.cfg.routing.stepModels[kind],
       specHash: ctx.specHash,
     });
   };

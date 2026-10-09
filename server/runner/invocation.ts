@@ -84,6 +84,8 @@ export interface InvocationInput {
    * from the host: these are not secrets leaking in, they are resources the orchestrator itself provisioned
    * for this one step. Bypasses ENV_ALLOWLIST; never put a real platform secret here. */
   extraEnv?: Readonly<Record<string, string>>;
+  /** Claude Console key for `claude.auth: "api-key"`; the step logs in with it instead of the subscription login. */
+  apiKey?: string;
   /** Prompt cache TTL for this step (env `CLAUDE_CODE_PROMPT_CACHE_TTL`, which wins over settings); absent keeps the CLI default. */
   cacheTtl?: '5m' | '1h';
 }
@@ -139,6 +141,8 @@ export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessE
   }
   // Plan 38: a host-provided long-lived token replaces the copied credential file.
   if ((hostEnv.CLAUDE_CODE_OAUTH_TOKEN ?? '').trim() !== '') env.CLAUDE_CODE_OAUTH_TOKEN = hostEnv.CLAUDE_CODE_OAUTH_TOKEN!;
+  // Never read from the host env: only the key the config chose (`claude.auth: "api-key"`) reaches a step.
+  if (input.apiKey) env.ANTHROPIC_API_KEY = input.apiKey;
   if (input.cacheTtl) env.CLAUDE_CODE_PROMPT_CACHE_TTL = input.cacheTtl;
   if (input.extraEnv) Object.assign(env, input.extraEnv);
   return { args, env, cwd: input.cwd, stdin: input.prompt };

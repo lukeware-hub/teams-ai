@@ -14,7 +14,7 @@ import { taskBranch } from '../core/ids.js';
 import type { DecideContext, Decider } from '../decide/decider.js';
 import { assessAttemptProgress } from '../decide/decisions/attempt-progress.js';
 import { triageGateFailure } from '../decide/decisions/gate-triage.js';
-import { chooseModelTier, type Effort, type ModelTier, type ModelTierResult } from '../decide/decisions/model-tier.js';
+import { chooseModelTier, heuristicTier, type Effort, type ModelTier, type ModelTierResult } from '../decide/decisions/model-tier.js';
 import { REVIEW_PROFILE_DEPTH, choosePrRisk } from '../decide/decisions/pr-risk.js';
 import { assessScopeDrift } from '../decide/decisions/scope-drift.js';
 import type { Role } from '../config/config.js';
@@ -66,6 +66,8 @@ export interface TaskRunnerDeps {
   decider: Pick<Decider, 'decide'>;
   /** Model name for a tier on this role's Claude profile; null when the role runs on another provider. */
   tierModel: (role: Role, tier: ModelTier) => string;
+  /** R11.13 slice 6: when the decision layer gives no tier, the task's own size picks one (config `routing`); absent means off. */
+  routing?: { tiers: 'off' | 'shadow' | 'on'; models: Record<ModelTier, string> };
   policy: PolicyConfig;
   packBase: () => PackBase;
   handoffs: () => readonly HandoffSummary[];
@@ -105,6 +107,7 @@ export class TaskRunner {
   private junit: TestResult[] = [];
   private mergeRefusals = 0;
   private tierAttempt = 0;
+  private routedAttempt = 0;
   /** The Dev's CLI session for the current task definition and step settings; a retry resumes it (R11.13 slice 7). */
   private devSession: { key: string; id: string } | null = null;
   private tierChoice: ModelTierResult | null = null;
@@ -152,9 +155,16 @@ export class TaskRunner {
       this.tierAttempt = attempt;
     }
     const chosen = this.tierChoice!;
-    if (!chosen.tier || !chosen.effort) return {};
-    const model = this.deps.tierModel(role, chosen.tier);
-    return { model, effort: chosen.effort };
+    if (chosen.tier && chosen.effort) return { model: this.deps.tierModel(role, chosen.tier), effort: chosen.effort };
+    const routing = this.deps.routing;
+    if (!routing || routing.tiers === 'off') return {};
+    // The router sizes the implementing step; reviews keep their own role profile.
+    const routed = heuristicTier(this.task.def, attempt);
+    if (this.routedAttempt !== attempt) {
+      this.routedAttempt = attempt;
+      await this.deps.journal.fact(OrchEvent.ModelTierChosen, { taskId: this.taskId, attempt, tier: routed.tier, model: routing.models[routed.tier!], applied: routing.tiers === 'on', source: routed.source });
+    }
+    return routing.tiers === 'on' && role !== 'test' ? { model: routing.models[routed.tier!] } : {};
   }
 
   private get ctx(): DecideContext {

@@ -34,6 +34,8 @@ export const OrchEvent = {
   RepoBootstrapped: 'REPO_BOOTSTRAPPED',
   /** The delta handed to the next Dev attempt (gate failures, findings, conflicts, spec-gap answer). */
   Feedback: 'FEEDBACK',
+  /** The model tier the router picked for a Dev attempt, and whether it was applied (`routing.tiers` shadow or on). */
+  ModelTierChosen: 'MODEL_TIER_CHOSEN',
   VerificationPassed: 'VERIFICATION_PASSED',
   VerificationFailed: 'VERIFICATION_FAILED',
   DeployApplied: 'DEPLOY_APPLIED',

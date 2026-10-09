@@ -12,6 +12,18 @@ export function hasOauthToken(hostEnv: NodeJS.ProcessEnv): boolean {
   return (hostEnv[OAUTH_TOKEN_ENV] ?? '').trim() !== '';
 }
 
+/** The Claude Console key of `claude.auth: "api-key"` (R11.13 slice 12); `runStep` puts it in the step env, never the host's. */
+export const API_KEY_ENV = 'ANTHROPIC_API_KEY';
+
+export function hasApiKey(hostEnv: NodeJS.ProcessEnv): boolean {
+  return (hostEnv[API_KEY_ENV] ?? '').trim() !== '';
+}
+
+/** A credential that comes in through the environment: no file to copy in, refresh or write back. */
+export function hasStaticCredential(hostEnv: NodeJS.ProcessEnv): boolean {
+  return hasOauthToken(hostEnv) || hasApiKey(hostEnv);
+}
+
 /** expiresAt (epoch ms) of the host's stored login, or null when there is no readable credential. */
 export async function hostTokenExpiresAt(hostEnv: NodeJS.ProcessEnv): Promise<number | null> {
   if (!hostEnv.HOME) return null;
@@ -35,7 +47,7 @@ export async function createStepHome(parentDir: string, hostEnv: NodeJS.ProcessE
   const home = await fs.mkdtemp(path.join(parentDir, 'home-'));
   await fs.mkdir(path.join(home, 'tmp'), { recursive: true });
   const hostHome = hostEnv.HOME;
-  if (hostHome && !hasOauthToken(hostEnv)) {
+  if (hostHome && !hasStaticCredential(hostEnv)) {
     const source = path.join(hostHome, '.claude', '.credentials.json');
     try {
       const data = await fs.readFile(source);
@@ -60,7 +72,7 @@ export async function removeStepHome(home: string): Promise<void> {
  */
 export async function syncBackCredentials(home: string, hostEnv: NodeJS.ProcessEnv): Promise<void> {
   const hostHome = hostEnv.HOME;
-  if (!hostHome || hasOauthToken(hostEnv)) return;
+  if (!hostHome || hasStaticCredential(hostEnv)) return;
   const read = async (file: string): Promise<{ raw: string; expiresAt: number; refresh: boolean } | null> => {
     try {
       const raw = await fs.readFile(file, 'utf8');

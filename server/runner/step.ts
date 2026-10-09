@@ -13,7 +13,7 @@ import type { RefContext, References } from '../validators/references.js';
 import { buildInvocation, ensureTrusted, promptCacheTtl } from './invocation.js';
 import { sandboxPolicyViolation } from './sandbox-policy.js';
 import { readTotals, restoreSession, saveSession, writeTotals } from './session-store.js';
-import { createStepHome, hasOauthToken, hostTokenExpiresAt, removeStepHome, syncBackCredentials } from './step-home.js';
+import { API_KEY_ENV, createStepHome, hasStaticCredential, hostTokenExpiresAt, removeStepHome, syncBackCredentials } from './step-home.js';
 import { preflightSandbox, runProcess, type ProcessCaps, type RawStepResult, type RunnerBinary } from './process-runner.js';
 import { writeRoleSettings, type RoleSettingsInput } from './role-settings.js';
 import { isRateLimitRejected, type ResultSummary } from './stream-events.js';
@@ -64,6 +64,8 @@ export interface StepDeps {
   /** Config `sandbox`; when disabled the bubblewrap/socat tool check is skipped as well. */
   sandbox?: { enabled: boolean; unsafeNoSandbox?: boolean };
   hostEnv?: NodeJS.ProcessEnv;
+  /** Claude Console key for `claude.auth: "api-key"`; steps then log in with it instead of the copied subscription login. */
+  apiKey?: string;
   onEvent?: (line: string) => void;
   /** Aborting kills the agent process (and its process group). */
   signal?: AbortSignal;
@@ -137,7 +139,9 @@ function environmentFailure<T>(message: string): StepOutcome<T> {
 }
 
 export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDeps): Promise<StepOutcome<OutputOf<K>>> {
-  const hostEnv = deps.hostEnv ?? process.env;
+  // An API key in the orchestrator's own environment is never forwarded: only the one the config chose (`deps.apiKey`) is.
+  const { [API_KEY_ENV]: _stray, ...base } = deps.hostEnv ?? process.env;
+  const hostEnv: NodeJS.ProcessEnv = deps.apiKey ? { ...base, [API_KEY_ENV]: deps.apiKey } : base;
   try {
     const stat = await fs.stat(req.cwd);
     if (!stat.isDirectory()) return environmentFailure(`cwd is not a directory: ${req.cwd}`);
@@ -198,7 +202,7 @@ let refreshTail: Promise<void> = Promise.resolve();
  * or CLAUDE_CODE_OAUTH_TOKEN never takes the lock.
  */
 export async function withRefreshGate<T>(hostEnv: NodeJS.ProcessEnv, clock: () => Date, fn: () => Promise<T>): Promise<T> {
-  if (hasOauthToken(hostEnv)) return fn();
+  if (hasStaticCredential(hostEnv)) return fn();
   const stale = async (): Promise<boolean> => {
     const at = await hostTokenExpiresAt(hostEnv);
     return at !== null && at - clock().getTime() < REFRESH_WINDOW_MS;
@@ -242,6 +246,7 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
       resume: req.resume,
       agentDefinition: agent,
       cacheTtl: promptCacheTtl(req.kind),
+      apiKey: deps.apiKey,
       effort: req.effort,
       extraEnv: req.extraEnv,
     },
