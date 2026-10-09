@@ -393,6 +393,17 @@ export class TaskRunner {
     const code: CodeContext = depth === 0 ? { source: 'none' } : await this.deps.impact(this.worktree, this.branch, changed, depth);
     const diff = await this.boundedDiff();
     const pack = reviewPack(this.deps.packBase(), this.task.def, { diffStat, changedFiles: changed, diff, junit: this.junit, code, profile });
+    // R11.13 slice 5: both reviews read the same diff and edit nothing, so they run together (about 40 s per task). The
+    // security step must settle before this method returns, or a Dev retry could edit the worktree while it still reads it.
+    const security = this.startSecurity(changed, diffStat, diff, code);
+    try {
+      await this.judgeReview(pack, security);
+    } finally {
+      await security.then(() => undefined, () => undefined);
+    }
+  }
+
+  private async judgeReview(pack: ReturnType<typeof reviewPack>, security: Promise<StepOutcome<OutputOf<'security'>>>): Promise<void> {
     const outcome = await this.deps.runAgent<'review'>({
       kind: 'review',
       role: 'test',
@@ -416,14 +427,13 @@ export class TaskRunner {
       return this.fail('review-changes', `Review requested changes:\n${text}`);
     }
     await this.deps.journal.fact(OrchEvent.ReviewApproved, { taskId: this.taskId, criteria: value.criteria });
-    if (!(await this.securityReview(changed, diffStat, diff, code))) return;
+    if (!(await this.judgeSecurity(await security))) return;
     await this.transition('rebasing');
   }
 
-  /** Runs after Test approves: critical/high findings go back to Dev like review changes; medium/low are journaled only. */
-  private async securityReview(changed: readonly string[], diffStat: string, diff: string, code: CodeContext): Promise<boolean> {
+  private startSecurity(changed: readonly string[], diffStat: string, diff: string, code: CodeContext): Promise<StepOutcome<OutputOf<'security'>>> {
     const attempt = this.task.attempts + 1;
-    const outcome = await this.deps.runAgent<'security'>({
+    return this.deps.runAgent<'security'>({
       kind: 'security',
       role: 'sec',
       pack: securityPack(this.deps.packBase(), this.task.def, { diffStat, changedFiles: changed, diff, code }),
@@ -434,6 +444,10 @@ export class TaskRunner {
       refContext: () => this.refContext(),
       refs: ((v: SecurityOutputSchema) => ({ files: v.findings.map((f) => f.file) })) as never,
     });
+  }
+
+  /** Counted only after Test approves: critical/high findings go back to Dev like review changes; medium/low are journaled only. */
+  private async judgeSecurity(outcome: StepOutcome<OutputOf<'security'>>): Promise<boolean> {
     if (!outcome.ok) {
       await this.fail(outcome.failure, outcome.errors.join('\n'));
       return false;

@@ -372,6 +372,14 @@ describe('TaskRunner: reviewing', () => {
     expect(journal.lastFeedback('T1')).toContain('no test for the empty case');
   });
 
+  it('runs the security review beside the Test review but counts it only when Test approves', async () => {
+    const r = await validated(async () => review('changes'));
+    await r.advance();
+    expect(agentCalls.map((c) => c.kind)).toEqual(expect.arrayContaining(['review', 'security']));
+    expect(types()).not.toContain(`fact:${OrchEvent.SecurityApproved}`);
+    expect(types()).not.toContain(`fact:${OrchEvent.SecurityChanges}`);
+  });
+
   it('rejects a review whose evidence does not exist as a schema failure, then counts an attempt', async () => {
     const r = await validated(async () => review('approve', ['sum::[AC-001] ghost']));
     await r.advance();
@@ -401,7 +409,7 @@ describe('TaskRunner: security review', () => {
     expect(call.pack.changeSet).toContain('Diff against origin/main');
     expect(call.pack.changeSet).toContain('src/a.ts');
     expect(call.pack.changeSet).not.toContain('diff truncated');
-    expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'review', 'security']);
+    expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'security', 'review']);
     expect(types()).toContain(`fact:${OrchEvent.SecurityApproved}`);
   });
 

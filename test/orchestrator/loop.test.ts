@@ -87,7 +87,7 @@ describe('orchestrator loop with the fake claude', () => {
     expect(tree).toContain('src/a/index.ts');
     expect(tree).toContain('src/b/index.ts');
     expect(gh.prs.map((p) => p.title)).toEqual(['docs(spec-001): technical spec', 'docs(spec-001): plan', 'T1-a: Task T1-a', 'T2-b: Task T2-b']);
-    expect(scenario.seen).toEqual(['tech-spec/-/1', 'coverage/-/1', 'plan/-/1', 'dev/T1-a/1', 'review/T1-a/1', 'security/T1-a/1', 'dev/T2-b/1', 'review/T2-b/1', 'security/T2-b/1']);
+    expect(scenario.seen).toEqual(['tech-spec/-/1', 'coverage/-/1', 'plan/-/1', 'dev/T1-a/1', 'security/T1-a/1', 'review/T1-a/1', 'dev/T2-b/1', 'security/T2-b/1', 'review/T2-b/1']);
   });
 
   it('survives a crash after every intent and never duplicates a commit, PR or merge', { timeout: 900_000 }, async () => {
