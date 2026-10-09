@@ -8,6 +8,9 @@
 .tabs { display: flex; gap: 0; margin-bottom: 1rem; overflow: auto; border-bottom: 1px solid var(--line); }
 .tabs button { height: auto; min-height: 2.75rem; padding: 0.55rem 0.75rem; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--ink-soft); background: transparent; white-space: nowrap; transition: none; }
 .tabs button:hover:not(:disabled) { color: var(--ink); background: var(--surface-sunken); }
+.tab-groups { flex-wrap: wrap; gap: 0 1.5rem; }
+.tab-group { display: flex; align-items: center; flex-wrap: wrap; }
+.tab-group-label { margin-right: 0.25rem; color: var(--ink-soft); font-size: 0.75rem; }
 .tabs button.active { border-bottom-color: var(--accent); color: var(--accent-text); background: transparent; }
 .refine textarea { width: 100%; min-height: 58vh; padding: 1rem; resize: vertical; border-color: var(--line-strong); color: var(--ink); background: var(--surface-sunken); font-family: var(--font-mono); font-size: 0.8125rem; line-height: 1.6; }
 .question textarea { min-height: 7rem; background: var(--surface); font-family: inherit; font-size: 0.9rem; line-height: 1.5; }

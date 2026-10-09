@@ -225,6 +225,12 @@ export function RefinementView(p: ViewProps) {
           : st.cycle === 0
             ? 'Revise os documentos e clique em Avaliar. Os agentes vão revisar a demanda e preencher a lista de verificação.'
             : 'Corrija nos documentos os itens não atendidos da lista de verificação e clique em Reavaliar.';
+  const existing = st.mode === 'new-spec' || st.mode === 'continue';
+  const tabButton = (f: DocFile) => (
+    <button key={f} className={tab === f ? 'active' : ''} onClick={() => setTab(f)}>
+      {docLabel[f]}
+    </button>
+  );
   return (
     <div className="refine refine-workspace">
       <section className="docs panel-card">
@@ -232,18 +238,27 @@ export function RefinementView(p: ViewProps) {
           <div>
             <span className="refine-heading-icon refine-heading-icon-docs"><Icon name="file" size={26} /></span>
             <div><span className="eyebrow">Área de trabalho</span>
-            <h2>Documentos do projeto</h2>
+            <h2>{existing ? (st.mode === 'continue' ? 'Continuação da spec' : 'Spec nova') : 'Documentos do projeto'}</h2>
             </div>
           </div>
           <span className="doc-state">{locked ? 'Somente leitura' : 'Editável'}</span>
         </div>
-        <div className="tabs" role="tablist" aria-label="Documentos do projeto">
-          {(['project.md', 'brief.md', 'stack.md', 'flow.md', 'design.md'] as DocFile[]).map((f) => (
-            <button key={f} className={tab === f ? 'active' : ''} onClick={() => setTab(f)}>
-              {docLabel[f]}
-            </button>
-          ))}
-        </div>
+        {existing ? (
+          <div className="tabs tab-groups" role="tablist" aria-label="Documentos">
+            <div className="tab-group" data-testid="docs-group-spec">
+              <span className="tab-group-label">Spec</span>
+              {tabButton('brief.md')}
+            </div>
+            <div className="tab-group" data-testid="docs-group-project">
+              <span className="tab-group-label">Contexto do projeto · muda só com sua aprovação</span>
+              {(['project.md', 'stack.md', 'flow.md', 'design.md'] as DocFile[]).map(tabButton)}
+            </div>
+          </div>
+        ) : (
+          <div className="tabs" role="tablist" aria-label="Documentos do projeto">
+            {(['project.md', 'brief.md', 'stack.md', 'flow.md', 'design.md'] as DocFile[]).map(tabButton)}
+          </div>
+        )}
         <p data-testid="doc-impact" className="hint">{backlogOn && tab === 'brief.md' ? briefingImpact : docImpact[tab]}</p>
         <div className="document-editor">
           <button type="button" className="editor-copy" aria-label="Copiar documento" onClick={() => copyDoc(docs[tab] ?? '')}><Icon name="copy" size={19} /></button>
@@ -538,7 +553,7 @@ export function RefinementPage() {
   const startRun = act(() => refineApi.start(projectId, specId).then(({ runId, program: started }) => (started ? (setProgram(started), load()) : navigate(`/runs/${runId}`))));
   return (
     <main className="refine-page">
-      <header className="refine-breadcrumb"><a href="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></a><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} rascunho</span>
+      <header className="refine-breadcrumb"><a href="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></a><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span>
         <span className="refine-start-group">
           <button data-testid="start" className="primary refine-start refine-top-action" disabled={!canStartRun(snap.state, snap.state.status === 'evaluating')} onClick={startRun}>
             <Icon name="play" size={18} />Iniciar análise

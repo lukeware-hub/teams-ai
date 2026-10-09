@@ -314,3 +314,16 @@ describe('JevActions', () => {
     expect((await screen.findByTestId('jev-validate-result')).textContent).toContain('Conexão com o OpenRouter funcionando');
   });
 });
+
+describe('RefinementView: a new spec in an existing project', () => {
+  it('shows the spec apart from the project context, which changes only with approval', () => {
+    const { unmount } = render(<MemoryRouter><RefinementView snap={base({ mode: 'new-spec' })} busy={false} {...on()} /></MemoryRouter>);
+    expect(screen.getByTestId('docs-group-spec').textContent).toContain('Spec');
+    expect(screen.getByTestId('docs-group-project').textContent).toContain('Contexto do projeto');
+    expect(screen.getByTestId('docs-group-project').textContent).toContain('muda só com sua aprovação');
+    expect(screen.getByTestId('doc-brief.md')).toBeTruthy();
+    unmount();
+    render(<MemoryRouter><RefinementView snap={base({ mode: 'new-project' })} busy={false} {...on()} /></MemoryRouter>);
+    expect(screen.queryByTestId('docs-group-project')).toBeNull();
+  });
+});
