@@ -31,7 +31,6 @@ describe('ValidationView', () => {
   it('shows service, script checkboxes, assumptions, blocked tasks and evidence; actions enabled when awaiting validation', () => {
     const on = { report: vi.fn(), complete: vi.fn() };
     render(<MemoryRouter><ValidationView detail={detail()} specStatus="awaiting-validation" onReport={on.report} onComplete={on.complete} /></MemoryRouter>);
-    expect(screen.getByTestId('service-url').getAttribute('href')).toBe(`http://${window.location.hostname}:3000`);
     expect(screen.getByTestId('smoke-AC-001').textContent).toContain('Passou');
     expect(screen.getByTestId('e2e-AC-001').textContent).toBe('Passou');
     expect(screen.getByTestId('e2e-AC-002').textContent).toContain('Não se aplica (devops only)');
@@ -69,11 +68,10 @@ describe('ValidationView', () => {
     expect(screen.getByText(/ainda não há relatório/i)).toBeTruthy();
   });
 
-  it('spells out the criterion under its script steps and the healthcheck in plain words', () => {
+  it('spells out the criterion under its script steps', () => {
     const criteria = [{ id: 'AC-001', given: 'a visitor', when: 'they open /', then: 'they see the list', smoke: true }];
     render(<MemoryRouter><ValidationView detail={detail({ acceptanceCriteria: criteria })} specStatus="awaiting-validation" onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
     expect(screen.getByText('Dado a visitor, quando they open /, então they see the list')).toBeTruthy();
-    expect(screen.getByText(/HTTP 200 na 1ª tentativa/)).toBeTruthy();
   });
 });
 
@@ -88,8 +86,9 @@ describe('ValidationView service card', () => {
     view(withService({ port: 3000, kind: 'api', docsPath: '/docs' }), { serviceStatus: online });
     expect(screen.getByTestId('service-online').textContent).toContain('No ar');
     expect(screen.getByTestId('open-docs').getAttribute('href')).toBe(`http://${window.location.hostname}:3000/docs`);
-    // The compose-internal http://dind:3000 does not open in a browser (live: user-api run-5).
-    expect(screen.getByTestId('service-url').getAttribute('href')).toBe(`http://${window.location.hostname}:3000`);
+    // The buttons already open the service, so no separate url or past healthcheck line.
+    expect(screen.queryByTestId('service-url')).toBeNull();
+    expect(screen.queryByText(/Verificação de saúde/)).toBeNull();
     expect(screen.queryByTestId('open-app')).toBeNull();
     expect(screen.queryByTestId('start-service')).toBeNull();
   });
