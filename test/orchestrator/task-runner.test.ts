@@ -858,14 +858,14 @@ describe('TaskRunner: a replan cannot hand devops a task it has no Bash to run',
     return { results: [g], blockingFailure: g };
   };
 
-  it('rejects a devops replacement whose affectedPaths are not infra', async () => {
-    const bad = makePlanTask({ id: 'T1-r1', criteriaRefs: ['AC-001'], owner: 'devops', affectedPaths: ['tests/unit/x.test.ts'], dependsOn: [] });
-    const agent: Agent = async (req) => (req.kind === 'replan' ? ok({ specHash: HASH, replacements: [bad] }) : devDone()(req));
+  it('hands a devops replacement whose affectedPaths are not infra to dev instead of blocking the run', async () => {
+    // Live (user-api run-1, todo-001-r1): a deploy fix that also updated README.md was rejected and ended the run.
+    const mixed = makePlanTask({ id: 'T1-r1', criteriaRefs: ['AC-001'], owner: 'devops', affectedPaths: ['Dockerfile', 'tests/unit/x.test.ts'], dependsOn: [] });
+    const agent: Agent = async (req) => (req.kind === 'replan' ? ok({ specHash: HASH, replacements: [mixed] }) : devDone()(req));
     const r = new TaskRunner('T1', deps({ agent, gates: failGates }));
     for (let i = 0; i < 6; i++) await r.advance();
-    expect(journal.state.tasks.get('T1')!.state).toBe('blocked');
-    expect(journal.events.find((e) => e.type === OrchEvent.TaskBlocked && e.data.taskId === 'T1')!.data.reason).toMatch(/devops but tests\/unit\/x\.test\.ts is not infra/);
-    expect(journal.state.tasks.has('T1-r1')).toBe(false);
+    expect(journal.state.tasks.get('T1')!.state).toBe('superseded');
+    expect(journal.state.tasks.get('T1-r1')!.def.owner).toBe('dev');
   });
 });
 

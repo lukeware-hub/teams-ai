@@ -609,7 +609,7 @@ export class TaskRunner {
       await this.block(`replan failed: ${outcome.errors.join('; ')}`);
       return true;
     }
-    const value = outcome.value as ReplanOutput;
+    const value = this.ownInfraOnly(outcome.value as ReplanOutput);
     // Validate before the journal reduces the replan: a bad replacement would be rejected by the reducer
     // after it was written, corrupting the log. Structural checks only; AC coverage of the whole plan is
     // not the replan's concern (spec §4.6: the replacements cover the original task's criteria).
@@ -623,6 +623,13 @@ export class TaskRunner {
     return true;
   }
 
+  /** A devops replacement that also touches app or docs files goes to dev, who has Bash and may edit infra too. */
+  private ownInfraOnly(value: ReplanOutput): ReplanOutput {
+    const manifests = this.deps.plan.deploy.manifests;
+    const replacements = value.replacements.map((r) => (r.owner === 'devops' && devopsOwnerErrors([r], manifests).length > 0 ? { ...r, owner: 'dev' as const } : r));
+    return { ...value, replacements };
+  }
+
   private replanErrors(replacements: readonly PlanTask[]): string[] {
     const errors: string[] = [];
     const known = new Set(this.deps.journal.state.tasks.keys());
@@ -631,7 +638,6 @@ export class TaskRunner {
     // The scaffold makes the gates runnable; a piece of it cannot pass them (seen live: a scripts-only
     // replacement failed lint/typecheck/build for lack of the toolchain its sibling task owned).
     if (this.task.bootstrapsFrozenPaths && replacements.length !== 1) errors.push(`${this.taskId} is the scaffold task and must be replanned into exactly one task, got ${replacements.length}`);
-    errors.push(...devopsOwnerErrors(replacements, this.deps.plan.deploy.manifests));
     for (const r of replacements) {
       if (known.has(r.id)) errors.push(`replacement ${r.id} reuses an existing task id`);
       for (const d of r.dependsOn) {
