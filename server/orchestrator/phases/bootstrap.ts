@@ -63,21 +63,35 @@ export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docs
   // A crash after the commit is confirmed but before it merges must never let a resumed
   // recreate-worktree silently reset the branch and lose it (spec (orchestrator) §6 crash recovery).
   const wt = await docsWorktree(deps, branch, { keepCommits: journal.isConfirmed(Intent.DocsCommit, docsCommitKey(deps, 0)) });
-  // The project docs and this run's own spec directory always go (main may hold its planned copy: the frozen one replaces it);
-  // everything else the draft has (briefing, stack, flow, design, backlog, the index, the other planned specs) only when main
-  // lacks it, so a spec already delivered keeps the status main gave it.
+  // This run's spec directory always goes. With a base copy (an existing project) any other doc goes only when the draft
+  // changed it or main lacks it, and a doc main changed meanwhile stops the start; without one, the project docs always go
+  // and everything else only when main lacks it, so a spec already delivered keeps the status main gave it.
   const own = `specs/${spec.specId}/`;
+  const baseDir = path.join(path.dirname(opts.docsDir), 'base', 'docs');
+  const hasBase = await exists(baseDir);
   for (const rel of await listFiles(opts.docsDir)) {
+    const source = path.join(opts.docsDir, rel);
     const target = path.join(wt, 'docs', rel);
-    const owned = rel === 'project.md' || rel === 'project.json' || rel.startsWith(own);
-    if (!owned && (await exists(target))) continue;
+    if (!rel.startsWith(own)) {
+      const main = await read(target);
+      if (hasBase && main !== null) {
+        const [base, draft] = await Promise.all([read(path.join(baseDir, rel)), read(source)]);
+        if (draft === base) continue;
+        if (main !== base && main !== draft) {
+          const reason = `docs conflict: ${rel} changed on main since this spec was created; create the spec again from the current main`;
+          await journal.fact(OrchEvent.PhaseFailed, { phase: 0, reason });
+          return { ok: false, reason };
+        }
+      } else if (!hasBase && main !== null && rel !== 'project.md' && rel !== 'project.json') continue;
+    }
     await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.copyFile(path.join(opts.docsDir, rel), target);
+    await fs.copyFile(source, target);
   }
   return commitAndMergeDocs(deps, 0, branch, wt, `docs(${spec.specId}): spec v${version}`);
 }
 
 const exists = (p: string) => fs.access(p).then(() => true, () => false);
+const read = (p: string) => fs.readFile(p, 'utf8').catch(() => null);
 
 /** Every file under `dir`, as `/`-separated relative paths. */
 async function listFiles(dir: string, rel = ''): Promise<string[]> {

@@ -48,6 +48,50 @@ function deps(exec: FakeExec, repo: string, over: Partial<RunDeps> = {}): RunDep
 }
 
 describe('phase 0', () => {
+  describe('a draft with a base copy', () => {
+    const setup = async (main: Record<string, string>, base: Record<string, string>, draft: Record<string, string>) => {
+      await remote.cleanup();
+      remote = await makeRemote({ 'README.md': 'seed', ...Object.fromEntries(Object.entries(main).map(([k, v]) => [`docs/${k}`, v])) });
+      draftDocs = path.join(remote.root, 'draft', 'docs');
+      const put = async (dir: string, files: Record<string, string>) => {
+        for (const [rel, text] of Object.entries(files)) {
+          await fs.mkdir(path.dirname(path.join(dir, rel)), { recursive: true });
+          await fs.writeFile(path.join(dir, rel), text);
+        }
+      };
+      await put(path.join(remote.root, 'draft', 'base', 'docs'), base);
+      await put(draftDocs, { ...draft, 'specs/hello-001/spec.json': JSON.stringify(spec) });
+      const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
+      exec.onArgs('gh', ['repo', 'view'], () => ({ stdout: JSON.stringify({ nameWithOwner: 'o/hello-app', url: remote.origin }) }));
+      new FakeGh().install(exec);
+      return Run.create(deps(exec, remote.repo), 'hello-001-r1');
+    };
+    const show = (rel: string) => git(remote.repo, ['show', `origin/main:docs/${rel}`], execCommand);
+
+    it('publishes the changed docs, skips the unchanged ones and still adds what main lacks', { timeout: 60_000 }, async () => {
+      const json = JSON.stringify(project);
+      const run = await setup(
+        { 'project.json': json, 'project.md': '# Main', 'flow.md': '# Flow v1' },
+        { 'project.json': json, 'project.md': '# Main', 'flow.md': '# Flow v1', 'stack.md': '# Stack' },
+        { 'project.json': json, 'project.md': '# Main', 'flow.md': '# Flow v2', 'stack.md': '# Stack' },
+      );
+      expect(await run.executePhase0()).toEqual({ ok: true });
+      expect(await show('flow.md')).toBe('# Flow v2');
+      expect(await show('project.md')).toBe('# Main');
+      expect(await show('stack.md')).toBe('# Stack');
+      expect(await show('specs/hello-001/spec.json')).toContain('"specHash"');
+      await run.close();
+    });
+
+    it('stops on a doc that both main and the draft changed', { timeout: 60_000 }, async () => {
+      const run = await setup({ 'flow.md': '# Flow from another spec' }, { 'flow.md': '# Flow v1' }, { 'flow.md': '# Flow v2' });
+      const result = await run.executePhase0();
+      expect(result).toEqual({ ok: false, reason: expect.stringContaining('docs conflict: flow.md') });
+      expect(await show('flow.md')).toBe('# Flow from another spec');
+      await run.close();
+    });
+  });
+
   it('creates the repository from the draft when none exists', { timeout: 60_000 }, async () => {
     const origin = path.join(remote.root, 'empty.git');
     await fs.mkdir(origin);
