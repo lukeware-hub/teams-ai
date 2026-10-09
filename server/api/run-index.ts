@@ -217,12 +217,16 @@ export async function listRuns(deps: IndexDeps, projectId: string): Promise<RunR
     return (b.at ?? '').localeCompare(a.at ?? '') || suffix(b) - suffix(a);
   });
   // Concluding a spec runs a new `complete` run and never touches the journal of the run that delivered it, which would
-  // read "awaiting validation" forever. The newest such run takes the spec's status; older runs keep their own.
+  // read "awaiting validation" forever. The newest such run turns done once the spec is: its spec file says so, or a
+  // completion run after it finished done (a draft root never sees the `done` merged onto main). Older runs keep their own.
+  const completed = new Set([...specs].filter(([, status]) => status === 'done').map(([specId]) => specId));
   const settled = new Set<string>();
   for (const row of rows) {
-    if (row.status !== 'awaiting-validation' || settled.has(row.specId)) continue;
-    settled.add(row.specId);
-    if (specs.get(row.specId) === 'done') row.status = 'done';
+    if (row.status === 'done' && parseRunId(row.runId)?.kind === 'complete') completed.add(row.specId);
+    else if (row.status === 'awaiting-validation' && completed.has(row.specId) && !settled.has(row.specId)) {
+      settled.add(row.specId);
+      row.status = 'done';
+    }
   }
   return rows;
 }

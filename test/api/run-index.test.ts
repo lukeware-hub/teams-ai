@@ -87,6 +87,22 @@ describe('run index', () => {
     expect(rows[0]!.specs).toEqual([{ specId: 'hello-001', status: 'done', activeRunId: null }]);
   });
 
+  it('turns only the newest delivery before a finished completion into done, from the completion journal alone', async () => {
+    const at = (iso: string) => ({ ...state('running'), at: iso });
+    const finished = (runId: string, result: string) => [started(runId), { type: 'RUN_FINISHED', data: { result } }];
+    await writeRun(runs, 'hello-001-r5', finished('hello-001-r5', 'awaiting-validation'), at('2026-09-24T10:05:00.000Z'));
+    await writeRun(runs, 'hello-001-r6', finished('hello-001-r6', 'awaiting-validation'), at('2026-09-24T10:06:00.000Z'));
+    await writeRun(runs, 'hello-001-complete-r1', finished('hello-001-complete-r1', 'done'), at('2026-09-24T10:07:00.000Z'));
+    await writeRun(runs, 'hello-001-r7', finished('hello-001-r7', 'awaiting-validation'), at('2026-09-24T10:08:00.000Z'));
+    const rows = await listRuns(deps(), 'hello-app'); // the fixture spec still reads running, as a draft root does
+    expect(rows.map((r) => [r.runId, r.status])).toEqual([
+      ['hello-001-r7', 'awaiting-validation'],
+      ['hello-001-complete-r1', 'done'],
+      ['hello-001-r6', 'done'],
+      ['hello-001-r5', 'awaiting-validation'],
+    ]);
+  });
+
   it('does not count a readme or deploy run finishing "done" as the spec itself being done', async () => {
     await writeRun(runs, 'hello-001-readme-r1', [started('hello-001-readme-r1'), { type: 'RUN_FINISHED', data: { result: 'done' } }], state('running'));
     await writeRun(runs, 'hello-001-deploy-r1', [started('hello-001-deploy-r1'), { type: 'RUN_FINISHED', data: { result: 'done' } }], state('running'));
