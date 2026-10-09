@@ -315,8 +315,8 @@ export interface AgentStepDeps {
   stepDir: (seq: number) => string;
   /** Where a task's session transcript is kept; `AgentStepRequest.session` has no effect without it. */
   sessionDir?: (taskId: string) => string;
-  /** A model for every step of one kind, ahead of the role profile (config `routing.stepModels`). */
-  stepModel?: (kind: StepKind) => string | undefined;
+  /** A model for every step of one kind, ahead of the role profile (config `routing.stepModels`); `attempt` is the refinement cycle there. */
+  stepModel?: (kind: StepKind, attempt: number) => string | undefined;
   secretValues: () => readonly string[];
   specHash: string;
 }
@@ -334,7 +334,7 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
   const dir = deps.stepDir(seq);
   await fs.mkdir(dir, { recursive: true });
   const profile = deps.profile(req.role);
-  const model = req.model ?? deps.stepModel?.(req.kind) ?? profile.model;
+  const model = req.model ?? deps.stepModel?.(req.kind, req.attempt) ?? profile.model;
   await deps.journal.fact(OrchEvent.StepStarted, {
     stepId: id,
     kind: req.kind,

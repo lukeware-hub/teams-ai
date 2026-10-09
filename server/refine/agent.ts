@@ -1,4 +1,5 @@
 import path from 'node:path';
+import type { StepKind } from '../agents/outputs.js';
 import { loadAgents } from '../agents/registry.js';
 import { Accounting } from '../budget/accounting.js';
 import { Governor } from '../budget/governor.js';
@@ -18,6 +19,11 @@ export interface AgentWiring {
   workspacesRoot: string;
   claudeJsonPath?: string;
   runStep?: typeof runStepFn;
+}
+
+/** From the second cycle on, `laterCycleModels` wins over `stepModels`. */
+export function refineStepModel(routing: Config['routing'], kind: StepKind, cycle: number): string | undefined {
+  return (cycle > 1 ? routing.laterCycleModels[kind] : undefined) ?? routing.stepModels[kind];
 }
 
 /** One governor, breaker and ledger for every refinement session of the UI process (spec §2). */
@@ -51,7 +57,7 @@ export async function makeRunAgent(w: AgentWiring): Promise<RunAgent> {
       journal: ctx.journal,
       stepDir: ctx.stepDir,
       secretValues: () => [...Object.values(secrets), ...(apiKey ? [apiKey] : [])],
-      stepModel: (kind) => w.cfg.routing.stepModels[kind],
+      stepModel: (kind, cycle) => refineStepModel(w.cfg.routing, kind, cycle),
       specHash: ctx.specHash,
     });
   };

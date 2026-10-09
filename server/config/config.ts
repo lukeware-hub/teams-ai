@@ -106,12 +106,15 @@ export const Config = z.object({
    * Which model a step runs on, beyond the role profile (R11.13 slices 6 and 10). Defaults change nothing a run does.
    * `tiers`: the Dev's model per task size; `shadow` journals the choice (MODEL_TIER_CHOSEN) without applying it, `on` applies it.
    * `stepModels`: a model for every step of one kind (e.g. the refinement checklists), whatever the role profile says.
+   * `laterCycleModels`: the same for refinement steps from the second cycle on, ahead of `stepModels` (Opus finds the gaps in the
+   * first cycle, a cheaper model closes the loop). Empty by default.
    */
   routing: z
     .object({
       tiers: z.enum(['off', 'shadow', 'on']).default('shadow'),
       models: z.object({ small: z.string().min(1).default('sonnet'), medium: z.string().min(1).default('sonnet'), large: z.string().min(1).default('opus') }).prefault({}),
       stepModels: z.partialRecord(z.enum(STEP_KINDS), z.string().min(1)).default({}),
+      laterCycleModels: z.partialRecord(z.enum(STEP_KINDS), z.string().min(1)).default({}),
     })
     .prefault({}),
   /**

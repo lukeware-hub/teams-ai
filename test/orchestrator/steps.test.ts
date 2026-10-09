@@ -212,6 +212,15 @@ describe('runAgentStep', () => {
     expect(models).toEqual(['haiku', 'opus', 'sonnet']);
   });
 
+  it('tells the step model chooser the attempt, so refinement can route by cycle', async () => {
+    const seen: number[] = [];
+    const d = await deps(async () => ({ ok: true, value: {}, summary: summary() }));
+    d.runStep = (async () => ({ ok: true, value: { specHash: HASH, status: 'done', summary: 'ok', changedFiles: [], commitMessage: 'feat: x' }, summary: summary() })) as AgentStepDeps['runStep'];
+    d.stepModel = (_kind, attempt) => (seen.push(attempt), undefined);
+    await runAgentStep({ kind: 'dev', role: 'dev', pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 3 }, d);
+    expect(seen).toEqual([3]);
+  });
+
   it('ignores the session when the runner has nowhere to keep it', async () => {
     const seen: Array<{ sessionId?: string; sessionStore?: string }> = [];
     const d = await deps(async () => ({ ok: true, value: {}, summary: summary() }));
