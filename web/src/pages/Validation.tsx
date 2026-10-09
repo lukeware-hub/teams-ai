@@ -46,6 +46,8 @@ function Rich({ text }: { text: string }) {
   if (parts.length === 1) return <>{text}</>;
   return <>{parts.map((p, i) => (i % 2 ? <code key={i}>{p}</code> : p))}</>;
 }
+/** The compose-internal url (http://dind:3000) does not open in a browser; the published host port does. */
+const hostUrl = (service: NonNullable<Report['service']>) => serviceLinks(service, window.location.hostname).appUrl ?? service.url;
 /** Is the service up, where to open it, and a button to bring it up when it is not. */
 function ServiceControls({ service, status, starting, canStart, onStart, onRecheck }: { service: NonNullable<Report['service']>; status: ServiceStatus | null; starting: boolean; canStart: boolean; onStart: () => void; onRecheck: () => void }) {
   const links = serviceLinks(service, window.location.hostname);
@@ -178,8 +180,8 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                   <>
                     <ServiceControls service={report.service} status={serviceStatus} starting={startingService} canStart={specStatus === 'awaiting-validation' || specStatus === 'done'} onStart={onStartService} onRecheck={onRecheckService} />
                     <div className="service-line">
-                      <a className="service-url" data-testid="service-url" href={report.service.url} target="_blank" rel="noreferrer">
-                        {report.service.url}
+                      <a className="service-url" data-testid="service-url" href={hostUrl(report.service)} target="_blank" rel="noreferrer">
+                        {hostUrl(report.service)}
                         <Icon name="external" size={14} />
                       </a>
                       <span className="hint">Verificação de saúde: {healthText(report.service.healthcheck)}</span>

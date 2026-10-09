@@ -31,7 +31,7 @@ describe('ValidationView', () => {
   it('shows service, script checkboxes, assumptions, blocked tasks and evidence; actions enabled when awaiting validation', () => {
     const on = { report: vi.fn(), complete: vi.fn() };
     render(<MemoryRouter><ValidationView detail={detail()} specStatus="awaiting-validation" onReport={on.report} onComplete={on.complete} /></MemoryRouter>);
-    expect(screen.getByTestId('service-url').getAttribute('href')).toBe('http://127.0.0.1:3000');
+    expect(screen.getByTestId('service-url').getAttribute('href')).toBe(`http://${window.location.hostname}:3000`);
     expect(screen.getByTestId('smoke-AC-001').textContent).toContain('Passou');
     expect(screen.getByTestId('e2e-AC-001').textContent).toBe('Passou');
     expect(screen.getByTestId('e2e-AC-002').textContent).toContain('Não se aplica (devops only)');
@@ -88,6 +88,8 @@ describe('ValidationView service card', () => {
     view(withService({ port: 3000, kind: 'api', docsPath: '/docs' }), { serviceStatus: online });
     expect(screen.getByTestId('service-online').textContent).toContain('No ar');
     expect(screen.getByTestId('open-docs').getAttribute('href')).toBe(`http://${window.location.hostname}:3000/docs`);
+    // The compose-internal http://dind:3000 does not open in a browser (live: user-api run-5).
+    expect(screen.getByTestId('service-url').getAttribute('href')).toBe(`http://${window.location.hostname}:3000`);
     expect(screen.queryByTestId('open-app')).toBeNull();
     expect(screen.queryByTestId('start-service')).toBeNull();
   });
