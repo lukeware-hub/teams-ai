@@ -53,6 +53,14 @@ describe('run index', () => {
     await expect(fs.access(path.join(runs, 'hello-001-r3', 'pid'))).rejects.toThrow();
   });
 
+  it('reads a run that left only ui.log behind as launch-failed, dated by that log', async () => {
+    await fs.mkdir(path.join(runs, 'hello-001-r1'), { recursive: true });
+    await fs.writeFile(path.join(runs, 'hello-001-r1', 'ui.log'), 'boom');
+    const [row] = await listRuns(deps(), 'hello-app');
+    expect(row).toMatchObject({ runId: 'hello-001-r1', status: 'launch-failed', stoppable: false });
+    expect(row!.at).not.toBeNull();
+  });
+
   it('reads a run whose process is alive but has not written state.json yet as running, so its spec is already claimed', async () => {
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], null, 900); // Phases 0-2 write the journal before any state snapshot
     alive.add(900);

@@ -11,7 +11,7 @@ import { probeProcess } from './process-identity.js';
 /** Run, spec and step ids become path segments: no leading dot, so neither `.` nor `..` matches. */
 export const SAFE_ID = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
 
-export type RunListStatus = 'running' | 'paused:quota' | 'paused:auth' | 'draining' | 'complete' | 'blocked' | 'deadlocked' | 'drained' | 'phase-failed' | 'awaiting-validation' | 'verification-failed' | 'deploy-failed' | 'done' | 'interrupted' | 'unknown';
+export type RunListStatus = 'running' | 'paused:quota' | 'paused:auth' | 'draining' | 'complete' | 'blocked' | 'deadlocked' | 'drained' | 'phase-failed' | 'awaiting-validation' | 'verification-failed' | 'deploy-failed' | 'done' | 'interrupted' | 'launch-failed' | 'unknown';
 const ACTIVE: ReadonlySet<string> = new Set(['running', 'paused:quota', 'paused:auth', 'draining']);
 /** A spec with an interrupted run is resumed, not restarted: the UI offers Resume instead of Start. */
 export const CLAIMS_SPEC: ReadonlySet<string> = new Set([...ACTIVE, 'interrupted']);
@@ -179,14 +179,16 @@ export async function runRow(deps: IndexDeps, runId: string): Promise<RunRow | n
     .then((t) => JSON.parse(t) as StateFile)
     .catch(() => null);
   const { alive, interrupted } = await runLiveness(deps, runId);
+  // A launch that never wrote its journal leaves only ui.log behind.
+  const launchLog = events.length === 0 && !state ? await fs.stat(path.join(runs, runId, 'ui.log')).catch(() => null) : null;
   let status: RunListStatus;
   if (finished) status = String(finished.data.result) as RunListStatus;
   // Phases 0-2 journal before the first state snapshot: a live process is running, not unknown (the spec must stay claimed).
-  else if (!state?.status) status = alive ? 'running' : 'unknown';
+  else if (!state?.status) status = alive ? 'running' : events.length === 0 && launchLog ? 'launch-failed' : 'unknown';
   else if (interrupted) status = 'interrupted';
   else status = state.status as RunListStatus;
   const tokens = (state?.tokens?.inputTokens ?? 0) + (state?.tokens?.outputTokens ?? 0);
-  return { runId, specId, projectId: projectId ?? '', status, at: state?.at ?? finished?.at ?? null, tokens, cost: state?.tokens?.costUsd ?? 0, stoppable: alive && ACTIVE.has(status) };
+  return { runId, specId, projectId: projectId ?? '', status, at: state?.at ?? finished?.at ?? launchLog?.mtime.toISOString() ?? null, tokens, cost: state?.tokens?.costUsd ?? 0, stoppable: alive && ACTIVE.has(status) };
 }
 
 async function specsOf(deps: IndexDeps, projectId: string): Promise<Map<string, string>> {

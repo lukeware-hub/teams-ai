@@ -14,14 +14,14 @@ export const LABEL: Record<string, string> = {
   idle: 'pronta para executar', refining: 'em refinamento', planned: 'planejada', running: 'em execução', draining: 'finalizando',
   'paused:quota': 'pausada por cota', 'paused:auth': 'aguardando login', interrupted: 'interrompida', 'awaiting-validation': 'aguardando validação',
   done: 'concluída', complete: 'concluída', drained: 'encerrada', blocked: 'bloqueada', deadlocked: 'travada',
-  'phase-failed': 'fase falhou', 'verification-failed': 'verificação falhou', 'deploy-failed': 'deploy falhou', unknown: 'sem status',
+  'phase-failed': 'fase falhou', 'verification-failed': 'verificação falhou', 'deploy-failed': 'deploy falhou', 'launch-failed': 'não iniciou', unknown: 'sem status',
   drafting: 'em edição', evaluating: 'em avaliação', answering: 'aguardando respostas', ready: 'pronto para iniciar', error: 'com erro',
 };
 export const TONE: Record<string, string> = {
   done: 'good', complete: 'good', ready: 'good',
   running: 'neutral', draining: 'neutral', evaluating: 'neutral',
   'paused:quota': 'warn', 'paused:auth': 'warn', interrupted: 'warn', 'awaiting-validation': 'warn', answering: 'warn',
-  blocked: 'bad', deadlocked: 'bad', 'phase-failed': 'bad', 'verification-failed': 'bad', 'deploy-failed': 'bad', error: 'bad',
+  blocked: 'bad', deadlocked: 'bad', 'phase-failed': 'bad', 'verification-failed': 'bad', 'deploy-failed': 'bad', 'launch-failed': 'bad', error: 'bad',
 };
 export const chip = (status: string) => <span className={TONE[status] ? `status-pill tone-${TONE[status]}` : 'status-pill'}>{LABEL[status] ?? status}</span>;
 

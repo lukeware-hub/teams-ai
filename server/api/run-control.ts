@@ -90,7 +90,9 @@ export function defaultRunControl(repoRoot: string): RunControlDeps {
   return {
     spawn: (a) => {
       const log = openSync(a.logFile, 'a');
-      const child = nodeSpawn(a.bin, a.args, { cwd: a.cwd, detached: true, stdio: ['ignore', log, log] });
+      // The SQLite warning would be the only line of ui.log and hide why a launch failed.
+      const env = { ...process.env, NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' ') };
+      const child = nodeSpawn(a.bin, a.args, { cwd: a.cwd, env, detached: true, stdio: ['ignore', log, log] });
       child.unref();
       if (child.pid === undefined) throw new Error('spawn returned no pid');
       return { pid: child.pid };
