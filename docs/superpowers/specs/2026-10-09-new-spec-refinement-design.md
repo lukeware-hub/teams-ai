@@ -28,28 +28,24 @@ Today a new spec copies every project document from `main`, but nothing protects
 
 ## 2. Session mode and base
 
-- `RefineSession.create` already records `REFINE_CREATED { mode }`; it also records `base`, the `origin/main` commit the documents were copied from (`createFromRepo` in `server/refine/draft.ts` reads it after `gitFetch`). `new-project` has no base.
-- The reducer (`server/refine/state.ts`) keeps `mode` and `base` in the session state.
-- `createFromRepo` writes `<draft root>/base.json` with `{ "commit": "<sha>" }`, outside `docs/`, so the run reads the same base.
-- An existing-project session is one whose mode is `new-spec` or `continue`.
-- A draft created before this change has no `mode` in its state; it is treated as `new-project`, which is today's behavior.
+- `RefineSession.create` already records `REFINE_CREATED { mode }`; the reducer (`server/refine/state.ts`) now keeps `mode` in the session state, so the screen knows it.
+- `createFromRepo` (`server/refine/draft.ts`) copies the draft `docs/` directory to `<draft root>/base/docs` right after it fills the project documents and before it writes the spec's brief. This copy is the base: the documents as the session received them.
+- An existing-project session is one whose draft has a base. `new-spec` and `continue` drafts have one; `new-project` drafts and drafts created before this change do not, and keep today's behavior.
 
 ## 3. Protection rules in an existing-project session
 
 - Agents already change documents only through `PATCH_PROPOSED`; that stays.
 - The human may still edit any document (`saveDoc`); the human is the approver.
-- `project.json`: after the product owner derives, the server keeps the base `project.json` unless `project.md` in the draft differs from `project.md` at the base commit. The same rule applies to the backlog step, which also writes `project.json`.
-- The base copy is read with `git show <base>:docs/<file>` from the workspace repository.
+- `project.json`: after the product owner derives, the server keeps the base `project.json` unless the draft `project.md` differs from the base `project.md`. The same rule applies to the backlog step, which also writes `project.json`.
 
 ## 4. Start writes only what changed
 
-`runPhase0`, existing-repository branch, when `<projectDir>/base.json` exists:
+`runPhase0`, existing-repository branch, when `<draft root>/base/docs` exists (the sibling of the draft `docs/` it already receives):
 
-- For each file under the draft `docs/`, it compares the draft file with `git show <base>:docs/<file>`.
-- A file equal to the base is skipped.
-- A file that differs from the base is copied, after one check: if `main` now differs from the base for that file, the start fails with `docs conflict: <file> changed on main since this spec was created; refresh the draft`.
 - The spec's own directory (`specs/<specId>/`) is always copied, as today.
-- Without `base.json` (old drafts, new projects), today's copy rules stay.
+- Any other file equal to its base copy is skipped.
+- A file that differs from its base copy is copied, after one check: if `main` has that file and it differs from the base copy and from the draft, the start fails with `docs conflict: <file> changed on main since this spec was created; create the spec again from the current main`.
+- Without a base (old drafts, new projects), today's copy rules stay.
 
 ## 5. Create screen
 
@@ -75,17 +71,16 @@ In an existing-project session (`web/src/pages/Refinement.tsx`):
 
 ## 7. Errors
 
-- No base commit at creation (fetch failed): creation fails, as `createFromRepo` already fails on a failed fetch.
 - A start conflict (section 4) blocks the start and the screen shows the message; the draft stays as it is.
 
 ## 8. Testing
 
 - Unit tests:
-  - the reducer keeps `mode` and `base`;
+  - the reducer keeps `mode`, and a new or continued spec draft has a base copy;
   - `project.json` is kept when `project.md` equals the base and re-derived when it differs, for the derive and the backlog steps;
   - `runPhase0` copies only the changed files;
   - `runPhase0` fails on a conflict;
-  - `runPhase0` keeps today's rules without `base.json`.
+  - `runPhase0` keeps today's rules without a base copy.
 - Web tests:
   - the create panel goes from description to suggested identifier to start;
   - a failed suggestion leaves the field editable;
