@@ -253,6 +253,27 @@ describe('runStep', () => {
     expect(agents.dev).toMatchObject({ prompt: devAgent.body, tools: devAgent.tools, model: 'sonnet' });
   });
 
+  it('gives a short prompt cache TTL to steps that run no long command, and the CLI default to dev', async () => {
+    const capture = path.join(dir, 'capture.json');
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
+    await runStep(request({ kind: 'dev' }), deps);
+    expect(JSON.parse(await fs.readFile(capture, 'utf8')).env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBeUndefined();
+    await runStep(request({ kind: 'security' }), deps);
+    expect(JSON.parse(await fs.readFile(capture, 'utf8')).env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBe('5m');
+  });
+
+  it('never gives a review step the file-editing tools', async () => {
+    const capture = path.join(dir, 'capture.json');
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
+    const agent = { ...devAgent, tools: ['Read', 'Edit', 'Write', 'Grep', 'Glob', 'Bash'] };
+    await runStep(request({ kind: 'review', agent }), deps);
+    const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
+    expect(captured.argv[captured.argv.indexOf('--tools') + 1]).toBe('Read,Grep,Glob,Bash');
+    expect(JSON.parse(captured.argv[captured.argv.indexOf('--agents') + 1]).dev.tools).toEqual(['Read', 'Grep', 'Glob', 'Bash']);
+    await runStep(request({ kind: 'dev', agent }), deps);
+    expect(JSON.parse(await fs.readFile(capture, 'utf8')).argv).toContain('Read,Edit,Write,Grep,Glob,Bash');
+  });
+
   it('returns an environment failure when the working directory does not exist, without trusting it', async () => {
     const missing = path.join(dir, 'missing');
     const outcome = await runStep(request({ cwd: missing }), deps);

@@ -362,7 +362,7 @@ describe('TaskRunner: reviewing', () => {
     await r.advance();
     expect(state().state).toBe('rebasing');
     expect(types()).toContain(`fact:${OrchEvent.ReviewApproved}`);
-    expect(agentCalls.find((c) => c.kind === 'review')!.pack.feedback).toContain('src/a.ts');
+    expect(agentCalls.find((c) => c.kind === 'review')!.pack.changeSet).toContain('src/a.ts');
   });
 
   it('returns findings to Dev on changes', async () => {

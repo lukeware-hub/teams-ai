@@ -16,6 +16,7 @@ import { redactSecrets } from '../core/redact.js';
 import { buildContextPack, type CodeContext, type ContextPackInput, type HandoffSummary } from '../knowledge/context-pack.js';
 import type { Hit } from '../knowledge/retrieval.js';
 import type { runStep as runStepFn, StepDeps, StepOutcome, StepRequest } from '../runner/step.js';
+import type { TestResult } from '../evidence/junit.js';
 import type { RefContext } from '../validators/references.js';
 import { REQUIRED_BLOCKING_GATES, SCAFFOLD_TASK_ID } from '../validators/plan.js';
 import { securityToolingRules } from '../validators/security-tooling.js';
@@ -39,6 +40,9 @@ export function outputContract(kind: StepKind): string {
 function criteriaOf(spec: Spec, ids: readonly string[]) {
   return spec.acceptanceCriteria.filter((c) => ids.includes(c.id));
 }
+
+/** Longest gate-result list a review pack carries; the rest is a count. */
+const REVIEW_JUNIT_LINES = 200;
 
 type Common = Pick<
   ContextPackInput,
@@ -79,12 +83,14 @@ export function devPack(
 export function reviewPack(
   base: PackBase,
   task: PlanTask,
-  opts: { diffStat: string; changedFiles: readonly string[]; code: CodeContext; profile: ReviewProfile },
+  opts: { diffStat: string; changedFiles: readonly string[]; diff: string; junit: readonly TestResult[]; code: CodeContext; profile: ReviewProfile },
 ): ContextPackInput {
-  const feedback = `Review profile: ${opts.profile}
-
-Changed files:\n${opts.changedFiles.join('\n')}\n\nDiff stat:\n${opts.diffStat}`;
-  return { ...common(base, 'review', 'test'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), code: opts.code, feedback };
+  const feedback = `Review profile: ${opts.profile}`;
+  const results = opts.junit.slice(0, REVIEW_JUNIT_LINES).map((t) => `- ${t.id} [${t.status}]${t.acIds.length > 0 ? ` ${t.acIds.join(', ')}` : ''}`);
+  if (opts.junit.length > REVIEW_JUNIT_LINES) results.push(`- ... ${opts.junit.length - REVIEW_JUNIT_LINES} more`);
+  // The merge gates already ran the suite on this exact diff: the reviewer reads their result instead of re-running it (R11.13 slice 2).
+  const changeSet = `Changed files:\n${opts.changedFiles.join('\n')}\n\nDiff stat:\n${opts.diffStat}\n\nGate test results (the merge gates already ran the suite on this diff; do not re-run it):\n${results.join('\n') || '- none reported'}\n\nDiff against origin/main:\n${opts.diff}`;
+  return { ...common(base, 'review', 'test'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), code: opts.code, feedback, changeSet };
 }
 
 /**

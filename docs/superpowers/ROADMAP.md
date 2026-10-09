@@ -630,7 +630,7 @@ The docs (project, briefing, stack, flow, design) stay the only hand-edited trut
 
 - Human, looking at `Projetos › r11p-svc › r11p-svc-001-r1`: generated names are hard to understand. Project, spec, backlog item, plan task and run ids must be intuitive English kebab-case names; project and spec ids proposed by an AI agent. Four slices in plan 54: AI-suggested ids, backlog specs named by key, task slugs, run ids carrying project and spec (also fixes the cross-project run collision).
 
-### R11.13 Token cost and run speed - `todo` (human, 2026-10-08: research requested while R11.12 was in progress; slices 1 and 2 first)
+### R11.13 Token cost and run speed - `partial` (human, 2026-10-08: research requested while R11.12 was in progress; slices 1 and 2 built 2026-10-08, plan 55, live check pending)
 
 - Evidence (read-only analysis of the container journals, 2026-10-08):
   - Run `todo-001-r1` (R8.7): US$ 13.26, 66 steps, 712 turns, 80 min. By token class, at the per-model prices that reproduce `total_cost_usd` exactly (Opus 5.5: output $20/M, 1h cache write $8/M, cache read $0.20/M; Sonnet 5.5: $10, $4, $0.20): cache writes 51%, output 33%, cache reads 16%. Every write is on the 1h tier (2x the input price; the 5m tier is 1.25x).
@@ -651,6 +651,7 @@ The docs (project, briefing, stack, flow, design) stay the only hand-edited trut
   10. Refinement: beyond slice 1, convergence (R11.10, R11.5a) remains the big lever; try Sonnet 5.5 on the PO and SM checklists against the current Opus results.
   11. Wider plans: an SM rule to declare `dependsOn` only for a real code dependency (`todo-api`'s chain T0→T1→T2→T3→T4→T6→T9 kept `maxParallel` 3 at 2 or fewer). Risk: more rebases.
   12. Subscription window: Max plans now include monthly API credits (US$ 100 on Max 5x, US$ 200 on Max 20x; support.claude.com article 17154008), separate from the plan limits. Running steps with an API key of the linked Console organization spares the 5h/7d window, removes the OAuth refresh race (plan 38), enables `--bare` and defaults to the 5m TTL; cap it with a workspace spend limit. Human decision (money vs window).
+- Built (plan 55, 2026-10-08): slices 1 and 2. Slice 1 as a per-kind env var (`CLAUDE_CODE_PROMPT_CACHE_TTL=5m` for every kind except dev, tech-spec and deployment), not in the per-role settings file. Slice 2: the review pack pins the full diff and the gate results, review steps lose Edit/Write/MultiEdit, `test.md` says not to re-run the suite. Full suite green. Open: no live run yet; measure review turns (was ~14), cost per completed task and wall time against `todo-001-r1`.
 - Discarded after measuring: `--bare` (API key only), `--disable-slash-commands` (0 tokens: skills are not listed without the `Skill` tool), switching to the native binary (the npm package already wraps it), `DISABLE_NON_ESSENTIAL_MODEL_CALLS` (undocumented).
 - Combined estimate for slices 1, 2, 4 and 5: run -30 to -40% cost and ~80 -> ~55 min; refinement -26% from slice 1 alone. Verify each slice on a real run by cost per completed task, not by token counts.
 

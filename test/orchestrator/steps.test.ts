@@ -86,10 +86,15 @@ describe('packs', () => {
   });
 
   it('review pack puts the diff and impact radius in feedback and code', () => {
-    const p = reviewPack(base, task, { diffStat: ' src/a.ts | 2 +-', changedFiles: ['src/a.ts'], code: { source: 'graph', affected: [] }, profile: 'standard' });
+    const junit = [{ id: 'test::[AC-001] adds', name: '[AC-001] adds', classname: 'test', status: 'passed' as const, acIds: ['AC-001'] }];
+    const p = reviewPack(base, task, { diffStat: ' src/a.ts | 2 +-', changedFiles: ['src/a.ts'], diff: '+const a = 1;', junit, code: { source: 'graph', affected: [] }, profile: 'standard' });
     expect(p.kind).toBe('review');
     expect(p.role).toBe('test');
-    expect(p.feedback).toContain('src/a.ts');
+    expect(p.feedback).toContain('standard');
+    expect(p.changeSet).toContain('src/a.ts | 2 +-');
+    expect(p.changeSet).toContain('+const a = 1;');
+    expect(p.changeSet).toContain('- test::[AC-001] adds [passed] AC-001');
+    expect(p.changeSet).toContain('do not re-run it');
     expect(p.code?.source).toBe('graph');
   });
 

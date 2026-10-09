@@ -10,7 +10,7 @@ import type { CliErrorInput } from '../decide/decisions/cli-error.js';
 import type { FailureKind } from '../scheduler/retry-policy.js';
 import { validateAgentOutput } from '../validators/agent-output.js';
 import type { RefContext, References } from '../validators/references.js';
-import { buildInvocation, ensureTrusted } from './invocation.js';
+import { buildInvocation, ensureTrusted, promptCacheTtl } from './invocation.js';
 import { sandboxPolicyViolation } from './sandbox-policy.js';
 import { createStepHome, hasOauthToken, hostTokenExpiresAt, removeStepHome, syncBackCredentials } from './step-home.js';
 import { preflightSandbox, runProcess, type ProcessCaps, type RawStepResult, type RunnerBinary } from './process-runner.js';
@@ -68,6 +68,9 @@ export interface StepDeps {
   /** Spec 10A.5 decision 8: asked only when no deterministic rule matched (the `code` fallthrough). */
   classifyUnknown?: (input: CliErrorInput) => Promise<FailureKind>;
 }
+
+/** Tools a review step does not get, whatever its role may use elsewhere. */
+const REVIEW_DENIED_TOOLS: readonly string[] = ['Edit', 'Write', 'MultiEdit'];
 
 const QUOTA_TEXT = /usage limit|rate limit|out of .*quota/i;
 const AUTH_TEXT = /not logged in|authentication|failed to authenticate|oauth session expired|could not be refreshed|invalid api key|please run (claude login|\/login)/i;
@@ -216,6 +219,8 @@ export async function withRefreshGate<T>(hostEnv: NodeJS.ProcessEnv, clock: () =
 async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, hostEnv: NodeJS.ProcessEnv, home: string): Promise<StepOutcome<OutputOf<K>>> {
   await ensureTrusted(req.cwd, path.join(home, '.claude.json'));
   const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: req.extraAllow, sandboxEnabled: deps.sandbox?.enabled, hostHome: hostEnv.HOME });
+  // A review judges a diff the gates already tested: it never edits the code under review (R11.13 slice 2).
+  const agent = req.kind === 'review' ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : req.agent;
   const invocation = buildInvocation(
     {
       role: req.role,
@@ -224,13 +229,14 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
       cwd: req.cwd,
       prompt: req.prompt,
       jsonSchema: toJsonSchema(req.kind),
-      tools: req.agent.tools,
+      tools: agent.tools,
       disallowedTools: [...ALWAYS_DENIED, ...NESTED_DENIED],
       settingsPath,
       home,
       sessionId: req.sessionId,
       resume: req.resume,
-      agentDefinition: req.agent,
+      agentDefinition: agent,
+      cacheTtl: promptCacheTtl(req.kind),
       effort: req.effort,
       extraEnv: req.extraEnv,
     },

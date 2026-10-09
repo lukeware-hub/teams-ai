@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { RoleProfile, Role } from '../config/config.js';
 import { updateFileAtomic } from '../core/atomic-write.js';
+import type { StepKind } from '../agents/outputs.js';
 import type { Effort } from '../decide/decisions/model-tier.js';
 
 /** Flags fixed by the CLI spike (docs/superpowers/spikes/2026-09-23-cli-findings.md). */
@@ -27,6 +28,20 @@ export const ISOLATION_FLAGS: readonly string[] = [
  * the Read deny rules in role-settings.ts PROTECTED_READ_PATHS remain as a second layer.
  */
 export const ENV_ALLOWLIST: readonly string[] = ['HOME', 'PATH', 'TERM', 'LANG', 'LC_ALL', 'USER', 'SHELL', 'TMPDIR', 'TZ'];
+
+/**
+ * R11.13 slice 1: steps that never wait on a long command write their prompt cache with the 5-minute TTL (1.25x the input
+ * price) instead of the subscription default of 1 hour (2x). Dev and deployment steps run suites and installs that can
+ * outlast 5 minutes, which would expire the cache mid-step, so they keep the default.
+ */
+const SHORT_CACHE_KINDS: ReadonlySet<StepKind> = new Set<StepKind>([
+  'refine', 'derive', 'coverage', 'plan', 'review', 'security', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'name',
+]);
+
+/** The `CLAUDE_CODE_PROMPT_CACHE_TTL` value for a step kind, or undefined to keep the CLI default. */
+export function promptCacheTtl(kind: StepKind): '5m' | undefined {
+  return SHORT_CACHE_KINDS.has(kind) ? '5m' : undefined;
+}
 
 export interface InvocationInput {
   role: Role;
@@ -55,6 +70,8 @@ export interface InvocationInput {
    * from the host: these are not secrets leaking in, they are resources the orchestrator itself provisioned
    * for this one step. Bypasses ENV_ALLOWLIST; never put a real platform secret here. */
   extraEnv?: Readonly<Record<string, string>>;
+  /** Prompt cache TTL for this step (env `CLAUDE_CODE_PROMPT_CACHE_TTL`, which wins over settings); absent keeps the CLI default. */
+  cacheTtl?: '5m' | '1h';
 }
 
 export interface Invocation {
@@ -108,6 +125,7 @@ export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessE
   }
   // Plan 38: a host-provided long-lived token replaces the copied credential file.
   if ((hostEnv.CLAUDE_CODE_OAUTH_TOKEN ?? '').trim() !== '') env.CLAUDE_CODE_OAUTH_TOKEN = hostEnv.CLAUDE_CODE_OAUTH_TOKEN!;
+  if (input.cacheTtl) env.CLAUDE_CODE_PROMPT_CACHE_TTL = input.cacheTtl;
   if (input.extraEnv) Object.assign(env, input.extraEnv);
   return { args, env, cwd: input.cwd, stdin: input.prompt };
 }

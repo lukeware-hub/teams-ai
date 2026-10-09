@@ -8,6 +8,7 @@ import {
   InvocationError,
   buildInvocation,
   ensureTrusted,
+  promptCacheTtl,
   removeTrusted,
   sanitizeEnv,
   type InvocationInput,
@@ -100,6 +101,14 @@ describe('buildInvocation', () => {
     const json = JSON.parse(inv.args[inv.args.indexOf('--agents') + 1]!);
     expect(json).toEqual({ dev: { description: 'Developer.', prompt: 'Echo the specHash.', tools: ['Read', 'Edit'], model: 'sonnet' } });
     expect(inv.args.indexOf('--agents')).toBeGreaterThan(inv.args.indexOf('--agent'));
+  });
+
+  it('sets the prompt cache TTL only when asked, and never lets extraEnv lose to it', () => {
+    expect(buildInvocation(base, hostEnv).env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBeUndefined();
+    expect(buildInvocation({ ...base, cacheTtl: '5m' }, hostEnv).env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBe('5m');
+    expect(promptCacheTtl('review')).toBe('5m');
+    expect(promptCacheTtl('dev')).toBeUndefined();
+    expect(promptCacheTtl('deployment')).toBeUndefined();
   });
 
   it('omits --agents when no definition is given', () => {

@@ -368,6 +368,15 @@ export class TaskRunner {
     return dedupeById([...lastRound.values()].flat());
   }
 
+  /** The task's diff against origin/main, read once for both reviews. */
+  private async boundedDiff(): Promise<string> {
+    const full = await git(this.worktree, ['diff', 'origin/main...HEAD'], this.deps.exec);
+    // sec has no Bash and cannot tell a short diff from a cut one: say so, or it approves code it never saw.
+    return full.length > SECURITY_DIFF_CHARS
+      ? `${full.slice(0, SECURITY_DIFF_CHARS)}\n[diff truncated: first ${SECURITY_DIFF_CHARS} of ${full.length} characters shown. The changes after the cut were not shown: read the changed files and the task's affectedPaths to review them.]`
+      : full;
+  }
+
   private async review(): Promise<void> {
     if (this.junit.length === 0) this.junit = this.junitFromJournal();
     const changed = await changedFiles(this.worktree, 'origin/main', this.deps.exec);
@@ -382,7 +391,8 @@ export class TaskRunner {
     await this.deps.journal.fact(OrchEvent.ReviewProfileChosen, { taskId: this.taskId, risk: risk.risk, profile, source: risk.source, forcedBy: profile === risk.profile ? null : 'scope-drift' });
     const depth = REVIEW_PROFILE_DEPTH[profile];
     const code: CodeContext = depth === 0 ? { source: 'none' } : await this.deps.impact(this.worktree, this.branch, changed, depth);
-    const pack = reviewPack(this.deps.packBase(), this.task.def, { diffStat, changedFiles: changed, code, profile });
+    const diff = await this.boundedDiff();
+    const pack = reviewPack(this.deps.packBase(), this.task.def, { diffStat, changedFiles: changed, diff, junit: this.junit, code, profile });
     const outcome = await this.deps.runAgent<'review'>({
       kind: 'review',
       role: 'test',
@@ -406,17 +416,12 @@ export class TaskRunner {
       return this.fail('review-changes', `Review requested changes:\n${text}`);
     }
     await this.deps.journal.fact(OrchEvent.ReviewApproved, { taskId: this.taskId, criteria: value.criteria });
-    if (!(await this.securityReview(changed, diffStat, code))) return;
+    if (!(await this.securityReview(changed, diffStat, diff, code))) return;
     await this.transition('rebasing');
   }
 
   /** Runs after Test approves: critical/high findings go back to Dev like review changes; medium/low are journaled only. */
-  private async securityReview(changed: readonly string[], diffStat: string, code: CodeContext): Promise<boolean> {
-    const full = await git(this.worktree, ['diff', 'origin/main...HEAD'], this.deps.exec);
-    // sec has no Bash and cannot tell a short diff from a cut one: say so, or it approves code it never saw.
-    const diff = full.length > SECURITY_DIFF_CHARS
-      ? `${full.slice(0, SECURITY_DIFF_CHARS)}\n[diff truncated: first ${SECURITY_DIFF_CHARS} of ${full.length} characters shown. The changes after the cut were not shown: read the changed files and the task's affectedPaths to review them.]`
-      : full;
+  private async securityReview(changed: readonly string[], diffStat: string, diff: string, code: CodeContext): Promise<boolean> {
     const attempt = this.task.attempts + 1;
     const outcome = await this.deps.runAgent<'security'>({
       kind: 'security',
