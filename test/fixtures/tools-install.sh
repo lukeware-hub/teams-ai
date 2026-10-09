@@ -7,9 +7,18 @@ TMP="$ROOT/.tools/tmp"
 mkdir -p "$BIN" "$TMP"
 
 # fetch URL SHA256 DEST: download, then refuse anything whose digest differs.
+# With TEAMS_AI_GATE_CACHE set, a download whose digest still matches is reused instead of fetched again.
 fetch() {
+  C="${TEAMS_AI_GATE_CACHE:-}"
+  if [ -n "$C" ] && [ -f "$C/dl/$2" ] && echo "$2  $C/dl/$2" | sha256sum -c - >/dev/null 2>&1; then
+    cp "$C/dl/$2" "$3"
+    return
+  fi
   curl -fsSL --retry 3 -o "$3" "$1"
   echo "$2  $3" | sha256sum -c -
+  if [ -n "$C" ]; then
+    mkdir -p "$C/dl" && cp "$3" "$C/dl/$2.tmp" && mv "$C/dl/$2.tmp" "$C/dl/$2" || true
+  fi
 }
 
 fetch "https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz" a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb "$TMP/gitleaks.tgz"

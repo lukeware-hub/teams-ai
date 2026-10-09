@@ -167,6 +167,8 @@ export const Config = z.object({
       workspaces: linuxPath.default('~/.teams-ai/workspaces'),
       secrets: linuxPath.default('~/.teams-ai/secrets'),
       runs: linuxPath.default('~/.teams-ai/runs'),
+      /** Scanner downloads and the trivy DB shared by the security gates of every task (R11.13 slice 4). */
+      gateCache: linuxPath.default('~/.teams-ai/gate-cache'),
     })
     .prefault({}),
 });

@@ -279,6 +279,9 @@ export class Run {
     const install = await this.installDeps(worktree);
     if (install) return { results: [install], blockingFailure: install };
     if (plan.gates.some((g) => g.name === TOOLS_GATE)) await writeToolsInstaller(worktree);
+    const cacheDir = expandHome(this.deps.cfg.paths.gateCache);
+    // The gate user may differ from the orchestrator's (rootless dind maps it to its own root), so the shared cache is open to all.
+    await fs.mkdir(cacheDir, { recursive: true, mode: 0o777 }).then(() => fs.chmod(cacheDir, 0o777)).catch(() => undefined);
     return runGates(
       plan.gates.filter((g) => g.blocking && g.name !== E2E_GATE), // the e2e gate runs in Phase 5 only
       {
@@ -286,6 +289,7 @@ export class Run {
         image: plan.gateImage,
         junitPath: plan.junitPath,
         coveragePath: plan.coveragePath,
+        cacheDir,
         cpus: 2,
         memory: '2g',
         timeoutMs: 10 * 60_000,

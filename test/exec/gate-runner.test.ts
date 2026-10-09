@@ -66,6 +66,16 @@ describe('dockerArgs', () => {
     expect(env).not.toHaveProperty('DATABASE_URL');
   });
 
+  it('mounts the shared cache only into the prescribed security gates, through the bind rewrite', () => {
+    const cached = { ...ctx, cacheDir: '/home/node/.teams-ai/gate-cache', bindRewrite: { from: '/home/node/.teams-ai', to: '/var/lib/docker/volumes/data/_data' } };
+    for (const name of ['security-tools', 'image-scan']) {
+      const { args } = dockerArgs(gate({ name, command: 'x', network: 'egress' }), cached);
+      expect(args).toEqual(expect.arrayContaining(['--mount', 'type=bind,source=/var/lib/docker/volumes/data/_data/gate-cache,target=/gate-cache', '-e', 'TEAMS_AI_GATE_CACHE=/gate-cache', '-e', 'TRIVY_CACHE_DIR=/gate-cache/trivy', '-e', 'PIP_CACHE_DIR=/gate-cache/pip']));
+    }
+    for (const name of ['unit-test', 'build', 'sast']) expect(dockerArgs(gate({ name, command: 'x' }), cached).args.join(' ')).not.toContain('gate-cache');
+    expect(dockerArgs(gate({ name: 'image-scan', command: 'x' }), ctx).args.join(' ')).not.toContain('gate-cache');
+  });
+
   it('fails loudly when a declared secret is missing', () => {
     expect(() => dockerArgs(gate({ name: 'x', command: 'y', secrets: ['MISSING'] }), ctx)).toThrow(/MISSING/);
   });

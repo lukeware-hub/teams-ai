@@ -7,8 +7,10 @@ COPY --from=docker:27-cli /usr/local/libexec/docker/cli-plugins/docker-compose /
 
 WORKDIR /app
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends util-linux gh bubblewrap socat \
+  && apt-get install -y --no-install-recommends util-linux gh bubblewrap socat pipx \
   && rm -rf /var/lib/apt/lists/*
+# graphify builds the code graph the step packs read (R11.13 slice 3); pinned to the version the CLI spike recorded.
+RUN PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install graphifyy==0.9.67
 
 COPY package*.json ./
 RUN npm ci --omit=optional --no-audit --no-fund

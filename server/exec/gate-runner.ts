@@ -24,6 +24,8 @@ export interface GateContext {
   bindRewrite?: { from: string; to: string };
   /** Docker network an egress gate joins instead of the default bridge (the compose project network). */
   network?: string;
+  /** Host directory shared by the security gates (scanner downloads, trivy DB, pip cache), mounted at /gate-cache; see CACHED_GATES. */
+  cacheDir?: string;
   /** Where the `coverage` gate's command writes `{"linesPct": N}` (roadmap R10.2); undefined when coverage is not required. */
   coveragePath?: string;
 }
@@ -68,6 +70,14 @@ export interface DockerInvocation {
   env: Record<string, string>;
 }
 
+/**
+ * Only the gates whose command the orchestrator prescribes and validates verbatim (validators/security-tooling.ts) see the
+ * shared cache: a gate command the agent wrote could otherwise poison what later tasks' scanners read. The installer
+ * re-verifies every cached download against its pinned sha256 before use.
+ */
+export const CACHED_GATES: ReadonlySet<string> = new Set(['security-tools', 'image-scan']);
+export const GATE_CACHE_TARGET = '/gate-cache';
+
 export function dockerArgs(gate: Gate, ctx: GateContext): DockerInvocation {
   const workdir = ctx.containerWorkdir ?? '/work';
   const source = rewriteBindSource(ctx.worktree.replace(/\\/g, '/'), ctx.bindRewrite);
@@ -104,6 +114,18 @@ export function dockerArgs(gate: Gate, ctx: GateContext): DockerInvocation {
     '-w',
     workdir,
   );
+  if (ctx.cacheDir && CACHED_GATES.has(gate.name)) {
+    args.push(
+      '--mount',
+      `type=bind,source=${rewriteBindSource(ctx.cacheDir.replace(/\\/g, '/'), ctx.bindRewrite)},target=${GATE_CACHE_TARGET}`,
+      '-e',
+      `TEAMS_AI_GATE_CACHE=${GATE_CACHE_TARGET}`,
+      '-e',
+      `TRIVY_CACHE_DIR=${GATE_CACHE_TARGET}/trivy`,
+      '-e',
+      `PIP_CACHE_DIR=${GATE_CACHE_TARGET}/pip`,
+    );
+  }
   const env: Record<string, string> = {};
   for (const name of gate.secrets) {
     const value = ctx.secrets[name];
