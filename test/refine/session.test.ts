@@ -212,6 +212,20 @@ describe('RefineSession', () => {
     await third.close();
   });
 
+  it('a start first brings in what main changed: a changed project doc makes the ready session stale and asks for a new evaluation', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    script['derive/po'] = [{ ...derived, spec: { ...derived.spec, externalDependencies: [] } }];
+    script['refine/po'] = [refineOut(green(PO))];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await s.evaluate();
+    expect(s.state).toMatchObject({ status: 'ready', stale: false });
+    await s.syncWithMain(async () => []); // main did not change: the start goes on
+    expect(s.state.stale).toBe(false);
+    await expect(s.syncWithMain(async () => [{ file: 'project.md', hash: 'h' }])).rejects.toThrow(/Avalie de novo/);
+    expect(s.state.stale).toBe(true);
+    await expect(s.freeze()).rejects.toBeInstanceOf(ConflictError);
+  });
+
   it('writes custom secret names and marks the checklist stale', async () => {
     const s = await RefineSession.create(deps(), 'new-project');
     await s.writeSecret('CUSTOM_KEY', 'x');

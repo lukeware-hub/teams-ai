@@ -4,7 +4,8 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execCommand } from '../../server/exec/command.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
-import { briefTemplate, createFromRepo, createNewProject, DOC_REL, draftExists, draftHash, draftPaths, keepBaseProject, moveBriefingToProject, readBase, readDerived, readDoc, renderBriefMd, writeDerived, writeDoc } from '../../server/refine/draft.js';
+import { briefTemplate, createFromRepo, createNewProject, DOC_REL, draftExists, draftHash, draftPaths, keepBaseProject, moveBriefingToProject, readBase, readDerived, readDoc, renderBriefMd, syncWithMain, writeDerived, writeDoc } from '../../server/refine/draft.js';
+import { git } from '../../server/git/git.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 
@@ -40,6 +41,37 @@ describe('draft', () => {
     expect(await fs.readFile(d.projectJson, 'utf8')).toBe(json);
     expect(await readBase(d, 'project.json')).toBe(json);
     expect(await readBase(d, 'flow.md')).toBe('# Flow\n\n');
+  });
+
+  it('brings what main changed since the draft began into the draft, merged with its own edits, and moves the base copy to main', async () => {
+    remote = await makeRemote({ 'docs/project.json': JSON.stringify(makeProject()), 'docs/project.md': '# P\n\nalpha\n\nbeta\n', 'docs/flow.md': '# Flow\n' });
+    const d = draftPaths(ws, 'hello-030');
+    await createFromRepo(d, remote.repo, execCommand, { kind: 'new-spec' });
+    expect(await syncWithMain(d, remote.repo, execCommand)).toEqual([]);
+    await writeDoc(d, 'project.md', '# P\n\nalpha\n\nBETA from draft\n');
+    const pushToMain = async (files: Record<string, string>) => {
+      for (const [rel, text] of Object.entries(files)) {
+        await fs.mkdir(path.dirname(path.join(remote!.repo, rel)), { recursive: true });
+        await fs.writeFile(path.join(remote!.repo, rel), text);
+      }
+      await git(remote!.repo, ['add', '-A'], execCommand);
+      await git(remote!.repo, ['commit', '-q', '-m', 'another spec'], execCommand);
+      await git(remote!.repo, ['push', '-q', 'origin', 'main'], execCommand);
+    };
+    await pushToMain({ 'docs/project.md': '# P\n\nALPHA from main\n\nbeta\n', 'docs/flow.md': '# Flow v2\n', 'docs/specs/other-001/spec.json': '{}\n' });
+    // Only the project docs make the evaluation stale; a sibling spec main delivered just comes in.
+    expect((await syncWithMain(d, remote.repo, execCommand)).map((c) => c.file).sort()).toEqual(['flow.md', 'project.md']);
+    expect(await readDoc(d, 'project.md')).toBe('# P\n\nALPHA from main\n\nBETA from draft\n');
+    expect(await readDoc(d, 'flow.md')).toBe('# Flow v2\n');
+    expect(await readBase(d, 'project.md')).toBe('# P\n\nALPHA from main\n\nbeta\n');
+    expect(await fs.readFile(`${d.docs}/specs/other-001/spec.json`, 'utf8')).toBe('{}\n');
+    expect(await syncWithMain(d, remote.repo, execCommand)).toEqual([]);
+  });
+
+  it('a new project has no main to bring in', async () => {
+    const d = draftPaths(ws, 'shop-001');
+    await createNewProject(d, 'Shop');
+    expect(await syncWithMain(d, `${root}/no-repo`, execCommand)).toEqual([]);
   });
 
   it('keeps the base copy in a hidden folder the agents do not search', () => {

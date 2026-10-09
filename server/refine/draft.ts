@@ -7,6 +7,7 @@ import { Spec } from '../contracts/spec.js';
 import { stepId } from '../core/ids.js';
 import type { Exec } from '../exec/command.js';
 import { fetch as gitFetch, git, showFile } from '../git/git.js';
+import { mergeDoc, sameDoc } from '../git/merge-doc.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import type { ReportRouting } from '../decide/decisions/report-routing.js';
 
@@ -188,9 +189,13 @@ export async function createNewProject(d: Draft, name: string, description = '')
   await fs.writeFile(docPath(d, 'design.md'), designTemplate());
 }
 
+/** Every file under docs/ on main, as `docs/...` paths. */
+const mainDocFiles = async (repo: string, exec: Exec): Promise<string[]> =>
+  (await git(repo, ['ls-tree', '-r', '--name-only', 'origin/main', 'docs/'], exec)).split('\n').filter((f) => f !== '');
+
 export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: { kind: 'new-spec'; description?: string } | { kind: 'continue'; report?: string; route?: RouteReport }): Promise<void> {
   await gitFetch(repo, exec);
-  const files = (await git(repo, ['ls-tree', '-r', '--name-only', 'origin/main', 'docs/'], exec)).split('\n').filter((f) => f !== '');
+  const files = await mainDocFiles(repo, exec);
   for (const rel of files) {
     const target = path.posix.join(d.root, rel);
     await fs.mkdir(path.dirname(target), { recursive: true });
@@ -236,6 +241,35 @@ export const writeDoc = async (d: Draft, file: DocFile, text: string): Promise<v
 /** A file of the base copy, or null when the draft has no base or the file was not in it. */
 export const readBase = (d: Draft, rel: string): Promise<string | null> =>
   d.base ? fs.readFile(path.posix.join(d.base, rel), 'utf8').catch(() => null) : Promise.resolve(null);
+
+/** The project docs: a change main brings to one of them makes a derived spec stale. Other specs' files are not. */
+const PROJECT_DOCS = new Set(['project.md', 'project.json', 'briefing.md', 'stack.md', 'flow.md', 'design.md']);
+
+/**
+ * Before a start: what main changed since the draft began comes into the draft, merged with the draft's own edits, and the
+ * base copy moves to main, so Phase 0 publishes only this spec's changes. Returns the project docs it changed.
+ */
+export async function syncWithMain(d: Draft, repo: string, exec: Exec): Promise<Array<{ file: string; hash: string }>> {
+  if (!d.base || !(await fs.access(d.base).then(() => true, () => false))) return []; // a new project: main does not exist yet
+  await gitFetch(repo, exec);
+  const own = `specs/${d.specId}/`;
+  const changed: Array<{ file: string; hash: string }> = [];
+  for (const rel of (await mainDocFiles(repo, exec)).map((f) => f.slice('docs/'.length)).filter((f) => !f.startsWith(own))) {
+    const main = await showFile(repo, 'origin/main', `docs/${rel}`, exec);
+    const base = await readBase(d, rel);
+    if (sameDoc(main, base)) continue;
+    const file = path.posix.join(d.docs, rel);
+    const draft = await fs.readFile(file, 'utf8').catch(() => null);
+    // Without a base copy the doc is new on main, and Phase 0 would keep main's copy anyway.
+    const next = draft === null || base === null || sameDoc(draft, base) ? main : await mergeDoc(rel, base, main, draft, exec);
+    for (const [target, text] of [[file, next], [path.posix.join(d.base, rel), main]] as const) {
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.writeFile(target, text);
+    }
+    if (PROJECT_DOCS.has(rel) && !sameDoc(next, draft)) changed.push({ file: rel, hash: sha256(next) });
+  }
+  return changed;
+}
 
 /** In an existing project, project.json changes only when project.md changed. */
 export async function keepBaseProject(d: Draft, derived: Project): Promise<Project> {

@@ -5,6 +5,7 @@ import { fetch as gitFetch, git } from '../../git/git.js';
 import { ensureRepo, NOT_FOUND } from '../../git/github.js';
 import type { Plan } from '../../contracts/plan.js';
 import { Intent, OrchEvent } from '../events.js';
+import { mergeDoc, sameDoc as same } from '../../git/merge-doc.js';
 import { renderWorkflows, validateWorkflow } from '../workflows.js';
 import { commitAndMergeDocs, commitDocs, docsCommitKey, docsWorktree, type PhaseDeps, type PhaseResult } from './shared.js';
 
@@ -64,8 +65,8 @@ export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docs
   // recreate-worktree silently reset the branch and lose it (spec (orchestrator) §6 crash recovery).
   const wt = await docsWorktree(deps, branch, { keepCommits: journal.isConfirmed(Intent.DocsCommit, docsCommitKey(deps, 0)) });
   // This run's spec directory always goes. With a base copy (an existing project) any other doc goes only when the draft
-  // changed it or main lacks it, and a doc main changed meanwhile stops the start; without one, the project docs always go
-  // and everything else only when main lacks it, so a spec already delivered keeps the status main gave it.
+  // changed it or main lacks it, and a doc main changed meanwhile is merged with the draft's change; without one, the project
+  // docs always go and everything else only when main lacks it, so a spec already delivered keeps the status main gave it.
   const own = `specs/${spec.specId}/`;
   const baseDir = path.join(path.dirname(opts.docsDir), '.base', 'docs');
   const hasBase = await exists(baseDir);
@@ -79,9 +80,8 @@ export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docs
         // Unchanged, or a doc the base never had (a sibling spec main delivered meanwhile): main's copy stays.
         if (same(draft, base) || base === null) continue;
         if (!same(main, base) && !same(main, draft)) {
-          const reason = `docs conflict: ${rel} changed on main since this spec was created; start this spec again under a new id, created from the current main`;
-          await journal.fact(OrchEvent.PhaseFailed, { phase: 0, reason });
-          return { ok: false, reason };
+          await fs.writeFile(target, await mergeDoc(rel, base, main, draft!, deps.exec));
+          continue;
         }
       } else if (!hasBase && main !== null && rel !== 'project.md' && rel !== 'project.json') continue;
     }
@@ -93,8 +93,6 @@ export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docs
 
 const exists = (p: string) => fs.access(p).then(() => true, () => false);
 const read = (p: string) => fs.readFile(p, 'utf8').catch(() => null);
-/** Trailing whitespace is not a change: older base copies lost the final newline main keeps. */
-const same = (a: string | null, b: string | null) => a?.trimEnd() === b?.trimEnd();
 
 /** Every file under `dir`, as `/`-separated relative paths. */
 async function listFiles(dir: string, rel = ''): Promise<string[]> {

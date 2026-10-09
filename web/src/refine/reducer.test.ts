@@ -19,6 +19,9 @@ describe('applyToSnapshot', () => {
     expect(snap.state.status).toBe('drafting');
     const s2 = applyToSnapshot(s1, ev(2, 'DOC_EDITED', { file: 'brief.md', hash: 'x', source: 'patch' }));
     expect(s2.docsDirty).toBe(true);
+    // Docs main brought in before a start reload too, so an open editor never writes over them.
+    expect(applyToSnapshot(snap, ev(3, 'DOC_EDITED', { file: 'project.md', hash: 'y', source: 'main' })).docsDirty).toBe(true);
+    expect(applyToSnapshot(snap, ev(4, 'DOC_EDITED', { file: 'project.md', hash: 'z', source: 'human' })).docsDirty).toBe(false);
   });
 
   it('turns the backlog on and keeps what a backlog cycle derived', () => {

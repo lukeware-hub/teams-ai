@@ -102,11 +102,17 @@ describe('phase 0', () => {
       await run.close();
     });
 
-    it('stops on a doc that both main and the draft changed', { timeout: 60_000 }, async () => {
-      const run = await setup({ 'flow.md': '# Flow from another spec' }, { 'flow.md': '# Flow v1' }, { 'flow.md': '# Flow v2' });
-      const result = await run.executePhase0();
-      expect(result).toEqual({ ok: false, reason: expect.stringContaining('docs conflict: flow.md') });
-      expect(await show('flow.md')).toBe('# Flow from another spec');
+    it('merges a doc that both main and the draft changed instead of stopping, keeping both changes', { timeout: 60_000 }, async () => {
+      const json = (v: unknown) => `${JSON.stringify(v, null, 2)}\n`;
+      const run = await setup(
+        { 'flow.md': '# Flow from another spec\n', 'project.json': json({ ...project, constraints: ['from main'] }) },
+        { 'flow.md': '# Flow v1\n', 'project.json': json({ ...project, constraints: [] }) },
+        { 'flow.md': '# Flow v2\n', 'project.json': json({ ...project, constraints: ['from draft'] }) },
+      );
+      expect(await run.executePhase0()).toEqual({ ok: true });
+      expect(await show('flow.md')).toContain('# Flow from another spec');
+      expect(await show('flow.md')).toContain('# Flow v2');
+      expect(JSON.parse(await show('project.json')).constraints).toEqual(['from main', 'from draft']);
       await run.close();
     });
   });

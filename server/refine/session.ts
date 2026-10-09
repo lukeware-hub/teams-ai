@@ -295,6 +295,21 @@ export class RefineSession {
     await this.journal.fact(RefineEvent.SecretWritten, { name });
   }
 
+  /** Before a start: `sync` brings in what main changed since this draft began; a changed project doc needs a new evaluation. */
+  async syncWithMain(sync: () => Promise<Array<{ file: string; hash: string }>>): Promise<void> {
+    this.guard();
+    this.starting = true; // no evaluation reads the docs while main's changes come in
+    try {
+      const changed = await sync();
+      for (const c of changed) await this.journal.fact(RefineEvent.DocEdited, { ...c, source: 'main' });
+      if (changed.length > 0 && this.state.stale) {
+        throw new ConflictError(`A main mudou desde o início deste refinamento (${changed.map((c) => c.file).join(', ')}): os documentos foram atualizados com essas mudanças. Avalie de novo para iniciar.`);
+      }
+    } finally {
+      this.starting = false;
+    }
+  }
+
   /** Spec (refinement) §3.6 steps 1–2. */
   async freeze(): Promise<{ spec: Spec; project: Project }> {
     if (this.state.backlog?.enabled) throw new ConflictError('O início a partir do backlog ainda não está disponível: por enquanto o backlog serve para organizar e priorizar.');

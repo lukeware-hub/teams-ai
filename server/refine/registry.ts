@@ -16,7 +16,7 @@ import { expandHome, nextRunId, workspacePaths, type Workspace } from '../orches
 import { loadEvents } from '../store/event-store.js';
 import type { RunAgent } from './cycle.js';
 import type { CycleDeps } from './cycle.js';
-import { cleanDescription, createFromRepo, createNewProject, draftExists, draftPaths, type Draft, type RouteReport } from './draft.js';
+import { cleanDescription, createFromRepo, createNewProject, draftExists, draftPaths, syncWithMain, type Draft, type RouteReport } from './draft.js';
 import { suggestName, type NameKind, type NameSuggestion } from './naming.js';
 import { ConflictError, NotFoundError, RefineSession } from './session.js';
 import { reduceRefineEvents, type RefineStatus } from './state.js';
@@ -205,9 +205,10 @@ export class SessionRegistry {
   /** Spec (refinement) §3.6: freeze the spec, spawn `run --draft`, register the draft root as a project. */
   async start(projectId: string, specId: string): Promise<{ runId: string; program?: Program }> {
     const session = await this.get(projectId, specId);
-    if (session.state.backlog?.enabled) return this.startProgram(projectId, specId, session);
     const ws = await this.ws(projectId);
     const draft = draftPaths(ws, specId);
+    await session.syncWithMain(() => syncWithMain(draft, ws.repo, this.deps.exec));
+    if (session.state.backlog?.enabled) return this.startProgram(projectId, specId, session);
     await session.freeze();
     const runs = await this.deps.runsDir();
     const runId = await nextRunId({ runs, projectId }, specId);
