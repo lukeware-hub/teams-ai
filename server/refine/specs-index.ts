@@ -1,7 +1,11 @@
 import type { BacklogState } from './state.js';
 
-/** The spec a backlog item becomes: named after the draft and the item's stable key. */
-export const specIdOf = (draftId: string, key: string): string => `${draftId}-${key}`;
+/**
+ * The spec a backlog item becomes. Roadmap R11.12: drafts whose backlog started after readable ids (`keyIds`) name it
+ * by the item's English key alone (`user-login`); older drafts keep `<draft>-<key>`, as their specs already exist on
+ * disk and in the journal. A key equal to the draft id falls back to the old form so the two never share an id.
+ */
+export const specIdOf = (draftId: string, key: string, keyIds?: boolean): string => (keyIds && key !== draftId ? key : `${draftId}-${key}`);
 
 export interface SpecsIndexEntry {
   specId: string;
@@ -26,11 +30,11 @@ export interface SpecsIndex {
 }
 
 /** Generated from the derived backlog (browser-safe: the page builds the same file it offers for download). */
-export function buildSpecsIndex(draftId: string, backlog: Pick<BacklogState, 'epics' | 'items'>): SpecsIndex {
+export function buildSpecsIndex(draftId: string, backlog: Pick<BacklogState, 'epics' | 'items' | 'keyIds'>): SpecsIndex {
   const specs = [...backlog.items]
     .sort((a, b) => a.rank - b.rank)
     .map((i) => ({
-      specId: specIdOf(draftId, i.key),
+      specId: specIdOf(draftId, i.key, backlog.keyIds),
       key: i.key,
       title: i.title,
       epic: i.epic,

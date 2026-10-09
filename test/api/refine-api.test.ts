@@ -197,16 +197,16 @@ describe('refine api', () => {
     const snap = await snapshot();
     expect(snap.state.error).toBeNull();
     expect(snap.state.status).toBe('ready');
-    expect(snap.state.backlog).toMatchObject({ detail: true, specs: { base: { specId: 'hello-app-001-base', spec: { acceptanceCriteria: [{ id: 'AC-001' }] } } }, preplans: { base: { preplan: { tasks: [{ id: 'P1' }] } } } });
-    const dir = `${home}/ws/hello-app/refine/hello-app-001/docs/specs/hello-app-001-base`;
+    expect(snap.state.backlog).toMatchObject({ detail: true, specs: { base: { specId: 'base', spec: { acceptanceCriteria: [{ id: 'AC-001' }] } } }, preplans: { base: { preplan: { tasks: [{ id: 'P1' }] } } } });
+    const dir = `${home}/ws/hello-app/refine/hello-app-001/docs/specs/base`;
     expect(JSON.parse(await fs.readFile(`${dir}/spec.json`, 'utf8')).status).toBe('planned');
     // Detailed and ready: Start now starts the program, which freezes and launches the first item.
     const started = await call('POST', `${url}/start`);
     expect(started.status).toBe(200);
     const body = await started.json();
-    expect(body.runId).toMatch(/^hello-app-001-base-r\d+$/);
-    expect(body.program.items).toEqual([expect.objectContaining({ key: 'base', specId: 'hello-app-001-base', status: 'running', runId: body.runId })]);
-    expect(spawns.at(-1)!.args).toEqual(expect.arrayContaining(['run', '--spec', 'hello-app-001-base', '--run-id', body.runId, '--draft']));
+    expect(body.runId).toMatch(/^base-r\d+$/);
+    expect(body.program.items).toEqual([expect.objectContaining({ key: 'base', specId: 'base', status: 'running', runId: body.runId })]);
+    expect(spawns.at(-1)!.args).toEqual(expect.arrayContaining(['run', '--spec', 'base', '--run-id', body.runId, '--draft']));
     const frozen = JSON.parse(await fs.readFile(`${dir}/spec.json`, 'utf8'));
     expect(frozen).toMatchObject({ status: 'running', specVersion: 1 });
     expect(frozen.specHash).toMatch(/^sha256:/);
@@ -225,7 +225,7 @@ describe('refine api', () => {
     failedProgram.status = 'finished';
     failedProgram.items[0] = { ...failedProgram.items[0], status: 'failed', reason: 'verification-failed: AC-002 missing', finishedAt: new Date().toISOString() };
     await fs.writeFile(programFile, JSON.stringify(failedProgram, null, 2));
-    const retried = await call('POST', `${url}/program/hello-app-001-base/retry`);
+    const retried = await call('POST', `${url}/program/base/retry`);
     expect(retried.status).toBe(200);
     const retriedBody = await retried.json();
     expect(retriedBody.program.items[0]).toMatchObject({ status: 'running', reason: null });

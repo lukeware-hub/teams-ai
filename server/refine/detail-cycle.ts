@@ -14,6 +14,7 @@ import { renderBriefMd, type Draft } from './draft.js';
 import { RefineEvent } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
 import { postProcessItemSpec } from './item-spec.js';
+import { specIdOf } from './specs-index.js';
 import type { BacklogState, PreplanRow, SpecRow } from './state.js';
 
 /** Agent calls of one detailing run at a time; the account-wide governor still caps every session together. */
@@ -145,12 +146,13 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
   // Specs. Each item's last valid spec (its row, or the generated spec.json on disk) keeps its criterion ids stable.
   const specHash = new Map(items.map((i) => [i.key, specInputHash(i, docs)]));
   const previous = new Map<string, Spec | null>();
-  for (const i of items) previous.set(i.key, specs[i.key]?.spec ?? (await readItemSpec(draft, `${draft.specId}-${i.key}`)));
+  const idOf = (key: string) => specIdOf(draft.specId, key, input.backlog.keyIds);
+  for (const i of items) previous.set(i.key, specs[i.key]?.spec ?? (await readItemSpec(draft, idOf(i.key))));
   const planHashOf = (item: Item, rev: string) => preplanInputHash(item, rev, docs['stack.md'], item.rank === 1);
   const acceptSpec = async (item: Item, entry: ItemSpec | undefined): Promise<string[]> => {
     if (!entry) return ['o agente não devolveu a spec deste item'];
     const inputHash = specHash.get(item.key)!;
-    const r = postProcessItemSpec(entry, { draftId: draft.specId, previous: previous.get(item.key) ?? null, highWater, provenance: { backlogKey: item.key, inputHash, docsHash: hash, sources: sourceHashes(item, docs) } });
+    const r = postProcessItemSpec(entry, { specId: idOf(item.key), previous: previous.get(item.key) ?? null, highWater, provenance: { backlogKey: item.key, inputHash, docsHash: hash, sources: sourceHashes(item, docs) } });
     if (!r.ok) return r.issues;
     highWater = r.highWater;
     const rev = computeSpecHash(r.spec);
@@ -163,7 +165,7 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     return [];
   };
   const failSpec = async (item: Item, issues: string[]) => {
-    const specId = `${draft.specId}-${item.key}`;
+    const specId = idOf(item.key);
     const inputHash = specHash.get(item.key)!;
     specs[item.key] = { inputHash, specId, rev: null, spec: null, issues, cycle };
     await markRefining(draft, specId, null);

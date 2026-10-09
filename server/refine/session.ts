@@ -188,7 +188,7 @@ export class RefineSession {
     this.guard();
     if (this.state.backlog?.enabled) return;
     // The move removes this draft's own spec.json (a continued spec's, on main): its criterion ids stay the numbering floor.
-    await this.journal.fact(RefineEvent.BacklogEnabled, { acFloor: await maxCriterionInDraft(this.deps.draft) });
+    await this.journal.fact(RefineEvent.BacklogEnabled, { acFloor: await maxCriterionInDraft(this.deps.draft), keyIds: true });
     await moveBriefingToProject(this.deps.draft);
   }
 

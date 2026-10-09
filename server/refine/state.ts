@@ -53,6 +53,8 @@ export interface BacklogState {
   preplans?: Record<string, PreplanRow>;
   /** The highest acceptance criterion number ever allocated, so a removed number is never reused. */
   acHighWater?: number;
+  /** Roadmap R11.12: item specs are named by their key alone (see `specIdOf`); absent on older drafts. */
+  keyIds?: boolean;
 }
 
 export interface RefineState {
@@ -161,7 +163,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
     case RefineEvent.BacklogEnabled: {
       // `acFloor`: the highest criterion id in the draft before the briefing move removed this draft's own spec.json.
       const floor = Number(d.acFloor ?? 0);
-      s.backlog = s.backlog ? { ...s.backlog, enabled: true } : { enabled: true, project: null, epics: [], items: [], cycle: 0 };
+      s.backlog = s.backlog ? { ...s.backlog, enabled: true } : { enabled: true, project: null, epics: [], items: [], cycle: 0, ...(d.keyIds === true ? { keyIds: true } : {}) };
       if (floor > 0) s.backlog = { ...s.backlog, acHighWater: Math.max(s.backlog.acHighWater ?? 0, floor) };
       if (s.derived || s.checklist.length > 0) s.stale = true;
       break;

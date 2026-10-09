@@ -37,7 +37,7 @@ describe('allocateCriteria', () => {
 
 describe('postProcessItemSpec', () => {
   it('builds the item spec: id from the draft and key, refining, no hash, provenance, global criteria ids', () => {
-    const r = postProcessItemSpec(out(), { draftId: 'kayron-001', previous: null, highWater: 46, provenance });
+    const r = postProcessItemSpec(out(), { specId: 'kayron-001-opme', previous: null, highWater: 46, provenance });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.spec).toMatchObject({ specId: 'kayron-001-opme', status: 'refining', specHash: null, specVersion: 0, type: 'feature', derivedFrom: provenance, validationReports: [] });
@@ -46,14 +46,14 @@ describe('postProcessItemSpec', () => {
   });
 
   it('keeps the ids of the previous spec of the same item', () => {
-    const first = postProcessItemSpec(out(), { draftId: 'kayron-001', previous: null, highWater: 46, provenance });
+    const first = postProcessItemSpec(out(), { specId: 'kayron-001-opme', previous: null, highWater: 46, provenance });
     if (!first.ok) throw new Error('first derivation failed');
-    const again = postProcessItemSpec(out({ acceptanceCriteria: [ac('AC-002', 'cotação'), ac('AC-003', 'aprovação')] }), { draftId: 'kayron-001', previous: first.spec, highWater: first.highWater, provenance });
+    const again = postProcessItemSpec(out({ acceptanceCriteria: [ac('AC-002', 'cotação'), ac('AC-003', 'aprovação')] }), { specId: 'kayron-001-opme', previous: first.spec, highWater: first.highWater, provenance });
     expect(again.ok && again.spec.acceptanceCriteria.map((c) => c.id)).toEqual(['AC-048', 'AC-049']);
   });
 
   it('reports what the spec contract rejects, with paths', () => {
-    const r = postProcessItemSpec(out({ type: 'bug' }), { draftId: 'kayron-001', previous: null, highWater: 0, provenance });
+    const r = postProcessItemSpec(out({ type: 'bug' }), { specId: 'kayron-001-opme', previous: null, highWater: 0, provenance });
     expect(r).toMatchObject({ ok: false });
     if (!r.ok) expect(r.issues.join('\n')).toMatch(/bug/);
   });

@@ -51,6 +51,10 @@ describe('backlog events', () => {
     const fresh = reduceRefineEvents([{ type: RefineEvent.BacklogEnabled, data: {} }, { type: RefineEvent.BacklogEnabled, data: {} }]);
     expect(fresh.backlog).toMatchObject({ enabled: true, items: [], project: null });
     expect(fresh.stale).toBe(false);
+    expect(fresh.backlog?.keyIds).toBeUndefined();
+    expect(reduceRefineEvents([{ type: RefineEvent.BacklogEnabled, data: { keyIds: true } }]).backlog?.keyIds).toBe(true);
+    // Re-enabling an older backlog never renames its specs.
+    expect(reduceRefineEvents([{ type: RefineEvent.BacklogEnabled, data: {} }, { type: RefineEvent.BacklogEnabled, data: { keyIds: true } }]).backlog?.keyIds).toBeUndefined();
     const evaluated = reduceRefineEvents([...cycle(1), { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: allGreen, questions: [], discardedPatches: [] } }, { type: RefineEvent.BacklogEnabled, data: {} }]);
     expect(evaluated).toMatchObject({ stale: true, status: 'ready' });
   });

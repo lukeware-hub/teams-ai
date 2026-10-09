@@ -28,4 +28,10 @@ describe('buildSpecsIndex', () => {
   it('names a spec after the draft and the item key', () => {
     expect(specIdOf('kayron-hub-001', 'opme')).toBe('kayron-hub-001-opme');
   });
+  it('names a spec by its key alone on drafts with readable ids, never as the draft id itself', () => {
+    expect(specIdOf('order-service', 'user-login', true)).toBe('user-login');
+    expect(specIdOf('order-service', 'order-service', true)).toBe('order-service-order-service');
+    const index = buildSpecsIndex('order-service', { epics: [], items: [{ key: 'user-login', title: 't', epic: 'e', scope: 's', priority: 'P1', rationale: 'r', dependsOn: [], sources: [], size: 'M', rank: 1 }], keyIds: true });
+    expect(index.specs.map((s) => s.specId)).toEqual(['user-login']);
+  });
 });

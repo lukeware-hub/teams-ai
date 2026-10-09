@@ -35,13 +35,13 @@ export function allocateCriteria(criteria: readonly AcceptanceCriterion[], previ
 export type ItemSpecCheck = { ok: true; spec: Spec; highWater: number } | { ok: false; issues: string[] };
 
 /** The orchestrator, not the agent, owns the item spec's id, status, version, hash, provenance and criterion ids. */
-export function postProcessItemSpec(out: ItemSpec, ctx: { draftId: string; previous: Spec | null; highWater: number; provenance: SpecProvenance }): ItemSpecCheck {
+export function postProcessItemSpec(out: ItemSpec, ctx: { specId: string; previous: Spec | null; highWater: number; provenance: SpecProvenance }): ItemSpecCheck {
   const allocated = allocateCriteria(out.acceptanceCriteria, ctx.previous?.acceptanceCriteria ?? [], ctx.highWater);
   if (!allocated.ok) return allocated;
   const { key, ...content } = out;
   const parsed = Spec.safeParse({
     ...content,
-    specId: `${ctx.draftId}-${key}`,
+    specId: ctx.specId,
     specVersion: 0,
     specHash: null,
     acceptanceCriteria: allocated.criteria,
