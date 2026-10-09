@@ -211,7 +211,7 @@ export class SessionRegistry {
     const draft = draftPaths(ws, specId);
     await session.freeze();
     const runs = await this.deps.runsDir();
-    const runId = await nextRunId({ runs }, specId);
+    const runId = await nextRunId({ runs, projectId }, specId);
     await fs.mkdir(path.posix.join(runs, runId), { recursive: true });
     const { pid } = spawnRun(this.deps.control, { projectDir: draft.root, specId, runId, mode: 'run', draft: true, logFile: path.posix.join(runs, runId, 'ui.log') });
     try {

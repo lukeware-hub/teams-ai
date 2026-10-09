@@ -97,7 +97,7 @@ export class ProgramService {
       startRun: async (specId) => {
         await this.deps.freezeItem(projectId, draftId, specId);
         const runs = runsDirOf(await this.index());
-        const runId = await nextRunId({ runs }, specId);
+        const runId = await nextRunId({ runs, projectId }, specId);
         await launch(specId, runId, 'run');
         await this.deps.register(root);
         return { runId };
@@ -122,7 +122,7 @@ export class ProgramService {
         const spec = Spec.parse(JSON.parse(await fs.readFile(file, 'utf8')));
         if (spec.status === 'running') await writeFileAtomic(file, `${JSON.stringify({ ...spec, status: 'awaiting-validation' }, null, 2)}\n`);
         const runs = runsDirOf(await this.index());
-        const runId = await nextRunId({ runs }, `${specId}-complete`);
+        const runId = await nextRunId({ runs, projectId }, specId, 'complete');
         await launch(specId, runId, 'complete');
         return { runId };
       },

@@ -91,7 +91,7 @@ describe('program service tick', () => {
     await journal('d-a-r1', [started('d-a'), finished('awaiting-validation')]);
     const s = service();
     const program = await s.tick('shop', 'd');
-    expect(program!.items[0]).toMatchObject({ status: 'completing', completeRunId: 'd-a-complete-r1' });
+    expect(program!.items[0]).toMatchObject({ status: 'completing', completeRunId: 'shop--d-a--complete-run-1' });
     expect(JSON.parse(await fs.readFile(specFile, 'utf8')).status).toBe('awaiting-validation');
     expect(spawned.map((x) => x.args.slice(1, 4))).toEqual([['spec', 'complete', '--project']]);
     expect(JSON.parse(await fs.readFile(path.join(root, 'draft', 'program.json'), 'utf8')).items[0].status).toBe('completing');
@@ -118,7 +118,7 @@ describe('program service retry', () => {
     const program = await s.retry('shop', 'd', 'd-a');
     expect(program.status).toBe('running');
     expect(program.items[0]).toMatchObject({ status: 'running', reason: null });
-    expect(program.items[0]!.runId).toMatch(/^d-a-r\d+$/);
+    expect(program.items[0]!.runId).toMatch(/^shop--d-a--run-\d+$/);
   });
 
   it('refuses to retry on a draft with no program', async () => {

@@ -46,3 +46,36 @@ export function stepId(seq: number): string {
   assertPositiveInteger(seq, 'seq');
   return `s${String(seq).padStart(5, '0')}`;
 }
+
+export const RUN_KINDS = ['run', 'complete', 'readme', 'deploy'] as const;
+export type RunKind = (typeof RUN_KINDS)[number];
+
+export interface ParsedRunId {
+  /** Null for a legacy id, which never named its project. */
+  projectId: string | null;
+  specId: string;
+  kind: RunKind;
+  n: number;
+}
+
+const RUN_ID = /^([a-z0-9]+(?:-[a-z0-9]+)*)--([a-z0-9]+(?:-[a-z0-9]+)*)--(?:(complete|readme|deploy)-)?run-(\d+)$/;
+const LEGACY_RUN_ID = /^(.+?)(?:-(complete|readme|deploy))?-r(\d+)$/;
+
+/**
+ * Roadmap R11.12: `<projectId>--<specId>--run-<n>`, or `--complete-run-<n>`, `--readme-run-<n>`, `--deploy-run-<n>`.
+ * A slug never holds `--`, so the parts split without ambiguity, and the project makes the id unique across projects
+ * that share a spec id (the runs directory is global).
+ */
+export function runIdOf(projectId: string, specId: string, kind: RunKind, n: number): string {
+  assertPositiveInteger(n, 'run number');
+  return `${assertSlug(projectId, 'projectId')}--${assertSlug(specId, 'specId')}--${kind === 'run' ? '' : `${kind}-`}run-${n}`;
+}
+
+/** Both the readable form and the legacy `<specId>[-complete|-readme|-deploy]-r<n>`; null for anything else. */
+export function parseRunId(runId: string): ParsedRunId | null {
+  const m = RUN_ID.exec(runId);
+  if (m) return { projectId: m[1]!, specId: m[2]!, kind: (m[3] ?? 'run') as RunKind, n: Number(m[4]) };
+  const old = LEGACY_RUN_ID.exec(runId);
+  if (old) return { projectId: null, specId: old[1]!, kind: (old[2] ?? 'run') as RunKind, n: Number(old[3]) };
+  return null;
+}

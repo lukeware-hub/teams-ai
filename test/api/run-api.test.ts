@@ -200,6 +200,9 @@ describe('projects', () => {
     await fs.mkdir(ws, { recursive: true });
     await fs.writeFile(path.join(ws, 'marker.txt'), 'x');
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), { type: 'RUN_FINISHED', data: { result: 'done' } }], state('done'), 1);
+    // Another project with a spec of the same id keeps its run.
+    const other = { type: 'RUN_STARTED', data: { runId: 'other-app--hello-001--run-1', specId: 'hello-001', projectId: 'other-app' } };
+    await writeRun(runs, 'other-app--hello-001--run-1', [other], state('done'), 2);
     const exists = (p: string) => fs.access(p).then(() => true, () => false);
     const res = await del('/api/projects/hello-app');
     expect(res.status).toBe(200);
@@ -207,6 +210,7 @@ describe('projects', () => {
     expect(await exists(project)).toBe(false);
     expect(await exists(ws)).toBe(false);
     expect(await exists(path.join(runs, 'hello-001-r1'))).toBe(false);
+    expect(await exists(path.join(runs, 'other-app--hello-001--run-1'))).toBe(true);
     expect((await readUserConfig(home)).cfg.projects).toEqual([]);
   });
 
@@ -237,7 +241,7 @@ describe('start, resume, stop', () => {
     };
     const r = await post('/api/projects/hello-app/specs/hello-001/runs');
     expect(r.status).toBe(200);
-    expect(spawns[0]!.args).toEqual(['cli', 'run', '--project', HELLO, '--spec', 'hello-001', '--run-id', 'hello-001-r1']);
+    expect(spawns[0]!.args).toEqual(['cli', 'run', '--project', HELLO, '--spec', 'hello-001', '--run-id', 'hello-app--hello-001--run-1']);
   });
 
   it('starts a run: computes the next id, spawns the CLI, waits for the journal, writes the pid', async () => {
@@ -247,12 +251,12 @@ describe('start, resume, stop', () => {
     };
     const r = await post('/api/projects/hello-app/specs/hello-001/runs');
     expect(r.status).toBe(200);
-    expect(await r.json()).toEqual({ runId: 'hello-001-r2' });
-    expect(spawns[0]!.args).toEqual(['cli', 'run', '--project', HELLO, '--spec', 'hello-001', '--run-id', 'hello-001-r2']);
-    expect(spawns[0]!.logFile).toBe(path.join(runs, 'hello-001-r2', 'ui.log'));
-    expect(await fs.readFile(path.join(runs, 'hello-001-r2', 'pid'), 'utf8')).toBe('5001');
+    expect(await r.json()).toEqual({ runId: 'hello-app--hello-001--run-2' });
+    expect(spawns[0]!.args).toEqual(['cli', 'run', '--project', HELLO, '--spec', 'hello-001', '--run-id', 'hello-app--hello-001--run-2']);
+    expect(spawns[0]!.logFile).toBe(path.join(runs, 'hello-app--hello-001--run-2', 'ui.log'));
+    expect(await fs.readFile(path.join(runs, 'hello-app--hello-001--run-2', 'pid'), 'utf8')).toBe('5001');
     const rows = await (await fetch(`${base()}/api/projects/hello-app/runs`)).json();
-    expect(rows[0]).toMatchObject({ runId: 'hello-001-r2', status: 'running', stoppable: true });
+    expect(rows[0]).toMatchObject({ runId: 'hello-app--hello-001--run-2', status: 'running', stoppable: true });
   });
 
   it('two concurrent starts on one spec launch exactly one run', async () => {
@@ -275,9 +279,9 @@ describe('start, resume, stop', () => {
 
   // One writer per spec: while one of start, complete and readme is launching, the other two answer 409.
   const WRITERS = {
-    start: { url: '/api/projects/hello-app/specs/hello-001/runs', runId: 'hello-001-r2' },
-    complete: { url: '/api/projects/hello-app/specs/hello-001/complete', runId: 'hello-001-complete-r1' },
-    readme: { url: '/api/runs/hello-001-r1/readme', runId: 'hello-001-readme-r1' },
+    start: { url: '/api/projects/hello-app/specs/hello-001/runs', runId: 'hello-app--hello-001--run-2' },
+    complete: { url: '/api/projects/hello-app/specs/hello-001/complete', runId: 'hello-app--hello-001--complete-run-1' },
+    readme: { url: '/api/runs/hello-001-r1/readme', runId: 'hello-app--hello-001--readme-run-1' },
   };
   it.each([
     ['start', 'complete'],
@@ -323,8 +327,8 @@ describe('start, resume, stop', () => {
     };
     const ok = await post(url);
     expect(ok.status).toBe(202);
-    expect(await ok.json()).toEqual({ runId: 'hello-001-deploy-r1' });
-    expect(spawns[0]!.args).toEqual(expect.arrayContaining(['spec', 'deploy', '--spec', 'hello-001', '--run-id', 'hello-001-deploy-r1']));
+    expect(await ok.json()).toEqual({ runId: 'hello-app--hello-001--deploy-run-1' });
+    expect(spawns[0]!.args).toEqual(expect.arrayContaining(['spec', 'deploy', '--spec', 'hello-001', '--run-id', 'hello-app--hello-001--deploy-run-1']));
     expect((await post(url)).status).toBe(409); // its own run now holds the spec
   });
 
@@ -636,7 +640,7 @@ describe('run detail, events and steps', () => {
     const ok = await post('/api/runs/hello-001-r1/readme');
     expect(ok.status).toBe(202);
     const { runId } = await ok.json();
-    expect(runId).toBe('hello-001-readme-r1');
+    expect(runId).toBe('hello-app--hello-001--readme-run-1');
     expect(spawns[0]!.args).toEqual(['cli', 'spec', 'readme', '--project', HELLO, '--spec', 'hello-001', '--run-id', runId]);
     expect((await post('/api/runs/hello-001-r1/readme')).status).toBe(409); // the readme run itself is now active
     expect((await post('/api/runs/missing/readme')).status).toBe(404);

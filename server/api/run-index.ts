@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Config } from '../config/config.js';
 import { Project } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
+import { parseRunId } from '../core/ids.js';
 import { expandHome } from '../orchestrator/workspace.js';
 import { loadEvents } from '../store/event-store.js';
 import { probeProcess } from './process-identity.js';
@@ -169,8 +170,9 @@ export async function runRow(deps: IndexDeps, runId: string): Promise<RunRow | n
   const runs = runsDir(deps);
   const events = await loadEvents(path.join(runs, runId, 'events.ndjson')).catch(() => []);
   const startedAt = events.find((e) => e.type === 'RUN_STARTED');
-  const specId = String(startedAt?.data.specId ?? runId.replace(/-r\d+$/, ''));
-  const projectId = startedAt ? String(startedAt.data.projectId) : null;
+  const parsed = parseRunId(runId);
+  const specId = String(startedAt?.data.specId ?? parsed?.specId ?? runId);
+  const projectId = startedAt ? String(startedAt.data.projectId) : parsed?.projectId ?? null;
   const finished = [...events].reverse().find((e) => e.type === 'RUN_FINISHED');
   const state: StateFile | null = await fs
     .readFile(path.join(runs, runId, 'state.json'), 'utf8')
@@ -207,7 +209,7 @@ export async function listRuns(deps: IndexDeps, projectId: string): Promise<RunR
     if (row.projectId === projectId || (row.projectId === '' && specs.has(row.specId))) rows.push({ ...row, projectId });
   }
   // newest first: runs without a state snapshot (just started) on top, then by state timestamp, then by the numeric suffix
-  const suffix = (r: RunRow) => Number(/-r(\d+)$/.exec(r.runId)?.[1] ?? 0);
+  const suffix = (r: RunRow) => parseRunId(r.runId)?.n ?? 0;
   rows.sort((a, b) => {
     if ((a.at === null) !== (b.at === null)) return a.at === null ? -1 : 1;
     return (b.at ?? '').localeCompare(a.at ?? '') || suffix(b) - suffix(a);
@@ -223,8 +225,6 @@ export async function listRuns(deps: IndexDeps, projectId: string): Promise<RunR
   return rows;
 }
 
-/** `<specId>-complete-rN`, the run id `spec complete` always requests (run-routes.ts, program/service.ts). */
-const COMPLETE_RUN = /-complete-r\d+$/;
 
 export async function listProjects(deps: IndexDeps): Promise<ProjectRow[]> {
   const out: ProjectRow[] = [];
@@ -235,7 +235,7 @@ export async function listProjects(deps: IndexDeps): Promise<ProjectRow[]> {
     // `spec complete` finishes by merging `status: done` onto main; the draft root this project reads its specs
     // from keeps whatever status the freeze left it, since nothing patches it back once that merge lands. The
     // completion run's own journal is ground truth for whether the spec is actually done.
-    const completed = new Set(runs.filter((r) => r.status === 'done' && COMPLETE_RUN.test(r.runId)).map((r) => r.specId));
+    const completed = new Set(runs.filter((r) => r.status === 'done' && parseRunId(r.runId)?.kind === 'complete').map((r) => r.specId));
     out.push({
       projectId: read.project.projectId,
       dir,

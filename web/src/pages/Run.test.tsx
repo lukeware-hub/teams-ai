@@ -64,6 +64,8 @@ describe('RunView', () => {
     const nav = screen.getByRole('navigation', { name: 'Navegação' });
     expect(screen.getByRole('link', { name: 'hello-app' }).getAttribute('href')).toBe('/projects/hello-app');
     expect(nav.contains(screen.getByRole('link', { name: 'hello-app' }))).toBe(true);
+    expect(nav.textContent).toContain('hello-001');
+    expect(nav.querySelector('strong')?.textContent).toBe('run-1');
   });
   it('selecting a task shows attempts, gates, review and the PR; a step expands to its artifacts', async () => {
     const loadStep = vi.fn(async () => ({ prompt: '# the prompt', output: { ok: true, value: { summary: 'did T1' } } }));

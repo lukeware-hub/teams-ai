@@ -37,23 +37,25 @@ describe('workspace', () => {
   it('numbers runs per spec from the existing run directories', async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-runs-'));
     const ws = { ...workspacePaths(DEFAULT_CONFIG, 'shop', '/home/u'), runs: dir };
-    expect(await nextRunId(ws, 'checkout')).toBe('checkout-r1'); // creates the directory
-    await fs.mkdir(path.join(dir, 'checkout-r2'));
+    expect(await nextRunId(ws, 'checkout')).toBe('shop--checkout--run-1'); // creates the directory
+    await fs.mkdir(path.join(dir, 'checkout-r2')); // a legacy run of the same spec: numbering carries on
     await fs.mkdir(path.join(dir, 'other-r9'));
-    expect(await nextRunId(ws, 'checkout')).toBe('checkout-r3');
+    await fs.mkdir(path.join(dir, 'mall--checkout--run-7')); // another project's spec of the same id
+    expect(await nextRunId(ws, 'checkout')).toBe('shop--checkout--run-3');
+    expect(await nextRunId(ws, 'checkout', 'complete')).toBe('shop--checkout--complete-run-1');
   });
 
   it('hands concurrent callers distinct run ids and creates each run directory', async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-runs-'));
     const ws = { ...workspacePaths(DEFAULT_CONFIG, 'shop', '/home/u'), runs: dir };
     const ids = await Promise.all([1, 2, 3, 4, 5].map(() => nextRunId(ws, 'checkout')));
-    expect([...ids].sort()).toEqual(['checkout-r1', 'checkout-r2', 'checkout-r3', 'checkout-r4', 'checkout-r5']);
+    expect([...ids].sort()).toEqual([1, 2, 3, 4, 5].map((n) => `shop--checkout--run-${n}`));
     expect((await fs.readdir(dir)).sort()).toEqual([...ids].sort());
   });
 
   it('creates the runs directory when it does not exist yet', async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-runs-'));
-    expect(await nextRunId({ runs: path.join(dir, 'nested', 'runs') }, 'checkout')).toBe('checkout-r1');
+    expect(await nextRunId({ runs: path.join(dir, 'nested', 'runs'), projectId: 'shop' }, 'checkout')).toBe('shop--checkout--run-1');
   });
 });
 

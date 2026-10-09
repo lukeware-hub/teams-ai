@@ -229,7 +229,8 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const runNames = (await fs.readdir(runs).catch(() => [] as string[])).filter((n) => SAFE_ID.test(n));
         for (const runId of runNames) {
           const row = await runRow(idx, runId).catch(() => null);
-          if (row && (row.projectId === projectId || specIds.has(row.specId))) await fs.rm(path.join(runs, runId), { recursive: true, force: true });
+          // A crashed legacy run names no project; only then does its spec id decide (another project may share it).
+          if (row && (row.projectId === projectId || (row.projectId === '' && specIds.has(row.specId)))) await fs.rm(path.join(runs, runId), { recursive: true, force: true });
         }
         await removeProjectDirs(dirs, deps.home);
         json(200, { deleted: true });
@@ -257,7 +258,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           const rows = await listRuns(idx, params.projectId!);
           const active = rows.find((r) => r.specId === specId && CLAIMS_SPEC.has(r.status));
           if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status})`);
-          const id = await nextRunId({ runs: runsDir(idx) }, specId);
+          const id = await nextRunId({ runs: runsDir(idx), projectId: params.projectId! }, specId);
           await launch(idx, { projectDir: dir, specId, runId: id, mode: 'run' });
           return id;
         });
@@ -321,7 +322,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           const rows = await listRuns(idx, params.projectId!);
           const active = rows.find((r) => r.specId === specId && CLAIMS_SPEC.has(r.status));
           if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status})`);
-          const id = await nextRunId({ runs: runsDir(idx) }, `${specId}-complete`);
+          const id = await nextRunId({ runs: runsDir(idx), projectId: params.projectId! }, specId, 'complete');
           await launch(idx, { projectDir: dir, specId, runId: id, mode: 'complete' });
           return id;
         });
@@ -344,7 +345,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           const rows = await listRuns(idx, projectId);
           const active = rows.find((r) => r.specId === specId && CLAIMS_SPEC.has(r.status));
           if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status}); the README is written when it ends`);
-          const next = await nextRunId({ runs: runsDir(idx) }, `${specId}-readme`);
+          const next = await nextRunId({ runs: runsDir(idx), projectId }, specId, 'readme');
           await launch(idx, { projectDir: dir, specId, runId: next, mode: 'readme' });
           return next;
         });
@@ -367,7 +368,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           const rows = await listRuns(idx, params.projectId!);
           const active = rows.find((r) => r.specId === specId && CLAIMS_SPEC.has(r.status));
           if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status})`);
-          const id = await nextRunId({ runs: runsDir(idx) }, `${specId}-deploy`);
+          const id = await nextRunId({ runs: runsDir(idx), projectId: params.projectId! }, specId, 'deploy');
           await launch(idx, { projectDir: dir, specId, runId: id, mode: 'deploy' });
           return id;
         });

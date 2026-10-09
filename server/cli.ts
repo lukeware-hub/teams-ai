@@ -287,7 +287,7 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
     const explicitId = typeof f['run-id'] === 'string' ? f['run-id'] : undefined;
     if (explicitId !== undefined && !/^[A-Za-z0-9_.-]+$/.test(explicitId)) throw new Error('--run-id must match ^[A-Za-z0-9_.-]+$');
     const run = completing || readming || deploying
-      ? await Run.create(deps, explicitId ?? await nextRunId(deps.ws, `${deps.spec.specId}-${completing ? 'complete' : readming ? 'readme' : 'deploy'}`))
+      ? await Run.create(deps, explicitId ?? await nextRunId(deps.ws, deps.spec.specId, completing ? 'complete' : readming ? 'readme' : 'deploy'))
       : await factory(deps, command === 'resume' ? String(f.run) : undefined, explicitId);
     io.stderr(`run ${run.runId} started`);
     const off = (hooks.signals ?? realSignals)(() => {

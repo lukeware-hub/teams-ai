@@ -1,5 +1,6 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { parseRunId } from '@server/core/ids';
 import { runApi, type RunDetail, type StoredEvent } from '../api.js';
 import { Dialog } from '../components/Dialog.js';
 import { Icon, type IconName } from '../components/Icons.js';
@@ -13,6 +14,11 @@ import './run.css';
 
 const hhmm = (iso: string) => new Date(iso).toTimeString().slice(0, 5);
 const money = (n: number) => `US$ ${n.toFixed(4)}`;
+/** The run's own part of its id (`run-2`, `complete-run-1`), for legacy ids too; the whole id when it does not parse. */
+const runLabel = (runId: string) => {
+  const r = parseRunId(runId);
+  return r ? `${r.kind === 'run' ? '' : `${r.kind}-`}run-${r.n}` : runId;
+};
 const steps = (n: number) => `${n} ${n === 1 ? 'etapa' : 'etapas'}`;
 // Journal keys of the token breakdown by phase; any other key shows as recorded.
 const PHASE_LABEL: Record<string, string> = { decide: 'Decisões automáticas', phase: 'Especificação, plano e relatório', phase3: 'Tarefas' };
@@ -422,7 +428,9 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
         <span aria-hidden="true">›</span>
         <Link to={`/projects/${detail.projectId}`}>{detail.projectId}</Link>
         <span aria-hidden="true">›</span>
-        <strong>{detail.runId}</strong>
+        <span>{detail.specId}</span>
+        <span aria-hidden="true">›</span>
+        <strong>{runLabel(detail.runId)}</strong>
       </nav>
       <header className="card run-head">
         <div className="run-head-main">

@@ -204,7 +204,7 @@ describe('refine api', () => {
     const started = await call('POST', `${url}/start`);
     expect(started.status).toBe(200);
     const body = await started.json();
-    expect(body.runId).toMatch(/^base-r\d+$/);
+    expect(body.runId).toMatch(/^hello-app--base--run-\d+$/);
     expect(body.program.items).toEqual([expect.objectContaining({ key: 'base', specId: 'base', status: 'running', runId: body.runId })]);
     expect(spawns.at(-1)!.args).toEqual(expect.arrayContaining(['run', '--spec', 'base', '--run-id', body.runId, '--draft']));
     const frozen = JSON.parse(await fs.readFile(`${dir}/spec.json`, 'utf8'));
@@ -337,15 +337,15 @@ describe('refine api', () => {
     await settle();
     const started = await call('POST', '/api/refine/hello-app/hello-app-001/start');
     expect(started.status).toBe(200);
-    expect(await started.json()).toEqual({ runId: 'hello-app-001-r1' });
+    expect(await started.json()).toEqual({ runId: 'hello-app--hello-app-001--run-1' });
     const draftRoot = `${home}/ws/hello-app/refine/hello-app-001`;
-    expect(spawns[0]!.args).toEqual(['cli', 'run', '--project', draftRoot, '--spec', 'hello-app-001', '--run-id', 'hello-app-001-r1', '--draft']);
+    expect(spawns[0]!.args).toEqual(['cli', 'run', '--project', draftRoot, '--spec', 'hello-app-001', '--run-id', 'hello-app--hello-app-001--run-1', '--draft']);
     expect(registered).toEqual([draftRoot]);
     const spec = JSON.parse(await fs.readFile(`${draftRoot}/docs/specs/hello-app-001/spec.json`, 'utf8'));
     expect(spec).toMatchObject({ status: 'running', specVersion: 1 });
     expect(spec.specHash).toMatch(/^sha256:[0-9a-f]{64}$/);
-    expect(await fs.readFile(`${home}/runs/hello-app-001-r1/pid`, 'utf8')).toBe('5001');
-    expect((await snapshot()).state).toMatchObject({ status: 'started', runId: 'hello-app-001-r1' });
+    expect(await fs.readFile(`${home}/runs/hello-app--hello-app-001--run-1/pid`, 'utf8')).toBe('5001');
+    expect((await snapshot()).state).toMatchObject({ status: 'started', runId: 'hello-app--hello-app-001--run-1' });
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/evaluate')).status).toBe(409);
   });
 

@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { Config } from '../config/config.js';
-import { stepId } from '../core/ids.js';
+import { parseRunId, runIdOf, stepId, type RunKind } from '../core/ids.js';
 import { loadEvents } from '../store/event-store.js';
 import { OrchEvent } from './events.js';
 
@@ -62,24 +62,27 @@ export function stepDir(ws: Workspace, runId: string, seq: number): string {
   return path.posix.join(runDir(ws, runId), 'steps', stepId(seq));
 }
 
-/** The runs of one spec among the run directory `names` (`<specId>-r<n>`), with their numbers. */
-function specRuns(names: readonly string[], specId: string): Array<{ name: string; n: number }> {
-  const re = new RegExp(`^${specId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-r(\\d+)$`);
+/**
+ * The runs of one spec and kind among the run directory `names`, with their numbers: this project's readable ids plus
+ * the legacy ones, which never named a project (callers that care check the project in their RUN_STARTED).
+ */
+function specRuns(names: readonly string[], projectId: string, specId: string, kind: RunKind = 'run'): Array<{ name: string; n: number }> {
   return names.flatMap((name) => {
-    const m = re.exec(name);
-    return m ? [{ name, n: Number(m[1]) }] : [];
+    const r = parseRunId(name);
+    return r && r.specId === specId && r.kind === kind && (r.projectId === null || r.projectId === projectId) ? [{ name, n: r.n }] : [];
   });
 }
 
 /**
- * `<specId>-r<n>`, n = 1 + the highest existing run number for that spec. The run directory is created here, without
- * `recursive`, so callers racing for one number cannot both get it: the loser sees EEXIST and takes the next.
+ * `runIdOf(project, spec, kind, n)`, n = 1 + the highest existing run number for that spec and kind (legacy ids
+ * included, so numbering carries on). The run directory is created here, without `recursive`, so callers racing for
+ * one number cannot both get it: the loser sees EEXIST and takes the next.
  */
-export async function nextRunId(ws: Pick<Workspace, 'runs'>, specId: string): Promise<string> {
+export async function nextRunId(ws: Pick<Workspace, 'runs' | 'projectId'>, specId: string, kind: RunKind = 'run'): Promise<string> {
   await fs.mkdir(ws.runs, { recursive: true });
-  const highest = specRuns(await fs.readdir(ws.runs), specId).reduce((acc, r) => Math.max(acc, r.n), 0);
+  const highest = specRuns(await fs.readdir(ws.runs), ws.projectId, specId, kind).reduce((acc, r) => Math.max(acc, r.n), 0);
   for (let n = highest + 1; ; n++) {
-    const id = `${specId}-r${n}`;
+    const id = runIdOf(ws.projectId, specId, kind, n);
     try {
       await fs.mkdir(path.posix.join(ws.runs, id));
       return id;
@@ -110,9 +113,9 @@ export async function firstSpecForRun(ws: Workspace, runId: string): Promise<boo
  * would answer false once the spec's own earlier run already merged its scaffold onto it.
  */
 export async function firstSpecForSpec(ws: Workspace, specId: string, runId: string): Promise<boolean | null> {
-  const mine = specRuns([runId], specId)[0]?.n ?? Infinity;
+  const mine = specRuns([runId], ws.projectId, specId)[0]?.n ?? Infinity;
   let answer: boolean | null = null;
-  for (const { name, n } of specRuns(await fs.readdir(ws.runs).catch(() => [] as string[]), specId)) {
+  for (const { name, n } of specRuns(await fs.readdir(ws.runs).catch(() => [] as string[]), ws.projectId, specId)) {
     if (n >= mine) continue;
     const events = await loadEvents(eventsFile(ws, name)).catch(() => []);
     const started = events.find((e) => e.type === OrchEvent.RunStarted);
@@ -147,9 +150,9 @@ async function lockHeld(lockFile: string): Promise<boolean> {
  * only ever names what that attempt itself merged.
  */
 export async function mergedByPriorRuns(ws: Workspace, specId: string, runId: string): Promise<Set<string>> {
-  const mine = specRuns([runId], specId)[0]?.n ?? Infinity;
+  const mine = specRuns([runId], ws.projectId, specId)[0]?.n ?? Infinity;
   const merged = new Set<string>();
-  for (const { name, n } of specRuns(await fs.readdir(ws.runs).catch(() => [] as string[]), specId)) {
+  for (const { name, n } of specRuns(await fs.readdir(ws.runs).catch(() => [] as string[]), ws.projectId, specId)) {
     if (n >= mine) continue;
     const events = await loadEvents(eventsFile(ws, name)).catch(() => []);
     const started = events.find((e) => e.type === OrchEvent.RunStarted);
@@ -170,8 +173,8 @@ export async function mergedByPriorRuns(ws: Workspace, specId: string, runId: st
  * file is needed.
  */
 export async function olderLiveRun(ws: Workspace, specId: string, runId: string): Promise<string | null> {
-  const mine = specRuns([runId], specId)[0]?.n ?? Infinity;
-  for (const { name } of specRuns(await fs.readdir(ws.runs).catch(() => [] as string[]), specId).filter((r) => r.n < mine)) {
+  const mine = specRuns([runId], ws.projectId, specId)[0]?.n ?? Infinity;
+  for (const { name } of specRuns(await fs.readdir(ws.runs).catch(() => [] as string[]), ws.projectId, specId).filter((r) => r.n < mine)) {
     if (!(await lockHeld(`${eventsFile(ws, name)}.lock`))) continue;
     // Run numbers are shared by every project that has a spec of this id; only a run of this project owns our worktrees.
     const started = (await loadEvents(eventsFile(ws, name)).catch(() => [])).find((e) => e.type === OrchEvent.RunStarted);
