@@ -544,6 +544,17 @@ describe('TaskRunner: attempts, replan, block', () => {
   };
   const replacement = makePlanTask({ id: 'T1-r1', criteriaRefs: ['AC-001'], affectedPaths: ['src'] });
 
+  it('gives every Dev attempt of a task the same session, with the feedback as the resume prompt', async () => {
+    const agent: Agent = async (req) => (req.kind === 'replan' ? ok({ specHash: HASH, replacements: [replacement] }) : devDone()(req));
+    const r = new TaskRunner('T1', deps({ agent, gates: alwaysFailGates }));
+    for (let i = 0; i < 4; i++) await r.advance();
+    const sessions = agentCalls.filter((c) => c.kind === 'dev').map((c) => c.session!);
+    expect(sessions.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(sessions.map((s) => s.id)).size).toBe(1);
+    expect(sessions[1]!.resumePrompt).toContain('Feedback from the previous attempt');
+    expect(sessions[1]!.resumePrompt).toContain(journal.lastFeedback('T1')!.slice(0, 20));
+  });
+
   it('replans once after three attempts and supersedes the task', async () => {
     const agent: Agent = async (req) => (req.kind === 'replan' ? ok({ specHash: HASH, replacements: [replacement] }) : devDone()(req));
     const r = new TaskRunner('T1', deps({ agent, gates: alwaysFailGates }));

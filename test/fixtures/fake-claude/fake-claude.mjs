@@ -7,8 +7,11 @@
 //   FAKE_CLAUDE_STDERR      text to print on stderr before the stream
 //   FAKE_CLAUDE_EXIT_CODE   exit code after the stream (default 0)
 //   FAKE_CLAUDE_CAPTURE     path; argv, env, cwd and the stdin prompt are written there as JSON
+//                           (plus `transcript`: whether the --resume session file exists under $HOME/.claude/projects)
+//   FAKE_CLAUDE_SESSION     when set, a --session-id or --resume session leaves its transcript under $HOME/.claude/projects/-fake/
 //   FAKE_CLAUDE_CHILD_HOLD  spawn a grandchild that keeps stdout open for N ms after we exit
-import { readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import { spawn } from 'node:child_process';
 
 const env = process.env;
@@ -22,8 +25,17 @@ let started = false;
 function start() {
   if (started) return;
   started = true;
+  const argv = process.argv.slice(2);
+  const flagValue = (flag) => (argv.includes(flag) ? argv[argv.indexOf(flag) + 1] : undefined);
+  const transcript = (id) => path.join(env.HOME ?? '', '.claude', 'projects', '-fake', `${id}.jsonl`);
+  const resumeId = flagValue('--resume');
   if (env.FAKE_CLAUDE_CAPTURE) {
-    writeFileSync(env.FAKE_CLAUDE_CAPTURE, JSON.stringify({ argv: process.argv.slice(2), env: { ...env }, cwd: process.cwd(), prompt }));
+    writeFileSync(env.FAKE_CLAUDE_CAPTURE, JSON.stringify({ argv, env: { ...env }, cwd: process.cwd(), prompt, transcript: resumeId !== undefined && existsSync(transcript(resumeId)) }));
+  }
+  const sessionId = flagValue('--session-id') ?? resumeId;
+  if (env.FAKE_CLAUDE_SESSION && sessionId !== undefined) {
+    mkdirSync(path.dirname(transcript(sessionId)), { recursive: true });
+    appendFileSync(transcript(sessionId), `${JSON.stringify({ prompt })}\n`);
   }
   if (env.FAKE_CLAUDE_STDERR) process.stderr.write(`${env.FAKE_CLAUDE_STDERR}\n`);
   if (env.FAKE_CLAUDE_CHILD_HOLD) {

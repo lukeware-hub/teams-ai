@@ -13,8 +13,9 @@ import type { Effort } from '../decide/decisions/model-tier.js';
 import type { ReviewProfile } from '../decide/decisions/pr-risk.js';
 import { stepId } from '../core/ids.js';
 import { redactSecrets } from '../core/redact.js';
-import { buildContextPack, type CodeContext, type ContextPackInput, type HandoffSummary } from '../knowledge/context-pack.js';
+import { buildContextPack, estimateTokens, type CodeContext, type ContextPack, type ContextPackInput, type HandoffSummary } from '../knowledge/context-pack.js';
 import type { Hit } from '../knowledge/retrieval.js';
+import { hasSession } from '../runner/session-store.js';
 import type { runStep as runStepFn, StepDeps, StepOutcome, StepRequest } from '../runner/step.js';
 import type { TestResult } from '../evidence/junit.js';
 import type { RefContext } from '../validators/references.js';
@@ -78,6 +79,24 @@ export function devPack(
     code: opts.code,
     feedback: opts.feedback ?? undefined,
   };
+}
+
+/**
+ * What a resumed Dev session is told (R11.13 slice 7): the original pack is already in the session, so only the feedback
+ * of the attempt that just ended travels. Files may have changed since (a rebase, the Test engineer's tests), hence the re-read.
+ */
+export function devResumePrompt(feedback: string | null): string {
+  return [
+    '## Retry of the previous attempt',
+    'This continues your previous session on this task: the task, acceptance criteria, code context and your earlier work are above and still apply. The worktree is the one you worked in; read a file again before editing it, because other changes may have landed.',
+    `## Feedback from the previous attempt\n${feedback ?? 'None recorded; try again.'}`,
+    'Fix what the feedback names and answer with the same JSON contract, echoing the same specHash.',
+  ].join('\n\n') + '\n';
+}
+
+/** A prompt that is not built from sections; journaled like one so the step record keeps its shape. */
+export function resumedPack(text: string): ContextPack {
+  return { text, tokens: estimateTokens(text), sections: ['feedback'], dropped: [] };
 }
 
 export function reviewPack(
@@ -277,6 +296,11 @@ export interface AgentStepRequest<K extends StepKind> {
   effort?: Effort;
   /** Env entries the orchestrator provisioned for this one step (e.g. an ephemeral test database's DATABASE_URL). */
   extraEnv?: Readonly<Record<string, string>>;
+  /**
+   * R11.13 slice 7: keeps the step's CLI session under `id`. When the task's store already holds it (an earlier attempt, same
+   * cwd), the step resumes it and sends only `resumePrompt` instead of the pack: the context comes from the prompt cache.
+   */
+  session?: { id: string; resumePrompt: string };
 }
 
 export interface AgentStepDeps {
@@ -288,6 +312,8 @@ export interface AgentStepDeps {
   breaker: QuotaBreaker;
   journal: Pick<Journal, 'allocStepSeq' | 'fact'>;
   stepDir: (seq: number) => string;
+  /** Where a task's session transcript is kept; `AgentStepRequest.session` has no effect without it. */
+  sessionDir?: (taskId: string) => string;
   secretValues: () => readonly string[];
   specHash: string;
 }
@@ -299,7 +325,9 @@ export interface AgentStepDeps {
 export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>, deps: AgentStepDeps): Promise<StepOutcome<OutputOf<K>>> {
   const seq = deps.journal.allocStepSeq();
   const id = stepId(seq);
-  const pack = buildContextPack(req.pack);
+  const sessionStore = req.session && req.taskId && deps.sessionDir ? deps.sessionDir(req.taskId) : undefined;
+  const resume = req.session !== undefined && sessionStore !== undefined && (await hasSession(sessionStore, req.session.id, req.cwd));
+  const pack = resume ? resumedPack(req.session!.resumePrompt) : buildContextPack(req.pack);
   const dir = deps.stepDir(seq);
   await fs.mkdir(dir, { recursive: true });
   await deps.journal.fact(OrchEvent.StepStarted, {
@@ -336,6 +364,7 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
         attempt: req.attempt,
         extraAllow: req.extraAllow,
         extraEnv: req.extraEnv,
+        ...(sessionStore ? { sessionId: req.session!.id, resume, sessionStore } : {}),
       },
       deps.stepDeps,
     );

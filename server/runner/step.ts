@@ -12,6 +12,7 @@ import { validateAgentOutput } from '../validators/agent-output.js';
 import type { RefContext, References } from '../validators/references.js';
 import { buildInvocation, ensureTrusted, promptCacheTtl } from './invocation.js';
 import { sandboxPolicyViolation } from './sandbox-policy.js';
+import { restoreSession, saveSession } from './session-store.js';
 import { createStepHome, hasOauthToken, hostTokenExpiresAt, removeStepHome, syncBackCredentials } from './step-home.js';
 import { preflightSandbox, runProcess, type ProcessCaps, type RawStepResult, type RunnerBinary } from './process-runner.js';
 import { writeRoleSettings, type RoleSettingsInput } from './role-settings.js';
@@ -36,6 +37,8 @@ export interface StepRequest {
   attempt: number;
   sessionId?: string;
   resume?: boolean;
+  /** Directory that keeps this session's transcript between steps (see session-store.ts); with `resume`, it is restored into the step HOME first. */
+  sessionStore?: string;
   /** Extra allow rules for this step's role settings (from the plan's commands). */
   extraAllow?: readonly string[];
   effort?: Effort;
@@ -158,6 +161,7 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
       return await runStepIn(req, deps, hostEnv, home);
     } finally {
       await syncBackCredentials(home, hostEnv);
+      if (req.sessionStore) await saveSession(home, req.sessionStore, req.cwd);
       await removeStepHome(home);
     }
   });
@@ -219,6 +223,7 @@ export async function withRefreshGate<T>(hostEnv: NodeJS.ProcessEnv, clock: () =
 async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, hostEnv: NodeJS.ProcessEnv, home: string): Promise<StepOutcome<OutputOf<K>>> {
   await ensureTrusted(req.cwd, path.join(home, '.claude.json'));
   const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: req.extraAllow, sandboxEnabled: deps.sandbox?.enabled, hostHome: hostEnv.HOME });
+  if (req.resume && req.sessionStore) await restoreSession(req.sessionStore, home);
   // A review judges a diff the gates already tested: it never edits the code under review (R11.13 slice 2).
   const agent = req.kind === 'review' ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : req.agent;
   const invocation = buildInvocation(

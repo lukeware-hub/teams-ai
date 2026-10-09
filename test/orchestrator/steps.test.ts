@@ -7,7 +7,8 @@ import { Accounting } from '../../server/budget/accounting.js';
 import { Governor } from '../../server/budget/governor.js';
 import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
-import { devPack, outputContract, planPack, planRules, reportPack, reviewPack, runAgentStep, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
+import { devPack, devResumePrompt, outputContract, planPack, planRules, reportPack, reviewPack, runAgentStep, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
+import { saveSession } from '../../server/runner/session-store.js';
 import type { StepOutcome } from '../../server/runner/step.js';
 import type { ResultSummary } from '../../server/runner/stream-events.js';
 import { makePlanTask, makeProject, makeFrozenSpec } from '../fixtures/contracts.js';
@@ -40,6 +41,13 @@ afterEach(async () => {
   if (dir) await fs.rm(dir, { recursive: true, force: true });
   dir = '';
 });
+
+async function fakeHome(): Promise<string> {
+  const home = path.join(dir, 'home');
+  await fs.mkdir(path.join(home, '.claude', 'projects', '-x'), { recursive: true });
+  await fs.writeFile(path.join(home, '.claude', 'projects', '-x', 'sess-1.jsonl'), '{}\n');
+  return home;
+}
 
 async function deps(fake: (req: { kind: string; prompt: string }) => Promise<StepOutcome<unknown>>): Promise<AgentStepDeps & { journal: Journal }> {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-steps-'));
@@ -162,6 +170,38 @@ describe('packs', () => {
 });
 
 describe('runAgentStep', () => {
+  it('resumes a kept Dev session with only the retry prompt, and starts one when none was kept', async () => {
+    const prompts: Array<{ prompt: string; sessionId?: string; resume?: boolean; sessionStore?: string }> = [];
+    const d = await deps(async () => ({ ok: true, value: { specHash: HASH, status: 'done', summary: 'ok', changedFiles: [], commitMessage: 'feat: x' }, summary: summary() }));
+    d.runStep = (async (req) => {
+      prompts.push({ prompt: req.prompt, sessionId: req.sessionId, resume: req.resume, sessionStore: req.sessionStore });
+      return { ok: true, value: { specHash: HASH, status: 'done', summary: 'ok', changedFiles: [], commitMessage: 'feat: x' }, summary: summary() };
+    }) as AgentStepDeps['runStep'];
+    d.sessionDir = (taskId) => path.join(dir, 'sessions', taskId);
+    const req = { kind: 'dev' as const, role: 'dev' as const, pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1, session: { id: 'sess-1', resumePrompt: devResumePrompt('gate failed') } };
+    await runAgentStep(req, d);
+    expect(prompts[0]).toMatchObject({ sessionId: 'sess-1', resume: false, sessionStore: path.join(dir, 'sessions', 'T1') });
+    expect(prompts[0]!.prompt).toContain('## Output contract');
+    // The runner would have saved the transcript; simulate it.
+    await saveSession(await fakeHome(), path.join(dir, 'sessions', 'T1'), dir);
+    await runAgentStep({ ...req, attempt: 2 }, d);
+    expect(prompts[1]).toMatchObject({ sessionId: 'sess-1', resume: true });
+    expect(prompts[1]!.prompt).toBe(devResumePrompt('gate failed'));
+    expect(prompts[1]!.prompt).not.toContain('## Output contract');
+    expect(await fs.readFile(path.join(dir, 'steps', '2', 'prompt.md'), 'utf8')).toBe(devResumePrompt('gate failed'));
+  });
+
+  it('ignores the session when the runner has nowhere to keep it', async () => {
+    const seen: Array<{ sessionId?: string; sessionStore?: string }> = [];
+    const d = await deps(async () => ({ ok: true, value: {}, summary: summary() }));
+    d.runStep = (async (req) => {
+      seen.push({ sessionId: req.sessionId, sessionStore: req.sessionStore });
+      return { ok: true, value: { specHash: HASH, status: 'done', summary: 'ok', changedFiles: [], commitMessage: 'feat: x' }, summary: summary() };
+    }) as AgentStepDeps['runStep'];
+    await runAgentStep({ kind: 'dev', role: 'dev', pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1, session: { id: 's', resumePrompt: 'x' } }, d);
+    expect(seen[0]).toEqual({ sessionId: undefined, sessionStore: undefined });
+  });
+
   it('journals STEP_STARTED/FINISHED, writes prompt and output files, and books through the runner', async () => {
     const d = await deps(async () => ({
       ok: true,

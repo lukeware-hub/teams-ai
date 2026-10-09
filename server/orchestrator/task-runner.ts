@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { z } from 'zod';
@@ -34,7 +35,7 @@ import { devopsOwnerErrors, findCycle } from '../validators/plan.js';
 import type { RefContext } from '../validators/references.js';
 import { Intent, OrchEvent, type Journal } from './events.js';
 import { withMainSnapshot } from './phases/shared.js';
-import { devPack, replanPack, reviewPack, securityPack, specGapPack, type AgentStepRequest, type PackBase } from './steps.js';
+import { devPack, devResumePrompt, replanPack, reviewPack, securityPack, specGapPack, type AgentStepRequest, type PackBase } from './steps.js';
 import { olderLiveRun, worktreeDir, type Workspace } from './workspace.js';
 
 /** The diff is inlined into the sec prompt (the role has no Bash); the rest of a huge diff is read from the worktree. */
@@ -104,6 +105,8 @@ export class TaskRunner {
   private junit: TestResult[] = [];
   private mergeRefusals = 0;
   private tierAttempt = 0;
+  /** The Dev's CLI session for the current task definition and step settings; a retry resumes it (R11.13 slice 7). */
+  private devSession: { key: string; id: string } | null = null;
   private tierChoice: ModelTierResult | null = null;
   private scopeJustification: string | undefined;
   private readonly maxSpecGapRounds: number;
@@ -132,6 +135,16 @@ export class TaskRunner {
   }
 
   /** Spec 10A.5 decisions 10/11: model tier and effort for one step; empty when unanswered or off-profile. */
+  /**
+   * A new definition (replan) or another model or effort starts a new session: the old context no longer matches the work,
+   * or its cache would not be reused anyway. The runner resumes only when the first attempt's session was actually saved.
+   */
+  private sessionFor(role: Role, overrides: { model?: string; effort?: Effort }, feedback: string | null): { id: string; resumePrompt: string } {
+    const key = createHash('sha256').update(JSON.stringify([role, overrides, this.task.def])).digest('hex');
+    if (this.devSession?.key !== key) this.devSession = { key, id: randomUUID() };
+    return { id: this.devSession.id, resumePrompt: devResumePrompt(feedback) };
+  }
+
   private async stepOverrides(role: Role, attempt: number): Promise<{ model?: string; effort?: Effort }> {
     // One decision per attempt serves both the Dev and the Test step (in-memory; a resume decides again).
     if (this.tierAttempt !== attempt) {
@@ -274,13 +287,16 @@ export class TaskRunner {
       return this.transition('validating');
     }
     const owner = task.def.owner;
-    const pack = devPack(this.deps.packBase(), task.def, { code: await this.deps.code(this.worktree, task.def), handoffs: this.deps.handoffs(), feedback: this.deps.journal.lastFeedback(this.taskId) }, owner);
+    const feedback = this.deps.journal.lastFeedback(this.taskId);
+    const pack = devPack(this.deps.packBase(), task.def, { code: await this.deps.code(this.worktree, task.def), handoffs: this.deps.handoffs(), feedback }, owner);
+    const overrides = await this.stepOverrides(owner, attempt);
     const outcome = await this.deps.runAgent<'dev'>({
       kind: 'dev',
       role: owner,
       pack,
       cwd: this.worktree,
-      ...(await this.stepOverrides(owner, attempt)),
+      ...overrides,
+      session: this.sessionFor(owner, overrides, feedback),
       phase: 'phase3',
       taskId: this.taskId,
       attempt,

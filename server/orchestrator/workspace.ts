@@ -58,6 +58,11 @@ export function stateFile(ws: Workspace, runId: string): string {
   return path.posix.join(runDir(ws, runId), 'state.json');
 }
 
+/** Where a task's agent session transcript is kept between its attempts (runner/session-store.ts). */
+export function sessionDir(ws: Workspace, runId: string, taskId: string): string {
+  return path.posix.join(runDir(ws, runId), 'sessions', taskId.replace(/[^\w.-]/g, '_'));
+}
+
 export function stepDir(ws: Workspace, runId: string, seq: number): string {
   return path.posix.join(runDir(ws, runId), 'steps', stepId(seq));
 }

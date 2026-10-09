@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseAgentFile } from '../../server/agents/registry.js';
 import { Accounting } from '../../server/budget/accounting.js';
 import type { RawStepResult } from '../../server/runner/process-runner.js';
+import { hasSession } from '../../server/runner/session-store.js';
 import { classifyFailure, runStep, type StepDeps, type StepRequest } from '../../server/runner/step.js';
 import { parseStreamJson, summarizeStream } from '../../server/runner/stream-events.js';
 
@@ -260,6 +261,22 @@ describe('runStep', () => {
     expect(JSON.parse(await fs.readFile(capture, 'utf8')).env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBeUndefined();
     await runStep(request({ kind: 'security' }), deps);
     expect(JSON.parse(await fs.readFile(capture, 'utf8')).env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBe('5m');
+  });
+
+  it('keeps the session transcript of a step and restores it into the HOME of the step that resumes it', async () => {
+    const capture = path.join(dir, 'capture.json');
+    const store = path.join(dir, 'store');
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture, FAKE_CLAUDE_SESSION: '1' });
+    await runStep(request({ sessionId: 'sess-1', sessionStore: store }), deps);
+    let captured = JSON.parse(await fs.readFile(capture, 'utf8'));
+    expect(captured.argv).toContain('--session-id');
+    expect(captured.argv).not.toContain('--no-session-persistence');
+    expect(await hasSession(store, 'sess-1', dir)).toBe(true);
+    await runStep(request({ sessionId: 'sess-1', resume: true, sessionStore: store, prompt: 'Fix it' }), deps);
+    captured = JSON.parse(await fs.readFile(capture, 'utf8'));
+    expect(captured.argv[captured.argv.indexOf('--resume') + 1]).toBe('sess-1');
+    expect(captured.transcript).toBe(true);
+    expect(captured.prompt).toBe('Fix it');
   });
 
   it('never gives a review step the file-editing tools', async () => {

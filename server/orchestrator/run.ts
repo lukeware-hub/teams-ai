@@ -38,7 +38,7 @@ import { reconcile } from './reconcile.js';
 import { validateDocs } from '../validators/docs.js';
 import { readmePack, runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
 import { TaskRunner, type TaskRunnerDeps } from './task-runner.js';
-import { eventsFile, expandHome, graphDir, mergedByPriorRuns, nextRunId, runDir, stateFile, stepDir, type Workspace } from './workspace.js';
+import { eventsFile, expandHome, graphDir, mergedByPriorRuns, nextRunId, runDir, sessionDir, stateFile, stepDir, type Workspace } from './workspace.js';
 import type { DeployTarget } from '../deploy/target.js';
 import { E2E_GATE, runE2e } from '../exec/e2e.js';
 import { gateReachableUrl, runSmoke } from '../exec/smoke.js';
@@ -239,6 +239,7 @@ export class Run {
       breaker: this.breaker,
       journal: this.journal,
       stepDir: (seq) => stepDir(this.deps.ws, this.runId, seq),
+      sessionDir: (taskId) => sessionDir(this.deps.ws, this.runId, taskId),
       secretValues: () => Object.values(this.deps.secrets),
       specHash: this.deps.spec.specHash!,
     };
