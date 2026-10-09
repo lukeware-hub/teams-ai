@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { chooseSpecId, main } from '../server/cli.js';
+import { chooseSpecId, main, markAwaitingValidation } from '../server/cli.js';
 import { loadConfig } from '../server/config/config.js';
 import type { RunControlDeps, SpawnArgs } from '../server/api/run-control.js';
 import { writeRun } from './fixtures/runs/write-run.js';
@@ -152,5 +152,31 @@ describe('chooseSpecId', () => {
     expect(chooseSpecId(undefined, 'a-001', dirs)).toBe('a-001');
     expect(chooseSpecId(undefined, null, dirs)).toBe('a-001-z');
     expect(chooseSpecId(undefined, null, [])).toBeUndefined();
+  });
+});
+
+describe('markAwaitingValidation', () => {
+  const draft = async (status: string) => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-cli-mark-'));
+    const file = path.join(dir, 'docs', 'specs', 'hello-001', 'spec.json');
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    const spec = JSON.parse(await fs.readFile('test/fixtures/hello-app/docs/specs/hello-001/spec.json', 'utf8'));
+    await fs.writeFile(file, JSON.stringify({ ...spec, status }));
+    return { dir, read: async () => JSON.parse(await fs.readFile(file, 'utf8')).status };
+  };
+
+  it('moves the draft root spec from running to awaiting-validation so the UI can complete it', async () => {
+    const d = await draft('running');
+    await markAwaitingValidation(d.dir, 'hello-001', '/elsewhere/repo');
+    expect(await d.read()).toBe('awaiting-validation');
+  });
+
+  it('leaves the repo clone and any other status alone', async () => {
+    const clone = await draft('running');
+    await markAwaitingValidation(clone.dir, 'hello-001', clone.dir);
+    expect(await clone.read()).toBe('running');
+    const done = await draft('done');
+    await markAwaitingValidation(done.dir, 'hello-001', '/elsewhere/repo');
+    expect(await done.read()).toBe('done');
   });
 });

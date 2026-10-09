@@ -5,6 +5,7 @@ import { loadAgents } from './agents/registry.js';
 import { loadConfig, type Config } from './config/config.js';
 import { Project } from './contracts/project.js';
 import { Spec } from './contracts/spec.js';
+import { writeFileAtomic } from './core/atomic-write.js';
 import { loadSecrets } from './core/secrets.js';
 import { execCommand, type Exec } from './exec/command.js';
 import { gitAuthEnv, withGitAuth } from './git/auth.js';
@@ -147,6 +148,15 @@ export function exitCode(result: ExecuteResult): number {
   if (result === 'complete' || result === 'awaiting-validation' || result === 'done') return 0;
   if (result === 'drained') return 3;
   return 2;
+}
+
+/** The run sets `awaiting-validation` on main only; a separate project dir (the draft root the UI reads) keeps the frozen `running`. */
+export async function markAwaitingValidation(projectDir: string, specId: string, repo: string): Promise<void> {
+  if (path.resolve(projectDir) === path.resolve(repo)) return;
+  const file = path.join(projectDir, 'docs', 'specs', specId, 'spec.json');
+  const spec = await readJson(file, (v) => Spec.parse(v));
+  if (spec.status === 'running') await writeFileAtomic(file, `${JSON.stringify({ ...spec, status: 'awaiting-validation' }, null, 2)}
+`);
 }
 
 async function readJson<T>(file: string, parse: (v: unknown) => T): Promise<T> {
@@ -301,6 +311,7 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
       off();
       await run.close();
     }
+    if (result === 'awaiting-validation' && deps) await markAwaitingValidation(projectDir, deps.spec.specId, deps.ws.repo);
     if (result === 'paused:auth') io.stderr('run paused: claude auth expired; run "claude auth login" and resume');
     else io.stderr(`run ${run.runId} finished: ${result}`);
     return exitCode(result);
