@@ -6,6 +6,7 @@ export interface StepRow {
   stepId: string;
   kind: string;
   role: string;
+  model: string | null;
   attempt: number;
   ok: boolean | null;
   failure: string | null;
@@ -180,6 +181,9 @@ export function pausedUntil(events: StoredEvent[]): string | null {
   return until;
 }
 
+const startedStep = (d: Record<string, unknown>, tier: string | null = null): StepRow => ({ stepId: String(d.stepId), kind: String(d.kind), role: String(d.role), model: typeof d.model === 'string' ? d.model : null, attempt: Number(d.attempt), ok: null, failure: null, usage: null, durationMs: null, tier });
+const finishStep = (s: StepRow, d: Record<string, unknown>) => Object.assign(s, { ok: Boolean(d.ok), failure: (d.failure as string | null) ?? null, usage: d.usage ? add(zero(), d.usage as Usage, (d.costUsd as number | null) ?? null) : null, durationMs: Number(d.durationMs ?? 0) });
+
 export function taskDetail(events: StoredEvent[], taskId: string) {
   const attempts = new Map<number, { attempt: number; steps: StepRow[]; gates: GateRow[]; review: ReviewRow | null; security: SecurityRow | null }>();
   const at = (n: number) => {
@@ -208,13 +212,13 @@ export function taskDetail(events: StoredEvent[], taskId: string) {
       }
       case 'STEP_STARTED': {
         current = Number(d.attempt);
-        at(current).steps.push({ stepId: String(d.stepId), kind: String(d.kind), role: String(d.role), attempt: current, ok: null, failure: null, usage: null, durationMs: null, tier: d.kind === 'dev' ? pendingTier : null });
+        at(current).steps.push(startedStep(d, d.kind === 'dev' ? pendingTier : null));
         pendingTier = null;
         break;
       }
       case 'STEP_FINISHED': {
         const s = at(Number(d.attempt)).steps.find((x) => x.stepId === d.stepId);
-        if (s) Object.assign(s, { ok: Boolean(d.ok), failure: (d.failure as string | null) ?? null, usage: d.usage ? add(zero(), d.usage as Usage, (d.costUsd as number | null) ?? null) : null, durationMs: Number(d.durationMs ?? 0) });
+        if (s) finishStep(s, d);
         break;
       }
       case 'GATE_PASSED':
@@ -459,4 +463,184 @@ export function mergedPrs(events: StoredEvent[]): Array<{ taskId: string; number
     rows.push({ taskId, number, url: byBranch?.url ?? '' });
   }
   return rows;
+}
+
+export type ActivityTone = 'good' | 'bad' | '';
+export interface ActivityItem {
+  at: string;
+  text: string;
+  tone: ActivityTone;
+  url: string | null;
+}
+export interface PhaseActivity {
+  items: ActivityItem[];
+  steps: StepRow[];
+}
+export interface RunningStep {
+  stepId: string;
+  kind: string;
+  role: string;
+  model: string | null;
+  taskId: string | null;
+  startedAt: string;
+}
+
+const STEP_DOING: Record<string, string> = {
+  'tech-spec': 'escrevendo a especificação técnica',
+  coverage: 'conferindo a cobertura dos critérios de aceite',
+  plan: 'montando o plano de tarefas',
+  dev: 'implementando',
+  review: 'revisando o código',
+  security: 'revisando a segurança',
+  deployment: 'preparando o deploy',
+  report: 'escrevendo o relatório',
+  readme: 'escrevendo o README',
+  decide: 'tomando uma decisão automática',
+  'spec-gap': 'respondendo uma dúvida sobre a spec',
+  replan: 'replanejando uma tarefa',
+  'fix-tasks': 'criando tarefas de correção',
+};
+/** What an agent step kind is doing, in plain words. */
+export const stepDoing = (kind: string) => STEP_DOING[kind] ?? kind;
+
+/** "45 s", "2 min 5 s", "1 h 3 min". */
+export function formatDuration(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s} s`;
+  if (s < 3600) return `${Math.floor(s / 60)} min ${s % 60} s`;
+  return `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min`;
+}
+
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const list = (v: unknown) => (v as string[] | undefined) ?? [];
+
+/** One event as one plain sentence, or null for internal bookkeeping. A confirm reads its own intent's data. */
+function describe(e: StoredEvent, intent: Record<string, unknown> | undefined): Omit<ActivityItem, 'at'> | null {
+  const d = e.data;
+  const item = (text: string, tone: ActivityTone = '', url: unknown = null) => ({ text, tone, url: typeof url === 'string' ? url : null });
+  if (e.kind === 'intent') return e.type === 'WORKTREE_CREATE' && e.intentId?.includes(':docs-') ? item(`Branch ${String(d.branch)} preparada a partir da main`) : null;
+  if (e.kind === 'confirm') {
+    if (e.type === 'DOCS_COMMIT') {
+      const files = list(d.files);
+      return item(`Commit ${String(d.sha).slice(0, 7)} na branch ${String(intent?.branch)}: ${String(intent?.message)}${files.length ? ` (${count(files.length, 'arquivo', 'arquivos')})` : ''}`);
+    }
+    if (e.type === 'PR_MERGE' && !d.merged) return item(`Merge do pull request #${String(intent?.number)} recusado: ${String(d.reason ?? '')}`, 'bad');
+    return null;
+  }
+  switch (e.type) {
+    case 'PHASE_STARTED':
+      return d.round ? item(`Rodada ${String(d.round)} da verificação iniciada`) : null;
+    case 'PHASE_FAILED':
+      return item(`A fase falhou: ${firstSentence(String(d.reason ?? ''))}`, 'bad');
+    case 'REPO_BOOTSTRAPPED':
+      return item(`Repositório ${String(d.fullName)} ${d.created ? 'criado' : 'encontrado'} no GitHub`, 'good', d.url);
+    case 'PR_CREATED':
+      return item(`Pull request #${String(d.number)} ${d.created ? 'aberto' : 'encontrado'} para a branch ${String(d.branch)}`, '', d.url);
+    case 'DOCS_MERGED':
+      return item(`Documentação mesclada na main${d.pr ? ` pelo pull request #${String(d.pr)}` : ''}`, 'good');
+    case 'TECH_SPEC_WRITTEN': {
+      const adrs = list(d.adrs);
+      return item(`Especificação técnica escrita em ${String(d.path)}${adrs.length ? `, com ${count(adrs.length, 'ADR', 'ADRs')}` : ''}`);
+    }
+    case 'COVERAGE_CHECKED': {
+      const uncovered = list(d.uncovered);
+      return uncovered.length ? item(`${count(uncovered.length, 'critério', 'critérios')} de aceite sem cobertura na especificação técnica: ${uncovered.join(', ')}`, 'bad') : item('Todos os critérios de aceite estão cobertos pela especificação técnica', 'good');
+    }
+    case 'PLAN_CHOSEN':
+      return item(`Plano escolhido: opção ${Number(d.index) + 1} de ${String(d.candidates)}`, 'good');
+    case 'PREPLAN_DEVIATION':
+      return item(`O plano deixou de fora critérios previstos no pré-plano: ${list(d.missingCriteria).join(', ')}`, 'bad');
+    case 'FIX_TASKS_PLANNED':
+      return item(count(list(d.tasks).length, 'tarefa de correção criada', 'tarefas de correção criadas'));
+    case 'GATE_PASSED':
+      return item(`Verificação ${String(d.gate)} passou`, 'good');
+    case 'GATE_FAILED':
+      return item(`Verificação ${String(d.gate)} falhou`, 'bad');
+    case 'VERIFICATION_PASSED':
+      return item(`Verificação aprovada na rodada ${String(d.round)}`, 'good');
+    case 'VERIFICATION_FAILED': {
+      const missing = list(d.missingDelivery);
+      const detail = missing.length ? `faltam entregas: ${missing.join(', ')}` : `${count(list(d.failedTests).length, 'teste falhando', 'testes falhando')}, ${count(list(d.uncoveredAcs).length, 'critério sem cobertura', 'critérios sem cobertura')}`;
+      return item(`Verificação reprovada na rodada ${String(d.round)}: ${detail}`, 'bad');
+    }
+    case 'DEPLOY_APPLIED':
+      return item(`Deploy aplicado (tentativa ${String(d.attempt)})`);
+    case 'DEPLOY_FAILED':
+      return item(`Deploy falhou na etapa ${String(d.stage)} (tentativa ${String(d.attempt)}): ${firstSentence(String(d.detail ?? ''))}`, 'bad');
+    case 'ROLLBACK_DONE':
+      return item('Versão anterior restaurada');
+    case 'DEPLOY_VERIFIED':
+      return item(`Deploy verificado em ${String(d.url)}`, 'good', d.url);
+    case 'REPORT_READY':
+      return item('Relatório final pronto', 'good');
+    case 'PR_MERGED':
+      return item(`Tarefa ${String(d.taskId)} mesclada na main (pull request #${String(d.pr)})`, 'good');
+    case 'TASK_BLOCKED':
+      return item(`Tarefa ${String(d.taskId)} bloqueada: ${firstSentence(explainBlockReason(String(d.reason ?? '')))}`, 'bad');
+    case 'RUN_PAUSED':
+      return item(d.reason === 'quota' ? `Execução pausada pelo limite de uso dos modelos${d.until ? ` até ${new Date(String(d.until)).toTimeString().slice(0, 5)}` : ''}` : 'Execução pausada: a sessão do Claude expirou', 'bad');
+    case 'RUN_RESUMED':
+      return item('Execução retomada');
+    case 'STEP_FINISHED':
+      return d.ok === false ? item(`Etapa ${stepDoing(String(d.kind))} falhou (${String(d.failure)})`, 'bad') : null;
+    default:
+      return null;
+  }
+}
+
+/** Reads every event once, keeping each intent so its confirm can be described. */
+function describeAll(events: StoredEvent[], visit: (e: StoredEvent, item: ActivityItem | null) => void) {
+  const intents = new Map<string, Record<string, unknown>>();
+  for (const e of events) {
+    if (e.kind === 'intent' && e.intentId) intents.set(e.intentId, e.data);
+    const item = describe(e, e.intentId ? intents.get(e.intentId) : undefined);
+    visit(e, item ? { at: e.at, ...item } : null);
+  }
+}
+
+const PHASE_TAG = /^phase(\d+)$/;
+const hasTask = (d: Record<string, unknown>) => d.taskId !== null && d.taskId !== undefined && d.taskId !== '';
+
+/**
+ * Each phase's timeline and its own agent steps; task steps stay in the task detail.
+ * An event that names its phase goes there; any other one belongs to the phase that started last before it.
+ */
+export function phaseActivity(events: StoredEvent[]): Map<number, PhaseActivity> {
+  const out = new Map<number, PhaseActivity>();
+  const of = (phase: number) => {
+    if (!out.has(phase)) out.set(phase, { items: [], steps: [] });
+    return out.get(phase)!;
+  };
+  const stepPhase = new Map<string, number>();
+  let current: number | null = null;
+  describeAll(events, (e, item) => {
+    const d = e.data;
+    if (e.type === 'PHASE_STARTED') current = Number(d.phase);
+    const tag = typeof d.phase === 'number' ? d.phase : PHASE_TAG.exec(String(d.phase ?? ''))?.[1];
+    let phase = tag === undefined ? current : Number(tag);
+    if (e.type === 'STEP_STARTED' && phase !== null) stepPhase.set(String(d.stepId), phase);
+    if (e.type === 'STEP_FINISHED') phase = stepPhase.get(String(d.stepId)) ?? phase;
+    if (phase === null) return;
+    const task = hasTask(d);
+    if (e.type === 'STEP_STARTED' && !task) of(phase).steps.push(startedStep(d));
+    if (e.type === 'STEP_FINISHED' && !task) {
+      const s = of(phase).steps.find((x) => x.stepId === d.stepId);
+      if (s) finishStep(s, d);
+    }
+    if (item && (!task || e.type === 'PR_MERGED' || e.type === 'TASK_BLOCKED')) of(phase).items.push(item);
+  });
+  return out;
+}
+
+/** The agent steps running right now, oldest first, and the last thing that happened. */
+export function currentActivity(events: StoredEvent[]): { running: RunningStep[]; last: ActivityItem | null } {
+  const open = new Map<string, RunningStep>();
+  let last: ActivityItem | null = null;
+  describeAll(events, (e, item) => {
+    const d = e.data;
+    if (e.type === 'STEP_STARTED') open.set(String(d.stepId), { stepId: String(d.stepId), kind: String(d.kind), role: String(d.role), model: typeof d.model === 'string' ? d.model : null, taskId: hasTask(d) ? String(d.taskId) : null, startedAt: e.at });
+    if (e.type === 'STEP_FINISHED') open.delete(String(d.stepId));
+    if (item) last = item;
+  });
+  return { running: [...open.values()], last };
 }

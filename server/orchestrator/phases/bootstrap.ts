@@ -1,12 +1,12 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { Exec } from '../../exec/command.js';
-import { commitAll, fetch as gitFetch, git } from '../../git/git.js';
+import { fetch as gitFetch, git } from '../../git/git.js';
 import { ensureRepo, NOT_FOUND } from '../../git/github.js';
 import type { Plan } from '../../contracts/plan.js';
 import { Intent, OrchEvent } from '../events.js';
 import { renderWorkflows, validateWorkflow } from '../workflows.js';
-import { commitAndMergeDocs, docsCommitKey, docsWorktree, type PhaseDeps, type PhaseResult } from './shared.js';
+import { commitAndMergeDocs, commitDocs, docsCommitKey, docsWorktree, type PhaseDeps, type PhaseResult } from './shared.js';
 
 const isRepo = (dir: string) => fs.access(path.join(dir, '.git')).then(() => true, () => false);
 
@@ -36,8 +36,7 @@ export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docs
       const message = `docs: ${project.projectId} ${spec.specId} v${version}`;
       if (!journal.isConfirmed(Intent.DocsCommit, key)) {
         await journal.intent(Intent.DocsCommit, key, { worktree: ws.repo, branch: 'main', message });
-        const sha = (await commitAll(ws.repo, message, {}, deps.exec)) ?? (await git(ws.repo, ['rev-parse', 'HEAD'], deps.exec));
-        await journal.confirm(Intent.DocsCommit, key, { sha });
+        await journal.confirm(Intent.DocsCommit, key, await commitDocs(ws.repo, message, deps.exec));
       }
       if (!journal.isConfirmed(Intent.RepoCreate, project.projectId)) {
         await journal.intent(Intent.RepoCreate, project.projectId, { owner, name: project.projectId });

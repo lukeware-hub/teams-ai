@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { StoredEvent } from '../api.js';
-import { blockedSummary, deployOutcome, evidence, explainPhase, explainStop, firstSentence, lastDeployFailure, liveBlocked, pausedUntil, phases, phaseTitle, runState, stopSummary, taskDetail, tokens } from './selectors.js';
+import { blockedSummary, currentActivity, deployOutcome, evidence, explainPhase, explainStop, firstSentence, lastDeployFailure, liveBlocked, pausedUntil, phaseActivity, phases, phaseTitle, runState, stopSummary, taskDetail, tokens } from './selectors.js';
 
 // jsdom gives import.meta.url an http: scheme; vitest runs with cwd = web/
 const events: StoredEvent[] = readFileSync(path.resolve('../test/fixtures/runs/hello-run.ndjson'), 'utf8')
@@ -243,5 +243,69 @@ describe('phase rows', () => {
   it('a run stopped by the user leaves its phase interrupted, not failed', () => {
     const out = phases(evs([['PHASE_STARTED', { phase: 3 }], ['RUN_FINISHED', { result: 'drained', reason: null }]]));
     expect(out[0]).toMatchObject({ result: 'stopped', reason: null });
+  });
+});
+
+describe('phase activity', () => {
+  type Ev = [type: string, data: Record<string, unknown>, kind?: 'fact' | 'intent' | 'confirm', intentId?: string];
+  const evs = (list: Ev[]): StoredEvent[] => list.map(([type, data, kind = 'fact', intentId], i) => ({ seq: i + 1, at: `2026-10-05T10:00:${String(i).padStart(2, '0')}.000Z`, runId: 'r', specHash: 'h', type, kind, ...(intentId ? { intentId } : {}), data }));
+
+  it('phase 0 reads as plain sentences in order', () => {
+    const out = phaseActivity(
+      evs([
+        ['PHASE_STARTED', { phase: 0 }],
+        ['WORKTREE_CREATE', { worktree: '/w', branch: 'docs/s-v1' }, 'intent', 'WORKTREE_CREATE:docs-docs/s-v1'],
+        ['DOCS_COMMIT', { branch: 'docs/s-v1', message: 'docs(s): spec v1' }, 'intent', 'DOCS_COMMIT:s-0'],
+        ['DOCS_COMMIT', { sha: 'abcdef123456', files: ['docs/a.md', 'docs/b.md'] }, 'confirm', 'DOCS_COMMIT:s-0'],
+        ['PR_CREATED', { branch: 'docs/s-v1', number: 12, url: 'https://github.com/o/p/pull/12', created: true }],
+        ['DOCS_MERGED', { phase: 0, pr: 12, branch: 'docs/s-v1' }],
+      ]),
+    ).get(0)!;
+    expect(out.items.map((i) => i.text)).toEqual([
+      'Branch docs/s-v1 preparada a partir da main',
+      'Commit abcdef1 na branch docs/s-v1: docs(s): spec v1 (2 arquivos)',
+      'Pull request #12 aberto para a branch docs/s-v1',
+      'Documentação mesclada na main pelo pull request #12',
+    ]);
+    expect(out.items[2]!.url).toBe('https://github.com/o/p/pull/12');
+    expect(out.steps).toEqual([]);
+  });
+
+  it('a failed step and an uncovered criterion are problems of their phase', () => {
+    const out = phaseActivity(
+      evs([
+        ['PHASE_STARTED', { phase: 1 }],
+        ['STEP_STARTED', { stepId: 's1', kind: 'tech-spec', role: 'dev', model: 'm', taskId: null, attempt: 1, phase: 'phase1' }],
+        ['STEP_FINISHED', { stepId: 's1', kind: 'tech-spec', taskId: null, attempt: 1, ok: false, failure: 'schema', usage: null, costUsd: null, durationMs: 1000 }],
+        ['COVERAGE_CHECKED', { attempt: 1, uncovered: ['AC-001', 'AC-002'] }],
+      ]),
+    ).get(1)!;
+    expect(out.items.filter((i) => i.tone === 'bad').map((i) => i.text)).toEqual(['Etapa escrevendo a especificação técnica falhou (schema)', '2 critérios de aceite sem cobertura na especificação técnica: AC-001, AC-002']);
+    expect(out.steps).toMatchObject([{ stepId: 's1', model: 'm', ok: false, failure: 'schema', durationMs: 1000 }]);
+  });
+
+  it('a step tagged with its phase wins over its position; an untagged one goes by position; task steps stay out', () => {
+    const out = phaseActivity(
+      evs([
+        ['PHASE_STARTED', { phase: 1 }],
+        ['PHASE_STARTED', { phase: 2 }],
+        ['STEP_STARTED', { stepId: 'late', kind: 'coverage', role: 'po', taskId: null, attempt: 1, phase: 'phase1' }],
+        ['STEP_STARTED', { stepId: 'old', kind: 'plan', role: 'sm', taskId: null, attempt: 1 }],
+        ['STEP_STARTED', { stepId: 'task', kind: 'dev', role: 'dev', taskId: 'T1', attempt: 1, phase: 'phase3' }],
+      ]),
+    );
+    expect(out.get(1)!.steps.map((s) => s.stepId)).toEqual(['late']);
+    expect(out.get(2)!.steps.map((s) => s.stepId)).toEqual(['old']);
+    expect(out.get(3)).toBeUndefined();
+  });
+
+  it('current activity is the open steps, then the last thing that happened', () => {
+    const list = evs([
+      ['PHASE_STARTED', { phase: 1 }],
+      ['TECH_SPEC_WRITTEN', { path: 'docs/tech.md', adrs: ['ADR-1'], stack: 'node', attempt: 1 }],
+      ['STEP_STARTED', { stepId: 's2', kind: 'coverage', role: 'po', model: 'm', taskId: null, attempt: 1 }],
+    ]);
+    expect(currentActivity(list)).toMatchObject({ running: [{ stepId: 's2', kind: 'coverage', role: 'po', model: 'm', startedAt: '2026-10-05T10:00:02.000Z' }], last: { text: 'Especificação técnica escrita em docs/tech.md, com 1 ADR' } });
+    expect(currentActivity([...list, { ...list[2]!, seq: 9, type: 'STEP_FINISHED', data: { stepId: 's2', ok: true } }]).running).toEqual([]);
   });
 });

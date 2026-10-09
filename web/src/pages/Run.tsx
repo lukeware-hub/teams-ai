@@ -7,8 +7,9 @@ import { Icon, type IconName } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { Markdown } from '../components/Markdown.js';
 import { safeHttpUrl } from '../safeUrl.js';
+import { StepList } from '../components/StepList.js';
 import { TaskDetail } from '../components/TaskDetail.js';
-import { blockedSummary, evidence, explainBlockReason, explainPhase, explainStop, firstSentence, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phases, phaseTitle, rootBlockers, runState, stopSummary, tokens, type PhaseRow, type StopOwner } from '../run/selectors.js';
+import { blockedSummary, currentActivity, evidence, explainBlockReason, explainPhase, explainStop, firstSentence, formatDuration, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseTitle, rootBlockers, runState, stepDoing, stopSummary, tokens, type ActivityItem, type PhaseRow, type StopOwner } from '../run/selectors.js';
 import { useJournal } from '../useSse.js';
 import './run.css';
 
@@ -33,7 +34,8 @@ const TIP = {
   output: 'Texto gerado pelos modelos: código, planos, revisões e respostas.',
   byRole: 'Consumo de cada papel do time de agentes. Decisões automáticas são escolhas rápidas do orquestrador, como qual modelo usar em cada tarefa.',
   byPhase: 'Onde o consumo aconteceu: nas tarefas, nas etapas de especificação, plano e relatório, ou nas decisões automáticas.',
-  phases: 'As etapas da run, em ordem: especificação técnica, plano, implementação das tarefas, verificação, deploy e relatório. Uma fase repetida mostra a última tentativa.',
+  phases: 'As etapas da run, em ordem: especificação técnica, plano, implementação das tarefas, verificação, deploy e relatório. Uma fase repetida mostra a última tentativa. Clique numa fase para ver o que foi feito e os problemas que aconteceram.',
+  now: 'Os agentes trabalhando neste momento e há quanto tempo. O custo de uma etapa só entra no consumo quando ela termina.',
   owner: 'Sistema: falha do orquestrador, de um agente ou do ambiente. Plano: o plan.json precisa mudar. Você: depende de uma ação sua, como ajustar a spec ou as permissões no GitHub.',
   blocked: 'Tarefas que pararam por um motivo próprio. As que só esperavam por uma delas não aparecem aqui.',
   reprocess: 'Inicia uma nova run desta spec. A especificação técnica e o plano que já estão na main são reaproveitados; as tarefas rodam de novo e consomem tokens.',
@@ -273,6 +275,70 @@ function phaseState(p: PhaseRow, runStatus: string, blockedTasks: number): [labe
   if (p.result === 'done' && p.phase === 3 && blockedTasks > 0) return ['com bloqueios', 'warn'];
   return PHASE_STATE[p.result];
 }
+
+/** Plain-language events, oldest first, each with its time and link. */
+function ActivityList({ items }: { items: ActivityItem[] }) {
+  return (
+    <ol className="activity-list">
+      {items.map((item, i) => (
+        <li key={i} className={item.tone ? `activity activity-${item.tone}` : 'activity'}>
+          <time dateTime={item.at}>{hhmm(item.at)}</time>
+          <span>
+            {item.text}
+            {safeHttpUrl(item.url ?? '') ? (
+              <>
+                {' '}
+                <a href={safeHttpUrl(item.url ?? '')} target="_blank" rel="noreferrer" aria-label={`Abrir: ${item.text}`}>
+                  <Icon name="external" size={14} />
+                </a>
+              </>
+            ) : null}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** What the run is doing right now: the agent steps in flight with a live timer, or else the last thing that happened. */
+function NowCard({ events }: { events: StoredEvent[] }) {
+  const { running, last } = currentActivity(events);
+  const [now, setNow] = useState(() => Date.now());
+  const ticking = running.length > 0;
+  useEffect(() => {
+    if (!ticking) return undefined;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [ticking]);
+  return (
+    <section className="card" data-testid="now">
+      <div className="run-panel-head">
+        <h2>Agora</h2>
+        <InfoTip label="Agora" text={TIP.now} />
+      </div>
+      {running.length ? (
+        <ul className="now-list">
+          {running.map((s) => (
+            <li key={s.stepId} data-testid="now-step">
+              <strong>{ROLE_LABEL[s.role] ?? s.role}</strong> {stepDoing(s.kind)}
+              {s.taskId ? ` a tarefa ${s.taskId}` : ''}
+              <span className="now-meta">
+                {s.model ? `${s.model} · ` : ''}há {formatDuration(now - Date.parse(s.startedAt))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="hint">Nenhum agente trabalhando neste momento.</p>
+      )}
+      {last ? (
+        <p className="now-last" data-testid="now-last">
+          <span className="hint">Último acontecimento, às {hhmm(last.at)}:</span> {last.text}
+        </p>
+      ) : null}
+    </section>
+  );
+}
 const IN_FLIGHT = new Set(['implementing', 'validating', 'reviewing', 'rebasing', 'merging']);
 const ORDER = ['implementing', 'validating', 'reviewing', 'rebasing', 'merging', 'ready', 'planned', 'merged', 'blocked', 'superseded'];
 const statusLabel = (status: string) => ({ done: 'concluído', complete: 'concluído', failed: 'falhou', implementing: 'implementando', validating: 'validando', reviewing: 'revisando', rebasing: 'rebaseando', merging: 'mesclando', ready: 'pronta', planned: 'planejada', merged: 'mesclada', blocked: 'bloqueada', superseded: 'substituída', running: 'em execução', draining: 'finalizando', interrupted: 'interrompida', 'deploy-failed': 'deploy falhou', 'verification-failed': 'verificação falhou', 'phase-failed': 'fase falhou', deadlocked: 'travada', 'awaiting-validation': 'aguardando validação' } as Record<string, string>)[status] ?? status;
@@ -332,6 +398,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   const until = pausedUntil(unique);
   const t = tokens(unique);
   const phaseList = phases(unique);
+  const activity = phaseActivity(unique);
   const [selected, setSelected] = useState<string | null>(null);
   // The trigger gets focus back when the dialog closes.
   const [opened, setOpened] = useState<(DetailTarget & { opener: HTMLElement }) | null>(null);
@@ -378,10 +445,41 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   }
   const openedPhase = opened?.kind === 'phase' ? phaseList.find((p) => p.phase === opened.phase) : undefined;
   if (opened && openedPhase) {
+    const failed = openedPhase.result === 'failed';
     const why = explainPhase(openedPhase);
+    const { items, steps: agentSteps } = activity.get(openedPhase.phase) ?? { items: [], steps: [] };
+    const problems = items.filter((i) => i.tone === 'bad');
+    const [label, tone] = phaseState(openedPhase, status, blockedTasks);
     detailDialog = (
-      <Dialog title={`${phaseTitle(openedPhase.phase)} falhou`} onClose={closeDetail} returnFocus={opened.opener}>
-        <Facts rows={[['O que aconteceu', why.title], openedPhase.attempt > 1 ? ['Tentativa', `${openedPhase.attempt}ª`] : null, ['Quem resolve', ownerChip(why.owner)], ['Próximo passo', why.hint]]} />
+      <Dialog title={failed ? `${phaseTitle(openedPhase.phase)} falhou` : phaseTitle(openedPhase.phase)} onClose={closeDetail} returnFocus={opened.opener}>
+        <Facts
+          rows={[
+            ['Situação', <span className={tone ? `status-pill tone-${tone}` : 'status-pill'}>{label}</span>],
+            ['Início', hhmm(openedPhase.startedAt)],
+            openedPhase.endedAt ? ['Duração', formatDuration(Date.parse(openedPhase.endedAt) - Date.parse(openedPhase.startedAt))] : null,
+            openedPhase.attempt > 1 ? ['Tentativa', `${openedPhase.attempt}ª`] : null,
+            failed ? ['O que aconteceu', why.title] : null,
+            failed ? ['Quem resolve', ownerChip(why.owner)] : null,
+            failed ? ['Próximo passo', why.hint] : null,
+          ]}
+        />
+        {problems.length ? (
+          <section className="failure-section" data-testid="phase-problems">
+            <h3>Problemas</h3>
+            <ActivityList items={problems} />
+          </section>
+        ) : null}
+        <section className="failure-section" data-testid="phase-timeline">
+          <h3>O que foi feito</h3>
+          {items.length ? <ActivityList items={items} /> : <p className="hint">Nenhum acontecimento registrado nesta fase ainda.</p>}
+          {openedPhase.phase === 3 ? <p className="hint">O trabalho de cada tarefa fica no card Tarefas: clique numa tarefa para ver as etapas dela.</p> : null}
+        </section>
+        {agentSteps.length ? (
+          <section className="failure-section">
+            <h3>Etapas dos agentes</h3>
+            <StepList steps={agentSteps} loadStep={loadStep} />
+          </section>
+        ) : null}
         {openedPhase.reason ? (
           <section className="failure-section">
             <h3>Texto técnico</h3>
@@ -668,6 +766,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
           <EvidenceCard criteria={detail.acceptanceCriteria} rows={evidence(unique, detail.acceptanceCriteria.map((c) => c.id))} />
         </div>
         <aside className="run-col run-aside">
+          {status === 'running' || status === 'draining' || status.startsWith('paused') ? <NowCard events={unique} /> : null}
           <section className="card">
             <div className="run-panel-head">
               <h2>Fases</h2>
@@ -677,11 +776,19 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
               <ol className="run-phases">
                 {phaseList.map((p) => {
                   const [label, tone] = phaseState(p, status, blockedTasks);
+                  const problems = activity.get(p.phase)?.items.filter((i) => i.tone === 'bad').length ?? 0;
                   return (
                     <li key={p.phase} data-testid="phase" className="phase">
-                      <span className="phase-name">{phaseTitle(p.phase)}</span>{' '}
+                      <button type="button" className="phase-name phase-link" aria-label={`Ver o que aconteceu em ${phaseTitle(p.phase)}`} onClick={openDetail({ kind: 'phase', phase: p.phase })}>
+                        {phaseTitle(p.phase)}
+                      </button>{' '}
                       <span className={tone ? `status-pill tone-${tone}` : 'status-pill'}>{label}</span>
                       {p.attempt > 1 ? <span className="phase-meta">{p.attempt}ª tentativa</span> : null}
+                      {problems && p.result !== 'failed' ? (
+                        <span className="phase-meta phase-warn" data-testid="phase-problems-count">
+                          {problems === 1 ? '1 problema registrado' : `${problems} problemas registrados`}
+                        </span>
+                      ) : null}
                       {p.result === 'failed' ? (
                         <div className="phase-failure">
                           <p>

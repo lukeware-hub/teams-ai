@@ -51,7 +51,7 @@ describe('RunView', () => {
     expect(screen.getByTestId('status').textContent).toContain('paused:quota');
     expect(screen.getByTestId('paused-until').textContent).toMatch(/até \d{2}:\d{2}/);
     // The fixture ends paused for quota, so the phase the journal still has running reads as paused.
-    expect(screen.getAllByTestId('phase').map((p) => p.textContent)).toEqual(['1 · Especificação técnica concluída', '2 · Plano concluída', '3 · Implementação pausada']);
+    expect(screen.getAllByTestId('phase').map((p) => p.textContent)).toEqual(['1 · Especificação técnica concluída', '2 · Plano concluída', '3 · Implementação pausada1 problema registrado']);
     expect(screen.getByTestId('group-merged').textContent).toContain('T1');
     expect(screen.getByTestId('group-ready').textContent).toContain('T2');
     expect(screen.getByTestId('tokens-dev').textContent).toContain('4100');
@@ -382,5 +382,33 @@ describe('RunView', () => {
       rerender(view({ events: quota, ended: false, detail: { ...detail, status: 'paused:quota' }, resumeAction: { onResume, busy: false, error: null } }));
       expect(screen.queryByTestId('resume')).toBeNull();
     });
+  });
+});
+
+describe('RunView phase activity', () => {
+  it('clicking a finished phase shows what was done and its agent steps', () => {
+    render(view());
+    fireEvent.click(screen.getByRole('button', { name: 'Ver o que aconteceu em 1 · Especificação técnica' }));
+    const dialog = screen.getByRole('dialog');
+    expect(screen.getByTestId('phase-timeline').textContent).toContain('Especificação técnica escrita em docs/specs/hello-001/tech-spec.md');
+    expect(screen.getByTestId('phase-timeline').textContent).toContain('Documentação mesclada na main pelo pull request #1');
+    expect(dialog.textContent).toContain('Etapas dos agentes');
+    expect(screen.getByTestId('step-s00001')).toBeTruthy();
+    expect(screen.queryByTestId('phase-problems')).toBeNull();
+  });
+
+  it('the paused phase lists the pause as a problem', () => {
+    render(view());
+    fireEvent.click(screen.getByRole('button', { name: 'Ver o que aconteceu em 3 · Implementação' }));
+    expect(screen.getByTestId('phase-problems').textContent).toContain('Execução pausada pelo limite de uso dos modelos');
+  });
+
+  it('the Agora card shows the agent at work, or the last thing that happened', () => {
+    const { unmount } = render(view({ detail: { ...detail, status: 'running' }, events: events.slice(0, 3) }));
+    expect(screen.getByTestId('now-step').textContent).toContain('Scrum Master escrevendo a especificação técnica');
+    unmount();
+    render(view());
+    expect(screen.getByTestId('now').textContent).toContain('Nenhum agente trabalhando neste momento.');
+    expect(screen.getByTestId('now-last').textContent).toContain('Execução pausada pelo limite de uso dos modelos');
   });
 });

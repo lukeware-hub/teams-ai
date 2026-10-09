@@ -111,13 +111,20 @@ export async function docsWorktree(deps: PhaseDeps, branch: string, opts: { keep
 
 export const docsCommitKey = (deps: PhaseDeps, phase: 0 | 1 | 2 | 6 | 7) => `${deps.spec.specId}-${phase}`;
 
+/** Commits the docs and returns the head sha with the files the commit touched (none when there was nothing to commit). */
+export async function commitDocs(worktree: string, message: string, exec: Exec): Promise<{ sha: string; files: string[] }> {
+  const committed = await commitAll(worktree, message, {}, exec);
+  if (!committed) return { sha: await git(worktree, ['rev-parse', 'HEAD'], exec), files: [] };
+  const files = (await git(worktree, ['show', '--name-only', '--format=', committed], exec)).split('\n').filter((f) => f !== '');
+  return { sha: committed, files };
+}
+
 export async function commitAndMergeDocs(deps: PhaseDeps, phase: 0 | 1 | 2 | 6 | 7, branch: string, worktree: string, title: string): Promise<PhaseResult> {
   const key = docsCommitKey(deps, phase);
   if (!deps.journal.isConfirmed(Intent.DocsCommit, key)) {
     const baseSha = await git(worktree, ['rev-parse', 'HEAD'], deps.exec);
     await deps.journal.intent(Intent.DocsCommit, key, { worktree, branch, message: title, baseSha });
-    const sha = (await commitAll(worktree, title, {}, deps.exec)) ?? (await git(worktree, ['rev-parse', 'HEAD'], deps.exec));
-    await deps.journal.confirm(Intent.DocsCommit, key, { sha });
+    await deps.journal.confirm(Intent.DocsCommit, key, await commitDocs(worktree, title, deps.exec));
   }
   for (let attempt = 1; attempt <= 2; attempt++) {
     const out = await deps.mergeQueue.enqueue(`docs-${phase}-${attempt}`, docsMergeSteps(deps.mergeDeps, branch, worktree, title));

@@ -245,7 +245,7 @@ describe('runAgentStep', () => {
     expect(out.ok).toBe(true);
     const types = d.journal.events.map((e) => e.type);
     expect(types).toEqual([OrchEvent.StepStarted, OrchEvent.StepFinished]);
-    expect(d.journal.events[0]!.data).toMatchObject({ stepId: 's00001', kind: 'dev', role: 'dev', taskId: 'T1', attempt: 1 });
+    expect(d.journal.events[0]!.data).toMatchObject({ stepId: 's00001', kind: 'dev', role: 'dev', taskId: 'T1', phase: 'phase3', attempt: 1 });
     expect(d.journal.events[1]!.data).toMatchObject({ stepId: 's00001', ok: true, usage: { inputTokens: 1200, outputTokens: 80 } });
     expect(await fs.readFile(path.join(dir, 'steps', '1', 'prompt.md'), 'utf8')).toContain('T1');
     expect(JSON.parse(await fs.readFile(path.join(dir, 'steps', '1', 'output.json'), 'utf8'))).toMatchObject({ ok: true, value: { commitMessage: 'feat: x' } });

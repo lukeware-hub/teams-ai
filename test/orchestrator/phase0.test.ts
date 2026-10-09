@@ -68,6 +68,7 @@ describe('phase 0', () => {
     const types = run.journal.events.map((e) => `${e.kind}:${e.type}`);
     expect(types).toContain('intent:DOCS_COMMIT');
     expect(types).toContain('confirm:DOCS_COMMIT');
+    expect(run.journal.events.find((e) => e.kind === 'confirm' && e.type === 'DOCS_COMMIT')!.data.files).toContain('docs/specs/hello-001/spec.json');
     expect(types).toContain('confirm:REPO_CREATE');
     expect(types).toContain(`fact:${OrchEvent.RepoBootstrapped}`);
     expect(await git(repo, ['show', 'origin/main:docs/specs/hello-001/spec.json'], execCommand)).toContain('"specHash"');

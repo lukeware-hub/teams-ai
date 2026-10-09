@@ -103,6 +103,22 @@
 .phase-meta { grid-column: 1 / -1; color: var(--ink-soft); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
 .phase-failure { display: grid; grid-column: 1 / -1; justify-items: start; gap: 0.5rem; min-width: 0; }
 .phase-failure p { margin: 0; color: var(--ink); font-size: 0.8125rem; line-height: 1.45; }
+/* The phase name opens its detail: a text button, underlined on hover. */
+.phase-link { height: auto; padding: 0; border: 0; background: transparent; text-align: left; line-height: 1.4; }
+.phase-link:hover:not(:disabled) { background: transparent; color: var(--accent-text); text-decoration: underline; }
+.phase-warn { color: var(--warn); }
+
+/* Now: agents at work, each with a live timer. */
+.now-list { display: grid; gap: 0.6rem; margin: 0; padding: 0; list-style: none; font-size: 0.875rem; line-height: 1.45; }
+.now-meta { display: block; color: var(--ink-soft); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+.now-last { margin: 0.75rem 0 0; padding-top: 0.75rem; border-top: 1px solid var(--line); font-size: 0.8125rem; line-height: 1.45; }
+
+/* Phase timeline: time, then one plain sentence; problems in red. */
+.activity-list { display: grid; gap: 0.4rem; margin: 0; padding: 0; list-style: none; }
+.activity { display: grid; grid-template-columns: 3rem minmax(0, 1fr); gap: 0.5rem; font-size: 0.8125rem; line-height: 1.45; overflow-wrap: anywhere; }
+.activity time { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.activity-bad { color: var(--bad); }
+.activity-good { color: var(--good); }
 
 /* Model usage: totals as label/value rows, then the breakdowns. */
 .usage-totals { display: grid; gap: 0.4rem; margin: 0; }
