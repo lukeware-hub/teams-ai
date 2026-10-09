@@ -1,6 +1,12 @@
 # Plan 54 - Readable English ids for projects, specs, backlog items, tasks and runs
 
-Status: planned (2026-10-08). Roadmap item R11.12.
+Status: done (2026-10-08). Roadmap item R11.12. Commits: slice 1 `8a171ac`, slice 2 `562d1bf`, slice 3 `f9e37f5`,
+slice 4 `5cf3902`. Live check: `/api/names/suggest` answered `order-portal` + `create-order` and `add-health-check`
+(~11 s each, small tier); legacy runs of `r11p-svc` still list and open after the deploy. Browser check of the screens
+not done (Chrome extension not connected).
+
+Open: two backlog drafts of one project that both use the same key would give two specs one id (slice 2 only guards
+key == draft id). A spec name typed by hand is still not checked for English.
 
 ## Goal
 
