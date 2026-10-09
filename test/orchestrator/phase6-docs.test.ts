@@ -73,6 +73,15 @@ describe('Phase 6 documentation gate', () => {
     expect(r.report.service).toMatchObject({ url: 'http://dind:3000', port: 3000, healthcheckPath: '/health', kind: 'api', docsPath: '/docs' });
   });
 
+  it('counts the report step itself in report.tokens', async () => {
+    const accounting = new Accounting();
+    const usage = { inputTokens: 6, outputTokens: 8613, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const agent: Agent = async () => { accounting.record({ role: 'sm', phase: 'phase6', taskId: null, attempt: 1, stepKind: 'report', provider: 'claude', model: 'm', usage, costUsd: 0.28, durationMs: 1, numTurns: 1, at: '2026-10-09T00:00:00.000Z' }); return report(GOOD); };
+    const r = await runPhase6({ ...deps(agent), runId: 'r1', accounting, result: 'awaiting-validation' });
+    expect(r.report.tokens.total).toEqual({ inputTokens: 6, outputTokens: 8613, costUsd: 0.28 });
+    expect(r.report.tokens.byRole.sm.costUsd).toBe(0.28);
+  });
+
   it('feeds validator errors back and accepts the corrected docs', async () => {
     let n = 0;
     const r = await p6(async () => report(++n === 1 ? { readme: '# App', runbook: GOOD.runbook } : GOOD));

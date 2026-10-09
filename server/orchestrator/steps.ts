@@ -262,10 +262,10 @@ export function readmePack(base: PackBase, opts: { tasks: readonly string[]; exi
   ].join('\n\n') };
 }
 
-export function reportPack(base: PackBase, opts: { delivered: readonly string[]; blocked: ReadonlyArray<{ taskId: string; reason: string }>; evidence: string; assumptions: readonly string[]; deploy: string; tokens: string; security: string; docsErrors?: readonly string[] }): ContextPackInput {
+export function reportPack(base: PackBase, opts: { delivered: readonly string[]; blocked: ReadonlyArray<{ taskId: string; reason: string }>; evidence: string; assumptions: readonly string[]; deploy: string; hostUrl: string | null; tokens: string; security: string; docsErrors?: readonly string[] }): ContextPackInput {
   return { ...common(base, 'report', 'sm'), criteria: base.spec.acceptanceCriteria, feedback: [
     'Write the final report for the human validator. Give concrete exploratory steps for every acceptance criterion.',
-    'Write `summary`, `assumptions`, `blocked[].reason` and `exploratoryScript` entirely in Brazilian Portuguese (pt-BR), in plain words a non-developer can follow; no English sentences. Each exploratory step says what to do and what should happen, in one short sentence (for example: "Abra http://localhost:3000/health no navegador. Deve aparecer {"ok":true}."). Keep commands, URLs, status codes and JSON between backticks, untranslated.',
+    'Write `summary`, `assumptions`, `blocked[].reason` and `exploratoryScript` entirely in Brazilian Portuguese (pt-BR), in plain words a non-developer can follow; no English sentences. Each exploratory step says what to do and what should happen, in one short sentence (for example: "Abra /health no endereço do serviço. Deve aparecer {"ok":true}."). Keep commands, URLs, status codes and JSON between backticks, untranslated.',
     'Also return `readme`: the Markdown for docs/README.md, a short overview of the project (what it is, how to run and test it, the endpoints or commands it exposes, the acceptance criteria it satisfies). Use only facts from the context pack.',
     DOCS_STRUCTURE,
     ...(opts.docsErrors?.length ? [`Your previous documents were rejected, fix every point:\n${opts.docsErrors.map((e) => `- ${e}`).join('\n')}`] : []),
@@ -276,6 +276,7 @@ export function reportPack(base: PackBase, opts: { delivered: readonly string[];
     `Security findings left by the sec review (mention residual risks in the summary):
 ${opts.security || '- none'}`,
     `Deploy outcome: ${opts.deploy}`,
+    opts.hostUrl ? `The human opens the service at ${opts.hostUrl}; the deploy url is internal to the platform and never appears in what you write: use ${opts.hostUrl} in the summary, README, runbook and exploratory steps.` : 'The human cannot open the service from a browser; the deploy url is internal to the platform and never appears in what you write.',
     `Token usage: ${opts.tokens}`,
   ].join('\n\n') };
 }

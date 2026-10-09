@@ -283,7 +283,10 @@ describe('ValidationPage', () => {
       await tick(5000);
       expect(run).toHaveBeenCalledWith(COMPLETION);
       expect(screen.queryByTestId('action-error')).toBeNull();
-      expect(screen.getByTestId('complete-spec')).toBeTruthy();
+      // While it goes the click shows it: both actions wait and the note links the run.
+      expect((screen.getByTestId('complete-spec') as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByTestId('complete-spec').textContent).toContain('Concluindo…');
+      expect(screen.getByTestId('completing-note').querySelector('a')?.getAttribute('href')).toBe(`/runs/${COMPLETION}`);
       now.completion = 'done';
       now.spec = 'done';
       await tick(5000);
@@ -298,14 +301,13 @@ describe('ValidationPage', () => {
       const now = { completion: 'running', spec: 'awaiting-validation' };
       vi.spyOn(runApi, 'run').mockImplementation(async (id) => (id === COMPLETION ? completion({ status: now.completion }) : detail()));
       vi.spyOn(runApi, 'projects').mockImplementation(async () => specs(now.spec));
-      const complete = vi.spyOn(runApi, 'complete')
-        .mockResolvedValueOnce({ runId: COMPLETION })
-        .mockRejectedValueOnce(new Error('409 spec hello-001 already has run hello-001-complete-r1 (running)'));
+      vi.spyOn(runApi, 'complete')
+        .mockRejectedValueOnce(new Error('409 spec hello-001 already has run hello-001-complete-r1 (running)'))
+        .mockResolvedValueOnce({ runId: COMPLETION });
       page();
       await clickComplete();
-      expect(complete).toHaveBeenCalledTimes(1);
-      fireEvent.click(screen.getByTestId('complete-spec'));
       expect((await screen.findByTestId('action-error')).textContent).toContain('409');
+      await clickComplete();
       now.completion = 'done';
       now.spec = 'done';
       await tick(5000);

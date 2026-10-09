@@ -107,16 +107,22 @@ describe('packs', () => {
   });
 
   it('report pack lists the security findings for the SM summary', () => {
-    const opts = { delivered: ['T1'], blocked: [], evidence: '[]', assumptions: [], deploy: '{}', tokens: '{}' };
+    const opts = { delivered: ['T1'], blocked: [], evidence: '[]', assumptions: [], deploy: '{}', hostUrl: null, tokens: '{}' };
     expect(reportPack(base, { ...opts, security: '- T1 src/a.ts:3 [low] logging: verbose log' }).feedback).toContain('[low] logging: verbose log');
     expect(reportPack(base, { ...opts, security: '' }).feedback).toContain('Security findings left by the sec review');
   });
 
   it('report pack asks for the human-facing report fields in Brazilian Portuguese, with steps as action plus expected result', () => {
-    const f = reportPack(base, { delivered: ['T1'], blocked: [], evidence: '[]', assumptions: [], deploy: '{}', tokens: '{}', security: '' }).feedback;
+    const f = reportPack(base, { delivered: ['T1'], blocked: [], evidence: '[]', assumptions: [], deploy: '{}', hostUrl: null, tokens: '{}', security: '' }).feedback;
     expect(f).toContain('Brazilian Portuguese (pt-BR)');
     expect(f).toContain('`summary`, `assumptions`, `blocked[].reason` and `exploratoryScript`');
     expect(f).toContain('what to do and what should happen');
+  });
+
+  it('report pack hands the agent the browser url and keeps the internal deploy url out of the text', () => {
+    const opts = { delivered: ['T1'], blocked: [], evidence: '[]', assumptions: [], deploy: '{"url":"http://dind:3000"}', tokens: '{}', security: '' };
+    expect(reportPack(base, { ...opts, hostUrl: 'http://localhost:3000' }).feedback).toContain('The human opens the service at http://localhost:3000; the deploy url is internal');
+    expect(reportPack(base, { ...opts, hostUrl: null }).feedback).toContain('The human cannot open the service from a browser');
   });
 
   it('plan rules tell the SM to name the deploy kind and docs path and to keep the port in the published range', () => {

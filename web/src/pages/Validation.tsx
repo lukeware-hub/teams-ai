@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { runApi, type AcceptanceCriterion, type Report, type RunDetail, type ServiceStatus } from '../api.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
-import { PUBLISHED_PORTS, serviceLinks } from '../run/serviceLinks.js';
+import { PUBLISHED_PORTS, serviceLinks } from '@server/deploy/service-links';
 import './validation.css';
 
 /** Run and spec statuses in the words the Run page uses for them. */
@@ -116,9 +116,11 @@ interface ServiceProps {
   startingService?: boolean;
   onStartService?: () => void;
   onRecheckService?: () => void;
+  /** The run completing the spec, while it goes. */
+  completing?: string | null;
 }
 
-export function ValidationView({ detail, specStatus, actionError = null, serviceStatus = null, startingService = false, onStartService = () => undefined, onRecheckService = () => undefined, onReport, onComplete }: { detail: RunDetail; specStatus: string; actionError?: string | null; onReport: (text: string) => void; onComplete: () => void } & ServiceProps) {
+export function ValidationView({ detail, specStatus, actionError = null, serviceStatus = null, startingService = false, onStartService = () => undefined, onRecheckService = () => undefined, completing = null, onReport, onComplete }: { detail: RunDetail; specStatus: string; actionError?: string | null; onReport: (text: string) => void; onComplete: () => void } & ServiceProps) {
   const [checks, setChecks] = useState<Record<string, boolean>>(() => readChecks(detail.runId));
   const [text, setText] = useState('');
   const report: Report | null = detail.report;
@@ -127,7 +129,7 @@ export function ValidationView({ detail, specStatus, actionError = null, service
     setChecks(next);
     writeChecks(detail.runId, next);
   };
-  const enabled = specStatus === 'awaiting-validation' && report?.result === 'awaiting-validation';
+  const enabled = specStatus === 'awaiting-validation' && report?.result === 'awaiting-validation' && !completing;
   const specState = specStatus ? ` e a especificação está “${statusLabel(specStatus)}”` : '';
   const note = enabled ? null : specStatus === 'done' ? 'Esta especificação já foi concluída.' : report ? `Ações indisponíveis: a execução terminou como “${statusLabel(report.result)}”${specState}.` : 'As ações ficam disponíveis quando a execução gerar o relatório.';
   const steps = report?.exploratoryScript.flatMap((b) => b.steps.map((_, i) => `${b.acId}-${i}`)) ?? [];
@@ -301,13 +303,13 @@ export function ValidationView({ detail, specStatus, actionError = null, service
               <h2>Sua decisão</h2>
               <InfoTip text="Concluir finaliza a entrega e marca a especificação como concluída. Relatar problema reabre o refinamento com o seu relato, para os agentes corrigirem." />
             </div>
-            {note ? <p data-testid="actions-note" className="hint">{note}</p> : null}
+            {completing ? <p data-testid="completing-note" className="hint">Concluindo a especificação. Acompanhe em <Link to={`/runs/${completing}`}>{completing}</Link>.</p> : note ? <p data-testid="actions-note" className="hint">{note}</p> : null}
             {actionError ? <p data-testid="action-error" className="error">{actionError}</p> : null}
             <textarea className="validation-problem" data-testid="problem-text" aria-label="Descrição do problema" rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder="O que deu errado? O refinamento será reaberto com este relato." disabled={!enabled} />
             <div className="validation-actions">
               <button className="primary-button" data-testid="complete-spec" disabled={!enabled} onClick={onComplete}>
                 <Icon name="check" size={16} />
-                Concluir especificação
+                {completing ? 'Concluindo…' : 'Concluir especificação'}
               </button>
               <button className="secondary" data-testid="report-problem" disabled={!enabled || text.trim() === ''} onClick={() => onReport(text.trim())}>
                 <Icon name="alert" size={16} />
@@ -421,6 +423,7 @@ function ValidationRun({ runId }: { runId: string }) {
       actionError={actionError}
       serviceStatus={serviceStatus}
       startingService={deployRun !== null}
+      completing={completion}
       onRecheckService={() => { setServiceStatus(null); void checkService(); }}
       onStartService={() => guarded(() => runApi.deployAgain(detail.projectId, detail.specId).then((started) => setDeployRun(started.runId)))}
       onReport={(text) =>

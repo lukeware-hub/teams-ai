@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { serviceLinks } from './serviceLinks.js';
+import { serviceLinks } from '../../server/deploy/service-links.js';
 
 describe('serviceLinks', () => {
   it('builds the app and docs urls for an api inside the published range', () => {
