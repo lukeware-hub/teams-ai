@@ -284,6 +284,7 @@ export interface RefineState {
   error: string | null;
   runId: string | null;
   backlog?: BacklogView | null;
+  mode?: 'new-project' | 'new-spec' | 'continue' | null;
 }
 export interface Snapshot {
   projectId: string;

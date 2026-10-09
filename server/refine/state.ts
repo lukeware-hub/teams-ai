@@ -69,6 +69,8 @@ export interface RefineState {
   error: string | null;
   runId: string | null;
   backlog: BacklogState | null;
+  /** How the session was created; null on drafts from before it was kept. */
+  mode: 'new-project' | 'new-spec' | 'continue' | null;
 }
 
 export const emptyRefineState = (): RefineState => ({
@@ -83,6 +85,7 @@ export const emptyRefineState = (): RefineState => ({
   error: null,
   runId: null,
   backlog: null,
+  mode: null,
 });
 
 const STICKY: ReadonlySet<RefineStatus> = new Set(['evaluating', 'error', 'started']);
@@ -156,6 +159,9 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
       s.status = computeStatus(s);
       break;
     }
+    case RefineEvent.Created:
+      s.mode = (d.mode as RefineState['mode']) ?? null;
+      break;
     case RefineEvent.DocEdited:
     case RefineEvent.SecretWritten:
       if (hasDerivation(s)) s.stale = true;

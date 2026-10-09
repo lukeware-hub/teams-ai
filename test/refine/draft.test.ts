@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execCommand } from '../../server/exec/command.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
-import { briefTemplate, createFromRepo, createNewProject, DOC_REL, draftExists, draftHash, draftPaths, moveBriefingToProject, readDerived, readDoc, renderBriefMd, writeDoc } from '../../server/refine/draft.js';
+import { briefTemplate, createFromRepo, createNewProject, DOC_REL, draftExists, draftHash, draftPaths, moveBriefingToProject, readBase, readDerived, readDoc, renderBriefMd, writeDoc } from '../../server/refine/draft.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 
@@ -23,6 +23,18 @@ afterEach(async () => {
 });
 
 describe('draft', () => {
+  it('a new or continued spec keeps a base copy of the docs it started from; a new project has none', async () => {
+    remote = await makeRemote({ 'docs/project.json': JSON.stringify(makeProject()), 'docs/flow.md': '# Flow' });
+    const d = draftPaths(ws, 'hello-020');
+    await createFromRepo(d, remote.repo, execCommand, { kind: 'new-spec', description: 'List users' });
+    expect(await readBase(d, 'flow.md')).toBe('# Flow');
+    expect(await readBase(d, 'project.md')).toBe(await readDoc(d, 'project.md'));
+    expect(await readBase(d, 'specs/hello-020/brief.md')).toBeNull();
+    const fresh = draftPaths(ws, 'shop-020');
+    await createNewProject(fresh, 'Shop');
+    expect(await readBase(fresh, 'project.md')).toBeNull();
+  });
+
   it('creates a new project from templates and includes design.md in the draft hash', async () => {
     const d = draftPaths(ws, 'hello-001');
     await createNewProject(d, 'Hello App');

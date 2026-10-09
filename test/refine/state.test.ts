@@ -102,3 +102,10 @@ describe('backlog events', () => {
     expect(s.status).toBe('ready');
   });
 });
+
+describe('session mode', () => {
+  it('keeps the mode the session was created in', () => {
+    expect(reduceRefineEvents([]).mode).toBeNull();
+    expect(reduceRefineEvents([{ type: RefineEvent.Created, data: { projectId: 'p', specId: 's', mode: 'new-spec' } }]).mode).toBe('new-spec');
+  });
+});

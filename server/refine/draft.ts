@@ -25,6 +25,8 @@ export interface Draft {
   flowMd: string;
   designMd?: string;
   specJson: string;
+  /** The docs as a new or continued spec received them; absent on a new project. */
+  base?: string;
   events: string;
   steps: (seq: number) => string;
 }
@@ -58,6 +60,7 @@ export function draftPaths(ws: Workspace, specId: string): Draft {
     flowMd: path.posix.join(docs, 'flow.md'),
     designMd: path.posix.join(docs, 'design.md'),
     specJson: path.posix.join(docs, 'specs', specId, 'spec.json'),
+    base: path.posix.join(root, 'base', 'docs'),
     events: path.posix.join(root, 'events.ndjson'),
     steps: (seq) => path.posix.join(root, 'steps', stepId(seq)),
   };
@@ -200,6 +203,8 @@ export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: {
     const project = Project.parse(JSON.parse(await fs.readFile(d.projectJson, 'utf8')));
     await fs.writeFile(d.projectMd, renderProjectMd(project));
   }
+  // The docs as the session received them: the start publishes only what differs from this copy.
+  await fs.cp(d.docs, d.base!, { recursive: true });
   if (mode.kind === 'new-spec') {
     await fs.writeFile(d.briefMd, briefWith(cleanDescription(mode.description)));
     return;
@@ -226,6 +231,10 @@ export async function readDoc(d: Draft, file: DocFile): Promise<string> {
 /** Docs end with a newline: they are copied verbatim into the project repo, where a format gate will check them. */
 const withNewline = (text: string): string => (text.endsWith('\n') ? text : `${text}\n`);
 export const writeDoc = async (d: Draft, file: DocFile, text: string): Promise<void> => fs.writeFile(file === 'brief.md' ? await briefPath(d) : docPath(d, file), withNewline(text));
+
+/** A file of the base copy, or null when the draft has no base or the file was not in it. */
+export const readBase = (d: Draft, rel: string): Promise<string | null> =>
+  d.base ? fs.readFile(path.posix.join(d.base, rel), 'utf8').catch(() => null) : Promise.resolve(null);
 
 export async function readDerived(d: Draft): Promise<{ project: Project; spec: Spec } | null> {
   const read = (f: string) => fs.readFile(f, 'utf8').then(JSON.parse, () => null);
