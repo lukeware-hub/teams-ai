@@ -181,6 +181,23 @@ describe('Run', () => {
     await run.close();
   }, 30_000);
 
+  it('caps a task by cost when perTaskCostUsd is set, whatever the token count', async () => {
+    const heavy = (costUsd: number): Script => async (req) =>
+      req.kind === 'dev' ? { ...(await happy(req)), summary: summary({ costUsd, usage: { inputTokens: 60_000, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 } }) } : happy(req);
+    const capped = async (costUsd: number) => {
+      const d = await withAgents(deps(heavy(costUsd), { maxParallel: 1 }));
+      d.cfg = loadConfig({ ...JSON.parse(JSON.stringify(d.cfg)), budgets: { observeOnly: false, perTaskTokens: 50_000, perTaskCostUsd: 1, perRunTokens: 1_000_000 } });
+      const run = await Run.create(d);
+      await run.execute();
+      const texts = run.journal.events.filter((e) => e.type === OrchEvent.Feedback).map((e) => String(e.data.text));
+      await run.close();
+      return texts;
+    };
+    // 60k tokens is over perTaskTokens, but the task cost US$ 0.5 against a US$ 1 cap.
+    expect((await capped(0.5)).some((t) => t.includes('budget'))).toBe(false);
+    expect((await capped(2)).some((t) => t.includes('Task cost budget exceeded: US$ 2.00 used, cap US$ 1.00'))).toBe(true);
+  }, 60_000);
+
   it('blocks a task that spends its attempts and reports it', async () => {
     const script: Script = async (req) => (req.kind === 'review' ? { ok: true, value: { specHash: HASH, decision: 'changes', criteria: [{ id: 'AC-001', status: 'failed', evidence: [] }], findings: [{ file: 'src/a/index.ts', line: 1, severity: 'major', text: 'wrong', acIds: ['AC-001'] }] }, summary: summary() } : req.kind === 'replan' ? { ok: false, failure: 'code', errors: ['no'], summary: summary({ isError: true }), sandboxDisabled: false } : happy(req));
     const run = await Run.create(await withAgents(deps(script)));

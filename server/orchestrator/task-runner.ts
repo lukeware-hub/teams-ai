@@ -526,8 +526,9 @@ export class TaskRunner {
   }
 
   /** Spec (orchestrator) §7: the task's token budget is spent; counts as a failed attempt (POC spec §8.5). */
-  budgetExceeded(tokens: number, cap: number): Promise<void> {
-    return this.fail('budget', `Task token budget exceeded: ${tokens} tokens used, cap ${cap}. Finish with a smaller change set.`);
+  budgetExceeded(used: number, cap: number, unit: 'tokens' | 'USD' = 'tokens'): Promise<void> {
+    const what = unit === 'USD' ? `Task cost budget exceeded: US$ ${used.toFixed(2)} used, cap US$ ${cap.toFixed(2)}.` : `Task token budget exceeded: ${used} tokens used, cap ${cap}.`;
+    return this.fail('budget', `${what} Finish with a smaller change set.`);
   }
 
   private async fail(kind: FailureKind, text: string, gate?: string): Promise<void> {

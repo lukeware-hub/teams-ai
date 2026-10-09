@@ -78,6 +78,21 @@ export interface RateLimitInfo {
   sevenDayResetsAt: number | null;
 }
 
+/**
+ * What a step spent its time and tokens on, beyond the usage totals (R11.13 slice 8): the numbers to read before tuning
+ * `--effort`, the per-step caps or the prompt cache TTL.
+ */
+export interface StepProfile {
+  /** Part of `usage.outputTokens` the model spent thinking; the CLI chooses the effort per turn unless `--effort` is set. */
+  thinkingTokens: number;
+  /** Time inside API calls; `durationMs` minus this is tools, startup and waiting. */
+  durationApiMs: number;
+  /** Tool calls by tool name. */
+  toolCalls: Record<string, number>;
+  /** Characters of tool results the agent read back, a proxy for the context a tool adds per turn. */
+  toolResultChars: number;
+}
+
 export interface ResultSummary {
   found: boolean;
   isError: boolean;
@@ -99,6 +114,7 @@ export interface ResultSummary {
   /** Latest rate_limit_event in the stream (subscription usage windows). */
   rateLimit: RateLimitInfo | null;
   compactions: number;
+  profile?: StepProfile;
 }
 
 const ResultEvent = z
@@ -107,6 +123,7 @@ const ResultEvent = z
     subtype: z.string().optional(),
     is_error: z.boolean().optional(),
     duration_ms: z.number().optional(),
+    duration_api_ms: z.number().optional(),
     num_turns: z.number().optional(),
     result: z.string().optional(),
     session_id: z.string().optional(),
@@ -120,6 +137,7 @@ const ResultEvent = z
         output_tokens: z.number().optional(),
         cache_read_input_tokens: z.number().optional(),
         cache_creation_input_tokens: z.number().optional(),
+        output_tokens_details: z.object({ thinking_tokens: z.number().optional() }).passthrough().optional(),
       })
       .passthrough()
       .optional(),
@@ -212,6 +230,28 @@ function latestRateLimit(events: readonly StreamEvent[]): RateLimitInfo | null {
   };
 }
 
+const textLength = (content: unknown): number => {
+  if (typeof content === 'string') return content.length;
+  if (!Array.isArray(content)) return 0;
+  return content.reduce((n: number, c: unknown) => n + (typeof (c as { text?: unknown })?.text === 'string' ? (c as { text: string }).text.length : 0), 0);
+};
+
+/** Tool calls and tool-result sizes, from the assistant and user messages of the stream. */
+function toolActivity(events: readonly StreamEvent[]): Pick<StepProfile, 'toolCalls' | 'toolResultChars'> {
+  const toolCalls: Record<string, number> = {};
+  let toolResultChars = 0;
+  for (const e of events) {
+    if (e.type !== 'assistant' && e.type !== 'user') continue;
+    const content = (e as { message?: { content?: unknown } }).message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content as Array<{ type?: string; name?: string; content?: unknown }>) {
+      if (block?.type === 'tool_use' && typeof block.name === 'string') toolCalls[block.name] = (toolCalls[block.name] ?? 0) + 1;
+      else if (block?.type === 'tool_result') toolResultChars += textLength(block.content);
+    }
+  }
+  return { toolCalls, toolResultChars };
+}
+
 export function summarizeStream(parsed: ParsedStream): ResultSummary {
   const compactions = parsed.events.filter((e) => e.type === 'system' && e.subtype === 'compact_boundary').length;
   const sessionId = parsed.events.find((e) => typeof e.session_id === 'string')?.session_id ?? null;
@@ -236,6 +276,7 @@ export function summarizeStream(parsed: ParsedStream): ResultSummary {
       apiErrorStatus: null,
       rateLimit,
       compactions,
+      profile: { thinkingTokens: 0, durationApiMs: 0, ...toolActivity(parsed.events) },
     };
   }
   const r = result.data;
@@ -264,5 +305,10 @@ export function summarizeStream(parsed: ParsedStream): ResultSummary {
     apiErrorStatus: r.api_error_status ?? null,
     rateLimit,
     compactions,
+    profile: {
+      thinkingTokens: (r.usage?.output_tokens_details as { thinking_tokens?: number } | undefined)?.thinking_tokens ?? 0,
+      durationApiMs: r.duration_api_ms ?? 0,
+      ...toolActivity(parsed.events),
+    },
   };
 }

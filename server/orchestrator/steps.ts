@@ -171,6 +171,7 @@ export function planRules(firstSpec: boolean, requireDelivery = false, requireSe
     '- every acceptance criterion is covered by at least one task (criteriaRefs); every task has at least one criterion or is infrastructure',
     '- every task id is T<n>-<slug>: a number plus 1 to 4 English kebab-case words saying what the task does (T1-create-endpoint, T2-add-login-form); never a bare T1',
     '- dependsOn forms a DAG; affectedPaths are repository-relative paths or globs; tasks small enough for one agent step',
+    '- dependsOn names only a real dependency: the task needs code, an interface or a file that the other task creates. Writing the tasks in order is not a dependency; tasks that touch different files run in parallel, and a chain of dependsOn that is not needed makes the run sequential',
     '- owner is dev, devops or front: use front only when every affectedPaths entry is UI code (e.g. web/src/**); use devops only for Dockerfile, deploy manifests, CI/release workflows and docker-compose; everything else is dev',
     '- gateImage is a glibc-based image (e.g. node:22-bookworm-slim), never an Alpine/musl one: dependencies are installed by the Dev on a Debian host and native optional packages (rollup, esbuild, swc) will not load under musl',
     `- ${SMOKE_CONTRACT}`,
@@ -390,6 +391,7 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
     costUsd: outcome.summary.costUsd,
     durationMs: outcome.summary.durationMs,
     numTurns: outcome.summary.numTurns,
+    ...(outcome.summary.profile ? { profile: outcome.summary.profile } : {}),
   });
   return result;
 }

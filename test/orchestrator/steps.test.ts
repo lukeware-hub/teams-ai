@@ -126,6 +126,10 @@ describe('packs', () => {
     expect(rules).toContain('3000-3019');
   });
 
+  it('plan rules ask for dependsOn only on a real dependency, so independent tasks run in parallel', () => {
+    expect(planRules(true)).toMatch(/dependsOn names only a real dependency/);
+  });
+
   it('plan rules tell the SM to publish any datastore service port, not just the app port', () => {
     // A Postgres/MySQL/Redis compose service the app depends on must be reachable the same way the app itself is
     // (serviceHost:port), or integration tests against a real database have no route to it at all.

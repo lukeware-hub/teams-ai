@@ -689,11 +689,14 @@ export class Run {
     const p = runner
       .advance()
       .then(async () => {
-        const cap = this.deps.cfg.budgets.perTaskTokens;
-        const tokens = this.accounting.tokensOf(this.accounting.total({ taskId: id }));
-        if (tokens > cap && !runner.done) {
-          if (this.deps.cfg.budgets.observeOnly) await this.journal.fact(OrchEvent.BudgetExceeded, { taskId: id, tokens, cap });
-          else await runner.budgetExceeded(tokens, cap);
+        const { perTaskTokens, perTaskCostUsd, observeOnly } = this.deps.cfg.budgets;
+        const spent = this.accounting.total({ taskId: id });
+        const tokens = this.accounting.tokensOf(spent);
+        const byCost = perTaskCostUsd !== undefined;
+        if ((byCost ? spent.costUsd > perTaskCostUsd : tokens > perTaskTokens) && !runner.done) {
+          if (observeOnly) await this.journal.fact(OrchEvent.BudgetExceeded, { taskId: id, tokens, cap: perTaskTokens, ...(byCost ? { costUsd: spent.costUsd, capUsd: perTaskCostUsd } : {}) });
+          else if (byCost) await runner.budgetExceeded(spent.costUsd, perTaskCostUsd, 'USD');
+          else await runner.budgetExceeded(tokens, perTaskTokens);
         }
       })
       .catch(async (err: Error & { fatal?: boolean }) => {

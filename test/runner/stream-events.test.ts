@@ -43,6 +43,7 @@ describe('summarizeStream', () => {
       apiErrorStatus: null,
       rateLimit: null,
       compactions: 0,
+      profile: { thinkingTokens: 0, durationApiMs: 0, toolCalls: {}, toolResultChars: 0 },
     });
   });
 
@@ -63,6 +64,23 @@ describe('summarizeStream', () => {
   it('reports found=false when the stream ended before a result (killed process)', () => {
     const summary = summarizeStream(parseStreamJson('{"type":"system","subtype":"init","session_id":"s-9"}\n'));
     expect(summary).toMatchObject({ found: false, isError: true, subtype: null, sessionId: 's-9', numTurns: 0 });
+  });
+});
+
+describe('summarizeStream step profile', () => {
+  it('counts tool calls by name and the characters of tool results', () => {
+    const profile = summarizeStream(parseStreamJson(fixture('real-turns'))).profile!;
+    expect(profile.toolCalls).toEqual({ Read: 1 });
+    expect(profile.toolResultChars).toBe(2);
+  });
+
+  it('reads thinking tokens and API time from the result, and still profiles a stream without one', () => {
+    const real = summarizeStream(parseStreamJson(fixture('real-json-schema'))).profile!;
+    expect(real).toMatchObject({ thinkingTokens: 0, durationApiMs: 2357, toolCalls: {} });
+    const withThinking = fixture('real-json-schema').replace('"thinking_tokens":0', '"thinking_tokens":41');
+    expect(summarizeStream(parseStreamJson(withThinking)).profile!.thinkingTokens).toBe(41);
+    const killed = summarizeStream(parseStreamJson(fixture('killed-partial'))).profile!;
+    expect(killed).toMatchObject({ thinkingTokens: 0, durationApiMs: 0 });
   });
 });
 

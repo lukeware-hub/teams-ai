@@ -94,6 +94,8 @@ export const Config = z.object({
     .object({
       step: StepBudget.prefault({}),
       perTaskTokens: positive.default(1_500_000),
+      /** Caps a task by what it costs instead of by tokens: `perTaskTokens` counts a cache read like an output token (R11.13 slice 8). */
+      perTaskCostUsd: z.number().positive().optional(),
       perRunTokens: positive.default(15_000_000),
       /** First run only measures; caps are enforced once calibrated (spec §8.5). */
       observeOnly: z.boolean().default(true),
