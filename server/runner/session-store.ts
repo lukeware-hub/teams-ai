@@ -35,6 +35,28 @@ export async function restoreSession(storeDir: string, home: string): Promise<vo
   await fs.cp(path.join(storeDir, PROJECTS), path.join(home, '.claude', PROJECTS), { recursive: true });
 }
 
+const TOTALS_FILE = 'totals.json';
+
+/** What the CLI reported for the whole session so far; a resumed session reports its cost and API time cumulatively. */
+export interface SessionTotals {
+  costUsd: number;
+  durationApiMs: number;
+}
+
+export async function readTotals(storeDir: string): Promise<SessionTotals> {
+  try {
+    const t = JSON.parse(await fs.readFile(path.join(storeDir, TOTALS_FILE), 'utf8')) as Partial<SessionTotals>;
+    return { costUsd: Number(t.costUsd) || 0, durationApiMs: Number(t.durationApiMs) || 0 };
+  } catch {
+    return { costUsd: 0, durationApiMs: 0 };
+  }
+}
+
+export async function writeTotals(storeDir: string, totals: SessionTotals): Promise<void> {
+  await fs.mkdir(storeDir, { recursive: true });
+  await fs.writeFile(path.join(storeDir, TOTALS_FILE), JSON.stringify(totals)).catch(() => undefined);
+}
+
 /** Never throws: a session that could not be kept only costs the next attempt a fresh start. */
 export async function saveSession(home: string, storeDir: string, cwd: string): Promise<void> {
   const source = path.join(home, '.claude', PROJECTS);

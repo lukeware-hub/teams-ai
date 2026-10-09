@@ -12,7 +12,7 @@ import { validateAgentOutput } from '../validators/agent-output.js';
 import type { RefContext, References } from '../validators/references.js';
 import { buildInvocation, ensureTrusted, promptCacheTtl } from './invocation.js';
 import { sandboxPolicyViolation } from './sandbox-policy.js';
-import { restoreSession, saveSession } from './session-store.js';
+import { readTotals, restoreSession, saveSession, writeTotals } from './session-store.js';
 import { createStepHome, hasOauthToken, hostTokenExpiresAt, removeStepHome, syncBackCredentials } from './step-home.js';
 import { preflightSandbox, runProcess, type ProcessCaps, type RawStepResult, type RunnerBinary } from './process-runner.js';
 import { writeRoleSettings, type RoleSettingsInput } from './role-settings.js';
@@ -253,6 +253,15 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
     raw = await runProcess(deps.binary, invocation, deps.caps, deps.onEvent, deps.signal);
   } catch (err) {
     return environmentFailure(`spawn failed: ${(err as Error).message}`);
+  }
+
+  // `total_cost_usd` and `duration_api_ms` of a resumed session include the attempts before it: book only this step's share.
+  if (req.sessionStore) {
+    const before = req.resume ? await readTotals(req.sessionStore) : { costUsd: 0, durationApiMs: 0 };
+    const s = raw.summary;
+    await writeTotals(req.sessionStore, { costUsd: s.costUsd ?? before.costUsd, durationApiMs: s.profile?.durationApiMs ?? before.durationApiMs });
+    if (s.costUsd !== null) s.costUsd = Math.max(0, Math.round((s.costUsd - before.costUsd) * 1e6) / 1e6);
+    if (s.profile) s.profile = { ...s.profile, durationApiMs: Math.max(0, s.profile.durationApiMs - before.durationApiMs) };
   }
 
   deps.accounting.record({

@@ -279,6 +279,19 @@ describe('runStep', () => {
     expect(captured.prompt).toBe('Fix it');
   });
 
+  it('books only the share of a resumed session that the CLI reports cumulatively', async () => {
+    const store = path.join(dir, 'store');
+    const result = (cost: number, apiMs: number) => ({ type: 'result', subtype: 'success', is_error: false, duration_ms: 5, duration_api_ms: apiMs, num_turns: 1, result: JSON.stringify(okValue), structured_output: okValue, session_id: 's', total_cost_usd: cost, usage: { input_tokens: 1, output_tokens: 2 } });
+    withFake({ FAKE_CLAUDE_FIXTURE: await writeStream('first.ndjson', [init, result(0.37, 62_000)]), FAKE_CLAUDE_SESSION: '1' });
+    const first = await runStep(request({ sessionId: 'sess-1', sessionStore: store }), deps);
+    withFake({ FAKE_CLAUDE_FIXTURE: await writeStream('second.ndjson', [init, result(0.55, 84_000)]), FAKE_CLAUDE_SESSION: '1' });
+    const second = await runStep(request({ sessionId: 'sess-1', resume: true, sessionStore: store }), deps);
+    expect(first.summary.costUsd).toBe(0.37);
+    expect(second.summary.costUsd).toBeCloseTo(0.18, 6);
+    expect(second.summary.profile?.durationApiMs).toBe(22_000);
+    expect(deps.accounting.records().map((r) => r.costUsd)).toEqual([0.37, second.summary.costUsd]);
+  });
+
   it('never gives a review step the file-editing tools', async () => {
     const capture = path.join(dir, 'capture.json');
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
