@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { ProjectHubView } from './ProjectHub.js';
@@ -41,6 +41,24 @@ describe('ProjectHubView', () => {
     expect(o.stop).toHaveBeenCalledWith('hello-002-r1');
     expect(screen.queryByTestId('stop-hello-001-r1')).toBeNull();
     expect(screen.getByText('US$ 3.33')).toBeTruthy();
+  });
+  it('suggests a spec id from the description', async () => {
+    const o = on();
+    const suggest = vi.fn(async () => ({ id: 'user-login' }));
+    render(
+      <MemoryRouter>
+        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onDeleteDraft={o.deleteDraft} onSuggestName={suggest} />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByTestId('new-spec-description')).toBeNull();
+    fireEvent.click(screen.getByTestId('suggest-spec-id'));
+    expect(suggest).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByTestId('new-spec-description'), { target: { value: 'Entrar com e-mail e senha' } });
+    fireEvent.click(screen.getByTestId('suggest-spec-id'));
+    await waitFor(() => expect((screen.getByTestId('new-spec-id') as HTMLInputElement).value).toBe('user-login'));
+    expect(suggest).toHaveBeenCalledWith({ kind: 'spec', projectId: 'hello-app', name: '', description: 'Entrar com e-mail e senha' });
+    fireEvent.click(screen.getByTestId('new-spec'));
+    expect(o.newSpec).toHaveBeenCalledWith('user-login', 'Entrar com e-mail e senha');
   });
   it('shows the same breadcrumb as the run page: Projetos › project id', () => {
     const o = on();

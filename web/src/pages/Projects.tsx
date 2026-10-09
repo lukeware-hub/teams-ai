@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { refineApi, runApi, type DraftRow, type ProjectRow } from '../api.js';
+import { refineApi, runApi, type DraftRow, type NameRequest, type NameSuggestion, type ProjectRow } from '../api.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
@@ -17,7 +17,8 @@ export function ProjectsView(p: {
   error: string | null;
   deleteError?: { projectId: string; specId: string; message: string } | null;
   onAdd: (dir: string) => void;
-  onNewProject: (projectId: string, name: string, description: string) => void;
+  onNewProject: (projectId: string, name: string, description: string, firstSpecId: string) => void;
+  onSuggestName?: (input: NameRequest) => Promise<NameSuggestion>;
   onDeleteDraft: (projectId: string, specId: string) => void;
   onDeleteProject: (projectId: string) => void;
 }) {
@@ -25,6 +26,23 @@ export function ProjectsView(p: {
   const [newProjectId, setNewProjectId] = useState('');
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDescription, setNewProjectDescription] = useState('');
+  const [firstSpecId, setFirstSpecId] = useState('');
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+  const suggest = async () => {
+    if (!p.onSuggestName) return;
+    setSuggesting(true);
+    setSuggestError(null);
+    try {
+      const s = await p.onSuggestName({ kind: 'project', name: newProjectName, description: newProjectDescription });
+      setNewProjectId(s.id);
+      setFirstSpecId(s.firstSpecId ?? '');
+    } catch (e) {
+      setSuggestError((e as Error).message);
+    } finally {
+      setSuggesting(false);
+    }
+  };
   const [panel, setPanel] = useState<'new' | 'git' | null>(null);
   const [query, setQuery] = useState('');
   const filterRef = useRef<HTMLInputElement>(null);
@@ -62,17 +80,27 @@ export function ProjectsView(p: {
           aria-labelledby="new-project-title"
           onSubmit={(e) => {
             e.preventDefault();
-            p.onNewProject(newProjectId, newProjectName, newProjectDescription);
+            p.onNewProject(newProjectId, newProjectName, newProjectDescription, firstSpecId);
           }}
         >
           <div>
             <h2 id="new-project-title">Novo projeto</h2>
-            <p className="projects-form-hint">Defina um ID (letras minúsculas, números e hífens) e um nome. Se quiser, descreva o projeto com suas palavras: os agentes usam o texto para começar o refinamento e fazer as perguntas.</p>
+            <p className="projects-form-hint">Defina um nome e um ID em inglês (letras minúsculas, números e hífens), ou peça à IA para sugerir o ID a partir do nome e da descrição. Se quiser, descreva o projeto com suas palavras: os agentes usam o texto para começar o refinamento e fazer as perguntas.</p>
           </div>
           <div className="projects-form-fields">
-            <label><span>ID do projeto</span><input data-testid="new-project-id" autoFocus value={newProjectId} onChange={(e) => setNewProjectId(e.target.value)} placeholder="ex.: portal-interno" /></label>
+            <label><span>ID do projeto</span><input data-testid="new-project-id" autoFocus value={newProjectId} onChange={(e) => setNewProjectId(e.target.value)} placeholder="ex.: order-service" /></label>
             <label><span>Nome do projeto</span><input data-testid="new-project-name" value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="ex.: Portal interno" /></label>
           </div>
+          {p.onSuggestName ? (
+            <div className="projects-suggest">
+              <button type="button" className="secondary" data-testid="suggest-project-id" disabled={suggesting || (newProjectName.trim() === '' && newProjectDescription.trim() === '')} onClick={() => void suggest()}>
+                <Icon name="lightbulb" size={16} />
+                {suggesting ? 'Sugerindo…' : 'Sugerir ID com IA'}
+              </button>
+              {firstSpecId ? <span data-testid="first-spec-id">Primeira spec: <code>{firstSpecId}</code></span> : null}
+              {suggestError ? <span className="error" role="alert">{suggestError}</span> : null}
+            </div>
+          ) : null}
           <label className="projects-form-description">
             <span>Descrição (opcional)</span>
             <textarea data-testid="new-project-description" rows={5} value={newProjectDescription} onChange={(e) => setNewProjectDescription(e.target.value)} placeholder="O que é, para quem serve, o que precisa fazer e o que fica de fora." />
@@ -271,7 +299,8 @@ export function Projects() {
       drafts={drafts}
       error={error}
       onAdd={(d) => void act(() => runApi.addProject(d))()}
-      onNewProject={(id, name, description) => void go(() => refineApi.newProject(id, name, description))()}
+      onNewProject={(id, name, description, firstSpecId) => void go(() => refineApi.newProject(id, name, description, firstSpecId))()}
+      onSuggestName={refineApi.suggestName}
       deleteError={deleteError}
       onDeleteDraft={(p, s) => void (async () => {
         setDeleteError(null);

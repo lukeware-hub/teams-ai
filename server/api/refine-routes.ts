@@ -43,7 +43,17 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       path: `${P}/projects/new`,
       handler: wrap(async ({ body, json }) => {
         const b = await body();
-        json(200, await idOf(await registry.newProject(str(b, 'projectId'), str(b, 'name'), str(b, 'description', true))));
+        json(200, await idOf(await registry.newProject(str(b, 'projectId'), str(b, 'name'), str(b, 'description', true), str(b, 'firstSpecId', true) || undefined)));
+      }),
+    },
+    {
+      method: 'POST',
+      path: `${P}/names/suggest`,
+      handler: wrap(async ({ body, json }) => {
+        const b = await body();
+        const kind = str(b, 'kind');
+        if (kind !== 'project' && kind !== 'spec') throw new HttpError(400, 'kind must be project or spec');
+        json(200, await registry.suggestName(kind, { projectId: str(b, 'projectId', true) || undefined, name: str(b, 'name', true), description: str(b, 'description', true) }));
       }),
     },
     {

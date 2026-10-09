@@ -299,10 +299,22 @@ export interface DraftRow {
   registered: boolean;
 }
 
+export interface NameRequest {
+  kind: 'project' | 'spec';
+  projectId?: string;
+  name: string;
+  description: string;
+}
+export interface NameSuggestion {
+  id: string;
+  firstSpecId?: string;
+}
+
 const send = (method: string, p: string, body?: unknown) => authFetch(`${R}${p}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
 export const refineApi = {
   list: () => authFetch(`${R}/refine`).then((r) => json<DraftRow[]>(r)),
-  newProject: (projectId: string, name: string, description = '') => send('POST', '/projects/new', { projectId, name, description }).then((r) => json<{ sessionId: string }>(r)),
+  newProject: (projectId: string, name: string, description = '', firstSpecId = '') => send('POST', '/projects/new', { projectId, name, description, firstSpecId }).then((r) => json<{ sessionId: string }>(r)),
+  suggestName: (input: NameRequest) => send('POST', '/names/suggest', input).then((r) => json<NameSuggestion>(r)),
   newSpec: (projectId: string, specId: string, description = '') => send('POST', `/projects/${encodeURIComponent(projectId)}/specs`, { specId, description }).then((r) => json<{ sessionId: string }>(r)),
   continueSpec: (projectId: string, specId: string, report?: string) =>
     send('POST', `/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/continue`, { report }).then((r) => json<{ sessionId: string }>(r)),

@@ -17,6 +17,7 @@ import { loadEvents } from '../store/event-store.js';
 import type { RunAgent } from './cycle.js';
 import type { CycleDeps } from './cycle.js';
 import { cleanDescription, createFromRepo, createNewProject, draftExists, draftPaths, type Draft, type RouteReport } from './draft.js';
+import { suggestName, type NameKind, type NameSuggestion } from './naming.js';
 import { ConflictError, NotFoundError, RefineSession } from './session.js';
 import { reduceRefineEvents, type RefineStatus } from './state.js';
 
@@ -97,12 +98,31 @@ export class SessionRegistry {
     return this.sessions.get(`${projectId}/${specId}`) ?? this.session(draft, ws);
   }
 
-  async newProject(projectId: string, name: string, description?: string): Promise<RefineSession> {
+  /** Roadmap R11.12: a readable English id for a new project (plus its first spec) or a new spec of `projectId`. */
+  async suggestName(kind: NameKind, input: { projectId?: string; name: string; description: string }): Promise<NameSuggestion> {
+    cleanDescription(input.description);
+    if (input.name.trim() === '' && input.description.trim() === '') throw new RangeError('name or description is required');
+    const cfg = await this.deps.cfg();
+    const root = expandHome(cfg.paths.workspaces, this.deps.home);
+    let taken: string[];
+    if (kind === 'project') {
+      taken = await fs.readdir(root).catch(() => [] as string[]);
+    } else {
+      const ws = await this.ws(slug(input.projectId ?? '', 'projectId'));
+      const drafts = await fs.readdir(path.posix.join(ws.root, 'refine')).catch(() => [] as string[]);
+      const onMain = await fs.readdir(path.posix.join(ws.repo, 'docs', 'specs')).catch(() => [] as string[]);
+      taken = [...drafts, ...onMain];
+    }
+    return suggestName({ runAgent: this.deps.runAgent, workspacesRoot: root, model: cfg.decisions.modelTiers.small }, { kind, ...input, taken });
+  }
+
+  async newProject(projectId: string, name: string, description?: string, firstSpecId?: string): Promise<RefineSession> {
     slug(projectId, 'projectId');
+    if (firstSpecId) slug(firstSpecId, 'firstSpecId');
     cleanDescription(description);
     if (name.trim() === '') throw new RangeError('name must not be empty');
     const ws = await this.ws(projectId);
-    const draft = draftPaths(ws, `${projectId}-001`);
+    const draft = draftPaths(ws, firstSpecId || `${projectId}-001`);
     if ((await this.deps.projectDir(projectId)) || (await draftExists(draft)) || (await exists(ws.repo))) {
       throw new ConflictError(`project ${projectId} already exists; register it instead`);
     }

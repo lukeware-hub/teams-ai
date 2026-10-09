@@ -94,6 +94,18 @@ afterEach(async () => {
 });
 
 describe('refine api', () => {
+  it('suggests readable ids and creates a project with the suggested first spec', async () => {
+    expect((await call('POST', '/api/names/suggest', { kind: 'bogus', description: 'x' })).status).toBe(400);
+    expect((await call('POST', '/api/names/suggest', { kind: 'project', name: '', description: '' })).status).toBe(400);
+    script['name/po'] = [{ id: 'order-service', firstSpecId: 'place-order' }];
+    const suggested = await call('POST', '/api/names/suggest', { kind: 'project', name: 'Pedidos', description: 'Serviço de pedidos' });
+    expect(await suggested.json()).toEqual({ id: 'order-service', firstSpecId: 'place-order' });
+    const created = await call('POST', '/api/projects/new', { projectId: 'order-service', name: 'Pedidos', firstSpecId: 'place-order' });
+    expect(await created.json()).toEqual({ sessionId: 'order-service/place-order' });
+    script['name/po'] = [{ id: 'place-order' }];
+    const spec = await call('POST', '/api/names/suggest', { kind: 'spec', projectId: 'order-service', description: 'fazer pedido' });
+    expect(await spec.json()).toEqual({ id: 'place-order-2' });
+  });
   it('creates a new project draft, lists it, saves a doc, evaluates and streams the journal', async () => {
     expect((await call('POST', '/api/projects/new', { projectId: 'Bad Id', name: 'x' })).status).toBe(400);
     const created = await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });

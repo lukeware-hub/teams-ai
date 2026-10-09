@@ -25,6 +25,7 @@
 .projects-form-description > span { color: var(--ink-soft); font-size: 0.8125rem; font-weight: 600; }
 .projects-form-description textarea { width: 100%; min-width: 0; resize: vertical; }
 .projects-form-actions { display: flex; justify-content: flex-end; }
+.projects-suggest { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; color: var(--ink-soft); font-size: 0.8125rem; }
 
 /* Filter */
 .projects-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; }

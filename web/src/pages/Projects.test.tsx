@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { ProjectsView } from './Projects.js';
@@ -19,6 +19,25 @@ const projects = [
 const on = () => ({ add: vi.fn(), newProject: vi.fn(), deleteDraft: vi.fn(), deleteProject: vi.fn() });
 
 describe('ProjectsView', () => {
+  it('suggests the project id and first spec with AI and submits them', async () => {
+    const o = on();
+    const suggest = vi.fn(async () => ({ id: 'soap-shop', firstSpecId: 'product-catalog' }));
+    render(
+      <MemoryRouter>
+        <ProjectsView projects={[]} drafts={[]} error={null} onAdd={o.add} onNewProject={o.newProject} onDeleteDraft={o.deleteDraft} onDeleteProject={o.deleteProject} onSuggestName={suggest} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Novo projeto/ }));
+    expect((screen.getByTestId('suggest-project-id') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByTestId('new-project-name'), { target: { value: 'Loja' } });
+    fireEvent.change(screen.getByTestId('new-project-description'), { target: { value: 'Loja de sabonetes' } });
+    fireEvent.click(screen.getByTestId('suggest-project-id'));
+    await waitFor(() => expect((screen.getByTestId('new-project-id') as HTMLInputElement).value).toBe('soap-shop'));
+    expect(suggest).toHaveBeenCalledWith({ kind: 'project', name: 'Loja', description: 'Loja de sabonetes' });
+    expect(screen.getByTestId('first-spec-id').textContent).toContain('product-catalog');
+    fireEvent.click(screen.getByTestId('new-project'));
+    expect(o.newProject).toHaveBeenCalledWith('soap-shop', 'Loja', 'Loja de sabonetes', 'product-catalog');
+  });
   it('shows name, description, percent complete and the Abrir/Excluir actions', () => {
     const o = on();
     render(
@@ -66,7 +85,7 @@ describe('ProjectsView', () => {
     fireEvent.change(screen.getByTestId('new-project-name'), { target: { value: 'Shop' } });
     fireEvent.change(screen.getByTestId('new-project-description'), { target: { value: 'A shop for soap' } });
     fireEvent.click(screen.getByTestId('new-project'));
-    expect(o.newProject).toHaveBeenCalledWith('shop', 'Shop', 'A shop for soap');
+    expect(o.newProject).toHaveBeenCalledWith('shop', 'Shop', 'A shop for soap', '');
     // a registered project's own draft (hello-003) is not an "unregistered" one: it lives in the project hub, not here
     expect(screen.queryByTestId('refine-hello-app-hello-003')).toBeNull();
     expect(screen.getByTestId('refine-fresh-fresh-001').getAttribute('href')).toBe('/refine/fresh/fresh-001');

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { refineApi, runApi, type DraftRow, type ProjectRow, type RunRow } from '../api.js';
+import { refineApi, runApi, type DraftRow, type NameRequest, type NameSuggestion, type ProjectRow, type RunRow } from '../api.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
@@ -21,11 +21,31 @@ export function ProjectHubView(p: {
   onNewSpec: (specId: string, description: string) => void;
   onContinue: (specId: string) => void;
   onDeleteDraft: (specId: string) => void;
+  onSuggestName?: (input: NameRequest) => Promise<NameSuggestion>;
 }) {
   const [showAll, setShowAll] = useState(false);
   const [specDraft, setSpecDraft] = useState('');
   const [specDescription, setSpecDescription] = useState('');
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [describing, setDescribing] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+  const suggestSpecId = async () => {
+    if (!p.onSuggestName || !p.project) return;
+    if (specDescription.trim() === '') {
+      setDescribing(true);
+      return;
+    }
+    setSuggesting(true);
+    setSuggestError(null);
+    try {
+      setSpecDraft((await p.onSuggestName({ kind: 'spec', projectId: p.project.projectId, name: '', description: specDescription })).id);
+    } catch (e) {
+      setSuggestError((e as Error).message);
+    } finally {
+      setSuggesting(false);
+    }
+  };
   const lastRunOf = (specId: string) => p.runs.find((r) => r.specId === specId && !r.runId.includes('-complete-'))?.runId ?? '';
   if (p.notFound) {
     return (
@@ -95,20 +115,27 @@ export function ProjectHubView(p: {
               <InfoTip label="Especificações" text={HELP.specs} />
             </div>
             <form
-              className={`project-new-spec${specDraft.trim() === '' ? '' : ' with-description'}`}
+              className={`project-new-spec${specDraft.trim() === '' && !describing ? '' : ' with-description'}`}
               onSubmit={(e) => {
                 e.preventDefault();
                 p.onNewSpec(specDraft, specDescription);
               }}
             >
-              <input data-testid="new-spec-id" aria-label="ID da nova spec" value={specDraft} onChange={(e) => setSpecDraft(e.target.value)} placeholder="ID da nova spec" />
+              <input data-testid="new-spec-id" aria-label="ID da nova spec" value={specDraft} onChange={(e) => setSpecDraft(e.target.value)} placeholder="ID da nova spec (ex.: user-login)" />
+              {p.onSuggestName ? (
+                <button type="button" className="project-action secondary" data-testid="suggest-spec-id" disabled={suggesting} onClick={() => void suggestSpecId()}>
+                  <Icon name="lightbulb" size={14} />
+                  {suggesting ? 'Sugerindo…' : 'Sugerir ID'}
+                </button>
+              ) : null}
               <button className="project-action" data-testid="new-spec" type="submit" disabled={specDraft.trim() === ''}>
                 <Icon name="plus" size={14} />
                 Nova spec
               </button>
-              {specDraft.trim() === '' ? null : (
-                <textarea data-testid="new-spec-description" aria-label="Descrição da nova spec" rows={5} value={specDescription} onChange={(e) => setSpecDescription(e.target.value)} placeholder="Descreva a nova spec com suas palavras (opcional). Os documentos do projeto já estão carregados; os agentes validam o texto e fazem as perguntas." />
+              {specDraft.trim() === '' && !describing ? null : (
+                <textarea data-testid="new-spec-description" aria-label="Descrição da nova spec" rows={5} autoFocus={describing && specDescription === ''} value={specDescription} onChange={(e) => setSpecDescription(e.target.value)} placeholder="Descreva a nova spec com suas palavras. Os documentos do projeto já estão carregados; os agentes validam o texto e fazem as perguntas. Com a descrição preenchida, Sugerir ID propõe um ID em inglês." />
               )}
+              {suggestError ? <span className="error" role="alert">{suggestError}</span> : null}
             </form>
           </div>
           {pr.specs.length === 0 ? (
@@ -320,6 +347,7 @@ export function ProjectHub() {
       onStop={(runId) => void act(() => runApi.stopRun(runId))()}
       onNewSpec={(specId, description) => void go(() => refineApi.newSpec(projectId, specId, description))()}
       onContinue={(specId) => void go(() => refineApi.continueSpec(projectId, specId))()}
+      onSuggestName={refineApi.suggestName}
       onDeleteDraft={(specId) => void (async () => {
         setDeleteError(null);
         try {
