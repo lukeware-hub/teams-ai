@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { DevOutput, OUTPUT_SCHEMAS, RefineOutput, ReviewOutput, SecurityOutput, STEP_KINDS, blockingFindings, toJsonSchema } from '../../server/agents/outputs.js';
+import { Plan } from '../../server/contracts/plan.js';
+import { makeFrozenSpec, makePlan, makePlanTask } from '../fixtures/contracts.js';
+import { DevOutput, OUTPUT_SCHEMAS, PlanOutput, RefineOutput, ReviewOutput, SecurityOutput, STEP_KINDS, blockingFindings, toJsonSchema } from '../../server/agents/outputs.js';
 
 const HASH = `sha256:${'a'.repeat(64)}`;
 
@@ -12,6 +14,14 @@ describe('output contracts', () => {
       for (const branch of branches) expect(branch.required, kind).toContain('specHash');
     }
     expect(Object.keys(OUTPUT_SCHEMAS).sort()).toEqual([...STEP_KINDS].sort());
+  });
+
+  it('a new plan names every task id with a slug; a stored plan with bare ids still loads', () => {
+    const bare = makePlan(makeFrozenSpec(), { tasks: [makePlanTask({ id: 'T1' })] });
+    expect(PlanOutput.safeParse(bare).success).toBe(false);
+    expect(Plan.safeParse(bare).success).toBe(true);
+    expect(PlanOutput.safeParse(makePlan(makeFrozenSpec(), { tasks: [makePlanTask({ id: 'T1-create-endpoint' })] })).success).toBe(true);
+    expect(PlanOutput.safeParse(makePlan(makeFrozenSpec(), { tasks: [makePlanTask({ id: 'T0-scaffold' })] })).success).toBe(true);
   });
 
   it('generates draft-07 schemas without zod-only keywords', () => {

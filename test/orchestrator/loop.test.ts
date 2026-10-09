@@ -17,7 +17,7 @@ const FAKE = path.resolve('test/fixtures/fake-claude/fake-claude.mjs');
 const spec = makeFrozenSpec();
 const HASH = spec.specHash!;
 const project = makeProject();
-const plan = makePlan(spec, { tasks: [makePlanTask({ id: 'T1', criteriaRefs: ['AC-001'], affectedPaths: ['src/a'] }), makePlanTask({ id: 'T2', criteriaRefs: ['AC-002'], affectedPaths: ['src/b'], dependsOn: ['T1'] })] });
+const plan = makePlan(spec, { tasks: [makePlanTask({ id: 'T1-a', criteriaRefs: ['AC-001'], affectedPaths: ['src/a'] }), makePlanTask({ id: 'T2-b', criteriaRefs: ['AC-002'], affectedPaths: ['src/b'], dependsOn: ['T1-a'] })] });
 const JUNIT = `<testsuite name="sum"><testcase classname="sum" name="[AC-001] adds"/></testsuite>`;
 
 let remote: Remote;
@@ -35,8 +35,8 @@ function happyScenario(dir: string): Scenario {
   s.set('tech-spec', null, 1, { output: { specHash: HASH, techSpecPath: 'docs/specs/spec-001/tech-spec.md', adrs: [], stack: 'node', summary: 'ts' }, files: { 'docs/specs/spec-001/tech-spec.md': '# Tech spec\n\n## AC-001\nsum' } });
   s.set('coverage', null, 1, { output: { specHash: HASH, coverage: spec.acceptanceCriteria.map((c) => ({ acId: c.id, section: 'AC-001', covered: true, note: '' })) } });
   s.set('plan', null, 1, { output: plan });
-  for (const id of ['T1', 'T2']) {
-    const d = id === 'T1' ? 'a' : 'b';
+  for (const id of ['T1-a', 'T2-b']) {
+    const d = id === 'T1-a' ? 'a' : 'b';
     s.set('dev', id, 1, { output: { specHash: HASH, status: 'done', summary: `did ${id}`, changedFiles: [`src/${d}/index.ts`], commitMessage: `feat: ${id}` }, files: { [`src/${d}/index.ts`]: `export const ${id} = 1;\n` } });
     s.set('review', id, 1, { output: { specHash: HASH, decision: 'approve', criteria: [{ id: 'AC-001', status: 'passed', evidence: ['sum::[AC-001] adds'] }], findings: [] } });
     s.set('security', id, 1, { output: { specHash: HASH, decision: 'approve', findings: [] } });
@@ -86,8 +86,8 @@ describe('orchestrator loop with the fake claude', () => {
     expect(tree).toContain('docs/specs/spec-001/plan.json');
     expect(tree).toContain('src/a/index.ts');
     expect(tree).toContain('src/b/index.ts');
-    expect(gh.prs.map((p) => p.title)).toEqual(['docs(spec-001): technical spec', 'docs(spec-001): plan', 'T1: Task T1', 'T2: Task T2']);
-    expect(scenario.seen).toEqual(['tech-spec/-/1', 'coverage/-/1', 'plan/-/1', 'dev/T1/1', 'review/T1/1', 'security/T1/1', 'dev/T2/1', 'review/T2/1', 'security/T2/1']);
+    expect(gh.prs.map((p) => p.title)).toEqual(['docs(spec-001): technical spec', 'docs(spec-001): plan', 'T1-a: Task T1-a', 'T2-b: Task T2-b']);
+    expect(scenario.seen).toEqual(['tech-spec/-/1', 'coverage/-/1', 'plan/-/1', 'dev/T1-a/1', 'review/T1-a/1', 'security/T1-a/1', 'dev/T2-b/1', 'review/T2-b/1', 'security/T2-b/1']);
   });
 
   it('survives a crash after every intent and never duplicates a commit, PR or merge', { timeout: 900_000 }, async () => {

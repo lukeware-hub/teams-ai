@@ -78,8 +78,12 @@ export const CoverageOutput = z.object({
   coverage: z.array(z.object({ acId, section: z.string().nullable(), covered: z.boolean(), note: z.string() })),
 });
 
+/** Roadmap R11.12: a new plan's task ids carry a readable slug (`T1-create-endpoint`); stored plans keep the loose `TASK_ID`. */
+const NAMED_TASK_ID = /^T\d+(?:-[a-z0-9]+)+$/;
+const NamedPlan = Plan.extend({ tasks: z.array(PlanTask.extend({ id: z.string().regex(NAMED_TASK_ID) })).min(1) });
+
 /** Spec 10A.5 decision 12: the SM may add up to two full alternative plans; System 1 ranks them, Phase 2 keeps one. */
-export const PlanOutput = Plan.extend({ alternatives: z.array(Plan).max(2).optional() });
+export const PlanOutput = NamedPlan.extend({ alternatives: z.array(NamedPlan).max(2).optional() });
 
 const devCommon = {
   specHash,
