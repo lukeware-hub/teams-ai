@@ -142,7 +142,8 @@ describe('projects', () => {
     await fs.writeFile(path.join(other, 'docs', 'project.json'), await fs.readFile(path.join(HELLO, 'docs', 'project.json'), 'utf8'));
     const ok = await post('/api/projects', { dir: other });
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toMatchObject({ projectId: 'hello-app', dir: other, specs: [] });
+    // Same project id as HELLO: one project, the newest dir first, with the specs of both dirs.
+    expect(await ok.json()).toMatchObject({ projectId: 'hello-app', dir: other, specs: [{ specId: 'hello-001' }] });
     expect((await post('/api/projects', { dir: other })).status).toBe(200);
     expect((await readUserConfig(home)).cfg.projects).toEqual([{ dir: HELLO }, { dir: other }]);
     const bad = await post('/api/projects', { dir: path.join(home, '.teams-ai', 'workspaces', 'nope') });

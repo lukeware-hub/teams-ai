@@ -197,12 +197,27 @@ export async function runRow(deps: IndexDeps, runId: string): Promise<RunRow | n
   return { runId, specId, projectId: projectId ?? '', status, at: state?.at ?? finished?.at ?? launchLog?.mtime.toISOString() ?? null, tokens, cost: state?.tokens?.costUsd ?? 0, stoppable: alive && ACTIVE.has(status), kind: parsed?.kind ?? 'run', n: parsed?.n ?? 0, locked: false };
 }
 
-async function specsOf(deps: IndexDeps, projectId: string): Promise<Map<string, string>> {
+type Read = Awaited<ReturnType<typeof readProject>>;
+
+/** Each project's readable dirs in registration order: a started refinement registers its own dir, so one project spans several. */
+async function projectDirs(deps: IndexDeps): Promise<Map<string, Array<{ dir: string; read: Read }>>> {
+  const out = new Map<string, Array<{ dir: string; read: Read }>>();
   for (const { dir } of deps.cfg.projects) {
     const read = await readProject(dir).catch(() => null);
-    if (read?.project.projectId === projectId) return new Map(read.specs.map((s) => [s.specId, s.status]));
+    if (read) out.set(read.project.projectId, [...(out.get(read.project.projectId) ?? []), { dir, read }]);
   }
-  return new Map();
+  return out;
+}
+
+/** One entry per spec: its own refinement dir speaks for it, else the first dir that carries a copy. */
+function mergeSpecs(dirs: ReadonlyArray<{ dir: string; read: Read }>): Read['specs'] {
+  const out = new Map<string, Read['specs'][number]>();
+  for (const { dir, read } of dirs) for (const s of read.specs) if (!out.has(s.specId) || path.basename(dir) === s.specId) out.set(s.specId, s);
+  return [...out.values()];
+}
+
+async function specsOf(deps: IndexDeps, projectId: string): Promise<Map<string, string>> {
+  return new Map(mergeSpecs((await projectDirs(deps)).get(projectId) ?? []).map((s) => [s.specId, s.status]));
 }
 
 export async function listRuns(deps: IndexDeps, projectId: string): Promise<RunRow[]> {
@@ -247,20 +262,21 @@ export function concludedSpecs(specs: ReadonlyMap<string, string>, rows: readonl
 
 export async function listProjects(deps: IndexDeps): Promise<ProjectRow[]> {
   const out: ProjectRow[] = [];
-  for (const { dir } of deps.cfg.projects) {
-    const read = await readProject(dir).catch(() => null);
-    if (!read) continue;
-    const runs = await listRuns(deps, read.project.projectId);
+  for (const [projectId, dirs] of await projectDirs(deps)) {
+    // The newest dir carries the latest project docs.
+    const { dir, read } = dirs.at(-1)!;
+    const specs = mergeSpecs(dirs);
+    const runs = await listRuns(deps, projectId);
     // `spec complete` finishes by merging `status: done` onto main; the draft root this project reads its specs
     // from keeps whatever status the freeze left it, since nothing patches it back once that merge lands. The
     // completion run's own journal is ground truth for whether the spec is actually done.
-    const completed = concludedSpecs(new Map(read.specs.map((s) => [s.specId, s.status])), runs);
+    const completed = concludedSpecs(new Map(specs.map((s) => [s.specId, s.status])), runs);
     out.push({
-      projectId: read.project.projectId,
+      projectId,
       dir,
       name: read.project.name,
       description: read.project.vision,
-      specs: read.specs.map((s) => ({ specId: s.specId, status: completed.has(s.specId) ? 'done' : s.status, activeRunId: runs.find((r) => r.specId === s.specId && claimsSpec(r))?.runId ?? null })),
+      specs: specs.map((s) => ({ specId: s.specId, status: completed.has(s.specId) ? 'done' : s.status, activeRunId: runs.find((r) => r.specId === s.specId && claimsSpec(r))?.runId ?? null })),
     });
   }
   return out;

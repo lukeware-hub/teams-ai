@@ -133,6 +133,29 @@ describe('run index', () => {
     expect((await listRuns(deps(), 'hello-app')).map((r) => r.locked)).toEqual([false, false]);
   });
 
+  it('lists a project registered in several dirs once: each spec takes the status of its own refinement dir', async () => {
+    // A started refinement registers its own dir: the second spec's dir also carries a copy of the first spec.
+    const second = path.join(home, 'refine', 'hello-002');
+    await fs.cp(HELLO, second, { recursive: true });
+    const write = async (specId: string, status: string) => {
+      const file = path.join(second, 'docs', 'specs', specId, 'spec.json');
+      const spec = JSON.parse(await fs.readFile(path.join(HELLO, 'docs', 'specs', 'hello-001', 'spec.json'), 'utf8'));
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(file, JSON.stringify({ ...spec, specId, status }));
+    };
+    await write('hello-001', 'awaiting-validation');
+    await write('hello-002', 'awaiting-validation');
+    const d = deps();
+    d.cfg = loadConfig({ ...JSON.parse(JSON.stringify(d.cfg)), projects: [{ dir: HELLO }, { dir: second }] });
+    const rows = await listProjects(d);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.dir).toBe(second); // the newest dir carries the latest project docs
+    expect(rows[0]!.specs).toEqual([
+      { specId: 'hello-001', status: 'running', activeRunId: null },
+      { specId: 'hello-002', status: 'awaiting-validation', activeRunId: null },
+    ]);
+  });
+
   it('SAFE_ID rejects path tricks', () => {
     expect(SAFE_ID.test('hello-001-r1')).toBe(true);
     expect(SAFE_ID.test('../x')).toBe(false);
