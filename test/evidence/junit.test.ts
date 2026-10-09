@@ -96,4 +96,20 @@ describe('parseTap', () => {
     // The parent describe's own rollup line carries no [AC-xxx] tag; evaluateSmoke/evaluateE2e never select it.
     expect(results.some((t) => t.acIds.length === 0)).toBe(true);
   });
+
+  it('reads the spec reporter lines of node --test too (live, user-api run-4: a passing smoke read back as "no smoke test")', async () => {
+    const { parseTap } = await import('../../server/evidence/junit.js');
+    const spec = [
+      '✔ [AC-005] GET /health responde 200 com status ok (47.249713ms)',
+      '▶ users',
+      '  ✖ [AC-007] POST /users registra usuário (15.4ms)',
+      '  ﹣ [AC-008] later (0.1ms) # SKIP',
+      'ℹ tests 3',
+    ].join('\n');
+    expect(parseTap(spec).map((t) => [t.name, t.acIds, t.status])).toEqual([
+      ['[AC-005] GET /health responde 200 com status ok', ['AC-005'], 'passed'],
+      ['[AC-007] POST /users registra usuário', ['AC-007'], 'failed'],
+      ['[AC-008] later', ['AC-008'], 'skipped'],
+    ]);
+  });
 });

@@ -53,15 +53,19 @@ function collectCases(container: XmlNode, suiteName: string, out: RawCase[]): vo
  * as "no smoke test" even though the suite passed in full (live, R8.7 golden run, 2026-10-08: TAP showed `# pass 3, # fail 0` and
  * the deploy still failed at smoke). An untagged rollup line is harmless here: `evaluateSmoke`/`evaluateE2e` only match rows whose
  * `acIds` includes the specific criterion, so a parent line with no tag is simply never selected by either.
+ * The `spec` reporter lines (`✔ name (1ms)`, `✖ name`, `﹣ name # SKIP`) count too: a command that picks that reporter prints no TAP.
  */
 export function parseTap(text: string): TestResult[] {
   const out: TestResult[] = [];
   for (const line of text.split(/\r?\n/)) {
-    const m = /^\s*(not )?ok \d+(?: -)? (.*)$/.exec(line);
-    if (!m) continue;
-    const skipped = /#\s*(skip|todo)\b/i.test(m[2]!);
-    const name = m[2]!.replace(/\s+#\s*(skip|todo)\b.*$/i, '').trim();
-    out.push({ id: `tap::${name}`, name, classname: 'tap', status: skipped ? 'skipped' : m[1] ? 'failed' : 'passed', acIds: extractAcIds(name) });
+    const tap = /^\s*(not )?ok \d+(?: -)? (.*)$/.exec(line);
+    const spec = tap ? null : /^\s*([✔✖﹣]) (.*)$/.exec(line);
+    if (!tap && !spec) continue;
+    const rest = (tap?.[2] ?? spec![2])!;
+    const skipped = /#\s*(skip|todo)\b/i.test(rest) || spec?.[1] === '﹣';
+    const failed = tap ? Boolean(tap[1]) : spec![1] === '✖';
+    const name = rest.replace(/\s+#\s*(skip|todo)\b.*$/i, '').replace(/\s+\([\d.]+m?s\)$/, '').trim();
+    out.push({ id: `tap::${name}`, name, classname: 'tap', status: skipped ? 'skipped' : failed ? 'failed' : 'passed', acIds: extractAcIds(name) });
   }
   return out;
 }
