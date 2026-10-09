@@ -43,6 +43,20 @@ export function promptCacheTtl(kind: StepKind): '5m' | undefined {
   return SHORT_CACHE_KINDS.has(kind) ? '5m' : undefined;
 }
 
+/**
+ * Fixed child environment (R11.13 slice 9), set by the orchestrator, never read from the host. Git instructions and per-turn
+ * attachments (task and file-change reminders) are prompt text a step does not use: -10% of the fixed prefix, measured. The
+ * rest keeps the child quiet and bounded: no feature-flag or telemetry traffic, no self-update, and API retries capped at
+ * 5 (the default is 300, about 3 hours of backoff) so a 429 surfaces as a quota failure instead of a timeout.
+ */
+export const STEP_ENV: Readonly<Record<string, string>> = {
+  CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS: '1',
+  CLAUDE_CODE_DISABLE_ATTACHMENTS: '1',
+  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+  DISABLE_AUTOUPDATER: '1',
+  CLAUDE_CODE_MAX_RETRIES: '5',
+};
+
 export interface InvocationInput {
   role: Role;
   model: string;
@@ -118,7 +132,7 @@ export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessE
     args.push('--no-session-persistence');
   }
 
-  const env = sanitizeEnv(hostEnv);
+  const env = { ...sanitizeEnv(hostEnv), ...STEP_ENV };
   if (input.home) {
     env.HOME = input.home;
     env.TMPDIR = path.join(input.home, 'tmp');

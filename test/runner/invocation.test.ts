@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ENV_ALLOWLIST,
   ISOLATION_FLAGS,
+  STEP_ENV,
   InvocationError,
   buildInvocation,
   ensureTrusted,
@@ -75,7 +76,7 @@ describe('buildInvocation', () => {
 
   it('strips every secret from the environment', () => {
     const inv = buildInvocation(base, hostEnv);
-    expect(Object.keys(inv.env).sort()).toEqual(['HOME', 'LANG', 'PATH', 'TERM']);
+    expect(Object.keys(inv.env).sort()).toEqual(['HOME', 'LANG', 'PATH', 'TERM', ...Object.keys(STEP_ENV)].sort());
     expect(inv.env).not.toHaveProperty('GITHUB_TOKEN');
     expect(inv.env).not.toHaveProperty('ANTHROPIC_API_KEY');
   });
@@ -101,6 +102,12 @@ describe('buildInvocation', () => {
     const json = JSON.parse(inv.args[inv.args.indexOf('--agents') + 1]!);
     expect(json).toEqual({ dev: { description: 'Developer.', prompt: 'Echo the specHash.', tools: ['Read', 'Edit'], model: 'sonnet' } });
     expect(inv.args.indexOf('--agents')).toBeGreaterThan(inv.args.indexOf('--agent'));
+  });
+
+  it('sets the fixed step environment on top of the allowlisted host variables', () => {
+    const env = buildInvocation(base, hostEnv).env;
+    expect(env).toMatchObject({ CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS: '1', CLAUDE_CODE_DISABLE_ATTACHMENTS: '1', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', DISABLE_AUTOUPDATER: '1', CLAUDE_CODE_MAX_RETRIES: '5' });
+    expect(env.PATH).toBe('/usr/bin');
   });
 
   it('sets the prompt cache TTL only when asked, and never lets extraEnv lose to it', () => {

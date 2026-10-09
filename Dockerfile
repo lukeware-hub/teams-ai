@@ -15,7 +15,7 @@ RUN PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install graphifyy==0.9.
 COPY package*.json ./
 RUN npm ci --omit=optional --no-audit --no-fund
 # Version recorded in docs/superpowers/spikes/2026-09-23-cli-findings.md.
-RUN npm install --global @anthropic-ai/claude-code@2.1.281 --no-audit --no-fund
+RUN npm install --global @anthropic-ai/claude-code@2.1.295 --no-audit --no-fund
 # npm 10.9 (bundled with node 22) crashes in its peer-dependency resolver ("Cannot read properties of
 # null (reading 'edgesOut')") on some current packages, e.g. vitest 4.x; the Dev then cannot install
 # the toolchain it scaffolds. npm 12 resolves them.
