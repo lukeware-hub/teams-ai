@@ -71,7 +71,7 @@ export function stackKind(text: string): StackKind {
 }
 
 /** Folders that dependencies or builds fill: gates own them and scanners skip them (a path regex source, matched at the start). */
-export const BUILD_DIRS: readonly string[] = ['node_modules', 'vendor', 'target', '.venv', '__pycache__', '.pytest_cache'];
+export const BUILD_DIRS: readonly string[] = ['node_modules', 'vendor', 'target', '.venv', '__pycache__', '.pytest_cache', '.next'];
 
 /** Build folders never committed; the secret scan may skip them. Go commits `vendor/`, so it is still scanned. */
 export const UNCOMMITTED_BUILD_DIRS: readonly string[] = BUILD_DIRS.filter((d) => d !== 'vendor');

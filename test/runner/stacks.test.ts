@@ -15,6 +15,7 @@ describe('stacks', () => {
   it('still scans the committed Go vendor folder for secrets', () => {
     expect(UNCOMMITTED_BUILD_DIRS).not.toContain('vendor');
     expect(UNCOMMITTED_BUILD_DIRS).toContain('node_modules');
+    expect(UNCOMMITTED_BUILD_DIRS).toContain('.next');
   });
 
   it('allows the toolchain commands of Go, Rust and Python', () => {
