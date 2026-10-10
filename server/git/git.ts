@@ -167,7 +167,8 @@ export async function rebaseOnto(
 }
 
 export async function push(dir: string, branch: string, exec: Exec = execCommand): Promise<void> {
-  await git(dir, ['push', '-q', '--force-with-lease', '-u', 'origin', branch], exec);
+  // No -u: an upstream setting writes the .git/config every worktree shares, racing a parallel task's worktree add (live: config.lock).
+  await git(dir, ['push', '-q', '--force-with-lease', 'origin', branch], exec);
 }
 
 export async function fetch(repo: string, exec: Exec = execCommand): Promise<void> {

@@ -155,6 +155,11 @@ describe('push, fetch and remote main', () => {
     expect(await git(origin, ['rev-parse', 'task/y'])).toBe(sha);
     await fetch(repo);
     expect(await git(repo, ['rev-parse', 'origin/task/y'])).toBe(sha);
+    // No upstream is written to the shared .git/config, and a rewritten branch still force-pushes.
+    await expect(git(repo, ['config', '--get', 'branch.task/y.remote'])).rejects.toThrow();
+    await git(wt, ['commit', '-q', '--amend', '-m', 'feat: y again']);
+    await push(wt, 'task/y');
+    expect(await git(origin, ['rev-parse', 'task/y'])).toBe(await headSha(wt));
   });
 
   it('reads the remote main sha', async () => {
