@@ -35,6 +35,14 @@ describe('stacks', () => {
     await copyCargoRoot(cache, path.join(root, 'wt', '.tools'));
     expect(await fs.readFile(path.join(root, 'wt', '.tools', 'bin', 'cargo-nextest'), 'utf8')).toBe('bin');
     expect(await fs.readFile(path.join(root, 'wt', '.tools', '.crates2.json'), 'utf8')).toBe('{"installs":{}}');
+    // A symlink planted in the agent-writable root is never copied, nor written through at the destination.
+    const outside = path.join(root, 'outside.txt');
+    await fs.writeFile(outside, 'host');
+    await fs.symlink(outside, path.join(root, 'wt', '.tools', 'bin', 'evil'));
+    await fs.symlink(outside, path.join(cache, 'bin', 'cargo-deny'));
+    await copyCargoRoot(path.join(root, 'wt', '.tools'), cache);
+    expect((await fs.lstat(path.join(cache, 'bin', 'evil')).catch(() => null))).toBeNull();
+    expect(await fs.readFile(outside, 'utf8')).toBe('host');
     await copyCargoRoot(path.join(root, 'missing'), path.join(root, 'wt2'));
     await expect(fs.access(path.join(root, 'wt2'))).rejects.toThrow();
     await fs.rm(root, { recursive: true, force: true });

@@ -291,8 +291,9 @@ export class Run {
     const present = await fs.access(path.join(worktree, 'node_modules')).then(() => true, () => false);
     if (present) return null;
     const started = Date.now();
-    // Tools that `cargo install` put in .tools come from a shared cache, so they build once, not once per task worktree.
-    const cargoRoot = path.join(expandHome(this.deps.cfg.paths.gateCache), 'cargo-root');
+    // Tools that `cargo install` put in .tools come from a cache, so they build once, not once per task worktree; the cache is
+    // per project, since a project's install command is agent-written and must never plant a binary another project runs.
+    const cargoRoot = path.join(expandHome(this.deps.cfg.paths.gateCache), 'cargo-root', this.deps.ws.projectId);
     const tools = path.join(worktree, '.tools');
     const cargoInstall = /\bcargo install\b/.test(command);
     if (cargoInstall) await copyCargoRoot(cargoRoot, tools).catch(() => undefined);

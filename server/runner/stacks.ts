@@ -76,18 +76,35 @@ export const BUILD_DIRS: readonly string[] = ['node_modules', 'vendor', 'target'
 /** Build folders never committed; the secret scan may skip them. Go commits `vendor/`, so it is still scanned. */
 export const UNCOMMITTED_BUILD_DIRS: readonly string[] = BUILD_DIRS.filter((d) => d !== 'vendor');
 
-const CARGO_ROOT_FILES = ['bin', '.crates.toml', '.crates2.json'];
+const CARGO_RECORDS = ['.crates.toml', '.crates2.json'];
+
+const isRegularFile = (p: string) => fs.lstat(p).then((s) => s.isFile(), () => false);
+
+/** Copies one regular file, first removing whatever is at the destination so a planted symlink is never written through. */
+async function copyRegular(source: string, dest: string): Promise<void> {
+  if (!(await isRegularFile(source))) return;
+  await fs.rm(dest, { force: true, recursive: true });
+  await fs.copyFile(source, dest, fs.constants.COPYFILE_EXCL);
+}
+
+/** A real directory at `dir`, replacing a symlink or file someone left there. */
+async function realDir(dir: string): Promise<void> {
+  if (!(await fs.lstat(dir).then((s) => s.isDirectory(), () => false))) await fs.rm(dir, { force: true, recursive: true });
+  await fs.mkdir(dir, { recursive: true });
+}
 
 /**
- * Copies what `cargo install --root` leaves (the binaries and its own records of them) from one root to another.
- * Seeding a worktree's .tools from a shared cache makes cargo see the tools already installed and skip a rebuild that
- * a per-worktree CARGO_HOME would otherwise force (live: three Rust installs took over 20 minutes).
+ * Copies what `cargo install --root` leaves (the binaries in bin/ and cargo's own records of them) from one root to another.
+ * Seeding a worktree's .tools from a per-project cache makes cargo see the tools already installed and skip a rebuild that
+ * a per-worktree CARGO_HOME would otherwise force (live: three Rust installs took over 20 minutes). Only regular files are
+ * copied, never symlinks or nested folders: the worktree side is agent-writable.
  */
 export async function copyCargoRoot(from: string, to: string): Promise<void> {
-  for (const name of CARGO_ROOT_FILES) {
-    const source = path.join(from, name);
-    if (!(await fs.lstat(source).then((s) => s.isFile() || s.isDirectory(), () => false))) continue;
-    await fs.mkdir(to, { recursive: true });
-    await fs.cp(source, path.join(to, name), { recursive: true, force: true, verbatimSymlinks: true });
-  }
+  const bins = await fs.readdir(path.join(from, 'bin'), { withFileTypes: true }).catch(() => []);
+  const records = await Promise.all(CARGO_RECORDS.map((name) => isRegularFile(path.join(from, name))));
+  if (bins.length === 0 && !records.some(Boolean)) return;
+  await realDir(to);
+  await realDir(path.join(to, 'bin'));
+  for (const entry of bins) if (entry.isFile()) await copyRegular(path.join(from, 'bin', entry.name), path.join(to, 'bin', entry.name));
+  for (const name of CARGO_RECORDS) await copyRegular(path.join(from, name), path.join(to, name));
 }
