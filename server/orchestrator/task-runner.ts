@@ -335,11 +335,27 @@ export class TaskRunner {
     await this.deps.journal.confirm(Intent.Commit, commitKey, { sha });
     const changed = await changedFiles(this.worktree, 'origin/main', this.deps.exec);
     if (changed.length === 0) {
+      // An earlier run already delivered it (live: a replanned task whose pieces merged across two runs); Phase 4 still proves its criteria.
+      if (await this.alreadyOnMain(task.def)) {
+        await this.deps.journal.fact(OrchEvent.AlreadyOnMain, { taskId: this.taskId, paths: task.def.affectedPaths, summary: value.summary });
+        await removeWorktree(this.deps.ws.repo, this.worktree, this.deps.exec);
+        return this.transition('merged');
+      }
       // Nothing to gate, review or open a PR for; GitHub would refuse the PR anyway. Charge the attempt now.
       return this.fail('code', 'Dev reported done but produced no changes against origin/main. Implement the task or return spec-gap.');
     }
     await this.deps.journal.fact(OrchEvent.DevCommitted, { taskId: this.taskId, sha, changedFiles: changed, summary: value.summary });
     await this.transition('validating');
+  }
+
+  /** A task with criteria whose every concrete path already exists on origin/main (glob paths are not checked, so they never qualify). */
+  private async alreadyOnMain(def: PlanTask): Promise<boolean> {
+    if (def.criteriaRefs.length === 0 || def.affectedPaths.length === 0 || def.affectedPaths.some((p) => /[*?[]/.test(p))) return false;
+    for (const p of def.affectedPaths) {
+      const found = await git(this.deps.ws.repo, ['cat-file', '-e', `origin/main:${p}`], this.deps.exec).then(() => true, () => false);
+      if (!found) return false;
+    }
+    return true;
   }
 
   private async specGap(task: PlanTask, question: string): Promise<void> {

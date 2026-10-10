@@ -12,6 +12,8 @@ export const OrchEvent = {
   StepStarted: 'STEP_STARTED',
   StepFinished: 'STEP_FINISHED',
   DevCommitted: 'DEV_COMMITTED',
+  /** The Dev reported done with no change and every path of the task is already on main: delivered earlier, Phase 4 still proves it. */
+  AlreadyOnMain: 'TASK_ALREADY_ON_MAIN',
   GatePassed: 'GATE_PASSED',
   GateFailed: 'GATE_FAILED',
   ReviewApproved: 'REVIEW_APPROVED',

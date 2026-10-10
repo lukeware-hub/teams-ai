@@ -25,7 +25,8 @@ const TRANSITIONS: Record<TaskState, readonly TaskState[]> = {
   // 'merged' here is not a step forward: it adopts what an earlier run of the same spec already merged (R11.4 retry).
   planned: ['ready', 'merged', 'blocked', 'superseded'],
   ready: ['implementing', 'blocked', 'superseded'],
-  implementing: ['validating', 'blocked', 'superseded'],
+  // 'merged' here adopts work an earlier run already put on main (TASK_ALREADY_ON_MAIN), never skips a change.
+  implementing: ['validating', 'merged', 'blocked', 'superseded'],
   validating: ['reviewing', 'implementing', 'blocked', 'superseded'],
   reviewing: ['rebasing', 'implementing', 'blocked', 'superseded'],
   rebasing: ['merging', 'implementing', 'blocked', 'superseded'],

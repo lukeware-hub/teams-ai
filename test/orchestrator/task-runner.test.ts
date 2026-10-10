@@ -252,6 +252,16 @@ describe('TaskRunner: implementing', () => {
     expect(journal.lastFeedback('T1')).toContain('no changes');
   });
 
+  it('a Dev that changes nothing on a task whose paths are all on main already adopts it as merged (an earlier run delivered it)', async () => {
+    const done = makePlanTask({ id: 'T2', criteriaRefs: ['AC-001'], affectedPaths: ['docs/project.json'] });
+    await journal.fact(RunEvent.TaskPlanned, { task: done });
+    await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T2', to: 'ready' });
+    const r = new TaskRunner('T2', deps({ plan: makePlan(spec, { tasks: [T1, done] }), agent: async () => ok({ specHash: HASH, status: 'done', summary: 'already there', changedFiles: [], commitMessage: 'feat: nothing' }) }));
+    await r.advance();
+    expect(journal.state.tasks.get('T2')).toMatchObject({ state: 'merged', attempts: 0 });
+    expect(journal.events.some((e) => e.type === OrchEvent.AlreadyOnMain && e.data.taskId === 'T2')).toBe(true);
+  });
+
   it('pauses the run on a quota failure without consuming an attempt', async () => {
     const r = new TaskRunner('T1', deps({ agent: async () => failed('quota', 'usage limit reached') }));
     await r.advance();
