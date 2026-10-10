@@ -67,6 +67,12 @@ describe('DockerLocalTarget with a compose file', () => {
     expect(t.gateNetwork(plain)).toBeUndefined();
   });
 
+  it('reaches the service on the container port compose maps to the published port', async () => {
+    const config = JSON.stringify({ services: { 'Todo-Api': { ports: [{ target: 8080, published: '3000' }, { target: 9090, published: '9090' }] } } });
+    const fake = new FakeExec().on((s) => s.args.includes('--format'), () => ({ stdout: config }));
+    expect(await mk(fake).gateServiceUrl(intent)).toBe('http://Todo-Api:8080');
+  });
+
   it('gate containers join the given network, else the default bridge', () => {
     const gate = { name: 'smoke', command: 'x', blocking: true, network: 'egress' as const, secrets: [] };
     const ctx = { worktree: '/w', image: 'img', junitPath: 'j', cpus: 1, memory: '1g', timeoutMs: 1, secrets: {}, containerName: 'c' };

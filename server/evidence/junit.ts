@@ -15,11 +15,12 @@ export class JUnitParseError extends Error {}
 
 type XmlNode = Record<string, unknown>;
 
-const AC_TAG = /\[ac-(\d{3})\]/gi;
+// `[AC-001]` in a test name, or `ac_001` / `ac-001` where an identifier cannot hold brackets (Rust fn, pytest def).
+const AC_TAG = /\[ac-(\d{3})\]|(?<![a-z0-9])ac[_-](\d{3})(?!\d)/gi;
 
 export function extractAcIds(text: string): string[] {
   const ids = new Set<string>();
-  for (const match of text.matchAll(AC_TAG)) ids.add(`AC-${match[1]}`);
+  for (const match of text.matchAll(AC_TAG)) ids.add(`AC-${match[1] ?? match[2]}`);
   return [...ids];
 }
 
@@ -53,13 +54,30 @@ function collectCases(container: XmlNode, suiteName: string, out: RawCase[]): vo
  * as "no smoke test" even though the suite passed in full (live, R8.7 golden run, 2026-10-08: TAP showed `# pass 3, # fail 0` and
  * the deploy still failed at smoke). An untagged rollup line is harmless here: `evaluateSmoke`/`evaluateE2e` only match rows whose
  * `acIds` includes the specific criterion, so a parent line with no tag is simply never selected by either.
- * The `spec` reporter lines (`✔ name (1ms)`, `✖ name`, `﹣ name # SKIP`) count too: a command that picks that reporter prints no TAP.
+ * The `spec` reporter lines (`✔ name (1ms)`, `✖ name`, `﹣ name # SKIP`) count too: a command that picks that reporter prints no TAP. * `go test -v` (`--- PASS: TestSmoke/[AC-003]_name (0.00s)`), `cargo test` (`test ac_003_name ... ok`) and `pytest -v`
+ * (`test_x.py::test_ac_003_name PASSED`) result lines count too: those smoke/e2e commands print no TAP.
  */
+/** One result line of go test -v, cargo test or pytest -v; null for any other line. */
+function otherRunnerLine(line: string): { name: string; status: TestResult['status'] } | null {
+  const go = /^\s*--- (PASS|FAIL|SKIP): (\S+)/.exec(line);
+  if (go) return { name: go[2]!, status: go[1] === 'PASS' ? 'passed' : go[1] === 'FAIL' ? 'failed' : 'skipped' };
+  const cargo = /^test (\S+) \.\.\. (ok|FAILED|ignored)$/.exec(line.trim());
+  if (cargo) return { name: cargo[1]!, status: cargo[2] === 'ok' ? 'passed' : cargo[2] === 'FAILED' ? 'failed' : 'skipped' };
+  const pytest = /^(\S+::\S+) (PASSED|FAILED|ERROR|SKIPPED)\b/.exec(line.trim());
+  if (pytest) return { name: pytest[1]!, status: pytest[2] === 'PASSED' ? 'passed' : pytest[2] === 'SKIPPED' ? 'skipped' : 'failed' };
+  return null;
+}
+
 export function parseTap(text: string): TestResult[] {
   const out: TestResult[] = [];
   for (const line of text.split(/\r?\n/)) {
     const tap = /^\s*(not )?ok \d+(?: -)? (.*)$/.exec(line);
     const spec = tap ? null : /^\s*([✔✖﹣]) (.*)$/.exec(line);
+    const other = tap || spec ? null : otherRunnerLine(line);
+    if (other) {
+      out.push({ id: `tap::${other.name}`, classname: 'tap', ...other, acIds: extractAcIds(other.name) });
+      continue;
+    }
     if (!tap && !spec) continue;
     const rest = (tap?.[2] ?? spec![2])!;
     const skipped = /#\s*(skip|todo)\b/i.test(rest) || spec?.[1] === '﹣';

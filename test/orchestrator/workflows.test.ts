@@ -11,15 +11,35 @@ const pythonPlan = makePlan(spec, {
   deploy: { image: 'py-api', port: 8000, healthcheckPath: '/health', manifests: [] },
 });
 
+const goPlan = makePlan(spec, {
+  stack: 'go-gin',
+  gateImage: 'golang:1.26-bookworm',
+  commands: { install: 'go mod download', format: 'test -z "$(gofmt -l .)"', lint: 'go vet ./...', typecheck: 'go build ./...', test: 'gotestsum --junitfile reports/junit.xml ./...', build: 'go build -o app .', run: './app', healthcheck: 'curl -fsS http://localhost:3000/health' },
+});
+const rustPlan = makePlan(spec, {
+  stack: 'rust-axum',
+  gateImage: 'rust:1.90-bookworm',
+  commands: { install: 'cargo fetch', format: 'cargo fmt --check', lint: 'cargo clippy -- -D warnings', typecheck: 'cargo check', test: 'cargo nextest run', build: 'cargo build --release', run: './target/release/app', healthcheck: 'curl -fsS http://localhost:3000/health' },
+});
+
 describe('workflow golden files', () => {
-  it.each([['node', nodePlan], ['python', pythonPlan]] as const)('%s plan renders the committed golden files', async (name, plan) => {
+  it.each([['node', nodePlan], ['python', pythonPlan], ['go', goPlan], ['rust', rustPlan]] as const)('%s plan renders the committed golden files', async (name, plan) => {
     await expect(renderCi(plan)).toMatchFileSnapshot(`../fixtures/workflows/${name}-ci.yml`);
     await expect(renderRelease(plan)).toMatchFileSnapshot(`../fixtures/workflows/${name}-release.yml`);
   });
 
-  it.each([['node', nodePlan], ['python', pythonPlan]] as const)('%s rendered files pass validation', (_n, plan) => {
+  it.each([['node', nodePlan], ['python', pythonPlan], ['go', goPlan], ['rust', rustPlan]] as const)('%s rendered files pass validation', (_n, plan) => {
     expect(validateWorkflow('ci', renderCi(plan), plan)).toEqual([]);
     expect(validateWorkflow('release', renderRelease(plan), plan)).toEqual([]);
+  });
+});
+
+describe('toolchain setup per stack', () => {
+  it('sets up Go and Rust on the runner with the version of the gate image', () => {
+    expect(renderCi(goPlan)).toContain('actions/setup-go@v5');
+    expect(renderCi(goPlan)).toContain('go-version: "1.26"');
+    expect(renderCi(rustPlan)).toContain('actions-rust-lang/setup-rust-toolchain@v1');
+    expect(renderCi(rustPlan)).toContain('toolchain: "1.90"');
   });
 });
 

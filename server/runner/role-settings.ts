@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { ALWAYS_DENIED, NESTED_DENIED } from '../agents/registry.js';
 import type { Role } from '../config/config.js';
+import { STACK_BASH } from './stacks.js';
 
 /**
  * Settings the orchestrator ships to every agent process via `--settings <file>`.
@@ -48,6 +49,7 @@ const SUITE_BASH = [
   'Bash(echo:*)',
   'Bash(pwd:*)',
   'Bash(true:*)',
+  ...STACK_BASH,
 ] as const;
 // `find` is deliberately absent (audit H3): `-exec` runs any command; use ls/grep.
 const ROLE_ALLOW: Record<Role, readonly string[]> = {

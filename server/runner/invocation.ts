@@ -4,6 +4,7 @@ import type { RoleProfile, Role } from '../config/config.js';
 import { updateFileAtomic } from '../core/atomic-write.js';
 import type { StepKind } from '../agents/outputs.js';
 import type { Effort } from '../decide/decisions/model-tier.js';
+import { stackEnv } from './stacks.js';
 
 /** Flags fixed by the CLI spike (docs/superpowers/spikes/2026-09-23-cli-findings.md). */
 export const ISOLATION_FLAGS: readonly string[] = [
@@ -138,6 +139,7 @@ export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessE
   if (input.home) {
     env.HOME = input.home;
     env.TMPDIR = path.join(input.home, 'tmp');
+    Object.assign(env, stackEnv(input.cwd));
   }
   // Plan 38: a host-provided long-lived token replaces the copied credential file.
   if ((hostEnv.CLAUDE_CODE_OAUTH_TOKEN ?? '').trim() !== '') env.CLAUDE_CODE_OAUTH_TOKEN = hostEnv.CLAUDE_CODE_OAUTH_TOKEN!;

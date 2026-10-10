@@ -33,7 +33,7 @@ describe('runProcess', () => {
     const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
     expect(captured.argv).toEqual(['-p', '--agent', 'dev']);
     expect(captured.prompt).toBe('hello prompt');
-    expect(path.resolve(captured.cwd)).toBe(path.resolve(dir));
+    expect(await fs.realpath(captured.cwd)).toBe(await fs.realpath(dir)); // macOS: /var links to /private/var
   });
 
   it('passes only the invocation environment plus the binary scenario to the child', async () => {

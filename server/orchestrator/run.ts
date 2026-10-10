@@ -42,6 +42,7 @@ import { eventsFile, expandHome, graphDir, mergedByPriorRuns, nextRunId, runDir,
 import type { DeployTarget } from '../deploy/target.js';
 import { E2E_GATE, runE2e } from '../exec/e2e.js';
 import { gateReachableUrl, runSmoke } from '../exec/smoke.js';
+import { STACK_DOMAINS, stackEnv, stackKind } from '../runner/stacks.js';
 
 export interface RunDeps {
   cfg: Config;
@@ -242,7 +243,7 @@ export class Run {
       // registry.npmjs.org lets a step install dependencies; cfg.docker.serviceHost is where the orchestrator and the
       // gates already reach a deployed service (server/deploy/docker-local.ts), so a step's own sandbox needs the same
       // route to test against SERVICE_URL itself — never a wider one (no internet host, no datastore port).
-      network: { allowedDomains: ['registry.npmjs.org', cfg.docker.serviceHost] },
+      network: { allowedDomains: [...STACK_DOMAINS, cfg.docker.serviceHost] },
       sandbox: { enabled: cfg.sandbox.enabled, unsafeNoSandbox: cfg.sandbox.unsafeNoSandbox },
       clock: this.clock,
       // cli-error's chain never reaches Claude, so classifying a failed step cannot start another step.
@@ -287,7 +288,7 @@ export class Run {
     const present = await fs.access(path.join(worktree, 'node_modules')).then(() => true, () => false);
     if (present) return null;
     const started = Date.now();
-    const r = await this.deps.exec({ bin: 'sh', args: ['-lc', command], cwd: worktree, timeoutMs: 10 * 60_000 });
+    const r = await this.deps.exec({ bin: 'sh', args: ['-lc', command], cwd: worktree, env: stackEnv(worktree), timeoutMs: 10 * 60_000 });
     if (r.exitCode === 0 && !r.timedOut) return null;
     return {
       name: 'install',
@@ -321,7 +322,8 @@ export class Run {
         cacheDir,
         cpus: 2,
         memory: '2g',
-        timeoutMs: 10 * 60_000,
+        // A cold Go or Rust build in a fresh worktree is slow.
+        timeoutMs: (['go', 'rust'] as const).includes(stackKind(plan.stack) as 'go') ? 20 * 60_000 : 10 * 60_000,
         secrets: this.deps.secrets,
         containerName: `teams-ai-${this.runId}-${branch.replace(/\//g, '__')}`,
         // Files the gate writes into the bind-mounted worktree (the JUnit report) must stay owned by the

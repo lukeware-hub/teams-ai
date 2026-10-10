@@ -1,6 +1,7 @@
 import { parse, stringify } from 'yaml';
 import type { Plan } from '../contracts/plan.js';
 import { e2eCommand } from '../exec/e2e.js';
+import { stackKind, type StackKind } from '../runner/stacks.js';
 
 /**
  * Deterministic GitHub Actions pipelines for a generated repository (roadmap R8.3). Rendered from the
@@ -14,6 +15,8 @@ const ACTIONS = {
   checkout: 'actions/checkout@v4',
   node: 'actions/setup-node@v4',
   python: 'actions/setup-python@v5',
+  go: 'actions/setup-go@v5',
+  rust: 'actions-rust-lang/setup-rust-toolchain@v1',
   gitleaks: 'gitleaks/gitleaks-action@v2',
   buildx: 'docker/setup-buildx-action@v3',
   login: 'docker/login-action@v3',
@@ -22,23 +25,25 @@ const ACTIONS = {
 } as const;
 
 type Step = Record<string, unknown>;
-type StackKind = 'node' | 'python' | 'other';
+const planStack = (plan: Plan): StackKind => stackKind(`${plan.stack} ${plan.gateImage}`);
 
-const stackKind = (plan: Plan): StackKind => {
-  const s = `${plan.stack} ${plan.gateImage}`.toLowerCase();
-  if (/python|django|flask|fastapi/.test(s)) return 'python';
-  if (/node|typescript|javascript|npm|express/.test(s)) return 'node';
-  return 'other';
+// Docker image name and the setup action's own version key, per stack.
+const SETUP: Record<Exclude<StackKind, 'other'>, { image: string; key: string }> = {
+  node: { image: 'node', key: 'node-version' },
+  python: { image: 'python', key: 'python-version' },
+  go: { image: 'golang', key: 'go-version' },
+  rust: { image: 'rust', key: 'toolchain' },
 };
 
-/** `node:22-bookworm` -> `22`, `python:3.12-slim` -> `3.12`; undefined when the image carries no version. */
-const toolVersion = (plan: Plan, kind: 'node' | 'python'): string | undefined => new RegExp(`${kind}:(\\d+(?:\\.\\d+)?)`, 'i').exec(plan.gateImage)?.[1];
+/** `node:22-bookworm` -> `22`, `python:3.12-slim` -> `3.12`; undefined when the image carries no usable version (`rust:1-bookworm`). */
+const toolVersion = (plan: Plan, image: string): string | undefined => new RegExp(`${image}:(\\d+(?:\\.\\d+)${image === 'rust' ? '' : '?'})`, 'i').exec(plan.gateImage)?.[1];
 
 function setupStep(plan: Plan): Step[] {
-  const kind = stackKind(plan);
+  const kind = planStack(plan);
   if (kind === 'other') return [];
-  const version = toolVersion(plan, kind);
-  return [{ uses: kind === 'node' ? ACTIONS.node : ACTIONS.python, ...(version ? { with: { [`${kind}-version`]: version } } : {}) }];
+  const { image, key } = SETUP[kind];
+  const version = toolVersion(plan, image);
+  return [{ uses: ACTIONS[kind], ...(version ? { with: { [key]: version } } : {}) }];
 }
 
 export const COMPOSE_UP = 'docker compose up -d --build --wait';

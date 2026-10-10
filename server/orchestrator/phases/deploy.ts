@@ -19,6 +19,9 @@ export function deployIntent(deps: PhaseDeps, tag: string): DeploymentIntent {
 }
 // Ids are assigned here and must stay unique across attempts and resumes (a resumed attempt re-issued
 // T950-deploy-fix-1 and the reducer rejected it - 1387253335-001-r13).
+/** Dependency manifests of the supported stacks: a smoke or e2e fix may need to add a test dependency. */
+const MANIFESTS = ['package.json', 'go.mod', 'go.sum', 'requirements.txt', 'pyproject.toml', 'Cargo.toml', 'Cargo.lock'];
+
 const fixTaskId = (deps: PhaseDeps) => `T950-deploy-fix-${[...deps.journal.state.tasks.keys()].filter((id) => id.startsWith('T950-deploy-fix-')).length + 1}`;
 const fixTask = (deps: PhaseDeps, attempt: number, stage: DeployStage, detail: string): PlanTask => {
   const base = { id: fixTaskId(deps), title: `Fix deployment (${stage})`, criteriaRefs: [], dependsOn: [], origin: 'deploy-fix' as const };
@@ -26,13 +29,13 @@ const fixTask = (deps: PhaseDeps, attempt: number, stage: DeployStage, detail: s
   if (stage === 'smoke') {
     return { ...base, description: `Deploy attempt ${attempt} succeeded but the smoke suite did not prove the smoke criteria: ${detail}
 
-Contract: ${SMOKE_CONTRACT}`, affectedPaths: ['tests/smoke/**', 'tests/smoke', 'vitest.config.ts', 'package.json'], owner: 'dev' };
+Contract: ${SMOKE_CONTRACT}`, affectedPaths: ['tests/smoke/**', 'tests/smoke', 'smoke/**', '**/*smoke*_test.go', 'vitest.config.ts', ...MANIFESTS], owner: 'dev' };
   }
   if (stage === 'e2e') {
     const suite = deps.plan!.delivery?.e2eSuite;
     return { ...base, description: `Deploy attempt ${attempt} succeeded and smoke passed but the e2e suite did not prove the acceptance criteria: ${detail}
 
-Contract: ${E2E_CONTRACT}`, affectedPaths: [...(suite ? [suite] : []), 'e2e/**', 'tests/e2e/**', 'package.json'], owner: 'dev' };
+Contract: ${E2E_CONTRACT}`, affectedPaths: [...(suite ? [suite] : []), 'e2e/**', 'tests/e2e/**', ...MANIFESTS], owner: 'dev' };
   }
   return { ...base, description: `Deploy attempt ${attempt} failed at ${stage}: ${detail}`, affectedPaths: [...deps.plan!.deploy.manifests, 'Dockerfile'], owner: 'devops' };
 };

@@ -1,0 +1,1 @@
+{"gateImage":"python:3.11-bookworm","install":"python3 -m venv .tools/venv && .tools/venv/bin/pip install --target .tools/py -r requirements.txt","test":"mkdir -p reports && python -m pytest --junitxml=reports/junit.xml","junit":"reports/junit.xml","acIds":["AC-001","AC-002","AC-003"]}

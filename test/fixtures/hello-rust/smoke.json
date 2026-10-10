@@ -1,0 +1,7 @@
+{
+  "gateImage": "rust:1-bookworm",
+  "install": "set -e; mkdir -p .tools/bin; case \"$(uname -m)\" in aarch64) p=linux-arm;; *) p=linux;; esac; curl -fsSL https://get.nexte.st/0.9.148/$p | tar -xz -C .tools/bin; cargo fetch",
+  "test": "set -e; export PATH=\"$PWD/.tools/bin:$PATH\"; mkdir -p reports; cargo nextest run --offline; cp \"target/nextest/default/junit.xml\" reports/junit.xml",
+  "junit": "reports/junit.xml",
+  "acIds": ["AC-001", "AC-002", "AC-003"]
+}

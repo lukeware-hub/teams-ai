@@ -34,6 +34,14 @@ describe('ensureRepo', () => {
     expect(fake.lines('gh')[1]).toBe('repo create acme/todo-api --private --source . --remote origin --push');
   });
 
+  it('keeps only the repository link when the push output follows it', async () => {
+    const fake = new FakeExec()
+      .onArgs('gh', ['repo', 'view'], () => ({ exitCode: 1, stderr: 'GraphQL: Could not resolve to a Repository with the name' }))
+      .onArgs('gh', ['repo', 'create'], () => ({ stdout: "https://github.com/acme/todo-api\nbranch 'main' set up to track 'origin/main'.\n" }));
+    const r = await ensureRepo({ owner: 'acme', name: 'todo-api', private: true, cwd }, fake.exec);
+    expect(r.url).toBe('https://github.com/acme/todo-api');
+  });
+
   it('does not create when repo view fails for another reason', async () => {
     const fake = new FakeExec().onArgs('gh', ['repo', 'view'], () => ({ exitCode: 1, stderr: 'HTTP 401: Bad credentials' }));
     await expect(ensureRepo({ owner: 'acme', name: 'todo-api', private: true, cwd }, fake.exec)).rejects.toThrow(GitHubError);

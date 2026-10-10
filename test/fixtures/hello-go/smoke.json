@@ -1,0 +1,7 @@
+{
+  "gateImage": "golang:1.26-bookworm",
+  "install": "mkdir -p .tools/bin && go mod download && GOBIN=/work/.tools/bin go install gotest.tools/gotestsum@v1.13.0",
+  "test": "mkdir -p reports && PATH=/work/.tools/bin:$PATH GOPROXY=off gotestsum --junitfile reports/junit.xml -- ./...",
+  "junit": "reports/junit.xml",
+  "acIds": ["AC-001", "AC-002", "AC-003"]
+}

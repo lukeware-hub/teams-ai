@@ -99,8 +99,9 @@ describe('validatePlan security tooling', () => {
   it('keeps the allowlist per stack', () => {
     expect(check(withGates(secureGates({ 'dependency-scan': { command: 'pip-audit' } })))).toEqual([expect.stringContaining('dependency-scan must run')]);
     expect(check(withGates(secureGates({ 'dependency-scan': { command: 'pip-audit' } }), 'python-fastapi'))).toEqual([]);
-    expect(check(withGates(secureGates({ 'dependency-scan': { command: 'osv-scanner scan source -r .' } }), 'go-gin'))).toEqual([]);
-    expect(check(withGates(secureGates({ 'dependency-scan': { command: 'npm audit --audit-level=high' } }), 'go-gin'))).toEqual([expect.stringContaining('stack other')]);
+    expect(check(withGates(secureGates({ 'dependency-scan': { command: 'osv-scanner scan source -r --no-call-analysis=go .' } }), 'go-gin'))).toEqual([]);
+    expect(check(withGates(secureGates({ 'dependency-scan': { command: 'osv-scanner scan source -r .' } }), 'go-gin'))).toEqual([expect.stringContaining('--no-call-analysis=go')]);
+    expect(check(withGates(secureGates({ 'dependency-scan': { command: 'npm audit --audit-level=high' } }), 'go-gin'))).toEqual([expect.stringContaining('stack go')]);
   });
 
   it('orders the tools gate first and image-scan after build', () => {
@@ -127,7 +128,11 @@ describe('stack classification and pack text', () => {
   it('classifies stacks', () => {
     expect(stackKind('node-typescript')).toBe('node');
     expect(stackKind('python-fastapi')).toBe('python');
-    expect(stackKind('go-gin')).toBe('other');
+    expect(stackKind('go-gin')).toBe('go');
+    expect(stackKind('rust-axum')).toBe('rust');
+    expect(stackKind('java-spring')).toBe('other');
+    expect(stackKind('node:22-bookworm express and fastapi')).toBe('node'); // the earliest mention wins
+    expect(stackKind('go golang:1.26-bookworm')).toBe('go');
     expect(prescribedCommands('node')['dependency-scan']![0]).toBe('npm audit --audit-level=high');
   });
 

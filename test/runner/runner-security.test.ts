@@ -102,7 +102,8 @@ await import(${JSON.stringify(FAKE.replace(/\\/g, '/'))});`,
     await runStep(request(), deps);
     const probed = JSON.parse(await fs.readFile(path.join(dir, 'probe.json'), 'utf8'));
     expect(probed.home).not.toBe(hostHome);
-    expect(path.relative(dir, probed.home).startsWith('settings')).toBe(true);
+    expect(path.relative(dir, probed.home).startsWith('..')).toBe(true);
+    expect(probed.home.length).toBeLessThan(80); // room for the sandbox socket in $HOME/tmp within the 108 characters of a Unix socket path
     expect(probed.files.filter((f: string) => !f.startsWith('tmp/')).sort()).toEqual(['.claude.json', '.claude/.credentials.json']);
     expect(probed.files.join()).not.toMatch(/secrets|GITHUB_TOKEN/);
     await expect(fs.access(probed.home)).rejects.toThrow();

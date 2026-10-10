@@ -18,7 +18,7 @@ export const GIT_IDENTITY: Record<string, string> = {
  * Repository content that must never reach a commit: secrets, dependency trees and gate artifacts.
  * The caller adds the plan's junitPath. Pathspecs use the exclude magic so `add -A` stays otherwise complete.
  */
-export const DEFAULT_COMMIT_EXCLUDES: readonly string[] = ['.env', '.env.*', '**/.env', '**/.env.*', 'node_modules', '**/node_modules', 'reports/junit.xml'];
+export const DEFAULT_COMMIT_EXCLUDES: readonly string[] = ['.env', '.env.*', '**/.env', '**/.env.*', 'node_modules', '**/node_modules', 'reports/junit.xml', '.tools'];
 
 /** Hardening applied to every git command: hooks and fsmonitor from a (possibly agent-written) config never execute. */
 const SAFE_CONFIG = ['-c', 'core.fsmonitor=', '-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false'];

@@ -5,9 +5,18 @@ FROM node:22-bookworm@sha256:363e1587494626837fa7f9a23bdb453d13b0ff3c67c705c2805
 COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker:27-cli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
 
+# Go for the Dev's own checks (go mod, vet, test); the gates use their own image. GOTOOLCHAIN=local never downloads another one.
+COPY --from=golang:1.26-bookworm /usr/local/go /usr/local/go
+# Rust for the same purpose; CARGO_HOME is set per step to a writable folder, the toolchain itself stays read-only here.
+COPY --from=rust:1-bookworm /usr/local/cargo /usr/local/cargo
+COPY --from=rust:1-bookworm /usr/local/rustup /usr/local/rustup
+ENV PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH GOTOOLCHAIN=local RUSTUP_HOME=/usr/local/rustup
+# The install gate runs `sh -lc`, and a Debian login shell resets PATH, so the toolchains are also linked into /usr/local/bin.
+RUN ln -s /usr/local/go/bin/* /usr/local/cargo/bin/* /usr/local/bin/
+
 WORKDIR /app
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends util-linux gh bubblewrap socat pipx \
+  && apt-get install -y --no-install-recommends util-linux gh bubblewrap socat pipx python3-venv python-is-python3 \
   && rm -rf /var/lib/apt/lists/*
 # graphify builds the code graph the step packs read (R11.13 slice 3); pinned to the version the CLI spike recorded.
 RUN PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install graphifyy==0.9.67

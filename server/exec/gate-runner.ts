@@ -5,6 +5,7 @@ import { redactSecrets } from '../core/redact.js';
 import { COVERAGE_GATE, coveragePasses, parseCoverageSummary } from './coverage.js';
 import { parseJUnit, parseTap, type TestResult } from '../evidence/junit.js';
 import type { Exec } from './command.js';
+import { stackEnv } from '../runner/stacks.js';
 
 export interface GateContext {
   worktree: string;
@@ -104,6 +105,7 @@ export function dockerArgs(gate: Gate, ctx: GateContext): DockerInvocation {
   // The container's own 127.0.0.1 is not the host: egress gates (smoke) reach the service the daemon published through this name.
   if (gate.network === 'egress') args.push('--add-host', 'host.docker.internal:host-gateway');
   if (ctx.user) args.push('--user', ctx.user, '-e', 'HOME=/tmp');
+  for (const [key, value] of Object.entries(stackEnv(workdir))) args.push('-e', `${key}=${value}`);
   args.push(
     '--mount',
     `type=bind,source=${source},target=${workdir}`,
@@ -133,7 +135,8 @@ export function dockerArgs(gate: Gate, ctx: GateContext): DockerInvocation {
     args.push('-e', name);
     env[name] = value;
   }
-  args.push(ctx.image, 'sh', '-lc', gate.command);
+  // Not a login shell: Debian's /etc/profile resets PATH and drops /usr/local/go/bin and /usr/local/cargo/bin of the golang and rust images.
+  args.push(ctx.image, 'sh', '-c', gate.command);
   return { args, env };
 }
 

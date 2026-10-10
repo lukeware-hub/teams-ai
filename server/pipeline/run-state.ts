@@ -126,7 +126,11 @@ export function applyEvent(state: RunState, event: ReducibleEvent): void {
       return;
     }
     case RunEvent.FixTasksPlanned: {
-      for (const task of FixTasksData.parse(event.data).tasks) addTask(state, task, false);
+      for (const task of FixTasksData.parse(event.data).tasks) {
+        // A blocked dependency could never merge, so a fix task waiting on it would never run; its own gates still judge it.
+        const deps = task.dependsOn.flatMap((d) => liveIds(state, d)).filter((d) => state.tasks.get(d)?.state !== 'blocked');
+        addTask(state, { ...task, dependsOn: [...new Set(deps)] }, false);
+      }
       return;
     }
     default:
@@ -147,6 +151,12 @@ function addTask(state: RunState, def: PlanTask, replanned: boolean, bootstrapsF
     bootstrapsFrozenPaths,
   });
   state.order.push(def.id);
+}
+
+/** A superseded task stands for the tasks that replaced it, so a task planned later never waits on it. */
+function liveIds(state: RunState, taskId: string): string[] {
+  const replacedBy = state.tasks.get(taskId)?.replacedBy ?? [];
+  return replacedBy.length > 0 ? replacedBy.flatMap((id) => liveIds(state, id)) : [taskId];
 }
 
 function getTask(state: RunState, taskId: string): TaskRuntime {

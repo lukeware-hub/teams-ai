@@ -61,10 +61,17 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
   // the native optional packages that install picked for glibc (seen live: rollup under vitest).
   // A leading dash would be read by `docker run` as a flag, not as the image.
   if (plan.gateImage.startsWith('-')) errors.push(`gateImage ${plan.gateImage} must not start with '-'`);
-  if (/(^|[:/-])alpine(\d|[.:-]|$)/i.test(plan.gateImage)) errors.push(`gateImage ${plan.gateImage} is Alpine (musl); use a glibc-based image such as node:22-bookworm-slim`);
+  if (/(^|[:/-])alpine(\d|[.:-]|$)/i.test(plan.gateImage)) errors.push(`gateImage ${plan.gateImage} is Alpine (musl); use a glibc-based image such as node:22-bookworm, golang:1.26-bookworm, python:3.12-bookworm or rust:1-bookworm`);
 
   if (opts.repoFiles) errors.push(...gateFileErrors(plan, opts.repoFiles));
   errors.push(...gateTerminationErrors(plan));
+  // The JUnit report is gate output the orchestrator never commits; a task listing it can never deliver it (live: a review loop).
+  for (const task of plan.tasks) if (task.affectedPaths.includes(plan.junitPath)) errors.push(`task ${task.id} lists ${plan.junitPath} in affectedPaths, but the JUnit report is gate output and never committed`);
+  // A tool fetched at a moving reference changes under the same plan (supply chain); pin a version or commit.
+  for (const command of [...plan.gates.map((g) => g.command), ...Object.values(plan.commands)]) {
+    const moving = typeof command === 'string' ? /\S+@(latest|master|main)\b/.exec(command) : null;
+    if (moving) errors.push(`command fetches ${moving[0]} at a moving reference; pin a version or commit`);
+  }
 
   const ids = new Set<string>();
   let duplicates = false;

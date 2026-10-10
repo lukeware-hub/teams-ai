@@ -120,7 +120,7 @@ export function reviewPack(
   const results = opts.junit.slice(0, REVIEW_JUNIT_LINES).map((t) => `- ${t.id} [${t.status}]${t.acIds.length > 0 ? ` ${t.acIds.join(', ')}` : ''}`);
   if (opts.junit.length > REVIEW_JUNIT_LINES) results.push(`- ... ${opts.junit.length - REVIEW_JUNIT_LINES} more`);
   // The merge gates already ran the suite on this exact diff: the reviewer reads their result instead of re-running it (R11.13 slice 2).
-  const changeSet = `Changed files:\n${opts.changedFiles.join('\n')}\n\nDiff stat:\n${opts.diffStat}\n\nGate test results (the merge gates already ran the suite on this diff; do not re-run it):\n${results.join('\n') || '- none reported'}\n\nDiff against origin/main:\n${opts.diff}`;
+  const changeSet = `Changed files:\n${opts.changedFiles.join('\n')}\n\nDiff stat:\n${opts.diffStat}\n\nThe JUnit report (reports/junit.xml) is gate output the orchestrator never commits: do not ask for it.\n\nGate test results (the merge gates already ran the suite on this diff; do not re-run it):\n${results.join('\n') || '- none reported'}\n\nDiff against origin/main:\n${opts.diff}`;
   return { ...common(base, 'review', 'test'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), code: opts.code, feedback, changeSet };
 }
 
@@ -184,8 +184,13 @@ export function planRules(firstSpec: boolean, requireDelivery = false, requireSe
     '- every task id is T<n>-<slug>: a number plus 1 to 4 English kebab-case words saying what the task does (T1-create-endpoint, T2-add-login-form); never a bare T1',
     '- dependsOn forms a DAG; affectedPaths are repository-relative paths or globs; tasks small enough for one agent step',
     '- dependsOn names only a real dependency: the task needs code, an interface or a file that the other task creates. Writing the tasks in order is not a dependency; tasks that touch different files run in parallel, and a chain of dependsOn that is not needed makes the run sequential',
-    '- owner is dev, devops or front: use front only when every affectedPaths entry is UI code (e.g. web/src/**); use devops only for Dockerfile, deploy manifests, CI/release workflows and docker-compose; everything else is dev',
-    '- gateImage is a glibc-based image (e.g. node:22-bookworm-slim), never an Alpine/musl one: dependencies are installed by the Dev on a Debian host and native optional packages (rollup, esbuild, swc) will not load under musl',
+    OWNER_RULE,
+    EVIDENCE_RULE,
+    '- gateImage is a glibc-based image with the stack toolchain plus sh, python3, curl and jq, never an Alpine/musl one and never a -slim variant without those tools: node:22-bookworm, golang:1.26-bookworm, python:3.12-bookworm or rust:1-bookworm. Dependencies are installed by the Dev on a Debian host and native optional packages (rollup, esbuild, swc) will not load under musl',
+    '- the gates run offline in another container, so everything install fetches must land in the worktree. Go: golang image of the same minor as the host Go (1.26); Cargo, Go and pip caches already point to .tools. Python: python:3.11-bookworm (the minor of the Debian host that runs install) and commands.install is `python3 -m venv .tools/venv && .tools/venv/bin/pip install --target .tools/py -r requirements.txt`; gates run `python -m pytest` (PYTHONPATH already exposes .tools/py)',
+    '- Go: the go.mod `go` line carries the full patch version of the Go in the gate image (for example `go 1.26.9`, never `go 1.26`): osv-scanner reads `go 1.26` as 1.26.0 and fails dependency-scan on every standard library vulnerability fixed later. Write that patch version in the task that creates go.mod, and never add a toolchain line',
+    '- every test gate writes JUnit to junitPath and each test name carries its criterion. Node.js: node --test or vitest, `[AC-001]` in the name. Go: gotestsum --junitfile, `t.Run("[AC-001] ...")`. Python: pytest --junitxml, `def test_ac_001_...`. Rust: cargo nextest with JUnit enabled in .config/nextest.toml, `fn ac_001_...`. Install the JUnit tool in commands.install into .tools/bin (for example `GOBIN=$PWD/.tools/bin go install gotest.tools/gotestsum@<version>`)',
+    '- the JUnit file at junitPath is gate output and is never committed (the orchestrator excludes it), so no task creates, commits or lists it in affectedPaths',
     `- ${SMOKE_CONTRACT}`,
     requireDelivery
       ? '- delivery is required: {dockerfile, compose, ciWorkflow, releaseWorkflow, e2eSuite} are repository-relative file paths the project must ship (e.g. Dockerfile, docker-compose.yml, .github/workflows/ci.yml, .github/workflows/release.yml, e2e/) and readmeSections lists the README headings that must exist (e.g. Run, Test, Environment, Architecture, Pipeline); Phase 4 fails if a listed file is missing on main, so assign each one to a task'
@@ -236,13 +241,19 @@ export function specGapPack(base: PackBase, task: PlanTask, opts: { question: st
 
 /** The scaffold task is what makes the plan's gates runnable; split up, none of its pieces can pass them. */
 export const SCAFFOLD_REPLAN_RULE =
-  'This is the scaffold task: every gate in the plan (npm run ...) runs against each task on its own, so the toolchain (package.json, lockfile, configs, gate scripts) must land in ONE task. Replan it as exactly one replacement task, never several.';
+  'This is the scaffold task: every gate in the plan (npm run, go test, pytest, cargo test ...) runs against each task on its own, so the toolchain (the manifest such as package.json, go.mod, pyproject.toml or Cargo.toml, the lockfile, configs, gate scripts) must land in ONE task. Replan it as exactly one replacement task, never several.';
 
 export function replanPack(base: PackBase, task: PlanTask, opts: { history: readonly string[]; boundaries: readonly string[]; atomic?: boolean }): ContextPackInput {
   const constraint = opts.atomic ? `\n\nConstraint:\n- ${SCAFFOLD_REPLAN_RULE}` : '';
   const feedback = `Attempt history:\n${opts.history.map((h, i) => `${i + 1}. ${h}`).join('\n')}\n\nModule boundaries:\n${opts.boundaries.map((b) => `- ${b}`).join('\n')}${constraint}`;
   return { ...common(base, 'replan', 'sm'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), feedback };
 }
+
+const EVIDENCE_RULE =
+  '- integrated verification counts a criterion as covered only from the JUnit of the plan test gates run on main; a test behind a build tag, marker or path those gate commands do not run (smoke, e2e, image) never counts, so a criterion with smoke: false keeps its test in code the test gate runs (a check that needs docker reads the Dockerfile or manifests instead, since gates have no docker)';
+
+const OWNER_RULE =
+  '- owner is dev, devops or front: use front only when every affectedPaths entry is UI code (e.g. web/src/**); use devops only for Dockerfile, deploy manifests, CI/release workflows and docker-compose; everything else is dev';
 
 export function fixTasksPack(base: PackBase, opts: { failedTests: readonly string[]; tails: string; uncoveredAcs: readonly string[]; plan: Plan; boundaries: readonly string[]; feedback: string | null }): ContextPackInput {
   const feedback = [
@@ -251,7 +262,9 @@ export function fixTasksPack(base: PackBase, opts: { failedTests: readonly strin
     `Criteria without passed evidence:\n${opts.uncoveredAcs.map((a) => `- ${a}`).join('\n') || '- none'}`,
     `Gate output (tail):\n${opts.tails}`,
     `Existing tasks:\n${opts.plan.tasks.map((t) => `- ${t.id}: ${t.title} [${t.criteriaRefs.join(', ')}]`).join('\n')}`,
+    `Test gates run on main:\n${opts.plan.gates.filter((g) => g.name.includes('test')).map((g) => `- ${g.name}: ${g.command}`).join('\n') || '- none'}`,
     `Module boundaries:\n${opts.boundaries.map((b) => `- ${b}`).join('\n')}`,
+    OWNER_RULE,
     opts.feedback ? `Previous answer was rejected:\n${opts.feedback}` : '',
   ].filter(Boolean).join('\n\n');
   return { ...common(base, 'fix-tasks', 'sm'), criteria: base.spec.acceptanceCriteria, feedback };
@@ -270,7 +283,7 @@ const plannedSections = (sections: readonly string[] | undefined): string[] =>
 
 export function readmePack(base: PackBase, opts: { tasks: readonly string[]; existing: string | null; docsErrors?: readonly string[]; readmeSections?: readonly string[] }): ContextPackInput {
   return { ...common(base, 'readme', 'sm'), criteria: base.spec.acceptanceCriteria, feedback: [
-    'Write docs/README.md for this project: the Markdown overview a newcomer reads first. Read the repository (package.json, entry points, tests, Dockerfile) with Read, Grep and Glob; state only what the files confirm.',
+    'Write docs/README.md for this project: the Markdown overview a newcomer reads first. Read the repository (package.json, go.mod, pyproject.toml or Cargo.toml, entry points, tests, Dockerfile) with Read, Grep and Glob; state only what the files confirm.',
     DOCS_STRUCTURE,
     ...plannedSections(opts.readmeSections),
     ...(opts.docsErrors?.length ? [`Your previous documents were rejected, fix every point:\n${opts.docsErrors.map((e) => `- ${e}`).join('\n')}`] : []),
