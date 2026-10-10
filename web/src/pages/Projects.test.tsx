@@ -19,6 +19,16 @@ const projects = [
 const on = () => ({ add: vi.fn(), newProject: vi.fn(), deleteDraft: vi.fn(), deleteProject: vi.fn() });
 
 describe('ProjectsView', () => {
+  it('shows loading instead of the empty list while projects load', () => {
+    const o = on();
+    render(
+      <MemoryRouter>
+        <ProjectsView projects={[]} drafts={[]} loading error={null} onAdd={o.add} onNewProject={o.newProject} onDeleteDraft={o.deleteDraft} onDeleteProject={o.deleteProject} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('status').textContent).toContain('Carregando');
+    expect(screen.queryByText('Seus projetos aparecem aqui.')).toBeNull();
+  });
   it('suggests the project id and first spec with AI and submits them', async () => {
     const o = on();
     const suggest = vi.fn(async () => ({ id: 'soap-shop', firstSpecId: 'product-catalog' }));

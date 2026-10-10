@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, type Item, type ItemName, type Status } from '../api.js';
 import { Icon } from '../components/Icons.js';
+import { Loading } from '../components/Loading.js';
 import { LoginCard } from '../components/LoginCard.js';
 import { OwnerCard } from '../components/OwnerCard.js';
 import { SecretCard } from '../components/SecretCard.js';
@@ -87,7 +88,7 @@ export function Onboarding({ compact = false }: { compact?: boolean }) {
           <small>{step === totalSteps - 1 ? 'Configuração concluída' : 'Complete esta etapa para continuar'}</small>
         </div>
       </header>
-      <div className="setup-grid">{stepContent()}</div>
+      <div className="setup-grid">{status ? stepContent() : <Loading />}</div>
       <nav className="onboarding-navigation" aria-label="Navegação da configuração">
         <button type="button" className="secondary" onClick={() => setStep((current) => current - 1)} disabled={step === 0}><Icon name="arrow-left" size={16} />Voltar</button>
         {step < totalSteps - 1 ? <button type="button" className="primary-button" onClick={next} disabled={!canAdvance}>Próximo<Icon name="arrow-right" size={16} /></button> : null}

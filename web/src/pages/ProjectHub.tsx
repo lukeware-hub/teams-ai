@@ -4,9 +4,55 @@ import { refineApi, runApi, type DraftRow, type NameRequest, type NameSuggestion
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
+import { Bone, Skeleton } from '../components/Loading.js';
 import { ACTIVE, CONTINUABLE, HELP, RECENT_RUNS, chip, grouped, money, plural, runName, when } from './project-shared.js';
 import './projects.css';
 import './project-hub.css';
+
+/** The hub before its data arrives: the real breadcrumb, then the header, the four counters and the specs panel as placeholders. */
+function ProjectHubSkeleton({ projectId, error }: { projectId: string; error: string | null }) {
+  return (
+    <main className="projects-shell project-hub">
+      <nav className="refine-breadcrumb" aria-label="Navegação">
+        <Link to="/projects" aria-label="Voltar para projetos">
+          <Icon name="home" size={16} />
+          <span>Projetos</span>
+        </Link>
+        <span aria-hidden="true">›</span>
+        <strong>{projectId}</strong>
+      </nav>
+      {error ? <p className="error" role="alert">{error}</p> : (
+        <Skeleton>
+          <div className="card project-hub-header">
+            <div className="project-panel-title">
+              <h1><Bone size="half" /></h1>
+              <p className="project-hub-desc"><Bone /><Bone /><Bone size="short" /></p>
+              <code><Bone size="half" /></code>
+            </div>
+          </div>
+          <div className="project-hub-stats">
+            {[0, 1, 2, 3].map((i) => (
+              <div className="project-hub-stat" key={i}>
+                <span className="project-hub-stat-value"><Bone size="tiny" /></span>
+                <span className="project-hub-stat-label"><Bone size="half" /></span>
+              </div>
+            ))}
+          </div>
+          <div className="card project-panel">
+            <div className="project-section">
+              <div className="project-section-heading">
+                <h3 className="project-section-title"><Bone size="tiny" /></h3>
+                <Bone size="action" />
+              </div>
+              <div className="project-row"><Bone size="short" /></div>
+              <div className="project-row"><Bone size="half" /></div>
+            </div>
+          </div>
+        </Skeleton>
+      )}
+    </main>
+  );
+}
 
 export function ProjectHubView(p: {
   project: ProjectRow | null;
@@ -366,6 +412,7 @@ export function ProjectHub() {
     }
   };
   if (!projectId) return null;
+  if (!project && !notFound) return <ProjectHubSkeleton projectId={projectId} error={error} />;
   return (
     <ProjectHubView
       project={project}

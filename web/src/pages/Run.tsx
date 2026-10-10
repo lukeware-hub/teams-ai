@@ -5,6 +5,7 @@ import { runApi, type RunDetail, type StoredEvent } from '../api.js';
 import { Dialog } from '../components/Dialog.js';
 import { Icon, type IconName } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
+import { Loading } from '../components/Loading.js';
 import { Markdown } from '../components/Markdown.js';
 import { safeHttpUrl } from '../safeUrl.js';
 import { StepList } from '../components/StepList.js';
@@ -1007,7 +1008,7 @@ function RunScreen({ runId }: { runId: string | undefined }) {
   if (!detail || !runId)
     return (
       <main>
-        <p>Carregando…</p>
+        <Loading />
       </main>
     );
   return (

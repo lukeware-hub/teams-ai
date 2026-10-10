@@ -5,6 +5,7 @@ import { applyToSnapshot, type LiveSnapshot } from '../refine/reducer.js';
 import { useJournal } from '../useSse.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
+import { Loading } from '../components/Loading.js';
 import { buildSpecsIndex } from '@server/refine/specs-index';
 import { BacklogPanel } from '../refine/BacklogPanel.js';
 import { canStartRun, ProgramPanel } from '../refine/ProgramPanel.js';
@@ -543,7 +544,7 @@ export function RefinementPage() {
   }, [events]);
   if (!snap) return (
     <main>
-      <p>{error ?? 'carregando…'}</p>
+      {error ? <p className="error">{error}</p> : <Loading />}
     </main>
   );
   const act = (f: () => Promise<unknown>) => () => {

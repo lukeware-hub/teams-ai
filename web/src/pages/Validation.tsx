@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { runApi, type AcceptanceCriterion, type Report, type RunDetail, type ServiceStatus } from '../api.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
+import { Loading } from '../components/Loading.js';
 import { PUBLISHED_PORTS, serviceLinks } from '@server/deploy/service-links';
 import './validation.css';
 
@@ -347,7 +348,7 @@ const isLive = (status: string) => ['running', 'draining'].includes(status) || s
 export function ValidationPage() {
   const { runId } = useParams<{ runId: string }>();
   // Keyed by run: moving to another run remounts, so the previous run's detail, errors, poll and late answers cannot leak into it.
-  return runId ? <ValidationRun key={runId} runId={runId} /> : <main><p>Carregando…</p></main>;
+  return runId ? <ValidationRun key={runId} runId={runId} /> : <main><Loading /></main>;
 }
 
 function ValidationRun({ runId }: { runId: string }) {
@@ -415,7 +416,7 @@ function ValidationRun({ runId }: { runId: string }) {
     return () => clearInterval(timer);
   }, [deployRun]);
   if (error) return <main><p className="error">{error}</p></main>;
-  if (!detail) return <main><p>Carregando…</p></main>;
+  if (!detail) return <main><Loading /></main>;
   return (
     <ValidationView
       detail={detail}

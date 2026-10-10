@@ -4,6 +4,7 @@ import { refineApi, runApi, type DraftRow, type NameRequest, type NameSuggestion
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
+import { Bone, Skeleton } from '../components/Loading.js';
 import { chip, plural } from './project-shared.js';
 import './projects.css';
 
@@ -11,9 +12,33 @@ const HELP = {
   newProjects: 'Projetos criados em Novo projeto que ainda estão em refinamento. Eles entram na lista de projetos quando a primeira execução começar.',
 };
 
+/** The filter bar and three project cards, drawn with the real classes so the loaded list lands in place. */
+function ProjectsSkeleton() {
+  return (
+    <Skeleton>
+      <div className="projects-toolbar">
+        <span className="projects-filter"><Bone size="control" /></span>
+      </div>
+      <div className="project-grid">
+        {[0, 1, 2].map((i) => (
+          <div className="card project-card" key={i}>
+            <div className="project-card-body">
+              <p className="project-card-title"><Bone size="half" /></p>
+              <p className="project-card-desc"><Bone /><Bone /><Bone size="short" /></p>
+              <p className="project-card-facts"><Bone size="half" /></p>
+            </div>
+            <div className="project-card-actions"><Bone size="action" /><Bone size="action" /></div>
+          </div>
+        ))}
+      </div>
+    </Skeleton>
+  );
+}
+
 export function ProjectsView(p: {
   projects: ProjectRow[];
   drafts: DraftRow[];
+  loading?: boolean;
   error: string | null;
   deleteError?: { projectId: string; specId: string; message: string } | null;
   onAdd: (dir: string) => void;
@@ -134,7 +159,7 @@ export function ProjectsView(p: {
         </form>
       ) : null}
       {p.error ? <p className="error" role="alert">{p.error}</p> : null}
-      {p.projects.length === 0 ? (
+      {p.loading ? <ProjectsSkeleton /> : p.projects.length === 0 ? (
         <div className="projects-empty">
           <Icon name="list" size={24} />
           <p>Seus projetos aparecem aqui.</p>
@@ -257,6 +282,7 @@ export function ProjectsView(p: {
 export function Projects() {
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [drafts, setDrafts] = useState<DraftRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<{ projectId: string; specId: string; message: string } | null>(null);
   const navigate = useNavigate();
@@ -266,6 +292,8 @@ export function Projects() {
       setDrafts(await refineApi.list());
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setLoading(false);
     }
   }, []);
   useEffect(() => {
@@ -297,6 +325,7 @@ export function Projects() {
     <ProjectsView
       projects={projects}
       drafts={drafts}
+      loading={loading}
       error={error}
       onAdd={(d) => void act(() => runApi.addProject(d))()}
       onNewProject={(id, name, description, firstSpecId) => void go(() => refineApi.newProject(id, name, description, firstSpecId))()}
