@@ -68,8 +68,9 @@ export async function stop(deps: RunControlDeps, pid: number, timeoutMs = 15_000
 }
 
 /** Waits for the spawned process to write its journal, so a spawn that dies on preconditions (e.g. `docker version`
- * unreachable) surfaces its `ui.log` tail instead of leaving the caller to poll a run that will never exist. */
-export async function waitForRunJournal(deps: RunControlDeps, runs: string, runId: string, pid: number, timeoutMs = 10_000): Promise<void> {
+ * unreachable) surfaces its `ui.log` tail instead of leaving the caller to poll a run that will never exist.
+ * A busy host (parallel Rust builds, a full test suite) takes well over 10 seconds to start node, so the wait is generous. */
+export async function waitForRunJournal(deps: RunControlDeps, runs: string, runId: string, pid: number, timeoutMs = 30_000): Promise<void> {
   const file = path.join(runs, runId, 'events.ndjson');
   for (let waited = 0; waited < timeoutMs; waited += POLL_MS) {
     if (

@@ -45,7 +45,8 @@ beforeEach(async () => {
   resolved = {};
   onSpawn = async () => {};
   onSignal = () => {};
-  onSleep = async () => {};
+  // A real wait loop yields real time; an instant one let the fake child lose the race under a loaded suite.
+  onSleep = () => new Promise((r) => setTimeout(r, 1));
   control = {
     spawn: (a) => {
       spawns.push({ args: a.args, logFile: a.logFile });

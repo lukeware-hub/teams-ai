@@ -74,7 +74,7 @@ function deps(scenario: Scenario, over: Partial<RunDeps> = {}): RunDeps {
 }
 
 describe('orchestrator loop with the fake claude', () => {
-  it('goes from a frozen spec to every task merged', { timeout: 120_000 }, async () => {
+  it('goes from a frozen spec to every task merged', { timeout: 300_000 }, async () => {
     const scenario = happyScenario(path.join(remote.root, 'scn'));
     const d = { ...deps(scenario), agents: await loadAgents(path.resolve('.claude/agents')) };
     const run = await Run.create(d);

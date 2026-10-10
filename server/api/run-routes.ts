@@ -117,7 +117,8 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     if (!row) throw new HttpError(404, `unknown run ${runId}`);
     return { row, dir: await projectDir(idx, projectId, row.specId) };
   };
-  const waitForJournal = async (runs: string, runId: string, pid: number, timeoutMs = 10_000): Promise<void> => {
+  // As generous as waitForRunJournal: a busy host takes well over 10 seconds to start node.
+  const waitForJournal = async (runs: string, runId: string, pid: number, timeoutMs = 30_000): Promise<void> => {
     const file = path.join(runs, runId, 'events.ndjson');
     for (let waited = 0; waited < timeoutMs; waited += 200) {
       if (
