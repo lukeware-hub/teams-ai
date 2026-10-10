@@ -1,3 +1,4 @@
+import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 /** Package registries per stack; npm stays open for every stack, as before stacks existed. */
@@ -74,3 +75,19 @@ export const BUILD_DIRS: readonly string[] = ['node_modules', 'vendor', 'target'
 
 /** Build folders never committed; the secret scan may skip them. Go commits `vendor/`, so it is still scanned. */
 export const UNCOMMITTED_BUILD_DIRS: readonly string[] = BUILD_DIRS.filter((d) => d !== 'vendor');
+
+const CARGO_ROOT_FILES = ['bin', '.crates.toml', '.crates2.json'];
+
+/**
+ * Copies what `cargo install --root` leaves (the binaries and its own records of them) from one root to another.
+ * Seeding a worktree's .tools from a shared cache makes cargo see the tools already installed and skip a rebuild that
+ * a per-worktree CARGO_HOME would otherwise force (live: three Rust installs took over 20 minutes).
+ */
+export async function copyCargoRoot(from: string, to: string): Promise<void> {
+  for (const name of CARGO_ROOT_FILES) {
+    const source = path.join(from, name);
+    if (!(await fs.lstat(source).then((s) => s.isFile() || s.isDirectory(), () => false))) continue;
+    await fs.mkdir(to, { recursive: true });
+    await fs.cp(source, path.join(to, name), { recursive: true, force: true, verbatimSymlinks: true });
+  }
+}

@@ -23,6 +23,8 @@ import { worktreeDir, type Workspace } from '../workspace.js';
 
 export interface PhaseDeps {
   journal: Journal;
+  /** The folder holding every project's workspace; Phase 2 reads the other projects' deploy ports from it. */
+  workspacesRoot?: string;
   ws: Workspace;
   spec: Spec;
   project: Project;

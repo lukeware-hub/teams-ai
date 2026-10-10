@@ -42,7 +42,7 @@ import { eventsFile, expandHome, graphDir, mergedByPriorRuns, nextRunId, runDir,
 import type { DeployTarget } from '../deploy/target.js';
 import { E2E_GATE, runE2e } from '../exec/e2e.js';
 import { gateReachableUrl, runSmoke } from '../exec/smoke.js';
-import { stackDomains, stackEnv, stackKind } from '../runner/stacks.js';
+import { copyCargoRoot, stackDomains, stackEnv, stackKind } from '../runner/stacks.js';
 
 export interface RunDeps {
   cfg: Config;
@@ -291,9 +291,14 @@ export class Run {
     const present = await fs.access(path.join(worktree, 'node_modules')).then(() => true, () => false);
     if (present) return null;
     const started = Date.now();
-    // `cargo install` builds in a shared folder: the tools compile once for every worktree and every run, not once per task.
+    // Tools that `cargo install` put in .tools come from a shared cache, so they build once, not once per task worktree.
+    const cargoRoot = path.join(expandHome(this.deps.cfg.paths.gateCache), 'cargo-root');
+    const tools = path.join(worktree, '.tools');
+    const cargoInstall = /\bcargo install\b/.test(command);
+    if (cargoInstall) await copyCargoRoot(cargoRoot, tools).catch(() => undefined);
     const env = { ...stackEnv(worktree), CARGO_TARGET_DIR: path.join(expandHome(this.deps.cfg.paths.gateCache), 'cargo-install') };
     const r = await this.deps.exec({ bin: 'sh', args: ['-lc', command], cwd: worktree, env, timeoutMs: buildTimeoutMs(this.plan!) });
+    if (cargoInstall && r.exitCode === 0 && !r.timedOut) await copyCargoRoot(tools, cargoRoot).catch(() => undefined);
     if (r.exitCode === 0 && !r.timedOut) return null;
     return {
       name: 'install',
@@ -451,7 +456,7 @@ export class Run {
 
   private phaseDeps(): PhaseDeps {
     return {
-      journal: this.journal, ws: this.deps.ws, spec: this.deps.spec, project: this.deps.project, specHash: this.deps.spec.specHash!, firstSpec: this.deps.firstSpec, requireDelivery: this.deps.requireDelivery, requireSecurityTooling: this.deps.requireSecurityTooling, requireE2e: this.deps.requireE2e, requireCoverage: this.deps.requireCoverage, exec: this.deps.exec,
+      journal: this.journal, ws: this.deps.ws, workspacesRoot: expandHome(this.deps.cfg.paths.workspaces), spec: this.deps.spec, project: this.deps.project, specHash: this.deps.spec.specHash!, firstSpec: this.deps.firstSpec, requireDelivery: this.deps.requireDelivery, requireSecurityTooling: this.deps.requireSecurityTooling, requireE2e: this.deps.requireE2e, requireCoverage: this.deps.requireCoverage, exec: this.deps.exec,
       runAgent: this.runAgent,
       decider: this.decider(),
       mergeQueue: this.mergeQueue,
