@@ -272,7 +272,7 @@ export function ProjectsView(p: {
             setPendingDeleteProject(null);
           }}
         >
-          Apaga specs, execuções e arquivos do projeto no disco. Essa ação não pode ser desfeita. Pare execuções em andamento antes de excluir.
+          Apaga specs, execuções e arquivos do projeto no disco. O repositório no GitHub não é apagado. Essa ação não pode ser desfeita. Pare execuções em andamento antes de excluir.
         </ConfirmDialog>
       ) : null}
     </main>

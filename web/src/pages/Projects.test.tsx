@@ -61,6 +61,7 @@ describe('ProjectsView', () => {
     expect(screen.getByTestId('open-project-hello-app').getAttribute('href')).toBe('/projects/hello-app');
     fireEvent.click(screen.getByTestId('delete-project-hello-app'));
     expect(screen.getByRole('alertdialog').textContent).toContain('Hello app');
+    expect(screen.getByRole('alertdialog').textContent).toContain('O repositório no GitHub não é apagado');
     fireEvent.click(screen.getByTestId('delete-confirm'));
     expect(o.deleteProject).toHaveBeenCalledWith('hello-app');
   });
