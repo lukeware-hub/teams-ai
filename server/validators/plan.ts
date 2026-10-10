@@ -1,4 +1,5 @@
 import { DELIVERY_PATH_FIELDS, type Plan, type PlanTask } from '../contracts/plan.js';
+import { IMAGE_REFERENCE } from '../exec/gate-runner.js';
 import { gateFileErrors, gateTerminationErrors } from './gate-files.js';
 import type { Spec } from '../contracts/spec.js';
 import { validateCoverage } from './coverage.js';
@@ -63,7 +64,7 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
   // The Dev installs dependencies on the orchestrator's Debian host; an Alpine gate image then fails to load
   // the native optional packages that install picked for glibc (seen live: rollup under vitest).
   // A leading dash would be read by `docker run` as a flag, not as the image.
-  if (plan.gateImage.startsWith('-')) errors.push(`gateImage ${plan.gateImage} must not start with '-'`);
+  if (!IMAGE_REFERENCE.test(plan.gateImage)) errors.push(`gateImage ${JSON.stringify(plan.gateImage)} is not a plain image reference (name, optional :tag and @sha256 digest)`);
   if (/(^|[:/-])alpine(\d|[.:-]|$)/i.test(plan.gateImage)) errors.push(`gateImage ${plan.gateImage} is Alpine (musl); use a glibc-based image such as node:22-bookworm, golang:1.26-bookworm, python:3.12-bookworm or rust:1-bookworm`);
 
   if (opts.repoFiles) errors.push(...gateFileErrors(plan, opts.repoFiles));

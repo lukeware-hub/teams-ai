@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { Gate } from '../contracts/plan.js';
@@ -82,6 +83,9 @@ export const GATE_CACHE_TARGET = '/gate-cache';
 /** Gates are offline: a rust-toolchain.toml naming a Rust the image lacks would make rustup download it, so the image's own toolchain wins. */
 const RUST_IMAGE_TOOLCHAIN = 'command -v rustup >/dev/null 2>&1 && export RUSTUP_TOOLCHAIN="$(rustup default | cut -d" " -f1)"; ';
 
+/** A Docker image reference: registry/path, optional :tag and @sha256 digest, nothing else. */
+export const IMAGE_REFERENCE = /^[a-z0-9][a-z0-9._\/-]*(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?(@sha256:[a-f0-9]{64})?$/;
+
 const isRustImage = (image: string) => /(^|\/)rust[:@]|^teams-ai-gate:rust-/.test(image);
 
 /**
@@ -90,7 +94,10 @@ const isRustImage = (image: string) => /(^|\/)rust[:@]|^teams-ai-gate:rust-/.tes
  * one derived image with what it misses, built once and reused. A failed build keeps the original image so the gate reports its own error.
  */
 export async function prepareGateImage(image: string, exec: Exec): Promise<string> {
-  const tag = `teams-ai-gate:${image.replace(/[^a-zA-Z0-9_.-]/g, '-')}`;
+  // The image comes from an agent-written plan and lands in a Dockerfile built with network: only a plain reference passes.
+  if (!IMAGE_REFERENCE.test(image)) throw new Error(`gate image ${JSON.stringify(image)} is not a plain image reference`);
+  // The hash keeps two different images from sharing one derived tag.
+  const tag = `teams-ai-gate:${image.replace(/[^a-zA-Z0-9_.-]/g, '-').slice(0, 100)}-${createHash('sha256').update(image).digest('hex').slice(0, 12)}`;
   if ((await exec({ bin: 'docker', args: ['image', 'inspect', tag], timeoutMs: 60_000 })).exitCode === 0) return tag;
   const steps = ['RUN command -v jq >/dev/null || (apt-get update && apt-get install -y --no-install-recommends jq && rm -rf /var/lib/apt/lists/*)'];
   if (isRustImage(image)) steps.push('RUN rustup component add rustfmt clippy');

@@ -49,18 +49,21 @@ describe('dockerArgs', () => {
 
   it('prepares one gate image with jq (and rustfmt and clippy for rust), reuses it, and keeps the original on a failed build', async () => {
     const built = new FakeExec().onArgs('docker', ['image', 'inspect'], () => ({ exitCode: 1 }));
-    expect(await prepareGateImage('rust:1-bookworm', built.exec)).toBe('teams-ai-gate:rust-1-bookworm');
+    const tag = await prepareGateImage('rust:1-bookworm', built.exec);
+    expect(tag).toMatch(/^teams-ai-gate:rust-1-bookworm-[a-f0-9]{12}$/);
     const build = built.calls.find((c) => c.args[0] === 'build')!;
-    expect(build.args).toEqual(['build', '-t', 'teams-ai-gate:rust-1-bookworm', '-']);
+    expect(build.args).toEqual(['build', '-t', tag, '-']);
     expect(build.stdin).toContain('rustup component add rustfmt clippy');
     expect(build.stdin).toContain('jq');
     const cached = new FakeExec();
-    expect(await prepareGateImage('rust:1-bookworm', cached.exec)).toBe('teams-ai-gate:rust-1-bookworm');
+    expect(await prepareGateImage('rust:1-bookworm', cached.exec)).toBe(tag);
+    expect(await prepareGateImage('rust/1-bookworm', cached.exec)).not.toBe(tag);
+    await expect(prepareGateImage('rust:1\nRUN id', cached.exec)).rejects.toThrow(/plain image reference/);
     expect(cached.calls.some((c) => c.args[0] === 'build')).toBe(false);
     const failed = new FakeExec().on(() => true, () => ({ exitCode: 1 }));
     expect(await prepareGateImage('rust:1-bookworm', failed.exec)).toBe('rust:1-bookworm');
     const go = new FakeExec().onArgs('docker', ['image', 'inspect'], () => ({ exitCode: 1 }));
-    expect(await prepareGateImage('golang:1.26-bookworm', go.exec)).toBe('teams-ai-gate:golang-1.26-bookworm');
+    expect(await prepareGateImage('golang:1.26-bookworm', go.exec)).toMatch(/^teams-ai-gate:golang-1.26-bookworm-[a-f0-9]{12}$/);
     const goBuild = go.calls.find((c) => c.args[0] === 'build')!;
     expect(goBuild.stdin).toContain('apt-get install -y --no-install-recommends jq');
     expect(goBuild.stdin).not.toContain('rustup');
