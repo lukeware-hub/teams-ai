@@ -206,8 +206,13 @@ describe('Run', () => {
   }, 90_000);
 
   it('caps a task by cost when perTaskCostUsd is set, whatever the token count', async () => {
-    const heavy = (costUsd: number): Script => async (req) =>
-      req.kind === 'dev' ? { ...(await happy(req)), summary: summary({ costUsd, usage: { inputTokens: 60_000, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 } }) } : happy(req);
+    // Each run writes its own content: both runs share one remote, and an unchanged task is adopted as already on main.
+    const heavy = (costUsd: number): Script => async (req) => {
+      if (req.kind !== 'dev') return happy(req);
+      const out = await happy(req);
+      await fs.writeFile(path.join(req.cwd, 'src', req.taskId === 'T1' ? 'a' : 'b', 'index.ts'), `export const ${req.taskId} = ${costUsd};\n`);
+      return { ...out, summary: summary({ costUsd, usage: { inputTokens: 60_000, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 } }) };
+    };
     const capped = async (costUsd: number) => {
       const d = await withAgents(deps(heavy(costUsd), { maxParallel: 1 }));
       d.cfg = loadConfig({ ...JSON.parse(JSON.stringify(d.cfg)), budgets: { observeOnly: false, perTaskTokens: 50_000, perTaskCostUsd: 1, perRunTokens: 1_000_000 } });
