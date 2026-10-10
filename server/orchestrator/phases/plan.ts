@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { assignDeployPort } from '../../deploy/service-links.js';
 import path from 'node:path';
 import type { OutputOf } from '../../agents/outputs.js';
 import { Plan } from '../../contracts/plan.js';
@@ -34,17 +35,18 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
   const worktree = await docsWorktree(deps, branch);
   const max = deps.maxPhaseAttempts ?? 3;
   const repoFiles = new Set((await git(worktree, ['ls-files'], deps.exec)).split('\n').filter((f) => f !== ''));
+  const ports = await assignDeployPort(path.dirname(deps.ws.root), deps.ws.projectId);
   let feedback: string | null = null;
   for (let attempt = 1; attempt <= max; attempt++) {
     const out: StepOutcome<OutputOf<'plan'>> = await deps.runAgent<'plan'>({
       kind: 'plan',
       role: 'sm',
-      pack: planPack(deps.packBase(), { techSpecText, preplan, godNodes: await deps.godNodes(), feedback, firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e, requireCoverage: deps.requireCoverage }),
+      pack: planPack(deps.packBase(), { techSpecText, preplan, godNodes: await deps.godNodes(), feedback, firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e, requireCoverage: deps.requireCoverage, deployPort: ports.port }),
       cwd: worktree,
       phase: 'phase2',
       taskId: null,
       attempt,
-      semantic: [((p: Plan) => validatePlan(p, deps.spec, { firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e, requireCoverage: deps.requireCoverage, repoFiles })) as never],
+      semantic: [((p: Plan) => validatePlan(p, deps.spec, { firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e, requireCoverage: deps.requireCoverage, repoFiles, takenPorts: ports.taken })) as never],
     });
     if (!out.ok) {
       if (out.failure === 'quota' || out.failure === 'auth') {
@@ -56,7 +58,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
       continue;
     }
     const { alternatives = [], ...primary } = out.value as Plan & { alternatives?: Plan[] };
-    const valid = alternatives.filter((p) => p.specHash === deps.specHash && validatePlan(p, deps.spec, { firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e, requireCoverage: deps.requireCoverage, repoFiles }).length === 0);
+    const valid = alternatives.filter((p) => p.specHash === deps.specHash && validatePlan(p, deps.spec, { firstSpec: deps.firstSpec, requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e, requireCoverage: deps.requireCoverage, repoFiles, takenPorts: ports.taken }).length === 0);
     const candidates: Plan[] = [primary, ...valid];
     let plan: Plan = primary;
     if (candidates.length > 1) {

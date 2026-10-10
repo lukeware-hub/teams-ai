@@ -13,6 +13,8 @@ export const REQUIRED_BLOCKING_GATES = ['format', 'lint', 'unit-test', 'build', 
 
 export interface PlanCheckOptions {
   firstSpec: boolean;
+  /** Deploy ports other projects already plan with; this plan must not take one of them. */
+  takenPorts?: readonly number[];
   /** New plans must carry `delivery` (roadmap R8.1); false keeps plans without it valid. */
   requireDelivery?: boolean;
   /** New plans must carry the prescribed security gates (roadmap R8.5); false keeps older plans valid. */
@@ -67,6 +69,7 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
   if (!IMAGE_REFERENCE.test(plan.gateImage)) errors.push(`gateImage ${JSON.stringify(plan.gateImage)} is not a plain image reference (name, optional :tag and @sha256 digest)`);
   if (/(^|[:/-])alpine(\d|[.:-]|$)/i.test(plan.gateImage)) errors.push(`gateImage ${plan.gateImage} is Alpine (musl); use a glibc-based image such as node:22-bookworm, golang:1.26-bookworm, python:3.12-bookworm or rust:1-bookworm`);
 
+  if (opts.takenPorts?.includes(plan.deploy.port)) errors.push(`deploy.port ${plan.deploy.port} is already used by another project; use the port the orchestrator assigned`);
   if (opts.repoFiles) errors.push(...gateFileErrors(plan, opts.repoFiles));
   errors.push(...gateTerminationErrors(plan));
   // The JUnit report is gate output the orchestrator never commits; a task listing it can never deliver it (live: a review loop).

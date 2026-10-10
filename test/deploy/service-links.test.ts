@@ -1,5 +1,8 @@
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { serviceLinks } from '../../server/deploy/service-links.js';
+import { assignDeployPort, serviceLinks } from '../../server/deploy/service-links.js';
 
 describe('serviceLinks', () => {
   it('builds the app and docs urls for an api inside the published range', () => {
@@ -18,5 +21,26 @@ describe('serviceLinks', () => {
     expect(serviceLinks({ url: 'http://dind:8080', port: 8080, kind: 'api', docsPath: '/docs' }, 'localhost')).toEqual({ appUrl: null, docsUrl: null });
     expect(serviceLinks({ url: 'http://dind' }, 'localhost')).toEqual({ appUrl: null, docsUrl: null });
     expect(serviceLinks({ url: 'not a url' }, 'localhost')).toEqual({ appUrl: null, docsUrl: null });
+  });
+});
+
+describe('assignDeployPort', () => {
+  const plan = async (root: string, project: string, spec: string, port: number) => {
+    const dir = path.join(root, project, 'repo', 'docs', 'specs', spec);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, 'plan.json'), JSON.stringify({ deploy: { port } }));
+  };
+
+  it('gives a new project the lowest port no other project plans with, and keeps a project on its own free port', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-ports-'));
+    await plan(root, 'custumer-api', 'custumer-api-001', 3000);
+    await plan(root, 'node-hello-api', 'node-hello-api-001', 3001);
+    expect(await assignDeployPort(root, 'rust-hello-api')).toEqual({ port: 3002, taken: [3000, 3001] });
+    await plan(root, 'rust-hello-api', 'rust-hello-api-001', 3007);
+    expect((await assignDeployPort(root, 'rust-hello-api')).port).toBe(3007);
+    // A project that planned a port another project holds moves to a free one.
+    await plan(root, 'go-hello-api', 'go-hello-api-001', 3000);
+    expect((await assignDeployPort(root, 'go-hello-api')).port).toBe(3002);
+    await fs.rm(root, { recursive: true, force: true });
   });
 });

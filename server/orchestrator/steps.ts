@@ -219,12 +219,13 @@ export function planRules(firstSpec: boolean, requireDelivery = false, requireSe
 
 export function planPack(
   base: PackBase,
-  opts: { techSpecText: string; preplan?: Preplan | null; godNodes: ReadonlyArray<{ label: string; edges: number }>; feedback: string | null; firstSpec?: boolean; requireDelivery?: boolean; requireSecurityTooling?: boolean; requireE2e?: boolean; requireCoverage?: boolean },
+  opts: { techSpecText: string; preplan?: Preplan | null; godNodes: ReadonlyArray<{ label: string; edges: number }>; feedback: string | null; firstSpec?: boolean; requireDelivery?: boolean; requireSecurityTooling?: boolean; requireE2e?: boolean; requireCoverage?: boolean; deployPort?: number | null },
 ): ContextPackInput {
   const human = (base.spec.tasks ?? []).map((t) => `- ${t.title}: ${t.description}`);
   const nodes = opts.godNodes.map((n) => `- ${n.label} (${n.edges} edges)`);
   const parts = [
     planRules(opts.firstSpec ?? false, opts.requireDelivery ?? false, opts.requireSecurityTooling ?? false, opts.requireE2e ?? false, opts.requireCoverage ?? false),
+    opts.deployPort ? `deploy.port is exactly ${opts.deployPort}: the orchestrator assigned it so no two projects share a host port; the service listens on PORT=${opts.deployPort} and docker-compose publishes "${opts.deployPort}:${opts.deployPort}"` : '',
     opts.preplan ? `Pre-plan reviewed at refinement time (context only: follow the real repository, not this; cover at least its acceptance criteria):\n${JSON.stringify(opts.preplan, null, 2)}` : '',
     human.length > 0 ? `Human-defined tasks (derive dependencies, keep them):\n${human.join('\n')}` : '',
     nodes.length > 0 ? `Central modules of the current code (graph god-nodes):\n${nodes.join('\n')}` : '',

@@ -35,6 +35,12 @@ describe('validatePlan', () => {
     expect(fresh.join()).not.toContain('too old');
   });
 
+  it('rejects a deploy port another project already uses', () => {
+    const p = makePlan(spec);
+    expect(validatePlan(p, spec, { firstSpec: true, takenPorts: [p.deploy.port] })).toEqual(expect.arrayContaining([expect.stringContaining(`deploy.port ${p.deploy.port} is already used`)]));
+    expect(validatePlan(p, spec, { firstSpec: true, takenPorts: [p.deploy.port + 1] }).join()).not.toContain('already used');
+  });
+
   it('rejects an unfrozen spec', () => {
     expect(validatePlan(makePlan(spec), { ...spec, specHash: null }, { firstSpec: true })).toContain('spec is not frozen');
   });
