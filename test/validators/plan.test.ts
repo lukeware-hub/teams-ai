@@ -27,6 +27,14 @@ describe('validatePlan', () => {
     expect(errors).toEqual(expect.arrayContaining([expect.stringContaining(`lists ${base.junitPath}`), expect.stringContaining('github.com/google/go-licenses/v2@master')]));
   });
 
+  it('rejects a coverage tool pinned below the release that reads the current toolchain', () => {
+    const base = makePlan(spec);
+    const old = validatePlan({ ...base, commands: { ...base.commands, install: 'cargo install --locked --root .tools cargo-tarpaulin@0.31.2' } }, spec, { firstSpec: true });
+    expect(old).toEqual(expect.arrayContaining([expect.stringContaining('cargo-tarpaulin@0.31 is too old')]));
+    const fresh = validatePlan({ ...base, commands: { ...base.commands, install: 'cargo install --locked --root .tools cargo-tarpaulin@0.37.5' } }, spec, { firstSpec: true });
+    expect(fresh.join()).not.toContain('too old');
+  });
+
   it('rejects an unfrozen spec', () => {
     expect(validatePlan(makePlan(spec), { ...spec, specHash: null }, { firstSpec: true })).toContain('spec is not frozen');
   });

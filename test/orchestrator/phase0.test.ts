@@ -285,4 +285,12 @@ describe('phase 0', () => {
     expect(created.called).toBe(false);
     await run.close();
   });
+
+  it('a later run without bootstrap fetches origin first, so it reads docs merged since the last run', { timeout: 60_000 }, async () => {
+    const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
+    const run = await Run.create(deps(exec, remote.repo, { bootstrap: undefined, firstSpec: false }), 'hello-001-r2');
+    expect(await run.executePhase0()).toEqual({ ok: true });
+    expect(exec.calls.some((c) => c.bin === 'git' && c.args.includes('fetch'))).toBe(true);
+    await run.close();
+  });
 });

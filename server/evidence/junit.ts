@@ -54,10 +54,10 @@ function collectCases(container: XmlNode, suiteName: string, out: RawCase[]): vo
  * as "no smoke test" even though the suite passed in full (live, R8.7 golden run, 2026-10-08: TAP showed `# pass 3, # fail 0` and
  * the deploy still failed at smoke). An untagged rollup line is harmless here: `evaluateSmoke`/`evaluateE2e` only match rows whose
  * `acIds` includes the specific criterion, so a parent line with no tag is simply never selected by either.
- * The `spec` reporter lines (`✔ name (1ms)`, `✖ name`, `﹣ name # SKIP`) count too: a command that picks that reporter prints no TAP. * `go test -v` (`--- PASS: TestSmoke/[AC-003]_name (0.00s)`), `cargo test` (`test ac_003_name ... ok`) and `pytest -v`
- * (`test_x.py::test_ac_003_name PASSED`) result lines count too: those smoke/e2e commands print no TAP.
+ * The `spec` reporter lines (`✔ name (1ms)`, `✖ name`, `﹣ name # SKIP`) count too: a command that picks that reporter prints no TAP. * `go test -v` (`--- PASS: TestSmoke/[AC-003]_name (0.00s)`), `cargo test` (`test ac_003_name ... ok`), `pytest -v`
+ * (`test_x.py::test_ac_003_name PASSED`) and `unittest -v` (`test_ac_003 (m.C.test_ac_003) ... ok`) result lines count too.
  */
-/** One result line of go test -v, cargo test or pytest -v; null for any other line. */
+/** One result line of go test -v, cargo test, pytest -v or python -m unittest -v; null for any other line. */
 function otherRunnerLine(line: string): { name: string; status: TestResult['status'] } | null {
   const go = /^\s*--- (PASS|FAIL|SKIP): (\S+)/.exec(line);
   if (go) return { name: go[2]!, status: go[1] === 'PASS' ? 'passed' : go[1] === 'FAIL' ? 'failed' : 'skipped' };
@@ -65,6 +65,8 @@ function otherRunnerLine(line: string): { name: string; status: TestResult['stat
   if (cargo) return { name: cargo[1]!, status: cargo[2] === 'ok' ? 'passed' : cargo[2] === 'FAILED' ? 'failed' : 'skipped' };
   const pytest = /^(\S+::\S+) (PASSED|FAILED|ERROR|SKIPPED)\b/.exec(line.trim());
   if (pytest) return { name: pytest[1]!, status: pytest[2] === 'PASSED' ? 'passed' : pytest[2] === 'SKIPPED' ? 'skipped' : 'failed' };
+  const unittest = /^(\S+) \((\S+)\)(?: .*)? \.\.\. (ok|FAIL|ERROR|skipped)\b/.exec(line.trim());
+  if (unittest) return { name: unittest[2]!, status: unittest[3] === 'ok' ? 'passed' : unittest[3] === 'skipped' ? 'skipped' : 'failed' };
   return null;
 }
 

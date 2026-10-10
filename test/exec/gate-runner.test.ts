@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Gate } from '../../server/contracts/plan.js';
 import { Gate as GateSchema } from '../../server/contracts/plan.js';
-import { classifyGate, dockerArgs, runGate, runGates, type GateContext, type GateDeps } from '../../server/exec/gate-runner.js';
+import { classifyGate, dockerArgs, prepareGateImage, runGate, runGates, type GateContext, type GateDeps } from '../../server/exec/gate-runner.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
 
 const ctx: GateContext = {
@@ -37,6 +37,35 @@ describe('dockerArgs', () => {
     expect(args.slice(-3)).toEqual(['sh', '-c', 'go vet ./...']);
     expect(args).toEqual(expect.arrayContaining(['GOPATH=/work/.tools/go', 'GOCACHE=/work/.tools/go-build', 'CARGO_HOME=/work/.tools/cargo', 'PYTHONPATH=/work/.tools/py']));
   });
+  it('makes a rust image use its own toolchain, never one a rust-toolchain.toml would download offline', () => {
+    const gate = { name: 'format', command: 'cargo fmt --check', blocking: true, network: 'none' as const, secrets: [] };
+    const ctx = { worktree: '/w', image: 'rust:1-bookworm', junitPath: 'j', cpus: 1, memory: '1g', timeoutMs: 1, secrets: {}, containerName: 'c' };
+    const command = dockerArgs(gate, ctx).args.at(-1)!;
+    expect(command).toContain('export RUSTUP_TOOLCHAIN="$(rustup default');
+    expect(command.endsWith('cargo fmt --check')).toBe(true);
+    expect(dockerArgs(gate, { ...ctx, image: 'golang:1.26-bookworm' }).args.at(-1)).toBe('cargo fmt --check');
+    expect(dockerArgs(gate, { ...ctx, image: 'teams-ai-gate:rust-1-bookworm' }).args.at(-1)).toContain('RUSTUP_TOOLCHAIN');
+  });
+
+  it('prepares one gate image with jq (and rustfmt and clippy for rust), reuses it, and keeps the original on a failed build', async () => {
+    const built = new FakeExec().onArgs('docker', ['image', 'inspect'], () => ({ exitCode: 1 }));
+    expect(await prepareGateImage('rust:1-bookworm', built.exec)).toBe('teams-ai-gate:rust-1-bookworm');
+    const build = built.calls.find((c) => c.args[0] === 'build')!;
+    expect(build.args).toEqual(['build', '-t', 'teams-ai-gate:rust-1-bookworm', '-']);
+    expect(build.stdin).toContain('rustup component add rustfmt clippy');
+    expect(build.stdin).toContain('jq');
+    const cached = new FakeExec();
+    expect(await prepareGateImage('rust:1-bookworm', cached.exec)).toBe('teams-ai-gate:rust-1-bookworm');
+    expect(cached.calls.some((c) => c.args[0] === 'build')).toBe(false);
+    const failed = new FakeExec().on(() => true, () => ({ exitCode: 1 }));
+    expect(await prepareGateImage('rust:1-bookworm', failed.exec)).toBe('rust:1-bookworm');
+    const go = new FakeExec().onArgs('docker', ['image', 'inspect'], () => ({ exitCode: 1 }));
+    expect(await prepareGateImage('golang:1.26-bookworm', go.exec)).toBe('teams-ai-gate:golang-1.26-bookworm');
+    const goBuild = go.calls.find((c) => c.args[0] === 'build')!;
+    expect(goBuild.stdin).toContain('apt-get install -y --no-install-recommends jq');
+    expect(goBuild.stdin).not.toContain('rustup');
+  });
+
 
   it('runs the command offline in a named, init-managed, non-root container with limits and read-only .git', () => {
     const { args, env } = dockerArgs(gate({ name: 'unit-test', command: 'npm test' }), ctx);

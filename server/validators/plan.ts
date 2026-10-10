@@ -49,6 +49,9 @@ export function devopsOwnerErrors(tasks: readonly Pick<PlanTask, 'id' | 'owner' 
   return errors;
 }
 
+/** Oldest release of a tool that still works with the gate images' toolchains, as [major, minor]. */
+const TOOL_FLOORS: Record<string, [number, number]> = { 'cargo-tarpaulin': [0, 37] };
+
 export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): string[] {
   const errors: string[] = [];
 
@@ -68,9 +71,15 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
   // The JUnit report is gate output the orchestrator never commits; a task listing it can never deliver it (live: a review loop).
   for (const task of plan.tasks) if (task.affectedPaths.includes(plan.junitPath)) errors.push(`task ${task.id} lists ${plan.junitPath} in affectedPaths, but the JUnit report is gate output and never committed`);
   // A tool fetched at a moving reference changes under the same plan (supply chain); pin a version or commit.
+  // A tool pinned below a known floor cannot read the current toolchain's output (live: cargo-tarpaulin 0.31 "Parsing failed" on Rust 1.99).
   for (const command of [...plan.gates.map((g) => g.command), ...Object.values(plan.commands)]) {
-    const moving = typeof command === 'string' ? /\S+@(latest|master|main)\b/.exec(command) : null;
+    if (typeof command !== 'string') continue;
+    const moving = /\S+@(latest|master|main)\b/.exec(command);
     if (moving) errors.push(`command fetches ${moving[0]} at a moving reference; pin a version or commit`);
+    for (const [tool, floor] of Object.entries(TOOL_FLOORS)) {
+      const pinned = new RegExp(`\\b${tool}@(\\d+)\\.(\\d+)`).exec(command);
+      if (pinned && Number(pinned[1]) * 1000 + Number(pinned[2]) < floor[0] * 1000 + floor[1]) errors.push(`${pinned[0]} is too old for the current toolchain; pin ${tool} ${floor.join('.')} or newer`);
+    }
   }
 
   const ids = new Set<string>();

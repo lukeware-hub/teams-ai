@@ -40,7 +40,6 @@ export function stackEnv(cwd: string): Record<string, string> {
     GOTOOLCHAIN: 'local',
     GOFLAGS: '-modcacherw', // the module cache stays writable, or the worktree cannot be deleted
     CARGO_HOME: path.join(tools, 'cargo'),
-    CARGO_TARGET_DIR: path.join(tools, 'cargo-target'),
     RUSTUP_HOME: '/usr/local/rustup',
     PIP_CACHE_DIR: path.join(tools, 'pip-cache'),
     PYTHONPATH: path.join(tools, 'py'),

@@ -79,6 +79,25 @@ export interface DockerInvocation {
 export const CACHED_GATES: ReadonlySet<string> = new Set(['security-tools', 'image-scan']);
 export const GATE_CACHE_TARGET = '/gate-cache';
 
+/** Gates are offline: a rust-toolchain.toml naming a Rust the image lacks would make rustup download it, so the image's own toolchain wins. */
+const RUST_IMAGE_TOOLCHAIN = 'command -v rustup >/dev/null 2>&1 && export RUSTUP_TOOLCHAIN="$(rustup default | cut -d" " -f1)"; ';
+
+const isRustImage = (image: string) => /(^|\/)rust[:@]|^teams-ai-gate:rust-/.test(image);
+
+/**
+ * Gates run offline, so every tool a gate command uses must already be in the image. The plan rules promise jq,
+ * which no official toolchain image ships, and the rust image also lacks rustfmt and clippy; each gate image gets
+ * one derived image with what it misses, built once and reused. A failed build keeps the original image so the gate reports its own error.
+ */
+export async function prepareGateImage(image: string, exec: Exec): Promise<string> {
+  const tag = `teams-ai-gate:${image.replace(/[^a-zA-Z0-9_.-]/g, '-')}`;
+  if ((await exec({ bin: 'docker', args: ['image', 'inspect', tag], timeoutMs: 60_000 })).exitCode === 0) return tag;
+  const steps = ['RUN command -v jq >/dev/null || (apt-get update && apt-get install -y --no-install-recommends jq && rm -rf /var/lib/apt/lists/*)'];
+  if (isRustImage(image)) steps.push('RUN rustup component add rustfmt clippy');
+  const built = await exec({ bin: 'docker', args: ['build', '-t', tag, '-'], stdin: `FROM ${image}\n${steps.join('\n')}\n`, timeoutMs: 15 * 60_000 });
+  return built.exitCode === 0 ? tag : image;
+}
+
 export function dockerArgs(gate: Gate, ctx: GateContext): DockerInvocation {
   const workdir = ctx.containerWorkdir ?? '/work';
   const source = rewriteBindSource(ctx.worktree.replace(/\\/g, '/'), ctx.bindRewrite);
@@ -136,7 +155,7 @@ export function dockerArgs(gate: Gate, ctx: GateContext): DockerInvocation {
     env[name] = value;
   }
   // Not a login shell: Debian's /etc/profile resets PATH and drops /usr/local/go/bin and /usr/local/cargo/bin of the golang and rust images.
-  args.push(ctx.image, 'sh', '-c', gate.command);
+  args.push(ctx.image, 'sh', '-c', isRustImage(ctx.image) ? `${RUST_IMAGE_TOOLCHAIN}${gate.command}` : gate.command);
   return { args, env };
 }
 

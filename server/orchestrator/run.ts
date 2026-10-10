@@ -17,7 +17,7 @@ import { sandboxPolicyViolation } from '../runner/sandbox-policy.js';
 import type { Exec } from '../exec/command.js';
 import { TOOLS_GATE } from '../validators/security-tooling.js';
 import { writeToolsInstaller } from './tools-install.js';
-import { runGates, TAIL_CHARS, type GateExecutor, type GateResult } from '../exec/gate-runner.js';
+import { prepareGateImage, runGates, TAIL_CHARS, type GateExecutor, type GateResult } from '../exec/gate-runner.js';
 import { fetch as gitFetch, git, withRepoLock } from '../git/git.js';
 import { MergeQueue } from '../git/merge-queue.js';
 import type { CodeContext, HandoffSummary } from '../knowledge/context-pack.js';
@@ -108,6 +108,9 @@ function assertApiKey(deps: RunDeps): void {
     throw new Error('claude.auth is "api-key" but the secret ANTHROPIC_API_KEY is not set (store it with the other secrets)');
   }
 }
+
+/** A cold Go or Rust build in a fresh worktree is slow, and parallel tasks compile their tools at the same time (live: three Rust installs passed 10 minutes). */
+const buildTimeoutMs = (plan: Plan): number => ((['go', 'rust'] as const).includes(stackKind(plan.stack) as 'go') ? 25 * 60_000 : 10 * 60_000);
 
 export class Run {
   readonly accounting = new Accounting();
@@ -288,7 +291,9 @@ export class Run {
     const present = await fs.access(path.join(worktree, 'node_modules')).then(() => true, () => false);
     if (present) return null;
     const started = Date.now();
-    const r = await this.deps.exec({ bin: 'sh', args: ['-lc', command], cwd: worktree, env: stackEnv(worktree), timeoutMs: 10 * 60_000 });
+    // `cargo install` builds in a shared folder: the tools compile once for every worktree and every run, not once per task.
+    const env = { ...stackEnv(worktree), CARGO_TARGET_DIR: path.join(expandHome(this.deps.cfg.paths.gateCache), 'cargo-install') };
+    const r = await this.deps.exec({ bin: 'sh', args: ['-lc', command], cwd: worktree, env, timeoutMs: buildTimeoutMs(this.plan!) });
     if (r.exitCode === 0 && !r.timedOut) return null;
     return {
       name: 'install',
@@ -304,6 +309,13 @@ export class Run {
     };
   }
 
+  private gateImageReady: Promise<string> | null = null;
+
+  /** The image every gate, smoke and e2e container runs: the plan's, prepared once per run (jq, plus rustfmt and clippy for rust). */
+  private gateImage(image: string): Promise<string> {
+    return (this.gateImageReady ??= prepareGateImage(image, this.deps.exec));
+  }
+
   private gates = async (worktree: string, branch: string) => {
     const plan = this.plan!;
     const install = await this.installDeps(worktree);
@@ -316,14 +328,13 @@ export class Run {
       plan.gates.filter((g) => g.blocking && g.name !== E2E_GATE), // the e2e gate runs in Phase 5 only
       {
         worktree,
-        image: plan.gateImage,
+        image: await this.gateImage(plan.gateImage),
         junitPath: plan.junitPath,
         coveragePath: plan.coveragePath,
         cacheDir,
         cpus: 2,
         memory: '2g',
-        // A cold Go or Rust build in a fresh worktree is slow.
-        timeoutMs: (['go', 'rust'] as const).includes(stackKind(plan.stack) as 'go') ? 20 * 60_000 : 10 * 60_000,
+        timeoutMs: buildTimeoutMs(plan),
         secrets: this.deps.secrets,
         containerName: `teams-ai-${this.runId}-${branch.replace(/\//g, '__')}`,
         // Files the gate writes into the bind-mounted worktree (the JUnit report) must stay owned by the
@@ -455,14 +466,14 @@ export class Run {
       target: this.deps.target,
       smoke: async (contextDir, url, gateUrl, gateNetwork) => {
         const p = this.plan!;
-        const r = await runSmoke(p, this.deps.spec, { worktree: contextDir, image: p.gateImage, junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-smoke`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : gateReachableUrl(url), { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
+        const r = await runSmoke(p, this.deps.spec, { worktree: contextDir, image: await this.gateImage(p.gateImage), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-smoke`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : gateReachableUrl(url), { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
         // The gate's output is the only clue the fix task gets about why a smoke test is missing or failing.
         const tail = r.ok || !r.result ? '' : `\n\nsmoke gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
       },
       e2e: async (contextDir, url, gateUrl, gateNetwork) => {
         const p = this.plan!;
-        const r = await runE2e(p, this.deps.spec, { worktree: contextDir, image: p.gateImage, junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-e2e`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
+        const r = await runE2e(p, this.deps.spec, { worktree: contextDir, image: await this.gateImage(p.gateImage), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-e2e`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
         const tail = r.ok || !r.result ? '' : `\n\ne2e gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
       },
@@ -518,7 +529,11 @@ export class Run {
 
   /** Phase 0 runs only for a draft; public so tests can drive it without scripting Phases 1–3. */
   async executePhase0(): Promise<PhaseResult> {
-    if (!this.deps.bootstrap) return { ok: true };
+    // Phases 1 and 2 read the docs from origin/main; a later run must see what was merged since the last one.
+    if (!this.deps.bootstrap) {
+      await gitFetch(this.deps.ws.repo, this.deps.exec);
+      return { ok: true };
+    }
     return runPhase0({ ...this.phaseDeps(), ghExec: this.deps.ghExec }, this.deps.bootstrap);
   }
 

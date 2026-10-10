@@ -11,6 +11,8 @@ COPY --from=golang:1.26-bookworm /usr/local/go /usr/local/go
 COPY --from=rust:1-bookworm /usr/local/cargo /usr/local/cargo
 COPY --from=rust:1-bookworm /usr/local/rustup /usr/local/rustup
 ENV PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH GOTOOLCHAIN=local RUSTUP_HOME=/usr/local/rustup
+# The official rust image ships without rustfmt and clippy; the Dev's format and lint checks need both.
+RUN rustup component add rustfmt clippy
 # The install gate runs `sh -lc`, and a Debian login shell resets PATH, so the toolchains are also linked into /usr/local/bin.
 RUN ln -s /usr/local/go/bin/* /usr/local/cargo/bin/* /usr/local/bin/
 

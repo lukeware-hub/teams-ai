@@ -20,6 +20,6 @@ describe('stacks', () => {
 
   it('keeps every cache inside the worktree', () => {
     const env = stackEnv('/w/t1');
-    for (const key of ['GOPATH', 'GOCACHE', 'CARGO_HOME', 'CARGO_TARGET_DIR', 'PIP_CACHE_DIR', 'PYTHONPYCACHEPREFIX', 'PYTHONPATH']) expect(env[key]).toMatch(/^\/w\/t1\/\.tools\//);
+    for (const key of ['GOPATH', 'GOCACHE', 'CARGO_HOME', 'PIP_CACHE_DIR', 'PYTHONPYCACHEPREFIX', 'PYTHONPATH']) expect(env[key]).toMatch(/^\/w\/t1\/\.tools\//);
   });
 });

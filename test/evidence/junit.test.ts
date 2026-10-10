@@ -91,6 +91,12 @@ describe('parseTap', () => {
     expect(parseTap(out).map((t) => [t.acIds, t.status])).toEqual([[['AC-001'], 'passed'], [['AC-002'], 'failed'], [['AC-003'], 'passed'], [['AC-004'], 'skipped']]);
   });
 
+  it('reads python unittest verbose result lines with their ac ids', async () => {
+    const { parseTap } = await import('../../server/evidence/junit.js');
+    const out = ['test_ac_001_health (__main__.Smoke.test_ac_001_health) ... ok', 'test_ac_002_hello (__main__.Smoke.test_ac_002_hello) ... FAIL', 'test_ac_003_x (__main__.Smoke.test_ac_003_x) ... skipped "later"'].join('\n');
+    expect(parseTap(out).map((t) => [t.acIds, t.status])).toEqual([[['AC-001'], 'passed'], [['AC-002'], 'failed'], [['AC-003'], 'skipped']]);
+  });
+
   it('also reads indented subtest lines: a [AC-xxx] test() nested under a describe() still counts (R8.7 golden run finding)', async () => {
     const { parseTap } = await import('../../server/evidence/junit.js');
     const tap = [

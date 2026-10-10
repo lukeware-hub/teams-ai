@@ -128,7 +128,8 @@ export function applyEvent(state: RunState, event: ReducibleEvent): void {
     case RunEvent.FixTasksPlanned: {
       for (const task of FixTasksData.parse(event.data).tasks) {
         // A blocked dependency could never merge, so a fix task waiting on it would never run; its own gates still judge it.
-        const deps = task.dependsOn.flatMap((d) => liveIds(state, d)).filter((d) => state.tasks.get(d)?.state !== 'blocked');
+        // A blocked scaffold stays a dependency: without it the repository has nothing to install or build.
+        const deps = task.dependsOn.flatMap((d) => liveIds(state, d)).filter((d) => state.tasks.get(d)?.state !== 'blocked' || state.tasks.get(d)?.bootstrapsFrozenPaths);
         addTask(state, { ...task, dependsOn: [...new Set(deps)] }, false);
       }
       return;

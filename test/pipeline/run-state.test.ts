@@ -125,6 +125,12 @@ describe('replan', () => {
     expect(state.tasks.get('T900-fix-1')!.def.dependsOn).toEqual(['T2-b']);
   });
 
+  it('a fix task still waits on a blocked scaffold, since nothing builds without it', () => {
+    const fix: ReducibleEvent = { type: RunEvent.FixTasksPlanned, data: { tasks: [makePlanTask({ id: 'T900-fix-1', dependsOn: ['T0-scaffold'] })] } };
+    const state = reduceEvents([planned('T0-scaffold'), moved('T0-scaffold', 'blocked'), fix]);
+    expect(state.tasks.get('T900-fix-1')!.def.dependsOn).toEqual(['T0-scaffold']);
+  });
+
   it('rejects replanning a terminal task', () => {
     expect(() => reduceEvents([planned('T1-a'), moved('T1-a', 'blocked'), replan('T1-a', makePlanTask({ id: 'T4-a1' }))])).toThrow(ReplanError);
   });
