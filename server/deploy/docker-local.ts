@@ -3,6 +3,9 @@ import { archivePath, imageRef, waitHealthy, type DeploymentIntent, type DeployT
 
 const TIMEOUT = 600_000;
 
+/** Compose project name derived from the projectId (compose allows lowercase letters, digits, '-' and '_'). */
+export const composeProject = (projectId: string) => `teams-ai-${projectId}`.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+
 export class DockerLocalTarget implements DeployTarget {
   readonly name = 'docker-local' as const;
 
@@ -21,9 +24,8 @@ export class DockerLocalTarget implements DeployTarget {
 
   serviceUrl(intent: DeploymentIntent) { return this.baseUrl(intent); }
 
-  /** Compose project name derived from the projectId (compose allows lowercase letters, digits, '-' and '_'). */
   private project(intent: DeploymentIntent) {
-    return `teams-ai-${intent.projectId}`.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+    return composeProject(intent.projectId);
   }
 
   private readonly services = new Map<string, string>();

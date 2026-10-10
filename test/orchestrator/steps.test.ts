@@ -148,7 +148,7 @@ describe('packs', () => {
     const rules = planRules(true);
     expect(rules).toContain('deploy.kind');
     expect(rules).toContain('deploy.docsPath');
-    expect(rules).toContain('3000-3019');
+    expect(rules).toContain('20000-20099');
   });
 
   it('plan rules ask for dependsOn only on a real dependency, so independent tasks run in parallel', () => {

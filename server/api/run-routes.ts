@@ -14,6 +14,8 @@ import { nextRunId } from '../orchestrator/workspace.js';
 import { reduceEvents } from '../pipeline/run-state.js';
 import { EventLogCorruptError, loadEvents, type StoredEvent } from '../store/event-store.js';
 import { httpGet, type HttpGet } from '../deploy/target.js';
+import { composeProject } from '../deploy/docker-local.js';
+import { releaseDeployPort } from '../deploy/service-links.js';
 import { refuseCloneHost, type ResolveHost } from './security.js';
 import { tailJournal } from './journal-tail.js';
 import { abandonLaunch, isAlive, spawnRun, stop, type RunControlDeps } from './run-control.js';
@@ -257,6 +259,8 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           if (row && (row.projectId === projectId || (row.projectId === '' && specIds.has(row.specId)))) await fs.rm(path.join(runs, runId), { recursive: true, force: true });
         }
         await removeProjectDirs(dirs, deps.home);
+        await execCommand({ bin: 'docker', args: ['compose', '-p', composeProject(projectId), 'down', '-v'], timeoutMs: 120_000 }).catch(() => undefined); // frees the port; no daemon means nothing runs
+        await releaseDeployPort(path.dirname(ws.root), projectId);
         json(200, { deleted: true });
       },
     },

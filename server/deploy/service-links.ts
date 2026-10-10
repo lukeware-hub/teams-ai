@@ -1,41 +1,58 @@
+import { randomInt } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { updateFileAtomic } from '../core/atomic-write.js';
+import type { Exec } from '../exec/command.js';
 
 /** Host ports the platform publishes from the nested daemon to the host loopback (docker-compose.yml, dind `ports`). */
-export const PUBLISHED_PORTS = { from: 3000, to: 3019 } as const;
+export const PUBLISHED_PORTS = { from: 20000, to: 20099 } as const;
 
-const MAX_SPECS = 200;
-const MAX_PLAN_BYTES = 1_000_000;
+const registryFile = (workspacesRoot: string) => path.join(workspacesRoot, '.ports.json');
 
-/** A plan.json is agent-written repository content: only a regular file of bounded size is read, never a symlink. */
-async function planPort(file: string): Promise<number> {
-  const st = await fs.lstat(file).catch(() => null);
-  if (!st?.isFile() || st.size > MAX_PLAN_BYTES) return NaN;
-  return fs.readFile(file, 'utf8').then((t) => Number(JSON.parse(t).deploy?.port), () => NaN);
+function parseRegistry(text: string | undefined): Record<string, number> {
+  try {
+    return text === undefined ? {} : (JSON.parse(text) as Record<string, number>);
+  } catch {
+    return {};
+  }
 }
 
-/** Deploy ports the plans of each project in the workspaces folder use, read from their committed plan.json files. */
-async function plannedPorts(projectDir: string): Promise<number[]> {
-  const specs = path.join(projectDir, 'repo', 'docs', 'specs');
-  const ids = (await fs.readdir(specs).catch(() => [] as string[])).slice(0, MAX_SPECS);
-  const ports = await Promise.all(ids.map((id) => planPort(path.join(specs, id, 'plan.json'))));
-  return ports.filter((p) => Number.isInteger(p));
+/** Host ports the daemon already publishes, whoever started the container. */
+async function busyPorts(exec: Exec): Promise<number[]> {
+  const r = await exec({ bin: 'docker', args: ['ps', '--format', '{{.Ports}}'], timeoutMs: 30_000 }).catch(() => null);
+  return [...(r?.stdout ?? '').matchAll(/:(\d+)->/g)].map((m) => Number(m[1]));
+}
+
+async function updateRegistry(workspacesRoot: string, update: (registry: Record<string, number>) => Record<string, number>): Promise<void> {
+  await fs.mkdir(workspacesRoot, { recursive: true });
+  await updateFileAtomic(registryFile(workspacesRoot), (text) => `${JSON.stringify(update(parseRegistry(text)), null, 2)}\n`);
 }
 
 /**
- * Every project publishes on the same host range, so two projects must never share a deploy port (live: rust-hello-api
- * planned 3000 while custumer-api still ran there). Keeps the port the project already plans with when it is free,
- * else the lowest free one; `port` is null when the range is full.
+ * Every project publishes on the same host range, so each gets its own random port, kept in a registry until the project
+ * is deleted (live: node-hello-api planned 3000 while an old container still held it). A registered port stays with its
+ * project; a new one is drawn from the range, skipping other projects' ports and ports the daemon already publishes.
+ * `port` is null when the range is full; `taken` are the ports the plan must not use.
  */
-export async function assignDeployPort(workspacesRoot: string, projectId: string): Promise<{ port: number | null; taken: number[] }> {
-  const projects = await fs.readdir(workspacesRoot).catch(() => [] as string[]);
-  const taken = [...new Set((await Promise.all(projects.filter((p) => p !== projectId).map((p) => plannedPorts(path.join(workspacesRoot, p))))).flat())].sort((a, b) => a - b);
-  const free = (p: number) => p >= PUBLISHED_PORTS.from && p <= PUBLISHED_PORTS.to && !taken.includes(p);
-  const own = (await plannedPorts(path.join(workspacesRoot, projectId))).find(free);
-  if (own !== undefined) return { port: own, taken };
-  for (let p = PUBLISHED_PORTS.from; p <= PUBLISHED_PORTS.to; p++) if (free(p)) return { port: p, taken };
-  return { port: null, taken };
+export async function assignDeployPort(workspacesRoot: string, projectId: string, exec: Exec): Promise<{ port: number | null; taken: number[] }> {
+  const busy = await busyPorts(exec);
+  let result = { port: null as number | null, taken: [] as number[] };
+  await updateRegistry(workspacesRoot, (registry) => {
+    const others = Object.entries(registry).filter(([id]) => id !== projectId).map(([, port]) => port);
+    const taken = [...new Set([...others, ...busy])].sort((a, b) => a - b);
+    const inRange = (p: number) => p >= PUBLISHED_PORTS.from && p <= PUBLISHED_PORTS.to;
+    const free = Array.from({ length: PUBLISHED_PORTS.to - PUBLISHED_PORTS.from + 1 }, (_, i) => PUBLISHED_PORTS.from + i).filter((p) => !taken.includes(p));
+    const own = registry[projectId];
+    const port = own !== undefined && inRange(own) && !others.includes(own) ? own : (free.length > 0 ? free[randomInt(free.length)]! : null);
+    result = { port, taken };
+    return port === null ? registry : { ...registry, [projectId]: port };
+  });
+  return result;
 }
+
+/** Gives the project's port back; called when the project is deleted. */
+export const releaseDeployPort = (workspacesRoot: string, projectId: string): Promise<void> =>
+  updateRegistry(workspacesRoot, ({ [projectId]: _released, ...rest }) => rest);
 
 export interface ServiceInfo {
   url: string;

@@ -35,7 +35,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
   const worktree = await docsWorktree(deps, branch);
   const max = deps.maxPhaseAttempts ?? 3;
   const repoFiles = new Set((await git(worktree, ['ls-files'], deps.exec)).split('\n').filter((f) => f !== ''));
-  const ports = deps.workspacesRoot ? await assignDeployPort(deps.workspacesRoot, deps.ws.projectId) : { port: null, taken: [] };
+  const ports = deps.workspacesRoot ? await assignDeployPort(deps.workspacesRoot, deps.ws.projectId, deps.exec) : { port: null, taken: [] };
   let feedback: string | null = null;
   for (let attempt = 1; attempt <= max; attempt++) {
     const out: StepOutcome<OutputOf<'plan'>> = await deps.runAgent<'plan'>({

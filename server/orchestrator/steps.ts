@@ -177,8 +177,8 @@ export const COVERAGE_CONTRACT =
 export function planRules(firstSpec: boolean, requireDelivery = false, requireSecurityTooling = false, requireE2e = false, requireCoverage = false): string {
   const lines = [
     'Plan rules (the orchestrator rejects a plan that breaks any of them):',
-    '- deploy.kind is "api" or "front" (what the service is); an api sets deploy.docsPath to the path that serves its Swagger/OpenAPI page (for example /docs); deploy.port must be inside 3000-3019, the range the platform publishes to the host so the human can open the service',
-    '- a database or other datastore service in docker-compose (Postgres, MySQL, Redis, ...) publishes its own port to the host too, on a port outside 3000-3019; an integration test against a real database needs a route to it exactly like the app has for deploy.port, and one that only the compose-internal network can reach has none',
+    '- deploy.kind is "api" or "front" (what the service is); an api sets deploy.docsPath to the path that serves its Swagger/OpenAPI page (for example /docs); deploy.port must be inside 20000-20099, the range the platform publishes to the host so the human can open the service',
+    '- a database or other datastore service in docker-compose (Postgres, MySQL, Redis, ...) publishes its own port to the host too, on a port outside 20000-20099; an integration test against a real database needs a route to it exactly like the app has for deploy.port, and one that only the compose-internal network can reach has none',
     `- gates must include these blocking gates: ${REQUIRED_BLOCKING_GATES.join(', ')} (plus a blocking typecheck gate when commands.typecheck exists)`,
     '- every acceptance criterion is covered by at least one task (criteriaRefs); every task has at least one criterion or is infrastructure',
     '- every task id is T<n>-<slug>: a number plus 1 to 4 English kebab-case words saying what the task does (T1-create-endpoint, T2-add-login-form); never a bare T1',
