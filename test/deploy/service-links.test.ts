@@ -43,4 +43,18 @@ describe('assignDeployPort', () => {
     expect((await assignDeployPort(root, 'go-hello-api')).port).toBe(3002);
     await fs.rm(root, { recursive: true, force: true });
   });
+
+  it('never follows a plan.json symlink nor reads an oversized one', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-ports-'));
+    const target = path.join(root, 'outside.json');
+    await fs.writeFile(target, JSON.stringify({ deploy: { port: 3000 } }));
+    const dir = path.join(root, 'evil', 'repo', 'docs', 'specs', 'evil-001');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.symlink(target, path.join(dir, 'plan.json'));
+    const big = path.join(root, 'huge', 'repo', 'docs', 'specs', 'huge-001');
+    await fs.mkdir(big, { recursive: true });
+    await fs.writeFile(path.join(big, 'plan.json'), JSON.stringify({ deploy: { port: 3001 }, pad: 'x'.repeat(1_100_000) }));
+    expect((await assignDeployPort(root, 'mine')).taken).toEqual([]);
+    await fs.rm(root, { recursive: true, force: true });
+  });
 });

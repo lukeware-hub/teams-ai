@@ -4,11 +4,21 @@ import path from 'node:path';
 /** Host ports the platform publishes from the nested daemon to the host loopback (docker-compose.yml, dind `ports`). */
 export const PUBLISHED_PORTS = { from: 3000, to: 3019 } as const;
 
+const MAX_SPECS = 200;
+const MAX_PLAN_BYTES = 1_000_000;
+
+/** A plan.json is agent-written repository content: only a regular file of bounded size is read, never a symlink. */
+async function planPort(file: string): Promise<number> {
+  const st = await fs.lstat(file).catch(() => null);
+  if (!st?.isFile() || st.size > MAX_PLAN_BYTES) return NaN;
+  return fs.readFile(file, 'utf8').then((t) => Number(JSON.parse(t).deploy?.port), () => NaN);
+}
+
 /** Deploy ports the plans of each project in the workspaces folder use, read from their committed plan.json files. */
 async function plannedPorts(projectDir: string): Promise<number[]> {
   const specs = path.join(projectDir, 'repo', 'docs', 'specs');
-  const ids = await fs.readdir(specs).catch(() => [] as string[]);
-  const ports = await Promise.all(ids.map((id) => fs.readFile(path.join(specs, id, 'plan.json'), 'utf8').then((t) => Number(JSON.parse(t).deploy?.port), () => NaN)));
+  const ids = (await fs.readdir(specs).catch(() => [] as string[])).slice(0, MAX_SPECS);
+  const ports = await Promise.all(ids.map((id) => planPort(path.join(specs, id, 'plan.json'))));
   return ports.filter((p) => Number.isInteger(p));
 }
 
