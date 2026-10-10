@@ -12,6 +12,10 @@ const REPORT = `<?xml version="1.0" encoding="UTF-8"?>
 </testsuites>`;
 
 describe('extractAcIds', () => {
+  it('reads ac_001 and ac-001 where an identifier cannot hold brackets (Rust fn, pytest def)', () => {
+    expect(extractAcIds('tests::ac_001_lists_books test_ac-002_health stack_ac_0034 tractac_005')).toEqual(['AC-001', 'AC-002']);
+  });
+
   it('accepts any case but requires three digits', () => {
     expect(extractAcIds('[ac-003] and [AC-001] and [AC-3] and [AC-001]')).toEqual(['AC-003', 'AC-001']);
   });
@@ -73,6 +77,18 @@ describe('parseTap', () => {
     const tap = ['TAP version 13', 'ok 1 - [AC-001] GET /hello answers 200', 'not ok 2 - [AC-003] bad path', 'ok 3 - [AC-002] later # SKIP not now', '1..3'].join('\n');
     expect(parseTap(tap).map((t) => [t.acIds, t.status])).toEqual([[['AC-001'], 'passed'], [['AC-003'], 'failed'], [['AC-002'], 'skipped']]);
     expect(parseTap('no tap here')).toEqual([]);
+  });
+
+  it('reads go test -v result lines with their [AC-xxx] tags', async () => {
+    const { parseTap } = await import('../../server/evidence/junit.js');
+    const out = ['=== RUN   TestSmoke', '--- FAIL: TestSmoke (0.00s)', '    --- PASS: TestSmoke/[AC-003]_check_devolve_SERVING (0.00s)', '    --- FAIL: TestSmoke/[AC-004]_not_found (0.01s)', '    --- SKIP: TestSmoke/[AC-005]_watch (0.00s)'].join('\n');
+    expect(parseTap(out).filter((t) => t.acIds.length > 0).map((t) => [t.acIds, t.status])).toEqual([[['AC-003'], 'passed'], [['AC-004'], 'failed'], [['AC-005'], 'skipped']]);
+  });
+
+  it('reads cargo test and pytest -v result lines with their ac ids', async () => {
+    const { parseTap } = await import('../../server/evidence/junit.js');
+    const out = ['test ac_001_health_ok ... ok', 'test ac_002_bad ... FAILED', 'tests/test_smoke.py::test_ac_003_health PASSED [ 50%]', 'tests/test_smoke.py::test_ac_004_x SKIPPED'].join('\n');
+    expect(parseTap(out).map((t) => [t.acIds, t.status])).toEqual([[['AC-001'], 'passed'], [['AC-002'], 'failed'], [['AC-003'], 'passed'], [['AC-004'], 'skipped']]);
   });
 
   it('also reads indented subtest lines: a [AC-xxx] test() nested under a describe() still counts (R8.7 golden run finding)', async () => {

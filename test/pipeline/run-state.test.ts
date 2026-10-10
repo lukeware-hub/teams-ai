@@ -113,6 +113,18 @@ describe('replan', () => {
     ).toThrow(ReplanError);
   });
 
+  it('a fix task planned later waits on the replacement of a superseded task, not on the superseded one', () => {
+    const fix: ReducibleEvent = { type: RunEvent.FixTasksPlanned, data: { tasks: [makePlanTask({ id: 'T900-fix-1', dependsOn: ['T1-a', 'T2-b'] })] } };
+    const state = reduceEvents([planned('T1-a'), planned('T2-b'), replan('T1-a', makePlanTask({ id: 'T1-a-r1' })), fix]);
+    expect(state.tasks.get('T900-fix-1')!.def.dependsOn).toEqual(['T1-a-r1', 'T2-b']);
+  });
+
+  it('a fix task planned later does not wait on a task that is already blocked', () => {
+    const fix: ReducibleEvent = { type: RunEvent.FixTasksPlanned, data: { tasks: [makePlanTask({ id: 'T900-fix-1', dependsOn: ['T1-a', 'T2-b'] })] } };
+    const state = reduceEvents([planned('T1-a'), planned('T2-b'), moved('T1-a', 'blocked'), fix]);
+    expect(state.tasks.get('T900-fix-1')!.def.dependsOn).toEqual(['T2-b']);
+  });
+
   it('rejects replanning a terminal task', () => {
     expect(() => reduceEvents([planned('T1-a'), moved('T1-a', 'blocked'), replan('T1-a', makePlanTask({ id: 'T4-a1' }))])).toThrow(ReplanError);
   });

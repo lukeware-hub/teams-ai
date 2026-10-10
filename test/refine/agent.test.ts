@@ -5,9 +5,9 @@ import { DEFAULT_CONFIG } from '../../server/config/config.js';
 const routing = { ...DEFAULT_CONFIG.routing, stepModels: { refine: 'opus', derive: 'opus' }, laterCycleModels: { refine: 'sonnet' } };
 
 describe('refineStepModel', () => {
-  it('leaves every step to the role profile by default', () => {
+  it('runs the first cycle on the role profile and later cycles on sonnet by default', () => {
     expect(refineStepModel(DEFAULT_CONFIG.routing, 'refine', 1)).toBeUndefined();
-    expect(refineStepModel(DEFAULT_CONFIG.routing, 'refine', 5)).toBeUndefined();
+    expect(refineStepModel(DEFAULT_CONFIG.routing, 'refine', 5)).toBe('sonnet');
   });
 
   it('uses stepModels on the first cycle and laterCycleModels from the second on', () => {

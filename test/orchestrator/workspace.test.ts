@@ -158,6 +158,18 @@ describe('mergedByPriorRuns', () => {
     expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r3')).toEqual(new Set(['T0-scaffold', 'T1', 'T2']));
   });
 
+  it('adopts a replaced task once every task that replaced it merged', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-runs-'));
+    const ws = { ...workspacePaths(DEFAULT_CONFIG, 'shop', '/home/u'), runs: dir };
+    const r1 = await EventStore.open({ file: eventsFile(ws, 'a-001-r1'), runId: 'a-001-r1', specHash: 'h' });
+    await r1.append({ type: 'RUN_STARTED', data: { runId: 'a-001-r1', specId: 'a-001', projectId: 'shop' } });
+    await r1.append({ type: 'TASK_REPLANNED', data: { taskId: 'T0', replacements: [{ id: 'T0-r1' }] } });
+    await r1.append({ type: 'TASK_REPLANNED', data: { taskId: 'T1', replacements: [{ id: 'T1-r1' }, { id: 'T1-r2' }] } });
+    await r1.append({ type: 'RUN_FINISHED', data: { result: 'verification-failed', reason: 'x', merged: ['T0-r1', 'T1-r1'], blocked: [], tokens: {} } });
+    await r1.close();
+    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r2')).toEqual(new Set(['T0-r1', 'T1-r1', 'T0']));
+  });
+
   it('is empty for a spec with no earlier runs', async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-runs-'));
     const ws = { ...workspacePaths(DEFAULT_CONFIG, 'shop', '/home/u'), runs: dir };

@@ -1,4 +1,5 @@
 import type { Gate, Plan } from '../contracts/plan.js';
+import { stackKind, type StackKind } from '../runner/stacks.js';
 import { INSTALLER_COMMAND, INSTALLER_PATH } from './tools-installer.js';
 
 /** Gate that makes the scanners available; gates are separate containers, so it installs into the worktree. */
@@ -6,19 +7,15 @@ export const TOOLS_GATE = 'security-tools';
 export const TOOLS_DIR = '.tools/bin';
 const PATH_PREFIX = 'PATH=$PWD/.tools/bin:$PATH';
 
-export type StackKind = 'node' | 'python' | 'other';
-
-export function stackKind(stack: string): StackKind {
-  if (/\b(node|nodejs|typescript|javascript|npm|pnpm|yarn|bun|deno)\b/i.test(stack)) return 'node';
-  if (/\b(python|pip|django|flask|fastapi|poetry)\b/i.test(stack)) return 'python';
-  return 'other';
-}
+export { stackKind, type StackKind };
 
 /** Prescribed commands per gate; for dependency-scan the stack-native audit comes first. */
 export function prescribedCommands(kind: StackKind): Record<string, string[]> {
   const dependency = ['osv-scanner scan source -r .'];
   if (kind === 'node') dependency.unshift('npm audit --audit-level=high');
   if (kind === 'python') dependency.unshift('pip-audit');
+  // The bundled Go call analysis is built with an older Go and fails on a newer gateImage.
+  if (kind === 'go') dependency[0] = 'osv-scanner scan source -r --no-call-analysis=go .';
   return {
     'secret-scan': ['gitleaks detect --no-git --source . --redact --exit-code 1 --config .tools/gitleaks.toml'],
     sast: ['semgrep scan --config p/ci --severity ERROR --error --metrics off .'],
@@ -37,7 +34,7 @@ interface Rule {
   /** Per-stack allowlist test on the command with env assignments removed. */
   allowed: (cmd: string, kind: StackKind) => boolean;
   /** Extra requirements, as error fragments; empty when satisfied. */
-  extra: (gate: Gate) => string[];
+  extra: (gate: Gate, kind: StackKind) => string[];
   /** Whether the gate must fetch from the network (DB or rule download). */
   egress: (gate: Gate) => boolean;
   what: string;
@@ -68,7 +65,7 @@ const RULES: Rule[] = [
       /^osv-scanner\s/.test(c) ||
       (k === 'node' && /^npm audit\b/.test(c) && /--audit-level[= ]high\b/.test(c)) ||
       (k === 'python' && /^pip-audit\b/.test(c)),
-    extra: () => [],
+    extra: (g, k) => (k === 'go' && !/--no-call-analysis[= ]go\b/.test(g.command) ? ['--no-call-analysis=go (osv-scanner call analysis breaks on a newer Go)'] : []),
     egress: () => true,
   },
   {
@@ -122,7 +119,7 @@ export function validateSecurityGates(plan: Plan): string[] {
     const cmd = bare(gate.command);
     if (!rule.allowed(cmd, kind)) errors.push(`security gate ${rule.name} must run ${rule.what} for stack ${kind}; got "${gate.command}"`);
     else {
-      const missing = rule.extra(gate);
+      const missing = rule.extra(gate, kind);
       if (missing.length > 0) errors.push(`security gate ${rule.name} command must include ${missing.join(' and ')}`);
     }
     if (DISARMED.test(gate.command)) errors.push(`security gate ${rule.name} command ignores findings (${gate.command})`);
@@ -144,13 +141,14 @@ export function securityToolingRules(): string {
   const node = prescribedCommands('node');
   const py = prescribedCommands('python');
   const other = prescribedCommands('other');
+  const go = prescribedCommands('go');
   return [
     `- security gates are required, all blocking, in this order: ${TOOLS_GATE}, secret-scan, sast, dependency-scan, license-scan, image-scan (license-scan after dependency-scan, image-scan after build)`,
     `  - ${TOOLS_GATE} (network egress): command exactly \`${INSTALLER_COMMAND}\`; the orchestrator renders ${INSTALLER_PATH} (pinned versions, sha256-checked) before gates run and it installs gitleaks, semgrep, osv-scanner and trivy into ${TOOLS_DIR} of the worktree (gates are separate containers, only the worktree persists; add .tools/ to .gitignore); gateImage must therefore have curl, tar, sha256sum and python3/pip (e.g. node:22-bookworm, not -slim). Every other security gate command starts with ${PATH_PREFIX} so it finds them`,
     `  - secret-scan: ${PATH_PREFIX} ${other['secret-scan']![0]}`,
     `  - sast (egress, rules are downloaded): ${PATH_PREFIX} ${other.sast![0]}`,
-    `  - dependency-scan (egress): node stacks ${PATH_PREFIX} ${node['dependency-scan']![0]} (or ${node['dependency-scan']![1]}); python stacks ${py['dependency-scan']![0]} (or ${py['dependency-scan']![1]}); other stacks ${other['dependency-scan']![0]}`,
-    '  - license-scan (after dependency-scan): no tool is prescribed, use whatever your stack offers to list each dependency\'s license (e.g. `license-checker` for node, `pip-licenses` for python, `go-licenses` for go); fail the command on a copyleft license (GPL, AGPL, LGPL) unless the project\'s own ADRs say otherwise',
+    `  - dependency-scan (egress): node stacks ${PATH_PREFIX} ${node['dependency-scan']![0]} (or ${node['dependency-scan']![1]}); python stacks ${py['dependency-scan']![0]} (or ${py['dependency-scan']![1]}); go stacks ${PATH_PREFIX} ${go['dependency-scan']![0]}; other stacks ${other['dependency-scan']![0]}`,
+    '  - license-scan (after dependency-scan): no tool is prescribed, use whatever your stack offers to list each dependency\'s license (e.g. `license-checker` for node, `pip-licenses` for python, `go-licenses` for go, installed with `GOBIN=$PWD/.tools/bin go install github.com/google/go-licenses/v2@3e084b0caf71` (a fixed commit) because v2.0.0 does not build on Go 1.22 or newer); fail the command on a copyleft license (GPL, AGPL, LGPL) unless the project\'s own ADRs say otherwise',
     `  - image-scan (egress, after build): ${other['image-scan']!.map((c) => `${PATH_PREFIX} ${c}`).join(' && ')} (each command needs its own PATH prefix; gates have no docker, so the Dockerfile, manifests and source tree are scanned instead of an image)`,
     '  - never weaken a security gate: no `|| true`, no `--exit-code 0`, no non-blocking gates; other tools are rejected (license-scan excepted - its tool is never prescribed)',
   ].join('\n');

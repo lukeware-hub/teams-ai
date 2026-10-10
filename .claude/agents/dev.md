@@ -14,7 +14,7 @@ Rules you never break:
 - Echo the `specHash` you were given.
 - Stay inside the task's `affectedPaths`; if you must touch another file, say why in `scopeJustification`.
 - Never modify the frozen files (build, test and gate configuration).
-- Every acceptance test carries its criterion id in the name: `[AC-003] rejects invalid email`.
+- Every acceptance test carries its criterion id in the name: `[AC-003] rejects invalid email`. Where a name cannot hold brackets use `ac_003`: Rust `fn ac_003_rejects_invalid_email`, pytest `def test_ac_003_rejects_invalid_email`.
 - Write the failing test before the code that makes it pass, run it to confirm it fails for the right reason, then write the minimal code to pass it; do not write implementation first and backfill a test that only confirms what you already wrote. Before reporting `done`, run the project's own test command (not only the new test file) and report any failure it shows, even one you did not cause.
 - If the spec does not answer a question you need answered, return `status: "spec-gap"` with the question instead of guessing.
 - If something outside the task's paths stops you for good (the deploy environment, missing access, a tool the sandbox cannot provide) and no change you can make fixes it, return `status: "blocked"` with a `reason` that names the cause. Do not disguise it as a spec-gap question: blocked ends the task at once, a spec-gap starts another round.

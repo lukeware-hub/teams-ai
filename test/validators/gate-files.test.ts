@@ -14,6 +14,13 @@ const plan = (gates: ReturnType<typeof gate>[], roots: string[]): Plan =>
 const repo = new Set(['server.mjs', 'test/hello.test.mjs', 'package.json']);
 
 describe('gateFileErrors', () => {
+  it('checks Go and Rust files too and treats build folders as gate-owned', () => {
+    const errs = gateFileErrors(plan([gate('test', 'go test ./cmd/main_test.go && cargo test --manifest-path crates/app/Cargo.toml')], ['.gitignore']), repo);
+    expect(errs.join('\n')).toMatch(/cmd\/main_test\.go/);
+    expect(errs.join('\n')).toMatch(/Cargo\.toml/);
+    expect(gateFileErrors(plan([gate('build', 'ls target/release/app.rs vendor/x.go .venv/bin/y.py')], []), repo)).toEqual([]);
+  });
+
   it('rejects a blocking gate that names a file only a later task creates (the live T0 deadlock)', () => {
     const errs = gateFileErrors(plan([gate('lint', 'node --check server.mjs && node --check smoke/smoke.mjs')], ['.gitignore']), repo);
     expect(errs).toHaveLength(1);
@@ -24,6 +31,12 @@ describe('gateFileErrors', () => {
     expect(gateFileErrors(plan([gate('lint', 'node --check server.mjs && node --check smoke/smoke.mjs')], ['smoke/**']), repo)).toEqual([]);
     expect(gateFileErrors(plan([gate('install', 'sh .tools/install.sh'), gate('t', 'mkdir -p reports && npm test')], []), repo)).toEqual([]);
     expect(gateFileErrors(plan([gate('lint', 'node --check smoke/smoke.mjs', false)], []), repo)).toEqual([]);
+  });
+
+  it('accepts the coverage and junit files the gates themselves write', () => {
+    const cmd = "npm test && node -e \"require('fs').writeFileSync('coverage/coverage.json', '{}')\" && cat reports/junit.xml.json";
+    const p = { ...plan([gate('coverage', cmd)], []), coveragePath: 'coverage/coverage.json', junitPath: 'reports/junit.xml.json' } as Plan;
+    expect(gateFileErrors(p, repo)).toEqual([]);
   });
 });
 

@@ -86,6 +86,8 @@ export interface Snapshot {
   docs: { 'project.md': string; 'brief.md': string; 'stack.md': string; 'flow.md': string; 'design.md': string };
   secrets: SecretRow[];
   tokens: { inputTokens: number; outputTokens: number; costUsd: number; steps: number };
+  /** True from the evaluate call on, even before the cycle journals that it started. */
+  busy: boolean;
 }
 
 const COVERED = 'Este ajuste já foi coberto por outra alteração e foi descartado.';
@@ -173,7 +175,7 @@ export class RefineSession {
       tokens.outputTokens += u?.outputTokens ?? 0;
       tokens.costUsd += Number(e.data.costUsd ?? 0);
     }
-    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, secrets, tokens };
+    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, secrets, tokens, busy: this.busy };
   }
 
   async saveDoc(file: DocFile, text: string): Promise<void> {

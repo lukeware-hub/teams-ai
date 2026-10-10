@@ -45,7 +45,9 @@ export async function ensureRepo(
   if (!NOT_FOUND.test(view.stderr)) throw new GitHubError(`gh repo view failed: ${view.stderr.trim()}`);
   const create = await gh(input.cwd, ['repo', 'create', fullName, input.private ? '--private' : '--public', '--source', '.', '--remote', 'origin', '--push'], exec);
   if (create.exitCode !== 0) throw new GitHubError(`gh repo create failed: ${create.stderr.trim()}`);
-  return { fullName, url: create.stdout.trim(), created: true };
+  // `--push` adds git progress lines after the URL.
+  const url = create.stdout.match(/https?:\/\/\S+/)?.[0] ?? `https://github.com/${fullName}`;
+  return { fullName, url, created: true };
 }
 
 async function reconcileRemote(cwd: string, url: string, exec: Exec): Promise<void> {

@@ -44,9 +44,22 @@ export class DockerLocalTarget implements DeployTarget {
     return chosen;
   }
 
-  /** Smoke gate runs on the compose project's default network and reaches the app by its service name. */
+  /** Smoke gate runs on the compose project's default network and reaches the app by its service name and container port. */
   async gateServiceUrl(intent: DeploymentIntent) {
-    return intent.compose ? `http://${await this.service(intent)}:${intent.port}` : this.baseUrl(intent);
+    if (!intent.compose) return this.baseUrl(intent);
+    const service = await this.service(intent);
+    return `http://${service}:${await this.containerPort(intent, service)}`;
+  }
+
+  /** The container port compose maps to the published port (live: `3000:8080`); the published port when none is mapped. */
+  private async containerPort(intent: DeploymentIntent, service: string): Promise<number> {
+    const r = await this.compose(intent, ['config', '--format', 'json'], imageRef(intent), 60_000);
+    try {
+      const ports = (JSON.parse(r.stdout).services?.[service]?.ports ?? []) as Array<{ target: number; published?: string }>;
+      return ports.find((p) => Number(p.published) === intent.port)?.target ?? intent.port;
+    } catch {
+      return intent.port;
+    }
   }
 
   gateNetwork(intent: DeploymentIntent) {

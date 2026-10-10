@@ -166,7 +166,14 @@ export async function mergedByPriorRuns(ws: Workspace, specId: string, runId: st
     // A T900-fix-* task answers one verification attempt's own findings (Phase 4 plans it fresh every round already,
     // within a run); carrying it into a retry as "already done" would stop a later attempt from ever replanning a
     // fix for a criterion whose own wording or evidence requirements changed since.
-    for (const id of (finished?.data.merged as string[] | undefined) ?? []) if (!id.startsWith('T900-fix-')) merged.add(id);
+    const runMerged = new Set((finished?.data.merged as string[] | undefined) ?? []);
+    for (const id of runMerged) if (!id.startsWith('T900-fix-')) merged.add(id);
+    // A replaced task is delivered once every task that replaced it merged; the plan still lists the original id.
+    for (const e of events) {
+      if (e.type !== 'TASK_REPLANNED') continue;
+      const replacements = (e.data.replacements as { id: string }[]).map((r) => r.id);
+      if (replacements.every((id) => runMerged.has(id))) merged.add(e.data.taskId as string);
+    }
   }
   return merged;
 }

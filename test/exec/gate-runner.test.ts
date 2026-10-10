@@ -32,6 +32,12 @@ function files(map: Record<string, string>) {
 }
 
 describe('dockerArgs', () => {
+  it('keeps the image PATH (no login shell) and points the toolchain caches into the mounted worktree', () => {
+    const { args } = dockerArgs(gate({ name: 'lint', command: 'go vet ./...' }), ctx);
+    expect(args.slice(-3)).toEqual(['sh', '-c', 'go vet ./...']);
+    expect(args).toEqual(expect.arrayContaining(['GOPATH=/work/.tools/go', 'GOCACHE=/work/.tools/go-build', 'CARGO_HOME=/work/.tools/cargo', 'PYTHONPATH=/work/.tools/py']));
+  });
+
   it('runs the command offline in a named, init-managed, non-root container with limits and read-only .git', () => {
     const { args, env } = dockerArgs(gate({ name: 'unit-test', command: 'npm test' }), ctx);
     expect(args.slice(0, 3)).toEqual(['run', '--rm', '--init']);
@@ -52,7 +58,7 @@ describe('dockerArgs', () => {
         'node:22-bookworm',
       ]),
     );
-    expect(args.slice(-3)).toEqual(['sh', '-lc', 'npm test']);
+    expect(args.slice(-3)).toEqual(['sh', '-c', 'npm test']);
     expect(args.join(' ')).not.toContain('npm_x');
     expect(env).toEqual({});
   });

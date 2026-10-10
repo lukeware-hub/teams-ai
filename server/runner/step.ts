@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { OUTPUT_SCHEMAS, toJsonSchema, type OutputOf, type StepKind } from '../agents/outputs.js';
 import type { AgentDefinition } from '../agents/registry.js';
@@ -160,7 +161,8 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
 
   const clock = deps.clock ?? (() => new Date());
   return withRefreshGate(hostEnv, clock, async () => {
-    const home = await createStepHome(deps.settingsDir, hostEnv);
+    // A short path: the sandbox socket in $HOME/tmp must fit the 108 characters of a Unix socket path.
+    const home = await createStepHome(path.join(os.tmpdir(), `th-${process.getuid?.() ?? 0}`), hostEnv);
     try {
       return await runStepIn(req, deps, hostEnv, home);
     } finally {

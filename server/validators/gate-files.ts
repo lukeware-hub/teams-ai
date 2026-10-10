@@ -1,10 +1,11 @@
 import picomatch from 'picomatch';
 import type { Plan } from '../contracts/plan.js';
+import { BUILD_DIRS } from '../runner/stacks.js';
 
 /** Source-like paths a gate command mentions (`node --check smoke/smoke.mjs`, `python tests/run.py`). */
-const PATH_TOKEN = /(?:^|[\s'"=(])((?:[\w.-]+\/)*[\w-][\w.-]*\.(?:mjs|cjs|js|ts|tsx|jsx|py|sh|json|ya?ml))(?=$|[\s'")&;|])/g;
+const PATH_TOKEN = /(?:^|[\s'"=(])((?:[\w.-]+\/)*[\w-][\w.-]*\.(?:mjs|cjs|js|ts|tsx|jsx|py|go|rs|toml|sh|json|ya?ml))(?=$|[\s'")&;|])/g;
 /** Created by the gate itself or by the orchestrator, never by a task. */
-const GATE_OWNED = /^(?:\.tools\/|node_modules\/|reports\/|\.\/\.tools\/)/;
+const GATE_OWNED = new RegExp(`^(?:\\.tools/|reports/|\\./\\.tools/|(?:${BUILD_DIRS.map((d) => d.replace('.', '\\.')).join('|')})/)`);
 
 /**
  * Gates run in the worktree of EVERY task, the first one included. A blocking gate that names a file only a later task creates
@@ -13,13 +14,14 @@ const GATE_OWNED = /^(?:\.tools\/|node_modules\/|reports\/|\.\/\.tools\/)/;
  */
 export function gateFileErrors(plan: Plan, repoFiles: ReadonlySet<string>): string[] {
   const rootOwners = plan.tasks.filter((t) => t.dependsOn.length === 0).flatMap((t) => t.affectedPaths).map((p) => picomatch(p, { dot: true }));
+  const gateOutputs = new Set([plan.coveragePath, plan.junitPath].filter(Boolean));
   const errors: string[] = [];
   for (const gate of plan.gates) {
     if (!gate.blocking) continue;
     const missing = new Set<string>();
     for (const m of gate.command.matchAll(PATH_TOKEN)) {
       const file = m[1]!.replace(/^\.\//, '');
-      if (GATE_OWNED.test(file) || repoFiles.has(file) || rootOwners.some((own) => own(file))) continue;
+      if (GATE_OWNED.test(file) || gateOutputs.has(file) || repoFiles.has(file) || rootOwners.some((own) => own(file))) continue;
       missing.add(file);
     }
     if (missing.size > 0) {

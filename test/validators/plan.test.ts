@@ -19,6 +19,14 @@ describe('validatePlan', () => {
     );
   });
 
+  it('rejects a task that lists the JUnit report and a command that fetches a tool at a moving reference', () => {
+    const base = makePlan(spec);
+    const tasks = base.tasks.map((t, i) => (i === 0 ? { ...t, affectedPaths: [...t.affectedPaths, base.junitPath] } : t));
+    const gates = [...base.gates, { name: 'license-scan', command: 'go run github.com/google/go-licenses/v2@master check ./...', blocking: true, network: 'egress' as const, secrets: [] }];
+    const errors = validatePlan({ ...base, tasks, gates }, spec, { firstSpec: true });
+    expect(errors).toEqual(expect.arrayContaining([expect.stringContaining(`lists ${base.junitPath}`), expect.stringContaining('github.com/google/go-licenses/v2@master')]));
+  });
+
   it('rejects an unfrozen spec', () => {
     expect(validatePlan(makePlan(spec), { ...spec, specHash: null }, { firstSpec: true })).toContain('spec is not frozen');
   });

@@ -46,6 +46,8 @@ export const NESTED_DENIED: readonly string[] = [
   'Bash(node --eval:*)',
   'Bash(node -p:*)',
   'Bash(node --print:*)',
+  'Bash(python -c:*)',
+  'Bash(python3 -c:*)',
   'Bash(npm exec:*)',
   'Bash(npm x:*)',
   'Bash(npx gh:*)',
