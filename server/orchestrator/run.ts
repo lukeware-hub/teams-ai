@@ -42,7 +42,7 @@ import { eventsFile, expandHome, graphDir, mergedByPriorRuns, nextRunId, runDir,
 import type { DeployTarget } from '../deploy/target.js';
 import { E2E_GATE, runE2e } from '../exec/e2e.js';
 import { gateReachableUrl, runSmoke } from '../exec/smoke.js';
-import { STACK_DOMAINS, stackEnv, stackKind } from '../runner/stacks.js';
+import { stackDomains, stackEnv, stackKind } from '../runner/stacks.js';
 
 export interface RunDeps {
   cfg: Config;
@@ -240,10 +240,10 @@ export class Run {
       claudeJsonPath: this.deps.claudeJsonPath ?? expandHome('~/.claude.json'),
       settingsDir: path.posix.join(runDir(ws, this.runId), 'settings'),
       workspacesRoot: ws.root,
-      // registry.npmjs.org lets a step install dependencies; cfg.docker.serviceHost is where the orchestrator and the
+      // The stack's registries let a step install dependencies; cfg.docker.serviceHost is where the orchestrator and the
       // gates already reach a deployed service (server/deploy/docker-local.ts), so a step's own sandbox needs the same
       // route to test against SERVICE_URL itself — never a wider one (no internet host, no datastore port).
-      network: { allowedDomains: [...STACK_DOMAINS, cfg.docker.serviceHost] },
+      network: { allowedDomains: [...stackDomains(stackKind(`${this.plan?.stack ?? ''} ${this.plan?.gateImage ?? ''} ${this.deps.project.stack ?? ''}`)), cfg.docker.serviceHost] },
       sandbox: { enabled: cfg.sandbox.enabled, unsafeNoSandbox: cfg.sandbox.unsafeNoSandbox },
       clock: this.clock,
       // cli-error's chain never reaches Claude, so classifying a failed step cannot start another step.

@@ -1,4 +1,4 @@
-import { BUILD_DIRS } from '../runner/stacks.js';
+import { UNCOMMITTED_BUILD_DIRS } from '../runner/stacks.js';
 /** Where the orchestrator renders the installer inside the worktree, and the command the install gate must run. */
 export const INSTALLER_PATH = '.tools/install.sh';
 export const INSTALLER_COMMAND = `sh ${INSTALLER_PATH}`;
@@ -78,7 +78,7 @@ cat > "$ROOT/.tools/gitleaks.toml" <<'TOML'
 [extend]
 useDefault = true
 [allowlist]
-paths = ['''(^|/)[.]tools/''', '''(^|/)(${BUILD_DIRS.map((d) => d.replace('.', '[.]')).join('|')})/''']
+paths = ['''(^|/)[.]tools/''', '''(^|/)(${UNCOMMITTED_BUILD_DIRS.map((d) => d.replace('.', '[.]')).join('|')})/''']
 TOML
 
 rm -rf "$TMP"

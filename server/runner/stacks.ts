@@ -1,16 +1,18 @@
 import path from 'node:path';
 
-/** Package registries the agent sandbox may reach, per supported stack: Node.js, Python, Go and Rust. */
-export const STACK_DOMAINS: readonly string[] = [
-  'registry.npmjs.org',
-  'pypi.org',
-  'files.pythonhosted.org',
-  'proxy.golang.org',
-  'sum.golang.org',
-  'crates.io',
-  'index.crates.io',
-  'static.crates.io',
-];
+/** Package registries per stack; npm stays open for every stack, as before stacks existed. */
+const REGISTRIES: Record<StackKind, readonly string[]> = {
+  node: [],
+  python: ['pypi.org', 'files.pythonhosted.org'],
+  go: ['proxy.golang.org', 'sum.golang.org'],
+  rust: ['crates.io', 'index.crates.io', 'static.crates.io'],
+  other: [],
+};
+
+/** The registries a step's sandbox may reach: only those of the run's stack (least privilege). */
+export function stackDomains(kind: StackKind): string[] {
+  return ['registry.npmjs.org', ...REGISTRIES[kind]];
+}
 
 /** Toolchain commands a Dev or Test may run besides npm and node (Python goes through the virtualenv in `.tools/venv`). */
 export const STACK_BASH: readonly string[] = [
@@ -70,3 +72,6 @@ export function stackKind(text: string): StackKind {
 
 /** Folders that dependencies or builds fill: gates own them and scanners skip them (a path regex source, matched at the start). */
 export const BUILD_DIRS: readonly string[] = ['node_modules', 'vendor', 'target', '.venv', '__pycache__', '.pytest_cache'];
+
+/** Build folders never committed; the secret scan may skip them. Go commits `vendor/`, so it is still scanned. */
+export const UNCOMMITTED_BUILD_DIRS: readonly string[] = BUILD_DIRS.filter((d) => d !== 'vendor');

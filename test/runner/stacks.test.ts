@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { STACK_BASH, STACK_DOMAINS, stackEnv } from '../../server/runner/stacks.js';
+import { STACK_BASH, UNCOMMITTED_BUILD_DIRS, stackDomains, stackEnv } from '../../server/runner/stacks.js';
 
 describe('stacks', () => {
-  it('reaches the registries of Node.js, Python, Go and Rust', () => {
-    expect(STACK_DOMAINS).toEqual(expect.arrayContaining(['registry.npmjs.org', 'pypi.org', 'proxy.golang.org', 'crates.io']));
+  it('reaches only the registries of the run stack, plus npm', () => {
+    expect(stackDomains('go')).toEqual(['registry.npmjs.org', 'proxy.golang.org', 'sum.golang.org']);
+    expect(stackDomains('node')).toEqual(['registry.npmjs.org']);
+    expect(stackDomains('other')).toEqual(['registry.npmjs.org']);
+    expect(stackDomains('python')).not.toContain('crates.io');
+  });
+
+  it('still scans the committed Go vendor folder for secrets', () => {
+    expect(UNCOMMITTED_BUILD_DIRS).not.toContain('vendor');
+    expect(UNCOMMITTED_BUILD_DIRS).toContain('node_modules');
   });
 
   it('allows the toolchain commands of Go, Rust and Python', () => {

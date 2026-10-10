@@ -46,7 +46,7 @@ cat > "$ROOT/.tools/gitleaks.toml" <<'TOML'
 [extend]
 useDefault = true
 [allowlist]
-paths = ['''(^|/)[.]tools/''', '''(^|/)(node_modules|vendor|target|[.]venv|__pycache__|[.]pytest_cache)/''']
+paths = ['''(^|/)[.]tools/''', '''(^|/)(node_modules|target|[.]venv|__pycache__|[.]pytest_cache)/''']
 TOML
 
 rm -rf "$TMP"
