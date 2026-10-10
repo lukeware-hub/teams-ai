@@ -246,7 +246,7 @@ export async function runGate(gate: Gate, ctx: GateContext, deps: GateDeps): Pro
   const executor = deps.executor ?? dockerGateExecutor(deps.exec);
   try {
     const r = await executor.run(gate, ctx);
-    stdout = r.stdout;
+    stdout = `${r.stdout}\n${r.stderr}`; // python unittest and cargo print their result lines on stderr
     base = { exitCode: r.exitCode, timedOut: r.timedOut, durationMs: r.durationMs, stdoutTail: clean(r.stdout), stderrTail: clean(r.stderr) };
   } catch (err) {
     base = { exitCode: null, timedOut: false, durationMs: Date.now() - started, stderrTail: clean((err as Error).message), stdoutTail: '' };

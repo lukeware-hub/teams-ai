@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Exec } from '../../server/exec/command.js';
-import { PUBLISHED_PORTS, assignDeployPort, releaseDeployPort, serviceLinks } from '../../server/deploy/service-links.js';
+import { PUBLISHED_PORTS, assignDeployPort, portHeldByOthers, releaseDeployPort, serviceLinks } from '../../server/deploy/service-links.js';
 
 describe('serviceLinks', () => {
   it('builds the app and docs urls for an api inside the published range', () => {
@@ -68,5 +68,22 @@ describe('assignDeployPort', () => {
     const failing: Exec = async () => { throw new Error('no docker'); };
     expect(inRange((await assignDeployPort(dir, 'a', failing)).port)).toBe(true);
     await fs.rm(dir, { recursive: true, force: true });
+  });
+});
+
+describe('port reassignment', () => {
+  const docker = (stdout = ''): Exec => async () => ({ exitCode: 0, stdout, stderr: '' }) as never;
+
+  it('never keeps or draws an avoided port', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-ports-'));
+    const first = (await assignDeployPort(dir, 'a', docker())).port!;
+    for (let i = 0; i < 20; i++) expect((await assignDeployPort(dir, 'a', docker(), [first])).port).not.toBe(first);
+  });
+
+  it('sees a port held by a container of another compose project, not by its own', async () => {
+    const ps = docker('other|127.0.0.1:3001->3001/tcp\nmine|0.0.0.0:3002->3002/tcp\n');
+    expect(await portHeldByOthers(ps, 'mine', 3001)).toBe(true);
+    expect(await portHeldByOthers(ps, 'mine', 3002)).toBe(false);
+    expect(await portHeldByOthers(ps, 'mine', 3003)).toBe(false);
   });
 });

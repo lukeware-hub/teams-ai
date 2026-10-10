@@ -165,6 +165,11 @@ describe('runGate', () => {
     expect(run.env).toEqual({});
   });
 
+  it('reads test result lines printed on stderr (python unittest -v)', async () => {
+    const fake = new FakeExec().onArgs('docker', ['run'], () => ({ stdout: '', stderr: 'test_ac_001_health_ok (smoke.T.test_ac_001_health_ok)\n[AC-001] GET /health responde 200 ... ok\n' }));
+    const r = await runGate(gate({ name: 'smoke', command: 'python3 smoke/test_smoke.py' }), ctx, { exec: fake.exec, ...files({}).deps });
+    expect(r.junit?.map((t) => [t.acIds, t.status])).toEqual([[['AC-001'], 'passed']]);
+  });
   it('reports a code failure with the tail of the output when the command exits non-zero', async () => {
     const f = files({});
     const fake = new FakeExec().onArgs('docker', ['run'], () => ({ exitCode: 1, stdout: 'x'.repeat(10_000) + 'THE END', stderr: 'FAIL src/a.test.ts' }));

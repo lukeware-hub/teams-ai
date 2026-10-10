@@ -1,4 +1,6 @@
 import type { PlanTask } from '../../contracts/plan.js';
+import { assignDeployPort, portHeldByOthers } from '../../deploy/service-links.js';
+import { composeProject } from '../../deploy/docker-local.js';
 import { runDeployment, type DeploymentIntent, type DeployStage } from '../../deploy/target.js';
 import { e2eCommand, type E2eRow } from '../../exec/e2e.js';
 import type { SmokeRow } from '../../exec/smoke.js';
@@ -13,9 +15,22 @@ export const IMAGE_ARCHIVE = '.tools/image.tar';
 export type Phase5Result = { ok: true; url: string; smoke: SmokeRow[]; healthcheck: string; e2e?: E2eRow[] } | { ok: false; reason: string; fixTask?: PlanTask };
 export const MAX_DEPLOY_ATTEMPTS = 3;
 
+/** The plan's port, unless a failed deploy moved it to a free one. */
+const deployPort = (deps: PhaseDeps) => Number([...deps.journal.events].reverse().find((e) => e.type === OrchEvent.DeployPortReassigned)?.data.to ?? deps.plan!.deploy.port);
+
+const PORT_TAKEN = /port is already allocated/;
+
+/** Draws a free port in place of `from` and records it; null when none is left. */
+async function reassignPort(deps: PhaseDeps, from: number): Promise<number | null> {
+  if (!deps.workspacesRoot) return null;
+  const { port } = await assignDeployPort(deps.workspacesRoot, deps.project.projectId, deps.exec, [from]);
+  if (port !== null) await deps.journal.fact(OrchEvent.DeployPortReassigned, { from, to: port });
+  return port;
+}
+
 export function deployIntent(deps: PhaseDeps, tag: string): DeploymentIntent {
   const p = deps.plan!;
-  return { projectId: deps.project.projectId, image: p.deploy.image, tag, port: p.deploy.port, healthcheckPath: p.deploy.healthcheckPath, manifests: [...p.deploy.manifests], secretNames: deps.secretNames ? deps.secretNames() : [...new Set(deps.spec.externalDependencies.flatMap((d) => d.secretNames))], contextDir: deps.ws.repo, ...(p.delivery?.compose ? { compose: p.delivery.compose } : {}), ...(p.gates.some((g) => g.name === 'image-scan') ? { imageArchive: IMAGE_ARCHIVE } : {}) };
+  return { projectId: deps.project.projectId, image: p.deploy.image, tag, port: deployPort(deps), healthcheckPath: p.deploy.healthcheckPath, manifests: [...p.deploy.manifests], secretNames: deps.secretNames ? deps.secretNames() : [...new Set(deps.spec.externalDependencies.flatMap((d) => d.secretNames))], contextDir: deps.ws.repo, ...(p.delivery?.compose ? { compose: p.delivery.compose } : {}), ...(p.gates.some((g) => g.name === 'image-scan') ? { imageArchive: IMAGE_ARCHIVE } : {}) };
 }
 // Ids are assigned here and must stay unique across attempts and resumes (a resumed attempt re-issued
 // T950-deploy-fix-1 and the reducer rejected it - 1387253335-001-r13).
@@ -23,7 +38,7 @@ export function deployIntent(deps: PhaseDeps, tag: string): DeploymentIntent {
 const MANIFESTS = ['package.json', 'go.mod', 'go.sum', 'requirements.txt', 'pyproject.toml', 'Cargo.toml', 'Cargo.lock'];
 
 const fixTaskId = (deps: PhaseDeps) => `T950-deploy-fix-${[...deps.journal.state.tasks.keys()].filter((id) => id.startsWith('T950-deploy-fix-')).length + 1}`;
-const fixTask = (deps: PhaseDeps, attempt: number, stage: DeployStage, detail: string): PlanTask => {
+const fixTask = (deps: PhaseDeps, attempt: number, stage: DeployStage, detail: string, newPort: number | null = null): PlanTask => {
   const base = { id: fixTaskId(deps), title: `Fix deployment (${stage})`, criteriaRefs: [], dependsOn: [], origin: 'deploy-fix' as const };
   // A smoke failure is about the smoke tests, not the manifests: the Dev owns it and must know the contract.
   if (stage === 'smoke') {
@@ -37,7 +52,8 @@ Contract: ${SMOKE_CONTRACT}`, affectedPaths: ['tests/smoke/**', 'tests/smoke', '
 
 Contract: ${E2E_CONTRACT}`, affectedPaths: [...(suite ? [suite] : []), 'e2e/**', 'tests/e2e/**', ...MANIFESTS], owner: 'dev' };
   }
-  return { ...base, description: `Deploy attempt ${attempt} failed at ${stage}: ${detail}`, affectedPaths: [...deps.plan!.deploy.manifests, 'Dockerfile'], owner: 'devops' };
+  const portHint = newPort === null ? '' : `\n\nThe host port is taken. Move the service to port ${newPort}: PORT=${newPort}, docker-compose publishes "${newPort}:${newPort}", and the Dockerfile, healthcheck and tests use ${newPort} too.`;
+  return { ...base, description: `Deploy attempt ${attempt} failed at ${stage}: ${detail}${portHint}`, affectedPaths: [...deps.plan!.deploy.manifests, 'Dockerfile'], owner: 'devops' };
 };
 
 /** Resuming a new process restarts postPhases()'s attempt loop at 1; without this it replayed attempt 1's
@@ -62,7 +78,8 @@ export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fix
     if (attempt >= 3 || opts.fixTasks === false) return { ok: false, reason: `deploy failed on attempt ${attempt} at ${stage}: ${detail}` };
     // The plan is not the Dev's to edit, so a deploy-fix task could only come back empty and burn tokens.
     if ((stage === 'smoke' && detail === 'plan.commands.smoke missing') || (stage === 'e2e' && detail.startsWith('plan.commands.e2e missing'))) return { ok: false, reason: `deploy failed at ${stage}: ${detail}` };
-    const task = fixTask(deps, attempt, stage, detail); await deps.journal.fact(RunEvent.FixTasksPlanned, { tasks: [task] });
+    const newPort = stage === 'apply' && PORT_TAKEN.test(detail) ? await reassignPort(deps, intent.port) : null;
+    const task = fixTask(deps, attempt, stage, detail, newPort); await deps.journal.fact(RunEvent.FixTasksPlanned, { tasks: [task] });
     return { ok: false, reason: `deploy failed at ${stage}; deploy-fix task planned`, fixTask: task };
   };
   let previous: string | null = null; let healthcheck = '';
@@ -70,6 +87,8 @@ export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fix
     const c = [...deps.journal.events].reverse().find((e) => e.kind === 'confirm' && e.intentId === `${Intent.DeployApply}:${key}`); previous = (c?.data.previous as string | null | undefined) ?? null;
     const h = await deps.target.verify(intent); if (!h.healthy) return failed('verify', h.detail, false, null, previous); healthcheck = h.detail;
   } else {
+    // A run planned before the port registry may hold a port another project's container owns: move it before the bind fails.
+    if (await portHeldByOthers(deps.exec, composeProject(deps.project.projectId), intent.port)) return failed('apply', `Bind for 0.0.0.0:${intent.port} failed: port is already allocated`, false, null, null);
     await deps.journal.intent(Intent.DeployApply, key, { attempt, image: intent.image, tag, intent });
     const r = await runDeployment(deps.target, intent, { smoke: async () => ({ ok: true, detail: 'journaled separately' }), baseUrl: '' });
     if (!r.ok) return failed(r.stage, r.detail, r.rolledBack, r.rollbackHealthy, null);

@@ -45,7 +45,7 @@ describe('image archive export', () => {
 
   it('the deploy intent requests the archive only for plans with an image-scan gate', () => {
     const mk = (names: string[]) =>
-      ({ project: { projectId: 'p' }, ws: { repo: '/r' }, spec: { externalDependencies: [] }, plan: { deploy: { image: 'i', port: 1, healthcheckPath: '/', manifests: [] }, gates: names.map((name) => ({ name })) } }) as never;
+      ({ journal: { events: [] }, project: { projectId: 'p' }, ws: { repo: '/r' }, spec: { externalDependencies: [] }, plan: { deploy: { image: 'i', port: 1, healthcheckPath: '/', manifests: [] }, gates: names.map((name) => ({ name })) } }) as never;
     expect(deployIntent(mk(['image-scan']), 't').imageArchive).toBe('.tools/image.tar');
     expect(deployIntent(mk(['build']), 't').imageArchive).toBeUndefined();
   });

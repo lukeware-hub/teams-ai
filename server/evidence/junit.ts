@@ -72,7 +72,16 @@ function otherRunnerLine(line: string): { name: string; status: TestResult['stat
 
 export function parseTap(text: string): TestResult[] {
   const out: TestResult[] = [];
+  let header: string | null = null;
   for (const line of text.split(/\r?\n/)) {
+    // `unittest -v` puts a docstring on its own line: `test_x (m.C.test_x)` then `[AC-001] doc ... ok`.
+    const unittestHeader = /^(\S+) \((\S+)\)$/.exec(line.trim());
+    const docResult = header === null ? null : /\.\.\. (ok|FAIL|ERROR|skipped)\b/.exec(line);
+    if (docResult) {
+      out.push({ id: `tap::${header}`, classname: 'tap', name: header!, status: docResult[1] === 'ok' ? 'passed' : docResult[1] === 'skipped' ? 'skipped' : 'failed', acIds: extractAcIds(`${header} ${line}`) });
+    }
+    header = unittestHeader ? unittestHeader[2]! : null;
+    if (docResult) continue;
     const tap = /^\s*(not )?ok \d+(?: -)? (.*)$/.exec(line);
     const spec = tap ? null : /^\s*([✔✖﹣]) (.*)$/.exec(line);
     const other = tap || spec ? null : otherRunnerLine(line);

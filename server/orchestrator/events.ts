@@ -42,6 +42,8 @@ export const OrchEvent = {
   VerificationFailed: 'VERIFICATION_FAILED',
   DeployApplied: 'DEPLOY_APPLIED',
   DeployFailed: 'DEPLOY_FAILED',
+  /** The host port the plan chose was taken, so the deploy moved to a new one. */
+  DeployPortReassigned: 'DEPLOY_PORT_REASSIGNED',
   RollbackDone: 'ROLLBACK_DONE',
   DeployVerified: 'DEPLOY_VERIFIED',
   ReportReady: 'REPORT_READY',
