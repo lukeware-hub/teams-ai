@@ -102,4 +102,9 @@ describe('refinePack digest provenance', () => {
     const pack = refinePack({ ...base, role: 'po', derived: { project: {}, spec: null }, backlog, projectBriefing: true, cycle: 3 } as never);
     expect(pack.feedback).toContain('seção não encontrada: flow.md › 9. Faturamento');
   });
+
+  it('from the second cycle on, every reviewer is told to converge: only defects, never polish', () => {
+    expect(refinePack({ ...base, role: 'front', cycle: 1 }).feedback).not.toContain('CONVERGENCE');
+    for (const role of ['front', 'po', 'sm'] as const) expect(refinePack({ ...base, role, cycle: 2 }).feedback).toContain('CONVERGENCE');
+  });
 });

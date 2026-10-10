@@ -10,6 +10,9 @@ import type { BacklogState, PatchRow, QuestionRow } from './state.js';
 import type { JevValidationResult } from './jev-validation.js';
 
 /** A stack.md or flow.md that is still the blank template is filled by the SM in one patch each; nobody is asked about a placeholder. */
+/** From the second cycle on a review converges: only defects block the spec (live: Front polished design.md for 8 cycles). */
+const CONVERGENCE_RULE = 'CONVERGENCE (this is not the first cycle): propose a patch or question only for a defect that would make the implementation wrong or untestable - a contradiction, a rule an acceptance criterion needs but no document states, or a rule that would break the interface or its accessibility. Never propose wording, polish, or detail the implementation may choose on its own; when the documents are already implementable, return no patches and no questions.';
+
 function blankDocsRule(input: { role: 'po' | 'sm' | 'front'; stackMd?: string; flowMd?: string }, brief: string): string[] {
   if (input.role === 'front') return [];
   const blank = [input.stackMd === stackTemplate() ? 'docs/stack.md' : null, input.flowMd === flowTemplate() ? 'docs/flow.md' : null].filter((f): f is string => f !== null);
@@ -86,6 +89,7 @@ export function refinePack(input: {
     ...(input.derived.spec ? [] : [BACKLOG_REVIEW_RULE]),
     ...(detail ? [DETAIL_REVIEW_RULE] : []),
     ...blankDocsRule(input, brief),
+    ...((input.cycle ?? 1) >= 2 ? [CONVERGENCE_RULE] : []),
     `Report exactly these checklist ids: ${ids.join(', ') || '(none; Front reports only design.md patches)'}.`,
     input.role === 'front'
       ? `Patch files: ${rel('design.md')} only. Do not ask questions; return an empty questions array. This is a review, not an implementation task: do not edit or create files, do not run skills, a browser or shell commands, and do not follow your implementation workflow. Read what you need, then reply with the single JSON object and nothing else.`
