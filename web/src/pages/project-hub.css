@@ -5,6 +5,7 @@
 .project-hub-header code { display: block; margin-top: 0.5rem; color: var(--ink-faint); font-size: 0.8125rem; overflow-wrap: anywhere; }
 
 /* Progress: a filled bar reads faster than a number buried in a sentence. */
+.project-hub-side { display: grid; flex: 0 0 auto; justify-items: end; gap: 0.75rem; }
 .project-hub-progress { display: flex; flex: 0 0 auto; align-items: center; gap: 0.625rem; }
 .project-hub-progress-bar { width: 8rem; height: 0.5rem; overflow: hidden; border-radius: var(--radius-pill); background: var(--surface-muted); }
 .project-hub-progress-bar span { display: block; height: 100%; border-radius: var(--radius-pill); background: var(--good-live); transition: width var(--duration-fast) ease; }
