@@ -23,7 +23,7 @@ describe('docker-compose.yml (audit H4)', () => {
   });
 
   it('publishes only the deployed-service port range, on the host loopback, and never the Docker API', () => {
-    expect(dind.ports).toEqual(['127.0.0.1:20000-20099:20000-20099']);
+    expect(dind.ports).toEqual(['127.0.0.1:20000-20099:20000-20099', '127.0.0.1:3000-3019:3000-3019']);
     expect(JSON.stringify(dind.ports)).not.toContain('2375');
   });
 

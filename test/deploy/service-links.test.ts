@@ -25,6 +25,12 @@ describe('serviceLinks', () => {
   });
 });
 
+describe('serviceLinks legacy range', () => {
+  it('still links a run deployed on the older 3000-3019 range', () => {
+    expect(serviceLinks({ url: 'http://dind:3001', port: 3001, kind: 'front' }, 'localhost').appUrl).toBe('http://localhost:3001');
+  });
+});
+
 describe('assignDeployPort', () => {
   const docker = (stdout = ''): Exec => async () => ({ exitCode: 0, stdout, stderr: '' }) as never;
   const root = () => fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-ports-'));

@@ -7,6 +7,9 @@ import type { Exec } from '../exec/command.js';
 /** Host ports the platform publishes from the nested daemon to the host loopback (docker-compose.yml, dind `ports`). */
 export const PUBLISHED_PORTS = { from: 20000, to: 20099 } as const;
 
+/** Range older runs deployed on; still published so their links keep working. */
+const LEGACY_PORTS = { from: 3000, to: 3019 } as const;
+
 const registryFile = (workspacesRoot: string) => path.join(workspacesRoot, '.ports.json');
 
 function parseRegistry(text: string | undefined): Record<string, number> {
@@ -81,7 +84,8 @@ function portOf(service: ServiceInfo): number | null {
 /** `hostname` is where the UI itself was opened from: the published range listens on the same machine. */
 export function serviceLinks(service: ServiceInfo, hostname: string): ServiceLinks {
   const port = portOf(service);
-  if (port === null || port < PUBLISHED_PORTS.from || port > PUBLISHED_PORTS.to) return { appUrl: null, docsUrl: null };
+  const published = [PUBLISHED_PORTS, LEGACY_PORTS].some((r) => port !== null && port >= r.from && port <= r.to);
+  if (port === null || !published) return { appUrl: null, docsUrl: null };
   const appUrl = `http://${hostname}:${port}`;
   return { appUrl, docsUrl: service.kind === 'api' && service.docsPath ? `${appUrl}${service.docsPath}` : null };
 }
