@@ -44,6 +44,12 @@ export function githubRepoUrl(remote: string): string | null {
   return m ? `https://github.com/${m[1]}/${m[2]}` : null;
 }
 
+/** GitHub page of the clone at repoDir, or null when it has no GitHub origin. */
+async function repoUrlOf(repoDir: string): Promise<string | null> {
+  const remote = await execCommand({ bin: 'git', args: ['remote', 'get-url', 'origin'], cwd: repoDir, timeoutMs: 5_000 }).catch(() => null);
+  return remote?.exitCode === 0 ? githubRepoUrl(remote.stdout) : null;
+}
+
 export function runRoutes(deps: RunRoutesDeps): Route[] {
   const index = async (): Promise<IndexDeps> => ({ cfg: await deps.cfg(), home: deps.home, isAlive: (pid) => isAlive(deps.control, pid) });
   /** Every draft registers its own root, so one project can have several directories: the spec decides which holds it. */
@@ -170,7 +176,15 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
   const specKey = (projectId: string, specId: string): string => `spec ${projectId}/${specId}`;
   const P = '/api';
   return [
-    { method: 'GET', path: `${P}/projects`, handler: async ({ json }) => json(200, await listProjects(await index())) },
+    {
+      method: 'GET',
+      path: `${P}/projects`,
+      handler: async ({ json }) => {
+        const idx = await index();
+        const rows = await listProjects(idx);
+        json(200, await Promise.all(rows.map(async (r) => ({ ...r, repoUrl: await repoUrlOf(workspacePaths(idx.cfg, r.projectId, deps.home).repo) }))));
+      },
+    },
     {
       method: 'POST',
       path: `${P}/projects`,
@@ -429,8 +443,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
               .then((text) => Plan.safeParse(JSON.parse(text)).data ?? null)
               .catch(() => null)
           : null;
-        const remote = project ? await execCommand({ bin: 'git', args: ['remote', 'get-url', 'origin'], cwd: project, timeoutMs: 5_000 }).catch(() => null) : null;
-        const repoUrl = remote?.exitCode === 0 ? githubRepoUrl(remote.stdout) : null;
+        const repoUrl = await repoUrlOf(workspacePaths(idx.cfg, projectId, deps.home).repo);
         // docs/README.md as merged on main; the working tree is the fallback for a clone without origin/main.
         const readme = project
           ? await execCommand({ bin: 'git', args: ['show', 'origin/main:docs/README.md'], cwd: project, timeoutMs: 5_000 })

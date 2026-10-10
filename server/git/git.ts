@@ -105,7 +105,8 @@ async function createWorktreeUnlocked(repo: string, dir: string, branch: string,
       throw new GitError(`branch ${branch} has commits not on ${base}; refusing to reset it (pass reset to discard them)`);
     }
   }
-  await git(repo, ['worktree', 'add', '-B', branch, dir, base], exec);
+  // --no-track: a remote base would otherwise write the branch upstream into the shared .git/config, racing any other git process (live: config.lock blocked tasks).
+  await git(repo, ['worktree', 'add', '--no-track', '-B', branch, dir, base], exec);
 }
 
 export async function removeWorktree(repo: string, dir: string, exec: Exec = execCommand): Promise<void> {

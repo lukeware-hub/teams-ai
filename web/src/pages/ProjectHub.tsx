@@ -133,6 +133,13 @@ export function ProjectHubView(p: {
           <p className="project-hub-desc">{pr.description}</p>
           <code>{pr.dir}</code>
         </div>
+        {pr.repoUrl ? (
+          <a className="link-button" data-testid="github-link" href={pr.repoUrl} target="_blank" rel="noreferrer">
+            <Icon name="github" size={16} />
+            Abrir no GitHub
+            <Icon name="external" size={16} />
+          </a>
+        ) : null}
         {percent === null ? null : (
           <div className="project-hub-progress" role="img" aria-label={`${percent}% concluído`}>
             <div className="project-hub-progress-bar"><span style={{ width: `${percent}%` }} /></div>

@@ -40,6 +40,7 @@ export interface ProjectRow {
   name: string;
   description: string;
   specs: SpecRow[];
+  repoUrl?: string | null;
 }
 export interface RunRow {
   runId: string;

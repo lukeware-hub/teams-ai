@@ -111,7 +111,8 @@ describe('projects', () => {
   it('lists registered projects with specs and runs', async () => {
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 1);
     const projects = await (await fetch(`${base()}/api/projects`)).json();
-    expect(projects).toEqual([{
+    // repoUrl depends on the origin of the checkout holding the fixture.
+    expect(projects).toMatchObject([{
       projectId: 'hello-app', dir: HELLO, name: 'Hello app',
       description: 'A tiny HTTP service that greets by name, used to exercise the orchestrator end to end.',
       specs: [{ specId: 'hello-001', status: 'running', activeRunId: 'hello-001-r1' }],

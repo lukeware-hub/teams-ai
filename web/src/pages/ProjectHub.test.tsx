@@ -24,6 +24,18 @@ const runs = [
 const on = () => ({ start: vi.fn(), resume: vi.fn(), stop: vi.fn(), newSpec: vi.fn(), cont: vi.fn(), deleteDraft: vi.fn() });
 
 describe('ProjectHubView', () => {
+  it('links to the GitHub repository only when the project has one', () => {
+    const o = on();
+    const hub = (repoUrl: string | null) => (
+      <MemoryRouter>
+        <ProjectHubView project={{ ...project, repoUrl }} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onDeleteDraft={o.deleteDraft} />
+      </MemoryRouter>
+    );
+    const { rerender } = render(hub('https://github.com/acme/hello-app'));
+    expect(screen.getByTestId('github-link').getAttribute('href')).toBe('https://github.com/acme/hello-app');
+    rerender(hub(null));
+    expect(screen.queryByTestId('github-link')).toBeNull();
+  });
   it('shows the project header, one action per spec status and per run status', () => {
     const o = on();
     render(
