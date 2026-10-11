@@ -10,7 +10,7 @@ import { readUserConfig } from '../../server/onboarding/config-store.js';
 import type { RunAgent } from '../../server/refine/cycle.js';
 import { SessionRegistry } from '../../server/refine/registry.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
-import { makeFakeRunAgent, type Script } from '../fixtures/fake-run-agent.js';
+import { calls, makeFakeRunAgent, type Script } from '../fixtures/fake-run-agent.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 
 let home = '';
@@ -140,6 +140,21 @@ describe('refine api', () => {
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/answers', { questionId: 'po-c1-0', text: '8080' })).status).toBe(200);
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/answers', { questionId: 'po-c1-0', text: '8080' })).status).toBe(409);
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/answers', { questionId: 'nope', text: 'x' })).status).toBe(404);
+  });
+
+  it('suggests a document from flow.md without saving it', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    const url = '/api/refine/hello-app/hello-app-001/docs';
+    expect((await call('POST', `${url}/flow.md/suggest`)).status).toBe(400);
+    expect((await call('POST', `${url}/stack.md/suggest`)).status).toBe(409);
+    await call('PUT', `${url}/flow.md`, { text: '# Fluxo\n\nCliente se cadastra com nome e e-mail.' });
+    const before = (await snapshot()).docs['stack.md'];
+    script['suggest/sm'] = [{ text: '# Stack\n\n## Runtime\n\n- Node.js' }];
+    const res = await call('POST', `${url}/stack.md/suggest`);
+    expect(await res.json()).toEqual({ text: '# Stack\n\n## Runtime\n\n- Node.js' });
+    expect(calls.at(-1)?.prompt).toContain('Cliente se cadastra com nome e e-mail.');
+    expect(calls.at(-1)?.prompt).toContain('flow.md wins');
+    expect((await snapshot()).docs['stack.md']).toBe(before);
   });
 
   it('concurrent first reads of a draft share one session instead of failing on the journal lock', async () => {

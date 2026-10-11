@@ -322,8 +322,24 @@ describe('RefinementView: a new spec in an existing project', () => {
     expect(screen.getByTestId('docs-group-project').textContent).toContain('Contexto do projeto');
     expect(screen.getByTestId('docs-group-project').textContent).toContain('muda só com sua aprovação');
     expect(screen.getByTestId('doc-brief.md')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: /\.md$/ }).map((b) => b.textContent)).toEqual(['briefing.md', 'flow.md', 'project.md', 'stack.md', 'design.md']);
     unmount();
     render(<MemoryRouter><RefinementView snap={base({ mode: 'new-project' })} busy={false} {...on()} /></MemoryRouter>);
     expect(screen.queryByTestId('docs-group-project')).toBeNull();
+    expect(screen.getAllByRole('button', { name: /\.md$/ }).map((b) => b.textContent)).toEqual(['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md']);
+  });
+});
+
+describe('RefinementView: Sugerir', () => {
+  it('fills the editor with the suggestion from flow.md without saving, and has no button on flow.md', async () => {
+    const h = { ...on(), onSuggestDoc: vi.fn().mockResolvedValue('# Stack sugerida') };
+    render(<MemoryRouter><RefinementView snap={base({ mode: 'new-project' })} busy={false} {...h} /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'stack.md' }));
+    fireEvent.click(screen.getByTestId('suggest'));
+    expect(h.onSuggestDoc).toHaveBeenCalledWith('stack.md');
+    await screen.findByDisplayValue('# Stack sugerida');
+    expect(h.onSaveDoc).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'flow.md' }));
+    expect(screen.queryByTestId('suggest')).toBeNull();
   });
 });

@@ -8,7 +8,7 @@ import { ID_PATTERNS } from '../core/ids.js';
 import { Project } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 
-export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'dev', 'review', 'security', 'deployment', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'name'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'dev', 'review', 'security', 'deployment', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'name', 'suggest'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -200,6 +200,10 @@ const nameId = z.string().regex(ID_PATTERNS.SLUG).max(40);
 export const NameOutput = z.object({ specHash, id: nameId, firstSpecId: nameId.optional() });
 export type NameOutput = z.infer<typeof NameOutput>;
 
+/** Refinement "Sugerir": one document written in full from flow.md; the human reviews it in the editor before saving. */
+export const SuggestOutput = z.object({ specHash, text: z.string().min(1) });
+export type SuggestOutput = z.infer<typeof SuggestOutput>;
+
 export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> = {
   refine: RefineOutput,
   derive: DeriveOutput,
@@ -220,6 +224,7 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   spec: SpecDetailOutput,
   preplan: PreplanOutput,
   name: NameOutput,
+  suggest: SuggestOutput,
 };
 
 export type OutputOf<K extends StepKind> = z.infer<(typeof OUTPUT_SCHEMAS)[K]>;

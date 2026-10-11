@@ -125,6 +125,8 @@ export interface ViewProps {
   snap: Snapshot;
   busy: boolean;
   onSaveDoc(file: DocFile, text: string): void;
+  /** "Sugerir": the agent's version of a document written from flow.md, or null when it failed. */
+  onSuggestDoc?(file: Exclude<DocFile, 'flow.md'>): Promise<string | null>;
   onEvaluate(): void;
   onEnableBacklog?(): void;
   onEnableDetail?(): void;
@@ -160,6 +162,8 @@ export function RefinementView(p: ViewProps) {
   const st = snap.state;
   const [tab, setTab] = useState<DocFile>('brief.md');
   const [docs, setDocs] = useState(snap.docs);
+  const [suggesting, setSuggesting] = useState(false);
+  const editor = useRef<HTMLTextAreaElement>(null);
   const [answer, setAnswer] = useState('');
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [secretValues, setSecretValues] = useState<Record<string, string>>({});
@@ -227,6 +231,17 @@ export function RefinementView(p: ViewProps) {
             ? 'Revise os documentos e clique em Avaliar. Os agentes vão revisar a demanda e preencher a lista de verificação.'
             : 'Corrija nos documentos os itens não atendidos da lista de verificação e clique em Reavaliar.';
   const existing = st.mode === 'new-spec' || st.mode === 'continue';
+  const suggest = (file: Exclude<DocFile, 'flow.md'>) => {
+    setSuggesting(true);
+    void p.onSuggestDoc!(file)
+      .then((text) => {
+        if (text === null) return;
+        setDocs((d) => ({ ...d, [file]: text }));
+        // Focused, so leaving the editor saves the suggestion like any other edit.
+        editor.current?.focus();
+      })
+      .finally(() => setSuggesting(false));
+  };
   const tabButton = (f: DocFile) => (
     <button key={f} className={tab === f ? 'active' : ''} onClick={() => setTab(f)}>
       {docLabel[f]}
@@ -252,18 +267,24 @@ export function RefinementView(p: ViewProps) {
             </div>
             <div className="tab-group" data-testid="docs-group-project">
               <span className="tab-group-label">Contexto do projeto · muda só com sua aprovação</span>
-              {(['project.md', 'stack.md', 'flow.md', 'design.md'] as DocFile[]).map(tabButton)}
+              {(['flow.md', 'project.md', 'stack.md', 'design.md'] as DocFile[]).map(tabButton)}
             </div>
           </div>
         ) : (
           <div className="tabs" role="tablist" aria-label="Documentos do projeto">
-            {(['project.md', 'brief.md', 'stack.md', 'flow.md', 'design.md'] as DocFile[]).map(tabButton)}
+            {(['flow.md', 'project.md', 'brief.md', 'stack.md', 'design.md'] as DocFile[]).map(tabButton)}
           </div>
         )}
         <p data-testid="doc-impact" className="hint">{backlogOn && tab === 'brief.md' ? briefingImpact : docImpact[tab]}</p>
         <div className="document-editor">
           <button type="button" className="editor-copy" aria-label="Copiar documento" onClick={() => copyDoc(docs[tab] ?? '')}><Icon name="copy" size={19} /></button>
+          {tab !== 'flow.md' && p.onSuggestDoc && (
+            <button type="button" data-testid="suggest" className="editor-suggest" disabled={locked || suggesting} title="Gera este documento a partir do flow.md" onClick={() => suggest(tab)}>
+              {suggesting ? 'Sugerindo…' : 'Sugerir'}
+            </button>
+          )}
           <textarea
+          ref={editor}
           aria-label={`${docLabel[tab]} editor`}
           data-testid={`doc-${tab}`}
           value={docs[tab] ?? ''}
@@ -572,6 +593,10 @@ export function RefinementPage() {
         snap={snap}
         busy={snap.state.status === 'evaluating'}
         onSaveDoc={(f, t) => act(() => refineApi.saveDoc(projectId, specId, f, t))()}
+        onSuggestDoc={(f) => {
+          setError(null);
+          return refineApi.suggestDoc(projectId, specId, f).then((r) => r.text, (e: Error) => (setError(e.message), null));
+        }}
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}
         onEnableDetail={act(() => refineApi.enableDetail(projectId, specId))}

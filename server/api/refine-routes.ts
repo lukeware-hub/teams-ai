@@ -1,6 +1,7 @@
 import { SECRET_NAME } from '../core/secrets.js';
 import type { DocFile } from '../refine/draft.js';
 import type { SessionRegistry } from '../refine/registry.js';
+import type { SuggestFile } from '../refine/suggest.js';
 import { ConflictError, NotFoundError } from '../refine/session.js';
 import type { StoredEvent } from '../store/event-store.js';
 import { tailJournal } from './journal-tail.js';
@@ -94,6 +95,15 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
         if (!['project.md', 'brief.md', 'stack.md', 'flow.md', 'design.md'].includes(file)) throw new HttpError(400, `unknown doc ${file}`);
         await (await get(params)).saveDoc(file as DocFile, str(await body(), 'text'));
         json(200, { ok: true });
+      }),
+    },
+    {
+      method: 'POST',
+      path: `${S}/docs/:file/suggest`,
+      handler: wrap(async ({ params, json }) => {
+        const file = params.file!;
+        if (!['project.md', 'brief.md', 'stack.md', 'design.md'].includes(file)) throw new HttpError(400, `no suggestion for ${file}`);
+        json(200, { text: await (await get(params)).suggest(file as SuggestFile) });
       }),
     },
     {

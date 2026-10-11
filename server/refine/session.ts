@@ -1,6 +1,8 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { sha256 } from '../contracts/hash.js';
+import type { SuggestOutput } from '../agents/outputs.js';
+import type { StepOutcome } from '../runner/step.js';
 import type { Project } from '../contracts/project.js';
 import { freezeSpec, Spec } from '../contracts/spec.js';
 import { writeFileAtomic } from '../core/atomic-write.js';
@@ -15,6 +17,8 @@ import { designTemplate, flowTemplate, moveBriefingToProject, readDerived, readD
 import { DRAFT_HASH, RefineEvent } from './events.js';
 import { applyPatch } from './patches.js';
 import { buildSpecsIndex } from './specs-index.js';
+import { fitPackBudget } from './fit-pack.js';
+import { SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
 import { applyRefineEvent, emptyRefineState, type RefineState } from './state.js';
 
 export type { RunAgent } from './cycle.js';
@@ -182,6 +186,22 @@ export class RefineSession {
     this.guard();
     await writeDoc(this.deps.draft, file, text);
     await this.journal.fact(RefineEvent.DocEdited, { file, hash: sha256(text), source: 'human' });
+  }
+
+  /** "Sugerir": the agent's version of `file` written from flow.md; nothing is saved, the human reviews it in the editor. */
+  async suggest(file: SuggestFile): Promise<string> {
+    this.guard();
+    const flowMd = await readDoc(this.deps.draft, 'flow.md');
+    if (flowMd.trim() === '' || flowMd === flowTemplate()) throw new ConflictError('Preencha o flow.md antes de pedir uma sugestão.');
+    const currentMd = await readDoc(this.deps.draft, file);
+    const specHash = sha256(`${file}\n${flowMd}\n${currentMd}`);
+    const pack = fitPackBudget(suggestPack({ file, projectId: this.deps.draft.projectId, specHash, flowMd, currentMd }));
+    const out = (await this.deps.runAgent<'suggest'>(
+      { kind: 'suggest', role: SUGGEST_ROLE[file], pack, cwd: this.deps.draft.root, phase: 'refine', taskId: null, attempt: 1 },
+      { journal: this.journal, stepDir: this.deps.draft.steps, specHash },
+    )) as StepOutcome<SuggestOutput>;
+    if (!out.ok) throw new Error(`suggestion failed: ${out.failure}: ${out.errors.join('; ')}`);
+    return out.value.text;
   }
 
   /** Backlog mode: the next evaluations break the docs into a prioritized backlog instead of deriving one spec, and the
