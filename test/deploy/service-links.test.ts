@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Exec } from '../../server/exec/command.js';
-import { assignDeployPort, portHeldByOthers, releaseDeployPort } from '../../server/deploy/port-registry.js';
+import { assignDeployPort, portHeldByOthers, portKey, releaseDeployPort } from '../../server/deploy/port-registry.js';
 import { PUBLISHED_PORTS, serviceLinks } from '../../server/deploy/service-links.js';
 
 describe('serviceLinks', () => {
@@ -77,6 +77,17 @@ describe('assignDeployPort', () => {
     const dir = await root();
     const failing: Exec = async () => { throw new Error('no docker'); };
     expect(inRange((await assignDeployPort(dir, 'a', failing)).port)).toBe(true);
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it('gives each service of a project its own port and frees them all with the project', async () => {
+    const dir = await root();
+    const orders = await assignDeployPort(dir, portKey('shop', 'orders'), docker());
+    const inventory = await assignDeployPort(dir, portKey('shop', 'inventory'), docker());
+    expect(orders.port).not.toBe(inventory.port);
+    expect(inventory.taken).toContain(orders.port);
+    await releaseDeployPort(dir, 'shop');
+    expect(JSON.parse(await fs.readFile(path.join(dir, '.ports.json'), 'utf8'))).toEqual({});
     await fs.rm(dir, { recursive: true, force: true });
   });
 });

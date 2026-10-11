@@ -56,6 +56,9 @@ export async function assignDeployPort(workspacesRoot: string, projectId: string
   return result;
 }
 
-/** Gives the project's port back; called when the project is deleted. */
+/** The registry key of a project's port, or of one of its services' ports. */
+export const portKey = (projectId: string, service: string | null): string => (service === null ? projectId : `${projectId}/${service}`);
+
+/** Gives back the ports of the project and of its services; called when the project is deleted. */
 export const releaseDeployPort = (workspacesRoot: string, projectId: string): Promise<void> =>
-  updateRegistry(workspacesRoot, ({ [projectId]: _released, ...rest }) => rest);
+  updateRegistry(workspacesRoot, (registry) => Object.fromEntries(Object.entries(registry).filter(([key]) => key !== projectId && !key.startsWith(`${projectId}/`))));
