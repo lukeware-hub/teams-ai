@@ -54,7 +54,8 @@ export async function assignDeployPort(workspacesRoot: string, projectId: string
     const free = Array.from({ length: PUBLISHED_PORTS.to - PUBLISHED_PORTS.from + 1 }, (_, i) => PUBLISHED_PORTS.from + i).filter((p) => !taken.includes(p));
     const own = registry[projectId];
     const port = own !== undefined && inRange(own) && !others.includes(own) && !avoid.includes(own) ? own : (free.length > 0 ? free[randomInt(free.length)]! : null);
-    result = { port, taken };
+    // The project's own running container publishes its own port; that is not "another project's".
+    result = { port, taken: taken.filter((p) => p !== port) };
     return port === null ? registry : { ...registry, [projectId]: port };
   });
   return result;

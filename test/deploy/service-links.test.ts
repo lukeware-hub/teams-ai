@@ -55,6 +55,15 @@ describe('assignDeployPort', () => {
     await fs.rm(dir, { recursive: true, force: true });
   });
 
+  it('does not mark the project\'s own published port as taken', async () => {
+    const dir = await root();
+    const { port } = await assignDeployPort(dir, 'a', docker());
+    const again = await assignDeployPort(dir, 'a', docker(`0.0.0.0:${port}->${port}/tcp`));
+    expect(again.port).toBe(port);
+    expect(again.taken).not.toContain(port);
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
   it('frees the port when the project is released', async () => {
     const dir = await root();
     const { port } = await assignDeployPort(dir, 'a', docker());
