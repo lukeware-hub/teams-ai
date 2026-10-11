@@ -687,9 +687,11 @@ The five docs decide whether the software is one application or a system of serv
 - Tests: `test/orchestrator/run-services.test.ts` (two real repositories, a Node and a Go service, a dependency across them, each merge in its own repository, the sandbox and gate image per stack), `test/orchestrator/verify-services.test.ts`, `test/orchestrator/read-docs.test.ts`, one new case each in `workspace.test.ts`, `run-state.test.ts` and `task-runner.test.ts`; whole suite 1463 passed and 4 skipped (baseline 1454), type check clean.
 - Open: resuming a services run after a crash needs reconciliation per repository (R12.3); the agent writes services plans, fix tasks and replans with their service from R12.6; `test/orchestrator/loop.test.ts` "goes from a frozen spec to every task merged" fails about one run in four on the recorded order of the security and Test reviews, which start in parallel since R11.13 slice 5 (`dc7450d`), so the assertion fixes an order the code does not guarantee.
 
-### R12.3 Service repositories - `todo`
+### R12.3 Service repositories - `done` (unit, plan 62, 2026-10-11)
 
-- One workspace and one GitHub repository (`<projectId>-<service>`) per service, created and cloned by Phase 0; `T0-scaffold-<service>` recognized as a scaffold; merges and reconciliation per repository.
+- Built: Phase 0 walks `project.json` services after the docs reach main: a clone whose origin answers is only fetched, a repository GitHub already has is cloned, and a missing one is created as `<projectId>-<service>` from an empty first commit on main, journaled as `REPO_CREATE` with `REPO_BOOTSTRAPPED` naming the service (`ensureServiceRepos` in `server/orchestrator/phases/bootstrap.ts`, `repoName` in `server/core/ids.ts`); every new service's repository gets its CI and release workflows on its own branch and journal key (`executeWorkflows` in `server/orchestrator/run.ts`, `PhaseDeps.service`); the push, pull request, merge and worktree removal intents name their repository and a resumed run reconciles them there, older journals still against the project repository (`server/orchestrator/merge-steps.ts`, `server/orchestrator/reconcile.ts`). Per-service workspaces, the scaffold rule per service and merges per repository were built in R12.2. A project without services makes no new call.
+- Tests: `test/orchestrator/service-repos.test.ts`, two new cases in `test/orchestrator/run-services.test.ts` and one in `test/orchestrator/reconcile.test.ts`, `repoName` in `test/core/ids.test.ts`; whole suite 1471 passed and 4 skipped, type check clean.
+- Open: Phase 2 decides which services are new from these repositories once the agent writes services plans (R12.6).
 
 ### R12.4 Platform and deploy of several services - `todo`
 

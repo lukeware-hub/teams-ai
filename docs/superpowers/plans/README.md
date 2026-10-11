@@ -59,6 +59,7 @@ was implemented. Web UI block A (`2026-09-24-run-api-execution-ui-design.md`) is
 | 51 | [`2026-10-06-teams-ai-51-spec-and-preplan-per-item.md`](2026-10-06-teams-ai-51-spec-and-preplan-per-item.md) | Code done, live check pending — a spec and a pre-plan for every backlog item; ROADMAP R11.2. |
 | 60 | [`2026-10-11-teams-ai-60-services.md`](2026-10-11-teams-ai-60-services.md) | Slice R12.1 done (contracts and validation) — any architecture, one repository per service, one spec across several services; ROADMAP stage 12. |
 | 61 | [`2026-10-11-teams-ai-61-run-per-service.md`](2026-10-11-teams-ai-61-run-per-service.md) | Done — runs go through service views: each task runs and merges in its service's repository, one verification verdict across repositories; ROADMAP R12.2. |
+| 62 | [`2026-10-11-teams-ai-62-service-repositories.md`](2026-10-11-teams-ai-62-service-repositories.md) | Done — each service gets its GitHub repository and clone, new services get their workflows, a resumed run reconciles per repository; ROADMAP R12.3. |
 
 Plans 17 and 19 never existed (not a gap in this audit - no file was ever created at those numbers).
 
