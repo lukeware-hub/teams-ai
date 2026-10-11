@@ -14,7 +14,7 @@ import { nextRunId } from '../orchestrator/workspace.js';
 import { reduceEvents } from '../pipeline/run-state.js';
 import { EventLogCorruptError, loadEvents, type StoredEvent } from '../store/event-store.js';
 import { httpGet, type HttpGet } from '../deploy/target.js';
-import { composeProject } from '../deploy/docker-local.js';
+import { teardownProject } from '../deploy/docker-local.js';
 import { releaseDeployPort } from '../deploy/port-registry.js';
 import { refuseCloneHost, type ResolveHost } from './security.js';
 import { tailJournal } from './journal-tail.js';
@@ -239,11 +239,13 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const projectId = params.projectId!;
         const dirs: string[] = [];
         const specIds = new Set<string>();
+        const services: string[] = [];
         for (const { dir } of idx.cfg.projects) {
           const read = await readProject(dir).catch(() => null);
           if (read?.project.projectId !== projectId) continue;
           dirs.push(dir);
           for (const s of read.specs) specIds.add(s.specId);
+          services.push(...(read.project.services ?? []));
         }
         if (dirs.length === 0) throw new HttpError(404, `unknown project ${projectId}`);
         const active = (await listRuns(idx, projectId)).find(claimsSpec);
@@ -259,7 +261,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           if (row && (row.projectId === projectId || (row.projectId === '' && specIds.has(row.specId)))) await fs.rm(path.join(runs, runId), { recursive: true, force: true });
         }
         await removeProjectDirs(dirs, deps.home);
-        await execCommand({ bin: 'docker', args: ['compose', '-p', composeProject(projectId), 'down', '-v'], timeoutMs: 120_000 }).catch(() => undefined); // frees the port; no daemon means nothing runs
+        await teardownProject(execCommand, projectId, [...new Set(services)]); // frees the ports; no daemon means nothing runs
         await releaseDeployPort(path.dirname(ws.root), projectId);
         json(200, { deleted: true });
       },

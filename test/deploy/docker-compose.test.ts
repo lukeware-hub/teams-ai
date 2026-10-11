@@ -1,5 +1,6 @@
+import { promises as fs } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { DockerLocalTarget } from '../../server/deploy/docker-local.js';
+import { DockerLocalTarget, teardownProject } from '../../server/deploy/docker-local.js';
 import type { DeploymentIntent, HttpGet } from '../../server/deploy/target.js';
 import { dockerArgs } from '../../server/exec/gate-runner.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
@@ -96,5 +97,50 @@ describe('DockerLocalTarget: the compose service name', () => {
     expect(await mk(both).gateServiceUrl!(intent)).toBe('http://Todo-Api:3000');
     const several = new FakeExec().on((s) => s.args.includes('--services'), () => ({ stdout: 'db\nweb\n' }));
     expect(await mk(several).gateServiceUrl!(intent)).toBe('http://Todo-Api:3000');
+  });
+});
+
+describe('a service of a system of services', () => {
+  const shared = { composeProject: 'teams-ai-shop--orders', network: 'teams-ai-shop_net', alias: 'orders' };
+  const intent = { projectId: 'shop', image: 'orders', tag: 't1', port: 20001, healthcheckPath: '/health', manifests: [], secretNames: [], contextDir: '/ws/orders', compose: 'docker-compose.yml', shared };
+
+  it("runs in its own compose project and joins only its main container to the shared network, under the service's name", async () => {
+    // The main container is the compose service named like the service (the devops rule of R12.6); its database stays private.
+    const fake = new FakeExec().on((s) => s.args.includes('--services'), () => ({ stdout: 'orders\ndb\n' }));
+    const target = new DockerLocalTarget({ exec: fake.exec, get: async () => ({ status: 200 }), secrets: {} });
+    await target.apply(intent);
+    const up = fake.calls.find((c) => c.args.includes('up'))!;
+    const file = up.args[up.args.lastIndexOf('-f') + 1]!;
+    expect(up.args.slice(0, 3)).toEqual(['compose', '-p', 'teams-ai-shop--orders']);
+    expect(JSON.parse(await fs.readFile(file, 'utf8'))).toEqual({
+      services: { orders: { networks: { default: {}, shared: { aliases: ['orders'] } } } },
+      networks: { shared: { name: 'teams-ai-shop_net', external: true } },
+    });
+    expect(target.gateNetwork(intent)).toBe('teams-ai-shop_net');
+    expect(await target.gateServiceUrl(intent)).toBe('http://orders:20001');
+  });
+
+  it('creates the shared network when it is missing and starts the platform before the services', async () => {
+    const fake = new FakeExec().onArgs('docker', ['network', 'inspect'], () => ({ exitCode: 1 }));
+    const target = new DockerLocalTarget({ exec: fake.exec, get: async () => ({ status: 200 }), secrets: {} });
+    expect(await target.startPlatform('shop', [{ name: 'nats', image: 'nats:2.10.22-alpine' }])).toEqual({ ok: true, detail: 'platform up' });
+    const lines = fake.lines('docker');
+    expect(lines[1]).toBe('network create teams-ai-shop_net');
+    expect(lines[2]).toMatch(/^compose -p teams-ai-shop_platform -f \S+ up -d --wait$/);
+  });
+
+  it('takes down every compose project and the network of a project of services, and only its own project otherwise', async () => {
+    const fake = new FakeExec();
+    await teardownProject(fake.exec, 'shop', ['orders', 'inventory']);
+    expect(fake.lines('docker')).toEqual([
+      'compose -p teams-ai-shop down -v',
+      'compose -p teams-ai-shop--orders down -v',
+      'compose -p teams-ai-shop--inventory down -v',
+      'compose -p teams-ai-shop_platform down -v',
+      'network rm teams-ai-shop_net',
+    ]);
+    const single = new FakeExec();
+    await teardownProject(single.exec, 'todo-api', []);
+    expect(single.lines('docker')).toEqual(['compose -p teams-ai-todo-api down -v']);
   });
 });

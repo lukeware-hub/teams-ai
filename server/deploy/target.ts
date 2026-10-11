@@ -1,3 +1,5 @@
+import type { PlatformService } from '../contracts/project.js';
+
 export interface DeploymentIntent {
   projectId: string;
   image: string;
@@ -12,6 +14,8 @@ export interface DeploymentIntent {
   compose?: string;
   /** Repository-relative path (e.g. `.tools/image.tar`): when set, build also exports the image as an archive there. */
   imageArchive?: string;
+  /** A service of a system of services: its own compose project, its main container on the project's network under `alias`. */
+  shared?: { composeProject: string; network: string; alias: string };
 }
 
 /** Absolute archive path for an intent, or null when no export is requested. */
@@ -34,6 +38,8 @@ export interface DeployTarget {
   gateServiceUrl?(intent: DeploymentIntent): Promise<string> | string;
   /** Docker network a docker-run gate container must join to reach the service by `gateServiceUrl`; absent means the default bridge. */
   gateNetwork?(intent: DeploymentIntent): string | undefined;
+  /** Creates the project's shared network and starts the platform containers the docs declare. */
+  startPlatform?(projectId: string, platform: readonly PlatformService[]): Promise<{ ok: boolean; detail: string }>;
 }
 
 export type DeployStage = 'validate' | 'build' | 'apply' | 'verify' | 'smoke' | 'e2e';

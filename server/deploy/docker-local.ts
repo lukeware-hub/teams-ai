@@ -1,3 +1,6 @@
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import type { PlatformService } from '../contracts/project.js';
 import type { Exec } from '../exec/command.js';
 import { archivePath, imageRef, waitHealthy, type DeploymentIntent, type DeployTarget, type HttpGet } from './target.js';
@@ -26,6 +29,16 @@ export function renderPlatform(platform: readonly PlatformService[], network: st
   return JSON.stringify({ services, networks: { shared: { name: network, external: true } } }, null, 2);
 }
 
+/** Takes down what a project deployed: its own compose project and, for a system of services, each service's, the platform's and the shared network. */
+export async function teardownProject(exec: Exec, projectId: string, services: readonly string[]): Promise<void> {
+  const down = (project: string) => exec({ bin: 'docker', args: ['compose', '-p', project, 'down', '-v'], timeoutMs: 120_000 }).catch(() => undefined);
+  await down(composeProject(projectId));
+  if (services.length === 0) return;
+  for (const service of services) await down(serviceComposeProject(projectId, service));
+  await down(platformComposeProject(projectId));
+  await exec({ bin: 'docker', args: ['network', 'rm', sharedNetwork(projectId)], timeoutMs: 30_000 }).catch(() => undefined);
+}
+
 export class DockerLocalTarget implements DeployTarget {
   readonly name = 'docker-local' as const;
 
@@ -45,32 +58,33 @@ export class DockerLocalTarget implements DeployTarget {
   serviceUrl(intent: DeploymentIntent) { return this.baseUrl(intent); }
 
   private project(intent: DeploymentIntent) {
-    return composeProject(intent.projectId);
+    return intent.shared?.composeProject ?? composeProject(intent.projectId);
   }
 
   private readonly services = new Map<string, string>();
 
   /**
    * The app's compose service. devops.md asks for the project id, but an agent may name it otherwise (live: `hello` for project
-   * `hello-d7`, which failed the first deploy at verify); the compose file is the truth: the project id if it is a service, else the
-   * only service; with several services and none named like the project, the project id (so the failure names it).
+   * `hello-d7`, which failed the first deploy at verify); the compose file is the truth: the project id (a service of a system: its
+   * own name) if it is a service, else the only service; with several services and none named so, that name (so the failure names it).
    */
   private async service(intent: DeploymentIntent): Promise<string> {
     const key = `${intent.contextDir}/${intent.compose}`;
     const known = this.services.get(key);
     if (known) return known;
-    const r = await this.compose(intent, ['config', '--services'], imageRef(intent), 60_000);
+    const r = await this.compose(intent, ['config', '--services'], imageRef(intent), 60_000, false);
     const names = r.exitCode === 0 ? r.stdout.split(/\s+/).filter((n) => n !== '') : [];
-    const chosen = names.includes(intent.projectId) ? intent.projectId : names.length === 1 ? names[0]! : intent.projectId;
+    const own = intent.shared?.alias ?? intent.projectId;
+    const chosen = names.includes(own) ? own : names.length === 1 ? names[0]! : own;
     this.services.set(key, chosen);
     return chosen;
   }
 
-  /** Smoke gate runs on the compose project's default network and reaches the app by its service name and container port. */
+  /** Smoke gate runs on the compose project's default network (a service of a system: the shared one, where it goes by its alias) and reaches the app on its container port. */
   async gateServiceUrl(intent: DeploymentIntent) {
     if (!intent.compose) return this.baseUrl(intent);
     const service = await this.service(intent);
-    return `http://${service}:${await this.containerPort(intent, service)}`;
+    return `http://${intent.shared?.alias ?? service}:${await this.containerPort(intent, service)}`;
   }
 
   /** The container port compose maps to the published port (live: `3000:8080`); the published port when none is mapped. */
@@ -85,14 +99,38 @@ export class DockerLocalTarget implements DeployTarget {
   }
 
   gateNetwork(intent: DeploymentIntent) {
-    return intent.compose ? `${this.project(intent)}_default` : undefined;
+    return intent.shared?.network ?? (intent.compose ? `${this.project(intent)}_default` : undefined);
   }
 
-  private compose(intent: DeploymentIntent, args: string[], image: string | null, timeoutMs = 120_000) {
+  /** `shared` false reads the service's own compose file alone, as `service()` does to name the container the extra file joins. */
+  private async compose(intent: DeploymentIntent, args: string[], image: string | null, timeoutMs = 120_000, shared = true) {
     const env: Record<string, string> = image ? { TEAMS_AI_IMAGE: image } : {};
     for (const n of intent.secretNames) env[n] = this.deps.secrets[n]!;
-    const base = ['compose', '-p', this.project(intent), '-f', `${intent.contextDir.replaceAll('\\', '/')}/${intent.compose}`, '--project-directory', intent.contextDir];
+    const files = ['-f', `${intent.contextDir.replaceAll('\\', '/')}/${intent.compose}`, ...(shared && intent.shared ? ['-f', await this.sharedFile(intent)] : [])];
+    const base = ['compose', '-p', this.project(intent), ...files, '--project-directory', intent.contextDir];
     return this.deps.exec({ bin: 'docker', args: [...base, ...args], env, timeoutMs });
+  }
+
+  /** The extra compose file that joins only the main container to the shared network, under the service's name. */
+  private async sharedFile(intent: DeploymentIntent): Promise<string> {
+    const shared = intent.shared!;
+    const file = path.join(os.tmpdir(), `${shared.composeProject}.shared.json`);
+    const override = { services: { [await this.service(intent)]: { networks: { default: {}, shared: { aliases: [shared.alias] } } } }, networks: { shared: { name: shared.network, external: true } } };
+    await fs.writeFile(file, JSON.stringify(override, null, 2));
+    return file;
+  }
+
+  async startPlatform(projectId: string, platform: readonly PlatformService[]): Promise<{ ok: boolean; detail: string }> {
+    const network = sharedNetwork(projectId);
+    if ((await this.docker(['network', 'inspect', network], undefined, 30_000)).exitCode !== 0) {
+      const created = await this.docker(['network', 'create', network], undefined, 30_000);
+      if (created.exitCode !== 0) return { ok: false, detail: `docker network create failed: ${created.stderr.slice(-1000)}` };
+    }
+    if (platform.length === 0) return { ok: true, detail: 'no platform' };
+    const file = path.join(os.tmpdir(), `${platformComposeProject(projectId)}.json`);
+    await fs.writeFile(file, renderPlatform(platform, network));
+    const up = await this.docker(['compose', '-p', platformComposeProject(projectId), '-f', file, 'up', '-d', '--wait'], undefined, TIMEOUT);
+    return up.exitCode === 0 ? { ok: true, detail: 'platform up' } : { ok: false, detail: `docker compose up failed: ${up.stderr.slice(-2000)}` };
   }
 
   private docker(args: string[], env?: Record<string, string>, timeoutMs = 120_000) {
