@@ -37,6 +37,12 @@ describe('validatePlan requireE2e', () => {
     expect(check(plan({ e2e: 'npx vitest run e2e/api.e2e.test.ts || true' })).join()).toContain('disarmed');
   });
 
+  it('rejects an e2e command that installs a browser or system packages', () => {
+    for (const e2e of ['npx playwright install --with-deps chromium && npx playwright test e2e/api.e2e.test.ts', 'apt-get install -y curl && npx vitest run e2e/api.e2e.test.ts', 'npx playwright test e2e/api.e2e.test.ts', 'npx cypress run --spec e2e/api.e2e.test.ts']) {
+      expect(check(plan({ e2e })).join()).toContain('must not install a browser');
+    }
+  });
+
   it('rejects a plan without delivery.e2eSuite', () => {
     expect(check(makePlan(spec, { commands: { ...base, e2e: 'npm run e2e' } as never }))).toContain('delivery.e2eSuite is required when the e2e gate is required');
   });
