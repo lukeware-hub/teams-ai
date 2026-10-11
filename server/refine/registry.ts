@@ -1,10 +1,10 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { RunControlDeps } from '../api/run-control.js';
-import { abandonLaunch, spawnRun, waitForRunJournal } from '../api/run-control.js';
+import { abandonLaunch, isAlive, spawnRun, waitForRunJournal } from '../api/run-control.js';
 import { ProgramService, programFile } from '../program/service.js';
 import type { Program } from '../program/controller.js';
-import { writePid } from '../api/run-index.js';
+import { claimsSpec, listRuns, writePid } from '../api/run-index.js';
 import { HttpError } from '../api/server.js';
 import type { Config } from '../config/config.js';
 import { Spec } from '../contracts/spec.js';
@@ -231,12 +231,27 @@ export class SessionRegistry {
   async deleteDraft(projectId: string, specId: string): Promise<void> {
     const session = await this.get(projectId, specId);
     if (session.state.status === 'started') throw new ConflictError('session already started a run');
+    await this.discardDraft(projectId, specId, session);
+  }
+
+  private async discardDraft(projectId: string, specId: string, session: RefineSession): Promise<void> {
     await session.abort();
-    const ws = await this.ws(projectId);
-    const draft = draftPaths(ws, specId);
+    const draft = draftPaths(await this.ws(projectId), specId);
     await session.close();
     this.sessions.delete(`${projectId}/${specId}`);
     await fs.rm(draft.root, { recursive: true, force: true });
+  }
+
+  /** Throws the draft away even after it started a run, then reopens the spec's refinement from main. An interrupted run does not block: it is dead. */
+  async restartSpec(projectId: string, specId: string): Promise<RefineSession> {
+    slug(projectId, 'projectId');
+    slug(specId, 'specId');
+    const index = { cfg: await this.deps.cfg(), home: this.deps.home, isAlive: (pid: number) => isAlive(this.deps.control, pid) };
+    const active = (await listRuns(index, projectId)).find((r) => r.specId === specId && claimsSpec(r) && r.status !== 'interrupted');
+    if (active) throw new ConflictError(`spec ${specId} has run ${active.runId} in progress; stop it first`);
+    const session = await this.get(projectId, specId).catch((err) => (err instanceof NotFoundError ? null : Promise.reject(err)));
+    if (session) await this.discardDraft(projectId, specId, session);
+    return this.continueSpec(projectId, specId);
   }
 
   async list(): Promise<DraftRow[]> {

@@ -72,6 +72,11 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
         ctx.json(200, await idOf(await registry.continueSpec(ctx.params.projectId!, ctx.params.specId!, report || undefined)));
       }),
     },
+    {
+      method: 'POST',
+      path: `${P}/projects/:projectId/specs/:specId/restart`,
+      handler: wrap(async (ctx) => ctx.json(200, await idOf(await registry.restartSpec(ctx.params.projectId!, ctx.params.specId!)))),
+    },
     { method: 'GET', path: S, handler: wrap(async ({ params, json }) => json(200, await (await get(params)).snapshot())) },
     {
       method: 'DELETE',

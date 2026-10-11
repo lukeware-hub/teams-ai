@@ -372,6 +372,22 @@ describe('refine api', () => {
     expect(registered).toHaveLength(1);
   });
 
+  it('restart spec discards an existing draft and reopens from main, with or without a draft', async () => {
+    const spec = { ...makeSpec({ specId: 'hello-001' }), status: 'awaiting-validation', specHash: `sha256:${'a'.repeat(64)}` };
+    const open = { ...spec, specId: 'hello-002', status: 'planned' };
+    remote = await makeRemote({ 'docs/project.json': JSON.stringify(HELLO_PROJECT), 'docs/specs/hello-001/spec.json': JSON.stringify(spec), 'docs/specs/hello-002/spec.json': JSON.stringify(open) });
+    await fs.mkdir(`${home}/ws/hello-app`, { recursive: true });
+    await fs.cp(remote.repo, `${home}/ws/hello-app/repo`, { recursive: true });
+    const draftRoot = `${home}/ws/hello-app/refine/hello-001`;
+    expect((await call('POST', '/api/projects/hello-app/specs/hello-001/restart')).status).toBe(200); // no draft yet
+    await fs.writeFile(`${draftRoot}/stale.txt`, 'old');
+    expect((await call('POST', '/api/projects/hello-app/specs/hello-001/continue')).status).toBe(409); // the draft blocks continue
+    expect((await call('POST', '/api/projects/hello-app/specs/hello-001/restart')).status).toBe(200);
+    expect(await fs.access(`${draftRoot}/stale.txt`).then(() => true, () => false)).toBe(false);
+    expect(await fs.access(`${draftRoot}/docs/specs/hello-001/brief.md`).then(() => true, () => false)).toBe(true);
+    expect((await call('POST', '/api/projects/hello-app/specs/hello-002/restart')).status).toBe(409); // only awaiting-validation specs
+  });
+
   it('deletes a draft that never started, refuses a started one, and 404s a missing one', async () => {
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     const draftRoot = `${home}/ws/hello-app/refine/hello-app-001`;

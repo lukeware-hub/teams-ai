@@ -66,6 +66,7 @@ export function ProjectHubView(p: {
   onStop: (runId: string) => void;
   onNewSpec: (specId: string, description: string) => void;
   onContinue: (specId: string) => void;
+  onRestart: (specId: string) => void;
   onDeleteDraft: (specId: string) => void;
   onSuggestName?: (input: NameRequest) => Promise<NameSuggestion>;
 }) {
@@ -73,6 +74,7 @@ export function ProjectHubView(p: {
   const [specDraft, setSpecDraft] = useState('');
   const [specDescription, setSpecDescription] = useState('');
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [pendingRestart, setPendingRestart] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [idShown, setIdShown] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
@@ -225,6 +227,11 @@ export function ProjectHubView(p: {
                         Continuar spec
                       </button>
                     ) : null}
+                    {CONTINUABLE.has(s.status) ? (
+                      <button type="button" className="project-action secondary" data-testid={`restart-${s.specId}`} aria-label={`Reiniciar spec ${s.specId}`} onClick={() => setPendingRestart(s.specId)}>
+                        Reiniciar
+                      </button>
+                    ) : null}
                     {s.activeRunId ? (
                       <Link className="project-action primary" data-testid={`open-${s.specId}`} aria-label={`Abrir execução de ${s.specId}`} to={`/runs/${s.activeRunId}`}>
                         Abrir execução
@@ -353,6 +360,20 @@ export function ProjectHubView(p: {
           </div>
         </section>
       ) : null}
+      {pendingRestart ? (
+        <ConfirmDialog
+          title="Reiniciar refinamento?"
+          subject={`${pr.projectId} / ${pendingRestart}`}
+          confirmLabel="Reiniciar"
+          onCancel={() => setPendingRestart(null)}
+          onConfirm={() => {
+            p.onRestart(pendingRestart);
+            setPendingRestart(null);
+          }}
+        >
+          Descarta a sessão de refinamento atual e recomeça do zero a partir da main. As execuções antigas e o código já mesclado permanecem.
+        </ConfirmDialog>
+      ) : null}
       {pendingDelete ? (
         <ConfirmDialog
           title="Excluir refinamento?"
@@ -435,6 +456,7 @@ export function ProjectHub() {
       onStop={(runId) => void act(() => runApi.stopRun(runId))()}
       onNewSpec={(specId, description) => void go(() => refineApi.newSpec(projectId, specId, description))()}
       onContinue={(specId) => void go(() => refineApi.continueSpec(projectId, specId))()}
+      onRestart={(specId) => void go(() => refineApi.restartSpec(projectId, specId))()}
       onSuggestName={refineApi.suggestName}
       onDeleteDraft={(specId) => void (async () => {
         setDeleteError(null);
