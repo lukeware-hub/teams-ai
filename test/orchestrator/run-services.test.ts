@@ -27,7 +27,8 @@ const plan = {
     makePlanTask({ id: 'T1-publish-order', service: 'orders', criteriaRefs: ['AC-001'], affectedPaths: ['src/orders/**'] }),
     makePlanTask({ id: 'T2-reserve-stock', service: 'inventory', criteriaRefs: ['AC-002'], dependsOn: ['T1-publish-order'], affectedPaths: ['src/stock/**'] }),
   ],
-  services: { ...base.services, inventory: { ...base.services.inventory!, stack: 'go', gateImage: 'golang:1.26-bookworm' } },
+  // Each service deploys with its own compose file.
+  services: { orders: { ...base.services.orders!, delivery: { compose: 'docker-compose.yml' } }, inventory: { ...base.services.inventory!, stack: 'go', gateImage: 'golang:1.26-bookworm', delivery: { compose: 'docker-compose.yml' } } },
 };
 const FILE: Record<string, string> = { 'T1-publish-order': 'src/orders/index.ts', 'T2-reserve-stock': 'src/stock/index.ts' };
 const TEST: Record<string, [string, string]> = { 'T1-publish-order': ['AC-001', 'sum::[AC-001] publishes'], 'T2-reserve-stock': ['AC-002', 'sum::[AC-002] reserves'] };

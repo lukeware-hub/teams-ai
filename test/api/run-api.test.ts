@@ -26,6 +26,7 @@ let onSleep: () => Promise<void>;
 let cloned: Array<{ url: string; destination: string }>;
 let probe: HttpGet;
 let probed: string[];
+const docker: string[] = [];
 let resolved: Record<string, string> = {};
 const base = () => `http://127.0.0.1:${api.port}`;
 const post = (p: string, body?: unknown) => fetch(`${base()}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -67,7 +68,8 @@ beforeEach(async () => {
     cliEntry: () => ({ bin: 'node', prefix: ['cli'] }),
     repoRoot: '/repo',
   };
-  api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, httpGet: async (u, t) => { probed.push(u); return probe(u, t); }, resolveHost: async (n) => [resolved[n] ?? '140.82.112.3'], cloneProject: async (url, destination) => { cloned.push({ url, destination }); await fs.cp(HELLO, destination, { recursive: true }); } }) }, 0);
+  docker.length = 0;
+  api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, exec: async (s) => { docker.push(s.args.join(" ")); return { exitCode: 0, stdout: "", stderr: "", timedOut: false } as never; }, httpGet: async (u, t) => { probed.push(u); return probe(u, t); }, resolveHost: async (n) => [resolved[n] ?? '140.82.112.3'], cloneProject: async (url, destination) => { cloned.push({ url, destination }); await fs.cp(HELLO, destination, { recursive: true }); } }) }, 0);
 });
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -195,9 +197,11 @@ describe('projects', () => {
     expect((await readUserConfig(home)).cfg.projects).toEqual([{ dir: HELLO }]);
   });
 
-  it('deletes a project from disk: its directory, workspace root, runs and config entry', async () => {
+  it('deletes a project from disk: its directory, workspace root, runs and config entry, and takes down each of its services', async () => {
     const project = path.join(home, 'project');
     await fs.cp(HELLO, project, { recursive: true });
+    const json = path.join(project, 'docs', 'project.json');
+    await fs.writeFile(json, JSON.stringify({ ...JSON.parse(await fs.readFile(json, 'utf8')), services: ['orders'] }));
     await fs.writeFile(path.join(home, '.teams-ai', 'config.json'), JSON.stringify({ paths: { runs: runs.replace(/\\/g, '/') }, projects: [{ dir: project }] }));
     const ws = path.join(home, '.teams-ai', 'workspaces', 'hello-app');
     await fs.mkdir(ws, { recursive: true });
@@ -215,6 +219,7 @@ describe('projects', () => {
     expect(await exists(path.join(runs, 'hello-001-r1'))).toBe(false);
     expect(await exists(path.join(runs, 'other-app--hello-001--run-1'))).toBe(true);
     expect((await readUserConfig(home)).cfg.projects).toEqual([]);
+    expect(docker).toEqual(expect.arrayContaining(['compose -p teams-ai-hello-app down -v', 'compose -p teams-ai-hello-app--orders down -v', 'network rm teams-ai-hello-app_net']));
   });
 
   it('refuses to delete a project with an active run', async () => {

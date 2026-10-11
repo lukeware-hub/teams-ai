@@ -1,6 +1,6 @@
 import type { PlanTask } from '../../contracts/plan.js';
 import { specShare } from '../../contracts/spec.js';
-import { assignDeployPort, portHeldByOthers, portKey } from '../../deploy/port-registry.js';
+import { assignDeployPort, portHeldByOthers, portKey, registeredPorts } from '../../deploy/port-registry.js';
 import { composeProject, serviceComposeProject, sharedNetwork } from '../../deploy/docker-local.js';
 import { runDeployment, type DeploymentIntent, type DeployStage } from '../../deploy/target.js';
 import { e2eCommand, type E2eRow } from '../../exec/e2e.js';
@@ -21,10 +21,10 @@ const deployPort = (deps: PhaseDeps) => Number([...deps.journal.events].reverse(
 
 const PORT_TAKEN = /port is already allocated/;
 
-/** Draws a free port in place of `from` and records it; null when none is left. */
-async function reassignPort(deps: PhaseDeps, from: number, service: string | null = null): Promise<number | null> {
+/** Draws a free port in place of `from`, never one of `avoid`, and records it; null when none is left. */
+async function reassignPort(deps: PhaseDeps, from: number, service: string | null = null, avoid: readonly number[] = []): Promise<number | null> {
   if (!deps.workspacesRoot) return null;
-  const { port } = await assignDeployPort(deps.workspacesRoot, portKey(deps.project.projectId, service), deps.exec, [from]);
+  const { port } = await assignDeployPort(deps.workspacesRoot, portKey(deps.project.projectId, service), deps.exec, [from, ...avoid]);
   if (port !== null) await deps.journal.fact(OrchEvent.DeployPortReassigned, { from, to: port, ...(service ? { service } : {}) });
   return port;
 }
@@ -128,42 +128,79 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
   if (!services || !target || !deps.smoke) throw new Error('Phase 5 needs the services, target and smoke');
   if (journal.events.some((e) => e.type === OrchEvent.DeployVerified && e.data.attempt === attempt)) return { ok: true };
   if (!journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 5)) await journal.fact(OrchEvent.PhaseStarted, { phase: 5 });
+  // Every service is checked out and has a compose file before any is applied: nothing is left half deployed.
+  const tags: string[] = [];
+  for (const repo of services.repos) tags.push(await checkoutMain({ ...deps, ws: repo.ws }));
+  const intents = services.repos.map((repo, i) => serviceIntent(deps, repo, tags[i]!));
   const applied: Array<{ repo: ServiceRepo; intent: DeploymentIntent; previous: string | null; healthcheck: string }> = [];
-  const failed = async (stage: DeployStage | 'platform', detail: string, repo: ServiceRepo | null, newPort: number | null = null) => {
-    // Every applied service goes back to its previous image, or away when this was its first deploy.
-    for (const a of [...applied].reverse()) await (a.previous ? target.rollback(a.intent, a.previous) : target.destroy(a.intent)).catch(() => undefined);
-    await journal.fact(OrchEvent.DeployFailed, { attempt, stage, detail, rolledBack: applied.length > 0, rollbackHealthy: null, ...(repo ? { service: repo.service } : {}) });
+  const failed = async (stage: DeployStage | 'platform', detail: string, repo: ServiceRepo | null, own: { intent?: DeploymentIntent; rolledBack?: boolean; rollbackHealthy?: boolean | null; fixable?: boolean } = {}) => {
+    // Every applied service goes back to its previous image, or away when this was its first deploy; a failed rollback is said.
+    const restored: string[] = own.rolledBack && repo ? [repo.service!] : [];
+    const broken: string[] = [];
+    for (const a of [...applied].reverse()) {
+      try {
+        if (a.previous) {
+          await target.rollback(a.intent, a.previous);
+          restored.push(a.repo.service!);
+        } else await target.destroy(a.intent);
+      } catch (err) {
+        broken.push(`${a.repo.service}: ${(err as Error).message}`);
+      }
+    }
+    const rolledBack = restored.length > 0 && broken.length === 0;
+    await journal.fact(OrchEvent.DeployFailed, { attempt, stage, detail: `${detail}${broken.length > 0 ? `; rollback failed for ${broken.join('; ')}` : ''}`, rolledBack, rollbackHealthy: broken.length > 0 ? false : own.rollbackHealthy ?? null, ...(repo ? { service: repo.service } : {}) });
+    if (rolledBack) await journal.fact(OrchEvent.RollbackDone, { attempt, services: restored });
     // The platform comes from the docs, never from the code: no task could fix it.
     if (!repo || attempt >= 3 || opts.fixTasks === false) return { ok: false as const, reason: `deploy failed on attempt ${attempt} at ${stage}${repo ? ` (${repo.service})` : ''}: ${detail}` };
-    if (planGap(stage as DeployStage, detail)) return { ok: false as const, reason: `deploy failed at ${stage} (${repo.service}): ${detail}` };
+    if (own.fixable === false || planGap(stage as DeployStage, detail)) return { ok: false as const, reason: `deploy failed at ${stage} (${repo.service}): ${detail}` };
+    // A taken port moves only now that a fix task follows, and never onto the port of another service of the plan.
+    const newPort = stage === 'apply' && own.intent && PORT_TAKEN.test(detail) ? await reassignPort(deps, own.intent.port, repo.service!, services.repos.map((r) => servicePort(deps, r))) : null;
     const task = { ...fixTask({ ...deps, plan: repo.plan }, attempt, stage as DeployStage, detail, newPort), service: repo.service! };
     await journal.fact(RunEvent.FixTasksPlanned, { tasks: [task] });
     return { ok: false as const, reason: `deploy failed at ${stage} (${repo.service}); deploy-fix task planned`, fixTask: task };
   };
-  const platform = target.startPlatform ? await target.startPlatform(deps.project.projectId, deps.project.platform ?? []) : { ok: true, detail: '' };
+  // Without a compose file a service would take the project's single container: a plan gap, not code to fix.
+  const bare = services.repos.find((_, i) => !intents[i]!.compose);
+  if (bare) return failed('validate', `services.${bare.service}.delivery.compose is missing: each service deploys as its own compose project`, bare, { fixable: false });
+  const platform = await (target.startPlatform ? target.startPlatform(deps.project.projectId, deps.project.platform ?? []) : Promise.resolve({ ok: true, detail: '' })).catch((err: Error) => ({ ok: false, detail: err.message }));
   if (!platform.ok) return failed('platform', platform.detail, null);
-  for (const repo of services.repos) {
-    const tag = await checkoutMain({ ...deps, ws: repo.ws });
-    const intent = serviceIntent(deps, repo, tag);
+  for (const [i, repo] of services.repos.entries()) {
+    const intent = intents[i]!;
     const key = `deploy-${repo.service}-${attempt}`;
-    let previous: string | null = null;
     if (journal.isConfirmed(Intent.DeployApply, key)) {
-      previous = ([...journal.events].reverse().find((e) => e.kind === 'confirm' && e.intentId === `${Intent.DeployApply}:${key}`)?.data.previous as string | null | undefined) ?? null;
-    } else {
-      await journal.intent(Intent.DeployApply, key, { attempt, service: repo.service, image: intent.image, tag, intent });
-      const r = await runDeployment(target, intent, { smoke: async () => ({ ok: true, detail: 'journaled separately' }), baseUrl: '' });
-      if (!r.ok) return failed(r.stage, r.detail, repo, r.stage === 'apply' && PORT_TAKEN.test(r.detail) ? await reassignPort(deps, intent.port, repo.service) : null);
-      previous = r.previous;
-      await journal.confirm(Intent.DeployApply, key, { previous });
-      await journal.fact(OrchEvent.DeployApplied, { attempt, service: repo.service, previous, tag });
+      const previous = ([...journal.events].reverse().find((e) => e.kind === 'confirm' && e.intentId === `${Intent.DeployApply}:${key}`)?.data.previous as string | null | undefined) ?? null;
+      // A resumed run proves the service still answers before its suites run, as runPhase5 does.
+      const health = await target.verify(intent);
+      if (!health.healthy) return failed('verify', health.detail, repo, { intent });
+      applied.push({ repo, intent, previous, healthcheck: health.detail });
+      continue;
     }
-    applied.push({ repo, intent, previous, healthcheck: (await target.verify(intent)).detail });
+    await journal.intent(Intent.DeployApply, key, { attempt, service: repo.service, image: intent.image, tag: tags[i], intent });
+    const r = await runDeployment(target, intent, { smoke: async () => ({ ok: true, detail: 'journaled separately' }), baseUrl: '' });
+    if (!r.ok) return failed(r.stage, r.detail, repo, { intent, rolledBack: r.rolledBack, rollbackHealthy: r.rollbackHealthy });
+    await journal.confirm(Intent.DeployApply, key, { previous: r.previous });
+    await journal.fact(OrchEvent.DeployApplied, { attempt, service: repo.service, previous: r.previous, tag: tags[i] });
+    applied.push({ repo, intent, previous: r.previous, healthcheck: (await target.verify(intent)).detail });
   }
-  const addresses = await Promise.all(applied.map(async (a) => ({ ...a, url: await target.serviceUrl!(a.intent), gateUrl: await target.gateServiceUrl!(a.intent), network: target.gateNetwork?.(a.intent) })));
+  const addresses: Array<(typeof applied)[number] & { url: string; gateUrl: string; network: string | undefined }> = [];
+  for (const a of applied) {
+    try {
+      const url = target.serviceUrl ? await target.serviceUrl(a.intent) : '';
+      addresses.push({ ...a, url, gateUrl: target.gateServiceUrl ? await target.gateServiceUrl(a.intent) : url, network: target.gateNetwork?.(a.intent) });
+    } catch (err) {
+      return failed('verify', (err as Error).message, a.repo, { intent: a.intent });
+    }
+  }
+  // A service this spec does not change still runs from an earlier spec: its registered port reaches it on the shared network.
+  const registry = deps.workspacesRoot ? await registeredPorts(deps.workspacesRoot) : {};
+  const untouched = (deps.project.services ?? []).filter((s) => !services.repos.some((r) => r.service === s)).flatMap((s) => {
+    const port = registry[portKey(deps.project.projectId, s)];
+    return port ? [[serviceUrlEnv(s), `http://${s}:${port}`] as const] : [];
+  });
   const smoke: SmokeRow[] = [];
   const e2e: E2eRow[] = [];
   for (const a of addresses) {
-    const urls = Object.fromEntries(addresses.filter((o) => o !== a).map((o) => [serviceUrlEnv(o.repo.service!), o.gateUrl]));
+    const urls = Object.fromEntries([...untouched, ...addresses.filter((o) => o !== a).map((o) => [serviceUrlEnv(o.repo.service!), o.gateUrl] as const)]);
     const scope: GateScope = { service: a.repo.service!, plan: a.repo.plan, spec: specShare(deps.spec, a.repo.plan.tasks), urls };
     const s = await deps.smoke(a.repo.ws.repo, a.url, a.gateUrl, a.network, scope);
     if (!s.ok) return failed('smoke', s.detail, a.repo);

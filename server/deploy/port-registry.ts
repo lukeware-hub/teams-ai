@@ -56,6 +56,10 @@ export async function assignDeployPort(workspacesRoot: string, projectId: string
   return result;
 }
 
+/** Every registered port by key; empty before the first one. */
+export const registeredPorts = async (workspacesRoot: string): Promise<Record<string, number>> =>
+  parseRegistry(await fs.readFile(registryFile(workspacesRoot), 'utf8').catch(() => undefined));
+
 /** The registry key of a project's port, or of one of its services' ports. */
 export const portKey = (projectId: string, service: string | null): string => (service === null ? projectId : `${projectId}/${service}`);
 

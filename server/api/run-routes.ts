@@ -9,7 +9,7 @@ import { loadSecretValues } from '../core/secrets.js';
 import { redactSecrets } from '../core/redact.js';
 import { addProject, removeProjectDirs } from '../onboarding/config-store.js';
 import { expandHome, workspacePaths } from '../orchestrator/workspace.js';
-import { execCommand } from '../exec/command.js';
+import { execCommand, type Exec } from '../exec/command.js';
 import { nextRunId } from '../orchestrator/workspace.js';
 import { reduceEvents } from '../pipeline/run-state.js';
 import { EventLogCorruptError, loadEvents, type StoredEvent } from '../store/event-store.js';
@@ -33,6 +33,8 @@ export interface RunRoutesDeps {
   resolveHost?: ResolveHost;
   /** Probe of the deployed service for the validation page; the real one is fetch with a timeout. */
   httpGet?: HttpGet;
+  /** Runs the docker commands that take a deleted project's deploys down; the real one by default. */
+  exec?: Exec;
 }
 
 const str = (v: unknown, field: string): string => {
@@ -261,7 +263,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           if (row && (row.projectId === projectId || (row.projectId === '' && specIds.has(row.specId)))) await fs.rm(path.join(runs, runId), { recursive: true, force: true });
         }
         await removeProjectDirs(dirs, deps.home);
-        await teardownProject(execCommand, projectId, [...new Set(services)]); // frees the ports; no daemon means nothing runs
+        await teardownProject(deps.exec ?? execCommand, projectId, [...new Set(services)]); // frees the ports; no daemon means nothing runs
         await releaseDeployPort(path.dirname(ws.root), projectId);
         json(200, { deleted: true });
       },
