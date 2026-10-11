@@ -64,12 +64,14 @@ tar --no-same-owner -xzf "$TMP/trivy.tgz" -C "$BIN" trivy
 
 fetch "${PIP_PYZ_URL}" ${PIP_PYZ_SHA256} "$TMP/pip.pyz"
 # The gate image (node:22-bookworm) has python3 but no pip, and apt does not work without capabilities: the pinned pip zipapp does.
-python3 "$TMP/pip.pyz" install --quiet --disable-pip-version-check --root-user-action=ignore --target "$ROOT/.tools/py" "semgrep==${SEMGREP_VERSION}" "setuptools<81"
+# A folder of its own, emptied first: pip --target never replaces a folder already there, such as the bin/ of the project's packages in .tools/py.
+rm -rf "$ROOT/.tools/semgrep"
+python3 "$TMP/pip.pyz" install --quiet --disable-pip-version-check --root-user-action=ignore --target "$ROOT/.tools/semgrep" "semgrep==${SEMGREP_VERSION}" "setuptools<81"
 cat > "$BIN/semgrep" <<'WRAP'
 #!/bin/sh
 D="$(cd "$(dirname "$0")/.." && pwd)"
 # semgrep execs pysemgrep from PATH and imports pkg_resources (setuptools < 81 still ships it).
-PATH="$D/py/bin:$PATH" PYTHONPATH="$D/py" SEMGREP_SEND_METRICS=off SEMGREP_ENABLE_VERSION_CHECK=0 exec python3 "$D/py/bin/semgrep" "$@"
+PATH="$D/semgrep/bin:$PATH" PYTHONPATH="$D/semgrep" SEMGREP_SEND_METRICS=off SEMGREP_ENABLE_VERSION_CHECK=0 exec python3 "$D/semgrep/bin/semgrep" "$@"
 WRAP
 chmod +x "$BIN/semgrep"
 
