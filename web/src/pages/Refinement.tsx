@@ -257,7 +257,6 @@ export function RefinementView(p: ViewProps) {
             <h2>{existing ? (st.mode === 'continue' ? 'Continuação da spec' : 'Spec nova') : 'Documentos do projeto'}</h2>
             </div>
           </div>
-          <span className="doc-state">{locked ? 'Somente leitura' : 'Editável'}</span>
         </div>
         {existing ? (
           <div className="tabs tab-groups" role="tablist" aria-label="Documentos">

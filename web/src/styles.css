@@ -174,7 +174,7 @@ input::placeholder, textarea::placeholder { color: var(--ink-soft); opacity: 1; 
 input:focus, select:focus, textarea:focus { border-color: var(--accent); outline: none; box-shadow: var(--ring-focus); }
 
 /* Chips: one shape; tone comes from the element's own state class. */
-.status-chip, .status-pill, .test, .badge, .tag, .doc-state, .count-pill, .status-dot, .owner-chip { display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.15rem 0.6rem; border-radius: var(--radius-pill); color: var(--ink-soft); background: var(--surface-muted); font-size: 0.75rem; font-weight: 600; line-height: 1.5; white-space: nowrap; }
+.status-chip, .status-pill, .test, .badge, .tag, .count-pill, .status-dot, .owner-chip { display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.15rem 0.6rem; border-radius: var(--radius-pill); color: var(--ink-soft); background: var(--surface-muted); font-size: 0.75rem; font-weight: 600; line-height: 1.5; white-space: nowrap; }
 .tone-good, .test-passed, .status-dot.ok, .card-ok .status-chip { color: var(--good); background: var(--good-soft); }
 .tone-bad, .test-failed { color: var(--bad); background: var(--bad-soft); }
 .tone-warn, .tag, .status-dot.warn { color: var(--warn); background: var(--warn-soft); }
