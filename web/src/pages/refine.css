@@ -5,7 +5,7 @@
 .section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
 .section-heading h2 { margin: 0.15rem 0 0; color: var(--ink); font-size: 1.0625rem; letter-spacing: -0.01em; }
 .eyebrow { color: var(--ink-soft); font-size: 0.8125rem; font-weight: 600; }
-.tabs { display: flex; gap: 0; margin-bottom: 1rem; overflow: auto; border-bottom: 1px solid var(--line); }
+.tabs { display: flex; flex-wrap: wrap; gap: 0; margin-bottom: 1rem; border-bottom: 1px solid var(--line); }
 .tabs button { height: auto; min-height: 2.75rem; padding: 0.55rem 0.75rem; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--ink-soft); background: transparent; white-space: nowrap; transition: none; }
 .tabs button:hover:not(:disabled) { color: var(--ink); background: var(--surface-sunken); }
 .tab-groups { flex-wrap: wrap; gap: 0 1.5rem; }
