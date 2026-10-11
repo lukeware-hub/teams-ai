@@ -3,6 +3,7 @@ import { ID_PATTERNS } from '../core/ids.js';
 import { BacklogSource } from './backlog.js';
 import { canonicalJson, sha256 } from './hash.js';
 import { AC_ID, HASH_PATTERN } from './patterns.js';
+import type { PlanTask } from './plan.js';
 
 export { AC_ID };
 
@@ -99,6 +100,12 @@ export const Spec = z
     }
   });
 export type Spec = z.infer<typeof Spec>;
+
+/** The part of a spec some tasks deliver: the criteria they reference. */
+export const specShare = (spec: Spec, tasks: readonly Pick<PlanTask, 'criteriaRefs'>[]): Spec => {
+  const delivered = new Set(tasks.flatMap((t) => t.criteriaRefs));
+  return { ...spec, acceptanceCriteria: spec.acceptanceCriteria.filter((ac) => delivered.has(ac.id)) };
+};
 
 const HASHED_FIELDS = [
   'specId',

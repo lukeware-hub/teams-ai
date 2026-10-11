@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { gateReachableUrl } from '../../server/exec/smoke.js';
+import { gateReachableUrl, serviceUrlEnv } from '../../server/exec/smoke.js';
+
+describe('serviceUrlEnv', () => {
+  it('names the variable that carries another service address', () => {
+    expect(serviceUrlEnv('orders')).toBe('SERVICE_URL_ORDERS');
+    expect(serviceUrlEnv('stock-ledger')).toBe('SERVICE_URL_STOCK_LEDGER');
+  });
+});
 
 describe('gateReachableUrl', () => {
   it.each([

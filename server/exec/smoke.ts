@@ -29,11 +29,14 @@ export function evaluateSmoke(spec: Spec, junit: readonly TestResult[] | null) {
   return bad.length ? { ok: false, rows, detail: bad.map((r) => `${r.acId}: ${r.status === 'failed' ? 'failed' : 'no smoke test'}`).join('; ') } : { ok: true, rows, detail: `${rows.length}/${rows.length} smoke criteria passed` };
 }
 
-export async function runSmoke(plan: Plan, spec: Spec, ctx: GateContext, serviceUrl: string, deps: GateDeps): Promise<{ ok: boolean; rows: SmokeRow[]; detail: string; result: GateResult | null }> {
+/** The variable a suite reads another service's address from. */
+export const serviceUrlEnv = (service: string): string => `SERVICE_URL_${service.toUpperCase().replace(/-/g, '_')}`;
+
+export async function runSmoke(plan: Plan, spec: Spec, ctx: GateContext, serviceUrl: string, deps: GateDeps, urls: Readonly<Record<string, string>> = {}): Promise<{ ok: boolean; rows: SmokeRow[]; detail: string; result: GateResult | null }> {
   if (!spec.acceptanceCriteria.some((ac) => ac.smoke)) return { ok: true, rows: [], detail: 'no smoke criteria', result: null };
   const gate = smokeGate(plan);
   if (!gate) return { ok: false, rows: evaluateSmoke(spec, null).rows, detail: 'plan.commands.smoke missing', result: null };
-  const result = await runGate(gate, { ...ctx, secrets: { ...ctx.secrets, SERVICE_URL: serviceUrl } }, deps);
+  const result = await runGate({ ...gate, secrets: [...gate.secrets, ...Object.keys(urls)] }, { ...ctx, secrets: { ...ctx.secrets, SERVICE_URL: serviceUrl, ...urls } }, deps);
   const evaluated = evaluateSmoke(spec, result.junit);
   if (!result.passed && evaluated.ok) return { ok: false, rows: evaluated.rows, detail: `smoke command exited ${result.exitCode ?? 'null'}${result.timedOut ? ' (timeout)' : ''}`, result };
   return { ...evaluated, result };

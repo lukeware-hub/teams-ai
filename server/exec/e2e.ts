@@ -33,10 +33,10 @@ export function evaluateE2e(spec: Spec, junit: readonly TestResult[] | null, exe
   return bad.length ? { ok: false, rows, detail: bad.map((r) => `${r.acId}: ${r.status === 'failed' ? 'failed' : 'no e2e test'}`).join('; ') } : { ok: true, rows, detail: `${rows.filter((r) => r.status === 'passed').length}/${rows.length - rows.filter((r) => r.status === 'not-applicable').length} e2e criteria passed` };
 }
 
-export async function runE2e(plan: Plan, spec: Spec, ctx: GateContext, serviceUrl: string, deps: GateDeps): Promise<{ ok: boolean; rows: E2eRow[]; detail: string; result: GateResult | null }> {
+export async function runE2e(plan: Plan, spec: Spec, ctx: GateContext, serviceUrl: string, deps: GateDeps, urls: Readonly<Record<string, string>> = {}): Promise<{ ok: boolean; rows: E2eRow[]; detail: string; result: GateResult | null }> {
   const gate = e2eGate(plan);
   if (!gate) return { ok: false, rows: evaluateE2e(spec, null, plan.e2eExemptions).rows, detail: 'plan.commands.e2e missing', result: null };
-  const result = await runGate(gate, { ...ctx, secrets: { ...ctx.secrets, SERVICE_URL: serviceUrl } }, deps);
+  const result = await runGate({ ...gate, secrets: [...gate.secrets, ...Object.keys(urls)] }, { ...ctx, secrets: { ...ctx.secrets, SERVICE_URL: serviceUrl, ...urls } }, deps);
   const evaluated = evaluateE2e(spec, result.junit, plan.e2eExemptions);
   if (!result.passed && evaluated.ok) return { ok: false, rows: evaluated.rows, detail: `e2e command exited ${result.exitCode ?? 'null'}${result.timedOut ? ' (timeout)' : ''}`, result };
   return { ...evaluated, result };

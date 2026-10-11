@@ -30,6 +30,14 @@ describe('e2e rows per acceptance criterion', () => {
 });
 
 describe('runE2e', () => {
+  it("passes the other services' addresses to the suite like SERVICE_URL", async () => {
+    const exec = new FakeExec();
+    await runE2e(plan, spec, ctx, 'http://inventory:3000', deps(exec, junit(ok('AC-001') + ok('AC-002'))), { SERVICE_URL_ORDERS: 'http://orders:3000' });
+    const call = exec.calls[0]!;
+    expect(call.env).toMatchObject({ SERVICE_URL: 'http://inventory:3000', SERVICE_URL_ORDERS: 'http://orders:3000' });
+    expect(call.args.join(' ')).toContain('-e SERVICE_URL_ORDERS');
+  });
+
   it('builds a blocking egress gate that receives SERVICE_URL like a secret', () => {
     expect(e2eGate(plan)).toMatchObject({ name: 'e2e', blocking: true, network: 'egress', secrets: ['SERVICE_URL'] });
     expect(e2eGate(makePlan(spec))).toBeNull();

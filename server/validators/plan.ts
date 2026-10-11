@@ -1,7 +1,7 @@
 import { DELIVERY_PATH_FIELDS, findCycle, SCAFFOLD_TASK_ID, scaffoldId, servicePlans, type Plan, type PlanTask, type ServicesPlan } from '../contracts/plan.js';
 import { IMAGE_REFERENCE } from '../exec/gate-runner.js';
 import { gateFileErrors, gateTerminationErrors } from './gate-files.js';
-import type { Spec } from '../contracts/spec.js';
+import { specShare, type Spec } from '../contracts/spec.js';
 import { validateCoverage } from './coverage.js';
 import { validateE2e, validateE2eExemptions } from './e2e.js';
 import { validateSecurityGates } from './security-tooling.js';
@@ -87,8 +87,7 @@ export function validateServicesPlan(plan: ServicesPlan, spec: Spec, opts: Servi
     if (other !== undefined) errors.push(`services ${other} and ${name} both use deploy.port ${view.deploy.port}`);
     ports.set(view.deploy.port, name);
     // A service answers only for the criteria its own tasks deliver (a smoke criterion asks for its commands.smoke).
-    const delivered = new Set(view.tasks.flatMap((t) => t.criteriaRefs));
-    const share = { ...spec, acceptanceCriteria: spec.acceptanceCriteria.filter((ac) => delivered.has(ac.id)) };
+    const share = specShare(spec, view.tasks);
     const own = { ...opts, firstSpec: opts.newServices.has(name), repoFiles: opts.repoFiles?.[name] };
     errors.push(...repositoryErrors(view, share, own, scaffoldId(name)).map((e) => `service ${name}: ${e}`));
   }
