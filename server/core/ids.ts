@@ -26,8 +26,10 @@ function assertPositiveInteger(value: number, label: string): number {
   return value;
 }
 
-export function repoName(projectId: string): string {
-  return assertSlug(projectId, 'projectId');
+/** The GitHub repository of a project, or of one of its services: `<projectId>-<service>`. */
+export function repoName(projectId: string, service: string | null = null): string {
+  assertSlug(projectId, 'projectId');
+  return service === null ? projectId : `${projectId}-${assertSlug(service, 'service')}`;
 }
 
 /** Branch name keeps the task id verbatim so it can be mapped back without a lookup. */

@@ -33,7 +33,7 @@ import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
 import { CrashInjected, Intent, Journal, OrchEvent, type IntentType, type RunResult } from './events.js';
 export { CrashInjected };
 import { taskMergeSteps, type MergeStepsDeps } from './merge-steps.js';
-import { PAUSED_AUTH, runPhase0, runWorkflowBootstrap, runPhase1, runPhase2, runPhase4, runPhase5, runPhase6, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, type PhaseDeps, type PhaseResult } from './phases/index.js';
+import { PAUSED_AUTH, ensureServiceRepos, runPhase0, runWorkflowBootstrap, runPhase1, runPhase2, runPhase4, runPhase5, runPhase6, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, type PhaseDeps, type PhaseResult } from './phases/index.js';
 import { withMainSnapshot } from './phases/shared.js';
 import { reconcile } from './reconcile.js';
 import { validateDocs } from '../validators/docs.js';
@@ -578,14 +578,12 @@ export class Run {
     }
   }
 
-  /** Phase 0 runs only for a draft; public so tests can drive it without scripting Phases 1–3. */
+  /** Phase 0: the docs reach main (a draft) or are fetched, then every service gets its repository; public so tests can drive it without scripting Phases 1–3. */
   async executePhase0(): Promise<PhaseResult> {
     // Phases 1 and 2 read the docs from origin/main; a later run must see what was merged since the last one.
-    if (!this.deps.bootstrap) {
-      await gitFetch(this.deps.ws.repo, this.deps.exec);
-      return { ok: true };
-    }
-    return runPhase0({ ...this.phaseDeps(), ghExec: this.deps.ghExec }, this.deps.bootstrap);
+    const docs = this.deps.bootstrap ? await runPhase0({ ...this.phaseDeps(), ghExec: this.deps.ghExec }, this.deps.bootstrap) : await gitFetch(this.deps.ws.repo, this.deps.exec).then((): PhaseResult => ({ ok: true }));
+    if (!docs.ok) return docs;
+    return ensureServiceRepos({ ...this.phaseDeps(), ghExec: this.deps.ghExec }, this.deps.bootstrap?.owner ?? this.deps.project.github.owner ?? this.deps.cfg.github.owner);
   }
 
   /** R8.3: CI and release workflows land on main for a bootstrapped repository; public for tests. */

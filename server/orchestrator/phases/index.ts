@@ -1,4 +1,4 @@
-export { runPhase0, runWorkflowBootstrap } from './bootstrap.js';
+export { ensureServiceRepos, runPhase0, runWorkflowBootstrap } from './bootstrap.js';
 export { runPhase1 } from './tech-spec.js';
 export { runPhase2 } from './plan.js';
 export { runPhase4, type Phase4Result } from './verify.js';

@@ -21,6 +21,8 @@ describe('ids', () => {
 
   it('derives the repository name from the project id', () => {
     expect(repoName('todo-api')).toBe('todo-api');
+    expect(repoName('shop', 'orders')).toBe('shop-orders');
+    expect(() => repoName('shop', 'Orders')).toThrow(InvalidIdError);
   });
 
   it('builds a deterministic task branch that keeps the task id verbatim', () => {

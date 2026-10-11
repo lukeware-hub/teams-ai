@@ -1,12 +1,14 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { Exec } from '../../exec/command.js';
-import { fetch as gitFetch, git } from '../../git/git.js';
+import { repoName } from '../../core/ids.js';
+import { fetch as gitFetch, git, headSha } from '../../git/git.js';
 import { ensureRepo, NOT_FOUND } from '../../git/github.js';
 import type { Plan } from '../../contracts/plan.js';
 import { Intent, OrchEvent } from '../events.js';
 import { mergeDoc, sameDoc as same } from '../../git/merge-doc.js';
 import { renderWorkflows, validateWorkflow } from '../workflows.js';
+import { serviceWorkspace } from '../workspace.js';
 import { commitAndMergeDocs, commitDocs, docsCommitKey, docsWorktree, type PhaseDeps, type PhaseResult } from './shared.js';
 
 const isRepo = (dir: string) => fs.access(path.join(dir, '.git')).then(() => true, () => false);
@@ -89,6 +91,46 @@ export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docs
     await fs.copyFile(source, target);
   }
   return commitAndMergeDocs(deps, 0, branch, wt, `docs(${spec.specId}): spec v${version}`);
+}
+
+/** R12.3: every service of the project gets its GitHub repository and a clone in its workspace before planning. */
+export async function ensureServiceRepos(deps: PhaseDeps & { ghExec: Exec }, owner: string | undefined): Promise<PhaseResult> {
+  for (const service of deps.project.services ?? []) {
+    const { repo } = serviceWorkspace(deps.ws, service);
+    try {
+      // A clone whose origin answers is ready.
+      if ((await isRepo(repo)) && (await gitFetch(repo, deps.exec).then(() => true, () => false))) continue;
+      await cloneOrCreate(deps, service, repo, owner);
+      await gitFetch(repo, deps.exec);
+    } catch (err) {
+      if ((err as { fatal?: boolean }).fatal) throw err; // CrashInjected (test hook) must still kill the process
+      const reason = `service ${service}: ${(err as Error).message}`;
+      await deps.journal.fact(OrchEvent.PhaseFailed, { phase: 0, reason });
+      return { ok: false, reason };
+    }
+  }
+  return { ok: true };
+}
+
+/** Clones the service's repository, or creates it on GitHub from an empty first commit on main when GitHub does not have it. */
+async function cloneOrCreate(deps: PhaseDeps & { ghExec: Exec }, service: string, repo: string, owner: string | undefined): Promise<void> {
+  const name = repoName(deps.project.projectId, service);
+  const gh = (args: string[]) => deps.ghExec({ bin: 'gh', args, cwd: deps.ws.root, timeoutMs: 60_000 });
+  const login = owner ?? (JSON.parse((await gh(['api', 'user'])).stdout) as { login: string }).login;
+  const view = await gh(['repo', 'view', `${login}/${name}`, '--json', 'nameWithOwner,url']);
+  if (view.exitCode !== 0 && !NOT_FOUND.test(view.stderr)) throw new Error(`gh repo view failed: ${view.stderr.trim()}`);
+  await fs.mkdir(path.dirname(repo), { recursive: true });
+  if (view.exitCode === 0 && !(await isRepo(repo))) {
+    await git(path.dirname(repo), ['clone', '-q', (JSON.parse(view.stdout) as { url: string }).url, path.basename(repo)], deps.exec);
+    return;
+  }
+  if (!(await isRepo(repo))) await git(path.dirname(repo), ['init', '-q', '-b', 'main', path.basename(repo)], deps.exec);
+  if ((await headSha(repo, deps.exec).catch(() => null)) === null) await git(repo, ['commit', '-q', '--allow-empty', '-m', `chore: create ${name}`], deps.exec);
+  if (deps.journal.isConfirmed(Intent.RepoCreate, name)) return;
+  await deps.journal.intent(Intent.RepoCreate, name, { owner: login, name });
+  const created = await ensureRepo({ owner: login, name, private: true, cwd: repo }, deps.ghExec);
+  await deps.journal.confirm(Intent.RepoCreate, name, created);
+  await deps.journal.fact(OrchEvent.RepoBootstrapped, { ...created, service });
 }
 
 const exists = (p: string) => fs.access(p).then(() => true, () => false);
