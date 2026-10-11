@@ -619,6 +619,9 @@ export class Run {
     }
     const phase3 = await this.loop({ final: false });
     if (phase3 !== 'complete') return phase3;
+    // Every task of a new repository depends on its scaffold, fix tasks included: verifying without it only spends tokens.
+    const scaffold = this.plan.tasks.find((t) => t.id === scaffoldId(t.service ?? null) && this.journal.state.tasks.get(t.id)?.state === 'blocked');
+    if (scaffold) return this.finish('blocked', `${scaffold.id} is blocked and every other task of its repository depends on it`);
     // Unit harnesses without a deployment target exercise Phases 0–3 only; production deps always provide one.
     if (!this.deps.target) return this.finish('complete');
     return this.postPhases();

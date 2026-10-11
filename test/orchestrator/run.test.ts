@@ -235,6 +235,24 @@ describe('Run', () => {
     await run.close();
   });
 
+  it('ends blocked right after Phase 3 when the scaffold blocks, since every other task and any fix task depends on it', async () => {
+    await fs.writeFile(path.join(remote.repo, 'docs', 'specs', 'spec-001', 'plan.json'), JSON.stringify(makePlan(spec)));
+    await git(remote.repo, ['commit', '-qam', 'a plan with a scaffold']);
+    await git(remote.repo, ['push', '-q', 'origin', 'HEAD:main']);
+    const kinds: string[] = [];
+    const script: Script = async (req) => {
+      kinds.push(req.kind);
+      if (req.kind === 'dev') return { ok: true, value: { specHash: HASH, status: 'blocked', reason: 'the security-tools gate cannot install semgrep' }, summary: summary() };
+      return { ok: false, failure: 'code', errors: [`${req.kind} not scripted`], summary: summary({ isError: true }), sandboxDisabled: false };
+    };
+    const run = await Run.create(await withAgents(deps(script, { firstSpec: true, target: { validate: async () => [] } as unknown as RunDeps['target'] })));
+    expect(await run.execute()).toBe('blocked');
+    expect(kinds).toEqual(['dev']);
+    expect(run.journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 4)).toBe(false);
+    expect(run.journal.events.at(-1)!.data).toMatchObject({ result: 'blocked', blocked: expect.arrayContaining([{ taskId: 'T0-scaffold', reason: 'the security-tools gate cannot install semgrep' }, { taskId: 'T1-create', reason: 'a dependency is blocked' }]) });
+    await run.close();
+  });
+
   it('runs a replacement task from a successful replan to merged', async () => {
     let reviews = 0;
     const script: Script = async (req) => {
