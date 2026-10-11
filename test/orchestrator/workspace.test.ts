@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG } from '../../server/config/config.js';
-import { eventsFile, expandHome, firstSpecForRun, firstSpecForSpec, graphDir, mergedByPriorRuns, nextRunId, olderLiveRun, specForRun, stepDir, workspacePaths, worktreeDir } from '../../server/orchestrator/workspace.js';
+import { eventsFile, expandHome, firstSpecForRun, firstSpecForSpec, graphDir, mergedByPriorRuns, nextRunId, olderLiveRun, serviceWorkspace, specForRun, stepDir, workspacePaths, worktreeDir } from '../../server/orchestrator/workspace.js';
 import { EventStore } from '../../server/store/event-store.js';
 
 let dir = '';
@@ -32,6 +32,17 @@ describe('workspace', () => {
     expect(graphDir(ws, 'task/checkout-T1')).toBe('/home/u/.teams-ai/workspaces/shop/graph/worktrees/task__checkout-T1');
     expect(eventsFile(ws, 'checkout-r1')).toBe('/home/u/.teams-ai/runs/checkout-r1/events.ndjson');
     expect(stepDir(ws, 'checkout-r1', 7)).toBe('/home/u/.teams-ai/runs/checkout-r1/steps/s00007');
+  });
+
+  it('gives a service its own repository, worktrees and graph beside the project, and keeps the rest', () => {
+    const ws = workspacePaths(DEFAULT_CONFIG, 'shop', '/home/u');
+    expect(serviceWorkspace(ws, null)).toBe(ws);
+    expect(serviceWorkspace(ws, 'orders')).toEqual({
+      ...ws,
+      repo: '/home/u/.teams-ai/workspaces/shop/services/orders/repo',
+      worktrees: '/home/u/.teams-ai/workspaces/shop/services/orders/worktrees',
+      graph: '/home/u/.teams-ai/workspaces/shop/services/orders/graph',
+    });
   });
 
   it('numbers runs per spec from the existing run directories', async () => {

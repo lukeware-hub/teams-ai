@@ -37,6 +37,13 @@ export function workspacePaths(cfg: Config, projectId: string, home?: string): W
   };
 }
 
+/** Where a service's code lives: the project's own repository for null, else `services/<service>` beside it. */
+export function serviceWorkspace(ws: Workspace, service: string | null): Workspace {
+  if (service === null) return ws;
+  const root = path.posix.join(ws.root, 'services', service);
+  return { ...ws, repo: path.posix.join(root, 'repo'), worktrees: path.posix.join(root, 'worktrees'), graph: path.posix.join(root, 'graph') };
+}
+
 const branchDir = (branch: string) => branch.replace(/\//g, '__');
 
 export function worktreeDir(ws: Workspace, branch: string): string {
