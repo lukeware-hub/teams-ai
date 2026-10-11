@@ -12,14 +12,14 @@ export const Persona = z.object({
 /** A service of a system split into services; its repository is `<projectId>-<name>`. */
 export const ServiceName = z.string().regex(ID_PATTERNS.SLUG).max(40);
 
-/** A shared container the docs declare for every service (a message broker, a shared database), reached on the project's network by its name. */
+/** A shared container the docs declare for every service (a message broker, a shared database), reached on the project's network by its name; every value is literal. */
 export const PlatformService = z.object({
   name: ServiceName,
   image: z.string().min(1).refine((image) => /[:@]/.test(image.split('/').at(-1) ?? '') && !/:latest$/.test(image), { message: 'pin the image to a version: a tag other than latest, or a digest' }),
   command: z.array(z.string()).optional(),
-  environment: z.record(z.string().regex(/^[A-Z_][A-Z0-9_]*$/), z.string()).optional(),
+  environment: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_.]*$/), z.string()).optional(),
   /** A compose healthcheck test, e.g. ["CMD", "wget", "-q", "--spider", "http://localhost:8222/healthz"]. */
-  healthcheck: z.array(z.string().min(1)).min(1).optional(),
+  healthcheck: z.array(z.string().min(1)).min(1).refine((test) => ['CMD', 'CMD-SHELL', 'NONE'].includes(test[0]!), { message: 'a healthcheck starts with CMD, CMD-SHELL or NONE' }).optional(),
 });
 export type PlatformService = z.infer<typeof PlatformService>;
 
@@ -38,5 +38,5 @@ export const Project = z.object({
   services: z.array(ServiceName).refine((names) => new Set(names).size === names.length, { message: 'service names must be unique' }).optional(),
   /** The shared containers every service reaches by name; absent when the services need none. */
   platform: z.array(PlatformService).refine((list) => new Set(list.map((p) => p.name)).size === list.length, { message: 'platform names must be unique' }).optional(),
-});
+}).refine((p) => !(p.platform ?? []).some((c) => (p.services ?? []).includes(c.name)), { message: 'a platform container and a service cannot share a name: both would answer to it on the shared network', path: ['platform'] });
 export type Project = z.infer<typeof Project>;

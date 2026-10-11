@@ -25,4 +25,11 @@ describe('renderPlatform', () => {
       networks: { shared: { name: 'teams-ai-shop_net', external: true } },
     });
   });
+
+  it('keeps every value literal: compose would read a $ as a variable of the orchestrator', () => {
+    const file = JSON.parse(renderPlatform([{ name: 'db', image: 'postgres:16.4', command: ['postgres', '-c', 'log_line_prefix=$x'], environment: { POSTGRES_PASSWORD: 'pa$word' }, healthcheck: ['CMD-SHELL', 'pg_isready -U $POSTGRES_USER'] }], 'net'));
+    expect(file.services.db.command).toEqual(['postgres', '-c', 'log_line_prefix=$$x']);
+    expect(file.services.db.environment).toEqual({ POSTGRES_PASSWORD: 'pa$$word' });
+    expect(file.services.db.healthcheck.test).toEqual(['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER']);
+  });
 });

@@ -67,6 +67,12 @@ describe('DockerLocalTarget', () => {
     expect(lines).toContain('rename teams-ai-todo-api teams-ai-todo-api-prev');
   });
 
+  it('reports the running image as previous even when it is the one being deployed, so a failure restarts it instead of tearing it down', async () => {
+    const fake = new FakeExec().onArgs('docker', ['inspect', '--format', '{{.Config.Image}}'], () => ({ stdout: 'todo-api:spec-001-abc1234\n' }));
+    const t = new DockerLocalTarget({ exec: fake.exec, get: okGet, secrets });
+    expect((await t.apply(intent)).previous).toBe('todo-api:spec-001-abc1234');
+  });
+
   it('reports no previous image when nothing was running', async () => {
     const fake = new FakeExec().onArgs('docker', ['inspect'], () => ({ exitCode: 1, stderr: 'No such object' }));
     const t = new DockerLocalTarget({ exec: fake.exec, get: okGet, secrets });

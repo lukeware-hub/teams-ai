@@ -19,6 +19,16 @@ describe('Project.services', () => {
     expect(() => makeProject({ platform: [{ name: 'nats', image: 'nats' }] })).toThrow('pin the image');
     expect(() => makeProject({ platform: [nats, nats] })).toThrow('platform names must be unique');
   });
+
+  it('takes platform settings as written: dotted environment names, and a healthcheck that starts with CMD, CMD-SHELL or NONE', () => {
+    const search = { name: 'search', image: 'elasticsearch:8.15.0', environment: { 'discovery.type': 'single-node' }, healthcheck: ['CMD-SHELL', 'curl -f localhost:9200'] };
+    expect(makeProject({ platform: [search] }).platform).toEqual([search]);
+    expect(() => makeProject({ platform: [{ ...search, healthcheck: ['curl', '-f', 'localhost:9200'] }] })).toThrow('CMD');
+  });
+
+  it('refuses a platform container named like a service: both would answer to that name on the shared network', () => {
+    expect(() => makeProject({ services: ['orders'], platform: [{ name: 'orders', image: 'nats:2.10.22' }] })).toThrow('cannot share a name');
+  });
 });
 
 describe('ServicesPlan', () => {

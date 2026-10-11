@@ -16,13 +16,16 @@ export const platformComposeProject = (projectId: string) => `${composeProject(p
 /** The network a project's services and platform containers share. */
 export const sharedNetwork = (projectId: string) => `${composeProject(projectId)}_net`;
 
+/** Compose reads `$` as one of its own variables; doubled, it reaches the container as written. */
+const literal = (value: string) => value.replaceAll('$', () => '$$');
+
 /** The platform containers as a compose file on the shared network, each under its own name (JSON is YAML). */
 export function renderPlatform(platform: readonly PlatformService[], network: string): string {
   const services = Object.fromEntries(platform.map((p) => [p.name, {
     image: p.image,
-    ...(p.command ? { command: p.command } : {}),
-    ...(p.environment ? { environment: p.environment } : {}),
-    ...(p.healthcheck ? { healthcheck: { test: p.healthcheck, interval: '2s', timeout: '5s', retries: 30 } } : {}),
+    ...(p.command ? { command: p.command.map(literal) } : {}),
+    ...(p.environment ? { environment: Object.fromEntries(Object.entries(p.environment).map(([k, v]) => [k, literal(v)])) } : {}),
+    ...(p.healthcheck ? { healthcheck: { test: p.healthcheck.map(literal), interval: '2s', timeout: '5s', retries: 30 } } : {}),
     restart: 'unless-stopped',
     networks: { shared: { aliases: [p.name] } },
   }]));
@@ -46,7 +49,12 @@ export async function teardownProject(exec: Exec, projectId: string, services: r
   const down = (project: string) => exec({ bin: 'docker', args: ['compose', '-p', project, 'down', '-v'], timeoutMs: 120_000 }).catch(() => undefined);
   await down(composeProject(projectId));
   if (services.length === 0) return;
-  for (const service of services) await down(serviceComposeProject(projectId, service));
+  // A service the project no longer lists still runs under the project's prefix.
+  const listed = await exec({ bin: 'docker', args: ['compose', 'ls', '-a', '--format', 'json'], timeoutMs: 30_000 })
+    .then((r) => (JSON.parse(r.stdout || '[]') as Array<{ Name: string }>).map((p) => p.Name))
+    .catch(() => [] as string[]);
+  const prefix = `${composeProject(projectId)}--`;
+  for (const project of new Set([...services.map((s) => serviceComposeProject(projectId, s)), ...listed.filter((n) => n.startsWith(prefix))])) await down(project);
   await down(platformComposeProject(projectId));
   await exec({ bin: 'docker', args: ['network', 'rm', sharedNetwork(projectId)], timeoutMs: 30_000 }).catch(() => undefined);
 }
@@ -137,8 +145,11 @@ export class DockerLocalTarget implements DeployTarget {
       if (created.exitCode !== 0) return { ok: false, detail: `docker network create failed: ${created.stderr.slice(-1000)}` };
     }
     if (platform.length === 0) return { ok: true, detail: 'no platform' };
-    const up = await withTempFile('platform.json', renderPlatform(platform, network), (file) => this.docker(['compose', '-p', platformComposeProject(projectId), '-f', file, 'up', '-d', '--wait'], undefined, TIMEOUT));
-    return up.exitCode === 0 ? { ok: true, detail: 'platform up' } : { ok: false, detail: `docker compose up failed: ${up.stderr.slice(-2000)}` };
+    const up = await withTempFile('platform.json', renderPlatform(platform, network), (file) => this.docker(['compose', '-p', platformComposeProject(projectId), '-f', file, 'up', '-d', '--wait', '--remove-orphans'], undefined, TIMEOUT));
+    if (up.exitCode === 0) return { ok: true, detail: 'platform up' };
+    // A platform that did not come up would restart forever, until the project is deleted.
+    await this.docker(['compose', '-p', platformComposeProject(projectId), 'down'], undefined, 120_000);
+    return { ok: false, detail: `docker compose up failed: ${up.stderr.slice(-2000)}` };
   }
 
   private docker(args: string[], env?: Record<string, string>, timeoutMs = 120_000) {
@@ -219,10 +230,11 @@ export class DockerLocalTarget implements DeployTarget {
     if (intent.compose) {
       const r = await this.compose(intent, ['up', '-d', '--build', '--wait'], imageRef(intent), TIMEOUT);
       if (r.exitCode !== 0) throw new Error(`docker compose up failed: ${r.stderr.slice(-2000)}`);
-      return { previous: previous === imageRef(intent) ? null : previous };
+      // The image that ran before, even this very one: a failed redeploy restarts it and never tears it down with its data.
+      return { previous };
     }
     await this.run(intent, imageRef(intent));
-    return { previous: previous === imageRef(intent) ? null : previous };
+    return { previous };
   }
 
   async verify(intent: DeploymentIntent) {

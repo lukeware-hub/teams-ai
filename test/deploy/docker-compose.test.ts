@@ -146,10 +146,30 @@ describe('a service of a system of services', () => {
     expect(await target.startPlatform('shop', [{ name: 'nats', image: 'nats:2.10.22-alpine' }])).toEqual({ ok: true, detail: 'platform up' });
     const lines = fake.lines('docker');
     expect(lines[1]).toBe('network create teams-ai-shop_net');
-    expect(lines[2]).toMatch(/^compose -p teams-ai-shop_platform -f \S+ up -d --wait$/);
+    expect(lines[2]).toMatch(/^compose -p teams-ai-shop_platform -f \S+ up -d --wait --remove-orphans$/);
     expect(path.dirname(seen.file!)).not.toBe(os.tmpdir());
     expect(seen.mode).toBe(0o700);
     await expect(fs.access(seen.file!)).rejects.toThrow();
+  });
+
+  it('starts the platform without leftovers, and takes a platform that did not come up down again', async () => {
+    const fake = new FakeExec().onArgs('docker', ['compose'], (s) => (s.args.includes('up') ? { exitCode: 1, stderr: 'nats unhealthy' } : { exitCode: 0 }));
+    const target = new DockerLocalTarget({ exec: fake.exec, get: async () => ({ status: 200 }), secrets: {} });
+    expect(await target.startPlatform('shop', [{ name: 'nats', image: 'nats:2.10.22-alpine' }])).toEqual({ ok: false, detail: 'docker compose up failed: nats unhealthy' });
+    expect(fake.lines('docker').at(-1)).toBe('compose -p teams-ai-shop_platform down');
+  });
+
+  it('also takes down a service the project no longer lists, found by the prefix of its compose project', async () => {
+    const fake = new FakeExec().onArgs('docker', ['compose', 'ls'], () => ({ stdout: JSON.stringify([{ Name: 'teams-ai-shop--orders' }, { Name: 'teams-ai-shop--legacy' }, { Name: 'teams-ai-shopx--orders' }, { Name: 'teams-ai-shop_platform' }]) }));
+    await teardownProject(fake.exec, 'shop', ['orders']);
+    expect(fake.lines('docker')).toEqual([
+      'compose -p teams-ai-shop down -v',
+      'compose ls -a --format json',
+      'compose -p teams-ai-shop--orders down -v',
+      'compose -p teams-ai-shop--legacy down -v',
+      'compose -p teams-ai-shop_platform down -v',
+      'network rm teams-ai-shop_net',
+    ]);
   });
 
   it('takes down every compose project and the network of a project of services, and only its own project otherwise', async () => {
@@ -157,6 +177,7 @@ describe('a service of a system of services', () => {
     await teardownProject(fake.exec, 'shop', ['orders', 'inventory']);
     expect(fake.lines('docker')).toEqual([
       'compose -p teams-ai-shop down -v',
+      'compose ls -a --format json',
       'compose -p teams-ai-shop--orders down -v',
       'compose -p teams-ai-shop--inventory down -v',
       'compose -p teams-ai-shop_platform down -v',
