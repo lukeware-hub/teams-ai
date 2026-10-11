@@ -1,4 +1,6 @@
 import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DockerLocalTarget, teardownProject } from '../../server/deploy/docker-local.js';
 import type { DeploymentIntent, HttpGet } from '../../server/deploy/target.js';
@@ -106,27 +108,48 @@ describe('a service of a system of services', () => {
 
   it("runs in its own compose project and joins only its main container to the shared network, under the service's name", async () => {
     // The main container is the compose service named like the service (the devops rule of R12.6); its database stays private.
-    const fake = new FakeExec().on((s) => s.args.includes('--services'), () => ({ stdout: 'orders\ndb\n' }));
+    const seen: { file?: string; mode?: number; override?: unknown } = {};
+    const fake = new FakeExec()
+      .on((s) => s.args.includes('--services'), () => ({ stdout: 'orders\ndb\n' }))
+      .on((s) => s.args.includes('up'), async (s) => {
+        seen.file = s.args[s.args.lastIndexOf('-f') + 1]!;
+        seen.mode = (await fs.stat(path.dirname(seen.file))).mode & 0o777;
+        seen.override = JSON.parse(await fs.readFile(seen.file, 'utf8'));
+        return { exitCode: 0 };
+      });
     const target = new DockerLocalTarget({ exec: fake.exec, get: async () => ({ status: 200 }), secrets: {} });
     await target.apply(intent);
     const up = fake.calls.find((c) => c.args.includes('up'))!;
-    const file = up.args[up.args.lastIndexOf('-f') + 1]!;
     expect(up.args.slice(0, 3)).toEqual(['compose', '-p', 'teams-ai-shop--orders']);
-    expect(JSON.parse(await fs.readFile(file, 'utf8'))).toEqual({
+    expect(seen.override).toEqual({
       services: { orders: { networks: { default: {}, shared: { aliases: ['orders'] } } } },
       networks: { shared: { name: 'teams-ai-shop_net', external: true } },
     });
+    // A private directory of its own, gone once compose read it: another user could swap a fixed name in a shared /tmp.
+    expect(path.dirname(seen.file!)).not.toBe(os.tmpdir());
+    expect(seen.mode).toBe(0o700);
+    await expect(fs.access(seen.file!)).rejects.toThrow();
     expect(target.gateNetwork(intent)).toBe('teams-ai-shop_net');
     expect(await target.gateServiceUrl(intent)).toBe('http://orders:20001');
   });
 
   it('creates the shared network when it is missing and starts the platform before the services', async () => {
-    const fake = new FakeExec().onArgs('docker', ['network', 'inspect'], () => ({ exitCode: 1 }));
+    const seen: { file?: string; mode?: number } = {};
+    const fake = new FakeExec()
+      .onArgs('docker', ['network', 'inspect'], () => ({ exitCode: 1 }))
+      .onArgs('docker', ['compose'], async (s) => {
+        seen.file = s.args[s.args.indexOf('-f') + 1]!;
+        seen.mode = (await fs.stat(path.dirname(seen.file))).mode & 0o777;
+        return { exitCode: 0 };
+      });
     const target = new DockerLocalTarget({ exec: fake.exec, get: async () => ({ status: 200 }), secrets: {} });
     expect(await target.startPlatform('shop', [{ name: 'nats', image: 'nats:2.10.22-alpine' }])).toEqual({ ok: true, detail: 'platform up' });
     const lines = fake.lines('docker');
     expect(lines[1]).toBe('network create teams-ai-shop_net');
     expect(lines[2]).toMatch(/^compose -p teams-ai-shop_platform -f \S+ up -d --wait$/);
+    expect(path.dirname(seen.file!)).not.toBe(os.tmpdir());
+    expect(seen.mode).toBe(0o700);
+    await expect(fs.access(seen.file!)).rejects.toThrow();
   });
 
   it('takes down every compose project and the network of a project of services, and only its own project otherwise', async () => {

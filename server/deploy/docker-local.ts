@@ -29,6 +29,18 @@ export function renderPlatform(platform: readonly PlatformService[], network: st
   return JSON.stringify({ services, networks: { shared: { name: network, external: true } } }, null, 2);
 }
 
+/** Runs `run` on `text` written in a fresh private directory, removed afterwards: another user could swap a fixed name in a shared /tmp. */
+async function withTempFile<T>(name: string, text: string, run: (file: string) => Promise<T>): Promise<T> {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-'));
+  try {
+    const file = path.join(dir, name);
+    await fs.writeFile(file, text);
+    return await run(file);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+}
+
 /** Takes down what a project deployed: its own compose project and, for a system of services, each service's, the platform's and the shared network. */
 export async function teardownProject(exec: Exec, projectId: string, services: readonly string[]): Promise<void> {
   const down = (project: string) => exec({ bin: 'docker', args: ['compose', '-p', project, 'down', '-v'], timeoutMs: 120_000 }).catch(() => undefined);
@@ -106,18 +118,16 @@ export class DockerLocalTarget implements DeployTarget {
   private async compose(intent: DeploymentIntent, args: string[], image: string | null, timeoutMs = 120_000, shared = true) {
     const env: Record<string, string> = image ? { TEAMS_AI_IMAGE: image } : {};
     for (const n of intent.secretNames) env[n] = this.deps.secrets[n]!;
-    const files = ['-f', `${intent.contextDir.replaceAll('\\', '/')}/${intent.compose}`, ...(shared && intent.shared ? ['-f', await this.sharedFile(intent)] : [])];
-    const base = ['compose', '-p', this.project(intent), ...files, '--project-directory', intent.contextDir];
-    return this.deps.exec({ bin: 'docker', args: [...base, ...args], env, timeoutMs });
+    const run = (extra: string[]) =>
+      this.deps.exec({ bin: 'docker', args: ['compose', '-p', this.project(intent), '-f', `${intent.contextDir.replaceAll('\\', '/')}/${intent.compose}`, ...extra, '--project-directory', intent.contextDir, ...args], env, timeoutMs });
+    if (!shared || !intent.shared) return run([]);
+    return withTempFile('shared.json', await this.sharedOverride(intent), (file) => run(['-f', file]));
   }
 
   /** The extra compose file that joins only the main container to the shared network, under the service's name. */
-  private async sharedFile(intent: DeploymentIntent): Promise<string> {
+  private async sharedOverride(intent: DeploymentIntent): Promise<string> {
     const shared = intent.shared!;
-    const file = path.join(os.tmpdir(), `${shared.composeProject}.shared.json`);
-    const override = { services: { [await this.service(intent)]: { networks: { default: {}, shared: { aliases: [shared.alias] } } } }, networks: { shared: { name: shared.network, external: true } } };
-    await fs.writeFile(file, JSON.stringify(override, null, 2));
-    return file;
+    return JSON.stringify({ services: { [await this.service(intent)]: { networks: { default: {}, shared: { aliases: [shared.alias] } } } }, networks: { shared: { name: shared.network, external: true } } }, null, 2);
   }
 
   async startPlatform(projectId: string, platform: readonly PlatformService[]): Promise<{ ok: boolean; detail: string }> {
@@ -127,9 +137,7 @@ export class DockerLocalTarget implements DeployTarget {
       if (created.exitCode !== 0) return { ok: false, detail: `docker network create failed: ${created.stderr.slice(-1000)}` };
     }
     if (platform.length === 0) return { ok: true, detail: 'no platform' };
-    const file = path.join(os.tmpdir(), `${platformComposeProject(projectId)}.json`);
-    await fs.writeFile(file, renderPlatform(platform, network));
-    const up = await this.docker(['compose', '-p', platformComposeProject(projectId), '-f', file, 'up', '-d', '--wait'], undefined, TIMEOUT);
+    const up = await withTempFile('platform.json', renderPlatform(platform, network), (file) => this.docker(['compose', '-p', platformComposeProject(projectId), '-f', file, 'up', '-d', '--wait'], undefined, TIMEOUT));
     return up.exitCode === 0 ? { ok: true, detail: 'platform up' } : { ok: false, detail: `docker compose up failed: ${up.stderr.slice(-2000)}` };
   }
 
