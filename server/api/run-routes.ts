@@ -420,10 +420,16 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const deployed = [...evs].reverse().find((e) => e.type === 'DEPLOY_VERIFIED');
         if (!deployed) throw new HttpError(404, 'this run has no deployed service');
         // Reports from before the health path was recorded only prove the host answers: any HTTP status then means online.
-        const healthPath = typeof deployed.data.healthcheckPath === 'string' ? deployed.data.healthcheckPath : null;
-        const res = await (deps.httpGet ?? httpGet)(`${String(deployed.data.url)}${healthPath ?? '/'}`, 3000);
-        const online = res !== null && (healthPath === null || (res.status >= 200 && res.status < 400));
-        json(200, { online, status: res?.status ?? null, checkedAt: new Date().toISOString() });
+        const probe = async (url: string, healthPath: unknown) => {
+          const health = typeof healthPath === 'string' ? healthPath : null;
+          const res = await (deps.httpGet ?? httpGet)(`${url}${health ?? '/'}`, 3000);
+          return { online: res !== null && (health === null || (res.status >= 200 && res.status < 400)), status: res?.status ?? null };
+        };
+        const cards = Array.isArray(deployed.data.services) ? (deployed.data.services as Array<{ service: string; url: string; healthcheckPath?: string }>) : null;
+        // A services run answers for each service, and is online only when every one answers.
+        const checked = cards ? await Promise.all(cards.map(async (c) => ({ service: c.service, ...(await probe(c.url, c.healthcheckPath)) }))) : null;
+        const own = checked?.[0] ?? (await probe(String(deployed.data.url), deployed.data.healthcheckPath));
+        json(200, { online: checked ? checked.every((c) => c.online) : own.online, status: own.status, checkedAt: new Date().toISOString(), ...(checked ? { services: checked } : {}) });
       },
     },
     {

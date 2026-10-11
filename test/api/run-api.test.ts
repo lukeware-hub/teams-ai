@@ -343,12 +343,27 @@ describe('start, resume, stop', () => {
   it('service status probes the deployed health url and says whether it answers', async () => {
     const deployed = { type: 'DEPLOY_VERIFIED', data: { attempt: 1, url: 'http://dind:3000', smoke: [], healthcheck: 'HTTP 200', tag: 't', port: 3000, healthcheckPath: '/health' } };
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), deployed], state('running'));
-    expect(await (await fetch(base() + '/api/runs/hello-001-r1/service')).json()).toMatchObject({ online: true, status: 200 });
+    const answer = await (await fetch(base() + '/api/runs/hello-001-r1/service')).json();
+    expect(answer).toMatchObject({ online: true, status: 200 });
+    expect(answer.services).toBeUndefined();
     expect(probed).toEqual(['http://dind:3000/health']);
     probe = async () => null;
     expect(await (await fetch(base() + '/api/runs/hello-001-r1/service')).json()).toMatchObject({ online: false, status: null });
     probe = async () => ({ status: 503 });
     expect(await (await fetch(base() + '/api/runs/hello-001-r1/service')).json()).toMatchObject({ online: false, status: 503 });
+  });
+
+  it('service status of a services run probes every service and is online only when all answer', async () => {
+    const card = (service: string, port: number) => ({ service, url: `http://dind:${port}`, port, healthcheck: 'HTTP 200', healthcheckPath: '/health' });
+    const deployed = { type: 'DEPLOY_VERIFIED', data: { attempt: 1, ...card('orders', 20001), smoke: [], services: [card('orders', 20001), card('inventory', 20002)] } };
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), deployed], state('running'));
+    probe = async (u) => (u.includes('20001') ? { status: 200 } : null);
+    expect(await (await fetch(base() + '/api/runs/hello-001-r1/service')).json()).toMatchObject({
+      online: false,
+      status: 200,
+      services: [{ service: 'orders', online: true, status: 200 }, { service: 'inventory', online: false, status: null }],
+    });
+    expect(probed).toEqual(['http://dind:20001/health', 'http://dind:20002/health']);
   });
 
   it('service status of an older run without a health path counts any HTTP answer as online', async () => {
