@@ -1,3 +1,4 @@
+import type { PlatformService } from '../contracts/project.js';
 import type { Exec } from '../exec/command.js';
 import { archivePath, imageRef, waitHealthy, type DeploymentIntent, type DeployTarget, type HttpGet } from './target.js';
 
@@ -5,6 +6,25 @@ const TIMEOUT = 600_000;
 
 /** Compose project name derived from the projectId (compose allows lowercase letters, digits, '-' and '_'). */
 export const composeProject = (projectId: string) => `teams-ai-${projectId}`.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+/** A service's own compose project; a slug never holds `--`, so no other project can take the name. */
+export const serviceComposeProject = (projectId: string, service: string) => `${composeProject(projectId)}--${service}`;
+/** The compose project of the platform containers; a slug never holds `_`. */
+export const platformComposeProject = (projectId: string) => `${composeProject(projectId)}_platform`;
+/** The network a project's services and platform containers share. */
+export const sharedNetwork = (projectId: string) => `${composeProject(projectId)}_net`;
+
+/** The platform containers as a compose file on the shared network, each under its own name (JSON is YAML). */
+export function renderPlatform(platform: readonly PlatformService[], network: string): string {
+  const services = Object.fromEntries(platform.map((p) => [p.name, {
+    image: p.image,
+    ...(p.command ? { command: p.command } : {}),
+    ...(p.environment ? { environment: p.environment } : {}),
+    ...(p.healthcheck ? { healthcheck: { test: p.healthcheck, interval: '2s', timeout: '5s', retries: 30 } } : {}),
+    restart: 'unless-stopped',
+    networks: { shared: { aliases: [p.name] } },
+  }]));
+  return JSON.stringify({ services, networks: { shared: { name: network, external: true } } }, null, 2);
+}
 
 export class DockerLocalTarget implements DeployTarget {
   readonly name = 'docker-local' as const;

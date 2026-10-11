@@ -11,6 +11,14 @@ describe('Project.services', () => {
     expect(() => makeProject({ services: ['orders', 'orders'] })).toThrow('service names must be unique');
     expect(() => makeProject({ services: ['Orders'] })).toThrow();
   });
+
+  it('declares platform containers with a pinned image and unique names', () => {
+    const nats = { name: 'nats', image: 'nats:2.10.22-alpine', command: ['-js', '-m', '8222'] };
+    expect(makeProject({ platform: [nats] }).platform).toEqual([nats]);
+    expect(() => makeProject({ platform: [{ name: 'nats', image: 'nats:latest' }] })).toThrow('pin the image');
+    expect(() => makeProject({ platform: [{ name: 'nats', image: 'nats' }] })).toThrow('pin the image');
+    expect(() => makeProject({ platform: [nats, nats] })).toThrow('platform names must be unique');
+  });
 });
 
 describe('ServicesPlan', () => {
