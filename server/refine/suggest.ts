@@ -14,7 +14,7 @@ const TEMPLATE: Record<SuggestFile, (projectId: string) => string> = { 'project.
 export function suggestPack(input: { file: SuggestFile; projectId: string; specHash: string; flowMd: string; currentMd: string }): ContextPackInput {
   const feedback = [
     `Write the complete docs/${input.file} in \`text\`, derived from docs/flow.md. flow.md is the source of truth: when the current ${input.file} disagrees with it, flow.md wins.`,
-    '- Keep the headings of the template below.',
+    `- Keep the headings of the current ${input.file}; use the template's headings only when it is empty or still the template.`,
     `- Keep from the current ${input.file} only the decisions flow.md does not contradict.`,
     '- Never invent scope flow.md does not support.',
     '- Write the content in Brazilian Portuguese. Do not edit any file.',
