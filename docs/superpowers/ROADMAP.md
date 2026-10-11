@@ -497,6 +497,7 @@ unit-tested with fixtures. Each one needs a plan file in `plans/` before impleme
 - Prompted by a live refinement session (lukeware-kayron-hub, surgical-case-service spec) where the SM asked the human an open architecture question - how many `<capability>-service` repos, mandatory split or not - that teams-ai's own delivery contract already answers: `plan.delivery` ships exactly one repository, one Dockerfile, one compose service and one `SERVICE_URL` per spec (`devops.md`), so there is no multi-repo/multi-service delivery path to ask about today.
 - Built: `.claude/agents/sm.md` refine step gets a "Service and bounded-context decomposition" rule - default to one edge service (`<primary-capability>-service`) with bounded contexts separated internally (hexagonal/ports-and-adapters), physical split recorded as an ADR-style `docPatch`, never a question; a question is only legitimate when the docs mandate something teams-ai cannot deliver (separate repos per context, several independently deployable services), phrased as a pipeline limitation, not an open choice.
 - Prompt-only change (no runtime code, no test); verified by reading the diff and grepping the new section into `sm.md`. No live skill-loading mechanism involved, same distillation pattern as R10.1.
+- Superseded (human, 2026-10-11): stage 12 lets the docs decide between one application and several services; the rule is replaced in R12.6.
 
 ## Stage 11 - Spec-driven backlog (2026-10-06, plan 50)
 
@@ -669,6 +670,40 @@ The docs (project, briefing, stack, flow, design) stay the only hand-edited trut
 - Caveats of that live check: one run, and the plan differs from R8.7's (12 reviews instead of 24), so part of the gain is plan variance. All 12 reviews and 12 security reviews approved (R8.7: 6 `changes` of 18 reviews), so a lower review rigor is not ruled out: next, a seeded-defect check (a task with a known gap, e.g. a criterion with no test and a diff that misses an edge case) and a second run. The 5-minute TTL is not visible in the journal (`usage` carries no tier): confirm with `ephemeral_5m_input_tokens` in a recorded stream. Phase 5 ended `deploy-failed`, as in R8.7, for reasons unrelated to these slices: attempt 1 hit port 3000 held by the delivered `r11p-svc` container (stopped by hand, `docker start teams-ai-r11p-svc-r11p-svc-1` brings it back); attempt 2 `unhealthy`, attempt 3 `verify` no response after 60 attempts with a rollback, while the generated compose publishes `'3000'` (no fixed host port) and the fixture's own container later reported healthy. Not investigated here; it belongs with R11.5 (deploy-fix loop).
 - Discarded after measuring: `--bare` (API key only), `--disable-slash-commands` (0 tokens: skills are not listed without the `Skill` tool), switching to the native binary (the npm package already wraps it), `DISABLE_NON_ESSENTIAL_MODEL_CALLS` (undocumented).
 - Combined estimate for slices 1, 2, 4 and 5: run -30 to -40% cost and ~80 -> ~55 min; refinement -26% from slice 1 alone. Verify each slice on a real run by cost per completed task, not by token counts.
+
+## Stage 12 - Any architecture, one repository per service (2026-10-11, plan 60)
+
+The five docs decide whether the software is one application or a system of services, which services exist, their stacks and the shared infrastructure; teams-ai is never tied to one technology or one architecture (human, 2026-10-11). Human decisions: one repository per service; one spec can change several services in one run; the docs, specs, plans and reports live only in the project repository; shared infrastructure such as a NATS broker is declared in the docs and started by teams-ai. This replaces the one-service rule of R10.3. Design, impact map and slices: `plans/2026-10-11-teams-ai-60-services.md`. Each slice gets its own plan when the one before it lands; agent prompts come last, because an agent that writes a services plan before runs can execute one would break live runs.
+
+### R12.1 Contracts and validation for a services plan - `done` (unit, plan 60, 2026-10-11)
+
+- Built: `ServiceName` and `Project.services` (`server/contracts/project.ts`); `PlanTask.service`, `ServicePlan`, `ServicesPlan`, `AnyPlan` and `servicePlans()`, which turns either plan shape into single-repository views (`server/contracts/plan.ts`); `validatePlan` split into plan-wide checks (spec identity, the task graph across repositories, criteria coverage, e2e exemptions) and repository checks, every message unchanged; `validateServicesPlan` and `scaffoldId` (`server/validators/plan.ts`). A single-repository task that names a service is rejected, because the plan output schema now offers the field. Nothing at run time reads the new shape yet.
+- One behavior change: a plan without an e2e command now also gets its e2e exemptions checked.
+- Tests: `test/contracts/services.test.ts`, `test/validators/plan-services.test.ts`, one new case each in `test/validators/plan.test.ts` and `test/validators/plan-e2e.test.ts`; whole suite 1454 passed and 4 skipped (baseline 1438), type check clean.
+
+### R12.2 Runs go through service views - `todo`
+
+- Phase 2 parses `AnyPlan` and validates it by the project's shape; the run keeps the views and runs the per-repository code on each one; with one view the journal and the behavior stay identical.
+
+### R12.3 Service repositories - `todo`
+
+- One workspace and one GitHub repository (`<projectId>-<service>`) per service, created and cloned by Phase 0; `T0-scaffold-<service>` recognized as a scaffold; merges and reconciliation per repository.
+
+### R12.4 Platform and deploy of several services - `todo`
+
+- `project.json` `platform` from `stack.md`, started as its own compose project on the network `teams-ai-<projectId>`; one compose project and one host port per service (the 20-port range must grow); smoke and e2e per service with every address; rollback of every applied service; project deletion tears everything down.
+
+### R12.5 Report and screens - `todo`
+
+- The report and the validation page list every service; the project page lists services and platform.
+
+### R12.6 Agents - `todo`
+
+- Refinement writes `services` and `platform` from the docs; SM, devops and Test rules for a services plan; question routing and the delivery contract text of the pre-plan pack; the one-service rule of R10.3 (`.claude/agents/sm.md:48-50`) replaced by "the docs decide".
+
+### R12.7 Live check - `todo`
+
+- Two services in different stacks plus NATS, and one spec that crosses both, taken to `awaiting-validation`.
 
 ## System 1 decisions (spec §10A.5)
 
