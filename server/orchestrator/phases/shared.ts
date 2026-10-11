@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { OutputOf, StepKind } from '../../agents/outputs.js';
-import { AnyPlan, Plan } from '../../contracts/plan.js';
+import { AnyPlan, Plan, type ServicesPlan, type ServiceView } from '../../contracts/plan.js';
 import { Preplan } from '../../contracts/preplan.js';
 import type { Project } from '../../contracts/project.js';
 import type { Spec } from '../../contracts/spec.js';
@@ -20,6 +20,13 @@ import { Intent, OrchEvent, type Journal } from '../events.js';
 import { docsMergeSteps, type MergeStepsDeps } from '../merge-steps.js';
 import type { AgentStepRequest, PackBase } from '../steps.js';
 import { worktreeDir, type Workspace } from '../workspace.js';
+
+/** A service's view with what Phase 4 runs it with: its workspace, its gates and whether its repository is new. */
+export interface ServiceRepo extends ServiceView {
+  ws: Workspace;
+  firstSpec: boolean;
+  gates: NonNullable<PhaseDeps['gates']>;
+}
 
 export interface PhaseDeps {
   journal: Journal;
@@ -60,6 +67,8 @@ export interface PhaseDeps {
   /** Post-deploy e2e suite (roadmap R8.4); same arguments as `smoke`. */
   e2e?: (contextDir: string, serviceUrl: string, gateServiceUrl?: string, gateNetwork?: string) => Promise<{ ok: boolean; rows: E2eRow[]; detail: string }>;
   secretNames?: () => string[];
+  /** A services plan and its repositories; absent means the project repository with `plan` and `gates`. */
+  services?: { plan: ServicesPlan; repos: ServiceRepo[] };
 }
 
 export const PAUSED_AUTH = 'paused:auth';

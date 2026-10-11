@@ -137,4 +137,11 @@ describe('Run with a services plan', () => {
     expect(inspected.some((l) => l.includes('node-22-bookworm'))).toBe(true);
     await run.close();
   }, 60_000);
+
+  it('ends a deploy of a services plan before Phase 5, which only knows one service until R12.4', async () => {
+    const run = await Run.create(await deps({ target: {} as RunDeps['target'] }));
+    expect(await run.deployOnly()).toBe('deploy-failed');
+    expect(run.journal.events.at(-1)!.data.reason).toBe('deploying several services is not built yet (roadmap R12.4)');
+    await run.close();
+  });
 });

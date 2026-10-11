@@ -7,12 +7,12 @@ import { buildEvidenceMatrix, readyForValidation, type EvidenceRow } from '../..
 import type { GateResult } from '../../exec/gate-runner.js';
 import { RunEvent } from '../../pipeline/run-state.js';
 import type { StepOutcome } from '../../runner/step.js';
-import { SCAFFOLD_TASK_ID, validatePlan } from '../../validators/plan.js';
+import { scaffoldId, validatePlan, validateServicesPlan } from '../../validators/plan.js';
 import { missingReadmeSections } from '../../validators/docs.js';
 import { unpinnedBaseImages } from '../../validators/pinned-image.js';
 import { OrchEvent } from '../events.js';
 import { fixTasksPack } from '../steps.js';
-import { checkoutMain, pauseForFailure, PAUSED_AUTH, type PhaseDeps } from './shared.js';
+import { checkoutMain, pauseForFailure, PAUSED_AUTH, type PhaseDeps, type ServiceRepo } from './shared.js';
 
 const WEIGHT: Record<TestResult['status'], number> = { skipped: 0, passed: 1, failed: 2 };
 /** One result per test id, the strongest wins: the smoke suite is skipped under the unit gate and shares ids with the unit tests. */
@@ -90,8 +90,17 @@ function deliveryFixTasks(items: readonly MissingItem[], existing: number, depen
   });
 }
 
+/** Fix tasks join the plan they fix and must keep it valid: one repository's plan, or the whole services plan. */
+function fixTaskErrors(deps: PhaseDeps, fixTasks: readonly PlanTask[]): string[] {
+  const services = deps.services;
+  if (!services) return validatePlan({ ...deps.plan!, tasks: [...deps.plan!.tasks, ...fixTasks] }, deps.spec, { firstSpec: deps.firstSpec });
+  const newServices = new Set(services.repos.filter((r) => r.firstSpec).map((r) => r.service!));
+  return validateServicesPlan({ ...services.plan, tasks: [...services.plan.tasks, ...fixTasks] }, deps.spec, { services: Object.keys(services.plan.services), newServices });
+}
+
 export async function runPhase4(deps: PhaseDeps, round: 1 | 2): Promise<Phase4Result> {
-  if (!deps.plan || !deps.gates || !deps.tasks) throw new Error('Phase 4 needs plan, gates and tasks');
+  const repos: ServiceRepo[] = deps.services?.repos ?? (deps.plan && deps.gates ? [{ service: null, plan: deps.plan, ws: deps.ws, firstSpec: deps.firstSpec, gates: deps.gates }] : []);
+  if (repos.length === 0 || !deps.tasks) throw new Error('Phase 4 needs plan, gates and tasks');
   const prior = deps.journal.events.find((e) => e.type === OrchEvent.VerificationPassed && e.data.round === round);
   if (prior) return { ok: true, matrix: prior.data.matrix as EvidenceRow[] };
   // Resumed after fix tasks were planned for this round: they are the answer, do not verify and plan again
@@ -99,27 +108,44 @@ export async function runPhase4(deps: PhaseDeps, round: 1 | 2): Promise<Phase4Re
   const plannedBefore = deps.journal.events.filter((e) => e.type === RunEvent.FixTasksPlanned && e.data.round === round);
   if (round === 1 && plannedBefore.length > 0) return { ok: false, reason: 'verification failed; fix tasks already planned', fixTasks: plannedBefore.flatMap((e) => e.data.tasks as PlanTask[]) };
   if (!deps.journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 4 && e.data.round === round)) await deps.journal.fact(OrchEvent.PhaseStarted, { phase: 4, round });
-  await checkoutMain(deps);
-  const items = await missingItems(deps.ws.repo, deps.plan);
-  if (items.length > 0) {
-    const absent = items.map((m) => `${m.field}: ${m.target}`);
+  const missing: Array<{ repo: ServiceRepo; items: MissingItem[] }> = [];
+  for (const repo of repos) {
+    await checkoutMain({ ...deps, ws: repo.ws });
+    const items = await missingItems(repo.ws.repo, repo.plan);
+    if (items.length > 0) missing.push({ repo, items });
+  }
+  if (missing.length > 0) {
+    const absent = missing.flatMap(({ repo, items }) => items.map((m) => `${repo.service ? `${repo.service}: ` : ''}${m.field}: ${m.target}`));
     const reason = `delivery contract not met on main, missing: ${absent.join(', ')}`;
     await deps.journal.fact(OrchEvent.VerificationFailed, { round, failedTests: [], uncoveredAcs: [], matrix: [], gate: 'delivery', missingDelivery: absent });
     if (round === 2) return { ok: false, reason };
     // Round 1 spends the existing round budget on one automatic fix round; round 2 is the verdict.
-    const existing = [...deps.journal.state.tasks.keys()].filter((id) => id.startsWith('T900-fix-')).length;
-    const fixTasks = deliveryFixTasks(items, existing, deps.firstSpec && deps.plan.tasks.some((t) => t.id === SCAFFOLD_TASK_ID) ? [SCAFFOLD_TASK_ID] : []);
-    const errors = validatePlan({ ...deps.plan, tasks: [...deps.plan.tasks, ...fixTasks] }, deps.spec, { firstSpec: deps.firstSpec });
+    let existing = [...deps.journal.state.tasks.keys()].filter((id) => id.startsWith('T900-fix-')).length;
+    const fixTasks = missing.flatMap(({ repo, items }) => {
+      const scaffold = scaffoldId(repo.service);
+      const tasks = deliveryFixTasks(items, existing, repo.firstSpec && repo.plan.tasks.some((t) => t.id === scaffold) ? [scaffold] : []);
+      existing += tasks.length;
+      return repo.service ? tasks.map((t) => ({ ...t, service: repo.service! })) : tasks;
+    });
+    const errors = fixTaskErrors(deps, fixTasks);
     if (errors.length) return { ok: false, reason: `${reason}; fix tasks rejected: ${errors.join('; ')}` };
     await deps.journal.fact(RunEvent.FixTasksPlanned, { tasks: fixTasks, round });
     return { ok: false, reason: `${reason}; fix tasks planned`, fixTasks };
   }
-  let results: GateResult[] = [], blocking: GateResult | null = null;
-  for (let attempt = 0; attempt < 4; attempt++) {
-    ({ results, blockingFailure: blocking } = await deps.gates(deps.ws.repo, 'main'));
-    if (!blocking || !['infra', 'environment', 'flaky-test'].includes(String(blocking.failure)) || attempt === 3) break;
+  const results: GateResult[] = [];
+  let blocking: GateResult | null = null;
+  let failing: ServiceRepo | undefined;
+  for (const repo of repos) {
+    let own: GateResult[] = [];
+    let fail: GateResult | null = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      ({ results: own, blockingFailure: fail } = await repo.gates(repo.ws.repo, 'main'));
+      if (!fail || !['infra', 'environment', 'flaky-test'].includes(String(fail.failure)) || attempt === 3) break;
+    }
+    for (const r of own) await deps.journal.fact(r.passed ? OrchEvent.GatePassed : OrchEvent.GateFailed, { phase: 4, round, gate: r.name, failure: r.failure, junit: r.junit ?? [], ...(repo.service ? { service: repo.service } : {}) });
+    results.push(...own);
+    if (fail && !blocking) [blocking, failing] = [fail, repo];
   }
-  for (const r of results) await deps.journal.fact(r.passed ? OrchEvent.GatePassed : OrchEvent.GateFailed, { phase: 4, round, gate: r.name, failure: r.failure, junit: r.junit ?? [] });
   const junit = dedupeJunit(results.flatMap((r) => r.junit ?? []));
   const matrix = buildEvidenceMatrix(deps.spec, deps.tasks(), junit);
   const failedTests = junit.filter((t) => t.status === 'failed').map((t) => t.id);
@@ -128,13 +154,16 @@ export async function runPhase4(deps: PhaseDeps, round: 1 | 2): Promise<Phase4Re
   await deps.journal.fact(OrchEvent.VerificationFailed, { round, failedTests, uncoveredAcs, matrix, gate: blocking?.name ?? null });
   if (round === 2) return { ok: false, reason: `verification failed in round 2: ${failedTests.length} failing tests, ${uncoveredAcs.length} uncovered criteria` };
   let feedback: string | null = null;
+  const services = deps.services;
+  // The SM plans across every service: their tasks and test gates, from the repository that failed.
+  const plan = services ? { tasks: services.plan.tasks, gates: repos.flatMap((r) => r.plan.gates) } : deps.plan!;
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const out = await deps.runAgent<'fix-tasks'>({ kind: 'fix-tasks', role: 'sm', pack: fixTasksPack(deps.packBase(), { failedTests, tails: tail(results.map((r) => `${r.name}: ${r.stderrTail || r.stdoutTail}`).join('\n')), uncoveredAcs, plan: deps.plan, boundaries: deps.boundaries ? await deps.boundaries() : [], feedback }), cwd: deps.ws.repo, phase: 'phase4', taskId: null, attempt }) as StepOutcome<FixTasksOutput>;
+    const out = await deps.runAgent<'fix-tasks'>({ kind: 'fix-tasks', role: 'sm', pack: fixTasksPack(deps.packBase(), { failedTests, tails: tail(results.map((r) => `${r.name}: ${r.stderrTail || r.stdoutTail}`).join('\n')), uncoveredAcs, plan, ...(services ? { services: Object.keys(services.plan.services) } : {}), boundaries: deps.boundaries ? await deps.boundaries() : [], feedback }), cwd: (failing ?? repos[0]!).ws.repo, phase: 'phase4', taskId: null, attempt }) as StepOutcome<FixTasksOutput>;
     if (!out.ok) { if (await pauseForFailure(deps, out.failure)) return { ok: false, reason: PAUSED_AUTH }; feedback = out.errors.join('\n'); continue; }
     // Ids are assigned here and must stay unique across rounds and resumes.
     const existing = [...deps.journal.state.tasks.keys()].filter((id) => id.startsWith('T900-fix-')).length;
     const fixTasks = out.value.tasks.map((t, i) => ({ ...t, id: `T900-fix-${existing + i + 1}`, origin: 'fix' as const }));
-    const errors = validatePlan({ ...deps.plan, tasks: [...deps.plan.tasks, ...fixTasks] }, deps.spec, { firstSpec: deps.firstSpec });
+    const errors = fixTaskErrors(deps, fixTasks);
     if (errors.length) { feedback = errors.join('\n'); continue; }
     await deps.journal.fact(RunEvent.FixTasksPlanned, { tasks: fixTasks, round });
     return { ok: false, reason: 'verification failed; fix tasks planned', fixTasks };

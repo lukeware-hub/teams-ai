@@ -260,7 +260,7 @@ const EVIDENCE_RULE =
 const OWNER_RULE =
   '- owner is dev, devops or front: use front only when every affectedPaths entry is UI code (e.g. web/src/**); use devops only for Dockerfile, deploy manifests, CI/release workflows and docker-compose; everything else is dev';
 
-export function fixTasksPack(base: PackBase, opts: { failedTests: readonly string[]; tails: string; uncoveredAcs: readonly string[]; plan: Plan; boundaries: readonly string[]; feedback: string | null }): ContextPackInput {
+export function fixTasksPack(base: PackBase, opts: { failedTests: readonly string[]; tails: string; uncoveredAcs: readonly string[]; plan: Pick<Plan, 'tasks' | 'gates'>; services?: readonly string[]; boundaries: readonly string[]; feedback: string | null }): ContextPackInput {
   const feedback = [
     'Integrated verification on main failed. Plan 1 to 3 fix tasks. Ids are assigned by the orchestrator.',
     `Failed tests:\n${opts.failedTests.map((t) => `- ${t}`).join('\n') || '- none'}`,
@@ -270,6 +270,7 @@ export function fixTasksPack(base: PackBase, opts: { failedTests: readonly strin
     `Test gates run on main:\n${opts.plan.gates.filter((g) => g.name.includes('test')).map((g) => `- ${g.name}: ${g.command}`).join('\n') || '- none'}`,
     `Module boundaries:\n${opts.boundaries.map((b) => `- ${b}`).join('\n')}`,
     OWNER_RULE,
+    opts.services ? `Each task names its service, one of: ${opts.services.join(', ')}. A task changes only that service's repository.` : '',
     opts.feedback ? `Previous answer was rejected:\n${opts.feedback}` : '',
   ].filter(Boolean).join('\n\n');
   return { ...common(base, 'fix-tasks', 'sm'), criteria: base.spec.acceptanceCriteria, feedback };

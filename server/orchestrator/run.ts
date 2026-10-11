@@ -126,6 +126,9 @@ function viewOf(plan: AnyPlan, service: string | undefined): ServiceView {
 /** Docs merges run no gates. */
 const NO_GATES = async (): Promise<{ results: GateResult[]; blockingFailure: GateResult | null }> => ({ results: [], blockingFailure: null });
 
+/** A services plan deploys from roadmap R12.4 on; until then its runs end before Phase 5 with this reason. */
+const SERVICES_DEPLOY_PENDING = 'deploying several services is not built yet (roadmap R12.4)';
+
 export class Run {
   readonly accounting = new Accounting();
   private readonly governor: Governor;
@@ -525,6 +528,7 @@ export class Run {
         const tail = r.ok || !r.result ? '' : `\n\ne2e gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
       },
+      ...(this.plan && 'services' in this.plan ? { services: { plan: this.plan, repos: servicePlans(this.plan).map((view) => ({ ...view, ws: this.wsOf(view), firstSpec: this.firstSpecOf(view), gates: this.gatesFor(view) })) } } : {}),
     };
   }
 
@@ -679,6 +683,7 @@ export class Run {
     const text = await this.gitLocked(['show', `origin/main:docs/specs/${specId}/plan.json`]).catch(() => null);
     if (!text) return this.finish('phase-failed', `main has no docs/specs/${specId}/plan.json`);
     this.plan = AnyPlan.parse(JSON.parse(text));
+    if (!singlePlan(this.plan)) return this.finish('deploy-failed', SERVICES_DEPLOY_PENDING);
     const p5 = await runPhase5(this.phaseDeps(), 1, { fixTasks: false });
     return p5.ok ? this.finish('done') : this.finish('deploy-failed', p5.reason);
   }
@@ -704,12 +709,17 @@ export class Run {
     }
     if (!p4.ok) { result = 'verification-failed'; reason = p4.reason; }
     if (p4.ok && this.deps.target) {
-      for (let attempt = deployStartAttempt(this.phaseDeps()); attempt <= MAX_DEPLOY_ATTEMPTS; attempt = (attempt + 1) as 1 | 2 | 3) {
-        const p5 = await runPhase5(this.phaseDeps(), attempt);
-        if (p5.ok) break;
-        if (!p5.fixTask) { result = 'deploy-failed'; reason = p5.reason; break; }
-        // Same rule as Phase 4: the fix task is best effort and the next deploy attempt is the verdict.
-        const back = await runFix([p5.fixTask]); if (back !== 'merged' && back !== 'blocked') { result = 'deploy-failed'; reason = p5.reason; break; }
+      if (!singlePlan(this.plan)) {
+        result = 'deploy-failed';
+        reason = SERVICES_DEPLOY_PENDING;
+      } else {
+        for (let attempt = deployStartAttempt(this.phaseDeps()); attempt <= MAX_DEPLOY_ATTEMPTS; attempt = (attempt + 1) as 1 | 2 | 3) {
+          const p5 = await runPhase5(this.phaseDeps(), attempt);
+          if (p5.ok) break;
+          if (!p5.fixTask) { result = 'deploy-failed'; reason = p5.reason; break; }
+          // Same rule as Phase 4: the fix task is best effort and the next deploy attempt is the verdict.
+          const back = await runFix([p5.fixTask]); if (back !== 'merged' && back !== 'blocked') { result = 'deploy-failed'; reason = p5.reason; break; }
+        }
       }
     }
     const p6 = await runPhase6({ ...this.phaseDeps(), runId: this.runId, accounting: this.accounting, result });
