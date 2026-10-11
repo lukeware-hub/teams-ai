@@ -69,6 +69,8 @@ export interface PhaseDeps {
   secretNames?: () => string[];
   /** A services plan and its repositories; absent means the project repository with `plan` and `gates`. */
   services?: { plan: ServicesPlan; repos: ServiceRepo[] };
+  /** The service whose repository `ws` is; absent for the project repository. */
+  service?: string;
 }
 
 export const PAUSED_AUTH = 'paused:auth';
@@ -123,7 +125,7 @@ export async function docsWorktree(deps: PhaseDeps, branch: string, opts: { keep
   return dir;
 }
 
-export const docsCommitKey = (deps: PhaseDeps, phase: 0 | 1 | 2 | 6 | 7) => `${deps.spec.specId}-${phase}`;
+export const docsCommitKey = (deps: PhaseDeps, phase: 0 | 1 | 2 | 6 | 7) => `${deps.spec.specId}-${phase}${deps.service ? `-${deps.service}` : ''}`;
 
 /** Commits the docs and returns the head sha with the files the commit touched (none when there was nothing to commit). */
 export async function commitDocs(worktree: string, message: string, exec: Exec): Promise<{ sha: string; files: string[] }> {

@@ -154,7 +154,7 @@ async function listFiles(dir: string, rel = ''): Promise<string[]> {
  */
 export async function runWorkflowBootstrap(deps: PhaseDeps, plan: Plan): Promise<PhaseResult> {
   const { journal, spec } = deps;
-  const branch = `docs/${spec.specId}-workflows`;
+  const branch = `docs/${spec.specId}${deps.service ? `-${deps.service}` : ''}-workflows`;
   const resumed = journal.isConfirmed(Intent.DocsCommit, docsCommitKey(deps, 7));
   const wt = await docsWorktree(deps, branch, { keepCommits: resumed });
   if (!resumed) {

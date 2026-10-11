@@ -586,12 +586,15 @@ export class Run {
     return ensureServiceRepos({ ...this.phaseDeps(), ghExec: this.deps.ghExec }, this.deps.bootstrap?.owner ?? this.deps.project.github.owner ?? this.deps.cfg.github.owner);
   }
 
-  /** R8.3: CI and release workflows land on main for a bootstrapped repository; public for tests. */
+  /** R8.3: CI and release workflows land on main of a bootstrapped repository, and of every new service's; public for tests. */
   async executeWorkflows(plan: AnyPlan): Promise<PhaseResult> {
     const single = singlePlan(plan);
-    // Service repositories get their workflows when they are created (R12.3).
-    if (!this.deps.bootstrap || !single) return { ok: true };
-    return runWorkflowBootstrap(this.phaseDeps(), single);
+    if (single) return this.deps.bootstrap ? runWorkflowBootstrap(this.phaseDeps(), single) : { ok: true };
+    for (const view of servicePlans(plan).filter((v) => this.firstSpecOf(v))) {
+      const r = await runWorkflowBootstrap({ ...this.phaseDeps(), ws: this.wsOf(view), service: view.service!, mergeDeps: this.mergeDeps(view) }, view.plan);
+      if (!r.ok) return r;
+    }
+    return { ok: true };
   }
 
   async execute(): Promise<ExecuteResult> {

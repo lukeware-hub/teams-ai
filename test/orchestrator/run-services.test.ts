@@ -7,6 +7,7 @@ import { loadConfig } from '../../server/config/config.js';
 import { execCommand } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
 import { Run, type RunDeps } from '../../server/orchestrator/run.js';
+import { CI_PATH, RELEASE_PATH } from '../../server/orchestrator/workflows.js';
 import { serviceWorkspace, type Workspace } from '../../server/orchestrator/workspace.js';
 import type { StepOutcome, StepRequest } from '../../server/runner/step.js';
 import type { ResultSummary } from '../../server/runner/stream-events.js';
@@ -137,6 +138,31 @@ describe('Run with a services plan', () => {
     expect(inspected.some((l) => l.includes('node-22-bookworm'))).toBe(true);
     await run.close();
   }, 60_000);
+
+  const scaffold = (service: string) => makePlanTask({ id: `T0-scaffold-${service}`, service, affectedPaths: ['package.json'] });
+  const filesOnMain = async (service: 'orders' | 'inventory') => {
+    await git(services[service].repo, ['fetch', '-q', 'origin']);
+    return git(services[service].repo, ['ls-tree', '-r', '--name-only', 'origin/main']);
+  };
+
+  it('commits the workflows to the repository of each new service, each under its own journal key', async () => {
+    const run = await Run.create(await deps());
+    expect(await run.executeWorkflows({ ...plan, tasks: [...plan.tasks, scaffold('orders'), scaffold('inventory')] })).toEqual({ ok: true });
+    for (const service of ['orders', 'inventory'] as const) {
+      expect(await filesOnMain(service)).toContain(CI_PATH);
+      expect(await filesOnMain(service)).toContain(RELEASE_PATH);
+    }
+    expect(run.journal.events.filter((e) => e.kind === 'confirm' && e.type === 'DOCS_COMMIT').map((e) => e.intentId)).toEqual(['DOCS_COMMIT:spec-001-7-orders', 'DOCS_COMMIT:spec-001-7-inventory']);
+    await run.close();
+  });
+
+  it('leaves a service that is not new without workflows', async () => {
+    const run = await Run.create(await deps());
+    expect(await run.executeWorkflows({ ...plan, tasks: [...plan.tasks, scaffold('inventory')] })).toEqual({ ok: true });
+    expect(await filesOnMain('inventory')).toContain(CI_PATH);
+    expect(await filesOnMain('orders')).not.toContain(CI_PATH);
+    await run.close();
+  });
 
   it('ends a deploy of a services plan before Phase 5, which only knows one service until R12.4', async () => {
     const run = await Run.create(await deps({ target: {} as RunDeps['target'] }));
