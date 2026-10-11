@@ -48,43 +48,79 @@ function Rich({ text }: { text: string }) {
   if (parts.length === 1) return <>{text}</>;
   return <>{parts.map((p, i) => (i % 2 ? <code key={i}>{p}</code> : p))}</>;
 }
+/** A service's state: still checking, answering or not. */
+function StatePill({ checking, online, testId }: { checking: boolean; online: boolean; testId?: string }) {
+  return <span data-testid={testId} className={`status-pill tone-${checking ? 'neutral' : online ? 'good' : 'bad'}`}>{checking ? 'Verificando' : online ? 'No ar' : 'Fora do ar'}</span>;
+}
+const openLink = (href: string, testId: string, text: string, primary: boolean) => (
+  <a className={`${primary ? 'primary-button' : 'link-button'} run-action`} data-testid={testId} href={href} target="_blank" rel="noreferrer">
+    {text}
+    <Icon name="external" size={16} />
+  </a>
+);
+const recheckButton = (checking: boolean, onRecheck: () => void) => (
+  <button type="button" className="link-button" data-testid="recheck-service" onClick={onRecheck} disabled={checking}>
+    <Icon name="refresh" size={14} />
+    Verificar de novo
+  </button>
+);
+const startButton = (starting: boolean, canStart: boolean, onStart: () => void, [idle, busy]: readonly [string, string]) => (
+  <button type="button" className="primary-button" data-testid="start-service" disabled={starting || !canStart} onClick={onStart}>
+    <Icon name="play" size={16} />
+    {starting ? busy : idle}
+  </button>
+);
+interface ControlProps { status: ServiceStatus | null; starting: boolean; canStart: boolean; onStart: () => void; onRecheck: () => void }
+
 /** Is the service up, where to open it, and a button to bring it up when it is not. */
-function ServiceControls({ service, status, starting, canStart, onStart, onRecheck }: { service: NonNullable<Report['service']>; status: ServiceStatus | null; starting: boolean; canStart: boolean; onStart: () => void; onRecheck: () => void }) {
+function ServiceControls({ service, status, starting, canStart, onStart, onRecheck }: { service: NonNullable<Report['service']> } & ControlProps) {
   const links = serviceLinks(service, window.location.hostname);
   const checking = status === null;
   const online = status?.online === true;
-  const label = checking ? 'Verificando' : online ? 'No ar' : 'Fora do ar';
-  const tone = checking ? 'neutral' : online ? 'good' : 'bad';
-  const open = (href: string, testId: string, text: string, primary: boolean) => (
-    <a className={`${primary ? 'primary-button' : 'link-button'} run-action`} data-testid={testId} href={href} target="_blank" rel="noreferrer">
-      {text}
-      <Icon name="external" size={16} />
-    </a>
-  );
   return (
     <div className="service-controls">
       <div className="service-status">
-        <span data-testid="service-online" className={`status-pill tone-${tone}`}>{label}</span>
-        <button type="button" className="link-button" data-testid="recheck-service" onClick={onRecheck} disabled={checking}>
-          <Icon name="refresh" size={14} />
-          Verificar de novo
-        </button>
+        <StatePill checking={checking} online={online} testId="service-online" />
+        {recheckButton(checking, onRecheck)}
       </div>
       <div className="service-actions">
-        {online && links.docsUrl ? open(links.docsUrl, 'open-docs', 'Abrir Swagger', true) : null}
-        {online && links.appUrl && !links.docsUrl ? open(links.appUrl, 'open-app', service.kind === 'front' ? 'Abrir aplicação' : 'Abrir serviço', true) : null}
-        {!checking && !online ? (
-          <button type="button" className="primary-button" data-testid="start-service" disabled={starting || !canStart} onClick={onStart}>
-            <Icon name="play" size={16} />
-            {starting ? 'Subindo o serviço…' : 'Subir serviço'}
-          </button>
-        ) : null}
+        {online && links.docsUrl ? openLink(links.docsUrl, 'open-docs', 'Abrir Swagger', true) : null}
+        {online && links.appUrl && !links.docsUrl ? openLink(links.appUrl, 'open-app', service.kind === 'front' ? 'Abrir aplicação' : 'Abrir serviço', true) : null}
+        {!checking && !online ? startButton(starting, canStart, onStart, ['Subir serviço', 'Subindo o serviço…']) : null}
       </div>
       {!links.appUrl ? (
         <p data-testid="service-unpublished" className="hint">
           Este serviço usa uma porta fora da faixa que o Teams AI publica no seu computador ({PUBLISHED_PORTS.from} a {PUBLISHED_PORTS.to}), por isso não dá para abri-lo daqui.
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/** A services run: one line per service with its state and its link, then one recheck and one start for them all. */
+function ServiceList({ services, status, starting, canStart, onStart, onRecheck }: { services: NonNullable<Report['services']> } & ControlProps) {
+  const checking = status === null;
+  const onlineOf = (service: string) => status?.services?.find((s) => s.service === service)?.online === true;
+  return (
+    <div className="service-controls">
+      <ul className="service-list">
+        {services.map((s) => {
+          const links = serviceLinks(s, window.location.hostname);
+          const href = links.docsUrl ?? links.appUrl;
+          return (
+            <li key={s.service} data-testid={`service-${s.service}`}>
+              <strong className="task-id">{s.service}</strong>
+              <StatePill checking={checking} online={onlineOf(s.service)} />
+              {onlineOf(s.service) && href ? openLink(href, `open-${s.service}`, links.docsUrl ? 'Abrir Swagger' : s.kind === 'front' ? 'Abrir aplicação' : 'Abrir serviço', false) : null}
+              {!links.appUrl ? <span className="hint">porta fora da faixa publicada</span> : null}
+            </li>
+          );
+        })}
+      </ul>
+      <div className="service-actions">
+        {recheckButton(checking, onRecheck)}
+        {!checking && services.some((s) => !onlineOf(s.service)) ? startButton(starting, canStart, onStart, ['Subir serviços', 'Subindo os serviços…']) : null}
+      </div>
     </div>
   );
 }
@@ -218,11 +254,15 @@ export function ValidationView({ detail, specStatus, actionError = null, service
             <>
               <section className="card">
                 <div className="run-panel-head">
-                  <h2>Serviço publicado</h2>
+                  <h2>{report.services ? 'Serviços publicados' : 'Serviço publicado'}</h2>
                 </div>
                 {report.service ? (
                   <>
-                    <ServiceControls service={report.service} status={serviceStatus} starting={startingService} canStart={specStatus === 'awaiting-validation'} onStart={onStartService} onRecheck={onRecheckService} />
+                    {report.services ? (
+                      <ServiceList services={report.services} status={serviceStatus} starting={startingService} canStart={specStatus === 'awaiting-validation'} onStart={onStartService} onRecheck={onRecheckService} />
+                    ) : (
+                      <ServiceControls service={report.service} status={serviceStatus} starting={startingService} canStart={specStatus === 'awaiting-validation'} onStart={onStartService} onRecheck={onRecheckService} />
+                    )}
                     <table>
                       <thead>
                         <tr>

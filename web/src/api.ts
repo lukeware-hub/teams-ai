@@ -117,6 +117,8 @@ export interface ServiceStatus {
   online: boolean;
   status: number | null;
   checkedAt: string;
+  /** A services run answers for each service. */
+  services?: Array<{ service: string; online: boolean; status: number | null }>;
 }
 export interface Report {
   runId: string;
@@ -124,6 +126,8 @@ export interface Report {
   specHash: string;
   result: 'awaiting-validation' | 'verification-failed' | 'deploy-failed';
   service: { url: string; healthcheck: string; smoke: SmokeRow[]; e2e?: Array<{ acId: string; testId: string | null; status: string; reason?: string }>; port?: number; healthcheckPath?: string; kind?: 'api' | 'front'; docsPath?: string } | null;
+  /** Every service of a services run; `service` is the first one. */
+  services?: Array<{ service: string; url: string; healthcheck: string; port?: number; healthcheckPath?: string; kind?: 'api' | 'front'; docsPath?: string }>;
   deploy: { attempts: number; lastFailure: { attempt: number; stage: string; detail: string; rolledBack: boolean; rollbackHealthy: boolean | null } | null };
   evidence: EvidenceRow[];
   delivered: string[];

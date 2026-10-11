@@ -142,6 +142,21 @@ describe('ValidationView service card', () => {
     expect(screen.getByTestId('service-unpublished').textContent).toContain(`${PUBLISHED_PORTS.from} a ${PUBLISHED_PORTS.to}`);
   });
 
+  it('lists every service of a services run with its state and its link, and one start button for all', () => {
+    const card = (service: string, port: number, extra = {}) => ({ service, url: `http://dind:${port}`, port, healthcheck: 'HTTP 200', healthcheckPath: '/health', ...extra });
+    const services = [card('orders', 20001, { kind: 'api', docsPath: '/docs' }), card('inventory', 20002, { kind: 'front' }), card('ledger', 8080)];
+    const status = { online: false, status: 200, checkedAt: '2026-10-06T10:00:00.000Z', services: [{ service: 'orders', online: true, status: 200 }, { service: 'inventory', online: false, status: null }, { service: 'ledger', online: true, status: 200 }] };
+    view(detail({ report: { ...report, service: { ...report.service!, url: 'http://dind:20001', port: 20001 }, services } }), { serviceStatus: status });
+    expect(screen.getByTestId('service-orders').textContent).toContain('No ar');
+    expect(screen.getByTestId('open-orders').getAttribute('href')).toBe(`http://${window.location.hostname}:20001/docs`);
+    expect(screen.getByTestId('service-inventory').textContent).toContain('Fora do ar');
+    expect(screen.queryByTestId('open-inventory')).toBeNull();
+    expect(screen.queryByTestId('open-ledger')).toBeNull();
+    expect(screen.getByTestId('service-ledger').textContent).toContain('porta fora da faixa publicada');
+    expect(screen.getAllByTestId('start-service')).toHaveLength(1);
+    expect(screen.queryByTestId('service-online')).toBeNull();
+  });
+
   it('while the first check is pending it shows Verificando and no start button', () => {
     view(withService({ port: 3000 }), { serviceStatus: null });
     expect(screen.getByTestId('service-online').textContent).toContain('Verificando');
