@@ -387,6 +387,11 @@ export function blockedSummary(blocked: Array<{ taskId: string; reason: string }
   return `${roots.length} tarefas ficaram bloqueadas${others ? ` e travaram ${stuck}` : ''}. Sem resolver esses bloqueios, reprocessar tende a repetir a falha.`;
 }
 
+/** The stop banner's "before that" line; a blocked or deadlocked run's banner already leads with its blocked tasks. */
+export function stopBefore(status: string, blocked: Array<{ taskId: string; reason: string }>): string | null {
+  return status === 'blocked' || status === 'deadlocked' ? null : blockedSummary(blocked);
+}
+
 const STOP_STATUSES = new Set(['deploy-failed', 'verification-failed', 'blocked', 'phase-failed', 'deadlocked', 'failed']);
 
 export interface StopSummary {

@@ -32,6 +32,7 @@ describe('ValidationView', () => {
     const on = { report: vi.fn(), complete: vi.fn() };
     render(<MemoryRouter><ValidationView detail={detail()} specStatus="awaiting-validation" onReport={on.report} onComplete={on.complete} /></MemoryRouter>);
     expect(screen.getByTestId('smoke-AC-001').textContent).toContain('Passou');
+    expect(screen.queryByTestId('validation-stop')).toBeNull();
     expect(screen.getByTestId('e2e-AC-001').textContent).toBe('Passou');
     expect(screen.getByTestId('e2e-AC-002').textContent).toContain('Não se aplica (devops only)');
     const step = screen.getByTestId('step-AC-001-0') as HTMLInputElement;
@@ -55,6 +56,21 @@ describe('ValidationView', () => {
     expect((screen.getByTestId('complete-spec') as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByTestId('report-problem') as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByTestId('actions-note').textContent).toContain('deploy falhou');
+  });
+
+  it('a run that stopped before publishing says why at the top, with the task that blocked it', () => {
+    const blocked = [{ taskId: 'T0-scaffold', reason: 'the security-tools gate cannot install semgrep' }, { taskId: 'T1', reason: 'a dependency is blocked' }];
+    const stopped: Report = { ...report, result: 'verification-failed', service: null, deploy: { attempts: 0, lastFailure: null }, blocked };
+    const finished = { result: 'verification-failed', reason: 'delivery contract not met on main, missing: dockerfile: Dockerfile', blocked };
+    render(<MemoryRouter><ValidationView detail={detail({ status: 'verification-failed', report: stopped, finished })} specStatus="running" onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
+    const stop = screen.getByTestId('validation-stop').textContent;
+    expect(stop).toContain('A verificação (fase 4) não passou');
+    expect(stop).toContain('Faltam arquivos de entrega na main');
+    expect(stop).toContain('T0-scaffold ficou bloqueada e travou outra tarefa');
+    expect(stop).toContain('missing: dockerfile: Dockerfile');
+    expect(screen.getByTestId('stop-cause-T0-scaffold').textContent).toContain('the security-tools gate cannot install semgrep');
+    expect(screen.queryByTestId('stop-cause-T1')).toBeNull();
+    expect(screen.getByTestId('deploy-failure').textContent).toBe('Não publicado: a execução parou antes da publicação.');
   });
 
   it('shows an action error next to the buttons without hiding them', () => {

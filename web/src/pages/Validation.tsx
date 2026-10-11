@@ -4,6 +4,7 @@ import { runApi, type AcceptanceCriterion, type Report, type RunDetail, type Ser
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
+import { explainBlockReason, rootBlockers, stopBefore, stopSummary } from '../run/selectors.js';
 import { PUBLISHED_PORTS, serviceLinks } from '@server/deploy/service-links';
 import './validation.css';
 
@@ -89,6 +90,7 @@ function ServiceControls({ service, status, starting, canStart, onStart, onReche
 }
 const criterionText = (c: AcceptanceCriterion) => `Dado ${c.given}, quando ${c.when}, então ${c.then}`;
 function deployFailure(deploy: Report['deploy']): string {
+  if (deploy.attempts === 0) return 'Não publicado: a execução parou antes da publicação.';
   const f = deploy.lastFailure;
   const rollback = !f?.rolledBack ? '' : f.rollbackHealthy === false ? ' (versão anterior restaurada, mas sem resposta)' : ' (versão anterior restaurada)';
   const failure = f ? `: a tentativa ${f.attempt} falhou na etapa “${f.stage}” — ${f.detail}${rollback}` : '';
@@ -135,6 +137,12 @@ export function ValidationView({ detail, specStatus, actionError = null, service
   const note = enabled ? null : specStatus === 'done' ? 'Esta especificação já foi concluída.' : report ? `Ações indisponíveis: a execução terminou como “${statusLabel(report.result)}”${specState}.` : 'As ações ficam disponíveis quando a execução gerar o relatório.';
   const steps = report?.exploratoryScript.flatMap((b) => b.steps.map((_, i) => `${b.acId}-${i}`)) ?? [];
   const stepsDone = steps.filter((id) => checks[id]).length;
+  // The same explanation the Run page gives a run that stopped, so the cause is at the top here too.
+  const blocked = (detail.finished?.blocked ?? report?.blocked ?? []) as Array<{ taskId: string; reason: string }>;
+  const causes = rootBlockers(blocked);
+  const stop = stopSummary({ status: detail.status, reason: typeof detail.finished?.reason === 'string' ? detail.finished.reason : null, causes, deployFailure: report?.deploy.lastFailure ?? null });
+  const before = stop ? stopBefore(detail.status, blocked) : null;
+  const raw = stop && !causes.some((c) => c.reason === stop.raw) ? stop.raw : '';
   return (
     <main className="run-page validation-page">
       <nav className="refine-breadcrumb" aria-label="Navegação">
@@ -167,6 +175,42 @@ export function ValidationView({ detail, specStatus, actionError = null, service
           </Link>
         </div>
       </header>
+      {stop ? (
+        <section className="card outcome-banner" data-testid="validation-stop" aria-labelledby="validation-stop-title">
+          <h2 id="validation-stop-title" className="outcome-title">
+            <Icon name="alert" size={18} />
+            {stop.what}
+          </h2>
+          <dl className="outcome-rows">
+            <div>
+              <dt>Por quê</dt>
+              <dd><strong>{stop.title}</strong></dd>
+            </div>
+            {before ? (
+              <div>
+                <dt>Antes disso</dt>
+                <dd>{before}</dd>
+              </div>
+            ) : null}
+            {causes.map((c) => (
+              <div key={c.taskId} data-testid={`stop-cause-${c.taskId}`}>
+                <dt className="task-id">{c.taskId}</dt>
+                <dd><p><Rich text={explainBlockReason(c.reason)} /></p></dd>
+              </div>
+            ))}
+            {raw ? (
+              <div>
+                <dt>Detalhe técnico</dt>
+                <dd><pre className="failure-raw">{raw}</pre></dd>
+              </div>
+            ) : null}
+            <div>
+              <dt>Próximo passo</dt>
+              <dd>{stop.hint}</dd>
+            </div>
+          </dl>
+        </section>
+      ) : null}
       {!report ? <p className="hint">Ainda não há relatório: a execução está na fase {detail.phase} ({statusLabel(detail.status)}).</p> : null}
       <div className="run-grid">
         <div className="run-col">

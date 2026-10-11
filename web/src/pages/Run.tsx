@@ -10,7 +10,7 @@ import { Markdown } from '../components/Markdown.js';
 import { safeHttpUrl } from '../safeUrl.js';
 import { StepList } from '../components/StepList.js';
 import { TaskDetail } from '../components/TaskDetail.js';
-import { blockedSummary, currentActivity, evidence, explainBlockReason, explainPhase, explainStop, firstSentence, formatDuration, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseTitle, rootBlockers, runState, stepDoing, stopSummary, tokens, type ActivityItem, type PhaseRow, type StopOwner } from '../run/selectors.js';
+import { currentActivity, evidence, explainBlockReason, explainPhase, explainStop, firstSentence, formatDuration, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseTitle, rootBlockers, runState, stepDoing, stopBefore, stopSummary, tokens, type ActivityItem, type PhaseRow, type StopOwner } from '../run/selectors.js';
 import { useJournal } from '../useSse.js';
 import './run.css';
 
@@ -421,8 +421,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   // A phase-failed run stopped at its last failed phase; earlier ones (a failed verification) did not stop it.
   const failedPhase = [...phaseList].reverse().find((p) => p.result === 'failed')?.phase ?? null;
   const stop = stopSummary({ status, reason: finished?.data.reason ? String(finished.data.reason) : null, causes, deployFailure: lastDeployFailure(unique) ?? detail.report?.deploy?.lastFailure ?? null, failedPhase });
-  // A blocked or deadlocked run's banner already leads with its blocked tasks.
-  const before = stop && status !== 'blocked' && status !== 'deadlocked' ? blockedSummary(blocked) : null;
+  const before = stop ? stopBefore(status, blocked) : null;
   const redeploying = !detail.locked && stop?.action === 'redeploy' && redeployAction !== undefined;
   const prs = mergedPrs(unique);
   const totalTasks = state.order.length;
