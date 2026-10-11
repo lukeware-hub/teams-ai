@@ -44,6 +44,12 @@ describe('runE2e', () => {
     expect(call.args.join(' ')).toContain('--network proj_default');
   });
 
+  it('names the failing criterion from the TAP output when the suite exits non-zero without a junit report', async () => {
+    const tap = 'TAP version 13\nok 1 - [AC-001] works\nnot ok 2 - [AC-002] breaks\n1..2\n';
+    const exit1 = new FakeExec().on(() => true, () => ({ exitCode: 1, stdout: tap }));
+    expect((await runE2e(plan, spec, ctx, 'http://x', deps(exit1, null))).detail).toBe('AC-002: failed');
+  });
+
   it('fails on a failing test, on a non-zero exit with clean junit, and with no e2e command', async () => {
     expect((await runE2e(plan, spec, ctx, 'http://x', deps(new FakeExec(), junit(ok('AC-001') + bad('AC-002'))))).detail).toBe('AC-002: failed');
     const exit1 = new FakeExec().on(() => true, () => ({ exitCode: 1 }));

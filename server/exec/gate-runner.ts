@@ -262,7 +262,7 @@ export async function runGate(gate: Gate, ctx: GateContext, deps: GateDeps): Pro
       junit = null;
     }
   }
-  if (junit === null && passed) {
+  if (junit === null) {
     const tap = parseTap(stdout);
     if (tap.length > 0) junit = tap;
   }
