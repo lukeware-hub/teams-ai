@@ -3,7 +3,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execCommand } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
-import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
+import { Intent, Journal, OrchEvent } from '../../server/orchestrator/events.js';
 import { ensureServiceRepos } from '../../server/orchestrator/phases/bootstrap.js';
 import type { PhaseDeps } from '../../server/orchestrator/phases/index.js';
 import { serviceWorkspace, type Workspace } from '../../server/orchestrator/workspace.js';
@@ -71,6 +71,51 @@ describe('ensureServiceRepos', () => {
     expect(await ensureServiceRepos(deps(exec, ['orders', 'inventory']), 'o')).toEqual({ ok: true });
     expect(exec.lines('gh')).toHaveLength(calls);
     expect(created).toEqual(['o/shop-inventory']);
+  });
+
+  /** A repository GitHub has with no commit yet, as a bare origin; `gh repo view` finds it and answers its URL without `.git`, as GitHub does. */
+  async function emptyOnGithub(name: string): Promise<{ exec: FakeExec; origin: string }> {
+    const origin = path.join(projectRemote.root, `${name}.git`);
+    await fs.mkdir(origin);
+    await git(origin, ['init', '-q', '--bare', '-b', 'main'], execCommand);
+    const url = path.join(projectRemote.root, name);
+    await fs.symlink(origin, url);
+    const exec = new FakeExec()
+      .on((s) => s.bin === 'git', (s) => execCommand(s))
+      .onArgs('gh', ['repo', 'view'], () => ({ stdout: JSON.stringify({ nameWithOwner: `o/${name}`, url }) }));
+    return { exec, origin };
+  }
+
+  /** A local repository with its first commit, as a creation left it, and that creation confirmed in the journal. */
+  async function createdLocally(service: string, origin?: string): Promise<string> {
+    const { repo } = serviceWorkspace(ws, service);
+    await fs.mkdir(path.dirname(repo), { recursive: true });
+    await git(path.dirname(repo), ['init', '-q', '-b', 'main', path.basename(repo)]);
+    await git(repo, ['commit', '-q', '--allow-empty', '-m', `chore: create shop-${service}`]);
+    if (origin) await git(repo, ['remote', 'add', 'origin', origin]);
+    await journal.intent(Intent.RepoCreate, `shop-${service}`, { owner: 'o', name: `shop-${service}` });
+    await journal.confirm(Intent.RepoCreate, `shop-${service}`, {});
+    return repo;
+  }
+
+  it('gives a repository GitHub has without any commit its first commit on main', async () => {
+    const { exec } = await emptyOnGithub('shop-orders');
+    expect(await ensureServiceRepos(deps(exec, ['orders']), 'o')).toEqual({ ok: true });
+    expect(await git(serviceWorkspace(ws, 'orders').repo, ['log', '--format=%s', 'origin/main'])).toBe('chore: create shop-orders');
+  });
+
+  it('pushes main when a creation stopped after origin was added', async () => {
+    const { exec, origin } = await emptyOnGithub('shop-inventory');
+    const repo = await createdLocally('inventory', origin);
+    expect(await ensureServiceRepos(deps(exec, ['inventory']), 'o')).toEqual({ ok: true });
+    expect(await git(repo, ['log', '--format=%s', 'origin/main'])).toBe('chore: create shop-inventory');
+  });
+
+  it('adds origin and pushes main when a creation stopped before origin was added', async () => {
+    const { exec } = await emptyOnGithub('shop-inventory');
+    const repo = await createdLocally('inventory');
+    expect(await ensureServiceRepos(deps(exec, ['inventory']), 'o')).toEqual({ ok: true });
+    expect(await git(repo, ['log', '--format=%s', 'origin/main'])).toBe('chore: create shop-inventory');
   });
 
   it('touches nothing for a project without services', async () => {

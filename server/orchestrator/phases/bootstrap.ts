@@ -98,8 +98,7 @@ export async function ensureServiceRepos(deps: PhaseDeps & { ghExec: Exec }, own
   for (const service of deps.project.services ?? []) {
     const { repo } = serviceWorkspace(deps.ws, service);
     try {
-      // A clone whose origin answers is ready.
-      if ((await isRepo(repo)) && (await gitFetch(repo, deps.exec).then(() => true, () => false))) continue;
+      if (await ready(repo, deps.exec)) continue;
       await cloneOrCreate(deps, service, repo, owner);
       await gitFetch(repo, deps.exec);
     } catch (err) {
@@ -112,21 +111,33 @@ export async function ensureServiceRepos(deps: PhaseDeps & { ghExec: Exec }, own
   return { ok: true };
 }
 
-/** Clones the service's repository, or creates it on GitHub from an empty first commit on main when GitHub does not have it. */
+/** A clone whose origin answers and has a main branch; cloning or fetching an empty repository succeeds too. */
+const ready = async (repo: string, exec: Exec): Promise<boolean> =>
+  (await isRepo(repo)) && (await gitFetch(repo, exec).then(() => true, () => false)) && (await git(repo, ['rev-parse', '--verify', '-q', 'refs/remotes/origin/main'], exec).then(() => true, () => false));
+
+/**
+ * Clones the service's repository, or creates it on GitHub from an empty first commit on main when GitHub does not have it.
+ * A repository GitHub has without main (made by hand, or a creation that crashed) gets the same first commit and its main pushed.
+ */
 async function cloneOrCreate(deps: PhaseDeps & { ghExec: Exec }, service: string, repo: string, owner: string | undefined): Promise<void> {
   const name = repoName(deps.project.projectId, service);
   const gh = (args: string[]) => deps.ghExec({ bin: 'gh', args, cwd: deps.ws.root, timeoutMs: 60_000 });
   const login = owner ?? (JSON.parse((await gh(['api', 'user'])).stdout) as { login: string }).login;
   const view = await gh(['repo', 'view', `${login}/${name}`, '--json', 'nameWithOwner,url']);
   if (view.exitCode !== 0 && !NOT_FOUND.test(view.stderr)) throw new Error(`gh repo view failed: ${view.stderr.trim()}`);
+  const found = view.exitCode === 0;
   await fs.mkdir(path.dirname(repo), { recursive: true });
-  if (view.exitCode === 0 && !(await isRepo(repo))) {
-    await git(path.dirname(repo), ['clone', '-q', (JSON.parse(view.stdout) as { url: string }).url, path.basename(repo)], deps.exec);
+  if (found && !(await isRepo(repo))) await git(path.dirname(repo), ['clone', '-q', (JSON.parse(view.stdout) as { url: string }).url, path.basename(repo)], deps.exec);
+  if (!(await isRepo(repo))) await git(path.dirname(repo), ['init', '-q', '-b', 'main', path.basename(repo)], deps.exec);
+  if ((await headSha(repo, deps.exec).catch(() => null)) === null) {
+    await git(repo, ['symbolic-ref', 'HEAD', 'refs/heads/main'], deps.exec);
+    await git(repo, ['commit', '-q', '--allow-empty', '-m', `chore: create ${name}`], deps.exec);
+  }
+  // ensureRepo adds a missing origin and pushes the main GitHub lacks; only a creation is journaled.
+  if (found) {
+    await ensureRepo({ owner: login, name, private: true, cwd: repo }, deps.ghExec);
     return;
   }
-  if (!(await isRepo(repo))) await git(path.dirname(repo), ['init', '-q', '-b', 'main', path.basename(repo)], deps.exec);
-  if ((await headSha(repo, deps.exec).catch(() => null)) === null) await git(repo, ['commit', '-q', '--allow-empty', '-m', `chore: create ${name}`], deps.exec);
-  if (deps.journal.isConfirmed(Intent.RepoCreate, name)) return;
   await deps.journal.intent(Intent.RepoCreate, name, { owner: login, name });
   const created = await ensureRepo({ owner: login, name, private: true, cwd: repo }, deps.ghExec);
   await deps.journal.confirm(Intent.RepoCreate, name, created);
