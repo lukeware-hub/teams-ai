@@ -21,7 +21,7 @@ import { detailBacklog, maxCriterionInDraft, removeRetired } from './detail-cycl
 import { DOC_REL, draftHash, flowTemplate, keepBaseProject, readDerived, readDoc, stackTemplate, writeBacklogMd, writeDerived, writeDoc, writeProject, writeSpecsIndex, type DocFile, type Draft } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
 import { buildSpecsIndex } from './specs-index.js';
-import type { JevValidationResult } from './jev-validation.js';
+import type { JevValidationResult, ValidationDocs } from './jev-validation.js';
 import { refinePack } from './packs.js';
 import { applyPatch, checkPatch, patchId, unifiedDiff } from './patches.js';
 import { applyRefineEvent, type BacklogState, type RefineState } from './state.js';
@@ -43,7 +43,7 @@ export interface CycleDeps {
   principles: () => readonly string[];
   retrieval: (query: string) => readonly Hit[];
   secretsDir: string;
-  validateDocs?: (docs: { project: string; briefing: string; stack: string; flow: string }) => Promise<JevValidationResult>;
+  validateDocs?: (docs: ValidationDocs) => Promise<JevValidationResult>;
   /** Spec 10A.5 decisions 2–4; absent (or the layer off) leaves the cycle as it was. */
   decider?: Pick<Decider, 'decide'>;
   /** Aborting kills the agent steps this cycle has running. */
@@ -100,7 +100,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const fail = (reason: string) => journal.fact(RefineEvent.CycleFailed, { cycle, reason });
   let jevValidation: JevValidationResult | undefined;
   if (deps.validateDocs) {
-    jevValidation = await deps.validateDocs({ project: docs['project.md'], briefing: docs['brief.md'], stack: docs['stack.md'], flow: docs['flow.md'] }).catch(() => ({ available: false, decision: 'review' as const, consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false }));
+    jevValidation = await deps.validateDocs({ project: docs['project.md'], briefing: docs['brief.md'], stack: docs['stack.md'], flow: docs['flow.md'], design: docs['design.md'] }).catch(() => ({ available: false, decision: 'review' as const, consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false }));
     const validation = jevValidation;
     await journal.fact(RefineEvent.DocsValidated, { cycle, backend: 'jev', ...validation });
     // Jev findings are advisory (passed to Claude, PO, and SM), but Jev itself is required: no agent runs without it.
@@ -403,5 +403,12 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const flowItem = checklist.find((i) => i.id === 'sm.flow-is-mermaid')!;
   flowItem.passed = flowIsMermaid(docs['flow.md']);
   flowItem.detail = flowItem.passed ? 'flow.md has a mermaid diagram' : 'flow.md has no ```mermaid block; it must be a diagram, not markdown headings';
+  // The five documents must agree: a contradiction Jev finds fails the item whatever the PO reported.
+  const consistent = jevValidation?.checks.documents_consistent;
+  if (consistent !== undefined && consistent < 0.5) {
+    const contradictionItem = checklist.find((i) => i.id === 'po.no-contradictions')!;
+    contradictionItem.passed = false;
+    contradictionItem.detail = 'o Jev encontrou divergência entre project.md, briefing.md, stack.md, flow.md e design.md';
+  }
   await journal.fact(RefineEvent.Evaluated, { cycle, checklist, questions: merged, discardedPatches, questionRouting });
 }

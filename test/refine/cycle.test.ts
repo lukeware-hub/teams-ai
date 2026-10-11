@@ -6,6 +6,7 @@ import { buildContextPack } from '../../server/knowledge/context-pack.js';
 import { runCycle } from '../../server/refine/cycle.js';
 import { draftPaths, createNewProject } from '../../server/refine/draft.js';
 import { emptyRefineState } from '../../server/refine/state.js';
+import { summarizeJevChecks, type JevValidationResult, type ValidationDocs } from '../../server/refine/jev-validation.js';
 import type { BacklogItem } from '../../server/contracts/backlog.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
@@ -89,7 +90,7 @@ describe('refinement cycle acceptance criterion ids (R11.8)', () => {
 });
 
 describe('refinement cycle flow.md must be mermaid (R11.11)', () => {
-  const build = async (flow: string) => {
+  const build = async (flow: string, validateDocs?: (docs: ValidationDocs) => Promise<JevValidationResult>, id = 'sm.flow-is-mermaid') => {
     const spec = makeSpec();
     const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
     const docs = path.join(root, 'docs');
@@ -111,9 +112,9 @@ describe('refinement cycle flow.md must be mermaid (R11.11)', () => {
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [] });
       return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions', 'sm.flow-is-mermaid']), questions: [], docPatch: [] });
     });
-    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1);
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root, validateDocs }, 1);
     const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
-    return (evaluated.data.checklist as Array<{ id: string; passed: boolean; detail: string }>).find((i) => i.id === 'sm.flow-is-mermaid')!;
+    return (evaluated.data.checklist as Array<{ id: string; passed: boolean; detail: string }>).find((i) => i.id === id)!;
   };
 
   it('fails deterministically, overriding the agent, when flow.md has no mermaid fence', async () => {
@@ -125,6 +126,17 @@ describe('refinement cycle flow.md must be mermaid (R11.11)', () => {
   it('passes when flow.md has a mermaid fence', async () => {
     const item = await build('# Flow\n\n```mermaid\nflowchart TD\n  A --> B\n```\n');
     expect(item).toMatchObject({ passed: true });
+  });
+
+  it('fails po.no-contradictions when Jev finds the five documents inconsistent, overriding the agent', async () => {
+    const seen: ValidationDocs[] = [];
+    const jev = (consistent: number) => async (docs: ValidationDocs) => {
+      seen.push(docs);
+      return summarizeJevChecks({ documents_consistent: consistent }, 'jev');
+    };
+    expect(await build('# Flow', jev(0.2), 'po.no-contradictions')).toMatchObject({ passed: false });
+    expect(await build('# Flow', jev(0.9), 'po.no-contradictions')).toMatchObject({ passed: true });
+    expect(Object.keys(seen[0]!).sort()).toEqual(['briefing', 'design', 'flow', 'project', 'stack']);
   });
 });
 

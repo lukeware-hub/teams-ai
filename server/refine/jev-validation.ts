@@ -7,6 +7,7 @@ export interface ValidationDocs {
   briefing: string;
   stack: string;
   flow: string;
+  design: string;
 }
 
 export interface JevValidationResult {
@@ -22,8 +23,8 @@ export interface JevValidationResult {
 const MAX_STATE_CHARS = 32_000;
 const CHECKS = {
   documents_consistent: {
-    instructions: 'Do project.md, briefing.md, stack.md, and flow.md agree without a material contradiction?',
-    yes: 'All four documents describe the same product, scope, constraints, and behavior.',
+    instructions: 'Do project.md, briefing.md, stack.md, flow.md, and design.md agree without a material contradiction?',
+    yes: 'All five documents describe the same product, scope, constraints, and behavior.',
     no: 'At least one document contradicts another about a required product or behavior.',
   },
   flow_covers_scope: {
@@ -32,12 +33,12 @@ const CHECKS = {
     no: 'One or more in-scope features or paths are missing from flow.md.',
   },
   validation_aligned: {
-    instructions: 'Are the input validation rules in the four documents explicit and aligned?',
+    instructions: 'Are the input validation rules in the five documents explicit and aligned?',
     yes: 'Required fields, formats, limits, uniqueness, and invalid-input behavior agree across the documents.',
     no: 'Validation rules are missing, ambiguous, or contradictory across the documents.',
   },
   persistence_aligned: {
-    instructions: 'Is persistence behavior explicit and aligned across the four documents?',
+    instructions: 'Is persistence behavior explicit and aligned across the five documents?',
     yes: 'Storage location, write behavior, error handling, and restart or recreation behavior agree.',
     no: 'Persistence or data-safety behavior is missing, ambiguous, or contradictory.',
   },
@@ -47,7 +48,7 @@ const CHECKS = {
     no: 'Routes, status codes, returned data, or error behavior are missing or contradictory.',
   },
   health_aligned: {
-    instructions: 'Is the health check behavior explicit and aligned across the four documents?',
+    instructions: 'Is the health check behavior explicit and aligned across the five documents?',
     yes: 'The health route, response, port, and deployment verification behavior agree.',
     no: 'Health or deployment verification behavior is missing, ambiguous, or contradictory.',
   },
@@ -88,7 +89,7 @@ export function createJevValidator(cfg: Config, secrets: () => Promise<Record<st
       backoffMs: o.backoffMs,
       sleep: async (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     });
-    const rawState = `project.md:\n${docs.project}\n\nbriefing.md:\n${docs.briefing}\n\nstack.md:\n${docs.stack}\n\nflow.md:\n${docs.flow}`;
+    const rawState = `project.md:\n${docs.project}\n\nbriefing.md:\n${docs.briefing}\n\nstack.md:\n${docs.stack}\n\nflow.md:\n${docs.flow}\n\ndesign.md:\n${docs.design}`;
     const sanitizedState = redactSecrets(rawState, Object.values(values));
     const stateTruncated = sanitizedState.length > MAX_STATE_CHARS;
     const state = `${sanitizedState.slice(0, MAX_STATE_CHARS)}${stateTruncated ? '\n[... state truncated ...]' : ''}`;

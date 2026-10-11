@@ -23,11 +23,11 @@ describe('Jev refinement validation', () => {
       return new Response(JSON.stringify({ model: 'jev-1.13.0', answers, usage: { input_tokens: 10, output_tokens: 6 } }), { status: 200 });
     }) as typeof fetch;
     try {
-      const result = await createJevValidator(loadConfig({}), async () => ({ OPENROUTER_API_KEY: 'secret-key' }))({ project: 'P', briefing: 'B', stack: 'S', flow: 'F' });
+      const result = await createJevValidator(loadConfig({}), async () => ({ OPENROUTER_API_KEY: 'secret-key' }))({ project: 'P', briefing: 'B', stack: 'S', flow: 'F', design: 'D' });
       expect(result.decision).toBe('approved');
       expect(Object.keys(request!.questions)).toHaveLength(6);
-      expect((request!.questions.documents_consistent as { criteria: { true: string; false: string } }).criteria.true).toContain('All four');
-      expect(request!.state).toContain('project.md');
+      expect((request!.questions.documents_consistent as { criteria: { true: string; false: string } }).criteria.true).toContain('All five');
+      expect(request!.state).toContain('design.md:\nD');
     } finally {
       globalThis.fetch = originalFetch;
     }
