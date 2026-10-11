@@ -592,6 +592,17 @@ describe('TaskRunner: attempts, replan, block', () => {
     expect(r.done).toBe(true);
   });
 
+  it('keeps a replacement in the service of the task it replaces', async () => {
+    await journal.close();
+    journal = await Journal.open({ file: path.join(remote.root, 'events-service.ndjson'), runId: 'spec-001-r1', specHash: HASH });
+    await journal.fact(RunEvent.TaskPlanned, { task: { ...T1, service: 'orders' } });
+    await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T1', to: 'ready' });
+    const agent: Agent = async (req) => (req.kind === 'replan' ? ok({ specHash: HASH, replacements: [replacement] }) : devDone()(req));
+    const r = new TaskRunner('T1', deps({ agent, gates: alwaysFailGates }));
+    for (let i = 0; i < 6; i++) await r.advance();
+    expect(journal.state.tasks.get('T1-r1')!.def.service).toBe('orders');
+  });
+
   it('budgetExceeded consumes an attempt with the token count as feedback', async () => {
     const r = new TaskRunner('T1', deps());
     await r.advance();

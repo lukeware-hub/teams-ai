@@ -625,7 +625,10 @@ export class TaskRunner {
       await this.block(`replan failed: ${outcome.errors.join('; ')}`);
       return true;
     }
-    const value = this.ownInfraOnly(outcome.value as ReplanOutput);
+    const own = this.ownInfraOnly(outcome.value as ReplanOutput);
+    // A replacement changes the same repository as the task it replaces.
+    const service = this.task.def.service;
+    const value = service ? { ...own, replacements: own.replacements.map((r) => ({ ...r, service })) } : own;
     // Validate before the journal reduces the replan: a bad replacement would be rejected by the reducer
     // after it was written, corrupting the log. Structural checks only; AC coverage of the whole plan is
     // not the replan's concern (spec §4.6: the replacements cover the original task's criteria).

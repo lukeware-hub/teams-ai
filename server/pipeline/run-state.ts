@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { PlanTask } from '../contracts/plan.js';
-import { findCycle, SCAFFOLD_TASK_ID } from '../validators/plan.js';
+import { findCycle, scaffoldId } from '../validators/plan.js';
 import { TASK_STATES, TERMINAL_STATES, assertTransition, type TaskState } from './task-state.js';
 
 export interface TaskRuntime {
@@ -73,7 +73,7 @@ export function applyEvent(state: RunState, event: ReducibleEvent): void {
   switch (event.type) {
     case RunEvent.TaskPlanned: {
       const planned = TaskPlannedData.parse(event.data).task;
-      addTask(state, planned, false, planned.id === SCAFFOLD_TASK_ID);
+      addTask(state, planned, false, planned.id === scaffoldId(planned.service ?? null));
       return;
     }
     case RunEvent.TaskStateChanged: {
