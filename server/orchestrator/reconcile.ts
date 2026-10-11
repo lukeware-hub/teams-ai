@@ -25,6 +25,9 @@ export interface ReconcileReport {
 
 const keyOf = (e: StoredEvent) => e.intentId!.slice(e.intentId!.indexOf(':') + 1);
 
+/** The repository a merge step ran in; journals written before R12.3 name none, and those ran in the project repository. */
+const repoOf = (d: Record<string, unknown>, ws: Workspace): string => (typeof d.repo === 'string' ? d.repo : ws.repo);
+
 async function insideWorktree(dir: string, exec: Exec): Promise<boolean> {
   try {
     await fs.access(dir);
@@ -82,7 +85,7 @@ export async function reconcile(deps: ReconcileDeps): Promise<ReconcileReport> {
           break;
         }
         const local = await headSha(wt, exec);
-        const remote = (await git(deps.ws.repo, ['ls-remote', 'origin', `refs/heads/${branch}`], exec)).split(/\s+/)[0] ?? '';
+        const remote = (await git(repoOf(d, deps.ws), ['ls-remote', 'origin', `refs/heads/${branch}`], exec)).split(/\s+/)[0] ?? '';
         remote === local ? await confirm(e, { sha: local }) : redo(e);
         break;
       }
@@ -93,7 +96,7 @@ export async function reconcile(deps: ReconcileDeps): Promise<ReconcileReport> {
       }
       case Intent.PrCreate: {
         const branch = String(d.branch);
-        const list = await deps.ghExec({ bin: 'gh', args: ['pr', 'list', '--head', branch, '--base', 'main', '--state', 'all', '--json', 'number,url'], cwd: deps.ws.repo, timeoutMs: 60_000 });
+        const list = await deps.ghExec({ bin: 'gh', args: ['pr', 'list', '--head', branch, '--base', 'main', '--state', 'all', '--json', 'number,url'], cwd: repoOf(d, deps.ws), timeoutMs: 60_000 });
         const rows = list.exitCode === 0 ? (JSON.parse(list.stdout || '[]') as Array<{ number: number; url: string }>) : [];
         if (rows[0]) {
           await confirm(e, { number: rows[0].number, url: rows[0].url });
@@ -104,8 +107,8 @@ export async function reconcile(deps: ReconcileDeps): Promise<ReconcileReport> {
       case Intent.PrMerge: {
         const branch = String(d.branch);
         const number = Number(d.number);
-        let merged = (await findMergedPr({ cwd: deps.ws.repo, head: branch, base: 'main' }, ghExec)) !== null;
-        if (!merged && Number.isFinite(number)) merged = (await prState({ cwd: deps.ws.repo, number }, ghExec).catch(() => ({ state: 'OPEN' as const }))).state === 'MERGED';
+        let merged = (await findMergedPr({ cwd: repoOf(d, deps.ws), head: branch, base: 'main' }, ghExec)) !== null;
+        if (!merged && Number.isFinite(number)) merged = (await prState({ cwd: repoOf(d, deps.ws), number }, ghExec).catch(() => ({ state: 'OPEN' as const }))).state === 'MERGED';
         if (!merged) {
           redo(e);
           break;
@@ -122,7 +125,7 @@ export async function reconcile(deps: ReconcileDeps): Promise<ReconcileReport> {
       }
       case Intent.WorktreeRemove: {
         const wt = String(d.worktree);
-        if (await insideWorktree(wt, exec)) await removeWorktree(deps.ws.repo, wt, exec);
+        if (await insideWorktree(wt, exec)) await removeWorktree(repoOf(d, deps.ws), wt, exec);
         await confirm(e, {});
         break;
       }

@@ -78,13 +78,13 @@ function common(deps: MergeStepsDeps, worktree: string, branch: string, title: s
       // Keyed by head sha: a second pass through the queue (merge refused, conflict resolved, resume)
       // has a new head and must push again; a plain branch key would skip it forever.
       const sha = await headSha(worktree, deps.exec);
-      await guarded(deps.journal, Intent.Push, `${branch}@${sha}`, { worktree, branch, sha }, async () => {
+      await guarded(deps.journal, Intent.Push, `${branch}@${sha}`, { worktree, branch, sha, repo }, async () => {
         await push(worktree, branch, deps.exec);
         return { sha };
       });
     },
     ensurePr: async () => {
-      const data = await guarded(deps.journal, Intent.PrCreate, branch, { branch, title }, async () => {
+      const data = await guarded(deps.journal, Intent.PrCreate, branch, { branch, title, repo }, async () => {
         const pr = await ensurePr({ cwd: repo, head: branch, base: 'main', title, body: await body() }, deps.ghExec);
         return { number: pr.number, url: pr.url, created: pr.created };
       });
@@ -98,14 +98,14 @@ function common(deps: MergeStepsDeps, worktree: string, branch: string, title: s
       // A refusal is a confirmed outcome for this head sha; a thrown error (gh down, journal failure,
       // an injected crash) propagates so the caller sees it, never disguised as a refusal.
       // taskId travels with the intent so reconcile can finish the task after a crash between merge and confirm.
-      const data = await guarded(deps.journal, Intent.PrMerge, `${branch}@${sha}`, { branch, number, sha, taskId }, async () => {
+      const data = await guarded(deps.journal, Intent.PrMerge, `${branch}@${sha}`, { branch, number, sha, taskId, repo }, async () => {
         const r = await mergePr({ cwd: repo, number, headSha: sha }, deps.ghExec);
         return { merged: r.merged || r.already, already: r.already, reason: r.reason ?? null };
       });
       return data.merged ? { merged: true } : { merged: false, reason: String(data.reason ?? 'merge refused') };
     },
     cleanup: async () => {
-      await guarded(deps.journal, Intent.WorktreeRemove, branch, { worktree }, async () => {
+      await guarded(deps.journal, Intent.WorktreeRemove, branch, { worktree, repo }, async () => {
         await removeWorktree(repo, worktree, deps.exec);
         return {};
       });

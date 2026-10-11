@@ -105,6 +105,31 @@ describe('reconcile', () => {
     expect(journal.events.find((e) => e.type === OrchEvent.PrMerged)!.data).toMatchObject({ taskId: 'T1', pr: 4, already: true });
   });
 
+  it("checks a service task's push, pull request and merge in the repository the intent names", async () => {
+    const service = await makeRemote({ 'README.md': '# orders\n' });
+    const wt = path.join(service.root, 'wt', 'task__spec-001-T1');
+    await createWorktree(service.repo, wt, BRANCH, 'origin/main');
+    await fs.writeFile(path.join(wt, 'a.txt'), 'a');
+    await commitAll(wt, 'feat: a');
+    await push(wt, BRANCH);
+    const serviceGh = new FakeGh();
+    serviceGh.prs.push({ number: 9, head: BRANCH, base: 'main', state: 'MERGED', headRefOid: await headSha(wt), title: 'T1', body: '' });
+    const routed = new FakeExec();
+    serviceGh.install(routed);
+    const d = deps();
+    const ghExec: ReconcileDeps['ghExec'] = (s) => (s.cwd === service.repo ? routed.exec(s) : d.ghExec(s));
+    await journal.intent(Intent.Push, `${BRANCH}@x`, { worktree: wt, branch: BRANCH, repo: service.repo });
+    await journal.intent(Intent.PrCreate, BRANCH, { branch: BRANCH, title: 'T1', repo: service.repo });
+    await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T1', to: 'merging' });
+    await journal.intent(Intent.PrMerge, `${BRANCH}@y`, { branch: BRANCH, number: 9, taskId: 'T1', repo: service.repo });
+    await journal.intent(Intent.WorktreeRemove, BRANCH, { worktree: wt, repo: service.repo });
+    const r = await reconcile({ ...d, ghExec });
+    expect(r.redo).toEqual([]);
+    expect(journal.state.tasks.get('T1')!.state).toBe('merged');
+    await expect(fs.access(wt)).rejects.toThrow();
+    await service.cleanup();
+  });
+
   it('removes a worktree whose removal never confirmed', async () => {
     await createWorktree(remote.repo, worktree, BRANCH, 'origin/main');
     await journal.intent(Intent.WorktreeRemove, BRANCH, { worktree });
