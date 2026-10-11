@@ -163,7 +163,6 @@ export function RefinementView(p: ViewProps) {
   const [tab, setTab] = useState<DocFile>('brief.md');
   const [docs, setDocs] = useState(snap.docs);
   const [suggesting, setSuggesting] = useState(false);
-  const editor = useRef<HTMLTextAreaElement>(null);
   const [answer, setAnswer] = useState('');
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [secretValues, setSecretValues] = useState<Record<string, string>>({});
@@ -234,12 +233,7 @@ export function RefinementView(p: ViewProps) {
   const suggest = (file: Exclude<DocFile, 'flow.md'>) => {
     setSuggesting(true);
     void p.onSuggestDoc!(file)
-      .then((text) => {
-        if (text === null) return;
-        setDocs((d) => ({ ...d, [file]: text }));
-        // Focused, so leaving the editor saves the suggestion like any other edit.
-        editor.current?.focus();
-      })
+      .then((text) => { if (text !== null) setDocs((d) => ({ ...d, [file]: text })); })
       .finally(() => setSuggesting(false));
   };
   const tabButton = (f: DocFile) => (
@@ -283,7 +277,6 @@ export function RefinementView(p: ViewProps) {
             </button>
           )}
           <textarea
-          ref={editor}
           aria-label={`${docLabel[tab]} editor`}
           data-testid={`doc-${tab}`}
           value={docs[tab] ?? ''}
