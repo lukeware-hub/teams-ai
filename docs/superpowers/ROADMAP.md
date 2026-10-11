@@ -681,9 +681,11 @@ The five docs decide whether the software is one application or a system of serv
 - One behavior change: a plan without an e2e command now also gets its e2e exemptions checked.
 - Tests: `test/contracts/services.test.ts`, `test/validators/plan-services.test.ts`, one new case each in `test/validators/plan.test.ts` and `test/validators/plan-e2e.test.ts`; whole suite 1454 passed and 4 skipped (baseline 1438), type check clean.
 
-### R12.2 Runs go through service views - `todo`
+### R12.2 Runs go through service views - `done` (unit, plan 61, 2026-10-11)
 
-- Phase 2 parses `AnyPlan` and validates it by the project's shape; the run keeps the views and runs the per-repository code on each one; with one view the journal and the behavior stay identical.
+- Built: `serviceWorkspace` gives each service `services/<service>/` with its own repository, worktrees and graph (`server/orchestrator/workspace.ts`); `T0-scaffold-<service>` keeps the frozen-path permission and replacements from a replan stay in their task's service (`server/pipeline/run-state.ts`, `server/orchestrator/task-runner.ts`); the run keeps a plan of either shape (`readDocs`, Phase 2) and builds each task's workspace, gates, gate image (one per stack image, where the run prepared only the first one before), install, sandbox registries, merge and code graph from its service's view (`server/orchestrator/run.ts`); Phase 4 checks the delivery files and runs the gates on main of every service repository, joins the JUnit into one evidence matrix and plans fix tasks in the service that needs them (`server/orchestrator/phases/verify.ts`); a services run ends before Phase 5 with the reason "deploying several services is not built yet (roadmap R12.4)". A single-repository plan runs as before.
+- Tests: `test/orchestrator/run-services.test.ts` (two real repositories, a Node and a Go service, a dependency across them, each merge in its own repository, the sandbox and gate image per stack), `test/orchestrator/verify-services.test.ts`, `test/orchestrator/read-docs.test.ts`, one new case each in `workspace.test.ts`, `run-state.test.ts` and `task-runner.test.ts`; whole suite 1463 passed and 4 skipped (baseline 1454), type check clean.
+- Open: resuming a services run after a crash needs reconciliation per repository (R12.3); the agent writes services plans, fix tasks and replans with their service from R12.6; `test/orchestrator/loop.test.ts` "goes from a frozen spec to every task merged" fails about one run in four on the recorded order of the security and Test reviews, which start in parallel since R11.13 slice 5 (`dc7450d`), so the assertion fixes an order the code does not guarantee.
 
 ### R12.3 Service repositories - `todo`
 
@@ -691,7 +693,7 @@ The five docs decide whether the software is one application or a system of serv
 
 ### R12.4 Platform and deploy of several services - `todo`
 
-- `project.json` `platform` from `stack.md`, started as its own compose project on the network `teams-ai-<projectId>`; one compose project and one host port per service (the 20-port range must grow); smoke and e2e per service with every address; rollback of every applied service; project deletion tears everything down.
+- `project.json` `platform` from `stack.md`, started as its own compose project on the network `teams-ai-<projectId>`; one compose project and one host port per service (the port registry keeps one port per project today); smoke and e2e per service with every address; rollback of every applied service; project deletion tears everything down.
 
 ### R12.5 Report and screens - `todo`
 

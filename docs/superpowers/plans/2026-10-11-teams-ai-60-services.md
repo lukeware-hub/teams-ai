@@ -74,7 +74,7 @@ This replaces the rule of R10.3 (plan 49), where the SM always chose one edge se
 Each slice gets its own detailed plan when the one before it lands. Agent prompts come last on purpose: an agent that writes a services plan before the run can execute one would break live runs.
 
 - **R12.1 Contracts and validation (this plan).** `Project.services`, `PlanTask.service`, `ServicePlan`, `ServicesPlan`, `AnyPlan`, `servicePlans`, `scaffoldId` and `validateServicesPlan`. Nothing at run time changes.
-- **R12.2 Runs go through service views.** Phase 2 parses `AnyPlan` and validates it by the project's shape; the run keeps the views and runs the per-repository code on each one; with one view the journal and the behavior stay identical.
+- **R12.2 Runs go through service views (plan 61).** The run reads a plan of either shape from main, runs and merges each task in its service's repository, and Phase 4 gives one verdict across every repository; with one view the journal and the behavior stay identical. Validating a services plan the agent writes comes with R12.6.
 - **R12.3 Service repositories.** Per-service workspace, `repoName(projectId, service)` (today unused in `server/core/ids.ts`), Phase 0 creates and clones service repositories, `run-state` recognizes `T0-scaffold-<service>`, merges and reconciliation per repository.
 - **R12.4 Platform and deploy of several services.** `project.json` `platform`, the shared network, one port per service, smoke and e2e per service with every address, rollback of every applied service, and project deletion that tears everything down.
 - **R12.5 Report and screens.** The report and the validation page list every service; the project page lists services and platform.
@@ -83,7 +83,7 @@ Each slice gets its own detailed plan when the one before it lands. Agent prompt
 
 ## Risks and open points
 
-- Host ports: each deployed service needs one, and the range shared by every project has 20 (`server/deploy/service-links.ts`); widen it in R12.4.
+- Host ports: each deployed service needs one from the range every project shares, 20000 to 20099 (`PUBLISHED_PORTS` in `server/deploy/service-links.ts`), and the port registry keeps one port per project; R12.4 keys it per service.
 - A run that merges into one service and then blocks in another leaves the first service changed on main, the same as a blocked task today; merges are never rolled back across repositories.
 - Phase 3 gates do not reach the broker: unit tests use adapters, and the e2e suites prove the real broker after deploy.
 - `server/orchestrator/test-database.ts` fixes `postgres:16`, against the "no fixed technology" decision; the platform of R12.4 can replace it.
