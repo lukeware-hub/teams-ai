@@ -342,4 +342,16 @@ describe('RefinementView: Sugerir', () => {
     fireEvent.click(screen.getByRole('button', { name: 'flow.md' }));
     expect(screen.queryByTestId('suggest')).toBeNull();
   });
+
+  it('keeps unsaved text when a reload changes only other documents, and takes the server text when that file changed', () => {
+    const snap = base({ mode: 'new-project' });
+    const view = (s: Snapshot) => <MemoryRouter><RefinementView snap={s} busy={false} {...on()} /></MemoryRouter>;
+    const { rerender } = render(view(snap));
+    fireEvent.click(screen.getByRole('button', { name: 'stack.md' }));
+    fireEvent.change(screen.getByTestId('doc-stack.md'), { target: { value: '# Stack local' } });
+    rerender(view({ ...snap, docs: { ...snap.docs, 'design.md': '# Design aceito' } }));
+    expect((screen.getByTestId('doc-stack.md') as HTMLTextAreaElement).value).toBe('# Stack local');
+    rerender(view({ ...snap, docs: { ...snap.docs, 'design.md': '# Design aceito', 'stack.md': '# Stack do servidor' } }));
+    expect((screen.getByTestId('doc-stack.md') as HTMLTextAreaElement).value).toBe('# Stack do servidor');
+  });
 });

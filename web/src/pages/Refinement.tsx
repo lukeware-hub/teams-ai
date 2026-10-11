@@ -167,7 +167,16 @@ export function RefinementView(p: ViewProps) {
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [secretValues, setSecretValues] = useState<Record<string, string>>({});
   const [newSecrets, setNewSecrets] = useState<Array<{ id: number; name: string; value: string }>>([]);
-  useEffect(() => setDocs(snap.docs), [snap.docs]);
+  const saved = useRef(snap.docs);
+  useEffect(() => {
+    // A reload keeps a tab's unsaved text unless that same file also changed on the server.
+    const before = saved.current;
+    setDocs((local) => Object.fromEntries(Object.entries(snap.docs).map(([f, text]) => {
+      const file = f as DocFile;
+      return [file, local[file] !== before[file] && text === before[file] ? local[file] : text];
+    })) as typeof snap.docs);
+    saved.current = snap.docs;
+  }, [snap.docs]);
   const copyDoc = (text: string) => {
     if (navigator.clipboard?.writeText) {
       void navigator.clipboard.writeText(text);

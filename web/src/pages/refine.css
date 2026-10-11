@@ -49,8 +49,8 @@
 .patch { margin-top: 1rem; }
 .patch-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; color: var(--ink); font-size: 0.82rem; }
 .patch-reason { flex: 1 1 100%; color: var(--ink-soft); line-height: 1.4; }
-.patch-actions { display: grid; grid-template-columns: auto minmax(9rem, 1fr) auto; align-items: center; gap: 0.5rem; }
-.patch-actions input { width: 100%; min-width: 0; margin: 0; }
+.patch-actions { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 0.5rem; }
+.patch-actions input { grid-column: 1 / -1; grid-row: 1; width: 100%; min-width: 0; margin: 0; }
 .patch-actions button { min-width: 5.5rem; }
 .patch-accept { border-color: var(--good-line); color: var(--good); background: var(--good-soft); }
 .patch-accept:hover:not(:disabled) { border-color: var(--good); background: var(--good-soft); }
