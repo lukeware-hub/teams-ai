@@ -153,7 +153,7 @@ export function ValidationView({ detail, specStatus, actionError = null, service
         <div className="run-head-main">
           <h1>Validação</h1>
           <div className="run-meta">
-            <span className={`status-pill tone-${enabled ? 'neutral' : specStatus === 'done' ? 'good' : 'warn'}`}>{statusLabel(specStatus || detail.status)}</span>
+            <span className={`status-pill tone-${enabled ? 'neutral' : specStatus === 'done' ? 'good' : 'warn'}`}>{statusLabel(report && specStatus ? specStatus : detail.status)}</span>
             <span className="hint">
               {detail.runId} / {detail.specId}
             </span>
