@@ -21,6 +21,14 @@ import { docsMergeSteps, type MergeStepsDeps } from '../merge-steps.js';
 import type { AgentStepRequest, PackBase } from '../steps.js';
 import { worktreeDir, type Workspace } from '../workspace.js';
 
+/** What a services run's smoke or e2e suite runs with: its service's plan, the criteria it answers for, the other services' addresses. */
+export interface GateScope {
+  service: string;
+  plan: Plan;
+  spec: Spec;
+  urls: Record<string, string>;
+}
+
 /** A service's view with what Phase 4 runs it with: its workspace, its gates and whether its repository is new. */
 export interface ServiceRepo extends ServiceView {
   ws: Workspace;
@@ -63,9 +71,9 @@ export interface PhaseDeps {
   confidential?: boolean;
   boundaries?: () => Promise<readonly string[]>;
   target?: DeployTarget;
-  smoke?: (contextDir: string, serviceUrl: string, gateServiceUrl?: string, gateNetwork?: string) => Promise<{ ok: boolean; rows: SmokeRow[]; detail: string }>;
+  smoke?: (contextDir: string, serviceUrl: string, gateServiceUrl?: string, gateNetwork?: string, scope?: GateScope) => Promise<{ ok: boolean; rows: SmokeRow[]; detail: string }>;
   /** Post-deploy e2e suite (roadmap R8.4); same arguments as `smoke`. */
-  e2e?: (contextDir: string, serviceUrl: string, gateServiceUrl?: string, gateNetwork?: string) => Promise<{ ok: boolean; rows: E2eRow[]; detail: string }>;
+  e2e?: (contextDir: string, serviceUrl: string, gateServiceUrl?: string, gateNetwork?: string, scope?: GateScope) => Promise<{ ok: boolean; rows: E2eRow[]; detail: string }>;
   secretNames?: () => string[];
   /** A services plan and its repositories; absent means the project repository with `plan` and `gates`. */
   services?: { plan: ServicesPlan; repos: ServiceRepo[] };

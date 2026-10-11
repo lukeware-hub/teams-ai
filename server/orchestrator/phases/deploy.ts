@@ -1,13 +1,14 @@
 import type { PlanTask } from '../../contracts/plan.js';
-import { assignDeployPort, portHeldByOthers } from '../../deploy/port-registry.js';
-import { composeProject } from '../../deploy/docker-local.js';
+import { specShare } from '../../contracts/spec.js';
+import { assignDeployPort, portHeldByOthers, portKey } from '../../deploy/port-registry.js';
+import { composeProject, serviceComposeProject, sharedNetwork } from '../../deploy/docker-local.js';
 import { runDeployment, type DeploymentIntent, type DeployStage } from '../../deploy/target.js';
 import { e2eCommand, type E2eRow } from '../../exec/e2e.js';
-import type { SmokeRow } from '../../exec/smoke.js';
+import { serviceUrlEnv, type SmokeRow } from '../../exec/smoke.js';
 import { RunEvent } from '../../pipeline/run-state.js';
 import { Intent, OrchEvent } from '../events.js';
 import { E2E_CONTRACT, SMOKE_CONTRACT } from '../steps.js';
-import { checkoutMain, type PhaseDeps } from './shared.js';
+import { checkoutMain, type GateScope, type PhaseDeps, type ServiceRepo } from './shared.js';
 
 /** Archive the deploy build exports for plans that carry an image-scan gate (plan 37). */
 export const IMAGE_ARCHIVE = '.tools/image.tar';
@@ -21,16 +22,28 @@ const deployPort = (deps: PhaseDeps) => Number([...deps.journal.events].reverse(
 const PORT_TAKEN = /port is already allocated/;
 
 /** Draws a free port in place of `from` and records it; null when none is left. */
-async function reassignPort(deps: PhaseDeps, from: number): Promise<number | null> {
+async function reassignPort(deps: PhaseDeps, from: number, service: string | null = null): Promise<number | null> {
   if (!deps.workspacesRoot) return null;
-  const { port } = await assignDeployPort(deps.workspacesRoot, deps.project.projectId, deps.exec, [from]);
-  if (port !== null) await deps.journal.fact(OrchEvent.DeployPortReassigned, { from, to: port });
+  const { port } = await assignDeployPort(deps.workspacesRoot, portKey(deps.project.projectId, service), deps.exec, [from]);
+  if (port !== null) await deps.journal.fact(OrchEvent.DeployPortReassigned, { from, to: port, ...(service ? { service } : {}) });
   return port;
 }
+
+/** A missing suite command is the plan's, which no agent edits: a deploy-fix task could only come back empty and burn tokens. */
+const planGap = (stage: DeployStage, detail: string) => (stage === 'smoke' && detail === 'plan.commands.smoke missing') || (stage === 'e2e' && detail.startsWith('plan.commands.e2e missing'));
 
 export function deployIntent(deps: PhaseDeps, tag: string): DeploymentIntent {
   const p = deps.plan!;
   return { projectId: deps.project.projectId, image: p.deploy.image, tag, port: deployPort(deps), healthcheckPath: p.deploy.healthcheckPath, manifests: [...p.deploy.manifests], secretNames: deps.secretNames ? deps.secretNames() : [...new Set(deps.spec.externalDependencies.flatMap((d) => d.secretNames))], contextDir: deps.ws.repo, ...(p.delivery?.compose ? { compose: p.delivery.compose } : {}), ...(p.gates.some((g) => g.name === 'image-scan') ? { imageArchive: IMAGE_ARCHIVE } : {}) };
+}
+
+/** A service's port: the plan's, unless a failed deploy of that service moved it. */
+const servicePort = (deps: PhaseDeps, repo: ServiceRepo) => Number([...deps.journal.events].reverse().find((e) => e.type === OrchEvent.DeployPortReassigned && e.data.service === repo.service)?.data.to ?? repo.plan.deploy.port);
+
+/** A service deploys like a single plan, as its own compose project on the project's shared network. */
+function serviceIntent(deps: PhaseDeps, repo: ServiceRepo, tag: string): DeploymentIntent {
+  const service = repo.service!;
+  return { ...deployIntent({ ...deps, plan: repo.plan, ws: repo.ws }, tag), port: servicePort(deps, repo), shared: { composeProject: serviceComposeProject(deps.project.projectId, service), network: sharedNetwork(deps.project.projectId), alias: service } };
 }
 // Ids are assigned here and must stay unique across attempts and resumes (a resumed attempt re-issued
 // T950-deploy-fix-1 and the reducer rejected it - 1387253335-001-r13).
@@ -76,8 +89,7 @@ export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fix
     await deps.journal.fact(OrchEvent.DeployFailed, { attempt, stage, detail, rolledBack, rollbackHealthy, tag });
     if (rolledBack) await deps.journal.fact(OrchEvent.RollbackDone, { attempt, previous });
     if (attempt >= 3 || opts.fixTasks === false) return { ok: false, reason: `deploy failed on attempt ${attempt} at ${stage}: ${detail}` };
-    // The plan is not the Dev's to edit, so a deploy-fix task could only come back empty and burn tokens.
-    if ((stage === 'smoke' && detail === 'plan.commands.smoke missing') || (stage === 'e2e' && detail.startsWith('plan.commands.e2e missing'))) return { ok: false, reason: `deploy failed at ${stage}: ${detail}` };
+    if (planGap(stage, detail)) return { ok: false, reason: `deploy failed at ${stage}: ${detail}` };
     const newPort = stage === 'apply' && PORT_TAKEN.test(detail) ? await reassignPort(deps, intent.port) : null;
     const task = fixTask(deps, attempt, stage, detail, newPort); await deps.journal.fact(RunEvent.FixTasksPlanned, { tasks: [task] });
     return { ok: false, reason: `deploy failed at ${stage}; deploy-fix task planned`, fixTask: task };
@@ -105,4 +117,67 @@ export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fix
     e2eRows = e.rows;
   }
   await deps.journal.fact(OrchEvent.DeployVerified, { attempt, url, smoke: s.rows, healthcheck, tag, port: intent.port, healthcheckPath: intent.healthcheckPath, ...(deps.plan!.deploy.kind ? { kind: deps.plan!.deploy.kind } : {}), ...(deps.plan!.deploy.docsPath ? { docsPath: deps.plan!.deploy.docsPath } : {}), ...(e2eRows ? { e2e: e2eRows } : {}) }); return { ok: true, url, smoke: s.rows, healthcheck, ...(e2eRows ? { e2e: e2eRows } : {}) };
+}
+
+/**
+ * R12.4: the platform first, then every service on the shared network, then each service's smoke and e2e suites with the
+ * other services' addresses. A failure rolls back every service this attempt applied; the fix goes to the failing service.
+ */
+export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fixTasks?: boolean } = {}): Promise<{ ok: true } | { ok: false; reason: string; fixTask?: PlanTask }> {
+  const { journal, target, services } = deps;
+  if (!services || !target || !deps.smoke) throw new Error('Phase 5 needs the services, target and smoke');
+  if (journal.events.some((e) => e.type === OrchEvent.DeployVerified && e.data.attempt === attempt)) return { ok: true };
+  if (!journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 5)) await journal.fact(OrchEvent.PhaseStarted, { phase: 5 });
+  const applied: Array<{ repo: ServiceRepo; intent: DeploymentIntent; previous: string | null; healthcheck: string }> = [];
+  const failed = async (stage: DeployStage | 'platform', detail: string, repo: ServiceRepo | null, newPort: number | null = null) => {
+    // Every applied service goes back to its previous image, or away when this was its first deploy.
+    for (const a of [...applied].reverse()) await (a.previous ? target.rollback(a.intent, a.previous) : target.destroy(a.intent)).catch(() => undefined);
+    await journal.fact(OrchEvent.DeployFailed, { attempt, stage, detail, rolledBack: applied.length > 0, rollbackHealthy: null, ...(repo ? { service: repo.service } : {}) });
+    // The platform comes from the docs, never from the code: no task could fix it.
+    if (!repo || attempt >= 3 || opts.fixTasks === false) return { ok: false as const, reason: `deploy failed on attempt ${attempt} at ${stage}${repo ? ` (${repo.service})` : ''}: ${detail}` };
+    if (planGap(stage as DeployStage, detail)) return { ok: false as const, reason: `deploy failed at ${stage} (${repo.service}): ${detail}` };
+    const task = { ...fixTask({ ...deps, plan: repo.plan }, attempt, stage as DeployStage, detail, newPort), service: repo.service! };
+    await journal.fact(RunEvent.FixTasksPlanned, { tasks: [task] });
+    return { ok: false as const, reason: `deploy failed at ${stage} (${repo.service}); deploy-fix task planned`, fixTask: task };
+  };
+  const platform = target.startPlatform ? await target.startPlatform(deps.project.projectId, deps.project.platform ?? []) : { ok: true, detail: '' };
+  if (!platform.ok) return failed('platform', platform.detail, null);
+  for (const repo of services.repos) {
+    const tag = await checkoutMain({ ...deps, ws: repo.ws });
+    const intent = serviceIntent(deps, repo, tag);
+    const key = `deploy-${repo.service}-${attempt}`;
+    let previous: string | null = null;
+    if (journal.isConfirmed(Intent.DeployApply, key)) {
+      previous = ([...journal.events].reverse().find((e) => e.kind === 'confirm' && e.intentId === `${Intent.DeployApply}:${key}`)?.data.previous as string | null | undefined) ?? null;
+    } else {
+      await journal.intent(Intent.DeployApply, key, { attempt, service: repo.service, image: intent.image, tag, intent });
+      const r = await runDeployment(target, intent, { smoke: async () => ({ ok: true, detail: 'journaled separately' }), baseUrl: '' });
+      if (!r.ok) return failed(r.stage, r.detail, repo, r.stage === 'apply' && PORT_TAKEN.test(r.detail) ? await reassignPort(deps, intent.port, repo.service) : null);
+      previous = r.previous;
+      await journal.confirm(Intent.DeployApply, key, { previous });
+      await journal.fact(OrchEvent.DeployApplied, { attempt, service: repo.service, previous, tag });
+    }
+    applied.push({ repo, intent, previous, healthcheck: (await target.verify(intent)).detail });
+  }
+  const addresses = await Promise.all(applied.map(async (a) => ({ ...a, url: await target.serviceUrl!(a.intent), gateUrl: await target.gateServiceUrl!(a.intent), network: target.gateNetwork?.(a.intent) })));
+  const smoke: SmokeRow[] = [];
+  const e2e: E2eRow[] = [];
+  for (const a of addresses) {
+    const urls = Object.fromEntries(addresses.filter((o) => o !== a).map((o) => [serviceUrlEnv(o.repo.service!), o.gateUrl]));
+    const scope: GateScope = { service: a.repo.service!, plan: a.repo.plan, spec: specShare(deps.spec, a.repo.plan.tasks), urls };
+    const s = await deps.smoke(a.repo.ws.repo, a.url, a.gateUrl, a.network, scope);
+    if (!s.ok) return failed('smoke', s.detail, a.repo);
+    smoke.push(...s.rows);
+    if (deps.e2e && (e2eCommand(a.repo.plan) || deps.requireE2e)) {
+      const e = await deps.e2e(a.repo.ws.repo, a.url, a.gateUrl, a.network, scope);
+      if (!e.ok) return failed('e2e', e.detail, a.repo);
+      e2e.push(...e.rows);
+    }
+  }
+  // The first service stands in the fields Phase 6 and the validation page read; R12.5 shows every service.
+  const [first] = addresses;
+  const card = (a: (typeof addresses)[number]) => ({ service: a.repo.service, url: a.url, port: a.intent.port, healthcheck: a.healthcheck, healthcheckPath: a.intent.healthcheckPath, ...(a.repo.plan.deploy.kind ? { kind: a.repo.plan.deploy.kind } : {}), ...(a.repo.plan.deploy.docsPath ? { docsPath: a.repo.plan.deploy.docsPath } : {}) });
+  const { service: _primary, ...primary } = card(first!);
+  await journal.fact(OrchEvent.DeployVerified, { attempt, ...primary, smoke, ...(e2e.length ? { e2e } : {}), services: addresses.map(card) });
+  return { ok: true };
 }

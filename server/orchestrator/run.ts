@@ -32,7 +32,7 @@ import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
 import { CrashInjected, Intent, Journal, OrchEvent, type IntentType, type RunResult } from './events.js';
 export { CrashInjected };
 import { taskMergeSteps, type MergeStepsDeps } from './merge-steps.js';
-import { PAUSED_AUTH, ensureServiceRepos, runPhase0, runWorkflowBootstrap, runPhase1, runPhase2, runPhase4, runPhase5, runPhase6, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, type PhaseDeps, type PhaseResult } from './phases/index.js';
+import { PAUSED_AUTH, ensureServiceRepos, runPhase0, runWorkflowBootstrap, runPhase1, runPhase2, runPhase4, runPhase5, runServicesPhase5, runPhase6, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, type PhaseDeps, type PhaseResult } from './phases/index.js';
 import { withMainSnapshot } from './phases/shared.js';
 import { reconcile } from './reconcile.js';
 import { validateDocs } from '../validators/docs.js';
@@ -124,9 +124,6 @@ function viewOf(plan: AnyPlan, service: string | undefined): ServiceView {
 
 /** Docs merges run no gates. */
 const NO_GATES = async (): Promise<{ results: GateResult[]; blockingFailure: GateResult | null }> => ({ results: [], blockingFailure: null });
-
-/** A services plan deploys from roadmap R12.4 on; until then its runs end before Phase 5 with this reason. */
-const SERVICES_DEPLOY_PENDING = 'deploying several services is not built yet (roadmap R12.4)';
 
 export class Run {
   readonly accounting = new Accounting();
@@ -514,16 +511,16 @@ export class Run {
       tasks: () => [...this.journal.state.tasks.values()],
       boundaries: async () => (this.deps.graphify ? (await this.deps.graphify.godNodes(graphDir(this.deps.ws, null), 10).catch(() => [])).map((n) => n.label) : []),
       target: this.deps.target,
-      smoke: async (contextDir, url, gateUrl, gateNetwork) => {
-        const p = singlePlan(this.plan)!;
-        const r = await runSmoke(p, this.deps.spec, { worktree: contextDir, image: await this.gateImage(p.gateImage), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-smoke`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : gateReachableUrl(url), { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
+      smoke: async (contextDir, url, gateUrl, gateNetwork, scope) => {
+        const p = scope?.plan ?? singlePlan(this.plan)!;
+        const r = await runSmoke(p, scope?.spec ?? this.deps.spec, { worktree: contextDir, image: await this.gateImage(p.gateImage), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-smoke${scope ? `-${scope.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : gateReachableUrl(url), { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) }, scope?.urls);
         // The gate's output is the only clue the fix task gets about why a smoke test is missing or failing.
         const tail = r.ok || !r.result ? '' : `\n\nsmoke gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
       },
-      e2e: async (contextDir, url, gateUrl, gateNetwork) => {
-        const p = singlePlan(this.plan)!;
-        const r = await runE2e(p, this.deps.spec, { worktree: contextDir, image: await this.gateImage(p.gateImage), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-e2e`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
+      e2e: async (contextDir, url, gateUrl, gateNetwork, scope) => {
+        const p = scope?.plan ?? singlePlan(this.plan)!;
+        const r = await runE2e(p, scope?.spec ?? this.deps.spec, { worktree: contextDir, image: await this.gateImage(p.gateImage), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-e2e${scope ? `-${scope.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) }, scope?.urls);
         const tail = r.ok || !r.result ? '' : `\n\ne2e gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
       },
@@ -686,8 +683,7 @@ export class Run {
     const text = await this.gitLocked(['show', `origin/main:docs/specs/${specId}/plan.json`]).catch(() => null);
     if (!text) return this.finish('phase-failed', `main has no docs/specs/${specId}/plan.json`);
     this.plan = AnyPlan.parse(JSON.parse(text));
-    if (!singlePlan(this.plan)) return this.finish('deploy-failed', SERVICES_DEPLOY_PENDING);
-    const p5 = await runPhase5(this.phaseDeps(), 1, { fixTasks: false });
+    const p5 = singlePlan(this.plan) ? await runPhase5(this.phaseDeps(), 1, { fixTasks: false }) : await runServicesPhase5(this.phaseDeps(), 1, { fixTasks: false });
     return p5.ok ? this.finish('done') : this.finish('deploy-failed', p5.reason);
   }
 
@@ -712,17 +708,12 @@ export class Run {
     }
     if (!p4.ok) { result = 'verification-failed'; reason = p4.reason; }
     if (p4.ok && this.deps.target) {
-      if (!singlePlan(this.plan)) {
-        result = 'deploy-failed';
-        reason = SERVICES_DEPLOY_PENDING;
-      } else {
-        for (let attempt = deployStartAttempt(this.phaseDeps()); attempt <= MAX_DEPLOY_ATTEMPTS; attempt = (attempt + 1) as 1 | 2 | 3) {
-          const p5 = await runPhase5(this.phaseDeps(), attempt);
-          if (p5.ok) break;
-          if (!p5.fixTask) { result = 'deploy-failed'; reason = p5.reason; break; }
-          // Same rule as Phase 4: the fix task is best effort and the next deploy attempt is the verdict.
-          const back = await runFix([p5.fixTask]); if (back !== 'merged' && back !== 'blocked') { result = 'deploy-failed'; reason = p5.reason; break; }
-        }
+      for (let attempt = deployStartAttempt(this.phaseDeps()); attempt <= MAX_DEPLOY_ATTEMPTS; attempt = (attempt + 1) as 1 | 2 | 3) {
+        const p5 = singlePlan(this.plan) ? await runPhase5(this.phaseDeps(), attempt) : await runServicesPhase5(this.phaseDeps(), attempt);
+        if (p5.ok) break;
+        if (!p5.fixTask) { result = 'deploy-failed'; reason = p5.reason; break; }
+        // Same rule as Phase 4: the fix task is best effort and the next deploy attempt is the verdict.
+        const back = await runFix([p5.fixTask]); if (back !== 'merged' && back !== 'blocked') { result = 'deploy-failed'; reason = p5.reason; break; }
       }
     }
     const p6 = await runPhase6({ ...this.phaseDeps(), runId: this.runId, accounting: this.accounting, result });

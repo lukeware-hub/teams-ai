@@ -164,10 +164,18 @@ describe('Run with a services plan', () => {
     await run.close();
   });
 
-  it('ends a deploy of a services plan before Phase 5, which only knows one service until R12.4', async () => {
-    const run = await Run.create(await deps({ target: {} as RunDeps['target'] }));
-    expect(await run.deployOnly()).toBe('deploy-failed');
-    expect(run.journal.events.at(-1)!.data.reason).toBe('deploying several services is not built yet (roadmap R12.4)');
+  it('deploys every service of a services plan on spec deploy', async () => {
+    const applied: string[] = [];
+    const recording = {
+      name: 'docker-local' as const, validate: async () => [], build: async () => undefined,
+      apply: async (i: { shared?: { alias: string } }) => { applied.push(i.shared!.alias); return { previous: null }; },
+      verify: async () => ({ healthy: true, detail: 'HTTP 200' }), currentImage: async () => null, rollback: async () => undefined, destroy: async () => undefined,
+      serviceUrl: () => 'http://127.0.0.1:3000', gateServiceUrl: () => 'http://x:3000', gateNetwork: () => 'teams-ai-shop_net',
+      startPlatform: async () => ({ ok: true, detail: 'no platform' }),
+    };
+    const run = await Run.create(await deps({ target: recording as unknown as RunDeps['target'] }));
+    expect(await run.deployOnly()).toBe('done');
+    expect(applied).toEqual(['orders', 'inventory']);
     await run.close();
   });
 });
