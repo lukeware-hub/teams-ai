@@ -3,7 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Exec } from '../../server/exec/command.js';
-import { PUBLISHED_PORTS, assignDeployPort, portHeldByOthers, releaseDeployPort, serviceLinks } from '../../server/deploy/service-links.js';
+import { assignDeployPort, portHeldByOthers, releaseDeployPort } from '../../server/deploy/port-registry.js';
+import { PUBLISHED_PORTS, serviceLinks } from '../../server/deploy/service-links.js';
 
 describe('serviceLinks', () => {
   it('builds the app and docs urls for an api inside the published range', () => {

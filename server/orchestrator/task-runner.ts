@@ -7,7 +7,7 @@ import type { DevOutput as DevOutputSchema, OutputOf, ReplanOutput, ReviewOutput
 
 type DevOutput = z.infer<typeof DevOutputSchema>;
 type ReviewOutput = z.infer<typeof ReviewOutputSchema>;
-import type { Plan, PlanTask } from '../contracts/plan.js';
+import { findCycle, type Plan, type PlanTask } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
 import { taskBranch } from '../core/ids.js';
@@ -31,7 +31,7 @@ import type { StepOutcome } from '../runner/step.js';
 import { decideOnFailure, type Failure, type FailureKind, type PolicyConfig } from '../scheduler/retry-policy.js';
 import { redactSecrets } from '../core/redact.js';
 import { checkScope } from '../validators/diff-guard.js';
-import { devopsOwnerErrors, findCycle } from '../validators/plan.js';
+import { devopsOwnerErrors } from '../validators/plan.js';
 import type { RefContext } from '../validators/references.js';
 import { Intent, OrchEvent, type Journal } from './events.js';
 import { withMainSnapshot } from './phases/shared.js';

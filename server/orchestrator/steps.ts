@@ -5,7 +5,7 @@ import type { AgentDefinition } from '../agents/registry.js';
 import type { Governor } from '../budget/governor.js';
 import type { QuotaBreaker } from '../budget/quota-breaker.js';
 import type { RoleProfile, Role } from '../config/config.js';
-import type { Plan, PlanTask } from '../contracts/plan.js';
+import { SCAFFOLD_TASK_ID, type Plan, type PlanTask } from '../contracts/plan.js';
 import type { Preplan } from '../contracts/preplan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
@@ -19,7 +19,7 @@ import { hasSession } from '../runner/session-store.js';
 import type { runStep as runStepFn, StepDeps, StepOutcome, StepRequest } from '../runner/step.js';
 import type { TestResult } from '../evidence/junit.js';
 import type { RefContext } from '../validators/references.js';
-import { REQUIRED_BLOCKING_GATES, SCAFFOLD_TASK_ID } from '../validators/plan.js';
+import { REQUIRED_BLOCKING_GATES } from '../validators/plan.js';
 import { securityToolingRules } from '../validators/security-tooling.js';
 import { OrchEvent, type Journal } from './events.js';
 

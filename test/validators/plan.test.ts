@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Plan } from '../../server/contracts/plan.js';
-import { findCycle, validatePlan } from '../../server/validators/plan.js';
+import { findCycle, type Plan } from '../../server/contracts/plan.js';
+import { validatePlan } from '../../server/validators/plan.js';
 import { REQUIRED_GATES, makeFrozenSpec, makePlan, makePlanTask } from '../fixtures/contracts.js';
 
 const spec = makeFrozenSpec();

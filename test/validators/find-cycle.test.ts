@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findCycle } from '../../server/validators/plan.js';
+import { findCycle } from '../../server/contracts/plan.js';
 import { makePlanTask } from '../fixtures/contracts.js';
 
 describe('findCycle', () => {

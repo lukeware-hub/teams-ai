@@ -1,5 +1,5 @@
 import { promises as fs } from 'node:fs';
-import { assignDeployPort } from '../../deploy/service-links.js';
+import { assignDeployPort } from '../../deploy/port-registry.js';
 import path from 'node:path';
 import type { OutputOf } from '../../agents/outputs.js';
 import { AnyPlan, type Plan } from '../../contracts/plan.js';

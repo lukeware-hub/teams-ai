@@ -1,6 +1,6 @@
 import type { Preplan } from '../contracts/preplan.js';
 import type { Spec } from '../contracts/spec.js';
-import { findCycle } from './plan.js';
+import { findCycle } from '../contracts/plan.js';
 
 /** Deterministic rules on the SM's pre-plan of one spec; the agent gets the messages back when it breaks one. */
 export function validatePreplan(preplan: Pick<Preplan, 'modules' | 'tasks'>, spec: Pick<Spec, 'acceptanceCriteria'>): string[] {

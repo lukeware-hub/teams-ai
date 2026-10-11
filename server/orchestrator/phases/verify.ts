@@ -1,13 +1,13 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { FixTasksOutput } from '../../agents/outputs.js';
-import { DELIVERY_PATH_FIELDS, type Plan, type PlanTask } from '../../contracts/plan.js';
+import { DELIVERY_PATH_FIELDS, scaffoldId, type Plan, type PlanTask } from '../../contracts/plan.js';
 import type { TestResult } from '../../evidence/junit.js';
 import { buildEvidenceMatrix, readyForValidation, type EvidenceRow } from '../../evidence/matrix.js';
 import type { GateResult } from '../../exec/gate-runner.js';
 import { RunEvent } from '../../pipeline/run-state.js';
 import type { StepOutcome } from '../../runner/step.js';
-import { scaffoldId, validatePlan, validateServicesPlan } from '../../validators/plan.js';
+import { validatePlan, validateServicesPlan } from '../../validators/plan.js';
 import { missingReadmeSections } from '../../validators/docs.js';
 import { unpinnedBaseImages } from '../../validators/pinned-image.js';
 import { OrchEvent } from '../events.js';

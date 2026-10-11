@@ -15,7 +15,7 @@ import { reduceEvents } from '../pipeline/run-state.js';
 import { EventLogCorruptError, loadEvents, type StoredEvent } from '../store/event-store.js';
 import { httpGet, type HttpGet } from '../deploy/target.js';
 import { composeProject } from '../deploy/docker-local.js';
-import { releaseDeployPort } from '../deploy/service-links.js';
+import { releaseDeployPort } from '../deploy/port-registry.js';
 import { refuseCloneHost, type ResolveHost } from './security.js';
 import { tailJournal } from './journal-tail.js';
 import { abandonLaunch, isAlive, spawnRun, stop, type RunControlDeps } from './run-control.js';

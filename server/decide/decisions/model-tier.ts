@@ -1,5 +1,4 @@
-import type { PlanTask } from '../../contracts/plan.js';
-import { SCAFFOLD_TASK_ID } from '../../validators/plan.js';
+import { SCAFFOLD_TASK_ID, type PlanTask } from '../../contracts/plan.js';
 import type { DecideContext, Decider } from '../decider.js';
 import type { BackendName, Questions } from '../types.js';
 

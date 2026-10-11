@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import { PlanTask } from '../contracts/plan.js';
-import { findCycle, scaffoldId } from '../validators/plan.js';
+import { findCycle, PlanTask, scaffoldId } from '../contracts/plan.js';
 import { TASK_STATES, TERMINAL_STATES, assertTransition, type TaskState } from './task-state.js';
 
 export interface TaskRuntime {

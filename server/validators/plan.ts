@@ -1,15 +1,10 @@
-import { DELIVERY_PATH_FIELDS, servicePlans, type Plan, type PlanTask, type ServicesPlan } from '../contracts/plan.js';
+import { DELIVERY_PATH_FIELDS, findCycle, SCAFFOLD_TASK_ID, scaffoldId, servicePlans, type Plan, type PlanTask, type ServicesPlan } from '../contracts/plan.js';
 import { IMAGE_REFERENCE } from '../exec/gate-runner.js';
 import { gateFileErrors, gateTerminationErrors } from './gate-files.js';
 import type { Spec } from '../contracts/spec.js';
 import { validateCoverage } from './coverage.js';
 import { validateE2e, validateE2eExemptions } from './e2e.js';
 import { validateSecurityGates } from './security-tooling.js';
-
-export const SCAFFOLD_TASK_ID = 'T0-scaffold';
-
-/** The scaffold task of a repository: `T0-scaffold` for the project repository, `T0-scaffold-<service>` for a service's. */
-export const scaffoldId = (service: string | null): string => (service === null ? SCAFFOLD_TASK_ID : `${SCAFFOLD_TASK_ID}-${service}`);
 
 /** Blocking gates every POC plan must define (spec §4.3); `typecheck` only when the stack has one. */
 export const REQUIRED_BLOCKING_GATES = ['format', 'lint', 'unit-test', 'build', 'secret-scan'] as const;
@@ -238,37 +233,6 @@ function repositoryErrors(plan: Plan, spec: Spec, opts: PlanCheckOptions, scaffo
   if (opts.requireDelivery && !plan.lockfilePath) errors.push('lockfilePath is required (the stack\'s own lockfile, committed on main)');
 
   return errors;
-}
-
-export function findCycle(tasks: ReadonlyArray<{ id: string; dependsOn: readonly string[] }>): string[] | null {
-  const byId = new Map<string, { id: string; dependsOn: readonly string[] }>();
-  for (const task of tasks) if (!byId.has(task.id)) byId.set(task.id, task);
-  const color = new Map<string, 'visiting' | 'done'>();
-  const stack: string[] = [];
-
-  const visit = (id: string): string[] | null => {
-    color.set(id, 'visiting');
-    stack.push(id);
-    for (const dep of byId.get(id)?.dependsOn ?? []) {
-      if (!byId.has(dep) || dep === id) continue;
-      if (color.get(dep) === 'visiting') return [...stack.slice(stack.indexOf(dep)), dep];
-      if (!color.has(dep)) {
-        const found = visit(dep);
-        if (found) return found;
-      }
-    }
-    stack.pop();
-    color.set(id, 'done');
-    return null;
-  };
-
-  for (const task of tasks) {
-    if (!color.has(task.id)) {
-      const found = visit(task.id);
-      if (found) return found;
-    }
-  }
-  return null;
 }
 
 function reaches(from: string, target: string, byId: ReadonlyMap<string, PlanTask>): boolean {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { ServicesPlan } from '../../server/contracts/plan.js';
-import { scaffoldId, validateServicesPlan, type ServicesPlanCheckOptions } from '../../server/validators/plan.js';
+import { scaffoldId, type ServicesPlan } from '../../server/contracts/plan.js';
+import { validateServicesPlan, type ServicesPlanCheckOptions } from '../../server/validators/plan.js';
 import { makeFrozenSpec, makePlanTask, makeServicesPlan } from '../fixtures/contracts.js';
 
 const spec = makeFrozenSpec();

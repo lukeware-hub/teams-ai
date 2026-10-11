@@ -1,7 +1,7 @@
 import type { Backlog, BacklogItem, Priority } from '../contracts/backlog.js';
 import { itemCites } from '../refine/coverage.js';
 import { resolveHeading } from '../refine/sections.js';
-import { findCycle } from './plan.js';
+import { findCycle } from '../contracts/plan.js';
 
 export const MAX_ITEMS = 60;
 /** Keys that would collide with run ids and docs branches (`<spec>-complete`, `docs/<spec>-v2`, `<spec>-r1` ...). */

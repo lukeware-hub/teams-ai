@@ -78,6 +78,43 @@ export const PlanTask = z.object({
 });
 export type PlanTask = z.infer<typeof PlanTask>;
 
+export const SCAFFOLD_TASK_ID = 'T0-scaffold';
+
+/** The scaffold task of a repository: `T0-scaffold` for the project repository, `T0-scaffold-<service>` for a service's. */
+export const scaffoldId = (service: string | null): string => (service === null ? SCAFFOLD_TASK_ID : `${SCAFFOLD_TASK_ID}-${service}`);
+
+/** The first dependency cycle among the tasks, as the ids around it, or null when there is none. */
+export function findCycle(tasks: ReadonlyArray<{ id: string; dependsOn: readonly string[] }>): string[] | null {
+  const byId = new Map<string, { id: string; dependsOn: readonly string[] }>();
+  for (const task of tasks) if (!byId.has(task.id)) byId.set(task.id, task);
+  const color = new Map<string, 'visiting' | 'done'>();
+  const stack: string[] = [];
+
+  const visit = (id: string): string[] | null => {
+    color.set(id, 'visiting');
+    stack.push(id);
+    for (const dep of byId.get(id)?.dependsOn ?? []) {
+      if (!byId.has(dep) || dep === id) continue;
+      if (color.get(dep) === 'visiting') return [...stack.slice(stack.indexOf(dep)), dep];
+      if (!color.has(dep)) {
+        const found = visit(dep);
+        if (found) return found;
+      }
+    }
+    stack.pop();
+    color.set(id, 'done');
+    return null;
+  };
+
+  for (const task of tasks) {
+    if (!color.has(task.id)) {
+      const found = visit(task.id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 export const Plan = z.object({
   specId: z.string().regex(ID_PATTERNS.SLUG),
   specHash: z.string().regex(HASH_PATTERN),

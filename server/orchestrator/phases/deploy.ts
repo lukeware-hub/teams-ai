@@ -1,5 +1,5 @@
 import type { PlanTask } from '../../contracts/plan.js';
-import { assignDeployPort, portHeldByOthers } from '../../deploy/service-links.js';
+import { assignDeployPort, portHeldByOthers } from '../../deploy/port-registry.js';
 import { composeProject } from '../../deploy/docker-local.js';
 import { runDeployment, type DeploymentIntent, type DeployStage } from '../../deploy/target.js';
 import { e2eCommand, type E2eRow } from '../../exec/e2e.js';
