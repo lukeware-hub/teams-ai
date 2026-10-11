@@ -5,7 +5,8 @@ import { briefTemplate, designTemplate, projectTemplate, stackTemplate, type Doc
 /** Every document but flow.md, which is the source the others are suggested from. */
 export type SuggestFile = Exclude<DocFile, 'flow.md'>;
 
-export const SUGGEST_ROLE: Record<SuggestFile, 'po' | 'sm' | 'front'> = { 'project.md': 'po', 'brief.md': 'po', 'stack.md': 'sm', 'design.md': 'front' };
+/** Read-only roles only: a suggestion returns text and must never touch the draft (Front may edit and run Bash). */
+export const SUGGEST_ROLE: Record<SuggestFile, 'po' | 'sm'> = { 'project.md': 'po', 'brief.md': 'po', 'stack.md': 'sm', 'design.md': 'po' };
 
 const TEMPLATE: Record<SuggestFile, (projectId: string) => string> = { 'project.md': projectTemplate, 'brief.md': briefTemplate, 'stack.md': stackTemplate, 'design.md': designTemplate };
 
