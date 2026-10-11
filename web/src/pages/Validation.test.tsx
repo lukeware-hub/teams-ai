@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import { PUBLISHED_PORTS } from '@server/deploy/service-links';
 import { runApi, type Report, type RunDetail } from '../api.js';
 import { ValidationPage, ValidationView } from './Validation.js';
 
@@ -138,7 +139,7 @@ describe('ValidationView service card', () => {
   it('a port outside the published range gets no open button but says why', () => {
     view(withService({ port: 8080, url: 'http://dind:8080', kind: 'api', docsPath: '/docs' }), { serviceStatus: online });
     expect(screen.queryByTestId('open-docs')).toBeNull();
-    expect(screen.getByTestId('service-unpublished').textContent).toContain('3000');
+    expect(screen.getByTestId('service-unpublished').textContent).toContain(`${PUBLISHED_PORTS.from} a ${PUBLISHED_PORTS.to}`);
   });
 
   it('while the first check is pending it shows Verificando and no start button', () => {
