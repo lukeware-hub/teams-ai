@@ -6,6 +6,8 @@ services:
   teams-ai:
     build: .
     image: teams-ai:local
+    # Reaps killed runs: a zombie still looks alive to the run lock and blocks the next run of the spec.
+    init: true
     depends_on:
       dind:
         condition: service_healthy

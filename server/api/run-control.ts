@@ -1,6 +1,7 @@
 import { spawn as nodeSpawn } from 'node:child_process';
 import { openSync, promises as fs } from 'node:fs';
 import path from 'node:path';
+import { processAlive } from '../core/process.js';
 
 export interface SpawnArgs {
   bin: string;
@@ -105,6 +106,7 @@ export function defaultRunControl(repoRoot: string): RunControlDeps {
       return { pid: child.pid };
     },
     kill: (pid, signal) => {
+      if (signal === 0 && pid > 0) return processAlive(pid);
       try {
         process.kill(pid, signal);
         return true;

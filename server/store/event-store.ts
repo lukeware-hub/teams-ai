@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { processAlive } from '../core/process.js';
 
 export type EventKind = 'fact' | 'intent' | 'confirm';
 
@@ -127,15 +128,6 @@ export async function repairEventLog(file: string): Promise<number> {
 export function unconfirmedIntents(events: readonly StoredEvent[]): StoredEvent[] {
   const confirmed = new Set(events.filter((e) => e.kind === 'confirm').map((e) => e.intentId));
   return events.filter((e) => e.kind === 'intent' && !confirmed.has(e.intentId));
-}
-
-function processAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return (err as NodeJS.ErrnoException).code !== 'ESRCH';
-  }
 }
 
 /** Lock contents: `<pid>@<hostname>`. The hostname tells a lock from a previous container (whose pids

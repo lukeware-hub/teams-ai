@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Config } from '../config/config.js';
 import { parseRunId, runIdOf, stepId, type RunKind } from '../core/ids.js';
+import { processAlive } from '../core/process.js';
 import { loadEvents } from '../store/event-store.js';
 import { OrchEvent } from './events.js';
 
@@ -139,13 +140,8 @@ async function lockHeld(lockFile: string): Promise<boolean> {
   if (owner === null) return false;
   // A lock from another host is a previous container life, which the store reclaims too.
   if (owner[1] !== undefined && owner[1] !== os.hostname()) return false;
-  try {
-    process.kill(Number.parseInt(owner[0] ?? '', 10), 0);
-    return true;
-  } catch (err) {
-    // Only "no such process" frees the lock; EPERM or an unreadable owner count as held, the safe side for a guard.
-    return (err as NodeJS.ErrnoException).code !== 'ESRCH';
-  }
+  // Only a missing process (or a zombie) frees the lock; an unreadable owner counts as held, the safe side for a guard.
+  return processAlive(Number.parseInt(owner[0] ?? '', 10));
 }
 
 /**
