@@ -81,6 +81,18 @@ describe('run index', () => {
     }]);
   });
 
+  it('listProjects carries the services and the platform of project.json', async () => {
+    const dir = path.join(home, 'shop');
+    await fs.cp(HELLO, dir, { recursive: true });
+    const file = path.join(dir, 'docs', 'project.json');
+    await fs.writeFile(file, JSON.stringify({ ...JSON.parse(await fs.readFile(file, 'utf8')), services: ['orders', 'inventory'], platform: [{ name: 'nats', image: 'nats:2.10.22-alpine', command: ['-js'] }] }));
+    const d = deps();
+    d.cfg = loadConfig({ ...JSON.parse(JSON.stringify(d.cfg)), projects: [{ dir }] });
+    const [row] = await listProjects(d);
+    expect(row!.services).toEqual(['orders', 'inventory']);
+    expect(row!.platform).toEqual([{ name: 'nats', image: 'nats:2.10.22-alpine' }]);
+  });
+
   it('listProjects reports a spec as done once its complete run finished, even while the registered dir still has the pre-merge status', async () => {
     await writeRun(runs, 'hello-001-complete-r1', [started('hello-001-complete-r1'), { type: 'RUN_FINISHED', data: { result: 'done' } }], state('running'));
     const rows = await listProjects(deps());

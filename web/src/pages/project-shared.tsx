@@ -30,6 +30,7 @@ export const TONE: Record<string, string> = {
 export const chip = (status: string) => <span className={TONE[status] ? `status-pill tone-${TONE[status]}` : 'status-pill'}>{LABEL[status] ?? status}</span>;
 
 export const HELP = {
+  services: 'Cada serviço tem o seu repositório no GitHub. A plataforma são os contêineres que todos os serviços usam, como um broker de mensagens.',
   specs: 'Cada spec descreve uma entrega do projeto. O status mostra a etapa: pronta para executar, em execução, pausada, aguardando validação ou concluída. Continuar spec reabre uma spec aguardando validação para um novo refinamento. Reiniciar descarta a sessão de refinamento atual e recomeça do zero. Uma spec concluída fica somente leitura; a próxima entrega começa em Nova spec.',
   runStatus: 'Pausada por cota: continua sozinha quando o limite de uso renovar. Aguardando login: a sessão do Claude expirou; entre de novo e use Retomar. Interrompida: o processo parou; use Retomar. Finalizando: encerrando depois de Parar.',
   tokens: 'Total de tokens lidos e escritos pelos modelos de IA nesta execução.',

@@ -43,6 +43,10 @@ export interface ProjectRow {
   name: string;
   description: string;
   specs: SpecRow[];
+  /** The services of project.json, one repository each. */
+  services?: string[];
+  /** The shared containers of project.json, by name and image. */
+  platform?: Array<{ name: string; image: string }>;
 }
 export interface IndexDeps {
   cfg: Config;
@@ -277,6 +281,8 @@ export async function listProjects(deps: IndexDeps): Promise<ProjectRow[]> {
       name: read.project.name,
       description: read.project.vision,
       specs: specs.map((s) => ({ specId: s.specId, status: completed.has(s.specId) ? 'done' : s.status, activeRunId: runs.find((r) => r.specId === s.specId && claimsSpec(r))?.runId ?? null })),
+      ...(read.project.services ? { services: read.project.services } : {}),
+      ...(read.project.platform ? { platform: read.project.platform.map((p) => ({ name: p.name, image: p.image })) } : {}),
     });
   }
   return out;

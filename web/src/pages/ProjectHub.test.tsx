@@ -36,6 +36,21 @@ describe('ProjectHubView', () => {
     rerender(hub(null));
     expect(screen.queryByTestId('github-link')).toBeNull();
   });
+  it('lists the services with their repositories and the platform, and nothing for a project without services', () => {
+    const o = on();
+    const hub = (extra: object) => (
+      <MemoryRouter>
+        <ProjectHubView project={{ ...project, ...extra }} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+      </MemoryRouter>
+    );
+    const { rerender } = render(hub({ services: [{ name: 'orders', repoUrl: 'https://github.com/acme/shop-orders' }, { name: 'inventory', repoUrl: null }], platform: [{ name: 'nats', image: 'nats:2.10.22-alpine' }] }));
+    expect(screen.getByTestId('project-service-orders').querySelector('a')!.getAttribute('href')).toBe('https://github.com/acme/shop-orders');
+    expect(screen.getByTestId('project-service-inventory').textContent).toContain('Repositório ainda não criado');
+    expect(screen.getByTestId('project-platform').textContent).toContain('nats (nats:2.10.22-alpine)');
+    rerender(hub({}));
+    expect(screen.queryByTestId('project-services')).toBeNull();
+  });
+
   it('shows the project header, one action per spec status and per run status', () => {
     const o = on();
     render(

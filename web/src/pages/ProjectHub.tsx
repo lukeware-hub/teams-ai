@@ -169,6 +169,36 @@ export function ProjectHubView(p: {
           <span className="project-hub-stat-label">custo total</span>
         </div>
       </div>
+      {pr.services?.length ? (
+        <section className="card project-panel" data-testid="project-services">
+          <div className="project-section">
+            <div className="project-section-heading">
+              <div className="project-section-title">
+                <span className="project-section-icon"><Icon name="code" size={14} /></span>
+                <h3>Serviços</h3>
+                <InfoTip label="Serviços" text={HELP.services} />
+              </div>
+            </div>
+            <ul className="project-service-list">
+              {pr.services.map((s) => (
+                <li key={s.name} data-testid={`project-service-${s.name}`}>
+                  <span className="task-id">{s.name}</span>
+                  {s.repoUrl ? (
+                    <a className="link-button" href={s.repoUrl} target="_blank" rel="noreferrer">
+                      <Icon name="github" size={16} />
+                      Abrir no GitHub
+                      <Icon name="external" size={16} />
+                    </a>
+                  ) : (
+                    <span className="hint">Repositório ainda não criado</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {pr.platform?.length ? <p className="hint" data-testid="project-platform">Plataforma: {pr.platform.map((c) => `${c.name} (${c.image})`).join(', ')}</p> : null}
+          </div>
+        </section>
+      ) : null}
       {p.error ? <p className="error" role="alert">{p.error}</p> : null}
       <section className="card project-panel">
         <div className="project-section">

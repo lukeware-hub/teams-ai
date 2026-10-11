@@ -8,7 +8,7 @@ import { Plan } from '../contracts/plan.js';
 import { loadSecretValues } from '../core/secrets.js';
 import { redactSecrets } from '../core/redact.js';
 import { addProject, removeProjectDirs } from '../onboarding/config-store.js';
-import { expandHome, workspacePaths } from '../orchestrator/workspace.js';
+import { expandHome, serviceWorkspace, workspacePaths } from '../orchestrator/workspace.js';
 import { execCommand, type Exec } from '../exec/command.js';
 import { nextRunId } from '../orchestrator/workspace.js';
 import { reduceEvents } from '../pipeline/run-state.js';
@@ -186,7 +186,12 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       handler: async ({ json }) => {
         const idx = await index();
         const rows = await listProjects(idx);
-        json(200, await Promise.all(rows.map(async (r) => ({ ...r, repoUrl: await repoUrlOf(workspacePaths(idx.cfg, r.projectId, deps.home).repo) }))));
+        json(200, await Promise.all(rows.map(async (r) => {
+          const ws = workspacePaths(idx.cfg, r.projectId, deps.home);
+          // Each service's GitHub page comes from its own clone; null until Phase 0 made it.
+          const services = r.services ? await Promise.all(r.services.map(async (name) => ({ name, repoUrl: await repoUrlOf(serviceWorkspace(ws, name).repo) }))) : undefined;
+          return { ...r, repoUrl: await repoUrlOf(ws.repo), ...(services ? { services } : {}) };
+        })));
       },
     },
     {

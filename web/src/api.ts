@@ -41,6 +41,10 @@ export interface ProjectRow {
   description: string;
   specs: SpecRow[];
   repoUrl?: string | null;
+  /** A project split into services: each with the GitHub page of its repository, null until it exists. */
+  services?: Array<{ name: string; repoUrl: string | null }>;
+  /** The shared containers every service reaches by name. */
+  platform?: Array<{ name: string; image: string }>;
 }
 export interface RunRow {
   runId: string;
