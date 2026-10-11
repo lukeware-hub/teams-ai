@@ -603,6 +603,13 @@ describe('TaskRunner: attempts, replan, block', () => {
     expect(journal.state.tasks.get('T1-r1')!.def.service).toBe('orders');
   });
 
+  it('drops a service the agent puts on a replacement when the plan has one repository', async () => {
+    const agent: Agent = async (req) => (req.kind === 'replan' ? ok({ specHash: HASH, replacements: [{ ...replacement, service: 'api' }] }) : devDone()(req));
+    const r = new TaskRunner('T1', deps({ agent, gates: alwaysFailGates }));
+    for (let i = 0; i < 6; i++) await r.advance();
+    expect(journal.state.tasks.get('T1-r1')!.def.service).toBeUndefined();
+  });
+
   it('budgetExceeded consumes an attempt with the token count as feedback', async () => {
     const r = new TaskRunner('T1', deps());
     await r.advance();
