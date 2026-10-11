@@ -1,4 +1,4 @@
-import { DELIVERY_PATH_FIELDS, type Plan, type PlanTask } from '../contracts/plan.js';
+import { DELIVERY_PATH_FIELDS, servicePlans, type Plan, type PlanTask, type ServicesPlan } from '../contracts/plan.js';
 import { IMAGE_REFERENCE } from '../exec/gate-runner.js';
 import { gateFileErrors, gateTerminationErrors } from './gate-files.js';
 import type { Spec } from '../contracts/spec.js';
@@ -7,6 +7,9 @@ import { validateE2e, validateE2eExemptions } from './e2e.js';
 import { validateSecurityGates } from './security-tooling.js';
 
 export const SCAFFOLD_TASK_ID = 'T0-scaffold';
+
+/** The scaffold task of a repository: `T0-scaffold` for the project repository, `T0-scaffold-<service>` for a service's. */
+export const scaffoldId = (service: string | null): string => (service === null ? SCAFFOLD_TASK_ID : `${SCAFFOLD_TASK_ID}-${service}`);
 
 /** Blocking gates every POC plan must define (spec §4.3); `typecheck` only when the stack has one. */
 export const REQUIRED_BLOCKING_GATES = ['format', 'lint', 'unit-test', 'build', 'secret-scan'] as const;
@@ -25,6 +28,15 @@ export interface PlanCheckOptions {
   requireCoverage?: boolean;
   /** Files already tracked on main; when given, blocking gates may only name files that exist or that a root task creates. */
   repoFiles?: ReadonlySet<string>;
+}
+
+export interface ServicesPlanCheckOptions extends Omit<PlanCheckOptions, 'firstSpec' | 'repoFiles'> {
+  /** The project's services (`project.json`); the plan may name only these. */
+  services: readonly string[];
+  /** Services with no repository yet: each needs its own scaffold task. */
+  newServices: ReadonlySet<string>;
+  /** Files tracked on main of each service's repository, by service. */
+  repoFiles?: Readonly<Record<string, ReadonlySet<string>>>;
 }
 
 /** Is `p` the kind of path planRules reserves for `devops` (Dockerfile, deploy manifests, a CI/release workflow or docker-compose)? */
@@ -59,6 +71,33 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
   // `service` belongs to a services plan; a run of this project would never find the repository it names.
   const named = plan.tasks.filter((t) => t.service !== undefined).map((t) => `task ${t.id} names service ${t.service}, but this project keeps its code in the project repository; remove service`);
   return [...named, ...planWideErrors(plan, spec, opts), ...repositoryErrors(plan, spec, opts)];
+}
+
+/** A services plan: plan-wide checks once, then each service's own checks, prefixed with its name. */
+export function validateServicesPlan(plan: ServicesPlan, spec: Spec, opts: ServicesPlanCheckOptions): string[] {
+  const errors = planWideErrors(plan, spec, opts);
+  const names = Object.keys(plan.services);
+  for (const task of plan.tasks) {
+    if (task.service === undefined || !names.includes(task.service)) errors.push(`task ${task.id} must name one of the plan's services (${names.join(', ')})`);
+  }
+  const ports = new Map<number, string>();
+  for (const { service, plan: view } of servicePlans(plan)) {
+    const name = service!;
+    if (!opts.services.includes(name)) errors.push(`service ${name} is not one of the project's services (project.json lists ${opts.services.join(', ') || 'none'})`);
+    if (view.tasks.length === 0) {
+      errors.push(`service ${name} has no task`);
+      continue;
+    }
+    const other = ports.get(view.deploy.port);
+    if (other !== undefined) errors.push(`services ${other} and ${name} both use deploy.port ${view.deploy.port}`);
+    ports.set(view.deploy.port, name);
+    // A service answers only for the criteria its own tasks deliver (a smoke criterion asks for its commands.smoke).
+    const delivered = new Set(view.tasks.flatMap((t) => t.criteriaRefs));
+    const share = { ...spec, acceptanceCriteria: spec.acceptanceCriteria.filter((ac) => delivered.has(ac.id)) };
+    const own = { ...opts, firstSpec: opts.newServices.has(name), repoFiles: opts.repoFiles?.[name] };
+    errors.push(...repositoryErrors(view, share, own, scaffoldId(name)).map((e) => `service ${name}: ${e}`));
+  }
+  return errors;
 }
 
 const smokeCriteria = (spec: Spec): string[] => spec.acceptanceCriteria.filter((ac) => ac.smoke).map((ac) => ac.id);
