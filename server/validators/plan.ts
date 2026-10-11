@@ -58,6 +58,11 @@ const TOOL_FLOORS: Record<string, [number, number]> = { 'cargo-tarpaulin': [0, 3
 export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): string[] {
   const errors: string[] = [];
 
+  // `service` belongs to a services plan; a run of this project would never find the repository it names.
+  for (const task of plan.tasks) {
+    if (task.service !== undefined) errors.push(`task ${task.id} names service ${task.service}, but this project keeps its code in the project repository; remove service`);
+  }
+
   if (spec.specHash === null) errors.push('spec is not frozen');
   else if (plan.specHash !== spec.specHash) {
     errors.push(`plan specHash ${plan.specHash} does not match spec ${spec.specHash}`);

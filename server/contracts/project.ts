@@ -9,6 +9,9 @@ export const Persona = z.object({
   description: z.string().min(1),
 });
 
+/** A service of a system split into services; its repository is `<projectId>-<name>`. */
+export const ServiceName = z.string().regex(ID_PATTERNS.SLUG).max(40);
+
 export const Project = z.object({
   projectId: z.string().regex(ID_PATTERNS.SLUG),
   name: z.string().min(1),
@@ -20,5 +23,7 @@ export const Project = z.object({
   deploy: z.object({ target: DeployTarget }),
   github: z.object({ owner: z.string().min(1).optional() }).default({}),
   confidential: z.boolean().default(false),
+  /** The services the docs split the system into, one repository each; absent when the project repository holds the code. */
+  services: z.array(ServiceName).refine((names) => new Set(names).size === names.length, { message: 'service names must be unique' }).optional(),
 });
 export type Project = z.infer<typeof Project>;

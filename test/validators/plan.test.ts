@@ -41,6 +41,14 @@ describe('validatePlan', () => {
     expect(validatePlan(p, spec, { firstSpec: true, takenPorts: [p.deploy.port + 1] }).join()).not.toContain('already used');
   });
 
+  it('rejects a task that names a service in a single-repository plan', () => {
+    const base = makePlan(spec);
+    const tasks = base.tasks.map((t, i) => (i === 1 ? { ...t, service: 'orders' } : t));
+    expect(validatePlan({ ...base, tasks }, spec, { firstSpec: true })).toContain(
+      `task ${tasks[1]!.id} names service orders, but this project keeps its code in the project repository; remove service`,
+    );
+  });
+
   it('rejects an unfrozen spec', () => {
     expect(validatePlan(makePlan(spec), { ...spec, specHash: null }, { firstSpec: true })).toContain('spec is not frozen');
   });

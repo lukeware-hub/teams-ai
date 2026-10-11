@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ID_PATTERNS } from '../core/ids.js';
 import { AC_ID, HASH_PATTERN } from './patterns.js';
+import { ServiceName } from './project.js';
 
 export const ADR_ID = /^ADR-\d{3}$/;
 
@@ -72,6 +73,8 @@ export const PlanTask = z.object({
   owner: z.enum(['dev', 'devops', 'front']),
   /** Set by the orchestrator, never by the SM: plan task, Phase 4 fix task, Phase 5 deploy-fix task. */
   origin: z.enum(['plan', 'fix', 'deploy-fix']).default('plan'),
+  /** The service whose repository the task changes; only in a services plan. */
+  service: ServiceName.optional(),
 });
 export type PlanTask = z.infer<typeof PlanTask>;
 
@@ -109,3 +112,35 @@ export const Plan = z.object({
   coverageExemptions: z.array(z.object({ path: RepoPath, reason: z.string().min(1) })).optional(),
 });
 export type Plan = z.infer<typeof Plan>;
+
+/** One service's settings in a services plan: a single-repository plan without the spec identity and the tasks. */
+export const ServicePlan = Plan.omit({ specId: true, specHash: true, adrRefs: true, tasks: true, e2eExemptions: true });
+export type ServicePlan = z.infer<typeof ServicePlan>;
+
+/** A plan that changes several services in one run: the spec identity and the task graph are plan-wide, every task names its service. */
+export const ServicesPlan = Plan.pick({ specId: true, specHash: true, adrRefs: true, e2eExemptions: true }).extend({
+  tasks: z.array(PlanTask).min(1),
+  services: z.record(ServiceName, ServicePlan).refine((s) => Object.keys(s).length > 0, { message: 'a services plan needs at least one service' }),
+});
+export type ServicesPlan = z.infer<typeof ServicesPlan>;
+
+/** Either plan shape; the project decides which one it gets. */
+export const AnyPlan = z.union([ServicesPlan, Plan]);
+export type AnyPlan = z.infer<typeof AnyPlan>;
+
+/** One repository's share of a plan; `service` is null for the project repository. */
+export interface ServiceView {
+  service: string | null;
+  plan: Plan;
+}
+
+/** The single-repository plans the pipeline runs: one per service, with its own tasks and only the dependencies inside it. */
+export function servicePlans(plan: AnyPlan): ServiceView[] {
+  if (!('services' in plan)) return [{ service: null, plan }];
+  const { services, tasks, ...shared } = plan;
+  return Object.entries(services).map(([service, settings]) => {
+    const own = tasks.filter((t) => t.service === service);
+    const ids = new Set(own.map((t) => t.id));
+    return { service, plan: { ...shared, ...settings, tasks: own.map((t) => ({ ...t, dependsOn: t.dependsOn.filter((d) => ids.has(d)) })) } };
+  });
+}

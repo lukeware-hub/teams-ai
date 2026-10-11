@@ -1,4 +1,4 @@
-import { Gate, Plan, PlanTask } from '../../server/contracts/plan.js';
+import { Gate, Plan, PlanTask, ServicePlan, ServicesPlan } from '../../server/contracts/plan.js';
 import { Project } from '../../server/contracts/project.js';
 import { Spec, freezeSpec } from '../../server/contracts/spec.js';
 
@@ -121,6 +121,25 @@ export function makePlan(spec: Spec, overrides: Partial<Plan> = {}): Plan {
       }),
     ],
     deploy: { image: 'todo-api', port: 3000, healthcheckPath: '/health', manifests: ['deploy/k8s.yaml'] },
+    ...overrides,
+  });
+}
+
+/** Two services: `orders` already has its repository, `inventory` is new and needs its scaffold. */
+export function makeServicesPlan(spec: Spec, overrides: Partial<ServicesPlan> = {}): ServicesPlan {
+  const settings = ServicePlan.parse(makePlan(spec));
+  const service = (image: string, port: number) => ({ ...settings, deploy: { ...settings.deploy, image, port } });
+  return ServicesPlan.parse({
+    specId: spec.specId,
+    specHash: spec.specHash,
+    adrRefs: ['ADR-001'],
+    tasks: [
+      makePlanTask({ id: 'T1-publish-order', service: 'orders', criteriaRefs: ['AC-001'], affectedPaths: ['src/orders/**'] }),
+      makePlanTask({ id: 'T0-scaffold-inventory', service: 'inventory', affectedPaths: ['package.json', 'package-lock.json', 'tsconfig.json', 'vitest.config.ts', 'src/index.ts'] }),
+      makePlanTask({ id: 'T2-reserve-stock', service: 'inventory', criteriaRefs: ['AC-002'], dependsOn: ['T0-scaffold-inventory', 'T1-publish-order'], affectedPaths: ['src/stock/**'] }),
+      makePlanTask({ id: 'T3-inventory-deploy', service: 'inventory', dependsOn: ['T0-scaffold-inventory'], affectedPaths: ['Dockerfile', 'deploy/**'], owner: 'devops' }),
+    ],
+    services: { orders: service('orders', 3000), inventory: service('inventory', 3001) },
     ...overrides,
   });
 }
