@@ -92,6 +92,9 @@ export async function readDocs(repo: string, specId: string, exec?: Exec): Promi
   return { techSpecText, plan: planText === null ? null : Plan.parse(JSON.parse(planText)), preplan: preplanText === null ? null : Preplan.parse(JSON.parse(preplanText)) };
 }
 
+/** A plan written for an earlier version of the spec: a refined spec must be planned again, never delivered with the old plan. */
+export const planIsStale = (plan: Plan | null, specHash: string): boolean => plan !== null && plan.specHash !== specHash;
+
 /** Acceptance criteria the pre-plan's tasks cover that no real-plan task covers: a deviation worth surfacing, not a rejection. */
 export function preplanDeviation(preplan: Preplan, plan: Pick<Plan, 'tasks'>): string[] {
   const covered = new Set(plan.tasks.flatMap((t) => t.criteriaRefs));

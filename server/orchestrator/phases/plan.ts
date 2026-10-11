@@ -11,12 +11,12 @@ import { git } from '../../git/git.js';
 import { rankPlans } from '../../decide/decisions/plan-rank.js';
 import { Intent, OrchEvent } from '../events.js';
 import { planPack } from '../steps.js';
-import { PAUSED_AUTH, commitAndMergeDocs, docsCommitKey, docsWorktree, pauseForFailure, preplanDeviation, readDocs, specDir, type PhaseDeps, type PhaseResult } from './shared.js';
+import { PAUSED_AUTH, commitAndMergeDocs, docsCommitKey, docsWorktree, pauseForFailure, planIsStale, preplanDeviation, readDocs, specDir, type PhaseDeps, type PhaseResult } from './shared.js';
 
 /** Spec (orchestrator) §4.3. */
 export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<PhaseResult & { plan?: Plan }> {
   const existing = await readDocs(deps.ws.repo, deps.spec.specId, deps.exec);
-  if (existing.plan !== null) {
+  if (existing.plan !== null && !planIsStale(existing.plan, deps.specHash)) {
     await journalTasks(deps, existing.plan);
     return { ok: true, plan: existing.plan };
   }

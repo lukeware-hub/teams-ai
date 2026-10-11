@@ -8,12 +8,13 @@ type TechSpecOutput = z.infer<typeof TechSpecOutputSchema>;
 type CoverageOutput = z.infer<typeof CoverageOutputSchema>;
 import { Intent, OrchEvent } from '../events.js';
 import { coveragePack, techSpecPack } from '../steps.js';
-import { PAUSED_AUTH, commitAndMergeDocs, docsCommitKey, docsWorktree, pauseForFailure, readDocs, readInWorktree, trackedAndUntracked, type PhaseDeps, type PhaseResult } from './shared.js';
+import { PAUSED_AUTH, commitAndMergeDocs, docsCommitKey, docsWorktree, pauseForFailure, planIsStale, readDocs, readInWorktree, trackedAndUntracked, type PhaseDeps, type PhaseResult } from './shared.js';
 
 /** Spec (orchestrator) §4.2. */
 export async function runPhase1(deps: PhaseDeps): Promise<PhaseResult & { techSpecText?: string }> {
   const existing = await readDocs(deps.ws.repo, deps.spec.specId, deps.exec);
-  if (existing.techSpecText !== null) return { ok: true, techSpecText: existing.techSpecText };
+  // A stale plan means the spec was refined since: the technical spec on main describes the old one.
+  if (existing.techSpecText !== null && !planIsStale(existing.plan, deps.specHash)) return { ok: true, techSpecText: existing.techSpecText };
   const branch = `docs/${deps.spec.specId}`;
   if (deps.journal.isConfirmed(Intent.DocsCommit, docsCommitKey(deps, 1))) {
     // Crash between the docs commit and its merge: the agents already ran; only the merge is left (spec §6).

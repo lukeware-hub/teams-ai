@@ -160,6 +160,20 @@ describe('Phase 2', () => {
     expect(journal.events.some((e) => e.type === OrchEvent.PlanChosen && e.data.index === 1 && e.data.candidates === 2)).toBe(true);
   });
 
+  it('plans again when the plan on main was written for an earlier version of the spec', async () => {
+    const stale = { ...makePlan(spec), specHash: `sha256:${'0'.repeat(64)}` };
+    await fs.mkdir(path.join(remote.repo, 'docs', 'specs', 'spec-001'), { recursive: true });
+    await fs.writeFile(path.join(remote.repo, 'docs', 'specs', 'spec-001', 'plan.json'), JSON.stringify(stale));
+    await git(remote.repo, ['add', '-A']);
+    await git(remote.repo, ['commit', '-q', '-m', 'docs: old plan']);
+    await git(remote.repo, ['push', '-q', 'origin', 'main']);
+    const fresh = makePlan(spec);
+    const r = await runPhase2(deps(async () => ok(fresh)), '# Tech spec');
+    expect(r.ok).toBe(true);
+    expect(calls.length).toBeGreaterThan(0);
+    await git(remote.repo, ['fetch', '-q', 'origin']);
+    expect(JSON.parse(await git(remote.repo, ['show', 'origin/main:docs/specs/spec-001/plan.json'])).specHash).toBe(fresh.specHash);
+  });
   it('passes a preplan.json on main as context and journals which of its criteria the real plan dropped', async () => {
     await git(remote.repo, ['fetch', '-q', 'origin']);
     await fs.writeFile(path.join(remote.repo, 'docs', 'specs', 'spec-001', 'preplan.json'), JSON.stringify({
