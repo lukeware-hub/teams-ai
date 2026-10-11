@@ -7,7 +7,7 @@ import { Accounting } from '../budget/accounting.js';
 import { Governor } from '../budget/governor.js';
 import { DEFAULT_BREAKER, QuotaBreaker } from '../budget/quota-breaker.js';
 import type { Config, Role } from '../config/config.js';
-import { Plan, type PlanTask } from '../contracts/plan.js';
+import { AnyPlan, servicePlans, type Plan, type PlanTask, type ServiceView } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
 import { createDecider } from '../decide/create-decider.js';
@@ -15,6 +15,7 @@ import type { Decider } from '../decide/decider.js';
 import { classifyCliError } from '../decide/decisions/cli-error.js';
 import { sandboxPolicyViolation } from '../runner/sandbox-policy.js';
 import type { Exec } from '../exec/command.js';
+import { scaffoldId } from '../validators/plan.js';
 import { TOOLS_GATE } from '../validators/security-tooling.js';
 import { writeToolsInstaller } from './tools-install.js';
 import { prepareGateImage, runGates, TAIL_CHARS, type GateExecutor, type GateResult } from '../exec/gate-runner.js';
@@ -38,7 +39,7 @@ import { reconcile } from './reconcile.js';
 import { validateDocs } from '../validators/docs.js';
 import { readmePack, runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
 import { TaskRunner, type TaskRunnerDeps } from './task-runner.js';
-import { eventsFile, expandHome, graphDir, mergedByPriorRuns, nextRunId, runDir, sessionDir, stateFile, stepDir, type Workspace } from './workspace.js';
+import { eventsFile, expandHome, graphDir, mergedByPriorRuns, nextRunId, runDir, serviceWorkspace, sessionDir, stateFile, stepDir, worktreeDir, type Workspace } from './workspace.js';
 import type { DeployTarget } from '../deploy/target.js';
 import { E2E_GATE, runE2e } from '../exec/e2e.js';
 import { gateReachableUrl, runSmoke } from '../exec/smoke.js';
@@ -112,6 +113,19 @@ function assertApiKey(deps: RunDeps): void {
 /** A cold Go or Rust build in a fresh worktree is slow, and parallel tasks compile their tools at the same time (live: three Rust installs passed 10 minutes). */
 const buildTimeoutMs = (plan: Plan): number => ((['go', 'rust'] as const).includes(stackKind(plan.stack) as 'go') ? 25 * 60_000 : 10 * 60_000);
 
+/** The plan when it has one repository; a services plan is read per service instead. */
+const singlePlan = (plan: AnyPlan | null): Plan | undefined => (plan && !('services' in plan) ? plan : undefined);
+
+/** The view a task runs in: its service's, or the whole plan for a task without a service. */
+function viewOf(plan: AnyPlan, service: string | undefined): ServiceView {
+  const view = servicePlans(plan).find((v) => v.service === (service ?? null));
+  if (!view) throw new Error(`the plan has no service ${service}`);
+  return view;
+}
+
+/** Docs merges run no gates. */
+const NO_GATES = async (): Promise<{ results: GateResult[]; blockingFailure: GateResult | null }> => ({ results: [], blockingFailure: null });
+
 export class Run {
   readonly accounting = new Accounting();
   private readonly governor: Governor;
@@ -122,7 +136,7 @@ export class Run {
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly log: (line: string) => void;
   private readonly maxParallel: number;
-  private plan: Plan | null = null;
+  private plan: AnyPlan | null = null;
   private techSpecText = '';
   private adrs: Array<{ id: string; title: string; text: string }> = [];
   private readonly runners = new Map<string, TaskRunner>();
@@ -220,21 +234,38 @@ export class Run {
   private async afterMergeOnResume(taskId: string, branch: string): Promise<void> {
     const plan = this.plan ?? (await this.loadPlan());
     const task = plan?.tasks.find((t) => t.id === taskId);
-    if (!task) return;
-    const steps = taskMergeSteps(this.mergeDeps(), task, this.worktreeOf(branch), branch, this.deps.spec, `resumed ${taskId}`);
+    if (!plan || !task) return;
+    const view = viewOf(plan, task.service);
+    const steps = taskMergeSteps(this.mergeDeps(view), task, worktreeDir(this.wsOf(view), branch), branch, this.deps.spec, `resumed ${taskId}`);
     await steps.afterMerge?.();
   }
 
-  private worktreeOf(branch: string): string {
-    return path.posix.join(this.deps.ws.worktrees, branch.replace(/\//g, '__'));
+  private wsOf(view: ServiceView): Workspace {
+    return serviceWorkspace(this.deps.ws, view.service);
   }
 
-  private async loadPlan(): Promise<Plan | null> {
+  /** A new service's repository is bootstrapped by its own scaffold; the project repository keeps the run's firstSpec. */
+  private firstSpecOf(view: ServiceView): boolean {
+    return view.service === null ? this.deps.firstSpec : view.plan.tasks.some((t) => t.id === scaffoldId(view.service));
+  }
+
+  private taskView(taskId: string): ServiceView {
+    return viewOf(this.plan!, this.journal.state.tasks.get(taskId)?.def.service);
+  }
+
+  /** Package registries a step may reach: its task's stack, or every stack of the plan for a step outside a task. */
+  private registries(view?: ServiceView): string[] {
+    const views = view ? [view] : this.plan ? servicePlans(this.plan) : [];
+    const texts = views.length > 0 ? views.map((v) => `${v.plan.stack} ${v.plan.gateImage} ${this.deps.project.stack ?? ''}`) : [this.deps.project.stack ?? ''];
+    return [...new Set(texts.flatMap((text) => stackDomains(stackKind(text))))];
+  }
+
+  private async loadPlan(): Promise<AnyPlan | null> {
     const { readDocs } = await import('./phases/shared.js');
     return (await readDocs(this.deps.ws.repo, this.deps.spec.specId, this.deps.exec)).plan;
   }
 
-  private stepDeps(): StepDeps {
+  private stepDeps(view?: ServiceView): StepDeps {
     const { cfg, ws } = this.deps;
     return {
       binary: this.deps.binary,
@@ -246,7 +277,7 @@ export class Run {
       // The stack's registries let a step install dependencies; cfg.docker.serviceHost is where the orchestrator and the
       // gates already reach a deployed service (server/deploy/docker-local.ts), so a step's own sandbox needs the same
       // route to test against SERVICE_URL itself — never a wider one (no internet host, no datastore port).
-      network: { allowedDomains: [...stackDomains(stackKind(`${this.plan?.stack ?? ''} ${this.plan?.gateImage ?? ''} ${this.deps.project.stack ?? ''}`)), cfg.docker.serviceHost] },
+      network: { allowedDomains: [...this.registries(view), cfg.docker.serviceHost] },
       sandbox: { enabled: cfg.sandbox.enabled, unsafeNoSandbox: cfg.sandbox.unsafeNoSandbox },
       clock: this.clock,
       // cli-error's chain never reaches Claude, so classifying a failed step cannot start another step.
@@ -259,11 +290,11 @@ export class Run {
     return [...Object.values(this.deps.secrets), ...(this.deps.apiKey ? [this.deps.apiKey] : [])];
   }
 
-  private agentDeps(): AgentStepDeps {
+  private agentDeps(view?: ServiceView): AgentStepDeps {
     const { cfg } = this.deps;
     return {
       runStep: this.deps.runStep,
-      stepDeps: this.stepDeps(),
+      stepDeps: this.stepDeps(view),
       agents: this.deps.agents,
       profile: (role) => cfg.roles[role],
       governor: this.governor,
@@ -285,8 +316,8 @@ export class Run {
    * the Dev thought of running the install itself. Runs the plan's install command in the worktree when
    * the dependency directory is missing; a failure is reported like a blocking gate so the Dev sees it.
    */
-  private async installDeps(worktree: string): Promise<GateResult | null> {
-    const command = this.plan!.commands.install;
+  private async installDeps(view: ServiceView, worktree: string): Promise<GateResult | null> {
+    const command = view.plan.commands.install;
     if (!command) return null;
     const present = await fs.access(path.join(worktree, 'node_modules')).then(() => true, () => false);
     if (present) return null;
@@ -298,7 +329,7 @@ export class Run {
     const cargoInstall = /\bcargo install\b/.test(command);
     if (cargoInstall) await copyCargoRoot(cargoRoot, tools).catch(() => undefined);
     const env = { ...stackEnv(worktree), CARGO_TARGET_DIR: path.join(expandHome(this.deps.cfg.paths.gateCache), 'cargo-install') };
-    const r = await this.deps.exec({ bin: 'sh', args: ['-lc', command], cwd: worktree, env, timeoutMs: buildTimeoutMs(this.plan!) });
+    const r = await this.deps.exec({ bin: 'sh', args: ['-lc', command], cwd: worktree, env, timeoutMs: buildTimeoutMs(view.plan) });
     if (cargoInstall && r.exitCode === 0 && !r.timedOut) await copyCargoRoot(tools, cargoRoot).catch(() => undefined);
     if (r.exitCode === 0 && !r.timedOut) return null;
     return {
@@ -315,45 +346,49 @@ export class Run {
     };
   }
 
-  private gateImageReady: Promise<string> | null = null;
+  private readonly gateImages = new Map<string, Promise<string>>();
 
-  /** The image every gate, smoke and e2e container runs: the plan's, prepared once per run (jq, plus rustfmt and clippy for rust). */
+  /** The image every gate, smoke and e2e container of one stack runs, prepared once per run and image (jq, plus rustfmt and clippy for rust). */
   private gateImage(image: string): Promise<string> {
-    return (this.gateImageReady ??= prepareGateImage(image, this.deps.exec));
+    let ready = this.gateImages.get(image);
+    if (!ready) this.gateImages.set(image, (ready = prepareGateImage(image, this.deps.exec)));
+    return ready;
   }
 
-  private gates = async (worktree: string, branch: string) => {
-    const plan = this.plan!;
-    const install = await this.installDeps(worktree);
-    if (install) return { results: [install], blockingFailure: install };
-    if (plan.gates.some((g) => g.name === TOOLS_GATE)) await writeToolsInstaller(worktree);
-    const cacheDir = expandHome(this.deps.cfg.paths.gateCache);
-    // The gate user may differ from the orchestrator's (rootless dind maps it to its own root), so the shared cache is open to all.
-    await fs.mkdir(cacheDir, { recursive: true, mode: 0o777 }).then(() => fs.chmod(cacheDir, 0o777)).catch(() => undefined);
-    return runGates(
-      plan.gates.filter((g) => g.blocking && g.name !== E2E_GATE), // the e2e gate runs in Phase 5 only
-      {
-        worktree,
-        image: await this.gateImage(plan.gateImage),
-        junitPath: plan.junitPath,
-        coveragePath: plan.coveragePath,
-        cacheDir,
-        cpus: 2,
-        memory: '2g',
-        timeoutMs: buildTimeoutMs(plan),
-        secrets: this.deps.secrets,
-        containerName: `teams-ai-${this.runId}-${branch.replace(/\//g, '__')}`,
-        // Files the gate writes into the bind-mounted worktree (the JUnit report) must stay owned by the
-        // orchestrator user, or the next attempt cannot remove them (EACCES on the first live run).
-        user: containerUser(this.deps.cfg.docker.rootless),
-        bindRewrite: this.deps.cfg.docker.bindRewrite,
-      },
-      { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null), removeFile: (p) => fs.rm(p, { force: true }) },
-    );
-  };
+  private gatesFor(view: ServiceView) {
+    return async (worktree: string, branch: string) => {
+      const plan = view.plan;
+      const install = await this.installDeps(view, worktree);
+      if (install) return { results: [install], blockingFailure: install };
+      if (plan.gates.some((g) => g.name === TOOLS_GATE)) await writeToolsInstaller(worktree);
+      const cacheDir = expandHome(this.deps.cfg.paths.gateCache);
+      // The gate user may differ from the orchestrator's (rootless dind maps it to its own root), so the shared cache is open to all.
+      await fs.mkdir(cacheDir, { recursive: true, mode: 0o777 }).then(() => fs.chmod(cacheDir, 0o777)).catch(() => undefined);
+      return runGates(
+        plan.gates.filter((g) => g.blocking && g.name !== E2E_GATE), // the e2e gate runs in Phase 5 only
+        {
+          worktree,
+          image: await this.gateImage(plan.gateImage),
+          junitPath: plan.junitPath,
+          coveragePath: plan.coveragePath,
+          cacheDir,
+          cpus: 2,
+          memory: '2g',
+          timeoutMs: buildTimeoutMs(plan),
+          secrets: this.deps.secrets,
+          containerName: `teams-ai-${this.runId}-${branch.replace(/\//g, '__')}`,
+          // Files the gate writes into the bind-mounted worktree (the JUnit report) must stay owned by the
+          // orchestrator user, or the next attempt cannot remove them (EACCES on the first live run).
+          user: containerUser(this.deps.cfg.docker.rootless),
+          bindRewrite: this.deps.cfg.docker.bindRewrite,
+        },
+        { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null), removeFile: (p) => fs.rm(p, { force: true }) },
+      );
+    };
+  }
 
-  private mergeDeps(): MergeStepsDeps {
-    return { journal: this.journal, ws: this.deps.ws, exec: this.deps.exec, ghExec: this.deps.ghExec, gates: this.gates, graphify: this.deps.graphify, secretValues: () => this.secretValues(), handoffs: this.handoffs, clock: this.clock };
+  private mergeDeps(view: ServiceView | null): MergeStepsDeps {
+    return { journal: this.journal, ws: view ? this.wsOf(view) : this.deps.ws, exec: this.deps.exec, ghExec: this.deps.ghExec, gates: view ? this.gatesFor(view) : NO_GATES, graphify: this.deps.graphify, secretValues: () => this.secretValues(), handoffs: this.handoffs, clock: this.clock };
   }
 
   private packBase = (): PackBase => ({
@@ -367,28 +402,33 @@ export class Run {
     budgetTokens: 12_000,
   });
 
-  private code = async (worktree: string, task: PlanTask): Promise<CodeContext> => {
-    const g = this.deps.graphify;
-    const terms = [task.title, ...task.affectedPaths].map((t) => t.split(/[^a-zA-Z0-9]+/).filter((w) => w.length > 2)).flat().slice(0, 6);
-    if (g) {
-      const tracked = await withRepoLock(this.deps.ws.repo, () => g.trackedFiles(this.deps.ws.repo)).catch(() => [] as string[]);
-      const cov = await g.coverage(graphDir(this.deps.ws, null), tracked).catch(() => null);
-      if (cov && cov.ratio >= MIN_COVERAGE) {
-        const q = await g.query(graphDir(this.deps.ws, null), `${task.title} ${task.description}`, 2000);
-        return { source: 'graph', nodes: q.nodes, truncated: q.truncated };
+  private codeFor(view: ServiceView) {
+    return async (worktree: string, task: PlanTask): Promise<CodeContext> => {
+      const g = this.deps.graphify;
+      const ws = this.wsOf(view);
+      const terms = [task.title, ...task.affectedPaths].map((t) => t.split(/[^a-zA-Z0-9]+/).filter((w) => w.length > 2)).flat().slice(0, 6);
+      if (g) {
+        const tracked = await withRepoLock(ws.repo, () => g.trackedFiles(ws.repo)).catch(() => [] as string[]);
+        const cov = await g.coverage(graphDir(ws, null), tracked).catch(() => null);
+        if (cov && cov.ratio >= MIN_COVERAGE) {
+          const q = await g.query(graphDir(ws, null), `${task.title} ${task.description}`, 2000);
+          return { source: 'graph', nodes: q.nodes, truncated: q.truncated };
+        }
       }
-    }
-    return { source: 'grep', grep: await grepFallback(worktree, terms, this.deps.exec) };
-  };
+      return { source: 'grep', grep: await grepFallback(worktree, terms, this.deps.exec) };
+    };
+  }
 
-  private impact = async (worktree: string, branch: string, changed: readonly string[], depth: number): Promise<CodeContext> => {
-    const g = this.deps.graphify;
-    if (!g || changed.length === 0) return { source: 'none' };
-    const out = graphDir(this.deps.ws, branch);
-    await g.update(worktree, out).catch(() => undefined);
-    const affected = (await Promise.all(changed.map((f) => g.affected(out, f, depth).catch(() => [])))).flat();
-    return { source: 'graph', affected };
-  };
+  private impactFor(view: ServiceView) {
+    return async (worktree: string, branch: string, changed: readonly string[], depth: number): Promise<CodeContext> => {
+      const g = this.deps.graphify;
+      if (!g || changed.length === 0) return { source: 'none' };
+      const out = graphDir(this.wsOf(view), branch);
+      await g.update(worktree, out).catch(() => undefined);
+      const affected = (await Promise.all(changed.map((f) => g.affected(out, f, depth).catch(() => [])))).flat();
+      return { source: 'graph', affected };
+    };
+  }
 
   private system1?: Decider;
 
@@ -420,19 +460,20 @@ export class Run {
     }));
   }
 
-  private runnerDeps(): TaskRunnerDeps {
+  private runnerDeps(view: ServiceView): TaskRunnerDeps {
     const { cfg, project, spec } = this.deps;
     const decider = this.decider();
+    const ws = this.wsOf(view);
     return {
-      journal: this.journal, ws: this.deps.ws, spec, project, plan: this.plan!, specHash: spec.specHash!, firstSpec: this.deps.firstSpec,
+      journal: this.journal, ws, spec, project, plan: view.plan, specHash: spec.specHash!, firstSpec: this.firstSpecOf(view),
       exec: this.deps.exec,
-      runAgent: this.runAgent,
-      gates: this.gates,
-      installDeps: (worktree) => this.installDeps(worktree),
+      runAgent: <K extends StepKind>(req: AgentStepRequest<K>) => runAgentStep(req, this.agentDeps(view)),
+      gates: this.gatesFor(view),
+      installDeps: (worktree) => this.installDeps(view, worktree),
       mergeQueue: this.mergeQueue,
-      mergeSteps: (task, worktree, branch) => taskMergeSteps(this.mergeDeps(), task, worktree, branch, spec, this.summaryOf(task.id)),
-      code: this.code,
-      impact: this.impact,
+      mergeSteps: (task, worktree, branch) => taskMergeSteps(this.mergeDeps(view), task, worktree, branch, spec, this.summaryOf(task.id)),
+      code: this.codeFor(view),
+      impact: this.impactFor(view),
       decider,
       tierModel: (_role, tier) => cfg.decisions.modelTiers[tier],
       routing: cfg.routing,
@@ -442,10 +483,10 @@ export class Run {
       boundaries: async () => {
         const g = this.deps.graphify;
         if (g) {
-          const nodes = await g.godNodes(graphDir(this.deps.ws, null), 10).catch(() => []);
+          const nodes = await g.godNodes(graphDir(ws, null), 10).catch(() => []);
           if (nodes.length > 0) return nodes.map((n) => n.label);
         }
-        return (await this.gitLocked(['ls-tree', '--name-only', 'origin/main'])).split('\n').filter((l) => l !== '');
+        return (await this.gitLocked(['ls-tree', '--name-only', 'origin/main'], ws)).split('\n').filter((l) => l !== '');
       },
     };
   }
@@ -456,29 +497,30 @@ export class Run {
   }
 
   private phaseDeps(): PhaseDeps {
+    const single = singlePlan(this.plan);
     return {
       journal: this.journal, ws: this.deps.ws, workspacesRoot: expandHome(this.deps.cfg.paths.workspaces), spec: this.deps.spec, project: this.deps.project, specHash: this.deps.spec.specHash!, firstSpec: this.deps.firstSpec, requireDelivery: this.deps.requireDelivery, requireSecurityTooling: this.deps.requireSecurityTooling, requireE2e: this.deps.requireE2e, requireCoverage: this.deps.requireCoverage, exec: this.deps.exec,
       runAgent: this.runAgent,
       decider: this.decider(),
       mergeQueue: this.mergeQueue,
-      mergeDeps: this.mergeDeps(),
+      mergeDeps: this.mergeDeps(null),
       packBase: this.packBase,
       godNodes: () => (this.deps.graphify ? this.deps.graphify.godNodes(graphDir(this.deps.ws, null), 10).catch(() => []) : Promise.resolve([])),
       pause: (failure) => this.pauseFor(failure),
-      plan: this.plan ?? undefined,
-      gates: this.gates,
+      plan: single,
+      gates: single ? this.gatesFor({ service: null, plan: single }) : undefined,
       tasks: () => [...this.journal.state.tasks.values()],
       boundaries: async () => (this.deps.graphify ? (await this.deps.graphify.godNodes(graphDir(this.deps.ws, null), 10).catch(() => [])).map((n) => n.label) : []),
       target: this.deps.target,
       smoke: async (contextDir, url, gateUrl, gateNetwork) => {
-        const p = this.plan!;
+        const p = singlePlan(this.plan)!;
         const r = await runSmoke(p, this.deps.spec, { worktree: contextDir, image: await this.gateImage(p.gateImage), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-smoke`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : gateReachableUrl(url), { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
         // The gate's output is the only clue the fix task gets about why a smoke test is missing or failing.
         const tail = r.ok || !r.result ? '' : `\n\nsmoke gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
       },
       e2e: async (contextDir, url, gateUrl, gateNetwork) => {
-        const p = this.plan!;
+        const p = singlePlan(this.plan)!;
         const r = await runE2e(p, this.deps.spec, { worktree: contextDir, image: await this.gateImage(p.gateImage), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-e2e`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
         const tail = r.ok || !r.result ? '' : `\n\ne2e gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
@@ -518,9 +560,8 @@ export class Run {
    * reset --hard rewrite its index and work tree while other tasks read it. gitFetch and removeWorktree take the
    * (non-reentrant) lock themselves, so those are called bare, never through here.
    */
-  private gitLocked(args: readonly string[]): Promise<string> {
-    const { ws, exec } = this.deps;
-    return withRepoLock(ws.repo, () => git(ws.repo, args, exec));
+  private gitLocked(args: readonly string[], ws: Workspace = this.deps.ws): Promise<string> {
+    return withRepoLock(ws.repo, () => git(ws.repo, args, this.deps.exec));
   }
 
   private async loadAdrs(): Promise<void> {
@@ -544,9 +585,11 @@ export class Run {
   }
 
   /** R8.3: CI and release workflows land on main for a bootstrapped repository; public for tests. */
-  async executeWorkflows(plan: Plan): Promise<PhaseResult> {
-    if (!this.deps.bootstrap) return { ok: true };
-    return runWorkflowBootstrap(this.phaseDeps(), plan);
+  async executeWorkflows(plan: AnyPlan): Promise<PhaseResult> {
+    const single = singlePlan(plan);
+    // Service repositories get their workflows when they are created (R12.3).
+    if (!this.deps.bootstrap || !single) return { ok: true };
+    return runWorkflowBootstrap(this.phaseDeps(), single);
   }
 
   async execute(): Promise<ExecuteResult> {
@@ -635,7 +678,7 @@ export class Run {
     await gitFetch(this.deps.ws.repo, this.deps.exec);
     const text = await this.gitLocked(['show', `origin/main:docs/specs/${specId}/plan.json`]).catch(() => null);
     if (!text) return this.finish('phase-failed', `main has no docs/specs/${specId}/plan.json`);
-    this.plan = Plan.parse(JSON.parse(text));
+    this.plan = AnyPlan.parse(JSON.parse(text));
     const p5 = await runPhase5(this.phaseDeps(), 1, { fixTasks: false });
     return p5.ok ? this.finish('done') : this.finish('deploy-failed', p5.reason);
   }
@@ -714,7 +757,7 @@ export class Run {
         for (const id of nextRunnable(this.journal.state, this.maxParallel)) {
           // Replacements from a replan are born `planned`; the runner only acts from `ready` onward.
           if (this.journal.state.tasks.get(id)!.state === 'planned') await this.journal.fact(RunEvent.TaskStateChanged, { taskId: id, to: 'ready' });
-          if (!this.runners.has(id)) this.runners.set(id, new TaskRunner(id, this.runnerDeps()));
+          if (!this.runners.has(id)) this.runners.set(id, new TaskRunner(id, this.runnerDeps(this.taskView(id))));
           this.start(id);
         }
       }
@@ -723,7 +766,7 @@ export class Run {
       // The task stays in its active state in the journal; a resume continues it from there.
       if (this.journal.state.status === 'running' || (this.journal.state.status === 'draining' && !this.journal.state.stopOnly)) {
         // Tasks left active by a previous process (resume) get a runner too; nothing new is admitted here.
-        for (const [id, t] of this.journal.state.tasks) if (ACTIVE_STATES.has(t.state) && !this.runners.has(id)) this.runners.set(id, new TaskRunner(id, this.runnerDeps()));
+        for (const [id, t] of this.journal.state.tasks) if (ACTIVE_STATES.has(t.state) && !this.runners.has(id)) this.runners.set(id, new TaskRunner(id, this.runnerDeps(this.taskView(id))));
         for (const [id, r] of this.runners) if (!r.done && !this.inflight.has(id) && ACTIVE_STATES.has(r.task.state)) this.start(id);
       }
       if (this.inflight.size === 0) {

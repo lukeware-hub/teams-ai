@@ -318,7 +318,7 @@ describe('Run', () => {
       coverage: async () => ({ extracted: 0, failed: 0, nodes: 0, links: 0, ratio: 0 }),
     } as unknown as Graphify;
     const run = await Run.create(await runDeps(noStep, { graphify }));
-    await run['code'](remote.repo, T1);
+    await run['codeFor']({ service: null, plan })(remote.repo, T1);
     await Promise.all(rivals);
     expect(timeline).toEqual(['start trackedFiles', 'end trackedFiles', 'rival']);
     await run.close();
@@ -327,7 +327,7 @@ describe('Run', () => {
   it('lists the replan boundaries from origin/main under the repo lock', async () => {
     const probe = lockProbe(execCommand, (a) => a[0] === 'ls-tree');
     const run = await Run.create(await runDeps(noStep, { exec: probe.exec }));
-    expect(await run['runnerDeps']().boundaries()).toEqual(['docs', 'src']);
+    expect(await run['runnerDeps']({ service: null, plan }).boundaries()).toEqual(['docs', 'src']);
     await probe.settle();
     expect(probe.started()).toEqual(['ls-tree --name-only origin/main']);
     expect(probe.interleaved()).toEqual([]);

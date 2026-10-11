@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import { assignDeployPort } from '../../deploy/service-links.js';
 import path from 'node:path';
 import type { OutputOf } from '../../agents/outputs.js';
-import { Plan } from '../../contracts/plan.js';
+import { AnyPlan, type Plan } from '../../contracts/plan.js';
 import type { StepOutcome } from '../../runner/step.js';
 import { canonicalJson } from '../../contracts/hash.js';
 import { RunEvent } from '../../pipeline/run-state.js';
@@ -14,7 +14,7 @@ import { planPack } from '../steps.js';
 import { PAUSED_AUTH, commitAndMergeDocs, docsCommitKey, docsWorktree, pauseForFailure, planIsStale, preplanDeviation, readDocs, specDir, type PhaseDeps, type PhaseResult } from './shared.js';
 
 /** Spec (orchestrator) §4.3. */
-export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<PhaseResult & { plan?: Plan }> {
+export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<PhaseResult & { plan?: AnyPlan }> {
   const existing = await readDocs(deps.ws.repo, deps.spec.specId, deps.exec);
   if (existing.plan !== null && !planIsStale(existing.plan, deps.specHash)) {
     await journalTasks(deps, existing.plan);
@@ -25,7 +25,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
   if (deps.journal.isConfirmed(Intent.DocsCommit, docsCommitKey(deps, 2))) {
     const worktree = await docsWorktree(deps, branch, { keepCommits: true });
     // Read before the merge: the docs merge removes the worktree afterwards.
-    const plan = Plan.parse(JSON.parse(await fs.readFile(path.join(worktree, `${specDir(deps.spec.specId)}/plan.json`), 'utf8')));
+    const plan = AnyPlan.parse(JSON.parse(await fs.readFile(path.join(worktree, `${specDir(deps.spec.specId)}/plan.json`), 'utf8')));
     const merged = await commitAndMergeDocs(deps, 2, branch, worktree, `docs(${deps.spec.specId}): plan`);
     if (!merged.ok) return merged;
     await journalTasks(deps, plan);
@@ -83,7 +83,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
   return { ok: false, reason };
 }
 
-async function journalTasks(deps: PhaseDeps, plan: Plan): Promise<void> {
+async function journalTasks(deps: PhaseDeps, plan: AnyPlan): Promise<void> {
   for (const task of plan.tasks) {
     if (!deps.journal.state.tasks.has(task.id)) await deps.journal.fact(RunEvent.TaskPlanned, { task });
   }
