@@ -46,6 +46,13 @@ const view = (props: Partial<Parameters<typeof RunView>[0]> = {}) => (
 );
 
 describe('RunView', () => {
+  it("shows a services plan with each service's stack and each task's service", () => {
+    const tasks = [{ ...detail.plan!.tasks[0]!, id: 'T1', service: 'orders' }, { ...detail.plan!.tasks[0]!, id: 'T2', service: 'inventory' }];
+    render(view({ detail: { ...detail, plan: { specId: 'hello-001', specHash: detail.plan!.specHash, adrRefs: [], tasks, services: { orders: { stack: 'node' }, inventory: { stack: 'go' } } } } }));
+    expect(screen.getByTestId('plan-artifact').textContent).toContain('orders: node · inventory: go');
+    expect(screen.getByTestId('plan-task-T2').textContent).toContain('inventory');
+  });
+
   it('renders header, phases, tasks grouped by state, tokens and evidence from the journal', () => {
     render(view());
     expect(screen.getByTestId('status').textContent).toContain('paused:quota');

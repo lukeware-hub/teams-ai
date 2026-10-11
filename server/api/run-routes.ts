@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { StepKind } from '../agents/outputs.js';
 import { Accounting } from '../budget/accounting.js';
 import type { Config, Role } from '../config/config.js';
-import { Plan } from '../contracts/plan.js';
+import { AnyPlan } from '../contracts/plan.js';
 import { loadSecretValues } from '../core/secrets.js';
 import { redactSecrets } from '../core/redact.js';
 import { addProject, removeProjectDirs } from '../onboarding/config-store.js';
@@ -459,7 +459,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const project = await projectDir(idx, projectId, specId).catch(() => null);
         const plan = project
           ? await fs.readFile(path.join(project, 'docs', 'specs', specId, 'plan.json'), 'utf8')
-              .then((text) => Plan.safeParse(JSON.parse(text)).data ?? null)
+              .then((text) => AnyPlan.safeParse(JSON.parse(text)).data ?? null)
               .catch(() => null)
           : null;
         const repoUrl = await repoUrlOf(workspacePaths(idx.cfg, projectId, deps.home).repo);

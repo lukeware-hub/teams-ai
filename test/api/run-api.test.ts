@@ -10,7 +10,7 @@ import type { HttpGet } from '../../server/deploy/target.js';
 import { readUserConfig } from '../../server/onboarding/config-store.js';
 import { superviseTick, type SuperviseDeps } from '../../server/supervisor/supervise.js';
 import { appendEvents, eventLines, writeRun } from '../fixtures/runs/write-run.js';
-import { makeFrozenSpec, makePlan } from '../fixtures/contracts.js';
+import { makeFrozenSpec, makePlan, makeServicesPlan } from '../fixtures/contracts.js';
 
 const HELLO = path.resolve('test/fixtures/hello-app');
 let home = '';
@@ -220,6 +220,16 @@ describe('projects', () => {
     expect(await exists(path.join(runs, 'other-app--hello-001--run-1'))).toBe(true);
     expect((await readUserConfig(home)).cfg.projects).toEqual([]);
     expect(docker).toEqual(expect.arrayContaining(['compose -p teams-ai-hello-app down -v', 'compose -p teams-ai-hello-app--orders down -v', 'network rm teams-ai-hello-app_net']));
+  });
+
+  it('gives a run the services plan of its spec', async () => {
+    const project = path.join(home, 'project');
+    await fs.cp(HELLO, project, { recursive: true });
+    await fs.writeFile(path.join(home, '.teams-ai', 'config.json'), JSON.stringify({ paths: { runs: runs.replace(/\\/g, '/') }, projects: [{ dir: project }] }));
+    await fs.writeFile(path.join(project, 'docs', 'specs', 'hello-001', 'plan.json'), JSON.stringify(makeServicesPlan(makeFrozenSpec({ specId: 'hello-001' }))));
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 1);
+    const detail = await (await fetch(`${base()}/api/runs/hello-001-r1`)).json();
+    expect(Object.keys(detail.plan.services)).toEqual(['orders', 'inventory']);
   });
 
   it('refuses to delete a project with an active run', async () => {

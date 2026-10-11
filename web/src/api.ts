@@ -102,8 +102,16 @@ export interface PlanArtifact {
   junitPath: string;
   gates: Array<{ name: string; command: string; blocking: boolean }>;
   frozenPaths: string[];
-  tasks: Array<{ id: string; title: string; description: string; criteriaRefs: string[]; dependsOn: string[]; affectedPaths: string[]; owner: string; origin: string }>;
+  tasks: Array<{ id: string; title: string; description: string; criteriaRefs: string[]; dependsOn: string[]; affectedPaths: string[]; owner: string; origin: string; service?: string }>;
   deploy: { image: string; port: number; healthcheckPath: string; manifests: string[] };
+}
+/** A plan of a project split into services: each task names its service, each service has its own settings. */
+export interface ServicesPlanArtifact {
+  specId: string;
+  specHash: string;
+  adrRefs: string[];
+  tasks: PlanArtifact['tasks'];
+  services: Record<string, { stack: string }>;
 }
 export interface SmokeRow { acId: string; testId: string | null; status: 'passed' | 'failed' | 'missing' }
 export interface EvidenceRow { criterion: string; tasks: string[]; tests: string[]; status: 'passed' | 'failed' | 'missing' | 'blocked'; e2e?: 'passed' | 'failed' | 'missing' | 'not-applicable'; e2eReason?: string }
@@ -157,7 +165,7 @@ export interface RunDetail {
   finished: Record<string, unknown> | null;
   tokens: Usage;
   acceptanceCriteria: AcceptanceCriterion[];
-  plan: PlanArtifact | null;
+  plan: PlanArtifact | ServicesPlanArtifact | null;
 }
 
 const R = '/api';

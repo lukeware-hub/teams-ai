@@ -105,7 +105,7 @@ function PlanCard({ plan }: { plan: NonNullable<RunDetail['plan']> }) {
             <Icon name="code" size={16} />
             Tecnologia
           </dt>
-          <dd>{plan.stack}</dd>
+          <dd>{'services' in plan ? Object.entries(plan.services).map(([name, s]) => `${name}: ${s.stack}`).join(' · ') : plan.stack}</dd>
         </div>
         <div>
           <dt>
@@ -129,6 +129,7 @@ function PlanCard({ plan }: { plan: NonNullable<RunDetail['plan']> }) {
                 <span className="task-id">{task.id}</span>
                 <span className="task-title">{task.title}</span>
                 <span className="plan-chips">
+                  {task.service ? <span className="tag">{task.service}</span> : null}
                   {task.origin !== 'plan' ? <span className="tag">{ORIGIN_LABEL[task.origin] ?? task.origin}</span> : null}
                   <span className="owner-chip" title={`Responsável pela tarefa: ${owner}`}>
                     <Icon name={OWNER_ICON[task.owner] ?? 'user'} size={14} />
