@@ -8,7 +8,7 @@ const DISARMED = /\|\|\s*(true|exit\s+0|:)/;
 const BROWSER_INSTALL = /\bapt(-get)?\b|--with-deps|\b(playwright|puppeteer|cypress|selenium|chromium)\b/i;
 
 /** R8.4: the post-deploy e2e gate exists, blocks, runs the delivery e2e suite and is not the smoke command. */
-export function validateE2e(plan: Plan, spec: Spec): string[] {
+export function validateE2e(plan: Plan): string[] {
   const errors: string[] = [];
   const gate = plan.gates.find((g) => g.name === E2E_GATE);
   if (gate && !gate.blocking) errors.push('gate e2e must be blocking');
@@ -20,12 +20,11 @@ export function validateE2e(plan: Plan, spec: Spec): string[] {
   const suite = plan.delivery?.e2eSuite;
   if (!suite) errors.push('delivery.e2eSuite is required when the e2e gate is required');
   else if (!command.includes(suite.replace(/^\.\//, ''))) errors.push(`commands.e2e must reference delivery.e2eSuite (${suite})`);
-  errors.push(...validateE2eExemptions(plan, spec));
   return errors;
 }
 
 /** An exemption names a real criterion once, with a reason, and at least one criterion stays under e2e. */
-function validateE2eExemptions(plan: Plan, spec: Spec): string[] {
+export function validateE2eExemptions(plan: Pick<Plan, 'e2eExemptions'>, spec: Spec): string[] {
   const exemptions = plan.e2eExemptions ?? [];
   const errors: string[] = [];
   const known = new Set(spec.acceptanceCriteria.map((ac) => ac.id));

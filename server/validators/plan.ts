@@ -3,7 +3,7 @@ import { IMAGE_REFERENCE } from '../exec/gate-runner.js';
 import { gateFileErrors, gateTerminationErrors } from './gate-files.js';
 import type { Spec } from '../contracts/spec.js';
 import { validateCoverage } from './coverage.js';
-import { validateE2e } from './e2e.js';
+import { validateE2e, validateE2eExemptions } from './e2e.js';
 import { validateSecurityGates } from './security-tooling.js';
 
 export const SCAFFOLD_TASK_ID = 'T0-scaffold';
@@ -56,18 +56,75 @@ export function devopsOwnerErrors(tasks: readonly Pick<PlanTask, 'id' | 'owner' 
 const TOOL_FLOORS: Record<string, [number, number]> = { 'cargo-tarpaulin': [0, 37] };
 
 export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): string[] {
-  const errors: string[] = [];
-
   // `service` belongs to a services plan; a run of this project would never find the repository it names.
-  for (const task of plan.tasks) {
-    if (task.service !== undefined) errors.push(`task ${task.id} names service ${task.service}, but this project keeps its code in the project repository; remove service`);
-  }
+  const named = plan.tasks.filter((t) => t.service !== undefined).map((t) => `task ${t.id} names service ${t.service}, but this project keeps its code in the project repository; remove service`);
+  return [...named, ...planWideErrors(plan, spec, opts), ...repositoryErrors(plan, spec, opts)];
+}
+
+const smokeCriteria = (spec: Spec): string[] => spec.acceptanceCriteria.filter((ac) => ac.smoke).map((ac) => ac.id);
+
+/** The spec the plan answers, the task graph across every repository, criteria coverage and e2e exemptions. */
+function planWideErrors(plan: Pick<Plan, 'specId' | 'specHash' | 'tasks' | 'e2eExemptions'>, spec: Spec, opts: Pick<PlanCheckOptions, 'requireE2e'>): string[] {
+  const errors: string[] = [];
 
   if (spec.specHash === null) errors.push('spec is not frozen');
   else if (plan.specHash !== spec.specHash) {
     errors.push(`plan specHash ${plan.specHash} does not match spec ${spec.specHash}`);
   }
   if (plan.specId !== spec.specId) errors.push(`plan specId ${plan.specId} does not match spec ${spec.specId}`);
+
+  const ids = new Set<string>();
+  let duplicates = false;
+  for (const task of plan.tasks) {
+    if (ids.has(task.id)) {
+      errors.push(`duplicate task id ${task.id}`);
+      duplicates = true;
+    }
+    ids.add(task.id);
+  }
+
+  const acIds = new Set(spec.acceptanceCriteria.map((ac) => ac.id));
+  const covered = new Set<string>();
+  for (const task of plan.tasks) {
+    for (const dep of task.dependsOn) {
+      if (dep === task.id) errors.push(`task ${task.id} depends on itself`);
+      else if (!ids.has(dep)) errors.push(`task ${task.id} depends on unknown task ${dep}`);
+    }
+    for (const ref of task.criteriaRefs) {
+      if (!acIds.has(ref)) errors.push(`task ${task.id} references unknown acceptance criterion ${ref}`);
+      covered.add(ref);
+    }
+  }
+  for (const ac of acIds) {
+    if (!covered.has(ac)) errors.push(`acceptance criterion ${ac} is not covered by any task`);
+  }
+
+  // A criterion only ever touched by devops tasks (manifests, Dockerfile) has no unit/integration test to
+  // prove it - only a running deployment can (spec §9 smoke); Phase 4 then reports it as evidence-missing
+  // forever (seen live: AC-008/AC-009 on 1387253335-001-r13). Require the spec to say so up front.
+  const smokeSet = new Set(smokeCriteria(spec));
+  const tasksByAc = new Map<string, string[]>();
+  for (const task of plan.tasks) for (const ref of task.criteriaRefs) tasksByAc.set(ref, [...(tasksByAc.get(ref) ?? []), task.owner]);
+  for (const [ac, owners] of tasksByAc) {
+    if (owners.length > 0 && owners.every((o) => o === 'devops') && !smokeSet.has(ac)) {
+      errors.push(`acceptance criterion ${ac} is only covered by devops task(s) (infra/manifests, no app test); mark it smoke: true in the spec or add an app-level test`);
+    }
+  }
+
+  // With duplicate ids the graph is ambiguous; the duplicate error already blocks the plan.
+  if (!duplicates) {
+    const cycle = findCycle(plan.tasks);
+    if (cycle) errors.push(`dependency cycle: ${cycle.join(' -> ')}`);
+  }
+
+  if (opts.requireE2e) errors.push(...validateE2eExemptions(plan, spec));
+  return errors;
+}
+
+/** One repository's share of the plan, the whole plan for a single-repository project: image, port, gates, scaffold and delivery. */
+function repositoryErrors(plan: Plan, spec: Spec, opts: PlanCheckOptions, scaffold = SCAFFOLD_TASK_ID): string[] {
+  const errors: string[] = [];
+
   // The Dev installs dependencies on the orchestrator's Debian host; an Alpine gate image then fails to load
   // the native optional packages that install picked for glibc (seen live: rollup under vitest).
   // A leading dash would be read by `docker run` as a flag, not as the image.
@@ -91,76 +148,32 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
     }
   }
 
-  const ids = new Set<string>();
-  let duplicates = false;
-  for (const task of plan.tasks) {
-    if (ids.has(task.id)) {
-      errors.push(`duplicate task id ${task.id}`);
-      duplicates = true;
-    }
-    ids.add(task.id);
-  }
-
-  const smokeAcs = spec.acceptanceCriteria.filter((ac) => ac.smoke).map((ac) => ac.id);
+  const smokeAcs = smokeCriteria(spec);
   if (smokeAcs.length > 0 && !plan.commands.smoke) errors.push(`commands.smoke is required: ${smokeAcs.join(', ')} ${smokeAcs.length === 1 ? 'is a smoke criterion' : 'are smoke criteria'}`);
 
-  const acIds = new Set(spec.acceptanceCriteria.map((ac) => ac.id));
-  const covered = new Set<string>();
-  for (const task of plan.tasks) {
-    for (const dep of task.dependsOn) {
-      if (dep === task.id) errors.push(`task ${task.id} depends on itself`);
-      else if (!ids.has(dep)) errors.push(`task ${task.id} depends on unknown task ${dep}`);
-    }
-    for (const ref of task.criteriaRefs) {
-      if (!acIds.has(ref)) errors.push(`task ${task.id} references unknown acceptance criterion ${ref}`);
-      covered.add(ref);
-    }
-  }
   // planRules tells the agent "use devops only for Dockerfile, deploy manifests, CI/release workflows and docker-compose",
   // but nothing enforced it: an SM-planned devops task that actually touches app or test code gets no Bash at all
   // (ROLE_ALLOW.devops carries none) and loops GATE_FAILED -> TASK_REPLANNED on format/typecheck it cannot run itself.
-  const devopsScopeErrors = devopsOwnerErrors(plan.tasks, plan.deploy.manifests);
-  errors.push(...devopsScopeErrors);
-  for (const ac of acIds) {
-    if (!covered.has(ac)) errors.push(`acceptance criterion ${ac} is not covered by any task`);
-  }
+  errors.push(...devopsOwnerErrors(plan.tasks, plan.deploy.manifests));
 
-  // A criterion only ever touched by devops tasks (manifests, Dockerfile) has no unit/integration test to
-  // prove it - only a running deployment can (spec §9 smoke); Phase 4 then reports it as evidence-missing
-  // forever (seen live: AC-008/AC-009 on 1387253335-001-r13). Require the spec to say so up front.
-  const smokeSet = new Set(smokeAcs);
-  const tasksByAc = new Map<string, string[]>();
-  for (const task of plan.tasks) for (const ref of task.criteriaRefs) tasksByAc.set(ref, [...(tasksByAc.get(ref) ?? []), task.owner]);
-  for (const [ac, owners] of tasksByAc) {
-    if (owners.length > 0 && owners.every((o) => o === 'devops') && !smokeSet.has(ac)) {
-      errors.push(`acceptance criterion ${ac} is only covered by devops task(s) (infra/manifests, no app test); mark it smoke: true in the spec or add an app-level test`);
-    }
-  }
-
-  // With duplicate ids the graph is ambiguous; the duplicate error already blocks the plan.
-  if (!duplicates) {
-    const cycle = findCycle(plan.tasks);
-    if (cycle) errors.push(`dependency cycle: ${cycle.join(' -> ')}`);
-  }
-
-  const scaffold = plan.tasks.find((t) => t.id === SCAFFOLD_TASK_ID);
+  const scaffoldTask = plan.tasks.find((t) => t.id === scaffold);
   if (opts.firstSpec) {
-    if (!scaffold) errors.push(`first spec requires task ${SCAFFOLD_TASK_ID}`);
+    if (!scaffoldTask) errors.push(`first spec requires task ${scaffold}`);
     else {
-      if (scaffold.dependsOn.length > 0) errors.push(`${SCAFFOLD_TASK_ID} must not depend on other tasks`);
+      if (scaffoldTask.dependsOn.length > 0) errors.push(`${scaffold} must not depend on other tasks`);
       const byId = new Map(plan.tasks.map((t) => [t.id, t]));
       for (const task of plan.tasks) {
-        if (task.id === SCAFFOLD_TASK_ID) continue;
-        if (!reaches(task.id, SCAFFOLD_TASK_ID, byId)) {
-          errors.push(`task ${task.id} must depend on ${SCAFFOLD_TASK_ID}`);
+        if (task.id === scaffold) continue;
+        if (!reaches(task.id, scaffold, byId)) {
+          errors.push(`task ${task.id} must depend on ${scaffold}`);
         }
       }
     }
     if (!plan.tasks.some((t) => t.owner === 'devops')) {
       errors.push('first spec requires a deploy-infrastructure task owned by devops');
     }
-  } else if (scaffold) {
-    errors.push(`${SCAFFOLD_TASK_ID} is only allowed on the first spec`);
+  } else if (scaffoldTask) {
+    errors.push(`${scaffold} is only allowed on the first spec`);
   }
 
   const blocking = new Set(plan.gates.filter((g) => g.blocking).map((g) => g.name));
@@ -172,7 +185,7 @@ export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): st
   }
 
   if (opts.requireSecurityTooling) errors.push(...validateSecurityGates(plan));
-  if (opts.requireE2e) errors.push(...validateE2e(plan, spec));
+  if (opts.requireE2e) errors.push(...validateE2e(plan));
   if (opts.requireCoverage) errors.push(...validateCoverage(plan));
 
   if (!plan.delivery) {
