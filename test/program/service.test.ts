@@ -137,6 +137,27 @@ describe('program service tick', () => {
     expect(JSON.parse(await fs.readFile(path.join(root, 'draft', 'program.json'), 'utf8')).items[0].status).toBe('completing');
   });
 
+  it('redacts a secret in the log tail of a launch that failed (audit M3)', async () => {
+    const spec = makeFrozenSpec({ specId: 'd-a' });
+    const specFile = path.join(root, 'draft', 'docs', 'specs', 'd-a', 'spec.json');
+    await fs.mkdir(path.dirname(specFile), { recursive: true });
+    await fs.writeFile(specFile, JSON.stringify(spec));
+    await fs.writeFile(path.join(root, 'draft', 'program.json'), JSON.stringify({ version: 1, draftId: 'd', status: 'running', updatedAt: '', items: [{ specId: 'd-a', key: 'a', rank: 1, dependsOn: [], status: 'running', runId: 'd-a-r1', completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0 }] }));
+    await journal('d-a-r1', [started('d-a'), finished('awaiting-validation')]);
+    await fs.mkdir(path.join(root, 'secrets'), { recursive: true });
+    await fs.writeFile(path.join(root, 'secrets', 'DB_PASSWORD'), 'p@ss w0rd!');
+    const deps = (service() as unknown as { deps: ConstructorParameters<typeof ProgramService>[0] }).deps;
+    const spawn = (a: { args: string[]; logFile: string }) => {
+      mkdirSync(path.dirname(a.logFile), { recursive: true });
+      writeFileSync(a.logFile, 'fail p@ss w0rd!\n');
+      return { pid: 4242 };
+    };
+    const svc = new ProgramService({ ...deps, control: { ...deps.control, spawn, kill: () => false } });
+    const failure = await svc.tick('shop', 'd').then(() => '', (err: unknown) => String(err));
+    const saved = await fs.readFile(path.join(root, 'draft', 'program.json'), 'utf8');
+    expect(failure + saved).not.toContain('p@ss');
+  });
+
   it('does nothing for a draft without a program or with a finished one', async () => {
     const s = service();
     expect(await s.tick('shop', 'd')).toBeNull();

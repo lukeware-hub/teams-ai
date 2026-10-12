@@ -8,7 +8,7 @@ import { Spec } from '../contracts/spec.js';
 import { writeFileAtomic } from '../core/atomic-write.js';
 import type { Decider } from '../decide/decider.js';
 import { classifyFailure, retryable } from '../decide/decisions/failure-cause.js';
-import { nextRunId } from '../orchestrator/workspace.js';
+import { expandHome, nextRunId } from '../orchestrator/workspace.js';
 import { DEPENDENCY_BLOCKED } from '../pipeline/task-state.js';
 import { loadEvents } from '../store/event-store.js';
 import { writeRepairNotes } from './repair-notes.js';
@@ -106,7 +106,7 @@ export class ProgramService {
       const runs = runsDirOf(await this.index());
       await fs.mkdir(path.join(runs, runId), { recursive: true });
       const { pid } = spawnRun(control, { projectDir: root, specId, runId, mode, ...(mode === 'run' ? { draft: true } : {}), logFile: path.join(runs, runId, 'ui.log') });
-      await waitForRunJournal(control, runs, runId, pid).catch(async (err: unknown) => {
+      await waitForRunJournal(control, runs, runId, pid, expandHome((await this.deps.cfg()).paths.secrets, this.deps.home)).catch(async (err: unknown) => {
         // A resume keeps its directory: it holds the run's journal.
         if (mode !== 'resume') await abandonLaunch(control, runs, runId, pid);
         throw err;

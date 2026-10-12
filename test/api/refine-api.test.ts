@@ -15,6 +15,7 @@ import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 
 let home = '';
 let spawnShouldFail = false;
+let failLog = '';
 let api: { port: number; close(): Promise<void> };
 let registry: SessionRegistry;
 let script: Script;
@@ -52,6 +53,7 @@ beforeEach(async () => {
   spawns = [];
   registered = [];
   spawnShouldFail = false;
+  failLog = 'preconditions failed:\n- docker daemon is not reachable\n';
   const control: RunControlDeps = {
     spawn: (a) => {
       spawns.push({ args: a.args, logFile: a.logFile });
@@ -60,7 +62,7 @@ beforeEach(async () => {
       const runId = a.args[a.args.indexOf('--run-id') + 1]!;
       const runDir = `${home}/runs/${runId}`;
       mkdirSync(runDir, { recursive: true });
-      if (spawnShouldFail) writeFileSync(`${runDir}/ui.log`, 'preconditions failed:\n- docker daemon is not reachable\n');
+      if (spawnShouldFail) writeFileSync(`${runDir}/ui.log`, failLog);
       else writeFileSync(`${runDir}/events.ndjson`, '');
       return { pid: 5000 + spawns.length };
     },
@@ -616,5 +618,23 @@ describe('refine api', () => {
     const retried = await call('POST', '/api/refine/hello-app/hello-app-001/start');
     expect(retried.status).toBe(200); // the earlier failure must not leave the session locked with 'a start is already in progress'
     expect(spawns).toHaveLength(2);
+  });
+
+  it('redacts a secret in the log tail of a start that failed (audit M3)', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    script['derive/po'] = [derived];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
+    await settle();
+    await fs.mkdir(`${home}/secrets`, { recursive: true });
+    await fs.writeFile(`${home}/secrets/DB_PASSWORD`, 'p@ss w0rd!');
+    failLog = 'fail p@ss w0rd!\n';
+    spawnShouldFail = true;
+    const failed = await call('POST', '/api/refine/hello-app/hello-app-001/start');
+    expect(failed.status).toBe(500);
+    const text = JSON.stringify(await failed.json());
+    expect(text).not.toContain('p@ss');
+    expect(text).toContain('[REDACTED]');
   });
 });

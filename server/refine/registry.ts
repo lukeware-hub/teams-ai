@@ -257,7 +257,7 @@ export class SessionRegistry {
     await fs.mkdir(path.posix.join(runs, runId), { recursive: true });
     const { pid } = spawnRun(this.deps.control, { projectDir: draft.root, specId, runId, mode: 'run', draft: true, logFile: path.posix.join(runs, runId, 'ui.log') });
     try {
-      await waitForRunJournal(this.deps.control, runs, runId, pid);
+      await waitForRunJournal(this.deps.control, runs, runId, pid, this.deps.secretsDir);
     } catch (err) {
       await abandonLaunch(this.deps.control, runs, runId, pid);
       session.failStart();

@@ -2,6 +2,8 @@ import { spawn as nodeSpawn } from 'node:child_process';
 import { openSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { processAlive } from '../core/process.js';
+import { redactSecrets } from '../core/redact.js';
+import { loadSecretValues } from '../core/secrets.js';
 
 export interface SpawnArgs {
   bin: string;
@@ -73,7 +75,7 @@ export async function stop(deps: RunControlDeps, pid: number, timeoutMs = 15_000
 /** Waits for the spawned process to write its journal, so a spawn that dies on preconditions (e.g. `docker version`
  * unreachable) surfaces its `ui.log` tail instead of leaving the caller to poll a run that will never exist.
  * A busy host (parallel Rust builds, a full test suite) takes well over 10 seconds to start node, so the wait is generous. */
-export async function waitForRunJournal(deps: RunControlDeps, runs: string, runId: string, pid: number, timeoutMs = 30_000): Promise<void> {
+export async function waitForRunJournal(deps: RunControlDeps, runs: string, runId: string, pid: number, secretsDir: string, timeoutMs = 30_000): Promise<void> {
   const file = path.join(runs, runId, 'events.ndjson');
   for (let waited = 0; waited < timeoutMs; waited += POLL_MS) {
     if (
@@ -87,7 +89,9 @@ export async function waitForRunJournal(deps: RunControlDeps, runs: string, runI
     await deps.sleep(POLL_MS);
   }
   const log = await fs.readFile(path.join(runs, runId, 'ui.log'), 'utf8').catch(() => '');
-  throw new Error(`run ${runId} did not start: ${log.slice(-500) || 'no output'}`);
+  // Secret values are read now, so a secret added after startup is covered.
+  const tail = redactSecrets(log.slice(-500), await loadSecretValues(secretsDir));
+  throw new Error(`run ${runId} did not start: ${tail || 'no output'}`);
 }
 
 /** A new launch that did not start leaves nothing behind: its process group is stopped and its run directory removed. */
