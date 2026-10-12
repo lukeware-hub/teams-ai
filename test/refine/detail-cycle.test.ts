@@ -152,6 +152,24 @@ describe('backlog detailing in the refinement cycle', () => {
     expect(events.filter((e) => e.type === 'REFINE_CYCLE_FAILED')).toEqual([]);
   });
 
+  // R11.10 (plan 87): the dependencies feed the pre-plan only, so one the outline adds re-derives no spec.
+  it('re-derives only the pre-plan of an item whose dependencies changed', async () => {
+    const { journal, run, draft } = await setup();
+    let outline = OUTLINE;
+    const agent = fakeAgent(() => outline);
+    await run(agent, 1);
+    await journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    await run(agent, 2);
+    outline = OUTLINE.map((i) => (i.key === 'fat' ? { ...i, dependsOn: ['opme', 'triagem'] } : i));
+    // A section no item cites: the outline runs again and nothing it cites changed.
+    await writeFile(draft.designMd, '# Design\n\n- Cores da clínica');
+    const from = agent.calls.length;
+    await run(agent, 3);
+    expect(agent.kinds(from)).toEqual(['backlog', 'preplan', 'conflicts', 'refine', 'refine']);
+    expect(agent.calls.slice(from).find((c) => c.kind === 'preplan')!.feedback).toContain('## Spec fat:');
+    expect(journal.state.status).toBe('ready');
+  });
+
   // R11.7.3: a new draft over what main already planned derives nothing again unless a cited section changed.
   type Env = Awaited<ReturnType<typeof setup>>;
   const secondDraft = async (change?: (second: Env) => Promise<unknown>, agent = fakeAgent(() => OUTLINE), prepare?: (first: Env) => Promise<unknown>) => {

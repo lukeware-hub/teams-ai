@@ -7,7 +7,7 @@ import { approvalKey, sectionText, withoutApprovals } from './sections.js';
 export type BacklogDocs = Record<(typeof BACKLOG_DOCS)[number], string>;
 
 /** Bumped when what goes into a hash changes, so every item is re-derived once. */
-const HASH_VERSION = 2;
+const HASH_VERSION = 3;
 
 /** briefing.md's approval sections count only for themselves, so accepting one changes no other cited section (R11.7.4). */
 const cited = (item: Pick<BacklogItem, 'sources'>, docs: BacklogDocs) =>
@@ -16,9 +16,10 @@ const cited = (item: Pick<BacklogItem, 'sources'>, docs: BacklogDocs) =>
 /**
  * What a spec is derived from: the item itself and the text of every section it cites. The briefing and project.md
  * enter only through cited sections; hashing them whole would re-derive every spec on almost every accepted patch.
+ * The dependencies feed only the pre-plan (R11.10), so one the outline adds re-derives no spec.
  */
 export function specInputHash(item: BacklogItem, docs: BacklogDocs): string {
-  return sha256(canonicalJson({ v: HASH_VERSION, key: item.key, title: item.title, scope: item.scope, dependsOn: item.dependsOn, sources: cited(item, docs) }));
+  return sha256(canonicalJson({ v: HASH_VERSION, key: item.key, title: item.title, scope: item.scope, sources: cited(item, docs) }));
 }
 
 /** What a pre-plan is derived from: the spec it plans (by hash), stack.md, and whether the item carries the scaffold. */

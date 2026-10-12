@@ -29,6 +29,8 @@ describe('specInputHash', () => {
     const dependent = item('consumo', { dependsOn: ['opme'] });
     const base = specInputHash(dependent, docs());
     expect(specInputHash(dependent, docs({ 'project.md': '# Outro projeto', 'design.md': '# Outro design' }))).toBe(base);
+    // R11.10: the dependencies feed the pre-plan only.
+    expect(specInputHash(item('consumo', { dependsOn: ['opme', 'caso'] }), docs())).toBe(base);
     expect(specInputHash(item('consumo', { dependsOn: ['opme'], scope: 'Outro escopo' }), docs())).not.toBe(base);
     expect(specInputHash(item('consumo', { dependsOn: ['opme'], sources: [{ doc: 'briefing.md', heading: 'Prioridades' }] }), docs())).not.toBe(base);
     const briefingItem = item('prio', { sources: [{ doc: 'briefing.md', heading: 'Prioridades' }] });
@@ -53,6 +55,7 @@ describe('preplanInputHash', () => {
     expect(preplanInputHash(i, rev, '# Stack', true)).not.toBe(base);
     const rescoped = { ...i, scope: 'outro' };
     expect(preplanInputHash(rescoped, rev, '# Stack', false)).toBe(base);
+    expect(preplanInputHash({ ...i, dependsOn: ['caso'] }, rev, '# Stack', false)).not.toBe(base);
   });
 });
 
