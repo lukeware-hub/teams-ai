@@ -140,6 +140,13 @@ describe('refinement cycle flow.md must be mermaid (R11.11)', () => {
     expect(await build('# Flow', jev(0.9), 'po.no-contradictions')).toMatchObject({ passed: true });
     expect(Object.keys(seen[0]!).sort()).toEqual(['briefing', 'design', 'flow', 'project', 'stack']);
   });
+
+  // Seen live on a 42-item backlog: the Jev read the documents cut at its cap for 9 cycles, scored 0.37 to 0.43, and no fix could move it.
+  it('keeps the PO verdict on po.no-contradictions when the Jev read the documents cut at its cap, and says why', async () => {
+    const item = await build('# Flow', async () => summarizeJevChecks({ documents_consistent: 0.2 }, 'jev', true), 'po.no-contradictions');
+    expect(item).toMatchObject({ passed: true });
+    expect(item.detail).toMatch(/os documentos passam do limite que ele lê e foram cortados/);
+  });
 });
 
 describe('refinement cycle patch dedup (R11.10)', () => {

@@ -556,6 +556,7 @@ The docs (project, briefing, stack, flow, design) stay the only hand-edited trut
 ### R11.9 Any project size - `todo` (human, 2026-10-07: teams-ai builds any software of any complexity, never tied to one target project)
 
 - Limits sized for one project: at most 60 backlog items (`server/validators/backlog.ts`); three-digit criterion ids, which global numbering exhausts at AC-999; the outline step and the reviews read the five docs whole in one pack capped at 120k tokens (`server/refine/fit-pack.ts`), so very large docs fail the cycle. Design them away (outline per epic or per flow section, wider ids, packs of cited sections only) with its own plan and approval.
+- Fixed (2026-10-12, seen live on `kayron-hub`, 42 items): the Jev's document check reads the five docs cut at 32,000 characters, and its consistency score below 0.5 failed `po.no-contradictions` whatever the PO said, so the backlog stayed 9 cycles at 0.37 to 0.43 with no question or patch to act on; a score from a cut read no longer fails the item, and the item says the Jev was left out (`runCycleSteps`, `server/refine/cycle.ts`). Open: a Jev check that reads every document whole, or per section, for large projects.
 
 ### R11.10 Refinement convergence and cost in backlog mode - `partial` (found by the R11.2 live check, 2026-10-07; one candidate built 2026-10-08; narrow citations built 2026-10-12, plan 87; outline review and deliverable criteria built 2026-10-12, plan 88)
 

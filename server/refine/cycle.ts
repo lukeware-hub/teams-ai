@@ -451,8 +451,13 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const consistent = jevValidation?.checks.documents_consistent;
   if (consistent !== undefined && consistent < 0.5) {
     const contradictionItem = checklist.find((i) => i.id === 'po.no-contradictions')!;
-    contradictionItem.passed = false;
-    contradictionItem.detail = 'o Jev encontrou divergência entre project.md, briefing.md, stack.md, flow.md e design.md';
+    // A read of documents cut at the Jev's cap is no verdict, so the PO's answer stands and says why.
+    if (jevValidation!.stateTruncated) {
+      contradictionItem.detail = `${contradictionItem.detail} (o Jev não entrou na conta: os documentos passam do limite que ele lê e foram cortados)`;
+    } else {
+      contradictionItem.passed = false;
+      contradictionItem.detail = 'o Jev encontrou divergência entre project.md, briefing.md, stack.md, flow.md e design.md';
+    }
   }
   // R11.5.7: a blocking question routed `auto` at the floor or above is answered by its owner role from the docs, before the
   // evaluation is journaled, so the page shows the cycle running until the answers land with it.
