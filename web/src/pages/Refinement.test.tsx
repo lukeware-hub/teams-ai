@@ -96,7 +96,13 @@ describe('RefinementView backlog mode', () => {
     expect(start.disabled).toBe(false);
     fireEvent.click(start);
     expect(h.onStart).toHaveBeenCalledOnce();
-    expect(screen.getByText(/clique em Iniciar para os agentes executarem o backlog inteiro/)).toBeTruthy();
+    expect(screen.getByText(/o programa começa sozinho em instantes/)).toBeTruthy();
+  });
+
+  it('says why a ready backlog did not start by itself in this cycle', () => {
+    const detailed = { ...backlog, detail: true, flowHeadings: [], specs: {}, preplans: {} };
+    render(<MemoryRouter><RefinementView snap={base({ ...ready, cycle: 2, autoStartFailure: { cycle: 2, reason: 'docker is not reachable' }, backlog: detailed as never })} busy={false} {...on()} /></MemoryRouter>);
+    expect(screen.getByText(/O programa não começou sozinho: docker is not reachable/)).toBeTruthy();
   });
 
   it('a started backlog says the agents are executing it', () => {

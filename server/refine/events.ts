@@ -25,6 +25,8 @@ export const RefineEvent = {
   PreplanDerived: 'PREPLAN_DERIVED',
   /** The SM's map of items that change the same code and never run together: `{inputHash, pairs}`. */
   ConflictsDerived: 'CONFLICTS_DERIVED',
+  /** A ready, detailed backlog did not start its program by itself: `{cycle, reason}`; tried again after a new cycle. */
+  AutoStartFailed: 'AUTO_START_FAILED',
   /** One System 1 decision of Gate 1; same type and record shape as the run journal, so the eval harness reads both. */
   DecisionMade: 'DECISION_MADE',
 } as const;

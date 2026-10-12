@@ -222,19 +222,12 @@ export class SessionRegistry {
     return null;
   }
 
-  /** Drafts whose automatic start failed, by evaluation cycle: tried again only after a new cycle, never on every tick. */
-  private readonly autoStartFailed = new Set<string>();
-
-  /** A detailed backlog that is ready and current starts its program by itself; nobody has to press Start. */
+  /** A detailed backlog that is ready and current starts its program by itself; a failure is journaled and retried only after a new cycle. */
   private async autoStart(projectId: string, specId: string): Promise<void> {
-    const st = (await this.get(projectId, specId)).state;
-    if (!st.backlog?.enabled || !st.backlog.detail || st.stale || st.status !== 'ready') return;
-    const key = `${projectId}/${specId}@${st.cycle}`;
-    if (this.autoStartFailed.has(key)) return;
-    await this.start(projectId, specId).catch((err) => {
-      this.autoStartFailed.add(key);
-      console.error(`auto start ${projectId}/${specId}: ${err instanceof Error ? err.message : String(err)}`);
-    });
+    const session = await this.get(projectId, specId);
+    const st = session.state;
+    if (!st.backlog?.enabled || !st.backlog.detail || st.stale || st.status !== 'ready' || st.autoStartFailure?.cycle === st.cycle) return;
+    await this.start(projectId, specId).catch((err) => session.failAutoStart(err instanceof Error ? err.message : String(err)));
   }
 
   /** One reconciliation of every backlog program, started or ready to start: the UI server calls it on a timer and once at boot. */

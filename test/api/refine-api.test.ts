@@ -317,7 +317,10 @@ describe('refine api', () => {
     await registry.tickPrograms();
     await registry.tickPrograms();
     expect(spawns).toHaveLength(1);
-    expect((await snapshot()).state.status).toBe('ready');
+    const failed = (await snapshot()).state;
+    expect(failed.status).toBe('ready');
+    // The reason is on the journal, so the screen shows it and a restarted server does not try again in this cycle either.
+    expect(failed.autoStartFailure).toMatchObject({ cycle: failed.cycle, reason: expect.stringMatching(/nenhuma run/) });
     spawnShouldFail = false;
     await registry.tickPrograms();
     expect(spawns).toHaveLength(1);

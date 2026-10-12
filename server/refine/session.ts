@@ -428,6 +428,11 @@ export class RefineSession {
     await this.journal.fact(RefineEvent.StartedRun, { runId });
   }
 
+  /** Records why the program did not start by itself in this cycle, for the screen and for the next tick. */
+  async failAutoStart(reason: string): Promise<void> {
+    await this.journal.fact(RefineEvent.AutoStartFailed, { cycle: this.journal.state.cycle, reason });
+  }
+
   /** The spawned run died before writing its journal (e.g. a precondition failed); undo the `starting` lock so the session can retry. */
   failStart(): void {
     this.starting = false;
