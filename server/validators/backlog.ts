@@ -1,5 +1,6 @@
-import type { Backlog, BACKLOG_DOCS, BacklogItem, Priority } from '../contracts/backlog.js';
+import type { Backlog, BacklogItem, Priority } from '../contracts/backlog.js';
 import { itemCites } from '../refine/coverage.js';
+import type { BacklogDocs } from '../refine/details.js';
 import { onlySubsections, resolveHeading } from '../refine/sections.js';
 import { findCycle } from '../contracts/plan.js';
 
@@ -25,11 +26,8 @@ export function flowHeadings(flow: string): string[] {
   return out;
 }
 
-/**
- * Deterministic rules on a derived backlog; the agent gets the messages back when it breaks one. `docs` are the five docs
- * by the names items cite, and `frozen` the keys of started items, whose sources stay as they were.
- */
-export function validateBacklog(backlog: Backlog, opts: { flowHeadings: readonly string[]; docs?: Partial<Record<(typeof BACKLOG_DOCS)[number], string>>; frozen?: ReadonlySet<string> }): string[] {
+/** Deterministic rules on a derived backlog, against the docs by the names items cite; the agent gets the messages back when it breaks one. */
+export function validateBacklog(backlog: Backlog, opts: { flowHeadings: readonly string[]; docs: Partial<BacklogDocs>; frozen?: ReadonlySet<string> }): string[] {
   const errors: string[] = [];
   if (backlog.items.length > MAX_ITEMS) errors.push(`o backlog tem ${backlog.items.length} itens; o máximo é ${MAX_ITEMS}`);
   const epics = new Set<string>();
@@ -69,10 +67,11 @@ export function validateBacklog(backlog: Backlog, opts: { flowHeadings: readonly
     }
   }
   // R11.10: a section made only of sub-sections is cited through the ones an item needs, so a new decision re-derives only its items.
+  // A started item (`frozen`) is never checked, and neither is flow.md, whose every heading the coverage rule above asks for.
   for (const i of backlog.items) {
     if (opts.frozen?.has(i.key)) continue;
-    for (const s of i.sources) {
-      const subs = onlySubsections(opts.docs?.[s.doc] ?? '', s.heading);
+    for (const s of i.sources.filter((s) => s.doc !== 'flow.md')) {
+      const subs = onlySubsections(opts.docs[s.doc] ?? '', s.heading);
       if (subs) errors.push(`item ${i.key} cita ${s.doc} › "${s.heading}", uma seção feita só de subseções; cite as de que o item precisa: ${subs.map((h) => `"${h}"`).join(', ')}`);
     }
   }

@@ -6,8 +6,8 @@ import { approvalKey, sectionText, withoutApprovals } from './sections.js';
 /** The target project's five docs by the names backlog items cite them with. */
 export type BacklogDocs = Record<(typeof BACKLOG_DOCS)[number], string>;
 
-/** Bumped when what goes into a hash changes, so every item is re-derived once. */
-const HASH_VERSION = 3;
+/** Bumped when the rules a spec or pre-plan follows change while its inputs stay the same, so every item is re-derived once. */
+const HASH_VERSION = 2;
 
 /** briefing.md's approval sections count only for themselves, so accepting one changes no other cited section (R11.7.4). */
 const cited = (item: Pick<BacklogItem, 'sources'>, docs: BacklogDocs) =>

@@ -14,12 +14,13 @@ const RULES = [
   '- A spec is the smallest deliverable one run can ship and test end to end: a vertical slice of one capability (one application with bounded contexts as internal modules, or the services the docs name, each in its own repository; a spec may change several of them). Not a single task, not a whole product area.',
   '- Every item cites where it comes from in `sources`: `doc` is one of project.md, briefing.md, stack.md, flow.md, design.md and `heading` is the exact heading text (for flow.md its headings or numbered sections, such as "2. Checkout"). Every numbered or headed section of flow.md must be cited by at least one item; a section may feed several items.',
   '- Cite the narrowest sections: a section that holds only sub-sections (such as `## Decisões`, one `###` heading per decision) is cited through the sub-sections the item needs, never whole; an item cites every decision that changes what it delivers.',
+  '- An item marked `started` keeps its sources exactly as they are, broad ones included: only re-point a heading that was renamed or renumbered.',
   '- priority: P0 = walking skeleton and the foundations everything else needs; P1 = the core value flow; P2 = important, can follow; P3 = later or optional. `rationale` says why in one sentence (value, risk, dependency).',
   '- dependsOn lists the keys an item cannot ship without. A dependency is never lower priority than its dependent, there are no cycles, and there are at most 60 items.',
   '- Treat any explicit priority, cut, merge or split instruction written in the docs (above all briefing.md) as binding.',
   '- key: a short slug. Keep the key of every item that still exists in the previous backlog so the ids derived from them stay stable.',
   '- Never write an item whose key ends in -ajuste-<n>: the orchestrator adds one, after its original, for each "## Ajuste aprovado:" section of briefing.md.',
-  '- When the sections an item cites did not change, keep its title, scope and sources verbatim from the previous backlog: a reworded item has its spec and pre-plan derived again.',
+  '- When the sections an item cites did not change, keep its title, scope and sources verbatim from the previous backlog, adding only the citation of each new decision that changes what it delivers: a reworded item has its spec and pre-plan derived again.',
   'Also return `project`: the project.json derived from project.md and stack.md, exactly as in a normal derivation (with `services` and `platform` when the docs give them).',
 ].join('\n');
 
@@ -35,8 +36,11 @@ export function backlogPack(input: {
   jevValidation?: JevValidationResult;
   /** What the validators rejected in the last attempt of this cycle. */
   rejection?: readonly string[];
+  /** Keys of the items whose spec started or was delivered (R11.7.5), shown as `started` so their sources stay put. */
+  started?: readonly string[];
 }): ContextPackInput {
-  const previous = input.previous?.items.length ? JSON.stringify({ epics: input.previous.epics, items: input.previous.items.map((i) => ({ key: i.key, title: i.title, epic: i.epic, priority: i.priority, scope: i.scope, sources: i.sources })) }, null, 2) : '(none)';
+  const started = new Set(input.started);
+  const previous = input.previous?.items.length ? JSON.stringify({ epics: input.previous.epics, items: input.previous.items.map((i) => ({ key: i.key, title: i.title, epic: i.epic, priority: i.priority, scope: i.scope, sources: i.sources, ...(started.has(i.key) ? { started: true } : {}) })) }, null, 2) : '(none)';
   const feedback = [
     RULES,
     '### docs/project.md',

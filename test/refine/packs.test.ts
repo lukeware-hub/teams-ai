@@ -64,6 +64,9 @@ describe('refinePack', () => {
     expect(pack.feedback).toContain('Backlog mode');
     // R11.10 (plan 87): one heading per decision, so each item cites only the decisions it needs.
     expect(pack.feedback).toContain('its own `### <subject>` heading under the `## Decisões` section of docs/briefing.md');
+    // Plan 87 review: an older list of decisions saves nothing until each line is a heading; the Front never records one.
+    expect(pack.feedback).toContain('turn each of its lines into its own heading in the same patch');
+    expect(refinePack({ ...base, role: 'front', derived: { project: {}, spec: null }, backlog, projectBriefing: true } as never).feedback).not.toContain('## Decisões');
     expect(pack.criteria).toEqual([]);
     expect(pack.objectives).toEqual(['Núcleo']);
     expect(refinePack({ ...base, role: 'po' }).feedback).not.toContain('Backlog mode');

@@ -33,6 +33,15 @@ describe('backlogPack', () => {
     expect(pack.feedback).not.toContain('brief.md');
   });
 
+  // Plan 87 review: narrowing a started item's citations reads as a change and asks the owner for an adjustment (R11.7.4).
+  it('marks the started items, which keep their sources, and lets a new decision reach an item', () => {
+    const pack = backlogPack(input({ previous: previous([item('base'), item('casos')]), started: ['casos'] }));
+    const shown = JSON.parse(String(pack.feedback).split('### previous backlog (keep the keys)\n\n')[1]!.split('\n\n### ')[0]!) as { items: Array<{ key: string; started?: boolean }> };
+    expect(shown.items.map((i) => [i.key, i.started])).toEqual([['base', undefined], ['casos', true]]);
+    expect(pack.feedback).toContain('An item marked `started` keeps its sources');
+    expect(pack.feedback).toContain('adding only the citation of each new decision that changes what it delivers');
+  });
+
   it('lists the previous keys so they stay stable, and the last rejection when there is one', () => {
     const pack = backlogPack(input({ previous: previous([item('base'), item('casos')]), rejection: ['chave reservada: primary'] }));
     expect(pack.feedback).toContain('"base"');

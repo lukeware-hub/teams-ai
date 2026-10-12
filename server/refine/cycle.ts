@@ -160,7 +160,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           {
             kind: 'backlog',
             role: 'po',
-            pack: fitPackBudget(backlogPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, jevValidation, rejection })),
+            pack: fitPackBudget(backlogPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, jevValidation, rejection, started: started.map((i) => i.key) })),
             cwd: draft.root,
             phase: 'refine',
             taskId: null,

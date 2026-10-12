@@ -86,9 +86,12 @@ describe('sectionText', () => {
 describe('onlySubsections', () => {
   const briefing = ['# Briefing', '', '## Objetivos', '', '- agendar', '', '## Decisões', '', '### Prazo de devolução', '', '15 dias.', '', '### Multa', '', 'R$ 2 por dia.', '', '## Lista antiga', '', '- decisão 1', '', '### Nova', '', 'texto'].join('\n');
 
-  it('lists the citable sub-sections of a section that holds nothing else, never another such section', () => {
+  it('lists the widest citable sub-sections of a section that holds nothing else, never an approval', () => {
     expect(onlySubsections(briefing, 'Decisões')).toEqual(['Prazo de devolução', 'Multa']);
-    expect(onlySubsections(briefing, 'Briefing')).toEqual(['Objetivos', 'Prazo de devolução', 'Multa', 'Lista antiga', 'Nova']);
+    // "Nova" is inside "Lista antiga", which already carries it.
+    const approved = `${briefing}\n\n## Ajuste aprovado: opme-ajuste-1\n\nok`;
+    expect(onlySubsections(approved, 'Briefing')).toEqual(['Objetivos', 'Prazo de devolução', 'Multa', 'Lista antiga']);
+    expect(onlySubsections('# Briefing\n\n## Ajuste aprovado: opme-ajuste-1\n\nok', 'Briefing')).toBeNull();
   });
 
   it('gives null for a section with text of its own, one with no sub-sections and a heading the doc lacks', () => {

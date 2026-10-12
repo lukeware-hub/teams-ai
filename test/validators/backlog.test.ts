@@ -15,7 +15,7 @@ const item = (key: string, over: Partial<BacklogItem> = {}): BacklogItem => ({
   ...over,
 });
 const backlog = (items: BacklogItem[], epics = [{ key: 'core', title: 'Core' }]): Backlog => ({ epics, items });
-const check = (b: Backlog, headings: string[] = []) => validateBacklog(b, { flowHeadings: headings });
+const check = (b: Backlog, headings: string[] = []) => validateBacklog(b, { flowHeadings: headings, docs: {} });
 
 describe('validateBacklog', () => {
   // R11.10 (plan 87): a section made only of sub-sections is cited through the ones an item needs, so a decision re-derives only its items.
@@ -24,6 +24,13 @@ describe('validateBacklog', () => {
     const b = backlog([item('a', { sources: [{ doc: 'briefing.md', heading: 'Decisões' }] }), item('b', { sources: [{ doc: 'briefing.md', heading: 'Multa' }, { doc: 'briefing.md', heading: 'Lista antiga' }] })]);
     expect(validateBacklog(b, { flowHeadings: [], docs })).toEqual(['item a cita briefing.md › "Decisões", uma seção feita só de subseções; cite as de que o item precisa: "Prazo de devolução", "Multa"']);
     expect(validateBacklog(b, { flowHeadings: [], docs, frozen: new Set(['a']) })).toEqual([]);
+  });
+
+  // Plan 87 review: the coverage rule asks for every flow.md heading, a container included, so the new rule leaves flow.md out.
+  it('accepts a flow.md section made only of sub-sections, which the coverage rule asks every outline to cite', () => {
+    const flow = '# Fluxo\n\n## Jornadas\n\n### 1. Cadastro\n\nx\n\n### 2. Agendamento\n\ny\n';
+    const b = backlog([item('cad', { sources: [{ doc: 'flow.md', heading: 'Jornadas' }, { doc: 'flow.md', heading: '1. Cadastro' }] }), item('ag', { sources: [{ doc: 'flow.md', heading: '2. Agendamento' }] })]);
+    expect(validateBacklog(b, { flowHeadings: flowHeadings(flow), docs: { 'flow.md': flow } })).toEqual([]);
   });
 
   it('rejects a key that is another key plus a branch suffix, since both specs would share that docs branch', () => {

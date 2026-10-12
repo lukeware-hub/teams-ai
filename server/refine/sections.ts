@@ -114,13 +114,17 @@ function isContainer(text: string): boolean {
 }
 
 /**
- * R11.10: when the section a citation names holds only sub-sections, the ones an item can cite instead, so a change to one
- * re-derives only the items citing it; null when the section has text of its own, no sub-section, or is missing.
+ * R11.10: when the section a citation names holds only sub-sections, the widest ones an item can cite instead, approvals
+ * aside, so a change to one re-derives only the items citing it; null when the section has text of its own or none to cite.
  */
 export function onlySubsections(doc: string, heading: string): string[] | null {
   const text = sectionText(doc, heading);
   if (text === null || !isContainer(text)) return null;
-  return docSections(text).slice(1).filter((s) => !isContainer(s.text)).map((s) => s.heading);
+  const citable: DocSection[] = [];
+  for (const s of docSections(text).slice(1)) {
+    if (!isContainer(s.text) && !approvalKey(s.heading) && !citable.some((c) => c.text.includes(s.text))) citable.push(s);
+  }
+  return citable.length > 0 ? citable.map((s) => s.heading) : null;
 }
 
 /** R11.7.4: the owner approves an adjustment with a section headed `Ajuste aprovado: <key>-ajuste-<n>`. */

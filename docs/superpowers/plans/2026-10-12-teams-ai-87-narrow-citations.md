@@ -12,10 +12,11 @@
 
 ## Design decisions
 
-- The validator refuses only a citation of a section that holds nothing but sub-sections, so a section with text of its own, such as an older list of decisions, stays citable and no existing draft gets stuck.
-- The refusal lists the sub-headings to cite, so the PO fixes it in the outline's one retry.
-- Items whose spec started or was delivered keep their sources as they are (R11.7.5), so the new rule never checks them.
-- `HASH_VERSION` goes to 3, since the spec hash changes for every item: each draft derives its specs again once, the cost of the change.
+- The validator refuses only a citation of a section that holds nothing but sub-sections, so a section with text of its own, such as an older list of decisions, stays citable; flow.md is left out, since the coverage rule asks for every one of its headings.
+- The refusal lists the widest sub-sections an item can cite, approvals aside, so the PO fixes it in the outline's one retry.
+- The outline pack marks the items whose spec started or was delivered as `started`, and the rules ask to keep their sources, because narrowing them reads as a change and asks the owner for an adjustment (R11.7.4); the validator never checks them.
+- The outline keeps an item's sources verbatim when its sections did not change, adding only the citation of each new decision that changes it, and the decision rule asks to turn an older list of decisions into headings in the same patch.
+- `HASH_VERSION` stays 2: leaving `dependsOn` out already changes every spec hash, so each draft derives its specs again once, while the pre-plan hashes stay the same.
 - The spec pack still shows the item's dependencies, which help the PO keep scopes apart; only the hash ignores them.
 
 ## Global Constraints
@@ -29,14 +30,16 @@
 
 1. A dependency the outline adds or removes re-derives the item's pre-plan and never its spec.
 2. An outline that cites a section made only of sub-sections goes back to the PO with the sub-headings, and the retry that cites them passes.
-3. A section with text of its own above its sub-sections, a section with no sub-sections, and every citation of a started item stay accepted.
+3. A section with text of its own above its sub-sections, a section with no sub-sections, every flow.md citation and every citation of a started item stay accepted.
 4. The review packs ask for each decision as its own heading under `## Decisões`, and the outline rules ask for the narrowest citations.
 
 ## Limits
 
 - The policy cannot force the agents to write decisions as headings: a decision written as one more line of a list still re-derives every item that cites the list.
 - A started or delivered spec that cites a broad section still asks for an adjustment whenever that section changes (R11.7.4).
-- A spec whose dependencies changed keeps any text that mentions the old ones until its own sources change.
+- A `## Decisões` section that still holds lines of decisions saves nothing until those lines become headings, and turning them into headings re-derives once every item that cites the section and asks an adjustment for each started spec citing it.
+- A new decision reaches an item only when the outline adds its citation, so an outline that misses it leaves the spec without that decision until a review notices.
+- A spec is not derived again when its dependencies change, so it may still repeat the scope of a dependency added later until its own sources change.
 - The stop rule, the outline that judges structure only and the criteria verified through what an item and its dependencies deliver are the next slices of R11.10.
 
 ---
@@ -49,7 +52,7 @@
 
 - [ ] **Step 1: Write the failing tests:** `specInputHash` ignores `dependsOn` while `preplanInputHash` follows it; in the detailing loop, a dependency the outline adds re-derives that item's pre-plan and no spec.
 - [ ] **Step 2: Run** them and see them fail.
-- [ ] **Step 3: Implement:** drop `dependsOn` from the spec hash and set `HASH_VERSION` to 3.
+- [ ] **Step 3: Implement:** drop `dependsOn` from the spec hash.
 - [ ] **Step 4: Run** the refine tests, then commit.
 
 ### Task 2: Narrow citations
