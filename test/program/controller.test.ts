@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { newProgram, prioritizeItem, retryItem, tick, type Program, type ProgramEffects, type RunOutcome } from '../../server/program/controller.js';
+import { MAX_REPAIRS, newProgram, prioritizeItem, retryItem, tick, type Program, type ProgramEffects, type RunOutcome } from '../../server/program/controller.js';
 
 const entry = (key: string, rank: number, dependsOn: string[] = []) => ({ specId: `d-${key}`, key, rank, dependsOn: dependsOn.map((k) => `d-${k}`) });
 const NOW = new Date('2026-10-07T12:00:00Z');
 
 /** Effects over an in-memory world: runs are created by startRun and answer whatever the test scripted. */
-function world(outcomes: Record<string, RunOutcome | RunOutcome[]> = {}) {
+function world(outcomes: Record<string, RunOutcome | RunOutcome[]> = {}, repair?: ProgramEffects['repair']) {
   const calls: string[] = [];
   let n = 0;
   const active = new Map<string, string>();
@@ -27,6 +27,7 @@ function world(outcomes: Record<string, RunOutcome | RunOutcome[]> = {}) {
       const o = outcomes[runId] ?? { kind: 'running' };
       return Array.isArray(o) ? (o.length > 1 ? o.shift()! : o[0]!) : o;
     },
+    repair,
   };
   return { fx, calls, active };
 }
@@ -238,14 +239,64 @@ describe('program controller', () => {
     expect(p.status).toBe('running');
   });
 
+  // R11.14: a failed delivering run is repaired a bounded number of times before the owner is asked.
+  it('runs a failed item again with its failures, keeps its dependents waiting and its cost, and fails it after the bound', async () => {
+    const seen: string[][] = [];
+    const { fx, calls } = world(
+      {
+        'd-a-r1': { kind: 'failed', reason: 'one', costUsd: 1 },
+        'd-a-r2': { kind: 'failed', reason: 'two', costUsd: 2 },
+        'd-a-r3': { kind: 'failed', reason: 'three', costUsd: 3 },
+      },
+      async (_specId, failures) => (seen.push([...failures]), true),
+    );
+    let p = newProgram('d', [entry('a', 1), entry('b', 2, ['a'])], NOW);
+    p = await tick(p, fx, save);
+    p = await tick(p, fx, save);
+    expect(status(p)).toEqual({ a: 'running', b: 'pending' });
+    expect(p.items[0]).toMatchObject({ runId: 'd-a-r2', repairs: 1, failures: ['one'], costUsd: 1 });
+    p = await tick(p, fx, save);
+    expect(p.items[0]).toMatchObject({ runId: 'd-a-r3', repairs: 2, failures: ['one', 'two'], costUsd: 3 });
+    p = await tick(p, fx, save);
+    expect(status(p)).toEqual({ a: 'failed', b: 'blocked' });
+    expect(p.items[0]!.reason).toBe(`three; ${MAX_REPAIRS} reparo(s) automático(s) não resolveram`);
+    expect(p.items[0]!.costUsd).toBe(6);
+    expect(seen).toEqual([['one'], ['one', 'two']]);
+    expect(calls).toEqual(['start d-a', 'start d-a', 'start d-a']);
+  });
+
+  it('fails at once when the repair says no, and never repairs without the effect', async () => {
+    const refused = world({ 'd-a-r1': { kind: 'failed', reason: 'criteria contradict' } }, async () => false);
+    let p = await tick(newProgram('d', [entry('a', 1)], NOW), refused.fx, save);
+    p = await tick(p, refused.fx, save);
+    expect(p.items[0]).toMatchObject({ status: 'failed', reason: 'criteria contradict' });
+    expect(p.items[0]!.repairs).toBeUndefined();
+    const plain = world({ 'd-a-r1': { kind: 'failed', reason: 'x' } });
+    let q = await tick(newProgram('d', [entry('a', 1)], NOW), plain.fx, save);
+    q = await tick(q, plain.fx, save);
+    expect(q.items[0]!.status).toBe('failed');
+  });
+
+  it('does not repair a failed completion, and a classification that throws counts as no repair', async () => {
+    const { fx } = world({ 'd-a-r1': { kind: 'delivered' }, 'd-a-complete-r1': { kind: 'failed', reason: 'merge' } }, async () => true);
+    let p = await tick(newProgram('d', [entry('a', 1)], NOW), fx, save);
+    for (let i = 0; i < 3; i++) p = await tick(p, fx, save);
+    expect(p.items[0]).toMatchObject({ status: 'failed', reason: 'completion failed: merge' });
+    const broken = world({ 'd-a-r1': { kind: 'failed', reason: 'x' } }, async () => { throw new Error('down'); });
+    let q = await tick(newProgram('d', [entry('a', 1)], NOW), broken.fx, save);
+    q = await tick(q, broken.fx, save);
+    expect(q.items[0]!.status).toBe('failed');
+  });
+
   it('retryItem clears a failed item back to pending and un-blocks its dependents, so the next tick gives it another try', () => {
     let p = newProgram('d', [entry('a', 1), entry('b', 2, ['a']), entry('c', 3)], NOW);
-    p.items[0] = { ...p.items[0]!, status: 'failed', reason: 'verification-failed: AC-003', runId: 'd-a-r1', finishedAt: NOW.toISOString() };
+    p.items[0] = { ...p.items[0]!, status: 'failed', reason: 'verification-failed: AC-003', runId: 'd-a-r1', finishedAt: NOW.toISOString(), repairs: 2, failures: ['a', 'b'] };
     p.items[1] = { ...p.items[1]!, status: 'blocked', reason: 'depends on a, which failed', finishedAt: NOW.toISOString() };
     p.items[2] = { ...p.items[2]!, status: 'done' };
     p.status = 'finished';
     const retried = retryItem(p, 'd-a', new Date('2026-10-07T15:00:00Z'));
     expect(retried.items[0]).toMatchObject({ status: 'pending', reason: null, runId: null, finishedAt: null });
+    expect(retried.items[0]).toMatchObject({ repairs: 0, failures: [] });
     expect(retried.items[1]).toMatchObject({ status: 'pending', reason: null });
     expect(retried.items[2].status).toBe('done'); // a finished item never resets just because something else retries
     expect(retried.status).toBe('running');
