@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { Config } from '../config/config.js';
 import { parseRunId, runIdOf, stepId, type RunKind } from '../core/ids.js';
 import { processAlive } from '../core/process.js';
-import { loadEvents } from '../store/event-store.js';
+import { loadEvents, type StoredEvent } from '../store/event-store.js';
 import { OrchEvent } from './events.js';
 
 export interface Workspace {
@@ -158,13 +158,8 @@ async function lockHeld(lockFile: string): Promise<boolean> {
  * only ever names what that attempt itself merged.
  */
 export async function mergedByPriorRuns(ws: Workspace, specId: string, runId: string): Promise<Set<string>> {
-  const mine = specRuns([runId], ws.projectId, specId)[0]?.n ?? Infinity;
   const merged = new Set<string>();
-  for (const { name, n } of specRuns(await fs.readdir(ws.runs).catch(() => [] as string[]), ws.projectId, specId)) {
-    if (n >= mine) continue;
-    const events = await loadEvents(eventsFile(ws, name)).catch(() => []);
-    const started = events.find((e) => e.type === OrchEvent.RunStarted);
-    if (started !== undefined && started.data.projectId !== ws.projectId) continue; // run numbers are shared across projects with the same spec id
+  for (const events of await priorRunEvents(ws, specId, runId)) {
     const finished = [...events].reverse().find((e) => e.type === OrchEvent.RunFinished);
     // A T900-fix-* task answers one verification attempt's own findings (Phase 4 plans it fresh every round already,
     // within a run); carrying it into a retry as "already done" would stop a later attempt from ever replanning a
@@ -179,6 +174,20 @@ export async function mergedByPriorRuns(ws: Workspace, specId: string, runId: st
     }
   }
   return merged;
+}
+
+/** The journals of every earlier run of this spec in this project, oldest first. */
+export async function priorRunEvents(ws: Workspace, specId: string, runId: string): Promise<StoredEvent[][]> {
+  const mine = specRuns([runId], ws.projectId, specId)[0]?.n ?? Infinity;
+  const out: StoredEvent[][] = [];
+  for (const { name, n } of specRuns(await fs.readdir(ws.runs).catch(() => [] as string[]), ws.projectId, specId).sort((a, b) => a.n - b.n)) {
+    if (n >= mine) continue;
+    const events = await loadEvents(eventsFile(ws, name)).catch(() => []);
+    const started = events.find((e) => e.type === OrchEvent.RunStarted);
+    if (started !== undefined && started.data.projectId !== ws.projectId) continue; // run numbers are shared across projects with the same spec id
+    out.push(events);
+  }
+  return out;
 }
 
 /**

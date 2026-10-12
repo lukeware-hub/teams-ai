@@ -117,7 +117,7 @@ export async function reconcile(deps: ReconcileDeps): Promise<ReconcileReport> {
         const taskId = String(d.taskId);
         await deps.afterMerge(taskId, branch);
         const handoff = journal.handoffs().find((h) => h.taskId === taskId) ?? null;
-        await journal.fact(OrchEvent.PrMerged, { taskId, pr: number, sha: null, already: true, warning: null, handoff });
+        await journal.fact(OrchEvent.PrMerged, { taskId, pr: number, sha: null, already: true, warning: null, handoff, branch });
         const task = journal.state.tasks.get(taskId);
         if (task && task.state === 'rebasing') await journal.fact(RunEvent.TaskStateChanged, { taskId, to: 'merging' });
         if (task && (task.state === 'merging' || task.state === 'rebasing')) await journal.fact(RunEvent.TaskStateChanged, { taskId, to: 'merged' });

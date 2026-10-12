@@ -9,6 +9,7 @@ import { validateDocs } from '../../validators/docs.js';
 import { reportPack } from '../steps.js';
 import { commitAndMergeDocs, currentDocs, freshDocsWorktree, pauseForFailure, specDir, PAUSED_AUTH, type PhaseDeps } from './shared.js';
 import { serviceLinks } from '../../deploy/service-links.js';
+import { priorRunEvents } from '../workspace.js';
 
 /** One service of a services run, as Phase 5 verified it. */
 export interface ReportService { service: string; url: string; healthcheck: string; port?: number; healthcheckPath?: string; kind?: 'api' | 'front'; docsPath?: string }
@@ -34,7 +35,9 @@ export function blockReason(events: readonly { type: string; data: Record<string
 /** Every pull request the run opened, once each; the repository comes from the URL, since a services run spans several. */
 export function runPrs(events: readonly { type: string; data: Record<string, unknown> }[], specId: string): ReportPr[] {
   const prefix = `task/${specId}-`;
-  const merged = new Set(events.flatMap((e) => (e.type === OrchEvent.PrMerged ? [`${prefix}${String(e.data.taskId)}#${String(e.data.pr)}`] : e.type === OrchEvent.DocsMerged ? [`${String(e.data.branch)}#${String(e.data.pr)}`] : [])));
+  // A merge recovered after a crash names its branch, which is the only way to tell a docs pull request's.
+  const branchOf = (e: { data: Record<string, unknown> }) => (typeof e.data.branch === 'string' ? e.data.branch : `${prefix}${String(e.data.taskId)}`);
+  const merged = new Set(events.flatMap((e) => (e.type === OrchEvent.PrMerged || e.type === OrchEvent.DocsMerged ? [`${branchOf(e)}#${String(e.data.pr)}`] : [])));
   const prs = new Map<string, ReportPr>();
   for (const e of events) {
     if (e.type !== OrchEvent.PrCreated) continue;
@@ -67,7 +70,9 @@ export async function runPhase6(deps: Phase6Deps): Promise<{ ok: boolean; report
   const events = deps.journal.events; const last = (t: string) => [...events].reverse().find((e) => e.type === t);
   const ve = [...events].reverse().find((e) => e.type === OrchEvent.VerificationPassed || e.type === OrchEvent.VerificationFailed);
   const dv = last(OrchEvent.DeployVerified); const failures = events.filter((e) => e.type === OrchEvent.DeployFailed);
-  const base = { runId: deps.runId, specId: deps.spec.specId, specHash: deps.specHash, result: deps.result, service: dv ? { url: String(dv.data.url), healthcheck: String(dv.data.healthcheck), smoke: dv.data.smoke as SmokeRow[], ...(dv.data.e2e ? { e2e: dv.data.e2e as E2eRow[] } : {}), ...(typeof dv.data.port === 'number' ? { port: dv.data.port } : {}), ...(typeof dv.data.healthcheckPath === 'string' ? { healthcheckPath: dv.data.healthcheckPath } : {}), ...(dv.data.kind === 'api' || dv.data.kind === 'front' ? { kind: dv.data.kind as 'api' | 'front' } : {}), ...(typeof dv.data.docsPath === 'string' ? { docsPath: dv.data.docsPath } : {}) } : null, ...(Array.isArray(dv?.data.services) ? { services: dv!.data.services as ReportService[] } : {}), deploy: { attempts: failures.length || (dv ? Number(dv.data.attempt) : 0), lastFailure: failures.at(-1)?.data ?? null }, evidence: attachE2e((ve?.data.matrix as EvidenceRow[] | undefined) ?? [], dv?.data.e2e as E2eRow[] | undefined), delivered: [...deps.journal.state.tasks.values()].filter((t) => t.state === 'merged').map((t) => t.def.id), blocked: [...deps.journal.state.tasks.values()].filter((t) => t.state === 'blocked').map((t) => ({ taskId: t.def.id, reason: blockReason(events, t.def.id) })), assumptions: deps.journal.assumptions(), securityFindings: securityFindings(events), prs: runPrs(events, deps.spec.specId), tokens: tokensOf(deps.accounting) };
+  // report.json belongs to the spec, so it lists the pull requests of the earlier runs this one went on from.
+  const earlier = (await priorRunEvents(deps.ws, deps.spec.specId, deps.runId)).flat();
+  const base = { runId: deps.runId, specId: deps.spec.specId, specHash: deps.specHash, result: deps.result, service: dv ? { url: String(dv.data.url), healthcheck: String(dv.data.healthcheck), smoke: dv.data.smoke as SmokeRow[], ...(dv.data.e2e ? { e2e: dv.data.e2e as E2eRow[] } : {}), ...(typeof dv.data.port === 'number' ? { port: dv.data.port } : {}), ...(typeof dv.data.healthcheckPath === 'string' ? { healthcheckPath: dv.data.healthcheckPath } : {}), ...(dv.data.kind === 'api' || dv.data.kind === 'front' ? { kind: dv.data.kind as 'api' | 'front' } : {}), ...(typeof dv.data.docsPath === 'string' ? { docsPath: dv.data.docsPath } : {}) } : null, ...(Array.isArray(dv?.data.services) ? { services: dv!.data.services as ReportService[] } : {}), deploy: { attempts: failures.length || (dv ? Number(dv.data.attempt) : 0), lastFailure: failures.at(-1)?.data ?? null }, evidence: attachE2e((ve?.data.matrix as EvidenceRow[] | undefined) ?? [], dv?.data.e2e as E2eRow[] | undefined), delivered: [...deps.journal.state.tasks.values()].filter((t) => t.state === 'merged').map((t) => t.def.id), blocked: [...deps.journal.state.tasks.values()].filter((t) => t.state === 'blocked').map((t) => ({ taskId: t.def.id, reason: blockReason(events, t.def.id) })), assumptions: deps.journal.assumptions(), securityFindings: securityFindings(events), prs: runPrs([...earlier, ...events], deps.spec.specId), tokens: tokensOf(deps.accounting) };
   // The step works in the docs worktree, a checkout of main, so it can read whole any document the pack cuts.
   const branch = `docs/${deps.spec.specId}-report`; const wt = await freshDocsWorktree(deps, branch, 6); const current = await currentDocs(wt);
   let script: Report['exploratoryScript'] = []; let summary = ''; let readme = ''; let runbook = ''; let apiDocs = ''; let error = ''; let docsErrors: string[] = []; let docsOk = false;

@@ -21,4 +21,13 @@ describe('report pull requests', () => {
       { task: 'T5-document-cancel-event', branch: 'task/cancelar-pedido-T5-document-cancel-event', number: 9, url: 'https://github.com/o/loja-eventos-estoque/pull/9', repository: 'o/loja-eventos-estoque', merged: false },
     ]);
   });
+
+  it('counts a docs pull request merged when a crash left only the recovered merge, which names its branch', () => {
+    const events = [
+      { type: OrchEvent.PrCreated, data: { branch: 'docs/cancelar-pedido-plan', number: 7, url: 'https://github.com/o/loja-eventos/pull/7', created: true } },
+      // The recovery after a crash between the merge and its confirm journals the merge with no task.
+      { type: OrchEvent.PrMerged, data: { taskId: 'null', pr: 7, branch: 'docs/cancelar-pedido-plan', already: true } },
+    ];
+    expect(runPrs(events, 'cancelar-pedido').map((p) => [p.branch, p.merged])).toEqual([['docs/cancelar-pedido-plan', true]]);
+  });
 });

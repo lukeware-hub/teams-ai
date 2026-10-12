@@ -151,6 +151,18 @@ describe('Phase 6 documentation gate', () => {
     expect(JSON.parse(await git(remote.repo, ['show', 'origin/main:docs/specs/spec-001/report.json'], execCommand)).prs).toHaveLength(1);
   });
 
+  it('keeps in report.json the pull requests an earlier run of the spec merged', async () => {
+    // An earlier run merged the technical spec, then stopped; this run went on from there.
+    const earlier = await Journal.open({ file: path.join(remote.root, 'shop--spec-001--run-1', 'events.ndjson'), runId: 'shop--spec-001--run-1', specHash: HASH });
+    await earlier.fact(OrchEvent.RunStarted, { runId: 'shop--spec-001--run-1', specId: 'spec-001', projectId: 'shop', firstSpec: true });
+    await earlier.fact(OrchEvent.PrCreated, { branch: 'docs/spec-001', number: 1, url: 'https://github.com/o/shop/pull/1', created: true });
+    await earlier.fact(OrchEvent.DocsMerged, { phase: 1, pr: 1, branch: 'docs/spec-001' });
+    await earlier.close();
+    await journal.fact(OrchEvent.PrCreated, { branch: 'task/spec-001-T1', number: 4, url: 'https://github.com/o/shop/pull/4', created: true });
+    const r = await p6(async () => report(GOOD));
+    expect(r.report.prs.map((p) => [p.number, p.merged])).toEqual([[1, true], [4, false]]);
+  });
+
   it('starts the docs worktree again from main after a failed report, so the next run sees what other specs merged since', async () => {
     expect((await p6(async () => report({ readme: '# App', runbook: GOOD.runbook }))).ok).toBe(false);
     await mainWrites({ 'docs/API.md': '# API\n\n### POST /orders\n' });

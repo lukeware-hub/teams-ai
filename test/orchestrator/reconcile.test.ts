@@ -102,7 +102,7 @@ describe('reconcile', () => {
     expect(r.confirmed).toEqual([intentId(Intent.PrMerge, BRANCH)]);
     expect(afterMergeCalls).toEqual([`T1:${BRANCH}`]);
     expect(journal.state.tasks.get('T1')!.state).toBe('merged');
-    expect(journal.events.find((e) => e.type === OrchEvent.PrMerged)!.data).toMatchObject({ taskId: 'T1', pr: 4, already: true });
+    expect(journal.events.find((e) => e.type === OrchEvent.PrMerged)!.data).toMatchObject({ taskId: 'T1', pr: 4, already: true, branch: BRANCH });
   });
 
   it("checks a service task's push, pull request and merge in the repository the intent names", async () => {
