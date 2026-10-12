@@ -59,6 +59,13 @@ export async function teardownProject(exec: Exec, projectId: string, services: r
   await exec({ bin: 'docker', args: ['network', 'rm', sharedNetwork(projectId)], timeoutMs: 30_000 }).catch(() => undefined);
 }
 
+/** A docker failure that opens with the last stderr line, where docker writes the cause, followed by the stderr's tail. */
+function dockerFailure(what: string, stderr: string): string {
+  const tail = stderr.slice(-2000);
+  const cause = stderr.split('\n').map((l) => l.trim()).filter((l) => l !== '').at(-1) ?? '';
+  return cause === tail.trim() ? `${what} failed: ${tail}` : `${what} failed: ${cause}\n${tail}`;
+}
+
 export class DockerLocalTarget implements DeployTarget {
   readonly name = 'docker-local' as const;
 
@@ -149,7 +156,7 @@ export class DockerLocalTarget implements DeployTarget {
     if (up.exitCode === 0) return { ok: true, detail: 'platform up' };
     // A platform that did not come up would restart forever, until the project is deleted.
     await this.docker(['compose', '-p', platformComposeProject(projectId), 'down'], undefined, 120_000);
-    return { ok: false, detail: `docker compose up failed: ${up.stderr.slice(-2000)}` };
+    return { ok: false, detail: dockerFailure('docker compose up', up.stderr) };
   }
 
   private docker(args: string[], env?: Record<string, string>, timeoutMs = 120_000) {
@@ -168,7 +175,7 @@ export class DockerLocalTarget implements DeployTarget {
   async build(intent: DeploymentIntent): Promise<void> {
     if (intent.compose) return; // `compose up --build` builds in apply
     const r = await this.docker(['build', '-t', imageRef(intent), intent.contextDir], undefined, TIMEOUT);
-    if (r.exitCode !== 0) throw new Error(`docker build failed: ${r.stderr.slice(-2000)}`);
+    if (r.exitCode !== 0) throw new Error(dockerFailure('docker build', r.stderr));
     const archive = archivePath(intent);
     if (archive) {
       await this.deps.exec({ bin: 'mkdir', args: ['-p', archive.slice(0, archive.lastIndexOf('/'))], timeoutMs: 60_000 });
@@ -229,7 +236,7 @@ export class DockerLocalTarget implements DeployTarget {
     const previous = await this.currentImage(intent);
     if (intent.compose) {
       const r = await this.compose(intent, ['up', '-d', '--build', '--wait'], imageRef(intent), TIMEOUT);
-      if (r.exitCode !== 0) throw new Error(`docker compose up failed: ${r.stderr.slice(-2000)}`);
+      if (r.exitCode !== 0) throw new Error(dockerFailure('docker compose up', r.stderr));
       // The image that ran before, even this very one: a failed redeploy restarts it and never tears it down with its data.
       return { previous };
     }

@@ -38,6 +38,16 @@ describe('DockerLocalTarget with a compose file', () => {
     await expect(mk(fake).apply(intent)).rejects.toThrow(/compose up failed: unhealthy/);
   });
 
+  it('opens a docker failure with the last line of its stderr, where docker writes the cause', async () => {
+    const stderr = '#0 building with "default" instance using docker driver\n#1 [internal] load build definition\nERROR: failed to solve: npm ci did not complete successfully\n';
+    const fake = new FakeExec().on((s) => s.args.includes('up') || s.args[0] === 'build', () => ({ exitCode: 1, stderr }));
+    const up = await mk(fake).apply(intent).catch((e: Error) => e.message);
+    expect(String(up).split('\n')[0]).toBe('docker compose up failed: ERROR: failed to solve: npm ci did not complete successfully');
+    expect(String(up)).toContain('#0 building with "default" instance');
+    const build = await mk(fake).build({ ...intent, compose: undefined }).catch((e: Error) => e.message);
+    expect(String(build).split('\n')[0]).toBe('docker build failed: ERROR: failed to solve: npm ci did not complete successfully');
+  });
+
   it('rolls back to the previous tag, or takes the stack down when none', async () => {
     const fake = new FakeExec();
     await mk(fake).rollback(intent, 'todo-api:old');

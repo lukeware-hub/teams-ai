@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execCommand } from '../../server/exec/command.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
 import { runPhase5, type PhaseDeps } from '../../server/orchestrator/phases/index.js';
+import { deployStartAttempt } from '../../server/orchestrator/phases/deploy.js';
 import { RunEvent } from '../../server/pipeline/run-state.js';
 import { makeFrozenSpec, makePlan, makePlanTask, makeProject } from '../fixtures/contracts.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';
@@ -64,7 +65,7 @@ describe('Phase 5', () => {
     expect(r.ok ? null : r.fixTask?.description).toContain('The fix of attempt 1 (T950-deploy-fix-1) did not change this failure: look for another cause before changing the same lines again.');
   });
 
-  it('lists an attempt replayed after a crash once, an earlier fix that ended blocked by its state, and nothing on a first attempt', async () => {
+  it('lists an attempt replayed after a crash once, and an earlier fix that ended blocked by its state', async () => {
     await journal.fact(OrchEvent.DeployFailed, { attempt: 1, stage: 'verify', detail: 'unhealthy before the crash', rolledBack: false, rollbackHealthy: null, tag: 't' });
     await earlierAttempt(1, 'smoke', 'AC-001: no smoke test', { id: 'T950-deploy-fix-1', state: 'blocked' });
     const r = await runPhase5(deps('AC-002: smoke test failed'), 2);
@@ -79,14 +80,64 @@ describe('Phase 5', () => {
     expect(r.ok ? null : r.fixTask?.description).not.toContain('Earlier deploy attempts');
   });
 
-  it('takes the summary of a replanned fix from its replacements, never from a fix whose id only starts the same', async () => {
-    await earlierAttempt(1, 'smoke', 'AC-001: no smoke test', { id: 'T950-deploy-fix-1', state: 'blocked' });
-    await journal.fact(OrchEvent.DevCommitted, { taskId: 'T950-deploy-fix-1-r1', sha: 'def', changedFiles: ['smoke/a.mjs'], summary: 'split the suite' });
+  /** The fix of attempt 1, replanned once it ran out of attempts into one replacement that ends in `state`. */
+  async function replannedFix(state: 'merged' | 'blocked' | 'implementing', summary = 'split the suite', files = ['smoke/a.mjs']): Promise<void> {
+    await journal.fact(OrchEvent.DeployFailed, { attempt: 1, stage: 'smoke', detail: 'AC-001: no smoke test', rolledBack: false, rollbackHealthy: null, tag: 't' });
+    await journal.fact(RunEvent.FixTasksPlanned, { tasks: [makePlanTask({ id: 'T950-deploy-fix-1', origin: 'deploy-fix' })] });
+    for (const to of ['ready', 'implementing']) await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T950-deploy-fix-1', to });
+    await journal.fact(RunEvent.TaskReplanned, { taskId: 'T950-deploy-fix-1', replacements: [makePlanTask({ id: 'T950-deploy-fix-1-r1', origin: 'deploy-fix' })] });
+    const states = { merged: ['ready', 'implementing', 'validating', 'reviewing', 'rebasing', 'merging', 'merged'], blocked: ['ready', 'implementing', 'blocked'], implementing: ['ready', 'implementing'] }[state];
+    for (const to of states) await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T950-deploy-fix-1-r1', to });
+    await journal.fact(OrchEvent.DevCommitted, { taskId: 'T950-deploy-fix-1-r1', sha: 'def', changedFiles: files, summary });
+  }
+
+  it('follows a replanned fix to its replacement, never to a fix whose id only starts the same', async () => {
+    await replannedFix('merged');
     await journal.fact(OrchEvent.DevCommitted, { taskId: 'T950-deploy-fix-10', sha: 'fed', changedFiles: ['x'], summary: 'another fix' });
+    const r = await runPhase5(deps('AC-001: no smoke test'), 2);
+    const description = r.ok ? '' : r.fixTask?.description ?? '';
+    expect(description).toContain('then T950-deploy-fix-1 replaced by T950-deploy-fix-1-r1 merged: split the suite (files: smoke/a.mjs)');
+    expect(description).not.toContain('another fix');
+    // Every replacement merged and the same failure came back: the note fires as for a fix that merged itself.
+    expect(description).toContain('The fix of attempt 1 (T950-deploy-fix-1) did not change this failure');
+  });
+
+  it('counts a replanned fix as a finished attempt only once every replacement ended, so a resumed run moves on', async () => {
+    await replannedFix('implementing');
+    expect(deployStartAttempt(deps('x'))).toBe(1);
+    for (const to of ['validating', 'reviewing', 'rebasing', 'merging', 'merged']) await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T950-deploy-fix-1-r1', to });
+    expect(deployStartAttempt(deps('x'))).toBe(2);
+  });
+
+  it('never pairs a fix with an earlier failure when a resumed run deploys an attempt it had already reached', async () => {
+    await earlierAttempt(1, 'smoke', 'AC-001: no smoke test', { id: 'T950-deploy-fix-1', state: 'merged', summary: 'renamed the test', files: ['smoke/a.mjs'] });
+    // Attempt 2 failed and its fix was planned before the crash; the resumed run deploys attempt 2 again.
+    await earlierAttempt(2, 'e2e', 'AC-002: failed', { id: 'T950-deploy-fix-2', state: 'merged', summary: 'fixed the e2e request', files: ['e2e/x.mjs'] });
+    const r = await runPhase5(deps('AC-003: smoke test failed'), 2);
+    const description = r.ok ? '' : r.fixTask?.description ?? '';
+    expect(description).toContain('then T950-deploy-fix-1 merged: renamed the test');
+    expect(description).not.toContain('fixed the e2e request');
+  });
+
+  it('gives a devops fix the history too', async () => {
+    await earlierAttempt(1, 'verify', 'no response after 60 attempts', { id: 'T950-deploy-fix-1', state: 'merged', summary: 'fixed the healthcheck path', files: ['docker-compose.yml'] });
+    const d = deps('unused');
+    const r = await runPhase5({ ...d, target: { ...d.target!, verify: async () => ({ healthy: false, detail: 'no response after 60 attempts' }) } } as PhaseDeps, 2);
+    const task = r.ok ? null : r.fixTask;
+    expect(task?.owner).toBe('devops');
+    expect(task?.description).toContain('- attempt 1 failed at verify: no response after 60 attempts\n  then T950-deploy-fix-1 merged: fixed the healthcheck path');
+    expect(task?.description).toContain('did not change this failure');
+  });
+
+  it('reads the first line that has text, and keeps a long summary and file list short', async () => {
+    const files = Array.from({ length: 30 }, (_, i) => `smoke/f${i}.mjs`);
+    await earlierAttempt(1, 'smoke', '\n\n  AC-001: no smoke test', { id: 'T950-deploy-fix-1', state: 'merged', summary: 'x'.repeat(1000), files });
     const r = await runPhase5(deps('AC-002: smoke test failed'), 2);
     const description = r.ok ? '' : r.fixTask?.description ?? '';
-    expect(description).toContain('then T950-deploy-fix-1 blocked: split the suite (files: smoke/a.mjs)');
-    expect(description).not.toContain('another fix');
+    expect(description).toContain('- attempt 1 failed at smoke: AC-001: no smoke test');
+    expect(description).not.toContain('x'.repeat(301));
+    expect(description).toContain('smoke/f9.mjs and 20 more)');
+    expect(description).not.toContain('smoke/f10.mjs');
   });
 
   it('a smoke failure caused by a missing plan.commands.smoke plans no deploy-fix task (the Dev cannot edit the plan)', async () => {

@@ -103,6 +103,16 @@ describe('Phase 5 with several services', () => {
     expect(description).toContain('The fix of attempt 1 (T950-deploy-fix-1) did not change this failure');
   });
 
+  it('calls a failure repeated even when the earlier one also reported a failed rollback', async () => {
+    const log: string[] = [];
+    const { deps } = await setup(log, { e2eFails: 'e2e:inventory', detail: 'AC-002: failed' });
+    await journal.fact(OrchEvent.DeployFailed, { attempt: 1, stage: 'e2e', detail: 'AC-002: failed; rollback failed for orders: compose up failed', rolledBack: false, rollbackHealthy: false, service: 'inventory' });
+    await journal.fact(RunEvent.FixTasksPlanned, { tasks: [makePlanTask({ id: 'T950-deploy-fix-1', origin: 'deploy-fix', service: 'inventory' })] });
+    for (const to of ['ready', 'implementing', 'validating', 'reviewing', 'rebasing', 'merging', 'merged']) await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T950-deploy-fix-1', to });
+    const res = await runServicesPhase5(deps, 2);
+    expect(res.ok ? '' : res.fixTask?.description ?? '').toContain('did not change this failure');
+  });
+
   it('never calls a failure repeated when the earlier one was in another service', async () => {
     const log: string[] = [];
     const { deps } = await setup(log, { e2eFails: 'e2e:inventory', detail: 'AC-002: failed' });

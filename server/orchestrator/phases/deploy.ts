@@ -6,6 +6,7 @@ import { runDeployment, type DeploymentIntent, type DeployStage } from '../../de
 import { e2eCommand, type E2eRow } from '../../exec/e2e.js';
 import { serviceUrlEnv, type SmokeRow } from '../../exec/smoke.js';
 import { RunEvent } from '../../pipeline/run-state.js';
+import { TERMINAL_STATES } from '../../pipeline/task-state.js';
 import { Intent, OrchEvent } from '../events.js';
 import { E2E_CONTRACT, SMOKE_CONTRACT } from '../steps.js';
 import { checkoutMain, type GateScope, type PhaseDeps, type ServiceRepo } from './shared.js';
@@ -45,13 +46,17 @@ function serviceIntent(deps: PhaseDeps, repo: ServiceRepo, tag: string): Deploym
   const service = repo.service!;
   return { ...deployIntent({ ...deps, plan: repo.plan, ws: repo.ws }, tag), port: servicePort(deps, repo), shared: { composeProject: serviceComposeProject(deps.project.projectId, service), network: sharedNetwork(deps.project.projectId), alias: service } };
 }
-// Ids are assigned here and must stay unique across attempts and resumes (a resumed attempt re-issued
-// T950-deploy-fix-1 and the reducer rejected it - 1387253335-001-r13).
 /** Dependency manifests of the supported stacks: a smoke or e2e fix may need to add a test dependency. */
 const MANIFESTS = ['package.json', 'go.mod', 'go.sum', 'requirements.txt', 'pyproject.toml', 'Cargo.toml', 'Cargo.lock'];
 
-/** First line of a deploy failure detail: the failing criteria or stage, without the gate output that follows it. */
-const headline = (detail: string): string => detail.split('\n')[0]!.trim().slice(0, 300);
+/** What the deploy did after a failure (a teardown or a rollback): it says nothing about the failure itself. */
+const OUTCOME = /; (?:first deploy failed|teardown of the failed first deploy|rollback (?:failed|verify failed)|after rollback)[\s\S]*$/;
+
+/** First line with text of a deploy failure detail, without the outcome: the failing criteria, the stage or the docker cause. */
+const headline = (detail: string): string => (detail.split('\n').map((l) => l.trim()).find((l) => l !== '') ?? '').replace(OUTCOME, '').slice(0, 300);
+
+/** At most ten files, then how many more. */
+const fileList = (files: readonly string[]): string => (files.length > 10 ? `${files.slice(0, 10).join(', ')} and ${files.length - 10} more` : files.join(', '));
 
 /**
  * Every earlier deploy failure of the run with the fix task planned after it and what that fix changed, so a fix task
@@ -61,28 +66,36 @@ function deployHistory(deps: PhaseDeps, attempt: number, stage: DeployStage, det
   const failures = new Map<number, { stage: string; detail: string; service: string | null; fix: string | null }>();
   let last: number | null = null;
   for (const e of deps.journal.events) {
-    if (e.type === OrchEvent.DeployFailed && Number(e.data.attempt) < attempt) {
-      last = Number(e.data.attempt);
-      failures.set(last, { stage: String(e.data.stage), detail: String(e.data.detail), service: (e.data.service as string | undefined) ?? null, fix: null });
+    if (e.type === OrchEvent.DeployFailed) {
+      // A resumed run can deploy an attempt it had already reached: that failure and its fix belong to no earlier attempt.
+      last = Number(e.data.attempt) < attempt ? Number(e.data.attempt) : null;
+      if (last !== null) failures.set(last, { stage: String(e.data.stage), detail: String(e.data.detail), service: (e.data.service as string | undefined) ?? null, fix: null });
     } else if (e.type === RunEvent.FixTasksPlanned && last !== null) {
       const fix = (e.data.tasks as PlanTask[]).find((t) => t.origin === 'deploy-fix');
       if (fix) failures.get(last)!.fix = fix.id;
     }
   }
   if (failures.size === 0) return '';
-  // A replanned fix commits through its replacements (`<id>-r1`); `T950-deploy-fix-10` is another fix.
-  const fixLine = (id: string): string => {
-    const state = deps.journal.state.tasks.get(id)?.state ?? 'planned';
-    const commit = [...deps.journal.events].reverse().find((e) => e.type === OrchEvent.DevCommitted && (e.data.taskId === id || String(e.data.taskId).startsWith(`${id}-r`)));
-    return commit ? `${id} ${state}: ${String(commit.data.summary)} (files: ${(commit.data.changedFiles as string[]).join(', ')})` : `${id} ${state}`;
+  const tasks = deps.journal.state.tasks;
+  // A replanned fix lives on in its replacements: their states and their last commit are its outcome.
+  const outcome = (id: string): { text: string; merged: boolean } => {
+    const root = tasks.get(id);
+    const parts = root?.state === 'superseded' && root.replacedBy.length > 0 ? root.replacedBy : [id];
+    const states = parts.map((p) => tasks.get(p)?.state ?? 'planned');
+    const commit = [...deps.journal.events].reverse().find((e) => e.type === OrchEvent.DevCommitted && parts.includes(String(e.data.taskId)));
+    const who = parts[0] === id ? `${id} ${states[0]}` : `${id} replaced by ${parts.map((p, i) => `${p} ${states[i]}`).join(', ')}`;
+    const what = commit ? `: ${String(commit.data.summary).slice(0, 300)} (files: ${fileList(commit.data.changedFiles as string[])})` : '';
+    return { text: `${who}${what}`, merged: states.every((s) => s === 'merged') };
   };
-  const lines = [...failures.entries()].sort(([a], [b]) => a - b).map(([n, f]) => `- attempt ${n} failed at ${f.stage}${f.service ? ` (service ${f.service})` : ''}: ${headline(f.detail)}${f.fix ? `\n  then ${fixLine(f.fix)}` : ''}`);
+  const lines = [...failures.entries()].sort(([a], [b]) => a - b).map(([n, f]) => `- attempt ${n} failed at ${f.stage}${f.service ? ` (service ${f.service})` : ''}: ${headline(f.detail)}${f.fix ? `\n  then ${outcome(f.fix).text}` : ''}`);
   const previous = failures.get(attempt - 1);
-  const repeated = previous?.fix && deps.journal.state.tasks.get(previous.fix)?.state === 'merged' && previous.stage === stage && previous.service === service && headline(previous.detail) === headline(detail);
+  const repeated = previous?.fix && outcome(previous.fix).merged && previous.stage === stage && previous.service === service && headline(previous.detail) === headline(detail);
   const note = repeated ? `\nThe fix of attempt ${attempt - 1} (${previous!.fix}) did not change this failure: look for another cause before changing the same lines again.` : '';
   return `\n\nEarlier deploy attempts of this run:\n${lines.join('\n')}${note}`;
 }
 
+// Ids are assigned here and must stay unique across attempts and resumes (a resumed attempt re-issued
+// T950-deploy-fix-1 and the reducer rejected it - 1387253335-001-r13).
 const fixTaskId = (deps: PhaseDeps) => `T950-deploy-fix-${[...deps.journal.state.tasks.keys()].filter((id) => id.startsWith('T950-deploy-fix-')).length + 1}`;
 const fixTask = (deps: PhaseDeps, attempt: number, stage: DeployStage, detail: string, newPort: number | null = null, service: string | null = null): PlanTask => {
   const base = { id: fixTaskId(deps), title: `Fix deployment (${stage})`, criteriaRefs: [], dependsOn: [], origin: 'deploy-fix' as const };
@@ -111,7 +124,10 @@ Contract: ${E2E_CONTRACT}${history}`, affectedPaths: [...(suite ? [suite] : []),
  * 1387253335-001-r13). Each root deploy-fix task (not its `-rN` replan children) that reached a terminal
  * state stands for one attempt cycle that is done; the next attempt starts after all of them. */
 export function deployStartAttempt(deps: PhaseDeps): 1 | 2 | 3 {
-  const done = [...deps.journal.state.tasks.entries()].filter(([id, t]) => /^T950-deploy-fix-\d+$/.test(id) && ['merged', 'blocked'].includes(t.state)).length;
+  const tasks = deps.journal.state.tasks;
+  // A replanned fix finishes its attempt once every replacement ended; until then the attempt is still open.
+  const ended = (t: { state: string; replacedBy: string[] }) => ['merged', 'blocked'].includes(t.state) || (t.state === 'superseded' && t.replacedBy.length > 0 && t.replacedBy.every((r) => TERMINAL_STATES.has(tasks.get(r)?.state ?? 'planned')));
+  const done = [...tasks.entries()].filter(([id, t]) => /^T950-deploy-fix-\d+$/.test(id) && ended(t)).length;
   return Math.min(1 + done, 3) as 1 | 2 | 3;
 }
 
