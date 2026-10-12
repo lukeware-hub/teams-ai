@@ -143,6 +143,14 @@ describe('Phase 6 documentation gate', () => {
     expect(await git(remote.repo, ['show', 'origin/main:docs/API.md'], execCommand)).toContain('### POST /stock');
   });
 
+  it('lists the pull requests of the run in report.json', async () => {
+    await journal.fact(OrchEvent.PrCreated, { branch: 'task/spec-001-T1', number: 4, url: 'https://github.com/o/shop/pull/4', created: true });
+    const r = await p6(async () => report(GOOD));
+    expect(r.report.prs).toEqual([{ task: 'T1', branch: 'task/spec-001-T1', number: 4, url: 'https://github.com/o/shop/pull/4', repository: 'o/shop', merged: false }]);
+    await git(remote.repo, ['fetch', '-q', 'origin'], execCommand);
+    expect(JSON.parse(await git(remote.repo, ['show', 'origin/main:docs/specs/spec-001/report.json'], execCommand)).prs).toHaveLength(1);
+  });
+
   it('starts the docs worktree again from main after a failed report, so the next run sees what other specs merged since', async () => {
     expect((await p6(async () => report({ readme: '# App', runbook: GOOD.runbook }))).ok).toBe(false);
     await mainWrites({ 'docs/API.md': '# API\n\n### POST /orders\n' });
