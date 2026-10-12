@@ -497,7 +497,7 @@ unit-tested with fixtures. Each one needs a plan file in `plans/` before impleme
 - Prompted by a live refinement session (lukeware-kayron-hub, surgical-case-service spec) where the SM asked the human an open architecture question - how many `<capability>-service` repos, mandatory split or not - that teams-ai's own delivery contract already answers: `plan.delivery` ships exactly one repository, one Dockerfile, one compose service and one `SERVICE_URL` per spec (`devops.md`), so there is no multi-repo/multi-service delivery path to ask about today.
 - Built: `.claude/agents/sm.md` refine step gets a "Service and bounded-context decomposition" rule - default to one edge service (`<primary-capability>-service`) with bounded contexts separated internally (hexagonal/ports-and-adapters), physical split recorded as an ADR-style `docPatch`, never a question; a question is only legitimate when the docs mandate something teams-ai cannot deliver (separate repos per context, several independently deployable services), phrased as a pipeline limitation, not an open choice.
 - Prompt-only change (no runtime code, no test); verified by reading the diff and grepping the new section into `sm.md`. No live skill-loading mechanism involved, same distillation pattern as R10.1.
-- Superseded (human, 2026-10-11): stage 12 lets the docs decide between one application and several services; the rule is replaced in R12.6.
+- Superseded (human, 2026-10-11): stage 12 lets the docs decide between one application and several services; the rule was replaced in R12.6 (plan 65).
 
 ## Stage 11 - Spec-driven backlog (2026-10-06, plan 50)
 
@@ -707,9 +707,11 @@ The five docs decide whether the software is one application or a system of serv
 - Review (independent, after the plan): the SM gets a services run's deploy outcome without the internal addresses; the run page, its outcome banner and the validation page name the service of each deploy step, failure and rollback; smoke rows, repeated links and the tasks card name their service; `POST /projects` answers like `GET /projects`.
 - Open: the agents write `services`, `platform` and services plans (R12.6); a live run (R12.7).
 
-### R12.6 Agents - `todo`
+### R12.6 Agents - `done` (unit, plan 65, 2026-10-11)
 
-- Refinement writes `services` and `platform` from the docs; SM, devops and Test rules for a services plan; question routing and the delivery contract text of the pre-plan pack; the one-service rule of R10.3 (`.claude/agents/sm.md:48-50`) replaced by "the docs decide".
+- Built: a `services-plan` step whose schema is a services plan with every task naming its service (`ServicesPlanOutput` in `server/agents/outputs.ts`); Phase 2 of a project with `services` reads each service repository (its files, and whether its main holds code yet, `holdsOnlyDocs`), registers one host port per service, asks the SM for a services plan with a scaffold and a devops deploy task per new service, and validates it with `validateServicesPlan` (`server/orchestrator/phases/plan.ts`, `servicesPlanRules` in `server/orchestrator/steps.ts`); every task's pack names its service, and a service task's pack carries that service's settings, since its repository holds no docs (`server/knowledge/context-pack.ts`, `devPack`); the SM, devops, Test and PO prompts and the smoke and e2e contracts describe a project of services, and the one-service rule of R10.3 is replaced by "the docs decide" (`.claude/agents/*.md`); refinement derives `services` and `platform` from the docs and takes a derived project.json when stack.md changed (`server/refine/derive.ts`, `keepBaseProject`), and the backlog, pre-plan and question-routing texts state the same delivery contract. A project without services plans and builds as before.
+- Tests: `test/agents/prompts.test.ts`, the `ServicesPlanOutput` case in `test/agents/outputs.test.ts`, two Phase 2 cases in `test/orchestrator/phases.test.ts`, `servicesPlanRules`, the service settings and the fix-tasks names in `test/orchestrator/steps.test.ts`, the service line in `test/knowledge/context-pack.test.ts`, and refinement cases in `test/refine` and `test/decide`; whole suite 1526 passed and 4 skipped, web 175 passed, both type checks clean.
+- Open: a live run with two services in different stacks and NATS (R12.7).
 
 ### R12.7 Live check - `todo`
 
