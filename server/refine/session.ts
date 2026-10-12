@@ -430,6 +430,10 @@ export class RefineSession {
   }
 
   async markStarted(runId: string): Promise<void> {
+    // R11.10: a suggestion still pending stays out of the run and moves to the history with the reason.
+    for (const p of this.state.patches.filter((x) => x.status === 'pending')) {
+      await this.journal.fact(RefineEvent.PatchDropped, { patchId: p.patchId, reason: 'não aplicada: a execução começou sem ela' });
+    }
     await this.journal.fact(RefineEvent.StartedRun, { runId });
   }
 

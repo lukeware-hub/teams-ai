@@ -53,5 +53,5 @@ export const HELP = {
   runStatus: 'Pausada por cota: continua sozinha quando o limite de uso renovar. Aguardando login: a sessão do Claude expirou; entre de novo e use Retomar. Interrompida: o processo parou; use Retomar. Finalizando: encerrando depois de Parar.',
   tokens: 'Total de tokens lidos e escritos pelos modelos de IA nesta execução.',
   cost: 'Custo estimado das chamadas aos modelos de IA nesta execução, em dólares.',
-  drafts: 'Specs ainda em escrita, antes da execução. Em avaliação: a IA está revisando os documentos. Aguardando respostas: há perguntas ou sugestões para você. Pronto para iniciar: tudo aprovado; abra e inicie a execução.',
+  drafts: 'Specs ainda em escrita, antes da execução. Em avaliação: a IA está revisando os documentos. Aguardando respostas: há perguntas ou sugestões para você. Pronto para iniciar: lista de verificação atendida; abra e inicie a execução.',
 };

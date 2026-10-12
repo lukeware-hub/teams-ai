@@ -232,6 +232,8 @@ export class SessionRegistry {
     const session = await this.get(projectId, specId);
     const st = session.state;
     if (!st.backlog?.enabled || !st.backlog.detail || st.stale || st.status !== 'ready' || st.autoStartFailure?.cycle === st.cycle) return;
+    // R11.10: a pending suggestion waits for the owner, who starts with Iniciar or decides it first.
+    if (st.patches.some((p) => p.status === 'pending')) return;
     await this.start(projectId, specId).catch((err) => session.failAutoStart(err instanceof Error ? err.message : String(err)));
   }
 

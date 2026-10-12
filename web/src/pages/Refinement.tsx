@@ -7,6 +7,7 @@ import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { buildSpecsIndex } from '@server/refine/specs-index';
+import { isApproval } from '@server/refine/state';
 import { BacklogPanel } from '../refine/BacklogPanel.js';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { SpecTree } from '../refine/SpecTree.js';
@@ -72,7 +73,7 @@ const checkDetail = (detail: string) => {
   return detail;
 };
 const criterionText = (c: AcceptanceCriterion) => `${c.id}: dado ${c.given}, quando ${c.when}, então ${c.then}`;
-const startInfo = 'Os agentes passam a planejar, implementar, testar e publicar o projeto com base nestes documentos. Fica disponível com a lista atualizada e atendida, sem perguntas obrigatórias ou sugestões pendentes.';
+const startInfo = 'Os agentes passam a planejar, implementar, testar e publicar o projeto com base nestes documentos. Fica disponível com a lista atualizada e atendida, sem perguntas obrigatórias nem aprovação de ajuste pendentes; as sugestões pendentes são opcionais.';
 const jevInfo = 'O Jev é obrigatório no refinamento. Ele confere se os cinco documentos estão consistentes entre si e classifica e decide pontos da avaliação: critérios de aceite ainda não prontos, perguntas repetidas e contradições com o histórico do projeto. Sem ele, a avaliação não inicia. Ajuste o que fizer sentido e reavalie.';
 const evaluationInfo = 'Cada clique em Avaliar abre uma rodada: o Jev confere a consistência dos documentos, o Claude gera o spec.json e o project.json, os agentes PO, SM e Front revisam e sugerem ajustes, e o Jev também aponta critérios ainda não prontos, descarta perguntas repetidas e sinaliza contradições com o histórico.';
 const patchInfo = 'Mudança proposta por um agente: linhas com - saem e linhas com + entram. Aceitar aplica a mudança no documento; Rejeitar a descarta, e o motivo opcional fica no histórico.';
@@ -241,6 +242,7 @@ export function RefinementView(p: ViewProps) {
       : st.stale
         ? { label: 'Desatualizada', tone: 'warn' }
         : { label: 'Atual', tone: 'ok' };
+  const green = st.checklist.length > 0 && st.checklist.every((i) => i.passed);
   const nextStep = st.status === 'started' && st.backlog?.enabled
     ? 'Os agentes estão executando o backlog, até duas specs ao mesmo tempo quando não mexem no mesmo código. Acompanhe cada uma na tela de execução do backlog.'
     : st.status === 'evaluating'
@@ -251,7 +253,9 @@ export function RefinementView(p: ViewProps) {
     ? 'Responda às perguntas em aberto para continuar.'
     : st.stale
       ? 'Clique em Reavaliar para atualizar a lista de verificação com as últimas mudanças.'
-      : st.status !== 'ready' && st.patches.some((x) => x.status === 'pending')
+      : st.status === 'answering' && green && st.patches.some((x) => x.status === 'pending' && isApproval(x))
+        ? 'Aprove ou rejeite o ajuste proposto abaixo; as outras sugestões são opcionais.'
+      : st.status === 'answering' && st.patches.some((x) => x.status === 'pending')
         ? 'Revise as sugestões de alteração abaixo e aceite ou rejeite cada uma.'
         : st.backlog?.enabled && st.status === 'ready'
           ? st.backlog.detail
@@ -439,7 +443,7 @@ export function RefinementView(p: ViewProps) {
           <div key={x.patchId} className="mt-4 rounded-lg border border-line bg-surface p-[0.85rem]">
             <div className="flex flex-wrap items-center gap-[0.45rem] text-[0.82rem] text-ink">
               <span className={badge(x.role)}>{x.role === 'front' ? 'FRONT' : x.role.toUpperCase()}</span>
-              <b>Sugestão para {docName(x.file)}</b>
+              <b>{isApproval(x) ? 'Aprovação de ajuste' : `Sugestão para ${docName(x.file)}`}</b>
               {i === 0 ? <InfoTip text={patchInfo} /> : null}
               <span className="flex-[1_1_100%] leading-[1.4] text-ink-soft">{x.reason}</span>
             </div>

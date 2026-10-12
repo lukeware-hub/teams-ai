@@ -15,6 +15,10 @@
 - Only the checklist, the coverage, the blocking questions and the adjustment approvals decide `ready`; a pending reviewer patch counts only while some checklist item fails.
 - An approval patch is told apart by its heading, through `approvalKey` (`server/refine/sections.ts`), which runs in the browser too.
 - Accepting a suggestion after `ready` makes the docs stale, as any accepted patch does, so starting or detailing waits for a new evaluation.
+- Once green, a suggestion is nothing the owner owes: a session that is green but waits for its detailing reads `drafting`, not `answering`.
+- The program's auto-start waits while a suggestion is pending (human, 2026-10-12, after the review): the owner starts it with Iniciar or decides the suggestions first, so an upgrade that turns an older draft ready never starts its program by itself.
+- A suggestion still pending when a run starts is dropped with the reason "não aplicada: a execução começou sem ela", so it moves to the history instead of staying on screen with disabled buttons.
+- The screen tells an adjustment approval apart from the suggestions, with its own label and next step.
 - The refinement design spec (`docs/superpowers/specs/2026-09-24-refinement-ui-design.md`, section 3.1) gets the new definition of `ready`.
 
 ## Global Constraints
@@ -27,12 +31,14 @@
 ## Review Focus
 
 1. Green checklist, complete coverage and no blocking question: a pending reviewer patch leaves the session ready; a pending approval patch, a pending blocking question, a failing checklist item or a coverage gap does not.
-2. Every reader of the status follows: starting, detailing, the program's auto-start, the screen's buttons and its next-step message.
+2. Every reader of the status follows: starting, detailing, the program's auto-start (which waits for pending suggestions), the screen's buttons, labels and next-step message.
+4. A suggestion still pending at the start is dropped to the history.
 3. Accepting a suggestion after `ready` makes the session stale and asks for a new evaluation before anything starts.
 
 ## Limits
 
-- With a detailed backlog, the program starts by itself as soon as the session is ready, so a suggestion the owner accepts later changes started specs only through an adjustment (R11.7.4).
+- In backlog mode an owner's answer reaches the specs only through the patch that records it in the briefing, which a green checklist would leave optional; plan 90 makes the orchestrator write each answer itself, and plan 89 ships with it.
+- Suggestions still pending pile up across cycles, because the reviewers only see the rejected ones; a later slice can show them as already proposed.
 - A reviewer that marks every item green while still proposing a real fix leaves that fix as an optional suggestion: the checklist is the gate.
 - A live check is still needed to measure how many cycles a backlog takes to reach `ready` after plans 87 to 89.
 

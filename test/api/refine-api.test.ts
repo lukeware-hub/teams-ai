@@ -419,6 +419,34 @@ describe('refine api', () => {
     expect(spawns).toHaveLength(2);
   });
 
+  // R11.10 (plan 89): a suggestion still pending holds back only the auto-start; Iniciar starts without it and moves it to the history.
+  it('waits for the owner to start a ready backlog with a pending suggestion, and drops the suggestion at the start', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    const url = '/api/refine/hello-app/hello-app-001';
+    await call('POST', `${url}/backlog`);
+    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
+    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
+    const suggestion = { file: 'docs/briefing.md', find: '- <objective>', replace: '- Mostrar a saúde do serviço.', reason: 'objetivo concreto' };
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }, { checklist: PO, questions: [], docPatch: [suggestion] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }, { checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', `${url}/evaluate`);
+    await settle();
+    await call('POST', `${url}/backlog/detail`);
+    script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
+    script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
+    await call('POST', `${url}/evaluate`);
+    await settle();
+    const ready = (await snapshot()).state;
+    expect(ready.status).toBe('ready');
+    expect(ready.patches.filter((p: { status: string }) => p.status === 'pending')).toHaveLength(1);
+    await registry.tickPrograms();
+    expect(spawns).toHaveLength(0);
+    expect((await call('POST', `${url}/start`)).status).toBe(200);
+    const started = (await snapshot()).state;
+    expect(started.status).toBe('started');
+    expect(started.patches[0]).toMatchObject({ status: 'dropped', decision: 'não aplicada: a execução começou sem ela' });
+  });
+
   it('refuses to detail an outline the docs changed after it was reviewed', async () => {
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     const url = '/api/refine/hello-app/hello-app-001';

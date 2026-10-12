@@ -38,6 +38,25 @@ describe('RefinementView backlog mode', () => {
   const backlog = { enabled: true, project: null, epics: [{ key: 'core', title: 'Núcleo' }], cycle: 1, items: [{ key: 'base', title: 'Fundação', epic: 'core', scope: 'Esqueleto', priority: 'P0' as const, rationale: 'tudo depende', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' as const, rank: 1 }] };
   const ready = { status: 'ready' as const, questions: [], patches: [], discarded: [], derived: null };
 
+  // Plan 89 review: once ready a suggestion is optional, the detailing step shows after Detalhar specs, and an approval stands apart.
+  const suggestion = { patchId: 'po-c1-0', role: 'po' as const, file: 'brief.md' as const, find: 'a', replace: 'b', reason: 'mais claro', diff: '--- briefing.md\n-a\n+b\n', cycle: 1, status: 'pending' as const, decision: null };
+  it('calls a suggestion optional once the outline is ready, and shows the detailing step after Detalhar specs', () => {
+    const { rerender } = render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog, patches: [suggestion] })} busy={false} {...on()} /></MemoryRouter>);
+    expect(screen.getByText(/As sugestões abaixo são opcionais/)).toBeTruthy();
+    expect(screen.queryByText(/aceite ou rejeite cada uma/)).toBeNull();
+    rerender(<MemoryRouter><RefinementView snap={base({ ...ready, status: 'drafting', backlog: { ...backlog, detail: true }, patches: [suggestion] })} busy={false} {...on()} /></MemoryRouter>);
+    expect(screen.getByText(/Detalhamento pedido/)).toBeTruthy();
+    expect(screen.queryByText(/aceite ou rejeite cada uma/)).toBeNull();
+  });
+
+  it('asks the owner to decide an adjustment approval apart from the optional suggestions', () => {
+    const approval = { ...suggestion, patchId: 'po-c2-0', find: '', replace: '## Ajuste aprovado: base-ajuste-1\n\nA spec base foi entregue antes da mudança.\n', cycle: 2 };
+    render(<MemoryRouter><RefinementView snap={base({ ...ready, status: 'answering', backlog, patches: [approval, suggestion] })} busy={false} {...on()} /></MemoryRouter>);
+    expect(screen.getByText(/Aprove ou rejeite o ajuste proposto abaixo; as outras sugestões são opcionais\./)).toBeTruthy();
+    expect(screen.getByText('Aprovação de ajuste')).toBeTruthy();
+    expect(screen.getByText(/Sugestão para/)).toBeTruthy();
+  });
+
   it('offers to break the docs into a backlog, and asks the page to enable it', () => {
     const h = { ...on(), onEnableBacklog: vi.fn() };
     render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog: null })} busy={false} {...h} /></MemoryRouter>);

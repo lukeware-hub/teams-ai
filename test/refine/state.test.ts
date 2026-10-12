@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { approvalPatch } from '../../server/refine/adjustments.js';
 import { RefineEvent } from '../../server/refine/events.js';
 import { reduceRefineEvents } from '../../server/refine/state.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
@@ -38,7 +39,7 @@ describe('reduceRefineEvents', () => {
     const redWithPatch = reduceRefineEvents([...cycle(1), { type: RefineEvent.PatchProposed, data: patch('sm-c1-0') }, { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: [...allGreen.slice(0, 7), item('sm.no-open-questions', false)], questions: [], discardedPatches: [] } }]);
     expect(redWithPatch.status).toBe('answering');
     // An adjustment's approval is the owner's decision, never a suggestion.
-    const approval = { ...patch('po-c1-0'), role: 'po', replace: '## Ajuste aprovado: caso-ajuste-1\n\nA spec caso foi entregue antes da mudança.\n' };
+    const approval = { ...patch('po-c1-0'), role: 'po', ...approvalPatch({ key: 'caso-ajuste-1', specId: 'big-001-caso', status: 'done', changed: ['flow.md › 1. Caso'] }) };
     const waiting = reduceRefineEvents([...cycle(1), { type: RefineEvent.PatchProposed, data: approval }, { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: allGreen, questions: [], discardedPatches: [] } }]);
     expect(waiting.status).toBe('answering');
   });
@@ -52,6 +53,18 @@ describe('reduceRefineEvents', () => {
 describe('backlog events', () => {
   const backlogItem = { key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S', rank: 1 };
   const derivedBacklog = { cycle: 1, project: makeProject(), epics: [{ key: 'core', title: 'Core' }], items: [backlogItem] };
+  // Plan 89 review: a suggestion is nothing the owner owes, so a green backlog waiting for its detailing reads drafting.
+  it('reads a green backlog waiting for its detailing as drafting, a reviewer patch still pending', () => {
+    const s = reduceRefineEvents([
+      { type: RefineEvent.BacklogEnabled, data: {} },
+      { type: RefineEvent.CycleStarted, data: { cycle: 1, draftHash: 'h' } },
+      { type: RefineEvent.BacklogDerived, data: derivedBacklog },
+      { type: RefineEvent.PatchProposed, data: patch('po-c1-0') },
+      { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: allGreen, questions: [], discardedPatches: [] } },
+      { type: RefineEvent.BacklogDetailEnabled, data: {} },
+    ]);
+    expect(s.status).toBe('drafting');
+  });
   it('leaves a journal without backlog events with no backlog', () => {
     expect(reduceRefineEvents(cycle(1)).backlog).toBeNull();
   });
