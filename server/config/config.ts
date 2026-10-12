@@ -59,6 +59,8 @@ const DECISION_DEFAULTS: Partial<Record<DecisionId, Partial<DecisionConfig>>> = 
   // R11.5a item 2: same risk class as the already-active byte-identical patch dedupe (R11.10), just catching
   // paraphrases of it, so it ships active rather than shadow.
   'patch-dedup': { chain: ['jev', 'local'], escalateTo: 'sm' },
+  // R11.14: only decides whether another run is worth trying; a wrong answer costs one bounded run or one question to the owner.
+  'failure-cause': { chain: ['jev', 'local'], escalateTo: 'sm' },
 };
 
 const PerDecisionSchema = z

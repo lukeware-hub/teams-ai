@@ -62,7 +62,7 @@ describe('decisions config', () => {
   it('the Docker config turns on only the refinement decisions Jev takes', () => {
     const cfg = loadConfig(JSON.parse(readFileSync(new URL('../../docker/config.json', import.meta.url), 'utf8')));
     const enabled = DECISION_IDS.filter((id) => resolveDecision(cfg, id).enabled);
-    expect(enabled).toEqual(['gate1-readiness', 'question-dedup', 'history-contradiction', 'question-routing', 'patch-dedup']);
+    expect(enabled).toEqual(['gate1-readiness', 'question-dedup', 'history-contradiction', 'question-routing', 'patch-dedup', 'failure-cause']);
     for (const id of enabled) expect(resolveDecision(cfg, id).chain).toEqual(['jev', 'local']);
   });
 });
