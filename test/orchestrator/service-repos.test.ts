@@ -123,6 +123,16 @@ describe('ensureServiceRepos', () => {
     expect(await ensureServiceRepos(deps(exec, ['orders']), undefined)).toEqual({ ok: false, reason: 'service orders: gh api user failed: not logged into any GitHub hosts' });
   });
 
+  it('refuses a repository that holds another teams-ai project, as project shop-orders would for service orders of shop', async () => {
+    const other = await makeRemote({ 'docs/project.json': '{"projectId":"shop-orders"}' });
+    try {
+      const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s)).onArgs('gh', ['repo', 'view'], () => ({ stdout: JSON.stringify({ nameWithOwner: 'o/shop-orders', url: other.origin }) }));
+      expect(await ensureServiceRepos(deps(exec, ['orders']), 'o')).toEqual({ ok: false, reason: 'service orders: repository shop-orders holds another teams-ai project (docs/project.json on its main); rename the service or the project' });
+    } finally {
+      await other.cleanup();
+    }
+  });
+
   it('touches nothing for a project without services', async () => {
     const { exec } = github();
     expect(await ensureServiceRepos(deps(exec), 'o')).toEqual({ ok: true });

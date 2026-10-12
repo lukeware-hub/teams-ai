@@ -135,6 +135,11 @@ async function cloneOrCreate(deps: PhaseDeps & { ghExec: Exec }, service: string
   const found = view.exitCode === 0;
   await fs.mkdir(path.dirname(repo), { recursive: true });
   if (found && !(await isRepo(repo))) await git(path.dirname(repo), ['clone', '-q', (JSON.parse(view.stdout) as { url: string }).url, path.basename(repo)], deps.exec);
+  // A service repository never holds docs/project.json: one that does is another project, such as project shop-orders for service orders of shop.
+  if (found && (await git(repo, ['cat-file', '-e', 'refs/remotes/origin/main:docs/project.json'], deps.exec).then(() => true, () => false))) {
+    await fs.rm(repo, { recursive: true, force: true });
+    throw new Error(`repository ${name} holds another teams-ai project (docs/project.json on its main); rename the service or the project`);
+  }
   if (!(await isRepo(repo))) await git(path.dirname(repo), ['init', '-q', '-b', 'main', path.basename(repo)], deps.exec);
   if ((await headSha(repo, deps.exec).catch(() => null)) === null) {
     await git(repo, ['symbolic-ref', 'HEAD', 'refs/heads/main'], deps.exec);
