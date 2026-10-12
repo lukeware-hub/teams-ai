@@ -443,14 +443,14 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const idx = await index();
         const specId = safe(params.specId!);
         const dir = await projectDir(idx, params.projectId!, specId);
-        // Deploys main again with no agent (spec deploy); same one-writer-per-spec rule as complete and readme.
+        // Deploys main again with no agent (spec deploy), also for a concluded spec: it changes nothing in the spec. Same one-writer-per-spec rule as complete and readme.
         const runId = await exclusive(specKey(params.projectId!, specId), async () => {
           const read = await readProject(dir);
           const spec = read.specs.find((s) => s.specId === specId);
           if (!spec) throw new HttpError(404, `unknown spec ${specId}`);
           const rows = await listRuns(idx, params.projectId!);
-          refuseConcluded(read.specs, rows, specId);
-          if (spec.status !== 'awaiting-validation') throw new HttpError(409, `spec ${specId} is ${spec.status}; only delivered specs deploy again`);
+          const delivered = spec.status === 'awaiting-validation' || concludedSpecs(new Map(read.specs.map((s) => [s.specId, s.status])), rows).has(specId);
+          if (!delivered) throw new HttpError(409, `spec ${specId} is ${spec.status}; only delivered specs deploy again`);
           const active = rows.find((r) => r.specId === specId && claimsSpec(r));
           if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status})`);
           const id = await nextRunId({ runs: runsDir(idx), projectId: params.projectId! }, specId, 'deploy');

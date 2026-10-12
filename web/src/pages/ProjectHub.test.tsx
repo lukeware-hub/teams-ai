@@ -246,11 +246,11 @@ describe('ProjectHubView', () => {
 
 describe('project apps', () => {
   const done = { ...project, specs: [{ specId: 'a', status: 'done', activeRunId: null }, { specId: 'b', status: 'complete', activeRunId: null }] };
-  const view = (apps: Parameters<typeof ProjectHubView>[0]['apps'], p: Parameters<typeof ProjectHubView>[0]['project'] = done) => {
+  const view = (apps: Parameters<typeof ProjectHubView>[0]['apps'], p: Parameters<typeof ProjectHubView>[0]['project'] = done, runs: Parameters<typeof ProjectHubView>[0]['runs'] = [], onStartApp = vi.fn()) => {
     const o = on();
     return render(
       <MemoryRouter>
-        <ProjectHubView project={p} notFound={false} runs={[]} drafts={[]} apps={apps} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={p} notFound={false} runs={runs} drafts={[]} apps={apps} onStartApp={onStartApp} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
   };
@@ -267,6 +267,21 @@ describe('project apps', () => {
   it('says the app is down when nothing answers', () => {
     view({ web: null, swagger: null });
     expect(screen.getByTestId('apps-offline')).toBeTruthy();
+  });
+  it('starts the application from the button when nothing answers', () => {
+    const start = vi.fn();
+    view({ web: null, swagger: null }, done, [], start);
+    fireEvent.click(screen.getByTestId('start-app'));
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+  it('disables the button while a run brings the application up', () => {
+    view({ web: null, swagger: null }, done, [row({ runId: 'r1', specId: 'b', projectId: 'hello-app', status: 'running', at: null, tokens: 0, cost: 0, stoppable: true, kind: 'deploy' })]);
+    expect((screen.getByTestId('start-app') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('start-app').textContent).toBe('Subindo a aplicação…');
+  });
+  it('shows no start button while the application is up', () => {
+    view({ web: 'http://h:20052', swagger: null });
+    expect(screen.queryByTestId('start-app')).toBeNull();
   });
   it('stays hidden while a spec is not concluded', () => {
     view({ web: 'http://h:20052', swagger: null }, project);

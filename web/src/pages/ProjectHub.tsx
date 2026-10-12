@@ -106,6 +106,8 @@ export function ProjectHubView(p: {
   onRestart: (specId: string) => void;
   /** Brings up a spec delivered elsewhere (an import) that has no run here, then opens its validation. */
   onValidate?: (specId: string) => void;
+  /** Brings the concluded project's application up from its last delivery. */
+  onStartApp?: () => void;
   onDeleteDraft: (specId: string) => void;
   onSuggestName?: (input: NameRequest) => Promise<NameSuggestion>;
 }) {
@@ -221,7 +223,12 @@ export function ProjectHubView(p: {
                 {p.apps.swagger ? <a className="link-button" data-testid="open-swagger" href={p.apps.swagger} target="_blank" rel="noreferrer">Abrir Swagger<Icon name="external" size={16} /></a> : null}
               </div>
             </div>
-            {p.apps.web || p.apps.swagger ? null : <p className="hint m-0" data-testid="apps-offline">A aplicação não está no ar. Suba o serviço na validação da última spec.</p>}
+            {p.apps.web || p.apps.swagger ? null : (
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="hint m-0" data-testid="apps-offline">A aplicação não está no ar.</p>
+                {p.onStartApp ? <button type="button" className="primary-button" data-testid="start-app" disabled={activeRuns.length > 0} onClick={p.onStartApp}>{activeRuns.length > 0 ? 'Subindo a aplicação…' : 'Iniciar aplicação'}</button> : null}
+              </div>
+            )}
           </div>
         </section>
       ) : null}
@@ -487,11 +494,11 @@ export function ProjectHubView(p: {
   );
 }
 
-/** Links of the latest delivery, once every spec is concluded; null while unknown or when nothing was deployed. */
+/** Links of the latest delivery, once every spec is concluded; null until then or when its status cannot be read. */
 async function latestApps(project: ProjectRow, rows: RunRow[]): Promise<AppLinks | null> {
   if (project.specs.length === 0 || !project.specs.every((s) => s.status === 'done' || s.status === 'complete')) return null;
   const last = rows.filter((r) => r.kind === 'run' || r.kind === 'deploy').sort((a, b) => (b.at ?? '').localeCompare(a.at ?? ''))[0];
-  if (!last) return null;
+  if (!last) return { swagger: null, web: null }; // an import has no run here: nothing is up yet
   try {
     const [detail, status] = await Promise.all([runApi.run(last.runId), runApi.serviceStatus(last.runId)]);
     return appLinks(detail.report, status, window.location.hostname);
@@ -580,6 +587,7 @@ export function ProjectHub() {
       onNewSpec={(specId, description) => void go(() => refineApi.newSpec(projectId, specId, description))()}
       onContinue={(specId) => void go(() => refineApi.continueSpec(projectId, specId))()}
       onRestart={(specId) => void go(() => refineApi.restartSpec(projectId, specId))()}
+      onStartApp={() => void act(() => runApi.deployAgain(projectId, project!.specs.at(-1)!.specId))()}
       onValidate={(specId) => void act(async () => navigate(`/runs/${(await runApi.deployAgain(projectId, specId)).runId}/validation`))()}
       onSuggestName={refineApi.suggestName}
       onDeleteDraft={(specId) => void (async () => {
