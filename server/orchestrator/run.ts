@@ -18,7 +18,7 @@ import type { Exec } from '../exec/command.js';
 import { TOOLS_GATE } from '../validators/security-tooling.js';
 import { writeToolsInstaller } from './tools-install.js';
 import { prepareGateImage, runGates, TAIL_CHARS, type GateExecutor, type GateResult } from '../exec/gate-runner.js';
-import { fetch as gitFetch, git, withRepoLock } from '../git/git.js';
+import { fetch as gitFetch, git, withCheckoutLock, withRepoLock } from '../git/git.js';
 import { MergeQueue } from '../git/merge-queue.js';
 import type { CodeContext, HandoffSummary } from '../knowledge/context-pack.js';
 import { grepFallback, MIN_COVERAGE, type Graphify } from '../knowledge/graphify.js';
@@ -710,8 +710,14 @@ export class Run {
     const text = await this.gitLocked(['show', `origin/main:docs/specs/${specId}/plan.json`]).catch(() => null);
     if (!text) return this.finish('phase-failed', `main has no docs/specs/${specId}/plan.json`);
     this.plan = parseAnyPlan(JSON.parse(text));
-    const p5 = singlePlan(this.plan) ? await runPhase5(this.phaseDeps(), 1, { fixTasks: false }) : await runServicesPhase5(this.phaseDeps(), 1, { fixTasks: false });
+    const p5 = await this.phase5(1, { fixTasks: false });
     return p5.ok ? this.finish('done') : this.finish('deploy-failed', p5.reason);
+  }
+
+  /** One deploy attempt, holding the main checkout still: it builds from it, and another spec's merge would reset it. */
+  // ponytail: holds the project repo only; a services project's service repos are not held, lock each if they run in parallel.
+  private phase5(attempt: 1 | 2 | 3, opts?: { fixTasks?: boolean }) {
+    return withCheckoutLock(this.deps.ws.repo, () => (singlePlan(this.plan) ? runPhase5(this.phaseDeps(), attempt, opts) : runServicesPhase5(this.phaseDeps(), attempt, opts)));
   }
 
   private async postPhases(): Promise<ExecuteResult> {
@@ -736,7 +742,7 @@ export class Run {
     if (!p4.ok) { result = 'verification-failed'; reason = p4.reason; }
     if (p4.ok && this.deps.target) {
       for (let attempt = deployStartAttempt(this.phaseDeps()); attempt <= MAX_DEPLOY_ATTEMPTS; attempt = (attempt + 1) as 1 | 2 | 3) {
-        const p5 = singlePlan(this.plan) ? await runPhase5(this.phaseDeps(), attempt) : await runServicesPhase5(this.phaseDeps(), attempt);
+        const p5 = await this.phase5(attempt);
         if (p5.ok) break;
         if (!p5.fixTask) { result = 'deploy-failed'; reason = p5.reason; break; }
         // Same rule as Phase 4: the fix task is best effort and the next deploy attempt is the verdict.
