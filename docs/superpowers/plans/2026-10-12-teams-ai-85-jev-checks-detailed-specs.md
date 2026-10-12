@@ -4,7 +4,7 @@
 
 **Goal:** before the PO and the SM review a detailed backlog, the Jev checks each new spec and pre-plan against three rules their packs already state, and an item it flags goes back to its agent once with the flags, so the review no longer spends a whole cycle finding them.
 
-**Architecture:** a new decision `detail-check` (`server/decide/decisions/detail-check.ts`) asks the Jev yes-or-no questions. For each spec it asks whether the spec adds a capability or rule that neither the item nor its cited sections ask for, and for each acceptance criterion whether it depends on what its test cannot control on the shared deploy. For each pre-plan it asks whether it contradicts a technical decision of project.md or stack.md. The detailing loop (`server/refine/detail-cycle.ts`) runs the check on the first answer of each valid item. A flagged item is retried alone once with the flags, exactly as a rejected item is today, and its first answer stands when the retry is not valid or cannot run, so a flag never fails an item and never leaves it worse than without the Jev.
+**Architecture:** three new decisions (`server/decide/decisions/detail-check.ts`) ask the Jev yes-or-no questions. For each spec it asks whether the spec adds a capability or rule that neither the item nor its cited sections ask for, and for each acceptance criterion whether it depends on what its test cannot control on the shared deploy. For each pre-plan it asks whether it contradicts a technical decision of project.md or stack.md. The detailing loop (`server/refine/detail-cycle.ts`) runs the check on the first answer of each valid item. A flagged item is retried alone once with the flags, exactly as a rejected item is today, and its first answer stands when the retry is not valid or cannot run, so a flag never fails an item and never leaves it worse than without the Jev.
 
 **Tech Stack:** TypeScript on Node 22 (ES modules), vitest.
 
@@ -12,8 +12,10 @@
 
 ## Design decisions
 
-- The check is on by default inside the decision layer, like `patch-dedup` and `failure-cause`: a wrong flag costs at most one more agent call for that item in that cycle, and the first answer stands when the retry is not valid. The Docker config turns the layer on, so the container runs it.
-- The chain is `jev` then `local` and the escalation role is the PO, as for the other refinement decisions, because the UI server has no Claude step to escalate to.
+- Each check is its own decision, so the config switches each one by itself: `criterion-shared-deploy` is on by default inside the decision layer, because its flag quotes the exact criterion; `spec-cited-sections` and `preplan-tech-decisions` are off by default until an eval measures their precision, as R11.5a asks (human, 2026-10-12, after the review). The Docker config turns the layer on, so the container runs the criterion check.
+- The chain is `jev` then `local` and the escalation role is the PO (the SM for the pre-plan), as for the other refinement decisions, because the UI server has no Claude step to escalate to.
+- A flag names what the Jev judged (the criterion, or the attempt's objectives and features, or its modules and tasks), says it is an automatic check that can be wrong, and asks to keep what the item and the docs ask for, because the retry pack shows the previous cycle's spec and not the flagged attempt.
+- The cited-sections state leaves out the spec's out-of-scope list, which the Jev could read as something the spec adds, and the pre-plan state puts stack.md before project.md, so the cap cuts the longer document.
 - Each question is its own decide call, since a call's confidence is its least sure answer and one unsure question would silence the others (the lesson written in `gate1.ts`).
 - A spec whose state is longer than the 24,000 character cap skips the cited-sections question, because a cut state would hide cited sections and flag what they say.
 - The pre-plan comes first in its state, so a cut only loses the end of the docs, which can only hide a contradiction.
@@ -31,8 +33,8 @@
 ## Review Focus
 
 1. A spec the Jev flags is retried alone once with the flags, the retry's spec is recorded, and every criterion number stays unique across the backlog.
-2. A flagged spec whose retry is not valid, or whose retry stops on quota, keeps its first answer, so the item never fails because of a flag.
-3. The Jev never checks a solo retry, and with the decision layer off or no decider the detailing makes the same calls as before.
+2. A flagged spec whose retry is not valid, or whose retry stops on quota, or whose batch stopped at an earlier rejected item, keeps its first answer, so the item never fails because of a flag.
+3. The Jev never checks a solo retry, and with the decision layer off or no decider the detailing makes the same agent calls as before.
 4. A pre-plan the Jev flags is retried alone once with the flag.
 5. A spec over the state cap skips the cited-sections question, and a pre-plan state is cut only at the end of the docs.
 
@@ -42,10 +44,12 @@
 - The solo retries of one batch still run one after the other, so a batch with three flagged items adds three calls in a row.
 - The check cannot see the other items, so an overlap with another item's scope stays with the review.
 - A criterion that needs a route a later item delivers is not checked here, since it belongs to R11.10.
+- The journaled decisions carry no state, item or criterion, so an eval of the two checks that are off needs its own labelled cases, such as seeded specs and pre-plans.
+- The UI server builds its decider again for every call and books the Jev's cost nowhere, as for the other refinement decisions.
 
 ---
 
-### Task 1: The `detail-check` decision
+### Task 1: The three detailing checks
 
 **Files:**
 - Create: `server/decide/decisions/detail-check.ts`
@@ -59,11 +63,11 @@
   - a spec the Jev finds outside its cited sections gets one issue, and each criterion it flags gets an issue that quotes the criterion;
   - an unanswered decision (layer off) flags nothing;
   - a spec state over `MAX_STATE_CHARS` asks no cited-sections question, while its criteria are still asked;
-  - every call uses the decision id `detail-check` and one question;
+  - each check is its own decision id with one question per call;
   - a flagged pre-plan gets one issue, and its state starts with the pre-plan, so a long project.md is the part the cap cuts.
 - [ ] **Step 2: Run** `npx vitest run test/decide/detail-check.test.ts` and see it fail (module missing).
-- [ ] **Step 3: Implement** `detail-check.ts`: three questions (cited sections, shared deploy, project decisions), one `noul` call per question, a flag when P(yes) is at least `FLAG_MIN` (0.5); `'detail-check'` appended to `DECISION_IDS`; `DECISION_DEFAULTS['detail-check'] = { chain: ['jev', 'local'], escalateTo: 'po' }`.
-- [ ] **Step 4: Update** `test/config/decisions.test.ts`: the Docker config's enabled list ends with `'detail-check'`.
+- [ ] **Step 3: Implement** `detail-check.ts`: three questions (cited sections, shared deploy, project decisions), one `noul` call per question, a flag when P(yes) is at least `FLAG_MIN` (0.5); `spec-cited-sections`, `criterion-shared-deploy` and `preplan-tech-decisions` appended to `DECISION_IDS`, with defaults that switch only the criterion check on.
+- [ ] **Step 4: Update** `test/config/decisions.test.ts`: the Docker config's enabled list ends with `'criterion-shared-deploy'`, and the defaults keep the other two off.
 - [ ] **Step 5: Run** the two test files, then commit.
 
 ### Task 2: The detailing loop checks each first answer

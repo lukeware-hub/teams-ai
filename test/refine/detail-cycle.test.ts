@@ -39,16 +39,18 @@ const preplanFor = (section: string) => {
   return { key, modules: [{ name: 'm', purpose: 'p' }], tasks: ids.map((id, n) => ({ id: `P${n + 1}`, title: `Tarefa ${id}`, module: 'm', owner: 'dev', criteriaRefs: [id], dependsOn: [] })), risks: [] };
 };
 
-/** A Jev that flags every detail-check state holding `marker` and answers no other decision. */
+/** A Jev that flags every detailing check whose state holds `marker`, whatever the config, and answers no other decision. */
 function jev(marker: string) {
   const states: string[] = [];
-  const decide = async (id: string, state: string) => {
-    if (id !== 'detail-check') return { answered: false, reason: 'disabled' };
+  const confidential: boolean[] = [];
+  const decide = async (id: string, state: string, questions: Record<string, unknown>, ctx: { confidential: boolean }) => {
+    if (!['spec-cited-sections', 'criterion-shared-deploy', 'preplan-tech-decisions'].includes(id)) return { answered: false, reason: 'disabled' };
     states.push(state);
+    confidential.push(ctx.confidential);
     const value = state.includes(marker) ? 0.9 : 0.1;
-    return { answered: true, backend: 'jev', escalated: false, answers: { q0: { type: 'noul', value, probabilities: { yes: value, no: 1 - value }, confidence: 0.9 } } };
+    return { answered: true, backend: 'jev', escalated: false, answers: { [Object.keys(questions).join()]: { type: 'noul', value, probabilities: { yes: value, no: 1 - value }, confidence: 0.9 } } };
   };
-  return { states, decide };
+  return { states, confidential, decide };
 }
 
 type Req = { kind: string; role: string; pack: { feedback?: string } };
@@ -598,10 +600,11 @@ describe('backlog detailing checked by the Jev', () => {
     const env = await detailWith((req) => (req.kind === 'spec' && !retried(req) ? withExtra(req) : undefined), jev('pagamento'));
     expect(env.retries.map((c) => c.kind)).toEqual(['spec']);
     expect(env.retries[0]!.feedback).toContain('## Item caso:');
-    expect(env.retries[0]!.feedback).toContain('o Jev apontou que a spec acrescenta');
+    expect(env.retries[0]!.feedback).toContain('apontou que esta tentativa da spec acrescenta');
+    expect(env.retries[0]!.feedback).toContain('caso; pagamento');
     expect(await featuresOf(env, 'caso')).toEqual(['caso']);
     expect(env.journal.state.status).toBe('ready');
-    expect(env.events.some((e) => e.type === 'DECISION_MADE' && (e.data.record as { decisionId: string }).decisionId === 'detail-check')).toBe(true);
+    expect(env.events.some((e) => e.type === 'DECISION_MADE' && (e.data.record as { decisionId: string }).decisionId === 'spec-cited-sections')).toBe(true);
   });
 
   it('never checks a solo retry, so a flag costs one more call at most', async () => {
@@ -630,6 +633,26 @@ describe('backlog detailing checked by the Jev', () => {
     expect(String(env.events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason)).toMatch(/interrompido/);
   });
 
+  // Plan 85 review: a rejected item earlier in the batch found the run stopped and left before the flagged one.
+  it('keeps a flagged first answer when an earlier rejected item of its batch finds the run stopped', async () => {
+    const env = await detailWith((req) => {
+      if (req.kind !== 'spec') return undefined;
+      if (String(req.pack.feedback).includes('## Item opme:')) return quota;
+      if (retried(req)) return undefined;
+      const keys = [...String(req.pack.feedback).matchAll(/^## Item ([a-z0-9-]+):/gm)].map((m) => m[1]!);
+      return ok({ specHash: H, specs: keys.map((k) => (k === 'caso' ? { ...itemSpec(k), type: 'bug' } : k === 'triagem' ? extra(k) : itemSpec(k))) });
+    }, jev('pagamento'));
+    expect(String(env.events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason)).toMatch(/interrompido/);
+    expect(env.journal.state.backlog?.specs?.triagem?.spec?.features).toEqual(['triagem', 'pagamento']);
+  });
+
+  it("keeps a confidential project's text away from the Jev", async () => {
+    const decider = jev('pagamento');
+    await detailWith((req) => (req.kind === 'backlog' ? ok({ specHash: H, project: makeProject({ confidential: true }), backlog: { epics, items: OUTLINE } }) : undefined), decider);
+    expect(decider.confidential.length).toBeGreaterThan(0);
+    expect(decider.confidential.every(Boolean)).toBe(true);
+  });
+
   it('sends a pre-plan the Jev flags back alone once with the flag', async () => {
     const env = await detailWith((req) => {
       if (req.kind !== 'preplan' || retried(req)) return undefined;
@@ -638,7 +661,7 @@ describe('backlog detailing checked by the Jev', () => {
     }, jev('relógio do banco'));
     expect(env.retries.map((c) => c.kind)).toEqual(['preplan']);
     expect(env.retries[0]!.feedback).toContain('## Spec opme:');
-    expect(env.retries[0]!.feedback).toContain('o Jev apontou que o pré-plano contradiz');
+    expect(env.retries[0]!.feedback).toContain('apontou que esta tentativa do pré-plano contradiz');
     expect(env.journal.state.backlog?.preplans?.opme?.preplan?.modules).toEqual([{ name: 'm', purpose: 'p' }]);
     expect(env.journal.state.status).toBe('ready');
   });

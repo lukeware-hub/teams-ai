@@ -169,7 +169,7 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
           const solo = await run([item], { [item.key]: first.issues });
           let again = solo && (await outcome(solo, item, false));
           if (first.flagged && (!again || again.issues.length > 0)) again = await outcome(out, item, false);
-          if (!again) return;
+          if (!again) continue;
           if (again.issues.length > 0) await fail(item, again.issues);
         }
       } catch (err) {
