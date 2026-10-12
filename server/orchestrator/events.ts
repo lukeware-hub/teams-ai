@@ -30,6 +30,8 @@ export const OrchEvent = {
   MergeLockAcquired: 'MERGE_LOCK_ACQUIRED',
   PrCreated: 'PR_CREATED',
   PrMerged: 'PR_MERGED',
+  /** A conflicting task moved onto origin/main as one commit, conflict markers where both sides changed the same lines. */
+  RebaseReplayed: 'REBASE_REPLAYED',
   TaskBlocked: 'TASK_BLOCKED',
   BudgetExceeded: 'BUDGET_EXCEEDED',
   RunFinished: 'RUN_FINISHED',

@@ -22,7 +22,7 @@ import type { TestResult } from '../evidence/junit.js';
 import { verifyClaimedEvidence } from '../evidence/matrix.js';
 import type { Exec } from '../exec/command.js';
 import type { GateResult } from '../exec/gate-runner.js';
-import { changedFiles, commitAll, createWorktree, fetch as gitFetch, git, removeWorktree } from '../git/git.js';
+import { changedFiles, commitAll, conflictMarkerFiles, createWorktree, fetch as gitFetch, git, removeWorktree, replayOnto } from '../git/git.js';
 import type { MergeQueue, MergeSteps } from '../git/merge-queue.js';
 import type { CodeContext, HandoffSummary } from '../knowledge/context-pack.js';
 import { RunEvent, type TaskRuntime } from '../pipeline/run-state.js';
@@ -215,6 +215,12 @@ export class TaskRunner {
     return this.deps.journal.events.filter((e) => e.type === OrchEvent.Feedback && e.data.taskId === this.taskId && e.data.attempt === true).map((e) => String(e.data.text));
   }
 
+  /** Feedback when a changed file still holds conflict markers, or null. */
+  private async markersLeft(): Promise<string | null> {
+    const marked = await conflictMarkerFiles(this.worktree, await changedFiles(this.worktree, 'origin/main', this.deps.exec), this.deps.exec);
+    return marked.length > 0 ? `Conflict markers remain in these files; resolve every <<<<<<< and >>>>>>> block, then run the project's tests:\n${marked.join('\n')}` : null;
+  }
+
   /** False when the task was blocked instead: an older run of this spec is live and owns the worktree. */
   private async ensureWorktree(): Promise<boolean> {
     const { journal, ws, exec } = this.deps;
@@ -344,6 +350,8 @@ export class TaskRunner {
       // Nothing to gate, review or open a PR for; GitHub would refuse the PR anyway. Charge the attempt now.
       return this.fail('code', 'Dev reported done but produced no changes against origin/main. Implement the task or return spec-gap.');
     }
+    const markers = await this.markersLeft();
+    if (markers) return this.fail('code', markers);
     await this.deps.journal.fact(OrchEvent.DevCommitted, { taskId: this.taskId, sha, changedFiles: changed, summary: value.summary });
     await this.transition('validating');
   }
@@ -508,6 +516,9 @@ export class TaskRunner {
   }
 
   private async merge(): Promise<void> {
+    // A resume can reach the merge with the replay's markers still in place; they must never merge.
+    const markers = this.task.state === 'rebasing' ? await this.markersLeft() : null;
+    if (markers) return this.fail('code', markers);
     const steps = this.deps.mergeSteps(this.task.def, this.worktree, this.branch);
     const wrapped: MergeSteps = {
       ...steps,
@@ -535,8 +546,16 @@ export class TaskRunner {
     }
     if (this.task.state === 'merging') await this.transition('rebasing');
     switch (outcome.stage) {
-      case 'rebase':
-        return this.fail('rebase-conflict', `Rebase conflicts on origin/main:\n${(outcome.conflicts ?? []).join('\n')}`);
+      case 'rebase': {
+        // A retry on the old base replays the same conflicting commit (the Dev cannot rebase), so move the task onto main first.
+        await gitFetch(this.deps.ws.repo, this.deps.exec);
+        const replay = await replayOnto(this.deps.ws.repo, this.worktree, 'origin/main', `${this.taskId}: replay onto origin/main`, this.deps.exec).catch(() => null);
+        if (!replay) return this.fail('rebase-conflict', `Rebase conflicts on origin/main:\n${(outcome.conflicts ?? []).join('\n')}`);
+        await this.deps.journal.fact(OrchEvent.RebaseReplayed, { taskId: this.taskId, previous: replay.previous, files: replay.files });
+        // Clean: the task stays in rebasing and the next advance merges it, no attempt spent.
+        if (replay.files.length === 0) return;
+        return this.fail('rebase-conflict', `Rebase conflicts on origin/main. The orchestrator moved this task onto the current origin/main; these files hold conflict markers where both sides changed the same lines. In each, keep main's change and this task's intent and remove every marker, then run the project's tests:\n${replay.files.join('\n')}`);
+      }
       case 'gates': {
         const f = outcome.gateFailure;
         // Fakes and older steps give only the detail; the prefix is the gate runner's own classification.

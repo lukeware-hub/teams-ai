@@ -550,11 +550,67 @@ describe('TaskRunner: merging', () => {
     expect(changes.slice(-2)).toEqual(['merging', 'merged']);
   });
 
-  it('sends rebase conflicts back to Dev as an attempt', async () => {
+  /** Main gets `content` for `file`, committed and pushed, as another task's merge would leave it. */
+  async function mainWrites(file: string, content: string): Promise<void> {
+    await fs.mkdir(path.dirname(path.join(remote.repo, file)), { recursive: true });
+    await fs.writeFile(path.join(remote.repo, file), content);
+    await git(remote.repo, ['add', '-A']);
+    await git(remote.repo, ['commit', '-q', '-m', `main: ${file}`]);
+    await git(remote.repo, ['push', '-q', 'origin', 'HEAD:main']);
+  }
+
+  it('moves a conflicting task onto the current main with conflict markers, so the next Dev attempt can resolve them', async () => {
+    await mainWrites('src/a.ts', 'base\n');
     const r = await reviewed({ merge: { rebase: async () => ({ ok: false, conflicts: ['src/a.ts'] }) } });
+    const previous = await headSha(r.worktree);
+    await mainWrites('src/a.ts', 'from main\n');
     await r.advance();
     expect(state()).toMatchObject({ state: 'implementing', attempts: 1 });
-    expect(journal.lastFeedback('T1')).toContain('src/a.ts');
+    expect(await fs.readFile(path.join(r.worktree, 'src', 'a.ts'), 'utf8')).toMatch(/^<<<<<<< [\s\S]*from main/m);
+    expect(await git(r.worktree, ['rev-parse', 'HEAD~1'])).toBe(await git(remote.repo, ['rev-parse', 'HEAD']));
+    expect(journal.events.find((e) => e.type === OrchEvent.RebaseReplayed)!.data).toEqual({ taskId: 'T1', previous, files: ['src/a.ts'] });
+    expect(journal.lastFeedback('T1')).toContain('moved this task onto the current origin/main');
+  });
+
+  it('merges again without spending an attempt when the replay onto main is clean', async () => {
+    await mainWrites('src/a.ts', 'base\n');
+    let calls = 0;
+    const r = await reviewed({ merge: { rebase: async () => (calls++ === 0 ? { ok: false, conflicts: ['src/a.ts'] } : { ok: true, baseSha: 'base' }) } });
+    await mainWrites('src/other.ts', 'unrelated\n');
+    await r.advance();
+    expect(state()).toMatchObject({ state: 'rebasing', attempts: 0 });
+    expect(journal.events.find((e) => e.type === OrchEvent.RebaseReplayed)!.data).toMatchObject({ files: [] });
+    await r.advance();
+    expect(state().state).toBe('merged');
+  });
+
+  it('keeps the conflict list as feedback when git cannot replay the task, such as an edit of a file main deleted', async () => {
+    await mainWrites('src/a.ts', 'base\n');
+    const r = await reviewed({ merge: { rebase: async () => ({ ok: false, conflicts: ['src/a.ts'] }) } });
+    const previous = await headSha(r.worktree);
+    await git(remote.repo, ['rm', '-q', 'src/a.ts']);
+    await git(remote.repo, ['commit', '-q', '-m', 'main: drop a']);
+    await git(remote.repo, ['push', '-q', 'origin', 'HEAD:main']);
+    await r.advance();
+    expect(state()).toMatchObject({ state: 'implementing', attempts: 1 });
+    expect(journal.lastFeedback('T1')).toBe('Rebase conflicts on origin/main:\nsrc/a.ts');
+    expect(await headSha(r.worktree)).toBe(previous);
+    expect(journal.events.some((e) => e.type === OrchEvent.RebaseReplayed)).toBe(false);
+  });
+
+  it('refuses a Dev result that leaves conflict markers, before any gate runs', async () => {
+    const gatesRun: string[] = [];
+    const markers: Agent = async (req) => {
+      // A Markdown file: no gate would fail on the markers, so only the guard stops them.
+      await fs.mkdir(path.join(req.cwd, 'src'), { recursive: true });
+      await fs.writeFile(path.join(req.cwd, 'src', 'notes.md'), '<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> task\n');
+      return ok({ specHash: HASH, status: 'done', summary: 'notes', changedFiles: ['src/notes.md'], commitMessage: 'docs: notes' });
+    };
+    const r = new TaskRunner('T1', deps({ agent: markers, gates: async (wt) => { gatesRun.push(wt); return { results: [], blockingFailure: null }; } }));
+    await r.advance();
+    expect(state()).toMatchObject({ state: 'implementing', attempts: 1 });
+    expect(journal.lastFeedback('T1')).toContain('src/notes.md');
+    expect(gatesRun).toEqual([]);
   });
 
   it('a refused merge returns the task to rebasing without consuming an attempt', async () => {
