@@ -38,6 +38,7 @@ import { reconcile } from './reconcile.js';
 import { validateDocs } from '../validators/docs.js';
 import { readmePack, runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
 import { TaskRunner, type TaskRunnerDeps } from './task-runner.js';
+import { portKey, registeredPorts } from '../deploy/port-registry.js';
 import { eventsFile, expandHome, graphDir, mergedByPriorRuns, nextRunId, runDir, serviceWorkspace, sessionDir, stateFile, stepDir, worktreeDir, type Workspace } from './workspace.js';
 import type { DeployTarget } from '../deploy/target.js';
 import { E2E_GATE, runE2e } from '../exec/e2e.js';
@@ -138,6 +139,9 @@ export class Run {
   private plan: AnyPlan | null = null;
   private techSpecText = '';
   private adrs: Array<{ id: string; title: string; text: string }> = [];
+  /** R12.6: each service's address on the shared network, and the design doc, for steps in a service's repository. */
+  private addresses: Record<string, string> = {};
+  private design: string | null = null;
   private readonly runners = new Map<string, TaskRunner>();
   private readonly inflight = new Map<string, Promise<void>>();
   private readonly deps: RunDeps;
@@ -477,7 +481,7 @@ export class Run {
       tierModel: (_role, tier) => cfg.decisions.modelTiers[tier],
       routing: cfg.routing,
       policy: { ...DEFAULT_POLICY, ...cfg.retry },
-      packBase: this.packBase,
+      packBase: view.service ? () => ({ ...this.packBase(), service: { name: view.service!, plan: view.plan, addresses: Object.fromEntries(Object.entries(this.addresses).filter(([s]) => s !== view.service)), design: this.design } }) : this.packBase,
       handoffs: () => this.handoffs,
       boundaries: async () => {
         const g = this.deps.graphify;
@@ -574,6 +578,18 @@ export class Run {
     }
   }
 
+  /** What a step in a service's repository cannot read there: where every service answers, and the design doc. */
+  private async loadServiceContext(plan: AnyPlan): Promise<void> {
+    if (singlePlan(plan)) return;
+    const registry = await registeredPorts(expandHome(this.deps.cfg.paths.workspaces));
+    const planned = new Map(servicePlans(plan).map((v) => [v.service!, v.plan.deploy.port]));
+    this.addresses = Object.fromEntries((this.deps.project.services ?? []).flatMap((s) => {
+      const port = registry[portKey(this.deps.project.projectId, s)] ?? planned.get(s);
+      return port ? [[s, `http://${s}:${port}`]] : [];
+    }));
+    this.design = await this.gitLocked(['show', 'origin/main:docs/design.md']).then((text) => text.slice(0, 6000)).catch(() => null);
+  }
+
   /** Phase 0: the docs reach main (a draft) or are fetched, then every service gets its repository; public so tests can drive it without scripting Phases 1–3. */
   async executePhase0(): Promise<PhaseResult> {
     // Phases 1 and 2 read the docs from origin/main; a later run must see what was merged since the last one.
@@ -603,6 +619,7 @@ export class Run {
     const phase2 = await runPhase2(this.phaseDeps(), this.techSpecText);
     if (!phase2.ok) return phase2.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase2.reason);
     this.plan = phase2.plan!;
+    await this.loadServiceContext(this.plan);
     const workflows = await this.executeWorkflows(this.plan);
     if (!workflows.ok) return this.finish('phase-failed', workflows.reason);
     if (!this.journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 3)) await this.journal.fact(OrchEvent.PhaseStarted, { phase: 3 });

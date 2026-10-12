@@ -298,7 +298,7 @@ export class TaskRunner {
     }
     const owner = task.def.owner;
     const feedback = this.deps.journal.lastFeedback(this.taskId);
-    const pack = devPack(this.deps.packBase(), task.def, { code: await this.deps.code(this.worktree, task.def), handoffs: this.deps.handoffs(), feedback, e2eSuite: this.deps.plan.delivery?.e2eSuite, ...(task.def.service ? { service: { name: task.def.service, plan: this.deps.plan } } : {}) }, owner);
+    const pack = devPack(this.deps.packBase(), task.def, { code: await this.deps.code(this.worktree, task.def), handoffs: this.deps.handoffs(), feedback, e2eSuite: this.deps.plan.delivery?.e2eSuite }, owner);
     const overrides = await this.stepOverrides(owner, attempt);
     const outcome = await this.deps.runAgent<'dev'>({
       kind: 'dev',

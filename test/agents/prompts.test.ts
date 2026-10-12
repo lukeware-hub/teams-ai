@@ -13,6 +13,10 @@ describe('agent prompts for a project of services (R12.6)', () => {
     expect(sm).not.toContain('one edge service');
   });
 
+  it("tell Front that a service's repository gets the design doc in the pack, never as a file to edit", () => {
+    expect(agent('front')).toContain("In a service's repository the pack carries the project's design.md: follow it there and never create or edit docs/design.md in that repository");
+  });
+
   it('tell devops, Test and the PO what a service, its suites and the platform are', () => {
     const devops = agent('devops');
     expect(devops).toContain('named exactly like the service');

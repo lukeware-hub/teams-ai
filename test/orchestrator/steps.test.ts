@@ -7,7 +7,7 @@ import { Accounting } from '../../server/budget/accounting.js';
 import { Governor } from '../../server/budget/governor.js';
 import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
-import { devPack, devResumePrompt, fixTasksPack, outputContract, planPack, planRules, readmePack, reportPack, reviewPack, runAgentStep, servicesPlanRules, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
+import { devPack, devResumePrompt, fixTasksPack, outputContract, planPack, planRules, readmePack, replanPack, reportPack, reviewPack, runAgentStep, securityPack, servicesPlanRules, specGapPack, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
 import { servicePlans } from '../../server/contracts/plan.js';
 import { saveSession } from '../../server/runner/session-store.js';
 import type { StepOutcome } from '../../server/runner/step.js';
@@ -94,13 +94,34 @@ describe('packs', () => {
     expect(p.specHash).toBe(HASH);
   });
 
-  it("gives a service task its service's settings, since its repository holds no docs", () => {
+  it("gives every pack of a service task its settings, the other services' addresses and the start rule, since its repository holds no docs", () => {
     const view = servicePlans(makeServicesPlan(spec)).find((v) => v.service === 'inventory')!;
+    const own = view.plan.tasks[0]!;
+    const withService: PackBase = { ...base, service: { name: 'inventory', plan: view.plan, addresses: { orders: 'http://orders:20011' }, design: '# Design tokens' } };
     const opts = { code: { source: 'none' as const }, handoffs: [], feedback: null };
-    const rule = devPack(base, view.plan.tasks[0]!, { ...opts, service: { name: 'inventory', plan: view.plan } }).principles.find((p) => p.startsWith('This task changes the service inventory'))!;
+    const ruleOf = (p: { principles: readonly string[] }) => p.principles.find((x) => x.startsWith('This task changes the service inventory'));
+    const rule = ruleOf(devPack(withService, own, opts))!;
     expect(rule).toContain(`"port":${view.plan.deploy.port}`);
+    expect(rule).toContain('"junitPath"');
     expect(rule).not.toContain('"tasks"');
-    expect(devPack(base, view.plan.tasks[0]!, opts).principles.some((p) => p.startsWith('This task changes the service'))).toBe(false);
+    expect(rule).toContain('orders at http://orders:20011');
+    expect(rule).toContain('starts and passes its healthcheck without them');
+    expect(rule).not.toContain('# Design tokens');
+    // Review, security, spec-gap and replan run in the same repository, so they carry the same rule.
+    const change = { diffStat: '', changedFiles: [], diff: '', code: { source: 'none' as const } };
+    expect(ruleOf(reviewPack(withService, own, { ...change, junit: [], profile: 'standard' }))).toBe(rule);
+    expect(ruleOf(securityPack(withService, own, change))).toBe(rule);
+    expect(ruleOf(specGapPack(withService, own, { question: 'which status code?' }))).toBe(rule);
+    expect(ruleOf(replanPack(withService, own, { history: [], boundaries: [] }))).toBe(rule);
+    expect(ruleOf(devPack(base, own, opts))).toBeUndefined();
+  });
+
+  it('gives a front task of a service the project design doc its repository lacks', () => {
+    const view = servicePlans(makeServicesPlan(spec)).find((v) => v.service === 'inventory')!;
+    const withService: PackBase = { ...base, service: { name: 'inventory', plan: view.plan, addresses: {}, design: '# Design tokens' } };
+    const front = devPack(withService, view.plan.tasks[0]!, { code: { source: 'none' }, handoffs: [], feedback: null }, 'front');
+    expect(front.principles.find((x) => x.startsWith('This task changes the service inventory'))).toContain("The project's docs/design.md is not in this repository");
+    expect(front.principles.join('\n')).toContain('# Design tokens');
   });
 
   it('fix-tasks pack names the service of each existing task', () => {

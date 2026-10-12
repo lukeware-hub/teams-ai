@@ -58,6 +58,7 @@ let fake: FakeExec;
 const ghs = new Map<string, FakeGh>();
 const ghExecs = new Map<string, FakeExec>();
 const domains = new Map<string, string[]>();
+const prompts = new Map<string, string>();
 
 beforeEach(async () => {
   projectRemote = await makeRemote({
@@ -85,6 +86,7 @@ afterEach(async () => {
   ghs.clear();
   ghExecs.clear();
   domains.clear();
+  prompts.clear();
   for (const remote of [projectRemote, ...Object.values(services)]) await remote.cleanup();
 });
 
@@ -106,6 +108,7 @@ async function deps(over: Partial<RunDeps> = {}): Promise<RunDeps> {
     exec: fake.exec, ghExec: fake.exec,
     runStep: (async (req: StepRequest, stepDeps: { accounting: Accounting; network: { allowedDomains: readonly string[] } }) => {
       domains.set(`${req.kind}:${req.taskId}`, [...stepDeps.network.allowedDomains]);
+      prompts.set(`${req.role}:${req.kind}:${req.taskId}`, req.prompt);
       const out = await script(req);
       stepDeps.accounting.record({ role: req.role, phase: req.phase, taskId: req.taskId, attempt: req.attempt, stepKind: req.kind, provider: 'claude', model: req.model, usage: out.summary.usage, costUsd: out.summary.costUsd, durationMs: out.summary.durationMs, numTurns: out.summary.numTurns, at: new Date().toISOString() });
       return out;
@@ -131,6 +134,10 @@ describe('Run with a services plan', () => {
     }
     await git(projectRemote.repo, ['fetch', '-q', 'origin']);
     expect(await git(projectRemote.repo, ['ls-tree', '-r', '--name-only', 'origin/main'])).not.toContain('src/');
+    // A service's repository holds no docs: each task is told where the other services answer.
+    expect(prompts.get('dev:dev:T1-publish-order')).toContain(`inventory at http://inventory:${plan.services.inventory!.deploy.port}`);
+    expect(prompts.get('dev:dev:T2-reserve-stock')).toContain(`orders at http://orders:${plan.services.orders!.deploy.port}`);
+    expect(prompts.get('test:review:T2-reserve-stock')).toContain('This task changes the service inventory');
     // Each task's sandbox reaches its own stack's registries only, and each stack gets its own gate image.
     expect(domains.get('dev:T2-reserve-stock')).toContain('proxy.golang.org');
     expect(domains.get('dev:T1-publish-order')).not.toContain('proxy.golang.org');
@@ -145,6 +152,19 @@ describe('Run with a services plan', () => {
     await git(services[service].repo, ['fetch', '-q', 'origin']);
     return git(services[service].repo, ['ls-tree', '-r', '--name-only', 'origin/main']);
   };
+
+  it("gives a front task of a service the project's design doc, which its repository lacks", async () => {
+    const front = { ...plan, tasks: plan.tasks.map((t) => (t.id === 'T2-reserve-stock' ? { ...t, owner: 'front' as const } : t)) };
+    await fs.writeFile(path.join(projectRemote.repo, 'docs', 'specs', 'spec-001', 'plan.json'), JSON.stringify(front));
+    await fs.writeFile(path.join(projectRemote.repo, 'docs', 'design.md'), '# Design\n\nPrimary color #0b5fff.\n');
+    await git(projectRemote.repo, ['add', '-A']);
+    await git(projectRemote.repo, ['commit', '-q', '-m', 'docs: design']);
+    await git(projectRemote.repo, ['push', '-q', 'origin', 'main']);
+    const run = await Run.create(await deps());
+    expect(await run.execute()).toBe('complete');
+    expect(prompts.get('front:dev:T2-reserve-stock')).toContain('Primary color #0b5fff.');
+    expect(prompts.get('dev:dev:T1-publish-order')).not.toContain('Primary color #0b5fff.');
+  });
 
   it('commits the workflows to the repository of each new service, each under its own journal key', async () => {
     const run = await Run.create(await deps());

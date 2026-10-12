@@ -32,6 +32,19 @@ export interface PackBase {
   techSpecExcerpt?: string;
   retrieval?: readonly Hit[];
   budgetTokens: number;
+  /** Set when the step works in a service's repository, which holds none of the project's docs. */
+  service?: ServiceContext;
+}
+
+/** What a step in a service's repository needs from the project and cannot read there (R12.6). */
+export interface ServiceContext {
+  name: string;
+  /** The service's own view of the plan. */
+  plan: Plan;
+  /** Every other service's address on the project's shared network, by service. */
+  addresses: Readonly<Record<string, string>>;
+  /** The project's docs/design.md, which a front task follows. */
+  design: string | null;
 }
 
 export function outputContract(kind: StepKind): string {
@@ -55,7 +68,7 @@ function common(base: PackBase, kind: StepKind, role: Role): Common {
     kind,
     role,
     specHash: base.specHash,
-    principles: base.project.principles,
+    principles: base.service ? [...base.project.principles, serviceRule(base.service, base.project.platform ?? [], role)] : base.project.principles,
     outputContract: outputContract(kind),
     assumptions: base.assumptions,
     adrs: base.adrs,
@@ -75,26 +88,27 @@ function writesE2eSuite(task: PlanTask, suite: string): boolean {
   return task.affectedPaths.some((p) => p === suite || (dir !== './' && p.startsWith(dir)));
 }
 
-/** A service task works in a repository without docs: the settings its rules call plan.* come with the pack. */
-function serviceRule(name: string, plan: Plan, platform: readonly PlatformService[]): string {
-  const { tasks: _tasks, ...settings } = plan;
-  return `This task changes the service ${name}: its repository holds only that service's code, so every plan setting your rules name (plan.delivery, plan.deploy, plan.commands, plan.junitPath, plan.e2eExemptions) is this one, never a docs/specs file: ${JSON.stringify(settings)}. Other services answer at http://<service>:<port> on the project's shared network${platform.length > 0 ? `, and the platform containers by name (${platform.map((p) => p.name).join(', ')})` : ''}.`;
+/** A service's repository holds no docs: the settings its rules call plan.*, the other services' addresses and, for front, the design doc come with the pack. */
+function serviceRule(ctx: ServiceContext, platform: readonly PlatformService[], role: Role): string {
+  const { tasks: _tasks, ...settings } = ctx.plan;
+  const others = Object.entries(ctx.addresses).map(([s, url]) => `${s} at ${url}`);
+  return [
+    `This task changes the service ${ctx.name}: its repository holds only that service's code, not the project's docs, so every plan setting your rules name (plan.delivery, plan.deploy, plan.commands, plan.junitPath, plan.e2eExemptions) is this one, never a docs/specs file: ${JSON.stringify(settings)}.`,
+    `On the project's shared network the other services answer at their addresses (${others.join(', ') || 'none yet'})${platform.length > 0 ? ` and the platform containers by name (${platform.map((p) => p.name).join(', ')})` : ''}; the service reads each address from an environment variable its docker-compose.yml sets, and starts and passes its healthcheck without them: a call to another service retries instead of failing at start.`,
+    ...(role === 'front' && ctx.design ? [`The project's docs/design.md is not in this repository; it is the visual contract this task follows:\n${ctx.design}`] : []),
+  ].join(' ');
 }
 
 export function devPack(
   base: PackBase,
   task: PlanTask,
-  opts: { code: CodeContext; handoffs: readonly HandoffSummary[]; feedback: string | null; e2eSuite?: string; service?: { name: string; plan: Plan } },
+  opts: { code: CodeContext; handoffs: readonly HandoffSummary[]; feedback: string | null; e2eSuite?: string },
   role: Role = 'dev',
 ): ContextPackInput {
   const shared = common(base, 'dev', role);
-  const rules = [
-    ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : []),
-    ...(opts.service ? [serviceRule(opts.service.name, opts.service.plan, base.project.platform ?? [])] : []),
-  ];
   return {
     ...shared,
-    principles: rules.length > 0 ? [...shared.principles, ...rules] : shared.principles,
+    principles: opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [...shared.principles, e2eSuiteRules(opts.e2eSuite)] : shared.principles,
     task,
     criteria: criteriaOf(base.spec, task.criteriaRefs),
     handoffs: opts.handoffs,
