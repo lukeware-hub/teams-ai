@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Plan } from '../../server/contracts/plan.js';
-import { makeFrozenSpec, makePlan, makePlanTask } from '../fixtures/contracts.js';
-import { DevOutput, OUTPUT_SCHEMAS, PlanOutput, RefineOutput, ReviewOutput, SecurityOutput, STEP_KINDS, blockingFindings, toJsonSchema } from '../../server/agents/outputs.js';
+import { makeFrozenSpec, makePlan, makePlanTask, makeServicesPlan } from '../fixtures/contracts.js';
+import { DevOutput, OUTPUT_SCHEMAS, PlanOutput, RefineOutput, ReviewOutput, SecurityOutput, ServicesPlanOutput, STEP_KINDS, blockingFindings, toJsonSchema } from '../../server/agents/outputs.js';
 
 const HASH = `sha256:${'a'.repeat(64)}`;
 
@@ -157,5 +157,16 @@ describe('spec and preplan outputs', () => {
     const preplanSchema = JSON.stringify(toJsonSchema('preplan'));
     expect(preplanSchema).toContain('"criteriaRefs"');
     for (const owned of ['"specId"', '"specRev"', '"inputHash"']) expect(preplanSchema).not.toContain(owned);
+  });
+});
+
+describe('ServicesPlanOutput', () => {
+  it('is the services-plan step schema: every task names its service and a readable id', () => {
+    const plan = makeServicesPlan(makeFrozenSpec());
+    expect(OUTPUT_SCHEMAS['services-plan']).toBe(ServicesPlanOutput);
+    expect(ServicesPlanOutput.parse(plan).tasks.map((t) => t.service)).toEqual(plan.tasks.map((t) => t.service));
+    const { service: _, ...loose } = plan.tasks[0]!;
+    expect(ServicesPlanOutput.safeParse({ ...plan, tasks: [loose, ...plan.tasks.slice(1)] }).success).toBe(false);
+    expect(ServicesPlanOutput.safeParse({ ...plan, tasks: [{ ...plan.tasks[0]!, id: 'T1' }, ...plan.tasks.slice(1)] }).success).toBe(false);
   });
 });

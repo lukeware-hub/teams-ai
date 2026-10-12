@@ -1,14 +1,14 @@
 import { z } from 'zod';
 import { HASH_PATTERN } from '../contracts/hash.js';
-import { ADR_ID, Plan, PlanTask } from '../contracts/plan.js';
+import { ADR_ID, Plan, PlanTask, ServicesPlan } from '../contracts/plan.js';
 import { Backlog } from '../contracts/backlog.js';
 import { Preplan } from '../contracts/preplan.js';
 import { AC_ID, AcceptanceCriterion, BugDetails, ExternalDependency, SpecType } from '../contracts/spec.js';
 import { ID_PATTERNS } from '../core/ids.js';
-import { Project } from '../contracts/project.js';
+import { Project, ServiceName } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 
-export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'dev', 'review', 'security', 'deployment', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'name', 'suggest'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'deployment', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'name', 'suggest'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -84,6 +84,9 @@ const NamedPlan = Plan.extend({ tasks: z.array(PlanTask.extend({ id: z.string().
 
 /** Spec 10A.5 decision 12: the SM may add up to two full alternative plans; System 1 ranks them, Phase 2 keeps one. */
 export const PlanOutput = NamedPlan.extend({ alternatives: z.array(NamedPlan).max(2).optional() });
+
+/** R12.6: a project split into services gets a services plan; every task names its service. No alternatives: the ranking reads one stack. */
+export const ServicesPlanOutput = ServicesPlan.extend({ tasks: z.array(PlanTask.extend({ id: z.string().regex(NAMED_TASK_ID), service: ServiceName })).min(1) });
 
 const devCommon = {
   specHash,
@@ -210,6 +213,7 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   'tech-spec': TechSpecOutput,
   coverage: CoverageOutput,
   plan: PlanOutput,
+  'services-plan': ServicesPlanOutput,
   dev: DevOutput,
   review: ReviewOutput,
   security: SecurityOutput,

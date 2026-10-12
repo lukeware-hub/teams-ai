@@ -494,6 +494,7 @@ const STEP_DOING: Record<string, string> = {
   'tech-spec': 'escrevendo a especificação técnica',
   coverage: 'conferindo a cobertura dos critérios de aceite',
   plan: 'montando o plano de tarefas',
+  'services-plan': 'montando o plano de tarefas dos serviços',
   dev: 'implementando',
   review: 'revisando o código',
   security: 'revisando a segurança',

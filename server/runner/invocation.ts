@@ -36,7 +36,7 @@ export const ENV_ALLOWLIST: readonly string[] = ['HOME', 'PATH', 'TERM', 'LANG',
  * outlast 5 minutes, which would expire the cache mid-step, so they keep the default.
  */
 const SHORT_CACHE_KINDS: ReadonlySet<StepKind> = new Set<StepKind>([
-  'refine', 'derive', 'coverage', 'plan', 'review', 'security', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'name',
+  'refine', 'derive', 'coverage', 'plan', 'services-plan', 'review', 'security', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'name',
 ]);
 
 /** The `CLAUDE_CODE_PROMPT_CACHE_TTL` value for a step kind, or undefined to keep the CLI default. */
