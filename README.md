@@ -424,7 +424,9 @@ scripts/   Setup do WSL, smoke tests, scripts de integração e avaliação
   `docker` e `kubectl` são sempre negados aos agentes.
 - Cada etapa de agente roda em um sandbox `bubblewrap` com um `HOME` vazio por etapa (sem credenciais de GitHub ou Docker para roubar).
 - Gates e deploys rodam em um Docker aninhado sem root, sem acesso ao socket Docker do host.
-- O acesso de rede das etapas de agente está, por decisão, sem restrição por enquanto.
+- A rede de cada etapa de agente só alcança os registros de pacotes da stack do serviço: o npm sempre; o PyPI para Python; o crates.io para Rust; para Go, o `goproxy` da plataforma e o `sum.golang.org`.
+- O `goproxy` é um serviço do compose que busca os módulos Go no `proxy.golang.org` e segue ele mesmo o redirecionamento ao `storage.googleapis.com`; assim nenhuma etapa alcança esse armazenamento, onde qualquer bucket serviria para vazar dados.
+- Fora do compose não há `goproxy`: uma etapa Go baixa direto do `proxy.golang.org`, e um módulo cujo zip ele redireciona ao `storage.googleapis.com` não baixa dentro da etapa. Por isso rode a plataforma pelo compose.
 - A UI só aceita conexões do próprio computador (loopback) por padrão. Leia `docs/superpowers/security/2026-10-04-system-audit.md` antes de expô-la.
 
 ## Mais documentação
