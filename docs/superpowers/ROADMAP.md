@@ -701,6 +701,24 @@ The docs (project, briefing, stack, flow, design) stay the only hand-edited trut
 - Discarded after measuring: `--bare` (API key only), `--disable-slash-commands` (0 tokens: skills are not listed without the `Skill` tool), switching to the native binary (the npm package already wraps it), `DISABLE_NON_ESSENTIAL_MODEL_CALLS` (undocumented).
 - Combined estimate for slices 1, 2, 4 and 5: run -30 to -40% cost and ~80 -> ~55 min; refinement -26% from slice 1 alone. Verify each slice on a real run by cost per completed task, not by token counts.
 
+### R11.14 Repair loop when a spec fails - `todo` (2026-10-12; decided by the human on 2026-10-06 and left out of R11.4, R11.5 never took it)
+
+- Today a failed spec stays `failed`, its dependents are blocked and the program waits for the human; nothing classifies the cause, replans or tries again beyond the run's own bounded resume (R11.4).
+- Goal: isolate the failed spec, have the Jev classify the cause, review, fix or replan it, adjust the backlog when needed and continue with the dependents; stop and ask the human only after a bounded number of repair attempts.
+- Verify: a unit test with a failing item whose repair lets its dependents run, and one with a repair that never works and ends in a human escalation; then a live check. Plan and approval first, as in "How we work".
+
+### R11.15 Which human steps stay in "100% autonomous" - `todo`, needs a human decision (2026-10-12)
+
+- Two steps are human by design today: answering the refinement (Gate 1) and validating the result after the deploy; a problem found in validation returns to Gate 1 as a continuation of the same spec.
+- Decide for each: keep it as the owner's role; or let the Jev answer all of Gate 1 (R11.5.7 already answers part of it from the docs); or accept the validation on its own when every criterion passed and the smoke tests are green.
+- No code before the decision; the answer sets the scope of any later plan.
+
+### R11.16 Proof run of the full autonomous flow - `todo` (2026-10-12; needs a plan and the human's approval of the paid run)
+
+- No run yet shows the whole chain without the human between Start and `awaiting-validation`: R8.7 ended `deploy-failed`, R5.1 closed incomplete, and R11.P was clean but needed 19 refinement cycles.
+- Run a backlog program of several specs through the full delivery contract (Stage 8) and the repair loop (R11.14), then record cost, wall time, blocked tasks, repair attempts and every human touch.
+- The human removed live runs from the active backlog on 2026-10-06, so this item starts only when the human asks for it.
+
 ## Stage 12 - Any architecture, one repository per service (2026-10-11, plan 60)
 
 The five docs decide whether the software is one application or a system of services, which services exist, their stacks and the shared infrastructure; teams-ai is never tied to one technology or one architecture (human, 2026-10-11). Human decisions: one repository per service; one spec can change several services in one run; the docs, specs, plans and reports live only in the project repository; shared infrastructure such as a NATS broker is declared in the docs and started by teams-ai. This replaces the one-service rule of R10.3. Design, impact map and slices: `plans/2026-10-11-teams-ai-60-services.md`. Each slice gets its own plan when the one before it lands; agent prompts come last, because an agent that writes a services plan before runs can execute one would break live runs.
