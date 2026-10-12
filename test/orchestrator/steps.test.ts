@@ -175,6 +175,14 @@ describe('packs', () => {
     expect(reportPack(base, opts).feedback).not.toContain('also needs a heading');
   });
 
+  it("readme pack of a project of services points at the docs, since the code lives in each service's repository", () => {
+    const shop: PackBase = { ...base, project: { ...base.project, projectId: 'shop', services: ['orders', 'inventory'] } };
+    const text = readmePack(shop, { tasks: [], existing: null }).feedback!;
+    expect(text).toContain("keeps each service's code in its own repository (shop-orders, shop-inventory)");
+    expect(text).not.toContain('package.json, go.mod');
+    expect(readmePack(base, { tasks: [], existing: null }).feedback).toContain('package.json, go.mod');
+  });
+
   it('report pack hands the agent the browser url and keeps the internal deploy url out of the text', () => {
     const opts = { delivered: ['T1'], blocked: [], evidence: '[]', assumptions: [], deploy: '{"url":"http://dind:3000"}', tokens: '{}', security: '' };
     expect(reportPack(base, { ...opts, hostUrl: 'http://localhost:3000' }).feedback).toContain('The human opens the service at http://localhost:3000; the deploy url is internal');

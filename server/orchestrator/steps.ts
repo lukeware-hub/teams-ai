@@ -11,7 +11,7 @@ import type { PlatformService, Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
 import type { Effort } from '../decide/decisions/model-tier.js';
 import type { ReviewProfile } from '../decide/decisions/pr-risk.js';
-import { stepId } from '../core/ids.js';
+import { repoName, stepId } from '../core/ids.js';
 import { redactSecrets } from '../core/redact.js';
 import { buildContextPack, estimateTokens, type CodeContext, type ContextPack, type ContextPackInput, type HandoffSummary } from '../knowledge/context-pack.js';
 import type { Hit } from '../knowledge/retrieval.js';
@@ -349,8 +349,11 @@ const plannedSections = (sections: readonly string[] | undefined): string[] =>
   sections?.length ? [`docs/README.md also needs a heading naming each section the plan lists: ${sections.join(', ')}.`] : [];
 
 export function readmePack(base: PackBase, opts: { tasks: readonly string[]; existing: string | null; docsErrors?: readonly string[]; readmeSections?: readonly string[] }): ContextPackInput {
+  const services = base.project.services ?? [];
   return { ...common(base, 'readme', 'sm'), criteria: base.spec.acceptanceCriteria, feedback: [
-    'Write docs/README.md for this project: the Markdown overview a newcomer reads first. Read the repository (package.json, go.mod, pyproject.toml or Cargo.toml, entry points, tests, Dockerfile) with Read, Grep and Glob; state only what the files confirm.',
+    services.length > 0
+      ? `Write docs/README.md for this project: the Markdown overview a newcomer reads first. The project keeps each service's code in its own repository (${services.map((s) => repoName(base.project.projectId, s)).join(', ')}), so this one holds only the docs: describe each service from docs/ (project.md, stack.md, flow.md) and the services.<service> settings of docs/specs/*/plan.json with Read, Grep and Glob; state only what those files confirm.`
+      : 'Write docs/README.md for this project: the Markdown overview a newcomer reads first. Read the repository (package.json, go.mod, pyproject.toml or Cargo.toml, entry points, tests, Dockerfile) with Read, Grep and Glob; state only what the files confirm.',
     DOCS_STRUCTURE,
     ...plannedSections(opts.readmeSections),
     ...(opts.docsErrors?.length ? [`Your previous documents were rejected, fix every point:\n${opts.docsErrors.map((e) => `- ${e}`).join('\n')}`] : []),
