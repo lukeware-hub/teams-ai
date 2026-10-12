@@ -3,10 +3,14 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { PlanOutput, ServicesPlanOutput } from '../../server/agents/outputs.js';
 import { DEFAULT_CONFIG } from '../../server/config/config.js';
-import type { PlanTask } from '../../server/contracts/plan.js';
+import { canonicalJson } from '../../server/contracts/hash.js';
+import { parseAnyPlan, type PlanTask } from '../../server/contracts/plan.js';
+import type { Spec } from '../../server/contracts/spec.js';
 import { deliveredByPriorRuns, eventsFile, expandHome, firstSpecForRun, firstSpecForSpec, graphDir, mergedByPriorRuns, nextRunId, olderLiveRun, serviceWorkspace, specForRun, stepDir, workspacePaths, worktreeDir } from '../../server/orchestrator/workspace.js';
 import { EventStore } from '../../server/store/event-store.js';
+import { makeFrozenSpec, makePlan, makeServicesPlan } from '../fixtures/contracts.js';
 
 let dir = '';
 afterEach(async () => {
@@ -150,14 +154,17 @@ describe('specForRun', () => {
 });
 
 const task = (id: string, description = `do ${id}`): PlanTask => ({ id, title: id, description, owner: 'dev', origin: 'plan', criteriaRefs: ['AC-001'], affectedPaths: [`src/${id}.ts`], dependsOn: [] });
+// The plan as the SM returns it: the orchestrator, not the SM, sets each task's origin.
+const fromSm = (plan: { tasks: readonly PlanTask[] }) => ({ ...plan, tasks: plan.tasks.map(({ origin: _, ...t }) => t) });
 const priorRuns = async () => {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-runs-'));
   const ws = { ...workspacePaths(DEFAULT_CONFIG, 'shop', '/home/u'), runs: dir };
   // A run as the orchestrator journals it: its plan, then what it merged, adopted or found on main.
-  const run = async (id: string, o: { projectId?: string; specHash?: string; planned: PlanTask[]; merged?: string[]; onMain?: string[]; adopted?: string[]; replanned?: { taskId: string; replacements: { id: string }[] }[]; finished?: boolean }) => {
+  const run = async (id: string, o: { projectId?: string; specHash?: string; planned: PlanTask[]; fixes?: PlanTask[]; merged?: string[]; onMain?: string[]; adopted?: string[]; replanned?: { taskId: string; replacements: { id: string }[] }[]; finished?: boolean }) => {
     const s = await EventStore.open({ file: eventsFile(ws, id), runId: id, specHash: o.specHash ?? 'h' });
     await s.append({ type: 'RUN_STARTED', data: { runId: id, specId: 'a-001', projectId: o.projectId ?? 'shop' } });
     for (const t of o.planned) await s.append({ type: 'TASK_PLANNED', data: { task: t } });
+    if (o.fixes) await s.append({ type: 'FIX_TASKS_PLANNED', data: { tasks: o.fixes, round: 1 } });
     for (const r of o.replanned ?? []) await s.append({ type: 'TASK_REPLANNED', data: r });
     for (const taskId of o.merged ?? []) await s.append({ type: 'PR_MERGED', data: { taskId, pr: 1 } });
     for (const taskId of o.onMain ?? []) await s.append({ type: 'TASK_ALREADY_ON_MAIN', data: { taskId, paths: [], summary: '' } });
@@ -173,11 +180,24 @@ describe('mergedByPriorRuns', () => {
     const { ws, run } = await priorRuns();
     await run('a-001-r1', { planned: [task('T0-scaffold'), task('T1')], merged: ['T0-scaffold', 'T1'] });
     await run('a-001-r2', { planned: [task('T2')], merged: ['T2'] });
-    // A later run (r4) and a run of another project sharing the spec id must not count.
-    await run('a-001-r4', { planned: [task('T3')], merged: ['T3'] });
-    await run('a-001-r5', { projectId: 'other-shop', planned: [task('T9')], merged: ['T9'] });
+    // An earlier run of another project sharing the spec id (r3) and a later run (r5) must not count.
+    await run('a-001-r3', { projectId: 'other-shop', planned: [task('T9')], merged: ['T9'] });
+    await run('a-001-r5', { planned: [task('T3')], merged: ['T3'] });
     const tasks = [task('T0-scaffold'), task('T1'), task('T2'), task('T3'), task('T9')];
-    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r3', tasks, 'h')).toEqual(new Set(['T0-scaffold', 'T1', 'T2']));
+    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r4', tasks, 'h')).toEqual(new Set(['T0-scaffold', 'T1', 'T2']));
+  });
+
+  // Plan 75 review: a first run journals the plan the SM returned, while a retry reads plan.json back from main.
+  it.each([
+    ['single', (spec: Spec) => PlanOutput.parse(fromSm(makePlan(spec)))],
+    ['services', (spec: Spec) => ServicesPlanOutput.parse(fromSm(makeServicesPlan(spec)))],
+  ])('adopts the tasks of a %s plan as a first run journals them and a retry reads plan.json', async (_, smPlan) => {
+    const { ws, run } = await priorRuns();
+    const plan = smPlan(makeFrozenSpec());
+    await run('a-001-r1', { planned: plan.tasks, merged: plan.tasks.map((t) => t.id) });
+    // Phase 2 writes plan.json from the canonical JSON of the plan; readDocs parses it back.
+    const reread = parseAnyPlan(JSON.parse(`${JSON.stringify(JSON.parse(canonicalJson(plan)), null, 2)}\n`));
+    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r2', reread.tasks, 'h')).toEqual(new Set(plan.tasks.map((t) => t.id)));
   });
 
   // Live finding (loja-eventos/cancelar-pedido run 3, 2026-10-12): the spec's second version re-planned its six
@@ -241,10 +261,11 @@ describe('mergedByPriorRuns', () => {
   // run found uncovered, was inherited as already-merged by every retry. Once the criterion's own wording changed
   // (an owner correction to an unprovable AC), Phase 4 never got a fresh chance to plan a fix for it again: the old
   // fix task stayed adopted as done, silently answering for a criterion it was never re-checked against.
-  it('never adopts a T900-fix-* task: a fix task answers one verification attempt, never carried into a retry', async () => {
+  it('never counts a fix task: it is journaled apart from the plan, so a retry plans its own fixes', async () => {
     const { ws, run } = await priorRuns();
-    await run('a-001-r1', { planned: [task('T0-scaffold'), task('T900-fix-1')], merged: ['T0-scaffold', 'T900-fix-1'] });
+    await run('a-001-r1', { planned: [task('T0-scaffold')], fixes: [task('T900-fix-1')], merged: ['T0-scaffold', 'T900-fix-1'] });
     expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r2', [task('T0-scaffold'), task('T900-fix-1')], 'h')).toEqual(new Set(['T0-scaffold']));
+    expect(await deliveredByPriorRuns(ws, 'a-001', 'a-001-r2')).toEqual(new Set(['T0-scaffold']));
   });
 });
 

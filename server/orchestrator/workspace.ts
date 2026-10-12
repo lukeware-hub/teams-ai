@@ -154,7 +154,7 @@ async function lockHeld(lockFile: string): Promise<boolean> {
   return processAlive(Number.parseInt(owner[0] ?? '', 10));
 }
 
-/** The plan tasks a run delivered itself, through a merged pull request or as work already on main, as it planned them. */
+/** The plan tasks a run delivered itself, through a merged pull request or as work already on main; fix tasks are journaled apart and never count. */
 function deliveries(events: readonly StoredEvent[]): PlanTask[] {
   // Parsed with today's schema, so a task journaled before a field got its default still matches.
   const planned = events.flatMap((e) => {
@@ -167,8 +167,7 @@ function deliveries(events: readonly StoredEvent[]): PlanTask[] {
   for (const e of events) {
     if (e.type === RunEvent.TaskReplanned && (e.data.replacements as { id: string }[]).every((r) => done.has(r.id))) done.add(e.data.taskId as string);
   }
-  // A T900-fix-* task answers one verification attempt's own findings, so a retry never carries it as done.
-  return planned.filter((t) => done.has(t.id) && !t.id.startsWith('T900-fix-'));
+  return planned.filter((t) => done.has(t.id));
 }
 
 /**
