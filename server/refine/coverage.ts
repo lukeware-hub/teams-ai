@@ -1,4 +1,5 @@
 import type { BacklogItem } from '../contracts/backlog.js';
+import type { SpecStatus } from '../contracts/spec.js';
 import { resolveHeading } from './sections.js';
 import type { BacklogState } from './state.js';
 
@@ -15,6 +16,9 @@ export interface CoverageMatrix {
   sections: Array<{ heading: string; items: string[] }>;
   items: Array<{ key: string; specId: string | null; criteria: Array<{ id: string; tasks: string[] }> }>;
 }
+
+/** A spec whose run started (running, paused, awaiting validation or done): refinement never touches it again (R11.7.2). */
+export const isStarted = (status: SpecStatus): boolean => status !== 'refining' && status !== 'planned';
 
 const byRank = (b: BacklogState) => [...b.items].sort((x, y) => x.rank - y.rank);
 
@@ -39,6 +43,8 @@ export function coverageGaps(b: BacklogState): string[] {
   for (const item of byRank(b)) {
     const spec = b.specs?.[item.key];
     if (!spec?.spec) { gaps.push(`item ${item.key}: sem spec válida`); continue; }
+    // A started or delivered spec was planned by its own run; it needs no pre-plan here.
+    if (isStarted(spec.spec.status)) continue;
     const pre = b.preplans?.[item.key];
     if (!pre?.preplan) { gaps.push(`item ${item.key}: sem pré-plano válido`); continue; }
     if (pre.specRev !== spec.rev) { gaps.push(`item ${item.key}: pré-plano desatualizado`); continue; }

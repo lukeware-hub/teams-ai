@@ -45,6 +45,13 @@ describe('coverageGaps', () => {
     expect(coverageGaps(backlog({ preplans: { opme: preplanRow([['P1', ['AC-047']]]) } }))).toEqual(['item caso: sem pré-plano válido']);
     expect(coverageGaps(backlog({ specs: { opme: specRow('opme', ['AC-047'], `sha256:${'3'.repeat(64)}`), caso: specRow('caso', ['AC-048']) } }))).toEqual(['item opme: pré-plano desatualizado']);
   });
+
+  // R11.7.2: a started or delivered spec was planned by its own run, so it needs no pre-plan in a later draft.
+  it('counts a started or delivered spec as covered without a pre-plan', () => {
+    const caso = specRow('caso', ['AC-048']);
+    const done = { ...caso, spec: { ...caso.spec, status: 'done' as const } };
+    expect(coverageGaps(backlog({ specs: { opme: specRow('opme', ['AC-047']), caso: done }, preplans: { opme: preplanRow([['P1', ['AC-047']]]) } }))).toEqual([]);
+  });
 });
 
 describe('coverageGaps with numbered sections', () => {

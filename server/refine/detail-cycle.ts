@@ -4,6 +4,7 @@ import type { ItemPreplan, ItemSpec, PreplanOutput, SpecDetailOutput } from '../
 import { Governor } from '../budget/governor.js';
 import { Preplan } from '../contracts/preplan.js';
 import { computeSpecHash, Spec } from '../contracts/spec.js';
+import { isStarted } from './coverage.js';
 import type { StepOutcome } from '../runner/step.js';
 import { validatePreplan } from '../validators/preplan.js';
 import type { CycleDeps } from './cycle.js';
@@ -148,6 +149,17 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
   const previous = new Map<string, Spec | null>();
   const idOf = (key: string) => specIdOf(draft.specId, key, input.backlog.keyIds);
   for (const i of items) previous.set(i.key, specs[i.key]?.spec ?? (await readItemSpec(draft, idOf(i.key))));
+  // R11.7.2: an item whose spec on main started or was delivered is kept as it is; only a newer delivery is recorded again.
+  const kept = new Set<string>();
+  for (const i of items) {
+    const onDisk = await readItemSpec(draft, idOf(i.key));
+    if (!onDisk || !isStarted(onDisk.status)) continue;
+    kept.add(i.key);
+    const rev = computeSpecHash(onDisk);
+    if (specs[i.key]?.rev === rev && specs[i.key]?.spec?.status === onDisk.status) continue;
+    specs[i.key] = { inputHash: specHash.get(i.key)!, specId: onDisk.specId, rev, spec: onDisk, issues: [], cycle };
+    await journal.fact(RefineEvent.SpecDerived, { cycle, key: i.key, specId: onDisk.specId, inputHash: specHash.get(i.key), rev, spec: onDisk, issues: [], highWater });
+  }
   const planHashOf = (item: Item, rev: string) => preplanInputHash(item, rev, docs['stack.md'], item.rank === 1);
   const acceptSpec = async (item: Item, entry: ItemSpec | undefined): Promise<string[]> => {
     if (!entry) return ['o agente não devolveu a spec deste item'];
@@ -175,7 +187,7 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     kind: 'spec', role: 'po', cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle,
     pack: fitPackBudget(specPack({ specHash: hash, principles: deps.principles(), docs, batch, all: items, previous: Object.fromEntries(batch.map((i) => [i.key, previous.get(i.key)])), rejection })),
   }, ctx) as Promise<StepOutcome<SpecDetailOutput>>);
-  const specTodo = items.filter((i) => !specs[i.key] || specs[i.key]!.inputHash !== specHash.get(i.key) || specs[i.key]!.spec === null);
+  const specTodo = items.filter((i) => !kept.has(i.key) && (!specs[i.key] || specs[i.key]!.inputHash !== specHash.get(i.key) || specs[i.key]!.spec === null));
   await runBatches(specTodo, runSpecs, (v: SpecDetailOutput, key) => v.specs.find((s) => s.key === key), acceptSpec, failSpec);
   if (stopped) return { ok: false, reason: `detalhamento interrompido (${stopped})` };
 
@@ -205,7 +217,7 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     kind: 'preplan', role: 'sm', cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle,
     pack: fitPackBudget(preplanPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], stackMd: docs['stack.md'], batch: batch.map((i) => ({ item: i, spec: specs[i.key]!.spec!, first: i.rank === 1, previous: preplans[i.key]?.preplan ?? null, rejection: rejection[i.key] ?? [] })) })),
   }, ctx) as Promise<StepOutcome<PreplanOutput>>);
-  const preplanTodo = items.filter((i) => planHash.has(i.key) && (!preplans[i.key] || preplans[i.key]!.inputHash !== planHash.get(i.key) || preplans[i.key]!.preplan === null));
+  const preplanTodo = items.filter((i) => !kept.has(i.key) && planHash.has(i.key) && (!preplans[i.key] || preplans[i.key]!.inputHash !== planHash.get(i.key) || preplans[i.key]!.preplan === null));
   await runBatches(preplanTodo, runPreplans, (v: PreplanOutput, key) => v.preplans.find((p) => p.key === key), acceptPreplan, failPreplan);
   if (stopped) return { ok: false, reason: `detalhamento interrompido (${stopped})` };
   return { ok: true, backlog: { ...input.backlog, specs, preplans, acHighWater: highWater } };
