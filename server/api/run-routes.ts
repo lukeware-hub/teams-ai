@@ -517,7 +517,9 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
               .catch(() => null)
               .then((text) => text ?? fs.readFile(path.join(project, 'docs', 'README.md'), 'utf8').catch(() => null))
           : null;
-        const report = [...evs].reverse().find((e) => e.type === 'REPORT_READY')?.data.report ?? null;
+        // A run with no report of its own (the deploy run of an imported spec) shows the one merged on main.
+        const report = [...evs].reverse().find((e) => e.type === 'REPORT_READY')?.data.report
+          ?? (project ? await fs.readFile(path.join(project, 'docs', 'specs', specId, 'report.json'), 'utf8').then((t) => JSON.parse(t) as unknown).catch(() => null) : null);
         const phase = [...evs].reverse().find((e) => e.type === 'PHASE_STARTED')?.data.phase ?? 0;
         let status: string = finished ? String(finished.data.result) : interrupted ? 'interrupted' : state.status;
         // Same answer as the run list: a run that delivered a concluded spec is done and locked (see listRuns). A live run is neither.

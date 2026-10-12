@@ -21,7 +21,7 @@ const runs = [
   { runId: 'hello-001-r1', specId: 'hello-001', projectId: 'hello-app', status: 'paused:auth', at: '2026-09-24T09:00:00.000Z', tokens: 100, cost: 0.01, stoppable: false },
   { runId: 'hello-000-r1', specId: 'hello-000', projectId: 'hello-app', status: 'complete', at: '2026-09-23T09:00:00.000Z', tokens: 9000, cost: 3.33, stoppable: false },
 ].map(row);
-const on = () => ({ start: vi.fn(), resume: vi.fn(), stop: vi.fn(), newSpec: vi.fn(), cont: vi.fn(), restart: vi.fn(), deleteDraft: vi.fn() });
+const on = () => ({ start: vi.fn(), resume: vi.fn(), stop: vi.fn(), newSpec: vi.fn(), cont: vi.fn(), restart: vi.fn(), validate: vi.fn(), deleteDraft: vi.fn() });
 
 describe('ProjectHubView', () => {
   it('links to the GitHub repository only when the project has one', () => {
@@ -160,16 +160,16 @@ describe('ProjectHubView', () => {
     fireEvent.click(screen.getByTestId('continue-hello-009'));
     expect(o.cont).toHaveBeenCalledWith('hello-009');
   });
-  it('an awaiting-validation spec without a run has no Validar link, only Continuar spec', () => {
+  it('an awaiting-validation spec without a run brings it up on Validar', () => {
     const o = on();
     const awaiting = { ...project, specs: [{ specId: 'hello-009', status: 'awaiting-validation', activeRunId: null }] };
     render(
       <MemoryRouter>
-        <ProjectHubView project={awaiting} notFound={false} runs={[]} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={awaiting} notFound={false} runs={[]} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onValidate={o.validate} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
-    expect(screen.queryByTestId('validate-hello-009')).toBeNull();
-    expect(screen.getByTestId('continue-hello-009')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('validate-hello-009'));
+    expect(o.validate).toHaveBeenCalledWith('hello-009');
   });
   it('restarting an awaiting-validation spec asks first, then calls onRestart', () => {
     const o = on();

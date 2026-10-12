@@ -492,6 +492,7 @@ function ValidationRun({ runId }: { runId: string }) {
   const load = async () => {
     const d = await runApi.run(runId);
     setDetail(d);
+    if (isLive(d.status)) setDeployRun(runId); // a deploy run opened from an import: follow it until the service answers
     const projects = await runApi.projects();
     setSpecStatus(projects.find((p) => p.projectId === d.projectId)?.specs.find((s) => s.specId === d.specId)?.status ?? '');
     setActionError(null); // whatever an earlier click reported is stale once the page matches the server again
@@ -532,6 +533,7 @@ function ValidationRun({ runId }: { runId: string }) {
           if (run.status !== 'done') setActionError(`A subida do serviço (${deployRun}) terminou como “${statusLabel(run.status)}”${typeof run.finished?.reason === 'string' ? `: ${run.finished.reason}` : ''}.`);
           setDeployRun(null);
           await checkService();
+          if (run.status === 'done') await load().catch(() => undefined);
         })
         .catch(() => undefined); // transient: the next tick asks again
     }, 4000);

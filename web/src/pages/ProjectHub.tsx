@@ -104,6 +104,8 @@ export function ProjectHubView(p: {
   onNewSpec: (specId: string, description: string) => void;
   onContinue: (specId: string) => void;
   onRestart: (specId: string) => void;
+  /** Brings up a spec delivered elsewhere (an import) that has no run here, then opens its validation. */
+  onValidate?: (specId: string) => void;
   onDeleteDraft: (specId: string) => void;
   onSuggestName?: (input: NameRequest) => Promise<NameSuggestion>;
 }) {
@@ -136,7 +138,7 @@ export function ProjectHubView(p: {
       setSuggesting(false);
     }
   };
-  const lastRunOf = (specId: string) => p.runs.find((r) => r.specId === specId && r.kind === 'run')?.runId ?? '';
+  const lastRunOf = (specId: string) => p.runs.find((r) => r.specId === specId && r.kind === 'run')?.runId ?? p.runs.find((r) => r.specId === specId && r.kind === 'deploy')?.runId ?? '';
   if (p.notFound) {
     return (
       <main>
@@ -323,13 +325,17 @@ export function ProjectHubView(p: {
                         <Icon name="arrow-right" size={14} />
                       </Link>
                     ) : s.status === 'awaiting-validation' ? (
-                      // An imported spec has no run here yet: there is nothing to open, and Continuar spec makes one.
                       lastRunOf(s.specId) ? (
                         <Link className={action.primary} data-testid={`validate-${s.specId}`} aria-label={`Validar ${s.specId}`} to={`/runs/${lastRunOf(s.specId)}/validation`}>
                           Validar
                           <Icon name="arrow-right" size={14} />
                         </Link>
-                      ) : null
+                      ) : (
+                        <button type="button" className={action.primary} data-testid={`validate-${s.specId}`} aria-label={`Validar ${s.specId}`} onClick={() => p.onValidate?.(s.specId)}>
+                          Validar
+                          <Icon name="arrow-right" size={14} />
+                        </button>
+                      )
                     ) : s.status === 'done' ? (
                       lastRunOf(s.specId) ? (
                         <Link className={action.secondary} data-testid={`validation-${s.specId}`} aria-label={`Ver validação de ${s.specId}`} to={`/runs/${lastRunOf(s.specId)}/validation`}>
@@ -574,6 +580,7 @@ export function ProjectHub() {
       onNewSpec={(specId, description) => void go(() => refineApi.newSpec(projectId, specId, description))()}
       onContinue={(specId) => void go(() => refineApi.continueSpec(projectId, specId))()}
       onRestart={(specId) => void go(() => refineApi.restartSpec(projectId, specId))()}
+      onValidate={(specId) => void act(async () => navigate(`/runs/${(await runApi.deployAgain(projectId, specId)).runId}/validation`))()}
       onSuggestName={refineApi.suggestName}
       onDeleteDraft={(specId) => void (async () => {
         setDeleteError(null);
