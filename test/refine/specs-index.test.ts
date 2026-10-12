@@ -12,6 +12,21 @@ const backlog: Pick<BacklogState, 'epics' | 'items'> = {
 };
 
 describe('buildSpecsIndex', () => {
+  it('names each dependency by the same rule as its item, so the program finds the spec it waits for', () => {
+    const at = (key: string, rank: number, dependsOn: string[] = []) => ({ key, title: 't', epic: 'e', scope: 's', priority: 'P1' as const, rationale: 'r', dependsOn, sources: [], size: 'M' as const, rank });
+    const items = [at('user-login', 1), at('order-checkout', 2, ['user-login']), at('order-service', 3), at('order-tracking', 4, ['order-checkout', 'order-service'])];
+    const readable = buildSpecsIndex('order-service', { epics: [], items, keyIds: true });
+    expect(readable.specs.map((s) => [s.specId, s.dependsOn])).toEqual([
+      ['user-login', []],
+      ['order-checkout', ['user-login']],
+      // A key equal to the draft id keeps the draft prefix, for itself and for whoever depends on it.
+      ['order-service-order-service', []],
+      ['order-tracking', ['order-checkout', 'order-service-order-service']],
+    ]);
+    const older = buildSpecsIndex('shop-001', { epics: [], items: items.slice(0, 2) });
+    expect(older.specs.map((s) => [s.specId, s.dependsOn])).toEqual([['shop-001-user-login', []], ['shop-001-order-checkout', ['shop-001-user-login']]]);
+  });
+
   it('lists the specs in rank order with ids derived from the draft, dependencies as spec ids and the sources', () => {
     const index = buildSpecsIndex('kayron-hub-001', backlog);
     expect(index.version).toBe(1);

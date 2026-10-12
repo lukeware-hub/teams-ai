@@ -43,7 +43,7 @@ export function buildSpecsIndex(draftId: string, backlog: Pick<BacklogState, 'ep
       size: i.size,
       scope: i.scope,
       rationale: i.rationale,
-      dependsOn: i.dependsOn.map((d) => specIdOf(draftId, d)),
+      dependsOn: i.dependsOn.map((d) => specIdOf(draftId, d, backlog.keyIds)),
       sources: i.sources,
     }));
   return { version: 1, draftId, epics: backlog.epics, specs };
