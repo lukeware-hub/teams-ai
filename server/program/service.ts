@@ -8,7 +8,7 @@ import { writeFileAtomic } from '../core/atomic-write.js';
 import { nextRunId } from '../orchestrator/workspace.js';
 import { DEPENDENCY_BLOCKED } from '../pipeline/task-state.js';
 import { loadEvents } from '../store/event-store.js';
-import { newProgram, retryItem, tick, type Program, type ProgramEffects, type ProgramEntry, type RunOutcome } from './controller.js';
+import { newProgram, prioritizeItem, retryItem, tick, type Program, type ProgramEffects, type ProgramEntry, type RunOutcome } from './controller.js';
 
 export interface ProgramServiceDeps {
   cfg: () => Promise<Config>;
@@ -52,6 +52,15 @@ export class ProgramService {
 
   async read(projectId: string, draftId: string): Promise<Program | null> {
     return readProgram(await this.deps.draftRoot(projectId, draftId));
+  }
+
+  /** Puts a pending item ahead of the queue and takes a tick, which starts it if a slot is free and nothing in flight conflicts. */
+  async prioritize(projectId: string, draftId: string, specId: string): Promise<Program> {
+    const root = await this.deps.draftRoot(projectId, draftId);
+    const program = await readProgram(root);
+    if (program === null) throw new RangeError(`no program for ${projectId}/${draftId}`);
+    await writeProgram(root, prioritizeItem(program, specId, this.now()));
+    return (await this.tick(projectId, draftId)) ?? (await readProgram(root))!;
   }
 
   /** R11.4 continuation: clears a failed item back to pending (and un-blocks its dependents) and takes a tick. */

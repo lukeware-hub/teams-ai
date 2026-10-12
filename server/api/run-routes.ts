@@ -35,6 +35,8 @@ export interface RunRoutesDeps {
   httpGet?: HttpGet;
   /** Runs the docker commands that take a deleted project's deploys down; the real one by default. */
   exec?: Exec;
+  /** Prioritizes the spec in the started backlog program that still has it pending; null when no program owns it. */
+  queueInProgram?: (projectId: string, specId: string) => Promise<{ draftId: string } | null>;
 }
 
 const str = (v: unknown, field: string): string => {
@@ -293,6 +295,9 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const dir = await projectDir(idx, params.projectId!, specId);
         const { specs } = await readProject(dir);
         if (!specs.some((s) => s.specId === specId)) throw new HttpError(404, `unknown spec ${specId}`);
+        // A spec a running program owns runs there, ahead of its queue: never a second, loose run beside the program.
+        const queued = await deps.queueInProgram?.(params.projectId!, specId);
+        if (queued) return json(200, { queued: true, draftId: queued.draftId });
         const runId = await exclusive(specKey(params.projectId!, specId), async () => {
           const rows = await listRuns(idx, params.projectId!);
           refuseConcluded(specs, rows, specId);

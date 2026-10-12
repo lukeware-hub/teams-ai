@@ -57,6 +57,13 @@ export interface BacklogState {
   acHighWater?: number;
   /** Roadmap R11.12: item specs are named by their key alone (see `specIdOf`); absent on older drafts. */
   keyIds?: boolean;
+  /** The SM's conflict map of the current pre-plans; absent until made, and then the program runs one spec at a time. */
+  conflicts?: ConflictMap;
+}
+
+export interface ConflictMap {
+  inputHash: string;
+  pairs: Array<{ a: string; b: string; reason: string }>;
 }
 
 export interface RefineState {
@@ -211,6 +218,9 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
         const row: PreplanRow = { inputHash: String(d.inputHash), specRev: String(d.specRev), preplan: (d.preplan as Preplan | null) ?? null, issues: (d.issues as string[]) ?? [], cycle: Number(d.cycle) };
         s.backlog = { ...s.backlog, preplans: { ...s.backlog.preplans, [String(d.key)]: row } };
       }
+      break;
+    case RefineEvent.ConflictsDerived:
+      if (s.backlog) s.backlog = { ...s.backlog, conflicts: { inputHash: String(d.inputHash), pairs: d.pairs as ConflictMap['pairs'] } };
       break;
     case RefineEvent.StartedRun:
       s.status = 'started';

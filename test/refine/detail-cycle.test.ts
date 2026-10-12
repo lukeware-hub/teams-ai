@@ -46,6 +46,7 @@ function fakeAgent(outline: () => BacklogItem[], hook: (req: Req, n: number) => 
     if (req.kind === 'backlog') return ok({ specHash: H, project: makeProject(), backlog: { epics, items: outline() } });
     if (req.kind === 'spec') return ok({ specHash: H, specs: [...feedback.matchAll(/^## Item ([a-z0-9-]+):/gm)].map((m) => itemSpec(m[1]!)) });
     if (req.kind === 'preplan') return ok({ specHash: H, preplans: feedback.split(/^## Spec /m).slice(1).map(preplanFor) });
+    if (req.kind === 'conflicts') return ok({ specHash: H, pairs: [{ a: 'triagem', b: 'opme', reason: 'mesmo módulo m' }, { a: 'opme', b: 'triagem', reason: 'eco' }, { a: 'opme', b: 'zzz', reason: 'chave inexistente' }] });
     if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [] });
     return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
   });
@@ -99,8 +100,11 @@ describe('backlog detailing in the refinement cycle', () => {
     let from = agent.calls.length;
     await run(agent, 2);
     // The docs did not change since the outline, so the backlog step is skipped; three epics make three calls each.
-    expect(agent.kinds(from)).toEqual(['spec', 'spec', 'spec', 'preplan', 'preplan', 'preplan', 'refine', 'refine']);
+    expect(agent.kinds(from)).toEqual(['spec', 'spec', 'spec', 'preplan', 'preplan', 'preplan', 'conflicts', 'refine', 'refine']);
     expect(journal.state.status).toBe('ready');
+    // The SM's conflict map keeps only pairs of real, distinct items, once each.
+    expect(journal.state.backlog?.conflicts?.pairs).toEqual([{ a: 'triagem', b: 'opme', reason: 'mesmo módulo m' }]);
+    expect(agent.calls.find((c) => c.kind === 'conflicts')!.feedback).toContain('## triagem');
     const ids: string[] = [];
     for (const key of ['caso', 'triagem', 'opme', 'fat']) {
       const spec = JSON.parse(await readFile(`${itemDir(key)}/spec.json`, 'utf8'));
@@ -254,6 +258,17 @@ describe('backlog detailing in the refinement cycle', () => {
     expect(agent.kinds(from)).toEqual(['spec', 'spec', 'spec']);
     expect(String(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason)).toMatch(/quota/);
     expect(events.filter((e) => e.type === 'SPEC_DERIVED' && e.data.spec !== null)).toHaveLength(2);
+  });
+
+  it('leaves no conflict map when the SM call fails, and the backlog still reaches ready', async () => {
+    const { journal, events, run } = await setup();
+    const agent = fakeAgent(() => OUTLINE, (req) => (req.kind === 'conflicts' ? { ok: false, failure: 'schema', errors: ['bad json'], summary: {}, sandboxDisabled: false } : undefined));
+    await run(agent, 1);
+    await journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    await run(agent, 2);
+    expect(journal.state.backlog?.conflicts).toBeUndefined();
+    expect(journal.state.status).toBe('ready');
+    expect(events.filter((e) => e.type === 'REFINE_CYCLE_FAILED')).toEqual([]);
   });
 
   it('removes the files of an item the outline no longer has', async () => {

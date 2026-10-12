@@ -8,7 +8,7 @@ import { ID_PATTERNS } from '../core/ids.js';
 import { Project, ServiceName } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 
-export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'deployment', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'name', 'suggest', 'answer'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'deployment', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -65,6 +65,9 @@ export const ItemPreplan = Preplan.pick({ modules: true, tasks: true, risks: tru
 export type ItemPreplan = z.infer<typeof ItemPreplan>;
 export const PreplanOutput = z.object({ specHash, preplans: z.array(ItemPreplan).min(1).max(3) });
 export type PreplanOutput = z.infer<typeof PreplanOutput>;
+/** The SM's conflict map: pairs of backlog items that change the same code, so they never run at the same time. */
+export const ConflictsOutput = z.object({ specHash, pairs: z.array(z.object({ a: z.string().regex(ID_PATTERNS.SLUG), b: z.string().regex(ID_PATTERNS.SLUG), reason: z.string().min(1) })).max(200) });
+export type ConflictsOutput = z.infer<typeof ConflictsOutput>;
 
 export const TechSpecOutput = z.object({
   specHash,
@@ -232,6 +235,7 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   backlog: BacklogOutput,
   spec: SpecDetailOutput,
   preplan: PreplanOutput,
+  conflicts: ConflictsOutput,
   name: NameOutput,
   suggest: SuggestOutput,
   answer: AnswerOutput,

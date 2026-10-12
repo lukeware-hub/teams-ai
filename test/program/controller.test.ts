@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { newProgram, retryItem, tick, type Program, type ProgramEffects, type RunOutcome } from '../../server/program/controller.js';
+import { newProgram, prioritizeItem, retryItem, tick, type Program, type ProgramEffects, type RunOutcome } from '../../server/program/controller.js';
 
 const entry = (key: string, rank: number, dependsOn: string[] = []) => ({ specId: `d-${key}`, key, rank, dependsOn: dependsOn.map((k) => `d-${k}`) });
 const NOW = new Date('2026-10-07T12:00:00Z');
@@ -30,6 +30,8 @@ function world(outcomes: Record<string, RunOutcome | RunOutcome[]> = {}) {
   };
   return { fx, calls, active };
 }
+/** An entry with the SM's conflict map: the keys it must never run together with. */
+const mapped = (key: string, rank: number, dependsOn: string[] = [], conflicts: string[] = []) => ({ ...entry(key, rank, dependsOn), conflictsWith: conflicts.map((k) => `d-${k}`) });
 const saved: Program[] = [];
 const save = async (p: Program) => void saved.push(structuredClone(p));
 const status = (p: Program) => Object.fromEntries(p.items.map((i) => [i.key, i.status]));
@@ -164,6 +166,56 @@ describe('program controller', () => {
     };
     await tick(newProgram('d', [entry('a', 1)], NOW), fx, save);
     expect(order[0]).toBe('launch saw 1 saves, last running');
+  });
+
+  it('runs two independent items at once after the first spec is done', async () => {
+    const { fx, calls } = world();
+    let p = newProgram('d', [{ ...mapped('a', 1), done: true }, mapped('b', 2, ['a']), mapped('c', 3, ['a']), mapped('d', 4, ['a'])], NOW);
+    p = await tick(p, fx, save);
+    expect(calls).toEqual(['start d-b', 'start d-c']);
+    expect(status(p)).toEqual({ a: 'done', b: 'running', c: 'running', d: 'pending' });
+  });
+
+  it('never runs together two items the conflict map pairs, from either side', async () => {
+    const { fx, calls } = world();
+    let p = newProgram('d', [{ ...mapped('a', 1), done: true }, mapped('b', 2, [], ['c']), mapped('c', 3), mapped('d', 4)], NOW);
+    p = await tick(p, fx, save);
+    expect(calls).toEqual(['start d-b', 'start d-d']);
+  });
+
+  it('runs one item at a time when there is no conflict map', async () => {
+    const { fx, calls } = world();
+    let p = newProgram('d', [{ ...entry('a', 1), done: true }, entry('b', 2), entry('c', 3)], NOW);
+    p = await tick(p, fx, save);
+    expect(calls).toEqual(['start d-b']);
+  });
+
+  it('runs the first spec alone, since it lays the foundation of the project', async () => {
+    const { fx, calls } = world();
+    let p = newProgram('d', [mapped('a', 1), mapped('b', 2), mapped('c', 3)], NOW);
+    p = await tick(p, fx, save);
+    expect(calls).toEqual(['start d-a']);
+  });
+
+  it('starts a prioritized item ahead of the queue, still never beside an item it conflicts with', async () => {
+    const { fx, calls } = world();
+    let p = newProgram('d', [{ ...mapped('a', 1), done: true }, mapped('b', 2), mapped('c', 3), mapped('d', 4)], NOW);
+    p = prioritizeItem(p, 'd-d', NOW);
+    p = await tick(p, fx, save);
+    expect(calls).toEqual(['start d-d', 'start d-b']);
+    const { fx: fx2, calls: calls2 } = world();
+    let q = newProgram('d', [{ ...mapped('a', 1), done: true }, mapped('b', 2, [], ['d']), mapped('d', 3)], NOW);
+    q = await tick(q, fx2, save); // b runs; d conflicts with it and waits
+    q = prioritizeItem(q, 'd-d', NOW);
+    expect(q.items.find((i) => i.key === 'd')!.priority).toBe(true);
+    q = await tick(q, fx2, save);
+    expect(calls2).toEqual(['start d-b']);
+  });
+
+  it('refuses to prioritize an item that is not pending, or an unknown one', () => {
+    const p = newProgram('d', [{ ...entry('a', 1), done: true }, entry('b', 2)], NOW);
+    expect(() => prioritizeItem(p, 'd-a', NOW)).toThrow(/not pending/);
+    expect(() => prioritizeItem(p, 'd-zzz', NOW)).toThrow(/unknown/);
   });
 
   it('retryItem clears a failed item back to pending and un-blocks its dependents, so the next tick gives it another try', () => {

@@ -505,6 +505,20 @@ describe('start, resume, stop', () => {
     expect(spawns).toHaveLength(0);
   });
 
+  it('a spec the running backlog program owns is queued in that program instead of getting a loose run', async () => {
+    const queued: string[] = [];
+    const own = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, queueInProgram: async (p, s) => (queued.push(`${p}/${s}`), { draftId: 'hello-draft' }) }) }, 0);
+    try {
+      const start = await fetch(`http://127.0.0.1:${own.port}/api/projects/hello-app/specs/hello-001/runs`, { method: 'POST', headers: { 'content-type': 'application/json' } });
+      expect(start.status).toBe(200);
+      expect(await start.json()).toEqual({ queued: true, draftId: 'hello-draft' });
+      expect(queued).toEqual(['hello-app/hello-001']);
+      expect(spawns).toHaveLength(0);
+    } finally {
+      await own.close();
+    }
+  });
+
   it('resume is allowed only for paused:auth or interrupted runs', async () => {
     // Each run is the latest of its spec when it is resumed: an earlier run never resumes behind a later one.
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('paused:auth'));

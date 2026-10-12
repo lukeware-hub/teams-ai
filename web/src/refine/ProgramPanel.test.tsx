@@ -1,6 +1,6 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ProgramView } from '../api.js';
 import { canStartRun, ProgramPanel, ProgramStatus } from './ProgramPanel.js';
 
@@ -37,6 +37,16 @@ describe('ProgramPanel', () => {
     expect(within(screen.getByTestId('program-item-b')).getByText(/verification-failed: AC-004/)).toBeTruthy();
   });
 
+  it('offers to run a queued spec now, and marks one already prioritized', () => {
+    const onPrioritize = vi.fn();
+    render(<MemoryRouter><ProgramPanel program={program([item('a', { status: 'running', runId: 'd-a-r1' }), item('b', { rank: 2 }), item('c', { rank: 3, priority: true })])} titles={titles} onPrioritize={onPrioritize} /></MemoryRouter>);
+    expect(within(screen.getByTestId('program-item-a')).queryByRole('button')).toBeNull();
+    fireEvent.click(within(screen.getByTestId('program-item-b')).getByRole('button', { name: 'Executar agora' }));
+    expect(onPrioritize).toHaveBeenCalledWith('d-b');
+    expect(within(screen.getByTestId('program-item-c')).getByText('prioritária')).toBeTruthy();
+    expect(within(screen.getByTestId('program-item-c')).queryByRole('button')).toBeNull();
+  });
+
   it('shows a completing spec as being marked done', () => {
     renderPanel(program([item('a', { status: 'completing', runId: 'd-a-r1', completeRunId: 'd-a-complete-r1' })]));
     expect(screen.getByText('concluindo')).toBeTruthy();
@@ -44,7 +54,7 @@ describe('ProgramPanel', () => {
 });
 
 describe('ProgramStatus', () => {
-  const renderStatus = (p: ProgramView | null, phase: number | null = null) => render(<MemoryRouter><ProgramStatus program={p} titles={titles} phase={phase} /></MemoryRouter>);
+  const renderStatus = (p: ProgramView | null, phases: Record<string, number> = {}) => render(<MemoryRouter><ProgramStatus program={p} titles={titles} phases={phases} /></MemoryRouter>);
 
   it('says the run is being prepared before the first program arrives', () => {
     renderStatus(null);
@@ -52,12 +62,20 @@ describe('ProgramStatus', () => {
   });
 
   it('shows the progress, the spec running now, its phase and the run to follow', () => {
-    renderStatus(program([item('a', { status: 'done' }), item('b', { rank: 2, status: 'running', runId: 'd-b-r1' }), item('c', { rank: 3 })]), 3);
+    renderStatus(program([item('a', { status: 'done' }), item('b', { rank: 2, status: 'running', runId: 'd-b-r1' }), item('c', { rank: 3 })]), { 'd-b-r1': 3 });
     const status = screen.getByRole('status');
     expect(status.textContent).toContain('Executando o backlog · 1 de 3 concluídas');
     expect(status.textContent).toContain('Agora: Empréstimos · 3 · Implementação');
     expect((within(status).getByRole('link', { name: 'Acompanhar a run' }) as HTMLAnchorElement).getAttribute('href')).toBe('/runs/d-b-r1');
     expect((screen.getByRole('progressbar') as HTMLProgressElement).value).toBe(1);
+  });
+
+  it('lists every spec running at once, each with its phase and run', () => {
+    renderStatus(program([item('a', { status: 'done' }), item('b', { rank: 2, status: 'running', runId: 'd-b-r1' }), item('c', { rank: 3, status: 'running', runId: 'd-c-r1' })]), { 'd-b-r1': 3, 'd-c-r1': 1 });
+    const status = screen.getByRole('status');
+    expect(status.textContent).toContain('Empréstimos · 3 · Implementação');
+    expect(status.textContent).toContain('Relatórios · 1 · Especificação técnica');
+    expect(within(status).getAllByRole('link', { name: 'Acompanhar a run' }).map((l) => l.getAttribute('href'))).toEqual(['/runs/d-b-r1', '/runs/d-c-r1']);
   });
 
   it('stops the spinner once the program finished', () => {

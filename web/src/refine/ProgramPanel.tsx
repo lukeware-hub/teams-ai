@@ -6,7 +6,7 @@ import { InfoTip } from '../components/InfoTip.js';
 import { phaseTitle } from '../run/selectors.js';
 import './backlog.css';
 
-const HELP = 'Depois do início, os agentes executam o backlog inteiro sozinhos, uma spec por vez, na ordem de prioridade e de dependência: planejam, implementam, testam, publicam e marcam cada spec como concluída. Uma spec que falha é isolada e só bloqueia as que dependem dela; as demais seguem. Acompanhe cada execução pelo link da run.';
+const HELP = 'Depois do início, os agentes executam o backlog inteiro sozinhos, na ordem de prioridade e de dependência, até duas specs ao mesmo tempo quando elas não mexem no mesmo código: planejam, implementam, testam, publicam e marcam cada spec como concluída. Uma spec que falha é isolada e só bloqueia as que dependem dela; as demais seguem. Executar agora passa uma spec à frente da fila.';
 
 const LABEL = { pending: 'na fila', running: 'em execução', completing: 'concluindo', done: 'concluída', failed: 'falhou', blocked: 'bloqueada' } as const;
 const CLASS = { pending: 'bk-refining', running: 'bk-p0', completing: 'bk-p0', done: 'bk-planned', failed: 'bk-error', blocked: 'bk-error' } as const;
@@ -20,50 +20,50 @@ export function canStartRun(st: Pick<RefineState, 'status' | 'stale' | 'backlog'
 /** The program that runs the backlog: every spec with where it stands, the run to follow and why one failed or waits. */
 const fmtCost = (v: number) => `US$ ${v.toFixed(2)}`;
 
-/** Polls a started backlog's program every 5 seconds, with the phase of the spec running now, until it finishes. */
+/** Polls a started backlog's program every 5 seconds, with the phase of each run in progress, until it finishes. */
 export function useProgram(projectId: string, specId: string, enabled: boolean) {
   const [program, setProgram] = useState<ProgramView | null>(null);
-  const [phase, setPhase] = useState<number | null>(null);
+  const [phases, setPhases] = useState<Record<string, number>>({});
   const live = enabled && program?.status !== 'finished';
   useEffect(() => {
     if (!live) return;
     const poll = () => refineApi.program(projectId, specId).then(async (r) => {
       setProgram(r.program);
-      const runId = r.program?.items.find((i) => i.status === 'running')?.runId;
-      setPhase(runId ? (await runApi.run(runId)).phase : null);
+      const runIds = (r.program?.items ?? []).flatMap((i) => (i.status === 'running' && i.runId ? [i.runId] : []));
+      setPhases(Object.fromEntries(await Promise.all(runIds.map(async (id) => [id, (await runApi.run(id)).phase] as const))));
     }).catch(() => undefined);
     void poll();
     const timer = setInterval(() => void poll(), 5_000);
     return () => clearInterval(timer);
   }, [live, projectId, specId]);
-  return { program, phase };
+  return { program, phases, setProgram };
 }
 
-/** The banner of a started backlog: a spinner while it runs, the progress, and the spec and phase running now. */
-export function ProgramStatus({ program, titles, phase, link }: { program: ProgramView | null; titles: Record<string, string>; phase: number | null; link?: string }) {
+/** The banner of a started backlog: a spinner while it runs, the progress, and each spec running now with its phase. */
+export function ProgramStatus({ program, titles, phases, link }: { program: ProgramView | null; titles: Record<string, string>; phases: Record<string, number>; link?: string }) {
   const done = program?.items.filter((i) => i.status === 'done').length ?? 0;
   const total = program?.items.length ?? 0;
   const running = program?.status !== 'finished';
-  const now = program?.items.find((i) => i.status === 'running' || i.status === 'completing');
+  const now = program?.items.filter((i) => i.status === 'running' || i.status === 'completing') ?? [];
   return (
     <div className="program-status" role="status">
       {running && <span className="loading-spinner" aria-hidden="true" />}
       <div>
         <b>{!program ? 'Preparando a execução do backlog…' : `${running ? 'Executando o backlog' : 'Backlog executado'} · ${done} de ${total} concluídas`}</b>
         {program && <progress max={total} value={done} />}
-        {now && (
-          <p>
-            Agora: {titles[now.key] ?? now.key}{phase !== null && ` · ${phaseTitle(phase)}`}
-            {now.runId && <> · <Link to={`/runs/${now.runId}`}>Acompanhar a run</Link></>}
+        {now.map((i) => (
+          <p key={i.specId}>
+            Agora: {titles[i.key] ?? i.key}{i.runId && phases[i.runId] !== undefined && ` · ${phaseTitle(phases[i.runId]!)}`}
+            {i.runId && <> · <Link to={`/runs/${i.runId}`}>Acompanhar a run</Link></>}
           </p>
-        )}
+        ))}
         {link && <p><Link to={link}>Abrir a execução do backlog</Link></p>}
       </div>
     </div>
   );
 }
 
-export function ProgramPanel({ program, titles }: { program: ProgramView; titles: Record<string, string> }) {
+export function ProgramPanel({ program, titles, onPrioritize }: { program: ProgramView; titles: Record<string, string>; onPrioritize?: (specId: string) => void }) {
   const done = program.items.filter((i) => i.status === 'done').length;
   const totalCost = program.items.reduce((sum, i) => sum + (i.costUsd ?? 0), 0);
   return (
@@ -83,6 +83,7 @@ export function ProgramPanel({ program, titles }: { program: ProgramView; titles
               <span className="bk-meta">#{i.rank}</span>
               {i.costUsd != null && <span className="bk-meta" data-testid={`program-item-cost-${i.key}`}>{fmtCost(i.costUsd)}</span>}
               {i.runId && <Link to={`/runs/${i.runId}`}>{i.runId}</Link>}
+              {i.status === 'pending' && (i.priority ? <span className="bk-chip bk-p0">prioritária</span> : onPrioritize && <button type="button" className="secondary" onClick={() => onPrioritize(i.specId)}>Executar agora</button>)}
             </div>
             {i.reason && <p className="bk-issue">{i.reason}</p>}
           </li>

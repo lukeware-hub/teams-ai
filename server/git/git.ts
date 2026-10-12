@@ -1,6 +1,7 @@
 import { promises as fs, realpathSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { lockFile, withFileLock } from '../core/file-lock.js';
 import { execCommand, type Exec } from '../exec/command.js';
 
 export class GitError extends Error {}
@@ -71,13 +72,23 @@ async function branchExists(repo: string, branch: string, exec: Exec): Promise<b
 /**
  * Serializes worktree bookkeeping and fetches per repository: concurrent `git worktree add`
  * calls race on `.git/config` ("could not lock config file") when two task runners start at once.
+ * The file lock extends that to the runs of other specs, which are other processes on the same clone.
  */
 const repoLocks = new Map<string, Promise<unknown>>();
 export function withRepoLock<T>(repo: string, fn: () => Promise<T>): Promise<T> {
   const prev = repoLocks.get(repo) ?? Promise.resolve();
-  const next = prev.then(fn, fn);
+  const locked = () => withFileLock(lockFile(repo, 'repo'), fn);
+  const next = prev.then(locked, locked);
   repoLocks.set(repo, next.catch(() => undefined));
   return next;
+}
+
+/**
+ * Holds the main checkout of `repo` still: a deploy builds from it while another spec's run would reset it after a merge.
+ * Always taken before the repo lock, never inside it.
+ */
+export function withCheckoutLock<T>(repo: string, fn: () => Promise<T>): Promise<T> {
+  return withFileLock(lockFile(repo, 'checkout'), fn);
 }
 
 export async function createWorktree(

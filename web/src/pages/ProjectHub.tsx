@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { refineApi, runApi, type DraftRow, type NameRequest, type NameSuggestion, type ProjectRow, type RunRow } from '../api.js';
+import { refineApi, runApi, startedPath, type DraftRow, type NameRequest, type NameSuggestion, type ProjectRow, type RunRow } from '../api.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
@@ -481,7 +481,11 @@ export function ProjectHub() {
       drafts={drafts}
       error={error}
       deleteError={deleteError}
-      onStart={(specId) => void act(() => runApi.startRun(projectId, specId))()}
+      onStart={(specId) => void act(async () => {
+        // A spec the running program owns is prioritized there: follow it on the program's execution screen.
+        const r = await runApi.startRun(projectId, specId);
+        if (r.queued) navigate(startedPath(projectId, r));
+      })()}
       onResume={(runId) => void act(() => runApi.resumeRun(runId))()}
       onStop={(runId) => void act(() => runApi.stopRun(runId))()}
       onNewSpec={(specId, description) => void go(() => refineApi.newSpec(projectId, specId, description))()}
