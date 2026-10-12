@@ -440,7 +440,7 @@ scripts/   Setup do WSL, smoke tests, scripts de integração e avaliação
 
 - `docs/superpowers/ROADMAP.md`: o que já foi feito e o que falta.
 - `docs/superpowers/specs/`: especificações de design. `docs/superpowers/plans/`: planos de implementação.
-- `docs/superpowers/ops/runbook.md`: runbook do operador (escrito para o antigo setup com Kubernetes, substituído pelo Docker Compose; trate os comandos `kubectl` como histórico).
+- `docs/superpowers/ops/runbook.md`: runbook do operador para o Docker Compose: runs, quota, diário, saúde, backup e restauração dos volumes.
 
 ## Licença
 

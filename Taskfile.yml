@@ -132,6 +132,45 @@ tasks:
     cmds:
       - docker compose exec teams-ai npm run teams-ai -- {{.CLI_ARGS}}
 
+  backup:
+    desc: Save the data, Claude and GitHub volumes to backups/<date> (the platform must be stopped; run `task down` first)
+    vars:
+      PROJECT:
+        sh: echo "${COMPOSE_PROJECT_NAME:-$(basename "$PWD" | tr 'A-Z' 'a-z' | tr -cd 'a-z0-9_-')}"
+      STAMP:
+        sh: date +%Y%m%d-%H%M%S
+    preconditions:
+      - sh: test -z "$(docker compose ps -q)"
+        msg: 'The platform is running: run `task down` first so no file changes during the copy.'
+    cmds:
+      - mkdir -p backups/{{.STAMP}}
+      - |
+        set -e
+        for pair in teams-ai-data:teams-ai-data teams-ai-claude:{{.PROJECT}}_teams-ai-claude teams-ai-gh:{{.PROJECT}}_teams-ai-gh; do
+          docker run --rm -v "${pair#*:}":/data:ro -v "$PWD/backups/{{.STAMP}}":/backup alpine tar czf "/backup/${pair%%:*}.tar.gz" -C /data .
+        done
+      - echo "Backup saved in backups/{{.STAMP}}"
+
+  restore:
+    desc: 'Replace the data, Claude and GitHub volumes with a backup: task restore DIR=backups/<date> FORCE=yes (stopped platform only)'
+    vars:
+      PROJECT:
+        sh: echo "${COMPOSE_PROJECT_NAME:-$(basename "$PWD" | tr 'A-Z' 'a-z' | tr -cd 'a-z0-9_-')}"
+    preconditions:
+      - sh: test -n "{{.DIR}}" && test -d "{{.DIR}}"
+        msg: 'Pass the backup folder: task restore DIR=backups/<date> FORCE=yes'
+      - sh: test "{{.FORCE}}" = yes
+        msg: 'Restore deletes the current content of the volumes: add FORCE=yes to confirm.'
+      - sh: test -z "$(docker compose ps -q)"
+        msg: 'The platform is running: run `task down` first.'
+    cmds:
+      - |
+        set -e
+        for pair in teams-ai-data:teams-ai-data teams-ai-claude:{{.PROJECT}}_teams-ai-claude teams-ai-gh:{{.PROJECT}}_teams-ai-gh; do
+          docker run --rm -v "${pair#*:}":/data -v "$PWD/{{.DIR}}":/backup:ro alpine sh -c "find /data -mindepth 1 -delete && tar xzf /backup/${pair%%:*}.tar.gz -C /data"
+        done
+      - echo "Restored from {{.DIR}}. Run 'task start' to bring the platform back."
+
   reset:
     desc: DELETE all containers, volumes, logins and workspaces
     prompt: This removes ALL teams-ai data, including Claude and GitHub logins. Continue?
