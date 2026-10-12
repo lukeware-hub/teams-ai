@@ -61,6 +61,8 @@ const DECISION_DEFAULTS: Partial<Record<DecisionId, Partial<DecisionConfig>>> = 
   'patch-dedup': { chain: ['jev', 'local'], escalateTo: 'sm' },
   // R11.14: only decides whether another run is worth trying; a wrong answer costs one bounded run or one question to the owner.
   'failure-cause': { chain: ['jev', 'local'], escalateTo: 'sm' },
+  // R11.5a item 3: a flag costs one more agent call at most and the item's first answer stands, so it ships active.
+  'detail-check': { chain: ['jev', 'local'], escalateTo: 'po' },
 };
 
 const PerDecisionSchema = z

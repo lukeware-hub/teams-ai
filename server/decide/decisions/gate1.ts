@@ -18,7 +18,7 @@ export const DUPLICATE_MIN = 0.5;
 export const CONTRADICTION_MIN = 0.5;
 
 /** P(yes) of one noul question about one item; null when the layer is off or gave no answer. */
-async function noul(decider: Pick<Decider, 'decide'>, id: DecisionId, state: string, instructions: string, criteria: { true: string; false: string }, ctx: DecideContext): Promise<number | null> {
+export async function noul(decider: Pick<Decider, 'decide'>, id: DecisionId, state: string, instructions: string, criteria: { true: string; false: string }, ctx: DecideContext): Promise<number | null> {
   const outcome = await decider.decide(id, state, { q0: { type: 'noul', instructions, criteria } }, ctx);
   if (!outcome.answered) return null;
   const a = outcome.answers.q0;
