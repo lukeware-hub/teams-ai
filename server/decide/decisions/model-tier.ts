@@ -1,4 +1,4 @@
-import { SCAFFOLD_TASK_ID, type PlanTask } from '../../contracts/plan.js';
+import { scaffoldId, type PlanTask } from '../../contracts/plan.js';
 import type { DecideContext, Decider } from '../decider.js';
 import type { BackendName, Questions } from '../types.js';
 
@@ -54,7 +54,7 @@ const RISKY = /\b(auth\w*|login|session|password|token|crypt\w*|permission|payme
 export function heuristicTier(task: PlanTask, attempt: number): ModelTierResult {
   const where = `${task.title} ${task.affectedPaths.join(' ')}`;
   let tier: ModelTier = 'medium';
-  if (task.id === SCAFFOLD_TASK_ID || RISKY.test(where) || task.affectedPaths.length >= 8 || task.criteriaRefs.length >= 6 || task.description.length > 2500) tier = 'large';
+  if (task.id === scaffoldId(task.service ?? null) || RISKY.test(where) || task.affectedPaths.length >= 8 || task.criteriaRefs.length >= 6 || task.description.length > 2500) tier = 'large';
   else if (task.criteriaRefs.length <= 1 && task.affectedPaths.length <= 3 && task.description.length <= 1000) tier = 'small';
   return { tier: bump(MODEL_TIERS, MODEL_TIERS.indexOf(tier), Math.max(0, attempt - 1)), effort: null, source: 'heuristic' };
 }

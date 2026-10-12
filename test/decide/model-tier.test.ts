@@ -20,6 +20,10 @@ describe('heuristicTier', () => {
   const t = (over: Parameters<typeof makePlanTask>[0]) => makePlanTask({ affectedPaths: ['src/a.ts'], criteriaRefs: ['AC-001'], ...over });
   const ac = (n: number) => Array.from({ length: n }, (_, i) => `AC-${String(i + 1).padStart(3, '0')}`);
 
+  it("sizes a service's scaffold like the project's: large", () => {
+    expect(heuristicTier(t({ id: 'T0-scaffold-inventory', service: 'inventory', title: 'Scaffold', description: 'x' }), 1).tier).toBe('large');
+  });
+
   it('sizes a task from what the plan says about it', () => {
     expect(heuristicTier(t({ id: 'T9-readme', title: 'Write the README', description: 'x'.repeat(900) }), 1).tier).toBe('small');
     expect(heuristicTier(t({ id: 'T2-list', title: 'List todos', description: 'x'.repeat(1500), criteriaRefs: ac(4) }), 1).tier).toBe('medium');

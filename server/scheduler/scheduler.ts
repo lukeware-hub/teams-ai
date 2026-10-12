@@ -27,7 +27,8 @@ export function nextRunnable(state: RunState, maxParallel: number = DEFAULT_MAX_
   if (state.status !== 'running') return [];
   const tasks = ordered(state);
   const active = tasks.filter((t) => ACTIVE_STATES.has(t.state));
-  const claimed = active.map((t) => t.def.affectedPaths);
+  // Paths clash only inside one repository: tasks of different services never share a file.
+  const claimed = active.map((t) => ({ service: t.def.service ?? null, paths: t.def.affectedPaths }));
   let slots = maxParallel - active.length;
   const picked: string[] = [];
   for (const task of tasks) {
@@ -35,9 +36,9 @@ export function nextRunnable(state: RunState, maxParallel: number = DEFAULT_MAX_
     if (!isWaiting(task)) continue;
     const depsMerged = task.def.dependsOn.every((d) => state.tasks.get(d)?.state === 'merged');
     if (!depsMerged) continue;
-    if (claimed.some((paths) => pathsOverlap(paths, task.def.affectedPaths))) continue;
+    if (claimed.some((c) => c.service === (task.def.service ?? null) && pathsOverlap(c.paths, task.def.affectedPaths))) continue;
     picked.push(task.def.id);
-    claimed.push(task.def.affectedPaths);
+    claimed.push({ service: task.def.service ?? null, paths: task.def.affectedPaths });
     slots -= 1;
   }
   return picked;
