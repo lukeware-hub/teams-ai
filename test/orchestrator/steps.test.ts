@@ -8,7 +8,7 @@ import { Governor } from '../../server/budget/governor.js';
 import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
 import { buildContextPack } from '../../server/knowledge/context-pack.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
-import { devPack, devResumePrompt, fixTasksPack, outputContract, planPack, planRules, readmePack, replanPack, reportPack, reviewPack, runAgentStep, securityPack, servicesPlanRules, specGapPack, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
+import { devPack, devResumePrompt, fixTasksPack, outputContract, planPack, planRules, readmePack, replanPack, reportPack, reviewPack, runAgentStep, securityPack, servicesPlanRules, specGapPack, techSpecPack, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
 import { servicePlans } from '../../server/contracts/plan.js';
 import { saveSession } from '../../server/runner/session-store.js';
 import type { StepOutcome } from '../../server/runner/step.js';
@@ -142,6 +142,16 @@ describe('packs', () => {
     expect(devPack(base, { ...task, affectedPaths: ['test/e2e/**'] }, opts).principles.join('\n')).toContain('Never skip a test');
     expect(devPack(base, { ...task, affectedPaths: ['src/app.mjs'] }, opts).principles).toEqual(base.project.principles);
     expect(devPack(base, suiteTask, { ...opts, e2eSuite: undefined }).principles).toEqual(base.project.principles);
+  });
+
+  // R11.7.6: the Dev and the Test engineer read the owner's answers the frozen spec carries.
+  it("dev, tech-spec and review packs carry the spec's decisions, and a spec without them adds none", () => {
+    const decided: PackBase = { ...base, spec: { ...spec, decisions: [{ question: 'O total inclui frete?', answer: 'Sim.' }] } };
+    const review = { diffStat: '', changedFiles: [], diff: '', junit: [], code: { source: 'none' as const }, profile: 'standard' as const };
+    for (const p of [devPack(decided, task, { code: { source: 'none' }, handoffs: [], feedback: null }), techSpecPack(decided, { feedback: null }), reviewPack(decided, task, review)]) {
+      expect(p.decisions).toEqual([{ question: 'O total inclui frete?', answer: 'Sim.' }]);
+    }
+    expect(devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }).decisions).toBeUndefined();
   });
 
   it('review pack puts the diff and impact radius in feedback and code', () => {

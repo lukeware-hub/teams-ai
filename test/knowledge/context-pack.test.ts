@@ -39,6 +39,7 @@ describe('buildContextPack', () => {
   it('includes optional sections when given, in order', () => {
     const pack = buildContextPack({
       ...base,
+      decisions: [{ question: 'Títulos repetidos são aceitos?', answer: 'Sim.' }],
       objectives: ['Users can manage todo items'],
       techSpecExcerpt: 'POST /todos creates an item.',
       adrs: [{ id: 'ADR-001', title: 'Stack', text: 'Node 22 + Fastify' }],
@@ -79,6 +80,16 @@ describe('buildContextPack', () => {
     expect(pack.dropped).toEqual(['retrieval', 'adrs', 'tech-spec']);
     expect(pack.sections).toEqual(['principles', 'contract', 'task', 'criteria', 'feedback']);
     expect(pack.text).toContain('Dropped for budget: retrieval, adrs, tech-spec');
+  });
+
+  // R11.7.6: what the owner answered in the refinement reaches the delivery, and no budget cuts it.
+  it("renders the owner's decisions right after the criteria and never drops them", () => {
+    const decisions = [{ question: 'O total inclui frete?', answer: 'Sim, sempre.' }, { question: 'Qual moeda?', answer: 'Real.', by: 'po' as const }];
+    const pack = buildContextPack({ ...base, decisions, budgetTokens: 10 });
+    expect(pack.sections).toEqual(['principles', 'contract', 'task', 'criteria', 'decisions']);
+    expect(pack.text).toContain('- O total inclui frete?\n  Answer: Sim, sempre.');
+    expect(pack.text).toContain('Answer (PO, from the docs): Real.');
+    expect(pack.dropped).toContain('!over-budget');
   });
 
   it('never drops principles, contract, task or criteria and flags an impossible budget', () => {

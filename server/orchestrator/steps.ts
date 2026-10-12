@@ -112,6 +112,7 @@ export function devPack(
     principles: opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [...shared.principles, e2eSuiteRules(opts.e2eSuite)] : shared.principles,
     task,
     criteria: criteriaOf(base.spec, task.criteriaRefs),
+    decisions: base.spec.decisions,
     handoffs: opts.handoffs,
     code: opts.code,
     feedback: opts.feedback ?? undefined,
@@ -146,7 +147,7 @@ export function reviewPack(
   if (opts.junit.length > REVIEW_JUNIT_LINES) results.push(`- ... ${opts.junit.length - REVIEW_JUNIT_LINES} more`);
   // The merge gates already ran the suite on this exact diff: the reviewer reads their result instead of re-running it (R11.13 slice 2).
   const changeSet = `Changed files:\n${opts.changedFiles.join('\n')}\n\nDiff stat:\n${opts.diffStat}\n\nThe JUnit report (reports/junit.xml) is gate output the orchestrator never commits: do not ask for it.\n\nThe compose service healthcheck and its "image: \${TEAMS_AI_IMAGE:-...}" line are the orchestrator's deploy contract (it tags, verifies and rolls back the image through them): never ask to remove them.\n\nGate test results (the merge gates already ran the suite on this diff; do not re-run it):\n${results.join('\n') || '- none reported'}\n\nDiff against origin/main:\n${opts.diff}`;
-  return { ...common(base, 'review', 'test'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), code: opts.code, feedback, changeSet };
+  return { ...common(base, 'review', 'test'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), decisions: base.spec.decisions, code: opts.code, feedback, changeSet };
 }
 
 /**
@@ -167,6 +168,7 @@ export function techSpecPack(base: PackBase, opts: { feedback: string | null }):
   return {
     ...common(base, 'tech-spec', 'dev'),
     criteria: base.spec.acceptanceCriteria,
+    decisions: base.spec.decisions,
     objectives: [
       ...base.spec.objectives,
       ...base.spec.features.map((f) => `feature: ${f}`),

@@ -1,6 +1,6 @@
 import type { StepKind } from '../agents/outputs.js';
 import type { PlanTask } from '../contracts/plan.js';
-import type { AcceptanceCriterion } from '../contracts/spec.js';
+import type { AcceptanceCriterion, SpecDecision } from '../contracts/spec.js';
 import type { AffectedNode, GraphNode } from './graphify.js';
 import type { Hit } from './retrieval.js';
 
@@ -28,6 +28,8 @@ export interface ContextPackInput {
   outputContract: string;
   task?: PlanTask;
   criteria: readonly AcceptanceCriterion[];
+  /** R11.7.6: the owner's answers from the refinement, which the delivery follows; never dropped, like the criteria. */
+  decisions?: readonly SpecDecision[];
   objectives?: readonly string[];
   techSpecExcerpt?: string;
   adrs?: ReadonlyArray<{ id: string; title: string; text: string }>;
@@ -58,6 +60,7 @@ export const SECTION_ORDER = [
   'contract',
   'task',
   'criteria',
+  'decisions',
   'objectives',
   'tech-spec',
   'adrs',
@@ -105,6 +108,9 @@ function render(input: ContextPackInput): Map<Section, string> {
     'criteria',
     `## Acceptance criteria\n${input.criteria.map((c) => `- ${c.id}${c.smoke ? ' (smoke)' : ''}: Given ${c.given}, when ${c.when}, then ${c.then}`).join('\n') || '- none for this step'}`,
   );
+  if (input.decisions?.length) {
+    out.set('decisions', `## Owner decisions (answers the owner gave during refinement; follow them)\n${input.decisions.map((d) => `- ${d.question}\n  Answer${d.by ? ` (${d.by.toUpperCase()}, from the docs)` : ''}: ${d.answer}`).join('\n')}`);
+  }
   if (input.objectives?.length) out.set('objectives', `## Objectives\n${input.objectives.map((o) => `- ${o}`).join('\n')}`);
   if (input.techSpecExcerpt) out.set('tech-spec', `## Technical spec (excerpt)\n${input.techSpecExcerpt}`);
   if (input.adrs?.length) out.set('adrs', `## ADRs\n${input.adrs.map((a) => `### ${a.id}: ${a.title}\n${a.text}`).join('\n')}`);
