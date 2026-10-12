@@ -26,6 +26,12 @@ describe('Taskfile.yml (R9.4)', () => {
 });
 
 describe('.github/workflows/ci.yml publish job (R9.4)', () => {
+  it('frees disk space before the build, since the image and its scan fill the runner', () => {
+    expect(stepNames.indexOf('Free disk space')).toBeGreaterThan(-1);
+    expect(stepNames.indexOf('Free disk space')).toBeLessThan(stepNames.indexOf('Build and push the commit tag'));
+    expect(step('Free disk space').run).toContain('/usr/local/lib/android');
+  });
+
   it('runs only on a push, after quality, and is the only job that can write packages', () => {
     expect(ci.on.push.tags).toEqual(['v*']);
     expect(ci.permissions).toEqual({ contents: 'read' });
