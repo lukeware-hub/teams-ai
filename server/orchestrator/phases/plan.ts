@@ -49,7 +49,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
       ? await deps.runAgent<'services-plan'>({
           kind: 'services-plan',
           role: 'sm',
-          pack: planPack(deps.packBase(), { techSpecText, preplan, godNodes: [], feedback, ...require, services: { names, newServices: services.newServices, ports: services.ports, platform: deps.project.platform ?? [] } }),
+          pack: planPack(deps.packBase(), { techSpecText, preplan, godNodes: [], feedback, ...require, services: { names, newServices: services.newServices, ports: services.ports, platform: deps.project.platform ?? [], files: Object.fromEntries(Object.entries(services.repoFiles).map(([s, files]) => [s, [...files].sort()])) } }),
           cwd: worktree,
           phase: 'phase2',
           taskId: null,

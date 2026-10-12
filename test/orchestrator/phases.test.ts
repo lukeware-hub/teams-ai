@@ -220,6 +220,7 @@ describe('Phase 2', () => {
     expect(r.ok).toBe(true);
     expect(calls[0]!.kind).toBe('services-plan');
     expect(calls[0]!.pack.feedback).toContain('new services (their main holds no code yet): inventory');
+    expect(calls[0]!.pack.feedback).toContain('- files on main of orders: src/index.ts');
     const ports = JSON.parse(await fs.readFile(path.join(root, '.ports.json'), 'utf8')) as Record<string, number>;
     expect(Object.keys(ports).sort()).toEqual(['shop/inventory', 'shop/orders']);
     expect(ports['shop/orders']).not.toBe(ports['shop/inventory']);

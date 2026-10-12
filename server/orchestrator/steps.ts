@@ -242,7 +242,20 @@ export function planRules(firstSpec: boolean | 'services', requireDelivery = fal
   return lines.join('\n');
 }
 
-export interface ServicesPack { names: readonly string[]; newServices: ReadonlySet<string>; ports: Readonly<Record<string, number | null>>; platform: readonly PlatformService[] }
+export interface ServicesPack {
+  names: readonly string[];
+  newServices: ReadonlySet<string>;
+  ports: Readonly<Record<string, number | null>>;
+  platform: readonly PlatformService[];
+  /** Files on main of each existing service: the plan step works in the project repository and cannot see them. */
+  files?: Readonly<Record<string, readonly string[]>>;
+}
+
+/** Longest file list a services plan pack shows per existing service; the rest is a count. */
+const SERVICE_FILES = 200;
+
+const filesLine = (service: string, files: readonly string[]): string =>
+  `- files on main of ${service}${files.length > SERVICE_FILES ? ` (first ${SERVICE_FILES} of ${files.length})` : ''}: ${files.slice(0, SERVICE_FILES).join(', ') || 'none'}`;
 
 /** What a services plan adds to the plan rules (R12.6): one repository and one port per service, a scaffold per new service. */
 export function servicesPlanRules(opts: ServicesPack): string {
@@ -253,7 +266,8 @@ export function servicesPlanRules(opts: ServicesPack): string {
     '- return specId, specHash, adrRefs and e2eExemptions at the top, `tasks` with each task naming its `service`, and `services`: a map from each service this spec changes to its settings (stack, commands, gateImage, junitPath, gates, frozenPaths, deploy, delivery, lockfilePath and the coverage fields), which follow every plan rule above as services.<name>.<field>; list only the services this spec changes, each with at least one task',
     "- a task changes only its own service's repository; dependsOn may name a task of another service; a service's smoke and e2e suites prove only the criteria its own tasks reference",
     fresh.length > 0 ? `- new services (their main holds no code yet): ${fresh.join(', ')}. Each gets a task with id T0-scaffold-<service> (owner dev, no dependsOn) that creates its skeleton, build, test and gate configuration, every other task of that service depends on it, and one deploy-infrastructure task owned by devops (Dockerfile, docker-compose.yml)` : '',
-    existing.length > 0 ? `- existing services: ${existing.join(', ')}. Their code is on main: never give them a scaffold task` : '',
+    existing.length > 0 ? `- existing services: ${existing.join(', ')}. Their code is on main: never give them a scaffold task; each keeps the settings it already has (services.<service> of an earlier docs/specs/*/plan.json, which you can read) unless this spec needs a change, and its tasks use the paths of its files below` : '',
+    ...existing.map((s) => filesLine(s, opts.files?.[s] ?? [])),
     ...opts.names.flatMap((s) => (opts.ports[s] ? [`- services.${s}.deploy.port is exactly ${opts.ports[s]}: the orchestrator assigned it so no two services share a host port; the service listens on PORT=${opts.ports[s]} and its docker-compose publishes "${opts.ports[s]}:${opts.ports[s]}"`] : [])),
     "- each service runs in its own compose project; teams-ai joins its main container (the compose service named exactly like the service) to the project's shared network under the service's name, so services call each other at http://<service>:<port>; a suite reads its own address from SERVICE_URL and each other service's from SERVICE_URL_<SERVICE> (upper case, dashes as underscores)",
     opts.platform.length > 0 ? `- platform containers teams-ai starts before the services, from project.json: ${opts.platform.map((p) => `${p.name} (${p.image})`).join(', ')}. Never plan, build or declare them in a compose file; services reach them by name on the shared network` : '- the project declares no platform containers',

@@ -408,4 +408,15 @@ describe('servicesPlanRules', () => {
     expect(text).toContain('nats (nats:2.10.22-alpine)');
     expect(planRules('services')).not.toContain('first spec of the project');
   });
+
+  it("shows the SM each existing service's files on main and where its earlier settings are, capped for a large repository", () => {
+    const many = Array.from({ length: 250 }, (_, i) => `src/m${String(i).padStart(3, '0')}.ts`);
+    const text = servicesPlanRules({ names: ['orders', 'inventory'], newServices: new Set(['inventory']), ports: {}, platform: [], files: { orders: ['package.json', 'src/index.ts'] } });
+    expect(text).toContain('- files on main of orders: package.json, src/index.ts');
+    expect(text).toContain('services.<service> of an earlier docs/specs/*/plan.json');
+    expect(text).not.toContain('files on main of inventory');
+    const capped = servicesPlanRules({ names: ['orders'], newServices: new Set(), ports: {}, platform: [], files: { orders: many } });
+    expect(capped).toContain('- files on main of orders (first 200 of 250): src/m000.ts');
+    expect(capped).not.toContain('src/m200.ts');
+  });
 });
