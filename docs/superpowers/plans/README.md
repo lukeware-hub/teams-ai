@@ -68,6 +68,7 @@ was implemented. Web UI block A (`2026-09-24-run-api-execution-ui-design.md`) is
 | 68 | [`2026-10-12-teams-ai-68-backlog-keys-and-dependencies.md`](2026-10-12-teams-ai-68-backlog-keys-and-dependencies.md) | Done — dependencies name the spec ids their items really have, and no two backlog keys share a docs branch; ROADMAP R11.5.3. |
 | 69 | [`2026-10-12-teams-ai-69-docs-accumulate.md`](2026-10-12-teams-ai-69-docs-accumulate.md) | Done — the report and readme steps rewrite the current docs and keep the endpoints the current API.md documents; ROADMAP R11.5.4. |
 | 70 | [`2026-10-12-teams-ai-70-spec-pull-requests.md`](2026-10-12-teams-ai-70-spec-pull-requests.md) | Done — pull requests name their spec, report.json lists the spec's pull requests, and the run page finds each task's pull request; ROADMAP R11.5.5. |
+| 71 | [`2026-10-12-teams-ai-71-blocked-work-does-not-pass.md`](2026-10-12-teams-ai-71-blocked-work-does-not-pass.md) | Done — a criterion whose every task is blocked fails Phase 4 and gets a fix task, which never depends on a blocked task; ROADMAP R11.5.6. |
 
 Plans 17 and 19 never existed (not a gap in this audit - no file was ever created at those numbers).
 
