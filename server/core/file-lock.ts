@@ -8,9 +8,19 @@ import path from 'node:path';
  * runs of one project share its clone. A holder refreshes its lock file; one not refreshed within `staleMs` died.
  */
 
-/** The lock file of a repository for one kind of work; kept in the temp dir, so it never lands in the repository. */
+/** This user's private lock dir in the temp dir: another local user can neither plant nor hold a lock in it. */
+const LOCK_DIR = path.join(os.tmpdir(), `teams-ai-locks-${os.userInfo().uid}`);
+
+/** The lock file of a repository for one kind of work; kept out of the repository. */
 export const lockFile = (repo: string, kind: 'repo' | 'checkout') =>
-  path.join(os.tmpdir(), 'teams-ai-locks', `${createHash('sha256').update(path.resolve(repo)).digest('hex').slice(0, 16)}.${kind}.lock`);
+  path.join(LOCK_DIR, `${createHash('sha256').update(path.resolve(repo)).digest('hex').slice(0, 16)}.${kind}.lock`);
+
+/** Creates the lock dir owner-only, and refuses one that is a link, another user's, or open to others. */
+async function ensureDir(dir: string): Promise<void> {
+  await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+  const st = await fs.lstat(dir);
+  if (!st.isDirectory() || st.uid !== os.userInfo().uid || (st.mode & 0o077) !== 0) throw new Error(`unsafe lock dir ${dir}: it must be a directory only this user can access`);
+}
 
 export async function withFileLock<T>(file: string, fn: () => Promise<T>, staleMs = 120_000): Promise<T> {
   await acquire(file, staleMs);
@@ -28,7 +38,7 @@ export async function withFileLock<T>(file: string, fn: () => Promise<T>, staleM
 }
 
 async function acquire(file: string, staleMs: number): Promise<void> {
-  await fs.mkdir(path.dirname(file), { recursive: true });
+  await ensureDir(path.dirname(file));
   for (;;) {
     try {
       await (await fs.open(file, 'wx')).close();

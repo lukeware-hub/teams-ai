@@ -38,4 +38,11 @@ describe('withFileLock', () => {
     expect(lockFile('/ws/shop/repo', 'repo')).not.toBe(lockFile('/ws/shop/repo', 'checkout'));
     expect(lockFile('/ws/shop/repo', 'repo').startsWith(os.tmpdir())).toBe(true);
   });
+
+  it('refuses a lock dir other users can open', async () => {
+    const open = path.join(dir, 'open');
+    await fs.mkdir(open, { mode: 0o777 });
+    await fs.chmod(open, 0o777);
+    await expect(withFileLock(path.join(open, 'a.lock'), async () => 'x')).rejects.toThrow(/unsafe lock dir/);
+  });
 });
