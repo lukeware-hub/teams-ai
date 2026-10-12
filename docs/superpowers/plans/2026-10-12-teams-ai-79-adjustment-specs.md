@@ -34,6 +34,7 @@
 - An approval stays pending if the docs change back before the owner decides; rejecting it is the owner's call.
 - A briefing.md that ends inside an open code block takes the approval section into that block; the probe found no other case where appending changes an existing section.
 - A spec without provenance (`derivedFrom`, from a single-spec draft) is never adjusted, since there is no section hash to compare.
+- Review fix: a spec derived since this plan records each cited section's hash below its heading line (`bodyHash`), so a renumbered or renamed section asks nothing; a spec derived before it compares whole sections, so renumbering still asks for it.
 - The adjustment's run changes code another spec delivered; updating a test of that spec that asserts the old behavior is left to the run's Dev and Test steps, which this plan does not change.
 - Found while writing this plan, not changed here: a backlog with a started item never gets the SM's conflict map. The map waits for a pre-plan of every item, a started item has none, and the program then runs one spec at a time. Every backlog with an adjustment has such an item.
 
