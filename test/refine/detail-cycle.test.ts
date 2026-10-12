@@ -1,4 +1,4 @@
-import { access, mkdtemp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { access, cp, mkdtemp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -53,8 +53,8 @@ function fakeAgent(outline: () => BacklogItem[], hook: (req: Req, n: number) => 
   return { fn, calls, kinds };
 }
 
-async function setup() {
-  const root = (await mkdtemp(path.join(os.tmpdir(), 'teams-ai-detail-'))).replace(/\\/g, '/');
+async function setup(existing?: string) {
+  const root = existing ?? (await mkdtemp(path.join(os.tmpdir(), 'teams-ai-detail-'))).replace(/\\/g, '/');
   const docs = `${root}/docs`;
   await mkdir(docs, { recursive: true });
   const draft = {
@@ -127,6 +127,38 @@ describe('backlog detailing in the refinement cycle', () => {
     // Same content, same revision: its pre-plan is still current and the spec stays planned.
     expect(opme.status).toBe('planned');
     expect(events.filter((e) => e.type === 'REFINE_CYCLE_FAILED')).toEqual([]);
+  });
+
+  // R11.7.3: a new draft over what main already planned derives nothing again unless a cited section changed.
+  const secondDraft = async (change?: (flow: string) => string) => {
+    const first = await setup();
+    const agent1 = fakeAgent(() => OUTLINE);
+    await first.run(agent1, 1);
+    await first.journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    await first.run(agent1, 2);
+    // Main as the first draft published it becomes the base copy of a new draft over the same folder.
+    await cp(first.docs, first.draft.base!, { recursive: true });
+    const second = await setup(first.draft.root);
+    if (change) await writeFile(second.draft.flowMd, change(FLOW));
+    const agent = fakeAgent(() => OUTLINE);
+    await second.run(agent, 1);
+    await second.journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    const from = agent.calls.length;
+    await second.run(agent, 2);
+    return { second, detailing: agent.calls.slice(from).filter((c) => c.kind === 'spec' || c.kind === 'preplan') };
+  };
+
+  it("reuses main's spec and pre-plan of every item whose inputs did not change", async () => {
+    const { second, detailing } = await secondDraft();
+    expect(detailing).toEqual([]);
+    expect(second.journal.state.status).toBe('ready');
+    expect(Object.keys(second.journal.state.backlog?.preplans ?? {}).sort()).toEqual(['caso', 'fat', 'opme', 'triagem']);
+  });
+
+  it('derives again only the item whose cited section changed', async () => {
+    const { second, detailing } = await secondDraft((flow) => flow.replace('C --> D', 'C --> D2[Cotação]'));
+    expect(detailing.filter((c) => c.kind === 'spec').map((c) => [...c.feedback.matchAll(/^## Item ([a-z0-9-]+):/gm)].map((m) => m[1]))).toEqual([['opme']]);
+    expect(second.journal.state.status).toBe('ready');
   });
 
   it('retries an item alone with its rejection when its spec or pre-plan breaks a rule', async () => {

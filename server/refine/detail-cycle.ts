@@ -162,6 +162,19 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     await journal.fact(RefineEvent.SpecDerived, { cycle, key: i.key, specId: onMain.specId, inputHash: specHash.get(i.key), rev, spec: onMain, issues: [], highWater });
   }
   const planHashOf = (item: Item, rev: string) => preplanInputHash(item, rev, docs['stack.md'], item.rank === 1);
+  // R11.7.3: a new draft reuses main's spec of an item whose inputs did not change, and its pre-plan when still current.
+  for (const i of items) {
+    if (kept.has(i.key) || specs[i.key]) continue;
+    const onMain = await readMainSpec(draft, idOf(i.key));
+    if (!onMain || onMain.derivedFrom?.inputHash !== specHash.get(i.key)) continue;
+    const rev = computeSpecHash(onMain);
+    specs[i.key] = { inputHash: specHash.get(i.key)!, specId: onMain.specId, rev, spec: onMain, issues: [], cycle };
+    await journal.fact(RefineEvent.SpecDerived, { cycle, key: i.key, specId: onMain.specId, inputHash: specHash.get(i.key), rev, spec: onMain, issues: [], highWater });
+    const pre = Preplan.safeParse(draft.base ? await readJson(path.posix.join(draft.base, 'specs', onMain.specId, 'preplan.json')) : null);
+    if (!pre.success || pre.data.specRev !== rev || pre.data.inputHash !== planHashOf(i, rev)) continue;
+    preplans[i.key] = { inputHash: pre.data.inputHash, specRev: rev, preplan: pre.data, issues: [], cycle };
+    await journal.fact(RefineEvent.PreplanDerived, { cycle, key: i.key, inputHash: pre.data.inputHash, specRev: rev, preplan: pre.data, issues: [] });
+  }
   const acceptSpec = async (item: Item, entry: ItemSpec | undefined): Promise<string[]> => {
     if (!entry) return ['o agente não devolveu a spec deste item'];
     const inputHash = specHash.get(item.key)!;
