@@ -116,6 +116,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     'flow.md': await readDoc(draft, 'flow.md'),
     'design.md': await readDoc(draft, 'design.md'),
   };
+  // The five docs by the names backlog items cite them with.
+  const backlogDocs = { 'project.md': docs['project.md'], 'briefing.md': docs['brief.md'], 'stack.md': docs['stack.md'], 'flow.md': docs['flow.md'], 'design.md': docs['design.md'] };
   const previous = await readDerived(draft);
   const fail = (reason: string) => journal.fact(RefineEvent.CycleFailed, { cycle, reason });
   let jevValidation: JevValidationResult | undefined;
@@ -170,7 +172,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           await fail(`backlog failed: ${out.failure}: ${out.errors.join('; ')}`);
           return;
         }
-        const checked = postProcessBacklog(out.value as BacklogOutput, previous, docs['flow.md'], approvedAdjustments(docs['brief.md']), started);
+        const checked = postProcessBacklog(out.value as BacklogOutput, previous, backlogDocs, approvedAdjustments(docs['brief.md']), started);
         if (checked.ok) accepted = checked;
         else rejection = checked.issues;
       }
@@ -194,7 +196,6 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       backlog = merged.backlog!;
     }
     if (backlog.detail) {
-      const backlogDocs = { 'project.md': docs['project.md'], 'briefing.md': docs['brief.md'], 'stack.md': docs['stack.md'], 'flow.md': docs['flow.md'], 'design.md': docs['design.md'] };
       // The recorded decider journals the Jev's checks of the detailing (R11.5a item 3).
       const detailed = await detailBacklog({ ...deps, decider }, { cycle, hash, docs: backlogDocs, backlog, ctx });
       if (!detailed.ok) {

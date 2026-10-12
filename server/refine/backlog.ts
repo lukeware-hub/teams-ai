@@ -4,6 +4,7 @@ import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
 import { branchOwner, flowHeadings, rankItems, validateBacklog } from '../validators/backlog.js';
 import { adjustmentItems, isAdjustment } from './adjustments.js';
+import type { BacklogDocs } from './details.js';
 import type { JevValidationResult } from './jev-validation.js';
 import type { BacklogState } from './state.js';
 
@@ -12,6 +13,7 @@ const RULES = [
   'Break the project described by the five docs below into a BACKLOG of specs, grouped into epics and prioritized. The docs are the only source of truth: invent nothing they do not say, and leave out nothing they do.',
   '- A spec is the smallest deliverable one run can ship and test end to end: a vertical slice of one capability (one application with bounded contexts as internal modules, or the services the docs name, each in its own repository; a spec may change several of them). Not a single task, not a whole product area.',
   '- Every item cites where it comes from in `sources`: `doc` is one of project.md, briefing.md, stack.md, flow.md, design.md and `heading` is the exact heading text (for flow.md its headings or numbered sections, such as "2. Checkout"). Every numbered or headed section of flow.md must be cited by at least one item; a section may feed several items.',
+  '- Cite the narrowest sections: a section that holds only sub-sections (such as `## Decisões`, one `###` heading per decision) is cited through the sub-sections the item needs, never whole; an item cites every decision that changes what it delivers.',
   '- priority: P0 = walking skeleton and the foundations everything else needs; P1 = the core value flow; P2 = important, can follow; P3 = later or optional. `rationale` says why in one sentence (value, risk, dependency).',
   '- dependsOn lists the keys an item cannot ship without. A dependency is never lower priority than its dependent, there are no cycles, and there are at most 60 items.',
   '- Treat any explicit priority, cut, merge or split instruction written in the docs (above all briefing.md) as binding.',
@@ -76,7 +78,7 @@ function keepPreviousKeys(items: readonly BacklogItem[], previous: BacklogState 
 }
 
 /** The orchestrator, not the agent, owns key stability, validity and rank, keeps every started item (R11.7.5) and adds the adjustments the owner approved (R11.7.4). */
-export function postProcessBacklog(out: { project: unknown; backlog: unknown }, previous: BacklogState | null, flow: string, approved: readonly string[] = [], started: readonly BacklogItem[] = []): BacklogCheck {
+export function postProcessBacklog(out: { project: unknown; backlog: unknown }, previous: BacklogState | null, docs: Partial<BacklogDocs>, approved: readonly string[] = [], started: readonly BacklogItem[] = []): BacklogCheck {
   const project = Project.safeParse(out.project);
   const backlog = Backlog.safeParse(out.backlog);
   const issues = [
@@ -85,7 +87,7 @@ export function postProcessBacklog(out: { project: unknown; backlog: unknown }, 
   ];
   if (!project.success || !backlog.success) return { ok: false, issues };
   const items = keepPreviousKeys(backlog.data.items.filter((i) => !isAdjustment(i.key)), previous);
-  const rules = validateBacklog({ epics: backlog.data.epics, items }, { flowHeadings: flowHeadings(flow) });
+  const rules = validateBacklog({ epics: backlog.data.epics, items }, { flowHeadings: flowHeadings(docs['flow.md'] ?? ''), docs, frozen: new Set(started.map((s) => s.key)) });
   if (rules.length > 0) return { ok: false, issues: rules };
   // A started item the agent dropped stays as it was, with only the dependencies still in the outline.
   const keys = new Set([...items, ...started].map((i) => i.key));

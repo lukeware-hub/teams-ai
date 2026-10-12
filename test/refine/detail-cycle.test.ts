@@ -152,6 +152,20 @@ describe('backlog detailing in the refinement cycle', () => {
     expect(events.filter((e) => e.type === 'REFINE_CYCLE_FAILED')).toEqual([]);
   });
 
+  // R11.10 (plan 87): the outline cites each decision an item needs, never the whole Decisões section.
+  it('sends an outline citing a section made only of sub-sections back to the PO with the ones to cite', async () => {
+    const { journal, events, run, draft } = await setup();
+    await writeFile(draft.briefingMd, '# Briefing\n\n## Objectives\n\n- tudo\n\n## Decisões\n\n### Prazo\n\n15 dias.\n\n### Multa\n\nR$ 2 por dia.\n');
+    const citing = (heading: string) => OUTLINE.map((i) => (i.key === 'caso' ? { ...i, sources: [...i.sources, { doc: 'briefing.md' as const, heading }] } : i));
+    const agent = fakeAgent(() => OUTLINE, (req) => (req.kind === 'backlog' ? ok({ specHash: H, project: makeProject(), backlog: { epics, items: citing(String(req.pack.feedback).includes('Your last attempt was rejected') ? 'Prazo' : 'Decisões') } }) : undefined));
+    await run(agent, 1);
+    const outlines = agent.calls.filter((c) => c.kind === 'backlog');
+    expect(outlines).toHaveLength(2);
+    expect(outlines[1]!.feedback).toContain('item caso cita briefing.md › "Decisões", uma seção feita só de subseções; cite as de que o item precisa: "Prazo", "Multa"');
+    expect(journal.state.backlog?.items.find((i) => i.key === 'caso')?.sources).toContainEqual({ doc: 'briefing.md', heading: 'Prazo' });
+    expect(events.filter((e) => e.type === 'REFINE_CYCLE_FAILED')).toEqual([]);
+  });
+
   // R11.10 (plan 87): the dependencies feed the pre-plan only, so one the outline adds re-derives no spec.
   it('re-derives only the pre-plan of an item whose dependencies changed', async () => {
     const { journal, run, draft } = await setup();

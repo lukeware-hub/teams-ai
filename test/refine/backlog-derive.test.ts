@@ -25,6 +25,7 @@ describe('backlogPack', () => {
     expect(pack.feedback).toContain('%% 7. OPME');
     expect(pack.feedback).toMatch(/binding/);
     expect(pack.feedback).toContain('a spec may change several of them');
+    expect(pack.feedback).toContain('is cited through the sub-sections the item needs, never whole');
     expect(pack.feedback).not.toContain('one service per spec');
     expect(pack.outputContract).toContain('"backlog"');
     // The briefing is the target project's docs/briefing.md: the agents cite and read it by that name only.
@@ -46,27 +47,35 @@ describe('backlogPack', () => {
 });
 
 describe('postProcessBacklog', () => {
+  // R11.10 (plan 87): the outline cites the narrowest sections, except a started item, whose sources stay as they were.
+  it('sends back a citation of a section made only of sub-sections, unless the item started', () => {
+    const docs = { 'briefing.md': '# Briefing\n\n## Decisões\n\n### Prazo\n\n15 dias.\n' };
+    const broad = item('fat', { sources: [{ doc: 'briefing.md', heading: 'Decisões' }] });
+    expect(postProcessBacklog(raw([item('opme'), broad]), null, docs)).toEqual({ ok: false, issues: ['item fat cita briefing.md › "Decisões", uma seção feita só de subseções; cite as de que o item precisa: "Prazo"'] });
+    expect(postProcessBacklog(raw([item('opme'), broad]), null, docs, [], [broad]).ok).toBe(true);
+  });
+
   it('returns the project and the items ranked by priority, dependencies first', () => {
-    const out = postProcessBacklog(raw([item('a', { dependsOn: ['b'] }), item('b'), item('c', { priority: 'P0' })]), null, '');
+    const out = postProcessBacklog(raw([item('a', { dependsOn: ['b'] }), item('b'), item('c', { priority: 'P0' })]), null, {});
     expect(out.ok).toBe(true);
     if (out.ok) expect(out.value.backlog.items.map((i) => [i.key, i.rank])).toEqual([['c', 1], ['b', 2], ['a', 3]]);
   });
 
   it('reports schema problems with their path', () => {
-    const out = postProcessBacklog({ project: makeProject(), backlog: { epics: [{ key: 'core', title: 'Core' }], items: [{ ...item('a'), priority: 'P9' }] } }, null, '');
+    const out = postProcessBacklog({ project: makeProject(), backlog: { epics: [{ key: 'core', title: 'Core' }], items: [{ ...item('a'), priority: 'P9' }] } }, null, {});
     expect(out).toMatchObject({ ok: false });
     if (!out.ok) expect(out.issues.join('\n')).toMatch(/backlog\.items\.0\.priority/);
   });
 
   it('reports rule violations, including flow sections no item cites', () => {
-    const out = postProcessBacklog(raw([item('a', { dependsOn: ['zzz'] })]), null, '%% 3. Faturamento');
+    const out = postProcessBacklog(raw([item('a', { dependsOn: ['zzz'] })]), null, { 'flow.md': '%% 3. Faturamento' });
     expect(out).toMatchObject({ ok: false });
     if (!out.ok) expect(out.issues.join('\n')).toMatch(/zzz[\s\S]*Faturamento/);
   });
 
   it('keeps the previous key when the agent renames an item that has the same title', () => {
     const prev = previous([item('opme', { title: 'Gestão de OPME' })]);
-    const out = postProcessBacklog(raw([item('materiais', { title: 'gestão de opme' }), item('outro', { dependsOn: ['materiais'] })]), prev, '');
+    const out = postProcessBacklog(raw([item('materiais', { title: 'gestão de opme' }), item('outro', { dependsOn: ['materiais'] })]), prev, {});
     expect(out.ok).toBe(true);
     if (out.ok) {
       expect(out.value.backlog.items.map((i) => i.key)).toContain('opme');
@@ -76,7 +85,7 @@ describe('postProcessBacklog', () => {
 
   it('keeps a key renamed out of a shared docs branch, even when its title stays', () => {
     const renamed = (prev: BacklogState, items: BacklogItem[]) => {
-      const out = postProcessBacklog(raw(items), prev, '');
+      const out = postProcessBacklog(raw(items), prev, {});
       return out.ok ? out.value.backlog.items.map((i) => i.key).sort() : out.issues;
     };
     // Both keys came from an earlier cycle, so restoring either previous key shares docs/pricing-plan again.
@@ -91,7 +100,7 @@ describe('postProcessBacklog', () => {
   it('drops any adjustment the agent writes and adds each approved one after its original (R11.7.4)', () => {
     const items = [item('opme'), item('opme-ajuste-1', { title: 'inventado' }), item('caso', { priority: 'P0' })];
     const keys = (approved: string[]) => {
-      const out = postProcessBacklog(raw(items), null, '', approved);
+      const out = postProcessBacklog(raw(items), null, {}, approved);
       return out.ok ? out.value.backlog.items.map((i) => [i.key, i.rank, i.title]) : out.issues;
     };
     expect(keys([])).toEqual([['caso', 1, 'Item caso'], ['opme', 2, 'Item opme']]);
@@ -100,25 +109,25 @@ describe('postProcessBacklog', () => {
 
   // R11.7.5: a started item never leaves on its own; the owner decides through an adjustment whether it goes.
   it('keeps a started item the agent dropped, with only the dependencies still in the outline', () => {
-    const out = postProcessBacklog(raw([item('opme'), item('caso', { title: 'reescrito' })]), null, '', [], [item('fat', { dependsOn: ['opme', 'antigo'] }), item('caso')]);
+    const out = postProcessBacklog(raw([item('opme'), item('caso', { title: 'reescrito' })]), null, {}, [], [item('fat', { dependsOn: ['opme', 'antigo'] }), item('caso')]);
     expect(out.ok && out.value.backlog.items.map((i) => [i.key, i.title, i.dependsOn])).toEqual([['opme', 'Item opme', []], ['caso', 'reescrito', []], ['fat', 'Item fat', ['opme']]]);
   });
 
   // Plan 80 review: the backlog views group by epic, so a kept item without its epic would vanish from them.
   it('keeps the epic of a started item whose epic the agent dropped', () => {
     const prev = { ...previous([item('opme')]), epics: [{ key: 'core', title: 'Core' }, { key: 'fin', title: 'Financeiro' }] };
-    const out = postProcessBacklog(raw([item('opme')]), prev, '', [], [item('fat', { epic: 'fin' })]);
+    const out = postProcessBacklog(raw([item('opme')]), prev, {}, [], [item('fat', { epic: 'fin' })]);
     expect(out.ok && out.value.backlog.epics.map((e) => e.key)).toEqual(['core', 'fin']);
   });
 
   it('keeps a started adjustment whose approval is gone, and puts a later approved one after it', () => {
-    const out = postProcessBacklog(raw([item('opme')]), null, '', ['opme-ajuste-2'], [item('opme-ajuste-1', { title: 'Ajuste 1: Item opme', dependsOn: ['opme'] })]);
+    const out = postProcessBacklog(raw([item('opme')]), null, {}, ['opme-ajuste-2'], [item('opme-ajuste-1', { title: 'Ajuste 1: Item opme', dependsOn: ['opme'] })]);
     expect(out.ok && out.value.backlog.items.map((i) => [i.key, i.dependsOn])).toEqual([['opme', []], ['opme-ajuste-1', ['opme']], ['opme-ajuste-2', ['opme-ajuste-1']]]);
   });
 
   // Review of plan 79: run by rank, a dependent of the original must not be built on its old behavior first.
   it('ranks an adjustment right after its original, ahead of the items of its priority that wait on that original', () => {
-    const out = postProcessBacklog(raw([item('caso', { priority: 'P0' }), item('opme'), item('fat', { dependsOn: ['opme'] }), item('relatorio')]), null, '', ['opme-ajuste-1']);
+    const out = postProcessBacklog(raw([item('caso', { priority: 'P0' }), item('opme'), item('fat', { dependsOn: ['opme'] }), item('relatorio')]), null, {}, ['opme-ajuste-1']);
     expect(out.ok && out.value.backlog.items.map((i) => i.key)).toEqual(['caso', 'opme', 'opme-ajuste-1', 'fat', 'relatorio']);
   });
 });

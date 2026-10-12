@@ -107,6 +107,22 @@ export function sectionText(doc: string, heading: string): string | null {
   return best?.section.text ?? null;
 }
 
+/** A section with nothing but blank lines between its heading and its first sub-section. */
+function isContainer(text: string): boolean {
+  const subs = docSections(text).slice(1);
+  return subs.length > 0 && text.slice(text.indexOf('\n') + 1, text.indexOf(subs[0]!.text)).trim() === '';
+}
+
+/**
+ * R11.10: when the section a citation names holds only sub-sections, the ones an item can cite instead, so a change to one
+ * re-derives only the items citing it; null when the section has text of its own, no sub-section, or is missing.
+ */
+export function onlySubsections(doc: string, heading: string): string[] | null {
+  const text = sectionText(doc, heading);
+  if (text === null || !isContainer(text)) return null;
+  return docSections(text).slice(1).filter((s) => !isContainer(s.text)).map((s) => s.heading);
+}
+
 /** R11.7.4: the owner approves an adjustment with a section headed `Ajuste aprovado: <key>-ajuste-<n>`. */
 const APPROVAL = /^Ajuste aprovado:\s*`?([a-z0-9]+(?:-[a-z0-9]+)*-ajuste-\d+)`?$/i;
 

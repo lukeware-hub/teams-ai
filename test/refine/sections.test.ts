@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { docSections, flowIsMermaid, headingMatches, resolveHeading, sectionText } from '../../server/refine/sections.js';
+import { docSections, flowIsMermaid, headingMatches, onlySubsections, resolveHeading, sectionText } from '../../server/refine/sections.js';
 import { NUMBERED_MERMAID_FLOW } from '../fixtures/numbered-mermaid-flow.js';
 
 describe('flowIsMermaid (R11.11)', () => {
@@ -79,5 +79,22 @@ describe('sectionText', () => {
 
   it('loads in the browser: no node: imports', async () => {
     expect(await fs.readFile('server/refine/sections.ts', 'utf8')).not.toMatch(/from 'node:/);
+  });
+});
+
+// R11.10 (plan 87): a section that holds only sub-sections is cited through the ones an item needs.
+describe('onlySubsections', () => {
+  const briefing = ['# Briefing', '', '## Objetivos', '', '- agendar', '', '## Decisões', '', '### Prazo de devolução', '', '15 dias.', '', '### Multa', '', 'R$ 2 por dia.', '', '## Lista antiga', '', '- decisão 1', '', '### Nova', '', 'texto'].join('\n');
+
+  it('lists the citable sub-sections of a section that holds nothing else, never another such section', () => {
+    expect(onlySubsections(briefing, 'Decisões')).toEqual(['Prazo de devolução', 'Multa']);
+    expect(onlySubsections(briefing, 'Briefing')).toEqual(['Objetivos', 'Prazo de devolução', 'Multa', 'Lista antiga', 'Nova']);
+  });
+
+  it('gives null for a section with text of its own, one with no sub-sections and a heading the doc lacks', () => {
+    expect(onlySubsections(briefing, 'Lista antiga')).toBeNull();
+    expect(onlySubsections(briefing, 'Prazo de devolução')).toBeNull();
+    expect(onlySubsections(briefing, 'Objetivos')).toBeNull();
+    expect(onlySubsections(briefing, 'Pagamento')).toBeNull();
   });
 });

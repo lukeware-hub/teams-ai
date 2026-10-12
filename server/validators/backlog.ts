@@ -1,6 +1,6 @@
-import type { Backlog, BacklogItem, Priority } from '../contracts/backlog.js';
+import type { Backlog, BACKLOG_DOCS, BacklogItem, Priority } from '../contracts/backlog.js';
 import { itemCites } from '../refine/coverage.js';
-import { resolveHeading } from '../refine/sections.js';
+import { onlySubsections, resolveHeading } from '../refine/sections.js';
 import { findCycle } from '../contracts/plan.js';
 
 export const MAX_ITEMS = 60;
@@ -25,8 +25,11 @@ export function flowHeadings(flow: string): string[] {
   return out;
 }
 
-/** Deterministic rules on a derived backlog; the agent gets the messages back when it breaks one. */
-export function validateBacklog(backlog: Backlog, opts: { flowHeadings: readonly string[] }): string[] {
+/**
+ * Deterministic rules on a derived backlog; the agent gets the messages back when it breaks one. `docs` are the five docs
+ * by the names items cite, and `frozen` the keys of started items, whose sources stay as they were.
+ */
+export function validateBacklog(backlog: Backlog, opts: { flowHeadings: readonly string[]; docs?: Partial<Record<(typeof BACKLOG_DOCS)[number], string>>; frozen?: ReadonlySet<string> }): string[] {
   const errors: string[] = [];
   if (backlog.items.length > MAX_ITEMS) errors.push(`o backlog tem ${backlog.items.length} itens; o máximo é ${MAX_ITEMS}`);
   const epics = new Set<string>();
@@ -63,6 +66,14 @@ export function validateBacklog(backlog: Backlog, opts: { flowHeadings: readonly
       for (const s of i.sources) {
         if (s.doc === 'flow.md' && resolveHeading(s.heading, opts.flowHeadings) === null) errors.push(`item ${i.key} cita flow.md › "${s.heading}", que não é uma seção do flow.md; as seções são ${sections}`);
       }
+    }
+  }
+  // R11.10: a section made only of sub-sections is cited through the ones an item needs, so a new decision re-derives only its items.
+  for (const i of backlog.items) {
+    if (opts.frozen?.has(i.key)) continue;
+    for (const s of i.sources) {
+      const subs = onlySubsections(opts.docs?.[s.doc] ?? '', s.heading);
+      if (subs) errors.push(`item ${i.key} cita ${s.doc} › "${s.heading}", uma seção feita só de subseções; cite as de que o item precisa: ${subs.map((h) => `"${h}"`).join(', ')}`);
     }
   }
   return errors;

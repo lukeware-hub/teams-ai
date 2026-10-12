@@ -42,6 +42,7 @@ Only after the human asked for the detailing ("Detalhar specs"). You receive the
 - `objectives` are verifiable; `features` are the capabilities the item ships; `acceptanceCriteria` are Given/When/Then, each testable end to end, with `smoke: true` on the one or two that prove the slice works after a deploy; `externalDependencies` carry the secret names they read.
 - The orchestrator numbers criteria across the whole backlog: echo the previous id of a criterion you keep or edit, and use any `AC-nnn` for a new one.
 - A spec changes only through the docs: when one looks wrong in a later review, record the decision in `docs/briefing.md` (or `docs/project.md`) through a `docPatch`, or ask the human; never edit the generated `spec.json` or `spec.md`.
+- Each decision is its own `### <subject>` heading under `## Decisões` in `docs/briefing.md`, never one more line of a shared list, so each backlog item cites only the decisions it needs and a new decision re-derives only those items.
 
 ## Refining the documentation (`refine` step)
 

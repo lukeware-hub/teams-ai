@@ -18,6 +18,14 @@ const backlog = (items: BacklogItem[], epics = [{ key: 'core', title: 'Core' }])
 const check = (b: Backlog, headings: string[] = []) => validateBacklog(b, { flowHeadings: headings });
 
 describe('validateBacklog', () => {
+  // R11.10 (plan 87): a section made only of sub-sections is cited through the ones an item needs, so a decision re-derives only its items.
+  it('refuses a citation of a section that holds only sub-sections, naming the ones to cite, except for a started item', () => {
+    const docs = { 'briefing.md': '# Briefing\n\n## Decisões\n\n### Prazo de devolução\n\n15 dias.\n\n### Multa\n\nR$ 2 por dia.\n\n## Lista antiga\n\n- decisão 1\n' };
+    const b = backlog([item('a', { sources: [{ doc: 'briefing.md', heading: 'Decisões' }] }), item('b', { sources: [{ doc: 'briefing.md', heading: 'Multa' }, { doc: 'briefing.md', heading: 'Lista antiga' }] })]);
+    expect(validateBacklog(b, { flowHeadings: [], docs })).toEqual(['item a cita briefing.md › "Decisões", uma seção feita só de subseções; cite as de que o item precisa: "Prazo de devolução", "Multa"']);
+    expect(validateBacklog(b, { flowHeadings: [], docs, frozen: new Set(['a']) })).toEqual([]);
+  });
+
   it('rejects a key that is another key plus a branch suffix, since both specs would share that docs branch', () => {
     for (const key of ['pricing-plan', 'pricing-v2', 'pricing-report', 'pricing-done', 'pricing-readme', 'pricing-workflows']) {
       expect(check(backlog([item('pricing', { priority: 'P0' }), item(key)])), key).toEqual(expect.arrayContaining([`chave ${key}: o branch docs/${key} já é um branch do spec pricing; escolha outra chave`]));

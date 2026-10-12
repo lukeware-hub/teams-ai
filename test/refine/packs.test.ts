@@ -62,9 +62,12 @@ describe('refinePack', () => {
     expect(pack.feedback).toContain('"key": "base"');
     expect(pack.feedback).not.toContain('### derived spec.json');
     expect(pack.feedback).toContain('Backlog mode');
+    // R11.10 (plan 87): one heading per decision, so each item cites only the decisions it needs.
+    expect(pack.feedback).toContain('its own `### <subject>` heading under the `## Decisões` section of docs/briefing.md');
     expect(pack.criteria).toEqual([]);
     expect(pack.objectives).toEqual(['Núcleo']);
     expect(refinePack({ ...base, role: 'po' }).feedback).not.toContain('Backlog mode');
+    expect(refinePack({ ...base, role: 'po' }).feedback).not.toContain('## Decisões');
   });
 });
 
