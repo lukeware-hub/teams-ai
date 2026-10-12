@@ -44,6 +44,7 @@ export const RunEvent = {
   RunBudgetExhausted: 'RUN_BUDGET_EXHAUSTED',
   RunStopRequested: 'RUN_STOP_REQUESTED',
   FixTasksPlanned: 'FIX_TASKS_PLANNED',
+  TasksUnblocked: 'TASKS_UNBLOCKED',
 } as const;
 
 export class UnknownTaskError extends Error {}
@@ -57,6 +58,7 @@ const GateRetryData = z.object({ taskId: z.string(), gate: z.string().min(1) });
 const ReplannedData = z.object({ taskId: z.string(), replacements: z.array(PlanTask).min(1) });
 const PausedData = z.object({ reason: z.enum(['quota', 'auth']), until: z.string().optional() });
 const FixTasksData = z.object({ tasks: z.array(PlanTask).min(1) });
+const UnblockedData = z.object({ taskIds: z.array(z.string()).min(1) });
 
 export function emptyRunState(): RunState {
   return { status: 'running', tasks: new Map(), order: [] };
@@ -130,6 +132,15 @@ export function applyEvent(state: RunState, event: ReducibleEvent): void {
         // A blocked scaffold stays a dependency: without it the repository has nothing to install or build.
         const deps = task.dependsOn.flatMap((d) => liveIds(state, d)).filter((d) => state.tasks.get(d)?.state !== 'blocked' || state.tasks.get(d)?.bootstrapsFrozenPaths);
         addTask(state, { ...task, dependsOn: [...new Set(deps)] }, false);
+      }
+      return;
+    }
+    case RunEvent.TasksUnblocked: {
+      // A human's resume: the cause of a block (a sandbox, a login, a missing tool) may be fixed, so each blocked task starts over.
+      for (const taskId of UnblockedData.parse(event.data).taskIds) {
+        const task = getTask(state, taskId);
+        if (task.state !== 'blocked') continue;
+        Object.assign(task, { state: 'ready', attempts: 0, infraRetries: {}, flakyRetries: {} });
       }
       return;
     }

@@ -28,6 +28,8 @@ export interface RunTarget {
   logFile?: string;
   /** Spec (refinement) §4: the project directory is a draft root; `run` bootstraps Phase 0. */
   draft?: boolean;
+  /** A resume the user asked for: the blocked tasks start over too. */
+  retryBlocked?: boolean;
 }
 
 const POLL_MS = 250;
@@ -39,7 +41,7 @@ export function runCommand(deps: RunControlDeps, o: RunTarget): SpawnArgs {
       ? ['run', '--project', o.projectDir, '--spec', o.specId, '--run-id', o.runId, ...(o.draft ? ['--draft'] : [])]
       : o.mode === 'complete' || o.mode === 'readme' || o.mode === 'deploy'
         ? ['spec', o.mode, '--project', o.projectDir, '--spec', o.specId, '--run-id', o.runId]
-        : ['resume', '--project', o.projectDir, '--run', o.runId];
+        : ['resume', '--project', o.projectDir, '--run', o.runId, ...(o.retryBlocked ? ['--retry-blocked'] : [])];
   return { bin, args: [...prefix, ...args], cwd: deps.repoRoot, logFile: o.logFile ?? 'ui.log' };
 }
 

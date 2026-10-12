@@ -500,7 +500,8 @@ describe('start, resume, stop', () => {
     onSpawn = async () => {};
     const ok = await post('/api/runs/hello-001-r1/resume');
     expect(ok.status).toBe(200);
-    expect(spawns[0]!.args).toEqual(['cli', 'resume', '--project', HELLO, '--run', 'hello-001-r1']);
+    // The user's resume retries the blocked tasks too: the cause may be fixed now (the supervisor's resume never does).
+    expect(spawns[0]!.args).toEqual(['cli', 'resume', '--project', HELLO, '--run', 'hello-001-r1', '--retry-blocked']);
     expect(await fs.readFile(path.join(runs, 'hello-001-r1', 'pid'), 'utf8')).toBe('5001');
     await writeRun(runs, 'hello-001-r2', [started('hello-001-r2'), { type: 'RUN_FINISHED', data: { result: 'complete' } }], state('running'));
     expect((await post('/api/runs/hello-001-r2/resume')).status).toBe(409);

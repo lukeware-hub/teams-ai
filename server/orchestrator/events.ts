@@ -1,5 +1,5 @@
 import type { HandoffSummary } from '../knowledge/context-pack.js';
-import { applyEvent, emptyRunState, type RunState } from '../pipeline/run-state.js';
+import { applyEvent, emptyRunState, RunEvent, type RunState } from '../pipeline/run-state.js';
 import { EventStore, unconfirmedIntents, type EventInput, type StoredEvent } from '../store/event-store.js';
 
 export const OrchEvent = {
@@ -77,21 +77,8 @@ export function intentId(type: IntentType, key: string): string {
   return `${type}:${key}`;
 }
 
-const REDUCED = new Set([
-  'TASK_PLANNED',
-  'TASK_STATE_CHANGED',
-  'ATTEMPT_CONSUMED',
-  'INFRA_RETRY',
-  'FLAKY_RETRY',
-  'TASK_REPLANNED',
-  'RUN_PAUSED',
-  'RUN_RESUMED',
-  'RUN_BUDGET_EXHAUSTED',
-  'RUN_STOP_REQUESTED',
-  // Phase 4 fix tasks: without this the event reached the log but never the live state, so runFix() saw
-  // no task to schedule and the run ended without a RUN_FINISHED (1387253335-001-r13).
-  'FIX_TASKS_PLANNED',
-]);
+// Every run event: a list kept by hand once left FIX_TASKS_PLANNED in the log but out of the live state (1387253335-001-r13).
+const REDUCED = new Set<string>(Object.values(RunEvent));
 
 /** The single write path for run state: append to the log, then reduce. Replay and live execution share it. */
 export class Journal {

@@ -37,6 +37,7 @@ describe('run control', () => {
       logFile: 'ui.log',
     });
     expect(runCommand(deps, { projectDir: '/p', specId: 'hello-001', runId: 'hello-001-r2', mode: 'resume' }).args.slice(2)).toEqual(['resume', '--project', '/p', '--run', 'hello-001-r2']);
+    expect(runCommand(deps, { projectDir: '/p', specId: 'hello-001', runId: 'hello-001-r2', mode: 'resume', retryBlocked: true }).args.slice(-1)).toEqual(['--retry-blocked']);
   });
   it('spawnRun returns the pid and isAlive probes with signal 0', () => {
     const alive = new Set<number>();

@@ -24,6 +24,26 @@ const replan = (taskId: string, ...replacements: ReturnType<typeof makePlanTask>
 });
 
 describe('reduceEvents', () => {
+  it("gives every blocked task a fresh start on a human's resume, and leaves any other task as it is", () => {
+    const state = reduceEvents([
+      planned('T1'),
+      planned('T2', ['T1']),
+      planned('T3'),
+      moved('T1', 'ready'),
+      moved('T1', 'implementing'),
+      { type: RunEvent.AttemptConsumed, data: { taskId: 'T1' } },
+      { type: RunEvent.InfraRetry, data: { taskId: 'T1', gate: 'unit-test' } },
+      moved('T1', 'blocked'),
+      moved('T2', 'ready'),
+      moved('T2', 'blocked'),
+      moved('T3', 'ready'),
+      { type: RunEvent.TasksUnblocked, data: { taskIds: ['T1', 'T2', 'T3'] } },
+    ]);
+    expect(state.tasks.get('T1')).toMatchObject({ state: 'ready', attempts: 0, infraRetries: {} });
+    expect(state.tasks.get('T2')!.state).toBe('ready');
+    expect(state.tasks.get('T3')!.state).toBe('ready');
+  });
+
   it('starts running and builds tasks in plan order with initial counters', () => {
     const state = reduceEvents([planned('T1-a'), planned('T2-b')]);
     expect(state.status).toBe('running');

@@ -307,6 +307,7 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
     const run = completing || readming || deploying
       ? await Run.create(deps, explicitId ?? await nextRunId(deps.ws, deps.spec.specId, completing ? 'complete' : readming ? 'readme' : 'deploy'))
       : await factory(deps, command === 'resume' ? String(f.run) : undefined, explicitId);
+    if (command === 'resume' && f['retry-blocked'] === true) await run.retryBlocked();
     io.stderr(`run ${run.runId} started`);
     const off = (hooks.signals ?? realSignals)(() => {
       io.stderr('stop requested: draining');

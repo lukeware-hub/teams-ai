@@ -154,7 +154,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     const tail = redactSecrets(log.slice(-500), await loadSecretValues(secretsDirOf(await deps.cfg())));
     throw new HttpError(500, `run ${runId} did not start: ${tail || 'no output'}`);
   };
-  const launch = async (idx: IndexDeps, o: { projectDir: string; specId: string; runId: string; mode: 'run' | 'resume' | 'complete' | 'readme' | 'deploy' }): Promise<void> => {
+  const launch = async (idx: IndexDeps, o: { projectDir: string; specId: string; runId: string; mode: 'run' | 'resume' | 'complete' | 'readme' | 'deploy'; retryBlocked?: boolean }): Promise<void> => {
     const runs = runsDir(idx);
     await fs.mkdir(path.join(runs, o.runId), { recursive: true });
     const { pid } = spawnRun(deps.control, { ...o, logFile: path.join(runs, o.runId, 'ui.log') });
@@ -324,7 +324,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
             const later = (await listRuns(idx, row.projectId)).find((r) => r.specId === row.specId && r.kind === row.kind && r.n > row.n);
             if (later) throw new HttpError(409, `run ${runId} is behind ${later.runId} of spec ${row.specId}; only the latest run of a spec resumes`);
             await clearStopRequested(runs, runId); // an explicit resume overrides an earlier Stop
-            await launch(idx, { projectDir: dir, specId: row.specId, runId, mode: 'resume' });
+            await launch(idx, { projectDir: dir, specId: row.specId, runId, mode: 'resume', retryBlocked: true });
           } finally {
             await release();
           }

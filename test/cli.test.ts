@@ -129,6 +129,24 @@ describe('teams-ai cli', () => {
     expect(stops).toBe(1);
   });
 
+  it('resume --retry-blocked gives the blocked tasks a fresh start before the run goes on; a plain resume does not', async () => {
+    for (const [flags, expected] of [[['--retry-blocked'], 1], [[], 0]] as const) {
+      let retried = 0;
+      const a = io(['resume', '--project', '/tmp/p', '--run', 'spec-001-r1', ...flags]);
+      const code = await main(a.io, async () => ({
+        runId: 'spec-001-r1',
+        retryBlocked: async () => { retried += 1; },
+        execute: async () => 'complete',
+        requestStop: async () => {},
+        close: async () => {},
+        journal: { state: { tasks: new Map() } },
+        accounting: { total: () => ({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, steps: 0 }) },
+      }) as never);
+      expect(code).toBe(0);
+      expect(retried).toBe(expected);
+    }
+  });
+
   it('run accepts --draft and still reaches the factory', async () => {
     const a = io(['run', '--project', '/tmp/p', '--spec', 'spec-001', '--draft']);
     let reached = false;

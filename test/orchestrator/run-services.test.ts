@@ -7,6 +7,7 @@ import { loadConfig } from '../../server/config/config.js';
 import { execCommand } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
 import { Run, type RunDeps } from '../../server/orchestrator/run.js';
+import { RunEvent } from '../../server/pipeline/run-state.js';
 import { CI_PATH, RELEASE_PATH } from '../../server/orchestrator/workflows.js';
 import { serviceWorkspace, type Workspace } from '../../server/orchestrator/workspace.js';
 import type { StepOutcome, StepRequest } from '../../server/runner/step.js';
@@ -164,6 +165,19 @@ describe('Run with a services plan', () => {
     expect(await run.execute()).toBe('complete');
     expect(prompts.get('front:dev:T2-reserve-stock')).toContain('Primary color #0b5fff.');
     expect(prompts.get('dev:dev:T1-publish-order')).not.toContain('Primary color #0b5fff.');
+  });
+
+  it("retries every blocked task of the run on a human's resume, such as one a sandbox the platform has since fixed had blocked", async () => {
+    const run = await Run.create(await deps());
+    for (const task of plan.tasks) await run.journal.fact(RunEvent.TaskPlanned, { task });
+    await run.journal.fact(RunEvent.TaskStateChanged, { taskId: 'T2-reserve-stock', to: 'ready' });
+    await run.journal.fact(RunEvent.TaskStateChanged, { taskId: 'T2-reserve-stock', to: 'blocked' });
+    await run.retryBlocked();
+    expect(run.journal.events.filter((e) => e.type === RunEvent.TasksUnblocked).map((e) => e.data)).toEqual([{ taskIds: ['T2-reserve-stock'] }]);
+    expect(run.journal.state.tasks.get('T2-reserve-stock')!.state).toBe('ready');
+    await run.retryBlocked();
+    expect(run.journal.events.filter((e) => e.type === RunEvent.TasksUnblocked)).toHaveLength(1);
+    await run.close();
   });
 
   it('commits the workflows to the repository of each new service, each under its own journal key', async () => {
