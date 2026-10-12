@@ -413,6 +413,9 @@ describe('servicesPlanRules', () => {
     expect(text).toContain('services.inventory.deploy.port is exactly 20012');
     expect(text).toContain('SERVICE_URL_<SERVICE>');
     expect(text).toContain('nats (nats:2.10.22-alpine)');
+    // The deploy follows the plan's own order, so the rule promises none: each service starts without the others.
+    expect(text).not.toContain('name order');
+    expect(text).toContain('in no fixed order');
     expect(planRules('services')).not.toContain('first spec of the project');
   });
 

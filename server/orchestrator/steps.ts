@@ -273,7 +273,7 @@ export function servicesPlanRules(opts: ServicesPack): string {
     ...opts.names.flatMap((s) => (opts.ports[s] ? [`- services.${s}.deploy.port is exactly ${opts.ports[s]}: the orchestrator assigned it so no two services share a host port; the service listens on PORT=${opts.ports[s]} and its docker-compose publishes "${opts.ports[s]}:${opts.ports[s]}"`] : [])),
     "- each service runs in its own compose project; teams-ai joins its main container (the compose service named exactly like the service) to the project's shared network under the service's name, so services call each other at http://<service>:<port>; a suite reads its own address from SERVICE_URL and each other service's from SERVICE_URL_<SERVICE> (upper case, dashes as underscores)",
     opts.platform.length > 0 ? `- platform containers teams-ai starts before the services, from project.json: ${opts.platform.map((p) => `${p.name} (${p.image})`).join(', ')}. Never plan, build or declare them in a compose file; services reach them by name on the shared network` : '- the project declares no platform containers',
-    '- teams-ai starts the platform first, then the services one by one in name order, each healthy before the next: a service must start and pass its healthcheck without the other services (retry a call to another service instead of failing at start)',
+    '- teams-ai starts the platform first, then the services one by one in no fixed order, each healthy before the next: a service must start and pass its healthcheck without the other services (retry a call to another service instead of failing at start)',
   ].filter((l) => l !== '').join('\n');
 }
 
