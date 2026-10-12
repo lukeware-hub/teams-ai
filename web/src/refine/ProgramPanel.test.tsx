@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import type { ProgramView } from '../api.js';
-import { canStartRun, ProgramPanel } from './ProgramPanel.js';
+import { canStartRun, ProgramPanel, ProgramStatus } from './ProgramPanel.js';
 
 const item = (key: string, over: Partial<ProgramView['items'][number]> = {}): ProgramView['items'][number] => ({
   specId: `d-${key}`, key, rank: 1, dependsOn: [], status: 'pending', runId: null, completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0, costUsd: null, ...over,
@@ -40,6 +40,30 @@ describe('ProgramPanel', () => {
   it('shows a completing spec as being marked done', () => {
     renderPanel(program([item('a', { status: 'completing', runId: 'd-a-r1', completeRunId: 'd-a-complete-r1' })]));
     expect(screen.getByText('concluindo')).toBeTruthy();
+  });
+});
+
+describe('ProgramStatus', () => {
+  const renderStatus = (p: ProgramView | null, phase: number | null = null) => render(<MemoryRouter><ProgramStatus program={p} titles={titles} phase={phase} /></MemoryRouter>);
+
+  it('says the run is being prepared before the first program arrives', () => {
+    renderStatus(null);
+    expect(screen.getByRole('status').textContent).toContain('Preparando a execução do backlog…');
+  });
+
+  it('shows the progress, the spec running now, its phase and the run to follow', () => {
+    renderStatus(program([item('a', { status: 'done' }), item('b', { rank: 2, status: 'running', runId: 'd-b-r1' }), item('c', { rank: 3 })]), 3);
+    const status = screen.getByRole('status');
+    expect(status.textContent).toContain('Executando o backlog · 1 de 3 concluídas');
+    expect(status.textContent).toContain('Agora: Empréstimos · 3 · Implementação');
+    expect((within(status).getByRole('link', { name: 'Acompanhar a run' }) as HTMLAnchorElement).getAttribute('href')).toBe('/runs/d-b-r1');
+    expect((screen.getByRole('progressbar') as HTMLProgressElement).value).toBe(1);
+  });
+
+  it('stops the spinner once the program finished', () => {
+    renderStatus(program([item('a', { status: 'done' })], 'finished'));
+    expect(screen.getByRole('status').textContent).toContain('Backlog executado · 1 de 1 concluídas');
+    expect(screen.getByRole('status').querySelector('.loading-spinner')).toBeNull();
   });
 });
 

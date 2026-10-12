@@ -6,6 +6,7 @@ import { ThemeSwitch } from './components/ThemeSwitch.js';
 import { Onboarding } from './pages/Onboarding.js';
 import { ProjectHub } from './pages/ProjectHub.js';
 import { Projects } from './pages/Projects.js';
+import { ProgramPage } from './pages/Program.js';
 import { RefinementPage } from './pages/Refinement.js';
 import { RunPage } from './pages/Run.js';
 import { StatusPage } from './pages/StatusPage.js';
@@ -38,6 +39,7 @@ export function App() {
         <Route path="/projects/:projectId" element={<ProjectHub />} />
         <Route path="/runs/:runId" element={<RunPage />} />
         <Route path="/refine/:projectId/:specId" element={<RefinementPage />} />
+        <Route path="/refine/:projectId/:specId/program" element={<ProgramPage />} />
         <Route path="/runs/:runId/validation" element={<ValidationPage />} />
       </Routes>
     </BrowserRouter>
