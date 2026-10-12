@@ -8,9 +8,9 @@ const KEY = 'teams-ai.theme';
 export function readThemePreference(): ThemePreference {
   try {
     const saved = localStorage.getItem(KEY);
-    return saved === 'dark' || saved === 'system' ? saved : 'light';
+    return saved === 'light' || saved === 'system' ? saved : 'dark';
   } catch {
-    return 'light';
+    return 'dark';
   }
 }
 

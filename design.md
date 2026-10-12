@@ -8,10 +8,11 @@ Specification, not implementation. It names values, roles and rules; it ships no
 
 ## Visual authority
 
-Two reference screens, supplied by the user, pin the target:
+Three reference screens, supplied by the user, pin the target:
 
 1. **`Tudo pronto para começar`** — the onboarding completion screen. Pins: soft dimensional surfaces, a violet-to-indigo gradient action, tinted card grounds, spot illustration, celebration used once.
 2. **`Documentos do projeto / Área de revisão / Lista de verificação`** — the refinement screen. Pins: a breadcrumb bar, three equal panels, the tile + overline + title + chip header, tabs, a line-numbered editor, icon-led section headers, and **flat** primary actions.
+3. **`aiworkspace.app/dashboard`** — a night AI workspace. Pins **the dark theme only** (§3.10): indigo-black ground with violet and blue ambient light, glass panels with lavender hairlines, a glowing violet primary, saturated gradient icon tiles, rounder geometry. Its layout and content belong to another product and are not copied.
 
 Together they settle the question the first reference alone left open: **the app is not a quieter version of the onboarding.** Both are built to the same craft level, with the same tiles, chips, radii and rhythm. What the onboarding gets that the app does not is exactly three things — the gradient action, the illustration, and the celebration. Everything else is shared.
 
@@ -187,35 +188,57 @@ Every one of the 92 current colors resolves to a role above.
 - **State color is never the only signal.** Every colored state also has a shape, glyph or word.
 - **Tone comes from state, never from a container.** A chip in a login card and a chip in a table read the same state token. Deriving tone from an ancestor is what produced a success-green `Pendente` in the shipped screen — fixed in `a60a961`; the rule exists so it cannot return by another route.
 - **Hover changes ground, focus changes border.** Two signals, two jobs.
-- **Light by default**, from the use scene: a developer at a desk, daytime, beside a terminal. Dark is the user's choice, never a screen's (§3.10).
+- **Dark by default**, by the user's choice: the product's night workspace (§3.10). Light is one click away in the app bar, and no screen picks a theme for itself.
 
 ### 3.10 Themes
 
-The user picks the theme in the app bar (§25): **Claro** (default), **Escuro**, or **Sistema** (follows `prefers-color-scheme` and keeps following it while the page is open). The choice is stored per browser under `teams-ai.theme` and applied by an inline script in `index.html` before the first paint, so a dark choice never flashes light. The resolved theme is `data-theme="light|dark"` on `<html>`.
+The user picks the theme in the app bar (§25): **Escuro** (default), **Claro**, or **Sistema** (follows `prefers-color-scheme` and keeps following it while the page is open). The choice is stored per browser under `teams-ai.theme` and applied by an inline script in `index.html` before the first paint, so the page never flashes the wrong theme. The resolved theme is `data-theme="light|dark"` on `<html>`.
 
-Dark remaps **the same roles**; no screen carries theme-specific selectors, and no screen picks a theme for itself. Every value below is measured on `surface` unless noted.
+Dark remaps **the same roles**; no screen carries theme-specific selectors, and no screen picks a theme for itself.
+
+**The dark world.** A third reference, supplied by the user, pins the dark theme: an AI workspace at night — a deep indigo-black room lit by violet and blue light, with glass panels floating over it. Six things carry that world, and every one of them lives in a token:
+
+1. **Ambient light.** `bg-ambient` is one diagonal gradient across the whole window: violet in the top left, deep indigo through the middle, blue in the bottom right, fixed to the viewport so it never scrolls. The content sits straight on it, with no second background behind the cards. Light has none.
+2. **Glass surfaces.** `surface`, `surface-sunken`, `surface-muted`, `line` and the soft state grounds are translucent, so the ambient light shows through every panel and a control inside a card reads one step lighter than the card.
+3. **Glow, not edge.** The primary action and the panel icon tiles cast a violet glow with an offset and a blur (`shadow-accent`, `shadow-tile`); cards cast a deep soft shadow with a one-pixel top highlight.
+4. **Saturated icon tiles.** `tile-accent`, `tile-violet` and `tile-good` are gradient fills with a white glyph in dark; in light they stay the soft ground with a colored glyph.
+5. **Lit edges.** Raised surfaces (card, panel, stat, dialog) carry a lit rim: `edge-light` brightens the top edge with a hot spot near the top left and fades down the sides, and `edge-glint` adds a glowing line across the middle of the top edge. Both are `none` in light, and both only render where the browser supports mask compositing.
+6. **Rounder geometry.** Cards, tiles and controls open up one radius step (`radius-xl` 16px, `radius-tile` 14px, `control-radius` 10px).
+
+Contrast is measured on `surface` as it actually renders: blended over `bg` and over the brightest ambient spot. The lower figure is shown.
 
 | Role | Dark value | Note |
 |---|---|---|
-| `bg` | `#0e1116` | Neutral near-black with a cool cast — not navy |
-| `surface` | `#161a21` | |
-| `surface-sunken` | `#12161c` | Insets sit darker than their panel |
-| `surface-muted` | `#1f242d` | |
-| `line` · `line-strong` | `#262c36` · `#3a4250` | Borders carry the edges; shadows barely read on dark |
-| `ink` | `#e5e9f0` | 14.33:1 |
-| `ink-soft` | `#9aa4b5` | 6.94:1 |
-| `ink-faint` | `#6b7586` | 3.75:1, non-text only |
-| `accent` | `#5468dd` | Fill only — white on it 4.77:1 |
-| `accent-text` | `#9eaaff` | 8.01:1 |
-| `accent-ink` / `accent-soft` | `#b7c0ff` / `#1d2340` | 8.78:1 |
-| `good` / `good-soft` | `#57c98f` / `#13281f` | 7.52:1 |
-| `bad` / `bad-soft` / `bad-ink` | `#f0787c` / `#2e1719` / `#f4b6b8` | 6.13:1 · 9.76:1 |
-| `warn` / `warn-soft` | `#e3ac4f` / `#2c2213` | 7.64:1 |
-| `violet` / `violet-soft` | `#a597f5` / `#241f3f` | 6.21:1 |
+| `bg` | `#070616` | Indigo-black |
+| `bg-ambient` | `linear-gradient(135deg, #1b1446, #0e0c2a 38%, #080718 62%, #0c1134)` | One diagonal gradient, fixed to the viewport |
+| `surface` | `rgb(23 21 54 / 0.72)` | Glass; renders between `#13112d` and `#19153b` |
+| `surface-sunken` | `rgb(8 7 24 / 0.6)` | Insets sit darker than their panel |
+| `surface-muted` | `rgb(255 255 255 / 0.06)` | Neutral chip, inline code |
+| `line` · `line-strong` | `rgb(168 156 255 / 0.13)` · `0.26` | Lavender hairlines; they catch the light like a glass edge |
+| `ink` | `#f0eeff` | 15.11:1 |
+| `ink-soft` | `#a9a5cc` | 7.35:1 |
+| `ink-faint` | `#6e6a98` | 3.43:1, non-text only |
+| `accent` | `#5a35f0` | Fill only — white on it 6.56:1 |
+| `accent-hover` | `#6a48ff` | White on it 5.27:1 |
+| `accent-text` | `#ab9dff` | 7.40:1 |
+| `accent-ink` / `accent-soft` | `#cdc3ff` / `rgb(110 80 255 / 0.18)` | 8.78:1 |
+| `gradient-primary` | `linear-gradient(135deg, #7b4dff, #4a35f0)` | Still onboarding only (§3.3) |
+| `tile-accent` · `tile-violet` · `tile-good` | gradients `#6d4bff→#4b2ee0` · `#b45cf0→#7a34d6` · `#199d78→#006f59` | White glyph, at least 3.4:1 |
+| `good` / `good-soft` / `good-line` | `#58d8ae` / `#58d8ae` at 12% / at 30% | 9.82:1 on glass, 7.81:1 on its soft ground |
+| `good-live` | `#35dcab` | The live dot and progress fills; same hue as `good`, a touch more saturated |
+| `bad` / `bad-soft` / `bad-ink` | `#ff7d8a` / `rgb(255 90 110 / 0.12)` / `#ffc0c7` | 6.06:1 |
+| `on-bad` | `#1c0a12` | Text on a `bad` fill — 7.76:1 |
+| `warn` / `warn-soft` | `#f4b860` / `rgb(245 175 70 / 0.12)` | 7.85:1 |
+| `violet` / `violet-soft` | `#c79bff` / `rgb(190 110 255 / 0.16)` | 7.86:1 |
+| `shadow-card` | `0 12px 40px -12px` near-black at 70%, plus a 1px top highlight | |
+| `shadow-accent` · `shadow-tile` | `0 8px 24px -6px` · `0 6px 18px -4px` violet | The glow; light uses `shadow-button` and none |
+| `backdrop-blur` | `10px` | Dialog backdrops blur in dark, so a glass dialog never shows text behind it |
 
-- Shadows collapse to a 1–2px dark edge; elevation in dark comes from `surface` over `bg` plus the `line` border.
-- Illustrations were drawn for a light ground: in dark they sit on a light plate (`art-plate`) instead of multiplying into the ground.
-- The terminal palette (§3.6) is the same in both themes; in dark `term-bg` drops to `#0b0e12` so it still reads as a separate surface.
+- Glass here is the pinned world, not decoration: it is what lets the ambient light read through the interface. It never stacks more than two layers deep (a control inside a card), and text contrast is always measured on the blended result.
+- Illustrations were drawn for a light ground: in dark they sit on a lavender plate (`art-plate` `#dedbf6`) instead of multiplying into the ground.
+- The terminal palette (§3.6) is the same in both themes; in dark `term-bg` drops to `#05040f` so it still reads as a separate surface.
+- **One green.** Every green in dark comes from one mint hue (168° in OKLCH), on the blue side of green so it sits with the violet and blue ground instead of fighting it. It matches the lightness and saturation of `bad` and `warn`, so no state shouts louder than another. A new green is derived from it, never picked fresh.
+- Light keeps every value in §3.1–§3.5; the dark world never leaks into it.
 
 ---
 
@@ -805,7 +828,7 @@ For anything rendering a collection, add **empty** and **skeleton**. Empty state
 
 ### 14.1 Architecture
 
-Three cascade layers: **tokens → primitives → app**.
+Cascade layers, in order: **theme → base → components → utilities**, with the tokens unlayered above them. Tokens hold every literal; `components` holds the primitives; utilities in the markup compose screens and always win over a primitive.
 
 | Layer | Contains | Literals? |
 |---|---|---|
@@ -815,7 +838,7 @@ Three cascade layers: **tokens → primitives → app**.
 
 Explicit layering means a surface rule wins over a primitive without a specificity contest. 209 selectors in one flat file is how a container selector came to beat a state selector. Adoption is incremental: legacy class names may alias onto a family's single definition, so the system lands without touching JSX.
 
-**Files today.** `web/src/styles.css` holds the tokens (both themes) and the primitives and is imported first by `main.tsx`; each screen's rules live beside it — `pages/onboarding.css`, `pages/projects.css`, `pages/refine.css`, `pages/run.css` — imported by the page, so they come later in the cascade than the primitives they compose.
+**Files today.** The app uses Tailwind CSS v4 without its reset. `web/src/styles.css` holds the tokens (both themes), exposes them to Tailwind through `@theme` (so `bg-surface`, `text-ink-soft`, `shadow-card`, `rounded-tile` follow the theme), and keeps the shared primitives of §11 in the `components` layer. Screens and components style themselves with utilities in their markup; there are no per-screen stylesheets. The Tailwind palette is switched off, so only project tokens can be used as colors.
 
 ### 14.2 Selectors
 
@@ -846,7 +869,7 @@ display / position / grid / flex  →  width / height / margin / padding / borde
 - **`overflow-wrap: anywhere`** on every user-supplied string.
 - **`gap` over child margins.**
 - **Responsive behavior is structural** — reorder, collapse, reflow, reveal. Not fluid type.
-- **Breakpoints: 720px, 1100px, 1440px**, plus the `display` switch at 900px. A fifth needs a named reason.
+- **Breakpoints are Tailwind's:** `sm` 640px, `md` 768px (rail becomes a bottom bar), `lg` 1024px (Workspace panels go side by side), `xl` 1280px. Another needs a named reason.
 - **Breakpoint rules live with the component they modify**, not in a global tail block.
 - **Container queries** where a component appears at more than one width — the panel header does, so it is a container-query component.
 - **No `overflow: hidden` on an ancestor of anything that pops** (§13).
@@ -1065,27 +1088,30 @@ Under 450ms, transitions rather than keyframes so a fast double-advance retarget
 
 ## 25. App shell
 
-Every screen outside the onboarding flow shares this shell.
+Every screen, onboarding included, lives in one shell that fills the window, the way the night-workspace reference does (§3.10).
 
 ```text
-  ⌂  Projetos  ›  user-api  ›  user-api-001 rascunho
-  ─────────────────────────────────────────────────────────────────────
-  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐
-  │   panel       │  │   panel       │  │   panel       │
-  └───────────────┘  └───────────────┘  └───────────────┘
+  ╭──╮  ╭──────────────────────────────────────────────────────╮
+  │▦ │  │ ⌂ Projetos › customer-api › create-customer          │
+  │──│  │ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐   │
+  │▢ │  │ │ panel        │ │ panel        │ │ panel        │   │
+  │▥ │  │ │ scrolls      │ │ scrolls      │ │ scrolls      │   │
+  │  │  │ │ on its own   │ │ on its own   │ │ on its own   │   │
+  │☀☾▣│  │ └──────────────┘ └──────────────┘ └──────────────┘   │
+  ╰──╯  ╰──────────────────────────────────────────────────────╯
 ```
 
 | Region | Spec |
 |---|---|
-| Gutter | 32px (24px < 720px) |
-| Max width | `min(100%, 1600px)`, centered |
-| Breadcrumb | §11.14, 20px above the content, no rule beneath unless a screen has no panels |
-| Column gap | 24px |
-| Panel gap (stacked) | 20px |
+| Shell | Full window height (`100dvh`), 16px around, the rail on the left and an empty column of the same width on the right, so the content is always exactly centered in the window; the whole shell is at most 1760px wide. The page itself never scrolls. |
+| Rail | A rounded glass pill (`surface`, `line` border, lit rim but no top glint, because a straight glint floats off its round top), vertically centered. From top: the product mark (a `gradient-primary` tile with the grid glyph, links to `/`, named `Teams AI, início`), a hairline, then one 44px icon button per destination — `Projetos` (folder) and `Status do ambiente` (chart) — then the theme control stacked vertically (§3.10). The current destination has an `accent-soft` ground, `accent-ink` glyph, a small dot beside it and `aria-current="page"`. Every icon carries an `aria-label` and a `title`. |
+| Content area | Holds the current screen and scrolls inside. It has no background, border or edge of its own: the screen sits straight on the page gradient, and only the cards carry edges. |
+| Workspace | A screen with more than one panel uses the shared Workspace: from 1024px up the panels sit side by side, fill the frame height and each scrolls on its own; below 1024px a tab bar shows one panel at a time, and hidden panels stay mounted so typed text survives. |
+| Below 768px | The rail becomes a bottom bar across the window and the frame loses its border and radius, so the content gets the whole width. |
+| Breadcrumb | §11.14, first line of the frame, no rule beneath unless a screen has no panels |
 | Page title | **None** where the breadcrumb names the thing |
-| App bar | 52px, full width, `surface` with a `line` bottom rule: the product name `Teams AI` at the left (links to `/`), the theme control at the right (§3.10) — a three-option segmented control (sun, moon, monitor icons, each with an `aria-label`, the selected one raised with `shadow-button`). Shown on every screen, onboarding included. |
 
-**No navigation links in the app bar.** The breadcrumb is the navigation. A product with five screens does not need a sidebar, and the reference does not have one; the bar exists only for identity and the theme choice.
+The rail holds destinations only; the breadcrumb still carries the path inside a project.
 
 ## 26. Refinement — `/refine/:projectId/:specId`
 

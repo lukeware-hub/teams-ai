@@ -17,17 +17,17 @@ export function OwnerCard({ organizations, initialOwner, loading, loadError, ite
   return (
     <ItemCard title="Organização do GitHub" item={item} variant="login" subtitle="Escolha onde o Teams AI deve trabalhar." info="Organização do GitHub onde o Teams AI cria e atualiza os repositórios dos seus projetos." icon="github" illustration="/onboarding-github-organization.png">
       <form
-        className="owner-form"
+        className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-end gap-[0.7rem] max-md:grid-cols-1"
         onSubmit={(e) => {
           e.preventDefault();
           void save();
         }}
       >
-        <select aria-label="Organização do GitHub" value={owner} onChange={(e) => setOwner(e.target.value)} disabled={loading || organizations.length === 0}>
+        <select className="w-full min-w-0" aria-label="Organização do GitHub" value={owner} onChange={(e) => setOwner(e.target.value)} disabled={loading || organizations.length === 0}>
           <option value="">{loading ? 'Carregando organizações…' : organizations.length === 0 ? 'Nenhuma organização encontrada' : 'Selecione uma organização'}</option>
           {organizations.map((organization) => <option key={organization} value={organization}>{organization}</option>)}
         </select>
-        <button type="submit" className="primary-button" disabled={loading || owner.trim() === ''}>
+        <button type="submit" className="primary-button max-md:w-full" disabled={loading || owner.trim() === ''}>
           Salvar e verificar
         </button>
       </form>

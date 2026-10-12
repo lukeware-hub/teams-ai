@@ -10,9 +10,48 @@ import { Markdown } from '../components/Markdown.js';
 import { safeHttpUrl } from '../safeUrl.js';
 import { StepList } from '../components/StepList.js';
 import { TaskDetail } from '../components/TaskDetail.js';
+import { Workspace } from '../components/Workspace.js';
 import { currentActivity, evidence, explainBlockReason, explainPhase, explainStop, firstSentence, formatDuration, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseTitle, rootBlockers, runState, stepDoing, stopBefore, stopSummary, tokens, type ActivityItem, type PhaseRow, type StopOwner } from '../run/selectors.js';
 import { useJournal } from '../useSse.js';
-import './run.css';
+
+// A panel title with its info tip right beside it, not pushed to the far edge.
+const HEAD_ROW = 'flex items-center gap-[0.35rem] [&_h2]:min-w-0 [&_h2]:flex-[0_1_auto]';
+// Class lists the Validation screen reuses, since it shares this screen's shell.
+export const RUN_UI = {
+  // Agent text carries long unbroken tokens (paths, hashes, JSON), so no card may overflow its column.
+  page: 'flex flex-col gap-4 lg:h-full lg:min-h-0 [&_.card]:wrap-anywhere',
+  head: 'card grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-4 px-6 py-[1.35rem] max-md:grid-cols-1',
+  title: 'm-0 font-bold wrap-anywhere',
+  meta: 'mt-2 flex flex-wrap items-center gap-x-3 gap-y-2',
+  // On narrow screens the buttons fill the row and wrap whole, never squeezing their labels.
+  actions: 'flex flex-wrap justify-end gap-2 max-md:justify-stretch max-md:[&>*]:flex-auto',
+  action: 'inline-flex min-h-[var(--control-height)] items-center justify-center gap-2 rounded-control px-[0.95rem] text-[0.875rem] font-semibold whitespace-nowrap no-underline',
+  columns: 'lg:grid-cols-[minmax(0,1fr)_20rem]',
+  column: 'grid min-w-0 content-start gap-5',
+  aside: 'grid min-w-0 content-start gap-5 [&_.card]:px-[1.15rem] [&_.card]:py-[1.1rem]',
+  asideNote: 'mt-0 mb-3',
+  headRow: HEAD_ROW,
+  panelHead: `mb-[0.85rem] ${HEAD_ROW}`,
+  cardTitle: 'flex items-center justify-between gap-4',
+  boxList: 'm-0 list-none divide-y divide-line overflow-hidden rounded-lg border border-line p-0',
+  banner: 'card border-bad-line',
+  bannerTitle: 'mb-[0.9rem] flex items-center gap-2 text-bad [&_svg]:flex-none',
+  bannerRows:
+    'm-0 grid [&>div]:grid [&>div]:grid-cols-[9rem_minmax(0,1fr)] [&>div]:gap-3 [&>div]:border-t [&>div]:border-line [&>div]:py-[0.7rem] max-md:[&>div]:grid-cols-1 max-md:[&>div]:gap-1 [&_dt]:flex [&_dt]:items-center [&_dt]:gap-1 [&_dt]:self-start [&_dt]:pt-[0.1rem] [&_dt]:text-[0.8125rem] [&_dt]:font-semibold [&_dt]:text-ink-soft [&_dd]:m-0 [&_dd]:grid [&_dd]:min-w-0 [&_dd]:justify-items-start [&_dd]:gap-2 [&_dd]:text-ink [&_dd_p]:m-0',
+  raw: 'm-0 rounded-md border border-line bg-surface-sunken px-[0.9rem] py-3 text-[0.78rem] leading-normal whitespace-pre-wrap text-ink wrap-anywhere',
+  totals:
+    'm-0 grid gap-[0.4rem] [&>div]:flex [&>div]:items-baseline [&>div]:justify-between [&>div]:gap-3 [&_dt]:inline-flex [&_dt]:min-w-0 [&_dt]:items-center [&_dt]:gap-1 [&_dt]:text-[0.8125rem] [&_dt]:text-ink-soft [&_dd]:m-0 [&_dd]:text-right [&_dd]:text-[0.8125rem] [&_dd]:text-ink [&_dd]:tabular-nums',
+};
+const TASK_ID = 'font-mono text-[0.8125rem] font-semibold';
+// A task id as a text button, underlined on hover.
+const TASK_ID_BUTTON = `h-auto flex-none border-0 bg-transparent p-0 text-left text-accent-text underline-offset-[3px] hover:bg-transparent hover:underline ${TASK_ID}`;
+// The compact secondary button that opens a failure's detail dialog, with a 44px hit area on touch.
+const DETAIL_BUTTON = 'secondary h-8 flex-none px-3 text-[0.8125rem] pointer-coarse:relative pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-inset-y-1.5';
+// On narrow screens a title keeps a readable width instead of squeezing beside its id and chips.
+const ROW_TITLE = 'min-w-0 flex-1 text-ink max-md:basis-32';
+const FACT_ROWS = 'm-0 grid gap-[0.6rem] [&>div]:grid [&>div]:grid-cols-[8.5rem_minmax(0,1fr)] [&>div]:gap-3 max-md:[&>div]:grid-cols-1 max-md:[&>div]:gap-1 [&_dt]:text-[0.8125rem] [&_dt]:font-semibold [&_dt]:text-ink-soft [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:wrap-anywhere';
+const SECTION_TITLE = 'mt-0 mb-[0.4rem]';
+const META = 'col-span-full text-[0.75rem] tabular-nums';
 
 const hhmm = (iso: string) => new Date(iso).toTimeString().slice(0, 5);
 const money = (n: number) => `US$ ${n.toFixed(4)}`;
@@ -47,16 +86,16 @@ type UsageRow = [string, { inputTokens: number; outputTokens: number; costUsd: n
 function UsageList({ title, tip, rows, label, testIdPrefix }: { title: string; tip: string; rows: UsageRow[]; label: (key: string) => ReactNode; testIdPrefix?: string }) {
   return (
     <>
-      <div className="usage-head">
-        <h3>{title}</h3>
+      <div className="mt-[1.1rem] mb-1 flex items-center gap-1">
+        <h3 className="m-0">{title}</h3>
         <InfoTip label={title} text={tip} />
       </div>
-      <ul className="usage-list">
+      <ul className="m-0 list-none divide-y divide-line p-0">
         {rows.map(([key, u]) => (
-          <li key={key} data-testid={testIdPrefix ? `${testIdPrefix}${key}` : undefined}>
-            <span className="usage-name">{label(key)}</span>
-            <span className="usage-cost">{money(u.costUsd)}</span>
-            <span className="usage-meta">
+          <li key={key} data-testid={testIdPrefix ? `${testIdPrefix}${key}` : undefined} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-[0.1rem] py-[0.55rem]">
+            <span className="min-w-0 text-[0.875rem] font-semibold text-ink wrap-anywhere">{label(key)}</span>
+            <span className="text-right text-[0.8125rem] text-ink tabular-nums">{money(u.costUsd)}</span>
+            <span className={`${META} text-ink-soft`}>
               {u.inputTokens} entrada · {u.outputTokens} saída · {steps(u.steps)}
             </span>
           </li>
@@ -70,7 +109,7 @@ const roleName = (role: string) =>
   ROLE_LABEL[role] ? (
     <>
       {ROLE_LABEL[role]}
-      <span className="usage-id">{role}</span>
+      <span className="usage-id ml-[0.4rem] font-mono text-[0.75rem] font-normal text-ink-soft">{role}</span>
     </>
   ) : (
     role
@@ -79,6 +118,9 @@ const roleName = (role: string) =>
 const OWNER_ICON: Record<string, IconName> = { dev: 'code', devops: 'server', test: 'check', sec: 'shield', po: 'clipboard', sm: 'list' };
 const ORIGIN_LABEL: Record<string, string> = { fix: 'correção', 'deploy-fix': 'correção de deploy' };
 const PATHS_SHOWN = 3;
+const FACET_ICON = 'inline-grid h-6 cursor-help place-items-center text-ink-faint';
+const FACET_ITEMS = 'flex min-h-6 min-w-0 flex-wrap items-center gap-[0.35rem]';
+const PLAN_PATH = 'rounded-sm border border-line bg-surface-sunken px-[0.4rem] py-[0.05rem] text-[0.75rem] text-ink-soft wrap-anywhere';
 
 /** The executable plan: what each task is, who does it, which criteria it satisfies and which files it touches. */
 function PlanCard({ plan }: { plan: NonNullable<RunDetail['plan']> }) {
@@ -91,7 +133,7 @@ function PlanCard({ plan }: { plan: NonNullable<RunDetail['plan']> }) {
     });
   return (
     <section className="card" data-testid="plan-artifact">
-      <div className="plan-title">
+      <div className={`mb-[0.9rem] ${RUN_UI.cardTitle}`}>
         <h2>
           Plano executável <InfoTip label="Plano executável" text="Como a spec foi dividida em tarefas. Cada tarefa tem um responsável, cumpre critérios de aceite (AC) e altera os arquivos listados. Sai da fase 2." />
         </h2>
@@ -99,7 +141,7 @@ function PlanCard({ plan }: { plan: NonNullable<RunDetail['plan']> }) {
           {plan.tasks.length} {plan.tasks.length === 1 ? 'tarefa' : 'tarefas'}
         </span>
       </div>
-      <dl className="plan-facts">
+      <dl className="m-0 mb-4 grid grid-cols-[minmax(0,1fr)_auto] gap-x-8 gap-y-3 rounded-lg border border-line bg-surface-sunken px-[0.9rem] py-[0.8rem] max-md:grid-cols-1 [&_code]:rounded-sm [&_code]:bg-surface-muted [&_code]:px-[0.35rem] [&_code]:py-[0.05rem] [&_code]:text-[0.78rem] [&_dd]:m-0 [&_dd]:text-[0.875rem] [&_dd]:text-ink [&_dd]:wrap-anywhere [&_dt]:flex [&_dt]:items-center [&_dt]:gap-[0.4rem] [&_dt]:text-[0.75rem] [&_dt]:font-semibold [&_dt]:text-ink-soft [&>div]:grid [&>div]:min-w-0 [&>div]:gap-[0.2rem]">
         <div>
           <dt>
             <Icon name="code" size={16} />
@@ -117,18 +159,18 @@ function PlanCard({ plan }: { plan: NonNullable<RunDetail['plan']> }) {
           </dd>
         </div>
       </dl>
-      <ul className="plan-list">
+      <ul className={RUN_UI.boxList}>
         {plan.tasks.map((task) => {
           const open = expanded.has(task.id);
           const paths = open ? task.affectedPaths : task.affectedPaths.slice(0, PATHS_SHOWN);
           const hidden = task.affectedPaths.length - PATHS_SHOWN;
           const owner = ROLE_LABEL[task.owner] ?? task.owner;
           return (
-            <li key={task.id} data-testid={`plan-task-${task.id}`}>
-              <div className="plan-line">
-                <span className="task-id">{task.id}</span>
-                <span className="task-title">{task.title}</span>
-                <span className="plan-chips">
+            <li key={task.id} data-testid={`plan-task-${task.id}`} className="grid gap-2 px-[0.9rem] py-[0.8rem]">
+              <div className="flex items-baseline gap-[0.85rem] max-md:flex-wrap">
+                <span className={`min-w-[5.75rem] flex-none text-ink-soft ${TASK_ID}`}>{task.id}</span>
+                <span className={`${ROW_TITLE} font-medium wrap-anywhere`}>{task.title}</span>
+                <span className="inline-flex flex-none items-center gap-[0.4rem] [&_.tag]:m-0">
                   {task.service ? <span className="tag" title="Serviço">{task.service}</span> : null}
                   {task.origin !== 'plan' ? <span className="tag">{ORIGIN_LABEL[task.origin] ?? task.origin}</span> : null}
                   <span className="owner-chip" title={`Responsável pela tarefa: ${owner}`}>
@@ -137,31 +179,31 @@ function PlanCard({ plan }: { plan: NonNullable<RunDetail['plan']> }) {
                   </span>
                 </span>
               </div>
-              <div className="plan-facets">
-                <span className="plan-facet-icon" role="img" aria-label="Critérios de aceite" title="Critérios de aceite que esta tarefa cumpre">
+              <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-[0.6rem] gap-y-[0.4rem] pl-[6.6rem] max-md:pl-0">
+                <span className={FACET_ICON} role="img" aria-label="Critérios de aceite" title="Critérios de aceite que esta tarefa cumpre">
                   <Icon name="check" size={14} />
                 </span>
-                <span className="plan-facet-items">
-                  {task.criteriaRefs.length ? task.criteriaRefs.map((ac) => <span key={ac} className="plan-ac">{ac}</span>) : <span className="hint">Sem critério direto</span>}
+                <span className={FACET_ITEMS}>
+                  {task.criteriaRefs.length ? task.criteriaRefs.map((ac) => <span key={ac} className="rounded-sm bg-accent-soft px-[0.45rem] py-[0.05rem] font-mono text-[0.75rem] font-semibold text-accent-ink">{ac}</span>) : <span className="hint">Sem critério direto</span>}
                 </span>
-                <span className="plan-facet-icon" role="img" aria-label="Arquivos alterados" title="Arquivos que esta tarefa cria ou altera">
+                <span className={FACET_ICON} role="img" aria-label="Arquivos alterados" title="Arquivos que esta tarefa cria ou altera">
                   <Icon name="file" size={14} />
                 </span>
-                <span className="plan-facet-items">
-                  {paths.map((path) => <code key={path} className="plan-path">{path}</code>)}
+                <span className={FACET_ITEMS}>
+                  {paths.map((path) => <code key={path} className={PLAN_PATH}>{path}</code>)}
                   {hidden > 0 ? (
-                    <button type="button" className="plan-more" aria-expanded={open} onClick={() => toggle(task.id)}>
+                    <button type="button" className="h-6 border-0 bg-transparent px-[0.45rem] text-[0.75rem] text-accent-text underline-offset-[3px] hover:bg-transparent hover:underline" aria-expanded={open} onClick={() => toggle(task.id)}>
                       {open ? 'Mostrar menos' : `+${hidden}`}
                     </button>
                   ) : null}
                 </span>
                 {task.dependsOn.length ? (
                   <>
-                    <span className="plan-facet-icon" role="img" aria-label="Depende de" title="Só começa depois que estas tarefas forem mescladas">
+                    <span className={FACET_ICON} role="img" aria-label="Depende de" title="Só começa depois que estas tarefas forem mescladas">
                       <Icon name="clock" size={14} />
                     </span>
-                    <span className="plan-facet-items">
-                      {task.dependsOn.map((id) => <code key={id} className="plan-path">{id}</code>)}
+                    <span className={FACET_ITEMS}>
+                      {task.dependsOn.map((id) => <code key={id} className={PLAN_PATH}>{id}</code>)}
                     </span>
                   </>
                 ) : null}
@@ -170,7 +212,7 @@ function PlanCard({ plan }: { plan: NonNullable<RunDetail['plan']> }) {
           );
         })}
       </ul>
-      <details>
+      <details className="mt-[0.9rem]">
         <summary>Ver plan.json</summary>
         <pre>{JSON.stringify(plan, null, 2)}</pre>
       </details>
@@ -190,7 +232,7 @@ function EvidenceCard({ criteria, rows }: { criteria: RunDetail['acceptanceCrite
   const covered = rows.filter((r) => r.tests.length > 0 && r.tests.every((t) => t.status === 'passed')).length;
   return (
     <section className="card" data-testid="evidence">
-      <div className="plan-title">
+      <div className={`mb-[0.9rem] ${RUN_UI.cardTitle}`}>
         <h2>
           Evidências <InfoTip label="Evidências" text="Cada critério de aceite (AC) deve ter ao menos um teste automatizado passando. Aqui estão os testes ligados a cada critério, com o resultado da última rodada de cada um." />
         </h2>
@@ -198,37 +240,37 @@ function EvidenceCard({ criteria, rows }: { criteria: RunDetail['acceptanceCrite
           {covered} de {rows.length} {rows.length === 1 ? 'critério coberto' : 'critérios cobertos'}
         </span>
       </div>
-      <ul className="evidence-list">
+      <ul className={RUN_UI.boxList}>
         {rows.map((row) => {
           const criterion = criteria.find((c) => c.id === row.acId);
           const failed = row.tests.some((t) => t.status !== 'passed');
           const state = !row.tests.length ? { tone: 'neutral', icon: 'clock' as IconName, label: 'Sem teste ainda' } : failed ? { tone: 'bad', icon: 'close' as IconName, label: 'Há teste falhando' } : { tone: 'good', icon: 'check' as IconName, label: 'Coberto' };
           return (
-            <li key={row.acId} data-testid={`evidence-${row.acId}`}>
-              <span className={`evidence-state tone-${state.tone}`} role="img" aria-label={state.label} title={state.label}>
+            <li key={row.acId} data-testid={`evidence-${row.acId}`} className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 px-[0.9rem] py-[0.85rem]">
+              <span className={`grid size-6 flex-none place-items-center rounded-full tone-${state.tone}`} role="img" aria-label={state.label} title={state.label}>
                 <Icon name={state.icon} size={14} />
               </span>
-              <div className="evidence-body">
-                <p className="evidence-head">
-                  <span className="task-id">{row.acId}</span>
+              <div className="grid min-w-0 gap-[0.4rem] [&_p]:m-0">
+                <p className="flex min-h-6 items-center gap-2 [&_.tag]:m-0">
+                  <span className={TASK_ID}>{row.acId}</span>
                   {criterion?.smoke ? <span className="tag" title="Também roda como teste rápido depois do deploy">smoke</span> : null}
                 </p>
                 {criterion ? (
-                  <p className="evidence-criterion">
+                  <p className="text-[0.875rem] leading-normal text-ink-soft wrap-anywhere [&_b]:font-semibold [&_b]:text-ink">
                     <b>Dado</b> {criterion.given} <b>quando</b> {criterion.when} <b>então</b> {criterion.then}
                   </p>
                 ) : null}
                 {row.tests.length ? (
-                  <ul className="evidence-tests">
+                  <ul className="m-0 mt-[0.15rem] grid list-none gap-[0.4rem] p-0">
                     {row.tests.map((x) => {
                       const result = TEST_RESULT[x.status] ?? { label: x.status, tone: 'warn', icon: 'info' as IconName };
                       return (
-                        <li key={x.id} title={x.id}>
-                          <span className={`status-pill tone-${result.tone}`}>
+                        <li key={x.id} title={x.id} className="flex flex-wrap items-center gap-x-[0.6rem] gap-y-1">
+                          <span className={`status-pill gap-[0.3rem] px-2 py-[0.05rem] text-[0.75rem] before:hidden tone-${result.tone}`}>
                             <Icon name={result.icon} size={12} />
                             {result.label}
                           </span>
-                          <span className="evidence-test-name">{testName(x.id)}</span>
+                          <span className="min-w-0 text-[0.875rem] text-ink wrap-anywhere">{testName(x.id)}</span>
                           <span className="hint">tarefa {x.taskId}</span>
                         </li>
                       );
@@ -246,8 +288,9 @@ function EvidenceCard({ criteria, rows }: { criteria: RunDetail['acceptanceCrite
   );
 }
 
+const OWNER_TONE: Partial<Record<StopOwner, string>> = { Plano: 'text-warn bg-warn-soft', Você: 'text-bad bg-bad-soft' };
 const ownerChip = (owner: StopOwner, testId?: string) => (
-  <span className={`owner-chip owner-${owner}`} data-testid={testId}>
+  <span className={`owner-chip ${OWNER_TONE[owner] ?? ''}`} data-testid={testId}>
     {owner}
   </span>
 );
@@ -255,7 +298,7 @@ const ownerChip = (owner: StopOwner, testId?: string) => (
 /** Label/value rows of a failure dialog; a null row is skipped. */
 function Facts({ rows }: { rows: Array<[string, ReactNode] | null> }) {
   return (
-    <dl className="failure-facts">
+    <dl className={FACT_ROWS}>
       {rows
         .filter((row): row is [string, ReactNode] => row !== null)
         .map(([term, value]) => (
@@ -278,13 +321,17 @@ function phaseState(p: PhaseRow, runStatus: string, blockedTasks: number): [labe
   return PHASE_STATE[p.result];
 }
 
+const ACTIVITY_TONE: Record<string, string> = { bad: 'text-bad', good: 'text-good' };
+
 /** Plain-language events, oldest first, each with its time and link. */
 function ActivityList({ items }: { items: ActivityItem[] }) {
   return (
-    <ol className="activity-list">
+    <ol className="m-0 grid list-none gap-[0.4rem] p-0">
       {items.map((item, i) => (
-        <li key={i} className={item.tone ? `activity activity-${item.tone}` : 'activity'}>
-          <time dateTime={item.at}>{hhmm(item.at)}</time>
+        <li key={i} className={`grid grid-cols-[3rem_minmax(0,1fr)] gap-2 text-[0.8125rem] leading-[1.45] wrap-anywhere ${ACTIVITY_TONE[item.tone ?? ''] ?? ''}`}>
+          <time dateTime={item.at} className="text-ink-soft tabular-nums">
+            {hhmm(item.at)}
+          </time>
           <span>
             {item.text}
             {safeHttpUrl(item.url ?? '') ? (
@@ -314,27 +361,27 @@ function NowCard({ events }: { events: StoredEvent[] }) {
   }, [ticking]);
   return (
     <section className="card" data-testid="now">
-      <div className="run-panel-head">
+      <div className={RUN_UI.panelHead}>
         <h2>Agora</h2>
         <InfoTip label="Agora" text={TIP.now} />
       </div>
       {running.length ? (
-        <ul className="now-list">
+        <ul className="m-0 grid list-none gap-[0.6rem] p-0 text-[0.875rem] leading-[1.45]">
           {running.map((s) => (
             <li key={s.stepId} data-testid="now-step">
               <strong>{ROLE_LABEL[s.role] ?? s.role}</strong> {stepDoing(s.kind)}
               {s.taskId ? ` a tarefa ${s.taskId}` : ''}
-              <span className="now-meta">
+              <span className="block text-[0.75rem] text-ink-soft tabular-nums">
                 {s.model ? `${s.model} · ` : ''}há {formatDuration(now - Date.parse(s.startedAt))}
               </span>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="hint">Nenhum agente trabalhando neste momento.</p>
+        <p className={`hint ${RUN_UI.asideNote}`}>Nenhum agente trabalhando neste momento.</p>
       )}
       {last ? (
-        <p className="now-last" data-testid="now-last">
+        <p className="mt-3 mb-0 border-t border-line pt-3 text-[0.8125rem] leading-[1.45]" data-testid="now-last">
           <span className="hint">Último acontecimento, às {hhmm(last.at)}:</span> {last.text}
         </p>
       ) : null}
@@ -441,8 +488,8 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   if (opened?.kind === 'outcome' && stop) {
     detailDialog = (
       <Dialog title="Detalhe técnico" onClose={closeDetail} returnFocus={opened.opener}>
-        <p className="failure-lead">{stop.what} O texto abaixo é o motivo como o orquestrador o registrou.</p>
-        <pre className="failure-raw">{stop.raw}</pre>
+        <p className="m-0 text-[0.875rem] text-ink-soft">{stop.what} O texto abaixo é o motivo como o orquestrador o registrou.</p>
+        <pre className={RUN_UI.raw}>{stop.raw}</pre>
       </Dialog>
     );
   }
@@ -467,26 +514,26 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
           ]}
         />
         {problems.length ? (
-          <section className="failure-section" data-testid="phase-problems">
-            <h3>Problemas</h3>
+          <section data-testid="phase-problems">
+            <h3 className={SECTION_TITLE}>Problemas</h3>
             <ActivityList items={problems} />
           </section>
         ) : null}
-        <section className="failure-section" data-testid="phase-timeline">
-          <h3>O que foi feito</h3>
+        <section data-testid="phase-timeline">
+          <h3 className={SECTION_TITLE}>O que foi feito</h3>
           {items.length ? <ActivityList items={items} /> : <p className="hint">Nenhum acontecimento registrado nesta fase ainda.</p>}
           {openedPhase.phase === 3 ? <p className="hint">O trabalho de cada tarefa fica no card Tarefas: clique numa tarefa para ver as etapas dela.</p> : null}
         </section>
         {agentSteps.length ? (
-          <section className="failure-section">
-            <h3>Etapas dos agentes</h3>
+          <section>
+            <h3 className={SECTION_TITLE}>Etapas dos agentes</h3>
             <StepList steps={agentSteps} loadStep={loadStep} />
           </section>
         ) : null}
         {openedPhase.reason ? (
-          <section className="failure-section">
-            <h3>Texto técnico</h3>
-            <pre className="failure-raw">{openedPhase.reason}</pre>
+          <section>
+            <h3 className={SECTION_TITLE}>Texto técnico</h3>
+            <pre className={RUN_UI.raw}>{openedPhase.reason}</pre>
           </section>
         ) : null}
       </Dialog>
@@ -500,18 +547,20 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
     detailDialog = (
       <Dialog title={ids.length === 1 ? `Por que ${ids[0]} ficou bloqueada` : `Por que ${ids.length} tarefas ficaram bloqueadas`} onClose={closeDetail} returnFocus={opened.opener}>
         <Facts rows={[[ids.length === 1 ? 'Tarefa' : 'Tarefas', ids.join(', ')], why ? ['O que aconteceu', why.title] : null, ['Quem resolve', ownerChip(why?.owner ?? 'Sistema')], ['Próximo passo', why?.hint ?? 'Leia o motivo abaixo. Quando a causa estiver resolvida, reprocesse a spec.']]} />
-        <section className="failure-section">
-          <h3>Motivo registrado</h3>
-          <div className="failure-text">
+        <section>
+          <h3 className={SECTION_TITLE}>Motivo registrado</h3>
+          <div>
             {text.split(/\n\s*\n/).map((paragraph, i) => (
-              <p key={i}>{paragraph}</p>
+              <p key={i} className="mt-0 mb-[0.6rem] whitespace-pre-line last:mb-0">
+                {paragraph}
+              </p>
             ))}
           </div>
         </section>
         {text !== openedCause.reason ? (
-          <section className="failure-section">
-            <h3>Texto técnico</h3>
-            <pre className="failure-raw">{openedCause.reason}</pre>
+          <section>
+            <h3 className={SECTION_TITLE}>Texto técnico</h3>
+            <pre className={RUN_UI.raw}>{openedCause.reason}</pre>
           </section>
         ) : null}
       </Dialog>
@@ -520,7 +569,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   // Only an older server sends no repoUrl, and then a merged PR URL names the repository; null means no GitHub address is known.
   const repoUrl = detail.repoUrl === undefined ? prs.find((p) => p.url)?.url?.replace(/\/pull\/\d+.*$/, '') ?? null : detail.repoUrl;
   return (
-    <main className="run-page">
+    <main className={RUN_UI.page}>
       <nav className="refine-breadcrumb" aria-label="Navegação">
         <Link to="/projects" aria-label="Voltar para projetos">
           <Icon name="home" size={16} />
@@ -533,10 +582,10 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
         <span aria-hidden="true">›</span>
         <strong>{runLabel(detail.runId)}</strong>
       </nav>
-      <header className="card run-head">
-        <div className="run-head-main">
-          <h1>{detail.runId}</h1>
-          <div className="run-meta">
+      <header className={RUN_UI.head}>
+        <div className="min-w-0">
+          <h1 className={RUN_UI.title}>{detail.runId}</h1>
+          <div className={RUN_UI.meta}>
             <span data-testid="status" className={`status-pill tone-${statusTone(status)}`}>
               {statusLabel(status)}
               {ended ? ' (encerrada)' : ''}
@@ -548,27 +597,27 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
             {status === 'interrupted' ? <span data-testid="interrupted-hint" className="hint">o processo não está mais rodando; use Retomar</span> : null}
           </div>
         </div>
-        <div className="run-actions">
+        <div className={RUN_UI.actions}>
           {resumeAction && !detail.locked && RESUMABLE.has(status) ? (
-            <button type="button" className="primary-button run-action" data-testid="resume" disabled={resumeAction.busy} onClick={resumeAction.onResume}>
+            <button type="button" className={`primary-button ${RUN_UI.action}`} data-testid="resume" disabled={resumeAction.busy} onClick={resumeAction.onResume}>
               <Icon name="play" size={16} />
               {resumeAction.busy ? 'Retomando…' : 'Retomar'}
             </button>
           ) : null}
           {stopAction && STOPPABLE.has(status) ? (
-            <button type="button" className="secondary run-action" data-testid="stop" disabled={stopAction.busy} onClick={stopAction.onStop}>
+            <button type="button" className={`secondary ${RUN_UI.action}`} data-testid="stop" disabled={stopAction.busy} onClick={stopAction.onStop}>
               <Icon name="stop" size={16} />
               {stopAction.busy ? 'Parando…' : 'Parar execução'}
             </button>
           ) : null}
           {detail.report ? (
-            <Link className="link-button run-action" data-testid="validation-link" to={`/runs/${detail.runId}/validation`}>
+            <Link className={`link-button ${RUN_UI.action}`} data-testid="validation-link" to={`/runs/${detail.runId}/validation`}>
               Validação
               <Icon name="arrow-right" size={16} />
             </Link>
           ) : null}
           {repoUrl ? (
-            <a className="primary-button run-action" data-testid="github-link" href={repoUrl} target="_blank" rel="noreferrer">
+            <a className={`primary-button ${RUN_UI.action}`} data-testid="github-link" href={repoUrl} target="_blank" rel="noreferrer">
               <Icon name="github" size={16} />
               Abrir no GitHub
               <Icon name="external" size={16} />
@@ -583,13 +632,21 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
         ) : null}
         {stopAction?.error ? <p className="error" data-testid="stop-error">{stopAction.error}</p> : null}
         {totalTasks ? (
-          <div className="run-progress">
-            <div className="run-progress-bar" role="progressbar" aria-label="Tarefas mescladas" aria-valuemin={0} aria-valuemax={totalTasks} aria-valuenow={doneTasks} aria-valuetext={`${doneTasks} de ${totalTasks} mescladas, ${tally.active} em andamento, ${tally.blocked} bloqueadas`}>
+          <div className="col-span-full flex items-center gap-4 border-t border-line pt-4 max-md:flex-col max-md:items-stretch max-md:gap-2">
+            <div
+              className="run-progress-bar flex h-1.5 flex-1 gap-[2px] overflow-hidden rounded-full bg-surface-muted [&>.seg-active]:bg-accent [&>.seg-blocked]:bg-bad [&>.seg-merged]:bg-good [&>span]:h-full [&>span]:flex-none"
+              role="progressbar"
+              aria-label="Tarefas mescladas"
+              aria-valuemin={0}
+              aria-valuemax={totalTasks}
+              aria-valuenow={doneTasks}
+              aria-valuetext={`${doneTasks} de ${totalTasks} mescladas, ${tally.active} em andamento, ${tally.blocked} bloqueadas`}
+            >
               {tally.merged ? <span className="seg-merged" style={{ flexBasis: `${(tally.merged / totalTasks) * 100}%` }} /> : null}
               {tally.active ? <span className="seg-active" style={{ flexBasis: `${(tally.active / totalTasks) * 100}%` }} /> : null}
               {tally.blocked ? <span className="seg-blocked" style={{ flexBasis: `${(tally.blocked / totalTasks) * 100}%` }} /> : null}
             </div>
-            <p className="run-summary">
+            <p className="m-0 flex flex-wrap text-[0.8125rem] whitespace-nowrap text-ink-soft tabular-nums max-md:whitespace-normal [&_.info-tip]:ml-1 [&>span+span]:before:mx-2 [&>span+span]:before:text-ink-faint [&>span+span]:before:content-['·']">
               <span>
                 <span data-testid="task-progress">
                   {doneTasks} de {totalTasks} tarefas mescladas
@@ -597,12 +654,12 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                 <InfoTip label="Tarefas mescladas" text={TIP.merged} />
               </span>
               {tally.active ? (
-                <span data-testid="task-active" className="progress-active">
+                <span data-testid="task-active" className="text-accent-text">
                   {tally.active} em andamento
                 </span>
               ) : null}
               {tally.blocked ? (
-                <span data-testid="task-blocked" className="progress-blocked">
+                <span data-testid="task-blocked" className="text-bad">
                   {tally.blocked} {tally.blocked === 1 ? 'bloqueada' : 'bloqueadas'}
                 </span>
               ) : null}
@@ -618,268 +675,286 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
           </div>
         ) : null}
       </header>
-      {stop ? (
-        <section className="card outcome-banner" data-testid="outcome-banner" aria-labelledby="run-outcome-title">
-          <h2 id="run-outcome-title" className="outcome-title">
-            <Icon name="alert" size={18} />
-            {stop.what}
-          </h2>
-          <dl className="outcome-rows">
-            <div>
-              <dt>Por quê</dt>
-              <dd>
-                <strong>{stop.title}</strong>
-                {stop.raw ? (
-                  <button type="button" className="secondary run-detail-button" data-testid="outcome-detail" onClick={openDetail({ kind: 'outcome' })}>
-                    Ver detalhe técnico
-                  </button>
-                ) : null}
-              </dd>
-            </div>
-            {before ? (
-              <div>
-                <dt>Antes disso</dt>
-                <dd data-testid="outcome-before">{before}</dd>
-              </div>
-            ) : null}
-            {stop.rollback ? (
-              <div>
-                <dt>Estado</dt>
-                <dd data-testid="outcome-rollback">{stop.rollback}</dd>
-              </div>
-            ) : null}
-            <div>
-              <dt>
-                Quem resolve
-                <InfoTip label="Quem resolve" text={TIP.owner} />
-              </dt>
-              <dd>{ownerChip(stop.owner, 'outcome-owner')}</dd>
-            </div>
-            <div>
-              <dt>Próximo passo</dt>
-              <dd>
-                <p data-testid="outcome-hint">{stop.hint}</p>
-                <div className="outcome-actions">
-                  {redeploying ? (
-                    <button type="button" className="primary-button" data-testid="redeploy" disabled={redeployAction.busy} onClick={redeployAction.onRedeploy}>
-                      {redeployAction.busy ? 'Iniciando o deploy…' : 'Tentar deploy de novo'}
-                    </button>
-                  ) : null}
-                  {reprocessAction && !detail.locked ? (
-                    <span className="outcome-action">
-                      <button type="button" className={redeploying ? 'secondary' : 'primary-button'} data-testid="reprocess" disabled={reprocessAction.busy} onClick={reprocessAction.onReprocess}>
-                        <Icon name="refresh" size={16} />
-                        {reprocessAction.busy ? 'Iniciando nova run…' : 'Reprocessar'}
-                      </button>
-                      <InfoTip label="Reprocessar" text={TIP.reprocess} />
-                    </span>
-                  ) : null}
-                  {detail.report ? (
-                    <Link className="link-button" to={`/runs/${detail.runId}/validation`}>
-                      Ver relatório
-                      <Icon name="arrow-right" size={16} />
-                    </Link>
-                  ) : null}
-                </div>
-                {redeployAction?.error ? <p className="error" data-testid="redeploy-error">{redeployAction.error}</p> : null}
-                {reprocessAction?.error ? <p className="error" data-testid="reprocess-error">{reprocessAction.error}</p> : null}
-              </dd>
-            </div>
-          </dl>
-        </section>
-      ) : null}
-      <div className="run-grid">
-        <div className="run-col">
-          {causeGroups.length ? (
-            <section className="card" data-testid="block-cause">
-              <div className="run-panel-head">
-                <h2>Tarefas bloqueadas</h2>
-                <InfoTip label="Tarefas bloqueadas" text={TIP.blocked} />
-              </div>
-              {!stop && stopAction && STOPPABLE.has(status) ? (
-                <p className="hint" data-testid="block-cause-live-hint">
-                  A run continua com as outras tarefas. Veja o motivo em cada uma; se nenhuma vai se resolver sozinha, pare a execução para liberar o reprocessamento.
-                </p>
-              ) : null}
-              <ul className="cause-list">
-                {causeGroups.map((g) => (
-                  <li key={g.reason} data-testid="cause-group" className="cause-row">
-                    <span className="cause-tasks">
-                      {g.taskIds.map((id) => (
-                        <button key={id} type="button" className="task-id" onClick={() => setSelected(id)}>
-                          {id}
-                        </button>
-                      ))}
-                    </span>
-                    <span className="cause-title">{explainStop(g.reason)?.title ?? firstSentence(explainBlockReason(g.reason))}</span>
-                    <button type="button" className="secondary run-detail-button" aria-label={`Ver detalhe do bloqueio de ${g.taskIds.join(', ')}`} onClick={openDetail({ kind: 'cause', reason: g.reason })}>
-                      Ver detalhe
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
-          <section className="card run-readme" data-testid="readme">
-            <header>
-              <h2>README do projeto</h2>
-              <span className="run-readme-path">docs/README.md</span>
-              {readmeAction && !detail.locked ? (
-                <button type="button" className="secondary run-readme-action" data-testid="readme-generate" disabled={readmeAction.busy} onClick={readmeAction.onGenerate}>
-                  {readmeAction.busy ? 'O sm está escrevendo…' : detail.readme ? 'Reescrever com o sm' : 'Gerar README com o sm'}
-                </button>
-              ) : null}
-            </header>
-            {readmeAction?.error ? <p className="error" data-testid="readme-error">{readmeAction.error}</p> : null}
-            {detail.readme ? (
-              <Markdown source={detail.readme} />
-            ) : (
-              <p className="hint" data-testid="readme-empty">
-                Nenhum README gerado ainda. O Scrum Master (sm) escreve o resumo do projeto na fase de relatório, ao fim da run.
-              </p>
-            )}
-          </section>
-          {error ? <p className="error">{error}</p> : null}
-          <section className="card">
-            <h2>Tarefas</h2>
-            {groups.length === 0 ? <p className="hint">Nenhuma tarefa planejada ainda.</p> : null}
-            {groups.map(([s, ids]) => (
-              <div key={s} className="task-group" data-testid={`group-${s}`}>
-                <h3>
-                  {statusLabel(s)} <span className="count">{ids.length}</span>
-                </h3>
-                <ul>
-                  {ids.map((id) => {
-                    const tk = state.tasks.get(id)!;
-                    return (
-                      <li key={id} className="task-row">
-                        <button className="task-id" data-testid={`task-${id}`} onClick={() => setSelected(id)}>
-                          {id}
-                        </button>
-                        <span className="task-title">{tk.def.title}</span>
-                        {tk.def.service ? <span className="tag" title="Serviço">{tk.def.service}</span> : null}
-                        <span className="task-meta">
-                          {tk.attempts > 0 ? `${tk.attempts} ${tk.attempts === 1 ? 'tentativa' : 'tentativas'}` : null}
-                          {tk.replanned ? <span className="tag">replanejada</span> : null}
-                          {tk.def.origin && tk.def.origin !== 'plan' ? <span className={`tag tag-${tk.def.origin}`}>{tk.def.origin}</span> : null}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            ))}
-          </section>
-          {detail.plan ? <PlanCard plan={detail.plan} /> : null}
-          {selected ? <TaskDetail events={unique} taskId={selected} loadStep={loadStep} /> : null}
-          <EvidenceCard criteria={detail.acceptanceCriteria} rows={evidence(unique, detail.acceptanceCriteria.map((c) => c.id))} />
-        </div>
-        <aside className="run-col run-aside">
-          {status === 'running' || status === 'draining' || status.startsWith('paused') ? <NowCard events={unique} /> : null}
-          <section className="card">
-            <div className="run-panel-head">
-              <h2>Fases</h2>
-              <InfoTip label="Fases" text={TIP.phases} />
-            </div>
-            {phaseList.length ? (
-              <ol className="run-phases">
-                {phaseList.map((p) => {
-                  const [label, tone] = phaseState(p, status, blockedTasks);
-                  const problems = activity.get(p.phase)?.items.filter((i) => i.tone === 'bad').length ?? 0;
-                  return (
-                    <li key={p.phase} data-testid="phase" className="phase">
-                      <button type="button" className="phase-name phase-link" aria-label={`Ver o que aconteceu em ${phaseTitle(p.phase)}`} onClick={openDetail({ kind: 'phase', phase: p.phase })}>
-                        {phaseTitle(p.phase)}
-                      </button>{' '}
-                      <span className={tone ? `status-pill tone-${tone}` : 'status-pill'}>{label}</span>
-                      {p.attempt > 1 ? <span className="phase-meta">{p.attempt}ª tentativa</span> : null}
-                      {problems && p.result !== 'failed' ? (
-                        <span className="phase-meta phase-warn" data-testid="phase-problems-count">
-                          {problems === 1 ? '1 problema registrado' : `${problems} problemas registrados`}
-                        </span>
-                      ) : null}
-                      {p.result === 'failed' ? (
-                        <div className="phase-failure">
-                          <p>
-                            <strong>O que fazer:</strong> {explainPhase(p).hint}
-                          </p>
-                          <button type="button" className="secondary run-detail-button" aria-label={`Ver detalhe da falha em ${phaseTitle(p.phase)}`} onClick={openDetail({ kind: 'phase', phase: p.phase })}>
-                            Ver detalhe
-                          </button>
+      <Workspace
+        columns={RUN_UI.columns}
+        panels={[
+          {
+            id: 'tasks',
+            label: 'Tarefas',
+            content: (
+              <div className={RUN_UI.column}>
+                {stop ? (
+                  <section className={RUN_UI.banner} data-testid="outcome-banner" aria-labelledby="run-outcome-title">
+                    <h2 id="run-outcome-title" className={RUN_UI.bannerTitle}>
+                      <Icon name="alert" size={18} />
+                      {stop.what}
+                    </h2>
+                    <dl className={RUN_UI.bannerRows}>
+                      <div>
+                        <dt>Por quê</dt>
+                        <dd>
+                          <strong>{stop.title}</strong>
+                          {stop.raw ? (
+                            <button type="button" className={DETAIL_BUTTON} data-testid="outcome-detail" onClick={openDetail({ kind: 'outcome' })}>
+                              Ver detalhe técnico
+                            </button>
+                          ) : null}
+                        </dd>
+                      </div>
+                      {before ? (
+                        <div>
+                          <dt>Antes disso</dt>
+                          <dd data-testid="outcome-before">{before}</dd>
                         </div>
                       ) : null}
-                    </li>
-                  );
-                })}
-              </ol>
-            ) : (
-              <p className="hint">Nenhuma fase iniciada ainda.</p>
-            )}
-          </section>
-          {prs.length ? (
-            <section className="card">
-              <h2>Pull requests mesclados</h2>
-              <ul className="pr-list">
-                {prs.map((p) => (
-                  <li key={p.taskId}>
-                    <span className="task-id">{p.taskId}</span>
-                    {safeHttpUrl(p.url) ? (
-                      <a href={safeHttpUrl(p.url)} target="_blank" rel="noreferrer">
-                        PR #{p.number}
-                        <Icon name="external" size={14} />
-                      </a>
-                    ) : (
-                      <span>PR #{p.number}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
-          <section className="card">
-            <h2>Consumo dos modelos</h2>
-            <dl className="usage-totals" data-testid="tokens-total">
-              <div>
-                <dt>
-                  Custo estimado
-                  <InfoTip label="Custo estimado" text={TIP.cost} />
-                </dt>
-                <dd className="usage-total-cost">{money(t.total.costUsd)}</dd>
+                      {stop.rollback ? (
+                        <div>
+                          <dt>Estado</dt>
+                          <dd data-testid="outcome-rollback">{stop.rollback}</dd>
+                        </div>
+                      ) : null}
+                      <div>
+                        <dt>
+                          Quem resolve
+                          <InfoTip label="Quem resolve" text={TIP.owner} />
+                        </dt>
+                        <dd>{ownerChip(stop.owner, 'outcome-owner')}</dd>
+                      </div>
+                      <div>
+                        <dt>Próximo passo</dt>
+                        <dd>
+                          <p data-testid="outcome-hint">{stop.hint}</p>
+                          <div className="flex flex-wrap items-center gap-3">
+                            {redeploying ? (
+                              <button type="button" className="primary-button" data-testid="redeploy" disabled={redeployAction.busy} onClick={redeployAction.onRedeploy}>
+                                {redeployAction.busy ? 'Iniciando o deploy…' : 'Tentar deploy de novo'}
+                              </button>
+                            ) : null}
+                            {reprocessAction && !detail.locked ? (
+                              <span className="inline-flex items-center gap-[0.35rem]">
+                                <button type="button" className={redeploying ? 'secondary' : 'primary-button'} data-testid="reprocess" disabled={reprocessAction.busy} onClick={reprocessAction.onReprocess}>
+                                  <Icon name="refresh" size={16} />
+                                  {reprocessAction.busy ? 'Iniciando nova run…' : 'Reprocessar'}
+                                </button>
+                                <InfoTip label="Reprocessar" text={TIP.reprocess} />
+                              </span>
+                            ) : null}
+                            {detail.report ? (
+                              <Link className="link-button" to={`/runs/${detail.runId}/validation`}>
+                                Ver relatório
+                                <Icon name="arrow-right" size={16} />
+                              </Link>
+                            ) : null}
+                          </div>
+                          {redeployAction?.error ? <p className="error" data-testid="redeploy-error">{redeployAction.error}</p> : null}
+                          {reprocessAction?.error ? <p className="error" data-testid="reprocess-error">{reprocessAction.error}</p> : null}
+                        </dd>
+                      </div>
+                    </dl>
+                  </section>
+                ) : null}
+                {causeGroups.length ? (
+                  <section className="card" data-testid="block-cause">
+                    <div className={RUN_UI.panelHead}>
+                      <h2>Tarefas bloqueadas</h2>
+                      <InfoTip label="Tarefas bloqueadas" text={TIP.blocked} />
+                    </div>
+                    {!stop && stopAction && STOPPABLE.has(status) ? (
+                      <p className="hint" data-testid="block-cause-live-hint">
+                        A run continua com as outras tarefas. Veja o motivo em cada uma; se nenhuma vai se resolver sozinha, pare a execução para liberar o reprocessamento.
+                      </p>
+                    ) : null}
+                    <ul className={RUN_UI.boxList}>
+                      {causeGroups.map((g) => (
+                        <li key={g.reason} data-testid="cause-group" className="grid grid-cols-[minmax(0,max-content)_minmax(0,1fr)_auto] items-center gap-[0.85rem] px-[0.9rem] py-[0.6rem] max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-3 max-md:gap-y-2">
+                          <span className="flex max-w-64 min-w-0 flex-wrap gap-x-3 gap-y-1">
+                            {g.taskIds.map((id) => (
+                              <button key={id} type="button" className={TASK_ID_BUTTON} onClick={() => setSelected(id)}>
+                                {id}
+                              </button>
+                            ))}
+                          </span>
+                          <span className="min-w-0 truncate text-ink max-md:col-span-full max-md:row-start-2 max-md:line-clamp-2 max-md:whitespace-normal max-md:wrap-anywhere">{explainStop(g.reason)?.title ?? firstSentence(explainBlockReason(g.reason))}</span>
+                          <button type="button" className={`${DETAIL_BUTTON} max-md:col-start-2 max-md:row-start-1`} aria-label={`Ver detalhe do bloqueio de ${g.taskIds.join(', ')}`} onClick={openDetail({ kind: 'cause', reason: g.reason })}>
+                            Ver detalhe
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
+                <section className="card" data-testid="readme">
+                  {/* The title keeps its width; the path and the button wrap below it on narrow screens. */}
+                  <header className="flex-wrap gap-3">
+                    <h2 className="basis-auto">README do projeto</h2>
+                    <span className="font-mono text-[0.75rem] text-ink-soft">docs/README.md</span>
+                    {readmeAction && !detail.locked ? (
+                      <button type="button" className="secondary h-8 px-3 text-[0.8125rem]" data-testid="readme-generate" disabled={readmeAction.busy} onClick={readmeAction.onGenerate}>
+                        {readmeAction.busy ? 'O sm está escrevendo…' : detail.readme ? 'Reescrever com o sm' : 'Gerar README com o sm'}
+                      </button>
+                    ) : null}
+                  </header>
+                  {readmeAction?.error ? <p className="error" data-testid="readme-error">{readmeAction.error}</p> : null}
+                  {detail.readme ? (
+                    <Markdown source={detail.readme} />
+                  ) : (
+                    <p className="hint" data-testid="readme-empty">
+                      Nenhum README gerado ainda. O Scrum Master (sm) escreve o resumo do projeto na fase de relatório, ao fim da run.
+                    </p>
+                  )}
+                </section>
+                {error ? <p className="error m-0">{error}</p> : null}
+                <section className="card">
+                  <h2>Tarefas</h2>
+                  {groups.length === 0 ? <p className="hint">Nenhuma tarefa planejada ainda.</p> : null}
+                  {groups.map(([s, ids], i) => (
+                    <div key={s} data-testid={`group-${s}`}>
+                      {/* Tasks: a fixed id column so every title starts on the same guide. */}
+                      <h3 className={`mb-2 flex items-center gap-2 ${i ? 'mt-5' : 'mt-1'}`}>
+                        {statusLabel(s)} <span className="min-w-5 rounded-full bg-surface-muted px-[0.35rem] text-center text-[0.6875rem] tracking-normal text-ink-soft tabular-nums">{ids.length}</span>
+                      </h3>
+                      <ul className={RUN_UI.boxList}>
+                        {ids.map((id) => {
+                          const tk = state.tasks.get(id)!;
+                          return (
+                            <li key={id} className="flex items-baseline gap-[0.85rem] px-[0.9rem] py-[0.65rem] hover:bg-surface-sunken max-md:flex-wrap">
+                              <button className={`min-w-[5.75rem] ${TASK_ID_BUTTON}`} data-testid={`task-${id}`} onClick={() => setSelected(id)}>
+                                {id}
+                              </button>
+                              <span className={`${ROW_TITLE} leading-[1.45]`}>{tk.def.title}</span>
+                              {tk.def.service ? <span className="tag" title="Serviço">{tk.def.service}</span> : null}
+                              <span className="ml-auto inline-flex items-center gap-[0.4rem] text-[0.8125rem] whitespace-nowrap text-ink-soft max-md:ml-0 max-md:whitespace-normal [&_.tag]:m-0">
+                                {tk.attempts > 0 ? `${tk.attempts} ${tk.attempts === 1 ? 'tentativa' : 'tentativas'}` : null}
+                                {tk.replanned ? <span className="tag">replanejada</span> : null}
+                                {tk.def.origin && tk.def.origin !== 'plan' ? <span className={`tag tag-${tk.def.origin}`}>{tk.def.origin}</span> : null}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ))}
+                </section>
+                {detail.plan ? <PlanCard plan={detail.plan} /> : null}
+                {selected ? <TaskDetail events={unique} taskId={selected} loadStep={loadStep} /> : null}
+                <EvidenceCard criteria={detail.acceptanceCriteria} rows={evidence(unique, detail.acceptanceCriteria.map((c) => c.id))} />
               </div>
-              <div>
-                <dt>
-                  Tokens de entrada
-                  <InfoTip label="Tokens de entrada" text={TIP.input} />
-                </dt>
-                <dd>{t.total.inputTokens}</dd>
-              </div>
-              <div>
-                <dt>
-                  Contexto em cache
-                  <InfoTip label="Contexto em cache" text={TIP.cache} />
-                </dt>
-                <dd>{t.total.cacheReadTokens + t.total.cacheWriteTokens}</dd>
-              </div>
-              <div>
-                <dt>
-                  Tokens de saída
-                  <InfoTip label="Tokens de saída" text={TIP.output} />
-                </dt>
-                <dd>{t.total.outputTokens}</dd>
-              </div>
-              <div>
-                <dt>
-                  Etapas
-                  <InfoTip label="Etapas" text={TIP.steps} />
-                </dt>
-                <dd>{t.total.steps}</dd>
-              </div>
-            </dl>
-            {Object.keys(t.byRole).length ? <UsageList title="Por agente" tip={TIP.byRole} rows={Object.entries(t.byRole)} label={roleName} testIdPrefix="tokens-" /> : null}
-            {Object.keys(t.byPhase).length ? <UsageList title="Por fase" tip={TIP.byPhase} rows={Object.entries(t.byPhase)} label={(key) => PHASE_LABEL[key] ?? key} /> : null}
-          </section>
-        </aside>
-      </div>
+            ),
+          },
+          {
+            id: 'phases',
+            label: 'Fases e consumo',
+            content: (
+              <aside className={RUN_UI.aside}>
+                {status === 'running' || status === 'draining' || status.startsWith('paused') ? <NowCard events={unique} /> : null}
+                <section className="card">
+                  <div className={RUN_UI.panelHead}>
+                    <h2>Fases</h2>
+                    <InfoTip label="Fases" text={TIP.phases} />
+                  </div>
+                  {phaseList.length ? (
+                    <ol className="m-0 grid list-none divide-y divide-line p-0">
+                      {phaseList.map((p) => {
+                        const [label, tone] = phaseState(p, status, blockedTasks);
+                        const problems = activity.get(p.phase)?.items.filter((i) => i.tone === 'bad').length ?? 0;
+                        return (
+                          <li key={p.phase} data-testid="phase" className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-[0.35rem] py-[0.6rem] first:pt-0 last:pb-0">
+                            {/* The phase name opens its detail: a text button, underlined on hover. */}
+                            <button type="button" className="phase-name h-auto min-w-0 border-0 bg-transparent p-0 text-left text-[0.875rem] leading-[1.4] font-semibold text-ink tabular-nums hover:bg-transparent hover:text-accent-text hover:underline" aria-label={`Ver o que aconteceu em ${phaseTitle(p.phase)}`} onClick={openDetail({ kind: 'phase', phase: p.phase })}>
+                              {phaseTitle(p.phase)}
+                            </button>{' '}
+                            <span className={tone ? `status-pill tone-${tone}` : 'status-pill'}>{label}</span>
+                            {p.attempt > 1 ? <span className={`${META} text-ink-soft`}>{p.attempt}ª tentativa</span> : null}
+                            {problems && p.result !== 'failed' ? (
+                              <span className={`${META} text-warn`} data-testid="phase-problems-count">
+                                {problems === 1 ? '1 problema registrado' : `${problems} problemas registrados`}
+                              </span>
+                            ) : null}
+                            {p.result === 'failed' ? (
+                              <div className="col-span-full grid min-w-0 justify-items-start gap-2">
+                                <p className="m-0 text-[0.8125rem] leading-[1.45] text-ink">
+                                  <strong>O que fazer:</strong> {explainPhase(p).hint}
+                                </p>
+                                <button type="button" className={DETAIL_BUTTON} aria-label={`Ver detalhe da falha em ${phaseTitle(p.phase)}`} onClick={openDetail({ kind: 'phase', phase: p.phase })}>
+                                  Ver detalhe
+                                </button>
+                              </div>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  ) : (
+                    <p className={`hint ${RUN_UI.asideNote}`}>Nenhuma fase iniciada ainda.</p>
+                  )}
+                </section>
+                {prs.length ? (
+                  <section className="card">
+                    <h2>Pull requests mesclados</h2>
+                    <ul className="m-0 flex list-none flex-wrap gap-[0.6rem] p-0">
+                      {prs.map((p) => (
+                        <li key={p.taskId} className="flex items-center gap-2 rounded-md border border-line px-[0.6rem] py-[0.3rem]">
+                          <span className="font-mono text-[0.8125rem] text-ink-soft">{p.taskId}</span>
+                          {safeHttpUrl(p.url) ? (
+                            <a href={safeHttpUrl(p.url)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-[0.35rem] font-semibold text-accent-text no-underline hover:underline">
+                              PR #{p.number}
+                              <Icon name="external" size={14} />
+                            </a>
+                          ) : (
+                            <span>PR #{p.number}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
+                <section className="card">
+                  <h2>Consumo dos modelos</h2>
+                  <dl className={RUN_UI.totals} data-testid="tokens-total">
+                    <div>
+                      <dt>
+                        Custo estimado
+                        <InfoTip label="Custo estimado" text={TIP.cost} />
+                      </dt>
+                      <dd className="font-[650]">{money(t.total.costUsd)}</dd>
+                    </div>
+                    <div>
+                      <dt>
+                        Tokens de entrada
+                        <InfoTip label="Tokens de entrada" text={TIP.input} />
+                      </dt>
+                      <dd>{t.total.inputTokens}</dd>
+                    </div>
+                    <div>
+                      <dt>
+                        Contexto em cache
+                        <InfoTip label="Contexto em cache" text={TIP.cache} />
+                      </dt>
+                      <dd>{t.total.cacheReadTokens + t.total.cacheWriteTokens}</dd>
+                    </div>
+                    <div>
+                      <dt>
+                        Tokens de saída
+                        <InfoTip label="Tokens de saída" text={TIP.output} />
+                      </dt>
+                      <dd>{t.total.outputTokens}</dd>
+                    </div>
+                    <div>
+                      <dt>
+                        Etapas
+                        <InfoTip label="Etapas" text={TIP.steps} />
+                      </dt>
+                      <dd>{t.total.steps}</dd>
+                    </div>
+                  </dl>
+                  {Object.keys(t.byRole).length ? <UsageList title="Por agente" tip={TIP.byRole} rows={Object.entries(t.byRole)} label={roleName} testIdPrefix="tokens-" /> : null}
+                  {Object.keys(t.byPhase).length ? <UsageList title="Por fase" tip={TIP.byPhase} rows={Object.entries(t.byPhase)} label={(key) => PHASE_LABEL[key] ?? key} /> : null}
+                </section>
+              </aside>
+            ),
+          },
+        ]}
+      />
       {detailDialog}
     </main>
   );

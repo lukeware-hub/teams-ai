@@ -5,8 +5,23 @@ import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { Bone, Skeleton } from '../components/Loading.js';
-import { chip, plural } from './project-shared.js';
-import './projects.css';
+import { action, chip, emptyState, panel, plural, row, rowActions, rowId, rows, sectionTitle } from './project-shared.js';
+
+const toolbar = 'flex flex-wrap items-center gap-x-4 gap-y-2';
+const filter = 'relative block min-w-0 flex-[0_1_24rem] max-md:basis-full [&_svg]:pointer-events-none [&_svg]:absolute [&_svg]:top-1/2 [&_svg]:left-3 [&_svg]:-translate-y-1/2 [&_svg]:text-ink-faint';
+const grid = 'grid grid-cols-[repeat(auto-fill,minmax(min(100%,17.5rem),1fr))] gap-4';
+const card = 'card flex flex-col gap-4 p-5 transition-[border-color,box-shadow,translate] duration-[var(--duration-fast)] hover:-translate-y-px hover:border-accent-line hover:shadow-pop';
+const cardBody = 'grid min-w-0 gap-1.5';
+const cardTitle = 'm-0 text-[1.0625rem] leading-[1.3] text-ink wrap-anywhere';
+const cardDesc = 'm-0 line-clamp-3 text-[0.875rem] leading-[1.45] text-ink-soft';
+const cardFacts = 'm-0 text-[0.8125rem] text-ink-faint tabular-nums';
+const cardActions = 'mt-auto flex flex-wrap justify-end gap-2';
+// An open toggle reads as selected, so the form's own submit is the only filled button in view.
+const toggleOpen = 'max-md:flex-[1_1_0] aria-expanded:border-accent-line aria-expanded:bg-accent-soft aria-expanded:text-accent-ink aria-expanded:shadow-none aria-expanded:hover:not-disabled:bg-accent-soft-hover';
+const form = 'card grid gap-4 px-6 pt-5 pb-6 max-md:p-4';
+const formHint = 'mt-1 mb-0 max-w-[72ch] text-[0.875rem] text-ink-soft';
+const field = 'grid min-w-0 gap-1.5';
+const fieldLabel = 'text-[0.8125rem] font-semibold text-ink-soft';
 
 const HELP = {
   newProjects: 'Projetos criados em Novo projeto que ainda estão em refinamento. Eles entram na lista de projetos quando a primeira execução começar.',
@@ -16,18 +31,18 @@ const HELP = {
 function ProjectsSkeleton() {
   return (
     <Skeleton>
-      <div className="projects-toolbar">
-        <span className="projects-filter"><Bone size="control" /></span>
+      <div className={toolbar}>
+        <span className={filter}><Bone size="control" /></span>
       </div>
-      <div className="project-grid">
+      <div className={grid}>
         {[0, 1, 2].map((i) => (
-          <div className="card project-card" key={i}>
-            <div className="project-card-body">
-              <p className="project-card-title"><Bone size="half" /></p>
-              <p className="project-card-desc"><Bone /><Bone /><Bone size="short" /></p>
-              <p className="project-card-facts"><Bone size="half" /></p>
+          <div className={card} key={i}>
+            <div className={cardBody}>
+              <p className={cardTitle}><Bone size="half" /></p>
+              <p className={cardDesc}><Bone /><Bone /><Bone size="short" /></p>
+              <p className={cardFacts}><Bone size="half" /></p>
             </div>
-            <div className="project-card-actions"><Bone size="action" /><Bone size="action" /></div>
+            <div className={cardActions}><Bone size="action" /><Bone size="action" /></div>
           </div>
         ))}
       </div>
@@ -81,18 +96,18 @@ export function ProjectsView(p: {
   const [pendingDeleteDraft, setPendingDeleteDraft] = useState<{ projectId: string; specId: string } | null>(null);
   const [pendingDeleteProject, setPendingDeleteProject] = useState<ProjectRow | null>(null);
   return (
-    <main className="projects-shell">
-      <header className="projects-header">
-        <div className="projects-heading">
-          <h1>Projetos</h1>
-          <p>Crie ou importe projetos, refine especificações e acompanhe as execuções.</p>
+    <main>
+      <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
+        <div className="min-w-0 flex-[1_1_20rem]">
+          <h1 className="m-0 text-ink">Projetos</h1>
+          <p className="mt-1 mb-0 text-[0.9375rem] text-ink-soft">Crie ou importe projetos, refine especificações e acompanhe as execuções.</p>
         </div>
-        <div className="projects-header-actions">
-          <button type="button" className="secondary projects-toggle" aria-expanded={panel === 'git'} aria-controls="import-project-panel" onClick={() => toggle('git')}>
+        <div className="flex flex-wrap gap-2 max-md:flex-[1_1_100%]">
+          <button type="button" className={`secondary ${toggleOpen}`} aria-expanded={panel === 'git'} aria-controls="import-project-panel" onClick={() => toggle('git')}>
             <Icon name="download" size={16} />
             Importar do Git
           </button>
-          <button type="button" className="primary-button projects-toggle" aria-expanded={panel === 'new'} aria-controls="new-project-panel" onClick={() => toggle('new')}>
+          <button type="button" className={`primary-button ${toggleOpen}`} aria-expanded={panel === 'new'} aria-controls="new-project-panel" onClick={() => toggle('new')}>
             <Icon name="plus" size={16} />
             Novo projeto
           </button>
@@ -101,7 +116,7 @@ export function ProjectsView(p: {
       {panel === 'new' ? (
         <form
           id="new-project-panel"
-          className="card projects-form"
+          className={form}
           aria-labelledby="new-project-title"
           onSubmit={(e) => {
             e.preventDefault();
@@ -110,14 +125,14 @@ export function ProjectsView(p: {
         >
           <div>
             <h2 id="new-project-title">Novo projeto</h2>
-            <p className="projects-form-hint">Defina um nome e um ID em inglês (letras minúsculas, números e hífens), ou peça à IA para sugerir o ID a partir do nome e da descrição. Se quiser, descreva o projeto com suas palavras: os agentes usam o texto para começar o refinamento e fazer as perguntas.</p>
+            <p className={formHint}>Defina um nome e um ID em inglês (letras minúsculas, números e hífens), ou peça à IA para sugerir o ID a partir do nome e da descrição. Se quiser, descreva o projeto com suas palavras: os agentes usam o texto para começar o refinamento e fazer as perguntas.</p>
           </div>
-          <div className="projects-form-fields">
-            <label><span>ID do projeto</span><input data-testid="new-project-id" autoFocus value={newProjectId} onChange={(e) => setNewProjectId(e.target.value)} placeholder="ex.: order-service" /></label>
-            <label><span>Nome do projeto</span><input data-testid="new-project-name" value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="ex.: Portal interno" /></label>
+          <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-2">
+            <label className={field}><span className={fieldLabel}>ID do projeto</span><input className="w-full min-w-0" data-testid="new-project-id" autoFocus value={newProjectId} onChange={(e) => setNewProjectId(e.target.value)} placeholder="ex.: order-service" /></label>
+            <label className={field}><span className={fieldLabel}>Nome do projeto</span><input className="w-full min-w-0" data-testid="new-project-name" value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="ex.: Portal interno" /></label>
           </div>
           {p.onSuggestName ? (
-            <div className="projects-suggest">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[0.8125rem] text-ink-soft">
               <button type="button" className="secondary" data-testid="suggest-project-id" disabled={suggesting || (newProjectName.trim() === '' && newProjectDescription.trim() === '')} onClick={() => void suggest()}>
                 <Icon name="lightbulb" size={16} />
                 {suggesting ? 'Sugerindo…' : 'Sugerir ID com IA'}
@@ -126,11 +141,11 @@ export function ProjectsView(p: {
               {suggestError ? <span className="error" role="alert">{suggestError}</span> : null}
             </div>
           ) : null}
-          <label className="projects-form-description">
-            <span>Descrição (opcional)</span>
-            <textarea data-testid="new-project-description" rows={5} value={newProjectDescription} onChange={(e) => setNewProjectDescription(e.target.value)} placeholder="O que é, para quem serve, o que precisa fazer e o que fica de fora." />
+          <label className={field}>
+            <span className={fieldLabel}>Descrição (opcional)</span>
+            <textarea className="w-full min-w-0 resize-y" data-testid="new-project-description" rows={5} value={newProjectDescription} onChange={(e) => setNewProjectDescription(e.target.value)} placeholder="O que é, para quem serve, o que precisa fazer e o que fica de fora." />
           </label>
-          <div className="projects-form-actions">
+          <div className="flex justify-end">
             <button data-testid="new-project" className="primary-button" type="submit" disabled={newProjectId.trim() === '' || newProjectName.trim() === ''}>Criar projeto</button>
           </div>
         </form>
@@ -138,7 +153,7 @@ export function ProjectsView(p: {
       {panel === 'git' ? (
         <form
           id="import-project-panel"
-          className="card projects-form"
+          className={form}
           aria-labelledby="import-project-title"
           onSubmit={(e) => {
             e.preventDefault();
@@ -147,36 +162,36 @@ export function ProjectsView(p: {
         >
           <div>
             <h2 id="import-project-title">Importar do Git</h2>
-            <p className="projects-form-hint">Cole o link de um repositório que já tenha <code>docs/project.json</code>. O código é baixado e o projeto entra na lista.</p>
+            <p className={formHint}>Cole o link de um repositório que já tenha <code>docs/project.json</code>. O código é baixado e o projeto entra na lista.</p>
           </div>
-          <div className="projects-form-fields projects-import-fields">
-            <label><span>URL do repositório</span><input type="url" autoFocus value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder="https://github.com/sua-org/seu-projeto.git" /></label>
-            <button className="primary-button" type="submit" disabled={repoUrl.trim() === ''}>
+          <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+            <label className={field}><span className={fieldLabel}>URL do repositório</span><input className="w-full min-w-0" type="url" autoFocus value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder="https://github.com/sua-org/seu-projeto.git" /></label>
+            <button className="primary-button max-md:w-full" type="submit" disabled={repoUrl.trim() === ''}>
               <Icon name="download" size={16} />
               Baixar e adicionar
             </button>
           </div>
         </form>
       ) : null}
-      {p.error ? <p className="error" role="alert">{p.error}</p> : null}
+      {p.error ? <p className="error m-0" role="alert">{p.error}</p> : null}
       {p.loading ? <ProjectsSkeleton /> : p.projects.length === 0 ? (
-        <div className="projects-empty">
+        <div className={emptyState}>
           <Icon name="list" size={24} />
           <p>Seus projetos aparecem aqui.</p>
           <p>Use <strong>Novo projeto</strong> para começar do zero ou <strong>Importar do Git</strong> para trazer um repositório existente.</p>
         </div>
       ) : (
-        <div className="projects-toolbar">
-          <label className="projects-filter">
-            <span className="projects-sr-only">Filtrar projetos</span>
+        <div className={toolbar}>
+          <label className={filter}>
+            <span className="sr-only">Filtrar projetos</span>
             <Icon name="search" size={16} />
-            <input ref={filterRef} type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filtrar por projeto, nome ou spec" />
+            <input ref={filterRef} className="w-full min-w-0 appearance-none pl-[2.375rem]" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filtrar por projeto, nome ou spec" />
           </label>
-          <p className="projects-count" aria-live="polite">{q ? `${visible.length} de ${total}` : total}</p>
+          <p className="m-0 text-[0.8125rem] text-ink-soft tabular-nums" aria-live="polite">{q ? `${visible.length} de ${total}` : total}</p>
         </div>
       )}
       {p.projects.length > 0 && visible.length === 0 ? (
-        <div className="projects-empty">
+        <div className={emptyState}>
           <Icon name="search" size={24} />
           <p>{`Nenhum projeto corresponde a “${query.trim()}”.`}</p>
           <p>Busque pelo ID do projeto, pelo nome, pela pasta ou por uma spec.</p>
@@ -192,25 +207,25 @@ export function ProjectsView(p: {
         </div>
       ) : null}
       {visible.length > 0 ? (
-        <div className="project-grid">
+        <div className={grid}>
           {visible.map((pr) => {
             const percent = pr.specs.length === 0 ? null : Math.round((pr.specs.filter((s) => s.status === 'done' || s.status === 'complete').length / pr.specs.length) * 100);
             return (
-              <article className="card project-card" key={pr.projectId}>
-                <div className="project-card-body">
-                  <h2 className="project-card-title">{pr.name || pr.projectId}</h2>
-                  <p className="project-card-desc">{pr.description || 'Sem descrição.'}</p>
-                  <p className="project-card-facts">
+              <article className={card} key={pr.projectId}>
+                <div className={cardBody}>
+                  <h2 className={cardTitle}>{pr.name || pr.projectId}</h2>
+                  <p className={cardDesc}>{pr.description || 'Sem descrição.'}</p>
+                  <p className={cardFacts}>
                     {plural(pr.specs.length, 'spec', 'specs')}
                     {percent === null ? null : ` · ${percent}% concluído`}
                   </p>
                 </div>
-                <div className="project-card-actions">
-                  <button type="button" className="project-action project-action-danger" data-testid={`delete-project-${pr.projectId}`} aria-label={`Excluir projeto ${pr.projectId}`} onClick={() => setPendingDeleteProject(pr)}>
+                <div className={cardActions}>
+                  <button type="button" className={action.danger} data-testid={`delete-project-${pr.projectId}`} aria-label={`Excluir projeto ${pr.projectId}`} onClick={() => setPendingDeleteProject(pr)}>
                     <Icon name="trash" size={14} />
                     Excluir
                   </button>
-                  <Link className="project-action secondary" data-testid={`open-project-${pr.projectId}`} aria-label={`Abrir projeto ${pr.projectId}`} to={`/projects/${pr.projectId}`}>
+                  <Link className={action.secondary} data-testid={`open-project-${pr.projectId}`} aria-label={`Abrir projeto ${pr.projectId}`} to={`/projects/${pr.projectId}`}>
                     Abrir
                     <Icon name="arrow-right" size={14} />
                   </Link>
@@ -221,22 +236,22 @@ export function ProjectsView(p: {
         </div>
       ) : null}
       {unregistered.length > 0 ? (
-        <section className="card project-panel project-orphans" aria-labelledby="new-projects-title">
-          <div className="project-section-title">
-            <h2 id="new-projects-title">Novos projetos em refinamento</h2>
+        <section className={`${panel} gap-3`} aria-labelledby="new-projects-title">
+          <div className={sectionTitle}>
+            <h2 className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="new-projects-title">Novos projetos em refinamento</h2>
             <InfoTip label="Novos projetos em refinamento" text={HELP.newProjects} />
           </div>
-          <ul className="project-rows">
+          <ul className={rows}>
             {unregistered.map((d) => (
-              <li className="project-row" key={`${d.projectId}/${d.specId}`}>
-                <span className="project-row-id">{d.projectId} / {d.specId}</span>
+              <li className={row} key={`${d.projectId}/${d.specId}`}>
+                <span className={rowId}>{d.projectId} / {d.specId}</span>
                 {chip(d.state)}
-                <span className="project-row-actions">
-                  <button type="button" className="project-action project-action-danger" data-testid={`delete-${d.projectId}-${d.specId}`} aria-label={`Excluir refinamento de ${d.projectId} / ${d.specId}`} onClick={() => setPendingDeleteDraft({ projectId: d.projectId, specId: d.specId })}>
+                <span className={rowActions}>
+                  <button type="button" className={action.danger} data-testid={`delete-${d.projectId}-${d.specId}`} aria-label={`Excluir refinamento de ${d.projectId} / ${d.specId}`} onClick={() => setPendingDeleteDraft({ projectId: d.projectId, specId: d.specId })}>
                     <Icon name="trash" size={14} />
                     Excluir
                   </button>
-                  <Link className="project-action secondary" data-testid={`refine-${d.projectId}-${d.specId}`} aria-label={`Abrir refinamento de ${d.projectId} / ${d.specId}`} to={`/refine/${d.projectId}/${d.specId}`}>
+                  <Link className={action.secondary} data-testid={`refine-${d.projectId}-${d.specId}`} aria-label={`Abrir refinamento de ${d.projectId} / ${d.specId}`} to={`/refine/${d.projectId}/${d.specId}`}>
                     Abrir
                     <Icon name="arrow-right" size={14} />
                   </Link>

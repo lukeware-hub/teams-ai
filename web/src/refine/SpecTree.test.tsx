@@ -26,17 +26,17 @@ describe('SpecTree', () => {
     render(<SpecTree backlog={pending} evaluating />);
     expect(screen.queryByTestId('tree-gaps')).toBeNull();
     expect(screen.getByTestId('tree-progress').textContent).toBe('Detalhando… 1/2 specs · 1/2 pré-planos');
-    expect(within(screen.getByTestId('tree-fatura')).getByText('pendente').className).not.toContain('gap');
+    expect(within(screen.getByTestId('tree-fatura')).getByText('pendente').className).not.toContain('text-bad');
   });
 
   it('goes from the doc section to the spec, its criteria and the pre-plan tasks that cover them', () => {
     render(<SpecTree backlog={backlog} />);
     expect(within(screen.getByTestId('tree-section-0')).getByText('Abertura de caso')).toBeTruthy();
-    expect(screen.getByTestId('tree-section-1').className).toContain('gap');
+    expect(screen.getByTestId('tree-section-1').className).toContain('text-bad');
     const caso = within(screen.getByTestId('tree-caso'));
     expect(caso.getByText('k-caso')).toBeTruthy();
     expect(caso.getByLabelText(/AC-001: dado um paciente, quando abre o caso, então o caso existe/)).toBeTruthy();
     expect(caso.getByText(/P1 Cadastro do caso/)).toBeTruthy();
-    expect(caso.getByTestId('tree-ac-AC-002').className).toContain('gap');
+    expect(caso.getByTestId('tree-ac-AC-002').className).toContain('text-bad');
   });
 });

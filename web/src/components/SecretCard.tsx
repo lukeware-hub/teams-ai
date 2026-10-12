@@ -40,17 +40,17 @@ export function SecretCard({ name, title, item, onSaved }: { name: 'GITHUB_TOKEN
   return (
     <ItemCard title={title} item={item} variant="login" subtitle={copy.subtitle} info={copy.info} icon={name === 'GITHUB_TOKEN' ? 'github' : 'user'} illustration={name === 'GITHUB_TOKEN' ? '/onboarding-github-token.png' : '/onboarding-openrouter.png'}>
       <form
-        className="secret-form"
+        className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-end gap-[0.7rem] @max-[40rem]:grid-cols-[minmax(0,1fr)]"
         onSubmit={(e) => {
           e.preventDefault();
           void save();
         }}
       >
-        <label className="secret-field">
+        <label className="grid min-w-0 gap-[0.38rem] text-[0.8125rem] font-semibold text-ink-soft">
           <span>{item?.secret?.set ? copy.replace : copy.field}</span>
-          <input type="password" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Cole o valor aqui…" autoComplete="off" />
+          <input className="w-full min-w-0" type="password" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Cole o valor aqui…" autoComplete="off" />
         </label>
-        <button type="submit" className="primary-button" disabled={busy || value.trim() === ''}>
+        <button type="submit" className="primary-button @max-[40rem]:w-full" disabled={busy || value.trim() === ''}>
           {busy ? 'Verificando…' : 'Salvar e verificar'}
         </button>
       </form>

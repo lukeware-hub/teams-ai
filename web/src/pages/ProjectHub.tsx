@@ -5,14 +5,30 @@ import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { Bone, Skeleton } from '../components/Loading.js';
-import { ACTIVE, CONTINUABLE, HELP, RECENT_RUNS, chip, grouped, money, plural, runName, when } from './project-shared.js';
-import './projects.css';
-import './project-hub.css';
+import { ACTIVE, CONTINUABLE, HELP, RECENT_RUNS, action, chip, emptyState, grouped, money, panel, plural, row, rowActions, rowId, rows, runName, sectionHeading, sectionTitle, when } from './project-shared.js';
+
+const header = 'card flex flex-wrap items-center justify-between gap-x-6 gap-y-2';
+const title = 'm-0 text-[1.375rem] leading-[1.3] text-ink';
+const dir = 'mt-2 block text-[0.8125rem] text-ink-faint wrap-anywhere';
+const desc = 'mt-1.5 mb-0 max-w-[60ch] text-[0.9375rem] leading-normal text-ink-soft';
+// Stat strip: at-a-glance health of the project before scrolling into the lists below.
+const stats = 'grid grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-3';
+const stat = 'edge-lit grid gap-[0.2rem] rounded-lg border px-4 py-[0.85rem]';
+const statValue = 'text-[1.375rem] leading-[1.1] font-[650] tabular-nums';
+const statLabel = 'text-[0.8125rem] text-ink-soft';
+const section = 'grid min-w-0 gap-3';
+const sectionHead = 'flex flex-wrap items-center justify-between gap-x-4 gap-y-2';
+// Section icon badge: breaks up stacked panels that would otherwise read as one grey wall.
+const sectionIcon = 'grid size-6 flex-none place-items-center rounded-sm bg-accent-soft text-accent-ink';
+const empty = 'm-0 rounded-lg border border-line bg-surface-sunken px-4 py-3 text-[0.875rem] text-ink-soft';
+const newSpecLabel = 'text-[0.8125rem] font-semibold';
+// Runs in flight stand out from the history instead of blending into the table.
+const live = '[&>td]:bg-good-soft [&>td:first-child]:shadow-[inset_3px_0_0_var(--good-live)]';
 
 /** The hub before its data arrives: the real breadcrumb, then the header, the four counters and the specs panel as placeholders. */
 function ProjectHubSkeleton({ projectId, error }: { projectId: string; error: string | null }) {
   return (
-    <main className="projects-shell project-hub">
+    <main>
       <nav className="refine-breadcrumb" aria-label="Navegação">
         <Link to="/projects" aria-label="Voltar para projetos">
           <Icon name="home" size={16} />
@@ -21,31 +37,31 @@ function ProjectHubSkeleton({ projectId, error }: { projectId: string; error: st
         <span aria-hidden="true">›</span>
         <strong>{projectId}</strong>
       </nav>
-      {error ? <p className="error" role="alert">{error}</p> : (
+      {error ? <p className="error m-0" role="alert">{error}</p> : (
         <Skeleton>
-          <div className="card project-hub-header">
-            <div className="project-panel-title">
-              <h1><Bone size="half" /></h1>
-              <p className="project-hub-desc"><Bone /><Bone /><Bone size="short" /></p>
-              <code><Bone size="half" /></code>
+          <div className={header}>
+            <div className="min-w-0 flex-1">
+              <h1 className={title}><Bone size="half" /></h1>
+              <p className={desc}><Bone /><Bone /><Bone size="short" /></p>
+              <code className={dir}><Bone size="half" /></code>
             </div>
           </div>
-          <div className="project-hub-stats">
+          <div className={stats}>
             {[0, 1, 2, 3].map((i) => (
-              <div className="project-hub-stat" key={i}>
-                <span className="project-hub-stat-value"><Bone size="tiny" /></span>
-                <span className="project-hub-stat-label"><Bone size="half" /></span>
+              <div className={`${stat} border-line bg-surface-sunken`} key={i}>
+                <span className={`${statValue} text-ink`}><Bone size="tiny" /></span>
+                <span className={statLabel}><Bone size="half" /></span>
               </div>
             ))}
           </div>
-          <div className="card project-panel">
-            <div className="project-section">
-              <div className="project-section-heading">
-                <h3 className="project-section-title"><Bone size="tiny" /></h3>
+          <div className={panel}>
+            <div className={section}>
+              <div className={sectionHead}>
+                <h3 className={sectionTitle}><Bone size="tiny" /></h3>
                 <Bone size="action" />
               </div>
-              <div className="project-row"><Bone size="short" /></div>
-              <div className="project-row"><Bone size="half" /></div>
+              <div className={row}><Bone size="short" /></div>
+              <div className={row}><Bone size="half" /></div>
             </div>
           </div>
         </Skeleton>
@@ -102,8 +118,8 @@ export function ProjectHubView(p: {
   const lastRunOf = (specId: string) => p.runs.find((r) => r.specId === specId && r.kind === 'run')?.runId ?? '';
   if (p.notFound) {
     return (
-      <main className="projects-shell">
-        <div className="projects-empty">
+      <main>
+        <div className={emptyState}>
           <Icon name="search" size={24} />
           <p>Esse projeto não foi encontrado.</p>
           <Link className="link-button" to="/projects">Voltar para Projetos</Link>
@@ -111,7 +127,7 @@ export function ProjectHubView(p: {
       </main>
     );
   }
-  if (!p.project) return <main className="projects-shell" />;
+  if (!p.project) return <main />;
   const pr = p.project;
   const doneCount = pr.specs.filter((s) => s.status === 'done' || s.status === 'complete').length;
   const percent = pr.specs.length === 0 ? null : Math.round((doneCount / pr.specs.length) * 100);
@@ -120,7 +136,7 @@ export function ProjectHubView(p: {
   const activeRuns = p.runs.filter((r) => ACTIVE.has(r.status));
   const totalCost = p.runs.reduce((sum, r) => sum + r.cost, 0);
   return (
-    <main className="projects-shell project-hub">
+    <main>
       <nav className="refine-breadcrumb" aria-label="Navegação">
         <Link to="/projects" aria-label="Voltar para projetos">
           <Icon name="home" size={16} />
@@ -129,17 +145,17 @@ export function ProjectHubView(p: {
         <span aria-hidden="true">›</span>
         <strong>{pr.projectId}</strong>
       </nav>
-      <header className="card project-hub-header">
-        <div className="project-panel-title">
-          <h1>{pr.name || pr.projectId}</h1>
-          <p className="project-hub-desc">{pr.description}</p>
-          <code>{pr.dir}</code>
+      <header className={header}>
+        <div className="min-w-0">
+          <h1 className={title}>{pr.name || pr.projectId}</h1>
+          <p className={desc}>{pr.description}</p>
+          <code className={dir}>{pr.dir}</code>
         </div>
-        <div className="project-hub-side">
+        <div className="grid flex-none justify-items-end gap-3">
           {percent === null ? null : (
-            <div className="project-hub-progress" role="img" aria-label={`${percent}% concluído`}>
-              <div className="project-hub-progress-bar"><span style={{ width: `${percent}%` }} /></div>
-              <span className="project-hub-progress-label">{percent}%</span>
+            <div className="flex flex-none items-center gap-2.5" role="img" aria-label={`${percent}% concluído`}>
+              <div className="h-2 w-32 overflow-hidden rounded-full bg-surface-muted"><span className="block h-full rounded-full bg-good-live transition-[width] duration-[var(--duration-fast)]" style={{ width: `${percent}%` }} /></div>
+              <span className="text-[0.8125rem] font-[650] text-ink-soft tabular-nums">{percent}%</span>
             </div>
           )}
           {pr.repoUrl ? (
@@ -151,37 +167,37 @@ export function ProjectHubView(p: {
           ) : null}
         </div>
       </header>
-      <div className="project-hub-stats">
-        <div className="project-hub-stat">
-          <span className="project-hub-stat-value">{pr.specs.length}</span>
-          <span className="project-hub-stat-label">{plural(pr.specs.length, 'spec', 'specs')}</span>
+      <div className={stats}>
+        <div className={`${stat} border-line bg-surface shadow-card`}>
+          <span className={`${statValue} text-ink`}>{pr.specs.length}</span>
+          <span className={statLabel}>{plural(pr.specs.length, 'spec', 'specs')}</span>
         </div>
-        <div className="project-hub-stat">
-          <span className="project-hub-stat-value">{agentRuns}</span>
-          <span className="project-hub-stat-label">{plural(agentRuns, 'execução', 'execuções')}</span>
+        <div className={`${stat} border-line bg-surface shadow-card`}>
+          <span className={`${statValue} text-ink`}>{agentRuns}</span>
+          <span className={statLabel}>{plural(agentRuns, 'execução', 'execuções')}</span>
         </div>
-        <div className={`project-hub-stat${activeRuns.length > 0 ? ' is-live' : ''}`}>
-          <span className="project-hub-stat-value">{activeRuns.length}</span>
-          <span className="project-hub-stat-label">em andamento</span>
+        <div className={`${stat} ${activeRuns.length > 0 ? 'border-good-line bg-good-soft shadow-card' : 'border-line bg-surface shadow-card'}`}>
+          <span className={`${statValue} ${activeRuns.length > 0 ? 'text-good' : 'text-ink'}`}>{activeRuns.length}</span>
+          <span className={statLabel}>em andamento</span>
         </div>
-        <div className="project-hub-stat">
-          <span className="project-hub-stat-value">{money(totalCost)}</span>
-          <span className="project-hub-stat-label">custo total</span>
+        <div className={`${stat} border-line bg-surface shadow-card`}>
+          <span className={`${statValue} text-ink`}>{money(totalCost)}</span>
+          <span className={statLabel}>custo total</span>
         </div>
       </div>
       {pr.services?.length ? (
-        <section className="card project-panel" data-testid="project-services">
-          <div className="project-section">
-            <div className="project-section-heading">
-              <div className="project-section-title">
-                <span className="project-section-icon"><Icon name="code" size={14} /></span>
-                <h3>Serviços</h3>
+        <section className={panel} data-testid="project-services">
+          <div className={section}>
+            <div className={sectionHead}>
+              <div className={sectionTitle}>
+                <span className={sectionIcon}><Icon name="code" size={14} /></span>
+                <h3 className={sectionHeading}>Serviços</h3>
                 <InfoTip label="Serviços" text={HELP.services} />
               </div>
             </div>
-            <ul className="project-service-list">
+            <ul className="m-0 grid list-none gap-2 p-0">
               {pr.services.map((s) => (
-                <li key={s.name} data-testid={`project-service-${s.name}`}>
+                <li className="flex flex-wrap items-center gap-3" key={s.name} data-testid={`project-service-${s.name}`}>
                   <strong>{s.name}</strong>
                   {s.repoUrl ? (
                     <a className="link-button" href={s.repoUrl} target="_blank" rel="noreferrer" aria-label={`Abrir ${s.name} no GitHub`}>
@@ -199,17 +215,17 @@ export function ProjectHubView(p: {
           </div>
         </section>
       ) : null}
-      {p.error ? <p className="error" role="alert">{p.error}</p> : null}
-      <section className="card project-panel">
-        <div className="project-section">
-          <div className="project-section-heading">
-            <div className="project-section-title">
-              <span className="project-section-icon"><Icon name="list" size={14} /></span>
-              <h3>Especificações</h3>
+      {p.error ? <p className="error m-0" role="alert">{p.error}</p> : null}
+      <section className={panel}>
+        <div className={section}>
+          <div className={sectionHead}>
+            <div className={sectionTitle}>
+              <span className={sectionIcon}><Icon name="list" size={14} /></span>
+              <h3 className={sectionHeading}>Especificações</h3>
               <InfoTip label="Especificações" text={HELP.specs} />
             </div>
             {creating ? null : (
-              <button type="button" className={allConcluded ? 'project-action primary' : 'project-action'} data-testid="open-new-spec" onClick={() => setCreating(true)}>
+              <button type="button" className={allConcluded ? action.primary : action.plain} data-testid="open-new-spec" onClick={() => setCreating(true)}>
                 <Icon name="plus" size={14} />
                 Nova spec
               </button>
@@ -217,69 +233,69 @@ export function ProjectHubView(p: {
           </div>
           {creating ? (
             <form
-              className="project-new-spec"
+              className="mt-3 flex flex-col flex-nowrap items-stretch gap-2"
               onSubmit={(e) => {
                 e.preventDefault();
                 p.onNewSpec(specDraft.trim(), specDescription);
               }}
             >
-              <label htmlFor="new-spec-description">Descreva o serviço</label>
-              <textarea id="new-spec-description" data-testid="new-spec-description" rows={5} autoFocus value={specDescription} onChange={(e) => setSpecDescription(e.target.value)} placeholder="Ex.: listar todos os usuários com o e-mail mascarado. Os documentos do projeto entram como contexto; só esta spec passa pelo refinamento." />
+              <label className={newSpecLabel} htmlFor="new-spec-description">Descreva o serviço</label>
+              <textarea className="w-full min-w-0 resize-y text-[0.8125rem]" id="new-spec-description" data-testid="new-spec-description" rows={5} autoFocus value={specDescription} onChange={(e) => setSpecDescription(e.target.value)} placeholder="Ex.: listar todos os usuários com o e-mail mascarado. Os documentos do projeto entram como contexto; só esta spec passa pelo refinamento." />
               {idShown ? (
                 <>
-                  <label htmlFor="new-spec-id">ID da spec</label>
-                  <input id="new-spec-id" data-testid="new-spec-id" value={specDraft} disabled={suggesting} onChange={(e) => setSpecDraft(e.target.value)} placeholder={suggesting ? 'Sugerindo…' : 'ex.: list-users'} />
+                  <label className={newSpecLabel} htmlFor="new-spec-id">ID da spec</label>
+                  <input className="h-8 w-full max-w-[24rem] min-w-0 text-[0.8125rem] pointer-coarse:h-[var(--control-height)]" id="new-spec-id" data-testid="new-spec-id" value={specDraft} disabled={suggesting} onChange={(e) => setSpecDraft(e.target.value)} placeholder={suggesting ? 'Sugerindo…' : 'ex.: list-users'} />
                 </>
               ) : null}
               {suggestError ? <span className="error" role="alert">{suggestError}</span> : null}
-              <div className="project-new-spec-actions">
-                <button type="button" className="project-action secondary" data-testid="cancel-new-spec" onClick={closeNewSpec}>Cancelar</button>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button type="button" className={action.secondary} data-testid="cancel-new-spec" onClick={closeNewSpec}>Cancelar</button>
                 {idShown ? (
-                  <button type="submit" className="project-action" data-testid="new-spec" disabled={suggesting || specDraft.trim() === '' || specDescription.trim() === ''}>Começar refinamento</button>
+                  <button type="submit" className={action.plain} data-testid="new-spec" disabled={suggesting || specDraft.trim() === '' || specDescription.trim() === ''}>Começar refinamento</button>
                 ) : (
-                  <button type="button" className="project-action" data-testid="continue-new-spec" disabled={specDescription.trim() === ''} onClick={() => void continueNewSpec()}>Continuar</button>
+                  <button type="button" className={action.plain} data-testid="continue-new-spec" disabled={specDescription.trim() === ''} onClick={() => void continueNewSpec()}>Continuar</button>
                 )}
               </div>
             </form>
           ) : null}
-          {allConcluded && !creating ? <p className="project-hub-note" data-testid="all-concluded">Todas as specs foram concluídas. Crie uma nova spec para a próxima entrega.</p> : null}
+          {allConcluded && !creating ? <p className="m-0 rounded-lg border border-good-line bg-good-soft px-3.5 py-2.5 text-[0.875rem] text-ink" data-testid="all-concluded">Todas as specs foram concluídas. Crie uma nova spec para a próxima entrega.</p> : null}
           {pr.specs.length === 0 ? (
-            <p className="project-empty">Nenhuma spec criada ainda. Use Nova spec para criar a primeira.</p>
+            <p className={empty}>Nenhuma spec criada ainda. Use Nova spec para criar a primeira.</p>
           ) : (
-            <ul className="project-rows">
+            <ul className={rows}>
               {pr.specs.map((s) => (
-                <li className="project-row" key={s.specId}>
-                  <span className="project-row-id">{s.specId}</span>
+                <li className={row} key={s.specId}>
+                  <span className={rowId}>{s.specId}</span>
                   {chip(s.activeRunId ? (p.runs.find((r) => r.runId === s.activeRunId)?.status ?? 'running') : s.status === 'running' ? 'idle' : s.status)}
-                  <span className="project-row-actions">
+                  <span className={rowActions}>
                     {CONTINUABLE.has(s.status) ? (
-                      <button type="button" className="project-action secondary" data-testid={`continue-${s.specId}`} aria-label={`Continuar spec ${s.specId}`} onClick={() => p.onContinue(s.specId)}>
+                      <button type="button" className={action.secondary} data-testid={`continue-${s.specId}`} aria-label={`Continuar spec ${s.specId}`} onClick={() => p.onContinue(s.specId)}>
                         Continuar spec
                       </button>
                     ) : null}
                     {CONTINUABLE.has(s.status) ? (
-                      <button type="button" className="project-action secondary" data-testid={`restart-${s.specId}`} aria-label={`Reiniciar spec ${s.specId}`} onClick={() => setPendingRestart(s.specId)}>
+                      <button type="button" className={action.secondary} data-testid={`restart-${s.specId}`} aria-label={`Reiniciar spec ${s.specId}`} onClick={() => setPendingRestart(s.specId)}>
                         Reiniciar
                       </button>
                     ) : null}
                     {s.activeRunId ? (
-                      <Link className="project-action primary" data-testid={`open-${s.specId}`} aria-label={`Abrir execução de ${s.specId}`} to={`/runs/${s.activeRunId}`}>
+                      <Link className={action.primary} data-testid={`open-${s.specId}`} aria-label={`Abrir execução de ${s.specId}`} to={`/runs/${s.activeRunId}`}>
                         Abrir execução
                         <Icon name="arrow-right" size={14} />
                       </Link>
                     ) : s.status === 'awaiting-validation' ? (
-                      <Link className="project-action primary" data-testid={`validate-${s.specId}`} aria-label={`Validar ${s.specId}`} to={`/runs/${lastRunOf(s.specId)}/validation`}>
+                      <Link className={action.primary} data-testid={`validate-${s.specId}`} aria-label={`Validar ${s.specId}`} to={`/runs/${lastRunOf(s.specId)}/validation`}>
                         Validar
                         <Icon name="arrow-right" size={14} />
                       </Link>
                     ) : s.status === 'done' ? (
                       lastRunOf(s.specId) ? (
-                        <Link className="project-action secondary" data-testid={`validation-${s.specId}`} aria-label={`Ver validação de ${s.specId}`} to={`/runs/${lastRunOf(s.specId)}/validation`}>
+                        <Link className={action.secondary} data-testid={`validation-${s.specId}`} aria-label={`Ver validação de ${s.specId}`} to={`/runs/${lastRunOf(s.specId)}/validation`}>
                           Ver validação
                         </Link>
                       ) : null
                     ) : (
-                      <button type="button" className="project-action primary" data-testid={`start-${s.specId}`} aria-label={`Iniciar execução de ${s.specId}`} onClick={() => p.onStart(s.specId)}>
+                      <button type="button" className={action.primary} data-testid={`start-${s.specId}`} aria-label={`Iniciar execução de ${s.specId}`} onClick={() => p.onStart(s.specId)}>
                         <Icon name="play" size={14} />
                         Iniciar execução
                       </button>
@@ -291,18 +307,18 @@ export function ProjectHubView(p: {
           )}
         </div>
       </section>
-      <section className="card project-panel">
-        <div className="project-section">
-          <div className="project-section-title">
-            <span className="project-section-icon"><Icon name="code" size={14} /></span>
-            <h3>Execuções</h3>
+      <section className={panel}>
+        <div className={section}>
+          <div className={sectionTitle}>
+            <span className={sectionIcon}><Icon name="code" size={14} /></span>
+            <h3 className={sectionHeading}>Execuções</h3>
           </div>
           {p.runs.length === 0 ? (
-            <p className="project-empty">Nenhuma execução registrada ainda. Use Iniciar execução em uma spec para começar.</p>
+            <p className={empty}>Nenhuma execução registrada ainda. Use Iniciar execução em uma spec para começar.</p>
           ) : (
             <>
-              <div className="project-table">
-                <table id={`runs-${pr.projectId}`}>
+              <div className="relative -mx-[0.6rem] min-w-0 overflow-x-auto [&_td]:h-12 [&_td]:py-2 [&_td]:align-middle [&_td]:whitespace-nowrap [&_th]:align-middle [&_th]:whitespace-nowrap">
+                <table className="m-0" id={`runs-${pr.projectId}`}>
                   <thead>
                     <tr>
                       <th scope="col">Execução</th>
@@ -311,34 +327,34 @@ export function ProjectHubView(p: {
                       <th scope="col">Status <InfoTip text={HELP.runStatus} /></th>
                       <th scope="col" className="num">Tokens <InfoTip text={HELP.tokens} /></th>
                       <th scope="col" className="num">Custo <InfoTip text={HELP.cost} /></th>
-                      <th scope="col"><span className="projects-sr-only">Ações</span></th>
+                      <th scope="col"><span className="sr-only">Ações</span></th>
                     </tr>
                   </thead>
                   <tbody>
                     {(showAll ? p.runs : p.runs.slice(0, RECENT_RUNS)).map((r) => (
-                      <tr key={r.runId} className={ACTIVE.has(r.status) ? 'is-live' : r.locked ? 'is-locked' : ''}>
-                        <td><Link className="project-run-link" to={`/runs/${r.runId}`} title={r.runId}>{runName(r)}</Link></td>
+                      <tr key={r.runId} className={ACTIVE.has(r.status) ? live : r.locked ? '[&>td]:text-ink-soft' : ''}>
+                        <td><Link className="font-medium no-underline hover:underline" to={`/runs/${r.runId}`} title={r.runId}>{runName(r)}</Link></td>
                         <td>{r.specId}</td>
-                        <td className="project-run-when">{when(r.at)}</td>
+                        <td className="whitespace-nowrap text-ink-soft tabular-nums">{when(r.at)}</td>
                         <td>{chip(r.status)}</td>
                         <td className="num">{grouped(r.tokens)}</td>
                         <td className="num">{money(r.cost)}</td>
                         <td>
-                          <span className="project-run-actions">
+                          <span className="flex flex-wrap justify-end gap-2">
                             {r.locked ? (
-                              <span className="project-run-locked" data-testid={`locked-${r.runId}`} title="A spec foi concluída: esta execução não pode ser retomada nem reprocessada.">
+                              <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[0.8125rem] text-ink-faint" data-testid={`locked-${r.runId}`} title="A spec foi concluída: esta execução não pode ser retomada nem reprocessada.">
                                 <Icon name="lock" size={14} />
                                 Somente leitura
                               </span>
                             ) : null}
                             {r.stoppable && ACTIVE.has(r.status) ? (
-                              <button type="button" className="project-action project-action-danger" data-testid={`stop-${r.runId}`} aria-label={`Parar ${r.runId}`} onClick={() => p.onStop(r.runId)}>
+                              <button type="button" className={action.danger} data-testid={`stop-${r.runId}`} aria-label={`Parar ${r.runId}`} onClick={() => p.onStop(r.runId)}>
                                 <Icon name="stop" size={14} />
                                 Parar
                               </button>
                             ) : null}
                             {!r.locked && (r.status === 'paused:auth' || r.status === 'interrupted') ? (
-                              <button type="button" className="project-action secondary" data-testid={`resume-${r.runId}`} aria-label={`Retomar ${r.runId}`} onClick={() => p.onResume(r.runId)}>
+                              <button type="button" className={action.secondary} data-testid={`resume-${r.runId}`} aria-label={`Retomar ${r.runId}`} onClick={() => p.onResume(r.runId)}>
                                 <Icon name="play" size={14} />
                                 Retomar
                               </button>
@@ -351,7 +367,7 @@ export function ProjectHubView(p: {
                 </table>
               </div>
               {p.runs.length > RECENT_RUNS ? (
-                <button type="button" className="project-more" aria-expanded={showAll} aria-controls={`runs-${pr.projectId}`} onClick={() => setShowAll(!showAll)}>
+                <button type="button" className="inline-flex h-8 items-center gap-1.5 justify-self-start border-0 bg-transparent p-0 text-[0.8125rem] text-ink-soft hover:not-disabled:text-ink hover:not-disabled:underline hover:not-disabled:underline-offset-3 aria-expanded:[&_svg]:rotate-180 pointer-coarse:h-[var(--control-height)]" aria-expanded={showAll} aria-controls={`runs-${pr.projectId}`} onClick={() => setShowAll(!showAll)}>
                   {showAll ? 'Mostrar menos' : `Mostrar todas (${p.runs.length})`}
                   <Icon name="chevron" size={14} />
                 </button>
@@ -361,24 +377,24 @@ export function ProjectHubView(p: {
         </div>
       </section>
       {p.drafts.length > 0 ? (
-        <section className="card project-panel">
-          <div className="project-section">
-            <div className="project-section-title">
-              <span className="project-section-icon"><Icon name="file" size={14} /></span>
-              <h3>Refinamentos em andamento</h3>
+        <section className={panel}>
+          <div className={section}>
+            <div className={sectionTitle}>
+              <span className={sectionIcon}><Icon name="file" size={14} /></span>
+              <h3 className={sectionHeading}>Refinamentos em andamento</h3>
               <InfoTip label="Refinamentos em andamento" text={HELP.drafts} />
             </div>
-            <ul className="project-rows">
+            <ul className={rows}>
               {p.drafts.map((d) => (
-                <li className="project-row" key={d.specId}>
-                  <span className="project-row-id">{d.specId}</span>
+                <li className={row} key={d.specId}>
+                  <span className={rowId}>{d.specId}</span>
                   {chip(d.state)}
-                  <span className="project-row-actions">
-                    <button type="button" className="project-action project-action-danger" data-testid={`delete-${d.specId}`} aria-label={`Excluir refinamento de ${d.specId}`} onClick={() => setPendingDelete(d.specId)}>
+                  <span className={rowActions}>
+                    <button type="button" className={action.danger} data-testid={`delete-${d.specId}`} aria-label={`Excluir refinamento de ${d.specId}`} onClick={() => setPendingDelete(d.specId)}>
                       <Icon name="trash" size={14} />
                       Excluir
                     </button>
-                    <Link className="project-action primary" data-testid={`refine-${d.specId}`} aria-label={`Abrir refinamento de ${d.specId}`} to={`/refine/${pr.projectId}/${d.specId}`}>
+                    <Link className={action.primary} data-testid={`refine-${d.specId}`} aria-label={`Abrir refinamento de ${d.specId}`} to={`/refine/${pr.projectId}/${d.specId}`}>
                       Abrir
                       <Icon name="arrow-right" size={14} />
                     </Link>

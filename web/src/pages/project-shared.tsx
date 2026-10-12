@@ -27,7 +27,25 @@ export const TONE: Record<string, string> = {
   'paused:quota': 'warn', 'paused:auth': 'warn', interrupted: 'warn', 'awaiting-validation': 'warn', answering: 'warn',
   blocked: 'bad', deadlocked: 'bad', 'phase-failed': 'bad', 'verification-failed': 'bad', 'deploy-failed': 'bad', 'launch-failed': 'bad', error: 'bad',
 };
-export const chip = (status: string) => <span className={TONE[status] ? `status-pill tone-${TONE[status]}` : 'status-pill'}>{LABEL[status] ?? status}</span>;
+// Compact row controls: the button, .secondary and .primary primitives supply the colors and hover grounds.
+const actionBase = 'inline-flex h-8 min-h-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md border px-3 text-[0.8125rem] font-semibold no-underline transition-colors duration-[var(--duration-fast)] pointer-coarse:h-[var(--control-height)]';
+export const action = {
+  plain: actionBase,
+  secondary: `secondary ${actionBase}`,
+  primary: `primary ${actionBase}`,
+  danger: `${actionBase} border-bad-line text-bad hover:not-disabled:border-bad hover:not-disabled:bg-bad-soft [&+*]:ml-1`,
+};
+export const panel = 'card grid px-6 pt-5 pb-6 max-md:p-4';
+export const sectionTitle = 'flex min-w-0 items-center gap-1';
+export const sectionHeading = 'm-0 text-[0.875rem] font-semibold tracking-normal text-ink normal-case';
+export const emptyState = 'grid justify-items-center gap-1 rounded-lg border border-line bg-surface-sunken px-6 py-10 text-center text-ink-faint [&_svg]:mb-2 [&_p]:m-0 [&_p]:max-w-[52ch] [&_p]:text-ink [&_p+p]:text-ink-soft [&_button]:mt-3';
+// Spec and draft rows share the list's columns, so ids, chips and actions line up; the list bleeds into the panel padding.
+export const rows = 'my-0 -mx-[0.6rem] grid list-none grid-cols-[minmax(0,16rem)_minmax(max-content,1fr)_auto] gap-x-3 p-0 max-lg:grid-cols-[minmax(0,1fr)_auto]';
+export const row = 'col-span-full grid min-h-12 grid-cols-subgrid items-center gap-y-2 border-b border-line px-[0.6rem] py-2 last:border-b-0 hover:bg-surface-sunken [&>.status-pill]:justify-self-start';
+export const rowId = 'min-w-0 text-[0.875rem] font-medium text-ink wrap-anywhere';
+export const rowActions = 'flex justify-end gap-2 max-lg:col-span-full max-lg:flex-wrap max-lg:justify-start';
+
+export const chip = (status: string) =><span className={TONE[status] ? `status-pill tone-${TONE[status]}` : 'status-pill'}>{LABEL[status] ?? status}</span>;
 
 export const HELP = {
   services: 'Cada serviço tem o seu repositório no GitHub. A plataforma são os contêineres que todos os serviços usam, como um broker de mensagens.',

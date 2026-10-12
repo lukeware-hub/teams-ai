@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { refineApi, runApi } from './api.js';
 import { Loading } from './components/Loading.js';
-import { ThemeSwitch } from './components/ThemeSwitch.js';
+import { AppShell } from './components/AppShell.js';
 import { Onboarding } from './pages/Onboarding.js';
 import { ProjectHub } from './pages/ProjectHub.js';
 import { Projects } from './pages/Projects.js';
@@ -25,23 +25,19 @@ export function Home() {
 export function App() {
   return (
     <BrowserRouter>
-      <header className="app-bar">
-        <Link className="app-brand" to="/">
-          Teams AI
-        </Link>
-        <ThemeSwitch />
-      </header>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/onboarding" element={<Onboarding />} />
-        <Route path="/status" element={<StatusPage />} />
-        <Route path="/projects" element={<Projects />} />
-        <Route path="/projects/:projectId" element={<ProjectHub />} />
-        <Route path="/runs/:runId" element={<RunPage />} />
-        <Route path="/refine/:projectId/:specId" element={<RefinementPage />} />
-        <Route path="/refine/:projectId/:specId/program" element={<ProgramPage />} />
-        <Route path="/runs/:runId/validation" element={<ValidationPage />} />
-      </Routes>
+      <AppShell>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/onboarding" element={<Onboarding />} />
+          <Route path="/status" element={<StatusPage />} />
+          <Route path="/projects" element={<Projects />} />
+          <Route path="/projects/:projectId" element={<ProjectHub />} />
+          <Route path="/runs/:runId" element={<RunPage />} />
+          <Route path="/refine/:projectId/:specId" element={<RefinementPage />} />
+          <Route path="/refine/:projectId/:specId/program" element={<ProgramPage />} />
+          <Route path="/runs/:runId/validation" element={<ValidationPage />} />
+        </Routes>
+      </AppShell>
     </BrowserRouter>
   );
 }

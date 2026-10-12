@@ -157,7 +157,7 @@ describe('ValidationView service card', () => {
     expect(screen.getByTestId('smoke-orders-AC-001').textContent).toContain('orders');
     expect(screen.getByTestId('smoke-inventory-AC-001').textContent).toContain('inventory');
     expect(screen.getByTestId('open-orders').getAttribute('aria-label')).toBe('Abrir Swagger (orders)');
-    expect(screen.getByTestId('recheck-service').parentElement!.className).toBe('service-status');
+    expect(screen.getByTestId('recheck-service').className).toContain('min-h-8');
     expect(screen.getByTestId('service-ledger').textContent).toContain(`${PUBLISHED_PORTS.from} a ${PUBLISHED_PORTS.to}`);
   });
 

@@ -311,7 +311,7 @@ describe('RefinementView', () => {
         />
       </MemoryRouter>,
     );
-    expect(screen.getByRole('status').className).toContain('claude-session-bad');
+    expect(screen.getByRole('status').className).toContain('bg-bad-soft');
   });
 
   it('shows the demand type, bug details, and downloadable derived JSON', () => {

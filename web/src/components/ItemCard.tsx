@@ -23,25 +23,27 @@ function friendlyDetail(detail: string) {
 export function ItemCard({ title, item, children, variant = 'default', subtitle, info, icon, illustration }: { title: string; item: Item | null; children?: ReactNode; variant?: 'default' | 'login'; subtitle?: string; info?: string; icon?: IconName; illustration?: string }) {
   const status = item === null ? 'checking' : item.ok ? 'ok' : 'todo';
   const statusLabel = status === 'checking' ? 'Verificando' : status === 'ok' ? 'Concluído' : 'Pendente';
+  const login = variant === 'login';
+  // Container queries let the card stack by its own width inside the frame.
   return (
-    <section className={`card card-${status} onboarding-card${variant === 'login' ? ' auth-login-card' : ''}${illustration ? ' has-illustration' : ''}`} data-testid={`card-${title}`}>
-      <header className="onboarding-card-header">
-        {icon ? <span className={`card-icon card-icon-${icon}`}><Icon name={icon} size={variant === 'login' ? 38 : 24} /></span> : <span className="dot" aria-label={status === 'checking' ? 'verificando' : status === 'ok' ? 'concluído' : 'pendente'} />}
-        <div className="card-title-block">
-          <div className="card-title-row">
-            <h2>{title}</h2>
+    <section className={`card card-${status} @container [&_.error]:mx-0 [&_.error]:mt-[0.8rem] [&_.error]:mb-0 px-[1.35rem] pb-5 ${status === 'ok' ? 'border-good-line' : ''} ${login ? 'overflow-hidden rounded-2xl pt-0 [&_:is(.link-button,.primary-button,.secondary)]:h-11 [&_:is(.link-button,.primary-button,.secondary)]:px-4' : 'pt-5'}${illustration ? ' has-illustration' : ''}`} data-testid={`card-${title}`}>
+      <header className={login ? '-mx-[1.35rem] mt-0 mb-[1.15rem] px-[1.35rem] py-5 @max-[40rem]:grid @max-[40rem]:grid-cols-[auto_minmax(0,1fr)] @max-[40rem]:gap-x-3 @max-[40rem]:gap-y-2' : '@max-[40rem]:flex-wrap @max-[40rem]:items-start'}>
+        {icon ? <span className={`inline-grid size-14 flex-none place-items-center rounded-tile border ${icon === 'github' ? 'border-line bg-surface-muted text-ink' : 'border-brand-claude-line bg-brand-claude-soft text-brand-claude'}${login ? ' @max-[40rem]:row-[1/span_2]' : ''}`}><Icon name={icon} size={login ? 38 : 24} /></span> : <span className={`dot flex-none ${status === 'ok' ? '[box-shadow:0_0_0_4px_var(--good-soft)]' : '[box-shadow:0_0_0_4px_var(--surface-muted)]'}`} aria-label={status === 'checking' ? 'verificando' : status === 'ok' ? 'concluído' : 'pendente'} />}
+        <div className={`min-w-0 flex-1 ${login ? '@max-[40rem]:col-start-2' : ''}`}>
+          <div className="flex min-w-0 items-center gap-[0.4rem]">
+            <h2 className={`flex-none ${login ? 'text-[1.25rem] tracking-[-0.02em]' : 'tracking-[-0.015em]'}`}>{title}</h2>
             {info ? <InfoTip text={info} /> : null}
           </div>
-          {subtitle ? <p className="card-subtitle">{subtitle}</p> : null}
+          {subtitle ? <p className="mx-0 mt-[0.3rem] mb-0 text-[0.9375rem] leading-[1.4] text-ink-soft">{subtitle}</p> : null}
         </div>
-        <span className="status-chip">{statusLabel}</span>
-        {variant !== 'login' && item?.secret?.set ? <code className="hint">…{item.secret.hint}</code> : null}
+        <span className={`status-chip ml-auto ${login ? '@max-[40rem]:col-start-2 @max-[40rem]:ml-0 @max-[40rem]:justify-self-start' : ''}`}>{statusLabel}</span>
+        {variant !== 'login' && item?.secret?.set ? <code className="hint flex-none text-[0.75rem]">…{item.secret.hint}</code> : null}
       </header>
-      <p className="detail onboarding-detail">
-        {variant === 'login' ? <span className="detail-icon"><Icon name="user" size={22} /></span> : null}
-        <span>{item === null ? 'Verificando…' : friendlyDetail(item.detail)}</span>
+      <p className={`detail mx-0 mt-0 leading-[1.45] wrap-anywhere ${login ? 'mb-[1.15rem] flex items-center gap-[0.85rem] border-b border-line pb-4 text-[1rem]' : 'mb-[1.1rem] text-[0.9375rem]'}`}>
+        {login ? <span className="inline-grid size-10 flex-none place-items-center rounded-full bg-accent-soft text-accent-text"><Icon name="user" size={22} /></span> : null}
+        <span className={login ? 'font-[650] text-ink' : undefined}>{item === null ? 'Verificando…' : friendlyDetail(item.detail)}</span>
       </p>
-      {illustration ? <div className="card-body-with-illustration"><div className="card-body-content">{children}</div><img className="card-illustration" src={illustration} alt="" /></div> : children}
+      {illustration ? <div className="grid grid-cols-[minmax(0,1fr)_minmax(16rem,0.48fr)] items-center gap-5 @max-[40rem]:grid-cols-[minmax(0,1fr)]"><div className="@container min-w-0">{children}</div><img className="block max-h-60 w-full rounded-lg object-contain [background:var(--art-plate)] [mix-blend-mode:var(--art-blend)] @max-[40rem]:hidden" src={illustration} alt="" /></div> : children}
     </section>
   );
 }

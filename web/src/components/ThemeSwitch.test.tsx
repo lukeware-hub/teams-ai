@@ -10,26 +10,26 @@ describe('ThemeSwitch', () => {
     delete document.documentElement.dataset.theme;
   });
 
-  it('starts on the light theme when nothing was chosen', () => {
+  it('starts on the dark theme when nothing was chosen', () => {
     render(<ThemeSwitch />);
-    expect(pressed('Tema claro')).toBe('true');
-    expect(document.documentElement.dataset.theme).toBe('light');
+    expect(pressed('Tema escuro')).toBe('true');
+    expect(document.documentElement.dataset.theme).toBe('dark');
   });
 
   it('applies and remembers the theme the user picks', () => {
     render(<ThemeSwitch />);
-    fireEvent.click(screen.getByRole('button', { name: 'Tema escuro' }));
-    expect(pressed('Tema escuro')).toBe('true');
-    expect(pressed('Tema claro')).toBe('false');
-    expect(document.documentElement.dataset.theme).toBe('dark');
-    expect(localStorage.getItem('teams-ai.theme')).toBe('dark');
+    fireEvent.click(screen.getByRole('button', { name: 'Tema claro' }));
+    expect(pressed('Tema claro')).toBe('true');
+    expect(pressed('Tema escuro')).toBe('false');
+    expect(document.documentElement.dataset.theme).toBe('light');
+    expect(localStorage.getItem('teams-ai.theme')).toBe('light');
   });
 
   it('restores a saved preference', () => {
-    localStorage.setItem('teams-ai.theme', 'dark');
+    localStorage.setItem('teams-ai.theme', 'light');
     render(<ThemeSwitch />);
-    expect(pressed('Tema escuro')).toBe('true');
-    expect(document.documentElement.dataset.theme).toBe('dark');
+    expect(pressed('Tema claro')).toBe('true');
+    expect(document.documentElement.dataset.theme).toBe('light');
   });
 
   it('follows the system preference, falling back to light without matchMedia', () => {
