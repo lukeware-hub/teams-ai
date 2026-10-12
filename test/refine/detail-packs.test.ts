@@ -47,6 +47,17 @@ describe('specPack', () => {
     expect(pack.feedback).toMatch(/never a fixed calendar date/);
     expect(pack.feedback).toMatch(/never assume an empty database/);
   });
+
+  it('lists, under an adjustment only, the started specs it changes (R11.7.4)', () => {
+    const delivered = { ...makeSpec({ specId: 'k-opme', status: 'done' }), acceptanceCriteria: [ac('AC-047', 'pedido registrado')] } as Spec;
+    const adjustment = item('opme-ajuste-1', 2, { dependsOn: ['opme'] });
+    const pack = specPack({ specHash: HASH, principles: [], docs, batch: [item('caso', 1), adjustment], all: [item('caso', 1), item('opme', 1), adjustment], previous: {}, rejection: {}, adjusts: { 'opme-ajuste-1': [delivered] } });
+    const [caso, adj] = pack.feedback!.split('## Item ').slice(1);
+    expect(adj).toContain('- k-opme:');
+    expect(adj).toContain('AC-047: Given g, when w, then pedido registrado');
+    expect(caso).not.toContain('k-opme');
+    expect(pack.feedback).toMatch(/only what its cited sections add or change/);
+  });
 });
 
 describe('preplanPack', () => {

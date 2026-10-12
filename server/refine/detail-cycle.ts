@@ -5,6 +5,7 @@ import { Governor } from '../budget/governor.js';
 import { canonicalJson, sha256 } from '../contracts/hash.js';
 import { Preplan } from '../contracts/preplan.js';
 import { computeSpecHash, Spec } from '../contracts/spec.js';
+import { adjusted } from './adjustments.js';
 import { isStarted } from './coverage.js';
 import type { StepOutcome } from '../runner/step.js';
 import { validatePreplan } from '../validators/preplan.js';
@@ -211,9 +212,11 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     await markRefining(draft, specId, null);
     await journal.fact(RefineEvent.SpecDerived, { cycle, key: item.key, specId, inputHash, rev: null, spec: null, issues, highWater });
   };
+  // R11.7.4: an adjustment is derived against the started specs it changes.
+  const adjustsOf = (item: Item) => adjusted(item.key, items).flatMap((k) => (specs[k]?.spec ? [specs[k]!.spec!] : []));
   const runSpecs = (batch: readonly Item[], rejection: Record<string, string[]>) => call(() => deps.runAgent<'spec'>({
     kind: 'spec', role: 'po', cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle,
-    pack: fitPackBudget(specPack({ specHash: hash, principles: deps.principles(), docs, batch, all: items, previous: Object.fromEntries(batch.map((i) => [i.key, previous.get(i.key)])), rejection })),
+    pack: fitPackBudget(specPack({ specHash: hash, principles: deps.principles(), docs, batch, all: items, previous: Object.fromEntries(batch.map((i) => [i.key, previous.get(i.key)])), rejection, adjusts: Object.fromEntries(batch.map((i) => [i.key, adjustsOf(i)])) })),
   }, ctx) as Promise<StepOutcome<SpecDetailOutput>>);
   const specTodo = items.filter((i) => !kept.has(i.key) && (!specs[i.key] || specs[i.key]!.inputHash !== specHash.get(i.key) || specs[i.key]!.spec === null));
   await runBatches(specTodo, runSpecs, (v: SpecDetailOutput, key) => v.specs.find((s) => s.key === key), acceptSpec, failSpec);

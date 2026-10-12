@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { BacklogItem } from '../../server/contracts/backlog.js';
 import { runCycle } from '../../server/refine/cycle.js';
 import { RefineEvent } from '../../server/refine/events.js';
+import { applyPatch } from '../../server/refine/patches.js';
 import { programEntries } from '../../server/refine/session.js';
 import { applyRefineEvent, emptyRefineState } from '../../server/refine/state.js';
 import { makeProject } from '../fixtures/contracts.js';
@@ -261,6 +262,27 @@ describe('backlog detailing in the refinement cycle', () => {
     await second.run(agent, 4);
     expect(approvals(second)).toHaveLength(1);
     expect(second.journal.state.status).toBe('ready');
+  });
+
+  it('adds the approved adjustment after its original, derives it against the delivered spec, and the program runs it', async () => {
+    const agent = fakeAgent(() => OUTLINE);
+    const { second } = await secondDraft(deliveredThenChanged, agent);
+    const [patch] = approvals(second);
+    await writeFile(second.draft.briefingMd, applyPatch(await readFile(second.draft.briefingMd, 'utf8'), patch!)!);
+    await second.journal.fact(RefineEvent.PatchAccepted, { patchId: patch!.patchId });
+    const from = agent.calls.length;
+    await second.run(agent, 3);
+    const backlog = second.journal.state.backlog!;
+    expect(backlog.items.find((i) => i.key === 'opme-ajuste-1')).toMatchObject({ dependsOn: ['opme'], rank: 4 });
+    const specCalls = agent.calls.slice(from).filter((c) => c.kind === 'spec');
+    expect(named(specCalls, 'Item')).toEqual(['opme-ajuste-1']);
+    expect(specCalls[0]!.feedback).toContain('- big-001-opme:');
+    expect(backlog.specs?.opme?.spec?.status).toBe('done');
+    expect(approvals(second)).toHaveLength(1);
+    expect(second.journal.state.status).toBe('ready');
+    const entries = programEntries('big-001', backlog, { 'big-001-opme': 'done' });
+    expect(entries.find((e) => e.key === 'opme')?.done).toBe(true);
+    expect(entries.find((e) => e.key === 'opme-ajuste-1')).toMatchObject({ dependsOn: ['big-001-opme'] });
   });
 
   it('retries an item alone with its rejection when its spec or pre-plan breaks a rule', async () => {

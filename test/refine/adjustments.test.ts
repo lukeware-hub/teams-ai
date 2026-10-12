@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BacklogItem } from '../../server/contracts/backlog.js';
 import type { SpecStatus } from '../../server/contracts/spec.js';
-import { adjustmentItems, adjustmentsDue, approvalPatch, approvedAdjustments, isAdjustment } from '../../server/refine/adjustments.js';
+import { adjusted, adjustmentItems, adjustmentsDue, approvalPatch, approvedAdjustments, isAdjustment } from '../../server/refine/adjustments.js';
 import { sourceHashes, type BacklogDocs } from '../../server/refine/details.js';
 import { applyPatch } from '../../server/refine/patches.js';
 import { sectionText } from '../../server/refine/sections.js';
@@ -28,6 +28,14 @@ describe('approved adjustments', () => {
     const items = adjustmentItems([item('caso'), opme], ['opme-ajuste-10', 'opme-ajuste-2', 'opme-ajuste-1', 'fat-ajuste-1']);
     expect(items.map((i) => [i.key, i.dependsOn])).toEqual([['opme-ajuste-1', ['opme']], ['opme-ajuste-2', ['opme-ajuste-1']], ['opme-ajuste-10', ['opme-ajuste-2']]]);
     expect(items[0]).toMatchObject({ title: 'Ajuste 1: Item opme', epic: 'supr', priority: 'P2', size: 'L', sources: [{ doc: 'flow.md', heading: '3. OPME' }, { doc: 'briefing.md', heading: 'Ajuste aprovado: opme-ajuste-1' }] });
+  });
+
+  it('names what an adjustment changes, oldest first: its original and its earlier adjustments', () => {
+    const items = [item('opme'), item('opme-ajuste-2'), item('opme-ajuste-1'), item('caso-ajuste-1')];
+    expect(adjusted('opme-ajuste-2', items)).toEqual(['opme', 'opme-ajuste-1']);
+    expect(adjusted('opme-ajuste-1', items)).toEqual(['opme']);
+    expect(adjusted('opme', items)).toEqual([]);
+    expect(adjusted('caso-ajuste-1', items)).toEqual([]);
   });
 });
 

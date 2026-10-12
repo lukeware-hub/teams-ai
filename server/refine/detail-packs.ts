@@ -21,6 +21,7 @@ const SPEC_RULES = [
   '- One end-to-end suite checks the criteria of every spec on one shared deploy, and the data of earlier tests stays there: never assume an empty database or exact global counts; assert only on data the test itself creates (a unique prefix, the ids it got back), and leave a case that needs a clean state to integration tests.',
   '- externalDependencies: the services the item needs, with the secret names (UPPER_SNAKE_CASE) it reads.',
   '- type is feature unless the item fixes a bug, which then needs its bug details.',
+  '- An item that adjusts specs already started or delivered (listed under it) changes software that already exists: its objectives, features and criteria cover only what its cited sections add or change against those specs; restate a criterion that changes in full as a new one, and never repeat what they already deliver.',
 ].join('\n');
 
 const PREPLAN_RULES = [
@@ -48,6 +49,8 @@ export function specPack(input: {
   all: readonly RankedItem[];
   previous: Readonly<Record<string, Spec | null | undefined>>;
   rejection: Readonly<Record<string, readonly string[] | undefined>>;
+  /** R11.7.4: for an adjustment, the started specs it changes, oldest first. */
+  adjusts?: Readonly<Record<string, readonly Spec[] | undefined>>;
 }): ContextPackInput {
   const cited = new Map<string, string>();
   for (const i of input.batch) {
@@ -63,6 +66,7 @@ export function specPack(input: {
       `- sources: ${i.sources.map((s) => `${s.doc} › ${s.heading}`).join('; ')}`,
       'Depends on:',
       dependencyLines(i, input.all),
+      ...(input.adjusts?.[i.key]?.length ? ['Adjusts these specs, already started or delivered:', ...input.adjusts[i.key]!.map((s) => [`- ${s.specId}:`, JSON.stringify({ objectives: s.objectives, features: s.features, outOfScope: s.outOfScope }, null, 2), criteriaLines(s)].join('\n'))] : []),
       ...(prev ? ['Previous spec (keep what still holds; echo the ids of the criteria you keep or edit):', JSON.stringify({ objectives: prev.objectives, features: prev.features, outOfScope: prev.outOfScope, externalDependencies: prev.externalDependencies }, null, 2), criteriaLines(prev)] : []),
       ...(input.rejection[i.key]?.length ? ['Your last attempt for this item was rejected; fix every point:', input.rejection[i.key]!.map((r) => `- ${r}`).join('\n')] : []),
     ].join('\n');

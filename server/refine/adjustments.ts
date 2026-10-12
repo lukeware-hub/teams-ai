@@ -43,6 +43,13 @@ export function adjustmentItems(items: readonly BacklogItem[], approved: readonl
   return out;
 }
 
+/** The keys an adjustment changes, oldest first: its original and the earlier adjustments of it in the outline. */
+export function adjusted(key: string, items: readonly Pick<BacklogItem, 'key'>[]): string[] {
+  const root = rootOf(key);
+  if (!root || !items.some((i) => i.key === root)) return [];
+  return [root, ...items.map((i) => i.key).filter((k) => rootOf(k) === root && numberOf(k) < numberOf(key)).sort((a, b) => numberOf(a) - numberOf(b))];
+}
+
 export interface DueAdjustment {
   key: string;
   /** The started spec it changes: the original's own, or its latest adjustment's. */
