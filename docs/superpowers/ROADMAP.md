@@ -618,9 +618,11 @@ The docs (project, briefing, stack, flow, design) stay the only hand-edited trut
 - Built (2026-10-08, cost slice, no plan+approval gate — see the process note on R11.5a): `ProgramItem.costUsd` (`server/program/controller.ts`), summed from the delivering run's and the `spec complete` run's `RUN_FINISHED.tokens.costUsd` (`server/program/service.ts` reads it alongside the existing blocked-task check), kept across a retry since it tracks cumulative spend, recorded on `delivered`/`done`/`failed` alike so a failed attempt's spend is not lost. `ProgramPanel` (`web/src/refine/ProgramPanel.tsx`) shows per-item cost and the program's running total. Unit tests: `test/program/controller.test.ts` (accumulates across the delivering + completion run; recorded on failure too), `test/program/service.test.ts` (surfaces the real `tokens.costUsd` on every terminal outcome).
 - Open: current step, PRs, the decision timeline (`DECISION_MADE` events already exist per run — R8.7/R11.P's own event streams confirm it) and quota are still untouched; the panel still polls rather than following the run journals' SSE live.
 
-### R11.7 Docs sync after refinement - `todo`
+### R11.7 Docs sync after refinement - `partial` (plan 76, 2026-10-12; slice 1 of 6 built)
 
 - Re-derive `planned` specs whose sources changed, add and retire items, adjustment specs for started or delivered specs.
+- Design and slices: `plans/2026-10-12-teams-ai-76-docs-sync-after-refinement.md` (R11.7.1 decisions travel with the spec, R11.7.2 a started or delivered spec is never re-derived, R11.7.3 only changed sources re-derive across drafts, R11.7.4 drift proposes an adjustment spec, R11.7.5 retired items leave main, R11.7.6 decisions reach the delivery).
+- Built R11.7.1 (plan 76): the spec carries `decisions`, every answered question of the refinement recorded when the spec is frozen, carried by each later derivation, listed to the PO, SM and Front as answered, dropped from the questions when asked again, and rendered in the brief of a continued spec (`withDecisions`, `server/refine/decisions.ts`). Seen live: the second continuation of `cancelar-pedido` asked again the five questions its first one had answered.
 
 ### R11.8 Acceptance criterion ids collide across the specs of one repo - `done` (unit, 2026-10-08)
 

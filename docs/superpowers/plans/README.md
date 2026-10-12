@@ -73,6 +73,7 @@ was implemented. Web UI block A (`2026-09-24-run-api-execution-ui-design.md`) is
 | 73 | [`2026-10-12-teams-ai-73-autonomy-follow-ups.md`](2026-10-12-teams-ai-73-autonomy-follow-ups.md) | Done — the gaps the reviews of plans 68 to 72 left open; ROADMAP R11.5. |
 | 74 | [`2026-10-12-teams-ai-74-measured-answer-floor.md`](2026-10-12-teams-ai-74-measured-answer-floor.md) | Done — the auto answer floor measures itself from the labelled answers; ROADMAP R11.5.7. |
 | 75 | [`2026-10-12-teams-ai-75-retry-inherits-delivered-work.md`](2026-10-12-teams-ai-75-retry-inherits-delivered-work.md) | Done — a run adopts only the work an earlier run delivered with the same definition; ROADMAP R11.5. |
+| 76 | [`2026-10-12-teams-ai-76-docs-sync-after-refinement.md`](2026-10-12-teams-ai-76-docs-sync-after-refinement.md) | Slice 1 done — the spec carries the decisions of its refinement, so a later version neither loses nor asks them again; ROADMAP R11.7. |
 
 Plans 17 and 19 never existed (not a gap in this audit - no file was ever created at those numbers).
 
