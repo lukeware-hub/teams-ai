@@ -21,10 +21,10 @@ import { fitPackBudget, PackTooLargeError } from './fit-pack.js';
 import { sha256 } from '../contracts/hash.js';
 import { flowHeadings } from '../validators/backlog.js';
 import { flowIsMermaid } from './sections.js';
-import { detailBacklog, maxCriterionInDraft, removeRetired } from './detail-cycle.js';
+import { detailBacklog, maxCriterionInDraft, retireDropped } from './detail-cycle.js';
 import { DOC_REL, draftHash, flowTemplate, keepBaseProject, readBase, readDerived, readDoc, stackTemplate, writeBacklogMd, writeDerived, writeDoc, writeProject, writeSpecsIndex, type DocFile, type Draft } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
-import { buildSpecsIndex, outlineOfIndex, type SpecsIndex } from './specs-index.js';
+import { buildSpecsIndex, outlineOfIndex, specIdOf, type SpecsIndex } from './specs-index.js';
 import type { JevValidationResult, ValidationDocs } from './jev-validation.js';
 import { refinePack } from './packs.js';
 import { applyPatch, checkPatch, patchId, unifiedDiff } from './patches.js';
@@ -144,6 +144,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       const last = before?.items.length ? before : await mainOutline(draft, before);
       // R11.7.4: adjustments are the orchestrator's: the PO never sees one, and each comes back from its approval in briefing.md.
       const previous = last && { ...last, items: last.items.filter((i) => !isAdjustment(i.key)) };
+      const idOf = (key: string) => before?.specs?.[key]?.specId ?? specIdOf(draft.specId, key, before?.keyIds);
       let rejection: string[] | undefined;
       let accepted: Extract<BacklogCheck, { ok: true }> | null = null;
       for (let attempt = 1; attempt <= 2 && !accepted; attempt++) {
@@ -178,7 +179,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       await writeSpecsIndex(draft, buildSpecsIndex(draft.specId, { ...ranked, keyIds: before?.keyIds }));
       const outline = { cycle, project, epics: ranked.epics, items: ranked.items, flowHeadings: flowHeadings(docs['flow.md']), draftHash: hash };
       // Remove first: the outline event drops the rows that name the retired items' directories.
-      await removeRetired(draft, before, ranked.items);
+      const keys = new Set(ranked.items.map((i) => i.key));
+      await retireDropped(draft, [...new Set([...Object.keys(before?.specs ?? {}), ...(last?.items ?? []).map((i) => i.key)])].filter((k) => !keys.has(k)).map(idOf));
       await journal.fact(RefineEvent.BacklogDerived, outline);
       // The same merge the reducer makes: the detail of items that still exist carries over.
       const merged = { ...journal.state, backlog: before };

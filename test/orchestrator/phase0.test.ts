@@ -131,6 +131,21 @@ describe('phase 0', () => {
       expect(JSON.parse(await show('project.json')).constraints).toEqual(['from main', 'from draft']);
       await run.close();
     });
+
+    // R11.7.5: a retirement reaches main, but never over a spec another program started meanwhile.
+    it('publishes a retired spec, and never replaces the folder of a spec main started or delivered', { timeout: 60_000 }, async () => {
+      const at = (status: string) => `${JSON.stringify({ specId: 'x', status }, null, 2)}\n`;
+      const run = await setup(
+        { 'specs/old/spec.json': at('planned'), 'specs/busy/spec.json': at('running'), 'specs/busy/spec.md': 'main\n' },
+        { 'specs/old/spec.json': at('planned'), 'specs/busy/spec.json': at('planned'), 'specs/busy/spec.md': 'base\n' },
+        { 'specs/old/spec.json': at('retired'), 'specs/busy/spec.json': at('retired'), 'specs/busy/spec.md': 'draft\n' },
+      );
+      expect(await run.executePhase0()).toEqual({ ok: true });
+      expect(JSON.parse(await show('specs/old/spec.json')).status).toBe('retired');
+      expect(JSON.parse(await show('specs/busy/spec.json')).status).toBe('running');
+      expect(await show('specs/busy/spec.md')).toBe('main');
+      await run.close();
+    });
   });
 
   it('creates the repository from the draft when none exists', { timeout: 60_000 }, async () => {

@@ -153,12 +153,17 @@ describe('backlog detailing in the refinement cycle', () => {
     return { second, agent, detailing: agent.calls.slice(from).filter((c) => c.kind === 'spec' || c.kind === 'preplan') };
   };
   const named = (calls: Array<{ feedback: string }>, header: string) => calls.flatMap((c) => [...c.feedback.matchAll(new RegExp(`^## ${header} ([a-z0-9-]+):`, 'gm'))].map((m) => m[1])).sort();
+  // Main's copy of an item spec moved on, as a program of the first draft would leave it.
+  const markStatus = async (d: Env, key: string, status: string) => {
+    const file = `${d.draft.base}/specs/big-001-${key}/spec.json`;
+    await writeFile(file, JSON.stringify({ ...JSON.parse(await readFile(file, 'utf8')), status, specVersion: 1, specHash: H }));
+  };
   // R11.7.4: main delivered `opme`, and later its cited flow section changed.
   const deliveredThenChanged = async (d: Env) => {
-    const file = `${d.draft.base}/specs/big-001-opme/spec.json`;
-    await writeFile(file, JSON.stringify({ ...JSON.parse(await readFile(file, 'utf8')), status: 'done', specVersion: 1, specHash: H }));
+    await markStatus(d, 'opme', 'done');
     await writeFile(d.draft.flowMd, FLOW.replace('C --> D', 'C --> D2[Cotação]'));
   };
+  const withoutFat = (d: Env) => writeFile(d.draft.flowMd, FLOW.replace('%% 4. Faturamento\n  D --> E\n', ''));
   const approvals = (env: Env) => env.journal.state.patches.filter((p) => p.replace.startsWith('## Ajuste aprovado'));
 
   it("reuses main's spec and pre-plan of every item whose inputs did not change", async () => {
@@ -195,11 +200,11 @@ describe('backlog detailing in the refinement cycle', () => {
     outline = OUTLINE.filter((i) => i.key !== 'fat');
     await writeFile(second.draft.flowMd, FLOW.replace('%% 4. Faturamento\n  D --> E\n', ''));
     await second.run(agent, 3);
-    expect(await exists(fat)).toBe(false);
+    expect(JSON.parse(await readFile(fat, 'utf8')).status).toBe('retired');
     outline = OUTLINE;
     await writeFile(second.draft.flowMd, FLOW);
     await second.run(agent, 4);
-    expect(await exists(fat)).toBe(true);
+    expect(JSON.parse(await readFile(fat, 'utf8')).status).toBe('planned');
     expect(second.journal.state.status).toBe('ready');
   });
 
@@ -283,6 +288,14 @@ describe('backlog detailing in the refinement cycle', () => {
     const entries = programEntries('big-001', backlog, { 'big-001-opme': 'done' });
     expect(entries.find((e) => e.key === 'opme')?.done).toBe(true);
     expect(entries.find((e) => e.key === 'opme-ajuste-1')).toMatchObject({ dependsOn: ['big-001-opme'] });
+  });
+
+  // R11.7.5: an item that leaves the outline leaves main too, as a retired spec Phase 0 publishes.
+  it('retires a planned item the new outline dropped, and leaves it out of specs.json', async () => {
+    const { second } = await secondDraft(withoutFat, fakeAgent(() => OUTLINE.filter((i) => i.key !== 'fat')));
+    expect(JSON.parse(await readFile(`${second.itemDir('fat')}/spec.json`, 'utf8')).status).toBe('retired');
+    expect(JSON.parse(await readFile(`${second.docs}/specs.json`, 'utf8')).specs.map((s: { key: string }) => s.key)).toEqual(['caso', 'triagem', 'opme']);
+    expect(second.journal.state.status).toBe('ready');
   });
 
   it('retries an item alone with its rejection when its spec or pre-plan breaks a rule', async () => {

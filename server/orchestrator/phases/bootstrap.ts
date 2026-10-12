@@ -7,6 +7,7 @@ import { ensureRepo, NOT_FOUND } from '../../git/github.js';
 import type { Plan } from '../../contracts/plan.js';
 import { Intent, OrchEvent } from '../events.js';
 import { mergeDoc, sameDoc as same } from '../../git/merge-doc.js';
+import { isStarted } from '../../refine/coverage.js';
 import { renderWorkflows, validateWorkflow } from '../workflows.js';
 import { serviceWorkspace } from '../workspace.js';
 import { commitAndMergeDocs, commitDocs, docsCommitKey, docsWorktree, type PhaseDeps, type PhaseResult } from './shared.js';
@@ -87,6 +88,9 @@ export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docs
     const source = path.join(opts.docsDir, rel);
     const target = path.join(wt, 'docs', rel);
     if (!rel.startsWith(own)) {
+      // A spec main started or delivered keeps main's folder: no draft copy, a retired one included, replaces it.
+      const folder = /^specs\/([^/]+)\//.exec(rel)?.[1];
+      if (folder && (await startedOnMain(path.join(wt, 'docs', 'specs', folder, 'spec.json')))) continue;
       const main = await read(target);
       if (hasBase && main !== null) {
         const [base, draft] = await Promise.all([read(path.join(baseDir, rel)), read(source)]);
@@ -162,6 +166,15 @@ async function cloneOrCreate(deps: PhaseDeps & { ghExec: Exec }, service: string
 
 const exists = (p: string) => fs.access(p).then(() => true, () => false);
 const read = (p: string) => fs.readFile(p, 'utf8').catch(() => null);
+
+/** Whether main's copy of a spec says its run started or it was delivered (R11.7.5). */
+async function startedOnMain(specJson: string): Promise<boolean> {
+  try {
+    return isStarted((JSON.parse((await read(specJson)) ?? '{}') as { status?: string }).status);
+  } catch {
+    return false;
+  }
+}
 
 /** Every file under `dir`, as `/`-separated relative paths. */
 async function listFiles(dir: string, rel = ''): Promise<string[]> {

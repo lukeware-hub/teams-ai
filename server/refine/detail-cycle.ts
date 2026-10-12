@@ -81,11 +81,18 @@ export async function maxCriterionInDraft(draft: Draft): Promise<number> {
   return max;
 }
 
-/** The generated files of items a new outline dropped; keys come from state, never from a scan of main's spec dirs. */
-export async function removeRetired(draft: Draft, before: BacklogState | null, items: ReadonlyArray<{ key: string }>): Promise<void> {
-  const kept = new Set(items.map((i) => i.key));
-  for (const [key, row] of Object.entries(before?.specs ?? {})) {
-    if (!kept.has(key)) await fs.rm(itemDir(draft, row.specId), { recursive: true, force: true, maxRetries: 3 });
+/**
+ * The items a new outline dropped (R11.7.5): a spec main has planned gets main's folder back with the status `retired`,
+ * which Phase 0 publishes; any other folder of theirs leaves the draft. Ids come from state and the outline the PO was
+ * shown, never from a scan of main's spec dirs.
+ */
+export async function retireDropped(draft: Draft, specIds: readonly string[]): Promise<void> {
+  for (const specId of specIds) {
+    const onMain = await readMainSpec(draft, specId);
+    if (onMain?.status === 'planned' || onMain?.status === 'refining') {
+      await restoreFromBase(draft, specId);
+      await fs.writeFile(path.posix.join(itemDir(draft, specId), 'spec.json'), json({ ...onMain, status: 'retired' }));
+    } else await fs.rm(itemDir(draft, specId), { recursive: true, force: true, maxRetries: 3 });
   }
 }
 
