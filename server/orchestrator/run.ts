@@ -39,7 +39,7 @@ import { validateDocs } from '../validators/docs.js';
 import { readmePack, runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
 import { TaskRunner, type TaskRunnerDeps } from './task-runner.js';
 import { portKey, registeredPorts } from '../deploy/port-registry.js';
-import { eventsFile, expandHome, graphDir, mergedByPriorRuns, nextRunId, runDir, serviceWorkspace, sessionDir, stateFile, stepDir, worktreeDir, type Workspace } from './workspace.js';
+import { deliveredByPriorRuns, eventsFile, expandHome, graphDir, mergedByPriorRuns, nextRunId, runDir, serviceWorkspace, sessionDir, stateFile, stepDir, worktreeDir, type Workspace } from './workspace.js';
 import type { DeployTarget } from '../deploy/target.js';
 import { E2E_GATE, runE2e } from '../exec/e2e.js';
 import { gateReachableUrl, runSmoke } from '../exec/smoke.js';
@@ -137,6 +137,8 @@ export class Run {
   private readonly log: (line: string) => void;
   private readonly maxParallel: number;
   private plan: AnyPlan | null = null;
+  /** Plan task ids an earlier run of this spec delivered, in any version; read when Phase 3 starts. */
+  private deliveredBefore: ReadonlySet<string> = new Set();
   private techSpecText = '';
   private adrs: Array<{ id: string; title: string; text: string }> = [];
   /** R12.6: each service's address on the shared network, and the design doc, for steps in a service's repository. */
@@ -488,6 +490,7 @@ export class Run {
       routing: cfg.routing,
       policy: { ...DEFAULT_POLICY, ...cfg.retry },
       packBase: view.service ? () => ({ ...this.packBase(), service: { name: view.service!, plan: view.plan, addresses: Object.fromEntries(Object.entries(this.addresses).filter(([s]) => s !== view.service)), design: this.design } }) : this.packBase,
+      deliveredBefore: this.deliveredBefore,
       handoffs: () => this.handoffs,
       boundaries: async () => {
         const g = this.deps.graphify;
@@ -629,9 +632,10 @@ export class Run {
     const workflows = await this.executeWorkflows(this.plan);
     if (!workflows.ok) return this.finish('phase-failed', workflows.reason);
     if (!this.journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 3)) await this.journal.fact(OrchEvent.PhaseStarted, { phase: 3 });
-    // R11.4 retry: a fresh run's journal starts every task 'planned'; one an earlier run of this spec delivered with the
+    // R11.4 retry: a fresh run's journal starts every task 'planned'; one an earlier run of this same version delivered with the
     // same definition is adopted as 'merged' straight away instead of redone (Phase 4 still proves it from the current repo's JUnit).
-    const inherited = await mergedByPriorRuns(this.deps.ws, this.deps.spec.specId, this.runId, this.plan.tasks);
+    const inherited = await mergedByPriorRuns(this.deps.ws, this.deps.spec.specId, this.runId, this.plan.tasks, this.deps.spec.specHash!);
+    this.deliveredBefore = await deliveredByPriorRuns(this.deps.ws, this.deps.spec.specId, this.runId);
     for (const task of this.plan.tasks) {
       const t = this.journal.state.tasks.get(task.id);
       if (t && t.state === 'planned') await this.journal.fact(RunEvent.TaskStateChanged, { taskId: task.id, to: inherited.has(task.id) ? 'merged' : 'ready' });

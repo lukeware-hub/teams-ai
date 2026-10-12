@@ -91,6 +91,7 @@ function deps(over: Partial<TaskRunnerDeps> & { agent?: Agent; merge?: Partial<M
     packBase: () => ({ spec, project, specHash: HASH, assumptions: journal.assumptions(), budgetTokens: 8000 }),
     handoffs: () => [],
     boundaries: async () => ['src'],
+    deliveredBefore: new Set(),
     ...rest,
   };
 }
@@ -257,6 +258,19 @@ describe('TaskRunner: implementing', () => {
     await journal.fact(RunEvent.TaskPlanned, { task: done });
     await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T2', to: 'ready' });
     const r = new TaskRunner('T2', deps({ plan: makePlan(spec, { tasks: [T1, done] }), agent: async () => ok({ specHash: HASH, status: 'done', summary: 'already there', changedFiles: [], commitMessage: 'feat: nothing' }) }));
+    await r.advance();
+    expect(journal.state.tasks.get('T2')).toMatchObject({ state: 'merged', attempts: 0 });
+    expect(journal.events.some((e) => e.type === OrchEvent.AlreadyOnMain && e.data.taskId === 'T2')).toBe(true);
+  });
+
+  // Plan 75 review: a new version re-plans the scaffold of a project's first spec, which has no criteria, so only
+  // an earlier delivery of the same id tells an empty diff apart from a Dev that did nothing.
+  it('a Dev that changes nothing on a task an earlier run of the spec delivered adopts it as merged, even with no criteria', async () => {
+    const scaffold = makePlanTask({ id: 'T2', criteriaRefs: [], affectedPaths: ['src/not-on-main.ts'] });
+    await journal.fact(RunEvent.TaskPlanned, { task: scaffold });
+    await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T2', to: 'ready' });
+    const agent: Agent = async () => ok({ specHash: HASH, status: 'done', summary: 'nothing left to change', changedFiles: [], commitMessage: 'feat: nothing' });
+    const r = new TaskRunner('T2', deps({ deliveredBefore: new Set(['T2']), plan: makePlan(spec, { tasks: [T1, scaffold] }), agent }));
     await r.advance();
     expect(journal.state.tasks.get('T2')).toMatchObject({ state: 'merged', attempts: 0 });
     expect(journal.events.some((e) => e.type === OrchEvent.AlreadyOnMain && e.data.taskId === 'T2')).toBe(true);

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG } from '../../server/config/config.js';
 import type { PlanTask } from '../../server/contracts/plan.js';
-import { eventsFile, expandHome, firstSpecForRun, firstSpecForSpec, graphDir, mergedByPriorRuns, nextRunId, olderLiveRun, serviceWorkspace, specForRun, stepDir, workspacePaths, worktreeDir } from '../../server/orchestrator/workspace.js';
+import { deliveredByPriorRuns, eventsFile, expandHome, firstSpecForRun, firstSpecForSpec, graphDir, mergedByPriorRuns, nextRunId, olderLiveRun, serviceWorkspace, specForRun, stepDir, workspacePaths, worktreeDir } from '../../server/orchestrator/workspace.js';
 import { EventStore } from '../../server/store/event-store.js';
 
 let dir = '';
@@ -149,77 +149,92 @@ describe('specForRun', () => {
   });
 });
 
-describe('mergedByPriorRuns', () => {
-  const task = (id: string, description = `do ${id}`): PlanTask => ({ id, title: id, description, owner: 'dev', origin: 'plan', criteriaRefs: ['AC-001'], affectedPaths: [`src/${id}.ts`], dependsOn: [] });
-  const setup = async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-runs-'));
-    const ws = { ...workspacePaths(DEFAULT_CONFIG, 'shop', '/home/u'), runs: dir };
-    // A run as the orchestrator journals it: its plan, then what it merged, adopted or found on main.
-    const run = async (id: string, o: { projectId?: string; planned: PlanTask[]; merged?: string[]; onMain?: string[]; adopted?: string[]; replanned?: { taskId: string; replacements: { id: string }[] }[]; finished?: boolean }) => {
-      const s = await EventStore.open({ file: eventsFile(ws, id), runId: id, specHash: 'h' });
-      await s.append({ type: 'RUN_STARTED', data: { runId: id, specId: 'a-001', projectId: o.projectId ?? 'shop' } });
-      for (const t of o.planned) await s.append({ type: 'TASK_PLANNED', data: { task: t } });
-      for (const r of o.replanned ?? []) await s.append({ type: 'TASK_REPLANNED', data: r });
-      for (const taskId of o.merged ?? []) await s.append({ type: 'PR_MERGED', data: { taskId, pr: 1 } });
-      for (const taskId of o.onMain ?? []) await s.append({ type: 'TASK_ALREADY_ON_MAIN', data: { taskId, paths: [], summary: '' } });
-      const merged = [...(o.merged ?? []), ...(o.onMain ?? []), ...(o.adopted ?? [])];
-      if (o.finished !== false) await s.append({ type: 'RUN_FINISHED', data: { result: 'verification-failed', reason: 'x', merged, blocked: [], tokens: {} } });
-      await s.close();
-    };
-    return { ws, run };
+const task = (id: string, description = `do ${id}`): PlanTask => ({ id, title: id, description, owner: 'dev', origin: 'plan', criteriaRefs: ['AC-001'], affectedPaths: [`src/${id}.ts`], dependsOn: [] });
+const priorRuns = async () => {
+  dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-runs-'));
+  const ws = { ...workspacePaths(DEFAULT_CONFIG, 'shop', '/home/u'), runs: dir };
+  // A run as the orchestrator journals it: its plan, then what it merged, adopted or found on main.
+  const run = async (id: string, o: { projectId?: string; specHash?: string; planned: PlanTask[]; merged?: string[]; onMain?: string[]; adopted?: string[]; replanned?: { taskId: string; replacements: { id: string }[] }[]; finished?: boolean }) => {
+    const s = await EventStore.open({ file: eventsFile(ws, id), runId: id, specHash: o.specHash ?? 'h' });
+    await s.append({ type: 'RUN_STARTED', data: { runId: id, specId: 'a-001', projectId: o.projectId ?? 'shop' } });
+    for (const t of o.planned) await s.append({ type: 'TASK_PLANNED', data: { task: t } });
+    for (const r of o.replanned ?? []) await s.append({ type: 'TASK_REPLANNED', data: r });
+    for (const taskId of o.merged ?? []) await s.append({ type: 'PR_MERGED', data: { taskId, pr: 1 } });
+    for (const taskId of o.onMain ?? []) await s.append({ type: 'TASK_ALREADY_ON_MAIN', data: { taskId, paths: [], summary: '' } });
+    const merged = [...(o.merged ?? []), ...(o.onMain ?? []), ...(o.adopted ?? [])];
+    if (o.finished !== false) await s.append({ type: 'RUN_FINISHED', data: { result: 'verification-failed', reason: 'x', merged, blocked: [], tokens: {} } });
+    await s.close();
   };
+  return { ws, run };
+};
 
+describe('mergedByPriorRuns', () => {
   it('adopts what earlier runs of the same spec in this project delivered, ignoring later and other-project runs', async () => {
-    const { ws, run } = await setup();
+    const { ws, run } = await priorRuns();
     await run('a-001-r1', { planned: [task('T0-scaffold'), task('T1')], merged: ['T0-scaffold', 'T1'] });
     await run('a-001-r2', { planned: [task('T2')], merged: ['T2'] });
     // A later run (r4) and a run of another project sharing the spec id must not count.
     await run('a-001-r4', { planned: [task('T3')], merged: ['T3'] });
     await run('a-001-r5', { projectId: 'other-shop', planned: [task('T9')], merged: ['T9'] });
     const tasks = [task('T0-scaffold'), task('T1'), task('T2'), task('T3'), task('T9')];
-    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r3', tasks)).toEqual(new Set(['T0-scaffold', 'T1', 'T2']));
+    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r3', tasks, 'h')).toEqual(new Set(['T0-scaffold', 'T1', 'T2']));
   });
 
   // Live finding (loja-eventos/cancelar-pedido run 3, 2026-10-12): the spec's second version re-planned its six
   // tasks with new definitions under the same ids; all six were adopted because run 1 merged those ids, and no code changed.
   it('does not adopt a task whose definition changed since an earlier run delivered it', async () => {
-    const { ws, run } = await setup();
+    const { ws, run } = await priorRuns();
     await run('a-001-r1', { planned: [task('T1', 'create the route')], merged: ['T1'] });
-    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r2', [task('T1', 'create the route and document its 404')])).toEqual(new Set());
+    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r2', [task('T1', 'create the route and document its 404')], 'h')).toEqual(new Set());
+  });
+
+  // Plan 75 review: a new version may reword a criterion its unchanged task references, so it checks every task again.
+  it('does not adopt from an earlier run of another version of the spec, even with the same definition', async () => {
+    const { ws, run } = await priorRuns();
+    await run('a-001-r1', { specHash: 'h-old', planned: [task('T1')], merged: ['T1'] });
+    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r2', [task('T1')], 'h')).toEqual(new Set());
+  });
+
+  // Plan 75 review: a run journaled before a schema default existed still matches the same task parsed today.
+  it('adopts a task journaled before a field it has today had a default', async () => {
+    const { ws, run } = await priorRuns();
+    const { origin: _, ...before } = task('T1');
+    await run('a-001-r1', { planned: [before as PlanTask], merged: ['T1'] });
+    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r2', [task('T1')], 'h')).toEqual(new Set(['T1']));
   });
 
   it('does not adopt a task an earlier run only adopted, so a wrong adoption never travels to the next run', async () => {
-    const { ws, run } = await setup();
+    const { ws, run } = await priorRuns();
     await run('a-001-r1', { planned: [task('T1', 'old')], merged: ['T1'] });
     await run('a-001-r2', { planned: [task('T1', 'new')], adopted: ['T1'] });
-    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r3', [task('T1', 'new')])).toEqual(new Set());
+    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r3', [task('T1', 'new')], 'h')).toEqual(new Set());
   });
 
   it('adopts a task an earlier run found already on main', async () => {
-    const { ws, run } = await setup();
+    const { ws, run } = await priorRuns();
     await run('a-001-r1', { planned: [task('T1')], onMain: ['T1'] });
-    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r2', [task('T1')])).toEqual(new Set(['T1']));
+    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r2', [task('T1')], 'h')).toEqual(new Set(['T1']));
   });
 
   it('adopts what an earlier run merged even when it stopped before finishing', async () => {
-    const { ws, run } = await setup();
+    const { ws, run } = await priorRuns();
     await run('a-001-r1', { planned: [task('T1'), task('T2')], merged: ['T1'], finished: false });
-    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r2', [task('T1'), task('T2')])).toEqual(new Set(['T1']));
+    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r2', [task('T1'), task('T2')], 'h')).toEqual(new Set(['T1']));
   });
 
   it('adopts a replaced task once every task that replaced it merged', async () => {
-    const { ws, run } = await setup();
+    const { ws, run } = await priorRuns();
     await run('a-001-r1', {
       planned: [task('T0'), task('T1')],
       replanned: [{ taskId: 'T0', replacements: [{ id: 'T0-r1' }] }, { taskId: 'T1', replacements: [{ id: 'T1-r1' }, { id: 'T1-r2' }] }],
       merged: ['T0-r1', 'T1-r1'],
     });
-    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r2', [task('T0'), task('T1')])).toEqual(new Set(['T0']));
+    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r2', [task('T0'), task('T1')], 'h')).toEqual(new Set(['T0']));
   });
 
   it('is empty for a spec with no earlier runs', async () => {
-    const { ws } = await setup();
-    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r1', [task('T1')])).toEqual(new Set());
+    const { ws } = await priorRuns();
+    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r1', [task('T1')], 'h')).toEqual(new Set());
   });
 
   // Live finding (R11.3/4 program run, r4-r7, 2026-10-07): T900-fix-1, planned by Phase 4 for a criterion a prior
@@ -227,9 +242,19 @@ describe('mergedByPriorRuns', () => {
   // (an owner correction to an unprovable AC), Phase 4 never got a fresh chance to plan a fix for it again: the old
   // fix task stayed adopted as done, silently answering for a criterion it was never re-checked against.
   it('never adopts a T900-fix-* task: a fix task answers one verification attempt, never carried into a retry', async () => {
-    const { ws, run } = await setup();
+    const { ws, run } = await priorRuns();
     await run('a-001-r1', { planned: [task('T0-scaffold'), task('T900-fix-1')], merged: ['T0-scaffold', 'T900-fix-1'] });
-    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r2', [task('T0-scaffold'), task('T900-fix-1')])).toEqual(new Set(['T0-scaffold']));
+    expect(await mergedByPriorRuns(ws, 'a-001', 'a-001-r2', [task('T0-scaffold'), task('T900-fix-1')], 'h')).toEqual(new Set(['T0-scaffold']));
+  });
+});
+
+describe('deliveredByPriorRuns', () => {
+  it('lists the plan tasks earlier runs delivered in any version, never one a run only adopted', async () => {
+    const { ws, run } = await priorRuns();
+    await run('a-001-r1', { specHash: 'h-old', planned: [task('T0-scaffold'), task('T1')], merged: ['T0-scaffold', 'T1'] });
+    await run('a-001-r2', { planned: [task('T2', 'new')], adopted: ['T2'] });
+    await run('a-001-r3', { planned: [task('T3')], onMain: ['T3'] });
+    expect(await deliveredByPriorRuns(ws, 'a-001', 'a-001-r4')).toEqual(new Set(['T0-scaffold', 'T1', 'T3']));
   });
 });
 

@@ -27,8 +27,8 @@
 
 ## Limits
 
-- A new version whose SM rewrites a task it does not change still costs one Dev step for that task.
-- A re-planned task with nothing to change that has a glob path or no criteria still fails on its empty diff, as before (`alreadyOnMain`).
+- A new version runs every task through the Dev once, since a criterion may change under an unchanged task; a task with nothing to change is adopted when the Dev changes nothing and an earlier run delivered its id (review fix: without it, a re-planned scaffold with no criteria blocked the run).
+- Phase 4 proves a criterion by tests named after its id, so a criterion reworded under the same id still needs the Dev or the Test review to update its test.
 
 ---
 

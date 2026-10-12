@@ -218,6 +218,7 @@ describe('SM steps of a task', () => {
       packBase: () => ({ spec, project, specHash: HASH, assumptions: journal.assumptions(), budgetTokens: 8000 }),
       handoffs: () => [],
       boundaries: async () => ['src'],
+      deliveredBefore: new Set(),
     };
   }
 

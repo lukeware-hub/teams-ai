@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Config } from '../config/config.js';
 import { canonicalJson } from '../contracts/hash.js';
-import type { PlanTask } from '../contracts/plan.js';
+import { PlanTask } from '../contracts/plan.js';
 import { parseRunId, runIdOf, stepId, type RunKind } from '../core/ids.js';
 import { processAlive } from '../core/process.js';
 import { RunEvent } from '../pipeline/run-state.js';
@@ -154,24 +154,36 @@ async function lockHeld(lockFile: string): Promise<boolean> {
   return processAlive(Number.parseInt(owner[0] ?? '', 10));
 }
 
-/**
- * R11.4 retry: the ids of `tasks` an earlier run of this spec in this project delivered itself, through a merged pull
- * request or as work already on main, with the same definition; a new version that changed a task does it again.
- */
-export async function mergedByPriorRuns(ws: Workspace, specId: string, runId: string, tasks: readonly PlanTask[]): Promise<Set<string>> {
-  const delivered = new Set<string>();
-  for (const events of await priorRunEvents(ws, specId, runId)) {
-    const planned = new Map(events.filter((e) => e.type === RunEvent.TaskPlanned).map((e) => [(e.data.task as PlanTask).id, e.data.task]));
-    // An adopted task is no evidence: only a merge or the work found on main proves this run delivered it.
-    const done = new Set(events.filter((e) => e.type === OrchEvent.PrMerged || e.type === OrchEvent.AlreadyOnMain).map((e) => e.data.taskId as string));
-    // A replaced task is delivered once every task that replaced it merged; the plan still lists the original id.
-    for (const e of events) {
-      if (e.type === RunEvent.TaskReplanned && (e.data.replacements as { id: string }[]).every((r) => done.has(r.id))) done.add(e.data.taskId as string);
-    }
-    // A T900-fix-* task answers one verification attempt's own findings, so a retry never carries it as done.
-    for (const id of done) if (!id.startsWith('T900-fix-') && planned.has(id)) delivered.add(canonicalJson(planned.get(id)));
+/** The plan tasks a run delivered itself, through a merged pull request or as work already on main, as it planned them. */
+function deliveries(events: readonly StoredEvent[]): PlanTask[] {
+  // Parsed with today's schema, so a task journaled before a field got its default still matches.
+  const planned = events.flatMap((e) => {
+    const t = e.type === RunEvent.TaskPlanned ? PlanTask.safeParse(e.data.task) : null;
+    return t?.success ? [t.data] : [];
+  });
+  // An adopted task is no evidence: only a merge or the work found on main proves this run delivered it.
+  const done = new Set(events.filter((e) => e.type === OrchEvent.PrMerged || e.type === OrchEvent.AlreadyOnMain).map((e) => e.data.taskId as string));
+  // A replaced task is delivered once every task that replaced it merged; the plan still lists the original id.
+  for (const e of events) {
+    if (e.type === RunEvent.TaskReplanned && (e.data.replacements as { id: string }[]).every((r) => done.has(r.id))) done.add(e.data.taskId as string);
   }
+  // A T900-fix-* task answers one verification attempt's own findings, so a retry never carries it as done.
+  return planned.filter((t) => done.has(t.id) && !t.id.startsWith('T900-fix-'));
+}
+
+/**
+ * R11.4 retry: the ids of `tasks` an earlier run of this same version of the spec, in this project, delivered with the
+ * same definition; a new version checks every task again, since a criterion may change under an unchanged task.
+ */
+export async function mergedByPriorRuns(ws: Workspace, specId: string, runId: string, tasks: readonly PlanTask[], specHash: string): Promise<Set<string>> {
+  const same = (await priorRunEvents(ws, specId, runId)).filter((events) => events[0]?.specHash === specHash);
+  const delivered = new Set(same.flatMap((events) => deliveries(events).map((t) => canonicalJson(t))));
   return new Set(tasks.filter((t) => delivered.has(canonicalJson(t))).map((t) => t.id));
+}
+
+/** The ids of the plan tasks any earlier run of this spec delivered, in any version, so an empty diff on one means its work is on main. */
+export async function deliveredByPriorRuns(ws: Workspace, specId: string, runId: string): Promise<Set<string>> {
+  return new Set((await priorRunEvents(ws, specId, runId)).flatMap((events) => deliveries(events).map((t) => t.id)));
 }
 
 /** The journals of every earlier run of this spec in this project, oldest first. */

@@ -81,6 +81,8 @@ export interface TaskRunnerDeps {
    * was needed (spec declares a DATABASE_URL secret); null when none was provisioned. Sent as extraEnv to
    * Dev and Test so their own sandboxed processes can reach it without ever getting Docker access themselves. */
   testDatabaseUrl?: string | null;
+  /** Ids of the plan tasks an earlier run of this spec delivered: an empty diff on one of them means its work is on main. */
+  deliveredBefore: ReadonlySet<string>;
 }
 
 const TAIL = 2000;
@@ -343,8 +345,9 @@ export class TaskRunner {
     await this.deps.journal.confirm(Intent.Commit, commitKey, { sha });
     const changed = await changedFiles(this.worktree, 'origin/main', this.deps.exec);
     if (changed.length === 0) {
-      // An earlier run already delivered it (live: a replanned task whose pieces merged across two runs); Phase 4 still proves its criteria.
-      if (await this.alreadyOnMain(task.def)) {
+      // An earlier run already delivered it (live: a replanned task whose pieces merged across two runs, or a new
+      // version re-planning a delivered task); Phase 4 still proves its criteria.
+      if (this.deps.deliveredBefore.has(this.taskId) || (await this.alreadyOnMain(task.def))) {
         await this.deps.journal.fact(OrchEvent.AlreadyOnMain, { taskId: this.taskId, paths: task.def.affectedPaths, summary: value.summary });
         await removeWorktree(this.deps.ws.repo, this.worktree, this.deps.exec);
         return this.transition('merged');
