@@ -182,9 +182,9 @@ export function ProjectHubView(p: {
             <ul className="project-service-list">
               {pr.services.map((s) => (
                 <li key={s.name} data-testid={`project-service-${s.name}`}>
-                  <span className="task-id">{s.name}</span>
+                  <strong>{s.name}</strong>
                   {s.repoUrl ? (
-                    <a className="link-button" href={s.repoUrl} target="_blank" rel="noreferrer">
+                    <a className="link-button" href={s.repoUrl} target="_blank" rel="noreferrer" aria-label={`Abrir ${s.name} no GitHub`}>
                       <Icon name="github" size={16} />
                       Abrir no GitHub
                       <Icon name="external" size={16} />

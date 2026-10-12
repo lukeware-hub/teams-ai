@@ -204,7 +204,7 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
     const scope: GateScope = { service: a.repo.service!, plan: a.repo.plan, spec: specShare(deps.spec, a.repo.plan.tasks), urls };
     const s = await deps.smoke(a.repo.ws.repo, a.url, a.gateUrl, a.network, scope);
     if (!s.ok) return failed('smoke', s.detail, a.repo);
-    smoke.push(...s.rows);
+    smoke.push(...s.rows.map((r) => ({ ...r, service: a.repo.service! })));
     if (deps.e2e && (e2eCommand(a.repo.plan) || deps.requireE2e)) {
       const e = await deps.e2e(a.repo.ws.repo, a.url, a.gateUrl, a.network, scope);
       if (!e.ok) return failed('e2e', e.detail, a.repo);

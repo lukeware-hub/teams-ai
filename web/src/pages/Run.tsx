@@ -129,7 +129,7 @@ function PlanCard({ plan }: { plan: NonNullable<RunDetail['plan']> }) {
                 <span className="task-id">{task.id}</span>
                 <span className="task-title">{task.title}</span>
                 <span className="plan-chips">
-                  {task.service ? <span className="tag">{task.service}</span> : null}
+                  {task.service ? <span className="tag" title="Serviço">{task.service}</span> : null}
                   {task.origin !== 'plan' ? <span className="tag">{ORIGIN_LABEL[task.origin] ?? task.origin}</span> : null}
                   <span className="owner-chip" title={`Responsável pela tarefa: ${owner}`}>
                     <Icon name={OWNER_ICON[task.owner] ?? 'user'} size={14} />
@@ -757,6 +757,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                           {id}
                         </button>
                         <span className="task-title">{tk.def.title}</span>
+                        {tk.def.service ? <span className="tag" title="Serviço">{tk.def.service}</span> : null}
                         <span className="task-meta">
                           {tk.attempts > 0 ? `${tk.attempts} ${tk.attempts === 1 ? 'tentativa' : 'tentativas'}` : null}
                           {tk.replanned ? <span className="tag">replanejada</span> : null}

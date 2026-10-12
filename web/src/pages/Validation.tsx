@@ -52,8 +52,8 @@ function Rich({ text }: { text: string }) {
 function StatePill({ checking, online, testId }: { checking: boolean; online: boolean; testId?: string }) {
   return <span data-testid={testId} className={`status-pill tone-${checking ? 'neutral' : online ? 'good' : 'bad'}`}>{checking ? 'Verificando' : online ? 'No ar' : 'Fora do ar'}</span>;
 }
-const openLink = (href: string, testId: string, text: string, primary: boolean) => (
-  <a className={`${primary ? 'primary-button' : 'link-button'} run-action`} data-testid={testId} href={href} target="_blank" rel="noreferrer">
+const openLink = (href: string, testId: string, text: string, primary: boolean, label?: string) => (
+  <a className={`${primary ? 'primary-button' : 'link-button'} run-action`} data-testid={testId} href={href} target="_blank" rel="noreferrer" aria-label={label}>
     {text}
     <Icon name="external" size={16} />
   </a>
@@ -97,6 +97,8 @@ function ServiceControls({ service, status, starting, canStart, onStart, onReche
   );
 }
 
+const label = (docsUrl: string | null, kind?: string) => (docsUrl ? 'Abrir Swagger' : kind === 'front' ? 'Abrir aplicação' : 'Abrir serviço');
+
 /** A services run: one line per service with its state and its link, then one recheck and one start for them all. */
 function ServiceList({ services, status, starting, canStart, onStart, onRecheck }: { services: NonNullable<Report['services']> } & ControlProps) {
   const checking = status === null;
@@ -109,16 +111,16 @@ function ServiceList({ services, status, starting, canStart, onStart, onRecheck 
           const href = links.docsUrl ?? links.appUrl;
           return (
             <li key={s.service} data-testid={`service-${s.service}`}>
-              <strong className="task-id">{s.service}</strong>
+              <strong>{s.service}</strong>
               <StatePill checking={checking} online={onlineOf(s.service)} />
-              {onlineOf(s.service) && href ? openLink(href, `open-${s.service}`, links.docsUrl ? 'Abrir Swagger' : s.kind === 'front' ? 'Abrir aplicação' : 'Abrir serviço', false) : null}
-              {!links.appUrl ? <span className="hint">porta fora da faixa publicada</span> : null}
+              {onlineOf(s.service) && href ? openLink(href, `open-${s.service}`, label(links.docsUrl, s.kind), false, `${label(links.docsUrl, s.kind)} (${s.service})`) : null}
+              {!links.appUrl ? <span className="hint">porta fora da faixa publicada ({PUBLISHED_PORTS.from} a {PUBLISHED_PORTS.to})</span> : null}
             </li>
           );
         })}
       </ul>
+      <div className="service-status">{recheckButton(checking, onRecheck)}</div>
       <div className="service-actions">
-        {recheckButton(checking, onRecheck)}
         {!checking && services.some((s) => !onlineOf(s.service)) ? startButton(starting, canStart, onStart, ['Subir serviços', 'Subindo os serviços…']) : null}
       </div>
     </div>
@@ -273,8 +275,8 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                       </thead>
                       <tbody>
                         {report.service.smoke.map((s) => (
-                          <tr key={s.acId} data-testid={`smoke-${s.acId}`} className={`result-${s.status}`}>
-                            <td className="task-id">{s.acId}</td>
+                          <tr key={`${s.service ?? ''}-${s.acId}`} data-testid={`smoke-${s.service ? `${s.service}-` : ''}${s.acId}`} className={`result-${s.status}`}>
+                            <td className="task-id">{s.acId}{s.service ? ` (${s.service})` : ''}</td>
                             <td className="mono">{s.testId ?? '—'}</td>
                             <td><ResultChip status={s.status} /></td>
                           </tr>

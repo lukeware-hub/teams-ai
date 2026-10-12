@@ -59,7 +59,7 @@ function target(log: string[], o: TargetOpts = {}) {
   };
 }
 
-async function setup(log: string[], opts: TargetOpts & { e2eFails?: string; detail?: string; plan?: ServicesPlan; services?: string[]; ports?: Record<string, number> } = {}): Promise<{ deps: PhaseDeps; scopes: GateScope[]; root: string }> {
+async function setup(log: string[], opts: TargetOpts & { e2eFails?: string; detail?: string; plan?: ServicesPlan; services?: string[]; ports?: Record<string, number>; rows?: boolean } = {}): Promise<{ deps: PhaseDeps; scopes: GateScope[]; root: string }> {
   const repos: ServiceRepo[] = [];
   for (const view of servicePlans(opts.plan ?? plan)) {
     const remote = await makeRemote({ 'README.md': '#\n' });
@@ -75,7 +75,7 @@ async function setup(log: string[], opts: TargetOpts & { e2eFails?: string; deta
     scopes.push(scope!);
     log.push(`${kind}:${scope!.service}`);
     const ok = opts.e2eFails !== `${kind}:${scope!.service}`;
-    return { ok, rows: [], detail: ok ? 'passed' : opts.detail ?? `${kind} failed` };
+    return { ok, rows: opts.rows && kind === 'smoke' ? [{ acId: 'AC-001', testId: null, status: 'passed' as const }] : [], detail: ok ? 'passed' : opts.detail ?? `${kind} failed` };
   };
   const deps = {
     journal, ws: { repo: remotes[0]!.repo, projectId: 'shop' }, spec, workspacesRoot: root,
@@ -100,6 +100,13 @@ describe('Phase 5 with several services', () => {
     const verified = journal.events.find((e) => e.type === OrchEvent.DeployVerified)!.data;
     expect(verified).toMatchObject({ attempt: 1, url: 'http://127.0.0.1:3000', port: 3000, smoke: [] });
     expect((verified.services as Array<{ service: string }>).map((s) => s.service)).toEqual(['orders', 'inventory']);
+  });
+
+  it('tags each smoke row with its service', async () => {
+    const { deps } = await setup([], { rows: true });
+    await runServicesPhase5(deps, 1);
+    const verified = journal.events.find((e) => e.type === OrchEvent.DeployVerified)!.data;
+    expect((verified.smoke as Array<{ service: string }>).map((r) => r.service)).toEqual(['orders', 'inventory']);
   });
 
   it('rolls back every applied service when one fails, and plans the fix in the failing service', async () => {

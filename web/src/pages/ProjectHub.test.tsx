@@ -45,6 +45,7 @@ describe('ProjectHubView', () => {
     );
     const { rerender } = render(hub({ services: [{ name: 'orders', repoUrl: 'https://github.com/acme/shop-orders' }, { name: 'inventory', repoUrl: null }], platform: [{ name: 'nats', image: 'nats:2.10.22-alpine' }] }));
     expect(screen.getByTestId('project-service-orders').querySelector('a')!.getAttribute('href')).toBe('https://github.com/acme/shop-orders');
+    expect(screen.getByTestId('project-service-orders').querySelector('a')!.getAttribute('aria-label')).toBe('Abrir orders no GitHub');
     expect(screen.getByTestId('project-service-inventory').textContent).toContain('Repositório ainda não criado');
     expect(screen.getByTestId('project-platform').textContent).toContain('nats (nats:2.10.22-alpine)');
     rerender(hub({}));

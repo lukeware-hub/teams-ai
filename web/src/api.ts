@@ -113,7 +113,7 @@ export interface ServicesPlanArtifact {
   tasks: PlanArtifact['tasks'];
   services: Record<string, { stack: string }>;
 }
-export interface SmokeRow { acId: string; testId: string | null; status: 'passed' | 'failed' | 'missing' }
+export interface SmokeRow { acId: string; testId: string | null; status: 'passed' | 'failed' | 'missing'; service?: string }
 export interface EvidenceRow { criterion: string; tasks: string[]; tests: string[]; status: 'passed' | 'failed' | 'missing' | 'blocked'; e2e?: 'passed' | 'failed' | 'missing' | 'not-applicable'; e2eReason?: string }
 export interface SecurityFinding {
   taskId?: string;

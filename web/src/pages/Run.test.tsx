@@ -51,6 +51,7 @@ describe('RunView', () => {
     render(view({ detail: { ...detail, plan: { specId: 'hello-001', specHash: detail.plan!.specHash, adrRefs: [], tasks, services: { orders: { stack: 'node' }, inventory: { stack: 'go' } } } } }));
     expect(screen.getByTestId('plan-artifact').textContent).toContain('orders: node · inventory: go');
     expect(screen.getByTestId('plan-task-T2').textContent).toContain('inventory');
+    expect(screen.getByTestId('plan-task-T2').querySelector('.tag')!.getAttribute('title')).toBe('Serviço');
   });
 
   it('renders header, phases, tasks grouped by state, tokens and evidence from the journal', () => {
@@ -227,6 +228,12 @@ describe('RunView', () => {
       const merged = [...start, ev(6, 'TASK_STATE_CHANGED', { taskId: 'T11', to: 'validating' }), ev(7, 'TASK_STATE_CHANGED', { taskId: 'T11', to: 'reviewing' }), ev(8, 'TASK_STATE_CHANGED', { taskId: 'T11', to: 'rebasing' }), ev(9, 'TASK_STATE_CHANGED', { taskId: 'T11', to: 'merging' }), ev(10, 'TASK_STATE_CHANGED', { taskId: 'T11', to: 'merged' }), ev(11, 'TASK_STATE_CHANGED', { taskId: 'T12', to: 'blocked' })];
       rerender(view({ events: merged, ended: false, detail: { ...detail, status: 'running' } }));
       expect(progress()).toMatchObject({ merged: '1 de 3 tarefas mescladas', active: null, blocked: '1 bloqueada', segments: ['seg-merged', 'seg-blocked'] });
+    });
+
+    it("names each task's service in the tasks card", () => {
+      const planned = ev(1, 'TASK_PLANNED', { task: { id: 'T1', title: 'T1', description: 'd', criteriaRefs: ['AC-001'], dependsOn: [], affectedPaths: ['src'], owner: 'dev', origin: 'plan', service: 'orders' }, replan: false });
+      render(view({ events: [planned], ended: false, detail: { ...detail, status: 'running' } }));
+      expect(screen.getByTestId('task-T1').closest('li')!.textContent).toContain('orders');
     });
 
     it('shows no banner for a healthy run', () => {

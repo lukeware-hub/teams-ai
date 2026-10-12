@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { execCommand } from '../../server/exec/command.js';
 import { claimLaunch } from '../../server/api/run-index.js';
 import { runRoutes } from '../../server/api/run-routes.js';
 import { startApi } from '../../server/api/server.js';
@@ -143,6 +144,21 @@ describe('projects', () => {
     // the single-run endpoint answers with the same status as the list
     const detail = async (runId: string): Promise<string> => (await (await fetch(`${base()}/api/runs/${runId}`)).json()).status;
     expect([await detail('hello-001-r1'), await detail('hello-001-r2')]).toEqual(['awaiting-validation', 'done']);
+  });
+
+  it('lists each service of a project with the GitHub page of its clone, also right after registering it', async () => {
+    const project = path.join(home, '.teams-ai', 'workspaces', 'shop-docs');
+    await fs.cp(HELLO, project, { recursive: true });
+    const json = path.join(project, 'docs', 'project.json');
+    await fs.writeFile(json, JSON.stringify({ ...JSON.parse(await fs.readFile(json, 'utf8')), services: ['orders', 'inventory'] }));
+    const clone = path.join(home, '.teams-ai', 'workspaces', 'hello-app', 'services', 'orders', 'repo');
+    await fs.mkdir(clone, { recursive: true });
+    await execCommand({ bin: 'git', args: ['init', '-q'], cwd: clone, timeoutMs: 10_000 });
+    await execCommand({ bin: 'git', args: ['remote', 'add', 'origin', 'https://github.com/acme/hello-app-orders.git'], cwd: clone, timeoutMs: 10_000 });
+    const registered = await (await post('/api/projects', { dir: project })).json();
+    expect(registered.services).toEqual([{ name: 'orders', repoUrl: 'https://github.com/acme/hello-app-orders' }, { name: 'inventory', repoUrl: null }]);
+    const listed = (await (await fetch(`${base()}/api/projects`)).json()) as Array<{ services?: unknown }>;
+    expect(listed.find((p) => p.services)!.services).toEqual(registered.services);
   });
 
   it('registers a project once and refuses a directory without a valid project.json', async () => {

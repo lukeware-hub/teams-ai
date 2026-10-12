@@ -19,7 +19,7 @@ import { releaseDeployPort } from '../deploy/port-registry.js';
 import { refuseCloneHost, type ResolveHost } from './security.js';
 import { tailJournal } from './journal-tail.js';
 import { abandonLaunch, isAlive, spawnRun, stop, type RunControlDeps } from './run-control.js';
-import { claimLaunch, claimsSpec, concludedSpecs, clearPid, clearStopRequested, listProjects, listRuns, markStopRequested, readPid, readProject, runLiveness, runRow, runsDir, SAFE_ID, writePid, type IndexDeps, type RunRow } from './run-index.js';
+import { claimLaunch, claimsSpec, concludedSpecs, clearPid, clearStopRequested, listProjects, listRuns, markStopRequested, readPid, readProject, runLiveness, runRow, runsDir, SAFE_ID, writePid, type IndexDeps, type ProjectRow, type RunRow } from './run-index.js';
 import type { Spec } from '../contracts/spec.js';
 import { HttpError, type Route } from './server.js';
 
@@ -56,6 +56,12 @@ async function repoUrlOf(repoDir: string): Promise<string | null> {
 
 export function runRoutes(deps: RunRoutesDeps): Route[] {
   const index = async (): Promise<IndexDeps> => ({ cfg: await deps.cfg(), home: deps.home, isAlive: (pid) => isAlive(deps.control, pid) });
+  /** A project as the screens get it: its GitHub page and each service's, from its own clone (null until Phase 0 made it). */
+  const projectView = async (idx: IndexDeps, r: ProjectRow) => {
+    const ws = workspacePaths(idx.cfg, r.projectId, deps.home);
+    const services = r.services ? await Promise.all(r.services.map(async (name) => ({ name, repoUrl: await repoUrlOf(serviceWorkspace(ws, name).repo) }))) : undefined;
+    return { ...r, repoUrl: await repoUrlOf(ws.repo), ...(services ? { services } : {}) };
+  };
   /** Every draft registers its own root, so one project can have several directories: the spec decides which holds it. */
   const projectDir = async (idx: IndexDeps, projectId: string, specId?: string): Promise<string> => {
     let first: string | null = null;
@@ -186,12 +192,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       handler: async ({ json }) => {
         const idx = await index();
         const rows = await listProjects(idx);
-        json(200, await Promise.all(rows.map(async (r) => {
-          const ws = workspacePaths(idx.cfg, r.projectId, deps.home);
-          // Each service's GitHub page comes from its own clone; null until Phase 0 made it.
-          const services = r.services ? await Promise.all(r.services.map(async (name) => ({ name, repoUrl: await repoUrlOf(serviceWorkspace(ws, name).repo) }))) : undefined;
-          return { ...r, repoUrl: await repoUrlOf(ws.repo), ...(services ? { services } : {}) };
-        })));
+        json(200, await Promise.all(rows.map((r) => projectView(idx, r))));
       },
     },
     {
@@ -235,7 +236,8 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         await addProject(dir, deps.home);
         const idx = await index();
         const rows = await listProjects(idx);
-        json(200, rows.find((r) => r.dir === dir) ?? { projectId: read.project.projectId, dir, name: read.project.name, description: read.project.vision, specs: [] });
+        const row = rows.find((r) => r.dir === dir);
+        json(200, row ? await projectView(idx, row) : { projectId: read.project.projectId, dir, name: read.project.name, description: read.project.vision, specs: [] });
       },
     },
     {

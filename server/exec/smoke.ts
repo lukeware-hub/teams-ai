@@ -3,7 +3,7 @@ import type { Spec } from '../contracts/spec.js';
 import type { TestResult } from '../evidence/junit.js';
 import { runGate, type GateContext, type GateDeps, type GateResult } from './gate-runner.js';
 
-export interface SmokeRow { acId: string; testId: string | null; status: 'passed' | 'failed' | 'missing'; }
+export interface SmokeRow { acId: string; testId: string | null; status: 'passed' | 'failed' | 'missing'; /** The service whose suite ran it, in a services run. */ service?: string; }
 
 export function smokeGate(plan: Plan): Gate | null {
   return plan.commands.smoke ? { name: 'smoke', command: plan.commands.smoke, blocking: true, network: 'egress', secrets: ['SERVICE_URL'] } : null;
