@@ -148,7 +148,7 @@ describe('packs', () => {
   it("dev, tech-spec and review packs carry the spec's decisions, and a spec without them adds none", () => {
     const decided: PackBase = { ...base, spec: { ...spec, decisions: [{ question: 'O total inclui frete?', answer: 'Sim.' }] } };
     const review = { diffStat: '', changedFiles: [], diff: '', junit: [], code: { source: 'none' as const }, profile: 'standard' as const };
-    for (const p of [devPack(decided, task, { code: { source: 'none' }, handoffs: [], feedback: null }), techSpecPack(decided, { feedback: null }), reviewPack(decided, task, review)]) {
+    for (const p of [devPack(decided, task, { code: { source: 'none' }, handoffs: [], feedback: null }), techSpecPack(decided, { feedback: null }), reviewPack(decided, task, review), specGapPack(decided, task, { question: 'Frete conta?' })]) {
       expect(p.decisions).toEqual([{ question: 'O total inclui frete?', answer: 'Sim.' }]);
     }
     expect(devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }).decisions).toBeUndefined();

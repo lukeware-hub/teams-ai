@@ -8,9 +8,12 @@ const ANSWER = /^Answer(?: \((PO|SM), from the docs\))?: ?(.*)$/;
 /** Continuation lines are indented under their item, so a heading or blank line inside an answer stays in it. */
 const indent = (t: string) => t.replace(/\n/g, '\n  ');
 
-/** The brief's `## Decisions` section: one item per decision, its answer on an `Answer:` line, so the owner can edit it. */
+/** One decision as a list item, its answer on an `Answer:` line; every continuation line stays indented inside it. */
+export const renderDecision = (d: SpecDecision): string => `- ${indent(d.question)}\n  Answer${d.by ? ` (${d.by.toUpperCase()}, from the docs)` : ''}: ${indent(d.answer)}`;
+
+/** The brief's `## Decisions` section: one item per decision, so the owner can edit it. */
 export function renderDecisions(decisions: readonly SpecDecision[]): string[] {
-  return ['## Decisions', '', ...decisions.map((d) => `- ${indent(d.question)}\n  Answer${d.by ? ` (${d.by.toUpperCase()}, from the docs)` : ''}: ${indent(d.answer)}`), ''];
+  return ['## Decisions', '', ...decisions.map(renderDecision), ''];
 }
 
 /** The decisions in the brief's `## Decisions` section as the owner left them; undefined when it holds none. */

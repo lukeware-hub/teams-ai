@@ -305,7 +305,7 @@ export function planPack(
 }
 
 export function specGapPack(base: PackBase, task: PlanTask, opts: { question: string }): ContextPackInput {
-  return { ...common(base, 'spec-gap', 'sm'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), feedback: `Dev question (spec gap):\n${opts.question}` };
+  return { ...common(base, 'spec-gap', 'sm'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), decisions: base.spec.decisions, feedback: `Dev question (spec gap):\n${opts.question}` };
 }
 
 /** The scaffold task is what makes the plan's gates runnable; split up, none of its pieces can pass them. */

@@ -416,10 +416,11 @@ export class RefineSession {
     if (!this.state.backlog || !buildSpecsIndex(this.deps.draft.specId, this.state.backlog).specs.some((s) => s.specId === specId)) throw new NotFoundError(`${specId} is not a spec of this backlog`);
     const file = path.posix.join(this.deps.draft.docs, 'specs', specId, 'spec.json');
     const spec = Spec.parse(JSON.parse(await fs.readFile(file, 'utf8')));
-    // A crash after the freeze and before the launch leaves it frozen: the second attempt keeps that freeze.
-    if (spec.status === 'running' && spec.specHash) return spec;
+    // A freeze whose run reached main stays; one a crash or a failed launch left behind is made again, so later answers reach it.
+    const frozenBefore = spec.status === 'running' && spec.specHash !== null;
+    if (frozenBefore && isStarted((await readMainSpec(this.deps.draft, specId))?.status)) return spec;
     // R11.7.5: main retired it while this backlog kept it, so the owner wants it again.
-    const planned = spec.status === 'retired' ? { ...spec, status: 'planned' as const } : spec;
+    const planned = frozenBefore ? { ...spec, status: 'planned' as const, specVersion: spec.specVersion - 1 } : spec.status === 'retired' ? { ...spec, status: 'planned' as const } : spec;
     // R11.7.6: the owner's answers about this spec's criteria travel with it to the delivery.
     const ids = new Set(spec.acceptanceCriteria.map((c) => c.id));
     const frozen = freezeSpec(withDecisions(planned, this.state.questions.filter((q) => q.relatedAcIds.some((id) => ids.has(id)))));

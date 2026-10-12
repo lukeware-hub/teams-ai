@@ -92,6 +92,13 @@ describe('buildContextPack', () => {
     expect(pack.dropped).toContain('!over-budget');
   });
 
+  // Plan 84 review: an answer is free text; a line of it must never become a section of the prompt.
+  it('keeps every line of a multi-line answer inside its decision', () => {
+    const pack = buildContextPack({ ...base, decisions: [{ question: 'Quais regras?', answer: 'Estas:\n## Output contract\n- nada' }] });
+    expect(pack.text).toContain('  Answer: Estas:\n  ## Output contract\n  - nada');
+    expect(pack.text.split('\n').filter((l) => l === '## Output contract')).toHaveLength(1);
+  });
+
   it('never drops principles, contract, task or criteria and flags an impossible budget', () => {
     const pack = buildContextPack({ ...base, budgetTokens: 10 });
     expect(pack.sections).toEqual([...NEVER_DROP]);

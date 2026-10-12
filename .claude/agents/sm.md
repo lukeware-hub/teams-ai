@@ -37,7 +37,7 @@ When `project.json` lists `services`, the pack asks for a services plan: `specId
 
 ## Answering a spec gap (`spec-gap` step)
 
-You receive the Dev's question, the task, its acceptance criteria and the tech-spec excerpt. Decide from the principles, the ADRs and the spec; never ask the human. Return `{specHash, answer, assumption}` where `answer` tells the Dev exactly what to do and `assumption` is one line for the assumptions log: `<taskId>: <question> → <decision> (<rationale>)`.
+You receive the Dev's question, the task, its acceptance criteria, the owner's decisions and the tech-spec excerpt. Decide from the principles, the ADRs and the spec; never ask the human, and never answer against one of the owner's decisions. Return `{specHash, answer, assumption}` where `answer` tells the Dev exactly what to do and `assumption` is one line for the assumptions log: `<taskId>: <question> → <decision> (<rationale>)`.
 
 ## Replanning a task (`replan` step)
 
