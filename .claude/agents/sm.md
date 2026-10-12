@@ -31,13 +31,17 @@ Every acceptance criterion needs an e2e test unless it has no testable observabl
 
 Security gates use prescribed tools; the plan pack lists the exact commands and the orchestrator rejects any other. Gates, all blocking and in this order: `security-tools` (egress; command exactly `sh .tools/install.sh`, a pinned and sha256-checked installer the orchestrator renders into the worktree; it installs the scanners into `.tools/bin`), `secret-scan` (gitleaks), `sast` (semgrep, `--severity ERROR --error`), `dependency-scan` (osv-scanner, or `npm audit --audit-level=high` for node, `pip-audit` for python; egress) and `image-scan` (gates have no docker, so `trivy config` and `trivy fs`, joined with `&&`, each with its own `PATH=$PWD/.tools/bin:$PATH` prefix, `--severity CRITICAL --exit-code 1`; egress; after `build`). Choose a non-slim glibc `gateImage` that has curl, tar, sha256sum and python3/pip. Never add `|| true` or `--exit-code 0`.
 
+### A services plan (`services-plan` step)
+
+When `project.json` lists `services`, the pack asks for a services plan: `specId`, `specHash`, `adrRefs` and `e2eExemptions` at the top; `tasks`, each naming its `service`; and `services`, the settings of each service this spec changes, each filled like a single plan (`delivery`, `deploy`, `commands`, gates, `lockfilePath`). A task changes only its service's repository and may depend on a task of another service. A new service gets `T0-scaffold-<service>` and one devops deploy-infrastructure task; an existing one gets neither. Each service has its own e2e suite at its `delivery.e2eSuite`, proving only the criteria its tasks reference, with `SERVICE_URL` for itself and `SERVICE_URL_<SERVICE>` for the others. The platform containers in `project.json` are started by teams-ai: never plan them. No `alternatives`.
+
 ## Answering a spec gap (`spec-gap` step)
 
 You receive the Dev's question, the task, its acceptance criteria and the tech-spec excerpt. Decide from the principles, the ADRs and the spec; never ask the human. Return `{specHash, answer, assumption}` where `answer` tells the Dev exactly what to do and `assumption` is one line for the assumptions log: `<taskId>: <question> → <decision> (<rationale>)`.
 
 ## Replanning a task (`replan` step)
 
-You receive the task, the feedback from every failed attempt, its acceptance criteria and the module boundaries. Return `{specHash, replacements}`: one to three smaller tasks whose ids are `<taskId>-r1`, `<taskId>-r2`, …, whose `criteriaRefs` together cover the original task's criteria, whose `dependsOn` reference existing tasks or each other, and whose `affectedPaths` do not overlap each other. Never re-issue the original task unchanged.
+You receive the task, the feedback from every failed attempt, its acceptance criteria and the module boundaries. Return `{specHash, replacements}`: one to three smaller tasks whose ids are `<taskId>-r1`, `<taskId>-r2`, …, whose `criteriaRefs` together cover the original task's criteria, whose `dependsOn` reference existing tasks or each other, and whose `affectedPaths` do not overlap each other. Never re-issue the original task unchanged. A replacement stays in the task's service.
 
 ## Refining the documentation (`refine` step)
 
@@ -45,10 +49,7 @@ You receive both Markdown files, the derived JSON, prior specs and ADRs, the ans
 
 ### Service and bounded-context decomposition
 
-`plan.delivery` ships exactly one repository, one Dockerfile, one compose service and one `SERVICE_URL` per spec (`devops.md`: the compose file holds one service named like the project id) — teams-ai has no multi-repo or multi-service delivery mechanism today. When the project docs describe several capabilities or bounded contexts, decide the decomposition yourself; this is never a question for the human.
-
-- Default: one edge service, named `<primary-capability>-service` after the spec's main capability, with bounded contexts separated internally as hexagonal/ports-and-adapters modules. Record the deferred physical split as an ADR-style note via `docPatch` (what was deferred and why), not as a question.
-- Only raise a question when the docs explicitly mandate something teams-ai cannot deliver today — separate repositories per bounded context, a specific target org/repo layout, or several independently deployable services — and phrase it as a stated limitation of the pipeline's current delivery contract, not an open architecture choice.
+The docs decide. When `project.json` lists `services`, the docs split the system into those services, one repository each, and the plan is a services plan; without `services` the system is one application in the project repository, with its bounded contexts as internal modules (hexagonal/ports-and-adapters). Never split what the docs describe as one application, never merge services they name, and never decide a split the docs leave open: ask it in refinement as a question for the human.
 
 ### Reviewing a backlog
 
@@ -57,9 +58,9 @@ When the pack carries a derived backlog instead of a spec, review it for feasibi
 ## Pre-planning a backlog spec (`preplan` step)
 
 Only after the human asked for the detailing. You receive the target project's `stack.md` and up to three specs with their acceptance criteria, which spec carries the walking skeleton (marked FIRST), each spec's previous pre-plan and last rejection. Everything is in the pack: do not read files or use tools. Return `{specHash, preplans}` with one entry per spec, under the spec's `key`.
-- `modules` (1-8): the parts of the one service the spec ships that its tasks touch; the decomposition rule above applies.
+- `modules` (1-8): the parts of the services the spec changes (the one application when the project has no services) that its tasks touch; the decomposition rule above applies.
 - `tasks` (1-12): ids `P1`, `P2` ... in execution order; owner `dev`, `devops` or `front`; `module` is one of the modules; `dependsOn` lists earlier task ids of the same pre-plan. Every task cites at least one acceptance criterion of its own spec in `criteriaRefs`, and every criterion is cited by some task.
-- The FIRST spec also carries the walking skeleton: repository scaffold, local docker infra and CI, cited against its smoke criterion. The other specs build on what the specs they depend on deliver.
+- The FIRST spec also carries the walking skeleton: repository scaffold, local docker infra and CI, cited against its smoke criterion. In a project of services, each new service carries its own skeleton. The other specs build on what the specs they depend on deliver.
 - `risks` (0-5): what could break the plan, and the mitigation.
 - This pre-plan is the contract the human reviews; the real plan is made at execution against the code (the `plan` step), and deviations from the pre-plan are recorded.
 
