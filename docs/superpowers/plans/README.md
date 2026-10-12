@@ -74,6 +74,7 @@ was implemented. Web UI block A (`2026-09-24-run-api-execution-ui-design.md`) is
 | 74 | [`2026-10-12-teams-ai-74-measured-answer-floor.md`](2026-10-12-teams-ai-74-measured-answer-floor.md) | Done — the auto answer floor measures itself from the labelled answers; ROADMAP R11.5.7. |
 | 75 | [`2026-10-12-teams-ai-75-retry-inherits-delivered-work.md`](2026-10-12-teams-ai-75-retry-inherits-delivered-work.md) | Done — a run adopts only the work an earlier run delivered with the same definition; ROADMAP R11.5. |
 | 76 | [`2026-10-12-teams-ai-76-docs-sync-after-refinement.md`](2026-10-12-teams-ai-76-docs-sync-after-refinement.md) | Slice 1 done — the spec carries the decisions of its refinement, so a later version neither loses nor asks them again; ROADMAP R11.7. |
+| 77 | [`2026-10-12-teams-ai-77-started-specs-never-rederived.md`](2026-10-12-teams-ai-77-started-specs-never-rederived.md) | Done — a started or delivered spec is never re-derived, and a new program never runs it again; ROADMAP R11.7.2. |
 
 Plans 17 and 19 never existed (not a gap in this audit - no file was ever created at those numbers).
 
