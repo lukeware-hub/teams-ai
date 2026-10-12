@@ -221,7 +221,7 @@ export function RefinementView(p: ViewProps) {
         ? { label: 'Desatualizada', tone: 'warn' }
         : { label: 'Atual', tone: 'ok' };
   const nextStep = st.status === 'started' && st.backlog?.enabled
-    ? 'Os agentes estão executando o backlog, uma spec por vez. Acompanhe cada uma na tela de execução do backlog.'
+    ? 'Os agentes estão executando o backlog, até duas specs ao mesmo tempo quando não mexem no mesmo código. Acompanhe cada uma na tela de execução do backlog.'
     : st.status === 'evaluating'
     ? 'Aguarde o fim da avaliação; o andamento aparece logo abaixo.'
     : jevAdvisory
@@ -555,7 +555,7 @@ export function RefinementPage() {
   }, [projectId, specId]);
   // The program ledger moves with the runs, not with the refinement journal: poll it while a started backlog is on screen.
   const following = snap?.state.status === 'started' && snap.state.backlog?.enabled === true;
-  const { program, phase } = useProgram(projectId, specId, following);
+  const { program, phases } = useProgram(projectId, specId, following);
   const programPath = `/refine/${projectId}/${specId}/program`;
   useEffect(() => {
     if (!snap) return;
@@ -597,7 +597,7 @@ export function RefinementPage() {
           <InfoTip text={startInfo} />
         </span>
       </header>
-      {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phase={phase} link={programPath} />}
+      {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phases={phases} link={programPath} />}
       {(error || snap.state.status === 'error') && (
         <div className="error refine-page-error" role="alert">
           <p>{errorText(error ?? snap.state.error)}</p>

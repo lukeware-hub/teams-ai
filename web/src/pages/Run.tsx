@@ -1,7 +1,7 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { parseRunId } from '@server/core/ids';
-import { runApi, type RunDetail, type StoredEvent } from '../api.js';
+import { runApi, startedPath, type RunDetail, type StoredEvent } from '../api.js';
 import { Dialog } from '../components/Dialog.js';
 import { Icon, type IconName } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
@@ -965,7 +965,7 @@ function RunScreen({ runId }: { runId: string | undefined }) {
     setReprocessFailure(null);
     runApi
       .startRun(detail.projectId, detail.specId)
-      .then((r) => navigate(`/runs/${r.runId}`))
+      .then((r) => navigate(startedPath(detail.projectId, r)))
       .catch((e: Error) => {
         setReprocessing(false);
         setReprocessFailure(reprocessError(e.message));

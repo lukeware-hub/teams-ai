@@ -102,7 +102,7 @@ describe('RefinementView backlog mode', () => {
   it('a started backlog says the agents are executing it', () => {
     const detailed = { ...backlog, detail: true, flowHeadings: [], specs: {}, preplans: {} };
     render(<MemoryRouter><RefinementView snap={base({ ...ready, status: 'started', runId: 'hello-001-base-r1', backlog: detailed as never })} busy={false} {...on()} /></MemoryRouter>);
-    expect(screen.getByText(/executando o backlog, uma spec por vez/)).toBeTruthy();
+    expect(screen.getByText(/executando o backlog, até duas specs ao mesmo tempo/)).toBeTruthy();
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
   });
 
