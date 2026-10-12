@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { Exec } from '../../exec/command.js';
+import type { CommandResult, Exec } from '../../exec/command.js';
 import { repoName } from '../../core/ids.js';
 import { fetch as gitFetch, git, headSha } from '../../git/git.js';
 import { ensureRepo, NOT_FOUND } from '../../git/github.js';
@@ -13,12 +13,19 @@ import { commitAndMergeDocs, commitDocs, docsCommitKey, docsWorktree, type Phase
 
 const isRepo = (dir: string) => fs.access(path.join(dir, '.git')).then(() => true, () => false);
 
+/** The login gh is authenticated as; a failed `gh api user` says so instead of failing on its empty answer. */
+async function githubLogin(gh: (args: string[]) => Promise<CommandResult>): Promise<string> {
+  const r = await gh(['api', 'user']);
+  if (r.exitCode !== 0) throw new Error(`gh api user failed: ${r.stderr.trim()}`);
+  return (JSON.parse(r.stdout) as { login: string }).login;
+}
+
 /** Spec (refinement) §4: put the draft's docs on main — by creating the repository or by a docs PR. */
 export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docsDir: string; owner: string | undefined }): Promise<PhaseResult> {
   const { journal, ws, spec, project } = deps;
   if (!journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 0)) await journal.fact(OrchEvent.PhaseStarted, { phase: 0 });
   const gh = (args: string[]) => deps.ghExec({ bin: 'gh', args, cwd: ws.root, timeoutMs: 60_000 });
-  const owner = opts.owner ?? (JSON.parse((await gh(['api', 'user'])).stdout) as { login: string }).login;
+  const owner = opts.owner ?? (await githubLogin(gh));
   const fullName = `${owner}/${project.projectId}`;
   const view = await gh(['repo', 'view', fullName, '--json', 'nameWithOwner,url']);
   const version = spec.specVersion;
@@ -122,7 +129,7 @@ const ready = async (repo: string, exec: Exec): Promise<boolean> =>
 async function cloneOrCreate(deps: PhaseDeps & { ghExec: Exec }, service: string, repo: string, owner: string | undefined): Promise<void> {
   const name = repoName(deps.project.projectId, service);
   const gh = (args: string[]) => deps.ghExec({ bin: 'gh', args, cwd: deps.ws.root, timeoutMs: 60_000 });
-  const login = owner ?? (JSON.parse((await gh(['api', 'user'])).stdout) as { login: string }).login;
+  const login = owner ?? (await githubLogin(gh));
   const view = await gh(['repo', 'view', `${login}/${name}`, '--json', 'nameWithOwner,url']);
   if (view.exitCode !== 0 && !NOT_FOUND.test(view.stderr)) throw new Error(`gh repo view failed: ${view.stderr.trim()}`);
   const found = view.exitCode === 0;

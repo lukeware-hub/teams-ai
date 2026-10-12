@@ -118,6 +118,11 @@ describe('ensureServiceRepos', () => {
     expect(await git(repo, ['log', '--format=%s', 'origin/main'])).toBe('chore: create shop-inventory');
   });
 
+  it('says gh is not logged in instead of failing on its empty answer', async () => {
+    const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s)).onArgs('gh', ['api', 'user'], () => ({ exitCode: 1, stderr: 'not logged into any GitHub hosts' }));
+    expect(await ensureServiceRepos(deps(exec, ['orders']), undefined)).toEqual({ ok: false, reason: 'service orders: gh api user failed: not logged into any GitHub hosts' });
+  });
+
   it('touches nothing for a project without services', async () => {
     const { exec } = github();
     expect(await ensureServiceRepos(deps(exec), 'o')).toEqual({ ok: true });
