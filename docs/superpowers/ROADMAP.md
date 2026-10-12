@@ -587,9 +587,11 @@ The docs (project, briefing, stack, flow, design) stay the only hand-edited trut
 - Audit correction (2026-10-06): a blocked task does not end the run; verification accepts criteria whose only tasks are blocked (`server/evidence/matrix.ts:36,57-58`), so a spec can reach `awaiting-validation` with work missing. The controller's `outcome()` therefore requires zero blocked tasks before treating a delivered spec as `done`-worthy.
 - Live check: see R11.3 above and the live-run report. `r112-biblioteca`'s 8 specs completed in dependency order with zero manual intervention beyond the bug fixes journaled in the report; the ledger survived a full Docker Desktop crash/restart mid-run (R11.4's own `tickPrograms` reconciliation resumed the interrupted run from its existing journal, no re-execution of merged work).
 
-### R11.5 Autonomy hardening - `todo`
+### R11.5 Autonomy hardening - `partial` (plan 66, 2026-10-12)
 
 - Jev decision routing (below in plan 50): every decision point is classified `auto` (decided from docs, ADRs or precedent and recorded as an assumption), `po`, `sm` or `human`; run-time decisions enabled after evals; cumulative README, RUNBOOK and API docs (today the last spec overwrites them, `report.ts:57`); a rebase-conflict resolver step (none exists, the task owner retries three times and then it blocks); a spec to PR ledger (`prs` in `report.json`, `Spec: <id>` in PR bodies and labels); the reserved backlog keys follow every branch suffix.
+- Design and slices: `plans/2026-10-12-teams-ai-66-autonomy-hardening.md` (R11.5.1 rebase conflicts, R11.5.2 deploy fixes remember, R11.5.3 backlog keys and dependencies, R11.5.4 docs accumulate, R11.5.5 spec to pull request ledger, R11.5.6 blocked work does not pass, R11.5.7 Jev answers from the docs).
+- Built R11.5.1 (plan 66): a task whose rebase conflicts moves onto the current main as one commit, with conflict markers where both sides changed the same lines (`replayOnto` in `server/git/git.ts`, `REBASE_REPLAYED`); a clean replay merges again without spending an attempt, markers go to the Dev with the files to resolve, and a change git cannot replay keeps today's feedback; a changed file that still holds a marker never reaches the gates or a merge (`conflictMarkerFiles`).
 
 ### R11.6 Live program dashboard - `partial`
 
