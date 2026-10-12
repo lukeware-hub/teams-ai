@@ -157,7 +157,7 @@ describe('program service prioritize', () => {
   it('refuses an item that is not pending', async () => {
     await fs.mkdir(path.join(root, 'draft'), { recursive: true });
     await fs.writeFile(path.join(root, 'draft', 'program.json'), JSON.stringify({ version: 1, draftId: 'd', status: 'running', updatedAt: '', items: [{ specId: 'd-a', key: 'a', rank: 1, dependsOn: [], status: 'done', runId: null, completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0, costUsd: null }] }));
-    await expect(service().prioritize('shop', 'd', 'd-a')).rejects.toThrow(/not pending/);
+    await expect(service().prioritize('shop', 'd', 'd-a')).rejects.toThrow(/d-a is done/);
   });
 });
 

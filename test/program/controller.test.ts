@@ -221,10 +221,21 @@ describe('program controller', () => {
     expect(calls2).toEqual(['start d-b']);
   });
 
-  it('refuses to prioritize an item that is not pending, or an unknown one', () => {
+  it('refuses to prioritize an item that is done, running or unknown', () => {
     const p = newProgram('d', [{ ...entry('a', 1), done: true }, entry('b', 2)], NOW);
-    expect(() => prioritizeItem(p, 'd-a', NOW)).toThrow(/not pending/);
+    expect(() => prioritizeItem(p, 'd-a', NOW)).toThrow(/d-a is done/);
     expect(() => prioritizeItem(p, 'd-zzz', NOW)).toThrow(/unknown/);
+  });
+
+  it('runs a failed item again ahead of the queue, and says why a blocked one cannot run', () => {
+    let p = newProgram('d', [{ ...entry('a', 1), done: true }, entry('b', 2), entry('c', 3, ['b'])], NOW);
+    p.items[1] = { ...p.items[1]!, status: 'failed', reason: 'verification-failed', runId: 'd-b-r1' };
+    p.items[2] = { ...p.items[2]!, status: 'blocked', reason: 'depends on b, which failed' };
+    expect(() => prioritizeItem(p, 'd-c', NOW)).toThrow('item d-c is blocked: depends on b, which failed');
+    p = prioritizeItem(p, 'd-b', NOW);
+    expect(p.items[1]).toMatchObject({ status: 'pending', priority: true, runId: null, reason: null });
+    expect(p.items[2]!.status).toBe('pending');
+    expect(p.status).toBe('running');
   });
 
   it('retryItem clears a failed item back to pending and un-blocks its dependents, so the next tick gives it another try', () => {

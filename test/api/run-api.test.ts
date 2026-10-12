@@ -519,6 +519,18 @@ describe('start, resume, stop', () => {
     }
   });
 
+  it('says why a spec the program holds back cannot run now, before any process starts', async () => {
+    const own = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, queueInProgram: async () => ({ refused: 'A spec hello-001 está bloqueada no programa: depends on base, which failed' }) }) }, 0);
+    try {
+      const start = await fetch(`http://127.0.0.1:${own.port}/api/projects/hello-app/specs/hello-001/runs`, { method: 'POST', headers: { 'content-type': 'application/json' } });
+      expect(start.status).toBe(409);
+      expect((await start.json()).error).toBe('A spec hello-001 está bloqueada no programa: depends on base, which failed');
+      expect(spawns).toHaveLength(0);
+    } finally {
+      await own.close();
+    }
+  });
+
   it('resume is allowed only for paused:auth or interrupted runs', async () => {
     // Each run is the latest of its spec when it is resumed: an earlier run never resumes behind a later one.
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('paused:auth'));

@@ -264,6 +264,16 @@ describe('refine api', () => {
     await fs.writeFile(programFile, JSON.stringify(pending, null, 2));
     expect(await registry.queueInProgram('hello-app', 'base')).toEqual({ draftId: 'hello-app-001' });
     expect(spawns).toHaveLength(3);
+    // A failed item runs again through its program; a blocked one says why it waits.
+    const again = JSON.parse(await fs.readFile(programFile, 'utf8'));
+    again.status = 'finished';
+    again.items[0] = { ...again.items[0], status: 'failed', reason: 'verification-failed' };
+    await fs.writeFile(programFile, JSON.stringify(again, null, 2));
+    expect(await registry.queueInProgram('hello-app', 'base')).toEqual({ draftId: 'hello-app-001' });
+    expect(spawns).toHaveLength(4);
+    again.items[0] = { ...again.items[0], status: 'blocked', reason: 'depends on x, which failed' };
+    await fs.writeFile(programFile, JSON.stringify(again, null, 2));
+    expect(await registry.queueInProgram('hello-app', 'base')).toEqual({ refused: 'A spec base está bloqueada no programa: depends on x, which failed. Rode antes a spec da qual ela depende.' });
     const prioritized = await call('POST', `${url}/program/base/prioritize`);
     expect(prioritized.status).toBe(400); // running now, so no longer pending
   });

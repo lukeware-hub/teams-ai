@@ -84,6 +84,7 @@ export function ProgramPanel({ program, titles, onPrioritize }: { program: Progr
               {i.costUsd != null && <span className="bk-meta" data-testid={`program-item-cost-${i.key}`}>{fmtCost(i.costUsd)}</span>}
               {i.runId && <Link to={`/runs/${i.runId}`}>{i.runId}</Link>}
               {i.status === 'pending' && (i.priority ? <span className="bk-chip bk-p0">prioritária</span> : onPrioritize && <button type="button" className="secondary" onClick={() => onPrioritize(i.specId)}>Executar agora</button>)}
+              {i.status === 'failed' && onPrioritize && <button type="button" className="secondary" onClick={() => onPrioritize(i.specId)}>Tentar de novo</button>}
             </div>
             {i.reason && <p className="bk-issue">{i.reason}</p>}
           </li>

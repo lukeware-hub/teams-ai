@@ -87,12 +87,16 @@ export function newProgram(draftId: string, entries: readonly ProgramEntry[], no
  * re-derive who is still blocked by another cause. No cause classification, no replanning: a human or a future Jev
  * routing (R11.5/R11.5a) decides whether a retry is warranted; this only clears the ledger for one.
  */
-/** Puts a pending item ahead of the queue: the next `tick()` starts it at the first free slot it does not conflict with. */
+/**
+ * Puts an item ahead of the queue, a failed one retried first: the next `tick()` starts it at the first free slot it does
+ * not conflict with. A blocked item cannot run until its dependency does, and says why.
+ */
 export function prioritizeItem(program: Program, specId: string, now: Date): Program {
-  const p: Program = structuredClone(program);
-  const item = p.items.find((i) => i.specId === specId);
-  if (!item) throw new RangeError(`unknown spec ${specId}`);
-  if (item.status !== 'pending') throw new RangeError(`item ${specId} is not pending (it is ${item.status})`);
+  const found = program.items.find((i) => i.specId === specId);
+  if (!found) throw new RangeError(`unknown spec ${specId}`);
+  const p = found.status === 'failed' ? retryItem(program, specId, now) : structuredClone(program);
+  const item = p.items.find((i) => i.specId === specId)!;
+  if (item.status !== 'pending') throw new RangeError(`item ${specId} is ${item.status}${item.reason ? `: ${item.reason}` : ''}`);
   item.priority = true;
   p.updatedAt = now.toISOString();
   return p;

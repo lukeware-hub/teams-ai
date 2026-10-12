@@ -47,6 +47,13 @@ describe('ProgramPanel', () => {
     expect(within(screen.getByTestId('program-item-c')).queryByRole('button')).toBeNull();
   });
 
+  it('offers to try a failed spec again', () => {
+    const onPrioritize = vi.fn();
+    render(<MemoryRouter><ProgramPanel program={program([item('a', { status: 'failed', reason: 'verification-failed' })])} titles={titles} onPrioritize={onPrioritize} /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar de novo' }));
+    expect(onPrioritize).toHaveBeenCalledWith('d-a');
+  });
+
   it('shows a completing spec as being marked done', () => {
     renderPanel(program([item('a', { status: 'completing', runId: 'd-a-r1', completeRunId: 'd-a-complete-r1' })]));
     expect(screen.getByText('concluindo')).toBeTruthy();

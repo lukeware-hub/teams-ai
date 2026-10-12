@@ -210,12 +210,16 @@ export class SessionRegistry {
     return this.programs.prioritize(projectId, specId, itemSpecId);
   }
 
-  /** A spec still pending in a started program of this project is prioritized there; null when no program owns it. */
-  async queueInProgram(projectId: string, itemSpecId: string): Promise<{ draftId: string } | null> {
+  /**
+   * A spec a started program of this project holds runs there: queued or failed, it goes ahead of the queue; blocked, the
+   * answer says why. Null when no program holds it, or its run is already under way or done.
+   */
+  async queueInProgram(projectId: string, itemSpecId: string): Promise<{ draftId: string } | { refused: string } | null> {
     for (const row of await this.list()) {
       if (row.projectId !== projectId || row.state !== 'started') continue;
-      const program = await this.programs.read(projectId, row.specId);
-      if (program?.status !== 'running' || !program.items.some((i) => i.specId === itemSpecId && i.status === 'pending')) continue;
+      const item = (await this.programs.read(projectId, row.specId))?.items.find((i) => i.specId === itemSpecId);
+      if (item?.status === 'blocked') return { refused: `A spec ${itemSpecId} está bloqueada no programa: ${item.reason}. Rode antes a spec da qual ela depende.` };
+      if (item?.status !== 'pending' && item?.status !== 'failed') continue;
       await this.programs.prioritize(projectId, row.specId, itemSpecId);
       return { draftId: row.specId };
     }
