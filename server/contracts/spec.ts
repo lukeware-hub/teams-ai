@@ -61,8 +61,11 @@ export const SpecProvenance = z.object({
   backlogKey: z.string().regex(ID_PATTERNS.SLUG),
   inputHash: z.string().regex(HASH_PATTERN),
   docsHash: z.string().regex(HASH_PATTERN),
-  /** Each cited section with the hash of its text; null when the heading was not found in the doc. */
-  sources: z.array(BacklogSource.extend({ hash: z.string().regex(HASH_PATTERN).nullable() })).min(1),
+  /**
+   * Each cited section with the hash of its text; null when the heading was not found in the doc. `bodyHash` leaves the
+   * heading line out, so a renumbered or renamed section reads as unchanged (R11.7.4); older specs lack it.
+   */
+  sources: z.array(BacklogSource.extend({ hash: z.string().regex(HASH_PATTERN).nullable(), bodyHash: z.string().regex(HASH_PATTERN).nullable().optional() })).min(1),
 });
 export type SpecProvenance = z.infer<typeof SpecProvenance>;
 

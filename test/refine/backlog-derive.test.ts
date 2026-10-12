@@ -97,6 +97,12 @@ describe('postProcessBacklog', () => {
     expect(keys([])).toEqual([['caso', 1, 'Item caso'], ['opme', 2, 'Item opme']]);
     expect(keys(['opme-ajuste-1'])).toEqual([['caso', 1, 'Item caso'], ['opme', 2, 'Item opme'], ['opme-ajuste-1', 3, 'Ajuste 1: Item opme']]);
   });
+
+  // Review of plan 79: run by rank, a dependent of the original must not be built on its old behavior first.
+  it('ranks an adjustment right after its original, ahead of the items of its priority that wait on that original', () => {
+    const out = postProcessBacklog(raw([item('caso', { priority: 'P0' }), item('opme'), item('fat', { dependsOn: ['opme'] }), item('relatorio')]), null, '', ['opme-ajuste-1']);
+    expect(out.ok && out.value.backlog.items.map((i) => i.key)).toEqual(['caso', 'opme', 'opme-ajuste-1', 'fat', 'relatorio']);
+  });
 });
 
 describe('renderBacklogMd', () => {

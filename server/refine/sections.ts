@@ -106,3 +106,18 @@ export function sectionText(doc: string, heading: string): string | null {
   }
   return best?.section.text ?? null;
 }
+
+/** R11.7.4: the owner approves an adjustment with a section headed `Ajuste aprovado: <key>-ajuste-<n>`. */
+const APPROVAL = /^Ajuste aprovado:\s*`?([a-z0-9]+(?:-[a-z0-9]+)*-ajuste-\d+)`?$/i;
+
+/** The adjustment key a section heading approves, or null. */
+export const approvalKey = (heading: string): string | null => APPROVAL.exec(heading)?.[1]!.toLowerCase() ?? null;
+
+/** The doc without its approval sections, so an approval leaves the text of every other section as it was. */
+export function withoutApprovals(doc: string): string {
+  let out = doc;
+  for (const { heading, text } of docSections(doc)) {
+    if (approvalKey(heading)) out = out.includes(`\n${text}`) ? out.replace(`\n${text}`, '') : out.replace(text, '');
+  }
+  return out;
+}

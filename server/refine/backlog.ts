@@ -87,7 +87,8 @@ export function postProcessBacklog(out: { project: unknown; backlog: unknown }, 
   const items = keepPreviousKeys(backlog.data.items.filter((i) => !isAdjustment(i.key)), previous);
   const rules = validateBacklog({ epics: backlog.data.epics, items }, { flowHeadings: flowHeadings(flow) });
   if (rules.length > 0) return { ok: false, issues: rules };
-  return { ok: true, value: { project: project.data, backlog: { epics: backlog.data.epics, items: rankItems([...items, ...adjustmentItems(items, approved)]) } } };
+  // Adjustments first: rank breaks ties by position, so each runs right after its original, before what waits on it.
+  return { ok: true, value: { project: project.data, backlog: { epics: backlog.data.epics, items: rankItems([...adjustmentItems(items, approved), ...items]) } } };
 }
 
 /** The backlog as a Markdown view for people (and later agents); generated, never edited by hand. */

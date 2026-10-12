@@ -1,7 +1,8 @@
 import type { BacklogItem } from '../contracts/backlog.js';
-import type { SpecStatus } from '../contracts/spec.js';
+import type { SpecProvenance, SpecStatus } from '../contracts/spec.js';
 import { isStarted } from './coverage.js';
 import { sourceHashes, type BacklogDocs } from './details.js';
+import { approvalKey, docSections } from './sections.js';
 import type { BacklogState, PatchRow } from './state.js';
 
 /**
@@ -10,7 +11,6 @@ import type { BacklogState, PatchRow } from './state.js';
  * agent, adds it to the backlog after the spec it changes.
  */
 const ADJUSTMENT = /^([a-z0-9]+(?:-[a-z0-9]+)*)-ajuste-(\d+)$/;
-const APPROVED = /^#{1,6}[ \t]+Ajuste aprovado:[ \t]*`?([a-z0-9]+(?:-[a-z0-9]+)*-ajuste-\d+)`?[ \t]*$/gim;
 
 const rootOf = (key: string) => ADJUSTMENT.exec(key)?.[1];
 const numberOf = (key: string) => Number(ADJUSTMENT.exec(key)?.[2] ?? 0);
@@ -20,7 +20,7 @@ export const isAdjustment = (key: string): boolean => ADJUSTMENT.test(key);
 
 /** The adjustments the owner approved: one `## Ajuste aprovado: <key>` section each in briefing.md. */
 export function approvedAdjustments(briefing: string): string[] {
-  return [...new Set([...briefing.matchAll(APPROVED)].map((m) => m[1]!.toLowerCase()))];
+  return [...new Set(docSections(briefing).flatMap((s) => approvalKey(s.heading) ?? []))];
 }
 
 /** Each approved adjustment (keys from `approvedAdjustments`) of an item in the outline, after it and its earlier adjustments. */
@@ -67,12 +67,15 @@ export function adjustmentsDue(backlog: Pick<BacklogState, 'items' | 'specs'>, d
     const latest = backlog.items.filter((i) => i.key === original.key || rootOf(i.key) === original.key).reduce((a, b) => (numberOf(b.key) > numberOf(a.key) ? b : a));
     const spec = backlog.specs?.[latest.key]?.spec;
     if (!spec?.derivedFrom || !isStarted(spec.status)) return [];
-    const was = spec.derivedFrom.sources.map((s) => s.hash);
+    // Below the heading line when the spec recorded it, so a renumbered or renamed section is no change.
+    const byBody = spec.derivedFrom.sources.every((s) => s.bodyHash !== undefined);
+    const hashOf = (s: SpecProvenance['sources'][number]) => (byBody ? (s.bodyHash ?? null) : s.hash);
+    const was = spec.derivedFrom.sources.map(hashOf);
     const now = sourceHashes(latest, docs);
-    if (sameHashes(was, now.map((s) => s.hash))) return [];
+    if (sameHashes(was, now.map(hashOf))) return [];
     const key = `${original.key}-ajuste-${numberOf(latest.key) + 1}`;
     if (patches.some((p) => (p.status === 'pending' || p.status === 'rejected') && p.replace.startsWith(`## ${approvalHeading(key)}\n`))) return [];
-    return [{ key, specId: spec.specId, status: spec.status, changed: now.filter((s) => !was.includes(s.hash)).map((s) => `${s.doc} › ${s.heading}`) }];
+    return [{ key, specId: spec.specId, status: spec.status, changed: now.filter((s) => !was.includes(hashOf(s))).map((s) => `${s.doc} › ${s.heading}`) }];
   });
 }
 

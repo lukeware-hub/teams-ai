@@ -35,10 +35,11 @@ describe('specInputHash', () => {
     expect(specInputHash(briefingItem, docs({ 'briefing.md': '# Briefing\n\n## Prioridades\n\n- OPME é P1' }))).not.toBe(specInputHash(briefingItem, docs()));
   });
 
-  it('records each cited section with the hash of its text, null when the heading is missing', () => {
+  it('records each cited section with the hash of its text and of its text below the heading, null when the heading is missing', () => {
     const sources = sourceHashes(item('x', { sources: [{ doc: 'flow.md', heading: '7. OPME' }, { doc: 'flow.md', heading: '9. Faturamento' }] }), docs());
-    expect(sources[0]).toMatchObject({ doc: 'flow.md', heading: '7. OPME', hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/) });
-    expect(sources[1]).toEqual({ doc: 'flow.md', heading: '9. Faturamento', hash: null });
+    expect(sources[0]).toMatchObject({ doc: 'flow.md', heading: '7. OPME', hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/), bodyHash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/) });
+    expect(sources[0]!.bodyHash).not.toBe(sources[0]!.hash);
+    expect(sources[1]).toEqual({ doc: 'flow.md', heading: '9. Faturamento', hash: null, bodyHash: null });
   });
 });
 
