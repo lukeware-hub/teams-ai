@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { ConflictsOutput, ItemPreplan, ItemSpec, PreplanOutput, SpecDetailOutput } from '../agents/outputs.js';
 import { Governor } from '../budget/governor.js';
+import { ID_PATTERNS } from '../core/ids.js';
 import { canonicalJson, sha256 } from '../contracts/hash.js';
 import { Preplan } from '../contracts/preplan.js';
 import { computeSpecHash, Spec } from '../contracts/spec.js';
@@ -88,6 +89,8 @@ export async function maxCriterionInDraft(draft: Draft): Promise<number> {
  */
 export async function retireDropped(draft: Draft, specIds: readonly string[]): Promise<void> {
   for (const specId of specIds) {
+    // A spec id is a slug; anything else could name a path outside the draft.
+    if (!ID_PATTERNS.SLUG.test(specId)) continue;
     const onMain = await readMainSpec(draft, specId);
     if (onMain?.status === 'planned' || onMain?.status === 'refining') {
       await restoreFromBase(draft, specId);

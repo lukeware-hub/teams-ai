@@ -4,6 +4,8 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { BacklogItem } from '../../server/contracts/backlog.js';
 import { runCycle } from '../../server/refine/cycle.js';
+import { retireDropped } from '../../server/refine/detail-cycle.js';
+import { restoreFromBase } from '../../server/refine/draft.js';
 import { RefineEvent } from '../../server/refine/events.js';
 import { applyPatch } from '../../server/refine/patches.js';
 import { programEntries } from '../../server/refine/session.js';
@@ -307,6 +309,28 @@ describe('backlog detailing in the refinement cycle', () => {
     expect(second.journal.state.backlog!.items.find((i) => i.key === 'fat')).toMatchObject({ dependsOn: ['opme'] });
     expect(second.journal.state.backlog!.specs?.fat?.spec?.status).toBe('done');
     expect(approvals(second)).toEqual([expect.objectContaining({ status: 'pending', replace: expect.stringMatching(/^## Ajuste aprovado: fat-ajuste-1\n[\s\S]*remove essa funcionalidade/) })]);
+  });
+
+  // Security: main's specs.json is a file of the target repository, and its keys become paths in the draft.
+  it("ignores main's outline when a key in its index is not a slug, and deletes nothing outside the draft", async () => {
+    const { second } = await secondDraft(async (d) => {
+      await mkdir(`${d.draft.root}/sentinel`, { recursive: true });
+      await writeFile(`${d.draft.root}/sentinel/keep.txt`, 'x');
+      const file = `${d.draft.base}/specs.json`;
+      const index = JSON.parse(await readFile(file, 'utf8'));
+      index.specs.push({ ...index.specs[0], specId: 'outro', key: '../../../../sentinel', title: 'Outro item' });
+      await writeFile(file, JSON.stringify(index));
+    });
+    expect(await exists(`${second.draft.root}/sentinel/keep.txt`)).toBe(true);
+  });
+
+  it('never touches a path outside the draft for a spec id that is not a slug', async () => {
+    const { draft } = await setup();
+    await mkdir(`${draft.root}/sentinel`, { recursive: true });
+    await writeFile(`${draft.root}/sentinel/keep.txt`, 'x');
+    await retireDropped(draft, ['../../sentinel']);
+    await restoreFromBase(draft, '../../sentinel');
+    expect(await exists(`${draft.root}/sentinel/keep.txt`)).toBe(true);
   });
 
   it('keeps a started adjustment whose approval section the owner removed', async () => {

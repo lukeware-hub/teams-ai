@@ -4,7 +4,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { canonicalJson, sha256 } from '../contracts/hash.js';
 import { Project } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
-import { stepId } from '../core/ids.js';
+import { ID_PATTERNS, stepId } from '../core/ids.js';
 import type { Exec } from '../exec/command.js';
 import { fetch as gitFetch, git, showFile } from '../git/git.js';
 import { mergeDoc, sameDoc } from '../git/merge-doc.js';
@@ -259,7 +259,8 @@ export async function readMainSpec(d: Draft, specId: string): Promise<Spec | nul
 
 /** Puts main's copy of a spec's folder back in the draft, so a run's Phase 0 never publishes the draft's version over it. */
 export async function restoreFromBase(d: Draft, specId: string): Promise<void> {
-  if (!d.base) return;
+  // A spec id is a slug; anything else could name a path outside the draft.
+  if (!d.base || !ID_PATTERNS.SLUG.test(specId)) return;
   const target = path.posix.join(d.docs, 'specs', specId);
   await fs.rm(target, { recursive: true, force: true });
   await fs.cp(path.posix.join(d.base, 'specs', specId), target, { recursive: true });

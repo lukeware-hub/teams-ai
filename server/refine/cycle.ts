@@ -2,6 +2,7 @@ import type { AnswerOutput, BacklogOutput, DeriveOutput, OutputOf, RefineOutput,
 import type { z } from 'zod';
 import type { Project } from '../contracts/project.js';
 import type { AcceptanceCriterion, Spec } from '../contracts/spec.js';
+import { ID_PATTERNS } from '../core/ids.js';
 import { loadSecrets } from '../core/secrets.js';
 import type { Hit } from '../knowledge/retrieval.js';
 import type { Journal } from '../orchestrator/events.js';
@@ -62,6 +63,8 @@ async function mainOutline(draft: Draft, before: BacklogState | null): Promise<B
   try {
     const index = JSON.parse((await readBase(draft, 'specs.json')) ?? 'null') as SpecsIndex | null;
     if (!index?.specs?.length) return before;
+    // A file of the target repository whose keys become paths in the draft: one that is not a slug leaves main's outline out.
+    if (!index.specs.every((s) => [s.specId, s.key, ...s.dependsOn].every((v) => typeof v === 'string' && ID_PATTERNS.SLUG.test(v)))) return before;
     return { ...(before ?? { enabled: true, project: null, cycle: 0 }), ...outlineOfIndex(index) } as BacklogState;
   } catch {
     return before;
