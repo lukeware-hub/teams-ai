@@ -101,6 +101,18 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       throw new HttpError(400, cloneFailure(result.stderr));
     }
   });
+  /** Moves a downloaded repository to where the refinement and the runs look for the project's clone. */
+  const settleImport = async (cfg: Config, downloaded: string, projectId: string): Promise<string> => {
+    const repo = workspacePaths(cfg, projectId, deps.home).repo;
+    if (path.resolve(repo) === downloaded) return downloaded;
+    if (await fs.access(repo).then(() => true, () => false)) await fs.rm(downloaded, { recursive: true, force: true });
+    else {
+      await fs.mkdir(path.dirname(repo), { recursive: true });
+      await fs.rename(downloaded, repo);
+    }
+    await removeProjectDirs([downloaded], deps.home);
+    return repo;
+  };
   const events = async (runs: string, runId: string): Promise<StoredEvent[]> => {
     const file = path.join(runs, runId, 'events.ndjson');
     await fs.access(file).catch(() => {
@@ -247,6 +259,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const read = await readProject(dir).catch((err: Error) => {
           throw new HttpError(400, `${typeof source.url === 'string' ? 'repositório inválido' : 'not a project directory'}: ${err.message.includes('ENOENT') ? `docs/project.json não foi encontrado${typeof source.url === 'string' ? '; se este repositório é um serviço de um sistema, importe o repositório de documentação do projeto, que clona os serviços sozinho' : ''}` : 'docs/project.json inválido'}`);
         });
+        if (typeof source.url === 'string') dir = await settleImport(cfg, dir, safe(read.project.projectId));
         await addProject(dir, deps.home);
         const idx = await index();
         const rows = await listProjects(idx);

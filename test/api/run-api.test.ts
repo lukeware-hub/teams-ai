@@ -195,7 +195,14 @@ describe('projects', () => {
     expect(cloned).toHaveLength(2);
     expect(cloned[0]!.destination).toContain(`${path.sep}imports${path.sep}demo-`);
     expect(cloned[1]!.destination).toContain(`${path.sep}imports${path.sep}another-`);
-    expect((await readUserConfig(home)).cfg.projects).toHaveLength(3);
+    // The download moves to the project's own clone, where refinement and runs look for it.
+    const repo = path.join(home, '.teams-ai', 'workspaces', 'hello-app', 'repo');
+    expect((await first.json()).dir).toBe(repo);
+    expect((await fs.stat(path.join(repo, 'docs', 'project.json'))).isFile()).toBe(true);
+    await expect(fs.access(cloned[0]!.destination)).rejects.toThrow();
+    // Both fixtures are the same project, so they share one clone.
+    expect((await readUserConfig(home)).cfg.projects.map((p) => p.dir)).toEqual(expect.arrayContaining([repo]));
+    expect((await readUserConfig(home)).cfg.projects.map((p) => p.dir)).not.toContain(cloned[0]!.destination);
   });
 
   it('tells an import of a repository without docs/project.json to import the project repository instead', async () => {
