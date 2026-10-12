@@ -17,7 +17,7 @@ import { sandboxPolicyViolation } from '../runner/sandbox-policy.js';
 import type { Exec } from '../exec/command.js';
 import { TOOLS_GATE } from '../validators/security-tooling.js';
 import { writeToolsInstaller } from './tools-install.js';
-import { prepareGateImage, runGates, TAIL_CHARS, type GateExecutor, type GateResult } from '../exec/gate-runner.js';
+import { prepareGateImage, runGate, runGates, TAIL_CHARS, type GateExecutor, type GateResult } from '../exec/gate-runner.js';
 import { fetch as gitFetch, git, withCheckoutLock, withRepoLock } from '../git/git.js';
 import { MergeQueue } from '../git/merge-queue.js';
 import type { CodeContext, HandoffSummary } from '../knowledge/context-pack.js';
@@ -357,6 +357,14 @@ export class Run {
       junit: null,
       failure: r.timedOut ? 'infra' : 'code',
     };
+  }
+
+  /** The plan's install command in the offline-by-default gate container, never on the host: an imported plan is not agent-written here. */
+  private async installInGate(view: ServiceView): Promise<GateResult | null> {
+    const p = view.plan;
+    const ctx = { worktree: this.wsOf(view).repo, image: await this.gateImage(p.gateImage), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: buildTimeoutMs(p), secrets: {}, containerName: `teams-ai-${this.runId}-deploy${view.service ? `-${view.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite };
+    const r = await runGate({ name: 'install', command: p.commands.install, blocking: true, network: 'egress', secrets: [] }, ctx, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
+    return r.passed ? null : r;
   }
 
   private readonly gateImages = new Map<string, Promise<string>>();
@@ -714,7 +722,7 @@ export class Run {
     this.plan = parseAnyPlan(JSON.parse(text));
     // A fresh clone (an import) has no installed test dependencies, and smoke and e2e run from them.
     for (const view of servicePlans(this.plan)) {
-      const install = await this.installDeps(view, this.wsOf(view).repo);
+      const install = await this.installInGate(view);
       if (install) return this.finish('deploy-failed', `install failed: ${install.stderrTail || install.stdoutTail}`);
     }
     const p5 = await this.phase5(1, { fixTasks: false });

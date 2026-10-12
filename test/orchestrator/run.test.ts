@@ -496,17 +496,17 @@ describe('Run', () => {
       await run.close();
     });
 
-    it('installs the plan dependencies before it deploys, because a fresh clone has none', async () => {
+    it('installs the plan dependencies inside the gate container before it deploys, never on the host', async () => {
       const base = deps(noAgent, { target: target() as never });
-      const installs: string[] = [];
+      const seen: Array<{ bin: string; args: string[] }> = [];
       const exec: RunDeps['exec'] = async (spec) => {
-        if (spec.bin !== 'sh') return base.exec(spec);
-        installs.push(spec.args.join(' '));
-        return { exitCode: 0, signal: null, stdout: '', stderr: '', timedOut: false, durationMs: 0, truncated: false };
+        seen.push({ bin: spec.bin, args: [...spec.args] });
+        return base.exec(spec);
       };
       const run = await Run.create({ ...base, exec }, 'spec-001-deploy-r4');
       expect(await run.deployOnly()).toBe('done');
-      expect(installs).toEqual(['-lc npm ci']);
+      expect(seen.some((c) => c.bin === 'sh')).toBe(false);
+      expect(seen.some((c) => c.bin === 'docker' && c.args[0] === 'run' && c.args.includes('npm ci'))).toBe(true);
       await run.close();
     });
 
