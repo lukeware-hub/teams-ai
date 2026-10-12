@@ -88,6 +88,19 @@ describe('refinePack in detail mode', () => {
     } as BacklogState;
   };
 
+  // R11.10 (plan 88): before the detailing, the review judges the outline's structure, never what a spec decides.
+  it('asks the PO and the SM reviewing an outline for its structure only, and nobody else', () => {
+    const backlog = { enabled: true, project: null, epics: [{ key: 'core', title: 'Núcleo' }], items: [], cycle: 1 };
+    const review = (role: 'po' | 'sm' | 'front', b: object = backlog) => String(refinePack({ ...base, role, derived: { project: {}, spec: null }, backlog: b, projectBriefing: true } as never).feedback);
+    const rule = 'Outline review (no spec yet): judge only the items';
+    expect(review('po')).toContain(rule);
+    expect(review('po')).toContain('leave every detail a spec decides, such as status codes, messages, fields, validations or e-mail content, to the detailing');
+    expect(review('sm')).toContain(rule);
+    expect(review('front')).not.toContain(rule);
+    expect(review('po', { ...backlog, detail: true, flowHeadings: [] })).not.toContain(rule);
+    expect(refinePack({ ...base, role: 'po' }).feedback).not.toContain(rule);
+  });
+
   it('reviews a digest of every item and full JSON only for what changed this cycle, within the cap for 60 items and 45k tokens of docs', () => {
     const big = 'x'.repeat(36_000);
     const pack = fitPackBudget(refinePack({ ...base, role: 'po', derived: { project: {}, spec: null }, backlog: detailed(60, 5), projectBriefing: true, cycle: 5, projectMd: big, briefMd: big, stackMd: big, flowMd: big, designMd: big } as never));
@@ -98,6 +111,8 @@ describe('refinePack in detail mode', () => {
     expect(pack.feedback).toContain('"specId": "k-item-0"');
     expect(pack.feedback).not.toContain('"specId": "k-item-10"');
     expect(pack.feedback).toMatch(/specs change only through the docs/i);
+    // R11.10 (plan 88): a criterion is read against what its item and its dependencies deliver.
+    expect(pack.feedback).toContain('checkable with what its own item and the items it depends on deliver');
   });
 
   // Plan 77 review: a started or delivered spec is frozen; the review neither re-reads it as changed nor expects a pre-plan.
