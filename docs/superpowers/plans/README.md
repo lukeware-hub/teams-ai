@@ -76,6 +76,7 @@ was implemented. Web UI block A (`2026-09-24-run-api-execution-ui-design.md`) is
 | 76 | [`2026-10-12-teams-ai-76-docs-sync-after-refinement.md`](2026-10-12-teams-ai-76-docs-sync-after-refinement.md) | Slice 1 done — the spec carries the decisions of its refinement, so a later version neither loses nor asks them again; ROADMAP R11.7. |
 | 77 | [`2026-10-12-teams-ai-77-started-specs-never-rederived.md`](2026-10-12-teams-ai-77-started-specs-never-rederived.md) | Done — a started or delivered spec is never re-derived, and a new program never runs it again; ROADMAP R11.7.2. |
 | 78 | [`2026-10-12-teams-ai-78-unchanged-items-reused.md`](2026-10-12-teams-ai-78-unchanged-items-reused.md) | Done — a new backlog draft derives again only the items whose sources changed; ROADMAP R11.7.3. |
+| 79 | [`2026-10-12-teams-ai-79-adjustment-specs.md`](2026-10-12-teams-ai-79-adjustment-specs.md) | Done — a change to the sections of a started or delivered spec becomes an adjustment spec the owner approves in briefing.md; ROADMAP R11.7.4. |
 
 Plans 17 and 19 never existed (not a gap in this audit - no file was ever created at those numbers).
 
