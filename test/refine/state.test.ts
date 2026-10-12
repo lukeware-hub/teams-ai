@@ -22,9 +22,10 @@ describe('reduceRefineEvents', () => {
     expect(s.questions[0]).toMatchObject({ questionId: 'po-c1-0', status: 'pending' });
     expect(s.patches[0]).toMatchObject({ patchId: 'sm-c1-0', status: 'pending' });
   });
-  it('is ready only with all green, no pending patch and no pending blocking question; a blocking question keeps answering', () => {
+  // R11.10 (plan 89): once every checklist item is green, a reviewer's pending patch is a suggestion that holds nothing back.
+  it('is ready with all green and no pending blocking question, a reviewer patch still pending; a blocking question keeps answering', () => {
     const base = [...cycle(1), { type: RefineEvent.PatchProposed, data: patch('sm-c1-0') }, { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: allGreen, questions: [q('po-c1-0', false)], discardedPatches: [] } }];
-    expect(reduceRefineEvents(base).status).toBe('answering');
+    expect(reduceRefineEvents(base).status).toBe('ready');
     const decided = reduceRefineEvents([...base, { type: RefineEvent.PatchRejected, data: { patchId: 'sm-c1-0', reason: null } }, { type: RefineEvent.QuestionSkipped, data: { questionId: 'po-c1-0' } }]);
     expect(decided).toMatchObject({ status: 'ready', stale: false });
     const blocking = reduceRefineEvents([...cycle(1), { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: allGreen, questions: [q('po-c1-1', true)], discardedPatches: [] } }]);
@@ -33,6 +34,13 @@ describe('reduceRefineEvents', () => {
     expect(accepted.stale).toBe(true);
     const red = reduceRefineEvents([...cycle(1), { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: [...allGreen.slice(0, 7), item('sm.no-open-questions', false)], questions: [], discardedPatches: [] } }]);
     expect(red.status).toBe('drafting');
+    // A failing item keeps a pending patch holding the session back.
+    const redWithPatch = reduceRefineEvents([...cycle(1), { type: RefineEvent.PatchProposed, data: patch('sm-c1-0') }, { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: [...allGreen.slice(0, 7), item('sm.no-open-questions', false)], questions: [], discardedPatches: [] } }]);
+    expect(redWithPatch.status).toBe('answering');
+    // An adjustment's approval is the owner's decision, never a suggestion.
+    const approval = { ...patch('po-c1-0'), role: 'po', replace: '## Ajuste aprovado: caso-ajuste-1\n\nA spec caso foi entregue antes da mudança.\n' };
+    const waiting = reduceRefineEvents([...cycle(1), { type: RefineEvent.PatchProposed, data: approval }, { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: allGreen, questions: [], discardedPatches: [] } }]);
+    expect(waiting.status).toBe('answering');
   });
   it('reports a failed cycle, an interrupted cycle and a started run', () => {
     expect(reduceRefineEvents([...cycle(1), { type: RefineEvent.CycleFailed, data: { cycle: 1, reason: 'derive: spec.objectives: too small' } }])).toMatchObject({ status: 'error', error: 'derive: spec.objectives: too small' });

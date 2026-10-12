@@ -212,6 +212,19 @@ describe('RefinementView', () => {
     expect(screen.getByText(/suposição do PO, tirada dos documentos/)).toBeTruthy();
   });
 
+  // R11.10 (plan 89): once ready, a pending patch is an optional suggestion: Start stays enabled and nobody is told to decide each one.
+  it('keeps Start enabled with a pending suggestion once ready, and calls the suggestions optional', () => {
+    const snap = base({ status: 'ready', questions: [] });
+    render(
+      <MemoryRouter>
+        <RefinementView snap={{ ...snap, secrets: [{ name: 'DB_URL', present: true, hint: null }] }} busy={false} {...on()} />
+      </MemoryRouter>,
+    );
+    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByText(/aceite ou rejeite cada uma/)).toBeNull();
+    expect(screen.getByText(/As sugestões abaixo são opcionais; aceitar uma pede nova avaliação\./)).toBeTruthy();
+  });
+
   it('saves a doc on blur, enables Start only when ready and not stale, and shows secrets rows', () => {
     const h = on();
     const { rerender } = render(

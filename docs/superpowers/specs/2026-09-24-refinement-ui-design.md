@@ -72,7 +72,7 @@ drafting → evaluating → answering → evaluating → … → ready → start
 | `drafting` | Documents can be edited; nothing evaluated yet, or checklist stale | writable |
 | `evaluating` | derive or refine steps running | read-only |
 | `answering` | Questions queued or patches pending | writable |
-| `ready` | Checklist green, no blocking question, no pending patch, secrets present | writable (an edit sets `stale`) |
+| `ready` | Checklist green, no blocking question, no pending adjustment approval, secrets present; a reviewer's pending patch is then an optional suggestion (R11.10, 2026-10-12) | writable (an edit sets `stale`) |
 | `error` | Last cycle failed; reason shown | writable |
 | `started` | Run spawned; session closed | read-only |
 

@@ -251,7 +251,7 @@ export function RefinementView(p: ViewProps) {
     ? 'Responda às perguntas em aberto para continuar.'
     : st.stale
       ? 'Clique em Reavaliar para atualizar a lista de verificação com as últimas mudanças.'
-      : st.patches.some((x) => x.status === 'pending')
+      : st.status !== 'ready' && st.patches.some((x) => x.status === 'pending')
         ? 'Revise as sugestões de alteração abaixo e aceite ou rejeite cada uma.'
         : st.backlog?.enabled && st.status === 'ready'
           ? st.backlog.detail
@@ -266,6 +266,8 @@ export function RefinementView(p: ViewProps) {
           : st.cycle === 0
             ? 'Revise os documentos e clique em Avaliar. Os agentes vão revisar a demanda e preencher a lista de verificação.'
             : 'Corrija nos documentos os itens não atendidos da lista de verificação e clique em Reavaliar.';
+  // R11.10: once ready, a pending patch is a suggestion the owner may still take.
+  const optional = st.status === 'ready' && !st.stale && st.patches.some((x) => x.status === 'pending') ? ' As sugestões abaixo são opcionais; aceitar uma pede nova avaliação.' : '';
   const existing = st.mode === 'new-spec' || st.mode === 'continue';
   const suggest = (file: Exclude<DocFile, 'flow.md'>) => {
     setSuggesting(true);
@@ -363,7 +365,7 @@ export function RefinementView(p: ViewProps) {
         </div>
         <span className={`count-pill ${pending.length > 0 ? 'tone-warn' : 'tone-good'}`}>{pending.length === 1 ? '1 pergunta em aberto' : `${pending.length} perguntas em aberto`}</span>
       </div>
-      <p className="m-0 mb-4 flex items-start gap-[0.6rem] rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-[0.8125rem] leading-[1.45] text-ink [&_svg]:flex-none [&_svg]:text-accent-text"><Icon name="lightbulb" size={20} /><span><b>Próximo passo:</b> {nextStep}</span></p>
+      <p className="m-0 mb-4 flex items-start gap-[0.6rem] rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-[0.8125rem] leading-[1.45] text-ink [&_svg]:flex-none [&_svg]:text-accent-text"><Icon name="lightbulb" size={20} /><span><b>Próximo passo:</b> {nextStep}{optional}</span></p>
       {busy && (
         <div className={`mb-4 flex items-center gap-[0.7rem] rounded-lg border px-[0.8rem] py-[0.7rem] [&_.info-tip]:text-current ${jevDown ? 'border-bad-line bg-bad-soft text-bad' : 'border-good-line bg-good-soft text-good'}`} role="status" aria-live="polite">
           <span className={`size-[0.55rem] rounded-full motion-safe:animate-pulse ${jevDown ? 'bg-bad shadow-[0_0_0_4px_var(--bad-line)]' : 'bg-good-live shadow-[0_0_0_4px_var(--good-line)]'}`} aria-hidden="true" />
