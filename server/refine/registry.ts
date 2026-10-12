@@ -204,9 +204,25 @@ export class SessionRegistry {
     return this.programs.retry(projectId, specId, itemSpecId);
   }
 
-  /** One reconciliation of every started backlog program: the UI server calls it on a timer and once at boot. */
+  /** Drafts whose automatic start failed, by evaluation cycle: tried again only after a new cycle, never on every tick. */
+  private readonly autoStartFailed = new Set<string>();
+
+  /** A detailed backlog that is ready and current starts its program by itself; nobody has to press Start. */
+  private async autoStart(projectId: string, specId: string): Promise<void> {
+    const st = (await this.get(projectId, specId)).state;
+    if (!st.backlog?.enabled || !st.backlog.detail || st.stale || st.status !== 'ready') return;
+    const key = `${projectId}/${specId}@${st.cycle}`;
+    if (this.autoStartFailed.has(key)) return;
+    await this.start(projectId, specId).catch((err) => {
+      this.autoStartFailed.add(key);
+      console.error(`auto start ${projectId}/${specId}: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  }
+
+  /** One reconciliation of every backlog program, started or ready to start: the UI server calls it on a timer and once at boot. */
   async tickPrograms(): Promise<void> {
     for (const row of await this.list()) {
+      if (row.state === 'ready') await this.autoStart(row.projectId, row.specId).catch(() => undefined);
       if (row.state !== 'started') continue;
       await this.programs.tick(row.projectId, row.specId).catch((err) => console.error(`program ${row.projectId}/${row.specId}: ${err instanceof Error ? err.message : String(err)}`));
     }

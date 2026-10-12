@@ -284,6 +284,43 @@ describe('refine api', () => {
     expect((await call('POST', `${url}/start`)).status).toBe(200);
   });
 
+  it('starts a detailed backlog by itself once it is ready, and tries a failed start again only after a new cycle', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    const url = '/api/refine/hello-app/hello-app-001';
+    await call('POST', `${url}/backlog`);
+    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
+    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }, { checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }, { checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', `${url}/evaluate`);
+    await settle();
+    // An outline that is ready but not detailed never starts by itself.
+    await registry.tickPrograms();
+    expect(spawns).toHaveLength(0);
+    await call('POST', `${url}/backlog/detail`);
+    script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
+    script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
+    await call('POST', `${url}/evaluate`);
+    await settle();
+    expect((await snapshot()).state.status).toBe('ready');
+    spawnShouldFail = true;
+    await registry.tickPrograms();
+    await registry.tickPrograms();
+    expect(spawns).toHaveLength(1);
+    expect((await snapshot()).state.status).toBe('ready');
+    spawnShouldFail = false;
+    await registry.tickPrograms();
+    expect(spawns).toHaveLength(1);
+    // A new cycle clears the failed mark: the next tick starts the program.
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', `${url}/evaluate`);
+    await settle();
+    await registry.tickPrograms();
+    expect((await snapshot()).state.status).toBe('started');
+    expect(spawns).toHaveLength(2);
+  });
+
   it('refuses to detail an outline the docs changed after it was reviewed', async () => {
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     const url = '/api/refine/hello-app/hello-app-001';
