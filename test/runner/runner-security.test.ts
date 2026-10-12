@@ -122,6 +122,15 @@ describe('H3 gh and docker are off the agent PATH', () => {
     expect(dirs).toEqual(['/usr/local/go/bin', '/usr/local/bin', '/usr/bin']);
   });
 
+  it('also drops it when the PATH entry is written with a trailing slash or a dot segment', () => {
+    const dirs = buildInvocation(input, { ...host, PATH: '/opt/teams-ai-bin/:/usr/bin:/opt/./teams-ai-bin' }).env.PATH.split(path.delimiter);
+    expect(dirs).toEqual(['/usr/bin']);
+  });
+
+  it('an agent step may not run a binary from that directory by its path', () => {
+    expect(NESTED_DENIED).toContain('Bash(*/opt/teams-ai-bin/*)');
+  });
+
   it('the orchestrator-side spawn env still carries that directory', () => {
     expect(childEnv(host).PATH.split(path.delimiter)).toContain(ORCHESTRATOR_BIN_DIR);
   });

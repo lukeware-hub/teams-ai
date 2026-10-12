@@ -139,7 +139,7 @@ export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessE
   }
 
   const env = { ...sanitizeEnv(hostEnv), ...STEP_ENV };
-  if (env.PATH) env.PATH = env.PATH.split(path.delimiter).filter((dir) => dir !== ORCHESTRATOR_BIN_DIR).join(path.delimiter);
+  if (env.PATH) env.PATH = env.PATH.split(path.delimiter).filter((dir) => path.posix.resolve('/', dir) !== ORCHESTRATOR_BIN_DIR).join(path.delimiter);
   if (input.home) {
     env.HOME = input.home;
     env.TMPDIR = path.join(input.home, 'tmp');

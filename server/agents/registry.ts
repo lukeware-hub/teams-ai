@@ -56,6 +56,7 @@ export const NESTED_DENIED: readonly string[] = [
   'Bash(* kubectl *)',
   'Bash(* docker *)',
   'Bash(* gh *)',
+  'Bash(*/opt/teams-ai-bin/*)',
   // Shell redirects and scripts must not write the worktree settings directory either (audit M2).
   'Bash(*.claude/*)',
 ];
