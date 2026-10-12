@@ -119,6 +119,14 @@ describe('prState and mergePr', () => {
     expect(fake.lines('gh')[1]).toBe('pr merge 45 --squash --match-head-commit abc');
   });
 
+  it('gives the squash commit the pull request body, so main carries the spec line', async () => {
+    const fake = new FakeExec()
+      .onArgs('gh', ['pr', 'view'], () => ({ stdout: '{"state":"OPEN","headRefOid":"abc"}' }))
+      .onArgs('gh', ['pr', 'merge'], () => ({ stdout: '' }));
+    expect(await mergePr({ cwd, number: 45, headSha: 'abc', body: '## Summary\ns\n\nSpec: spec-001' }, fake.exec)).toEqual({ merged: true, already: false });
+    expect(fake.lines('gh')[1]).toBe('pr merge 45 --squash --match-head-commit abc --body-file -');
+  });
+
   it('reports an already merged PR without calling merge', async () => {
     const fake = new FakeExec().onArgs('gh', ['pr', 'view'], () => ({ stdout: '{"state":"MERGED","headRefOid":"abc"}' }));
     expect(await mergePr({ cwd, number: 45, headSha: 'abc' }, fake.exec)).toEqual({ merged: true, already: true });

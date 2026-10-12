@@ -108,8 +108,12 @@ describe('RunView', () => {
     const { unmount } = render(view({ detail: { ...detail, repoUrl: 'https://github.com/acme/hello-app' } }));
     expect(screen.getByTestId('github-link').getAttribute('href')).toBe('https://github.com/acme/hello-app');
     unmount();
-    render(view());
+    const fallback = render(view());
     expect(screen.getByTestId('github-link').getAttribute('href')).toBe('https://github.com/o/r');
+    fallback.unmount();
+    // A server that knows the repository has no GitHub address: no link to a service's repository instead.
+    render(view({ detail: { ...detail, repoUrl: null } }));
+    expect(screen.queryByTestId('github-link')).toBeNull();
   });
   it('prints docs/README.md, or explains who writes it when there is none yet', () => {
     const { unmount } = render(view());

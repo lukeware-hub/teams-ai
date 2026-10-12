@@ -98,12 +98,13 @@ export async function prState(input: { cwd: string; number: number }, exec: Exec
 }
 
 /** Squash-merge guarded by the head commit the gates ran on; never forces (spec §6 step 5, §7.4). */
-export async function mergePr(input: { cwd: string; number: number; headSha: string }, exec: Exec): Promise<{ merged: boolean; already: boolean; reason?: string }> {
+export async function mergePr(input: { cwd: string; number: number; headSha: string; body?: string }, exec: Exec): Promise<{ merged: boolean; already: boolean; reason?: string }> {
   const state = await prState(input, exec);
   if (state.state === 'MERGED') return { merged: true, already: true };
   if (state.state === 'CLOSED') return { merged: false, already: false, reason: 'PR is closed' };
   if (state.headSha !== input.headSha) return { merged: false, already: false, reason: `head moved: expected ${input.headSha}, found ${state.headSha}` };
-  const r = await gh(input.cwd, ['pr', 'merge', String(input.number), '--squash', '--match-head-commit', input.headSha], exec);
+  // The squash commit takes the pull request body, so main carries the spec line too.
+  const r = await gh(input.cwd, ['pr', 'merge', String(input.number), '--squash', '--match-head-commit', input.headSha, ...(input.body ? ['--body-file', '-'] : [])], exec, input.body);
   if (r.exitCode !== 0) return { merged: false, already: false, reason: r.stderr.trim() || 'merge failed' };
   return { merged: true, already: false };
 }

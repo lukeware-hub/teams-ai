@@ -310,7 +310,7 @@ describe('phase activity', () => {
     ).get(3)!;
     expect(out.items.map((i) => [i.text, i.tone])).toEqual([
       ['Tarefa T2 movida para a main atual, com conflitos a resolver em src/a.ts, src/b.ts', 'bad'],
-      ['Tarefa T3 movida para a main atual, sem conflitos', ''],
+      ['Tarefa T3 movida para a main atual, sem conflitos a resolver', ''],
     ]);
   });
 
@@ -360,6 +360,19 @@ describe('pull requests of tasks', () => {
     ev(2, 'PR_CREATED', { branch: 'task/cancelar-pedido-T1', number: 14, url: 'https://github.com/o/r/pull/14', created: true }),
     ev(3, 'PR_MERGED', { taskId: 'T1', pr: 14 }),
   ];
+
+  it('finds the pull request of a run before readable ids, and never joins T1 to T1-fix', () => {
+    const old = [ev(1, 'PR_CREATED', { branch: 'task/hello-001/T1', number: 3, url: 'https://github.com/o/r/pull/3', created: true }), ev(2, 'PR_MERGED', { taskId: 'T1', pr: 3 })];
+    expect(mergedPrs(old)).toEqual([{ taskId: 'T1', number: 3, url: 'https://github.com/o/r/pull/3' }]);
+    const fix = [ev(1, 'PR_CREATED', { branch: 'task/spec-T1-fix', number: 8, url: 'https://github.com/o/r/pull/8', created: true })];
+    expect(taskDetail(fix, 'T1').pr).toBeNull();
+    expect(taskDetail(fix, 'T1-fix').pr).toEqual({ number: 8, url: 'https://github.com/o/r/pull/8' });
+  });
+
+  it('lists no merged pull request for an empty merge, which opened none', () => {
+    const empty = [ev(1, 'PR_CREATED', { branch: 'task/spec-T1', number: 5, url: 'https://github.com/o/r/pull/5', created: true }), ev(2, 'PR_MERGED', { taskId: 'T1', pr: 0 })];
+    expect(mergedPrs(empty)).toEqual([]);
+  });
 
   it('joins a task to the pull request of its real branch, task/<specId>-<taskId>, and never to a longer id', () => {
     expect(taskDetail(list, 'T1').pr).toEqual({ number: 14, url: 'https://github.com/o/r/pull/14' });

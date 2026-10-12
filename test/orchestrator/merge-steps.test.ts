@@ -77,6 +77,7 @@ describe('taskMergeSteps', () => {
     expect(gh.prs[0]).toMatchObject({ state: 'MERGED', head: 'task/spec-001-T1', title: 'T1: Add sum' });
     expect(gh.prs[0]!.body).toContain('did T1');
     expect(gh.prs[0]!.body.endsWith('\n\nSpec: spec-001')).toBe(true);
+    expect(gh.prs[0]!.mergeBody?.endsWith('\n\nSpec: spec-001')).toBe(true);
     expect(await git(remote.repo, ['ls-remote', 'origin', 'refs/heads/main'])).toContain(gh.prs[0]!.headRefOid);
     const kinds = journal.events.map((e) => `${e.kind}:${e.type}`);
     expect(kinds).toEqual([

@@ -517,8 +517,8 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
       </Dialog>
     );
   }
-  // Older servers do not send repoUrl; a merged PR URL still names the repository.
-  const repoUrl = detail.repoUrl ?? prs.find((p) => p.url)?.url?.replace(/\/pull\/\d+.*$/, '') ?? null;
+  // Older servers do not send repoUrl; a merged PR URL still names the repository. A null repoUrl means it has no GitHub address.
+  const repoUrl = detail.repoUrl === undefined ? prs.find((p) => p.url)?.url?.replace(/\/pull\/\d+.*$/, '') ?? null : detail.repoUrl;
   return (
     <main className="run-page">
       <nav className="refine-breadcrumb" aria-label="Navegação">

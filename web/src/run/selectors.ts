@@ -469,7 +469,7 @@ export function mergedPrs(events: StoredEvent[]): Array<{ taskId: string; number
     const taskId = String(e.data.taskId);
     const byBranch = [...branchOf.entries()].find(([b]) => isTaskBranch(b, taskId))?.[1];
     const number = Number(e.data.pr ?? byBranch?.number);
-    if (!Number.isFinite(number)) continue;
+    if (!Number.isFinite(number) || number === 0) continue;
     rows.push({ taskId, number, url: byBranch?.url ?? '' });
   }
   return rows;
@@ -589,7 +589,7 @@ function describe(e: StoredEvent, intent: Record<string, unknown> | undefined): 
       return item(`Tarefa ${String(d.taskId)} mesclada na main (pull request #${String(d.pr)})`, 'good');
     case 'REBASE_REPLAYED': {
       const files = list(d.files);
-      return item(`Tarefa ${String(d.taskId)} movida para a main atual${files.length ? `, com conflitos a resolver em ${files.join(', ')}` : ', sem conflitos'}`, files.length ? 'bad' : '');
+      return item(`Tarefa ${String(d.taskId)} movida para a main atual${files.length ? `, com conflitos a resolver em ${files.join(', ')}` : ', sem conflitos a resolver'}`, files.length ? 'bad' : '');
     }
     case 'TASK_BLOCKED':
       return item(`Tarefa ${String(d.taskId)} bloqueada: ${firstSentence(explainBlockReason(String(d.reason ?? '')))}`, 'bad');

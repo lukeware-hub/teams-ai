@@ -9,6 +9,8 @@ export interface FakePr {
   headRefOid: string;
   title: string;
   body: string;
+  /** The squash commit body the merge was given. */
+  mergeBody?: string;
 }
 
 /** In-memory GitHub: enough of `gh pr` for ensurePr / findMergedPr / prState / mergePr. */
@@ -43,6 +45,7 @@ export class FakeGh {
           const wanted = arg('--match-head-commit');
           const current = (await execCommand({ bin: 'git', args: ['rev-parse', pr.head], cwd: s.cwd, timeoutMs: 10_000 })).stdout.trim();
           if (wanted !== current) return { exitCode: 1, stderr: 'head commit changed' };
+          pr.mergeBody = s.stdin;
           pr.state = 'MERGED';
           pr.headRefOid = current;
           // Squash-merge into main on the remote, as GitHub would.

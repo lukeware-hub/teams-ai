@@ -102,7 +102,7 @@ function common(deps: MergeStepsDeps, worktree: string, branch: string, title: s
       // an injected crash) propagates so the caller sees it, never disguised as a refusal.
       // taskId travels with the intent so reconcile can finish the task after a crash between merge and confirm.
       const data = await guarded(deps.journal, Intent.PrMerge, `${branch}@${sha}`, { branch, number, sha, taskId, repo }, async () => {
-        const r = await mergePr({ cwd: repo, number, headSha: sha }, deps.ghExec);
+        const r = await mergePr({ cwd: repo, number, headSha: sha, body: await body() }, deps.ghExec);
         return { merged: r.merged || r.already, already: r.already, reason: r.reason ?? null };
       });
       return data.merged ? { merged: true } : { merged: false, reason: String(data.reason ?? 'merge refused') };
