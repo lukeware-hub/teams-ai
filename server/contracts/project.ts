@@ -38,5 +38,7 @@ export const Project = z.object({
   services: z.array(ServiceName).refine((names) => new Set(names).size === names.length, { message: 'service names must be unique' }).optional(),
   /** The shared containers every service reaches by name; absent when the services need none. */
   platform: z.array(PlatformService).refine((list) => new Set(list.map((p) => p.name)).size === list.length, { message: 'platform names must be unique' }).optional(),
-}).refine((p) => !(p.platform ?? []).some((c) => (p.services ?? []).includes(c.name)), { message: 'a platform container and a service cannot share a name: both would answer to it on the shared network', path: ['platform'] });
+})
+  .refine((p) => !(p.platform ?? []).some((c) => (p.services ?? []).includes(c.name)), { message: 'a platform container and a service cannot share a name: both would answer to it on the shared network', path: ['platform'] })
+  .refine((p) => (p.platform ?? []).length === 0 || (p.services ?? []).length > 0, { message: 'platform containers need services: a single application keeps the containers it needs in its own docker-compose.yml', path: ['platform'] });
 export type Project = z.infer<typeof Project>;

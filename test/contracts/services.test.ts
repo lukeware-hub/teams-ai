@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AnyPlan, parseAnyPlan, Plan, servicePlans, ServicesPlan } from '../../server/contracts/plan.js';
+import type { PlatformService } from '../../server/contracts/project.js';
 import { makeFrozenSpec, makePlan, makeProject, makeServicesPlan } from '../fixtures/contracts.js';
 
 const spec = makeFrozenSpec();
@@ -12,18 +13,25 @@ describe('Project.services', () => {
     expect(() => makeProject({ services: ['Orders'] })).toThrow();
   });
 
+  const withPlatform = (platform: PlatformService[]) => makeProject({ services: ['orders'], platform });
+
   it('declares platform containers with a pinned image and unique names', () => {
     const nats = { name: 'nats', image: 'nats:2.10.22-alpine', command: ['-js', '-m', '8222'] };
-    expect(makeProject({ platform: [nats] }).platform).toEqual([nats]);
-    expect(() => makeProject({ platform: [{ name: 'nats', image: 'nats:latest' }] })).toThrow('pin the image');
-    expect(() => makeProject({ platform: [{ name: 'nats', image: 'nats' }] })).toThrow('pin the image');
-    expect(() => makeProject({ platform: [nats, nats] })).toThrow('platform names must be unique');
+    expect(withPlatform([nats]).platform).toEqual([nats]);
+    expect(() => withPlatform([{ name: 'nats', image: 'nats:latest' }])).toThrow('pin the image');
+    expect(() => withPlatform([{ name: 'nats', image: 'nats' }])).toThrow('pin the image');
+    expect(() => withPlatform([nats, nats])).toThrow('platform names must be unique');
   });
 
   it('takes platform settings as written: dotted environment names, and a healthcheck that starts with CMD, CMD-SHELL or NONE', () => {
     const search = { name: 'search', image: 'elasticsearch:8.15.0', environment: { 'discovery.type': 'single-node' }, healthcheck: ['CMD-SHELL', 'curl -f localhost:9200'] };
-    expect(makeProject({ platform: [search] }).platform).toEqual([search]);
-    expect(() => makeProject({ platform: [{ ...search, healthcheck: ['curl', '-f', 'localhost:9200'] }] })).toThrow('CMD');
+    expect(withPlatform([search]).platform).toEqual([search]);
+    expect(() => withPlatform([{ ...search, healthcheck: ['curl', '-f', 'localhost:9200'] }])).toThrow('CMD');
+  });
+
+  it('refuses a platform in a project without services: nothing would start it', () => {
+    expect(() => makeProject({ platform: [{ name: 'nats', image: 'nats:2.10.22' }] })).toThrow('platform containers need services');
+    expect(makeProject({ platform: [] }).platform).toEqual([]);
   });
 
   it('refuses a platform container named like a service: both would answer to that name on the shared network', () => {
