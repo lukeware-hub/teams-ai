@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { refineApi, runApi, startedPath, type DraftRow, type NameRequest, type NameSuggestion, type ProjectRow, type RunRow } from '../api.js';
+import { serviceLinks } from '@server/deploy/service-links';
+import { refineApi, runApi, startedPath, type DraftRow, type NameRequest, type NameSuggestion, type ProjectRow, type Report, type RunRow, type ServiceStatus } from '../api.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
@@ -71,6 +72,21 @@ function ProjectHubSkeleton({ projectId, error }: { projectId: string; error: st
   );
 }
 
+/** Where the finished project can be opened: the Swagger and the web UI, each only when it exists and answers. */
+export interface AppLinks { swagger: string | null; web: string | null }
+
+export function appLinks(report: Report | null, status: ServiceStatus, hostname: string): AppLinks {
+  const found: AppLinks = { swagger: null, web: null };
+  for (const s of report?.services ?? (report?.service ? [{ service: '', ...report.service }] : [])) {
+    const own = status.services?.find((x) => x.service === s.service) ?? status;
+    if (!own.online) continue;
+    const links = serviceLinks(s, hostname);
+    found.swagger ??= links.docsUrl;
+    if (own.ui) found.web ??= links.appUrl;
+  }
+  return found;
+}
+
 export function ProjectHubView(p: {
   project: ProjectRow | null;
   notFound: boolean;
@@ -78,6 +94,8 @@ export function ProjectHubView(p: {
   drafts: DraftRow[];
   /** Started specs whose backlog may be running, shown first with the way to their execution screen. */
   backlogs?: string[];
+  /** Links of the latest delivery; shown only when every spec is concluded. */
+  apps?: AppLinks | null;
   error: string | null;
   deleteError: string | null;
   onStart: (specId: string) => void;
@@ -188,6 +206,23 @@ export function ProjectHubView(p: {
           <span className={statLabel}>custo total</span>
         </div>
       </div>
+      {allConcluded && p.apps ? (
+        <section className={panel} data-testid="project-apps">
+          <div className={section}>
+            <div className={sectionHead}>
+              <div className={sectionTitle}>
+                <span className={sectionIcon}><Icon name="external" size={14} /></span>
+                <h3 className={sectionHeading}>Aplicação no ar</h3>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {p.apps.web ? <a className="primary-button" data-testid="open-web-ui" href={p.apps.web} target="_blank" rel="noreferrer">Abrir Web UI<Icon name="external" size={16} /></a> : null}
+                {p.apps.swagger ? <a className="link-button" data-testid="open-swagger" href={p.apps.swagger} target="_blank" rel="noreferrer">Abrir Swagger<Icon name="external" size={16} /></a> : null}
+              </div>
+            </div>
+            {p.apps.web || p.apps.swagger ? null : <p className="hint m-0" data-testid="apps-offline">A aplicação não está no ar. Suba o serviço na validação da última spec.</p>}
+          </div>
+        </section>
+      ) : null}
       {pr.services?.length ? (
         <section className={panel} data-testid="project-services">
           <div className={section}>
@@ -443,6 +478,19 @@ export function ProjectHubView(p: {
   );
 }
 
+/** Links of the latest delivery, once every spec is concluded; null while unknown or when nothing was deployed. */
+async function latestApps(project: ProjectRow, rows: RunRow[]): Promise<AppLinks | null> {
+  if (project.specs.length === 0 || !project.specs.every((s) => s.status === 'done' || s.status === 'complete')) return null;
+  const last = rows.filter((r) => r.kind === 'run' || r.kind === 'deploy').sort((a, b) => (b.at ?? '').localeCompare(a.at ?? ''))[0];
+  if (!last) return null;
+  try {
+    const [detail, status] = await Promise.all([runApi.run(last.runId), runApi.serviceStatus(last.runId)]);
+    return appLinks(detail.report, status, window.location.hostname);
+  } catch {
+    return null;
+  }
+}
+
 export function ProjectHub() {
   const { projectId } = useParams<{ projectId: string }>();
   const [project, setProject] = useState<ProjectRow | null>(null);
@@ -450,6 +498,7 @@ export function ProjectHub() {
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [drafts, setDrafts] = useState<DraftRow[]>([]);
   const [backlogs, setBacklogs] = useState<string[]>([]);
+  const [apps, setApps] = useState<AppLinks | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -461,7 +510,9 @@ export function ProjectHub() {
       setProject(found);
       setNotFound(found === null);
       if (found) {
-        setRuns(await runApi.runs(projectId));
+        const rows = await runApi.runs(projectId);
+        setRuns(rows);
+        setApps(await latestApps(found, rows));
         const own = (await refineApi.list()).filter((d) => d.projectId === projectId);
         setDrafts(own.filter((d) => d.state !== 'started'));
         setBacklogs((current) => {
@@ -507,6 +558,7 @@ export function ProjectHub() {
       runs={runs}
       drafts={drafts}
       backlogs={backlogs}
+      apps={apps}
       error={error}
       deleteError={deleteError}
       onStart={(specId) => void act(async () => {

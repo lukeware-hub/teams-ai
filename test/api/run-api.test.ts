@@ -379,7 +379,10 @@ describe('start, resume, stop', () => {
     const answer = await (await fetch(base() + '/api/runs/hello-001-r1/service')).json();
     expect(answer).toMatchObject({ online: true, status: 200 });
     expect(answer.services).toBeUndefined();
-    expect(probed).toEqual(['http://dind:3000/health']);
+    expect(probed).toEqual(['http://dind:3000/health', 'http://dind:3000/']);
+    expect(answer.ui).toBe(false);
+    probe = async () => ({ status: 200, html: true });
+    expect(await (await fetch(base() + '/api/runs/hello-001-r1/service')).json()).toMatchObject({ online: true, ui: true });
     probe = async () => null;
     expect(await (await fetch(base() + '/api/runs/hello-001-r1/service')).json()).toMatchObject({ online: false, status: null });
     probe = async () => ({ status: 503 });
@@ -396,7 +399,7 @@ describe('start, resume, stop', () => {
       status: 200,
       services: [{ service: 'orders', online: true, status: 200 }, { service: 'inventory', online: false, status: null }],
     });
-    expect(probed).toEqual(['http://dind:20001/health', 'http://dind:20002/health']);
+    expect(probed).toEqual(expect.arrayContaining(['http://dind:20001/health', 'http://dind:20002/health']));
   });
 
   it('service status of an older run without a health path counts any HTTP answer as online', async () => {

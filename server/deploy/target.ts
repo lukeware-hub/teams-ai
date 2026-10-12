@@ -48,12 +48,12 @@ export type DeployResult =
   | { ok: true; previous: string | null }
   | { ok: false; stage: DeployStage; detail: string; rolledBack: boolean; rollbackHealthy: boolean | null };
 
-export type HttpGet = (url: string, timeoutMs: number) => Promise<{ status: number } | null>;
+export type HttpGet = (url: string, timeoutMs: number) => Promise<{ status: number; html?: boolean } | null>;
 
 export const httpGet: HttpGet = async (url, timeoutMs) => {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), redirect: 'manual' });
-    return { status: res.status };
+    return { status: res.status, html: (res.headers.get('content-type') ?? '').includes('text/html') };
   } catch {
     return null;
   }

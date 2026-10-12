@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
-import { ProjectHubView } from './ProjectHub.js';
+import { appLinks, ProjectHubView } from './ProjectHub.js';
 
 const project = {
   projectId: 'hello-app',
@@ -230,5 +230,43 @@ describe('ProjectHubView', () => {
     );
     expect(screen.getByText('Esse projeto não foi encontrado.')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Voltar para Projetos' }).getAttribute('href')).toBe('/projects');
+  });
+});
+
+describe('project apps', () => {
+  const done = { ...project, specs: [{ specId: 'a', status: 'done', activeRunId: null }, { specId: 'b', status: 'complete', activeRunId: null }] };
+  const view = (apps: Parameters<typeof ProjectHubView>[0]['apps'], p: Parameters<typeof ProjectHubView>[0]['project'] = done) => {
+    const o = on();
+    return render(
+      <MemoryRouter>
+        <ProjectHubView project={p} notFound={false} runs={[]} drafts={[]} apps={apps} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+      </MemoryRouter>,
+    );
+  };
+  it('shows the Web UI and Swagger buttons once every spec is concluded', () => {
+    view({ web: 'http://h:20052', swagger: 'http://h:20052/docs' });
+    expect(screen.getByTestId('open-web-ui').getAttribute('href')).toBe('http://h:20052');
+    expect(screen.getByTestId('open-swagger').getAttribute('href')).toBe('http://h:20052/docs');
+  });
+  it('shows only the button that exists', () => {
+    view({ web: null, swagger: 'http://h:20052/docs' });
+    expect(screen.queryByTestId('open-web-ui')).toBeNull();
+    expect(screen.getByTestId('open-swagger')).toBeTruthy();
+  });
+  it('says the app is down when nothing answers', () => {
+    view({ web: null, swagger: null });
+    expect(screen.getByTestId('apps-offline')).toBeTruthy();
+  });
+  it('stays hidden while a spec is not concluded', () => {
+    view({ web: 'http://h:20052', swagger: null }, project);
+    expect(screen.queryByTestId('project-apps')).toBeNull();
+  });
+  it('appLinks needs the service online; Web UI also needs a page on its root', () => {
+    const service = { url: 'http://dind:20052', healthcheck: 'ok', smoke: [], port: 20052, kind: 'api' as const, docsPath: '/docs' };
+    const report = { service } as unknown as Parameters<typeof appLinks>[0];
+    const at = (s: object) => appLinks(report, { checkedAt: '', status: 200, online: false, ...s }, 'h');
+    expect(at({ online: true, ui: true })).toEqual({ swagger: 'http://h:20052/docs', web: 'http://h:20052' });
+    expect(at({ online: true, ui: false })).toEqual({ swagger: 'http://h:20052/docs', web: null });
+    expect(at({ online: false, ui: true })).toEqual({ swagger: null, web: null });
   });
 });

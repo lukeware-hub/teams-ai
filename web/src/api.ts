@@ -128,9 +128,11 @@ export interface SecurityFinding {
 export interface ServiceStatus {
   online: boolean;
   status: number | null;
+  /** The root of the service answers with a page: it has a web UI. */
+  ui?: boolean;
   checkedAt: string;
   /** A services run answers for each service. */
-  services?: Array<{ service: string; online: boolean; status: number | null }>;
+  services?: Array<{ service: string; online: boolean; status: number | null; ui?: boolean }>;
 }
 export interface Report {
   runId: string;

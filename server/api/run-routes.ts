@@ -440,14 +440,17 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         // Reports from before the health path was recorded only prove the host answers: any HTTP status then means online.
         const probe = async (url: string, healthPath: unknown) => {
           const health = typeof healthPath === 'string' ? healthPath : null;
-          const res = await (deps.httpGet ?? httpGet)(`${url}${health ?? '/'}`, 3000);
-          return { online: res !== null && (health === null || (res.status >= 200 && res.status < 400)), status: res?.status ?? null };
+          const get = deps.httpGet ?? httpGet;
+          const res = await get(`${url}${health ?? '/'}`, 3000);
+          // A web UI exists when the root answers with a page.
+          const root = health === null ? res : await get(`${url}/`, 3000);
+          return { online: res !== null && (health === null || (res.status >= 200 && res.status < 400)), status: res?.status ?? null, ui: root?.html === true && root.status < 400 };
         };
         const cards = Array.isArray(deployed.data.services) ? (deployed.data.services as Array<{ service: string; url: string; healthcheckPath?: string }>) : null;
         // A services run answers for each service, and is online only when every one answers.
         const checked = cards ? await Promise.all(cards.map(async (c) => ({ service: c.service, ...(await probe(c.url, c.healthcheckPath)) }))) : null;
         const own = checked?.[0] ?? (await probe(String(deployed.data.url), deployed.data.healthcheckPath));
-        json(200, { online: checked ? checked.every((c) => c.online) : own.online, status: own.status, checkedAt: new Date().toISOString(), ...(checked ? { services: checked } : {}) });
+        json(200, { online: checked ? checked.every((c) => c.online) : own.online, status: own.status, ui: own.ui, checkedAt: new Date().toISOString(), ...(checked ? { services: checked } : {}) });
       },
     },
     {
