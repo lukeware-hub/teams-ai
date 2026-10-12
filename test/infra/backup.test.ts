@@ -28,6 +28,10 @@ describe('backup and restore tasks (R7.6)', () => {
     }
   });
 
+  it('keeps the backup folder readable only by its owner, since it holds the logins', () => {
+    expect(text('backup')).toContain('chmod 700 backups');
+  });
+
   it('keeps backups out of git', async () => {
     expect(await fs.readFile('.gitignore', 'utf8')).toMatch(/^backups\/$/m);
   });

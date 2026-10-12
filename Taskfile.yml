@@ -143,7 +143,7 @@ tasks:
       - sh: test -z "$(docker compose ps -q)"
         msg: 'The platform is running: run `task down` first so no file changes during the copy.'
     cmds:
-      - mkdir -p backups/{{.STAMP}}
+      - umask 077 && mkdir -p backups/{{.STAMP}} && chmod 700 backups backups/{{.STAMP}}
       - |
         set -e
         for pair in teams-ai-data:teams-ai-data teams-ai-claude:{{.PROJECT}}_teams-ai-claude teams-ai-gh:{{.PROJECT}}_teams-ai-gh; do

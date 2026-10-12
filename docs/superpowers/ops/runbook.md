@@ -50,7 +50,7 @@ Each run has `runs/<runId>/events.ndjson` (one JSON event per line: `seq`, `at`,
 Not run live: written from reading the compose file and the Taskfile; try it on a spare machine before you rely on it.
 
 ### With the tasks
-- Back up: `task down`, then `task backup`. It writes `backups/<date>/` with one `.tar.gz` per volume (`teams-ai-data`, `teams-ai-claude`, `teams-ai-gh`); git ignores `backups/`.
+- Back up: `task down`, then `task backup`. It writes `backups/<date>/` with one `.tar.gz` per volume (`teams-ai-data`, `teams-ai-claude`, `teams-ai-gh`); git ignores `backups/`, and the folder is readable only by you because it holds logins and secrets.
 - Restore: `task down`, then `task restore DIR=backups/<date> FORCE=yes`, then `task start`.
 - Both tasks refuse to run while any container of the stack is up. Restore also refuses without `FORCE=yes`, because it first deletes everything in the three volumes.
 - Keep the backup folder somewhere outside this machine: it holds the Claude and GitHub logins.
