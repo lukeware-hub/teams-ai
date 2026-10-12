@@ -7,14 +7,14 @@ const ac = (id: string, then: string) => ({ id, given: 'g', when: 'w', then, smo
 const prev = { ...makeSpec(), specVersion: 2, status: 'awaiting-validation' as const, specHash: `sha256:${'b'.repeat(64)}`, acceptanceCriteria: [ac('AC-001', 'one'), ac('AC-002', 'two')], validationReports: [{ at: '2026-09-24T10:00:00.000Z', text: 'r' }] };
 
 describe('postProcessDerived', () => {
-  // R11.7.1: decisions are the owner's answers, carried from the previous version, never written by the agent.
-  it('carries the decisions of the previous version and drops any the agent wrote', () => {
+  // R11.7.1, plan 76 review: the brief's Decisions section is the truth, so an owner's edit there wins over the previous version.
+  it('takes the decisions from the brief and drops any the agent wrote', () => {
     const invented = { ...prev, decisions: [{ question: 'Invented?', answer: 'yes' }] };
     const decided = { ...prev, decisions: [{ question: 'Port?', answer: '8080' }] };
-    const carried = postProcessDerived({ project: PROJECT, spec: invented }, decided, 'hello-001');
-    expect(carried.ok && carried.value.spec.decisions).toEqual([{ question: 'Port?', answer: '8080' }]);
-    const first = postProcessDerived({ project: PROJECT, spec: invented }, null, 'hello-001');
-    expect(first.ok && first.value.spec.decisions).toBeUndefined();
+    const fromBrief = postProcessDerived({ project: PROJECT, spec: invented }, decided, 'hello-001', 0, [{ question: 'Port?', answer: '9090' }]);
+    expect(fromBrief.ok && fromBrief.value.spec.decisions).toEqual([{ question: 'Port?', answer: '9090' }]);
+    const none = postProcessDerived({ project: PROJECT, spec: invented }, decided, 'hello-001');
+    expect(none.ok && none.value.spec.decisions).toBeUndefined();
   });
 
   it('keeps ids of unchanged criteria, renumbers a new one after the highest, and forces status/hash/version/reports', () => {

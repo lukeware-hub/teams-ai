@@ -37,7 +37,8 @@ export const RefineOutput = z.object({
 });
 
 /** Spec (refinement) §3.2 step 1: Markdown → project.json + spec.json; the orchestrator re-validates and forces status/hash/version. */
-export const DeriveOutput = z.object({ specHash, project: Project, spec: Spec });
+// The orchestrator owns the decisions (R11.7.1): one the agent echoes, even malformed, is dropped instead of failing the cycle.
+export const DeriveOutput = z.object({ specHash, project: Project, spec: z.preprocess((s) => (s !== null && typeof s === 'object' ? { ...s, decisions: undefined } : s), Spec) });
 export type DeriveOutput = z.infer<typeof DeriveOutput>;
 
 /** Backlog mode: the docs broken into epics and prioritized items; the orchestrator validates it and ranks the items. */

@@ -122,6 +122,16 @@ describe('derive output', () => {
     expect(out.spec.status).toBe('refining');
     expect(OUTPUT_SCHEMAS.derive).toBe(DeriveOutput);
   });
+
+  // Plan 76 review: the derive agent never owns the decisions, so an echoed or malformed copy is dropped instead of failing the cycle.
+  it('drops a decisions array the derive agent writes, even a malformed one, and still shows the agent the spec schema', async () => {
+    const { DeriveOutput } = await import('../../server/agents/outputs.js');
+    const { makeProject, makeSpec } = await import('../fixtures/contracts.js');
+    const out = DeriveOutput.safeParse({ specHash: HASH, project: makeProject(), spec: { ...makeSpec(), status: 'refining', specHash: null, decisions: [{ question: 'Port?', answer: '8080', by: 'SM' }] } });
+    expect(out.success).toBe(true);
+    expect(out.success && out.data.spec.decisions).toBeUndefined();
+    expect(JSON.stringify(toJsonSchema('derive'))).toContain('acceptanceCriteria');
+  });
 });
 
 describe('backlog output', () => {

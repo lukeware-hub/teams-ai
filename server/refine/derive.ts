@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Project } from '../contracts/project.js';
-import { AcceptanceCriterion, Spec } from '../contracts/spec.js';
+import { AcceptanceCriterion, Spec, type SpecDecision } from '../contracts/spec.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
 import type { JevValidationResult } from './jev-validation.js';
@@ -62,7 +62,7 @@ export const sameText = (a: AcceptanceCriterion, b: AcceptanceCriterion) => a.gi
  * projects with several specs): without it a second spec renumbers from AC-001 again and Phase 4 matches its tests
  * against the JUnit of the whole repo, so an earlier spec's `AC-001` would wrongly "prove" this one's criterion too.
  */
-export function postProcessDerived(out: { project: unknown; spec: unknown }, previous: Spec | null, specId: string, floor = 0): DeriveCheck {
+export function postProcessDerived(out: { project: unknown; spec: unknown }, previous: Spec | null, specId: string, floor = 0, decisions?: SpecDecision[]): DeriveCheck {
   const p = Project.safeParse(out.project);
   const raw = typeof out.spec === 'object' && out.spec !== null ? (out.spec as Record<string, unknown>) : {};
   // Ids are renumbered before the Spec schema runs, since the schema rejects duplicates the agent may produce.
@@ -93,8 +93,8 @@ export function postProcessDerived(out: { project: unknown; spec: unknown }, pre
     validationReports: previous?.validationReports ?? [],
     // Only backlog detailing records where a spec comes from; one the agent fills in here would be invented.
     derivedFrom: undefined,
-    // Decisions are the owner's answers, never the agent's: carried from the previous version, recorded at freeze.
-    decisions: previous?.decisions,
+    // Decisions come from the brief's Decisions section, where the owner reads and edits them, never from the derive agent.
+    decisions,
   });
   const issues = [
     ...(p.success ? [] : p.error.issues.map((i) => `project.${i.path.join('.')}: ${i.message}`)),

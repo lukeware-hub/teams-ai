@@ -10,6 +10,7 @@ import { fetch as gitFetch, git, showFile } from '../git/git.js';
 import { mergeDoc, sameDoc } from '../git/merge-doc.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import type { ReportRouting } from '../decide/decisions/report-routing.js';
+import { renderDecisions } from './decisions.js';
 
 export type RouteReport = (criteria: Spec['acceptanceCriteria'], report: string, confidential: boolean) => Promise<ReportRouting | null>;
 
@@ -117,7 +118,7 @@ export function renderBriefMd(s: Spec, validationReport?: string, routing?: Repo
     '## Type', '', s.type, '', '## Objectives', '', list(s.objectives), '', '## Features', '', list(s.features), '', '## Acceptance criteria', '', acs.join('\n') || '- (none)', '',
     '## Out of scope', '', list(s.outOfScope), '', '## External dependencies', '', list(deps), '', '## Bug details', '', bug.join('\n'), '', '## Tasks', '', list(tasks), '',
   ];
-  if (s.decisions?.length) parts.push('## Decisions', '', ...s.decisions.map((d) => `- ${d.question}\n  Answer${d.by ? ` (${d.by.toUpperCase()}, from the docs)` : ''}: ${d.answer}`), '');
+  if (s.decisions?.length) parts.push(...renderDecisions(s.decisions));
   if (validationReport) parts.push('## Validation report', '', validationReport, '');
   if (validationReport && routing) {
     // Spec 10A.5 decision 7: a hint for PO and SM, never a verdict; `unclear` asks the human.

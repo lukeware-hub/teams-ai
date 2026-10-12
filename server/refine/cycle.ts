@@ -11,7 +11,7 @@ import { routeQuestion } from '../decide/decisions/question-routing.js';
 import type { AgentStepRequest } from '../orchestrator/steps.js';
 import type { StepOutcome } from '../runner/step.js';
 import { mergeChecklist, type ChecklistItem } from './checklist.js';
-import { norm } from './decisions.js';
+import { norm, parseDecisions } from './decisions.js';
 import { derivePack, postProcessDerived } from './derive.js';
 import { answerPack } from './answer.js';
 import { heldForOwner } from './auto-floor.js';
@@ -199,7 +199,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     }
     // A sibling spec of the same project (copied into the draft from main) may already use higher ids (R11.8).
     const floor = await maxCriterionInDraft(draft);
-    const checked = postProcessDerived(d.value as DeriveOutput, previous?.spec ?? null, draft.specId, floor);
+    const checked = postProcessDerived(d.value as DeriveOutput, previous?.spec ?? null, draft.specId, floor, parseDecisions(docs['brief.md']));
     if (!checked.ok) {
       await fail(`derive: ${checked.issues.join('; ')}`);
       return;

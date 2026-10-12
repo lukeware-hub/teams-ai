@@ -6,6 +6,7 @@ import { execCommand } from '../../server/exec/command.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
 import { briefTemplate, createFromRepo, createNewProject, DOC_REL, draftExists, draftHash, draftPaths, keepBaseProject, moveBriefingToProject, readBase, readDerived, readDoc, refineRoot, renderBriefMd, syncWithMain, writeDerived, writeDoc } from '../../server/refine/draft.js';
 import { git } from '../../server/git/git.js';
+import { parseDecisions } from '../../server/refine/decisions.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 
@@ -135,6 +136,17 @@ describe('draft', () => {
     const h1 = await draftHash(d);
     await writeDoc(d, 'brief.md', '## Objectives\n- ship');
     expect(await draftHash(d)).not.toBe(h1);
+  });
+
+  // R11.7.1: the live path, a continued spec brings its decisions back into the brief, where the owner reads and edits them.
+  it('renders the decisions of the continued spec into the brief, where they read back intact', async () => {
+    const decisions = [{ question: 'Port?', answer: '8080' }];
+    const spec = { ...makeSpec({ specId: 'hello-001' }), status: 'awaiting-validation', specHash: `sha256:${'a'.repeat(64)}`, decisions };
+    remote = await makeRemote({ 'docs/project.json': JSON.stringify(makeProject()), 'docs/specs/hello-001/spec.json': JSON.stringify(spec) });
+    const d = draftPaths(ws, 'hello-001');
+    await createFromRepo(d, remote.repo, execCommand, { kind: 'continue' });
+    expect(parseDecisions(await readDoc(d, 'brief.md'))).toEqual(decisions);
+    expect((await readDerived(d))?.spec.decisions).toEqual(decisions);
   });
 
   it('copies docs from origin/main, renders project.md when absent, and prefills brief.md on continue', async () => {
