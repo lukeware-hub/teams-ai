@@ -16,6 +16,7 @@ import { EventLogCorruptError, loadEvents, type StoredEvent } from '../store/eve
 import { httpGet, type HttpGet } from '../deploy/target.js';
 import { teardownProject } from '../deploy/docker-local.js';
 import { releaseDeployPort } from '../deploy/port-registry.js';
+import { withGitAuth } from '../git/auth.js';
 import { refuseCloneHost, type ResolveHost } from './security.js';
 import { tailJournal } from './journal-tail.js';
 import { abandonLaunch, isAlive, spawnRun, stop, type RunControlDeps } from './run-control.js';
@@ -56,6 +57,15 @@ async function repoUrlOf(repoDir: string): Promise<string | null> {
   return remote?.exitCode === 0 ? githubRepoUrl(remote.stdout) : null;
 }
 
+/** What went wrong in a failed clone and how to fix it, in the owner's words. */
+export function cloneFailure(stderr: string): string {
+  if (/could not read Username|Authentication failed|Repository not found|403|404/i.test(stderr)) {
+    return 'não foi possível clonar o repositório: ele é privado ou não existe. Salve em Onboarding um GITHUB_TOKEN com permissão de leitura nele e confira a URL.';
+  }
+  if (/Could not resolve host|unable to access|timed out/i.test(stderr)) return 'não foi possível clonar o repositório: sem conexão com o servidor Git. Tente de novo.';
+  return 'não foi possível clonar o repositório';
+}
+
 export function runRoutes(deps: RunRoutesDeps): Route[] {
   const index = async (): Promise<IndexDeps> => ({ cfg: await deps.cfg(), home: deps.home, isAlive: (pid) => isAlive(deps.control, pid) });
   /** A project as the screens get it: its GitHub page and each service's, from its own clone (null until Phase 0 made it). */
@@ -83,10 +93,11 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
   };
   const cloneProject = deps.cloneProject ?? (async (url, destination) => {
     await fs.mkdir(path.dirname(destination), { recursive: true });
-    const result = await execCommand({ bin: 'git', args: ['-c', 'http.followRedirects=false', 'clone', '--depth', '1', '--', url, destination], cwd: path.dirname(destination), timeoutMs: 120_000 });
+    const git = withGitAuth(execCommand, secretsDirOf(await deps.cfg()));
+    const result = await git({ bin: 'git', args: ['-c', 'http.followRedirects=false', 'clone', '--depth', '1', '--', url, destination], cwd: path.dirname(destination), env: { GIT_TERMINAL_PROMPT: '0' }, timeoutMs: 120_000 });
     if (result.exitCode !== 0) {
       deps.log?.(`clone failed: ${redactSecrets(result.stderr.trim(), await loadSecretValues(secretsDirOf(await deps.cfg())))}`);
-      throw new HttpError(400, 'não foi possível clonar o repositório');
+      throw new HttpError(400, cloneFailure(result.stderr));
     }
   });
   const events = async (runs: string, runId: string): Promise<StoredEvent[]> => {
