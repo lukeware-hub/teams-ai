@@ -381,11 +381,12 @@ unit-tested with fixtures. Each one needs a plan file in `plans/` before impleme
 
 - Built: optional description on "Novo projeto" and "Nova spec" (top of `brief.md`); blank stack.md/flow.md filled by the SM on the first evaluation; pending patches made stale by an accepted one are dropped.
 - Open: a Front agent step failed once with "no JSON object in the agent result" and passed on retry; the runner keeps only 500 characters of the failed text, so the cause is unknown. No retry on schema failure exists.
-### R9.4 Prebuilt image in GHCR - `built` (plan 82, 2026-10-12; first publish and package visibility pending)
+### R9.4 Prebuilt image in GHCR - `built` (plan 82, 2026-10-12; published; package visibility and a clean-machine `task start` still to check)
 
 - `task up` would pull instead of building (first start drops from minutes to a download). Needs a publish workflow, a decision on package visibility and a change to `docker-compose.yml` that keeps `test/infra/compose.test.ts` true.
 - Built (plan 82): the compose services use `ghcr.io/diego-dm-morais/teams-ai:latest` (or `TEAMS_AI_IMAGE`) and `task up` and `task start` pull it and build when the pull fails, `task up:source` builds from the folder, and a `publish` job in `ci.yml` pushes the image on `main` or a `v*` tag for amd64 only (the arm64 build failed under emulation on 2026-10-12; a native arm64 runner can bring it back), scanned with trivy before `latest` moves. The package is private (human, 2026-10-12).
-- Open: the first publish and a check of the package visibility on GitHub, then a `task start` on a clean machine after `docker login ghcr.io`.
+- Published on 2026-10-12 (CI run on `5b0621d`: build, trivy scan, then `latest`). The scan found 15 critical findings with fixes in the base image and the docker CLI, fixed by new digests (`node:22-bookworm`, `docker:29-cli`); the arm64 build failed under emulation and was dropped, and the runner needed its disk freed.
+- Open: check on GitHub that the package is private, then a `task start` on a clean machine after `docker login ghcr.io`; the docker CLI and compose plugin moved to the 29 line against the 27 daemon, which only a real run shows.
 ## Stage 10 - Agent quality (2026-10-06)
 
 ### R10.1 Route tasks to the owning role; repair agent prompts; distill skill guidance - `done` (plan 46, 2026-10-06)
