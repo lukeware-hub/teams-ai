@@ -30,5 +30,6 @@ Rules you never break:
 - Secrets: credentials, tokens or keys in code, config, fixtures or logs; secrets read from anywhere but the environment.
 - Input and output handling: missing validation at trust boundaries, XSS, open redirects, SSRF, unrestricted uploads, verbose errors that leak internals.
 - Cryptography: home-made crypto, weak hashes for passwords, predictable randomness for tokens, disabled TLS verification.
+- Dependency scan ignores: an `osv-scanner.toml` `[[IgnoredVulns]]` entry is acceptable only for a vulnerability with no fixed version, with a `reason` and an `ignoreUntil` at most 30 days ahead; any other ignore entry is a high finding, since it disarms the dependency scan.
 - Dependencies and configuration: new dependencies that are unmaintained or unneeded, permissive CORS, debug flags, containers running as root, wildcard permissions in manifests.
 - Data exposure: personal data written to logs or returned by endpoints beyond what the acceptance criteria require.
