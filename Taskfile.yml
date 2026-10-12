@@ -16,9 +16,23 @@ tasks:
     cmds:
       - cp .env.example .env
 
+  pull:
+    internal: true
+    cmds:
+      - docker compose pull --ignore-pull-failures
+
   up:
-    desc: Build and start the whole platform (UI on http://localhost:8787)
+    desc: Pull the prebuilt image (build it when the pull fails) and start the whole platform (UI on http://localhost:8787)
     deps: [setup]
+    cmds:
+      - task: pull
+      - docker compose up -d
+
+  up:source:
+    desc: Build the image from the source in this folder and start the platform (for developing Teams AI)
+    deps: [setup]
+    env:
+      TEAMS_AI_IMAGE: teams-ai:local
     cmds:
       - docker compose up -d --build
 
@@ -57,7 +71,8 @@ tasks:
     cmds:
       - task: doctor
       - task: setup
-      - docker compose up -d --build --wait
+      - task: pull
+      - docker compose up -d --wait
       - echo "Teams AI no ar em http://localhost:8787"
       - cmd: cmd.exe /c start "" http://localhost:8787
         platforms: [windows]
