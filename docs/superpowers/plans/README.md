@@ -81,6 +81,7 @@ was implemented. Web UI block A (`2026-09-24-run-api-execution-ui-design.md`) is
 | 81 | [`2026-10-12-teams-ai-81-repair-loop-failed-spec.md`](2026-10-12-teams-ai-81-repair-loop-failed-spec.md) | Built — a failed spec is classified by the Jev and run again up to two times before it stays failed; ROADMAP R11.14. |
 | 82 | [`2026-10-12-teams-ai-82-prebuilt-image-ghcr.md`](2026-10-12-teams-ai-82-prebuilt-image-ghcr.md) | Built, first publish pending — a private GHCR image the platform pulls instead of building, with the build as fallback; ROADMAP R9.4. |
 | 83 | [`2026-10-12-teams-ai-83-security-audit-status.md`](2026-10-12-teams-ai-83-security-audit-status.md) | Report — the status of each finding of the 2026-10-04 audit against today's code, and the edits to bring the roadmap and spec section 14 up to date. |
+| 84 | [`2026-10-12-teams-ai-84-decisions-reach-delivery.md`](2026-10-12-teams-ai-84-decisions-reach-delivery.md) | Done — the Dev and Test agents read the owner's decisions, and a backlog item carries the answers about its criteria; ROADMAP R11.7.6. |
 
 Plans 17 and 19 never existed (not a gap in this audit - no file was ever created at those numbers).
 
