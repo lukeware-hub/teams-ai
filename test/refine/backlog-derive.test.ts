@@ -26,6 +26,8 @@ describe('backlogPack', () => {
     expect(pack.feedback).toMatch(/binding/);
     expect(pack.feedback).toContain('a spec may change several of them');
     expect(pack.feedback).toContain('is cited through the sub-sections the item needs, never whole');
+    // Plan 88 review: the item able to check a rule of another section cites that section, so its spec carries the rule.
+    expect(pack.feedback).toContain('that later item cites the section too');
     expect(pack.feedback).not.toContain('one service per spec');
     expect(pack.outputContract).toContain('"backlog"');
     // The briefing is the target project's docs/briefing.md: the agents cite and read it by that name only.

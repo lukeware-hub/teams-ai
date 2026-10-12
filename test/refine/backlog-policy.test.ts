@@ -40,6 +40,17 @@ describe('agent policy for the backlog', () => {
     expect(review).toContain('docs/briefing.md');
   });
 
+  // Plan 88: the outline review leaves spec details to the detailing, and criteria rest on what an item and its dependencies deliver.
+  it('tells the PO and the SM to review an outline without spec details, and the PO where a criterion and its rules come from', async () => {
+    const agents = await loadAgents(AGENTS);
+    const po = agents.po.body;
+    const sm = agents.sm.body;
+    expect(po.slice(po.indexOf('### Reviewing a backlog (PO)'))).toContain('Before the detailing, never ask about or patch a detail a spec decides');
+    expect(sm.slice(sm.indexOf('### Reviewing a backlog'))).toContain('Before the detailing, never ask about or patch a detail a spec decides');
+    expect(po.slice(po.indexOf('## Detailing a backlog item'), po.indexOf('## Refining the documentation'))).toContain('directly or through others');
+    expect(po.slice(po.indexOf('(`backlog` step)'), po.indexOf('## Detailing a backlog item'))).toContain('that later item cites the section too');
+  });
+
   it('keeps the derive and refine sections of the PO', async () => {
     const po = (await fs.readFile(path.join(AGENTS, 'po.md'), 'utf8'));
     expect(po).toContain('(`derive` step)');

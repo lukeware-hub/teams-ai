@@ -72,6 +72,24 @@ describe('refinePack', () => {
     expect(refinePack({ ...base, role: 'po' }).feedback).not.toContain('Backlog mode');
     expect(refinePack({ ...base, role: 'po' }).feedback).not.toContain('## Decisões');
   });
+  // R11.10 (plan 88): before the detailing, the review leaves what a spec decides to the detailing, and nothing else waits.
+  it('tells the PO and the SM reviewing an outline to leave spec details to the detailing, and nobody else', () => {
+    const backlog = { enabled: true, project: null, epics: [{ key: 'core', title: 'Núcleo' }], items: [], cycle: 1 };
+    const review = (role: 'po' | 'sm' | 'front', b: object = backlog, cycle = 1) => String(refinePack({ ...base, role, derived: { project: {}, spec: null }, backlog: b, projectBriefing: true, cycle } as never).feedback);
+    const rule = 'Outline review (no spec yet): never ask about or patch a detail a spec decides';
+    expect(review('po')).toContain(rule);
+    expect(review('po')).toContain('It never holds back a contradiction between the docs, a split into services the docs leave open, filling a blank stack.md or flow.md, or recording a decision the owner gave.');
+    expect(review('po')).not.toContain('which asks about it then');
+    expect(review('sm')).toContain(rule);
+    expect(review('front')).not.toContain(rule);
+    // From the second cycle on it stands beside the convergence rule.
+    expect(review('po', backlog, 2)).toContain(rule);
+    expect(review('po', backlog, 2)).toContain('CONVERGENCE');
+    const detailed = { ...backlog, detail: true, flowHeadings: [] };
+    expect(review('po', detailed)).not.toContain(rule);
+    expect(review('sm', detailed)).not.toContain(rule);
+    expect(refinePack({ ...base, role: 'po' }).feedback).not.toContain(rule);
+  });
 });
 
 describe('refinePack in detail mode', () => {
@@ -88,19 +106,6 @@ describe('refinePack in detail mode', () => {
     } as BacklogState;
   };
 
-  // R11.10 (plan 88): before the detailing, the review judges the outline's structure, never what a spec decides.
-  it('asks the PO and the SM reviewing an outline for its structure only, and nobody else', () => {
-    const backlog = { enabled: true, project: null, epics: [{ key: 'core', title: 'Núcleo' }], items: [], cycle: 1 };
-    const review = (role: 'po' | 'sm' | 'front', b: object = backlog) => String(refinePack({ ...base, role, derived: { project: {}, spec: null }, backlog: b, projectBriefing: true } as never).feedback);
-    const rule = 'Outline review (no spec yet): judge only the items';
-    expect(review('po')).toContain(rule);
-    expect(review('po')).toContain('leave every detail a spec decides, such as status codes, messages, fields, validations or e-mail content, to the detailing');
-    expect(review('sm')).toContain(rule);
-    expect(review('front')).not.toContain(rule);
-    expect(review('po', { ...backlog, detail: true, flowHeadings: [] })).not.toContain(rule);
-    expect(refinePack({ ...base, role: 'po' }).feedback).not.toContain(rule);
-  });
-
   it('reviews a digest of every item and full JSON only for what changed this cycle, within the cap for 60 items and 45k tokens of docs', () => {
     const big = 'x'.repeat(36_000);
     const pack = fitPackBudget(refinePack({ ...base, role: 'po', derived: { project: {}, spec: null }, backlog: detailed(60, 5), projectBriefing: true, cycle: 5, projectMd: big, briefMd: big, stackMd: big, flowMd: big, designMd: big } as never));
@@ -112,7 +117,7 @@ describe('refinePack in detail mode', () => {
     expect(pack.feedback).not.toContain('"specId": "k-item-10"');
     expect(pack.feedback).toMatch(/specs change only through the docs/i);
     // R11.10 (plan 88): a criterion is read against what its item and its dependencies deliver.
-    expect(pack.feedback).toContain('checkable with what its own item and the items it depends on deliver');
+    expect(pack.feedback).toContain('checkable with what its own item and the items it depends on, directly or through others, deliver');
   });
 
   // Plan 77 review: a started or delivered spec is frozen; the review neither re-reads it as changed nor expects a pre-plan.

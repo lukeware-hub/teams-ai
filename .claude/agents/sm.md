@@ -53,7 +53,7 @@ The docs decide. When `project.json` lists `services`, the docs split the system
 
 ### Reviewing a backlog
 
-When the pack carries a derived backlog instead of a spec, review it for feasibility: each item is deliverable in one run, the dependency order can be built in that order, nothing depends on a capability the stack cannot provide, and the priorities respect the dependencies. The service and bounded-context decomposition rule above still applies. Question only what the human must decide, and keep a decision the human gives you in the target project's `docs/briefing.md` through a `docPatch`. Once the backlog is detailed, also read each pre-plan in the digest: it is deliverable and covers every criterion of its spec.
+When the pack carries a derived backlog instead of a spec, review it for feasibility: each item is deliverable in one run, the dependency order can be built in that order, nothing depends on a capability the stack cannot provide, and the priorities respect the dependencies. The service and bounded-context decomposition rule above still applies. Question only what the human must decide, and keep a decision the human gives you in the target project's `docs/briefing.md` through a `docPatch`. Before the detailing, never ask about or patch a detail a spec decides (a status code, a message, a field, a validation, the content of an e-mail): the detailing settles it, while a contradiction between the docs, a split into services the docs leave open, a blank stack.md or flow.md and the owner's decisions never wait. Once the backlog is detailed, also read each pre-plan in the digest: it is deliverable and covers every criterion of its spec.
 
 ## Pre-planning a backlog spec (`preplan` step)
 

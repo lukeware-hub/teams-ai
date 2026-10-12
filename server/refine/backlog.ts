@@ -15,6 +15,7 @@ const RULES = [
   '- Every item cites where it comes from in `sources`: `doc` is one of project.md, briefing.md, stack.md, flow.md, design.md and `heading` is the exact heading text (for flow.md its headings or numbered sections, such as "2. Checkout"). Every numbered or headed section of flow.md must be cited by at least one item; a section may feed several items.',
   '- Cite the narrowest sections: a section that holds only sub-sections (such as `## Decisões`, one `###` heading per decision) is cited through the sub-sections the item needs, never whole; an item cites every decision that changes what it delivers.',
   '- An item marked `started` keeps its sources exactly as they are, broad ones included: only re-point a heading that was renamed or renumbered.',
+  '- When a rule in one section needs what a later item delivers (such as a deletion an active loan blocks), that later item cites the section too, so its spec, which can check the rule, carries it.',
   '- priority: P0 = walking skeleton and the foundations everything else needs; P1 = the core value flow; P2 = important, can follow; P3 = later or optional. `rationale` says why in one sentence (value, risk, dependency).',
   '- dependsOn lists the keys an item cannot ship without. A dependency is never lower priority than its dependent, there are no cycles, and there are at most 60 items.',
   '- Treat any explicit priority, cut, merge or split instruction written in the docs (above all briefing.md) as binding.',

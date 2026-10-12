@@ -51,7 +51,9 @@ describe('specPack', () => {
   // R11.10 (plan 88): live, a criterion was verified through a route a later item delivers, so it failed until that item existed.
   it('asks for criteria checkable through what the item and the items it depends on deliver', () => {
     const pack = specPack({ specHash: HASH, principles: [], docs, batch: [item('opme', 1)], all: [item('opme', 1)], previous: {}, rejection: {} });
-    expect(pack.feedback).toContain('only through what this item and the items it depends on deliver (their routes, screens and data)');
+    expect(pack.feedback).toContain('only through what this item and the items it depends on, directly or through others, deliver (their routes, screens and data)');
+    // Plan 88 review: such a rule is not dropped in silence, it goes to outOfScope with what it needs.
+    expect(pack.feedback).toContain('A rule of a cited section that needs what a later item delivers goes to outOfScope, naming what it needs.');
   });
 
   it('lists, under an adjustment only, the started specs it changes (R11.7.4)', () => {

@@ -4,7 +4,7 @@
 
 **Goal:** fewer refinement rounds in backlog mode: the review of the outline stops asking about details a spec decides, and every acceptance criterion can be checked once its own item is delivered, so later reviews stop finding criteria that need a later item.
 
-**Architecture:** two rules in the packs, with no code path changed. In `refinePack` (`server/refine/packs.ts`), the PO and the SM reviewing an outline that has no spec yet get a rule to judge the items, their boundaries, priorities and dependencies and the coverage of the docs, and to leave every detail a spec decides to the detailing. In the spec rules of `specPack` (`server/refine/detail-packs.ts`), each criterion is checked only through what its item and the items it depends on deliver, and the review of a detailed backlog reads the criteria the same way.
+**Architecture:** two rules in the packs, with no code path changed. In `refinePack` (`server/refine/packs.ts`), the PO and the SM reviewing an outline that has no spec yet get a rule never to ask about or patch a detail a spec decides, while a contradiction between the docs, a split into services the docs leave open, a blank doc and the owner's decisions never wait. In the spec rules of `specPack` (`server/refine/detail-packs.ts`), each criterion is checked only through what its item and the items it depends on, directly or through others, deliver; a rule that needs a later item goes to `outOfScope`, and the outline has that later item cite the rule's section. The review of a detailed backlog reads the criteria the same way, and the PO and SM policies say the same.
 
 **Tech Stack:** TypeScript on Node 22 (ES modules), vitest.
 
@@ -13,6 +13,7 @@
 ## Design decisions
 
 - Both are prompt rules: whether a question is about structure, or whether a criterion needs a later item, is a judgement, and no deterministic check can tell it.
+- The outline rule only excludes spec detail instead of listing what may be judged, so it never contradicts the Jev's contradiction check, the decision rule, the blank docs rule or the SM's service split question.
 - The outline rule goes to the PO and the SM only, before the detailing; once the backlog is detailed, the review reads the specs, so spec detail is in scope again.
 - The criteria rule names routes, screens and data, the three things a criterion of a later item usually borrows.
 
@@ -27,12 +28,14 @@
 
 1. The PO and the SM reviewing an outline before the detailing get the structure rule; a detailed backlog, a single spec and the Front do not.
 2. The spec rules and the review of a detailed backlog both read each criterion against what its item and its dependencies deliver.
-3. The new texts agree with the rules already in the packs (the convergence rule, the decision rule, the delivery contract, keeping sources verbatim).
+3. The new texts agree with the rules already in the packs and policies: the flow.md review, the Jev preflight notes and its contradiction check, the convergence rule, the decision rule, the blank docs rule, the SM's service split question, the delivery contract and keeping sources verbatim.
 
 ## Limits
 
 - The rules rely on the agents: a PO may still ask a detail question at the outline, and a spec may still borrow a later item's route, which the review can then flag.
 - A Jev check of a criterion against its item's deliverables could come later, with an eval before it is switched on, as R11.5a asks.
+- A detail left to the detailing is settled by the spec or by the implementation: no step asks the owner about it later.
+- The detailed review can only flag a criterion that needs a later item, and its remedy is a boundary decision in the docs (which item carries the rule).
 - The stop rule for reviews that keep finding gaps is the next slice of R11.10.
 
 ---
