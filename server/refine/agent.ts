@@ -10,6 +10,7 @@ import { runAgentStep } from '../orchestrator/steps.js';
 import { expandHome } from '../orchestrator/workspace.js';
 import { runStep as runStepFn } from '../runner/step.js';
 import type { RunAgent } from './cycle.js';
+import { abortableSleep, withQuotaWait } from './quota-wait.js';
 
 export interface AgentWiring {
   cfg: Config;
@@ -33,7 +34,7 @@ export async function makeRunAgent(w: AgentWiring): Promise<RunAgent> {
   const breaker = new QuotaBreaker(DEFAULT_BREAKER, () => new Date());
   const accounting = new Accounting();
   const binary = { bin: w.hostEnv.CLAUDE_BIN ?? 'claude', prefixArgs: [], env: {}, requireSandboxTools: process.platform === 'linux' };
-  return async (req, ctx) => {
+  const run: RunAgent = async (req, ctx) => {
     const { ANTHROPIC_API_KEY: apiKey, ...secrets } = await loadSecrets(w.secretsDir);
     if (w.cfg.claude.auth === 'api-key' && !apiKey) throw new Error('claude.auth is "api-key" but the secret ANTHROPIC_API_KEY is not set');
     return runAgentStep(req, {
@@ -61,4 +62,5 @@ export async function makeRunAgent(w: AgentWiring): Promise<RunAgent> {
       specHash: ctx.specHash,
     });
   };
+  return withQuotaWait(run, breaker, { sleep: abortableSleep, now: () => new Date(), log: (l) => process.stderr.write(`${l}\n`) });
 }

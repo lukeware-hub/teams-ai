@@ -4,7 +4,9 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { BacklogItem } from '../../server/contracts/backlog.js';
 import { runCycle } from '../../server/refine/cycle.js';
+import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
 import { retireDropped } from '../../server/refine/detail-cycle.js';
+import { withQuotaWait } from '../../server/refine/quota-wait.js';
 import { restoreFromBase } from '../../server/refine/draft.js';
 import { RefineEvent } from '../../server/refine/events.js';
 import { applyPatch } from '../../server/refine/patches.js';
@@ -386,6 +388,29 @@ describe('backlog detailing in the refinement cycle', () => {
     expect(agent.kinds(from)).toEqual(['spec', 'spec', 'spec']);
     expect(String(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason)).toMatch(/quota/);
     expect(events.filter((e) => e.type === 'SPEC_DERIVED' && e.data.spec !== null)).toHaveLength(2);
+  });
+
+  it('goes on to ready when the quota rejects a spec step once and the wait clears it', async () => {
+    const { journal, run } = await setup();
+    const breaker = new QuotaBreaker();
+    const reading = { status: 'rejected', resetsAt: null, fiveHourUtilization: null, fiveHourResetsAt: null, sevenDayUtilization: null, sevenDayResetsAt: null };
+    const agent = fakeAgent(() => OUTLINE, (req, n) => {
+      if (req.kind !== 'spec' || n !== 1) return undefined;
+      breaker.onQuotaFailure(reading as never);
+      return { ok: false, failure: 'quota', errors: ['5-hour window'], summary: {}, sandboxDisabled: false };
+    });
+    const sleeps: number[] = [];
+    const waiting = { ...agent, fn: withQuotaWait(agent.fn as never, breaker, { sleep: async (ms) => { sleeps.push(ms); breaker.state().status === 'paused' && vi.setSystemTime(Date.now() + ms); }, now: () => new Date(), log: () => undefined }) };
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      await run(waiting as never, 1);
+      await journal.fact(RefineEvent.BacklogDetailEnabled, {});
+      await run(waiting as never, 2);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(sleeps).toHaveLength(1);
+    expect(journal.state.status).toBe('ready');
   });
 
   it('leaves no conflict map when the SM call fails, and the backlog still reaches ready', async () => {
