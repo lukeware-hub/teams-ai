@@ -6,7 +6,7 @@ import type { OutputOf, StepKind } from '../agents/outputs.js';
 import { Accounting } from '../budget/accounting.js';
 import { Governor } from '../budget/governor.js';
 import { DEFAULT_BREAKER, QuotaBreaker } from '../budget/quota-breaker.js';
-import type { Config, Role } from '../config/config.js';
+import { stepModelFor, type Config, type Role } from '../config/config.js';
 import { parseAnyPlan, scaffoldId, servicePlans, type AnyPlan, type Plan, type PlanTask, type ServiceView } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
@@ -305,7 +305,7 @@ export class Run {
       journal: this.journal,
       stepDir: (seq) => stepDir(this.deps.ws, this.runId, seq),
       sessionDir: (taskId) => sessionDir(this.deps.ws, this.runId, taskId),
-      stepModel: (kind) => cfg.routing.stepModels[kind],
+      stepModel: (kind) => stepModelFor(cfg.routing, kind),
       secretValues: () => this.secretValues(),
       specHash: this.deps.spec.specHash!,
     };

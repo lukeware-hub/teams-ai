@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { ConfigError, DEFAULT_CONFIG, loadConfig } from '../../server/config/config.js';
+import { ConfigError, DEFAULT_CONFIG, loadConfig, stepModelFor } from '../../server/config/config.js';
+
+describe('stepModelFor', () => {
+  it("gives a services plan the plan's model unless it has its own, since both plan the run", () => {
+    const routing = loadConfig({ routing: { stepModels: { plan: 'opus' } } }).routing;
+    expect(stepModelFor(routing, 'services-plan')).toBe('opus');
+    expect(stepModelFor(loadConfig({ routing: { stepModels: { plan: 'opus', 'services-plan': 'sonnet' } } }).routing, 'services-plan')).toBe('sonnet');
+    expect(stepModelFor(routing, 'dev')).toBeUndefined();
+  });
+});
 
 describe('loadConfig', () => {
   it('fills every default from an empty object', () => {

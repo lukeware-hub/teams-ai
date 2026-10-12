@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { STEP_KINDS } from '../agents/outputs.js';
+import { STEP_KINDS, type StepKind } from '../agents/outputs.js';
 import { DEFAULT_MAX_PARALLEL } from '../scheduler/scheduler.js';
 import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
 import { BACKEND_NAMES, DECISION_IDS, type DecisionConfig, type DecisionId } from '../decide/types.js';
@@ -198,6 +198,10 @@ export const Config = z.object({
     .prefault({}),
 });
 export type Config = z.infer<typeof Config>;
+
+/** The model `routing.stepModels` gives a step; a services plan is a plan, so it falls back to the plan's model. */
+export const stepModelFor = (routing: Config['routing'], kind: StepKind): string | undefined =>
+  routing.stepModels[kind] ?? (kind === 'services-plan' ? routing.stepModels.plan : undefined);
 
 export class ConfigError extends Error {}
 
