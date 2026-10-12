@@ -12,7 +12,7 @@ import type { Hit } from '../knowledge/retrieval.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import { EventStore, type StoredEvent } from '../store/event-store.js';
 import { runCycle, type CycleDeps, type RunAgent } from './cycle.js';
-import { withDecisions } from './decisions.js';
+import { recordDecision, withDecisions } from './decisions.js';
 import { maxCriterionInDraft } from './detail-cycle.js';
 import { designTemplate, flowTemplate, moveBriefingToProject, readDerived, readDoc, readMainSpec, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
 import { DRAFT_HASH, RefineEvent } from './events.js';
@@ -298,7 +298,13 @@ export class RefineSession {
   /** `docsAnswered`: the owner's mark that the documents already answered it, the label the routing eval reads. */
   async answer(questionId: string, text: string, docsAnswered = false): Promise<void> {
     this.guard();
-    this.question(questionId);
+    const q = this.question(questionId);
+    // R11.10 (plan 90): a backlog reads the owner's answer from the briefing; written first, a retry rewrites the same heading.
+    if (this.state.backlog?.enabled) {
+      const after = recordDecision(await readDoc(this.deps.draft, 'brief.md'), q.text, text);
+      await writeDoc(this.deps.draft, 'brief.md', after);
+      await this.journal.fact(RefineEvent.DocEdited, { file: 'brief.md', hash: sha256(after), source: 'decision' });
+    }
     await this.journal.fact(RefineEvent.QuestionAnswered, { questionId, text, ...(docsAnswered ? { docsAnswered: true } : {}) });
   }
 

@@ -348,6 +348,13 @@ describe('refine api', () => {
     for (const q of (await snapshot()).state.questions) {
       await call('POST', `${url}/answers`, { questionId: q.questionId, text: q.text.includes('JSON') ? 'Sim, application/json.' : 'Hello.' });
     }
+    // Plan 90: the answers went into the briefing, so the backlog is evaluated again before it starts; no spec cites them.
+    expect((await call('POST', `${url}/start`)).status).toBe(409);
+    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', `${url}/evaluate`);
+    await settle();
     expect((await call('POST', `${url}/start`)).status).toBe(200);
     const file = `${home}/ws/hello-app/refine/hello-app-001/docs/specs/base/spec.json`;
     expect(JSON.parse(await fs.readFile(file, 'utf8')).decisions).toEqual([{ question: 'O health responde em JSON?', answer: 'Sim, application/json.' }]);
@@ -374,6 +381,13 @@ describe('refine api', () => {
     spawnShouldFail = false;
     const [q] = (await snapshot()).state.questions;
     await call('POST', `${url}/answers`, { questionId: q.questionId, text: 'Sim, application/json.' });
+    // Plan 90: the answers went into the briefing, so the backlog is evaluated again before it starts; no spec cites them.
+    expect((await call('POST', `${url}/start`)).status).toBe(409);
+    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', `${url}/evaluate`);
+    await settle();
     expect((await call('POST', `${url}/start`)).status).toBe(200);
     const frozen = JSON.parse(await fs.readFile(`${home}/ws/hello-app/refine/hello-app-001/docs/specs/base/spec.json`, 'utf8'));
     expect(frozen).toMatchObject({ status: 'running', specVersion: 1, decisions: [{ question: 'O health responde em JSON?', answer: 'Sim, application/json.' }] });
@@ -417,6 +431,24 @@ describe('refine api', () => {
     await registry.tickPrograms();
     expect((await snapshot()).state.status).toBe('started');
     expect(spawns).toHaveLength(2);
+  });
+
+  // R11.10 (plan 90): in backlog mode the owner's answer is written into the briefing, so it reaches the specs through the docs.
+  it('writes an answer of a backlog into the briefing as its own decision, and asks for a new evaluation', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    const url = '/api/refine/hello-app/hello-app-001';
+    await call('POST', `${url}/backlog`);
+    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
+    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
+    script['refine/po'] = [{ checklist: PO, questions: [{ id: 'q1', text: 'O health responde em JSON?', blocking: true, relatedAcIds: [] }], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', `${url}/evaluate`);
+    await settle();
+    const [q] = (await snapshot()).state.questions;
+    expect((await call('POST', `${url}/answers`, { questionId: q.questionId, text: 'Sim, application/json.' })).status).toBe(200);
+    const after = await snapshot();
+    expect(after.docs['brief.md']).toMatch(/\n## Decisões\n\n### O health responde em JSON\?\n\n> Sim, application\/json\.\n$/);
+    expect(after.state.stale).toBe(true);
   });
 
   // R11.10 (plan 89): a suggestion still pending holds back only the auto-start; Iniciar starts without it and moves it to the history.

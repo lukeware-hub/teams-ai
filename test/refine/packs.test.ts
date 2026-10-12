@@ -64,6 +64,9 @@ describe('refinePack', () => {
     expect(pack.feedback).toContain('Backlog mode');
     // R11.10 (plan 87): one heading per decision, so each item cites only the decisions it needs.
     expect(pack.feedback).toContain('its own `### <subject>` heading under the `## Decisões` section of docs/briefing.md');
+    // R11.10 (plan 90): the orchestrator writes the owner's answers, so no agent records one again.
+    expect(pack.feedback).toContain('The orchestrator writes each answer the owner gives as its own `### <question>` heading there, so never propose a patch that records an answer again.');
+    expect(pack.feedback).not.toContain('recorded as a docPatch');
     // Plan 87 review: an older list of decisions saves nothing until each line is a heading; the Front never records one.
     expect(pack.feedback).toContain('turn each of its lines into its own heading in the same patch');
     expect(refinePack({ ...base, role: 'front', derived: { project: {}, spec: null }, backlog, projectBriefing: true } as never).feedback).not.toContain('## Decisões');

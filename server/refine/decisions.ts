@@ -1,4 +1,5 @@
 import type { Spec, SpecDecision } from '../contracts/spec.js';
+import { docSections } from './sections.js';
 import type { QuestionRow } from './state.js';
 
 /** Question text compared without case and extra spaces, so the same question asked twice counts once. */
@@ -45,4 +46,23 @@ export function withDecisions(spec: Spec, rows: readonly QuestionRow[]): Spec {
   const byQuestion = new Map((spec.decisions ?? []).map((d) => [norm(d.question), d]));
   for (const d of answered) byQuestion.set(norm(d.question), d);
   return { ...spec, decisions: [...byQuestion.values()] };
+}
+
+const DECISIONS = /^## Decisões[ \t]*$/m;
+
+/**
+ * R11.10 (plan 90): the briefing with the owner's answer as its own `### <question>` heading under `## Decisões`, added at the
+ * end when missing; a heading for the same question gets the new answer, and every line is quoted, so none becomes a heading.
+ */
+export function recordDecision(briefing: string, question: string, answer: string): string {
+  const doc = `${briefing.replace(/\r\n/g, '\n').trimEnd()}\n`;
+  const heading = `### ${question.replace(/\s+/g, ' ').trim()}`;
+  const block = `${heading}\n\n${answer.trim().split('\n').map((l) => (l.trim() ? `> ${l}` : '>')).join('\n')}\n`;
+  // A function as the replacement keeps a `$` of the answer as it is.
+  const same = docSections(doc).find((s) => s.text.split('\n', 1)[0] === heading);
+  if (same) return doc.replace(same.text, () => block);
+  const start = doc.search(DECISIONS);
+  if (start < 0) return `${doc}\n## Decisões\n\n${block}`;
+  const section = docSections(doc.slice(start))[0]!.text;
+  return doc.replace(section, () => `${section.trimEnd()}\n\n${block}`);
 }

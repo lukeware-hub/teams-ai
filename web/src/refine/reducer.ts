@@ -7,6 +7,6 @@ export type LiveSnapshot = Snapshot & { docsDirty?: boolean };
 export function applyToSnapshot(snap: LiveSnapshot, e: StoredEvent): LiveSnapshot {
   const state = structuredClone(snap.state);
   applyRefineEvent(state as never, e);
-  const dirty = snap.docsDirty === true || (e.type === 'DOC_EDITED' && (e.data.source === 'patch' || e.data.source === 'main')) || e.type === 'REFINE_EVALUATED';
+  const dirty = snap.docsDirty === true || (e.type === 'DOC_EDITED' && (e.data.source === 'patch' || e.data.source === 'main' || e.data.source === 'decision')) || e.type === 'REFINE_EVALUATED';
   return { ...snap, state, docsDirty: dirty };
 }

@@ -1,11 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { parseDecisions, withDecisions } from '../../server/refine/decisions.js';
+import { parseDecisions, recordDecision, withDecisions } from '../../server/refine/decisions.js';
 import { renderBriefMd } from '../../server/refine/draft.js';
 import type { QuestionRow } from '../../server/refine/state.js';
 import { makeSpec } from '../fixtures/contracts.js';
 
 const row = (questionId: string, text: string, status: QuestionRow['status'], answer: string | null, answeredBy?: 'po' | 'sm'): QuestionRow =>
   ({ questionId, role: 'po', text, blocking: false, relatedAcIds: [], cycle: 1, status, answer, ...(answeredBy ? { answeredBy } : {}) });
+
+// R11.10 (plan 90): the orchestrator writes each owner answer into the briefing as its own decision.
+describe('recordDecision', () => {
+  it('adds the section at the end, then each answer as its own heading after the earlier ones and after an older list', () => {
+    const first = recordDecision('# Briefing\n\n## Objetivos\n\n- agendar\n', 'Qual o prazo de devolução?', '15 dias.');
+    expect(first).toBe('# Briefing\n\n## Objetivos\n\n- agendar\n\n## Decisões\n\n### Qual o prazo de devolução?\n\n> 15 dias.\n');
+    const second = recordDecision(first, 'Há multa?', 'Sim, R$ 2 por dia.');
+    expect(second).toBe('# Briefing\n\n## Objetivos\n\n- agendar\n\n## Decisões\n\n### Qual o prazo de devolução?\n\n> 15 dias.\n\n### Há multa?\n\n> Sim, R$ 2 por dia.\n');
+    const old = recordDecision('# Briefing\n\n## Decisões\n\n- decisão antiga\n\n## Fora do escopo\n\n- nada\n', 'Há multa?', 'Não.');
+    expect(old).toBe('# Briefing\n\n## Decisões\n\n- decisão antiga\n\n### Há multa?\n\n> Não.\n\n## Fora do escopo\n\n- nada\n');
+  });
+
+  it('gives a question already written the new answer, keeps every line of it quoted, and reads CRLF', () => {
+    const doc = '# Briefing\r\n\r\n## Decisões\r\n\r\n### Há multa?\r\n\r\n> Sim.\r\n\r\n### Prazo?\r\n\r\n> 15 dias.\r\n';
+    expect(recordDecision(doc, 'Há  multa?', 'Não.\n\n# nunca um título\n$& e $1 ficam')).toBe('# Briefing\n\n## Decisões\n\n### Há multa?\n\n> Não.\n>\n> # nunca um título\n> $& e $1 ficam\n\n### Prazo?\n\n> 15 dias.\n');
+  });
+});
 
 describe('withDecisions', () => {
   it('records each answered question with the role that answered from the docs, and skips pending and skipped ones', () => {

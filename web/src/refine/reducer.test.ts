@@ -22,6 +22,8 @@ describe('applyToSnapshot', () => {
     // Docs main brought in before a start reload too, so an open editor never writes over them.
     expect(applyToSnapshot(snap, ev(3, 'DOC_EDITED', { file: 'project.md', hash: 'y', source: 'main' })).docsDirty).toBe(true);
     expect(applyToSnapshot(snap, ev(4, 'DOC_EDITED', { file: 'project.md', hash: 'z', source: 'human' })).docsDirty).toBe(false);
+    // R11.10 (plan 90): an answer the orchestrator wrote into the briefing reloads it too.
+    expect(applyToSnapshot(snap, ev(5, 'DOC_EDITED', { file: 'brief.md', hash: 'w', source: 'decision' })).docsDirty).toBe(true);
   });
 
   it('turns the backlog on and keeps what a backlog cycle derived', () => {
