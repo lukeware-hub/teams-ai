@@ -137,7 +137,7 @@ export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fix
   const done = deps.journal.events.find((e) => e.type === OrchEvent.DeployVerified && e.data.attempt === attempt);
   if (done) return { ok: true, url: String(done.data.url), smoke: done.data.smoke as SmokeRow[], healthcheck: String(done.data.healthcheck), ...(done.data.e2e ? { e2e: done.data.e2e as E2eRow[] } : {}) };
   if (!deps.journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 5)) await deps.journal.fact(OrchEvent.PhaseStarted, { phase: 5 });
-  const tag = await checkoutMain(deps); const intent = deployIntent(deps, tag); const key = `deploy-${attempt}`;
+  const tag = await checkoutMain(deps); let intent = deployIntent(deps, tag); const key = `deploy-${attempt}`;
   const failed = async (stage: DeployStage, detail: string, rolledBack: boolean, rollbackHealthy: boolean | null, previous: string | null): Promise<Phase5Result> => {
     await deps.journal.fact(OrchEvent.DeployFailed, { attempt, stage, detail, rolledBack, rollbackHealthy, tag });
     if (rolledBack) await deps.journal.fact(OrchEvent.RollbackDone, { attempt, previous });
@@ -153,7 +153,12 @@ export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fix
     const h = await deps.target.verify(intent); if (!h.healthy) return failed('verify', h.detail, false, null, previous); healthcheck = h.detail;
   } else {
     // A run planned before the port registry may hold a port another project's container owns: move it before the bind fails.
-    if (await portHeldByOthers(deps.exec, composeProject(deps.project.projectId), intent.port)) return failed('apply', `Bind for 0.0.0.0:${intent.port} failed: port is already allocated`, false, null, null);
+    if (await portHeldByOthers(deps.exec, composeProject(deps.project.projectId), intent.port)) {
+      // No agent follows a deploy-only run, and the compose is published on whatever port the intent holds: take a free one.
+      const moved = opts.fixTasks === false ? await reassignPort(deps, intent.port) : null;
+      if (moved === null) return failed('apply', `Bind for 0.0.0.0:${intent.port} failed: port is already allocated`, false, null, null);
+      intent = { ...intent, port: moved };
+    }
     await deps.journal.intent(Intent.DeployApply, key, { attempt, image: intent.image, tag, intent });
     const r = await runDeployment(deps.target, intent, { smoke: async () => ({ ok: true, detail: 'journaled separately' }), baseUrl: '' });
     if (!r.ok) return failed(r.stage, r.detail, r.rolledBack, r.rollbackHealthy, null);

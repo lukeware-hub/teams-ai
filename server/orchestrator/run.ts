@@ -33,7 +33,6 @@ import { CrashInjected, Intent, Journal, OrchEvent, type IntentType, type RunRes
 export { CrashInjected };
 import { taskMergeSteps, type MergeStepsDeps } from './merge-steps.js';
 import { PAUSED_AUTH, ensureServiceRepos, runPhase0, runWorkflowBootstrap, runPhase1, runPhase2, runPhase4, runPhase5, runServicesPhase5, runPhase6, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, type PhaseDeps, type PhaseResult } from './phases/index.js';
-import { composePublishedPort } from '../deploy/docker-local.js';
 import { withMainSnapshot } from './phases/shared.js';
 import { reconcile } from './reconcile.js';
 import { validateDocs } from '../validators/docs.js';
@@ -721,7 +720,6 @@ export class Run {
     const text = await this.gitLocked(['show', `origin/main:docs/specs/${specId}/plan.json`]).catch(() => null);
     if (!text) return this.finish('phase-failed', `main has no docs/specs/${specId}/plan.json`);
     this.plan = parseAnyPlan(JSON.parse(text));
-    await this.followComposePort();
     // A fresh clone (an import) has no installed test dependencies, and smoke and e2e run from them.
     for (const view of servicePlans(this.plan)) {
       const install = await this.installInGate(view);
@@ -729,15 +727,6 @@ export class Run {
     }
     const p5 = await this.phase5(1, { fixTasks: false });
     return p5.ok ? this.finish('done') : this.finish('deploy-failed', p5.reason);
-  }
-
-  /** An older spec's plan may name another host port than the compose now on main publishes (an import); the compose is what listens. */
-  private async followComposePort(): Promise<void> {
-    const plan = singlePlan(this.plan);
-    if (!plan?.delivery?.compose) return;
-    const compose = await this.gitLocked(['show', `origin/main:${plan.delivery.compose}`]).catch(() => null);
-    const port = compose === null ? null : composePublishedPort(compose);
-    if (port !== null) plan.deploy.port = port;
   }
 
   /** One deploy attempt, holding the main checkout still: it builds from it, and another spec's merge would reset it. */

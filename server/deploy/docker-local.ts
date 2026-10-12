@@ -1,7 +1,6 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { parse } from 'yaml';
 import type { PlatformService } from '../contracts/project.js';
 import type { Exec } from '../exec/command.js';
 import { archivePath, imageRef, waitHealthy, type DeploymentIntent, type DeployTarget, type HttpGet } from './target.js';
@@ -10,14 +9,6 @@ const TIMEOUT = 600_000;
 
 /** Compose project name derived from the projectId (compose allows lowercase letters, digits, '-' and '_'). */
 export const composeProject = (projectId: string) => `teams-ai-${projectId}`.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
-/** The host port a compose file publishes when it publishes exactly one; null otherwise (none, several or a variable). */
-export function composePublishedPort(text: string): number | null {
-  const services = (parse(text) as { services?: Record<string, { ports?: unknown[] }> } | null)?.services ?? {};
-  const ports = new Set(Object.values(services).flatMap((s) => s?.ports ?? []).map((p) => Number(typeof p === 'object' && p ? (p as { published?: unknown }).published : String(p).split(':').slice(-2)[0])));
-  const [only] = ports;
-  return ports.size === 1 && Number.isInteger(only) ? only! : null;
-}
-
 /** A service's own compose project; a slug never holds `--`, so no other project can take the name. */
 export const serviceComposeProject = (projectId: string, service: string) => `${composeProject(projectId)}--${service}`;
 /** The compose project of the platform containers; a slug never holds `_`. */
@@ -144,14 +135,45 @@ export class DockerLocalTarget implements DeployTarget {
     for (const n of intent.secretNames) env[n] = this.deps.secrets[n]!;
     const run = (extra: string[]) =>
       this.deps.exec({ bin: 'docker', args: ['compose', '-p', this.project(intent), '-f', `${intent.contextDir.replaceAll('\\', '/')}/${intent.compose}`, ...extra, '--project-directory', intent.contextDir, ...args], env, timeoutMs });
-    if (!shared || !intent.shared) return run([]);
-    return withTempFile('shared.json', await this.sharedOverride(intent), (file) => run(['-f', file]));
+    const override = shared ? await this.override(intent) : null;
+    if (!override) return run([]);
+    return withTempFile('override.yaml', override, (file) => run(['-f', file]));
   }
 
-  /** The extra compose file that joins only the main container to the shared network, under the service's name. */
-  private async sharedOverride(intent: DeploymentIntent): Promise<string> {
-    const shared = intent.shared!;
-    return JSON.stringify({ services: { [await this.service(intent)]: { networks: { default: {}, shared: { aliases: [shared.alias] } } } }, networks: { shared: { name: shared.network, external: true } } }, null, 2);
+  /**
+   * The extra compose file: the main container is published on the port the orchestrator assigned, whatever the file says
+   * (an import keeps the port of its origin, a variable or a taken port), and a service of a system joins the shared network under its name.
+   */
+  private async override(intent: DeploymentIntent): Promise<string | null> {
+    const service = await this.service(intent);
+    const ports = await this.publishedPorts(intent, service);
+    const shared = intent.shared;
+    if (!ports && !shared) return null;
+    return [
+      'services:',
+      `  ${JSON.stringify(service)}:`,
+      ...(ports ? [`    ports: !override ${JSON.stringify(ports)}`] : []),
+      ...(shared ? [`    networks: ${JSON.stringify({ default: {}, shared: { aliases: [shared.alias] } })}`, `networks: ${JSON.stringify({ shared: { name: shared.network, external: true } })}`] : []),
+    ].join('\n');
+  }
+
+  /**
+   * The service's port mappings with the one the app listens on published as `intent.port`; the rest stay as the file has them.
+   * That one is the mapping already published as `intent.port`, else the first (ponytail: first of several, the app's is usually first);
+   * a file with no mapping gets `port:port` on the loopback, as `docker run` does. null when compose cannot read the file: its own `config` then reports why.
+   */
+  private async publishedPorts(intent: DeploymentIntent, service: string): Promise<string[] | null> {
+    const r = await this.compose(intent, ['config', '--format', 'json'], imageRef(intent), 60_000, false);
+    if (r.exitCode !== 0) return null;
+    let mappings: Array<{ target: number; published?: string; host_ip?: string; protocol?: string }>;
+    try {
+      mappings = JSON.parse(r.stdout).services?.[service]?.ports ?? [];
+    } catch {
+      return null;
+    }
+    const main = mappings.find((m) => Number(m.published) === intent.port) ?? mappings[0];
+    if (!main) return [`${this.deps.publishBind ?? '127.0.0.1'}:${intent.port}:${intent.port}`];
+    return mappings.map((m) => `${m.host_ip ? `${m.host_ip}:` : ''}${m === main ? intent.port : m.published ?? ''}:${m.target}${m.protocol && m.protocol !== 'tcp' ? `/${m.protocol}` : ''}`);
   }
 
   async startPlatform(projectId: string, platform: readonly PlatformService[]): Promise<{ ok: boolean; detail: string }> {

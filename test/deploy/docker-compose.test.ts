@@ -2,7 +2,8 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { composePublishedPort, DockerLocalTarget, teardownProject } from '../../server/deploy/docker-local.js';
+import { parse } from 'yaml';
+import { DockerLocalTarget, teardownProject } from '../../server/deploy/docker-local.js';
 import type { DeploymentIntent, HttpGet } from '../../server/deploy/target.js';
 import { dockerArgs } from '../../server/exec/gate-runner.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
@@ -12,12 +13,14 @@ const secrets = { DATABASE_URL: 'postgres://x' };
 const okGet: HttpGet = async () => ({ status: 200 });
 const mk = (fake: FakeExec) => new DockerLocalTarget({ exec: fake.exec, get: okGet, secrets });
 const P = 'compose -p teams-ai-todo-api -f /ws/repo/docker-compose.yml --project-directory /ws/repo';
+/** What every compose call reads first: the service's name and its port mappings. */
+const READ = [`${P} config --services`, `${P} config --format json`];
 
 describe('DockerLocalTarget with a compose file', () => {
   it('validates with compose config', async () => {
     const fake = new FakeExec();
     expect(await mk(fake).validate(intent)).toEqual([]);
-    expect(fake.lines('docker')).toEqual([`${P} config --quiet`]);
+    expect(fake.lines('docker')).toEqual([...READ, `${P} config --quiet`]);
     const bad = new FakeExec().onArgs('docker', ['compose'], () => ({ exitCode: 1, stderr: 'yaml error' }));
     expect((await mk(bad).validate(intent))[0]).toContain('yaml error');
   });
@@ -56,7 +59,7 @@ describe('DockerLocalTarget with a compose file', () => {
     expect(up.env?.TEAMS_AI_IMAGE).toBe('todo-api:old');
     const f2 = new FakeExec();
     await mk(f2).rollback(intent, '');
-    expect(f2.lines('docker')).toEqual([`${P} down`]);
+    expect(f2.lines('docker')).toEqual([...READ, `${P} down`]);
   });
 
   it('verify fails on an unhealthy compose healthcheck, passes when healthy plus HTTP ok', async () => {
@@ -68,7 +71,7 @@ describe('DockerLocalTarget with a compose file', () => {
   it('destroys with down -v', async () => {
     const fake = new FakeExec();
     await mk(fake).destroy(intent);
-    expect(fake.lines('docker')).toEqual([`${P} down -v`]);
+    expect(fake.lines('docker')).toEqual([...READ, `${P} down -v`]);
   });
 
   it('reports the service name URL and the project network for the smoke gate', async () => {
@@ -124,7 +127,7 @@ describe('a service of a system of services', () => {
       .on((s) => s.args.includes('up'), async (s) => {
         seen.file = s.args[s.args.lastIndexOf('-f') + 1]!;
         seen.mode = (await fs.stat(path.dirname(seen.file))).mode & 0o777;
-        seen.override = JSON.parse(await fs.readFile(seen.file, 'utf8'));
+        seen.override = parse(await fs.readFile(seen.file, 'utf8'), { logLevel: 'silent' });
         return { exitCode: 0 };
       });
     const target = new DockerLocalTarget({ exec: fake.exec, get: async () => ({ status: 200 }), secrets: {} });
@@ -199,15 +202,36 @@ describe('a service of a system of services', () => {
   });
 });
 
-describe('composePublishedPort', () => {
-  const c = (...ports: string[]) => `services:\n  app:\n    ports:\n${ports.map((p) => `      - "${p}"`).join('\n')}\n`;
-  it('reads the host port of the only published port', () => {
-    expect(composePublishedPort(c('20069:20069'))).toBe(20069);
-    expect(composePublishedPort(c('127.0.0.1:3000:8080'))).toBe(3000);
+describe('the host port of a compose service', () => {
+  /** The `-f` override file the `up` call received, parsed; the `config` call answers with the given mappings. */
+  const upOverride = async (mappings: unknown[] | null, port = 3000) => {
+    let seen: unknown;
+    const fake = new FakeExec()
+      .on((s) => s.args.includes('--services'), () => ({ stdout: 'Todo-Api\n' }))
+      .on((s) => s.args.includes('--format'), () => (mappings ? { stdout: JSON.stringify({ services: { 'Todo-Api': { ports: mappings } } }) } : { exitCode: 1, stderr: 'bad file' }))
+      .on((s) => s.args.includes('up'), async (s) => {
+        const i = s.args.lastIndexOf('-f');
+        seen = s.args[i + 1] !== '/ws/repo/docker-compose.yml' ? parse(await fs.readFile(s.args[i + 1]!, 'utf8'), { logLevel: 'silent' }) : null;
+        return { exitCode: 0 };
+      });
+    await new DockerLocalTarget({ exec: fake.exec, get: okGet, secrets }).apply({ ...intent, port });
+    return seen;
+  };
+  const ports = (o: unknown) => (o as { services: Record<string, { ports: string[] }> }).services['Todo-Api']!.ports;
+
+  it('is the assigned port, whatever port the imported file publishes', async () => {
+    expect(ports(await upOverride([{ target: 8000, published: '8000' }]))).toEqual(['3000:8000']);
   });
-  it('is null with no port, several ports or a variable', () => {
-    expect(composePublishedPort('services:\n  app:\n    image: x\n')).toBeNull();
-    expect(composePublishedPort(c('3000:3000', '3001:3001'))).toBeNull();
-    expect(composePublishedPort(c('${PORT}:3000'))).toBeNull();
+  it('keeps the container port of the mapping already published as the assigned port, and the other mappings as they are', async () => {
+    expect(ports(await upOverride([{ target: 9090, published: '9090', host_ip: '127.0.0.1' }, { target: 8080, published: '3000' }]))).toEqual(['127.0.0.1:9090:9090', '3000:8080']);
+  });
+  it('takes the first of several mappings when none is the assigned port', async () => {
+    expect(ports(await upOverride([{ target: 8000, published: '8000' }, { target: 9000, published: '9000', protocol: 'udp' }]))).toEqual(['3000:8000', '9000:9000/udp']);
+  });
+  it('publishes port:port on the loopback when the file publishes nothing', async () => {
+    expect(ports(await upOverride([]))).toEqual(['127.0.0.1:3000:3000']);
+  });
+  it('leaves the file alone when compose cannot read it, so its own error shows', async () => {
+    expect(await upOverride(null)).toBeNull();
   });
 });

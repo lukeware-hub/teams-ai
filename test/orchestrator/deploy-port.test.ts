@@ -9,7 +9,7 @@ import { FakeExec } from '../fixtures/fake-exec.js';
 
 type Fact = { type: string; data: Record<string, unknown> };
 
-function setup(ps: string, apply: () => Promise<{ previous: string | null }>) {
+function setup(ps: string, apply: (intent: { port: number }) => Promise<{ previous: string | null }>) {
   const events: Fact[] = [];
   const journal = {
     events,
@@ -69,5 +69,16 @@ describe('deploy port conflict', () => {
     const task = fixTaskOf(await runPhase5(deps, 1));
     expect(events.some((e) => e.type === OrchEvent.DeployPortReassigned)).toBe(false);
     expect(task?.description).not.toContain('host port is taken');
+  });
+
+  it('a deploy with no agent moves to a free port and deploys there when another project holds the port', async () => {
+    let appliedOn = 0;
+    const { deps, events } = setup('other|127.0.0.1:3001->3001/tcp\n', async (intent) => ((appliedOn = intent.port), { previous: null }));
+    const result = await runPhase5(deps, 1, { fixTasks: false });
+    const moved = events.find((e) => e.type === OrchEvent.DeployPortReassigned)!;
+    expect(result.ok).toBe(true);
+    expect(inRange(moved.data.to)).toBe(true);
+    expect(appliedOn).toBe(moved.data.to);
+    expect(events.find((e) => e.type === OrchEvent.DeployVerified)!.data.port).toBe(moved.data.to);
   });
 });
