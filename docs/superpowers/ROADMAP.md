@@ -381,9 +381,11 @@ unit-tested with fixtures. Each one needs a plan file in `plans/` before impleme
 
 - Built: optional description on "Novo projeto" and "Nova spec" (top of `brief.md`); blank stack.md/flow.md filled by the SM on the first evaluation; pending patches made stale by an accepted one are dropped.
 - Open: a Front agent step failed once with "no JSON object in the agent result" and passed on retry; the runner keeps only 500 characters of the failed text, so the cause is unknown. No retry on schema failure exists.
-### R9.4 Prebuilt image in GHCR - `todo`
+### R9.4 Prebuilt image in GHCR - `built` (plan 82, 2026-10-12; first publish and package visibility pending)
 
 - `task up` would pull instead of building (first start drops from minutes to a download). Needs a publish workflow, a decision on package visibility and a change to `docker-compose.yml` that keeps `test/infra/compose.test.ts` true.
+- Built (plan 82): the compose services use `ghcr.io/diego-dm-morais/teams-ai:latest` (or `TEAMS_AI_IMAGE`) and `task up` and `task start` pull it and build when the pull fails, `task up:source` builds from the folder, and a `publish` job in `ci.yml` pushes the image on `main` or a `v*` tag for amd64 and arm64, scanned with trivy before `latest` moves. The package is private (human, 2026-10-12).
+- Open: the first publish and a check of the package visibility on GitHub, then a `task start` on a clean machine after `docker login ghcr.io`.
 ## Stage 10 - Agent quality (2026-10-06)
 
 ### R10.1 Route tasks to the owning role; repair agent prompts; distill skill guidance - `done` (plan 46, 2026-10-06)
@@ -609,11 +611,12 @@ The docs (project, briefing, stack, flow, design) stay the only hand-edited trut
 - Discarded after measuring: `--bare` (API key only), `--disable-slash-commands` (0 tokens: skills are not listed without the `Skill` tool), switching to the native binary (the npm package already wraps it), `DISABLE_NON_ESSENTIAL_MODEL_CALLS` (undocumented).
 - Combined estimate for slices 1, 2, 4 and 5: run -30 to -40% cost and ~80 -> ~55 min; refinement -26% from slice 1 alone. Verify each slice on a real run by cost per completed task, not by token counts.
 
-### R11.14 Repair loop when a spec fails - `todo` (2026-10-12; decided by the human on 2026-10-06 and left out of R11.4, R11.5 never took it)
+### R11.14 Repair loop when a spec fails - `built` (plan 81, 2026-10-12; live check pending; decided by the human on 2026-10-06 and left out of R11.4)
 
 - Today a failed spec stays `failed`, its dependents are blocked and the program waits for the human; nothing classifies the cause, replans or tries again beyond the run's own bounded resume (R11.4).
 - Goal: isolate the failed spec, have the Jev classify the cause, review, fix or replan it, adjust the backlog when needed and continue with the dependents; stop and ask the human only after a bounded number of repair attempts.
-- Verify: a unit test with a failing item whose repair lets its dependents run, and one with a repair that never works and ends in a human escalation; then a live check. Plan and approval first, as in "How we work".
+- Built (plan 81): the decision `failure-cause` (code defect, environment or spec problem, classified by the Jev, on by default) lets a failed delivering run go again with its failures as input, up to two times (`MAX_REPAIRS`); a spec problem, a silent Jev or the third failure leaves the spec `failed` as before, and its dependents wait while it is repaired and are blocked only then. A manual retry gives the owner a fresh limit.
+- Open: the live check (a real program with a failing spec, a paid run); the Jev's review and replan, the backlog adjustment and a cost cap per program stay out of this slice.
 
 ### R11.15 Which human steps stay in "100% autonomous" - `todo`, needs a human decision (2026-10-12)
 
