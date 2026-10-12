@@ -99,11 +99,23 @@ describe('program service outcomes', () => {
   it('a run that never got going or whose process died without finishing is interrupted, resumable', async () => {
     const s = service();
     expect(await s.outcome('never-r1')).toEqual({ kind: 'interrupted' });
+    const svc = new ProgramService({ ...(s as unknown as { deps: ConstructorParameters<typeof ProgramService>[0] }).deps, control: { ...(s as unknown as { deps: { control: RunControlDeps } }).deps.control, kill: () => false } });
+    // Launched after this server booted, so the process died on its own.
+    await new Promise((r) => setTimeout(r, 5));
     await journal('e-r1', [started('e')]);
     await fs.writeFile(path.join(runsDir(), 'e-r1', 'pid'), '999999');
     await fs.writeFile(path.join(runsDir(), 'e-r1', 'state.json'), JSON.stringify({ runId: 'e-r1', status: 'running', tasks: [], tokens: {} }));
-    const svc = new ProgramService({ ...(s as unknown as { deps: ConstructorParameters<typeof ProgramService>[0] }).deps, control: { ...(s as unknown as { deps: { control: RunControlDeps } }).deps.control, kill: () => false } });
     expect(await svc.outcome('e-r1')).toEqual({ kind: 'interrupted' });
+  });
+
+  it('says a run whose process was launched before this server booted died in the restart', async () => {
+    await journal('r-r1', [started('r')]);
+    await fs.writeFile(path.join(runsDir(), 'r-r1', 'state.json'), JSON.stringify({ runId: 'r-r1', status: 'running', tasks: [], tokens: {} }));
+    const gone = path.join(runsDir(), 'r-r1', 'pid.gone');
+    await fs.writeFile(gone, '999999');
+    const launched = new Date(Date.now() - 3_600_000);
+    await fs.utimes(gone, launched, launched);
+    expect(await service().outcome('r-r1')).toEqual({ kind: 'interrupted', restart: true });
   });
 });
 

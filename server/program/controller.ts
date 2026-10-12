@@ -42,8 +42,8 @@ export interface Program {
 
 export type RunOutcome =
   | { kind: 'running' }
-  /** The process is gone and the journal never finished: resumable. */
-  | { kind: 'interrupted' }
+  /** The process is gone and the journal never finished: resumable. `restart`: it died with the server, not on its own. */
+  | { kind: 'interrupted'; restart?: boolean }
   /** The run ended `awaiting-validation` with no blocked task: ready to complete. */
   | { kind: 'delivered'; costUsd?: number | null }
   /** A `complete` run ended `done`. */
@@ -135,9 +135,10 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
     addCost(item, costUsd);
     dirty = true;
   };
-  const resume = async (item: ProgramItem, runId: string, what: string) => {
-    if (item.resumes >= MAX_RESUMES) return fail(item, `${what} interrupted ${MAX_RESUMES} times and was not finished`);
-    item.resumes += 1;
+  // A run the server's own restart killed is resumed for free: only runs that die on their own spend the bounded resumes.
+  const resume = async (item: ProgramItem, runId: string, what: string, restart = false) => {
+    if (!restart && item.resumes >= MAX_RESUMES) return fail(item, `${what} interrupted ${MAX_RESUMES} times and was not finished`);
+    if (!restart) item.resumes += 1;
     dirty = true;
     await fx.resumeRun(runId).catch((err) => fail(item, `resume failed: ${message(err)}`));
   };
@@ -159,7 +160,7 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
       }
       const o = await fx.outcome(item.runId);
       if (o.kind === 'failed') fail(item, o.reason, o.costUsd);
-      else if (o.kind === 'interrupted') await resume(item, item.runId, 'the run');
+      else if (o.kind === 'interrupted') await resume(item, item.runId, 'the run', o.restart);
       else if (o.kind === 'delivered') {
         addCost(item, o.costUsd);
         try {
@@ -187,7 +188,7 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
         addCost(item, o.costUsd);
         dirty = true;
       } else if (o.kind === 'failed') fail(item, `completion failed: ${o.reason}`, o.costUsd);
-      else if (o.kind === 'interrupted') await resume(item, item.completeRunId, 'the completion');
+      else if (o.kind === 'interrupted') await resume(item, item.completeRunId, 'the completion', o.restart);
     }
   }
 

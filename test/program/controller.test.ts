@@ -132,6 +132,15 @@ describe('program controller', () => {
     expect(p.items[0]!.reason).toMatch(/interrupted/);
   });
 
+  it('resumes a run a server restart interrupted without spending one of its bounded resumes', async () => {
+    const { fx, calls } = world({ 'd-a-r1': { kind: 'interrupted', restart: true } });
+    let p = newProgram('d', [entry('a', 1)], NOW);
+    p = await tick(p, fx, save);
+    for (let i = 0; i < 5; i++) p = await tick(p, fx, save);
+    expect(calls.filter((c) => c.startsWith('resume'))).toHaveLength(5);
+    expect(p.items[0]).toMatchObject({ status: 'running', resumes: 0 });
+  });
+
   it('adopts a run that was launched before a crash instead of starting a second one', async () => {
     const { fx, calls, active } = world();
     active.set('d-a', 'd-a-r7');

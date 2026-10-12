@@ -36,6 +36,9 @@ const writeProgram = (draftRoot: string, p: Program): Promise<void> => writeFile
 export class ProgramService {
   private readonly ticking = new Set<string>();
 
+  /** When this server started: a run launched before it died in the restart, not on its own. */
+  private readonly bootedAt = Date.now();
+
   constructor(private readonly deps: ProgramServiceDeps) {}
 
   private now(): Date {
@@ -160,8 +163,12 @@ export class ProgramService {
       case 'draining':
         return { kind: 'running' };
       case 'interrupted':
-      case 'unknown':
-        return { kind: 'interrupted' };
+      case 'unknown': {
+        // The pid file (retired to pid.gone once its process is dead) is written at each launch and resume.
+        const dir = path.join(runsDirOf(idx), runId);
+        const launched = (await fs.stat(path.join(dir, 'pid')).catch(() => fs.stat(path.join(dir, 'pid.gone'))).catch(() => null))?.mtimeMs;
+        return launched !== undefined && launched < this.bootedAt ? { kind: 'interrupted', restart: true } : { kind: 'interrupted' };
+      }
       case 'done': {
         const data = await finished();
         return { kind: 'done', costUsd: data?.tokens?.costUsd ?? null };
