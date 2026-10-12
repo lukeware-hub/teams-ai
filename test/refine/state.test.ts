@@ -109,3 +109,13 @@ describe('session mode', () => {
     expect(reduceRefineEvents([{ type: RefineEvent.Created, data: { projectId: 'p', specId: 's', mode: 'new-spec' } }]).mode).toBe('new-spec');
   });
 });
+
+describe('answers a role gave from the docs', () => {
+  it('keeps who answered a question when a role answered it from the docs', () => {
+    const s = reduceRefineEvents([
+      { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: [], questions: [{ questionId: 'po-c1-0', role: 'po', text: 'Port?', blocking: true, relatedAcIds: [], cycle: 1 }], discardedPatches: [] } },
+      { type: RefineEvent.QuestionAnswered, data: { questionId: 'po-c1-0', text: '8080', by: 'po' } },
+    ]);
+    expect(s.questions[0]).toMatchObject({ status: 'answered', answer: '8080', answeredBy: 'po' });
+  });
+});

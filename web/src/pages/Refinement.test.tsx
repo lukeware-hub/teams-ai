@@ -177,6 +177,16 @@ describe('RefinementView', () => {
     expect((screen.getByTestId('docs-answered') as HTMLInputElement).checked).toBe(false);
   });
 
+  it('shows an answer a role gave from the docs as its assumption', () => {
+    const h = on();
+    render(
+      <MemoryRouter>
+        <RefinementView snap={base({ questions: [{ questionId: 'po-c1-0', role: 'po', text: 'Port?', blocking: true, relatedAcIds: [], cycle: 1, status: 'answered', answer: '8080', answeredBy: 'po' }] })} busy={false} {...h} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/suposição do PO, tirada dos documentos/)).toBeTruthy();
+  });
+
   it('saves a doc on blur, enables Start only when ready and not stale, and shows secrets rows', () => {
     const h = on();
     const { rerender } = render(

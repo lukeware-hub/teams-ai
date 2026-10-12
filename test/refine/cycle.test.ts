@@ -311,6 +311,61 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
     const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
     expect(evaluated.data.questionRouting).toEqual({});
   });
+
+  /** A refinement draft whose PO asks the given blocking questions, and a decider that routes each one `auto` at its confidence. */
+  async function autoRouted(questions: Record<string, number>) {
+    const spec = makeSpec();
+    const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
+    const docs = path.join(root, 'docs');
+    await mkdir(docs, { recursive: true });
+    const draft = {
+      projectId: 'shop', specId: spec.specId, root, docs,
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+      stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
+      specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
+    };
+    await Promise.all([draft.projectMd, draft.briefMd, draft.stackMd, draft.flowMd, draft.designMd].map((f) => writeFile(f, '# doc\nA porta é 8080.')));
+    const events: Array<{ type: string; data: Record<string, unknown> }> = [];
+    const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'x', specHash: 'draft', type, kind: 'fact' as const, data }; } };
+    const ok = (value: unknown) => ({ ok: true, value, summary: {} });
+    const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
+    const answered: string[] = [];
+    const runAgent = vi.fn(async (req: { kind: string; role: string; pack: { feedback?: string } }) => {
+      if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
+      if (req.kind === 'answer') {
+        answered.push(`${req.role}: ${Object.keys(questions).find((q) => String(req.pack.feedback).includes(q))}`);
+        return ok({ specHash: 'draft', answer: 'project.md diz 8080.' });
+      }
+      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: Object.keys(questions).map((text) => ({ text, blocking: true, relatedAcIds: [] })), docPatch: [] });
+      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
+    });
+    const decider = {
+      decide: async (id: string, state: string) => {
+        if (id !== 'question-routing') return { answered: false as const, reason: 'disabled' as const };
+        const confidence = Object.entries(questions).find(([q]) => state.includes(q))![1];
+        return { answered: true as const, backend: 'jev' as const, escalated: false, answers: { route: { type: 'choice' as const, value: 'auto', probabilities: { auto: confidence }, confidence } } };
+      },
+    };
+    const run = (autoAnswerFloor?: number) => runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root, decider, autoAnswerFloor } as never, 1);
+    return { events, answered, runAgent, run };
+  }
+
+  it('answers a question routed auto at the floor or above from the docs, by its owner role, and leaves the others with the human', async () => {
+    const r = await autoRouted({ 'Which port?': 0.95, 'Which name?': 0.85 });
+    await r.run(0.9);
+    expect(r.answered).toEqual(['po: Which port?']);
+    const evaluated = r.events.findIndex((e) => e.type === 'REFINE_EVALUATED');
+    const answers = r.events.filter((e) => e.type === 'QUESTION_ANSWERED');
+    expect(answers.map((e) => e.data)).toEqual([{ questionId: 'po-c1-0', text: 'project.md diz 8080.', by: 'po' }]);
+    expect(r.events.indexOf(answers[0]!)).toBeGreaterThan(evaluated);
+  });
+
+  it('never answers a question by itself while the floor is unset, the default', async () => {
+    const r = await autoRouted({ 'Which port?': 0.99 });
+    await r.run();
+    expect(r.runAgent.mock.calls.some(([req]) => req.kind === 'answer')).toBe(false);
+    expect(r.events.some((e) => e.type === 'QUESTION_ANSWERED')).toBe(false);
+  });
 });
 
 describe('refinement cycle System 1 filters (decisions 2-4)', () => {

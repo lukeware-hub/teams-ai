@@ -8,7 +8,7 @@ import { ID_PATTERNS } from '../core/ids.js';
 import { Project, ServiceName } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 
-export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'deployment', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'name', 'suggest'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'deployment', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'name', 'suggest', 'answer'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -207,6 +207,10 @@ export type NameOutput = z.infer<typeof NameOutput>;
 export const SuggestOutput = z.object({ specHash, text: z.string().min(1) });
 export type SuggestOutput = z.infer<typeof SuggestOutput>;
 
+/** R11.5.7: the owner role's answer to a refinement question from the docs, or null when they do not settle it. */
+export const AnswerOutput = z.object({ specHash, answer: z.string().min(1).nullable() });
+export type AnswerOutput = z.infer<typeof AnswerOutput>;
+
 export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> = {
   refine: RefineOutput,
   derive: DeriveOutput,
@@ -229,6 +233,7 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   preplan: PreplanOutput,
   name: NameOutput,
   suggest: SuggestOutput,
+  answer: AnswerOutput,
 };
 
 export type OutputOf<K extends StepKind> = z.infer<(typeof OUTPUT_SCHEMAS)[K]>;

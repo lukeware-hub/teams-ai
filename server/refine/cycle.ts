@@ -1,4 +1,4 @@
-import type { BacklogOutput, DeriveOutput, OutputOf, RefineOutput, StepKind } from '../agents/outputs.js';
+import type { AnswerOutput, BacklogOutput, DeriveOutput, OutputOf, RefineOutput, StepKind } from '../agents/outputs.js';
 import type { z } from 'zod';
 import type { Project } from '../contracts/project.js';
 import type { AcceptanceCriterion, Spec } from '../contracts/spec.js';
@@ -12,6 +12,7 @@ import type { AgentStepRequest } from '../orchestrator/steps.js';
 import type { StepOutcome } from '../runner/step.js';
 import { mergeChecklist, type ChecklistItem } from './checklist.js';
 import { derivePack, postProcessDerived } from './derive.js';
+import { answerPack } from './answer.js';
 import { backlogPack, postProcessBacklog, renderBacklogMd, type BacklogCheck } from './backlog.js';
 import { fitPackBudget, PackTooLargeError } from './fit-pack.js';
 import { sha256 } from '../contracts/hash.js';
@@ -48,6 +49,8 @@ export interface CycleDeps {
   decider?: Pick<Decider, 'decide'>;
   /** Aborting kills the agent steps this cycle has running. */
   signal?: AbortSignal;
+  /** R11.5.7: the measured confidence floor for answering a question routed `auto` from the docs; unset leaves every question with the human. */
+  autoAnswerFloor?: number;
 }
 
 const MAX_DEDUP_PAIRS = 20;
@@ -411,4 +414,14 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     contradictionItem.detail = 'o Jev encontrou divergência entre project.md, briefing.md, stack.md, flow.md e design.md';
   }
   await journal.fact(RefineEvent.Evaluated, { cycle, checklist, questions: merged, discardedPatches, questionRouting });
+  // R11.5.7: a blocking question routed `auto` at the floor or above is answered by its owner role from the docs.
+  const floor = deps.autoAnswerFloor;
+  if (floor !== undefined) {
+    for (const q of merged.filter((x) => x.blocking)) {
+      const r = questionRouting[q.questionId];
+      if (r?.route !== 'auto' || r.confidence === null || r.confidence < floor) continue;
+      const out = (await deps.runAgent<'answer'>({ kind: 'answer', role: q.role, pack: answerPack({ specHash: hash, role: q.role, question: q.text, docs: { projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'] } }), cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, ctx)) as StepOutcome<AnswerOutput>;
+      if (out.ok && out.value.answer) await journal.fact(RefineEvent.QuestionAnswered, { questionId: q.questionId, text: out.value.answer, by: q.role });
+    }
+  }
 }

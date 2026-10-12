@@ -77,7 +77,7 @@ export class SessionRegistry {
     const key = `${draft.projectId}/${draft.specId}`;
     const p = (async () => {
       const retrieval = (await exists(ws.knowledgeDb)) ? (q: string) => KnowledgeIndex.open(ws.knowledgeDb).search(q, { k: 5 }) : () => [];
-      const deps = { ws, draft, runAgent: this.deps.runAgent, frontAgent: this.deps.runAgent, secretsDir: ws.secrets, retrieval, validateDocs: this.deps.validateDocs, decider: this.deps.decider };
+      const deps = { ws, draft, runAgent: this.deps.runAgent, frontAgent: this.deps.runAgent, secretsDir: ws.secrets, retrieval, validateDocs: this.deps.validateDocs, decider: this.deps.decider, autoAnswerFloor: (await this.deps.cfg()).decisions.autoAnswerFloor };
       return create ? RefineSession.create(deps, create) : RefineSession.open(deps);
     })();
     this.sessions.set(key, p);

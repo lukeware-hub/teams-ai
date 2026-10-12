@@ -11,6 +11,8 @@ export type RefineStatus = 'drafting' | 'evaluating' | 'answering' | 'ready' | '
 export interface QuestionRow extends Question {
   status: 'pending' | 'answered' | 'skipped';
   answer: string | null;
+  /** The role that answered it from the docs (R11.5.7); null when the human did. */
+  answeredBy?: 'po' | 'sm' | null;
 }
 export interface PatchRow extends PendingPatch {
   cycle: number;
@@ -155,6 +157,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
       if (q) {
         q.status = e.type === RefineEvent.QuestionAnswered ? 'answered' : 'skipped';
         q.answer = (d.text as string | undefined) ?? null;
+        q.answeredBy = (d.by as 'po' | 'sm' | undefined) ?? null;
       }
       s.status = computeStatus(s);
       break;

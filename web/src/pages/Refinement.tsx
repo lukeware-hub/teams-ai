@@ -421,7 +421,7 @@ export function RefinementView(p: ViewProps) {
             .reverse()
             .map((q) => (
               <li key={q.questionId}>
-                <span className={`badge ${q.role}`}>{q.role.toUpperCase()}</span> {questionText(q.text)} → {q.status === 'skipped' ? <i>ignorada</i> : q.answer}
+                <span className={`badge ${q.role}`}>{q.role.toUpperCase()}</span> {questionText(q.text)} → {q.status === 'skipped' ? <i>ignorada</i> : q.answer}{q.answeredBy ? <i> (suposição do {q.answeredBy.toUpperCase()}, tirada dos documentos)</i> : null}
               </li>
             ))}
           {[...st.patches]

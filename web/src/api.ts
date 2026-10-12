@@ -204,6 +204,7 @@ export interface QuestionRow {
   cycle: number;
   status: 'pending' | 'answered' | 'skipped';
   answer: string | null;
+  answeredBy?: 'po' | 'sm' | null;
 }
 export interface PatchRow {
   patchId: string;
