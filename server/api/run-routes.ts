@@ -296,6 +296,9 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const runId = await exclusive(specKey(params.projectId!, specId), async () => {
           const rows = await listRuns(idx, params.projectId!);
           refuseConcluded(specs, rows, specId);
+          // The launched process runs only a running spec; saying so here leaves no dead run behind.
+          const status = specs.find((s) => s.specId === specId)!.status;
+          if (status !== 'running') throw new HttpError(409, `spec ${specId} is ${status}; only a running spec gets a new run`);
           const active = rows.find((r) => r.specId === specId && claimsSpec(r));
           if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status})`);
           const id = await nextRunId({ runs: runsDir(idx), projectId: params.projectId! }, specId);

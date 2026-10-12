@@ -322,12 +322,14 @@ describe('start, resume, stop', () => {
     complete: { url: '/api/projects/hello-app/specs/hello-001/complete', runId: 'hello-app--hello-001--complete-run-1' },
     readme: { url: '/api/runs/hello-001-r1/readme', runId: 'hello-app--hello-001--readme-run-1' },
   };
+  // Start needs a running spec and complete one awaiting validation, so each pair runs on a spec both of its writers accept.
   it.each([
-    ['start', 'complete'],
-    ['complete', 'readme'],
-    ['readme', 'start'],
-  ] as const)('while %s is launching, %s on the same spec answers 409 and only one process is spawned', async (first, second) => {
-    await useAwaitingValidationProject();
+    ['start', 'readme', 'running'],
+    ['readme', 'start', 'running'],
+    ['complete', 'readme', 'awaiting-validation'],
+    ['readme', 'complete', 'awaiting-validation'],
+  ] as const)('while %s is launching, %s on the same %s spec answers 409 and only one process is spawned', async (first, second, status) => {
+    if (status === 'awaiting-validation') await useAwaitingValidationProject();
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), { type: 'RUN_FINISHED', data: { result: 'awaiting-validation' } }], state('running'));
     onSpawn = async (runId) => {
       await writeRun(runs, runId, [started(runId)], state('running'));
@@ -491,6 +493,15 @@ describe('start, resume, stop', () => {
       expect(r.status, url).toBe(409);
       expect((await r.json()).error).toContain('concluded');
     }
+    expect(spawns).toHaveLength(0);
+  });
+
+  it('a spec awaiting validation gets no new run: a 409 says so before any process starts, so no dead run is left', async () => {
+    await useAwaitingValidationProject();
+    // Live: the launched process refused it, the route answered 500, and a launch-failed run stayed in the list.
+    const start = await post('/api/projects/hello-app/specs/hello-001/runs');
+    expect(start.status).toBe(409);
+    expect((await start.json()).error).toBe('spec hello-001 is awaiting-validation; only a running spec gets a new run');
     expect(spawns).toHaveLength(0);
   });
 
