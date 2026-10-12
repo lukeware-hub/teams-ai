@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '../../server/config/config.js';
+import { parseAnyPlan } from '../../server/contracts/plan.js';
 import { execCommand } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
 import { eventsFile } from '../../server/orchestrator/workspace.js';
@@ -56,6 +57,8 @@ describe('R11.4 retry: a second run of a spec inherits what an earlier run alrea
     // A prior run (r1) merged every task of the plan, then the spec failed at verification (the scenario this fixes).
     const prior = await EventStore.open({ file: eventsFile(d.ws, 'hello-001-r1'), runId: 'hello-001-r1', specHash: spec.specHash! });
     await prior.append({ type: 'RUN_STARTED', data: { runId: 'hello-001-r1', specId: 'hello-001', projectId: 'hello-app' } });
+    for (const task of parseAnyPlan(plan).tasks) await prior.append({ type: 'TASK_PLANNED', data: { task } });
+    for (const t of plan.tasks) await prior.append({ type: 'PR_MERGED', data: { taskId: t.id, pr: 1 } });
     await prior.append({ type: 'RUN_FINISHED', data: { result: 'verification-failed', reason: 'AC-003 missing', merged: plan.tasks.map((t) => t.id), blocked: [], tokens: {} } });
     await prior.close();
 

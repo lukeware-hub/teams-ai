@@ -72,6 +72,7 @@ was implemented. Web UI block A (`2026-09-24-run-api-execution-ui-design.md`) is
 | 72 | [`2026-10-12-teams-ai-72-jev-answers-from-docs.md`](2026-10-12-teams-ai-72-jev-answers-from-docs.md) | Done — question routing runs in shadow mode with the owner's label, an eval sets the floor, and above it a question is answered from the docs; ROADMAP R11.5.7. |
 | 73 | [`2026-10-12-teams-ai-73-autonomy-follow-ups.md`](2026-10-12-teams-ai-73-autonomy-follow-ups.md) | Done — the gaps the reviews of plans 68 to 72 left open; ROADMAP R11.5. |
 | 74 | [`2026-10-12-teams-ai-74-measured-answer-floor.md`](2026-10-12-teams-ai-74-measured-answer-floor.md) | Done — the auto answer floor measures itself from the labelled answers; ROADMAP R11.5.7. |
+| 75 | [`2026-10-12-teams-ai-75-retry-inherits-delivered-work.md`](2026-10-12-teams-ai-75-retry-inherits-delivered-work.md) | Done — a run adopts only the work an earlier run delivered with the same definition; ROADMAP R11.5. |
 
 Plans 17 and 19 never existed (not a gap in this audit - no file was ever created at those numbers).
 

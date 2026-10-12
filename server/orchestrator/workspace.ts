@@ -2,8 +2,11 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { Config } from '../config/config.js';
+import { canonicalJson } from '../contracts/hash.js';
+import type { PlanTask } from '../contracts/plan.js';
 import { parseRunId, runIdOf, stepId, type RunKind } from '../core/ids.js';
 import { processAlive } from '../core/process.js';
+import { RunEvent } from '../pipeline/run-state.js';
 import { loadEvents, type StoredEvent } from '../store/event-store.js';
 import { OrchEvent } from './events.js';
 
@@ -152,28 +155,23 @@ async function lockHeld(lockFile: string): Promise<boolean> {
 }
 
 /**
- * R11.4 retry: which of this spec's tasks were already merged by an earlier run of it in this project. A fresh run's
- * journal starts every task `planned` again, so without this a retry redoes everything an earlier attempt already
- * delivered. Unions every earlier run's own `RUN_FINISHED.merged`, not just the latest, since each attempt's own list
- * only ever names what that attempt itself merged.
+ * R11.4 retry: the ids of `tasks` an earlier run of this spec in this project delivered itself, through a merged pull
+ * request or as work already on main, with the same definition; a new version that changed a task does it again.
  */
-export async function mergedByPriorRuns(ws: Workspace, specId: string, runId: string): Promise<Set<string>> {
-  const merged = new Set<string>();
+export async function mergedByPriorRuns(ws: Workspace, specId: string, runId: string, tasks: readonly PlanTask[]): Promise<Set<string>> {
+  const delivered = new Set<string>();
   for (const events of await priorRunEvents(ws, specId, runId)) {
-    const finished = [...events].reverse().find((e) => e.type === OrchEvent.RunFinished);
-    // A T900-fix-* task answers one verification attempt's own findings (Phase 4 plans it fresh every round already,
-    // within a run); carrying it into a retry as "already done" would stop a later attempt from ever replanning a
-    // fix for a criterion whose own wording or evidence requirements changed since.
-    const runMerged = new Set((finished?.data.merged as string[] | undefined) ?? []);
-    for (const id of runMerged) if (!id.startsWith('T900-fix-')) merged.add(id);
+    const planned = new Map(events.filter((e) => e.type === RunEvent.TaskPlanned).map((e) => [(e.data.task as PlanTask).id, e.data.task]));
+    // An adopted task is no evidence: only a merge or the work found on main proves this run delivered it.
+    const done = new Set(events.filter((e) => e.type === OrchEvent.PrMerged || e.type === OrchEvent.AlreadyOnMain).map((e) => e.data.taskId as string));
     // A replaced task is delivered once every task that replaced it merged; the plan still lists the original id.
     for (const e of events) {
-      if (e.type !== 'TASK_REPLANNED') continue;
-      const replacements = (e.data.replacements as { id: string }[]).map((r) => r.id);
-      if (replacements.every((id) => runMerged.has(id))) merged.add(e.data.taskId as string);
+      if (e.type === RunEvent.TaskReplanned && (e.data.replacements as { id: string }[]).every((r) => done.has(r.id))) done.add(e.data.taskId as string);
     }
+    // A T900-fix-* task answers one verification attempt's own findings, so a retry never carries it as done.
+    for (const id of done) if (!id.startsWith('T900-fix-') && planned.has(id)) delivered.add(canonicalJson(planned.get(id)));
   }
-  return merged;
+  return new Set(tasks.filter((t) => delivered.has(canonicalJson(t))).map((t) => t.id));
 }
 
 /** The journals of every earlier run of this spec in this project, oldest first. */

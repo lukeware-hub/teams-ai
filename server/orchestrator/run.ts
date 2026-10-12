@@ -629,9 +629,9 @@ export class Run {
     const workflows = await this.executeWorkflows(this.plan);
     if (!workflows.ok) return this.finish('phase-failed', workflows.reason);
     if (!this.journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 3)) await this.journal.fact(OrchEvent.PhaseStarted, { phase: 3 });
-    // R11.4 retry: a fresh run's journal starts every task 'planned'; one an earlier run of this spec already merged
-    // is adopted as 'merged' straight away instead of redone (Phase 4 still proves it from the current repo's JUnit).
-    const inherited = await mergedByPriorRuns(this.deps.ws, this.deps.spec.specId, this.runId);
+    // R11.4 retry: a fresh run's journal starts every task 'planned'; one an earlier run of this spec delivered with the
+    // same definition is adopted as 'merged' straight away instead of redone (Phase 4 still proves it from the current repo's JUnit).
+    const inherited = await mergedByPriorRuns(this.deps.ws, this.deps.spec.specId, this.runId, this.plan.tasks);
     for (const task of this.plan.tasks) {
       const t = this.journal.state.tasks.get(task.id);
       if (t && t.state === 'planned') await this.journal.fact(RunEvent.TaskStateChanged, { taskId: task.id, to: inherited.has(task.id) ? 'merged' : 'ready' });
