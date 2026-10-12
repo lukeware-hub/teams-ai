@@ -4,7 +4,7 @@
 
 **Goal:** a new backlog draft over a project that already delivered some items never rewrites their specs, and its program never runs them again.
 
-**Architecture:** backlog detailing reads each item's spec in the draft (the copy of main) and keeps one whose status is past `planned` exactly as it is: no `spec` or `preplan` step, no file written, its row recorded from the file. The coverage that gates `ready` counts such an item as covered without a pre-plan, since its own run planned it. The program's entries come from a new `programEntries`: a `done` item starts the program done, and an item still running, paused or awaiting validation, or a backlog with nothing left to deliver, refuses the start with the reason.
+**Architecture:** backlog detailing reads each item's spec on main (the draft's base copy, which a start's sync keeps equal to main; review fix: never the draft's own copy, which its own start freezes) and keeps one whose status is past `planned` exactly as main has it: no `spec` or `preplan` step, main's folder put back over the draft's, its row recorded from main's copy. The coverage that gates `ready` counts such an item as covered without a pre-plan, since its own run planned it. The program's entries come from a new `programEntries`: a `done` item starts the program done, and an item still running, paused or awaiting validation, or a backlog with nothing left to deliver, refuses the start with the reason.
 
 **Tech Stack:** TypeScript on Node 22 (ES modules), vitest.
 
