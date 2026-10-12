@@ -1106,7 +1106,7 @@ Every screen, onboarding included, lives in one shell that fills the window, the
 | Shell | Full window height (`100dvh`), 16px around, the rail on the left and an empty column of the same width on the right, so the content is always exactly centered in the window; the whole shell is at most 1760px wide. The page itself never scrolls. |
 | Rail | A rounded glass pill (`surface`, `line` border, lit rim but no top glint, because a straight glint floats off its round top), vertically centered. From top: the product mark (a `gradient-primary` tile with the grid glyph, links to `/`, named `Teams AI, início`), a hairline, then one 44px icon button per destination — `Projetos` (folder) and `Status do ambiente` (chart) — then the theme control stacked vertically (§3.10). The current destination has an `accent-soft` ground, `accent-ink` glyph, a small dot beside it and `aria-current="page"`. Every icon carries an `aria-label` and a `title`. |
 | Content area | Holds the current screen and scrolls inside. It has no background, border or edge of its own: the screen sits straight on the page gradient, and only the cards carry edges. |
-| Workspace | A screen with more than one panel uses the shared Workspace: from 1024px up the panels sit side by side, fill the frame height and each scrolls on its own; below 1024px a tab bar shows one panel at a time, and hidden panels stay mounted so typed text survives. |
+| Workspace | A screen with more than one panel uses the shared Workspace: from 1024px up the panels sit side by side, fill the window height and each scrolls on its own; below 1024px a tab bar shows one panel at a time, and hidden panels stay mounted so typed text survives. Panels can share a group: between 1024px and 1280px the refinement stacks Revisão and Verificação in one right column at full height with a single scroll, so neither is squeezed to half the window. |
 | Below 768px | The rail becomes a bottom bar across the window and the frame loses its border and radius, so the content gets the whole width. |
 | Breadcrumb | §11.14, first line of the frame, no rule beneath unless a screen has no panels |
 | Page title | **None** where the breadcrumb names the thing |
@@ -1190,6 +1190,10 @@ Not yet pinned by a reference. Until one exists, they inherit Part I and §25 wi
 - **Status** — a single panel, no breadcrumb beyond `⌂ › Status`.
 
 **Nothing on these screens invents a component.** If one of them needs a shape this document does not describe, that shape is added here first.
+
+### 27.1 Backlog execution — `/refine/:projectId/:specId/program`
+
+Same parts as the hub, nothing new: the breadcrumb, a status card (spinner or check, "Executando o backlog · N de M concluídas", the progress bar, then one line per spec running now with a pulsing dot and "Acompanhar a run"), and a panel "Specs do backlog" with the count and total cost at its right. Each spec is one row on fixed columns — rank, title with its run id under it in mono, the hub's status pill, cost right-aligned, then the action (`Executar agora`, `Tentar de novo`, or the `prioritária` chip). A live row has a faint `accent-soft` ground. Below 1024px status, cost and action wrap under the title.
 
 ## 28. Copy
 

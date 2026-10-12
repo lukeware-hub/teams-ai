@@ -570,11 +570,13 @@ export function RefinementView(p: ViewProps) {
   );
   return (
     <Workspace
-      columns="lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:grid-rows-2 lg:[&>:first-child]:row-span-2 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,1fr)_minmax(0,1fr)] xl:grid-rows-1 xl:[&>:first-child]:row-span-1"
+      columns="lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.08fr)_minmax(0,1fr)_minmax(0,1fr)]"
+      // Below xl, review and quality share the right column at full height with one scroll; from xl each gets its own column.
+      groupClass="grid min-h-0 min-w-0 content-start gap-6 lg:-m-1 lg:overflow-y-auto lg:p-1 max-xl:[&>section]:min-h-auto max-xl:[&>section]:overflow-visible xl:contents"
       panels={[
         { id: 'docs', label: 'Documentos', content: docsPanel },
-        { id: 'review', label: 'Revisão', content: reviewPanel },
-        { id: 'quality', label: 'Verificação', content: qualityPanel },
+        { id: 'review', label: 'Revisão', content: reviewPanel, group: 'side' },
+        { id: 'quality', label: 'Verificação', content: qualityPanel, group: 'side' },
       ]}
     />
   );

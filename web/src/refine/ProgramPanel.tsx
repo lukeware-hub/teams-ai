@@ -4,12 +4,22 @@ import { refineApi, runApi, type ProgramView, type RefineState } from '../api.js
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { phaseTitle } from '../run/selectors.js';
-import { bkChip, bkMeta, bkTone } from './BacklogPanel.js';
+import { action, panel, sectionHeading, sectionTitle } from '../pages/project-shared.js';
 
 const HELP = 'Depois do início, os agentes executam o backlog inteiro sozinhos, na ordem de prioridade e de dependência, até duas specs ao mesmo tempo quando elas não mexem no mesmo código: planejam, implementam, testam, publicam e marcam cada spec como concluída. Uma spec que falha é isolada e só bloqueia as que dependem dela; as demais seguem. Executar agora passa uma spec à frente da fila.';
 
 const LABEL = { pending: 'na fila', running: 'em execução', completing: 'concluindo', done: 'concluída', failed: 'falhou', blocked: 'bloqueada' } as const;
-const TONE = { pending: bkTone.refining, running: bkTone.P0, completing: bkTone.P0, done: bkTone.planned, failed: bkTone.error, blocked: bkTone.error } as const;
+// Same pills as the hub's spec rows; a live spec's dot pulses.
+const PILL = {
+  pending: 'status-pill',
+  running: 'status-pill tone-neutral motion-safe:before:animate-pulse',
+  completing: 'status-pill tone-neutral motion-safe:before:animate-pulse',
+  done: 'status-pill tone-good',
+  failed: 'status-pill tone-bad',
+  blocked: 'status-pill tone-bad',
+} as const;
+// Rank, spec, status, cost and action share fixed columns so every row lines up; below lg status, cost and action wrap under the title.
+const ROW = 'grid grid-cols-[2.5rem_minmax(0,1fr)_8rem_5.5rem_9rem] items-center gap-x-4 gap-y-2 border-b border-line px-3 py-[0.9rem] last:border-b-0 max-lg:grid-cols-[2rem_minmax(0,1fr)]';
 
 /** Can the refinement start a run: one spec when ready, a backlog only once it is detailed (the program runs its planned specs). */
 export function canStartRun(st: Pick<RefineState, 'status' | 'stale' | 'backlog'>, busy: boolean): boolean {
@@ -46,50 +56,68 @@ export function ProgramStatus({ program, titles, phases, link }: { program: Prog
   const running = program?.status !== 'finished';
   const now = program?.items.filter((i) => i.status === 'running' || i.status === 'completing') ?? [];
   return (
-    <div className="flex items-start gap-3 rounded-md border border-line bg-surface px-4 py-[0.85rem]" role="status">
-      {running && <span className="loading-spinner mt-[0.15rem] flex-none" aria-hidden="true" />}
-      <div className="grid flex-1 gap-[0.4rem] [&_p]:m-0 [&_p]:text-[0.8125rem] [&_p]:text-ink-soft">
-        <b>{!program ? 'Preparando a execução do backlog…' : `${running ? 'Executando o backlog' : 'Backlog executado'} · ${done} de ${total} concluídas`}</b>
-        {program && <progress className="h-2 w-full appearance-none overflow-hidden rounded-full border-0 bg-surface-muted [&::-moz-progress-bar]:bg-good-live [&::-webkit-progress-bar]:bg-surface-muted [&::-webkit-progress-value]:bg-good-live" max={total} value={done} />}
-        {now.map((i) => (
-          <p key={i.specId}>
-            Agora: {titles[i.key] ?? i.key}{i.runId && phases[i.runId] !== undefined && ` · ${phaseTitle(phases[i.runId]!)}`}
-            {i.runId && <> · <Link to={`/runs/${i.runId}`}>Acompanhar a run</Link></>}
-          </p>
-        ))}
-        {link && <p><Link to={link}>Abrir a execução do backlog</Link></p>}
+    <div className="card grid gap-4 px-6 py-5 max-md:p-4" role="status">
+      <div className="flex items-center gap-3">
+        {running ? <span className="loading-spinner flex-none" aria-hidden="true" /> : <span className="grid size-5 flex-none place-items-center text-good" aria-hidden="true"><Icon name="check" size={18} /></span>}
+        <b className="text-[1rem] text-ink">{!program ? 'Preparando a execução do backlog…' : `${running ? 'Executando o backlog' : 'Backlog executado'} · ${done} de ${total} concluídas`}</b>
       </div>
+      {program && <progress className="h-2 w-full appearance-none overflow-hidden rounded-full border-0 bg-surface-muted [&::-moz-progress-bar]:bg-good-live [&::-webkit-progress-bar]:bg-surface-muted [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-good-live" max={total} value={done} />}
+      {(now.length > 0 || link) && (
+        <div className="grid gap-2 text-[0.875rem] text-ink-soft [&_p]:m-0">
+          {now.map((i) => (
+            <p key={i.specId} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="size-2 flex-none rounded-full bg-accent-text motion-safe:animate-pulse" aria-hidden="true" />
+              <span>Agora: <b className="font-semibold text-ink">{titles[i.key] ?? i.key}</b>{i.runId && phases[i.runId] !== undefined && ` · ${phaseTitle(phases[i.runId]!)}`}</span>
+              {i.runId && <>· <Link to={`/runs/${i.runId}`}>Acompanhar a run</Link></>}
+            </p>
+          ))}
+          {link && <p><Link to={link}>Abrir a execução do backlog</Link></p>}
+        </div>
+      )}
     </div>
   );
 }
 
+/** Every spec of the backlog in run order: its rank, title and run, where it stands, what it cost and what can be done. */
 export function ProgramPanel({ program, titles, onPrioritize }: { program: ProgramView; titles: Record<string, string>; onPrioritize?: (specId: string) => void }) {
   const done = program.items.filter((i) => i.status === 'done').length;
   const totalCost = program.items.reduce((sum, i) => sum + (i.costUsd ?? 0), 0);
   return (
-    <div className="program-panel my-4 grid gap-3" data-testid="program-panel">
-      <h4 className="m-0 flex items-center gap-2">
-        <Icon name="play" size={20} />Execução do backlog · {done} de {program.items.length} concluídas
-        {totalCost > 0 && <span className={bkMeta} data-testid="program-total-cost"> · {fmtCost(totalCost)}</span>}
-        <InfoTip text={HELP} />
-      </h4>
-      {program.status === 'finished' && <p className="text-[0.8125rem] text-ink-soft">Programa encerrado{program.items.some((i) => i.status === 'failed' || i.status === 'blocked') ? ': há specs que falharam ou ficaram bloqueadas.' : '.'}</p>}
-      <ol className="m-0 grid list-none gap-[0.4rem] p-0">
+    <section className={`${panel} gap-4`} data-testid="program-panel">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className={sectionTitle}>
+          <span className="grid size-6 flex-none place-items-center rounded-sm bg-accent-soft text-accent-ink" aria-hidden="true"><Icon name="list" size={14} /></span>
+          <h2 className={`${sectionHeading} ml-1`}>Specs do backlog</h2>
+          <InfoTip label="Execução do backlog" text={HELP} />
+        </div>
+        <p className="m-0 text-[0.8125rem] text-ink-soft tabular-nums">
+          <span>{done} de {program.items.length} concluídas</span>
+          {totalCost > 0 && <span data-testid="program-total-cost"> · {fmtCost(totalCost)}</span>}
+        </p>
+      </div>
+      {program.status === 'finished' && <p className="hint m-0">Programa encerrado{program.items.some((i) => i.status === 'failed' || i.status === 'blocked') ? ': há specs que falharam ou ficaram bloqueadas.' : '.'}</p>}
+      <ol className="-mx-3 my-0 list-none p-0">
         {[...program.items].sort((a, b) => a.rank - b.rank).map((i) => (
-          <li key={i.specId} className="rounded-md border border-line bg-surface" data-testid={`program-item-${i.key}`}>
-            <div className="program-row">
-              <span className={`${bkChip} ${TONE[i.status]}`}>{LABEL[i.status]}</span>
-              <b>{titles[i.key] ?? i.key}</b>
-              <span className={bkMeta}>#{i.rank}</span>
-              {i.costUsd != null && <span className={bkMeta} data-testid={`program-item-cost-${i.key}`}>{fmtCost(i.costUsd)}</span>}
-              {i.runId && <Link to={`/runs/${i.runId}`}>{i.runId}</Link>}
-              {i.status === 'pending' && (i.priority ? <span className={`${bkChip} ${bkTone.P0}`}>prioritária</span> : onPrioritize && <button type="button" className="secondary" onClick={() => onPrioritize(i.specId)}>Executar agora</button>)}
-              {i.status === 'failed' && onPrioritize && <button type="button" className="secondary" onClick={() => onPrioritize(i.specId)}>Tentar de novo</button>}
+          <li key={i.specId} className={`${ROW} ${i.status === 'running' || i.status === 'completing' ? 'bg-accent-soft/40' : 'hover:bg-surface-sunken'}`} data-testid={`program-item-${i.key}`}>
+            <span className="font-mono text-[0.8125rem] text-ink-faint tabular-nums">#{i.rank}</span>
+            <div className="grid min-w-0 gap-1">
+              <b className="font-semibold text-ink wrap-anywhere">{titles[i.key] ?? i.key}</b>
+              {i.runId && <Link to={`/runs/${i.runId}`} className="w-fit max-w-full truncate font-mono text-[0.75rem] no-underline hover:underline">{i.runId}</Link>}
+              {i.reason && <p className={`m-0 text-[0.8125rem] wrap-anywhere ${i.status === 'failed' || i.status === 'blocked' ? 'text-bad' : 'text-ink-soft'}`}>{i.reason}</p>}
             </div>
-            {i.reason && <p>{i.reason}</p>}
+            <div className="flex flex-wrap items-center gap-3 max-lg:col-start-2 lg:contents">
+              <span className={`${PILL[i.status]} justify-self-start`}>{LABEL[i.status]}</span>
+              <span className="text-right text-[0.8125rem] text-ink-soft tabular-nums lg:justify-self-end">
+                {i.costUsd != null ? <span data-testid={`program-item-cost-${i.key}`}>{fmtCost(i.costUsd)}</span> : <span className="text-ink-faint" aria-hidden="true">—</span>}
+              </span>
+              <span className="flex lg:justify-self-end">
+                {i.status === 'pending' && (i.priority ? <span className="status-chip tone-neutral">prioritária</span> : onPrioritize && <button type="button" className={action.secondary} onClick={() => onPrioritize(i.specId)}>Executar agora</button>)}
+                {i.status === 'failed' && onPrioritize && <button type="button" className={action.secondary} onClick={() => onPrioritize(i.specId)}>Tentar de novo</button>}
+              </span>
+            </div>
           </li>
         ))}
       </ol>
-    </div>
+    </section>
   );
 }

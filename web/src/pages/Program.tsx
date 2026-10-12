@@ -18,11 +18,11 @@ export function ProgramPage() {
     refineApi.snapshot(projectId, specId).then((s) => setTitles(Object.fromEntries((s.state.backlog?.items ?? []).map((i) => [i.key, i.title])))).catch(() => undefined);
   }, [projectId, specId]);
   return (
-    <main className="gap-4">
+    <main className="flex flex-col gap-5">
       <header className="refine-breadcrumb"><a href="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></a><span>›</span><strong>{projectId}</strong><span>›</span><Link to={`/refine/${projectId}/${specId}`}>{specId}</Link><span>›</span><span>Execução do backlog</span></header>
       <ProgramStatus program={program} titles={titles} phases={phases} />
       {error && <p className="error" role="alert">{error}</p>}
-      {program && <section className="edge-lit min-w-0 rounded-xl border border-line bg-surface p-5 shadow-card"><ProgramPanel program={program} titles={titles} onPrioritize={prioritize} /></section>}
+      {program && <ProgramPanel program={program} titles={titles} onPrioritize={prioritize} />}
     </main>
   );
 }
