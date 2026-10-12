@@ -245,7 +245,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           if (real !== null && !real.startsWith(realRoot + path.sep)) throw new HttpError(400, 'o diretório deve estar dentro de paths.workspaces');
         }
         const read = await readProject(dir).catch((err: Error) => {
-          throw new HttpError(400, `${typeof source.url === 'string' ? 'repositório inválido' : 'not a project directory'}: ${err.message.includes('ENOENT') ? 'docs/project.json não foi encontrado' : 'docs/project.json inválido'}`);
+          throw new HttpError(400, `${typeof source.url === 'string' ? 'repositório inválido' : 'not a project directory'}: ${err.message.includes('ENOENT') ? `docs/project.json não foi encontrado${typeof source.url === 'string' ? '; se este repositório é um serviço de um sistema, importe o repositório de documentação do projeto, que clona os serviços sozinho' : ''}` : 'docs/project.json inválido'}`);
         });
         await addProject(dir, deps.home);
         const idx = await index();
