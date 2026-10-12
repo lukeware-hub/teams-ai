@@ -84,6 +84,8 @@ export interface TaskRunnerDeps {
 }
 
 const TAIL = 2000;
+/** Which side of a replay's conflict block is which: git applies the task's change onto main, so main is "ours". */
+const MARKER_SIDES = "main's side sits between <<<<<<< ours and =======, this task's between ======= and >>>>>>> theirs";
 
 function dedupeById(results: readonly TestResult[]): TestResult[] {
   const byId = new Map<string, TestResult>();
@@ -215,10 +217,10 @@ export class TaskRunner {
     return this.deps.journal.events.filter((e) => e.type === OrchEvent.Feedback && e.data.taskId === this.taskId && e.data.attempt === true).map((e) => String(e.data.text));
   }
 
-  /** Feedback when a changed file still holds conflict markers, or null. */
+  /** Feedback when the task's changes add conflict marker lines, or null. */
   private async markersLeft(): Promise<string | null> {
-    const marked = await conflictMarkerFiles(this.worktree, await changedFiles(this.worktree, 'origin/main', this.deps.exec), this.deps.exec);
-    return marked.length > 0 ? `Conflict markers remain in these files; resolve every <<<<<<< and >>>>>>> block, then run the project's tests:\n${marked.join('\n')}` : null;
+    const marked = await conflictMarkerFiles(this.worktree, 'origin/main', this.deps.exec);
+    return marked.length > 0 ? `These files hold conflict markers (${MARKER_SIDES}); resolve every block and remove each marker line, then run the project's tests:\n${marked.join('\n')}` : null;
   }
 
   /** False when the task was blocked instead: an older run of this spec is live and owns the worktree. */
@@ -547,14 +549,21 @@ export class TaskRunner {
     if (this.task.state === 'merging') await this.transition('rebasing');
     switch (outcome.stage) {
       case 'rebase': {
+        const conflicts = outcome.conflicts ?? [];
+        // A rebase stage that failed without conflicts (a gh call, say) is no conflict to replay: a clean replay would loop on it.
+        if (conflicts.length === 0) return this.fail('rebase-conflict', 'Rebase conflicts on origin/main:\n');
         // A retry on the old base replays the same conflicting commit (the Dev cannot rebase), so move the task onto main first.
         await gitFetch(this.deps.ws.repo, this.deps.exec);
-        const replay = await replayOnto(this.deps.ws.repo, this.worktree, 'origin/main', `${this.taskId}: replay onto origin/main`, this.deps.exec).catch(() => null);
-        if (!replay) return this.fail('rebase-conflict', `Rebase conflicts on origin/main:\n${(outcome.conflicts ?? []).join('\n')}`);
+        let failure = '';
+        const replay = await replayOnto(this.deps.ws.repo, this.worktree, 'origin/main', `${this.taskId}: replay onto origin/main`, this.deps.exec).catch((err: Error) => {
+          failure = ` (moving the task onto main failed: ${this.clean(err.message)})`;
+          return null;
+        });
+        if (!replay) return this.fail('rebase-conflict', `Rebase conflicts on origin/main${failure}:\n${conflicts.join('\n')}`);
         await this.deps.journal.fact(OrchEvent.RebaseReplayed, { taskId: this.taskId, previous: replay.previous, files: replay.files });
         // Clean: the task stays in rebasing and the next advance merges it, no attempt spent.
         if (replay.files.length === 0) return;
-        return this.fail('rebase-conflict', `Rebase conflicts on origin/main. The orchestrator moved this task onto the current origin/main; these files hold conflict markers where both sides changed the same lines. In each, keep main's change and this task's intent and remove every marker, then run the project's tests:\n${replay.files.join('\n')}`);
+        return this.fail('rebase-conflict', `Rebase conflicts on origin/main. The orchestrator moved this task onto the current origin/main; these files hold conflict markers where both sides changed the same lines (${MARKER_SIDES}). In each, keep main's change and this task's intent and remove every marker line, then run the project's tests:\n${replay.files.join('\n')}`);
       }
       case 'gates': {
         const f = outcome.gateFailure;

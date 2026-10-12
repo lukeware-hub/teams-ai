@@ -29,7 +29,9 @@ describe('agent prompts for a project of services (R12.6)', () => {
   });
 
   it('tell the Dev how to resolve the conflict markers of a task the orchestrator moved onto main', () => {
-    expect(agent('dev')).toContain('When the feedback says the orchestrator moved the task onto origin/main');
+    // Any list of marked files triggers it, a resume's included, and it names which side is main's.
+    expect(agent('dev')).toContain('When the feedback lists files that hold conflict markers');
+    expect(agent('dev')).toContain("main's side sits between `<<<<<<< ours` and `=======`");
   });
 
   it('tell devops, Test and the PO what a service, its suites and the platform are', () => {

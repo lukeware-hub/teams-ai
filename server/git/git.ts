@@ -23,7 +23,7 @@ export const GIT_IDENTITY: Record<string, string> = {
 export const DEFAULT_COMMIT_EXCLUDES: readonly string[] = ['.env', '.env.*', '**/.env', '**/.env.*', 'node_modules', '**/node_modules', 'reports/junit.xml', '.tools'];
 
 /** Hardening applied to every git command: hooks and fsmonitor from a (possibly agent-written) config never execute. */
-const SAFE_CONFIG = ['-c', 'core.fsmonitor=', '-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false'];
+const SAFE_CONFIG = ['-c', 'core.fsmonitor=', '-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false', '-c', 'core.quotePath=false'];
 
 const TIMEOUT = 120_000;
 
@@ -173,36 +173,52 @@ export async function rebaseOnto(
  * Moves a branch whose rebase conflicted onto `base` as one commit. Its whole change since the merge base is applied
  * three-way in a scratch worktree, so a hunk both sides changed stays in its file between conflict markers, and the
  * branch moves only once that commit exists. Returns the previous head and the files holding markers, or null when git
- * cannot replay the change at all (a file deleted on one side and edited on the other); the branch is then untouched.
+ * cannot replay the change (a file deleted on one side and edited on the other, or a binary file both sides changed).
  */
 export async function replayOnto(repo: string, dir: string, base: string, message: string, exec: Exec = execCommand): Promise<{ previous: string; files: string[] } | null> {
   const previous = await headSha(dir, exec);
   const mergeBase = await git(dir, ['merge-base', 'HEAD', base], exec);
-  // Raw output: git() trims, and a patch without its final newline is corrupt.
-  const patch = (await run(dir, ['diff', '--binary', mergeBase, 'HEAD'], exec)).stdout;
-  if (patch === '') return null;
-  const scratch = path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-replay-')), 'wt');
-  await withRepoLock(repo, () => git(repo, ['worktree', 'add', '--detach', scratch, base], exec));
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-replay-'));
+  // The patch stays a file: through a JavaScript string it would be cut to the output cap and re-encoded as UTF-8.
+  const patch = path.join(tmp, 'change.patch');
+  const scratch = path.join(tmp, 'wt');
   try {
-    const applied = await exec({ bin: 'git', args: [...SAFE_CONFIG, 'apply', '--3way'], cwd: scratch, env: GIT_IDENTITY, timeoutMs: TIMEOUT, stdin: patch });
+    // The same bytes whatever the operator's git config says: no external diff, text conversion, colors or other prefixes.
+    await git(dir, ['diff', '--binary', '--no-textconv', '--no-ext-diff', '--no-color', '--src-prefix=a/', '--dst-prefix=b/', `--output=${patch}`, mergeBase, 'HEAD'], exec);
+    if ((await fs.stat(patch)).size === 0) return null;
+    await withRepoLock(repo, () => git(repo, ['worktree', 'add', '--detach', scratch, base], exec));
+    const applied = await run(scratch, ['apply', '--3way', '--whitespace=nowarn', patch], exec);
     const unmerged = await git(scratch, ['diff', '--name-only', '--diff-filter=U'], exec);
     const files = unmerged === '' ? [] : unmerged.split('\n');
     if (applied.exitCode !== 0 && files.length === 0) return null;
+    // A binary file both sides changed conflicts without markers: git kept main's side, so the task's change would be lost.
+    for (const file of files) if (!(await holdsMarkers(path.join(scratch, file)))) return null;
     await git(scratch, ['add', '-A'], exec);
     await git(scratch, ['commit', '-q', '-m', message], exec);
     await git(dir, ['reset', '-q', '--hard', await headSha(scratch, exec)], exec);
     return { previous, files };
   } finally {
     await withRepoLock(repo, () => git(repo, ['worktree', 'remove', '--force', scratch], exec)).catch(() => undefined);
-    await fs.rm(path.dirname(scratch), { recursive: true, force: true });
+    await fs.rm(tmp, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 
-/** The files among `files` that still hold a conflict marker line; binary and missing files never count. */
-export async function conflictMarkerFiles(dir: string, files: readonly string[], exec: Exec = execCommand): Promise<string[]> {
-  if (files.length === 0) return [];
-  const r = await run(dir, ['grep', '-I', '-l', '-E', '^(<<<<<<<|>>>>>>>)( |$)', '--', ...files], exec);
-  return r.exitCode === 0 && r.stdout.trim() !== '' ? r.stdout.trim().split('\n') : [];
+/** True when the file holds an opening and a closing conflict marker line. */
+const holdsMarkers = async (file: string): Promise<boolean> =>
+  /^<<<<<<< [\s\S]*^>>>>>>> /m.test(await fs.readFile(file, 'latin1').catch(() => ''));
+
+/**
+ * The files whose changes against `base` add an opening or closing conflict marker line, as git's own whitespace check
+ * reports it; a marker line the base already holds is content, and a lone `=======` is a Markdown underline.
+ */
+export async function conflictMarkerFiles(dir: string, base: string, exec: Exec = execCommand): Promise<string[]> {
+  const r = await run(dir, ['diff', '--check', '--no-color', `${base}...HEAD`], exec);
+  const found = new Set<string>();
+  for (const [, file, line] of r.stdout.matchAll(/^(.+):(\d+): leftover conflict marker$/gm)) {
+    const lines = (await fs.readFile(path.join(dir, file!), 'latin1').catch(() => '')).split('\n');
+    if (/^(<<<<<<<|>>>>>>>)( |$)/.test(lines[Number(line) - 1] ?? '')) found.add(file!);
+  }
+  return [...found];
 }
 
 export async function push(dir: string, branch: string, exec: Exec = execCommand): Promise<void> {

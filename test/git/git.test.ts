@@ -178,12 +178,90 @@ describe('changedFiles and rebase', () => {
     expect(await git(repo, ['worktree', 'list', '--porcelain'])).not.toContain('teams-ai-replay-');
   });
 
-  it('lists the changed files that still hold conflict markers, skipping binary and deleted ones', async () => {
-    await write(repo, 'a.md', 'title\n<<<<<<< ours\nx\n=======\ny\n>>>>>>> theirs\n');
-    await write(repo, 'b.md', 'clean\n=======\n');
-    await commitAll(repo, 'docs: files');
-    expect(await conflictMarkerFiles(repo, ['a.md', 'b.md', 'gone.md'])).toEqual(['a.md']);
-    expect(await conflictMarkerFiles(repo, [])).toEqual([]);
+  it('lists the files whose changes against the base add a conflict marker line, whatever their names', async () => {
+    // A marker line main already holds is legitimate content, and a Markdown underline is not a marker.
+    await write(repo, 'docs/git.md', 'how a conflict looks:\n<<<<<<< ours\n');
+    await commitAll(repo, 'docs: git');
+    const wt = path.join(root, 'wt');
+    await createWorktree(repo, wt, 'task/x', 'main');
+    await write(wt, 'docs/introdução.md', 'title\n<<<<<<< ours\nx\n=======\ny\n>>>>>>> theirs\n');
+    await write(wt, 'docs/heading.md', 'Title\n=======\n');
+    await write(wt, 'docs/git.md', 'how a conflict looks:\n<<<<<<< ours\nmore text\n');
+    await commitAll(wt, 'docs: task');
+    expect(await conflictMarkerFiles(wt, 'main')).toEqual(['docs/introdução.md']);
+  });
+
+  it('replays a change bigger than one mebibyte, and every file before it, byte for byte', async () => {
+    const wt = path.join(root, 'wt');
+    await createWorktree(repo, wt, 'task/x', 'main');
+    const big = `{"line":"${'x'.repeat(60)}"}\n`.repeat(20_000);
+    await write(wt, 'a-first.md', 'first\n');
+    await write(wt, 'big.json', big);
+    await commitAll(wt, 'feat: big');
+    await write(repo, 'README.md', 'main moved\n');
+    await commitAll(repo, 'docs: main');
+    expect(await replayOnto(repo, wt, 'main', 'T1: replay')).toMatchObject({ files: [] });
+    expect(await fs.readFile(path.join(wt, 'big.json'), 'utf8')).toBe(big);
+    expect(await fs.readFile(path.join(wt, 'a-first.md'), 'utf8')).toBe('first\n');
+  });
+
+  it('keeps the bytes of a file that is not UTF-8', async () => {
+    const wt = path.join(root, 'wt');
+    await createWorktree(repo, wt, 'task/x', 'main');
+    const latin1 = Buffer.from([0x61, 0xe7, 0xe3, 0x6f, 0x0a]);
+    await fs.writeFile(path.join(wt, 'acao.txt'), latin1);
+    await commitAll(wt, 'feat: latin1');
+    await write(repo, 'README.md', 'main moved\n');
+    await commitAll(repo, 'docs: main');
+    await replayOnto(repo, wt, 'main', 'T1: replay');
+    expect(await fs.readFile(path.join(wt, 'acao.txt'))).toEqual(latin1);
+  });
+
+  it('leaves the branch untouched when a binary file changed on both sides, since git can keep only one of them', async () => {
+    await fs.writeFile(path.join(repo, 'logo.bin'), Buffer.from([0, 1, 2, 3]));
+    await commitAll(repo, 'chore: logo');
+    const wt = path.join(root, 'wt');
+    await createWorktree(repo, wt, 'task/x', 'main');
+    await fs.writeFile(path.join(wt, 'logo.bin'), Buffer.from([0, 9, 9, 9]));
+    await commitAll(wt, 'feat: task logo');
+    const before = await headSha(wt);
+    await fs.writeFile(path.join(repo, 'logo.bin'), Buffer.from([0, 7, 7, 7]));
+    await commitAll(repo, 'chore: main logo');
+    expect(await replayOnto(repo, wt, 'main', 'T1: replay')).toBeNull();
+    expect(await headSha(wt)).toBe(before);
+  });
+
+  it("replays the same bytes whatever the operator's git config says about diffs and whitespace", async () => {
+    const xdg = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-xdg-'));
+    await fs.mkdir(path.join(xdg, 'git'));
+    await fs.writeFile(path.join(xdg, 'git', 'config'), '[apply]\n\twhitespace = fix\n[diff]\n\tnoprefix = true\n[color]\n\tdiff = always\n');
+    const saved = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = xdg;
+    try {
+      const wt = path.join(root, 'wt');
+      await createWorktree(repo, wt, 'task/x', 'main');
+      await write(wt, 'notes.md', 'line with a break  \nnext\n');
+      await commitAll(wt, 'docs: notes');
+      await write(repo, 'README.md', 'main moved\n');
+      await commitAll(repo, 'docs: main');
+      expect(await replayOnto(repo, wt, 'main', 'T1: replay')).toMatchObject({ files: [] });
+      expect(await fs.readFile(path.join(wt, 'notes.md'), 'utf8')).toBe('line with a break  \nnext\n');
+    } finally {
+      if (saved === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = saved;
+      await fs.rm(xdg, { recursive: true, force: true });
+    }
+  });
+
+  it('writes conflict markers when both sides created the same file', async () => {
+    const wt = path.join(root, 'wt');
+    await createWorktree(repo, wt, 'task/x', 'main');
+    await write(wt, 'src/new.ts', 'task\n');
+    await commitAll(wt, 'feat: task new');
+    await write(repo, 'src/new.ts', 'main\n');
+    await commitAll(repo, 'feat: main new');
+    expect(await replayOnto(repo, wt, 'main', 'T1: replay')).toMatchObject({ files: ['src/new.ts'] });
+    expect(await fs.readFile(path.join(wt, 'src/new.ts'), 'utf8')).toMatch(/^<<<<<<< [\s\S]*^>>>>>>> /m);
   });
 
   it('throws GitError (infra) when the rebase fails for a reason that is not a conflict', async () => {

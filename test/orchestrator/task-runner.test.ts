@@ -598,6 +598,25 @@ describe('TaskRunner: merging', () => {
     expect(journal.events.some((e) => e.type === OrchEvent.RebaseReplayed)).toBe(false);
   });
 
+  it('never replays when the rebase stage failed without conflicts, such as a gh call that failed', async () => {
+    // Live risk: a clean replay keeps the task in rebasing for free, so this failure would loop forever.
+    const r = await reviewed({ merge: { alreadyMerged: async () => { throw new Error('gh pr list failed (1): HTTP 401'); } } });
+    await r.advance();
+    expect(journal.events.some((e) => e.type === OrchEvent.RebaseReplayed)).toBe(false);
+    expect(state().attempts).toBe(1);
+  });
+
+  it('refuses to merge a task whose branch still holds conflict markers, as a replay interrupted by a crash leaves it', async () => {
+    const queueSteps: string[] = [];
+    const r = await reviewed({ merge: { rebase: async () => { queueSteps.push('rebase'); return { ok: true, baseSha: 'base' }; } } });
+    await fs.writeFile(path.join(r.worktree, 'src', 'a.ts'), '<<<<<<< ours\nmain\n=======\ntask\n>>>>>>> theirs\n');
+    await git(r.worktree, ['commit', '-q', '-am', 'T1: replay onto origin/main']);
+    await r.advance();
+    expect(state()).toMatchObject({ state: 'implementing', attempts: 1 });
+    expect(journal.lastFeedback('T1')).toContain('src/a.ts');
+    expect(queueSteps).toEqual([]);
+  });
+
   it('refuses a Dev result that leaves conflict markers, before any gate runs', async () => {
     const gatesRun: string[] = [];
     const markers: Agent = async (req) => {
