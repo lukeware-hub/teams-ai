@@ -54,8 +54,9 @@ export function evidenceGate(results: readonly TestResult[]): string[] {
   return [];
 }
 
+/** Every criterion passed; a blocked one is not ready, since the code it needs never reached main. */
 export function readyForValidation(rows: readonly EvidenceRow[]): boolean {
-  return rows.every((r) => r.status === 'passed' || r.status === 'blocked');
+  return rows.every((r) => r.status === 'passed');
 }
 
 /** What the Test agent claims about one acceptance criterion in its review. */

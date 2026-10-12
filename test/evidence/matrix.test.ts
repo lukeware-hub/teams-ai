@@ -68,8 +68,9 @@ describe('evidenceGate', () => {
 });
 
 describe('readyForValidation', () => {
-  it('requires every criterion to be passed or blocked', () => {
-    expect(readyForValidation([{ criterion: 'AC-001', tasks: [], tests: [], status: 'passed' }, { criterion: 'AC-002', tasks: [], tests: [], status: 'blocked' }])).toBe(true);
+  it('requires every criterion to have passed, so a criterion whose tasks all blocked is not ready', () => {
+    expect(readyForValidation([{ criterion: 'AC-001', tasks: [], tests: [], status: 'passed' }])).toBe(true);
+    expect(readyForValidation([{ criterion: 'AC-001', tasks: [], tests: [], status: 'passed' }, { criterion: 'AC-002', tasks: ['T2'], tests: [], status: 'blocked' }])).toBe(false);
     expect(readyForValidation([{ criterion: 'AC-001', tasks: [], tests: [], status: 'missing' }])).toBe(false);
   });
 });

@@ -149,7 +149,7 @@ export async function runPhase4(deps: PhaseDeps, round: 1 | 2): Promise<Phase4Re
   const junit = dedupeJunit(results.flatMap((r) => r.junit ?? []));
   const matrix = buildEvidenceMatrix(deps.spec, deps.tasks(), junit);
   const failedTests = junit.filter((t) => t.status === 'failed').map((t) => t.id);
-  const uncoveredAcs = matrix.filter((r) => r.status === 'missing').map((r) => r.criterion);
+  const uncoveredAcs = matrix.filter((r) => r.status === 'missing' || r.status === 'blocked').map((r) => r.criterion);
   if (!blocking && readyForValidation(matrix)) { await deps.journal.fact(OrchEvent.VerificationPassed, { round, matrix }); return { ok: true, matrix }; }
   await deps.journal.fact(OrchEvent.VerificationFailed, { round, failedTests, uncoveredAcs, matrix, gate: blocking?.name ?? null });
   if (round === 2) return { ok: false, reason: `verification failed in round 2: ${failedTests.length} failing tests, ${uncoveredAcs.length} uncovered criteria` };
