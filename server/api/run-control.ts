@@ -89,8 +89,8 @@ export async function waitForRunJournal(deps: RunControlDeps, runs: string, runI
     await deps.sleep(POLL_MS);
   }
   const log = await fs.readFile(path.join(runs, runId, 'ui.log'), 'utf8').catch(() => '');
-  // Secret values are read now, so a secret added after startup is covered.
-  const tail = redactSecrets(log.slice(-500), await loadSecretValues(secretsDir));
+  // Secret values are read now, so a secret added after startup is covered; the cut comes after the redaction so a secret cannot be split by it.
+  const tail = redactSecrets(log, await loadSecretValues(secretsDir)).slice(-500);
   throw new Error(`run ${runId} did not start: ${tail || 'no output'}`);
 }
 

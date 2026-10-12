@@ -149,13 +149,15 @@ describe('program service tick', () => {
     const deps = (service() as unknown as { deps: ConstructorParameters<typeof ProgramService>[0] }).deps;
     const spawn = (a: { args: string[]; logFile: string }) => {
       mkdirSync(path.dirname(a.logFile), { recursive: true });
-      writeFileSync(a.logFile, 'fail p@ss w0rd!\n');
+      // The secret starts 5 characters before the 500 character cut, so the cut must not come before the redaction.
+      writeFileSync(a.logFile, `p@ss w0rd!${'y'.repeat(495)}`);
       return { pid: 4242 };
     };
     const svc = new ProgramService({ ...deps, control: { ...deps.control, spawn, kill: () => false } });
     const failure = await svc.tick('shop', 'd').then(() => '', (err: unknown) => String(err));
     const saved = await fs.readFile(path.join(root, 'draft', 'program.json'), 'utf8');
     expect(failure + saved).not.toContain('p@ss');
+    expect(failure + saved).not.toContain('w0rd');
   });
 
   it('does nothing for a draft without a program or with a finished one', async () => {

@@ -153,7 +153,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     // Stop its group and wait for the exit; the caller releases the spec only after this returns.
     if (isAlive(deps.control, pid)) await stop(deps.control, pid);
     const log = await fs.readFile(path.join(runs, runId, 'ui.log'), 'utf8').catch(() => '');
-    const tail = redactSecrets(log.slice(-500), await loadSecretValues(secretsDirOf(await deps.cfg())));
+    const tail = redactSecrets(log, await loadSecretValues(secretsDirOf(await deps.cfg()))).slice(-500);
     throw new HttpError(500, `run ${runId} did not start: ${tail || 'no output'}`);
   };
   const launch = async (idx: IndexDeps, o: { projectDir: string; specId: string; runId: string; mode: 'run' | 'resume' | 'complete' | 'readme' | 'deploy'; retryBlocked?: boolean }): Promise<void> => {
