@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, refineApi, type AcceptanceCriterion, type ChecklistItem, type ProgramView, type Snapshot, type StoredEvent } from '../api.js';
+import { api, refineApi, type AcceptanceCriterion, type ChecklistItem, type Snapshot, type StoredEvent } from '../api.js';
 import { applyToSnapshot, type LiveSnapshot } from '../refine/reducer.js';
 import { useJournal } from '../useSse.js';
 import { Icon } from '../components/Icons.js';
@@ -8,7 +8,7 @@ import { InfoTip } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { buildSpecsIndex } from '@server/refine/specs-index';
 import { BacklogPanel } from '../refine/BacklogPanel.js';
-import { canStartRun, ProgramPanel } from '../refine/ProgramPanel.js';
+import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { SpecTree } from '../refine/SpecTree.js';
 import './refine.css';
 
@@ -138,8 +138,6 @@ export interface ViewProps {
   onSecret(name: string, value: string): void;
   onStart(): void;
   startInHeader?: boolean;
-  /** The ledger of the program that runs a started backlog. */
-  program?: ProgramView | null;
   events?: StoredEvent[];
 }
 
@@ -223,7 +221,7 @@ export function RefinementView(p: ViewProps) {
         ? { label: 'Desatualizada', tone: 'warn' }
         : { label: 'Atual', tone: 'ok' };
   const nextStep = st.status === 'started' && st.backlog?.enabled
-    ? 'Os agentes estão executando o backlog, uma spec por vez. Acompanhe cada uma abaixo; clique no link da run para ver os detalhes.'
+    ? 'Os agentes estão executando o backlog, uma spec por vez. Acompanhe cada uma na tela de execução do backlog.'
     : st.status === 'evaluating'
     ? 'Aguarde o fim da avaliação; o andamento aparece logo abaixo.'
     : jevAdvisory
@@ -359,15 +357,17 @@ export function RefinementView(p: ViewProps) {
             )}
             <label className="field-label" htmlFor="refinement-answer">Sua resposta</label>
             <textarea id="refinement-answer" data-testid="answer" value={answer} onChange={(e) => setAnswer(e.target.value)} />
-            <div className="field-label">
+            <div className="question-check">
               <label>
-                <input type="checkbox" data-testid="docs-answered" checked={docsAnswered} onChange={(e) => setDocsAnswered(e.target.checked)} /> Os documentos já respondiam esta pergunta
-              </label>{' '}
+                <input type="checkbox" data-testid="docs-answered" checked={docsAnswered} onChange={(e) => setDocsAnswered(e.target.checked)} />
+                Os documentos já respondiam esta pergunta
+              </label>
               <InfoTip text="Marque quando a resposta já estava nos documentos: essas marcas medem quando o Jev pode responder sozinho." />
             </div>
             <div className="question-actions">
               <div className="question-actions-buttons">
                 <button
+                  className="primary"
                   data-testid={`answer-${current.questionId}`}
                   disabled={locked || answer.trim() === ''}
                   onClick={() => {
@@ -479,8 +479,7 @@ export function RefinementView(p: ViewProps) {
         </div>
         <div className="quality-checks"><h5>Produto (PO)</h5><Checklist items={st.checklist} role="po" /><h5>Técnico (SM)</h5><Checklist items={st.checklist} role="sm" /></div>
         <BacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} ready={st.status === 'ready' && !st.stale} onEnable={p.onEnableBacklog} onDetail={p.onEnableDetail} />
-        {p.program && st.backlog && <ProgramPanel program={p.program} titles={Object.fromEntries(st.backlog.items.map((i) => [i.key, i.title]))} />}
-        {st.backlog?.detail && <SpecTree backlog={st.backlog} />}
+        {st.backlog?.detail && <SpecTree backlog={st.backlog} evaluating={evaluating} />}
         <h4><Icon name="file" size={20} />Arquivos gerados<InfoTip text="Versão estruturada dos documentos, gerada pelo Claude a cada avaliação. O project.json descreve o projeto; o spec.json, esta demanda, com tarefas e critérios de aceite." /></h4>
         {!backlogOn && (
           <>
@@ -543,7 +542,7 @@ export function RefinementPage() {
   const navigate = useNavigate();
   const [snap, setSnap] = useState<LiveSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [program, setProgram] = useState<ProgramView | null>(null);
+  const [starting, setStarting] = useState(false);
   const applied = useRef(0);
   const { events } = useJournal(snap ? refineApi.events(projectId, specId) : null);
   const load = () =>
@@ -556,13 +555,8 @@ export function RefinementPage() {
   }, [projectId, specId]);
   // The program ledger moves with the runs, not with the refinement journal: poll it while a started backlog is on screen.
   const following = snap?.state.status === 'started' && snap.state.backlog?.enabled === true;
-  useEffect(() => {
-    if (!following) return;
-    const poll = () => refineApi.program(projectId, specId).then((r) => setProgram(r.program)).catch(() => undefined);
-    void poll();
-    const timer = setInterval(() => void poll(), 5_000);
-    return () => clearInterval(timer);
-  }, [following, projectId, specId]);
+  const { program, phase } = useProgram(projectId, specId, following);
+  const programPath = `/refine/${projectId}/${specId}/program`;
   useEffect(() => {
     if (!snap) return;
     let next: LiveSnapshot = snap;
@@ -587,17 +581,23 @@ export function RefinementPage() {
     setError(null);
     f().catch((e: Error) => setError(e.message));
   };
-  const startRun = act(() => refineApi.start(projectId, specId).then(({ runId, program: started }) => (started ? (setProgram(started), load()) : navigate(`/runs/${runId}`))));
+  const startRun = act(() => {
+    setStarting(true);
+    return refineApi.start(projectId, specId).then(({ runId, program: started }) => navigate(started ? programPath : `/runs/${runId}`)).finally(() => setStarting(false));
+  });
+  const executing = starting || (following && program?.status !== 'finished');
   return (
     <main className="refine-page">
       <header className="refine-breadcrumb"><a href="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></a><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span>
         <span className="refine-start-group">
-          <button data-testid="start" className="primary refine-start refine-top-action" disabled={!canStartRun(snap.state, snap.state.status === 'evaluating')} onClick={startRun}>
-            <Icon name="play" size={18} />Iniciar análise
+          <button data-testid="start" className="primary refine-start refine-top-action" disabled={starting || !canStartRun(snap.state, snap.state.status === 'evaluating')} onClick={startRun}>
+            {executing ? <span className="loading-spinner" aria-hidden="true" /> : <Icon name="play" size={18} />}
+            {starting ? 'Iniciando…' : executing ? 'Em execução' : 'Iniciar análise'}
           </button>
           <InfoTip text={startInfo} />
         </span>
       </header>
+      {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phase={phase} link={programPath} />}
       {(error || snap.state.status === 'error') && (
         <div className="error refine-page-error" role="alert">
           <p>{errorText(error ?? snap.state.error)}</p>
@@ -622,7 +622,6 @@ export function RefinementPage() {
         onSecret={(n, v) => act(() => refineApi.secret(projectId, specId, n, v).then(load))()}
         onStart={startRun}
         startInHeader
-        program={program}
         events={events}
       />
     </main>

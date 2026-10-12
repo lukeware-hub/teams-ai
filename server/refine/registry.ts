@@ -156,11 +156,20 @@ export class SessionRegistry {
     slug(projectId, 'projectId');
     slug(specId, 'specId');
     const ws = await this.ws(projectId);
-    const draft = draftPaths(ws, specId);
-    if (await draftExists(draft)) throw new ConflictError(`spec ${specId} already has a refinement session`);
     const spec = await this.specOnMain(ws, specId);
     if (spec?.status === 'done') throw new ConflictError(`spec ${specId} is concluded; create a new spec`);
     if (spec?.status !== 'awaiting-validation') throw new ConflictError(`spec ${specId} is ${spec?.status ?? 'absent'} on main; only awaiting-validation specs continue`);
+    const draft = draftPaths(ws, specId);
+    if (await draftExists(draft)) {
+      const session = await this.get(projectId, specId);
+      if (session.state.status !== 'started') {
+        if (report) throw new ConflictError(`a spec ${specId} já tem um refinamento em andamento; abra-o pelo Continuar spec ou use Reiniciar para recomeçar com o relatório`);
+        return session;
+      }
+      // The run of this draft is over: a new refinement starts from main.
+      await this.assertNoActiveRun(projectId, specId);
+      await this.discardDraft(projectId, specId, session);
+    }
     await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'continue', report, route: this.deps.routeReport });
     return this.session(draft, ws, 'continue');
   }
@@ -247,12 +256,17 @@ export class SessionRegistry {
   async restartSpec(projectId: string, specId: string): Promise<RefineSession> {
     slug(projectId, 'projectId');
     slug(specId, 'specId');
-    const index = { cfg: await this.deps.cfg(), home: this.deps.home, isAlive: (pid: number) => isAlive(this.deps.control, pid) };
-    const active = (await listRuns(index, projectId)).find((r) => r.specId === specId && claimsSpec(r) && r.status !== 'interrupted');
-    if (active) throw new ConflictError(`spec ${specId} has run ${active.runId} in progress; stop it first`);
+    await this.assertNoActiveRun(projectId, specId);
     const session = await this.get(projectId, specId).catch((err) => (err instanceof NotFoundError ? null : Promise.reject(err)));
     if (session) await this.discardDraft(projectId, specId, session);
     return this.continueSpec(projectId, specId);
+  }
+
+  /** An interrupted run does not count: it is dead. */
+  private async assertNoActiveRun(projectId: string, specId: string): Promise<void> {
+    const index = { cfg: await this.deps.cfg(), home: this.deps.home, isAlive: (pid: number) => isAlive(this.deps.control, pid) };
+    const active = (await listRuns(index, projectId)).find((r) => r.specId === specId && claimsSpec(r) && r.status !== 'interrupted');
+    if (active) throw new ConflictError(`a spec ${specId} tem a run ${active.runId} em andamento; pare a run antes`);
   }
 
   async list(): Promise<DraftRow[]> {

@@ -168,7 +168,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .link-button { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 2.25rem; padding: 0 0.8rem; border: 1px solid var(--accent-line); border-radius: var(--control-radius); color: var(--accent-text); background: var(--accent-soft); font-size: 0.875rem; font-weight: 600; text-decoration: none; transition: background-color var(--duration-fast) ease; }
 .link-button:hover { background: var(--accent-soft-hover); }
 input, select, textarea { color: var(--ink); font: inherit; caret-color: var(--accent); accent-color: var(--accent); }
-input, select { flex: 1; min-width: 12rem; height: var(--control-height); padding: 0 0.75rem; border: 1px solid var(--line-strong); border-radius: var(--control-radius); background: var(--surface); font-size: 0.875rem; }
+input:where(:not([type='checkbox'], [type='radio'])), select { flex: 1; min-width: 12rem; height: var(--control-height); padding: 0 0.75rem; border: 1px solid var(--line-strong); border-radius: var(--control-radius); background: var(--surface); font-size: 0.875rem; }
 textarea { border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); }
 input::placeholder, textarea::placeholder { color: var(--ink-soft); opacity: 1; }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); outline: none; box-shadow: var(--ring-focus); }

@@ -402,11 +402,33 @@ describe('refine api', () => {
     const draftRoot = `${home}/ws/hello-app/refine/hello-001`;
     expect((await call('POST', '/api/projects/hello-app/specs/hello-001/restart')).status).toBe(200); // no draft yet
     await fs.writeFile(`${draftRoot}/stale.txt`, 'old');
-    expect((await call('POST', '/api/projects/hello-app/specs/hello-001/continue')).status).toBe(409); // the draft blocks continue
     expect((await call('POST', '/api/projects/hello-app/specs/hello-001/restart')).status).toBe(200);
     expect(await fs.access(`${draftRoot}/stale.txt`).then(() => true, () => false)).toBe(false);
     expect(await fs.access(`${draftRoot}/docs/specs/hello-001/brief.md`).then(() => true, () => false)).toBe(true);
     expect((await call('POST', '/api/projects/hello-app/specs/hello-002/restart')).status).toBe(409); // only awaiting-validation specs
+  });
+
+  it('continue spec reopens a draft still refining and replaces one whose run already started', async () => {
+    const spec = { ...makeSpec({ specId: 'hello-001' }), status: 'awaiting-validation', specHash: `sha256:${'a'.repeat(64)}` };
+    remote = await makeRemote({ 'docs/project.json': JSON.stringify(HELLO_PROJECT), 'docs/specs/hello-001/spec.json': JSON.stringify(spec) });
+    await fs.mkdir(`${home}/ws/hello-app`, { recursive: true });
+    await fs.cp(remote.repo, `${home}/ws/hello-app/repo`, { recursive: true });
+    const url = '/api/projects/hello-app/specs/hello-001/continue';
+    const stale = `${home}/ws/hello-app/refine/hello-001/stale.txt`;
+    const has = (file: string) => fs.access(file).then(() => true, () => false);
+    expect((await call('POST', url)).status).toBe(200);
+    await fs.writeFile(stale, 'old');
+    expect((await call('POST', url)).status).toBe(200); // a draft still refining is reopened as it is
+    expect(await has(stale)).toBe(true);
+    const withReport = await call('POST', url, { report: 'broken /hello' });
+    expect(withReport.status).toBe(409); // the report would be lost in a draft already refining
+    expect((await withReport.json()).error).toContain('Reiniciar');
+    await (await registry.get('hello-app', 'hello-001')).markStarted('hello-app--hello-001--run-1');
+    expect((await call('POST', url, { report: 'broken /hello' })).status).toBe(200); // the run is over: a fresh draft from main
+    expect(await has(stale)).toBe(false);
+    const snap = await (await fetch(`${base()}/api/refine/hello-app/hello-001`)).json();
+    expect(snap.state.status).not.toBe('started');
+    expect(snap.docs['brief.md']).toContain('broken /hello');
   });
 
   it('deletes a draft that never started, refuses a started one, and 404s a missing one', async () => {

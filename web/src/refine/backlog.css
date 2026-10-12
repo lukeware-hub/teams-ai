@@ -31,3 +31,12 @@
 .tree-item summary code { color: var(--ink-faint); font-size: 0.75rem; }
 .tree-item ul { display: grid; gap: 0.25rem; margin: 0; padding: 0 0.65rem 0.6rem 1.6rem; font-size: 0.8125rem; }
 .spec-tree .gap { color: var(--bad); }
+.tree-progress { margin: 0; color: var(--ink-soft); font-size: 0.8125rem; }
+.program-status { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.85rem 1rem; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
+.program-status .loading-spinner { flex: 0 0 auto; margin-top: 0.15rem; }
+.program-status > div { display: grid; flex: 1; gap: 0.4rem; }
+.program-status progress { width: 100%; height: 0.5rem; overflow: hidden; border: 0; border-radius: var(--radius-pill); background: var(--surface-muted); appearance: none; }
+.program-status progress::-webkit-progress-bar { background: var(--surface-muted); }
+.program-status progress::-webkit-progress-value { background: var(--good-live); }
+.program-status progress::-moz-progress-bar { background: var(--good-live); }
+.program-status p { margin: 0; color: var(--ink-soft); font-size: 0.8125rem; }
