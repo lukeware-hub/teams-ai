@@ -106,14 +106,15 @@ describe('ValidationView service card', () => {
   const online = { online: true, status: 200, checkedAt: '2026-10-06T10:00:00.000Z' };
   const offline = { online: false, status: null, checkedAt: '2026-10-06T10:00:00.000Z' };
 
-  it('an online api offers the Swagger button and no start button', () => {
+  it('an online api offers the app and Swagger buttons and no start button', () => {
     view(withService({ port: 3000, kind: 'api', docsPath: '/docs' }), { serviceStatus: online });
     expect(screen.getByTestId('service-online').textContent).toContain('No ar');
     expect(screen.getByTestId('open-docs').getAttribute('href')).toBe(`http://${window.location.hostname}:3000/docs`);
     // The buttons already open the service, so no separate url or past healthcheck line.
     expect(screen.queryByTestId('service-url')).toBeNull();
     expect(screen.queryByText(/Verificação de saúde/)).toBeNull();
-    expect(screen.queryByTestId('open-app')).toBeNull();
+    expect(screen.getByTestId('open-app').getAttribute('href')).toBe(`http://${window.location.hostname}:3000`);
+    expect(screen.getByTestId('open-app').textContent).toContain('Abrir aplicação');
     expect(screen.queryByTestId('start-service')).toBeNull();
   });
 

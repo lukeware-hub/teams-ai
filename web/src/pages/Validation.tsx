@@ -87,6 +87,8 @@ const SERVICE = {
 };
 interface ControlProps { status: ServiceStatus | null; starting: boolean; canStart: boolean; onStart: () => void; onRecheck: () => void }
 
+const appLabel = (docsUrl: string | null, kind?: string) => (docsUrl || kind === 'front' ? 'Abrir aplicação' : 'Abrir serviço');
+
 /** Is the service up, where to open it, and a button to bring it up when it is not. */
 function ServiceControls({ service, status, starting, canStart, onStart, onRecheck }: { service: NonNullable<Report['service']> } & ControlProps) {
   const links = serviceLinks(service, window.location.hostname);
@@ -99,8 +101,8 @@ function ServiceControls({ service, status, starting, canStart, onStart, onReche
         {recheckButton(checking, onRecheck)}
       </div>
       <div className={SERVICE.actions}>
-        {online && links.docsUrl ? openLink(links.docsUrl, 'open-docs', 'Abrir Swagger', true) : null}
-        {online && links.appUrl && !links.docsUrl ? openLink(links.appUrl, 'open-app', service.kind === 'front' ? 'Abrir aplicação' : 'Abrir serviço', true) : null}
+        {online && links.appUrl ? openLink(links.appUrl, 'open-app', appLabel(links.docsUrl, service.kind), true) : null}
+        {online && links.docsUrl ? openLink(links.docsUrl, 'open-docs', 'Abrir Swagger', false) : null}
         {!checking && !online ? startButton(starting, canStart, onStart, ['Subir serviço', 'Subindo o serviço…']) : null}
       </div>
       {!links.appUrl ? (
@@ -112,7 +114,6 @@ function ServiceControls({ service, status, starting, canStart, onStart, onReche
   );
 }
 
-const label = (docsUrl: string | null, kind?: string) => (docsUrl ? 'Abrir Swagger' : kind === 'front' ? 'Abrir aplicação' : 'Abrir serviço');
 
 /** A services run: one line per service with its state and its link, then one recheck and one start for them all. */
 function ServiceList({ services, status, starting, canStart, onStart, onRecheck }: { services: NonNullable<Report['services']> } & ControlProps) {
@@ -123,12 +124,12 @@ function ServiceList({ services, status, starting, canStart, onStart, onRecheck 
       <ul className="m-0 grid list-none gap-2 p-0">
         {services.map((s) => {
           const links = serviceLinks(s, window.location.hostname);
-          const href = links.docsUrl ?? links.appUrl;
           return (
             <li key={s.service} data-testid={`service-${s.service}`} className="flex flex-wrap items-center gap-3">
               <strong>{s.service}</strong>
               <StatePill checking={checking} online={onlineOf(s.service)} />
-              {onlineOf(s.service) && href ? openLink(href, `open-${s.service}`, label(links.docsUrl, s.kind), false, `${label(links.docsUrl, s.kind)} (${s.service})`) : null}
+              {onlineOf(s.service) && links.appUrl ? openLink(links.appUrl, `open-app-${s.service}`, appLabel(links.docsUrl, s.kind), false, `${appLabel(links.docsUrl, s.kind)} (${s.service})`) : null}
+              {onlineOf(s.service) && links.docsUrl ? openLink(links.docsUrl, `open-${s.service}`, 'Abrir Swagger', false, `Abrir Swagger (${s.service})`) : null}
               {!links.appUrl ? <span className="hint">porta fora da faixa publicada ({PUBLISHED_PORTS.from} a {PUBLISHED_PORTS.to})</span> : null}
             </li>
           );
