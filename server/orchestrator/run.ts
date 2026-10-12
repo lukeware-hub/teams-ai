@@ -673,17 +673,17 @@ export class Run {
     const rel = (...p: string[]) => path.join(wt, ...p);
     this.techSpecText = await fs.readFile(rel('docs', 'specs', specId, 'tech-spec.md'), 'utf8').catch(() => '');
     const plan = await fs.readFile(rel('docs', 'specs', specId, 'plan.json'), 'utf8').then((t) => JSON.parse(t) as Plan).catch(() => null);
-    const existing = await fs.readFile(rel('docs', 'README.md'), 'utf8').catch(() => null);
+    const current = await shared.currentDocs(wt);
     let readme = '';
     let runbook = '';
     let apiDocs = '';
     let docsErrors: string[] = [];
     let error = 'readme step failed';
     for (let attempt = 1; attempt <= 2; attempt++) {
-      const out = (await this.runAgent<'readme'>({ kind: 'readme', role: 'sm', pack: readmePack(this.packBase(), { readmeSections: plan?.delivery?.readmeSections, tasks: (plan?.tasks ?? []).map((t) => `- ${t.id}: ${t.title}`), existing, docsErrors }), cwd: wt, phase: 'readme', taskId: null, attempt })) as { ok: boolean; value?: { readme: string; runbook?: string; apiDocs?: string }; failure?: string; errors?: string[] };
+      const out = (await this.runAgent<'readme'>({ kind: 'readme', role: 'sm', pack: readmePack(this.packBase(), { readmeSections: plan?.delivery?.readmeSections, tasks: (plan?.tasks ?? []).map((t) => `- ${t.id}: ${t.title}`), current, docsErrors }), cwd: wt, phase: 'readme', taskId: null, attempt })) as { ok: boolean; value?: { readme: string; runbook?: string; apiDocs?: string }; failure?: string; errors?: string[] };
       if (out.ok && out.value) {
         readme = out.value.readme; runbook = out.value.runbook ?? ''; apiDocs = out.value.apiDocs ?? '';
-        docsErrors = validateDocs({ readme, runbook, apiDocs }, this.deps.spec.features, plan?.delivery?.readmeSections);
+        docsErrors = validateDocs({ readme, runbook, apiDocs }, this.deps.spec.features, plan?.delivery?.readmeSections, current);
         if (docsErrors.length === 0) break;
         error = `documentation rejected: ${docsErrors.join('; ')}`; readme = ''; continue;
       }

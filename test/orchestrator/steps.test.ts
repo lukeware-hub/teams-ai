@@ -171,16 +171,33 @@ describe('packs', () => {
     const opts = { delivered: ['T1'], blocked: [], evidence: '[]', assumptions: [], deploy: '{}', hostUrl: null, tokens: '{}', security: '' };
     const line = 'docs/README.md also needs a heading naming each section the plan lists: Run, Monitoring.';
     expect(reportPack(base, { ...opts, readmeSections: ['Run', 'Monitoring'] }).feedback).toContain(line);
-    expect(readmePack(base, { tasks: [], existing: null, readmeSections: ['Run', 'Monitoring'] }).feedback).toContain(line);
+    expect(readmePack(base, { tasks: [], readmeSections: ['Run', 'Monitoring'] }).feedback).toContain(line);
     expect(reportPack(base, opts).feedback).not.toContain('also needs a heading');
+  });
+
+  it('report and readme packs carry the current docs with the rule to keep what earlier specs wrote', () => {
+    const current = { readme: '# Loja\n\n- AC-001: o estoque cadastra um sku.', runbook: '', apiDocs: '### POST /stock' };
+    const opts = { delivered: ['T1'], blocked: [], evidence: '[]', assumptions: [], deploy: '{}', hostUrl: null, tokens: '{}', security: '' };
+    for (const f of [reportPack(base, { ...opts, current }).feedback!, readmePack(base, { tasks: [], current }).feedback!]) {
+      expect(f).toContain('keep every section, acceptance criterion and endpoint they hold that is still true');
+      expect(f).toContain('Current docs/README.md:\n# Loja\n\n- AC-001: o estoque cadastra um sku.');
+      expect(f).toContain('There is no docs/RUNBOOK.md yet.');
+      expect(f).toContain('Current docs/API.md:\n### POST /stock');
+    }
+  });
+
+  it('cuts a long current doc and sends the step to the whole file, so the instructions stay inside the pack budget', () => {
+    const f = readmePack(base, { tasks: [], current: { readme: `# Big\n${'x'.repeat(20_000)}`, runbook: '', apiDocs: '' } }).feedback!;
+    expect(f).toContain('Current docs/README.md (cut at 8000 characters; read the whole file before you rewrite it):\n# Big');
+    expect(f.length).toBeLessThan(12_000);
   });
 
   it("readme pack of a project of services points at the docs, since the code lives in each service's repository", () => {
     const shop: PackBase = { ...base, project: { ...base.project, projectId: 'shop', services: ['orders', 'inventory'] } };
-    const text = readmePack(shop, { tasks: [], existing: null }).feedback!;
+    const text = readmePack(shop, { tasks: [] }).feedback!;
     expect(text).toContain("keeps each service's code in its own repository (shop-orders, shop-inventory)");
     expect(text).not.toContain('package.json, go.mod');
-    expect(readmePack(base, { tasks: [], existing: null }).feedback).toContain('package.json, go.mod');
+    expect(readmePack(base, { tasks: [] }).feedback).toContain('package.json, go.mod');
   });
 
   it('report pack hands the agent the browser url and keeps the internal deploy url out of the text', () => {

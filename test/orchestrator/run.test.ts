@@ -435,6 +435,27 @@ describe('Run', () => {
     await run.close();
   });
 
+  it('spec readme hands the SM the current docs and keeps every endpoint the current API.md documents', async () => {
+    await fs.writeFile(path.join(remote.repo, 'docs', 'API.md'), '# API\n\n### POST /stock\n');
+    await git(remote.repo, ['add', '-A'], execCommand);
+    await git(remote.repo, ['commit', '-q', '-m', 'earlier spec docs'], execCommand);
+    await git(remote.repo, ['push', '-q', 'origin', 'HEAD:main'], execCommand);
+    const section = (t: string) => `## ${t}\n\nReal explanatory content that is long enough to count.\n`;
+    const prompts: string[] = [];
+    const script: Script = async (req) => {
+      prompts.push(req.prompt);
+      const apiDocs = prompts.length === 1 ? '# API\n\n### GET /orders\n' : '# API\n\n### POST /stock\n\n### GET /orders\n';
+      return { ok: true, value: { specHash: HASH, readme: ['Run', 'Test', 'Environment variables', 'Architecture', 'Pipeline'].map(section).join('\n'), runbook: ['Start', 'Stop', 'Logs', 'Rollback'].map(section).join('\n'), apiDocs }, summary: summary() };
+    };
+    const run = await Run.create(await withAgents(deps(script)));
+    expect(await run.writeReadme()).toBe('done');
+    expect(prompts[0]).toContain('Current docs/API.md:\n# API\n\n### POST /stock');
+    expect(prompts[1]).toContain('docs/API.md dropped endpoint /stock');
+    await git(remote.repo, ['fetch', '-q', 'origin'], execCommand);
+    expect(await git(remote.repo, ['show', 'origin/main:docs/API.md'], execCommand)).toContain('### POST /stock');
+    await run.close();
+  });
+
   describe('deployOnly (spec deploy)', () => {
     const noAgent: Script = async (req) => { throw new Error(`deploy-only ran an agent step: ${req.kind}`); };
     const target = (over: Record<string, unknown> = {}) => ({

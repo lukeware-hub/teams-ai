@@ -1,3 +1,4 @@
+import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Accounting } from '../../server/budget/accounting.js';
@@ -58,6 +59,15 @@ const GOOD = { readme: `# App\n\n${['Run', 'Test', 'Environment variables', 'Arc
 const report = (docs: { readme: string; runbook?: string; apiDocs?: string }) => ok({ specHash: HASH, delivered: [], blocked: [], assumptions: [], exploratoryScript: [], summary: 'done', ...docs });
 const p6 = (agent: Agent) => runPhase6({ ...deps(agent), runId: 'r1', accounting: new Accounting(), result: 'awaiting-validation' });
 
+/** Earlier specs' docs reach main from elsewhere, so the run's own checkout stays behind main, as between runs. */
+async function mainWrites(files: Record<string, string>): Promise<void> {
+  for (const [rel, text] of Object.entries(files)) await fs.writeFile(path.join(remote.repo, rel), text);
+  await git(remote.repo, ['add', '-A'], execCommand);
+  await git(remote.repo, ['commit', '-q', '-m', 'earlier spec docs'], execCommand);
+  await git(remote.repo, ['push', '-q', 'origin', 'HEAD:main'], execCommand);
+  await git(remote.repo, ['reset', '-q', '--hard', 'HEAD~1'], execCommand);
+}
+
 describe('Phase 6 documentation gate', () => {
   it('merges valid docs on the first try', async () => {
     const r = await p6(async () => report(GOOD));
@@ -114,5 +124,22 @@ describe('Phase 6 documentation gate', () => {
     const r = await p6(async () => ({ ok: false, failure: 'schema', errors: ['bad shape'], summary, sandboxDisabled: false }));
     expect(r.ok).toBe(false);
     expect(r.reason).toContain('bad shape');
+  });
+
+  it('gives the report step the docs earlier specs wrote, in its working directory too, and keeps the endpoints they document', async () => {
+    await mainWrites({ 'docs/README.md': '# Loja\n\n- AC-001: o estoque cadastra um sku.\n', 'docs/API.md': '# API\n\n### POST /stock\n' });
+    const seen: string[] = [];
+    let n = 0;
+    const r = await p6(async (req) => {
+      seen.push(await fs.readFile(path.join(req.cwd, 'docs', 'API.md'), 'utf8').catch(() => 'missing'));
+      return report({ ...GOOD, apiDocs: ++n === 1 ? '# API\n\n### GET /orders\n' : '# API\n\n### POST /stock\n\n### GET /orders\n' });
+    });
+    expect(r.ok).toBe(true);
+    expect(calls).toHaveLength(2);
+    expect(JSON.stringify(calls[0]!.pack)).toContain('AC-001: o estoque cadastra um sku.');
+    expect(seen[0]).toContain('### POST /stock');
+    expect(JSON.stringify(calls[1]!.pack)).toContain('docs/API.md dropped endpoint /stock');
+    await git(remote.repo, ['fetch', '-q', 'origin'], execCommand);
+    expect(await git(remote.repo, ['show', 'origin/main:docs/API.md'], execCommand)).toContain('### POST /stock');
   });
 });
