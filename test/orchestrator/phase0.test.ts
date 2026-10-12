@@ -6,7 +6,7 @@ import { execCommand } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
 import { Intent, OrchEvent } from '../../server/orchestrator/events.js';
 import { Run, type RunDeps } from '../../server/orchestrator/run.js';
-import { worktreeDir } from '../../server/orchestrator/workspace.js';
+import { serviceWorkspace, worktreeDir } from '../../server/orchestrator/workspace.js';
 import { runStep } from '../../server/runner/step.js';
 import { makeFrozenSpec, makeProject } from '../fixtures/contracts.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
@@ -48,6 +48,22 @@ function deps(exec: FakeExec, repo: string, over: Partial<RunDeps> = {}): RunDep
 }
 
 describe('phase 0', () => {
+  it('clones each service repository once the docs reach main', { timeout: 60_000 }, async () => {
+    const orders = await makeRemote({ 'src/index.ts': 'x' });
+    try {
+      const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
+      exec.onArgs('gh', ['repo', 'view'], (s) => ({ stdout: JSON.stringify(s.args[2] === 'o/hello-app-orders' ? { nameWithOwner: 'o/hello-app-orders', url: orders.origin } : { nameWithOwner: 'o/hello-app', url: remote.origin }) }));
+      new FakeGh().install(exec);
+      const d = deps(exec, remote.repo, { project: makeProject({ projectId: 'hello-app', services: ['orders'] }) });
+      const run = await Run.create(d, 'hello-001-r1');
+      expect(await run.executePhase0()).toEqual({ ok: true });
+      expect(await git(serviceWorkspace(d.ws, 'orders').repo, ['ls-tree', '--name-only', 'origin/main'], execCommand)).toBe('src');
+      await run.close();
+    } finally {
+      await orders.cleanup();
+    }
+  });
+
   describe('a draft with a base copy', () => {
     const setup = async (main: Record<string, string>, base: Record<string, string>, draft: Record<string, string>) => {
       await remote.cleanup();
