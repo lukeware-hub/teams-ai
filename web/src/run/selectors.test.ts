@@ -92,6 +92,13 @@ describe('stopped run explanations', () => {
     expect(lastDeployFailure(recovered)).toBeNull();
   });
 
+  it('a services deploy failure names its service in the outcome', () => {
+    const failed = evs([['DEPLOY_FAILED', { attempt: 3, stage: 'smoke', detail: 'AC-001 failed', service: 'inventory', rolledBack: false, rollbackHealthy: null }]]);
+    const f = lastDeployFailure(failed)!;
+    expect(f.service).toBe('inventory');
+    expect(stopSummary({ status: 'deploy-failed', reason: null, causes: [], deployFailure: f })!.what).toBe('O deploy falhou no estágio smoke do serviço inventory (tentativa 3).');
+  });
+
   it('stopSummary explains a deploy-failed run with its stage, rollback and owner', () => {
     const failure = { attempt: 1, stage: 'smoke', detail: 'plan.commands.smoke missing', rolledBack: true, rollbackHealthy: true };
     const s = stopSummary({ status: 'deploy-failed', reason: 'deploy failed at smoke: plan.commands.smoke missing', causes: [], deployFailure: failure });
@@ -269,6 +276,25 @@ describe('phase activity', () => {
     ]);
     expect(out.items[2]!.url).toBe('https://github.com/o/p/pull/12');
     expect(out.steps).toEqual([]);
+  });
+
+  it('a services deploy names the service of each step and lists the services verified or restored', () => {
+    const out = phaseActivity(
+      evs([
+        ['PHASE_STARTED', { phase: 5 }],
+        ['DEPLOY_APPLIED', { attempt: 1, service: 'orders', previous: null, tag: 't' }],
+        ['DEPLOY_FAILED', { attempt: 1, stage: 'e2e', detail: 'AC-002 failed.', service: 'inventory', rolledBack: true, rollbackHealthy: null }],
+        ['ROLLBACK_DONE', { attempt: 1, services: ['orders'] }],
+        ['DEPLOY_VERIFIED', { attempt: 2, url: 'http://dind:20001', smoke: [], services: [{ service: 'orders', url: 'http://dind:20001' }, { service: 'inventory', url: 'http://dind:20002' }] }],
+      ]),
+    ).get(5)!;
+    expect(out.items.map((i) => i.text)).toEqual([
+      'Deploy aplicado em orders (tentativa 1)',
+      'Deploy falhou em inventory na etapa e2e (tentativa 1): AC-002 failed.',
+      'Versão anterior restaurada: orders',
+      'Deploy verificado: orders, inventory',
+    ]);
+    expect(out.items.at(-1)!.url).toBeNull();
   });
 
   it('a failed step and an uncovered criterion are problems of their phase', () => {

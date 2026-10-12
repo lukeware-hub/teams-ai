@@ -129,7 +129,7 @@ function deployFailure(deploy: Report['deploy']): string {
   if (deploy.attempts === 0) return 'Não publicado: a execução parou antes da publicação.';
   const f = deploy.lastFailure;
   const rollback = !f?.rolledBack ? '' : f.rollbackHealthy === false ? ' (versão anterior restaurada, mas sem resposta)' : ' (versão anterior restaurada)';
-  const failure = f ? `: a tentativa ${f.attempt} falhou na etapa “${f.stage}” — ${f.detail}${rollback}` : '';
+  const failure = f ? `: a tentativa ${f.attempt} falhou na etapa “${f.stage}”${f.service ? ` do serviço ${f.service}` : ''} — ${f.detail}${rollback}` : '';
   return `Não publicado${failure} · ${deploy.attempts} ${deploy.attempts === 1 ? 'tentativa' : 'tentativas'}`;
 }
 

@@ -160,13 +160,15 @@ export interface DeployFailure {
   detail: string;
   rolledBack: boolean;
   rollbackHealthy: boolean | null;
+  /** The service that failed, in a services run. */
+  service?: string;
 }
 
 /** The latest deploy failure, or null when nothing failed or a later attempt verified. */
 export function lastDeployFailure(events: StoredEvent[]): DeployFailure | null {
   let out: DeployFailure | null = null;
   for (const e of events) {
-    if (e.type === 'DEPLOY_FAILED') out = { attempt: Number(e.data.attempt), stage: String(e.data.stage), detail: String(e.data.detail ?? ''), rolledBack: e.data.rolledBack === true, rollbackHealthy: typeof e.data.rollbackHealthy === 'boolean' ? e.data.rollbackHealthy : null };
+    if (e.type === 'DEPLOY_FAILED') out = { attempt: Number(e.data.attempt), stage: String(e.data.stage), detail: String(e.data.detail ?? ''), rolledBack: e.data.rolledBack === true, rollbackHealthy: typeof e.data.rollbackHealthy === 'boolean' ? e.data.rollbackHealthy : null, ...(typeof e.data.service === 'string' ? { service: e.data.service } : {}) };
     if (e.type === 'DEPLOY_VERIFIED') out = null;
   }
   return out;
@@ -411,10 +413,11 @@ export function stopSummary(input: { status: string; reason: string | null; caus
   if (status === 'deploy-failed') {
     const f = deployFailure;
     const raw = f ? f.detail : (reason ?? '');
-    const generic: StopExplanation = { title: f ? `Falha no estágio ${f.stage}` : 'O deploy falhou', hint: DEPLOY_NEXT_STEP, owner: 'Sistema' };
+    const where = f ? `estágio ${f.stage}${f.service ? ` do serviço ${f.service}` : ''}` : '';
+    const generic: StopExplanation = { title: f ? `Falha no ${where}` : 'O deploy falhou', hint: DEPLOY_NEXT_STEP, owner: 'Sistema' };
     const why = explainStop(raw) ?? explainStop(reason ?? '') ?? generic;
     const rollback = f?.rolledBack ? (f.rollbackHealthy === false ? 'Rollback feito, mas a versão anterior não respondeu ao healthcheck.' : 'Rollback feito e saudável: a versão anterior continua no ar.') : null;
-    return { what: f ? `O deploy falhou no estágio ${f.stage} (tentativa ${f.attempt}).` : 'O deploy falhou.', ...why, raw, rollback, action: 'redeploy' };
+    return { what: f ? `O deploy falhou no ${where} (tentativa ${f.attempt}).` : 'O deploy falhou.', ...why, raw, rollback, action: 'redeploy' };
   }
   if (status === 'verification-failed') {
     // The verdict is either missing delivery files or failing tests; the reason says which.
@@ -570,13 +573,14 @@ function describe(e: StoredEvent, intent: Record<string, unknown> | undefined): 
       return item(`Verificação reprovada na rodada ${String(d.round)}: ${detail}`, 'bad');
     }
     case 'DEPLOY_APPLIED':
-      return item(`Deploy aplicado (tentativa ${String(d.attempt)})`);
+      return item(`Deploy aplicado${d.service ? ` em ${String(d.service)}` : ''} (tentativa ${String(d.attempt)})`);
     case 'DEPLOY_FAILED':
-      return item(`Deploy falhou na etapa ${String(d.stage)} (tentativa ${String(d.attempt)}): ${firstSentence(String(d.detail ?? ''))}`, 'bad');
+      return item(`Deploy falhou${d.service ? ` em ${String(d.service)}` : ''} na etapa ${String(d.stage)} (tentativa ${String(d.attempt)}): ${firstSentence(String(d.detail ?? ''))}`, 'bad');
     case 'ROLLBACK_DONE':
-      return item('Versão anterior restaurada');
+      return item(Array.isArray(d.services) ? `Versão anterior restaurada: ${(d.services as string[]).join(', ')}` : 'Versão anterior restaurada');
     case 'DEPLOY_VERIFIED':
-      return item(`Deploy verificado em ${String(d.url)}`, 'good', d.url);
+      // A services run lists its services; their addresses are the platform's, not the human's.
+      return Array.isArray(d.services) ? item(`Deploy verificado: ${(d.services as Array<{ service: string }>).map((s) => s.service).join(', ')}`, 'good') : item(`Deploy verificado em ${String(d.url)}`, 'good', d.url);
     case 'REPORT_READY':
       return item('Relatório final pronto', 'good');
     case 'PR_MERGED':

@@ -74,6 +74,12 @@ describe('ValidationView', () => {
     expect(screen.getByTestId('deploy-failure').textContent).toBe('Não publicado: a execução parou antes da publicação.');
   });
 
+  it('a services deploy failure names the service that failed', () => {
+    const failed: Report = { ...report, result: 'deploy-failed', service: null, deploy: { attempts: 3, lastFailure: { attempt: 3, stage: 'smoke', detail: 'AC-001 failed', rolledBack: false, rollbackHealthy: null, service: 'inventory' } } };
+    render(<MemoryRouter><ValidationView detail={detail({ status: 'deploy-failed', report: failed })} specStatus="running" onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
+    expect(screen.getByTestId('deploy-failure').textContent).toContain('na etapa “smoke” do serviço inventory');
+  });
+
   it('shows an action error next to the buttons without hiding them', () => {
     render(<MemoryRouter><ValidationView detail={detail()} specStatus="awaiting-validation" actionError="409 spec is not awaiting validation" onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
     expect(screen.getByTestId('action-error').textContent).toContain('409');

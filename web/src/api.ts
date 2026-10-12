@@ -140,7 +140,7 @@ export interface Report {
   service: { url: string; healthcheck: string; smoke: SmokeRow[]; e2e?: Array<{ acId: string; testId: string | null; status: string; reason?: string }>; port?: number; healthcheckPath?: string; kind?: 'api' | 'front'; docsPath?: string } | null;
   /** Every service of a services run; `service` is the first one. */
   services?: Array<{ service: string; url: string; healthcheck: string; port?: number; healthcheckPath?: string; kind?: 'api' | 'front'; docsPath?: string }>;
-  deploy: { attempts: number; lastFailure: { attempt: number; stage: string; detail: string; rolledBack: boolean; rollbackHealthy: boolean | null } | null };
+  deploy: { attempts: number; lastFailure: { attempt: number; stage: string; detail: string; rolledBack: boolean; rollbackHealthy: boolean | null; service?: string } | null };
   evidence: EvidenceRow[];
   delivered: string[];
   blocked: Array<{ taskId: string; reason: string }>;
