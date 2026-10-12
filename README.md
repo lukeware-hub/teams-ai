@@ -35,7 +35,7 @@ pelos agentes, sob controle de um orquestrador determinístico.
    ```
 
    O comando confere os pré-requisitos (se algo faltar, diz como corrigir), sobe a plataforma, espera ficar saudável e abre
-   <http://localhost:8787>. O primeiro build leva alguns minutos.
+   <http://localhost:8787>. Na primeira vez ele baixa a imagem pronta (alguns minutos, conforme a sua internet); se não conseguir baixar, constrói a partir do código, o que leva mais tempo.
 
 3. Na UI, siga o **Onboarding** para conectar GitHub e Claude. Detalhes em [Primeiro acesso](#primeiro-acesso-conectar-suas-contas).
 
@@ -183,10 +183,16 @@ Sobe a plataforma inteira (orquestrador, API, UI web e um Docker aninhado sem ro
 3. Construa e inicie:
 
    ```bash
-   task up        # equivale a: docker compose up -d --build
+   task up        # baixa a imagem pronta e sobe; constrói a partir do código se não conseguir baixar
    ```
 
-   O primeiro build leva alguns minutos (instala as dependências Node, a CLI do Claude Code e compila a UI web).
+   A imagem fica no GitHub Container Registry, em um pacote privado. Antes do primeiro `task up`, entre uma vez com um token clássico do GitHub que tenha a permissão `read:packages`:
+
+   ```bash
+   echo SEU_TOKEN | docker login ghcr.io -u SEU_USUARIO --password-stdin
+   ```
+
+   Sem esse login o download falha e o Docker constrói a imagem no seu computador, o que leva alguns minutos. Para fixar uma versão, coloque `TEAMS_AI_IMAGE=ghcr.io/diego-dm-morais/teams-ai:1.2.3` no `.env`. Para desenvolver o próprio Teams AI, use `task up:source`, que constrói a imagem a partir do código desta pasta.
 
 4. Espere os dois serviços ficarem saudáveis e abra a UI:
 
@@ -376,7 +382,8 @@ Rode `task --list` para ver a lista atual. As tarefas de Docker funcionam em qua
 | --- | --- |
 | `task start` | Confere os pré-requisitos, sobe a plataforma, espera ficar saudável e abre a UI |
 | `task doctor` | Confere Docker, daemon e `docker compose`; diz como corrigir o que faltar |
-| `task up` | Constrói e inicia a plataforma (cria o `.env` se faltar) |
+| `task up` | Baixa a imagem pronta (constrói se não conseguir baixar) e inicia a plataforma (cria o `.env` se faltar) |
+| `task up:source` | Constrói a imagem a partir do código desta pasta e inicia a plataforma (para desenvolver o Teams AI) |
 | `task down` | Para a plataforma, mantém os dados |
 | `task restart` | Reinicia o orquestrador |
 | `task ps` / `task logs` / `task logs:dind` | Status e logs |
