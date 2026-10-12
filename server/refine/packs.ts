@@ -78,7 +78,9 @@ export function refinePack(input: {
   const detail = input.backlog?.detail === true && !input.derived.spec;
   const rel = (file: keyof typeof DOC_REL) => DOC_REL[file](input.specId, input.projectBriefing);
   const brief = input.projectBriefing ? 'briefing.md' : 'brief.md';
-  const answered = input.history.filter((q) => q.status === 'answered').map((q) => `- [${q.role}] ${q.text}\n  answer: ${q.answer}`);
+  // A continued spec's decisions are answers too (R11.7.1).
+  const recorded = (input.derived.spec?.decisions ?? []).map((d) => `- ${d.question}\n  answer: ${d.answer}`);
+  const answered = [...recorded, ...input.history.filter((q) => q.status === 'answered').map((q) => `- [${q.role}] ${q.text}\n  answer: ${q.answer}`)];
   const skipped = input.history.filter((q) => q.status === 'skipped').map((q) => `- [${q.role}] ${q.text}`);
   const rejected = input.rejected.map((p) => `- ${rel(p.file)}: "${p.find.slice(0, 80)}" → rejected${p.decision ? `: ${p.decision}` : ''}`);
   const ids = input.role === 'po' ? PO_ITEMS : input.role === 'sm' ? SM_ITEMS : [];

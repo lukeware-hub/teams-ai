@@ -24,6 +24,15 @@ describe('refinePack', () => {
     expect(feedback).toContain('do not edit or create files');
   });
 
+  // R11.7.1: a continued spec's decisions are answered questions the agents must not ask again.
+  it('lists the decisions the spec carries with the answered questions', () => {
+    const decided = { ...base, derived: { project: {}, spec: { acceptanceCriteria: [], objectives: [], decisions: [{ question: 'Port?', answer: '8080' }] } } } as unknown as Parameters<typeof refinePack>[0];
+    const feedback = refinePack({ ...decided, role: 'sm' }).feedback ?? '';
+    const answered = feedback.slice(feedback.indexOf('### Answered questions (do not ask again)'), feedback.indexOf('### Skipped questions'));
+    expect(answered).toContain('Port?');
+    expect(answered).toContain('8080');
+  });
+
   it('asks the SM to fill a blank stack.md and flow.md instead of questioning the human, and keeps the PO out of it', () => {
     const blank = { ...base, stackMd: stackTemplate(), flowMd: flowTemplate() };
     const sm = refinePack({ ...blank, role: 'sm' }).feedback;

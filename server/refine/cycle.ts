@@ -11,6 +11,7 @@ import { routeQuestion } from '../decide/decisions/question-routing.js';
 import type { AgentStepRequest } from '../orchestrator/steps.js';
 import type { StepOutcome } from '../runner/step.js';
 import { mergeChecklist, type ChecklistItem } from './checklist.js';
+import { norm } from './decisions.js';
 import { derivePack, postProcessDerived } from './derive.js';
 import { answerPack } from './answer.js';
 import { heldForOwner } from './auto-floor.js';
@@ -56,7 +57,6 @@ export interface CycleDeps {
 
 const MAX_DEDUP_PAIRS = 20;
 const MAX_HISTORY_CHUNKS = 5;
-const norm = (t: string) => t.toLowerCase().replace(/\s+/g, ' ').trim();
 
 /** Journals every decision the wrapped decider answers as DECISION_MADE (spec 10A.4), so evals can read Gate 1 too. */
 function recorded(decider: Pick<Decider, 'decide'>, journal: Pick<Journal, 'fact'>, cycle: number): Pick<Decider, 'decide'> {
@@ -287,8 +287,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     return;
   }
 
-  // Spec §3.2 step 3: dedup by normalized text, blocking first, PO before SM within a class.
-  const decided = new Set(state.questions.filter((q) => q.status !== 'pending').map((q) => norm(q.text)));
+  // Spec §3.2 step 3: dedup by normalized text, blocking first, PO before SM within a class; a decision counts as decided (R11.7.1).
+  const decided = new Set([...state.questions.filter((q) => q.status !== 'pending').map((q) => q.text), ...(derived.spec?.decisions ?? []).map((d) => d.question)].map(norm));
   const seen = new Set<string>();
   const merged: Question[] = [];
   const counters = { po: 0, sm: 0 };

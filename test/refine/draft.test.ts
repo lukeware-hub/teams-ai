@@ -183,6 +183,12 @@ describe('draft', () => {
     expect(md).toContain('DB_URL');
   });
 
+  it('renderBriefMd lists the decisions the spec carries, and leaves a brief without them as it was', () => {
+    expect(renderBriefMd(makeSpec())).not.toContain('## Decisions');
+    const md = renderBriefMd({ ...makeSpec(), decisions: [{ question: 'Port?', answer: '8080' }, { question: 'Region?', answer: 'eu', by: 'sm' }] });
+    expect(md).toContain('## Decisions\n\n- Port?\n  Answer: 8080\n- Region?\n  Answer (SM, from the docs): eu\n');
+  });
+
   it('notes the System 1 routing under the validation report, and the human ask when unclear', () => {
     const md = renderBriefMd(makeSpec(), '/health answers 500', { route: 'bug-existing-ac', confidence: 0.9, source: 'jev' });
     expect(md).toContain('## Validation report\n\n/health answers 500\n\nRouting (System 1, jev): bug-existing-ac (0.90)');

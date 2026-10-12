@@ -117,6 +117,7 @@ export function renderBriefMd(s: Spec, validationReport?: string, routing?: Repo
     '## Type', '', s.type, '', '## Objectives', '', list(s.objectives), '', '## Features', '', list(s.features), '', '## Acceptance criteria', '', acs.join('\n') || '- (none)', '',
     '## Out of scope', '', list(s.outOfScope), '', '## External dependencies', '', list(deps), '', '## Bug details', '', bug.join('\n'), '', '## Tasks', '', list(tasks), '',
   ];
+  if (s.decisions?.length) parts.push('## Decisions', '', ...s.decisions.map((d) => `- ${d.question}\n  Answer${d.by ? ` (${d.by.toUpperCase()}, from the docs)` : ''}: ${d.answer}`), '');
   if (validationReport) parts.push('## Validation report', '', validationReport, '');
   if (validationReport && routing) {
     // Spec 10A.5 decision 7: a hint for PO and SM, never a verdict; `unclear` asks the human.

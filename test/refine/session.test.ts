@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { writeSecret } from '../../server/core/secrets.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
-import { createNewProject, draftPaths, readDoc } from '../../server/refine/draft.js';
+import { createNewProject, draftPaths, readDoc, writeDerived } from '../../server/refine/draft.js';
 import { ConflictError, RefineSession } from '../../server/refine/session.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 import { calls, makeFakeRunAgent, type Script } from '../fixtures/fake-run-agent.js';
@@ -195,6 +195,18 @@ describe('RefineSession', () => {
     const { spec } = await s.freeze();
     expect(spec.decisions).toEqual([{ question: 'Port?', answer: '8080' }]);
     expect(JSON.parse(await fs.readFile(draft().specJson, 'utf8')).decisions).toEqual([{ question: 'Port?', answer: '8080' }]);
+  });
+
+  // R11.7.1: seen live, a continued spec asked again the questions its last version had answered.
+  it('drops a question the continued spec already answered', async () => {
+    const s = await RefineSession.create(deps(), 'continue');
+    await writeDerived(draft(), { project: makeProject(), spec: { ...makeSpec({ specId: 'hello-001' }), decisions: [{ question: 'Port?', answer: '8080' }] } });
+    script['derive/po'] = [derived];
+    script['refine/po'] = [refineOut(green(PO), [{ id: 'q', text: '  port?  ', blocking: true, relatedAcIds: [] }])];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await writeSecret(secretsDir, 'DB_URL', 'postgres://x');
+    await s.evaluate();
+    expect(s.state.questions).toEqual([]);
   });
 
   it('accept applies the patch and marks stale; a stale find is dropped with a conflict; the file is untouched', async () => {
