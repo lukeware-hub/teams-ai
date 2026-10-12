@@ -48,6 +48,8 @@ export const SpecStatus = z.enum([
   'paused:auth',
   'awaiting-validation',
   'done',
+  /** R11.7.5: a planned spec whose item left the backlog; it never runs. */
+  'retired',
 ]);
 export type SpecStatus = z.infer<typeof SpecStatus>;
 

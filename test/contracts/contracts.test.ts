@@ -125,6 +125,12 @@ describe('Spec', () => {
     expect(() => freezeSpec(makeSpec({ status: 'running' }))).toThrow(SpecFrozenError);
     expect(() => freezeSpec(makeSpec({ status: 'done' }))).toThrow(SpecFrozenError);
   });
+
+  it('parses a spec retired from the backlog, which can never be frozen (R11.7.5)', () => {
+    const retired = makeSpec({ status: 'retired' });
+    expect(retired.status).toBe('retired');
+    expect(() => freezeSpec(retired)).toThrow(SpecFrozenError);
+  });
 });
 
 describe('Plan', () => {

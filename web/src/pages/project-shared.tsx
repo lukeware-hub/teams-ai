@@ -15,7 +15,7 @@ export const runName = (r: { kind: string; n: number }) => `${KIND_NAME[r.kind] 
 // Spec and run states are feminine (a spec, a execução); refinement states masculine (o refinamento).
 // 'idle' is not a server status: a spec frozen for running ('running') with no run in progress.
 export const LABEL: Record<string, string> = {
-  idle: 'pronta para executar', refining: 'em refinamento', planned: 'planejada', running: 'em execução', draining: 'finalizando',
+  idle: 'pronta para executar', refining: 'em refinamento', planned: 'planejada', retired: 'retirada', running: 'em execução', draining: 'finalizando',
   'paused:quota': 'pausada por cota', 'paused:auth': 'aguardando login', interrupted: 'interrompida', 'awaiting-validation': 'aguardando validação',
   done: 'concluída', complete: 'concluída', drained: 'encerrada', blocked: 'bloqueada', deadlocked: 'travada',
   'phase-failed': 'fase falhou', 'verification-failed': 'verificação falhou', 'deploy-failed': 'deploy falhou', 'launch-failed': 'não iniciou', unknown: 'sem status',
