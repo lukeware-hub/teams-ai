@@ -70,6 +70,23 @@ export function summarizeJevChecks(checks: Record<string, number>, model: string
   };
 }
 
+/** The documents cut at line breaks into windows of at most `max` characters; a window that starts mid-document says which one. */
+export function splitWindows(docs: ValidationDocs, max: number): string[] {
+  const windows: string[] = [];
+  let current = '';
+  for (const name of ['project', 'briefing', 'stack', 'flow', 'design'] as const) {
+    const lines = [`${name}.md:`, ...docs[name].split('\n').flatMap((line) => line.match(new RegExp(`[^]{1,${max - 100}}`, 'g')) ?? [''])];
+    lines.forEach((line, i) => {
+      if (current.length + line.length + 1 > max) {
+        windows.push(current);
+        current = '';
+      }
+      current += `${current === '' && i > 0 ? `${name}.md (continued):\n` : ''}${line}\n`;
+    });
+  }
+  return current === '' ? windows : [...windows, current];
+}
+
 const unavailable = (): JevValidationResult => ({ available: false, decision: 'review', consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false });
 
 /** Runs independent Jev consistency checks before Claude derives the specification. */
@@ -89,23 +106,31 @@ export function createJevValidator(cfg: Config, secrets: () => Promise<Record<st
       backoffMs: o.backoffMs,
       sleep: async (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     });
-    const rawState = `project.md:\n${docs.project}\n\nbriefing.md:\n${docs.briefing}\n\nstack.md:\n${docs.stack}\n\nflow.md:\n${docs.flow}\n\ndesign.md:\n${docs.design}`;
-    const sanitizedState = redactSecrets(rawState, Object.values(values));
-    const stateTruncated = sanitizedState.length > MAX_STATE_CHARS;
-    const state = `${sanitizedState.slice(0, MAX_STATE_CHARS)}${stateTruncated ? '\n[... state truncated ...]' : ''}`;
-    const questions = Object.fromEntries(Object.entries(CHECKS).map(([id, check]) => [id, {
-      type: 'noul' as const,
-      instructions: check.instructions,
-      criteria: { true: check.yes, false: check.no },
-    }]));
-    const result = await jev.evaluate({ state, questions, escalateTo: 'po' });
-    if (!result.ok) return unavailable();
+    const secretValues = Object.values(values);
+    const clean = Object.fromEntries(Object.entries(docs).map(([name, text]) => [name, redactSecrets(text, secretValues)])) as unknown as ValidationDocs;
+    const windows = splitWindows(clean, MAX_STATE_CHARS);
+    // Each window sees only part of the documents, so a check must not fail for what lies outside it.
+    const scope = windows.length > 1 ? (part: number) => `You see part ${part} of ${windows.length} of the documents. Judge only what is in this part and do not penalize what lies outside it. ` : () => '';
+    const results = await Promise.all(windows.map((state, i) => jev.evaluate({
+      state,
+      questions: Object.fromEntries(Object.entries(CHECKS).map(([id, check]) => [id, {
+        type: 'noul' as const,
+        instructions: scope(i + 1) + check.instructions,
+        criteria: { true: check.yes, false: check.no },
+      }])),
+      escalateTo: 'po',
+    })));
+    const answered = results.flatMap((r) => (r.ok ? [r] : []));
+    if (answered.length < results.length) return unavailable();
+    const model = answered[0]!.model;
     const checks: Record<string, number> = {};
     for (const id of Object.keys(CHECKS)) {
-      const answer = result.answers[id];
-      if (!answer || answer.type !== 'noul') return { ...unavailable(), model: result.model, stateTruncated };
-      checks[id] = answer.value;
+      const scores = answered.map((r) => r.answers[id]);
+      if (scores.some((a) => a?.type !== 'noul')) return { ...unavailable(), model };
+      // A contradiction in any window fails the consistency check; a topic check passes when some window covers it.
+      const pick = id === 'documents_consistent' ? Math.min : Math.max;
+      checks[id] = pick(...scores.map((a) => (a as { value: number }).value));
     }
-    return summarizeJevChecks(checks, result.model, stateTruncated);
+    return summarizeJevChecks(checks, model);
   };
 }
