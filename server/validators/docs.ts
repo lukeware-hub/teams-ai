@@ -53,11 +53,15 @@ export function featureEndpoints(features: readonly string[]): string[] {
   return [...out];
 }
 
-export function validateApiDocs(md: string | null, features: readonly string[]): string[] {
+/** `current`: the docs/API.md the answer replaces; earlier specs wrote it, so its endpoints stay. */
+export function validateApiDocs(md: string | null, features: readonly string[], current = ''): string[] {
   const endpoints = featureEndpoints(features);
-  if (endpoints.length === 0) return [];
-  if (!md || md.trim() === '') return ['docs/API.md is empty; the spec features name endpoints'];
-  return endpoints.filter((e) => !md.includes(e)).map((e) => `docs/API.md does not document endpoint ${e}`);
+  // An empty answer leaves the current file in place, so only a rewrite has to keep what it documents.
+  if (!md?.trim()) return endpoints.length === 0 ? [] : ['docs/API.md is empty; the spec features name endpoints'];
+  return [
+    ...endpoints.filter((e) => !md.includes(e)).map((e) => `docs/API.md does not document endpoint ${e}`),
+    ...featureEndpoints([current]).filter((e) => !endpoints.includes(e) && !md.includes(e)).map((e) => `docs/API.md dropped endpoint ${e}, which it documented before; keep it, or mark it as removed if this spec removed it`),
+  ];
 }
 
 /** The standard README section a planned name stands for, when it is one of the five. */
@@ -77,13 +81,13 @@ export function missingReadmeSections(md: string, planned: readonly string[]): s
 
 export interface DocsInput { readme: string; runbook: string | null | undefined; apiDocs: string | null | undefined }
 
-/** `readmeSections`: the plan's delivery sections; the standard five are already required with their content. */
-export function validateDocs(d: DocsInput, features: readonly string[], readmeSections: readonly string[] = []): string[] {
+/** `readmeSections`: the plan's delivery sections; the standard five are already required with their content. `current`: the docs on main the answer replaces. */
+export function validateDocs(d: DocsInput, features: readonly string[], readmeSections: readonly string[] = [], current?: DocsInput): string[] {
   const planned = missingReadmeSections(d.readme, readmeSections.filter((s) => !standardSection(s)));
   return [
     ...validateReadme(d.readme),
     ...planned.map((s) => `docs/README.md is missing a "${s}" section the plan requires (add a heading naming it)`),
     ...validateRunbook(d.runbook ?? ''),
-    ...validateApiDocs(d.apiDocs ?? null, features),
+    ...validateApiDocs(d.apiDocs ?? null, features, current?.apiDocs ?? ''),
   ];
 }

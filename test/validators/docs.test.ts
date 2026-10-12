@@ -39,12 +39,31 @@ describe('validateApiDocs', () => {
   });
   it('is not required when no endpoint is named', () => expect(validateApiDocs(null, ['sums numbers'])).toEqual([]));
   it('requires the file when endpoints exist', () => expect(validateApiDocs(null, features)).toHaveLength(1));
+  it('keeps every endpoint the current docs/API.md documents, since earlier specs wrote it', () => {
+    const current = '# API\n\n### POST /stock\n\n### GET /stock/{sku}\n';
+    expect(validateApiDocs('### POST /orders', ['POST /orders creates an order'], current)).toEqual([
+      'docs/API.md dropped endpoint /stock, which it documented before; keep it, or mark it as removed if this spec removed it',
+      'docs/API.md dropped endpoint /stock/{sku}, which it documented before; keep it, or mark it as removed if this spec removed it',
+    ]);
+    expect(validateApiDocs(`${current}\n### POST /orders`, ['POST /orders creates an order'], current)).toEqual([]);
+  });
+  it('accepts an endpoint the rewrite marks as removed', () => {
+    expect(validateApiDocs('### POST /orders\n\n`/stock` was removed by this spec.', [], '### POST /stock')).toEqual([]);
+  });
+  it('lets an empty answer through, since it leaves the current file in place', () => {
+    expect(validateApiDocs('', ['sums numbers'], '### POST /stock')).toEqual([]);
+  });
 });
 
 describe('validateDocs', () => {
   it('combines the three files', () => {
     expect(validateDocs({ readme: GOOD_README, runbook: GOOD_RUNBOOK, apiDocs: '/health' }, ['GET /health'])).toEqual([]);
     expect(validateDocs({ readme: GOOD_README, runbook: undefined, apiDocs: null }, ['GET /health']).length).toBeGreaterThan(1);
+  });
+  it('checks the API answer against the docs/API.md it replaces', () => {
+    expect(validateDocs({ readme: GOOD_README, runbook: GOOD_RUNBOOK, apiDocs: '/health' }, ['GET /health'], [], { readme: '', runbook: '', apiDocs: '### GET /stock' })).toEqual([
+      'docs/API.md dropped endpoint /stock, which it documented before; keep it, or mark it as removed if this spec removed it',
+    ]);
   });
   it('also requires every other section the plan lists, so the README passes the next verification', () => {
     expect(validateDocs({ readme: GOOD_README, runbook: GOOD_RUNBOOK, apiDocs: '/health' }, ['GET /health'], ['Environment', 'Monitoring'])).toEqual([
