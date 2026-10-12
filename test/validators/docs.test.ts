@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { featureEndpoints, missingReadmeSections, validateApiDocs, validateDocs, validateReadme, validateRunbook } from '../../server/validators/docs.js';
+import { documentedEndpoints, featureEndpoints, missingReadmeSections, validateApiDocs, validateDocs, validateReadme, validateRunbook } from '../../server/validators/docs.js';
 
 const body = 'Some real explanatory text that is long enough to count.';
 const md = (...titles: string[]) => titles.map((t) => `## ${t}\n\n${body}\n`).join('\n');
@@ -49,6 +49,11 @@ describe('validateApiDocs', () => {
   });
   it('accepts an endpoint the rewrite marks as removed', () => {
     expect(validateApiDocs('### POST /orders\n\n`/stock` was removed by this spec.', [], '### POST /stock')).toEqual([]);
+  });
+  it('reads the endpoints of the current docs/API.md after their methods and outside code blocks', () => {
+    const current = ['# API', '', '| Método | Rota |', '|DELETE|/stock/{sku}/reservas|', '', '**GET**/legacy', '', '```', 'curl -X POST /app/data/pedidos.json', '```', '', 'Os logs ficam em /var/log/loja.log.'].join('\n');
+    expect(documentedEndpoints(current)).toEqual(['/stock/{sku}/reservas', '/legacy']);
+    expect(validateApiDocs('### DELETE /stock/{sku}/reservas\n\n### GET /legacy', [], current)).toEqual([]);
   });
   it('lets an empty answer through, since it leaves the current file in place', () => {
     expect(validateApiDocs('', ['sums numbers'], '### POST /stock')).toEqual([]);

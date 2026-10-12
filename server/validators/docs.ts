@@ -53,6 +53,22 @@ export function featureEndpoints(features: readonly string[]): string[] {
   return [...out];
 }
 
+const METHOD_PATH = /\b(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b[\s*`|]*(\/[\w\-./:{}]*[\w}])/g;
+
+/** Endpoint paths an API document names after an HTTP method, outside code blocks, where file paths and examples live. */
+export function documentedEndpoints(md: string): string[] {
+  const out = new Set<string>();
+  let fence = false;
+  for (const line of md.split(/\r?\n/)) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      fence = !fence;
+      continue;
+    }
+    if (!fence) for (const m of line.matchAll(METHOD_PATH)) out.add(m[1]!);
+  }
+  return [...out];
+}
+
 /** `current`: the docs/API.md the answer replaces; earlier specs wrote it, so its endpoints stay. */
 export function validateApiDocs(md: string | null, features: readonly string[], current = ''): string[] {
   const endpoints = featureEndpoints(features);
@@ -60,7 +76,7 @@ export function validateApiDocs(md: string | null, features: readonly string[], 
   if (!md?.trim()) return endpoints.length === 0 ? [] : ['docs/API.md is empty; the spec features name endpoints'];
   return [
     ...endpoints.filter((e) => !md.includes(e)).map((e) => `docs/API.md does not document endpoint ${e}`),
-    ...featureEndpoints([current]).filter((e) => !endpoints.includes(e) && !md.includes(e)).map((e) => `docs/API.md dropped endpoint ${e}, which it documented before; keep it, or mark it as removed if this spec removed it`),
+    ...documentedEndpoints(current).filter((e) => !endpoints.includes(e) && !md.includes(e)).map((e) => `docs/API.md dropped endpoint ${e}, which it documented before; keep it, or mark it as removed if this spec removed it`),
   ];
 }
 
