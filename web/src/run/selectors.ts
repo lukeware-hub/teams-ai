@@ -185,6 +185,8 @@ export function pausedUntil(events: StoredEvent[]): string | null {
 
 const startedStep = (d: Record<string, unknown>, tier: string | null = null): StepRow => ({ stepId: String(d.stepId), kind: String(d.kind), role: String(d.role), model: typeof d.model === 'string' ? d.model : null, attempt: Number(d.attempt), ok: null, failure: null, usage: null, durationMs: null, tier });
 const finishStep = (s: StepRow, d: Record<string, unknown>) => Object.assign(s, { ok: Boolean(d.ok), failure: (d.failure as string | null) ?? null, usage: d.usage ? add(zero(), d.usage as Usage, (d.costUsd as number | null) ?? null) : null, durationMs: Number(d.durationMs ?? 0) });
+/** A task's branch is task/<specId>-<taskId>; runs before readable ids used task/<specId>/<taskId>. */
+const isTaskBranch = (branch: string, taskId: string): boolean => branch.startsWith('task/') && (branch.endsWith(`-${taskId}`) || branch.endsWith(`/${taskId}`));
 
 export function taskDetail(events: StoredEvent[], taskId: string) {
   const attempts = new Map<number, { attempt: number; steps: StepRow[]; gates: GateRow[]; review: ReviewRow | null; security: SecurityRow | null }>();
@@ -248,7 +250,7 @@ export function taskDetail(events: StoredEvent[], taskId: string) {
         lockHeld = true;
         break;
       case 'PR_CREATED':
-        if (String(d.branch).endsWith(`/${taskId}`)) pr = { number: Number(d.number), url: String(d.url) };
+        if (isTaskBranch(String(d.branch), taskId)) pr = { number: Number(d.number), url: String(d.url) };
         break;
       case 'PR_MERGED':
         merged = true;
@@ -465,7 +467,7 @@ export function mergedPrs(events: StoredEvent[]): Array<{ taskId: string; number
   for (const e of events) {
     if (e.type !== 'PR_MERGED') continue;
     const taskId = String(e.data.taskId);
-    const byBranch = [...branchOf.entries()].find(([b]) => b.endsWith(`/${taskId}`))?.[1];
+    const byBranch = [...branchOf.entries()].find(([b]) => isTaskBranch(b, taskId))?.[1];
     const number = Number(e.data.pr ?? byBranch?.number);
     if (!Number.isFinite(number)) continue;
     rows.push({ taskId, number, url: byBranch?.url ?? '' });
@@ -585,6 +587,10 @@ function describe(e: StoredEvent, intent: Record<string, unknown> | undefined): 
       return item('Relatório final pronto', 'good');
     case 'PR_MERGED':
       return item(`Tarefa ${String(d.taskId)} mesclada na main (pull request #${String(d.pr)})`, 'good');
+    case 'REBASE_REPLAYED': {
+      const files = list(d.files);
+      return item(`Tarefa ${String(d.taskId)} movida para a main atual${files.length ? `, com conflitos a resolver em ${files.join(', ')}` : ', sem conflitos'}`, files.length ? 'bad' : '');
+    }
     case 'TASK_BLOCKED':
       return item(`Tarefa ${String(d.taskId)} bloqueada: ${firstSentence(explainBlockReason(String(d.reason ?? '')))}`, 'bad');
     case 'RUN_PAUSED':
@@ -637,7 +643,7 @@ export function phaseActivity(events: StoredEvent[]): Map<number, PhaseActivity>
       const s = of(phase).steps.find((x) => x.stepId === d.stepId);
       if (s) finishStep(s, d);
     }
-    if (item && (!task || e.type === 'PR_MERGED' || e.type === 'TASK_BLOCKED')) of(phase).items.push(item);
+    if (item && (!task || e.type === 'PR_MERGED' || e.type === 'TASK_BLOCKED' || e.type === 'REBASE_REPLAYED')) of(phase).items.push(item);
   });
   return out;
 }

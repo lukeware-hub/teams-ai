@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { StoredEvent } from '../api.js';
-import { blockedSummary, currentActivity, deployOutcome, evidence, explainPhase, explainStop, firstSentence, lastDeployFailure, liveBlocked, pausedUntil, phaseActivity, phases, phaseTitle, runState, stopSummary, taskDetail, tokens } from './selectors.js';
+import { blockedSummary, currentActivity, deployOutcome, evidence, explainPhase, explainStop, firstSentence, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseTitle, runState, stopSummary, taskDetail, tokens } from './selectors.js';
 
 // jsdom gives import.meta.url an http: scheme; vitest runs with cwd = web/
 const events: StoredEvent[] = readFileSync(path.resolve('../test/fixtures/runs/hello-run.ndjson'), 'utf8')
@@ -300,6 +300,20 @@ describe('phase activity', () => {
     expect(out.items.at(-1)!.url).toBeNull();
   });
 
+  it('a task moved onto the current main says whether conflicts are left to resolve', () => {
+    const out = phaseActivity(
+      evs([
+        ['PHASE_STARTED', { phase: 3 }],
+        ['REBASE_REPLAYED', { taskId: 'T2', previous: 'abc', files: ['src/a.ts', 'src/b.ts'] }],
+        ['REBASE_REPLAYED', { taskId: 'T3', previous: 'def', files: [] }],
+      ]),
+    ).get(3)!;
+    expect(out.items.map((i) => [i.text, i.tone])).toEqual([
+      ['Tarefa T2 movida para a main atual, com conflitos a resolver em src/a.ts, src/b.ts', 'bad'],
+      ['Tarefa T3 movida para a main atual, sem conflitos', ''],
+    ]);
+  });
+
   it('a failed step and an uncovered criterion are problems of their phase', () => {
     const out = phaseActivity(
       evs([
@@ -336,5 +350,19 @@ describe('phase activity', () => {
     ]);
     expect(currentActivity(list)).toMatchObject({ running: [{ stepId: 's2', kind: 'coverage', role: 'po', model: 'm', startedAt: '2026-10-05T10:00:02.000Z' }], last: { text: 'Especificação técnica escrita em docs/tech.md, com 1 ADR' } });
     expect(currentActivity([...list, { ...list[2]!, seq: 9, type: 'STEP_FINISHED', data: { stepId: 's2', ok: true } }]).running).toEqual([]);
+  });
+});
+
+describe('pull requests of tasks', () => {
+  const ev = (seq: number, type: string, data: Record<string, unknown>): StoredEvent => ({ seq, at: '2026-10-12T10:00:00.000Z', runId: 'r', specHash: 'h', type, kind: 'fact', data });
+  const list = [
+    ev(1, 'PR_CREATED', { branch: 'task/cancelar-pedido-T11', number: 13, url: 'https://github.com/o/r/pull/13', created: true }),
+    ev(2, 'PR_CREATED', { branch: 'task/cancelar-pedido-T1', number: 14, url: 'https://github.com/o/r/pull/14', created: true }),
+    ev(3, 'PR_MERGED', { taskId: 'T1', pr: 14 }),
+  ];
+
+  it('joins a task to the pull request of its real branch, task/<specId>-<taskId>, and never to a longer id', () => {
+    expect(taskDetail(list, 'T1').pr).toEqual({ number: 14, url: 'https://github.com/o/r/pull/14' });
+    expect(mergedPrs(list)).toEqual([{ taskId: 'T1', number: 14, url: 'https://github.com/o/r/pull/14' }]);
   });
 });
