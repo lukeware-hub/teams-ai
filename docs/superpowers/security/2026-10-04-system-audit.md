@@ -202,6 +202,6 @@ Fix: pin the base image by digest and the two global packages by exact version, 
 
 Checked against the code of 2026-10-12; the per-finding evidence is in `plans/2026-10-12-teams-ai-83-security-audit-status.md`.
 
-- **Fixed (13):** H1, H2, M1, M2, M4, M5 and L1 to L7 (L7: spec section 14 rewritten the same day).
-- **Partly fixed (5):** C1 (credential copy readable, read confinement not proven on the real CLI), H3 (`gh` and `docker` on the agent PATH), H4 (`seccomp` and `apparmor` unconfined, nested daemon API without auth), M3 (`waitForRunJournal` returns an unredacted `ui.log` tail), M6 (helper images pinned by tag, not by digest).
+- **Fixed (15):** H1, H2, M1, M2, M3 (the `ui.log` tail is redacted in `waitForRunJournal`), M4, M5, M6 (helper images pinned by digest) and L1 to L7 (L7: spec section 14 rewritten the same day).
+- **Partly fixed (3):** C1 (credential copy readable, read confinement not proven on the real CLI), H3 (`gh` and `docker` on the agent PATH), H4 (`seccomp` and `apparmor` unconfined, nested daemon API without auth).
 - **Moot:** the Kubernetes parts of the C1, H1 and H4 fixes.

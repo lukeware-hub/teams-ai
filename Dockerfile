@@ -2,14 +2,14 @@
 FROM node:22-bookworm@sha256:363e1587494626837fa7f9a23bdb453d13b0ff3c67c705c2805cfc69c2d2fad7
 
 # The docker CLI talks to the rootless `dind` sidecar over tcp (DOCKER_HOST in docker-compose.yml), never to the host daemon.
-COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
-COPY --from=docker:27-cli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
+COPY --from=docker:27-cli@sha256:851f91d241214e7c6db86513b270d58776379aacc5eb9c4a87e5b47115e3065c /usr/local/bin/docker /usr/local/bin/docker
+COPY --from=docker:27-cli@sha256:851f91d241214e7c6db86513b270d58776379aacc5eb9c4a87e5b47115e3065c /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
 
 # Go for the Dev's own checks (go mod, vet, test); the gates use their own image. GOTOOLCHAIN=local never downloads another one.
-COPY --from=golang:1.26-bookworm /usr/local/go /usr/local/go
+COPY --from=golang:1.26-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c /usr/local/go /usr/local/go
 # Rust for the same purpose; CARGO_HOME is set per step to a writable folder, the toolchain itself stays read-only here.
-COPY --from=rust:1-bookworm /usr/local/cargo /usr/local/cargo
-COPY --from=rust:1-bookworm /usr/local/rustup /usr/local/rustup
+COPY --from=rust:1-bookworm@sha256:114c7a4425406451c2866b6aafe69fe29b1b298832db1277d411ac73c82d04d6 /usr/local/cargo /usr/local/cargo
+COPY --from=rust:1-bookworm@sha256:114c7a4425406451c2866b6aafe69fe29b1b298832db1277d411ac73c82d04d6 /usr/local/rustup /usr/local/rustup
 ENV PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH GOTOOLCHAIN=local RUSTUP_HOME=/usr/local/rustup
 # The official rust image ships without rustfmt and clippy; the Dev's format and lint checks need both.
 RUN rustup component add rustfmt clippy

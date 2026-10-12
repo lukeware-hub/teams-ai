@@ -60,3 +60,17 @@ describe('docker-compose.yml (audit H4)', () => {
     }
   });
 });
+
+describe('helper images pinned by digest (audit M6)', () => {
+  it('every external FROM, COPY --from and compose image carries @sha256', async () => {
+    const dockerfile = await fs.readFile('Dockerfile', 'utf8');
+    const stages = [...dockerfile.matchAll(/^FROM \S+ AS (\S+)/gim)].map((m) => m[1]);
+    const refs = [
+      ...[...dockerfile.matchAll(/^FROM (\S+)/gim)].map((m) => m[1]),
+      ...[...dockerfile.matchAll(/COPY --from=(\S+)/g)].map((m) => m[1]),
+      ...Object.values(compose.services).map((s: any) => s.image),
+    ].filter((ref) => ref && !stages.includes(ref) && !ref.startsWith('${TEAMS_AI_IMAGE:-'));
+    expect(refs.length).toBeGreaterThan(0);
+    for (const ref of refs) expect(ref, ref).toMatch(/@sha256:[0-9a-f]{64}$/);
+  });
+});

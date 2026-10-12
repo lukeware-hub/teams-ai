@@ -56,7 +56,7 @@ services:
       retries: 20
 
   dind:
-    image: docker:27-dind-rootless
+    image: docker:27-dind-rootless@sha256:e2ac8e8f66ae21a060b0a8e3005c70f6ed9441aabf409434463d1f6eecd38026
     environment:
       DOCKER_TLS_CERTDIR: ''
     # Rootless dockerd needs user namespaces and /proc writes; it is not `privileged` and has no host socket.
