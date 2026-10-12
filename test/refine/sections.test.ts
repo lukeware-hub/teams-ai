@@ -21,6 +21,8 @@ describe('docSections', () => {
     expect(sections.map((s) => s.heading)).toEqual(['Fluxo', '0. GOVERNANÇA DA PLATAFORMA', '1. Caso', '7. OPME', '11. Caso clínico', 'Regras gerais', 'Detalhe', 'Glossário']);
     const opme = sections.find((s) => s.heading === '7. OPME')!;
     expect(opme.text).toBe('%% 7. OPME\n  O0[Pedido de OPME] --> O1[Cotação]');
+    // Plan 90 review: each section knows the line it starts on, so a writer can insert by line.
+    expect(opme.line).toBe(NUMBERED_MERMAID_FLOW.split('\n').indexOf('%% 7. OPME'));
     expect(sections.find((s) => s.heading === '11. Caso clínico')!.text).toBe('%% 11. Caso clínico\n  K0[Prontuário] --> K1[Alta]');
   });
 

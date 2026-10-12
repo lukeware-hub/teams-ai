@@ -479,6 +479,32 @@ describe('refine api', () => {
     expect(started.patches[0]).toMatchObject({ status: 'dropped', decision: 'não aplicada: a execução começou sem ela' });
   });
 
+  // Plan 90 review: once the owner decides the last suggestion, the program starts by itself again.
+  it('starts a ready backlog by itself once its last pending suggestion is rejected', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    const url = '/api/refine/hello-app/hello-app-001';
+    await call('POST', `${url}/backlog`);
+    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
+    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
+    const suggestion = { file: 'docs/briefing.md', find: '- <objective>', replace: '- Mostrar a saúde do serviço.', reason: 'objetivo concreto' };
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }, { checklist: PO, questions: [], docPatch: [suggestion] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }, { checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', `${url}/evaluate`);
+    await settle();
+    await call('POST', `${url}/backlog/detail`);
+    script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
+    script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
+    await call('POST', `${url}/evaluate`);
+    await settle();
+    await registry.tickPrograms();
+    expect(spawns).toHaveLength(0);
+    const [p] = (await snapshot()).state.patches;
+    expect((await call('POST', `${url}/patches/${p.patchId}/reject`, {})).status).toBe(200);
+    await registry.tickPrograms();
+    expect(spawns).toHaveLength(1);
+    expect((await snapshot()).state.status).toBe('started');
+  });
+
   it('refuses to detail an outline the docs changed after it was reviewed', async () => {
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     const url = '/api/refine/hello-app/hello-app-001';

@@ -67,8 +67,11 @@ describe('refinePack', () => {
     // R11.10 (plan 90): the orchestrator writes the owner's answers, so no agent records one again.
     expect(pack.feedback).toContain('The orchestrator writes each answer the owner gives as its own `### <question>` heading there, so never propose a patch that records an answer again.');
     expect(pack.feedback).not.toContain('recorded as a docPatch');
+    // Plan 90 review: an older list turns into headings through a patch of its own, and the outline rule no longer asks to record answers.
+    expect(pack.feedback).toContain('propose one patch that turns each of its lines into its own heading');
+    expect(pack.feedback).not.toContain('in the same patch');
+    expect(pack.feedback).not.toContain('recording a decision the owner gave');
     // Plan 87 review: an older list of decisions saves nothing until each line is a heading; the Front never records one.
-    expect(pack.feedback).toContain('turn each of its lines into its own heading in the same patch');
     expect(refinePack({ ...base, role: 'front', derived: { project: {}, spec: null }, backlog, projectBriefing: true } as never).feedback).not.toContain('## Decisões');
     expect(pack.criteria).toEqual([]);
     expect(pack.objectives).toEqual(['Núcleo']);
@@ -81,7 +84,7 @@ describe('refinePack', () => {
     const review = (role: 'po' | 'sm' | 'front', b: object = backlog, cycle = 1) => String(refinePack({ ...base, role, derived: { project: {}, spec: null }, backlog: b, projectBriefing: true, cycle } as never).feedback);
     const rule = 'Outline review (no spec yet): never ask about or patch a detail a spec decides';
     expect(review('po')).toContain(rule);
-    expect(review('po')).toContain('It never holds back a contradiction between the docs, a split into services the docs leave open, filling a blank stack.md or flow.md, or recording a decision the owner gave.');
+    expect(review('po')).toContain('It never holds back a contradiction between the docs, a split into services the docs leave open, filling a blank stack.md or flow.md, or turning an older list of decisions into headings.');
     expect(review('po')).not.toContain('which asks about it then');
     expect(review('sm')).toContain(rule);
     expect(review('front')).not.toContain(rule);

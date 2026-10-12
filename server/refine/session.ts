@@ -235,6 +235,12 @@ export class RefineSession {
     // The move removes this draft's own spec.json (a continued spec's, on main): its criterion ids stay the numbering floor.
     await this.journal.fact(RefineEvent.BacklogEnabled, { acFloor: await maxCriterionInDraft(this.deps.draft), keyIds: true });
     await moveBriefingToProject(this.deps.draft);
+    // Plan 90: the owner's earlier answers reach the briefing too, since no agent records an answer any more.
+    const answered = this.state.questions.filter((q) => q.status === 'answered' && q.answer && !q.answeredBy);
+    if (answered.length === 0) return;
+    const after = answered.reduce((doc, q) => recordDecision(doc, q.text, q.answer!), await readDoc(this.deps.draft, 'brief.md'));
+    await writeDoc(this.deps.draft, 'brief.md', after);
+    await this.journal.fact(RefineEvent.DocEdited, { file: 'brief.md', hash: sha256(after), source: 'decision' });
   }
 
   /** Backlog detailing ("Detalhar specs"): from the next evaluation on, every item gets its spec and pre-plan. The human

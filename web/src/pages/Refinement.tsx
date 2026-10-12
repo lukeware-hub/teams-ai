@@ -7,7 +7,7 @@ import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { buildSpecsIndex } from '@server/refine/specs-index';
-import { isApproval } from '@server/refine/state';
+import { allGreen, isApproval } from '@server/refine/state';
 import { BacklogPanel } from '../refine/BacklogPanel.js';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { SpecTree } from '../refine/SpecTree.js';
@@ -242,7 +242,8 @@ export function RefinementView(p: ViewProps) {
       : st.stale
         ? { label: 'Desatualizada', tone: 'warn' }
         : { label: 'Atual', tone: 'ok' };
-  const green = st.checklist.length > 0 && st.checklist.every((i) => i.passed);
+  const green = allGreen(st.checklist);
+  const pendingSuggestion = st.patches.some((x) => x.status === 'pending');
   const nextStep = st.status === 'started' && st.backlog?.enabled
     ? 'Os agentes estão executando o backlog, até duas specs ao mesmo tempo quando não mexem no mesmo código. Acompanhe cada uma na tela de execução do backlog.'
     : st.status === 'evaluating'
@@ -261,7 +262,9 @@ export function RefinementView(p: ViewProps) {
           ? st.backlog.detail
             ? st.autoStartFailure?.cycle === st.cycle
               ? `O programa não começou sozinho: ${st.autoStartFailure.reason}. Corrija o motivo e clique em Iniciar análise, ou reavalie para ele tentar de novo.`
-              : 'O backlog detalhado está pronto: cada item tem spec e pré-plano, e o programa começa sozinho em instantes. Para mudar algo antes, escreva nos documentos e reavalie.'
+              : pendingSuggestion
+                ? 'O backlog detalhado está pronto, mas só começa sozinho sem sugestões pendentes: aceite ou rejeite cada uma, ou clique em Iniciar análise para começar sem elas, que vão para o histórico.'
+                : 'O backlog detalhado está pronto: cada item tem spec e pré-plano, e o programa começa sozinho em instantes. Para mudar algo antes, escreva nos documentos e reavalie.'
             : 'O backlog está pronto para revisão. Para mudar prioridades ou cortes, escreva no briefing.md e reavalie; quando o esboço estiver certo, clique em Detalhar specs para gerar a spec e o pré-plano de cada item.'
         : st.backlog?.detail
           ? 'Detalhamento pedido: clique em Reavaliar para gerar a spec e o pré-plano de cada item; o que faltar aparece em vermelho na cobertura.'
@@ -271,7 +274,8 @@ export function RefinementView(p: ViewProps) {
             ? 'Revise os documentos e clique em Avaliar. Os agentes vão revisar a demanda e preencher a lista de verificação.'
             : 'Corrija nos documentos os itens não atendidos da lista de verificação e clique em Reavaliar.';
   // R11.10: once ready, a pending patch is a suggestion the owner may still take.
-  const optional = st.status === 'ready' && !st.stale && st.patches.some((x) => x.status === 'pending') ? ' As sugestões abaixo são opcionais; aceitar uma pede nova avaliação.' : '';
+  // A detailed backlog that is ready says it in its own next step.
+  const optional = green && pendingSuggestion && !st.stale && st.status !== 'answering' && !(st.backlog?.detail && st.status === 'ready') ? ' As sugestões abaixo são opcionais; aceitar uma pede nova avaliação.' : '';
   const existing = st.mode === 'new-spec' || st.mode === 'continue';
   const suggest = (file: Exclude<DocFile, 'flow.md'>) => {
     setSuggesting(true);
@@ -488,7 +492,7 @@ export function RefinementView(p: ViewProps) {
           .reverse()
           .map((x) => (
             <li key={x.patchId}>
-              Sugestão para {docName(x.file)} ({x.reason}) → {x.status === 'accepted' ? 'aceita' : x.status === 'rejected' ? 'rejeitada' : 'descartada'}
+              {isApproval(x) ? 'Aprovação de ajuste' : `Sugestão para ${docName(x.file)}`} ({x.reason}) → {x.status === 'accepted' ? 'aceita' : x.status === 'rejected' ? 'rejeitada' : 'descartada'}
               {x.decision ? `: ${x.decision}` : ''}
             </li>
           ))}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseDecisions, recordDecision, withDecisions } from '../../server/refine/decisions.js';
+import { sectionText } from '../../server/refine/sections.js';
 import { renderBriefMd } from '../../server/refine/draft.js';
 import type { QuestionRow } from '../../server/refine/state.js';
 import { makeSpec } from '../fixtures/contracts.js';
@@ -21,6 +22,28 @@ describe('recordDecision', () => {
   it('gives a question already written the new answer, keeps every line of it quoted, and reads CRLF', () => {
     const doc = '# Briefing\r\n\r\n## Decisões\r\n\r\n### Há multa?\r\n\r\n> Sim.\r\n\r\n### Prazo?\r\n\r\n> 15 dias.\r\n';
     expect(recordDecision(doc, 'Há  multa?', 'Não.\n\n# nunca um título\n$& e $1 ficam')).toBe('# Briefing\n\n## Decisões\n\n### Há multa?\n\n> Não.\n>\n> # nunca um título\n> $& e $1 ficam\n\n### Prazo?\n\n> 15 dias.\n');
+  });
+});
+
+// Plan 90 review: Decisões is found by its level and words outside code, and no other section changes its text.
+describe('recordDecision on real briefings', () => {
+  it('ignores a heading inside code, reads the heading by its words, and edits a question only inside Decisões', () => {
+    const fenced = '# Briefing\n\n## Objetivos\n\n```md\n## Decisões\n```\n';
+    expect(recordDecision(fenced, 'Há multa?', 'Não.')).toBe(`${fenced}\n## Decisões\n\n### Há multa?\n\n> Não.\n`);
+    expect(recordDecision('# Briefing\n\n## Decisoes:\n\n- antiga\n', 'Há multa?', 'Não.')).toBe('# Briefing\n\n## Decisoes:\n\n- antiga\n\n### Há multa?\n\n> Não.\n');
+    const elsewhere = '# Briefing\n\n## Objetivos\n\n### Há multa?\n\nTexto do dono.\n\n## Decisões\n\n### Prazo?\n\n> 15 dias.\n';
+    expect(recordDecision(elsewhere, 'Há multa?', 'Não.')).toBe(`${elsewhere}\n### Há multa?\n\n> Não.\n`);
+  });
+
+  it('leaves the text of every other section as it was, whatever the line endings, and quotes an answer written with CRLF', () => {
+    for (const doc of ['# Briefing\n\n## Objetivos\n\n- agendar', '# Briefing\n\n## Objetivos\n\n- agendar\n\n\n']) {
+      expect(sectionText(recordDecision(doc, 'Há multa?', 'Não.'), 'Objetivos')).toBe(sectionText(doc, 'Objetivos'));
+    }
+    const before = '# Briefing\n\n## Decisões\n\n### Prazo?\n\n> 15 dias.\n\n## Fora do escopo\n\n- nada';
+    const after = recordDecision(before, 'Há multa?', 'Não,\r\nnunca.');
+    expect(sectionText(after, 'Prazo?')).toBe(sectionText(before, 'Prazo?'));
+    expect(sectionText(after, 'Fora do escopo')).toBe(sectionText(before, 'Fora do escopo'));
+    expect(sectionText(after, 'Há multa?')).toBe('### Há multa?\n\n> Não,\n> nunca.\n');
   });
 });
 

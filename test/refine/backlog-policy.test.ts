@@ -51,6 +51,16 @@ describe('agent policy for the backlog', () => {
     expect(po.slice(po.indexOf('(`backlog` step)'), po.indexOf('## Detailing a backlog item'))).toContain('that later item cites the section too');
   });
 
+  // Plan 90: the orchestrator writes the owner's answers, so neither the PO nor the SM records one again.
+  it('tells the PO and the SM that the orchestrator writes the answers, and to turn an older list into headings', async () => {
+    const agents = await loadAgents(AGENTS);
+    const poReview = agents.po.body.slice(agents.po.body.indexOf('### Reviewing a backlog (PO)'));
+    const smReview = agents.sm.body.slice(agents.sm.body.indexOf('### Reviewing a backlog'));
+    for (const review of [poReview, smReview]) expect(review).toContain('never patch an answer in again');
+    expect(poReview).toContain('propose one patch that turns an older list there into headings');
+    expect(poReview).not.toContain('in the same patch');
+  });
+
   it('keeps the derive and refine sections of the PO', async () => {
     const po = (await fs.readFile(path.join(AGENTS, 'po.md'), 'utf8'));
     expect(po).toContain('(`derive` step)');

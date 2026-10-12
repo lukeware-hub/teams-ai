@@ -3,7 +3,7 @@ import type { Snapshot, StoredEvent } from '../api.js';
 
 export type LiveSnapshot = Snapshot & { docsDirty?: boolean };
 
-/** The journal carries state, not document text: a patch edit, docs main brought in or an evaluation ask the page to refetch. */
+/** The journal carries state, not document text: a patch edit, docs main brought in, an answer the orchestrator wrote or an evaluation ask the page to refetch. */
 export function applyToSnapshot(snap: LiveSnapshot, e: StoredEvent): LiveSnapshot {
   const state = structuredClone(snap.state);
   applyRefineEvent(state as never, e);

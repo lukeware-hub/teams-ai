@@ -49,6 +49,19 @@ describe('RefinementView backlog mode', () => {
     expect(screen.queryByText(/aceite ou rejeite cada uma/)).toBeNull();
   });
 
+  // Plan 90 review: the program waits for pending suggestions, so the screen never promises an auto-start that cannot come.
+  it('says a detailed backlog with a pending suggestion starts with Iniciar or once the suggestions are decided', () => {
+    const detailed = { ...backlog, detail: true };
+    const { rerender } = render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog: detailed, patches: [suggestion] })} busy={false} {...on()} /></MemoryRouter>);
+    expect(screen.getByText(/só começa sozinho sem sugestões pendentes/)).toBeTruthy();
+    expect(screen.queryByText(/começa sozinho em instantes/)).toBeNull();
+    // A green list waiting for its detailing calls the suggestions optional too, and the history names an approval as one.
+    const approval = { ...suggestion, patchId: 'po-c2-0', find: '', replace: '## Ajuste aprovado: base-ajuste-1\n\nok\n', cycle: 2, status: 'accepted' as const };
+    rerender(<MemoryRouter><RefinementView snap={base({ ...ready, status: 'drafting', backlog: detailed, patches: [suggestion, approval] })} busy={false} {...on()} /></MemoryRouter>);
+    expect(screen.getByText(/As sugestões abaixo são opcionais/)).toBeTruthy();
+    expect(screen.getByText(/Aprovação de ajuste .* → aceita/)).toBeTruthy();
+  });
+
   it('asks the owner to decide an adjustment approval apart from the optional suggestions', () => {
     const approval = { ...suggestion, patchId: 'po-c2-0', find: '', replace: '## Ajuste aprovado: base-ajuste-1\n\nA spec base foi entregue antes da mudança.\n', cycle: 2 };
     render(<MemoryRouter><RefinementView snap={base({ ...ready, status: 'answering', backlog, patches: [approval, suggestion] })} busy={false} {...on()} /></MemoryRouter>);

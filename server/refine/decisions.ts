@@ -1,5 +1,5 @@
 import type { Spec, SpecDecision } from '../contracts/spec.js';
-import { docSections } from './sections.js';
+import { docSections, normHeading } from './sections.js';
 import type { QuestionRow } from './state.js';
 
 /** Question text compared without case and extra spaces, so the same question asked twice counts once. */
@@ -48,21 +48,28 @@ export function withDecisions(spec: Spec, rows: readonly QuestionRow[]): Spec {
   return { ...spec, decisions: [...byQuestion.values()] };
 }
 
-const DECISIONS = /^## Decisões[ \t]*$/m;
+/** `lines` with `count` of them at `at` replaced by `added`, and a blank line before any text that follows or at the end. */
+function splice(lines: readonly string[], at: number, count: number, added: readonly string[]): string {
+  const rest = lines.slice(at + count);
+  const gap = rest.length === 0 || rest[0]!.trim() !== '' ? [''] : [];
+  return [...lines.slice(0, at), ...added, ...gap, ...rest].join('\n');
+}
 
 /**
- * R11.10 (plan 90): the briefing with the owner's answer as its own `### <question>` heading under `## Decisões`, added at the
- * end when missing; a heading for the same question gets the new answer, and every line is quoted, so none becomes a heading.
+ * R11.10 (plan 90): the briefing with the owner's answer as its own `### <question>` heading under its `## Decisões`
+ * section (added at the end when missing), every line quoted so none becomes a heading; the same question inside that
+ * section gets the new answer. Lines are only inserted or replaced, so no other section's text changes.
  */
 export function recordDecision(briefing: string, question: string, answer: string): string {
-  const doc = `${briefing.replace(/\r\n/g, '\n').trimEnd()}\n`;
-  const heading = `### ${question.replace(/\s+/g, ' ').trim()}`;
-  const block = `${heading}\n\n${answer.trim().split('\n').map((l) => (l.trim() ? `> ${l}` : '>')).join('\n')}\n`;
-  // A function as the replacement keeps a `$` of the answer as it is.
-  const same = docSections(doc).find((s) => s.text.split('\n', 1)[0] === heading);
-  if (same) return doc.replace(same.text, () => block);
-  const start = doc.search(DECISIONS);
-  if (start < 0) return `${doc}\n## Decisões\n\n${block}`;
-  const section = docSections(doc.slice(start))[0]!.text;
-  return doc.replace(section, () => `${section.trimEnd()}\n\n${block}`);
+  const lines = briefing.replace(/\r\n/g, '\n').split('\n');
+  const block = [`### ${question.replace(/\s+/g, ' ').trim()}`, '', ...answer.replace(/\r\n/g, '\n').trim().split('\n').map((l) => (l.trim() ? `> ${l}` : '>'))];
+  const sections = docSections(lines.join('\n'));
+  const decisions = sections.find((s) => s.text.startsWith('## ') && normHeading(s.heading) === 'decisoes');
+  if (!decisions) return splice(lines, lines.length, 0, ['## Decisões', '', ...block]);
+  const end = decisions.line + decisions.text.split('\n').length;
+  const same = sections.find((s) => s.line > decisions.line && s.line < end && s.text.split('\n', 1)[0] === block[0]);
+  if (!same) return splice(lines, end, 0, block);
+  const own = same.text.split('\n');
+  while (own.length > 1 && own.at(-1)!.trim() === '') own.pop();
+  return splice(lines, same.line, own.length, block);
 }

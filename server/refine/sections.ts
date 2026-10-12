@@ -7,6 +7,8 @@ export interface DocSection {
   heading: string;
   /** The section's own lines, heading included. */
   text: string;
+  /** The line the heading is on, counted from 0. */
+  line: number;
 }
 
 const NUMBERED = /^%%\s*(\d+\.\s+\S.*?)\s*$/;
@@ -89,7 +91,7 @@ export function docSections(doc: string): DocSection[] {
         if (next && (next.level as number) <= s.level) { end = i; break; }
       }
     }
-    return { heading: s.heading, text: lines.slice(s.line, end).join('\n') };
+    return { heading: s.heading, text: lines.slice(s.line, end).join('\n'), line: s.line };
   });
 }
 

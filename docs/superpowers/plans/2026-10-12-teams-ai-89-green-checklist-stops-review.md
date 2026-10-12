@@ -32,8 +32,8 @@
 
 1. Green checklist, complete coverage and no blocking question: a pending reviewer patch leaves the session ready; a pending approval patch, a pending blocking question, a failing checklist item or a coverage gap does not.
 2. Every reader of the status follows: starting, detailing, the program's auto-start (which waits for pending suggestions), the screen's buttons, labels and next-step message.
-4. A suggestion still pending at the start is dropped to the history.
 3. Accepting a suggestion after `ready` makes the session stale and asks for a new evaluation before anything starts.
+4. A suggestion still pending at the start is dropped to the history.
 
 ## Limits
 

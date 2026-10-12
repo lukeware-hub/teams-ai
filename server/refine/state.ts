@@ -105,13 +105,16 @@ const STICKY: ReadonlySet<RefineStatus> = new Set(['evaluating', 'error', 'start
 /** An adjustment's approval (R11.7.4) is the owner's decision, never a reviewer's suggestion. */
 export const isApproval = (p: Pick<PatchRow, 'replace'>) => approvalKey(p.replace.split('\n', 1)[0]!.replace(/^#+\s*/, '')) !== null;
 
+/** Every checklist item passed, with at least one item reported. */
+export const allGreen = (checklist: ReadonlyArray<{ passed: boolean }>) => checklist.length > 0 && checklist.every((i) => i.passed);
+
 /** Spec (refinement) §3.1: ready = all green, no pending blocking question and no pending approval; a reviewer's pending patch is then a suggestion (R11.10). */
 export function computeStatus(s: RefineState): RefineStatus {
   if (STICKY.has(s.status)) return s.status;
   const pendingBlocking = s.questions.some((q) => q.status === 'pending' && q.blocking);
   const pendingPatch = s.patches.some((p) => p.status === 'pending');
   const pendingApproval = s.patches.some((p) => p.status === 'pending' && isApproval(p));
-  const green = s.checklist.length > 0 && s.checklist.every((i) => i.passed);
+  const green = allGreen(s.checklist);
   // Once every item is green, a suggestion is nothing the owner owes.
   const pendingAny = (green ? pendingApproval : pendingPatch) || s.questions.some((q) => q.status === 'pending');
   // A detailed backlog is ready only when every section, spec, criterion and task is accounted for.

@@ -164,6 +164,21 @@ describe('RefineSession', () => {
     await s.close();
   });
 
+  // Plan 90 review: the answers given before the backlog was on reach the briefing too, since no agent records one now.
+  it('writes into the briefing the answers given before the backlog was turned on, and nothing while it is a single spec', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    script['derive/po'] = [derived];
+    script['refine/po'] = [refineOut(green(PO), [{ id: 'q', text: 'Port?', blocking: true, relatedAcIds: [] }])];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await s.evaluate();
+    const brief = await readDoc(draft(), 'brief.md');
+    await s.answer('po-c1-0', '8080');
+    expect(await readDoc(draft(), 'brief.md')).toBe(brief);
+    await s.enableBacklog();
+    expect(await fs.readFile(`${draft().docs}/briefing.md`, 'utf8')).toMatch(/\n## Decisões\n\n### Port\?\n\n> 8080\n$/);
+    await s.close();
+  });
+
   it('routes answers and rejections into the next cycle, refuses skipping a blocking question, and reaches ready', async () => {
     const s = await RefineSession.create(deps(), 'new-project');
     script['derive/po'] = [derived, derived];
