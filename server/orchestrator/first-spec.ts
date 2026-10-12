@@ -3,8 +3,8 @@ import path from 'node:path';
 import type { Exec } from '../exec/command.js';
 import { fetch as gitFetch, git } from '../git/git.js';
 
-/** What a project holds before any code task has merged: the docs and the rendered workflows. */
-const DOCS_ONLY = new Set(['docs', '.github']);
+/** What a repository holds before any code task has merged: the docs, the rendered workflows and what GitHub adds to a new one. */
+const DOCS_ONLY = /^(docs|\.github|README(\.\w+)?|LICENSE(\.\w+)?|\.gitignore|\.gitattributes)$/;
 
 /**
  * Is this the spec that scaffolds the project? A lone spec directory always is. With several (a draft carries every spec
@@ -21,5 +21,5 @@ export async function holdsOnlyDocs(repo: string, exec: Exec): Promise<boolean> 
   await gitFetch(repo, exec).catch(() => undefined);
   const top = await git(repo, ['ls-tree', '--name-only', 'origin/main'], exec).catch(() => null);
   if (top === null) return true;
-  return top.split('\n').filter((f) => f !== '').every((f) => DOCS_ONLY.has(f));
+  return top.split('\n').filter((f) => f !== '').every((f) => DOCS_ONLY.test(f));
 }

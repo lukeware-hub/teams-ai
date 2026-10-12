@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { CommandResult, Exec } from '../../server/exec/command.js';
-import { isFirstSpec } from '../../server/orchestrator/first-spec.js';
+import { holdsOnlyDocs, isFirstSpec } from '../../server/orchestrator/first-spec.js';
 
 let dir = '';
 afterEach(async () => {
@@ -54,6 +54,12 @@ describe('isFirstSpec', () => {
     const repo = await repoWithGit();
     const { exec } = fakeExec(['.github', 'docs', 'package.json', 'src']);
     expect(await isFirstSpec({ specDirs: ['a-001', 'a-001-b'], specId: 'a-001-b', repo, exec })).toBe(false);
+  });
+
+  it('is true for a repository made on GitHub with a README, a license and a .gitignore, which hold no code', async () => {
+    const repo = await repoWithGit();
+    expect(await holdsOnlyDocs(repo, fakeExec(['.gitignore', 'LICENSE', 'README.md']).exec)).toBe(true);
+    expect(await holdsOnlyDocs(repo, fakeExec(['README.md', 'src']).exec)).toBe(false);
   });
 
   it('is true when origin/main does not exist yet', async () => {
