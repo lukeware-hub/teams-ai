@@ -480,7 +480,7 @@ export function RefinementView(p: ViewProps) {
         <div className="quality-checks"><h5>Produto (PO)</h5><Checklist items={st.checklist} role="po" /><h5>Técnico (SM)</h5><Checklist items={st.checklist} role="sm" /></div>
         <BacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} ready={st.status === 'ready' && !st.stale} onEnable={p.onEnableBacklog} onDetail={p.onEnableDetail} />
         {p.program && st.backlog && <ProgramPanel program={p.program} titles={Object.fromEntries(st.backlog.items.map((i) => [i.key, i.title]))} />}
-        {st.backlog?.detail && <SpecTree backlog={st.backlog} />}
+        {st.backlog?.detail && <SpecTree backlog={st.backlog} evaluating={evaluating} />}
         <h4><Icon name="file" size={20} />Arquivos gerados<InfoTip text="Versão estruturada dos documentos, gerada pelo Claude a cada avaliação. O project.json descreve o projeto; o spec.json, esta demanda, com tarefas e critérios de aceite." /></h4>
         {!backlogOn && (
           <>

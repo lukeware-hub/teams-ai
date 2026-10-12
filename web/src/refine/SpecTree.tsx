@@ -9,13 +9,14 @@ const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : 
 const criterionText = (c: AcceptanceCriterion) => `${c.id}: dado ${c.given}, quando ${c.when}, então ${c.then}`;
 
 /** The detailed backlog as a coverage tree: doc section -> spec -> acceptance criterion -> pre-plan tasks, gaps in red. */
-export function SpecTree({ backlog }: { backlog: BacklogView }) {
+export function SpecTree({ backlog, evaluating = false }: { backlog: BacklogView; evaluating?: boolean }) {
   const matrix = coverageMatrix(backlog as never);
   const gaps = coverageGaps(backlog as never);
   const titles = new Map(backlog.items.map((i) => [i.key, i.title]));
   const specs = matrix.items.filter((i) => i.specId !== null).length;
   const criteria = matrix.items.reduce((n, i) => n + i.criteria.length, 0);
   const tasks = Object.values(backlog.preplans ?? {}).reduce((n, row) => n + (row.preplan?.tasks.length ?? 0), 0);
+  const preplans = Object.values(backlog.preplans ?? {}).filter((row) => row.preplan).length;
   return (
     <div className="spec-tree" data-testid="spec-tree">
       <h4>
@@ -23,7 +24,8 @@ export function SpecTree({ backlog }: { backlog: BacklogView }) {
         Cobertura · {count(matrix.sections.length, 'seção', 'seções')} · {count(specs, 'spec', 'specs')} · {count(criteria, 'critério', 'critérios')} · {count(tasks, 'tarefa', 'tarefas')} · {count(gaps.length, 'lacuna', 'lacunas')}
         <InfoTip text={HELP} />
       </h4>
-      {gaps.length > 0 && (
+      {evaluating && <p className="tree-progress" data-testid="tree-progress">Detalhando… {specs}/{matrix.items.length} specs · {preplans}/{matrix.items.length} pré-planos</p>}
+      {!evaluating && gaps.length > 0 && (
         <ul className="tree-gaps" data-testid="tree-gaps">
           {gaps.map((g, n) => <li key={n}>{g}</li>)}
         </ul>
@@ -43,7 +45,7 @@ export function SpecTree({ backlog }: { backlog: BacklogView }) {
         const planned = backlog.preplans?.[item.key]?.preplan?.tasks ?? [];
         return (
           <details key={item.key} className="tree-item" data-testid={`tree-${item.key}`}>
-            <summary><b>{titles.get(item.key) ?? item.key}</b>{item.specId ? <code>{item.specId}</code> : <span className="gap">sem spec</span>}</summary>
+            <summary><b>{titles.get(item.key) ?? item.key}</b>{item.specId ? <code>{item.specId}</code> : evaluating ? <span>pendente</span> : <span className="gap">sem spec</span>}</summary>
             <ul>
               {item.criteria.map((c) => {
                 const full = spec?.acceptanceCriteria.find((a) => a.id === c.id);
