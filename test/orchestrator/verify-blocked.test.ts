@@ -29,16 +29,16 @@ afterEach(async () => {
 });
 
 /** A run whose T2 blocked and took T3 with it; the SM answers each fix-tasks step with the next list. */
-async function setup(answers: PlanTask[][]): Promise<PhaseDeps> {
+async function setup(answers: PlanTask[][], over: Partial<{ delivery: Record<string, unknown>; junit: GateResult['junit'] }> = {}): Promise<PhaseDeps> {
   remote = await makeRemote({ 'README.md': '#\n' });
   journal = await Journal.open({ file: path.join(remote.root, 'events.ndjson'), runId: 'r1', specHash: HASH });
   await journal.fact(OrchEvent.TaskBlocked, { taskId: 'T2', reason: 'the Dev found no way to reach the payment API' });
   await journal.fact(OrchEvent.TaskBlocked, { taskId: 'T3', reason: 'a dependency is blocked' });
   packs = [];
   return {
-    journal, ws: { repo: remote.repo }, spec, exec: execCommand, firstSpec: false, plan: makePlan(spec, { tasks: [t1, t2, t3] }),
+    journal, ws: { repo: remote.repo }, spec, exec: execCommand, firstSpec: false, plan: makePlan(spec, { tasks: [t1, t2, t3], ...(over.delivery ? { delivery: over.delivery } : {}) } as never),
     tasks: () => [{ def: t1, state: 'merged' }, { def: t2, state: 'blocked' }, { def: t3, state: 'blocked' }],
-    gates: async () => ({ results: [gate], blockingFailure: null }),
+    gates: async () => ({ results: [{ ...gate, junit: over.junit ?? gate.junit }], blockingFailure: null }),
     packBase: () => ({ spec, project: makeProject(), specHash: HASH, assumptions: [], budgetTokens: 8000 }),
     runAgent: async (req: AgentStepRequest<'fix-tasks'>) => { packs.push(String(req.pack.feedback)); return { ok: true, value: { specHash: HASH, tasks: answers.shift()! }, summary }; },
   } as unknown as PhaseDeps;
@@ -53,6 +53,20 @@ describe('Phase 4 with blocked work', () => {
     expect(failed.uncoveredAcs).toEqual(['AC-002']);
     // The report still says why the criterion has no evidence.
     expect((failed.matrix as Array<{ criterion: string; status: string }>).map((r) => [r.criterion, r.status])).toEqual([['AC-001', 'passed'], ['AC-002', 'blocked']]);
+    expect(packs[0]).toContain('Criteria without passed evidence:\n- AC-002');
+  });
+
+  it('passes a criterion whose test passed even though its task blocked afterwards, since tests come first', async () => {
+    const junit = [...gate.junit!, { id: 't::[AC-002] works', name: '[AC-002] works', classname: 't', status: 'passed' as const, acIds: ['AC-002'] }];
+    const res = await runPhase4(await setup([], { junit }), 1);
+    expect(res.ok).toBe(true);
+  });
+
+  it('repairs a blocked criterion in the delivery round too, since round 2 is the verdict', async () => {
+    const delivery = { dockerfile: 'Dockerfile', compose: 'docker-compose.yml', ciWorkflow: '.github/workflows/ci.yml', releaseWorkflow: '.github/workflows/release.yml', e2eSuite: 'e2e/run.test.ts', readmeSections: ['Run'] };
+    const res = await runPhase4(await setup([[fix()]], { delivery }), 1);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.fixTasks?.map((t) => [t.id, t.owner, t.criteriaRefs])).toEqual([['T900-fix-1', 'devops', []], ['T900-fix-2', 'dev', []], ['T900-fix-3', 'dev', ['AC-002']]]);
     expect(packs[0]).toContain('Criteria without passed evidence:\n- AC-002');
   });
 

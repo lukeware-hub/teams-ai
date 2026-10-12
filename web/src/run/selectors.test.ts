@@ -81,6 +81,9 @@ describe('stopped run explanations', () => {
     expect(explainStop('Dev reported done but produced no changes against origin/main. Implement the task or return spec-gap.')).toMatchObject({ owner: 'Sistema', title: expect.stringContaining('não alterou') });
     expect(explainStop('plan.commands.smoke missing')).toMatchObject({ owner: 'Plano', hint: expect.stringContaining('commands.smoke') });
     expect(explainStop('Review requested changes:\nuse a constant')).toMatchObject({ owner: 'Sistema' });
+    // A round 2 failure that comes only from criteria left without evidence is no failing test.
+    expect(explainStop('verification failed in round 2: 0 failing tests, 1 uncovered criteria')?.title).toBe('Critérios de aceitação ficaram sem evidência');
+    expect(explainStop('verification failed in round 2: 2 failing tests, 0 uncovered criteria')?.title).toBe('Os testes de aceitação não passaram');
     expect(explainStop('spec-gap rounds exhausted (3); last question: which currency?')).toMatchObject({ owner: 'Você' });
     expect(explainStop('something nobody has seen before')).toBeNull();
     // A service's workflows failing to land explain themselves like the project's.

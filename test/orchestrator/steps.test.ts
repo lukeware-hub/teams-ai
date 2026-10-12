@@ -129,6 +129,8 @@ describe('packs', () => {
     const plan = makeServicesPlan(spec);
     const p = fixTasksPack(base, { failedTests: [], tails: '', uncoveredAcs: [], blocked: [], plan: { tasks: plan.tasks, gates: [] }, services: ['orders', 'inventory'], boundaries: [], feedback: null });
     expect(p.feedback).toContain('- T1-publish-order (orders):');
+    const blocked = fixTasksPack(base, { failedTests: [], tails: '', uncoveredAcs: [], blocked: [{ taskId: 'T2', reason: 'stuck', service: 'inventory' }], plan: { tasks: plan.tasks, gates: [] }, services: ['orders', 'inventory'], boundaries: [], feedback: null });
+    expect(blocked.feedback).toContain('- T2 (inventory): stuck');
   });
 
   it('a task that writes the e2e suite gets its rules, whatever role owns it; other tasks do not', () => {

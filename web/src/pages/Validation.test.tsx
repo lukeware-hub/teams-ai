@@ -5,6 +5,7 @@ import { PUBLISHED_PORTS } from '@server/deploy/service-links';
 import { runApi, type Report, type RunDetail } from '../api.js';
 import { ValidationPage, ValidationView } from './Validation.js';
 
+// A report from before R11.5.6, when a criterion whose tasks all blocked could still reach validation; the page still reads such reports.
 const report: Report = {
   runId: 'hello-001-r1', specId: 'hello-001', specHash: 'h', result: 'awaiting-validation',
   service: { url: 'http://127.0.0.1:3000', healthcheck: 'HTTP 200 after 1 attempts', smoke: [{ acId: 'AC-001', testId: 's::[AC-001] home', status: 'passed' }] },

@@ -322,12 +322,12 @@ const EVIDENCE_RULE =
 const OWNER_RULE =
   '- owner is dev, devops or front: use front only when every affectedPaths entry is UI code (e.g. web/src/**); use devops only for Dockerfile, deploy manifests, CI/release workflows and docker-compose; everything else is dev';
 
-export function fixTasksPack(base: PackBase, opts: { failedTests: readonly string[]; tails: string; uncoveredAcs: readonly string[]; blocked: ReadonlyArray<{ taskId: string; reason: string }>; plan: Pick<Plan, 'tasks' | 'gates'>; services?: readonly string[]; boundaries: readonly string[]; feedback: string | null }): ContextPackInput {
+export function fixTasksPack(base: PackBase, opts: { failedTests: readonly string[]; tails: string; uncoveredAcs: readonly string[]; blocked: ReadonlyArray<{ taskId: string; reason: string; service?: string }>; plan: Pick<Plan, 'tasks' | 'gates'>; services?: readonly string[]; boundaries: readonly string[]; feedback: string | null }): ContextPackInput {
   const feedback = [
     'Integrated verification on main failed. Plan 1 to 3 fix tasks. Ids are assigned by the orchestrator.',
     `Failed tests:\n${opts.failedTests.map((t) => `- ${t}`).join('\n') || '- none'}`,
     `Criteria without passed evidence:\n${opts.uncoveredAcs.map((a) => `- ${a}`).join('\n') || '- none'}`,
-    `Blocked tasks (their work never reached main; a fix task redoes what a criterion still needs and never depends on them):\n${opts.blocked.map((b) => `- ${b.taskId}: ${b.reason}`).join('\n') || '- none'}`,
+    `Blocked tasks (their work never reached main; a fix task redoes what a criterion still needs and never depends on them):\n${opts.blocked.map((b) => `- ${b.taskId}${b.service ? ` (${b.service})` : ''}: ${b.reason}`).join('\n') || '- none'}`,
     `Gate output (tail):\n${opts.tails}`,
     `Existing tasks:\n${opts.plan.tasks.map((t) => `- ${t.id}${t.service ? ` (${t.service})` : ''}: ${t.title} [${t.criteriaRefs.join(', ')}]`).join('\n')}`,
     `Test gates run on main:\n${opts.plan.gates.filter((g) => g.name.includes('test')).map((g) => `- ${g.name}: ${g.command}`).join('\n') || '- none'}`,

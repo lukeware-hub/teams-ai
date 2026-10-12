@@ -167,7 +167,9 @@ export class ProgramService {
       }
       default: {
         const data = await finished();
-        return { kind: 'failed', reason: `${row.status}${data?.reason ? `: ${String(data.reason).slice(0, 400)}` : ''}`, costUsd: data?.tokens?.costUsd ?? null };
+        // The tasks that blocked on their own cause tell why criteria went without evidence; their dependents add nothing.
+        const own = (data?.blocked ?? []).filter((b) => b.reason !== 'a dependency is blocked').map((b) => `${b.taskId} (${b.reason})`);
+        return { kind: 'failed', reason: `${row.status}${data?.reason ? `: ${String(data.reason).slice(0, 400)}` : ''}${own.length ? `; blocked: ${own.join('; ').slice(0, 400)}` : ''}`, costUsd: data?.tokens?.costUsd ?? null };
       }
     }
   }
