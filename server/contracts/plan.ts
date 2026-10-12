@@ -165,6 +165,9 @@ export type ServicesPlan = z.infer<typeof ServicesPlan>;
 export const AnyPlan = z.union([ServicesPlan, Plan]);
 export type AnyPlan = z.infer<typeof AnyPlan>;
 
+/** A plan of either shape, told apart by `services`, so a broken plan reports only its own shape's errors. */
+export const parseAnyPlan = (value: unknown): AnyPlan => (typeof value === 'object' && value !== null && 'services' in value ? ServicesPlan.parse(value) : Plan.parse(value));
+
 /** One repository's share of a plan; `service` is null for the project repository. */
 export interface ServiceView {
   service: string | null;

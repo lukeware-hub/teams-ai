@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AnyPlan, servicePlans } from '../../server/contracts/plan.js';
+import { AnyPlan, parseAnyPlan, Plan, servicePlans, ServicesPlan } from '../../server/contracts/plan.js';
 import { makeFrozenSpec, makePlan, makeProject, makeServicesPlan } from '../fixtures/contracts.js';
 
 const spec = makeFrozenSpec();
@@ -40,6 +40,18 @@ describe('ServicesPlan', () => {
     expect('services' in AnyPlan.parse(makePlan(spec))).toBe(false);
     const parsed = AnyPlan.parse(makeServicesPlan(spec));
     expect('services' in parsed && Object.keys(parsed.services)).toEqual(['orders', 'inventory']);
+  });
+});
+
+describe('parseAnyPlan', () => {
+  it('parses a plan of either shape, and reports a broken services plan against its own shape only', () => {
+    const plan = makeServicesPlan(makeFrozenSpec());
+    expect(parseAnyPlan(plan)).toEqual(ServicesPlan.parse(plan));
+    const single = makePlan(makeFrozenSpec());
+    expect(parseAnyPlan(single)).toEqual(Plan.parse(single));
+    const { tasks: _, ...noTasks } = plan;
+    expect(() => parseAnyPlan(noTasks)).toThrow(/"tasks"/);
+    expect(() => parseAnyPlan(noTasks)).not.toThrow(/gateImage/);
   });
 });
 

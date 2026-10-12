@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import { assignDeployPort } from '../../deploy/port-registry.js';
 import path from 'node:path';
 import type { OutputOf } from '../../agents/outputs.js';
-import { AnyPlan, type Plan } from '../../contracts/plan.js';
+import { parseAnyPlan, type AnyPlan, type Plan } from '../../contracts/plan.js';
 import type { StepOutcome } from '../../runner/step.js';
 import { canonicalJson } from '../../contracts/hash.js';
 import { RunEvent } from '../../pipeline/run-state.js';
@@ -25,7 +25,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
   if (deps.journal.isConfirmed(Intent.DocsCommit, docsCommitKey(deps, 2))) {
     const worktree = await docsWorktree(deps, branch, { keepCommits: true });
     // Read before the merge: the docs merge removes the worktree afterwards.
-    const plan = AnyPlan.parse(JSON.parse(await fs.readFile(path.join(worktree, `${specDir(deps.spec.specId)}/plan.json`), 'utf8')));
+    const plan = parseAnyPlan(JSON.parse(await fs.readFile(path.join(worktree, `${specDir(deps.spec.specId)}/plan.json`), 'utf8')));
     const merged = await commitAndMergeDocs(deps, 2, branch, worktree, `docs(${deps.spec.specId}): plan`);
     if (!merged.ok) return merged;
     await journalTasks(deps, plan);

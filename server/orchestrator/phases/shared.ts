@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { OutputOf, StepKind } from '../../agents/outputs.js';
-import { AnyPlan, Plan, type ServicesPlan, type ServiceView } from '../../contracts/plan.js';
+import { parseAnyPlan, Plan, type AnyPlan, type ServicesPlan, type ServiceView } from '../../contracts/plan.js';
 import { Preplan } from '../../contracts/preplan.js';
 import type { Project } from '../../contracts/project.js';
 import type { Spec } from '../../contracts/spec.js';
@@ -108,7 +108,7 @@ export async function readDocs(repo: string, specId: string, exec?: Exec): Promi
   const planText = await show(`${specDir(specId)}/plan.json`);
   // A backlog item's preplan.json is reviewed context for Phase 2, never the plan itself (R11.4); absent for single-spec projects.
   const preplanText = await show(`${specDir(specId)}/preplan.json`);
-  return { techSpecText, plan: planText === null ? null : AnyPlan.parse(JSON.parse(planText)), preplan: preplanText === null ? null : Preplan.parse(JSON.parse(preplanText)) };
+  return { techSpecText, plan: planText === null ? null : parseAnyPlan(JSON.parse(planText)), preplan: preplanText === null ? null : Preplan.parse(JSON.parse(preplanText)) };
 }
 
 /** A plan written for an earlier version of the spec: a refined spec must be planned again, never delivered with the old plan. */

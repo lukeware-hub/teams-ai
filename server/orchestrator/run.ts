@@ -7,7 +7,7 @@ import { Accounting } from '../budget/accounting.js';
 import { Governor } from '../budget/governor.js';
 import { DEFAULT_BREAKER, QuotaBreaker } from '../budget/quota-breaker.js';
 import type { Config, Role } from '../config/config.js';
-import { AnyPlan, scaffoldId, servicePlans, type Plan, type PlanTask, type ServiceView } from '../contracts/plan.js';
+import { parseAnyPlan, scaffoldId, servicePlans, type AnyPlan, type Plan, type PlanTask, type ServiceView } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
 import { createDecider } from '../decide/create-decider.js';
@@ -682,7 +682,7 @@ export class Run {
     await gitFetch(this.deps.ws.repo, this.deps.exec);
     const text = await this.gitLocked(['show', `origin/main:docs/specs/${specId}/plan.json`]).catch(() => null);
     if (!text) return this.finish('phase-failed', `main has no docs/specs/${specId}/plan.json`);
-    this.plan = AnyPlan.parse(JSON.parse(text));
+    this.plan = parseAnyPlan(JSON.parse(text));
     const p5 = singlePlan(this.plan) ? await runPhase5(this.phaseDeps(), 1, { fixTasks: false }) : await runServicesPhase5(this.phaseDeps(), 1, { fixTasks: false });
     return p5.ok ? this.finish('done') : this.finish('deploy-failed', p5.reason);
   }
