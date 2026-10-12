@@ -4,7 +4,7 @@
 
 **Goal:** what the owner decided during a refinement survives every later version of the spec, and a change to the docs reaches the specs it affects without ever rewriting a spec that already started or was delivered.
 
-**Architecture:** this plan holds the design of the six R11.7 slices and the tasks of the first one. Slice R11.7.1 gives the spec an optional `decisions` list: the session records every answered question in it when the spec is frozen, each later derivation carries it from the previous version, the refinement agents see it as answered questions, a question it already answers is dropped, and the brief of a continued spec renders it. The other slices get their own plans.
+**Architecture:** this plan holds the design of the six R11.7 slices and the tasks of the first one. Slice R11.7.1 gives the spec an optional `decisions` list: the session records every answered question in it when the spec is frozen, the brief of a continued spec renders it and each derivation reads it back from there (review fix: so an owner's edit sticks), the refinement agents see it as answered questions, and a question it already answers is dropped. The other slices get their own plans.
 
 **Tech Stack:** TypeScript on Node 22 (ES modules), zod 4, vitest.
 
@@ -44,7 +44,7 @@
 
 ## Design
 
-**R11.7.1 Decisions travel with the spec.** The spec gets an optional `decisions` list of `{question, answer, by?}`, included in the spec hash (a spec without it hashes as today). When the session freezes the spec, every answered question of its journal becomes a decision, and a later answer to the same question (compared without case and extra spaces) replaces the earlier one; `by` names the role when the answer came from the docs (R11.5.7). Each derivation carries the previous version's decisions and drops any the agent wrote. The PO, SM and Front packs list them with the answered questions under "do not ask again", the question merge drops a question a decision already answers, and the brief of a continued spec renders them under `## Decisions`, so the docs show them from the next version on. Writing each answer into `brief.md` when it is given was set aside: it would mark the draft stale and force another evaluation after every answer.
+**R11.7.1 Decisions travel with the spec.** The spec gets an optional `decisions` list of `{question, answer, by?}`, included in the spec hash (a spec without it hashes as today). When the session freezes the spec, every answered question of its journal becomes a decision, and a later answer to the same question (compared without case and extra spaces) replaces the earlier one; `by` names the role when the answer came from the docs (R11.5.7). The brief of a continued spec renders them under `## Decisions`, and each derivation reads them back from that section and drops any the agent wrote, so the brief stays the truth: an owner's edit or removal there sticks (review fix; carried from the previous version, a decision could never change and an edit was undone at the next continuation). The PO, SM and Front packs list them with the answered questions under "do not ask again", and the question merge drops a question a decision already answers. Writing each answer into `brief.md` when it is given was set aside: it would mark the draft stale and force another evaluation after every answer.
 
 **R11.7.2 A started or delivered spec is never re-derived.** Backlog detailing reads each item's spec on main and leaves `running`, `paused:quota`, `paused:auth`, `awaiting-validation` and `done` specs untouched: no `spec` step, no overwrite, no version reset.
 
@@ -68,7 +68,7 @@
 ## Risks and open points
 
 - The question merge drops only a question whose text matches a decision once case and spaces are ignored; a reworded one still relies on the agents reading the decisions, and a check by meaning (the `question-dedup` decision) is a later step.
-- The owner changes a recorded decision only by answering the same question again; editing or removing one from the refinement page is a later step.
+- The owner changes or removes a decision by editing the `## Decisions` section of a continued brief; a decision recorded in the session that froze the spec reaches the brief only at the next continuation, and a question it answers is never asked again.
 - Backlog mode still records decisions in `docs/briefing.md`, so the citation cost R11.10 describes is unchanged.
 - A backlog item spec carries no decisions, since the `spec` step's output has no such field; R11.7.2 keeps a delivered item, the only kind that could hold some, from being re-derived.
 
