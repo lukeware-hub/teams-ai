@@ -234,7 +234,9 @@ export async function conflictMarkerFiles(dir: string, base: string, exec: Exec 
 
 export async function push(dir: string, branch: string, exec: Exec = execCommand): Promise<void> {
   // No -u: an upstream setting writes the .git/config every worktree shares, racing a parallel task's worktree add (live: config.lock).
-  await git(dir, ['push', '-q', '--force-with-lease', 'origin', branch], exec);
+  // The lease names the sha origin holds now: a bare lease is "stale info" when this clone never fetched a branch an earlier run pushed.
+  const remote = (await git(dir, ['ls-remote', 'origin', `refs/heads/${branch}`], exec)).split(/\s+/)[0] ?? '';
+  await git(dir, ['push', '-q', `--force-with-lease=${branch}:${remote}`, 'origin', branch], exec);
 }
 
 export async function fetch(repo: string, exec: Exec = execCommand): Promise<void> {

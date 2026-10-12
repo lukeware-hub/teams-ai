@@ -293,6 +293,18 @@ describe('push, fetch and remote main', () => {
     expect(await git(origin, ['rev-parse', 'task/y'])).toBe(await headSha(wt));
   });
 
+  it('overwrites a remote branch this clone never fetched', async () => {
+    const wt = path.join(root, 'wt');
+    await createWorktree(repo, wt, 'docs/x', 'main');
+    await write(wt, 'a.txt', 'a');
+    await commitAll(wt, 'docs: a');
+    await push(wt, 'docs/x');
+    await git(repo, ['update-ref', '-d', 'refs/remotes/origin/docs/x']);
+    await git(wt, ['commit', '-q', '--amend', '-m', 'docs: a again']);
+    await push(wt, 'docs/x');
+    expect(await git(origin, ['rev-parse', 'docs/x'])).toBe(await headSha(wt));
+  });
+
   it('reads the remote main sha', async () => {
     expect(await remoteMainSha(repo)).toBe(await headSha(repo));
     await write(repo, 'z.txt', 'z');
