@@ -58,11 +58,13 @@ function deps(over: Partial<MergeStepsDeps> = {}): MergeStepsDeps {
 }
 
 describe('prBody', () => {
-  it('lists summary, criteria and gate lines, redacts secrets and caps the size', () => {
-    const body = prBody({ summary: 'token hunter2 used', criteria: spec.acceptanceCriteria, gateLines: ['unit-test: passed', 'x'.repeat(10_000)] }, ['hunter2']);
+  it('lists summary, criteria and gate lines, redacts secrets, caps the size and ends with the spec', () => {
+    const body = prBody({ summary: 'token hunter2 used', criteria: spec.acceptanceCriteria, gateLines: ['unit-test: passed', 'x'.repeat(10_000)], specId: 'spec-001' }, ['hunter2']);
     expect(body).toContain('[REDACTED]');
     expect(body).toContain('AC-001');
     expect(body.length).toBeLessThanOrEqual(8 * 1024);
+    expect(body.endsWith('\n\nSpec: spec-001')).toBe(true);
+    expect(prBody({ summary: 's', criteria: [], gateLines: [], specId: 'spec-001' }, []).endsWith('\n\nSpec: spec-001')).toBe(true);
   });
 });
 
@@ -74,6 +76,7 @@ describe('taskMergeSteps', () => {
     expect(out).toEqual({ ok: true, pr: 1 });
     expect(gh.prs[0]).toMatchObject({ state: 'MERGED', head: 'task/spec-001-T1', title: 'T1: Add sum' });
     expect(gh.prs[0]!.body).toContain('did T1');
+    expect(gh.prs[0]!.body.endsWith('\n\nSpec: spec-001')).toBe(true);
     expect(await git(remote.repo, ['ls-remote', 'origin', 'refs/heads/main'])).toContain(gh.prs[0]!.headRefOid);
     const kinds = journal.events.map((e) => `${e.kind}:${e.type}`);
     expect(kinds).toEqual([
@@ -126,9 +129,10 @@ describe('docsMergeSteps', () => {
     await fs.writeFile(path.join(docsWt, 'docs', 'tech-spec.md'), '# spec');
     await commitAll(docsWt, 'docs: tech spec');
     const gates = async () => { throw new Error('gates must not run for docs'); };
-    const out = await new MergeQueue().enqueue('docs', docsMergeSteps(deps({ gates }), 'docs/spec-001', docsWt, 'docs(spec-001): technical spec'));
+    const out = await new MergeQueue().enqueue('docs', docsMergeSteps(deps({ gates }), 'docs/spec-001', docsWt, 'docs(spec-001): technical spec', 'spec-001'));
     expect(out).toEqual({ ok: true, pr: 1 });
     expect(gh.prs[0]!.title).toBe('docs(spec-001): technical spec');
+    expect(gh.prs[0]!.body).toBe('Documentation update for the orchestrator run.\n\nSpec: spec-001');
     await expect(fs.access(docsWt)).rejects.toThrow();
   });
   it('a docs branch with identical content already on main needs no PR: rebase reports empty, the queue skips straight to cleanup', async () => {
@@ -142,7 +146,7 @@ describe('docsMergeSteps', () => {
     expect(await commitAll(docsWt, 'docs: no-op retry')).toBeNull();
     expect(await headSha(docsWt)).toBe(mainSha);
     const gates = async () => { throw new Error('gates must not run for an empty docs branch'); };
-    const steps = docsMergeSteps(deps({ gates }), 'docs/spec-001-retry', docsWt, 'docs(spec-001): retry');
+    const steps = docsMergeSteps(deps({ gates }), 'docs/spec-001-retry', docsWt, 'docs(spec-001): retry', 'spec-001');
     const out = await new MergeQueue().enqueue('docs-retry', steps);
     expect(out).toEqual({ ok: true, pr: 0, already: true });
     expect(gh.prs).toEqual([]);
@@ -185,7 +189,7 @@ describe('afterMerge and the repo lock', () => {
       return {};
     });
     const d = deps({ exec: fake.exec });
-    const steps = kind === 'task' ? taskMergeSteps(d, task, worktree, 'task/spec-001-T1', spec, 's') : docsMergeSteps(d, 'docs/spec-001', worktree, 'docs');
+    const steps = kind === 'task' ? taskMergeSteps(d, task, worktree, 'task/spec-001-T1', spec, 's') : docsMergeSteps(d, 'docs/spec-001', worktree, 'docs', 'spec-001');
     await steps.afterMerge!();
     await Promise.all(rivals);
     expect(timeline).toEqual(['checkout start', 'checkout end', 'reset start', 'reset end', 'rival of checkout', 'rival of reset']);

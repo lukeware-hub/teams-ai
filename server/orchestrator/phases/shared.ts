@@ -164,7 +164,7 @@ export async function commitAndMergeDocs(deps: PhaseDeps, phase: 0 | 1 | 2 | 6 |
     await deps.journal.confirm(Intent.DocsCommit, key, await commitDocs(worktree, title, deps.exec));
   }
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const out = await deps.mergeQueue.enqueue(`docs-${phase}-${attempt}`, docsMergeSteps(deps.mergeDeps, branch, worktree, title));
+    const out = await deps.mergeQueue.enqueue(`docs-${phase}-${attempt}`, docsMergeSteps(deps.mergeDeps, branch, worktree, title, deps.spec.specId));
     if (out.ok) {
       await deps.journal.fact(OrchEvent.DocsMerged, { phase, pr: out.pr, branch });
       return { ok: true };

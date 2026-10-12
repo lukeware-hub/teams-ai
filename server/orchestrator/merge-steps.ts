@@ -27,7 +27,7 @@ export interface MergeStepsDeps {
 
 const BODY_LIMIT = 8 * 1024;
 
-export function prBody(input: { summary: string; criteria: readonly AcceptanceCriterion[]; gateLines: readonly string[] }, secretValues: readonly string[]): string {
+export function prBody(input: { summary: string; criteria: readonly AcceptanceCriterion[]; gateLines: readonly string[]; specId: string }, secretValues: readonly string[]): string {
   const text = [
     '## Summary',
     input.summary,
@@ -39,7 +39,10 @@ export function prBody(input: { summary: string; criteria: readonly AcceptanceCr
     ...input.gateLines.map((l) => `- ${l}`),
   ].join('\n');
   const clean = redactSecrets(text, secretValues);
-  return clean.length > BODY_LIMIT ? `${clean.slice(0, BODY_LIMIT - 16)}\n[... truncated]` : clean;
+  // The spec line comes last and survives the cap, so every pull request names its spec.
+  const spec = `\n\nSpec: ${input.specId}`;
+  const limit = BODY_LIMIT - spec.length;
+  return `${clean.length > limit ? `${clean.slice(0, limit - 16)}\n[... truncated]` : clean}${spec}`;
 }
 
 const gateLine = (r: GateResult) => `${r.name}: ${r.passed ? 'passed' : `failed (${r.failure}, exit ${r.exitCode})`}`;
@@ -129,7 +132,7 @@ function resetMainCheckout(deps: MergeStepsDeps): Promise<void> {
 export function taskMergeSteps(deps: MergeStepsDeps, task: PlanTask, worktree: string, branch: string, spec: Spec, summary: string): MergeSteps {
   let gateResults: GateResult[] = [];
   let changed: string[] = [];
-  const base = common(deps, worktree, branch, `${task.id}: ${task.title}`, async () => prBody({ summary, criteria: spec.acceptanceCriteria.filter((c) => task.criteriaRefs.includes(c.id)), gateLines: gateResults.map(gateLine) }, deps.secretValues()), true, task.id);
+  const base = common(deps, worktree, branch, `${task.id}: ${task.title}`, async () => prBody({ summary, criteria: spec.acceptanceCriteria.filter((c) => task.criteriaRefs.includes(c.id)), gateLines: gateResults.map(gateLine), specId: spec.specId }, deps.secretValues()), true, task.id);
   return {
     ...base,
     rebase: async () => {
@@ -156,8 +159,8 @@ export function taskMergeSteps(deps: MergeStepsDeps, task: PlanTask, worktree: s
 }
 
 /** Docs branches (Phase 1 and 2) take the same path, minus gates and graph update (spec (orchestrator) §4.2). */
-export function docsMergeSteps(deps: MergeStepsDeps, branch: string, worktree: string, title: string): MergeSteps {
-  const base = common(deps, worktree, branch, title, async () => `Documentation update for the orchestrator run.`, false);
+export function docsMergeSteps(deps: MergeStepsDeps, branch: string, worktree: string, title: string, specId: string): MergeSteps {
+  const base = common(deps, worktree, branch, title, async () => `Documentation update for the orchestrator run.\n\nSpec: ${specId}`, false);
   return {
     ...base,
     afterMerge: async () => {
