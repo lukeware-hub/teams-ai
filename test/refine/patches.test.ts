@@ -27,4 +27,8 @@ describe('patches', () => {
     expect(d).toContain('+slow');
     expect(patchId('po', 2, 0)).toBe('po-c2-0');
   });
+  it("appends when find is empty, which only the orchestrator's own patches carry: an agent's empty find is still refused", () => {
+    expect(applyPatch('a\nb', { find: '', replace: '## C\n' })).toBe('a\nb\n## C\n');
+    expect(checkPatch({ file: 'docs/project.md', find: '', replace: 'x', reason: 'r' }, 'hello-001', docs)).toEqual({ ok: false, reason: 'find not found in project.md' });
+  });
 });

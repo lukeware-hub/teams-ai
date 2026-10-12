@@ -152,6 +152,13 @@ describe('backlog detailing in the refinement cycle', () => {
     return { second, agent, detailing: agent.calls.slice(from).filter((c) => c.kind === 'spec' || c.kind === 'preplan') };
   };
   const named = (calls: Array<{ feedback: string }>, header: string) => calls.flatMap((c) => [...c.feedback.matchAll(new RegExp(`^## ${header} ([a-z0-9-]+):`, 'gm'))].map((m) => m[1])).sort();
+  // R11.7.4: main delivered `opme`, and later its cited flow section changed.
+  const deliveredThenChanged = async (d: Env) => {
+    const file = `${d.draft.base}/specs/big-001-opme/spec.json`;
+    await writeFile(file, JSON.stringify({ ...JSON.parse(await readFile(file, 'utf8')), status: 'done', specVersion: 1, specHash: H }));
+    await writeFile(d.draft.flowMd, FLOW.replace('C --> D', 'C --> D2[Cotação]'));
+  };
+  const approvals = (env: Env) => env.journal.state.patches.filter((p) => p.replace.startsWith('## Ajuste aprovado'));
 
   it("reuses main's spec and pre-plan of every item whose inputs did not change", async () => {
     const { second, detailing } = await secondDraft();
@@ -223,6 +230,7 @@ describe('backlog detailing in the refinement cycle', () => {
     expect(await readFile(`${second.itemDir('opme')}/spec.json`, 'utf8')).toBe(before);
     expect(second.journal.state.backlog?.specs?.caso?.spec?.status).toBe('done');
     expect(second.journal.state.backlog?.preplans?.caso).toBeUndefined();
+    expect(approvals(second)).toEqual([]);
   });
 
   // R11.7.4: an adjustment comes only from its approval in briefing.md; the PO is never shown one to keep or reword.
@@ -238,6 +246,21 @@ describe('backlog detailing in the refinement cycle', () => {
     expect(shown).toContain('"opme"');
     expect(shown).not.toContain('opme-ajuste-1');
     expect(journal.state.backlog!.items.map((i) => i.key)).toContain('opme-ajuste-1');
+  });
+
+  it('asks the owner once to approve an adjustment of a delivered item whose cited section changed', async () => {
+    const { second, agent, detailing } = await secondDraft(deliveredThenChanged);
+    expect(detailing).toEqual([]);
+    expect(approvals(second)).toEqual([expect.objectContaining({ role: 'po', file: 'brief.md', find: '', status: 'pending' })]);
+    expect(approvals(second)[0]!.replace).toMatch(/^## Ajuste aprovado: opme-ajuste-1\n/);
+    expect(approvals(second)[0]!.reason).toContain('flow.md › 3. OPME');
+    expect(second.journal.state.status).toBe('answering');
+    await second.run(agent, 3);
+    expect(approvals(second)).toHaveLength(1);
+    await second.journal.fact(RefineEvent.PatchRejected, { patchId: approvals(second)[0]!.patchId, reason: null });
+    await second.run(agent, 4);
+    expect(approvals(second)).toHaveLength(1);
+    expect(second.journal.state.status).toBe('ready');
   });
 
   it('retries an item alone with its rejection when its spec or pre-plan breaks a rule', async () => {

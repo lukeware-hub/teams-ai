@@ -1,4 +1,8 @@
 import type { BacklogItem } from '../contracts/backlog.js';
+import type { SpecStatus } from '../contracts/spec.js';
+import { isStarted } from './coverage.js';
+import { sourceHashes, type BacklogDocs } from './details.js';
+import type { BacklogState, PatchRow } from './state.js';
 
 /**
  * R11.7.4: a spec whose run started never changes. When the sections it cites change, the owner approves an adjustment
@@ -37,4 +41,41 @@ export function adjustmentItems(items: readonly BacklogItem[], approved: readonl
     });
   }
   return out;
+}
+
+export interface DueAdjustment {
+  key: string;
+  /** The started spec it changes: the original's own, or its latest adjustment's. */
+  specId: string;
+  status: SpecStatus;
+  /** The cited sections whose text is new since that spec was derived. */
+  changed: string[];
+}
+
+const sameHashes = (a: ReadonlyArray<string | null>, b: ReadonlyArray<string | null>) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
+
+/** The next adjustment of each original whose latest spec started and whose cited sections changed since; one pending or rejected in this draft is not asked again. */
+export function adjustmentsDue(backlog: Pick<BacklogState, 'items' | 'specs'>, docs: BacklogDocs, patches: readonly Pick<PatchRow, 'status' | 'replace'>[]): DueAdjustment[] {
+  return backlog.items.filter((i) => !isAdjustment(i.key)).flatMap((original) => {
+    const latest = backlog.items.filter((i) => i.key === original.key || rootOf(i.key) === original.key).reduce((a, b) => (numberOf(b.key) > numberOf(a.key) ? b : a));
+    const spec = backlog.specs?.[latest.key]?.spec;
+    if (!spec?.derivedFrom || !isStarted(spec.status)) return [];
+    const was = spec.derivedFrom.sources.map((s) => s.hash);
+    const now = sourceHashes(latest, docs);
+    if (sameHashes(was, now.map((s) => s.hash))) return [];
+    const key = `${original.key}-ajuste-${numberOf(latest.key) + 1}`;
+    if (patches.some((p) => (p.status === 'pending' || p.status === 'rejected') && p.replace.startsWith(`## ${approvalHeading(key)}\n`))) return [];
+    return [{ key, specId: spec.specId, status: spec.status, changed: now.filter((s) => !was.includes(s.hash)).map((s) => `${s.doc} › ${s.heading}`) }];
+  });
+}
+
+/** The owner's approval as a patch: its empty `find` appends a section at the end of briefing.md, which changes no other section. */
+export function approvalPatch(due: DueAdjustment): { find: string; replace: string; reason: string } {
+  const when = due.status === 'done' ? 'foi entregue' : 'começou';
+  const changed = due.changed.join('; ') || 'uma seção que ela citava saiu do item';
+  return {
+    find: '',
+    replace: `## ${approvalHeading(due.key)}\n\nA spec ${due.specId} ${when} antes da mudança em ${changed}; este ajuste entrega só o que mudou.\n`,
+    reason: `As seções que a spec ${due.specId} cita mudaram depois que ela ${when}: ${changed}. Aceite para aprovar a spec de ajuste ${due.key}, que entrega só o que mudou; rejeite para manter a spec como está.`,
+  };
 }

@@ -10,7 +10,7 @@ import { contradictedChunks, duplicatePairs, duplicatePatches, notReadyCriteria 
 import { routeQuestion } from '../decide/decisions/question-routing.js';
 import type { AgentStepRequest } from '../orchestrator/steps.js';
 import type { StepOutcome } from '../runner/step.js';
-import { approvedAdjustments, isAdjustment } from './adjustments.js';
+import { adjustmentsDue, approvalPatch, approvedAdjustments, isAdjustment, type DueAdjustment } from './adjustments.js';
 import { mergeChecklist, type ChecklistItem } from './checklist.js';
 import { norm, parseDecisions } from './decisions.js';
 import { derivePack, postProcessDerived } from './derive.js';
@@ -132,6 +132,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   let criteria: readonly AcceptanceCriterion[] = [];
   let objectives: readonly string[] = [];
   let secretNames: string[] = [];
+  let due: DueAdjustment[] = [];
   if (backlogMode) {
     const before = journal.state.backlog;
     if (before?.project && before.items.length > 0 && before.draftHash === hash) {
@@ -193,6 +194,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       }
       backlog = detailed.backlog;
       secretNames = [...new Set(Object.values(backlog.specs ?? {}).flatMap((row) => row.spec?.externalDependencies.flatMap((dep) => dep.secretNames) ?? []))];
+      // R11.7.4: a started spec whose cited sections changed gets an adjustment for the owner to approve.
+      due = adjustmentsDue(backlog, backlogDocs, journal.state.patches);
     }
     derived = { project: backlog.project!, spec: null };
     objectives = backlog.epics.map((e) => e.title);
@@ -408,6 +411,13 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         cycle,
       });
     }
+  }
+
+  // R11.7.4: accepting the patch approves the adjustment; rejecting it keeps the started spec as it is.
+  let next = state.patches.filter((p) => p.cycle === cycle && p.role === 'po').length;
+  for (const a of due) {
+    const p = approvalPatch(a);
+    await journal.fact(RefineEvent.PatchProposed, { patchId: patchId('po', cycle, next++), role: 'po', file: 'brief.md', ...p, diff: unifiedDiff('brief.md', docs['brief.md'], applyPatch(docs['brief.md'], p)!), cycle });
   }
 
   const checklist: ChecklistItem[] = mergeChecklist(po.value.checklist, sm.value.checklist);

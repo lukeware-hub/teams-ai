@@ -32,7 +32,9 @@ export function checkPatch(p: DocPatchIn, specId: string, docs: Partial<Record<D
   return { ok: true, file };
 }
 
+/** Applies `find` once; an empty `find` appends, and only the orchestrator's own patches carry one (`checkPatch` refuses it). */
 export function applyPatch(text: string, p: { find: string; replace: string }): string | null {
+  if (p.find === '') return `${text}\n${p.replace}`;
   return count(text, p.find) === 1 ? text.replace(p.find, () => p.replace) : null;
 }
 
