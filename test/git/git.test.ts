@@ -15,6 +15,8 @@ import {
   rebaseOnto,
   remoteMainSha,
   removeWorktree,
+  replayOnto,
+  conflictMarkerFiles,
 } from '../../server/git/git.js';
 
 let root: string;
@@ -131,6 +133,57 @@ describe('changedFiles and rebase', () => {
     expect(result).toEqual({ ok: false, conflicts: ['README.md'] });
     expect(await git(wt, ['status', '--porcelain'])).toBe('');
     expect(await fs.readFile(path.join(wt, 'README.md'), 'utf8')).toBe('from task\n');
+  });
+
+  it('replays a conflicting branch onto the base as one commit, with markers where both sides changed the same lines', async () => {
+    const wt = path.join(root, 'wt');
+    await createWorktree(repo, wt, 'task/x', 'main');
+    await write(wt, 'README.md', 'from task\n');
+    await write(wt, 'src/a.ts', 'task only\n');
+    await commitAll(wt, 'docs: task');
+    const previous = await headSha(wt);
+    await write(repo, 'README.md', 'from main\n');
+    await commitAll(repo, 'docs: main');
+    expect(await replayOnto(repo, wt, 'main', 'T1: replay onto main')).toEqual({ previous, files: ['README.md'] });
+    expect(await git(wt, ['log', '-1', '--format=%s'])).toBe('T1: replay onto main');
+    expect(await git(wt, ['rev-parse', 'HEAD~1'])).toBe(await headSha(repo));
+    expect(await fs.readFile(path.join(wt, 'README.md'), 'utf8')).toMatch(/^<<<<<<< [\s\S]*from main[\s\S]*from task[\s\S]*^>>>>>>> /m);
+    expect(await fs.readFile(path.join(wt, 'src/a.ts'), 'utf8')).toBe('task only\n');
+    expect(await git(wt, ['status', '--porcelain'])).toBe('');
+  });
+
+  it('replays clean when the two sides changed different lines', async () => {
+    await write(repo, 'notes.txt', 'one\ntwo\nthree\nfour\nfive\n');
+    await commitAll(repo, 'docs: notes');
+    const wt = path.join(root, 'wt');
+    await createWorktree(repo, wt, 'task/x', 'main');
+    await write(wt, 'notes.txt', 'ONE\ntwo\nthree\nfour\nfive\n');
+    await commitAll(wt, 'docs: task');
+    await write(repo, 'notes.txt', 'one\ntwo\nthree\nfour\nFIVE\n');
+    await commitAll(repo, 'docs: main');
+    expect((await replayOnto(repo, wt, 'main', 'T1: replay'))!.files).toEqual([]);
+    expect(await fs.readFile(path.join(wt, 'notes.txt'), 'utf8')).toBe('ONE\ntwo\nthree\nfour\nFIVE\n');
+  });
+
+  it('leaves the branch untouched when git cannot replay the change, such as a file deleted on one side and edited on the other', async () => {
+    const wt = path.join(root, 'wt');
+    await createWorktree(repo, wt, 'task/x', 'main');
+    await git(wt, ['rm', '-q', 'README.md']);
+    await git(wt, ['commit', '-q', '-m', 'docs: drop readme']);
+    const before = await headSha(wt);
+    await write(repo, 'README.md', 'edited on main\n');
+    await commitAll(repo, 'docs: main');
+    expect(await replayOnto(repo, wt, 'main', 'T1: replay')).toBeNull();
+    expect(await headSha(wt)).toBe(before);
+    expect(await git(repo, ['worktree', 'list', '--porcelain'])).not.toContain('teams-ai-replay-');
+  });
+
+  it('lists the changed files that still hold conflict markers, skipping binary and deleted ones', async () => {
+    await write(repo, 'a.md', 'title\n<<<<<<< ours\nx\n=======\ny\n>>>>>>> theirs\n');
+    await write(repo, 'b.md', 'clean\n=======\n');
+    await commitAll(repo, 'docs: files');
+    expect(await conflictMarkerFiles(repo, ['a.md', 'b.md', 'gone.md'])).toEqual(['a.md']);
+    expect(await conflictMarkerFiles(repo, [])).toEqual([]);
   });
 
   it('throws GitError (infra) when the rebase fails for a reason that is not a conflict', async () => {

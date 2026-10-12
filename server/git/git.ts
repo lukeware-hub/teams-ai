@@ -1,4 +1,6 @@
-import { realpathSync } from 'node:fs';
+import { promises as fs, realpathSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { execCommand, type Exec } from '../exec/command.js';
 
 export class GitError extends Error {}
@@ -165,6 +167,42 @@ export async function rebaseOnto(
   }
   if (abort.exitCode !== 0) throw new GitError(`git rebase --abort failed: ${abort.stderr.trim()}`);
   return { ok: false, conflicts };
+}
+
+/**
+ * Moves a branch whose rebase conflicted onto `base` as one commit. Its whole change since the merge base is applied
+ * three-way in a scratch worktree, so a hunk both sides changed stays in its file between conflict markers, and the
+ * branch moves only once that commit exists. Returns the previous head and the files holding markers, or null when git
+ * cannot replay the change at all (a file deleted on one side and edited on the other); the branch is then untouched.
+ */
+export async function replayOnto(repo: string, dir: string, base: string, message: string, exec: Exec = execCommand): Promise<{ previous: string; files: string[] } | null> {
+  const previous = await headSha(dir, exec);
+  const mergeBase = await git(dir, ['merge-base', 'HEAD', base], exec);
+  // Raw output: git() trims, and a patch without its final newline is corrupt.
+  const patch = (await run(dir, ['diff', '--binary', mergeBase, 'HEAD'], exec)).stdout;
+  if (patch === '') return null;
+  const scratch = path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-replay-')), 'wt');
+  await withRepoLock(repo, () => git(repo, ['worktree', 'add', '--detach', scratch, base], exec));
+  try {
+    const applied = await exec({ bin: 'git', args: [...SAFE_CONFIG, 'apply', '--3way'], cwd: scratch, env: GIT_IDENTITY, timeoutMs: TIMEOUT, stdin: patch });
+    const unmerged = await git(scratch, ['diff', '--name-only', '--diff-filter=U'], exec);
+    const files = unmerged === '' ? [] : unmerged.split('\n');
+    if (applied.exitCode !== 0 && files.length === 0) return null;
+    await git(scratch, ['add', '-A'], exec);
+    await git(scratch, ['commit', '-q', '-m', message], exec);
+    await git(dir, ['reset', '-q', '--hard', await headSha(scratch, exec)], exec);
+    return { previous, files };
+  } finally {
+    await withRepoLock(repo, () => git(repo, ['worktree', 'remove', '--force', scratch], exec)).catch(() => undefined);
+    await fs.rm(path.dirname(scratch), { recursive: true, force: true });
+  }
+}
+
+/** The files among `files` that still hold a conflict marker line; binary and missing files never count. */
+export async function conflictMarkerFiles(dir: string, files: readonly string[], exec: Exec = execCommand): Promise<string[]> {
+  if (files.length === 0) return [];
+  const r = await run(dir, ['grep', '-I', '-l', '-E', '^(<<<<<<<|>>>>>>>)( |$)', '--', ...files], exec);
+  return r.exitCode === 0 && r.stdout.trim() !== '' ? r.stdout.trim().split('\n') : [];
 }
 
 export async function push(dir: string, branch: string, exec: Exec = execCommand): Promise<void> {
