@@ -182,6 +182,21 @@ describe('RefineSession', () => {
     expect(s.state.stale).toBe(false);
   });
 
+  // R11.7.1: ready allows a pending question that does not block, so an answer may come after the last evaluation.
+  it('freezes the spec with every answer as a decision, also one given after the last evaluation', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    script['derive/po'] = [derived];
+    script['refine/po'] = [refineOut(green(PO), [{ id: 'q', text: 'Port?', blocking: false, relatedAcIds: [] }])];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await writeSecret(secretsDir, 'DB_URL', 'postgres://x');
+    await s.evaluate();
+    expect(s.state.status).toBe('ready');
+    await s.answer('po-c1-0', '8080');
+    const { spec } = await s.freeze();
+    expect(spec.decisions).toEqual([{ question: 'Port?', answer: '8080' }]);
+    expect(JSON.parse(await fs.readFile(draft().specJson, 'utf8')).decisions).toEqual([{ question: 'Port?', answer: '8080' }]);
+  });
+
   it('accept applies the patch and marks stale; a stale find is dropped with a conflict; the file is untouched', async () => {
     const s = await RefineSession.create(deps(), 'new-project');
     script['derive/po'] = [derived];

@@ -12,6 +12,7 @@ import type { Hit } from '../knowledge/retrieval.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import { EventStore, type StoredEvent } from '../store/event-store.js';
 import { runCycle, type CycleDeps, type RunAgent } from './cycle.js';
+import { withDecisions } from './decisions.js';
 import { maxCriterionInDraft } from './detail-cycle.js';
 import { designTemplate, flowTemplate, moveBriefingToProject, readDerived, readDoc, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
 import { DRAFT_HASH, RefineEvent } from './events.js';
@@ -356,7 +357,8 @@ export class RefineSession {
     this.starting = true;
     try {
       const derived = this.state.derived!;
-      const value = { project: derived.project, spec: freezeSpec(derived.spec) };
+      // Every answer of this session travels with the frozen spec, also one given after the last evaluation (R11.7.1).
+      const value = { project: derived.project, spec: freezeSpec(withDecisions(derived.spec, this.state.questions)) };
       await writeDerived(this.deps.draft, value);
       return value;
     } catch (err) {
