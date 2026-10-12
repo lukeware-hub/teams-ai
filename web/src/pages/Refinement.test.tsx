@@ -155,12 +155,26 @@ describe('RefinementView', () => {
     expect(screen.queryByTestId('skip-po-c1-0')).toBeNull();
     fireEvent.change(screen.getByTestId('answer'), { target: { value: '8080' } });
     fireEvent.click(screen.getByTestId('answer-po-c1-0'));
-    expect(h.onAnswer).toHaveBeenCalledWith('po-c1-0', '8080');
+    expect(h.onAnswer).toHaveBeenCalledWith('po-c1-0', '8080', false);
     fireEvent.click(screen.getByTestId('accept-sm-c1-0'));
     expect(h.onAccept).toHaveBeenCalledWith('sm-c1-0');
     expect(screen.getByText(/find not found in project.md/)).toBeTruthy();
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText('Reavaliar')).toBeTruthy();
+  });
+
+  it('lets the owner mark that the documents already answered a question', () => {
+    const h = on();
+    render(
+      <MemoryRouter>
+        <RefinementView snap={base({})} busy={false} {...h} />
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByTestId('answer'), { target: { value: 'Está em project.md › Execução: 8080' } });
+    fireEvent.click(screen.getByTestId('docs-answered'));
+    fireEvent.click(screen.getByTestId('answer-po-c1-0'));
+    expect(h.onAnswer).toHaveBeenCalledWith('po-c1-0', 'Está em project.md › Execução: 8080', true);
+    expect((screen.getByTestId('docs-answered') as HTMLInputElement).checked).toBe(false);
   });
 
   it('saves a doc on blur, enables Start only when ready and not stale, and shows secrets rows', () => {

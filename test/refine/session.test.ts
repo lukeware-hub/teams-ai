@@ -119,6 +119,18 @@ describe('RefineSession', () => {
     expect(calls.map((call) => call.kind)).toEqual(['derive', 'refine', 'refine']);
   });
 
+  it("journals the owner's mark that the documents already answered a question, the label the routing eval reads", async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    script['derive/po'] = [derived];
+    script['refine/po'] = [refineOut(green(PO), [{ id: 'q', text: 'Port?', blocking: true, relatedAcIds: [] }])];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await s.evaluate();
+    await s.answer('po-c1-0', 'project.md › Execução: 8080', true);
+    await s.close();
+    const answered = (await fs.readFile(draft().events, 'utf8')).split('\n').filter((l) => l.includes('"QUESTION_ANSWERED"')).map((l) => JSON.parse(l).data);
+    expect(answered).toEqual([{ questionId: 'po-c1-0', text: 'project.md › Execução: 8080', docsAnswered: true }]);
+  });
+
   it('routes answers and rejections into the next cycle, refuses skipping a blocking question, and reaches ready', async () => {
     const s = await RefineSession.create(deps(), 'new-project');
     script['derive/po'] = [derived, derived];

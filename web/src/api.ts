@@ -352,7 +352,7 @@ export const refineApi = {
   enableBacklog: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/backlog`).then((r) => json<{ ok: true }>(r)),
   enableDetail: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/backlog/detail`).then((r) => json<{ ok: true }>(r)),
   evaluate: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/evaluate`).then((r) => json<{ state: string }>(r)),
-  answer: (p: string, s: string, questionId: string, text: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/answers`, { questionId, text }).then((r) => json<{ ok: true }>(r)),
+  answer: (p: string, s: string, questionId: string, text: string, docsAnswered = false) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/answers`, { questionId, text, docsAnswered }).then((r) => json<{ ok: true }>(r)),
   skip: (p: string, s: string, questionId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/questions/${encodeURIComponent(questionId)}/skip`).then((r) => json<{ ok: true }>(r)),
   accept: (p: string, s: string, patchId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/patches/${encodeURIComponent(patchId)}/accept`).then((r) => json<{ ok: true }>(r)),
   reject: (p: string, s: string, patchId: string, reason: string | null) =>

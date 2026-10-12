@@ -38,6 +38,8 @@ describe('decisions config', () => {
     expect(DEFAULT_CONFIG.decisions.perDecision['attempt-progress']).toMatchObject({ escalateTo: 'sm', chain: ['jev', 'local', 'claude'] });
     expect(DEFAULT_CONFIG.decisions.perDecision['pr-risk']).toMatchObject({ escalateTo: 'test' });
     expect(DEFAULT_CONFIG.decisions.perDecision['model-tier']).toMatchObject({ chain: ['jev', 'local'] });
+    // R11.5.7: question routing runs in shadow mode by default, so labelled data builds up.
+    expect(DEFAULT_CONFIG.decisions.perDecision['question-routing']).toMatchObject({ enabled: true, chain: ['jev', 'local'], escalateTo: 'po' });
   });
 
   it('local backend is off by default and points at a llama.cpp server on this host', () => {
@@ -53,7 +55,7 @@ describe('decisions config', () => {
   it('the Docker config turns on only the refinement decisions Jev takes', () => {
     const cfg = loadConfig(JSON.parse(readFileSync(new URL('../../docker/config.json', import.meta.url), 'utf8')));
     const enabled = DECISION_IDS.filter((id) => resolveDecision(cfg, id).enabled);
-    expect(enabled).toEqual(['gate1-readiness', 'question-dedup', 'history-contradiction', 'patch-dedup']);
+    expect(enabled).toEqual(['gate1-readiness', 'question-dedup', 'history-contradiction', 'question-routing', 'patch-dedup']);
     for (const id of enabled) expect(resolveDecision(cfg, id).chain).toEqual(['jev', 'local']);
   });
 });

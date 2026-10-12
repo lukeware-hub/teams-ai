@@ -139,7 +139,7 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       path: `${S}/answers`,
       handler: wrap(async ({ params, body, json }) => {
         const b = await body();
-        await (await get(params)).answer(str(b, 'questionId'), str(b, 'text'));
+        await (await get(params)).answer(str(b, 'questionId'), str(b, 'text'), (b as Record<string, unknown> | null)?.docsAnswered === true);
         json(200, { ok: true });
       }),
     },

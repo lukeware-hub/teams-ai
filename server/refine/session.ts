@@ -265,10 +265,11 @@ export class RefineSession {
     return q;
   }
 
-  async answer(questionId: string, text: string): Promise<void> {
+  /** `docsAnswered`: the owner's mark that the documents already answered it, the label the routing eval reads. */
+  async answer(questionId: string, text: string, docsAnswered = false): Promise<void> {
     this.guard();
     this.question(questionId);
-    await this.journal.fact(RefineEvent.QuestionAnswered, { questionId, text });
+    await this.journal.fact(RefineEvent.QuestionAnswered, { questionId, text, ...(docsAnswered ? { docsAnswered: true } : {}) });
   }
 
   async skip(questionId: string): Promise<void> {

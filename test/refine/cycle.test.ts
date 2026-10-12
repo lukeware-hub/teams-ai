@@ -286,7 +286,7 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
     expect(routing[questions[0]!.questionId]).toMatchObject({ route: 'auto' });
   });
 
-  it('adds no hint when the decision is off (the default)', async () => {
+  it('adds no hint without a decider', async () => {
     const spec = makeSpec();
     const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
     const docs = path.join(root, 'docs');

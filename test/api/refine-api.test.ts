@@ -137,7 +137,13 @@ describe('refine api', () => {
     expect(snap.docs['brief.md']).toBe('## Objectives\n- ship\n');
     expect(snap.state.questions[0]).toMatchObject({ questionId: 'po-c1-0', blocking: true });
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/questions/po-c1-0/skip')).status).toBe(409);
-    expect((await call('POST', '/api/refine/hello-app/hello-app-001/answers', { questionId: 'po-c1-0', text: '8080' })).status).toBe(200);
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/answers', { questionId: 'po-c1-0', text: '8080', docsAnswered: true })).status).toBe(200);
+    const after = await fetch(`${base()}/api/refine/hello-app/hello-app-001/events`, { headers: { 'last-event-id': '1' } });
+    const answered = after.body!.getReader();
+    let journal = '';
+    while (!journal.includes('QUESTION_ANSWERED')) journal += new TextDecoder().decode((await answered.read()).value);
+    await answered.cancel();
+    expect(journal).toContain('"docsAnswered":true');
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/answers', { questionId: 'po-c1-0', text: '8080' })).status).toBe(409);
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/answers', { questionId: 'nope', text: 'x' })).status).toBe(404);
   });

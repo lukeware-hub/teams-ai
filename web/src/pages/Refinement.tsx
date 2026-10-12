@@ -130,7 +130,7 @@ export interface ViewProps {
   onEvaluate(): void;
   onEnableBacklog?(): void;
   onEnableDetail?(): void;
-  onAnswer(id: string, text: string): void;
+  onAnswer(id: string, text: string, docsAnswered: boolean): void;
   onSkip(id: string): void;
   onAccept(id: string): void;
   onReject(id: string, reason: string | null): void;
@@ -164,6 +164,7 @@ export function RefinementView(p: ViewProps) {
   const [docs, setDocs] = useState(snap.docs);
   const [suggesting, setSuggesting] = useState(false);
   const [answer, setAnswer] = useState('');
+  const [docsAnswered, setDocsAnswered] = useState(false);
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [secretValues, setSecretValues] = useState<Record<string, string>>({});
   const [newSecrets, setNewSecrets] = useState<Array<{ id: number; name: string; value: string }>>([]);
@@ -352,14 +353,18 @@ export function RefinementView(p: ViewProps) {
             )}
             <label className="field-label" htmlFor="refinement-answer">Sua resposta</label>
             <textarea id="refinement-answer" data-testid="answer" value={answer} onChange={(e) => setAnswer(e.target.value)} />
+            <label className="field-label">
+              <input type="checkbox" data-testid="docs-answered" checked={docsAnswered} onChange={(e) => setDocsAnswered(e.target.checked)} /> Os documentos já respondiam esta pergunta
+            </label>
             <div className="question-actions">
               <div className="question-actions-buttons">
                 <button
                   data-testid={`answer-${current.questionId}`}
                   disabled={locked || answer.trim() === ''}
                   onClick={() => {
-                    p.onAnswer(current.questionId, answer);
+                    p.onAnswer(current.questionId, answer, docsAnswered);
                     setAnswer('');
+                    setDocsAnswered(false);
                   }}
                 >
                   Responder
@@ -601,7 +606,7 @@ export function RefinementPage() {
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}
         onEnableDetail={act(() => refineApi.enableDetail(projectId, specId))}
-        onAnswer={(id, t) => act(() => refineApi.answer(projectId, specId, id, t))()}
+        onAnswer={(id, t, d) => act(() => refineApi.answer(projectId, specId, id, t, d))()}
         onSkip={(id) => act(() => refineApi.skip(projectId, specId, id))()}
         onAccept={(id) => act(() => refineApi.accept(projectId, specId, id))()}
         onReject={(id, r) => act(() => refineApi.reject(projectId, specId, id, r))()}

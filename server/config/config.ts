@@ -54,8 +54,8 @@ const DECISION_DEFAULTS: Partial<Record<DecisionId, Partial<DecisionConfig>>> = 
   'gate1-readiness': { chain: ['jev', 'local'], escalateTo: 'po' },
   'question-dedup': { chain: ['jev', 'local'], escalateTo: 'sm' },
   'history-contradiction': { chain: ['jev', 'local'], escalateTo: 'po' },
-  // Plan 53 (R11.5a slice 1): shadow mode until an eval exists; off unless a session turns it on explicitly.
-  'question-routing': { enabled: false, chain: ['jev', 'local'], escalateTo: 'po' },
+  // R11.5.7: shadow mode by default, so labelled data builds up; on its own it never answers, drops or hides a question.
+  'question-routing': { chain: ['jev', 'local'], escalateTo: 'po' },
   // R11.5a item 2: same risk class as the already-active byte-identical patch dedupe (R11.10), just catching
   // paraphrases of it, so it ships active rather than shadow.
   'patch-dedup': { chain: ['jev', 'local'], escalateTo: 'sm' },
