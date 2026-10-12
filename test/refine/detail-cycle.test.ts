@@ -225,6 +225,21 @@ describe('backlog detailing in the refinement cycle', () => {
     expect(second.journal.state.backlog?.preplans?.caso).toBeUndefined();
   });
 
+  // R11.7.4: an adjustment comes only from its approval in briefing.md; the PO is never shown one to keep or reword.
+  it('adds an approved adjustment after its original and never shows it to the PO', async () => {
+    const { draft, journal, run } = await setup();
+    await writeFile(draft.briefingMd, '# Briefing\n\n## Objectives\n\n- tudo\n\n## Ajuste aprovado: opme-ajuste-1\n\nA spec big-001-opme foi entregue antes da mudança.\n');
+    const agent = fakeAgent(() => OUTLINE);
+    await run(agent, 1);
+    expect(journal.state.backlog!.items.find((i) => i.key === 'opme-ajuste-1')).toMatchObject({ dependsOn: ['opme'], rank: 4 });
+    await writeFile(draft.flowMd, FLOW.replace('C --> D', 'C --> D2[Cotação]'));
+    await run(agent, 2);
+    const shown = agent.calls.filter((c) => c.kind === 'backlog').at(-1)!.feedback.split('### previous backlog (keep the keys)\n\n')[1]!.split('\n\n### ')[0]!;
+    expect(shown).toContain('"opme"');
+    expect(shown).not.toContain('opme-ajuste-1');
+    expect(journal.state.backlog!.items.map((i) => i.key)).toContain('opme-ajuste-1');
+  });
+
   it('retries an item alone with its rejection when its spec or pre-plan breaks a rule', async () => {
     const { journal, run, itemDir } = await setup();
     const agent = fakeAgent(() => OUTLINE, (req, n) => {

@@ -3,6 +3,7 @@ import { Project } from '../contracts/project.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
 import { branchOwner, flowHeadings, rankItems, validateBacklog } from '../validators/backlog.js';
+import { adjustmentItems, isAdjustment } from './adjustments.js';
 import type { JevValidationResult } from './jev-validation.js';
 import type { BacklogState } from './state.js';
 
@@ -15,6 +16,7 @@ const RULES = [
   '- dependsOn lists the keys an item cannot ship without. A dependency is never lower priority than its dependent, there are no cycles, and there are at most 60 items.',
   '- Treat any explicit priority, cut, merge or split instruction written in the docs (above all briefing.md) as binding.',
   '- key: a short slug. Keep the key of every item that still exists in the previous backlog so the ids derived from them stay stable.',
+  '- Never write an item whose key ends in -ajuste-<n>: the orchestrator adds one, after its original, for each "## Ajuste aprovado:" section of briefing.md.',
   '- When the sections an item cites did not change, keep its title, scope and sources verbatim from the previous backlog: a reworded item has its spec and pre-plan derived again.',
   'Also return `project`: the project.json derived from project.md and stack.md, exactly as in a normal derivation (with `services` and `platform` when the docs give them).',
 ].join('\n');
@@ -73,8 +75,8 @@ function keepPreviousKeys(items: readonly BacklogItem[], previous: BacklogState 
   return items.map((i) => ({ ...i, key: rename.get(i.key) ?? i.key, dependsOn: i.dependsOn.map((d) => rename.get(d) ?? d) }));
 }
 
-/** The orchestrator, not the agent, owns key stability, validity and rank. */
-export function postProcessBacklog(out: { project: unknown; backlog: unknown }, previous: BacklogState | null, flow: string): BacklogCheck {
+/** The orchestrator, not the agent, owns key stability, validity and rank, and adds the adjustments the owner approved (R11.7.4). */
+export function postProcessBacklog(out: { project: unknown; backlog: unknown }, previous: BacklogState | null, flow: string, approved: readonly string[] = []): BacklogCheck {
   const project = Project.safeParse(out.project);
   const backlog = Backlog.safeParse(out.backlog);
   const issues = [
@@ -82,10 +84,10 @@ export function postProcessBacklog(out: { project: unknown; backlog: unknown }, 
     ...(backlog.success ? [] : backlog.error.issues.map((i) => `backlog.${i.path.join('.')}: ${i.message}`)),
   ];
   if (!project.success || !backlog.success) return { ok: false, issues };
-  const items = keepPreviousKeys(backlog.data.items, previous);
+  const items = keepPreviousKeys(backlog.data.items.filter((i) => !isAdjustment(i.key)), previous);
   const rules = validateBacklog({ epics: backlog.data.epics, items }, { flowHeadings: flowHeadings(flow) });
   if (rules.length > 0) return { ok: false, issues: rules };
-  return { ok: true, value: { project: project.data, backlog: { epics: backlog.data.epics, items: rankItems(items) } } };
+  return { ok: true, value: { project: project.data, backlog: { epics: backlog.data.epics, items: rankItems([...items, ...adjustmentItems(items, approved)]) } } };
 }
 
 /** The backlog as a Markdown view for people (and later agents); generated, never edited by hand. */

@@ -87,6 +87,16 @@ describe('postProcessBacklog', () => {
     const one = previous([item('pricing-plan', { title: 'Plano de preços' })]);
     expect(renamed(one, [item('pricing', { title: 'Preços' }), item('pricing-planning', { title: 'Plano de preços' })])).toEqual(['pricing', 'pricing-planning']);
   });
+
+  it('drops any adjustment the agent writes and adds each approved one after its original (R11.7.4)', () => {
+    const items = [item('opme'), item('opme-ajuste-1', { title: 'inventado' }), item('caso', { priority: 'P0' })];
+    const keys = (approved: string[]) => {
+      const out = postProcessBacklog(raw(items), null, '', approved);
+      return out.ok ? out.value.backlog.items.map((i) => [i.key, i.rank, i.title]) : out.issues;
+    };
+    expect(keys([])).toEqual([['caso', 1, 'Item caso'], ['opme', 2, 'Item opme']]);
+    expect(keys(['opme-ajuste-1'])).toEqual([['caso', 1, 'Item caso'], ['opme', 2, 'Item opme'], ['opme-ajuste-1', 3, 'Ajuste 1: Item opme']]);
+  });
 });
 
 describe('renderBacklogMd', () => {

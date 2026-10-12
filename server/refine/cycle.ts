@@ -10,6 +10,7 @@ import { contradictedChunks, duplicatePairs, duplicatePatches, notReadyCriteria 
 import { routeQuestion } from '../decide/decisions/question-routing.js';
 import type { AgentStepRequest } from '../orchestrator/steps.js';
 import type { StepOutcome } from '../runner/step.js';
+import { approvedAdjustments, isAdjustment } from './adjustments.js';
 import { mergeChecklist, type ChecklistItem } from './checklist.js';
 import { norm, parseDecisions } from './decisions.js';
 import { derivePack, postProcessDerived } from './derive.js';
@@ -139,7 +140,9 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     } else {
       // Backlog mode: the PO breaks the five docs into prioritized items instead of deriving one spec. One retry carries the rejection.
       // R11.7.3: a new draft's first outline starts from main's, so the PO keeps its keys and wording and unchanged items are reused.
-      const previous = before?.items.length ? before : await mainOutline(draft, before);
+      const last = before?.items.length ? before : await mainOutline(draft, before);
+      // R11.7.4: adjustments are the orchestrator's: the PO never sees one, and each comes back from its approval in briefing.md.
+      const previous = last && { ...last, items: last.items.filter((i) => !isAdjustment(i.key)) };
       let rejection: string[] | undefined;
       let accepted: Extract<BacklogCheck, { ok: true }> | null = null;
       for (let attempt = 1; attempt <= 2 && !accepted; attempt++) {
@@ -159,7 +162,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           await fail(`backlog failed: ${out.failure}: ${out.errors.join('; ')}`);
           return;
         }
-        const checked = postProcessBacklog(out.value as BacklogOutput, previous, docs['flow.md']);
+        const checked = postProcessBacklog(out.value as BacklogOutput, previous, docs['flow.md'], approvedAdjustments(docs['brief.md']));
         if (checked.ok) accepted = checked;
         else rejection = checked.issues;
       }
