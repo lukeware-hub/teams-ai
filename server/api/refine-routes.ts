@@ -195,6 +195,11 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       handler: wrap(async ({ params, json }) => json(200, { program: await registry.retryProgramItem(params.projectId!, params.specId!, params.itemSpecId!) })),
     },
     {
+      method: 'POST',
+      path: `${S}/program/:itemSpecId/prioritize`,
+      handler: wrap(async ({ params, json }) => json(200, { program: await registry.prioritizeProgramItem(params.projectId!, params.specId!, params.itemSpecId!) })),
+    },
+    {
       method: 'GET',
       path: `${S}/events`,
       handler: wrap(async ({ req, params, sse }) => {

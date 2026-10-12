@@ -132,6 +132,23 @@ describe('program service tick', () => {
   });
 });
 
+describe('program service prioritize', () => {
+  it('puts a pending item ahead of the queue and starts it at the next free slot', async () => {
+    const item = (key: string, status: string) => ({ specId: `d-${key}`, key, rank: key.charCodeAt(0), dependsOn: [], status, runId: null, completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0, costUsd: null, conflictsWith: [] });
+    await fs.mkdir(path.join(root, 'draft'), { recursive: true });
+    await fs.writeFile(path.join(root, 'draft', 'program.json'), JSON.stringify({ version: 1, draftId: 'd', status: 'running', updatedAt: '', items: [item('a', 'done'), item('b', 'pending'), item('c', 'pending'), item('d', 'pending')] }));
+    const program = await service().prioritize('shop', 'd', 'd-d');
+    expect(program.items.filter((i) => i.status === 'running').map((i) => i.key)).toEqual(['b', 'd']);
+    expect(spawned.map((x) => x.args[x.args.indexOf('--spec') + 1])).toEqual(['d-d', 'd-b']);
+  });
+
+  it('refuses an item that is not pending', async () => {
+    await fs.mkdir(path.join(root, 'draft'), { recursive: true });
+    await fs.writeFile(path.join(root, 'draft', 'program.json'), JSON.stringify({ version: 1, draftId: 'd', status: 'running', updatedAt: '', items: [{ specId: 'd-a', key: 'a', rank: 1, dependsOn: [], status: 'done', runId: null, completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0, costUsd: null }] }));
+    await expect(service().prioritize('shop', 'd', 'd-a')).rejects.toThrow(/not pending/);
+  });
+});
+
 describe('program service retry', () => {
   it('clears a failed item and launches it again', async () => {
     await fs.mkdir(path.join(root, 'draft', 'docs', 'specs', 'd-a'), { recursive: true });

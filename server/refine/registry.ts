@@ -204,6 +204,24 @@ export class SessionRegistry {
     return this.programs.retry(projectId, specId, itemSpecId);
   }
 
+  /** Puts one pending item of a started program ahead of its queue. */
+  async prioritizeProgramItem(projectId: string, specId: string, itemSpecId: string): Promise<Program> {
+    await this.get(projectId, specId);
+    return this.programs.prioritize(projectId, specId, itemSpecId);
+  }
+
+  /** A spec still pending in a started program of this project is prioritized there; null when no program owns it. */
+  async queueInProgram(projectId: string, itemSpecId: string): Promise<{ draftId: string } | null> {
+    for (const row of await this.list()) {
+      if (row.projectId !== projectId || row.state !== 'started') continue;
+      const program = await this.programs.read(projectId, row.specId);
+      if (program?.status !== 'running' || !program.items.some((i) => i.specId === itemSpecId && i.status === 'pending')) continue;
+      await this.programs.prioritize(projectId, row.specId, itemSpecId);
+      return { draftId: row.specId };
+    }
+    return null;
+  }
+
   /** Drafts whose automatic start failed, by evaluation cycle: tried again only after a new cycle, never on every tick. */
   private readonly autoStartFailed = new Set<string>();
 

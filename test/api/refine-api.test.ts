@@ -256,6 +256,16 @@ describe('refine api', () => {
     expect(retriedBody.program.items[0]).toMatchObject({ status: 'running', reason: null });
     expect(retriedBody.program.items[0].runId).not.toBe(body.runId);
     expect(spawns).toHaveLength(2);
+
+    // From the project page, a spec the program still has pending is prioritized there, never launched loose.
+    expect(await registry.queueInProgram('hello-app', 'base')).toBeNull(); // running: nothing to queue
+    const pending = JSON.parse(await fs.readFile(programFile, 'utf8'));
+    pending.items[0] = { ...pending.items[0], status: 'pending', runId: null };
+    await fs.writeFile(programFile, JSON.stringify(pending, null, 2));
+    expect(await registry.queueInProgram('hello-app', 'base')).toEqual({ draftId: 'hello-app-001' });
+    expect(spawns).toHaveLength(3);
+    const prioritized = await call('POST', `${url}/program/base/prioritize`);
+    expect(prioritized.status).toBe(400); // running now, so no longer pending
   });
 
   it('a program whose first run cannot launch leaves no ledger and the session able to start again', async () => {
