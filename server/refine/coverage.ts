@@ -17,8 +17,9 @@ export interface CoverageMatrix {
   items: Array<{ key: string; specId: string | null; criteria: Array<{ id: string; tasks: string[] }> }>;
 }
 
+const STARTED: ReadonlySet<SpecStatus> = new Set(['running', 'paused:quota', 'paused:auth', 'awaiting-validation', 'done']);
 /** A spec whose run started (running, paused, awaiting validation or done): refinement never touches it again (R11.7.2). */
-export const isStarted = (status: SpecStatus): boolean => status !== 'refining' && status !== 'planned';
+export const isStarted = (status: SpecStatus | undefined): boolean => status !== undefined && STARTED.has(status);
 
 const byRank = (b: BacklogState) => [...b.items].sort((x, y) => x.rank - y.rank);
 
