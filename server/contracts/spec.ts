@@ -66,6 +66,15 @@ export const SpecProvenance = z.object({
 });
 export type SpecProvenance = z.infer<typeof SpecProvenance>;
 
+/** An answer to a refinement question, kept with the spec so a later version neither loses it nor asks it again (R11.7.1). */
+export const SpecDecision = z.object({
+  question: z.string().min(1),
+  answer: z.string().min(1),
+  /** The role that answered from the docs (R11.5.7); absent when the owner answered. */
+  by: z.enum(['po', 'sm']).optional(),
+});
+export type SpecDecision = z.infer<typeof SpecDecision>;
+
 export const Spec = z
   .object({
     specId: z.string().regex(ID_PATTERNS.SLUG),
@@ -82,6 +91,7 @@ export const Spec = z
     status: SpecStatus,
     validationReports: z.array(ValidationReport).default([]),
     derivedFrom: SpecProvenance.optional(),
+    decisions: z.array(SpecDecision).optional(),
   })
   .superRefine((spec, ctx) => {
     if (spec.type === 'bug' && !spec.bug) {
@@ -118,6 +128,7 @@ const HASHED_FIELDS = [
   'outOfScope',
   'externalDependencies',
   'tasks',
+  'decisions',
 ] as const;
 
 /** Hashes the parsed form, so defaults (e.g. smoke=false) are always included. */

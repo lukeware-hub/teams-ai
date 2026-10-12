@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalJson, HASH_PATTERN } from '../../server/contracts/hash.js';
+import { canonicalJson, HASH_PATTERN, sha256 } from '../../server/contracts/hash.js';
 import { Plan } from '../../server/contracts/plan.js';
 import { Spec, SpecFrozenError, computeSpecHash, freezeSpec } from '../../server/contracts/spec.js';
 import { makePlan, makeProject, makeSpec } from '../fixtures/contracts.js';
@@ -43,6 +43,15 @@ describe('Spec', () => {
   it('changes the hash when the work item type changes', () => {
     const spec = makeSpec();
     expect(computeSpecHash({ ...spec, type: 'maintenance' })).not.toBe(computeSpecHash(spec));
+  });
+
+  // R11.7.1: decisions are part of the frozen contract, while every spec written before them keeps its hash.
+  it('hashes the decisions, and a spec without them keeps the hash it had before decisions existed', () => {
+    const spec = Spec.parse(makeSpec());
+    const { specId, specVersion, type, bug, objectives, features, acceptanceCriteria, outOfScope, externalDependencies, tasks } = spec;
+    const before = sha256(canonicalJson({ specId, specVersion, type, bug, objectives, features, acceptanceCriteria, outOfScope, externalDependencies, tasks }));
+    expect(computeSpecHash(spec)).toBe(before);
+    expect(computeSpecHash({ ...spec, decisions: [{ question: 'Port?', answer: '8080' }] })).not.toBe(before);
   });
 
   it('rejects malformed acceptance criterion ids', () => {
