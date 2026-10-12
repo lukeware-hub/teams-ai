@@ -42,6 +42,11 @@ describe('decisions config', () => {
     expect(DEFAULT_CONFIG.decisions.perDecision['question-routing']).toMatchObject({ enabled: true, chain: ['jev', 'local'], escalateTo: 'po' });
     // The answer step reads five documents for one question: Sonnet from the second cycle on, as the other refinement checklists.
     expect(DEFAULT_CONFIG.routing.laterCycleModels.answer).toBe('sonnet');
+    // The floor measures itself from the labelled answers unless the config fixes a number or turns it off.
+    expect(DEFAULT_CONFIG.decisions.autoAnswerFloor).toBe('measured');
+    expect(loadConfig({ decisions: { autoAnswerFloor: 0.9 } }).decisions.autoAnswerFloor).toBe(0.9);
+    expect(loadConfig({ decisions: { autoAnswerFloor: 'off' } }).decisions.autoAnswerFloor).toBe('off');
+    expect(() => loadConfig({ decisions: { autoAnswerFloor: 1.5 } })).toThrow(ConfigError);
   });
 
   it('local backend is off by default and points at a llama.cpp server on this host', () => {

@@ -14,6 +14,7 @@ import { fetch as gitFetch, git } from '../git/git.js';
 import { KnowledgeIndex } from '../knowledge/retrieval.js';
 import { expandHome, nextRunId, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
 import { loadEvents } from '../store/event-store.js';
+import { answerFloor } from './auto-floor.js';
 import type { RunAgent } from './cycle.js';
 import type { CycleDeps } from './cycle.js';
 import { cleanDescription, createFromRepo, createNewProject, draftExists, draftPaths, syncWithMain, type Draft, type RouteReport } from './draft.js';
@@ -77,7 +78,7 @@ export class SessionRegistry {
     const key = `${draft.projectId}/${draft.specId}`;
     const p = (async () => {
       const retrieval = (await exists(ws.knowledgeDb)) ? (q: string) => KnowledgeIndex.open(ws.knowledgeDb).search(q, { k: 5 }) : () => [];
-      const deps = { ws, draft, runAgent: this.deps.runAgent, frontAgent: this.deps.runAgent, secretsDir: ws.secrets, retrieval, validateDocs: this.deps.validateDocs, decider: this.deps.decider, autoAnswerFloor: async () => (await this.deps.cfg()).decisions.autoAnswerFloor };
+      const deps = { ws, draft, runAgent: this.deps.runAgent, frontAgent: this.deps.runAgent, secretsDir: ws.secrets, retrieval, validateDocs: this.deps.validateDocs, decider: this.deps.decider, autoAnswerFloor: async () => answerFloor((await this.deps.cfg()).decisions.autoAnswerFloor, path.posix.join(ws.root, 'refine')) };
       return create ? RefineSession.create(deps, create) : RefineSession.open(deps);
     })();
     this.sessions.set(key, p);

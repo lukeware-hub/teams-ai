@@ -185,8 +185,8 @@ export const Config = z.object({
         })
         .prefault({}),
       perDecision: PerDecisionSchema.prefault({}),
-      /** R11.5.7: a blocking refinement question Jev routes `auto` at this confidence or more is answered from the docs by its owner role; unset until `scripts/evals/question-routing.ts` measured a floor. */
-      autoAnswerFloor: unit.optional(),
+      /** R11.5.7: the confidence at or above which a blocking refinement question Jev routes `auto` is answered from the docs; `measured` (the default) takes it from the project's labelled answers, `off` never answers. */
+      autoAnswerFloor: z.union([unit, z.enum(['measured', 'off'])]).default('measured'),
     })
     .prefault({}),
   paths: z
