@@ -4,7 +4,7 @@
 
 **Goal:** a new backlog draft derives again only the items whose sources changed; every other item keeps the spec and pre-plan main already has, with no agent call.
 
-**Architecture:** in backlog detailing, an item with no row in the draft's journal (a new draft) whose spec on main (`readMainSpec`, plan 77) records the same input hash (`derivedFrom.inputHash`) as the item has now is reused: its row comes from main's spec, and main's `preplan.json` too when it was made for that spec revision and the current pre-plan inputs. Items reused this way are never written, so the run's Phase 0 publishes nothing for them.
+**Architecture:** in backlog detailing, an item with no row in the draft's journal (a new draft) whose spec on main (`readMainSpec`, plan 77) records the same input hash (`derivedFrom.inputHash`) as the item has now is reused: its row comes from main's spec, and main's `preplan.json` too when it was made for that spec revision and the current pre-plan inputs. Items reused this way get main's folder back and are never derived again, so the run's Phase 0 publishes nothing for them. Review fix: a new draft's first outline is shown main's outline (`outlineOfIndex` over main's `specs.json`), since a PO never shown it rewords every item and no hash matches.
 
 **Tech Stack:** TypeScript on Node 22 (ES modules), vitest.
 
@@ -28,7 +28,7 @@
 ## Limits
 
 - An item whose key changed in the new outline has no spec on main under its id, so it is derived as new; R11.7.5 handles the old one.
-- `HASH_VERSION` bumps still re-derive every item once, as designed.
+- `HASH_VERSION` bumps still re-derive every item once, as designed; a change to the spec or pre-plan rules reaches an unchanged item only through such a bump.
 
 ---
 
