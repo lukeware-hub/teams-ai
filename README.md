@@ -192,7 +192,7 @@ Sobe a plataforma inteira (orquestrador, API, UI web e um Docker aninhado sem ro
    echo SEU_TOKEN | docker login ghcr.io -u SEU_USUARIO --password-stdin
    ```
 
-   Sem esse login o download falha e o Docker constrói a imagem no seu computador, o que leva alguns minutos. Para fixar uma versão, coloque `TEAMS_AI_IMAGE=ghcr.io/diego-dm-morais/teams-ai:1.2.3` no `.env`. Para desenvolver o próprio Teams AI, use `task up:source`, que constrói a imagem a partir do código desta pasta.
+   Sem esse login o download falha e o Docker constrói a imagem no seu computador, o que leva alguns minutos. Para fixar uma versão, coloque `TEAMS_AI_IMAGE=ghcr.io/diego-dm-morais/teams-ai:1.2.3` no `.env`. Para desenvolver o próprio Teams AI, use `task up:source`, que constrói a imagem a partir do código desta pasta. A imagem publicada é para processadores amd64 (Windows e Linux comuns); em um Mac com Apple Silicon, use `task up:source`.
 
 4. Espere os dois serviços ficarem saudáveis e abra a UI:
 

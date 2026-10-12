@@ -35,8 +35,8 @@ describe('.github/workflows/ci.yml publish job (R9.4)', () => {
     expect(ci.jobs.quality.permissions).toBeUndefined();
   });
 
-  it('builds both platforms, scans, and only then moves latest or the version', () => {
-    expect(step('Build and push the commit tag').with.platforms).toBe('linux/amd64,linux/arm64');
+  it('builds the amd64 image, scans, and only then moves latest or the version', () => {
+    expect(step('Build and push the commit tag').with.platforms).toBe('linux/amd64');
     expect(step('Build and push the commit tag').with.tags).toBe('${{ env.IMAGE }}:${{ github.sha }}');
     expect(step('Scan for critical vulnerabilities').run).toContain('--severity CRITICAL --ignore-unfixed --exit-code 1');
     expect(stepNames.indexOf('Build and push the commit tag')).toBeLessThan(stepNames.indexOf('Scan for critical vulnerabilities'));

@@ -384,7 +384,7 @@ unit-tested with fixtures. Each one needs a plan file in `plans/` before impleme
 ### R9.4 Prebuilt image in GHCR - `built` (plan 82, 2026-10-12; first publish and package visibility pending)
 
 - `task up` would pull instead of building (first start drops from minutes to a download). Needs a publish workflow, a decision on package visibility and a change to `docker-compose.yml` that keeps `test/infra/compose.test.ts` true.
-- Built (plan 82): the compose services use `ghcr.io/diego-dm-morais/teams-ai:latest` (or `TEAMS_AI_IMAGE`) and `task up` and `task start` pull it and build when the pull fails, `task up:source` builds from the folder, and a `publish` job in `ci.yml` pushes the image on `main` or a `v*` tag for amd64 and arm64, scanned with trivy before `latest` moves. The package is private (human, 2026-10-12).
+- Built (plan 82): the compose services use `ghcr.io/diego-dm-morais/teams-ai:latest` (or `TEAMS_AI_IMAGE`) and `task up` and `task start` pull it and build when the pull fails, `task up:source` builds from the folder, and a `publish` job in `ci.yml` pushes the image on `main` or a `v*` tag for amd64 only (the arm64 build failed under emulation on 2026-10-12; a native arm64 runner can bring it back), scanned with trivy before `latest` moves. The package is private (human, 2026-10-12).
 - Open: the first publish and a check of the package visibility on GitHub, then a `task start` on a clean machine after `docker login ghcr.io`.
 ## Stage 10 - Agent quality (2026-10-06)
 
