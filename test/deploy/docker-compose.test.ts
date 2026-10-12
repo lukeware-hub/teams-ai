@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { DockerLocalTarget, teardownProject } from '../../server/deploy/docker-local.js';
+import { composePublishedPort, DockerLocalTarget, teardownProject } from '../../server/deploy/docker-local.js';
 import type { DeploymentIntent, HttpGet } from '../../server/deploy/target.js';
 import { dockerArgs } from '../../server/exec/gate-runner.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
@@ -196,5 +196,18 @@ describe('a service of a system of services', () => {
     const single = new FakeExec();
     await teardownProject(single.exec, 'todo-api', []);
     expect(single.lines('docker')).toEqual(['compose -p teams-ai-todo-api down -v']);
+  });
+});
+
+describe('composePublishedPort', () => {
+  const c = (...ports: string[]) => `services:\n  app:\n    ports:\n${ports.map((p) => `      - "${p}"`).join('\n')}\n`;
+  it('reads the host port of the only published port', () => {
+    expect(composePublishedPort(c('20069:20069'))).toBe(20069);
+    expect(composePublishedPort(c('127.0.0.1:3000:8080'))).toBe(3000);
+  });
+  it('is null with no port, several ports or a variable', () => {
+    expect(composePublishedPort('services:\n  app:\n    image: x\n')).toBeNull();
+    expect(composePublishedPort(c('3000:3000', '3001:3001'))).toBeNull();
+    expect(composePublishedPort(c('${PORT}:3000'))).toBeNull();
   });
 });
