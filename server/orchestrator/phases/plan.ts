@@ -54,7 +54,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
           phase: 'phase2',
           taskId: null,
           attempt,
-          semantic: [((p: ServicesPlan) => validateServicesPlan(p, deps.spec, { services: names, newServices: services.newServices, repoFiles: services.repoFiles, takenPorts: services.takenPorts, ...require })) as never],
+          semantic: [((p: ServicesPlan) => validateServicesPlan(p, deps.spec, { services: names, newServices: services.newServices, repoFiles: services.repoFiles, takenPorts: services.takenPorts, ports: services.ports, ...require })) as never],
         })
       : await deps.runAgent<'plan'>({
           kind: 'plan',

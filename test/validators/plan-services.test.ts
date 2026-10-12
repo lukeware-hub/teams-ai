@@ -23,6 +23,15 @@ describe('validateServicesPlan', () => {
     expect(check(makeServicesPlan(spec))).toEqual([]);
   });
 
+  it('holds each service to the port the orchestrator assigned it: swapped ports pass every other check', () => {
+    const plan = makeServicesPlan(spec);
+    expect(check(plan, { ports: { orders: 3000, inventory: 3001 } })).toEqual([]);
+    expect(check(plan, { ports: { orders: 3001, inventory: 3000 } })).toEqual([
+      'service orders: deploy.port 3000 is not 3001, the port the orchestrator assigned it',
+      'service inventory: deploy.port 3001 is not 3000, the port the orchestrator assigned it',
+    ]);
+  });
+
   it('reports a dependency cycle that crosses services', () => {
     const plan = withTasks((tasks) => tasks.map((t) => (t.id === 'T1-publish-order' ? { ...t, dependsOn: ['T2-reserve-stock'] } : t)));
     expect(check(plan).join()).toContain('dependency cycle');

@@ -32,6 +32,8 @@ export interface ServicesPlanCheckOptions extends Omit<PlanCheckOptions, 'firstS
   newServices: ReadonlySet<string>;
   /** Files tracked on main of each service's repository, by service. */
   repoFiles?: Readonly<Record<string, ReadonlySet<string>>>;
+  /** The host port the orchestrator assigned each service; the other services reach it there in later specs. */
+  ports?: Readonly<Record<string, number | null>>;
 }
 
 /** Is `p` the kind of path planRules reserves for `devops` (Dockerfile, deploy manifests, a CI/release workflow or docker-compose)? */
@@ -86,6 +88,8 @@ export function validateServicesPlan(plan: ServicesPlan, spec: Spec, opts: Servi
     const other = ports.get(view.deploy.port);
     if (other !== undefined) errors.push(`services ${other} and ${name} both use deploy.port ${view.deploy.port}`);
     ports.set(view.deploy.port, name);
+    const assigned = opts.ports?.[name];
+    if (assigned && view.deploy.port !== assigned) errors.push(`service ${name}: deploy.port ${view.deploy.port} is not ${assigned}, the port the orchestrator assigned it`);
     // A service answers only for the criteria its own tasks deliver (a smoke criterion asks for its commands.smoke).
     const share = specShare(spec, view.tasks);
     const own = { ...opts, firstSpec: opts.newServices.has(name), repoFiles: opts.repoFiles?.[name] };
