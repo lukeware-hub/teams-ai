@@ -217,10 +217,11 @@ async function projectDirs(deps: IndexDeps): Promise<Map<string, Array<{ dir: st
   return out;
 }
 
-/** One entry per spec: its own refinement dir speaks for it, else the first dir that carries a copy. */
+/** One entry per spec: its own refinement dir speaks for it, else the first dir that carries a copy. A run started from the clone moves only main past `running`, so a copy already delivered beats the stale own one. */
 function mergeSpecs(dirs: ReadonlyArray<{ dir: string; read: Read }>): Read['specs'] {
   const out = new Map<string, Read['specs'][number]>();
-  for (const { dir, read } of dirs) for (const s of read.specs) if (!out.has(s.specId) || path.basename(dir) === s.specId) out.set(s.specId, s);
+  const delivered = (s?: Read['specs'][number]) => s?.status === 'awaiting-validation' || s?.status === 'done';
+  for (const { dir, read } of dirs) for (const s of read.specs) if (!out.has(s.specId) || (path.basename(dir) === s.specId && !(s.status === 'running' && delivered(out.get(s.specId))))) out.set(s.specId, s);
   return [...out.values()];
 }
 

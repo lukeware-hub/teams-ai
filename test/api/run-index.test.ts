@@ -168,6 +168,18 @@ describe('run index', () => {
     ]);
   });
 
+  it('reports a spec its run delivered from the clone as awaiting-validation, though its own refinement dir still says running', async () => {
+    const own = path.join(home, 'refine', 'hello-001');
+    await fs.cp(HELLO, own, { recursive: true });
+    const clone = path.join(home, 'clone');
+    await fs.cp(HELLO, clone, { recursive: true });
+    const file = path.join(clone, 'docs', 'specs', 'hello-001', 'spec.json');
+    await fs.writeFile(file, JSON.stringify({ ...JSON.parse(await fs.readFile(file, 'utf8')), status: 'awaiting-validation' }));
+    const d = deps();
+    d.cfg = loadConfig({ ...JSON.parse(JSON.stringify(d.cfg)), projects: [{ dir: clone }, { dir: own }] });
+    expect((await listProjects(d))[0]!.specs).toEqual([{ specId: 'hello-001', status: 'awaiting-validation', activeRunId: null }]);
+  });
+
   it('SAFE_ID rejects path tricks', () => {
     expect(SAFE_ID.test('hello-001-r1')).toBe(true);
     expect(SAFE_ID.test('../x')).toBe(false);
