@@ -7,10 +7,10 @@ The single list of what is left until the POC is done. Plan history lives in `pl
 The golden run criteria in spec §1.3 (`specs/2026-09-23-teams-ai-poc-design.md`):
 
 - Two runs on the reference spec (`test/fixtures/todo-api`), agents on the Claude Code CLI only: run 1 baseline
-  (decisions off) and run 3 full (System 1 decisions on). The old run 2 (OmniRoute) was dropped on 2026-10-05.
+  (decisions off) and run 3 full (System 1 decisions on).
 - Zero human interaction between Start and `awaiting-validation`.
 - Every acceptance criterion `passed` in JUnit.
-- Green deploy and smoke tests on `docker-local` (the `kind` target was dropped on 2026-10-05).
+- Green deploy and smoke tests on `docker-local`.
 - Zero duplicate PRs; `main` green after every merge.
 - The two runs compared on tokens, retries, wall time, blocked tasks and escalation rate.
 - Every generated project ships the full delivery contract (Stage 8): code, docs, unit and e2e tests, security scans,
@@ -30,10 +30,9 @@ Status values: `todo` → `planning` → `approved` → `in progress` → `done`
 
 ## Current item
 
-**R6.1 superseded (human, 2026-10-05): the platform runs as ONE container from `docker-compose.yml`, no Kubernetes.**
+**The platform runs as ONE container from `docker-compose.yml` (human, 2026-10-05).**
 `docker compose up -d --build`, UI on `http://localhost:8787` (token in `.env`). Gates and docker-local deploys run as
-sibling containers through the mounted docker socket. Removed: `deploy/k8s`, the Job gate executor and the `executor`
-config, and the `kind` deploy target (generated projects deploy with `docker-local` only). The UI needs no token:
+sibling containers through the mounted docker socket. Generated projects deploy with `docker-local` only. The UI needs no token:
 the port is published on the host loopback only (`TEAMS_AI_UI_LOOPBACK_PUBLISHED`).
 
 **Security block (plan 40, 2026-10-05):** code and tests done (rootless `dind` instead of the host socket, gate hardening, absolute secret denies). Open: live check of `docker compose up` with `dind` and of a docker-local deploy through it; the agent-reach probe (needs a `claude` login). Egress stays unrestricted by decision.
@@ -41,11 +40,9 @@ the port is published on the host loopback only (`TEAMS_AI_UI_LOOPBACK_PUBLISHED
 ## Pause log
 
 - **2026-10-04, end of the day — stopped by the human; everything saved to `main`.**
-  - Done today (details in each item): Stages 6 (plan only), 7, 7b, 7c, 7d and 8 (R8.1–R8.6 at unit level, 981 root and 58 web tests passing at the last full run), decisions 2–4, 7, 8 and 12, R2.2 checked in the browser, golden run 1 (deploy-failed at smoke, $14.34).
+  - Done today (details in each item): Stages 7, 7b, 7c, 7d and 8 (R8.1–R8.6 at unit level, 981 root and 58 web tests passing at the last full run), decisions 2–4, 7, 8 and 12, R2.2 checked in the browser, golden run 1 (deploy-failed at smoke, $14.34).
   - **Blocker 1, the claude login on the WSL distro is broken** (my plan 20 runner copied the credential into a throwaway HOME and discarded the rotated token; fixed in `step-home.ts` and `AUTH_TEXT`, but the existing login is dead). The human must run `claude auth login` on the Ubuntu distro (or create a long-lived token with `claude setup-token` and export `CLAUDE_CODE_OAUTH_TOKEN`). Until then no agent step runs there. Verified again at the stop: `OAuth session expired and could not be refreshed`.
   - **Golden run 3 (R5.1) failed at Phase 1 after 74 s ($0.22)** because of that login; repository `lukeware70X7/teams-ai-todo-api-r3` and run `todo-001-r3` exist. Restart with a new `TEAMS_AI_PROJECT` (for example `todo-api-r4`) from a clean export of `main`, decisions on with the chain `local` then `claude`; restore `~/.teams-ai/config.json` afterwards (it is `{ "github": { "owner": "lukeware70X7" } }` now).
-  - **R6.1 cutover (plan 31): NOT started.** The human gave the go for stages 1–5, but the background build was cut off before anything ran (`~/cutover-12.log` has only its first line): the kind cluster `teams-ai` and the image `teams-ai-backend:local` are the old ones. Restart at stage 1. Stage 6 (removal) still needs a second explicit yes.
-  - **Egress of agent steps:** the human answered "open for now", but the change was NOT applied: a local commit of the kind-overlay patch was dropped unpushed after the human rejected the command that would publish it. `main` keeps the default-deny allowlist (plan 23) with placeholder CIDRs, so agent steps have no external egress in the cluster. Ask again before applying.
   - Another session (`teams-ai-a5`) has about 44 uncommitted files in the main working tree (concurrency, atomic writes, smoke host fix, kind.ts YAML, sec diff in the pack, Validation page); they are NOT in `main` and not mine. Its changes overlap files of the Stage 7–8 work, so expect conflicts when it commits.
   - Still open: R8.7 (golden run on the full contract), R2.3 (real logins), real egress CIDRs, the two-run comparison (R5.2) and the decision evals with data (R5.3). Resume from this entry: after the login is redone, start with golden run 3.
 
@@ -56,13 +53,12 @@ window resets, resume exactly from the entry below.
   the previous Claude Code session (journal intact, last event `RUN_PAUSED` until 18:30Z). Resume on WSL after
   18:30Z: `cd ~/teams-ai-live && ./node_modules/.bin/tsx --no-warnings=ExperimentalWarning server/cli.ts resume
   --project ~/.teams-ai/workspaces/todo-api/repo --run todo-001-r1 > ~/golden-run-1.log 2>&1` (run it detached with
-  `setsid nohup ... &` so it survives the session). Done since the first pause: R1.2 code, R4.1 code, R4.2, R4.3,
+  `setsid nohup ... &` so it survives the session). Done since the first pause: R4.1 code, R4.2, R4.3,
   R5.3 harness (see each item).
 - **2026-10-04 17:05Z — paused (5-hour window ≥ 95 %).** The orchestrator's quota breaker paused run
   `todo-001-r1` at 16:56Z until **18:30Z** (`RUN_PAUSED`, `reason: quota`); the run process stays alive and resumes
   by itself. Resume point: R1.1 — check `~/golden-run-1.log` and `~/.teams-ai/runs/todo-001-r1/events.ndjson` on
-  WSL; when the run ends, record the outcome in R1.1, delete the untracked `gr-tmp.sh` launcher at the repo root,
-  then plan R1.2 (plan before implementing).
+  WSL; when the run ends, record the outcome in R1.1, delete the untracked `gr-tmp.sh` launcher at the repo root.
 
 ## Stage 1 — Golden run 1 (baseline)
 
@@ -90,13 +86,12 @@ window resets, resume exactly from the entry below.
   ran 3 tests and all failed). Cause, named by the agents themselves: the smoke gate runs in a container whose
   `SERVICE_URL=http://127.0.0.1:3000` is the container's own loopback, not the service; it needs the shared Docker
   network and the app container name, `--network host` or `host.docker.internal`. An environment fault of the
-  docker-local target, not a code fault. In Kubernetes the smoke runs as a pod against the Service DNS name.
+  docker-local target, not a code fault.
 - §1.3 checked: zero human interaction Start to terminal: yes; every AC `passed` in JUnit: not shown (smoke not
   passed); deploy and smoke green: no; duplicate PRs and `main` green: not verified.
-- Findings: (1) docker-local smoke cannot reach the service (fix with the k8s Job runner in R7.1, or a network fix
-  for docker-local); (2) one run costs about $14 on this spec, 4x the hello-app baseline; (3) the agents' final
+- Findings: (1) docker-local smoke cannot reach the service (needs a network fix for docker-local); (2) one run costs about $14 on this spec, 4x the hello-app baseline; (3) the agents' final
   blocking notice is carried as a spec-gap question, which burned 3 spec-gap rounds.
-- R1.2 and the comparison now use this result as the run 1 data point.
+- The comparison uses this result as the run 1 data point.
 
 ## Stage 2 — Browser checks (cheap, on the run 1 result)
 
@@ -205,7 +200,7 @@ window resets, resume exactly from the entry below.
 - Launched 2026-10-04 on WSL from a clean export of commit a557e86 (not the working tree with another session's edits):
   `TEAMS_AI_GH_OWNER=lukeware70X7 TEAMS_AI_FIXTURE=todo-api TEAMS_AI_PROJECT=todo-api-r3 tsx scripts/integration/orchestrator.ts`
   from `~/teams-ai-run3`; repository `lukeware70X7/teams-ai-todo-api-r3`; log `~/golden-run-3.log`. Authorized by the human.
-- Deviation from spec §1.3: run 3 is Claude only (OmniRoute was dropped, R3.1) with System 1 decisions on and the chain
+- Deviation from spec §1.3: run 3 is Claude only with System 1 decisions on and the chain
   `local` then `claude` (`local` only for model-tier and cli-error); the Jev (OpenRouter) is NOT used, to avoid external spend.
 - It is the first live run of the runner-security changes (empty step HOME, mandatory sandbox), of `requireDelivery` (a plan without `delivery` is rejected) and of the Gate 1 / decision journaling.
 - **Restore after the run:** `~/.teams-ai/config.json` was changed to turn decisions on; the original is `~/config.json.bak-run3` (it held only `{ "github": { "owner": "lukeware70X7" } }`).
@@ -266,13 +261,12 @@ Five branches built, reviewed, merged and fixed (855 passing, typecheck clean). 
 
 - **SSE lifetime:** streams close after 30 min total or 10 min idle with `event: reconnect`; the client reconnects with `Last-Event-ID`. Timeouts are `ApiDeps` options, not yet read from the config file.
 - **Clone host check:** a host that does not resolve is now refused; the DNS-rebinding window (git resolves again at clone time) is narrowed, not closed (pinning the IP breaks TLS/SNI with plain git); see plan 25.
-- **Gate logs:** the k8s gate wrapper keeps stdout and stderr apart (last 500 lines each between markers), so infra failures classify as `infra`; the wrapper has no test against a real `sh` and `kubectl`, and a gate with more than 500 lines of output loses the early lines.
 - **Supervise CLI test:** the loop is tested through `main()` with injected index, liveness and spawner; `docker-compose.yml` no longer mounts the Docker socket or `/root` (not validated with `docker compose config`).
 
 ### Stage 7d — Gaps left open by Stage 8 and R2.2 (2026-10-04, plans 35–38; 981 root and 58 web tests passing)
 
 - **E2E evidence and scope (plan 35):** e2e rows are shown per acceptance criterion in the evidence matrix, the Phase 6 report and the Validation page (new E2E column). The rigid "a test for every criterion" rule is replaced by `plan.e2eExemptions: [{acId, reason}]` set by the SM (reason of at least 10 characters, unknown or duplicate ids rejected, exempting every criterion rejected). No `runPhase6` test shows the rows in the report yet.
-- **Deploy lifecycle (plan 36):** a failed first deploy (no previous image) now tears the new stack down (`destroy`: compose `down -v`, `docker rm -f`, or the kind manifests and secret); a missing delivery file at Phase 4 plans deterministic fix tasks (devops for Dockerfile/compose/workflows, dev for the e2e suite and README sections) and reuses the round budget; `readmeSections` is checked only when `docs/README.md` already exists. Open: a failure in the apply stage of a first deploy is not torn down; the fix tasks are templates, not agent-planned; the README match is a case-insensitive substring.
+- **Deploy lifecycle (plan 36):** a failed first deploy (no previous image) now tears the new stack down (`destroy`: compose `down -v`, `docker rm -f`); a missing delivery file at Phase 4 plans deterministic fix tasks (devops for Dockerfile/compose/workflows, dev for the e2e suite and README sections) and reuses the round budget; `readmeSections` is checked only when `docs/README.md` already exists. Open: a failure in the apply stage of a first deploy is not torn down; the fix tasks are templates, not agent-planned; the README match is a case-insensitive substring.
 - **Image scan and installer (plan 37):** the always-available image gate is `trivy config` plus `trivy fs` (CRITICAL, exit code 1); the build also exports an archive (`.tools/image.tar`, buildctl OCI output or `docker save`) when the plan has an image-scan gate. The `security-tools` gate must be exactly `sh .tools/install.sh`, an installer the orchestrator renders with pinned versions and sha256 checks (gitleaks 8.28.0, osv-scanner 2.2.2, trivy 0.75.0, semgrep 1.131.0 via pip). Open: the pinned checksums and the install script were never run.
 - **Drain and auth race (plan 38):** the drain bug of R2.2 is fixed: `Run.loop()` restarted every active task while draining, so each task's next step started after `RUN_STOP_REQUESTED`; now only in-flight steps finish after a stop (a budget drain keeps its older contract). A per-process refresh gate (`withRefreshGate`) lets one step refresh an expiring OAuth token while the others wait; `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) is passed through instead of copying the credential file and is the cross-process answer. Open: a step longer than the API's 15 s graceful window is still killed on stop and re-run on resume; the gate was only tested with a fake claude; two orchestrator processes on one host can still race without the env token.
 
@@ -280,8 +274,6 @@ Five branches built, reviewed, merged and fixed (855 passing, typecheck clean). 
   deny rules bypassable through `node`/`npm`; root container with the Docker socket) are made worse by the requested
   fully open NetworkPolicies. Recommended: keep ingress open, but give agent-step pods a default-deny egress plus an
   allowlist (registry, model endpoints), separate ServiceAccounts and no credentials in their HOME.
-- Next, in order: R7.4 fixes for critical/high; R7.1 Job gate runner and registry build (needs a plan: it changes
-  `server/exec` and `server/deploy`); R7.2 allowed hosts for in-cluster use; then R6.1 cutover with the human.
 
 ## Stage 8 — Delivery contract for generated projects (audit 2026-10-04)
 
@@ -291,16 +283,16 @@ repo registry, and a local docker infra ready to start**. Audit of what ships to
 
 | Criterion | Today | Gap |
 |---|---|---|
-| Code | Hard gates (format, lint, unit, build, secret-scan) | no run has reached `awaiting-validation` yet (R1.2/R7.1) |
+| Code | Hard gates (format, lint, unit, build, secret-scan) | no run has reached `awaiting-validation` yet |
 | Documentation | `docs/README.md` only, written by the SM from a prompt | no docs gate; a failed README step is swallowed (`phases/report.ts:44`); no runbook or API docs |
 | Unit tests | Hard gate; AC ids in test names; evidence matrix | none known |
 | E2E tests | none (only `commands.smoke` after deploy, failed live) | no e2e step, gate or agent prompt for the generated project |
 | Secure code | Sec agent blocks `critical`/`high` per task diff; `secret-scan` required by name | SM picks the command; no SAST, dependency audit or image scan |
 | GitHub Actions | none | bootstrap commits `docs/` only; devops does not emit `.github/workflows` |
-| Build + push image | docker-local: build and run, no push; kind: push to an in-cluster insecure registry | no push to GHCR or another registry; no CI-driven pipeline |
+| Build + push image | docker-local: build and run, no push | no push to GHCR or another registry; no CI-driven pipeline |
 | Local docker infra | Dockerfile and compose are free-form paths | compose not enforced or validated; docker-local is one `docker run`; smoke failed live |
 
-Items below depend on R1.2/R7.1 (a run must reach the end first), except R8.1, R8.3 and R8.6, which can be built and
+Items below depend on a run reaching the end first, except R8.1, R8.3 and R8.6, which can be built and
 unit-tested with fixtures. Each one needs a plan file in `plans/` before implementation. Items touching
 `server/exec`, `server/deploy` or `server/orchestrator` collide with work in flight; do them in a separate worktree.
 
