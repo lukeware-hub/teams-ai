@@ -4,6 +4,7 @@ import { refineApi, runApi, startedPath, type DraftRow, type NameRequest, type N
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
+import { BacklogBanner } from '../refine/ProgramPanel.js';
 import { Bone, Skeleton } from '../components/Loading.js';
 import { ACTIVE, CONTINUABLE, HELP, RECENT_RUNS, action, chip, emptyState, grouped, money, panel, plural, row, rowActions, rowId, rows, runName, sectionHeading, sectionTitle, when } from './project-shared.js';
 
@@ -75,6 +76,8 @@ export function ProjectHubView(p: {
   notFound: boolean;
   runs: RunRow[];
   drafts: DraftRow[];
+  /** Started specs whose backlog may be running, shown first with the way to their execution screen. */
+  backlogs?: string[];
   error: string | null;
   deleteError: string | null;
   onStart: (specId: string) => void;
@@ -167,6 +170,7 @@ export function ProjectHubView(p: {
           ) : null}
         </div>
       </header>
+      {(p.backlogs ?? []).map((specId) => <BacklogBanner key={specId} projectId={pr.projectId} specId={specId} />)}
       <div className={stats}>
         <div className={`${stat} border-line bg-surface shadow-card`}>
           <span className={`${statValue} text-ink`}>{pr.specs.length}</span>
@@ -444,6 +448,7 @@ export function ProjectHub() {
   const [notFound, setNotFound] = useState(false);
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [drafts, setDrafts] = useState<DraftRow[]>([]);
+  const [backlogs, setBacklogs] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -456,7 +461,12 @@ export function ProjectHub() {
       setNotFound(found === null);
       if (found) {
         setRuns(await runApi.runs(projectId));
-        setDrafts((await refineApi.list()).filter((d) => d.projectId === projectId && d.state !== 'started'));
+        const own = (await refineApi.list()).filter((d) => d.projectId === projectId);
+        setDrafts(own.filter((d) => d.state !== 'started'));
+        setBacklogs((current) => {
+          const next = own.filter((d) => d.state === 'started').map((d) => d.specId);
+          return next.join() === current.join() ? current : next;
+        });
       }
     } catch (e) {
       setError((e as Error).message);
@@ -495,6 +505,7 @@ export function ProjectHub() {
       notFound={notFound}
       runs={runs}
       drafts={drafts}
+      backlogs={backlogs}
       error={error}
       deleteError={deleteError}
       onStart={(specId) => void act(async () => {

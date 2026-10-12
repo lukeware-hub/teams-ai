@@ -1193,6 +1193,8 @@ Not yet pinned by a reference. Until one exists, they inherit Part I and §25 wi
 
 ### 27.1 Backlog execution — `/refine/:projectId/:specId/program`
 
+**Reached in two clicks:** while a backlog runs, the project hub shows its status card right under the project header, with an `Abrir a execução do backlog` button; the refinement page shows the same card. A started refinement is no longer listed under "Refinamentos em andamento", so this card is the way in.
+
 Same parts as the hub, nothing new: the breadcrumb, a status card (spinner or check, "Executando o backlog · N de M concluídas", the progress bar, then one line per spec running now with a pulsing dot and "Acompanhar a run"), and a panel "Specs do backlog" with the count and total cost at its right. Each spec is one row on fixed columns — rank, title with its run id under it in mono, the hub's status pill, cost right-aligned, then the action (`Executar agora`, `Tentar de novo`, or the `prioritária` chip). A live row has a faint `accent-soft` ground. Below 1024px status, cost and action wrap under the title.
 
 ## 28. Copy

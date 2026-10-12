@@ -49,6 +49,23 @@ export function useProgram(projectId: string, specId: string, enabled: boolean) 
   return { program, phases, setProgram };
 }
 
+/** The backlog's item titles by key, read once from the refinement snapshot. */
+export function useBacklogTitles(projectId: string, specId: string) {
+  const [titles, setTitles] = useState<Record<string, string>>({});
+  useEffect(() => {
+    refineApi.snapshot(projectId, specId).then((s) => setTitles(Object.fromEntries((s.state.backlog?.items ?? []).map((i) => [i.key, i.title])))).catch(() => undefined);
+  }, [projectId, specId]);
+  return titles;
+}
+
+/** A running backlog's status card with the way to its execution screen; nothing when the spec has no backlog or it finished. */
+export function BacklogBanner({ projectId, specId }: { projectId: string; specId: string }) {
+  const { program, phases } = useProgram(projectId, specId, true);
+  const titles = useBacklogTitles(projectId, specId);
+  if (!program || program.status === 'finished') return null;
+  return <ProgramStatus program={program} titles={titles} phases={phases} link={`/refine/${projectId}/${specId}/program`} />;
+}
+
 /** The banner of a started backlog: a spinner while it runs, the progress, and each spec running now with its phase. */
 export function ProgramStatus({ program, titles, phases, link }: { program: ProgramView | null; titles: Record<string, string>; phases: Record<string, number>; link?: string }) {
   const done = program?.items.filter((i) => i.status === 'done').length ?? 0;
@@ -71,7 +88,7 @@ export function ProgramStatus({ program, titles, phases, link }: { program: Prog
               {i.runId && <>· <Link to={`/runs/${i.runId}`}>Acompanhar a run</Link></>}
             </p>
           ))}
-          {link && <p><Link to={link}>Abrir a execução do backlog</Link></p>}
+          {link && <p className="mt-1"><Link to={link} className="link-button">Abrir a execução do backlog<Icon name="arrow-right" size={14} /></Link></p>}
         </div>
       )}
     </div>
