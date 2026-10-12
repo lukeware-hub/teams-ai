@@ -160,6 +160,17 @@ describe('ProjectHubView', () => {
     fireEvent.click(screen.getByTestId('continue-hello-009'));
     expect(o.cont).toHaveBeenCalledWith('hello-009');
   });
+  it('an awaiting-validation spec without a run has no Validar link, only Continuar spec', () => {
+    const o = on();
+    const awaiting = { ...project, specs: [{ specId: 'hello-009', status: 'awaiting-validation', activeRunId: null }] };
+    render(
+      <MemoryRouter>
+        <ProjectHubView project={awaiting} notFound={false} runs={[]} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByTestId('validate-hello-009')).toBeNull();
+    expect(screen.getByTestId('continue-hello-009')).toBeTruthy();
+  });
   it('restarting an awaiting-validation spec asks first, then calls onRestart', () => {
     const o = on();
     const awaiting = { ...project, specs: [{ specId: 'hello-009', status: 'awaiting-validation', activeRunId: null }, { specId: 'hello-010', status: 'done', activeRunId: null }] };

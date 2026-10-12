@@ -323,10 +323,13 @@ export function ProjectHubView(p: {
                         <Icon name="arrow-right" size={14} />
                       </Link>
                     ) : s.status === 'awaiting-validation' ? (
-                      <Link className={action.primary} data-testid={`validate-${s.specId}`} aria-label={`Validar ${s.specId}`} to={`/runs/${lastRunOf(s.specId)}/validation`}>
-                        Validar
-                        <Icon name="arrow-right" size={14} />
-                      </Link>
+                      // An imported spec has no run here yet: there is nothing to open, and Continuar spec makes one.
+                      lastRunOf(s.specId) ? (
+                        <Link className={action.primary} data-testid={`validate-${s.specId}`} aria-label={`Validar ${s.specId}`} to={`/runs/${lastRunOf(s.specId)}/validation`}>
+                          Validar
+                          <Icon name="arrow-right" size={14} />
+                        </Link>
+                      ) : null
                     ) : s.status === 'done' ? (
                       lastRunOf(s.specId) ? (
                         <Link className={action.secondary} data-testid={`validation-${s.specId}`} aria-label={`Ver validação de ${s.specId}`} to={`/runs/${lastRunOf(s.specId)}/validation`}>
