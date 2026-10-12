@@ -33,6 +33,7 @@ import { addProject, readUserConfig } from './onboarding/config-store.js';
 import { hasScript, spawnScriptPty } from './onboarding/pty.js';
 import { DockerLocalTarget } from './deploy/docker-local.js';
 import { httpGet } from './deploy/target.js';
+import { readRepairNotes } from './program/repair-notes.js';
 
 export interface CliIo {
   argv: string[];
@@ -233,7 +234,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   }
   const bootstrap = draft ? { docsDir: path.join(projectDir, 'docs'), owner: project.github.owner ?? cfg.github.owner } : undefined;
   const target = new DockerLocalTarget({ exec, get: httpGet, secrets, serviceHost: cfg.docker.serviceHost, publishBind: cfg.docker.publishBind });
-  return { cfg, ws, project, spec, firstSpec, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, requireCoverage: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target };
+  return { cfg, ws, project, spec, repairNotes: await readRepairNotes(projectDir, specId), firstSpec, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, requireCoverage: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target };
 }
 
 type Factory = (deps: RunDeps, runId?: string, explicitId?: string) => Promise<Run>;

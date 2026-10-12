@@ -11,3 +11,6 @@ export async function writeRepairNotes(root: string, specId: string, failures: r
 }
 
 export const readRepairNotes = (root: string, specId: string): Promise<string | null> => fs.readFile(repairNotesFile(root, specId), 'utf8').catch(() => null);
+
+/** The assumptions a step sees: the failures of the earlier attempts first, then what this run logged. */
+export const withRepairNotes = (notes: string | null | undefined, assumptions: readonly string[]): readonly string[] => (notes ? [`The earlier run of this spec failed, and this run must not repeat it:\n${notes.trim()}`, ...assumptions] : assumptions);
