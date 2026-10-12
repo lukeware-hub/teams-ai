@@ -588,7 +588,7 @@ export class Run {
     if (single) return this.deps.bootstrap ? runWorkflowBootstrap(this.phaseDeps(), single) : { ok: true };
     for (const view of servicePlans(plan).filter((v) => this.firstSpecOf(v))) {
       const r = await runWorkflowBootstrap({ ...this.phaseDeps(), ws: this.wsOf(view), service: view.service!, mergeDeps: this.mergeDeps(view) }, view.plan);
-      if (!r.ok) return r;
+      if (!r.ok) return { ...r, reason: `service ${view.service}: ${r.reason}` };
     }
     return { ok: true };
   }

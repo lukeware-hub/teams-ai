@@ -157,6 +157,17 @@ describe('Run with a services plan', () => {
     await run.close();
   });
 
+  it("names the service whose workflows did not land", async () => {
+    const inventory = serviceWorkspace(ws, 'inventory').repo;
+    const refusing = new FakeExec().onArgs('gh', ['pr', 'merge'], () => ({ exitCode: 1, stderr: 'merge blocked by a branch rule' }));
+    ghs.get('inventory')!.install(refusing);
+    ghExecs.set(inventory, refusing);
+    const run = await Run.create(await deps());
+    const r = await run.executeWorkflows({ ...plan, tasks: [...plan.tasks, scaffold('orders'), scaffold('inventory')] });
+    expect(r.ok ? '' : r.reason).toMatch(/^service inventory: /);
+    await run.close();
+  });
+
   it('leaves a service that is not new without workflows', async () => {
     const run = await Run.create(await deps());
     expect(await run.executeWorkflows({ ...plan, tasks: [...plan.tasks, scaffold('inventory')] })).toEqual({ ok: true });

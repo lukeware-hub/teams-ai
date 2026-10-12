@@ -83,6 +83,9 @@ describe('stopped run explanations', () => {
     expect(explainStop('Review requested changes:\nuse a constant')).toMatchObject({ owner: 'Sistema' });
     expect(explainStop('spec-gap rounds exhausted (3); last question: which currency?')).toMatchObject({ owner: 'Você' });
     expect(explainStop('something nobody has seen before')).toBeNull();
+    // A service's workflows failing to land explain themselves like the project's.
+    expect(explainStop('service inventory: docs merge failed: blocked')).toEqual(explainStop('docs merge failed: blocked'));
+    expect(explainStop('service inventory: rendered .github/workflows/ci.yml is invalid: x')).toEqual(explainStop('rendered .github/workflows/ci.yml is invalid: x'));
   });
 
   it('lastDeployFailure is the latest failure unless a later deploy verified', () => {
