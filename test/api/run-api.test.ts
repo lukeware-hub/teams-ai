@@ -211,6 +211,15 @@ describe('projects', () => {
     expect((await res.json()).error).toMatch(/docs\/project\.json não foi encontrado; .*serviço.*repositório de documentação/);
   });
 
+  it('refuses an import whose project id already belongs to a clone of another repository', async () => {
+    const repo = path.join(home, '.teams-ai', 'workspaces', 'hello-app', 'repo');
+    await fs.mkdir(repo, { recursive: true });
+    for (const args of [['init', '-q'], ['remote', 'add', 'origin', 'https://github.com/acme/owner.git']]) await execCommand({ bin: 'git', args, cwd: repo, timeoutMs: 10_000 });
+    const res = await post('/api/projects', { url: 'https://github.com/acme/intruder.git' });
+    expect(res.status).toBe(409);
+    expect((await readUserConfig(home)).cfg.projects.map((p) => p.dir)).not.toContain(repo);
+  });
+
   it('refuses hosts outside the allowlist, private literals, internal names and private resolutions (audit M1)', async () => {
     const err = async (url: string) => {
       const r = await post('/api/projects', { url });

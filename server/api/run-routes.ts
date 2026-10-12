@@ -51,6 +51,9 @@ export function githubRepoUrl(remote: string): string | null {
   return m ? `https://github.com/${m[1]}/${m[2]}` : null;
 }
 
+const originOf = (dir: string): Promise<string | null> =>
+  execCommand({ bin: 'git', args: ['remote', 'get-url', 'origin'], cwd: dir, timeoutMs: 5_000 }).then((r) => (r.exitCode === 0 ? r.stdout.trim() : null), () => null);
+
 /** GitHub page of the clone at repoDir, or null when it has no GitHub origin. */
 async function repoUrlOf(repoDir: string): Promise<string | null> {
   const remote = await execCommand({ bin: 'git', args: ['remote', 'get-url', 'origin'], cwd: repoDir, timeoutMs: 5_000 }).catch(() => null);
@@ -105,8 +108,11 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
   const settleImport = async (cfg: Config, downloaded: string, projectId: string): Promise<string> => {
     const repo = workspacePaths(cfg, projectId, deps.home).repo;
     if (path.resolve(repo) === downloaded) return downloaded;
-    if (await fs.access(repo).then(() => true, () => false)) await fs.rm(downloaded, { recursive: true, force: true });
-    else {
+    if (await fs.access(repo).then(() => true, () => false)) {
+      // The id comes from the downloaded repository, so an existing clone is reused only when it came from the same address.
+      if ((await originOf(repo)) !== (await originOf(downloaded))) throw new HttpError(409, `já existe um projeto com o id ${projectId} vindo de outro repositório`);
+      await fs.rm(downloaded, { recursive: true, force: true });
+    } else {
       await fs.mkdir(path.dirname(repo), { recursive: true });
       await fs.rename(downloaded, repo);
     }
