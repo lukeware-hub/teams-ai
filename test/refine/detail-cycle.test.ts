@@ -1,4 +1,4 @@
-import { access, cp, mkdtemp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { access, cp, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -130,7 +130,8 @@ describe('backlog detailing in the refinement cycle', () => {
   });
 
   // R11.7.3: a new draft over what main already planned derives nothing again unless a cited section changed.
-  const secondDraft = async (change?: (flow: string) => string) => {
+  type Env = Awaited<ReturnType<typeof setup>>;
+  const secondDraft = async (change?: (second: Env) => Promise<unknown>, agent = fakeAgent(() => OUTLINE)) => {
     const first = await setup();
     const agent1 = fakeAgent(() => OUTLINE);
     await first.run(agent1, 1);
@@ -139,14 +140,14 @@ describe('backlog detailing in the refinement cycle', () => {
     // Main as the first draft published it becomes the base copy of a new draft over the same folder.
     await cp(first.docs, first.draft.base!, { recursive: true });
     const second = await setup(first.draft.root);
-    if (change) await writeFile(second.draft.flowMd, change(FLOW));
-    const agent = fakeAgent(() => OUTLINE);
+    if (change) await change(second);
     await second.run(agent, 1);
     await second.journal.fact(RefineEvent.BacklogDetailEnabled, {});
     const from = agent.calls.length;
     await second.run(agent, 2);
-    return { second, detailing: agent.calls.slice(from).filter((c) => c.kind === 'spec' || c.kind === 'preplan') };
+    return { second, agent, detailing: agent.calls.slice(from).filter((c) => c.kind === 'spec' || c.kind === 'preplan') };
   };
+  const named = (calls: Array<{ feedback: string }>, header: string) => calls.flatMap((c) => [...c.feedback.matchAll(new RegExp(`^## ${header} ([a-z0-9-]+):`, 'gm'))].map((m) => m[1])).sort();
 
   it("reuses main's spec and pre-plan of every item whose inputs did not change", async () => {
     const { second, detailing } = await secondDraft();
@@ -156,9 +157,68 @@ describe('backlog detailing in the refinement cycle', () => {
   });
 
   it('derives again only the item whose cited section changed', async () => {
-    const { second, detailing } = await secondDraft((flow) => flow.replace('C --> D', 'C --> D2[Cotação]'));
+    const { second, detailing } = await secondDraft((d) => writeFile(d.draft.flowMd, FLOW.replace('C --> D', 'C --> D2[Cotação]')));
     expect(detailing.filter((c) => c.kind === 'spec').map((c) => [...c.feedback.matchAll(/^## Item ([a-z0-9-]+):/gm)].map((m) => m[1]))).toEqual([['opme']]);
     expect(second.journal.state.status).toBe('ready');
+  });
+
+  // Plan 78 review: a real PO rewords an outline it was never shown, so a new draft's first outline starts from main's.
+  it("shows a new draft's first outline main's, so a PO that rewords without it keeps the wording and nothing is derived again", async () => {
+    const rewords = fakeAgent(() => OUTLINE, (req) => {
+      if (req.kind !== 'backlog') return undefined;
+      const shown = String(req.pack.feedback).split('### previous backlog (keep the keys)\n\n')[1]?.split('\n\n### ')[0];
+      return shown && shown !== '(none)' ? undefined : ok({ specHash: H, project: makeProject(), backlog: { epics, items: OUTLINE.map((i) => ({ ...i, title: `${i.title} revisto` })) } });
+    });
+    const { second, detailing } = await secondDraft(undefined, rewords);
+    expect(detailing).toEqual([]);
+    expect(second.journal.state.status).toBe('ready');
+  });
+
+  // Plan 78 review: an item dropped and added again in the same draft lost its folder, and its run could not read its spec.
+  it('brings back the files of an item dropped and added again in the same draft', async () => {
+    let outline = OUTLINE;
+    const agent = fakeAgent(() => outline);
+    const { second } = await secondDraft(undefined, agent);
+    const fat = `${second.itemDir('fat')}/spec.json`;
+    outline = OUTLINE.filter((i) => i.key !== 'fat');
+    await writeFile(second.draft.flowMd, FLOW.replace('%% 4. Faturamento\n  D --> E\n', ''));
+    await second.run(agent, 3);
+    expect(await exists(fat)).toBe(false);
+    outline = OUTLINE;
+    await writeFile(second.draft.flowMd, FLOW);
+    await second.run(agent, 4);
+    expect(await exists(fat)).toBe(true);
+    expect(second.journal.state.status).toBe('ready');
+  });
+
+  // Plan 78 review: the plan's focus 3 to 5 as tests.
+  it('makes every pre-plan again when stack.md changed, and still reuses the specs', async () => {
+    const { detailing } = await secondDraft((d) => writeFile(d.draft.stackMd, '# Stack\n\n- Node 22\n- Postgres 16'));
+    expect(detailing.filter((c) => c.kind === 'spec')).toEqual([]);
+    expect(named(detailing.filter((c) => c.kind === 'preplan'), 'Spec')).toEqual(['caso', 'fat', 'opme', 'triagem']);
+  });
+
+  it('makes a broken or missing pre-plan on main again without failing the cycle', async () => {
+    const { second, detailing } = await secondDraft(async (d) => {
+      await writeFile(`${d.draft.base}/specs/big-001-opme/preplan.json`, '{"specId": "big');
+      await rm(`${d.draft.base}/specs/big-001-fat/preplan.json`);
+    });
+    expect(detailing.filter((c) => c.kind === 'spec')).toEqual([]);
+    expect(named(detailing.filter((c) => c.kind === 'preplan'), 'Spec')).toEqual(['fat', 'opme']);
+    expect(second.journal.state.status).toBe('ready');
+  });
+
+  it('never writes a reused item, and keeps a delivered one beside it', async () => {
+    let before = '';
+    const { second, detailing } = await secondDraft(async (d) => {
+      before = await readFile(`${d.itemDir('opme')}/spec.json`, 'utf8');
+      const caso = JSON.parse(await readFile(`${d.draft.base}/specs/big-001-caso/spec.json`, 'utf8'));
+      await writeFile(`${d.draft.base}/specs/big-001-caso/spec.json`, JSON.stringify({ ...caso, status: 'done', specVersion: 1, specHash: H }));
+    });
+    expect(detailing).toEqual([]);
+    expect(await readFile(`${second.itemDir('opme')}/spec.json`, 'utf8')).toBe(before);
+    expect(second.journal.state.backlog?.specs?.caso?.spec?.status).toBe('done');
+    expect(second.journal.state.backlog?.preplans?.caso).toBeUndefined();
   });
 
   it('retries an item alone with its rejection when its spec or pre-plan breaks a rule', async () => {

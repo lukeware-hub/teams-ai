@@ -167,6 +167,8 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     if (kept.has(i.key) || specs[i.key]) continue;
     const onMain = await readMainSpec(draft, idOf(i.key));
     if (!onMain || onMain.derivedFrom?.inputHash !== specHash.get(i.key)) continue;
+    // Main's folder back in the draft: an item dropped and added again in this draft lost it, and its run reads it.
+    await restoreFromBase(draft, onMain.specId);
     const rev = computeSpecHash(onMain);
     specs[i.key] = { inputHash: specHash.get(i.key)!, specId: onMain.specId, rev, spec: onMain, issues: [], cycle };
     await journal.fact(RefineEvent.SpecDerived, { cycle, key: i.key, specId: onMain.specId, inputHash: specHash.get(i.key), rev, spec: onMain, issues: [], highWater });

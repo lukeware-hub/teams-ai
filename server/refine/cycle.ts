@@ -21,9 +21,9 @@ import { sha256 } from '../contracts/hash.js';
 import { flowHeadings } from '../validators/backlog.js';
 import { flowIsMermaid } from './sections.js';
 import { detailBacklog, maxCriterionInDraft, removeRetired } from './detail-cycle.js';
-import { DOC_REL, draftHash, flowTemplate, keepBaseProject, readDerived, readDoc, stackTemplate, writeBacklogMd, writeDerived, writeDoc, writeProject, writeSpecsIndex, type DocFile, type Draft } from './draft.js';
+import { DOC_REL, draftHash, flowTemplate, keepBaseProject, readBase, readDerived, readDoc, stackTemplate, writeBacklogMd, writeDerived, writeDoc, writeProject, writeSpecsIndex, type DocFile, type Draft } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
-import { buildSpecsIndex } from './specs-index.js';
+import { buildSpecsIndex, outlineOfIndex, type SpecsIndex } from './specs-index.js';
 import type { JevValidationResult, ValidationDocs } from './jev-validation.js';
 import { refinePack } from './packs.js';
 import { applyPatch, checkPatch, patchId, unifiedDiff } from './patches.js';
@@ -53,6 +53,17 @@ export interface CycleDeps {
   signal?: AbortSignal;
   /** R11.5.7: the measured confidence floor for answering a question routed `auto` from the docs; unset leaves every question with the human. */
   autoAnswerFloor?: number;
+}
+
+/** Main's outline, from its specs.json in the base copy, for a new draft's first outline; the draft's own state when main has none. */
+async function mainOutline(draft: Draft, before: BacklogState | null): Promise<BacklogState | null> {
+  try {
+    const index = JSON.parse((await readBase(draft, 'specs.json')) ?? 'null') as SpecsIndex | null;
+    if (!index?.specs?.length) return before;
+    return { ...(before ?? { enabled: true, project: null, cycle: 0 }), ...outlineOfIndex(index) } as BacklogState;
+  } catch {
+    return before;
+  }
 }
 
 const MAX_DEDUP_PAIRS = 20;
@@ -127,6 +138,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       backlog = before;
     } else {
       // Backlog mode: the PO breaks the five docs into prioritized items instead of deriving one spec. One retry carries the rejection.
+      // R11.7.3: a new draft's first outline starts from main's, so the PO keeps its keys and wording and unchanged items are reused.
+      const previous = before?.items.length ? before : await mainOutline(draft, before);
       let rejection: string[] | undefined;
       let accepted: Extract<BacklogCheck, { ok: true }> | null = null;
       for (let attempt = 1; attempt <= 2 && !accepted; attempt++) {
@@ -134,7 +147,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           {
             kind: 'backlog',
             role: 'po',
-            pack: fitPackBudget(backlogPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous: before, jevValidation, rejection })),
+            pack: fitPackBudget(backlogPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, jevValidation, rejection })),
             cwd: draft.root,
             phase: 'refine',
             taskId: null,
@@ -146,7 +159,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           await fail(`backlog failed: ${out.failure}: ${out.errors.join('; ')}`);
           return;
         }
-        const checked = postProcessBacklog(out.value as BacklogOutput, before, docs['flow.md']);
+        const checked = postProcessBacklog(out.value as BacklogOutput, previous, docs['flow.md']);
         if (checked.ok) accepted = checked;
         else rejection = checked.issues;
       }

@@ -48,3 +48,9 @@ export function buildSpecsIndex(draftId: string, backlog: Pick<BacklogState, 'ep
     }));
   return { version: 1, draftId, epics: backlog.epics, specs };
 }
+
+/** The outline a specs index was built from, so a new draft's first outline starts from what main already planned (R11.7.3). */
+export function outlineOfIndex(index: SpecsIndex): Pick<BacklogState, 'epics' | 'items'> {
+  const keyOf = new Map(index.specs.map((s) => [s.specId, s.key]));
+  return { epics: index.epics, items: index.specs.map(({ specId: _, dependsOn, ...item }) => ({ ...item, dependsOn: dependsOn.map((d) => keyOf.get(d) ?? d) })) };
+}
