@@ -29,7 +29,7 @@ afterEach(async () => {
 });
 
 /** A run whose T2 blocked and took T3 with it; the SM answers each fix-tasks step with the next list. */
-async function setup(answers: PlanTask[][], over: Partial<{ delivery: Record<string, unknown>; junit: GateResult['junit'] }> = {}): Promise<PhaseDeps> {
+async function setup(answers: PlanTask[][], over: Partial<{ delivery: Record<string, unknown>; junit: GateResult['junit']; blocking: GateResult }> = {}): Promise<PhaseDeps> {
   remote = await makeRemote({ 'README.md': '#\n' });
   journal = await Journal.open({ file: path.join(remote.root, 'events.ndjson'), runId: 'r1', specHash: HASH });
   await journal.fact(OrchEvent.TaskBlocked, { taskId: 'T2', reason: 'the Dev found no way to reach the payment API' });
@@ -38,7 +38,7 @@ async function setup(answers: PlanTask[][], over: Partial<{ delivery: Record<str
   return {
     journal, ws: { repo: remote.repo }, spec, exec: execCommand, firstSpec: false, plan: makePlan(spec, { tasks: [t1, t2, t3], ...(over.delivery ? { delivery: over.delivery } : {}) } as never),
     tasks: () => [{ def: t1, state: 'merged' }, { def: t2, state: 'blocked' }, { def: t3, state: 'blocked' }],
-    gates: async () => ({ results: [{ ...gate, junit: over.junit ?? gate.junit }], blockingFailure: null }),
+    gates: async () => ({ results: [{ ...gate, junit: over.junit ?? gate.junit }, ...(over.blocking ? [over.blocking] : [])], blockingFailure: over.blocking ?? null }),
     packBase: () => ({ spec, project: makeProject(), specHash: HASH, assumptions: [], budgetTokens: 8000 }),
     runAgent: async (req: AgentStepRequest<'fix-tasks'>) => { packs.push(String(req.pack.feedback)); return { ok: true, value: { specHash: HASH, tasks: answers.shift()! }, summary }; },
   } as unknown as PhaseDeps;
@@ -68,6 +68,25 @@ describe('Phase 4 with blocked work', () => {
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.fixTasks?.map((t) => [t.id, t.owner, t.criteriaRefs])).toEqual([['T900-fix-1', 'devops', []], ['T900-fix-2', 'dev', []], ['T900-fix-3', 'dev', ['AC-002']]]);
     expect(packs[0]).toContain('Criteria without passed evidence:\n- AC-002');
+    // The SM sees the delivery fixes of the same round, so it can depend on them and keep off their paths.
+    expect(packs[0]).toContain('- T900-fix-1');
+  });
+
+  it('keeps the delivery fixes and records why the SM repair was refused twice', async () => {
+    const delivery = { dockerfile: 'Dockerfile', compose: 'docker-compose.yml', ciWorkflow: '.github/workflows/ci.yml', releaseWorkflow: '.github/workflows/release.yml', e2eSuite: 'e2e/run.test.ts', readmeSections: ['Run'] };
+    const unknown = fix({ dependsOn: ['T404'] });
+    const res = await runPhase4(await setup([[unknown], [unknown]], { delivery }), 1);
+    if (!res.ok) expect(res.fixTasks?.map((t) => t.id)).toEqual(['T900-fix-1', 'T900-fix-2']);
+    const planned = journal.events.find((e) => e.type === 'FIX_TASKS_PLANNED')!.data;
+    expect(String(planned.smRejected)).toMatch(/^fix-tasks rejected twice/);
+  });
+
+  it('names the gate that failed when every criterion passed, so the reason is no missing evidence', async () => {
+    const junit = [...gate.junit!, { id: 't::[AC-002] works', name: '[AC-002] works', classname: 't', status: 'passed' as const, acIds: ['AC-002'] }];
+    const lint: GateResult = { name: 'lint', blocking: true, passed: false, exitCode: 1, timedOut: false, durationMs: 1, stdoutTail: '', stderrTail: 'semi', junit: [], failure: 'code' };
+    const res = await runPhase4(await setup([], { junit, blocking: lint }), 2);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toBe('verification failed in round 2: 0 failing tests, 0 uncovered criteria; gate lint failed');
   });
 
   it('shows the SM every blocked task with its reason', async () => {

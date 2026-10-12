@@ -49,7 +49,7 @@ describe('Phase 4 with several services', () => {
   it("fails the spec when one service's tests fail", async () => {
     const res = await runPhase4(await setup(makeServicesPlan(spec), { orders: true, inventory: false }), 2);
     expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.reason).toBe('verification failed in round 2: 1 failing tests, 0 uncovered criteria');
+    if (!res.ok) expect(res.reason).toBe('verification failed in round 2: 1 failing tests, 0 uncovered criteria; gate unit-test failed');
   });
 
   it("plans the delivery fix tasks in the service whose repository misses files, after that service's scaffold", async () => {

@@ -376,9 +376,11 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
   it('never answers a history contradiction, which exists for the human to decide', async () => {
     const r = await autoRouted({ 'Which port?': 0.5 }, undefined, { contradiction: true });
     await r.run(0.9);
-    const evaluated = r.events.find((e) => e.type === 'REFINE_EVALUATED')!.data.questions as Array<{ text: string }>;
-    expect(evaluated.some((q) => q.text.startsWith('The new spec seems to contradict earlier project history'))).toBe(true);
+    const evaluated = r.events.find((e) => e.type === 'REFINE_EVALUATED')!.data;
+    const contradiction = (evaluated.questions as Array<{ questionId: string; text: string }>).find((q) => q.text.startsWith('The new spec seems to contradict earlier project history'))!;
     expect(r.answered).toEqual([]);
+    // Never answered on its own, so never routed either: no Jev call, and no sample the floor could count.
+    expect(Object.keys(evaluated.questionRouting as object)).not.toContain(contradiction.questionId);
   });
 
   it('routes nothing on a confidential draft, where the decider skips Jev, so nothing is answered', async () => {

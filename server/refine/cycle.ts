@@ -330,7 +330,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   // R11.5.7: the route of each blocking question, journaled for the eval; it answers nothing unless decisions.autoAnswerFloor is set.
   const questionRouting: Record<string, { route: string; confidence: number | null; source: string }> = {};
   if (deps.decider) {
-    const blocking = merged.filter((q) => q.blocking);
+    // A question only the human decides is never answered on its own, so routing it would only spend a Jev call.
+    const blocking = merged.filter((q) => q.blocking && !forHuman.has(q.questionId));
     const routed = await Promise.all(blocking.map((q) => routeQuestion(criteria, q.text, decider!, dctx)));
     blocking.forEach((q, i) => { const r = routed[i]; if (r) questionRouting[q.questionId] = { route: r.route, confidence: r.confidence, source: r.source }; });
   }

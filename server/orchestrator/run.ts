@@ -24,7 +24,7 @@ import type { CodeContext, HandoffSummary } from '../knowledge/context-pack.js';
 import { grepFallback, MIN_COVERAGE, type Graphify } from '../knowledge/graphify.js';
 import type { KnowledgeIndex } from '../knowledge/retrieval.js';
 import { RunEvent } from '../pipeline/run-state.js';
-import { ACTIVE_STATES } from '../pipeline/task-state.js';
+import { ACTIVE_STATES, DEPENDENCY_BLOCKED } from '../pipeline/task-state.js';
 import type { RunnerBinary } from '../runner/process-runner.js';
 import type { runStep as runStepFn, StepDeps, StepOutcome } from '../runner/step.js';
 import { nextRunnable, runProgress, tasksToBlock, type RunProgress } from '../scheduler/scheduler.js';
@@ -770,7 +770,7 @@ export class Run {
         const t = this.journal.state.tasks.get(id)!;
         if (t.state !== 'blocked') {
           await this.journal.fact(RunEvent.TaskStateChanged, { taskId: id, to: 'blocked' });
-          await this.journal.fact(OrchEvent.TaskBlocked, { taskId: id, reason: 'a dependency is blocked' });
+          await this.journal.fact(OrchEvent.TaskBlocked, { taskId: id, reason: DEPENDENCY_BLOCKED });
         }
       }
       const progress = runProgress(this.journal.state, this.maxParallel);

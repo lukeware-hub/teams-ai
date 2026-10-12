@@ -47,3 +47,6 @@ export function assertTransition(from: TaskState, to: TaskState): void {
     throw new InvalidTransitionError(`invalid task transition ${from} -> ${to}`);
   }
 }
+
+/** The reason a task gets when a task it depends on blocked: it says nothing of its own. */
+export const DEPENDENCY_BLOCKED = 'a dependency is blocked';

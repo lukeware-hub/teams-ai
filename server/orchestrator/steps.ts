@@ -343,7 +343,7 @@ export const DOCS_STRUCTURE = [
   'Documentation is a gate; the orchestrator rejects the step unless all three documents pass:',
   '- `readme` (docs/README.md): headings for run, test, env (environment variables), architecture and pipeline (CI/CD), each with real content (English or Portuguese names).',
   '- `runbook` (docs/RUNBOOK.md): headings for start, stop, logs and rollback, each with real content.',
-  '- `apiDocs` (docs/API.md): every endpoint named in the spec features or documented in the current docs/API.md, written with its exact path (only needed when the features name endpoints; an empty `apiDocs` leaves the current file as it is).',
+  '- `apiDocs` (docs/API.md): every endpoint named in the spec features or documented in the current docs/API.md, written with its exact path, each endpoint as `METHOD /path` (for example `### GET /orders/{id}`) (only needed when the features name endpoints; an empty `apiDocs` leaves the current file as it is).',
 ].join('\n');
 
 /** The plan's delivery sections the README must carry; the validator checks them the same way. */

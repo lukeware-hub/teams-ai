@@ -84,6 +84,8 @@ describe('stopped run explanations', () => {
     // A round 2 failure that comes only from criteria left without evidence is no failing test.
     expect(explainStop('verification failed in round 2: 0 failing tests, 1 uncovered criteria')?.title).toBe('Critérios de aceitação ficaram sem evidência');
     expect(explainStop('verification failed in round 2: 2 failing tests, 0 uncovered criteria')?.title).toBe('Os testes de aceitação não passaram');
+    // Every criterion passed and a gate such as lint failed: no criterion lacks evidence.
+    expect(explainStop('verification failed in round 2: 0 failing tests, 0 uncovered criteria; gate lint failed')?.title).toBe('Uma verificação obrigatória falhou');
     expect(explainStop('spec-gap rounds exhausted (3); last question: which currency?')).toMatchObject({ owner: 'Você' });
     expect(explainStop('something nobody has seen before')).toBeNull();
     // A service's workflows failing to land explain themselves like the project's.
@@ -301,6 +303,11 @@ describe('phase activity', () => {
       'Deploy verificado: orders, inventory',
     ]);
     expect(out.items.at(-1)!.url).toBeNull();
+  });
+
+  it('a task merged with nothing to merge names no pull request', () => {
+    const out = phaseActivity(evs([['PHASE_STARTED', { phase: 3 }], ['PR_MERGED', { taskId: 'T1', pr: 0 }], ['PR_MERGED', { taskId: 'T2', pr: 7 }]])).get(3)!;
+    expect(out.items.map((i) => i.text)).toEqual(['Tarefa T1 mesclada na main', 'Tarefa T2 mesclada na main (pull request #7)']);
   });
 
   it('a task moved onto the current main says whether conflicts are left to resolve', () => {

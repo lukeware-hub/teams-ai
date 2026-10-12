@@ -106,8 +106,10 @@ function fixTaskErrors(deps: PhaseDeps, fixTasks: readonly PlanTask[]): string[]
 async function smFixTasks(deps: PhaseDeps, repos: ServiceRepo[], input: { failedTests: string[]; tails: string; uncoveredAcs: string[]; cwd: string; planned?: PlanTask[] }): Promise<{ tasks: PlanTask[] } | { reason: string }> {
   const services = deps.services;
   // The SM plans across every service: their tasks and test gates.
-  const plan = services ? { tasks: services.plan.tasks, gates: repos.flatMap((r) => r.plan.gates) } : deps.plan!;
+  const base = services ? { tasks: services.plan.tasks, gates: repos.flatMap((r) => r.plan.gates) } : deps.plan!;
   const planned = input.planned ?? [];
+  // The fix tasks this round already holds are part of the plan the SM sees, so it can depend on them and keep off their paths.
+  const plan = { ...base, tasks: [...base.tasks, ...planned] };
   let feedback: string | null = null;
   for (let attempt = 1; attempt <= 2; attempt++) {
     const out = await deps.runAgent<'fix-tasks'>({ kind: 'fix-tasks', role: 'sm', pack: fixTasksPack(deps.packBase(), { failedTests: input.failedTests, tails: input.tails, uncoveredAcs: input.uncoveredAcs, blocked: blockedTasks(deps), plan, ...(services ? { services: Object.keys(services.plan.services) } : {}), boundaries: deps.boundaries ? await deps.boundaries() : [], feedback }), cwd: input.cwd, phase: 'phase4', taskId: null, attempt }) as StepOutcome<FixTasksOutput>;
@@ -158,7 +160,8 @@ export async function runPhase4(deps: PhaseDeps, round: 1 | 2): Promise<Phase4Re
     const sm = blockedAcs.length > 0 ? await smFixTasks(deps, repos, { failedTests: [], tails: '', uncoveredAcs: blockedAcs, cwd: repos[0]!.ws.repo, planned: fixTasks }) : { tasks: [] };
     if ('reason' in sm && sm.reason === PAUSED_AUTH) return { ok: false, reason: PAUSED_AUTH };
     const all = 'tasks' in sm ? [...fixTasks, ...sm.tasks] : fixTasks;
-    await deps.journal.fact(RunEvent.FixTasksPlanned, { tasks: all, round });
+    // A repair the SM could not plan stays on record, so a round 2 without evidence links back to it.
+    await deps.journal.fact(RunEvent.FixTasksPlanned, { tasks: all, round, ...('reason' in sm ? { smRejected: sm.reason } : {}) });
     return { ok: false, reason: `${reason}; fix tasks planned`, fixTasks: all };
   }
   const results: GateResult[] = [];
@@ -181,7 +184,7 @@ export async function runPhase4(deps: PhaseDeps, round: 1 | 2): Promise<Phase4Re
   const uncoveredAcs = matrix.filter((r) => r.status === 'missing' || r.status === 'blocked').map((r) => r.criterion);
   if (!blocking && readyForValidation(matrix)) { await deps.journal.fact(OrchEvent.VerificationPassed, { round, matrix }); return { ok: true, matrix }; }
   await deps.journal.fact(OrchEvent.VerificationFailed, { round, failedTests, uncoveredAcs, matrix, gate: blocking?.name ?? null });
-  if (round === 2) return { ok: false, reason: `verification failed in round 2: ${failedTests.length} failing tests, ${uncoveredAcs.length} uncovered criteria` };
+  if (round === 2) return { ok: false, reason: `verification failed in round 2: ${failedTests.length} failing tests, ${uncoveredAcs.length} uncovered criteria${blocking ? `; gate ${blocking.name} failed` : ''}` };
   const sm = await smFixTasks(deps, repos, { failedTests, tails: tail(results.map((r) => `${r.name}: ${r.stderrTail || r.stdoutTail}`).join('\n')), uncoveredAcs, cwd: (failing ?? repos[0]!).ws.repo });
   if ('reason' in sm) return { ok: false, reason: sm.reason };
   await deps.journal.fact(RunEvent.FixTasksPlanned, { tasks: sm.tasks, round });

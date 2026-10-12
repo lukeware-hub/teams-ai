@@ -343,7 +343,8 @@ const STOP_RULES: Array<[RegExp, StopExplanation]> = [
   [/^Phase 6 blocked: documentation rejected/, { title: 'A documentação gerada no relatório foi rejeitada', hint: 'Reprocesse a spec. Se a falha se repetir, o motivo da rejeição está no detalhe técnico.', owner: 'Sistema' }],
   [/^Phase 6 blocked/, { title: 'O relatório final não foi gerado', hint: 'O Scrum Master não devolveu o relatório no formato esperado. Reprocesse a spec para gerar o relatório de novo.', owner: 'Sistema' }],
   [/^delivery contract not met/, { title: 'Faltam arquivos de entrega na main', hint: 'Veja no detalhe técnico quais arquivos faltaram. Se as tarefas ficaram bloqueadas, resolva os bloqueios antes de reprocessar.', owner: 'Sistema' }],
-  [/^verification failed in round 2: 0 failing tests/, { title: 'Critérios de aceitação ficaram sem evidência', hint: 'Nenhum teste falhou, mas critérios ficaram sem teste aprovado, quase sempre porque as tarefas deles bloquearam. Veja os bloqueios na lista de tarefas e reprocesse a spec.', owner: 'Sistema' }],
+  [/^verification failed in round 2: 0 failing tests, 0 uncovered criteria; gate \S+ failed/, { title: 'Uma verificação obrigatória falhou', hint: 'Todos os critérios passaram, mas um gate obrigatório, como lint, tipos, cobertura ou segurança, falhou. Veja a saída dele no detalhe técnico e reprocesse a spec.', owner: 'Sistema' }],
+  [/^verification failed in round 2: 0 failing tests, [1-9]\d* uncovered/, { title: 'Critérios de aceitação ficaram sem evidência', hint: 'Nenhum teste falhou, mas critérios ficaram sem teste aprovado, quase sempre porque as tarefas deles bloquearam. Veja os bloqueios na lista de tarefas e reprocesse a spec.', owner: 'Sistema' }],
   [/^verification failed in round 2/, { title: 'Os testes de aceitação não passaram', hint: 'Veja na matriz de evidências quais critérios falharam e reporte o problema na tela de validação.', owner: 'Sistema' }],
   [/^fix-tasks rejected twice/, { title: 'O Scrum Master não conseguiu planejar as correções', hint: 'Leia o motivo no detalhe técnico e reprocesse a spec.', owner: 'Sistema' }],
   [/plan\.commands\.smoke missing/, { title: 'O plano não define commands.smoke', hint: 'Falta o comando dos testes de fumaça no plan.json. Nenhum agente edita o plano durante a run: adicione commands.smoke ao plano na main e tente de novo.', owner: 'Plano' }],
@@ -587,7 +588,7 @@ function describe(e: StoredEvent, intent: Record<string, unknown> | undefined): 
     case 'REPORT_READY':
       return item('Relatório final pronto', 'good');
     case 'PR_MERGED':
-      return item(`Tarefa ${String(d.taskId)} mesclada na main (pull request #${String(d.pr)})`, 'good');
+      return item(`Tarefa ${String(d.taskId)} mesclada na main${d.pr ? ` (pull request #${String(d.pr)})` : ''}`, 'good');
     case 'REBASE_REPLAYED': {
       const files = list(d.files);
       return item(`Tarefa ${String(d.taskId)} movida para a main atual${files.length ? `, com conflitos a resolver em ${files.join(', ')}` : ', sem conflitos a resolver'}`, files.length ? 'bad' : '');

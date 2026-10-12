@@ -163,6 +163,11 @@ describe('packs', () => {
     expect(reportPack(base, { ...opts, security: '' }).feedback).toContain('Security findings left by the sec review');
   });
 
+  it('asks for every endpoint as METHOD /path, the form the API check reads', () => {
+    const f = reportPack(base, { delivered: ['T1'], blocked: [], evidence: '[]', assumptions: [], deploy: '{}', hostUrl: null, tokens: '{}', security: '' }).feedback;
+    expect(f).toContain('each endpoint as `METHOD /path` (for example `### GET /orders/{id}`)');
+  });
+
   it('report pack asks for the human-facing report fields in Brazilian Portuguese, with steps as action plus expected result', () => {
     const f = reportPack(base, { delivered: ['T1'], blocked: [], evidence: '[]', assumptions: [], deploy: '{}', hostUrl: null, tokens: '{}', security: '' }).feedback;
     expect(f).toContain('Brazilian Portuguese (pt-BR)');

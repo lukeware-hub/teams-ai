@@ -2,7 +2,7 @@
  * R11.5.7: the confidence floor for answering a blocking refinement question from the documents, from labelled journals.
  *   npx tsx scripts/evals/question-routing.ts --refine ~/.teams-ai/workspaces/<project>/refine [--refine <other project>/refine ...]
  * An answer the owner marked "the documents already answered this" labels its question; set decisions.autoAnswerFloor to
- * the floor printed, and only once it is not null and the precision near it holds too.
+ * the floor printed, and only once it is not null and precisionNearFloor is at least 0.95 too.
  */
 import { promises as fs } from 'node:fs';
 import path from 'node:path';

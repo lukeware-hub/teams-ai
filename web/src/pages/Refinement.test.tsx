@@ -177,6 +177,8 @@ describe('RefinementView', () => {
     expect(h.onAnswer).toHaveBeenCalledWith('po-c1-0', 'Está em project.md › Execução: 8080', true);
     expect((screen.getByTestId('docs-answered') as HTMLInputElement).checked).toBe(false);
     expect(screen.getByLabelText(/medem quando o Jev pode responder sozinho/)).toBeTruthy();
+    // The tip sits beside the mark: a button inside a label is invalid, since a button is itself labelable.
+    expect(screen.getByLabelText(/medem quando o Jev pode responder sozinho/).closest('label')).toBeNull();
   });
 
   it('clears the answer and the mark when the question on screen changes, so neither reaches the wrong question', () => {

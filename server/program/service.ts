@@ -6,6 +6,7 @@ import type { Config } from '../config/config.js';
 import { Spec } from '../contracts/spec.js';
 import { writeFileAtomic } from '../core/atomic-write.js';
 import { nextRunId } from '../orchestrator/workspace.js';
+import { DEPENDENCY_BLOCKED } from '../pipeline/task-state.js';
 import { loadEvents } from '../store/event-store.js';
 import { newProgram, retryItem, tick, type Program, type ProgramEffects, type ProgramEntry, type RunOutcome } from './controller.js';
 
@@ -168,7 +169,7 @@ export class ProgramService {
       default: {
         const data = await finished();
         // The tasks that blocked on their own cause tell why criteria went without evidence; their dependents add nothing.
-        const own = (data?.blocked ?? []).filter((b) => b.reason !== 'a dependency is blocked').map((b) => `${b.taskId} (${b.reason})`);
+        const own = (data?.blocked ?? []).filter((b) => b.reason !== DEPENDENCY_BLOCKED).map((b) => `${b.taskId} (${b.reason})`);
         return { kind: 'failed', reason: `${row.status}${data?.reason ? `: ${String(data.reason).slice(0, 400)}` : ''}${own.length ? `; blocked: ${own.join('; ').slice(0, 400)}` : ''}`, costUsd: data?.tokens?.costUsd ?? null };
       }
     }
