@@ -98,32 +98,6 @@ window resets, resume exactly from the entry below.
   blocking notice is carried as a spec-gap question, which burned 3 spec-gap rounds.
 - R1.2 and the comparison now use this result as the run 1 data point.
 
-### R1.2 Deploy the run 1 result to `kind` — `dropped` (2026-10-05, no `kind` target; the docker-local equivalent is `spec deploy --target docker-local`)
-
-- `kind` has never run. Phase 5 is deterministic (no agent) once the plan carries the image, port, healthcheck and
-  manifests, so a deploy-only command costs no tokens.
-- Plan (2026-10-04, approved through the roadmap goal):
-  - New command `teams-ai spec deploy --project <dir> --spec <id> [--target kind|docker-local]` for a spec whose code
-    is on main (`awaiting-validation` or `done`). It journals a new run `<specId>-deploy-rN`.
-  - `Run.deployOnly()` reads `docs/specs/<id>/plan.json` from main and runs one Phase 5 attempt (deploy, verify,
-    smoke, rollback). No agent runs: a failure ends `deploy-failed` with its reason and plans no fix task.
-  - Files: `server/cli.ts` (command, target override, preconditions without the claude login check),
-    `server/orchestrator/run.ts` (`deployOnly`), `server/orchestrator/phases/deploy.ts` (option to skip the fix task).
-  - Unit tests: success, deploy failure without a fix task, kind with a plan that has no manifests, CLI parsing.
-  - E2E: run the command against the `teams-ai` kind cluster on the R1.1 result; green verify and smoke.
-  - Fallback if the R1.1 plan has no Kubernetes manifests: a full run with `deploy.target: "kind"` (costs a run).
-- E2E finding (2026-10-04, hello-app, no Claude tokens): `spec deploy --target kind` first failed at verify with
-  "service has no NodePort". Cause: the default `kind` cluster is unreachable from WSL (Docker Desktop networks are not
-  routable, even the node IP), and the fixture Service was ClusterIP. Fix: `scripts/wsl/kind-cluster.yaml` publishes
-  host port 30080; manifests for `kind` use a NodePort Service pinned to 30080 (fixture and `devops.md` updated);
-  recreate the cluster with `kind create cluster --name teams-ai --config scripts/wsl/kind-cluster.yaml`.
-- Result with the fix: apply, verify and URL OK (`curl 127.0.0.1:30080/health` → `{"ok":true}`), rollback OK
-  (`rolledBack`, `rollbackHealthy`). The run still ended `deploy-failed` at smoke: the hello-app fixture server is a
-  stub without `/hello`, a fixture limit, not a kind one. The kind path is proven; the todo-api result (R1.1b) will
-  be the real smoke check. Not covered: a plan whose manifests lack the NodePort (the DevOps agent now knows it).
-- Progress: command, `Run.deployOnly()` and the no-fix-task option implemented with unit tests (734 passing,
-  2026-10-04). Left: the e2e on kind, which needs the R1.1 result.
-
 ## Stage 2 — Browser checks (cheap, on the run 1 result)
 
 ### R2.1 "Report problem" from the Validation page (plan 12) — `done` (API e2e; button click unchecked)
@@ -150,21 +124,6 @@ window resets, resume exactly from the entry below.
   browser automation of this UI needs coordinates. (2) The stop took 15 s and the journal shows `STEP_STARTED` after `RUN_STOP_REQUESTED`
   (seq 109 after 107): a step of an already-running task still started during the drain, and the stop looks like it ended by escalation after
   the 15 s timeout, not by a clean drain; worth a look before relying on graceful stop. (3) There is no Stop button on the run page, only on the Projects page.
-
-## Stage 3 — Golden run 2 — `dropped` (2026-10-05)
-
-### R3.1 OmniRoute provider — `dropped` (human decision, 2026-10-05)
-
-- Agents run only through the Claude Code CLI. Removed in plan 39 (`plans/2026-10-05-teams-ai-39-remove-omniroute.md`):
-  the `omniroute` provider and config block, `resolveProfile`, the runner env injection, `scripts/wsl/omniroute/`,
-  the p6 probe, the spec §10 gateway rules, and on the WSL host the `omniroute` container, the `omniroute-data`
-  volume, its image and the `OMNIROUTE_*` secrets. A leftover `provider` key in a role profile is now a config error.
-  The Jev (OpenRouter) and the local llama.cpp decision backends stay.
-- Not replaced: failover when the Claude quota runs out stays the quota breaker pause.
-
-### R3.2 Golden run 2 (OmniRoute for Test/DevOps) — `dropped`
-
-- Nothing to run; the comparison (R5.2) is between runs 1 and 3.
 
 ## Stage 4 — System 1 ready for run 3
 
@@ -280,46 +239,6 @@ window resets, resume exactly from the entry below.
 - Labeling the run 3 decisions and running the eval against real data is a live-run task, not implementation; no
   longer tracked as open backlog here.
 
-## Stage 6 — Everything in Kubernetes
-
-### R6.1 Run the whole stack as pods in one namespace — `dropped` (2026-10-05, replaced by a single compose container)
-
-- Goal (human, 2026-10-04): application, back, front, OmniRoute and the local model all run in the same Kubernetes
-  namespace, every pod reaching every other and the internet (ingress and egress open); nothing left installed
-  directly on WSL or Docker. Order decided by the human: let golden run 1 finish first. Cluster: `kind` (the spec's
-  target, already proven); Docker stays only as the engine under kind.
-- Jev is the OpenRouter API (external): it stays external; the namespace only needs egress to openrouter.ai.
-- Inventory found 2026-10-04 (read-only):
-  - Docker containers: `teams-ai-control-plane` (kind), `omniroute` 3.8.51, `teams-ai-backend-1` (image
-    `teams-ai-backend:local`, up 2 h, not installed by this roadmap).
-  - Docker volumes: `omniroute-data`, `teams-ai_teams-ai-claude`, `teams-ai_teams-ai-config`, `teams-ai_teams-ai-gh`
-    (the last three hold a `claude` login, `gh` login and config: removing them loses those logins).
-  - Docker images: `teams-ai-backend:local`, `ghcr.io/diego-dm-morais/teams-ai:{0.1.0,latest}`,
-    `teams-ai-teams-ai:latest`, `diegosouzapw/omniroute:3.8.51`, 8 `hello-app:*`, `node:*`, `curlimages/curl`.
-  - WSL: `~/llama.cpp` (build), `~/models` (4.4 GB), `nvidia-cuda-toolkit` (apt), process `llama-server`, clones
-    `~/teams-ai-live`, `~/teams-ai-e2e`, `~/hello-kind`, `~/teams-ai`, `~/workspace/teams-ai`, `~/.teams-ai`
-    (config, runs, workspaces, secrets: 7 secrets incl. `OPENROUTER_API_KEY`, `GITHUB_TOKEN`, `GEMINI_API_KEY`).
-- Plan to write before touching anything (open questions, answered by reading the code first):
-  1. Namespace `teams-ai` with Deployments: `backend` (orchestrator and API), `front` (web UI served by the backend
-     today: one pod unless the build is split), `omniroute`, `llama` (GPU needs the NVIDIA device plugin in kind; the
-     fallback is CPU or leaving the model out), plus NetworkPolicies that allow all ingress and egress.
-  2. Secrets and logins as Kubernetes Secrets/PVCs: `claude` credentials, `gh`/`GITHUB_TOKEN`, OmniRoute secrets,
-     OpenRouter key, `~/.teams-ai` as a PVC.
-  3. The orchestrator needs Docker for gates and deploys and `kind` itself for the deploy target: inside the cluster
-     that means a Docker-in-Docker sidecar or Jobs; decide before building.
-  4. Cutover and removal: only after the stack runs and a smoke passes in the namespace; removal list shown to the
-     human first, volumes with logins only with an explicit yes.
-- Plan 31 (`plans/2026-10-04-teams-ai-31-k8s-cutover.md`) fixes the stages: build image, recreate kind, secrets and data, apply, prove with the R2.2 cycle and a Job gate, then reconfirm and remove. Nothing is applied or removed until the human gives the go for stage 1, and a second explicit go for stage 6 (the volumes with the claude and gh logins). Superseded line:
-- **Progress 2026-10-05 (human gave autonomy for local-cluster envs and secrets):** stages 1–4 done. Image built from a clean
-  export of `main` and loaded; kind `teams-ai` recreated with the three host ports; Secrets `github-token`, `openrouter-api-key`,
-  `gemini-api-key` and a random `ui-token` created from host files (values never printed); `kubectl apply -k overlays/kind`.
-  Defect found and fixed (3f0abdf): the backend pod crash-looped because the UI refuses a non-loopback bind without
-  `TEAMS_AI_UI_TOKEN`; `backend.yaml` now reads it from Secret `ui-token`. Backend, buildkitd, registry and llama Running; UI answers
-  200 on `localhost:30787`; `scripts/smoke/local-logprobs.ts` passes against the in-cluster llama (CPU). OmniRoute is scaled to 0 (optional;
-  its Secret was removed because the encryption key is not known). **Not done:** Secret `claude-credentials` (held back while golden run
-  4 uses the host login, to avoid two consumers of one refresh token), data copy into the PVC, stage 5 proof, real egress CIDRs, stage 6.
-- (old) Not started. First action when R1.1b ends: turn the open questions above into a plan file in `plans/`.
-
 ## Stage 7 — Production readiness (workflow, 2026-10-04)
 
 Six isolated agents built these in parallel; each wrote a plan in `plans/` and unit tests; merged into the PR #13
@@ -327,8 +246,7 @@ branch (768 passing, typecheck clean). Nothing below was applied to a cluster or
 
 | Id | Item | State | Open |
 |----|------|-------|------|
-| R7.1 | k8s stack, plan 14 (`deploy/k8s`: backend, omniroute, llama, buildkit + registry, Ingress, open NetworkPolicy, kustomize overlays `kind` and `gpu`, Secret templates) | manifests + parse test | Not validated with `kustomize build` or a cluster; image pins and the OmniRoute secret key names are guesses; **gates and deploys still call `docker`** (Job runner and registry build not written); backend Dockerfile still installs docker.io; kind needs a registry mirror |
-| R7.2 | API auth, plan 15 (bearer `TEAMS_AI_UI_TOKEN`, HttpOnly cookie for SSE, web client prompt) | done, unit | `isAllowedHost` still 403s any non-loopback Host (blocks a Service/Ingress); token not wired into the manifests; no browser check |
+| R7.2 | API auth, plan 15 (bearer `TEAMS_AI_UI_TOKEN`, HttpOnly cookie for SSE, web client prompt) | done, unit | no browser check |
 | R7.3 | Supervisor, plan 16 (`teams-ai supervise`) | done, unit | not run live; a run stopped, hand-resumed, then crashed is never auto-resumed |
 | R7.4 | System security audit (`docs/superpowers/security/2026-10-04-system-audit.md`) | done | 1 critical, 4 high, 6 medium, 7 low, none fixed yet |
 | R7.5 | CI + pipeline e2e, plan 18 (`test/e2e/pipeline.e2e.test.ts`) | done | see the plan for the furthest milestone reached without Docker |
@@ -342,8 +260,6 @@ Five branches built, reviewed, merged and fixed (855 passing, typecheck clean). 
 |------|--------------|------|
 | R7.4 runner (plan 20, audit C1/H3/M2) | Sandbox mandatory (two opt-ins to disable), per-step empty HOME with a copy of the credential only, nested-interpreter denies, worktree `.claude` settings ignored; a run now refuses an unsandboxed config before any phase | Probe `scripts/wsl/probes/p7-step-home.sh` on the real CLI (2026-10-04, $0.02): login works from an empty step HOME (A pass), and a worktree `.claude/settings.json` allowing `Bash(touch:*)` is not honored under `--setting-sources user` (B pass, the touch was denied). Still unverified: the wildcard deny syntax (`Bash(* gh *)`); the credential copy is still readable by the agent; the backend pod runs unsandboxed with both opt-ins until agent steps are their own pods |
 | R7.4 API (plan 21, H2/M1/M3–M5/L1–L6, plan 15 leftovers) | CSRF and clickjacking guards, clone-host allowlist, redaction fixes, shared SSE poller with a cap, security headers, configurable allowed Hosts | SSE idle timeouts; clone allowlist is `github.com` only by default; DNS-rebinding window on clone |
-| R7.1 Job runner (plan 22) | `GateExecutor` with `docker` (default) and `k8s` (Job per gate, JUnit and logs through kubectl), smoke reaches the Service by DNS; offline gates get a deny-all policy | Manifests validated 2026-10-04: both overlays render with `kubectl kustomize` and all 23 resources pass `kubectl apply --dry-run=server` on the local kind cluster (the obsolete AppArmor annotation was replaced by `appArmorProfile`); Jobs never run; `kubectl logs` merges stdout/stderr; k8s executor requires the kind target (guarded at run start) |
-| R7.1 Deploy (plan 23, H4/M6) | Registry build via BuildKit, non-root image without docker.io, securityContext everywhere, agent-step egress allowlist (placeholder CIDRs), kind containerd mirror | CIDR placeholders must be replaced; compose file still mounts `/root` and the Docker socket (legacy path); image pins unchecked against a registry; nothing applied to a cluster |
 | Orchestrator (plan 24) | Explicit `blocked` status in the Dev/DevOps output (no spec-gap rounds burned), supervisor stop-marker rule; a hand resume (`RUN_RESUMED {manual:true}`) now lifts a stop but never an exhausted budget | supervise CLI test covers argument validation only |
 
 ### Stage 7c — Leftovers (2026-10-04, plans 25–27; 874 passing)
@@ -476,9 +392,6 @@ unit-tested with fixtures. Each one needs a plan file in `plans/` before impleme
 ### R9.4 Prebuilt image in GHCR - `todo`
 
 - `task up` would pull instead of building (first start drops from minutes to a download). Needs a publish workflow, a decision on package visibility and a change to `docker-compose.yml` that keeps `test/infra/compose.test.ts` true.
-### R9.5 Demo run in the UI - `rejected` (2026-10-06, human decision: no canned/fake data, only real executions)
-
-- Plan 48 scoped a safe, zero-cost way to do this (a static, typechecked NDJSON journal replayed through the existing Run page, no process/git/Docker/Claude touched) but the human rejected the premise outright: a scripted run always looks successful, which is exactly the wrong thing to show when the real golden run (R5.1) has never finished. Not pursued in any form.
 ## Stage 10 - Agent quality (2026-10-06)
 
 ### R10.1 Route tasks to the owning role; repair agent prompts; distill skill guidance - `done` (plan 46, 2026-10-06)
