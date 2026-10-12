@@ -5,7 +5,8 @@ import path from 'node:path';
 const REGISTRIES: Record<StackKind, readonly string[]> = {
   node: [],
   python: ['pypi.org', 'files.pythonhosted.org'],
-  go: ['proxy.golang.org', 'sum.golang.org'],
+  // proxy.golang.org redirects a larger module zip to storage.googleapis.com; without it such a dependency never downloads.
+  go: ['proxy.golang.org', 'sum.golang.org', 'storage.googleapis.com'],
   rust: ['crates.io', 'index.crates.io', 'static.crates.io'],
   other: [],
 };

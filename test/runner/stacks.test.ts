@@ -6,8 +6,10 @@ import { STACK_BASH, UNCOMMITTED_BUILD_DIRS, copyCargoRoot, stackDomains, stackE
 
 describe('stacks', () => {
   it('reaches only the registries of the run stack, plus npm', () => {
-    expect(stackDomains('go')).toEqual(['registry.npmjs.org', 'proxy.golang.org', 'sum.golang.org']);
+    // proxy.golang.org answers a larger module zip with a redirect to storage.googleapis.com (live: klauspost/compress, which nats.go needs).
+    expect(stackDomains('go')).toEqual(['registry.npmjs.org', 'proxy.golang.org', 'sum.golang.org', 'storage.googleapis.com']);
     expect(stackDomains('node')).toEqual(['registry.npmjs.org']);
+    expect(stackDomains('python')).not.toContain('storage.googleapis.com');
     expect(stackDomains('other')).toEqual(['registry.npmjs.org']);
     expect(stackDomains('python')).not.toContain('crates.io');
   });
