@@ -69,6 +69,18 @@ export function cloneFailure(stderr: string): string {
   return 'não foi possível clonar o repositório';
 }
 
+/** Puts the address this run deployed on into a report merged from main, whose own deploy may have used another port. */
+export function withDeployedAddress(report: unknown, deployed: Record<string, unknown>): unknown {
+  if (typeof report !== 'object' || report === null) return report;
+  const r = report as { service?: object | null; services?: Array<{ service: string }> };
+  const cards = Array.isArray(deployed.services) ? (deployed.services as Array<{ service: string; url: string; port?: number }>) : [];
+  return {
+    ...r,
+    ...(r.service ? { service: { ...r.service, url: deployed.url, port: deployed.port } } : {}),
+    ...(r.services ? { services: r.services.map((x) => { const c = cards.find((k) => k.service === x.service); return c ? { ...x, url: c.url, port: c.port } : x; }) } : {}),
+  };
+}
+
 export function runRoutes(deps: RunRoutesDeps): Route[] {
   const index = async (): Promise<IndexDeps> => ({ cfg: await deps.cfg(), home: deps.home, isAlive: (pid) => isAlive(deps.control, pid) });
   /** A project as the screens get it: its GitHub page and each service's, from its own clone (null until Phase 0 made it). */
@@ -518,8 +530,11 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
               .then((text) => text ?? fs.readFile(path.join(project, 'docs', 'README.md'), 'utf8').catch(() => null))
           : null;
         // A run with no report of its own (the deploy run of an imported spec) shows the one merged on main.
-        const report = [...evs].reverse().find((e) => e.type === 'REPORT_READY')?.data.report
-          ?? (project ? await fs.readFile(path.join(project, 'docs', 'specs', specId, 'report.json'), 'utf8').then((t) => JSON.parse(t) as unknown).catch(() => null) : null);
+        const own = [...evs].reverse().find((e) => e.type === 'REPORT_READY')?.data.report;
+        const deployed = [...evs].reverse().find((e) => e.type === 'DEPLOY_VERIFIED')?.data;
+        const merged = own ?? (project ? await fs.readFile(path.join(project, 'docs', 'specs', specId, 'report.json'), 'utf8').then((t) => JSON.parse(t) as unknown).catch(() => null) : null);
+        // The merged report keeps the address of its own deploy; this run's deploy may have used another port.
+        const report = own || !deployed ? merged : withDeployedAddress(merged, deployed);
         const phase = [...evs].reverse().find((e) => e.type === 'PHASE_STARTED')?.data.phase ?? 0;
         let status: string = finished ? String(finished.data.result) : interrupted ? 'interrupted' : state.status;
         // Same answer as the run list: a run that delivered a concluded spec is done and locked (see listRuns). A live run is neither.
