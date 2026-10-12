@@ -1,7 +1,8 @@
 /**
- * R11.4: the program controller. It takes a refined backlog from `planned` to delivered, one spec at a time, in rank and
- * dependency order. One at a time because the clone, the compose stack and the quota are shared; parallelism stays inside a
- * spec. The ledger (`Program`) is the only state: `tick` reads it, settles what is in flight, starts the next item and
+ * R11.4: the program controller. It takes a refined backlog from `planned` to delivered, in rank and dependency order,
+ * up to `MAX_PARALLEL` specs at once. Two specs run together only when the SM's conflict map says they touch different
+ * code, and never before the first spec (the project's foundation) is done; the clone and the deploy stack are guarded by
+ * file locks in the runs themselves. The ledger (`Program`) is the only state: `tick` reads it, settles what is in flight, starts the next item and
  * writes it back before it launches anything, so a restart finds the claim and adopts the run instead of starting another.
  * A failed spec is isolated: its dependents are blocked, everything independent of it keeps going (the Jev repair loop is R11.5).
  */
@@ -25,6 +26,10 @@ export interface ProgramItem {
   resumes: number;
   /** Sum of the delivering run's and (once it runs) the `spec complete` run's cost; null until the first one finishes. */
   costUsd: number | null;
+  /** Specs it must never run beside, from the SM's conflict map; absent means it runs alone. */
+  conflictsWith?: string[];
+  /** Asked to run now: it goes ahead of the queue at the next free slot. */
+  priority?: boolean;
 }
 
 export interface Program {
@@ -64,9 +69,12 @@ export interface ProgramEntry {
   dependsOn: string[];
   /** Delivered before this program (R11.7.2): it starts done and never runs again. */
   done?: boolean;
+  conflictsWith?: string[];
 }
 
 export const MAX_RESUMES = 3;
+/** Specs running at once: each run already uses several Claude processes, so two keep the quota and merges calm. */
+export const MAX_PARALLEL = 2;
 
 export function newProgram(draftId: string, entries: readonly ProgramEntry[], now: Date): Program {
   const items = [...entries].sort((a, b) => a.rank - b.rank).map(({ done, ...e }): ProgramItem => ({ ...e, dependsOn: [...e.dependsOn], status: done ? 'done' : 'pending', runId: null, completeRunId: null, startedAt: null, finishedAt: done ? now.toISOString() : null, reason: null, resumes: 0, costUsd: null }));
@@ -79,6 +87,17 @@ export function newProgram(draftId: string, entries: readonly ProgramEntry[], no
  * re-derive who is still blocked by another cause. No cause classification, no replanning: a human or a future Jev
  * routing (R11.5/R11.5a) decides whether a retry is warranted; this only clears the ledger for one.
  */
+/** Puts a pending item ahead of the queue: the next `tick()` starts it at the first free slot it does not conflict with. */
+export function prioritizeItem(program: Program, specId: string, now: Date): Program {
+  const p: Program = structuredClone(program);
+  const item = p.items.find((i) => i.specId === specId);
+  if (!item) throw new RangeError(`unknown spec ${specId}`);
+  if (item.status !== 'pending') throw new RangeError(`item ${specId} is not pending (it is ${item.status})`);
+  item.priority = true;
+  p.updatedAt = now.toISOString();
+  return p;
+}
+
 export function retryItem(program: Program, specId: string, now: Date): Program {
   const p: Program = structuredClone(program);
   const item = p.items.find((i) => i.specId === specId);
@@ -92,6 +111,8 @@ export function retryItem(program: Program, specId: string, now: Date): Program 
 }
 
 const IN_FLIGHT: ReadonlySet<ItemStatus> = new Set(['running', 'completing']);
+/** Two items may run together only when both carry a conflict map and neither names the other. */
+const compatible = (a: ProgramItem, b: ProgramItem) => !!a.conflictsWith && !!b.conflictsWith && !a.conflictsWith.includes(b.specId) && !b.conflictsWith.includes(a.specId);
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** One reconciliation step. Returns the new ledger; `save` is called whenever it changes, before any launch that follows. */
@@ -185,10 +206,16 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
     }
   }
 
-  // Nothing in flight: the first pending item by rank whose dependencies are all done.
-  while (!p.items.some((i) => IN_FLIGHT.has(i.status))) {
-    const next = p.items.find((i) => i.status === 'pending' && i.dependsOn.every((d) => p.items.find((x) => x.specId === d)?.status === 'done'));
+  // Fill the free slots: prioritized items first, then by rank, each with its dependencies done and no conflict in flight.
+  // Until one spec is done, one runs alone: the first spec lays the project's foundation.
+  for (;;) {
+    const inFlight = p.items.filter((i) => IN_FLIGHT.has(i.status));
+    const slots = p.items.some((i) => i.status === 'done') ? MAX_PARALLEL : 1;
+    if (inFlight.length >= slots) break;
+    const ready = p.items.filter((i) => i.status === 'pending' && i.dependsOn.every((d) => p.items.find((x) => x.specId === d)?.status === 'done'));
+    const next = [...ready.filter((i) => i.priority), ...ready.filter((i) => !i.priority)].find((i) => inFlight.every((f) => compatible(i, f)));
     if (!next) break;
+    delete next.priority;
     next.status = 'running';
     next.startedAt = stamp();
     await persist();

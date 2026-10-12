@@ -96,10 +96,14 @@ export class ProgramService {
       await writePid(runs, runId, pid);
       this.deps.log?.(`program ${draftId}: run ${runId} ${mode} pid ${pid}`);
     };
+    const findActiveRun = async (specId: string) => (await listRuns(await this.index(), projectId)).find((r) => r.specId === specId && claimsSpec(r))?.runId ?? null;
     return {
       now: () => this.now(),
-      findActiveRun: async (specId) => (await listRuns(await this.index(), projectId)).find((r) => r.specId === specId && claimsSpec(r))?.runId ?? null,
+      findActiveRun,
       startRun: async (specId) => {
+        // A run of this spec started outside the program (the project page) is adopted: never two runs of one spec.
+        const active = await findActiveRun(specId);
+        if (active) return { runId: active };
         await this.deps.freezeItem(projectId, draftId, specId);
         const runs = runsDirOf(await this.index());
         const runId = await nextRunId({ runs, projectId }, specId);
