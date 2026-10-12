@@ -22,7 +22,8 @@ import { sha256 } from '../contracts/hash.js';
 import { flowHeadings } from '../validators/backlog.js';
 import { flowIsMermaid } from './sections.js';
 import { detailBacklog, maxCriterionInDraft, retireDropped } from './detail-cycle.js';
-import { DOC_REL, draftHash, flowTemplate, keepBaseProject, readBase, readDerived, readDoc, stackTemplate, writeBacklogMd, writeDerived, writeDoc, writeProject, writeSpecsIndex, type DocFile, type Draft } from './draft.js';
+import { isStarted } from './coverage.js';
+import { DOC_REL, draftHash, flowTemplate, keepBaseProject, readBase, readDerived, readDoc, readMainSpec, stackTemplate, writeBacklogMd, writeDerived, writeDoc, writeProject, writeSpecsIndex, type DocFile, type Draft } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
 import { buildSpecsIndex, outlineOfIndex, specIdOf, type SpecsIndex } from './specs-index.js';
 import type { JevValidationResult, ValidationDocs } from './jev-validation.js';
@@ -145,6 +146,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       // R11.7.4: adjustments are the orchestrator's: the PO never sees one, and each comes back from its approval in briefing.md.
       const previous = last && { ...last, items: last.items.filter((i) => !isAdjustment(i.key)) };
       const idOf = (key: string) => before?.specs?.[key]?.specId ?? specIdOf(draft.specId, key, before?.keyIds);
+      // R11.7.5: an item of the last outline whose spec started on main stays even when the PO drops it.
+      const started = (await Promise.all((last?.items ?? []).map(async (i) => (isStarted((await readMainSpec(draft, idOf(i.key)))?.status) ? [i] : [])))).flat();
       let rejection: string[] | undefined;
       let accepted: Extract<BacklogCheck, { ok: true }> | null = null;
       for (let attempt = 1; attempt <= 2 && !accepted; attempt++) {
@@ -164,7 +167,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           await fail(`backlog failed: ${out.failure}: ${out.errors.join('; ')}`);
           return;
         }
-        const checked = postProcessBacklog(out.value as BacklogOutput, previous, docs['flow.md'], approvedAdjustments(docs['brief.md']));
+        const checked = postProcessBacklog(out.value as BacklogOutput, previous, docs['flow.md'], approvedAdjustments(docs['brief.md']), started);
         if (checked.ok) accepted = checked;
         else rejection = checked.issues;
       }

@@ -75,8 +75,8 @@ function keepPreviousKeys(items: readonly BacklogItem[], previous: BacklogState 
   return items.map((i) => ({ ...i, key: rename.get(i.key) ?? i.key, dependsOn: i.dependsOn.map((d) => rename.get(d) ?? d) }));
 }
 
-/** The orchestrator, not the agent, owns key stability, validity and rank, and adds the adjustments the owner approved (R11.7.4). */
-export function postProcessBacklog(out: { project: unknown; backlog: unknown }, previous: BacklogState | null, flow: string, approved: readonly string[] = []): BacklogCheck {
+/** The orchestrator, not the agent, owns key stability, validity and rank, keeps every started item (R11.7.5) and adds the adjustments the owner approved (R11.7.4). */
+export function postProcessBacklog(out: { project: unknown; backlog: unknown }, previous: BacklogState | null, flow: string, approved: readonly string[] = [], started: readonly BacklogItem[] = []): BacklogCheck {
   const project = Project.safeParse(out.project);
   const backlog = Backlog.safeParse(out.backlog);
   const issues = [
@@ -87,8 +87,12 @@ export function postProcessBacklog(out: { project: unknown; backlog: unknown }, 
   const items = keepPreviousKeys(backlog.data.items.filter((i) => !isAdjustment(i.key)), previous);
   const rules = validateBacklog({ epics: backlog.data.epics, items }, { flowHeadings: flowHeadings(flow) });
   if (rules.length > 0) return { ok: false, issues: rules };
+  // A started item the agent dropped stays as it was, with only the dependencies still in the outline.
+  const keys = new Set([...items, ...started].map((i) => i.key));
+  const all = [...items, ...started.filter((s) => !items.some((i) => i.key === s.key)).map((s) => ({ ...s, dependsOn: s.dependsOn.filter((d) => keys.has(d)) }))];
   // Adjustments first: rank breaks ties by position, so each runs right after its original, before what waits on it.
-  return { ok: true, value: { project: project.data, backlog: { epics: backlog.data.epics, items: rankItems([...adjustmentItems(items, approved), ...items]) } } };
+  const adjustments = adjustmentItems(all, approved).filter((a) => !all.some((i) => i.key === a.key));
+  return { ok: true, value: { project: project.data, backlog: { epics: backlog.data.epics, items: rankItems([...adjustments, ...all]) } } };
 }
 
 /** The backlog as a Markdown view for people (and later agents); generated, never edited by hand. */

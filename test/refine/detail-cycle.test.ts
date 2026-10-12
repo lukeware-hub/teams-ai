@@ -136,8 +136,9 @@ describe('backlog detailing in the refinement cycle', () => {
 
   // R11.7.3: a new draft over what main already planned derives nothing again unless a cited section changed.
   type Env = Awaited<ReturnType<typeof setup>>;
-  const secondDraft = async (change?: (second: Env) => Promise<unknown>, agent = fakeAgent(() => OUTLINE)) => {
+  const secondDraft = async (change?: (second: Env) => Promise<unknown>, agent = fakeAgent(() => OUTLINE), prepare?: (first: Env) => Promise<unknown>) => {
     const first = await setup();
+    if (prepare) await prepare(first);
     const agent1 = fakeAgent(() => OUTLINE);
     await first.run(agent1, 1);
     await first.journal.fact(RefineEvent.BacklogDetailEnabled, {});
@@ -296,6 +297,23 @@ describe('backlog detailing in the refinement cycle', () => {
     expect(JSON.parse(await readFile(`${second.itemDir('fat')}/spec.json`, 'utf8')).status).toBe('retired');
     expect(JSON.parse(await readFile(`${second.docs}/specs.json`, 'utf8')).specs.map((s: { key: string }) => s.key)).toEqual(['caso', 'triagem', 'opme']);
     expect(second.journal.state.status).toBe('ready');
+  });
+
+  it('keeps a delivered item whose sections left the docs, and asks the owner whether an adjustment removes it', async () => {
+    const { second } = await secondDraft(async (d) => {
+      await markStatus(d, 'fat', 'done');
+      await withoutFat(d);
+    }, fakeAgent(() => OUTLINE.filter((i) => i.key !== 'fat')));
+    expect(second.journal.state.backlog!.items.find((i) => i.key === 'fat')).toMatchObject({ dependsOn: ['opme'] });
+    expect(second.journal.state.backlog!.specs?.fat?.spec?.status).toBe('done');
+    expect(approvals(second)).toEqual([expect.objectContaining({ status: 'pending', replace: expect.stringMatching(/^## Ajuste aprovado: fat-ajuste-1\n[\s\S]*remove essa funcionalidade/) })]);
+  });
+
+  it('keeps a started adjustment whose approval section the owner removed', async () => {
+    const approve = (d: Env) => writeFile(d.draft.briefingMd, '# Briefing\n\n## Objectives\n\n- tudo\n\n## Ajuste aprovado: opme-ajuste-1\n\ntexto\n');
+    const { second } = await secondDraft((d) => markStatus(d, 'opme-ajuste-1', 'running'), fakeAgent(() => OUTLINE), approve);
+    expect(second.journal.state.backlog!.items.find((i) => i.key === 'opme-ajuste-1')).toMatchObject({ dependsOn: ['opme'] });
+    expect(second.journal.state.backlog!.specs?.['opme-ajuste-1']?.spec?.status).toBe('running');
   });
 
   it('retries an item alone with its rejection when its spec or pre-plan breaks a rule', async () => {

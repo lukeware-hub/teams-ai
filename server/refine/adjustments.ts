@@ -29,7 +29,7 @@ export function adjustmentItems(items: readonly BacklogItem[], approved: readonl
   for (const key of [...approved].sort((a, b) => rootOf(a)!.localeCompare(rootOf(b)!) || numberOf(a) - numberOf(b))) {
     const original = items.find((i) => i.key === rootOf(key));
     if (!original) continue;
-    const after = out.filter((a) => rootOf(a.key) === original.key).at(-1)?.key ?? original.key;
+    const after = [...items, ...out].filter((a) => rootOf(a.key) === original.key && numberOf(a.key) < numberOf(key)).sort((a, b) => numberOf(a.key) - numberOf(b.key)).at(-1)?.key ?? original.key;
     out.push({
       ...original,
       key,
@@ -57,6 +57,8 @@ export interface DueAdjustment {
   status: SpecStatus;
   /** The cited sections whose text is new since that spec was derived. */
   changed: string[];
+  /** R11.7.5: every section it cites, its approval aside, left the docs, so the adjustment removes the feature. */
+  removed?: true;
 }
 
 const sameHashes = (a: ReadonlyArray<string | null>, b: ReadonlyArray<string | null>) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
@@ -75,7 +77,9 @@ export function adjustmentsDue(backlog: Pick<BacklogState, 'items' | 'specs'>, d
     if (sameHashes(was, now.map(hashOf))) return [];
     const key = `${original.key}-ajuste-${numberOf(latest.key) + 1}`;
     if (patches.some((p) => (p.status === 'pending' || p.status === 'rejected') && p.replace.startsWith(`## ${approvalHeading(key)}\n`))) return [];
-    return [{ key, specId: spec.specId, status: spec.status, changed: now.filter((s) => !was.includes(hashOf(s))).map((s) => `${s.doc} › ${s.heading}`) }];
+    const cites = now.filter((s) => !approvalKey(s.heading));
+    const removed = cites.length > 0 && cites.every((s) => s.hash === null);
+    return [{ key, specId: spec.specId, status: spec.status, changed: (removed ? cites : now.filter((s) => !was.includes(hashOf(s)))).map((s) => `${s.doc} › ${s.heading}`), ...(removed ? { removed: true as const } : {}) }];
   });
 }
 
@@ -83,6 +87,13 @@ export function adjustmentsDue(backlog: Pick<BacklogState, 'items' | 'specs'>, d
 export function approvalPatch(due: DueAdjustment): { find: string; replace: string; reason: string } {
   const when = due.status === 'done' ? 'foi entregue' : 'começou';
   const changed = due.changed.join('; ') || 'uma seção que ela citava saiu do item';
+  if (due.removed) {
+    return {
+      find: '',
+      replace: `## ${approvalHeading(due.key)}\n\nA spec ${due.specId} ${when} e depois as seções que ela cita saíram dos documentos (${changed}); este ajuste remove essa funcionalidade.\n`,
+      reason: `As seções que a spec ${due.specId} cita saíram dos documentos depois que ela ${when}: ${changed}. Aceite para aprovar a spec de ajuste ${due.key}, que remove essa funcionalidade; rejeite para mantê-la como está.`,
+    };
+  }
   return {
     find: '',
     replace: `## ${approvalHeading(due.key)}\n\nA spec ${due.specId} ${when} antes da mudança em ${changed}; este ajuste entrega só o que mudou.\n`,

@@ -98,6 +98,17 @@ describe('postProcessBacklog', () => {
     expect(keys(['opme-ajuste-1'])).toEqual([['caso', 1, 'Item caso'], ['opme', 2, 'Item opme'], ['opme-ajuste-1', 3, 'Ajuste 1: Item opme']]);
   });
 
+  // R11.7.5: a started item never leaves on its own; the owner decides through an adjustment whether it goes.
+  it('keeps a started item the agent dropped, with only the dependencies still in the outline', () => {
+    const out = postProcessBacklog(raw([item('opme'), item('caso', { title: 'reescrito' })]), null, '', [], [item('fat', { dependsOn: ['opme', 'antigo'] }), item('caso')]);
+    expect(out.ok && out.value.backlog.items.map((i) => [i.key, i.title, i.dependsOn])).toEqual([['opme', 'Item opme', []], ['caso', 'reescrito', []], ['fat', 'Item fat', ['opme']]]);
+  });
+
+  it('keeps a started adjustment whose approval is gone, and puts a later approved one after it', () => {
+    const out = postProcessBacklog(raw([item('opme')]), null, '', ['opme-ajuste-2'], [item('opme-ajuste-1', { title: 'Ajuste 1: Item opme', dependsOn: ['opme'] })]);
+    expect(out.ok && out.value.backlog.items.map((i) => [i.key, i.dependsOn])).toEqual([['opme', []], ['opme-ajuste-1', ['opme']], ['opme-ajuste-2', ['opme-ajuste-1']]]);
+  });
+
   // Review of plan 79: run by rank, a dependent of the original must not be built on its old behavior first.
   it('ranks an adjustment right after its original, ahead of the items of its priority that wait on that original', () => {
     const out = postProcessBacklog(raw([item('caso', { priority: 'P0' }), item('opme'), item('fat', { dependsOn: ['opme'] }), item('relatorio')]), null, '', ['opme-ajuste-1']);

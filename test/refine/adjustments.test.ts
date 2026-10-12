@@ -70,6 +70,19 @@ describe('adjustments due', () => {
     expect(due({ opme: legacy }, [recited], renumbered)).toEqual(['opme-ajuste-1']);
   });
 
+  // R11.7.5: a started item whose sections left the docs stays; the owner decides whether an adjustment removes it.
+  it('asks to remove the feature when every section it cites left the docs, its approval aside', () => {
+    const gone = { ...before, 'flow.md': before['flow.md'].replace('%% 3. OPME\n  C --> D\n', '') };
+    const [due] = adjustmentsDue({ items: [{ ...opme, rank: 1 }], specs: { opme: started('opme', opme, before, 'done') } }, gone, []);
+    expect(due).toMatchObject({ key: 'opme-ajuste-1', removed: true, changed: ['flow.md › 3. OPME'] });
+    expect(approvalPatch(due!).reason).toMatch(/saíram dos documentos/);
+    expect(approvalPatch(due!).replace).toMatch(/remove essa funcionalidade/);
+    const approved = '# Briefing\n\n## Ajuste aprovado: opme-ajuste-1\n\ntexto\n';
+    const [first] = adjustmentItems([opme], ['opme-ajuste-1']);
+    const rows = { opme: started('opme', opme, before, 'done'), 'opme-ajuste-1': started('opme-ajuste-1', first!, { ...before, 'briefing.md': approved }, 'done') };
+    expect(adjustmentsDue({ items: [{ ...opme, rank: 1 }, { ...first!, rank: 2 }], specs: rows }, { ...gone, 'briefing.md': approved }, [])).toMatchObject([{ key: 'opme-ajuste-2', removed: true }]);
+  });
+
   it('asks nothing for unchanged sections, a spec not started, or one with no provenance', () => {
     expect(due({ opme: started('opme', opme, before, 'done') }, [opme], before)).toEqual([]);
     expect(due({ opme: started('opme', opme, before, 'planned') })).toEqual([]);
