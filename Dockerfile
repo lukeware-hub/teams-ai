@@ -19,9 +19,20 @@ RUN ln -s /usr/local/go/bin/* /usr/local/cargo/bin/* /usr/local/bin/
 
 WORKDIR /app
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends util-linux gh bubblewrap socat pipx python3-venv python-is-python3 \
-  && mv /usr/bin/gh /opt/teams-ai-bin/gh \
+  && apt-get install -y --no-install-recommends util-linux bubblewrap socat pipx python3-venv python-is-python3 \
   && rm -rf /var/lib/apt/lists/*
+# gh is the pinned official release (a static, current Go build); the Debian package is built with an old Go that trivy flags.
+ARG TARGETARCH
+ARG GH_VERSION=2.102.0
+ARG GH_SHA256_AMD64=bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386
+ARG GH_SHA256_ARM64=7862c86c72f43df3a2d93ddde6f473285b4e2af61b494849846827e513ef6484
+RUN set -eu; \
+  case "$TARGETARCH" in amd64) sha=$GH_SHA256_AMD64 ;; arm64) sha=$GH_SHA256_ARM64 ;; *) echo "unsupported arch $TARGETARCH" >&2; exit 1 ;; esac; \
+  curl -fsSL -o /tmp/gh.tar.gz "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${TARGETARCH}.tar.gz"; \
+  echo "$sha  /tmp/gh.tar.gz" | sha256sum -c -; \
+  tar -xzOf /tmp/gh.tar.gz "gh_${GH_VERSION}_linux_${TARGETARCH}/bin/gh" > /opt/teams-ai-bin/gh; \
+  chmod 755 /opt/teams-ai-bin/gh; \
+  rm /tmp/gh.tar.gz
 # graphify builds the code graph the step packs read (R11.13 slice 3); pinned to the version the CLI spike recorded.
 RUN PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install graphifyy==0.9.67
 

@@ -139,7 +139,13 @@ describe('H3 gh and docker are off the agent PATH', () => {
     const dockerfile = await fs.readFile('Dockerfile', 'utf8');
     expect(dockerfile).toMatch(/ENV PATH=\/opt\/teams-ai-bin:/);
     expect(dockerfile).toMatch(/\/opt\/teams-ai-bin\/docker\b/);
-    expect(dockerfile).toMatch(/mv \/usr\/bin\/gh \/opt\/teams-ai-bin\/gh/);
+    expect(dockerfile).toMatch(/releases\/download\/v\$\{GH_VERSION\}\/gh_\$\{GH_VERSION\}_linux_\$\{TARGETARCH\}\.tar\.gz/);
+    expect(dockerfile).toMatch(/sha256sum -c/);
+    expect(dockerfile).toMatch(/GH_SHA256_AMD64=[0-9a-f]{64}/);
+    expect(dockerfile).toMatch(/GH_SHA256_ARM64=[0-9a-f]{64}/);
+    expect(dockerfile).toMatch(/\/opt\/teams-ai-bin\/gh\b/);
+    expect(dockerfile).not.toMatch(/apt-get install[^\n]*\bgh\b/);
+    expect(dockerfile).not.toMatch(/\/usr\/(local\/)?bin\/gh\b/);
     expect(dockerfile).toMatch(/CMD \["sh", "-lc", "export PATH=\/opt\/teams-ai-bin:\$PATH;/);
     expect(dockerfile).not.toMatch(/ \/usr\/local\/bin\/docker$/m);
   });
