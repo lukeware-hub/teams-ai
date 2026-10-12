@@ -62,6 +62,18 @@ describe('program service outcomes', () => {
     expect(JSON.stringify(b)).toMatch(/T3.*tests never passed/);
   });
 
+  it('delivers a run whose blocked tasks the repair covered: every criterion they own passed verification', async () => {
+    const passed = (matrix: unknown[]) => ({ type: 'VERIFICATION_PASSED', data: { round: 2, matrix } });
+    await journal('a-r1', [started('a'), passed([{ criterion: 'AC-001', tasks: ['T1'], tests: ['t1'], status: 'passed' }, { criterion: 'AC-002', tasks: ['T2', 'T900-fix-1'], tests: ['t2'], status: 'passed' }]), finished('awaiting-validation', { blocked: [{ taskId: 'T2', reason: 'the Dev found no way' }] })]);
+    // T5 owns no criterion, so nothing measured its work; a run journaled before blocked criteria failed verification counts T4's as not passed.
+    await journal('b-r1', [started('b'), passed([{ criterion: 'AC-001', tasks: ['T1'], tests: ['t1'], status: 'passed' }]), finished('awaiting-validation', { blocked: [{ taskId: 'T5', reason: 'no change' }] })]);
+    await journal('c-r1', [started('c'), passed([{ criterion: 'AC-001', tasks: ['T4'], tests: [], status: 'blocked' }]), finished('awaiting-validation', { blocked: [{ taskId: 'T4', reason: 'stuck' }] })]);
+    const s = service();
+    expect(await s.outcome('a-r1')).toEqual({ kind: 'delivered', costUsd: null });
+    expect(await s.outcome('b-r1')).toMatchObject({ kind: 'failed' });
+    expect(await s.outcome('c-r1')).toMatchObject({ kind: 'failed' });
+  });
+
   it('a completion run that ended done is done; every other end is a failure with its reason', async () => {
     await journal('a-complete-r1', [started('a'), finished('done')]);
     await journal('c-r1', [started('c'), finished('verification-failed', { reason: 'AC-004 missing' })]);

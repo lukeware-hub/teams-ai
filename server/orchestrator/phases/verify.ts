@@ -91,14 +91,11 @@ function deliveryFixTasks(items: readonly MissingItem[], existing: number, depen
   });
 }
 
-/** The run's blocked tasks: a fix task never depends on one, since it would block at once. */
+/** The run's blocked tasks with the reason each blocked, so the SM plans the repair around them. */
 const blockedTasks = (deps: PhaseDeps) => [...(deps.tasks?.() ?? [])].filter((t) => t.state === 'blocked').map((t) => ({ taskId: t.def.id, reason: blockReason(deps.journal.events, t.def.id) }));
 
 /** Fix tasks join the plan they fix and must keep it valid: one repository's plan, or the whole services plan. */
 function fixTaskErrors(deps: PhaseDeps, fixTasks: readonly PlanTask[]): string[] {
-  const blocked = new Set(blockedTasks(deps).map((b) => b.taskId));
-  const onBlocked = fixTasks.flatMap((t) => t.dependsOn.filter((d) => blocked.has(d)).map((d) => `${t.id} depends on ${d}, which is blocked: a fix task never depends on a blocked task`));
-  if (onBlocked.length > 0) return onBlocked;
   const services = deps.services;
   if (!services) return validatePlan({ ...deps.plan!, tasks: [...deps.plan!.tasks, ...fixTasks] }, deps.spec, { firstSpec: deps.firstSpec });
   const newServices = new Set(services.repos.filter((r) => r.firstSpec).map((r) => r.service!));

@@ -139,9 +139,9 @@ export class ProgramService {
     const idx = await this.index();
     const row = await runRow(idx, runId);
     if (!row) return { kind: 'running' };
+    const events = () => loadEvents(path.join(runsDirOf(idx), runId, 'events.ndjson')).catch(() => []);
     const finished = async () => {
-      const events = await loadEvents(path.join(runsDirOf(idx), runId, 'events.ndjson')).catch(() => []);
-      return [...events].reverse().find((e) => e.type === 'RUN_FINISHED')?.data as { reason?: string | null; blocked?: Array<{ taskId: string; reason: string }>; tokens?: { costUsd?: number | null } } | undefined;
+      return [...(await events())].reverse().find((e) => e.type === 'RUN_FINISHED')?.data as { reason?: string | null; blocked?: Array<{ taskId: string; reason: string }>; tokens?: { costUsd?: number | null } } | undefined;
     };
     switch (row.status) {
       case 'running':
@@ -158,9 +158,11 @@ export class ProgramService {
       }
       case 'awaiting-validation': {
         const data = await finished();
-        const blocked = data?.blocked ?? [];
+        // The repair loop redid a blocked task's work when every criterion it owns passed verification; one that owns none is work nothing measured.
+        const matrix = (([...(await events())].reverse().find((e) => e.type === 'VERIFICATION_PASSED')?.data.matrix ?? []) as Array<{ tasks: string[]; status: string }>);
+        const covered = (taskId: string) => matrix.some((r) => r.tasks.includes(taskId)) && matrix.every((r) => !r.tasks.includes(taskId) || r.status === 'passed');
+        const blocked = (data?.blocked ?? []).filter((b) => !covered(b.taskId));
         const costUsd = data?.tokens?.costUsd ?? null;
-        // Verification accepts criteria whose only tasks are blocked, so a delivered spec still needs zero blocked tasks.
         return blocked.length === 0 ? { kind: 'delivered', costUsd } : { kind: 'failed', reason: `finished with ${blocked.length} blocked task(s): ${blocked.map((b) => `${b.taskId} (${b.reason})`).join('; ').slice(0, 400)}`, costUsd };
       }
       default: {
