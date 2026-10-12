@@ -74,13 +74,14 @@ describe('Phase 6 documentation gate', () => {
   });
 
   it('lists every service of a services run and gives the SM only their host addresses', async () => {
-    const card = (service: string, port: number) => ({ service, url: `http://127.0.0.1:${port}`, port, healthcheck: 'HTTP 200', healthcheckPath: '/health' });
+    // The platform in a container reaches each service at http://dind:<port>, an address the human never opens.
+    const card = (service: string, port: number) => ({ service, url: `http://dind:${port}`, port, healthcheck: 'HTTP 200', healthcheckPath: '/health' });
     await journal.fact(OrchEvent.DeployVerified, { attempt: 1, ...card('orders', 20001), smoke: [], services: [card('orders', 20001), { ...card('inventory', 20002), kind: 'api', docsPath: '/docs' }] });
     const r = await p6(async () => report(GOOD));
     expect(r.report.services!.map((s) => [s.service, s.port])).toEqual([['orders', 20001], ['inventory', 20002]]);
     const pack = JSON.stringify(calls[0]!.pack);
     expect(pack).toContain('http://localhost:20001 (orders), http://localhost:20002 (inventory)');
-    expect(pack).not.toContain('http://inventory:');
+    expect(pack).not.toContain('http://dind:');
   });
 
   it('counts the report step itself in report.tokens', async () => {
