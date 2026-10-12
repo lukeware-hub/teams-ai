@@ -8,7 +8,8 @@ import { execCommand } from '../../server/exec/command.js';
 import { Intent, Journal, OrchEvent } from '../../server/orchestrator/events.js';
 import { runServicesPhase5 } from '../../server/orchestrator/phases/deploy.js';
 import type { GateScope, PhaseDeps, ServiceRepo } from '../../server/orchestrator/phases/shared.js';
-import { makeFrozenSpec, makeProject, makeServicesPlan } from '../fixtures/contracts.js';
+import { RunEvent } from '../../server/pipeline/run-state.js';
+import { makeFrozenSpec, makePlanTask, makeProject, makeServicesPlan } from '../fixtures/contracts.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 
@@ -90,6 +91,30 @@ async function setup(log: string[], opts: TargetOpts & { e2eFails?: string; deta
 const failure = () => journal.events.find((e) => e.type === OrchEvent.DeployFailed)!.data;
 
 describe('Phase 5 with several services', () => {
+  it('a services deploy fix lists earlier failures with their service and compares a repeat within the same service', async () => {
+    const log: string[] = [];
+    const { deps } = await setup(log, { e2eFails: 'e2e:inventory', detail: 'AC-002: failed' });
+    await journal.fact(OrchEvent.DeployFailed, { attempt: 1, stage: 'e2e', detail: 'AC-002: failed', rolledBack: false, rollbackHealthy: null, service: 'inventory' });
+    await journal.fact(RunEvent.FixTasksPlanned, { tasks: [makePlanTask({ id: 'T950-deploy-fix-1', origin: 'deploy-fix', service: 'inventory' })] });
+    for (const to of ['ready', 'implementing', 'validating', 'reviewing', 'rebasing', 'merging', 'merged']) await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T950-deploy-fix-1', to });
+    const res = await runServicesPhase5(deps, 2);
+    const description = res.ok ? '' : res.fixTask?.description ?? '';
+    expect(description).toContain('- attempt 1 failed at e2e (service inventory): AC-002: failed');
+    expect(description).toContain('The fix of attempt 1 (T950-deploy-fix-1) did not change this failure');
+  });
+
+  it('never calls a failure repeated when the earlier one was in another service', async () => {
+    const log: string[] = [];
+    const { deps } = await setup(log, { e2eFails: 'e2e:inventory', detail: 'AC-002: failed' });
+    await journal.fact(OrchEvent.DeployFailed, { attempt: 1, stage: 'e2e', detail: 'AC-002: failed', rolledBack: false, rollbackHealthy: null, service: 'orders' });
+    await journal.fact(RunEvent.FixTasksPlanned, { tasks: [makePlanTask({ id: 'T950-deploy-fix-1', origin: 'deploy-fix', service: 'orders' })] });
+    for (const to of ['ready', 'implementing', 'validating', 'reviewing', 'rebasing', 'merging', 'merged']) await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T950-deploy-fix-1', to });
+    const res = await runServicesPhase5(deps, 2);
+    const description = res.ok ? '' : res.fixTask?.description ?? '';
+    expect(description).toContain('- attempt 1 failed at e2e (service orders): AC-002: failed');
+    expect(description).not.toContain('did not change this failure');
+  });
+
   it('starts the platform, deploys every service, then proves each one with the addresses of the others', async () => {
     const log: string[] = [];
     const { deps, scopes } = await setup(log);

@@ -50,9 +50,43 @@ function serviceIntent(deps: PhaseDeps, repo: ServiceRepo, tag: string): Deploym
 /** Dependency manifests of the supported stacks: a smoke or e2e fix may need to add a test dependency. */
 const MANIFESTS = ['package.json', 'go.mod', 'go.sum', 'requirements.txt', 'pyproject.toml', 'Cargo.toml', 'Cargo.lock'];
 
+/** First line of a deploy failure detail: the failing criteria or stage, without the gate output that follows it. */
+const headline = (detail: string): string => detail.split('\n')[0]!.trim().slice(0, 300);
+
+/**
+ * Every earlier deploy failure of the run with the fix task planned after it and what that fix changed, so a fix task
+ * builds on the ones before it; when the previous fix merged and the same failure came back, it says to look elsewhere.
+ */
+function deployHistory(deps: PhaseDeps, attempt: number, stage: DeployStage, detail: string, service: string | null): string {
+  const failures = new Map<number, { stage: string; detail: string; service: string | null; fix: string | null }>();
+  let last: number | null = null;
+  for (const e of deps.journal.events) {
+    if (e.type === OrchEvent.DeployFailed && Number(e.data.attempt) < attempt) {
+      last = Number(e.data.attempt);
+      failures.set(last, { stage: String(e.data.stage), detail: String(e.data.detail), service: (e.data.service as string | undefined) ?? null, fix: null });
+    } else if (e.type === RunEvent.FixTasksPlanned && last !== null) {
+      const fix = (e.data.tasks as PlanTask[]).find((t) => t.origin === 'deploy-fix');
+      if (fix) failures.get(last)!.fix = fix.id;
+    }
+  }
+  if (failures.size === 0) return '';
+  // A replanned fix commits through its replacements (`<id>-r1`); `T950-deploy-fix-10` is another fix.
+  const fixLine = (id: string): string => {
+    const state = deps.journal.state.tasks.get(id)?.state ?? 'planned';
+    const commit = [...deps.journal.events].reverse().find((e) => e.type === OrchEvent.DevCommitted && (e.data.taskId === id || String(e.data.taskId).startsWith(`${id}-r`)));
+    return commit ? `${id} ${state}: ${String(commit.data.summary)} (files: ${(commit.data.changedFiles as string[]).join(', ')})` : `${id} ${state}`;
+  };
+  const lines = [...failures.entries()].sort(([a], [b]) => a - b).map(([n, f]) => `- attempt ${n} failed at ${f.stage}${f.service ? ` (service ${f.service})` : ''}: ${headline(f.detail)}${f.fix ? `\n  then ${fixLine(f.fix)}` : ''}`);
+  const previous = failures.get(attempt - 1);
+  const repeated = previous?.fix && deps.journal.state.tasks.get(previous.fix)?.state === 'merged' && previous.stage === stage && previous.service === service && headline(previous.detail) === headline(detail);
+  const note = repeated ? `\nThe fix of attempt ${attempt - 1} (${previous!.fix}) did not change this failure: look for another cause before changing the same lines again.` : '';
+  return `\n\nEarlier deploy attempts of this run:\n${lines.join('\n')}${note}`;
+}
+
 const fixTaskId = (deps: PhaseDeps) => `T950-deploy-fix-${[...deps.journal.state.tasks.keys()].filter((id) => id.startsWith('T950-deploy-fix-')).length + 1}`;
-const fixTask = (deps: PhaseDeps, attempt: number, stage: DeployStage, detail: string, newPort: number | null = null): PlanTask => {
+const fixTask = (deps: PhaseDeps, attempt: number, stage: DeployStage, detail: string, newPort: number | null = null, service: string | null = null): PlanTask => {
   const base = { id: fixTaskId(deps), title: `Fix deployment (${stage})`, criteriaRefs: [], dependsOn: [], origin: 'deploy-fix' as const };
+  const history = deployHistory(deps, attempt, stage, detail, service);
   // A smoke failure is about the smoke tests, not the manifests: the Dev owns it and must know the contract.
   if (stage === 'smoke') {
     // The e2e suite runs next against the same service; fixing a request only in smoke failed the next attempt at e2e (live).
@@ -60,16 +94,16 @@ const fixTask = (deps: PhaseDeps, attempt: number, stage: DeployStage, detail: s
     const e2e = suite ? `\n\nThe e2e suite (${suite}) runs right after smoke against the same service and usually makes the same requests: fix the same defect there too.` : '';
     return { ...base, description: `Deploy attempt ${attempt} succeeded but the smoke suite did not prove the smoke criteria: ${detail}${e2e}
 
-Contract: ${SMOKE_CONTRACT}`, affectedPaths: ['tests/smoke/**', 'tests/smoke', 'smoke/**', '**/*smoke*_test.go', 'vitest.config.ts', ...(suite ? [suite] : []), ...MANIFESTS], owner: 'dev' };
+Contract: ${SMOKE_CONTRACT}${history}`, affectedPaths: ['tests/smoke/**', 'tests/smoke', 'smoke/**', '**/*smoke*_test.go', 'vitest.config.ts', ...(suite ? [suite] : []), ...MANIFESTS], owner: 'dev' };
   }
   if (stage === 'e2e') {
     const suite = deps.plan!.delivery?.e2eSuite;
     return { ...base, description: `Deploy attempt ${attempt} succeeded and smoke passed but the e2e suite did not prove the acceptance criteria: ${detail}
 
-Contract: ${E2E_CONTRACT}`, affectedPaths: [...(suite ? [suite] : []), 'e2e/**', 'tests/e2e/**', ...MANIFESTS], owner: 'dev' };
+Contract: ${E2E_CONTRACT}${history}`, affectedPaths: [...(suite ? [suite] : []), 'e2e/**', 'tests/e2e/**', ...MANIFESTS], owner: 'dev' };
   }
   const portHint = newPort === null ? '' : `\n\nThe host port is taken. Move the service to port ${newPort}: PORT=${newPort}, docker-compose publishes "${newPort}:${newPort}", and the Dockerfile, healthcheck and tests use ${newPort} too.`;
-  return { ...base, description: `Deploy attempt ${attempt} failed at ${stage}: ${detail}${portHint}`, affectedPaths: [...deps.plan!.deploy.manifests, 'Dockerfile'], owner: 'devops' };
+  return { ...base, description: `Deploy attempt ${attempt} failed at ${stage}: ${detail}${portHint}${history}`, affectedPaths: [...deps.plan!.deploy.manifests, 'Dockerfile'], owner: 'devops' };
 };
 
 /** Resuming a new process restarts postPhases()'s attempt loop at 1; without this it replayed attempt 1's
@@ -158,7 +192,7 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
     if (own.fixable === false || planGap(stage as DeployStage, detail)) return { ok: false as const, reason: `deploy failed at ${stage} (${repo.service}): ${detail}` };
     // A taken port moves only now that a fix task follows, and never onto the port of another service of the plan.
     const newPort = stage === 'apply' && own.intent && PORT_TAKEN.test(detail) ? await reassignPort(deps, own.intent.port, repo.service!, services.repos.map((r) => servicePort(deps, r))) : null;
-    const task = { ...fixTask({ ...deps, plan: repo.plan }, attempt, stage as DeployStage, detail, newPort), service: repo.service! };
+    const task = { ...fixTask({ ...deps, plan: repo.plan }, attempt, stage as DeployStage, detail, newPort, repo.service!), service: repo.service! };
     await journal.fact(RunEvent.FixTasksPlanned, { tasks: [task] });
     return { ok: false as const, reason: `deploy failed at ${stage} (${repo.service}); deploy-fix task planned`, fixTask: task };
   };

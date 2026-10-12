@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execCommand } from '../../server/exec/command.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
 import { runPhase5, type PhaseDeps } from '../../server/orchestrator/phases/index.js';
-import { makeFrozenSpec, makePlan, makeProject } from '../fixtures/contracts.js';
+import { RunEvent } from '../../server/pipeline/run-state.js';
+import { makeFrozenSpec, makePlan, makePlanTask, makeProject } from '../fixtures/contracts.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 
 const spec = makeFrozenSpec();
@@ -38,6 +39,56 @@ function deps(smokeDetail: string, destroyed: string[] = []): PhaseDeps {
 }
 
 describe('Phase 5', () => {
+  /** The run's earlier attempt: its failure, the fix task planned for it, and that fix's commit and final state. */
+  async function earlierAttempt(attempt: number, stage: string, detail: string, fix: { id: string; state: 'merged' | 'blocked'; summary?: string; files?: string[] }, service?: string): Promise<void> {
+    await journal.fact(OrchEvent.DeployFailed, { attempt, stage, detail, rolledBack: false, rollbackHealthy: null, tag: 't', ...(service ? { service } : {}) });
+    await journal.fact(RunEvent.FixTasksPlanned, { tasks: [makePlanTask({ id: fix.id, origin: 'deploy-fix', ...(service ? { service } : {}) })] });
+    const states = fix.state === 'merged' ? ['ready', 'implementing', 'validating', 'reviewing', 'rebasing', 'merging', 'merged'] : ['ready', 'implementing', 'blocked'];
+    for (const to of states) await journal.fact(RunEvent.TaskStateChanged, { taskId: fix.id, to });
+    if (fix.summary) await journal.fact(OrchEvent.DevCommitted, { taskId: fix.id, sha: 'abc', changedFiles: fix.files ?? [], summary: fix.summary });
+  }
+
+  it('a deploy fix lists every earlier failure of the run and what the fix after it changed', async () => {
+    await earlierAttempt(1, 'smoke', 'AC-001: no smoke test\n' + 'gate log line\n'.repeat(2000), { id: 'T950-deploy-fix-1', state: 'merged', summary: 'added the smoke suite', files: ['smoke/smoke.test.mjs'] });
+    const r = await runPhase5(deps('AC-002: smoke test failed'), 2);
+    const task = r.ok ? null : r.fixTask;
+    expect(task?.id).toBe('T950-deploy-fix-2');
+    expect(task?.description).toContain('Earlier deploy attempts of this run:\n- attempt 1 failed at smoke: AC-001: no smoke test\n  then T950-deploy-fix-1 merged: added the smoke suite (files: smoke/smoke.test.mjs)');
+    expect(task?.description).not.toContain('gate log line');
+    expect(task?.description).not.toContain('did not change this failure');
+  });
+
+  it('says the previous fix did not change a failure that came back the same', async () => {
+    await earlierAttempt(1, 'smoke', 'AC-001: no smoke test', { id: 'T950-deploy-fix-1', state: 'merged', summary: 'renamed the test', files: ['smoke/smoke.test.mjs'] });
+    const r = await runPhase5(deps('AC-001: no smoke test'), 2);
+    expect(r.ok ? null : r.fixTask?.description).toContain('The fix of attempt 1 (T950-deploy-fix-1) did not change this failure: look for another cause before changing the same lines again.');
+  });
+
+  it('lists an attempt replayed after a crash once, an earlier fix that ended blocked by its state, and nothing on a first attempt', async () => {
+    await journal.fact(OrchEvent.DeployFailed, { attempt: 1, stage: 'verify', detail: 'unhealthy before the crash', rolledBack: false, rollbackHealthy: null, tag: 't' });
+    await earlierAttempt(1, 'smoke', 'AC-001: no smoke test', { id: 'T950-deploy-fix-1', state: 'blocked' });
+    const r = await runPhase5(deps('AC-002: smoke test failed'), 2);
+    const description = r.ok ? '' : r.fixTask?.description ?? '';
+    expect(description.match(/- attempt 1 failed/g)).toHaveLength(1);
+    expect(description).toContain('- attempt 1 failed at smoke: AC-001: no smoke test\n  then T950-deploy-fix-1 blocked');
+    expect(description).not.toContain('unhealthy before the crash');
+  });
+
+  it('a first deploy attempt gets today\'s fix task description, with no history', async () => {
+    const r = await runPhase5(deps('AC-001: smoke test failed'), 1);
+    expect(r.ok ? null : r.fixTask?.description).not.toContain('Earlier deploy attempts');
+  });
+
+  it('takes the summary of a replanned fix from its replacements, never from a fix whose id only starts the same', async () => {
+    await earlierAttempt(1, 'smoke', 'AC-001: no smoke test', { id: 'T950-deploy-fix-1', state: 'blocked' });
+    await journal.fact(OrchEvent.DevCommitted, { taskId: 'T950-deploy-fix-1-r1', sha: 'def', changedFiles: ['smoke/a.mjs'], summary: 'split the suite' });
+    await journal.fact(OrchEvent.DevCommitted, { taskId: 'T950-deploy-fix-10', sha: 'fed', changedFiles: ['x'], summary: 'another fix' });
+    const r = await runPhase5(deps('AC-002: smoke test failed'), 2);
+    const description = r.ok ? '' : r.fixTask?.description ?? '';
+    expect(description).toContain('then T950-deploy-fix-1 blocked: split the suite (files: smoke/a.mjs)');
+    expect(description).not.toContain('another fix');
+  });
+
   it('a smoke failure caused by a missing plan.commands.smoke plans no deploy-fix task (the Dev cannot edit the plan)', async () => {
     const r = await runPhase5(deps('plan.commands.smoke missing'), 1);
     expect(r.ok).toBe(false);
