@@ -495,15 +495,16 @@ describe('start, resume, stop', () => {
   });
 
   it('resume is allowed only for paused:auth or interrupted runs', async () => {
+    // Each run is the latest of its spec when it is resumed: an earlier run never resumes behind a later one.
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('paused:auth'));
-    await writeRun(runs, 'hello-001-r2', [started('hello-001-r2'), { type: 'RUN_FINISHED', data: { result: 'complete' } }], state('running'));
-    await writeRun(runs, 'hello-001-r3', [started('hello-001-r3')], state('running'), 901);
     onSpawn = async () => {};
     const ok = await post('/api/runs/hello-001-r1/resume');
     expect(ok.status).toBe(200);
     expect(spawns[0]!.args).toEqual(['cli', 'resume', '--project', HELLO, '--run', 'hello-001-r1']);
     expect(await fs.readFile(path.join(runs, 'hello-001-r1', 'pid'), 'utf8')).toBe('5001');
+    await writeRun(runs, 'hello-001-r2', [started('hello-001-r2'), { type: 'RUN_FINISHED', data: { result: 'complete' } }], state('running'));
     expect((await post('/api/runs/hello-001-r2/resume')).status).toBe(409);
+    await writeRun(runs, 'hello-001-r3', [started('hello-001-r3')], state('running'), 901);
     const interrupted = await post('/api/runs/hello-001-r3/resume'); // pid 901 is dead
     expect(interrupted.status).toBe(200);
     expect((await post('/api/runs/missing/resume')).status).toBe(404);
@@ -532,6 +533,22 @@ describe('start, resume, stop', () => {
     alive.delete(5001); // the run dies again later: now it is the supervisor's to bring back
     expect(await superviseTick(await supervisorDeps(), new Map())).toEqual(['hello-001-r1']);
     expect(spawns).toHaveLength(2);
+  });
+
+  it('a run the user stopped no longer holds its spec: a new run starts, and the stopped one may not resume behind it', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 950);
+    alive.add(950);
+    expect((await post('/api/runs/hello-001-r1/stop')).status).toBe(200);
+    // Live: the stopped run stayed interrupted and refused every new run of its spec.
+    onSpawn = async (runId) => {
+      await writeRun(runs, runId, [started(runId)], state('running'));
+    };
+    const start = await post('/api/projects/hello-app/specs/hello-001/runs');
+    expect(start.status).toBe(200);
+    const { runId } = (await start.json()) as { runId: string };
+    const resume = await post('/api/runs/hello-001-r1/resume');
+    expect(resume.status).toBe(409);
+    expect((await resume.json()).error).toBe(`run hello-001-r1 is behind ${runId} of spec hello-001; only the latest run of a spec resumes`);
   });
 
   it('a supervisor scan between the stop signal and the pid cleanup does not resume the run', async () => {

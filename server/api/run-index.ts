@@ -16,7 +16,8 @@ const ACTIVE: ReadonlySet<string> = new Set(['running', 'paused:quota', 'paused:
 /** A spec with an interrupted run is resumed, not restarted: the UI offers Resume instead of Start. */
 export const CLAIMS_SPEC: ReadonlySet<string> = new Set([...ACTIVE, 'interrupted']);
 /** A locked run belongs to a concluded spec: read-only, so it never holds the spec. */
-export const claimsSpec = (r: RunRow): boolean => !r.locked && CLAIMS_SPEC.has(r.status);
+/** A run the user stopped no longer holds its spec, so a new run may start; only the latest run of a spec resumes. */
+export const claimsSpec = (r: RunRow): boolean => !r.locked && !r.stopped && CLAIMS_SPEC.has(r.status);
 
 export interface RunRow {
   runId: string;
@@ -31,6 +32,8 @@ export interface RunRow {
   n: number;
   /** The spec was concluded: the run is read-only and nothing new starts for that spec. */
   locked: boolean;
+  /** Interrupted after the user stopped it. */
+  stopped?: boolean;
 }
 export interface SpecRow {
   specId: string;
@@ -197,8 +200,9 @@ export async function runRow(deps: IndexDeps, runId: string): Promise<RunRow | n
   else if (!state?.status) status = alive ? 'running' : events.length === 0 && launchLog ? 'launch-failed' : 'unknown';
   else if (interrupted) status = 'interrupted';
   else status = state.status as RunListStatus;
+  const stopped = status === 'interrupted' && (await isStopRequested(runs, runId));
   const tokens = (state?.tokens?.inputTokens ?? 0) + (state?.tokens?.outputTokens ?? 0);
-  return { runId, specId, projectId: projectId ?? '', status, at: state?.at ?? finished?.at ?? launchLog?.mtime.toISOString() ?? null, tokens, cost: state?.tokens?.costUsd ?? 0, stoppable: alive && ACTIVE.has(status), kind: parsed?.kind ?? 'run', n: parsed?.n ?? 0, locked: false };
+  return { runId, specId, projectId: projectId ?? '', status, at: state?.at ?? finished?.at ?? launchLog?.mtime.toISOString() ?? null, tokens, cost: state?.tokens?.costUsd ?? 0, stoppable: alive && ACTIVE.has(status), kind: parsed?.kind ?? 'run', n: parsed?.n ?? 0, locked: false, ...(stopped ? { stopped } : {}) };
 }
 
 type Read = Awaited<ReturnType<typeof readProject>>;

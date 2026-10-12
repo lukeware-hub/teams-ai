@@ -321,6 +321,8 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
             const { row, dir } = await findRun(idx, runId);
             if (row.locked) throw new HttpError(409, `run ${runId} belongs to concluded spec ${row.specId}; create a new spec`);
             if (row.status !== 'paused:auth' && row.status !== 'interrupted') throw new HttpError(409, `run ${runId} is ${row.status}; only paused:auth or interrupted runs resume`);
+            const later = (await listRuns(idx, row.projectId)).find((r) => r.specId === row.specId && r.kind === row.kind && r.n > row.n);
+            if (later) throw new HttpError(409, `run ${runId} is behind ${later.runId} of spec ${row.specId}; only the latest run of a spec resumes`);
             await clearStopRequested(runs, runId); // an explicit resume overrides an earlier Stop
             await launch(idx, { projectDir: dir, specId: row.specId, runId, mode: 'resume' });
           } finally {
