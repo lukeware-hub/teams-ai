@@ -19,13 +19,15 @@ const check = (b: Backlog, headings: string[] = []) => validateBacklog(b, { flow
 
 describe('validateBacklog', () => {
   it('rejects a key that is another key plus a branch suffix, since both specs would share that docs branch', () => {
-    for (const key of ['pricing-plan', 'pricing-v2', 'pricing-report', 'pricing-done', 'pricing-readme', 'pricing-workflows', 'pricing-orders-workflows']) {
+    for (const key of ['pricing-plan', 'pricing-v2', 'pricing-report', 'pricing-done', 'pricing-readme', 'pricing-workflows']) {
       expect(check(backlog([item('pricing', { priority: 'P0' }), item(key)])), key).toEqual(expect.arrayContaining([`chave ${key}: o branch docs/${key} já é um branch do spec pricing; escolha outra chave`]));
     }
   });
 
   it('accepts keys that only look like a branch suffix when no other key is their start', () => {
     expect(check(backlog([item('pricing-plan'), item('daily-report'), item('pricing-planner')]))).toEqual([]);
+    // A service's workflows branch lives in the service's own repository, where no other spec has docs branches.
+    expect(check(backlog([item('pricing', { priority: 'P0' }), item('pricing-orders-workflows')]))).toEqual([]);
   });
 
   it('accepts a well-formed backlog', () => {

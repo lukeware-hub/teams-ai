@@ -6,8 +6,8 @@ import { findCycle } from '../contracts/plan.js';
 export const MAX_ITEMS = 60;
 /** Keys that would collide with run ids and docs branches (`<spec>-complete`, `docs/<spec>-v2`, `<spec>-r1` ...). */
 const RESERVED_KEY = /^(primary|plan|complete|readme|deploy|report|workflows|done|v\d+|r\d+)$/;
-/** What follows `<spec>-` in a spec's docs branches: plan, report, done, readme, a version, or a service's workflows. */
-const BRANCH_TAIL = /^(?:plan|report|done|readme|v\d+|(?:[a-z0-9]+(?:-[a-z0-9]+)*-)?workflows)$/;
+/** What follows `<spec>-` in a spec's docs branches in the project's repository; a service's workflows branch lives in that service's. */
+const BRANCH_TAIL = /^(?:plan|report|done|readme|workflows|v\d+)$/;
 /** The key among `keys` whose spec also owns the docs branch of `key`: spec ids are the bare keys, so `pricing` owns docs/pricing-plan. */
 export const branchOwner = (key: string, keys: Iterable<string>): string | undefined =>
   [...keys].find((o) => o !== key && key.startsWith(`${o}-`) && BRANCH_TAIL.test(key.slice(o.length + 1)));

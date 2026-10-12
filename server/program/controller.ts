@@ -168,15 +168,16 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
     }
   }
 
-  // A dependent of a failed or blocked item can never run: block it, transitively.
+  // A dependent of a failed or blocked item can never run, nor one whose dependency names no item: block it, transitively.
   for (let changed = true; changed; ) {
     changed = false;
     for (const item of p.items) {
       if (item.status !== 'pending') continue;
+      const unknown = item.dependsOn.find((d) => !p.items.some((i) => i.specId === d));
       const bad = item.dependsOn.map((d) => p.items.find((i) => i.specId === d)).find((d) => d !== undefined && (d.status === 'failed' || d.status === 'blocked'));
-      if (!bad) continue;
+      if (!unknown && !bad) continue;
       item.status = 'blocked';
-      item.reason = `depends on ${bad.key}, which ${bad.status === 'failed' ? 'failed' : 'is blocked'}`;
+      item.reason = unknown ? `depends on ${unknown}, which names no item of this program` : `depends on ${bad!.key}, which ${bad!.status === 'failed' ? 'failed' : 'is blocked'}`;
       item.finishedAt = stamp();
       changed = dirty = true;
     }

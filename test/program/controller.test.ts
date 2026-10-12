@@ -89,6 +89,16 @@ describe('program controller', () => {
     expect(calls).toEqual(['start d-a', 'start d-c']);
   });
 
+  it('blocks an item whose dependency names no item of the program, so a wrong id shows instead of stalling', async () => {
+    const { fx, calls } = world();
+    // A program saved before dependencies used the items' real ids names d-shop-a, which no item is.
+    let p = newProgram('d', [entry('a', 1), { specId: 'd-b', key: 'b', rank: 2, dependsOn: ['d-shop-a'] }], NOW);
+    p = await tick(p, fx, save);
+    expect(status(p)).toEqual({ a: 'running', b: 'blocked' });
+    expect(p.items[1]!.reason).toBe('depends on d-shop-a, which names no item of this program');
+    expect(calls).toEqual(['start d-a']);
+  });
+
   it('finishes when nothing is left to run, with what failed on the ledger', async () => {
     const { fx } = world({ 'd-a-r1': { kind: 'failed', reason: 'boom' } });
     let p = newProgram('d', [entry('a', 1), entry('b', 2, ['a'])], NOW);

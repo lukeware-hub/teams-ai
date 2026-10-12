@@ -51,7 +51,7 @@ Slice R11.5.1 only; each later slice writes its own.
 
 **R11.5.2 Deploy fixes remember.** A deploy fix task's description lists every earlier failure of the run (attempt, stage, service, the first lines of the detail) and every earlier fix that merged (its id, summary and files). When a failure repeats the previous attempt's stage and detail after a fix merged, the description says that fix did not change the outcome, so the next one looks for another cause.
 
-**R11.5.3 Backlog keys and dependencies hold.** A key may not end in a branch suffix (`-plan`, `-report`, `-done`, `-readme`, `-workflows`, `-v<n>`) nor equal another key plus one; `specs-index` maps `dependsOn` with the same rule as the item ids, so a dependency names the spec id the controller waits for.
+**R11.5.3 Backlog keys and dependencies hold.** A key may not equal another key plus a branch suffix (`-plan`, `-report`, `-done`, `-readme`, `-workflows`, `-v<n>`), since spec ids are the bare keys; a key alone that ends in one shares no branch; `specs-index` maps `dependsOn` with the same rule as the item ids, so a dependency names the spec id the controller waits for.
 
 **R11.5.4 Docs accumulate.** The report step receives the current `docs/README.md`, `docs/RUNBOOK.md` and `docs/API.md` and the rule to keep what earlier specs wrote that is still true; the API check also keeps every endpoint the current `docs/API.md` already documents.
 
