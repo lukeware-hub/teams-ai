@@ -154,7 +154,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       const project = await keepBaseProject(draft, accepted.value.project);
       await writeProject(draft, project);
       await writeBacklogMd(draft, renderBacklogMd(ranked));
-      await writeSpecsIndex(draft, buildSpecsIndex(draft.specId, ranked));
+      await writeSpecsIndex(draft, buildSpecsIndex(draft.specId, { ...ranked, keyIds: before?.keyIds }));
       const outline = { cycle, project, epics: ranked.epics, items: ranked.items, flowHeadings: flowHeadings(docs['flow.md']), draftHash: hash };
       // Remove first: the outline event drops the rows that name the retired items' directories.
       await removeRetired(draft, before, ranked.items);

@@ -468,6 +468,15 @@ describe('refinement cycle in backlog mode', () => {
     expect(po.feedback).not.toContain('### derived spec.json');
   });
 
+  it('writes docs/specs.json with the spec ids a draft with readable ids really has', async () => {
+    const { draft, journal, root } = await setup('# Briefing');
+    journal.state.backlog = { enabled: true, project: null, epics: [], items: [], cycle: 0, keyIds: true };
+    const { fn } = agent([raw([item('casos', { dependsOn: ['base'] }), item('base', { priority: 'P0' })])]);
+    await runCycle({ draft, journal, runAgent: fn as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1);
+    const index = JSON.parse(await readFile(path.join(draft.docs, 'specs.json'), 'utf8')) as { specs: Array<{ specId: string; dependsOn: string[] }> };
+    expect(index.specs.map((x) => [x.specId, x.dependsOn])).toEqual([['base', []], ['casos', ['base']]]);
+  });
+
   it('asks once more with the rejection when the first backlog breaks a rule', async () => {
     const { draft, journal, events, root } = await setup('# Briefing');
     on(journal);

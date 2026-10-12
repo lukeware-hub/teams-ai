@@ -73,6 +73,20 @@ describe('postProcessBacklog', () => {
       expect(out.value.backlog.items.find((i) => i.key === 'outro')!.dependsOn).toEqual(['opme']);
     }
   });
+
+  it('keeps a key renamed out of a shared docs branch, even when its title stays', () => {
+    const renamed = (prev: BacklogState, items: BacklogItem[]) => {
+      const out = postProcessBacklog(raw(items), prev, '');
+      return out.ok ? out.value.backlog.items.map((i) => i.key).sort() : out.issues;
+    };
+    // Both keys came from an earlier cycle, so restoring either previous key shares docs/pricing-plan again.
+    const both = previous([item('pricing', { title: 'Preços' }), item('pricing-plan', { title: 'Plano de preços' })]);
+    expect(renamed(both, [item('pricing', { title: 'Preços' }), item('pricing-planning', { title: 'Plano de preços' })])).toEqual(['pricing', 'pricing-planning']);
+    expect(renamed(both, [item('pricing-core', { title: 'Preços' }), item('pricing-plan', { title: 'Plano de preços' })])).toEqual(['pricing-core', 'pricing-plan']);
+    // A new key next to an earlier one: the earlier key the validator blames stays renamed too.
+    const one = previous([item('pricing-plan', { title: 'Plano de preços' })]);
+    expect(renamed(one, [item('pricing', { title: 'Preços' }), item('pricing-planning', { title: 'Plano de preços' })])).toEqual(['pricing', 'pricing-planning']);
+  });
 });
 
 describe('renderBacklogMd', () => {

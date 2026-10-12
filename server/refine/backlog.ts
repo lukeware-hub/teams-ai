@@ -2,7 +2,7 @@ import { Backlog, type BacklogItem } from '../contracts/backlog.js';
 import { Project } from '../contracts/project.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
-import { flowHeadings, rankItems, validateBacklog } from '../validators/backlog.js';
+import { branchOwner, flowHeadings, rankItems, validateBacklog } from '../validators/backlog.js';
 import type { JevValidationResult } from './jev-validation.js';
 import type { BacklogState } from './state.js';
 
@@ -55,14 +55,17 @@ export type BacklogCheck = { ok: true; value: { project: Project; backlog: { epi
 
 const sameTitle = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
-/** The agent may rename a key between cycles; an item with the title of a previous one keeps that previous key. */
+/** Whether `key` and another of `keys` would own one docs branch, as `pricing` and `pricing-plan`. */
+const sharesBranch = (key: string, keys: readonly string[]): boolean => branchOwner(key, keys) !== undefined || keys.some((k) => branchOwner(k, [key]) !== undefined);
+
+/** The agent may rename a key between cycles; an item with the title of a previous one keeps that previous key, unless it would share a docs branch. */
 function keepPreviousKeys(items: readonly BacklogItem[], previous: BacklogState | null): BacklogItem[] {
   if (!previous) return [...items];
   const taken = new Set(items.map((i) => i.key));
   const rename = new Map<string, string>();
   for (const i of items) {
     const old = previous.items.find((p) => sameTitle(p.title, i.title));
-    if (old && old.key !== i.key && !previous.items.some((p) => p.key === i.key) && !taken.has(old.key)) {
+    if (old && old.key !== i.key && !previous.items.some((p) => p.key === i.key) && !taken.has(old.key) && !sharesBranch(old.key, [...taken].filter((k) => k !== i.key))) {
       rename.set(i.key, old.key);
       taken.add(old.key);
     }

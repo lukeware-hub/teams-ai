@@ -8,6 +8,9 @@ export const MAX_ITEMS = 60;
 const RESERVED_KEY = /^(primary|plan|complete|readme|deploy|report|workflows|done|v\d+|r\d+)$/;
 /** What follows `<spec>-` in a spec's docs branches: plan, report, done, readme, a version, or a service's workflows. */
 const BRANCH_TAIL = /^(?:plan|report|done|readme|v\d+|(?:[a-z0-9]+(?:-[a-z0-9]+)*-)?workflows)$/;
+/** The key among `keys` whose spec also owns the docs branch of `key`: spec ids are the bare keys, so `pricing` owns docs/pricing-plan. */
+export const branchOwner = (key: string, keys: Iterable<string>): string | undefined =>
+  [...keys].find((o) => o !== key && key.startsWith(`${o}-`) && BRANCH_TAIL.test(key.slice(o.length + 1)));
 const PRIORITY_RANK: Record<Priority, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
 
 /** Sections of flow.md worth covering: numbered `%% 7. TITLE` comments (mermaid) and level 2-3 markdown headings. */
@@ -39,9 +42,8 @@ export function validateBacklog(backlog: Backlog, opts: { flowHeadings: readonly
     if (!epics.has(i.epic)) errors.push(`item ${i.key}: épico desconhecido ${i.epic}`);
   }
   for (const i of backlog.items) {
-    // Spec ids are the bare keys: `pricing` and `pricing-plan` would both own the branch docs/pricing-plan.
-    const owner = backlog.items.find((o) => o.key !== i.key && i.key.startsWith(`${o.key}-`) && BRANCH_TAIL.test(i.key.slice(o.key.length + 1)));
-    if (owner) errors.push(`chave ${i.key}: o branch docs/${i.key} já é um branch do spec ${owner.key}; escolha outra chave`);
+    const owner = branchOwner(i.key, backlog.items.map((o) => o.key));
+    if (owner) errors.push(`chave ${i.key}: o branch docs/${i.key} já é um branch do spec ${owner}; escolha outra chave`);
     for (const d of i.dependsOn) {
       const dep = byKey.get(d);
       if (d === i.key) errors.push(`item ${i.key} depende dele mesmo`);
