@@ -55,9 +55,12 @@ const fixTask = (deps: PhaseDeps, attempt: number, stage: DeployStage, detail: s
   const base = { id: fixTaskId(deps), title: `Fix deployment (${stage})`, criteriaRefs: [], dependsOn: [], origin: 'deploy-fix' as const };
   // A smoke failure is about the smoke tests, not the manifests: the Dev owns it and must know the contract.
   if (stage === 'smoke') {
-    return { ...base, description: `Deploy attempt ${attempt} succeeded but the smoke suite did not prove the smoke criteria: ${detail}
+    // The e2e suite runs next against the same service; fixing a request only in smoke failed the next attempt at e2e (live).
+    const suite = deps.plan!.delivery?.e2eSuite;
+    const e2e = suite ? `\n\nThe e2e suite (${suite}) runs right after smoke against the same service and usually makes the same requests: fix the same defect there too.` : '';
+    return { ...base, description: `Deploy attempt ${attempt} succeeded but the smoke suite did not prove the smoke criteria: ${detail}${e2e}
 
-Contract: ${SMOKE_CONTRACT}`, affectedPaths: ['tests/smoke/**', 'tests/smoke', 'smoke/**', '**/*smoke*_test.go', 'vitest.config.ts', ...MANIFESTS], owner: 'dev' };
+Contract: ${SMOKE_CONTRACT}`, affectedPaths: ['tests/smoke/**', 'tests/smoke', 'smoke/**', '**/*smoke*_test.go', 'vitest.config.ts', ...(suite ? [suite] : []), ...MANIFESTS], owner: 'dev' };
   }
   if (stage === 'e2e') {
     const suite = deps.plan!.delivery?.e2eSuite;

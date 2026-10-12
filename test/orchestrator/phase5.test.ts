@@ -51,6 +51,15 @@ describe('Phase 5', () => {
     expect(r.ok ? null : r.fixTask?.origin).toBe('deploy-fix');
   });
 
+  it('a smoke deploy-fix covers the e2e suite too, which runs next against the same service and usually repeats its requests', async () => {
+    // Live: the fix repaired the smoke test's request, and the next attempt failed at e2e on the same request.
+    const delivery = { dockerfile: 'Dockerfile', compose: 'docker-compose.yml', ciWorkflow: '.github/workflows/ci.yml', releaseWorkflow: '.github/workflows/release.yml', e2eSuite: 'e2e/e2e_test.go', readmeSections: ['Run'] };
+    const r = await runPhase5({ ...deps('AC-013: failed'), plan: makePlan(spec, { delivery }) }, 1);
+    const task = r.ok ? null : r.fixTask;
+    expect(task?.affectedPaths).toEqual(expect.arrayContaining(['smoke/**', 'e2e/e2e_test.go']));
+    expect(task?.description).toContain('The e2e suite (e2e/e2e_test.go) runs right after smoke against the same service');
+  });
+
   it('a first deploy (no previous image) that fails the smoke takes its stack down, so it cannot hold the port for the next attempt or project', async () => {
     const destroyed: string[] = [];
     const r = await runPhase5(deps('AC-001: smoke test failed', destroyed), 1);
