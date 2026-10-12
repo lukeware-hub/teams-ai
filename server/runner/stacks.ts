@@ -22,6 +22,9 @@ export function stackDomains(kind: StackKind, goProxy: string | null = goProxyUr
 /** Toolchain commands a Dev or Test may run besides npm and node (Python goes through the virtualenv in `.tools/venv`). */
 export const STACK_BASH: readonly string[] = [
   'Bash(go:*)',
+  // The Go formatter and the JUnit runner the plan rules prescribe (installed into .tools/bin), so a Dev runs the plan's own test command.
+  'Bash(gofmt:*)',
+  'Bash(.tools/bin/gotestsum:*)',
   'Bash(cargo:*)',
   'Bash(rustc:*)',
   'Bash(python3:*)',

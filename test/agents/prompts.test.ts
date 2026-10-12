@@ -24,6 +24,10 @@ describe('agent prompts for a project of services (R12.6)', () => {
     expect(agent('sec')).toContain('any other ignore entry is a high finding');
   });
 
+  it('tell the Dev that a command Bash refuses is no blocker: the same check runs with the stack command', () => {
+    expect(agent('dev')).toContain('A command Bash refuses never makes a task blocked');
+  });
+
   it('tell devops, Test and the PO what a service, its suites and the platform are', () => {
     const devops = agent('devops');
     expect(devops).toContain('named exactly like the service');

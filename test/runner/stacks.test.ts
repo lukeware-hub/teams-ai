@@ -23,6 +23,8 @@ describe('stacks', () => {
 
   it('allows the toolchain commands of Go, Rust and Python', () => {
     expect(STACK_BASH).toEqual(expect.arrayContaining(['Bash(go:*)', 'Bash(cargo:*)', 'Bash(python3:*)']));
+    // Live: a Go Dev blocked its task because gofmt and the plan's own test command (.tools/bin/gotestsum) were refused.
+    expect(STACK_BASH).toEqual(expect.arrayContaining(['Bash(gofmt:*)', 'Bash(.tools/bin/gotestsum:*)']));
   });
 
   it('keeps every cache inside the worktree', () => {
