@@ -57,6 +57,11 @@ describe('buildContextPack', () => {
     expect(pack.text.indexOf('## Change set under review')).toBeGreaterThan(pack.text.indexOf('## Feedback'));
   });
 
+  it("names a task's service in its section, and nothing for a task of the project repository", () => {
+    expect(buildContextPack({ ...base, task: { ...base.task!, service: 'orders' } }).text).toContain('- service: orders');
+    expect(buildContextPack(base).text).not.toContain('- service:');
+  });
+
   it('drops the lowest-priority sections whole when over budget and reports them', () => {
     const big = 'x'.repeat(4000);
     const pack = buildContextPack({

@@ -7,11 +7,12 @@ import { Accounting } from '../../server/budget/accounting.js';
 import { Governor } from '../../server/budget/governor.js';
 import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
-import { devPack, devResumePrompt, outputContract, planPack, planRules, readmePack, reportPack, reviewPack, runAgentStep, servicesPlanRules, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
+import { devPack, devResumePrompt, fixTasksPack, outputContract, planPack, planRules, readmePack, reportPack, reviewPack, runAgentStep, servicesPlanRules, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
+import { servicePlans } from '../../server/contracts/plan.js';
 import { saveSession } from '../../server/runner/session-store.js';
 import type { StepOutcome } from '../../server/runner/step.js';
 import type { ResultSummary } from '../../server/runner/stream-events.js';
-import { makePlanTask, makeProject, makeFrozenSpec } from '../fixtures/contracts.js';
+import { makePlanTask, makeProject, makeFrozenSpec, makeServicesPlan } from '../fixtures/contracts.js';
 
 const spec = makeFrozenSpec();
 const HASH = spec.specHash!;
@@ -91,6 +92,21 @@ describe('packs', () => {
     expect(p.feedback).toBe('gate unit-test failed: a::adds');
     expect(p.outputContract).toBe(outputContract('dev'));
     expect(p.specHash).toBe(HASH);
+  });
+
+  it("gives a service task its service's settings, since its repository holds no docs", () => {
+    const view = servicePlans(makeServicesPlan(spec)).find((v) => v.service === 'inventory')!;
+    const opts = { code: { source: 'none' as const }, handoffs: [], feedback: null };
+    const rule = devPack(base, view.plan.tasks[0]!, { ...opts, service: { name: 'inventory', plan: view.plan } }).principles.find((p) => p.startsWith('This task changes the service inventory'))!;
+    expect(rule).toContain(`"port":${view.plan.deploy.port}`);
+    expect(rule).not.toContain('"tasks"');
+    expect(devPack(base, view.plan.tasks[0]!, opts).principles.some((p) => p.startsWith('This task changes the service'))).toBe(false);
+  });
+
+  it('fix-tasks pack names the service of each existing task', () => {
+    const plan = makeServicesPlan(spec);
+    const p = fixTasksPack(base, { failedTests: [], tails: '', uncoveredAcs: [], plan: { tasks: plan.tasks, gates: [] }, services: ['orders', 'inventory'], boundaries: [], feedback: null });
+    expect(p.feedback).toContain('- T1-publish-order (orders):');
   });
 
   it('a task that writes the e2e suite gets its rules, whatever role owns it; other tasks do not', () => {

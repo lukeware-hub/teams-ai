@@ -93,7 +93,7 @@ function render(input: ContextPackInput): Map<Section, string> {
     const t = input.task;
     out.set(
       'task',
-      `## Task ${t.id}: ${t.title}\n${t.description}\n- owner: ${t.owner}\n- dependsOn: ${t.dependsOn.join(', ') || 'none'}\n- affectedPaths: ${t.affectedPaths.join(', ')}\n- criteria: ${t.criteriaRefs.join(', ') || 'none'}`,
+      `## Task ${t.id}: ${t.title}\n${t.description}\n- owner: ${t.owner}${t.service ? `\n- service: ${t.service}` : ''}\n- dependsOn: ${t.dependsOn.join(', ') || 'none'}\n- affectedPaths: ${t.affectedPaths.join(', ')}\n- criteria: ${t.criteriaRefs.join(', ') || 'none'}`,
     );
   } else {
     out.set('task', `## Step\n${input.kind} for ${input.role}`);

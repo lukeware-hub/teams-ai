@@ -75,16 +75,26 @@ function writesE2eSuite(task: PlanTask, suite: string): boolean {
   return task.affectedPaths.some((p) => p === suite || (dir !== './' && p.startsWith(dir)));
 }
 
+/** A service task works in a repository without docs: the settings its rules call plan.* come with the pack. */
+function serviceRule(name: string, plan: Plan, platform: readonly PlatformService[]): string {
+  const { tasks: _tasks, ...settings } = plan;
+  return `This task changes the service ${name}: its repository holds only that service's code, so every plan setting your rules name (plan.delivery, plan.deploy, plan.commands, plan.junitPath, plan.e2eExemptions) is this one, never a docs/specs file: ${JSON.stringify(settings)}. Other services answer at http://<service>:<port> on the project's shared network${platform.length > 0 ? `, and the platform containers by name (${platform.map((p) => p.name).join(', ')})` : ''}.`;
+}
+
 export function devPack(
   base: PackBase,
   task: PlanTask,
-  opts: { code: CodeContext; handoffs: readonly HandoffSummary[]; feedback: string | null; e2eSuite?: string },
+  opts: { code: CodeContext; handoffs: readonly HandoffSummary[]; feedback: string | null; e2eSuite?: string; service?: { name: string; plan: Plan } },
   role: Role = 'dev',
 ): ContextPackInput {
   const shared = common(base, 'dev', role);
+  const rules = [
+    ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : []),
+    ...(opts.service ? [serviceRule(opts.service.name, opts.service.plan, base.project.platform ?? [])] : []),
+  ];
   return {
     ...shared,
-    principles: opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [...shared.principles, e2eSuiteRules(opts.e2eSuite)] : shared.principles,
+    principles: rules.length > 0 ? [...shared.principles, ...rules] : shared.principles,
     task,
     criteria: criteriaOf(base.spec, task.criteriaRefs),
     handoffs: opts.handoffs,
@@ -287,7 +297,7 @@ export function fixTasksPack(base: PackBase, opts: { failedTests: readonly strin
     `Failed tests:\n${opts.failedTests.map((t) => `- ${t}`).join('\n') || '- none'}`,
     `Criteria without passed evidence:\n${opts.uncoveredAcs.map((a) => `- ${a}`).join('\n') || '- none'}`,
     `Gate output (tail):\n${opts.tails}`,
-    `Existing tasks:\n${opts.plan.tasks.map((t) => `- ${t.id}: ${t.title} [${t.criteriaRefs.join(', ')}]`).join('\n')}`,
+    `Existing tasks:\n${opts.plan.tasks.map((t) => `- ${t.id}${t.service ? ` (${t.service})` : ''}: ${t.title} [${t.criteriaRefs.join(', ')}]`).join('\n')}`,
     `Test gates run on main:\n${opts.plan.gates.filter((g) => g.name.includes('test')).map((g) => `- ${g.name}: ${g.command}`).join('\n') || '- none'}`,
     `Module boundaries:\n${opts.boundaries.map((b) => `- ${b}`).join('\n')}`,
     OWNER_RULE,
