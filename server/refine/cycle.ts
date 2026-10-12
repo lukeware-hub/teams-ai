@@ -195,7 +195,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     }
     if (backlog.detail) {
       const backlogDocs = { 'project.md': docs['project.md'], 'briefing.md': docs['brief.md'], 'stack.md': docs['stack.md'], 'flow.md': docs['flow.md'], 'design.md': docs['design.md'] };
-      const detailed = await detailBacklog(deps, { cycle, hash, docs: backlogDocs, backlog, ctx });
+      // The recorded decider journals the Jev's checks of the detailing (R11.5a item 3).
+      const detailed = await detailBacklog({ ...deps, decider }, { cycle, hash, docs: backlogDocs, backlog, ctx });
       if (!detailed.ok) {
         await fail(detailed.reason);
         return;

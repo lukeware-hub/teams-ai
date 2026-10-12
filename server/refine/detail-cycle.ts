@@ -6,13 +6,14 @@ import { ID_PATTERNS } from '../core/ids.js';
 import { canonicalJson, sha256 } from '../contracts/hash.js';
 import { Preplan } from '../contracts/preplan.js';
 import { computeSpecHash, Spec } from '../contracts/spec.js';
+import { preplanFlags, specFlags } from '../decide/decisions/detail-check.js';
 import { adjusted } from './adjustments.js';
 import { isStarted } from './coverage.js';
 import type { StepOutcome } from '../runner/step.js';
 import { validatePreplan } from '../validators/preplan.js';
 import type { CycleDeps } from './cycle.js';
 import { acNum } from './derive.js';
-import { conflictsPack, preplanPack, specPack } from './detail-packs.js';
+import { citedSections, conflictsPack, preplanPack, specPack } from './detail-packs.js';
 import { batches, preplanInputHash, sourceHashes, specInputHash, type BacklogDocs } from './details.js';
 import { readMainSpec, renderBriefMd, restoreFromBase, type Draft } from './draft.js';
 import { RefineEvent } from './events.js';
@@ -28,6 +29,8 @@ const STOPPING = new Set(['quota', 'auth']);
 type Item = BacklogState['items'][number];
 type Ctx = Parameters<CycleDeps['runAgent']>[1];
 export type DetailResult = { ok: true; backlog: BacklogState } | { ok: false; reason: string };
+/** What an answer came to: recorded when it has no issues; `flagged` marks a valid answer the Jev flagged and nothing recorded. */
+type Verdict = { issues: string[]; flagged?: boolean };
 
 const itemDir = (draft: Draft, specId: string) => path.posix.join(draft.docs, 'specs', specId);
 const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
@@ -103,7 +106,8 @@ export async function retireDropped(draft: Draft, specIds: readonly string[]): P
  * Backlog detailing: the spec (PO) of every item whose inputs changed, then the pre-plan (SM) of every spec whose inputs
  * changed, three items per call by epic. Each call's valid items are recorded first, then each rejected item is retried
  * alone once with its rejection. The first quota or auth failure, or any error, stops new calls and fails the cycle with
- * the reason once the calls in flight end; what finished stays recorded.
+ * the reason once the calls in flight end; what finished stays recorded. With the decision layer on, the Jev checks each
+ * valid first answer, and an item it flags is retried alone once as well (R11.5a item 3).
  */
 export async function detailBacklog(deps: CycleDeps, input: { cycle: number; hash: string; docs: BacklogDocs; backlog: BacklogState; ctx: Ctx }): Promise<DetailResult> {
   try {
@@ -114,8 +118,10 @@ export async function detailBacklog(deps: CycleDeps, input: { cycle: number; has
 }
 
 async function detail(deps: CycleDeps, input: { cycle: number; hash: string; docs: BacklogDocs; backlog: BacklogState; ctx: Ctx }): Promise<DetailResult> {
-  const { draft, journal } = deps;
+  const { draft, journal, decider } = deps;
   const { cycle, hash, docs, ctx } = input;
+  // A backlog with no project yet counts as confidential, so its text never reaches the Jev.
+  const dctx = { confidential: input.backlog.project?.confidential ?? true };
   const items = [...input.backlog.items].sort((a, b) => a.rank - b.rank);
   const specs: Record<string, SpecRow> = { ...input.backlog.specs };
   const preplans: Record<string, PreplanRow> = { ...input.backlog.preplans };
@@ -137,29 +143,34 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     }
   };
 
-  /** Every batch: record what the call returned valid, then retry each rejected item alone once; an error stops the run. */
+  /**
+   * Every batch: record what the call returned valid, then retry each rejected item alone once; an error stops the run.
+   * Only a first answer goes to the Jev (`review`), and one it flagged is recorded when its retry is not valid or never ran.
+   */
   const runBatches = async <T, E>(
     todo: readonly Item[],
     run: (batch: readonly Item[], rejection: Record<string, string[]>) => Promise<StepOutcome<T> | null>,
     entry: (value: T, key: string) => E | undefined,
-    accept: (item: Item, entry: E | undefined) => Promise<string[]>,
+    accept: (item: Item, entry: E | undefined, review: boolean) => Promise<Verdict>,
     fail: (item: Item, issues: string[]) => Promise<void>,
   ): Promise<void> => {
-    const outcome = (out: StepOutcome<T>, item: Item) => (out.ok ? accept(item, entry(out.value, item.key)) : Promise.resolve([`${out.failure}: ${out.errors.join('; ')}`]));
+    const outcome = (out: StepOutcome<T>, item: Item, review: boolean): Promise<Verdict> =>
+      out.ok ? accept(item, entry(out.value, item.key), review) : Promise.resolve({ issues: [`${out.failure}: ${out.errors.join('; ')}`] });
     await Promise.all(batches(todo).map(async (batch) => {
       try {
         const out = await run(batch, {});
         if (!out) return;
-        const rejected: Array<[Item, string[]]> = [];
+        const rejected: Array<[Item, Verdict]> = [];
         for (const item of batch) {
-          const issues = await outcome(out, item);
-          if (issues.length > 0) rejected.push([item, issues]);
+          const first = await outcome(out, item, true);
+          if (first.issues.length > 0) rejected.push([item, first]);
         }
-        for (const [item, issues] of rejected) {
-          const solo = await run([item], { [item.key]: issues });
-          if (!solo) return;
-          const again = await outcome(solo, item);
-          if (again.length > 0) await fail(item, again);
+        for (const [item, first] of rejected) {
+          const solo = await run([item], { [item.key]: first.issues });
+          let again = solo && (await outcome(solo, item, false));
+          if (first.flagged && (!again || again.issues.length > 0)) again = await outcome(out, item, false);
+          if (!again) return;
+          if (again.issues.length > 0) await fail(item, again.issues);
         }
       } catch (err) {
         stopped ??= message(err);
@@ -203,11 +214,19 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     preplans[i.key] = { inputHash: pre.data.inputHash, specRev: rev, preplan: pre.data, issues: [], cycle };
     await journal.fact(RefineEvent.PreplanDerived, { cycle, key: i.key, inputHash: pre.data.inputHash, specRev: rev, preplan: pre.data, issues: [] });
   }
-  const acceptSpec = async (item: Item, entry: ItemSpec | undefined): Promise<string[]> => {
-    if (!entry) return ['o agente não devolveu a spec deste item'];
+  const acceptSpec = async (item: Item, entry: ItemSpec | undefined, review: boolean): Promise<Verdict> => {
+    if (!entry) return { issues: ['o agente não devolveu a spec deste item'] };
     const inputHash = specHash.get(item.key)!;
-    const r = postProcessItemSpec(entry, { specId: idOf(item.key), previous: previous.get(item.key) ?? null, highWater, provenance: { backlogKey: item.key, inputHash, docsHash: hash, sources: sourceHashes(item, docs) } });
-    if (!r.ok) return r.issues;
+    const processed = () => postProcessItemSpec(entry, { specId: idOf(item.key), previous: previous.get(item.key) ?? null, highWater, provenance: { backlogKey: item.key, inputHash, docsHash: hash, sources: sourceHashes(item, docs) } });
+    if (review && decider) {
+      const dry = processed();
+      if (!dry.ok) return { issues: dry.issues };
+      const flags = await specFlags({ item, sections: citedSections(item, docs), spec: dry.spec }, decider, dctx);
+      if (flags.length > 0) return { issues: flags, flagged: true };
+    }
+    // Numbered after the Jev's answer, so a batch running beside this one never takes the same criterion numbers.
+    const r = processed();
+    if (!r.ok) return { issues: r.issues };
     highWater = r.highWater;
     const rev = computeSpecHash(r.spec);
     specs[item.key] = { inputHash, specId: r.spec.specId, rev, spec: r.spec, issues: [], cycle };
@@ -216,7 +235,7 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     const planned = pre?.preplan && pre.specRev === rev && pre.inputHash === planHashOf(item, rev);
     await writeItemSpec(draft, r.spec, planned ? 'planned' : 'refining');
     await journal.fact(RefineEvent.SpecDerived, { cycle, key: item.key, specId: r.spec.specId, inputHash, rev, spec: r.spec, issues: [], highWater });
-    return [];
+    return { issues: [] };
   };
   const failSpec = async (item: Item, issues: string[]) => {
     const specId = idOf(item.key);
@@ -237,19 +256,23 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
 
   // Pre-plans, for the specs that are valid now.
   const planHash = new Map(items.filter((i) => specs[i.key]?.rev).map((i) => [i.key, planHashOf(i, specs[i.key]!.rev!)]));
-  const acceptPreplan = async (item: Item, entry: ItemPreplan | undefined): Promise<string[]> => {
-    if (!entry) return ['o agente não devolveu o pré-plano desta spec'];
+  const acceptPreplan = async (item: Item, entry: ItemPreplan | undefined, review: boolean): Promise<Verdict> => {
+    if (!entry) return { issues: ['o agente não devolveu o pré-plano desta spec'] };
     const row = specs[item.key]!;
     const spec = row.spec!;
     const parsed = Preplan.safeParse({ specId: spec.specId, specRev: row.rev, inputHash: planHash.get(item.key), modules: entry.modules, tasks: entry.tasks, risks: entry.risks });
-    if (!parsed.success) return parsed.error.issues.map((i) => `preplan ${item.key}.${i.path.join('.')}: ${i.message}`);
+    if (!parsed.success) return { issues: parsed.error.issues.map((i) => `preplan ${item.key}.${i.path.join('.')}: ${i.message}`) };
     const rules = validatePreplan(parsed.data, spec);
-    if (rules.length > 0) return rules;
+    if (rules.length > 0) return { issues: rules };
+    if (review && decider) {
+      const flags = await preplanFlags({ preplan: parsed.data, projectMd: docs['project.md'], stackMd: docs['stack.md'] }, decider, dctx);
+      if (flags.length > 0) return { issues: flags, flagged: true };
+    }
     preplans[item.key] = { inputHash: parsed.data.inputHash, specRev: parsed.data.specRev, preplan: parsed.data, issues: [], cycle };
     await fs.writeFile(path.posix.join(itemDir(draft, spec.specId), 'preplan.json'), json(parsed.data));
     await writeItemSpec(draft, spec, 'planned');
     await journal.fact(RefineEvent.PreplanDerived, { cycle, key: item.key, inputHash: parsed.data.inputHash, specRev: parsed.data.specRev, preplan: parsed.data, issues: [] });
-    return [];
+    return { issues: [] };
   };
   const failPreplan = async (item: Item, issues: string[]) => {
     const row = { inputHash: planHash.get(item.key)!, specRev: specs[item.key]!.rev!, preplan: null, issues, cycle };

@@ -40,6 +40,10 @@ const criteriaLines = (spec: Pick<Spec, 'acceptanceCriteria'>) => spec.acceptanc
 const dependencyLines = (item: BacklogItem, all: readonly RankedItem[]) =>
   item.dependsOn.map((k) => all.find((i) => i.key === k)).map((d, n) => (d ? `- ${d.key}: ${d.title} — ${d.scope}` : `- ${item.dependsOn[n]}`)).join('\n') || '- (nenhuma)';
 
+/** The sections an item cites, as the PO's pack shows them. */
+export const citedSections = (item: Pick<BacklogItem, 'sources'>, docs: BacklogDocs) =>
+  item.sources.map((s) => ({ heading: `${s.doc} › ${s.heading}`, text: sectionText(docs[s.doc], s.heading) ?? '(seção não encontrada no documento)' }));
+
 /** The PO's pack for the specs of up to three backlog items: the project, each item, and each cited section once. */
 export function specPack(input: {
   specHash: string;
@@ -54,7 +58,7 @@ export function specPack(input: {
 }): ContextPackInput {
   const cited = new Map<string, string>();
   for (const i of input.batch) {
-    for (const s of i.sources) cited.set(`### ${s.doc} › ${s.heading}`, sectionText(input.docs[s.doc], s.heading) ?? '(seção não encontrada no documento)');
+    for (const s of citedSections(i, input.docs)) cited.set(`### ${s.heading}`, s.text);
   }
   const items = input.batch.map((i) => {
     const prev = input.previous[i.key];

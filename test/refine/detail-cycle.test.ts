@@ -39,6 +39,18 @@ const preplanFor = (section: string) => {
   return { key, modules: [{ name: 'm', purpose: 'p' }], tasks: ids.map((id, n) => ({ id: `P${n + 1}`, title: `Tarefa ${id}`, module: 'm', owner: 'dev', criteriaRefs: [id], dependsOn: [] })), risks: [] };
 };
 
+/** A Jev that flags every detail-check state holding `marker` and answers no other decision. */
+function jev(marker: string) {
+  const states: string[] = [];
+  const decide = async (id: string, state: string) => {
+    if (id !== 'detail-check') return { answered: false, reason: 'disabled' };
+    states.push(state);
+    const value = state.includes(marker) ? 0.9 : 0.1;
+    return { answered: true, backend: 'jev', escalated: false, answers: { q0: { type: 'noul', value, probabilities: { yes: value, no: 1 - value }, confidence: 0.9 } } };
+  };
+  return { states, decide };
+}
+
 type Req = { kind: string; role: string; pack: { feedback?: string } };
 /** A fake agent answering each step kind from what its pack carries; `hook` may replace an answer. */
 function fakeAgent(outline: () => BacklogItem[], hook: (req: Req, n: number) => unknown = () => undefined) {
@@ -87,7 +99,7 @@ async function setup(existing?: string) {
     },
   };
   await journal.fact(RefineEvent.BacklogEnabled, {});
-  const run = (agent: ReturnType<typeof fakeAgent>, cycle: number) => runCycle({ draft, journal, runAgent: agent.fn as never, principles: () => [], retrieval: () => [], secretsDir: root }, cycle);
+  const run = (agent: ReturnType<typeof fakeAgent>, cycle: number, decider?: ReturnType<typeof jev>) => runCycle({ draft, journal, runAgent: agent.fn as never, principles: () => [], retrieval: () => [], secretsDir: root, decider: decider as never }, cycle);
   const itemDir = (key: string) => `${docs}/specs/big-001-${key}`;
   return { draft, journal, events, run, itemDir, docs };
 }
@@ -560,6 +572,75 @@ describe('backlog detailing failure paths', () => {
     expect(JSON.parse(await readFile(`${itemDir('fat')}/spec.json`, 'utf8')).status).toBe('refining');
     expect(JSON.parse(await readFile(`${itemDir('caso')}/spec.json`, 'utf8')).status).toBe('planned');
     expect(journal.state.status).not.toBe('ready');
+  });
+});
+
+// R11.5a item 3 (plan 85): the Jev checks each first answer, and a flagged item goes back to its agent once.
+describe('backlog detailing checked by the Jev', () => {
+  const quota = { ok: false, failure: 'quota', errors: ['janela de 5 horas'], summary: {}, sandboxDisabled: false };
+  const extra = (key: string) => ({ ...itemSpec(key), features: [key, 'pagamento'] });
+  /** The specs of every item a spec pack names, `caso` with a feature no section asks for. */
+  const withExtra = (req: Req) => ok({ specHash: H, specs: [...String(req.pack.feedback).matchAll(/^## Item ([a-z0-9-]+):/gm)].map((m) => (m[1] === 'caso' ? extra(m[1]) : itemSpec(m[1]!))) });
+  const retried = (req: Req) => String(req.pack.feedback).includes('rejected');
+  /** Derives the outline, then details it with the agent's hook and the Jev. */
+  const detailWith = async (hook: (req: Req) => unknown, decider: ReturnType<typeof jev>) => {
+    const env = await setup();
+    const agent = fakeAgent(() => OUTLINE, hook);
+    await env.run(agent, 1);
+    await env.journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    const from = agent.calls.length;
+    await env.run(agent, 2, decider);
+    return { ...env, retries: agent.calls.slice(from).filter((c) => c.feedback.includes('rejected')) };
+  };
+  const featuresOf = async (env: { itemDir: (key: string) => string }, key: string) => JSON.parse(await readFile(`${env.itemDir(key)}/spec.json`, 'utf8')).features;
+
+  it('sends a spec the Jev flags back alone once with the flags, records the retry, and journals each check', async () => {
+    const env = await detailWith((req) => (req.kind === 'spec' && !retried(req) ? withExtra(req) : undefined), jev('pagamento'));
+    expect(env.retries.map((c) => c.kind)).toEqual(['spec']);
+    expect(env.retries[0]!.feedback).toContain('## Item caso:');
+    expect(env.retries[0]!.feedback).toContain('o Jev apontou que a spec acrescenta');
+    expect(await featuresOf(env, 'caso')).toEqual(['caso']);
+    expect(env.journal.state.status).toBe('ready');
+    expect(env.events.some((e) => e.type === 'DECISION_MADE' && (e.data.record as { decisionId: string }).decisionId === 'detail-check')).toBe(true);
+  });
+
+  it('never checks a solo retry, so a flag costs one more call at most', async () => {
+    const decider = jev('pagamento');
+    const env = await detailWith((req) => (req.kind === 'spec' ? withExtra(req) : undefined), decider);
+    expect(env.retries).toHaveLength(1);
+    expect(decider.states.filter((s) => s.startsWith('item caso:'))).toHaveLength(1);
+    expect(await featuresOf(env, 'caso')).toEqual(['caso', 'pagamento']);
+    expect(env.journal.state.status).toBe('ready');
+  });
+
+  it("keeps a flagged spec's first answer when its retry is not valid, with every criterion number unique", async () => {
+    const env = await detailWith((req) => (req.kind !== 'spec' ? undefined : retried(req) ? ok({ specHash: H, specs: [{ ...itemSpec('caso'), type: 'bug' }] }) : withExtra(req)), jev('pagamento'));
+    expect(env.retries).toHaveLength(1);
+    expect(await featuresOf(env, 'caso')).toEqual(['caso', 'pagamento']);
+    expect(env.journal.state.backlog?.specs?.caso?.issues).toEqual([]);
+    const ids = Object.values(env.journal.state.backlog?.specs ?? {}).flatMap((row) => row.spec?.acceptanceCriteria.map((c) => c.id) ?? []);
+    expect(ids).toHaveLength(8);
+    expect(new Set(ids).size).toBe(8);
+    expect(env.journal.state.status).toBe('ready');
+  });
+
+  it("keeps a flagged spec's first answer when its retry stops on quota, while the cycle fails as interrupted", async () => {
+    const env = await detailWith((req) => (req.kind !== 'spec' ? undefined : retried(req) ? quota : withExtra(req)), jev('pagamento'));
+    expect(env.journal.state.backlog?.specs?.caso?.spec?.features).toEqual(['caso', 'pagamento']);
+    expect(String(env.events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason)).toMatch(/interrompido/);
+  });
+
+  it('sends a pre-plan the Jev flags back alone once with the flag', async () => {
+    const env = await detailWith((req) => {
+      if (req.kind !== 'preplan' || retried(req)) return undefined;
+      const preplans = String(req.pack.feedback).split(/^## Spec /m).slice(1).map(preplanFor);
+      return ok({ specHash: H, preplans: preplans.map((p) => (p.key === 'opme' ? { ...p, modules: [{ name: 'm', purpose: 'relógio do banco' }] } : p)) });
+    }, jev('relógio do banco'));
+    expect(env.retries.map((c) => c.kind)).toEqual(['preplan']);
+    expect(env.retries[0]!.feedback).toContain('## Spec opme:');
+    expect(env.retries[0]!.feedback).toContain('o Jev apontou que o pré-plano contradiz');
+    expect(env.journal.state.backlog?.preplans?.opme?.preplan?.modules).toEqual([{ name: 'm', purpose: 'p' }]);
+    expect(env.journal.state.status).toBe('ready');
   });
 });
 
