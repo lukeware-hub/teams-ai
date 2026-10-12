@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { NESTED_DENIED, parseAgentFile } from '../../server/agents/registry.js';
 import { Accounting } from '../../server/budget/accounting.js';
 import { ROLES } from '../../server/config/config.js';
-import { ISOLATION_FLAGS } from '../../server/runner/invocation.js';
+import { childEnv } from '../../server/onboarding/pty.js';
+import { ISOLATION_FLAGS, ORCHESTRATOR_BIN_DIR, buildInvocation } from '../../server/runner/invocation.js';
 import { UNSAFE_NO_SANDBOX_ENV, sandboxPolicyViolation } from '../../server/runner/sandbox-policy.js';
 import { buildRoleSettings } from '../../server/runner/role-settings.js';
 import { runStep, type StepDeps, type StepRequest } from '../../server/runner/step.js';
@@ -109,4 +110,28 @@ await import(${JSON.stringify(FAKE.replace(/\\/g, '/'))});`,
     await expect(fs.access(probed.home)).rejects.toThrow();
   });
 
+});
+
+describe('H3 gh and docker are off the agent PATH', () => {
+  const host = { HOME: '/home/node', PATH: '/opt/teams-ai-bin:/usr/local/go/bin:/usr/local/bin:/usr/bin' };
+  const input = { role: 'dev', model: 'opus', profile: { model: 'opus' }, cwd: '/w', prompt: 'p', jsonSchema: {}, tools: ['Bash'], disallowedTools: [], settingsPath: '/s.json' } as const;
+
+  it('an agent step PATH drops the orchestrator-only directory and keeps the others', () => {
+    const dirs = buildInvocation(input, host).env.PATH.split(path.delimiter);
+    expect(dirs).not.toContain(ORCHESTRATOR_BIN_DIR);
+    expect(dirs).toEqual(['/usr/local/go/bin', '/usr/local/bin', '/usr/bin']);
+  });
+
+  it('the orchestrator-side spawn env still carries that directory', () => {
+    expect(childEnv(host).PATH.split(path.delimiter)).toContain(ORCHESTRATOR_BIN_DIR);
+  });
+
+  it('the image installs gh and docker only into that directory and puts it on the orchestrator PATH', async () => {
+    const dockerfile = await fs.readFile('Dockerfile', 'utf8');
+    expect(dockerfile).toMatch(/ENV PATH=\/opt\/teams-ai-bin:/);
+    expect(dockerfile).toMatch(/\/opt\/teams-ai-bin\/docker\b/);
+    expect(dockerfile).toMatch(/mv \/usr\/bin\/gh \/opt\/teams-ai-bin\/gh/);
+    expect(dockerfile).toMatch(/CMD \["sh", "-lc", "export PATH=\/opt\/teams-ai-bin:\$PATH;/);
+    expect(dockerfile).not.toMatch(/ \/usr\/local\/bin\/docker$/m);
+  });
 });

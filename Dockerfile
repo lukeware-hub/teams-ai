@@ -2,7 +2,8 @@
 FROM node:22-bookworm@sha256:0e5f906573693feaa1e21057ebdcfdb5bd5021f050b2dc7c9deceb629c7da2a8
 
 # The docker CLI talks to the rootless `dind` sidecar over tcp (DOCKER_HOST in docker-compose.yml), never to the host daemon.
-COPY --from=docker:29-cli@sha256:1a4c7cb63513f349bdad01fcc6e0f3f2f67d37b9da86f14dc0d4a0942eecda00 /usr/local/bin/docker /usr/local/bin/docker
+# gh and docker live in /opt/teams-ai-bin: only the orchestrator PATH has it, agent steps never do (audit H3, see invocation.ts).
+COPY --from=docker:29-cli@sha256:1a4c7cb63513f349bdad01fcc6e0f3f2f67d37b9da86f14dc0d4a0942eecda00 /usr/local/bin/docker /opt/teams-ai-bin/docker
 COPY --from=docker:29-cli@sha256:1a4c7cb63513f349bdad01fcc6e0f3f2f67d37b9da86f14dc0d4a0942eecda00 /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
 
 # Go for the Dev's own checks (go mod, vet, test); the gates use their own image. GOTOOLCHAIN=local never downloads another one.
@@ -10,7 +11,7 @@ COPY --from=golang:1.26-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af
 # Rust for the same purpose; CARGO_HOME is set per step to a writable folder, the toolchain itself stays read-only here.
 COPY --from=rust:1-bookworm@sha256:114c7a4425406451c2866b6aafe69fe29b1b298832db1277d411ac73c82d04d6 /usr/local/cargo /usr/local/cargo
 COPY --from=rust:1-bookworm@sha256:114c7a4425406451c2866b6aafe69fe29b1b298832db1277d411ac73c82d04d6 /usr/local/rustup /usr/local/rustup
-ENV PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH GOTOOLCHAIN=local RUSTUP_HOME=/usr/local/rustup
+ENV PATH=/opt/teams-ai-bin:/usr/local/go/bin:/usr/local/cargo/bin:$PATH GOTOOLCHAIN=local RUSTUP_HOME=/usr/local/rustup
 # The official rust image ships without rustfmt and clippy; the Dev's format and lint checks need both.
 RUN rustup component add rustfmt clippy
 # The install gate runs `sh -lc`, and a Debian login shell resets PATH, so the toolchains are also linked into /usr/local/bin.
@@ -19,6 +20,7 @@ RUN ln -s /usr/local/go/bin/* /usr/local/cargo/bin/* /usr/local/bin/
 WORKDIR /app
 RUN apt-get update \
   && apt-get install -y --no-install-recommends util-linux gh bubblewrap socat pipx python3-venv python-is-python3 \
+  && mv /usr/bin/gh /opt/teams-ai-bin/gh \
   && rm -rf /var/lib/apt/lists/*
 # graphify builds the code graph the step packs read (R11.13 slice 3); pinned to the version the CLI spike recorded.
 RUN PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install graphifyy==0.9.67
@@ -46,4 +48,4 @@ EXPOSE 8787
 # Any HTTP answer below 500 means the server is up (the API may answer 401 once authentication is on).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:8787/').then((r)=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
-CMD ["sh", "-lc", "[ -f \"$HOME/.teams-ai/config.json\" ] || { mkdir -p \"$HOME/.teams-ai\" && cp /app/docker/config.json \"$HOME/.teams-ai/config.json\"; }; find \"$HOME/.teams-ai/workspaces\" -name '*.ndjson.lock' -delete 2>/dev/null || true; exec npm run ui -- --port 8787"]
+CMD ["sh", "-lc", "export PATH=/opt/teams-ai-bin:$PATH; [ -f \"$HOME/.teams-ai/config.json\" ] || { mkdir -p \"$HOME/.teams-ai\" && cp /app/docker/config.json \"$HOME/.teams-ai/config.json\"; }; find \"$HOME/.teams-ai/workspaces\" -name '*.ndjson.lock' -delete 2>/dev/null || true; exec npm run ui -- --port 8787"]

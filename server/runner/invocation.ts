@@ -30,6 +30,9 @@ export const ISOLATION_FLAGS: readonly string[] = [
  */
 export const ENV_ALLOWLIST: readonly string[] = ['HOME', 'PATH', 'TERM', 'LANG', 'LC_ALL', 'USER', 'SHELL', 'TMPDIR', 'TZ'];
 
+/** Holds `gh` and `docker` (see the Dockerfile): on the orchestrator PATH only, removed from every agent step PATH (audit H3). */
+export const ORCHESTRATOR_BIN_DIR = '/opt/teams-ai-bin';
+
 /**
  * R11.13 slice 1: steps that never wait on a long command write their prompt cache with the 5-minute TTL (1.25x the input
  * price) instead of the subscription default of 1 hour (2x). Dev and deployment steps run suites and installs that can
@@ -136,6 +139,7 @@ export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessE
   }
 
   const env = { ...sanitizeEnv(hostEnv), ...STEP_ENV };
+  if (env.PATH) env.PATH = env.PATH.split(path.delimiter).filter((dir) => dir !== ORCHESTRATOR_BIN_DIR).join(path.delimiter);
   if (input.home) {
     env.HOME = input.home;
     env.TMPDIR = path.join(input.home, 'tmp');
