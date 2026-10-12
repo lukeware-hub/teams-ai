@@ -33,15 +33,18 @@ describe('draft', () => {
     expect(await fs.readFile(d.projectJson, 'utf8')).toBe(compact);
   });
 
-  it('takes the derived project.json when only stack.md changed, since the platform lives there', async () => {
-    const compact = JSON.stringify(makeProject());
+  it('takes only what stack.md decides (stack, services, platform) from the derived project when only stack.md changed', async () => {
+    const compact = JSON.stringify(makeProject({ confidential: true }));
     remote = await makeRemote({ 'docs/project.json': compact, 'docs/stack.md': '# Stack\n' });
     const d = draftPaths(ws, 'hello-023');
     await createFromRepo(d, remote.repo, execCommand, { kind: 'new-spec' });
-    const derived = makeProject({ services: ['orders'], platform: [{ name: 'nats', image: 'nats:2.10.22-alpine' }] });
+    const derived = makeProject({ name: 'Drifted name', stack: 'go', services: ['orders'], platform: [{ name: 'nats', image: 'nats:2.10.22-alpine' }] });
     expect((await keepBaseProject(d, derived)).platform).toBeUndefined();
     await fs.writeFile(d.stackMd, '# Stack\n\nNATS 2.10 for every service.\n');
-    expect((await keepBaseProject(d, derived)).platform).toEqual(derived.platform);
+    const kept = await keepBaseProject(d, derived);
+    expect([kept.stack, kept.services, kept.platform]).toEqual(['go', ['orders'], derived.platform]);
+    // The rest is main's: a model's drift in other fields, or a flag set by hand, never rides along.
+    expect([kept.name, kept.confidential]).toEqual([makeProject().name, true]);
   });
 
   it('copies the docs of main byte for byte, final newline included, into the draft and its base copy', async () => {

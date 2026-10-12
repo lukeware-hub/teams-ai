@@ -271,12 +271,14 @@ export async function syncWithMain(d: Draft, repo: string, exec: Exec): Promise<
   return changed;
 }
 
-/** In an existing project, project.json changes only when project.md or stack.md (where the platform lives) changed. */
+/** In an existing project, project.json changes only when project.md changed, or when stack.md did in what it decides: the stack, the services and the platform. */
 export async function keepBaseProject(d: Draft, derived: Project): Promise<Project> {
   const [baseJson, baseMd, baseStack] = await Promise.all([readBase(d, 'project.json'), readBase(d, 'project.md'), readBase(d, 'stack.md')]);
   if (baseJson === null || baseMd === null) return derived;
   const [md, stack] = await Promise.all([fs.readFile(d.projectMd, 'utf8'), fs.readFile(d.stackMd, 'utf8').catch(() => null)]);
-  return md === baseMd && stack === baseStack ? Project.parse(JSON.parse(baseJson)) : derived;
+  if (md !== baseMd) return derived;
+  const base = Project.parse(JSON.parse(baseJson));
+  return stack === baseStack ? base : Project.parse({ ...base, stack: derived.stack, services: derived.services, platform: derived.platform });
 }
 
 export async function readDerived(d: Draft): Promise<{ project: Project; spec: Spec } | null> {
