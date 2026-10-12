@@ -65,6 +65,7 @@ was implemented. Web UI block A (`2026-09-24-run-api-execution-ui-design.md`) is
 | 65 | [`2026-10-11-teams-ai-65-agents-for-services.md`](2026-10-11-teams-ai-65-agents-for-services.md) | Done — refinement writes the services and the platform, Phase 2 asks for a services plan with a scaffold and a port per service, each task's agent knows its service, and the docs decide between one application and several services; ROADMAP R12.6. |
 | 66 | [`2026-10-12-teams-ai-66-autonomy-hardening.md`](2026-10-12-teams-ai-66-autonomy-hardening.md) | Slice R11.5.1 done (rebase conflicts resolve) — a run recovers from the failures that end it or waste its attempts; ROADMAP R11.5. |
 | 67 | [`2026-10-12-teams-ai-67-deploy-fixes-remember.md`](2026-10-12-teams-ai-67-deploy-fixes-remember.md) | Done — a deploy fix task knows the run's earlier deploy failures and fixes, and is told when the previous fix did not change the outcome; ROADMAP R11.5.2. |
+| 68 | [`2026-10-12-teams-ai-68-backlog-keys-and-dependencies.md`](2026-10-12-teams-ai-68-backlog-keys-and-dependencies.md) | Done — dependencies name the spec ids their items really have, and no two backlog keys share a docs branch; ROADMAP R11.5.3. |
 
 Plans 17 and 19 never existed (not a gap in this audit - no file was ever created at those numbers).
 
