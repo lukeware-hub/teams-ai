@@ -77,6 +77,7 @@ was implemented. Web UI block A (`2026-09-24-run-api-execution-ui-design.md`) is
 | 77 | [`2026-10-12-teams-ai-77-started-specs-never-rederived.md`](2026-10-12-teams-ai-77-started-specs-never-rederived.md) | Done — a started or delivered spec is never re-derived, and a new program never runs it again; ROADMAP R11.7.2. |
 | 78 | [`2026-10-12-teams-ai-78-unchanged-items-reused.md`](2026-10-12-teams-ai-78-unchanged-items-reused.md) | Done — a new backlog draft derives again only the items whose sources changed; ROADMAP R11.7.3. |
 | 79 | [`2026-10-12-teams-ai-79-adjustment-specs.md`](2026-10-12-teams-ai-79-adjustment-specs.md) | Done — a change to the sections of a started or delivered spec becomes an adjustment spec the owner approves in briefing.md; ROADMAP R11.7.4. |
+| 80 | [`2026-10-12-teams-ai-80-retired-items-leave-main.md`](2026-10-12-teams-ai-80-retired-items-leave-main.md) | Done — a planned item that leaves the backlog is retired on main, and a started one stays until the owner approves its removal; ROADMAP R11.7.5. |
 
 Plans 17 and 19 never existed (not a gap in this audit - no file was ever created at those numbers).
 
