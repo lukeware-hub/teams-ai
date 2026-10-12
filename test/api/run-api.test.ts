@@ -21,6 +21,8 @@ let control: RunControlDeps;
 let spawns: Array<{ args: string[]; logFile: string }>;
 let signals: Array<[number, string | number]>;
 let onSpawn: (runId: string) => Promise<void>;
+/** What the last fake child is still writing; the launch's wait lets it finish before looking for its journal. */
+let spawning: Promise<void> = Promise.resolve();
 let onSignal: () => void;
 let onSleep: () => Promise<void>;
 let cloned: Array<{ url: string; destination: string }>;
@@ -53,7 +55,7 @@ beforeEach(async () => {
       spawns.push({ args: a.args, logFile: a.logFile });
       const runId = a.args[a.args.indexOf('--run-id') + 1] ?? a.args[a.args.indexOf('--run') + 1]!;
       alive.add(5000 + spawns.length);
-      void onSpawn(runId);
+      spawning = onSpawn(runId);
       return { pid: 5000 + spawns.length };
     },
     kill: (pid, sig) => {
@@ -64,7 +66,10 @@ beforeEach(async () => {
       if (sig === 'SIGTERM') onSignal();
       return true;
     },
-    sleep: () => onSleep(),
+    sleep: async () => {
+      await spawning;
+      await onSleep();
+    },
     cliEntry: () => ({ bin: 'node', prefix: ['cli'] }),
     repoRoot: '/repo',
   };

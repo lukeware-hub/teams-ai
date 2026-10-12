@@ -1,4 +1,4 @@
-import { promises as fs } from 'node:fs';
+import { promises as fs, mkdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -26,7 +26,9 @@ function service() {
     spawn: (a) => {
       spawned.push({ args: a.args });
       const runId = a.args[a.args.indexOf('--run-id') + 1]!;
-      void fs.mkdir(path.join(runsDir(), runId), { recursive: true }).then(() => fs.writeFile(path.join(runsDir(), runId, 'events.ndjson'), ''));
+      // The journal exists before spawn returns: the launch waits for it with a sleep that never waits.
+      mkdirSync(path.join(runsDir(), runId), { recursive: true });
+      writeFileSync(path.join(runsDir(), runId, 'events.ndjson'), '');
       return { pid: 4242 };
     },
     kill: () => true,
