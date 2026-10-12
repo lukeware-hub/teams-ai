@@ -302,6 +302,15 @@ describe('phase 0', () => {
     await run.close();
   });
 
+  it('records PHASE_FAILED instead of throwing when gh cannot say who is logged in', { timeout: 60_000 }, async () => {
+    const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
+    exec.onArgs('gh', ['api', 'user'], () => ({ exitCode: 1, stderr: 'HTTP 401: Bad credentials' }));
+    const run = await Run.create(deps(exec, path.join(remote.root, 'fresh-repo-4'), { bootstrap: { docsDir: draftDocs, owner: undefined } }), 'hello-001-r1');
+    expect(await run.executePhase0()).toEqual({ ok: false, reason: 'gh api user failed: HTTP 401: Bad credentials' });
+    expect(run.journal.events.some((e) => e.type === OrchEvent.PhaseFailed && e.data.reason === 'gh api user failed: HTTP 401: Bad credentials')).toBe(true);
+    await run.close();
+  });
+
   it('a later run without bootstrap fetches origin first, so it reads docs merged since the last run', { timeout: 60_000 }, async () => {
     const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
     const run = await Run.create(deps(exec, remote.repo, { bootstrap: undefined, firstSpec: false }), 'hello-001-r2');

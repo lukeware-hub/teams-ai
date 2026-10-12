@@ -25,7 +25,11 @@ export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docs
   const { journal, ws, spec, project } = deps;
   if (!journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 0)) await journal.fact(OrchEvent.PhaseStarted, { phase: 0 });
   const gh = (args: string[]) => deps.ghExec({ bin: 'gh', args, cwd: ws.root, timeoutMs: 60_000 });
-  const owner = opts.owner ?? (await githubLogin(gh));
+  const owner = opts.owner ?? (await githubLogin(gh).catch((err: Error) => err));
+  if (owner instanceof Error) {
+    await journal.fact(OrchEvent.PhaseFailed, { phase: 0, reason: owner.message });
+    return { ok: false, reason: owner.message };
+  }
   const fullName = `${owner}/${project.projectId}`;
   const view = await gh(['repo', 'view', fullName, '--json', 'nameWithOwner,url']);
   const version = spec.specVersion;
