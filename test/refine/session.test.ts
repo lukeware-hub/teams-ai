@@ -176,6 +176,14 @@ describe('RefineSession', () => {
     expect(await readDoc(draft(), 'brief.md')).toBe(brief);
     await s.enableBacklog();
     expect(await fs.readFile(`${draft().docs}/briefing.md`, 'utf8')).toMatch(/\n## Decisões\n\n### Port\?\n\n> 8080\n$/);
+    // Written before the backlog is journaled, in one edit, so a crash in between loses no answer and a second call adds nothing.
+    const events = (await fs.readFile(draft().events, 'utf8')).trim().split('\n').map((l) => JSON.parse(l) as { type: string; data: { source?: string } });
+    const written = events.findIndex((e) => e.type === 'DOC_EDITED' && e.data.source === 'decision');
+    expect(written).toBeGreaterThan(-1);
+    expect(written).toBeLessThan(events.findIndex((e) => e.type === 'BACKLOG_ENABLED'));
+    expect(events.filter((e) => e.type === 'DOC_EDITED' && e.data.source === 'decision')).toHaveLength(1);
+    await s.enableBacklog();
+    expect((await fs.readFile(draft().events, 'utf8')).trim().split('\n')).toHaveLength(events.length);
     await s.close();
   });
 

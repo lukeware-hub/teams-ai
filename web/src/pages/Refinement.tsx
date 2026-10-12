@@ -275,7 +275,7 @@ export function RefinementView(p: ViewProps) {
             : 'Corrija nos documentos os itens não atendidos da lista de verificação e clique em Reavaliar.';
   // R11.10: once ready, a pending patch is a suggestion the owner may still take.
   // A detailed backlog that is ready says it in its own next step.
-  const optional = green && pendingSuggestion && !st.stale && st.status !== 'answering' && !(st.backlog?.detail && st.status === 'ready') ? ' As sugestões abaixo são opcionais; aceitar uma pede nova avaliação.' : '';
+  const optional = (st.status === 'ready' || st.status === 'drafting') && green && pendingSuggestion && !st.stale && !(st.backlog?.detail && st.status === 'ready' && pending.length === 0) ? ' As sugestões abaixo são opcionais; aceitar uma pede nova avaliação.' : '';
   const existing = st.mode === 'new-spec' || st.mode === 'continue';
   const suggest = (file: Exclude<DocFile, 'flow.md'>) => {
     setSuggesting(true);

@@ -55,6 +55,13 @@ describe('RefinementView backlog mode', () => {
     const { rerender } = render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog: detailed, patches: [suggestion] })} busy={false} {...on()} /></MemoryRouter>);
     expect(screen.getByText(/só começa sozinho sem sugestões pendentes/)).toBeTruthy();
     expect(screen.queryByText(/começa sozinho em instantes/)).toBeNull();
+    expect(screen.queryByText(/As sugestões abaixo são opcionais/)).toBeNull();
+    // Plan 90 review: an evaluation in progress says nothing about the suggestions, and an open question keeps the note.
+    rerender(<MemoryRouter><RefinementView snap={base({ ...ready, status: 'evaluating', backlog: detailed, patches: [suggestion] })} busy={false} {...on()} /></MemoryRouter>);
+    expect(screen.queryByText(/As sugestões abaixo são opcionais/)).toBeNull();
+    const open = { questionId: 'po-c1-1', role: 'po' as const, text: 'Cor?', blocking: false, relatedAcIds: [], cycle: 1, status: 'pending' as const, answer: null };
+    rerender(<MemoryRouter><RefinementView snap={base({ ...ready, backlog: detailed, questions: [open], patches: [suggestion] })} busy={false} {...on()} /></MemoryRouter>);
+    expect(screen.getByText(/As sugestões abaixo são opcionais/)).toBeTruthy();
     // A green list waiting for its detailing calls the suggestions optional too, and the history names an approval as one.
     const approval = { ...suggestion, patchId: 'po-c2-0', find: '', replace: '## Ajuste aprovado: base-ajuste-1\n\nok\n', cycle: 2, status: 'accepted' as const };
     rerender(<MemoryRouter><RefinementView snap={base({ ...ready, status: 'drafting', backlog: detailed, patches: [suggestion, approval] })} busy={false} {...on()} /></MemoryRouter>);

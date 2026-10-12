@@ -69,7 +69,9 @@ export function recordDecision(briefing: string, question: string, answer: strin
   const end = decisions.line + decisions.text.split('\n').length;
   const same = sections.find((s) => s.line > decisions.line && s.line < end && s.text.split('\n', 1)[0] === block[0]);
   if (!same) return splice(lines, end, 0, block);
-  const own = same.text.split('\n');
+  // Only the answer is replaced: a heading nested under the decision stays with what follows it.
+  const nested = docSections(same.text).slice(1)[0];
+  const own = same.text.split('\n').slice(0, nested?.line);
   while (own.length > 1 && own.at(-1)!.trim() === '') own.pop();
   return splice(lines, same.line, own.length, block);
 }

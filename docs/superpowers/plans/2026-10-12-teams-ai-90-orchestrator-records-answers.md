@@ -14,7 +14,8 @@
 
 - The briefing is written before the answer is journaled, and a heading for the same question inside `## Decisões` gets the new answer, so a retry after a failure in between writes no second heading.
 - `## Decisões` is found by its level and its words outside code (`docSections`), and lines are only inserted or replaced, never trimmed, so no other section changes its text and no started spec gets a false adjustment (R11.7.4).
-- Turning the backlog on writes the answers the owner gave before, since no agent records an answer any more.
+- Turning the backlog on writes the answers the owner gave before into the brief before the backlog is journaled, so the move carries them and a crash in between loses none, since no agent records an answer any more.
+- An answer given again replaces only its quoted text: a heading nested under the decision stays.
 - The heading is the question on one line, which keeps it unique in the draft (questions are deduplicated) and readable on its own; the answer is a block quote, so a line starting with `#` stays inside it.
 - Only answers the owner gives are written: an answer a role gives from the docs (R11.5.7) adds nothing the docs do not already say.
 - A single spec is left as it is, since its answers already travel with the frozen spec (R11.7.1).
@@ -42,6 +43,8 @@
 - The owner can edit or delete the written decision like any part of the briefing.
 - A draft already in backlog mode before plan 90 keeps the answers its agents never recorded; only later answers, and the earlier ones of a draft that turns the backlog on, are written.
 - A continued spec's brief keeps its English `## Decisions` list (R11.7.1) next to the new `## Decisões` section.
+- In a draft over a project whose briefing already exists, the earlier answers travel with the draft's own demand under `## Nova demanda`, one level down, while later answers go to the top `## Decisões`.
+- A decision written right after an HTML block, in a file with no final newline, can render inside that block, although the section split still reads it.
 - A decision reaches a spec only when the outline cites it, which no rule checks the way flow.md coverage is checked; a question worded like another heading can be resolved by a citation of that heading.
 
 ---

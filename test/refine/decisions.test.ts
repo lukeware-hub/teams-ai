@@ -35,6 +35,14 @@ describe('recordDecision on real briefings', () => {
     expect(recordDecision(elsewhere, 'Há multa?', 'Não.')).toBe(`${elsewhere}\n### Há multa?\n\n> Não.\n`);
   });
 
+  it('keeps what sits under a decision when its answer changes, and works beside approvals and in an empty section', () => {
+    const nested = '# Briefing\n\n## Decisões\n\n### Há multa?\n\n> Sim.\n\n#### Nota do dono\n\nRever em 2027.\n';
+    expect(recordDecision(nested, 'Há multa?', 'Não.')).toBe('# Briefing\n\n## Decisões\n\n### Há multa?\n\n> Não.\n\n#### Nota do dono\n\nRever em 2027.\n');
+    const approvals = '# Briefing\n\n## Decisões\n\n## Ajuste aprovado: opme-ajuste-1\n\nok\n';
+    expect(recordDecision(approvals, 'Há multa?', 'Não.')).toBe('# Briefing\n\n## Decisões\n\n### Há multa?\n\n> Não.\n\n## Ajuste aprovado: opme-ajuste-1\n\nok\n');
+    expect(sectionText(recordDecision(approvals, 'Há multa?', 'Não.'), 'Ajuste aprovado: opme-ajuste-1')).toBe(sectionText(approvals, 'Ajuste aprovado: opme-ajuste-1'));
+  });
+
   it('leaves the text of every other section as it was, whatever the line endings, and quotes an answer written with CRLF', () => {
     for (const doc of ['# Briefing\n\n## Objetivos\n\n- agendar', '# Briefing\n\n## Objetivos\n\n- agendar\n\n\n']) {
       expect(sectionText(recordDecision(doc, 'Há multa?', 'Não.'), 'Objetivos')).toBe(sectionText(doc, 'Objetivos'));
