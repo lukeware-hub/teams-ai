@@ -3,11 +3,15 @@ import path from 'node:path';
 import { abandonLaunch, isAlive, spawnRun, waitForRunJournal, type RunControlDeps } from '../api/run-control.js';
 import { claimLaunch, claimsSpec, clearStopRequested, listRuns, runRow, runsDir as runsDirOf, writePid, type IndexDeps } from '../api/run-index.js';
 import type { Config } from '../config/config.js';
+import { Project } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 import { writeFileAtomic } from '../core/atomic-write.js';
+import type { Decider } from '../decide/decider.js';
+import { classifyFailure, retryable } from '../decide/decisions/failure-cause.js';
 import { nextRunId } from '../orchestrator/workspace.js';
 import { DEPENDENCY_BLOCKED } from '../pipeline/task-state.js';
 import { loadEvents } from '../store/event-store.js';
+import { writeRepairNotes } from './repair-notes.js';
 import { newProgram, prioritizeItem, retryItem, tick, type Program, type ProgramEffects, type ProgramEntry, type RunOutcome } from './controller.js';
 
 export interface ProgramServiceDeps {
@@ -21,6 +25,8 @@ export interface ProgramServiceDeps {
   register: (dir: string) => Promise<void>;
   log?: (line: string) => void;
   now?: () => Date;
+  /** Classifies a failed run (R11.14); absent means a failed run is never repaired. */
+  decider?: Pick<Decider, 'decide'>;
 }
 
 export const programFile = (draftRoot: string): string => path.posix.join(draftRoot, 'program.json');
@@ -144,7 +150,16 @@ export class ProgramService {
         return { runId };
       },
       outcome: async (runId) => this.outcome(runId),
+      repair: this.deps.decider && ((specId, failures) => this.repair(root, specId, failures)),
     };
+  }
+
+  /** Classifies the latest failure; when another run may fix it, leaves every failure for that run to read. */
+  private async repair(root: string, specId: string, failures: readonly string[]): Promise<boolean> {
+    const { confidential } = Project.parse(JSON.parse(await fs.readFile(path.join(root, 'docs', 'project.json'), 'utf8')));
+    if (!retryable(await classifyFailure(failures, this.deps.decider!, { confidential }))) return false;
+    await writeRepairNotes(root, specId, failures);
+    return true;
   }
 
   /** What the controller needs to know about a run: still going, resumable, delivered clean, done, or failed and why. */

@@ -65,6 +65,7 @@ export class SessionRegistry {
       home: deps.home,
       control: deps.control,
       register: deps.register,
+      decider: deps.decider,
       draftRoot: async (projectId, draftId) => draftPaths(await this.ws(projectId), draftId).root,
       freezeItem: async (projectId, draftId, specId) => void (await (await this.get(projectId, draftId)).freezeItem(specId)),
     });

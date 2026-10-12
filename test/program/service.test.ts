@@ -4,9 +4,10 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { RunControlDeps } from '../../server/api/run-control.js';
 import { loadConfig } from '../../server/config/config.js';
-import { ProgramService } from '../../server/program/service.js';
+import { ProgramService, type ProgramServiceDeps } from '../../server/program/service.js';
 import { EventStore } from '../../server/store/event-store.js';
-import { makeFrozenSpec } from '../fixtures/contracts.js';
+import { readRepairNotes, writeRepairNotes } from '../../server/program/repair-notes.js';
+import { makeFrozenSpec, makeProject } from '../fixtures/contracts.js';
 
 let root = '';
 let spawned: Array<{ args: string[] }>;
@@ -21,7 +22,7 @@ async function journal(runId: string, events: Array<{ type: string; data: Record
 const started = (specId: string) => ({ type: 'RUN_STARTED', data: { runId: 'x', specId, projectId: 'shop' } });
 const finished = (result: string, extra: Record<string, unknown> = {}) => ({ type: 'RUN_FINISHED', data: { result, reason: null, merged: [], blocked: [], tokens: { costUsd: null }, ...extra } });
 
-function service() {
+function service(decider?: ProgramServiceDeps['decider']) {
   const control: RunControlDeps = {
     spawn: (a) => {
       spawned.push({ args: a.args });
@@ -42,6 +43,7 @@ function service() {
     draftRoot: async () => path.join(root, 'draft'),
     freezeItem: async () => undefined,
     register: async () => undefined,
+    decider,
   });
 }
 
@@ -141,6 +143,33 @@ describe('program service tick', () => {
     await fs.mkdir(path.join(root, 'draft'), { recursive: true });
     await fs.writeFile(path.join(root, 'draft', 'program.json'), JSON.stringify({ version: 1, draftId: 'd', status: 'finished', updatedAt: '', items: [] }));
     expect(await s.tick('shop', 'd')).toBeNull();
+  });
+
+  // R11.14: a failed run is classified, and the next run reads the failures.
+  it('runs a failed spec again with its failure in a note, and leaves a spec problem to the owner', async () => {
+    await fs.mkdir(path.join(root, 'draft', 'docs'), { recursive: true });
+    await fs.writeFile(path.join(root, 'draft', 'docs', 'project.json'), JSON.stringify(makeProject()));
+    const item = { specId: 'd-a', key: 'a', rank: 1, dependsOn: [], status: 'running', runId: 'd-a-r1', completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0 };
+    const ledger = path.join(root, 'draft', 'program.json');
+    await fs.writeFile(ledger, JSON.stringify({ version: 1, draftId: 'd', status: 'running', updatedAt: '', items: [item] }));
+    await journal('d-a-r1', [started('d-a'), finished('verification-failed', { reason: 'AC-004 missing' })]);
+    const cause = (value: string) => ({ decide: async () => ({ answered: true as const, backend: 'jev' as const, escalated: false, answers: { cause: { type: 'choice' as const, value, probabilities: { [value]: 1 }, confidence: 1 } } }) });
+    const again = await service(cause('code-defect')).tick('shop', 'd');
+    expect(again!.items[0]).toMatchObject({ repairs: 1, failures: ['verification-failed: AC-004 missing'] });
+    expect(await fs.readFile(path.join(root, 'draft', 'repair', 'd-a.md'), 'utf8')).toContain('verification-failed: AC-004 missing');
+    await fs.writeFile(ledger, JSON.stringify({ version: 1, draftId: 'd', status: 'running', updatedAt: '', items: [item] }));
+    const final = await service(cause('spec-problem')).tick('shop', 'd');
+    expect(final!.items[0]).toMatchObject({ status: 'failed', reason: 'verification-failed: AC-004 missing' });
+  });
+});
+
+describe('repair notes', () => {
+  it('reads back what was written, and nothing when there is no note', async () => {
+    expect(await readRepairNotes(path.join(root, 'draft'), 'd-a')).toBeNull();
+    await writeRepairNotes(path.join(root, 'draft'), 'd-a', ['one', 'two']);
+    const text = (await readRepairNotes(path.join(root, 'draft'), 'd-a'))!;
+    expect(text).toContain('attempt 1 failed: one');
+    expect(text).toContain('attempt 2 failed: two');
   });
 });
 
