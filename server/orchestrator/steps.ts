@@ -7,7 +7,7 @@ import type { QuotaBreaker } from '../budget/quota-breaker.js';
 import type { RoleProfile, Role } from '../config/config.js';
 import { SCAFFOLD_TASK_ID, type Plan, type PlanTask } from '../contracts/plan.js';
 import type { Preplan } from '../contracts/preplan.js';
-import type { Project } from '../contracts/project.js';
+import type { PlatformService, Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
 import type { Effort } from '../decide/decisions/model-tier.js';
 import type { ReviewProfile } from '../decide/decisions/pr-risk.js';
@@ -174,7 +174,7 @@ export const E2E_CONTRACT =
 export const COVERAGE_CONTRACT =
   'gate "coverage" (blocking) runs the test suite with whatever coverage tool the stack has, then writes plan.coveragePath as one line of JSON {"linesPct": <number>}; the orchestrator fails the gate when linesPct is below 80, or the file is missing or malformed, regardless of the command\'s own exit code; a path the tool\'s own config already excludes from coverage goes in plan.coverageExemptions as {path, reason} (reason of at least 10 characters)';
 
-export function planRules(firstSpec: boolean, requireDelivery = false, requireSecurityTooling = false, requireE2e = false, requireCoverage = false): string {
+export function planRules(firstSpec: boolean | 'services', requireDelivery = false, requireSecurityTooling = false, requireE2e = false, requireCoverage = false): string {
   const lines = [
     'Plan rules (the orchestrator rejects a plan that breaks any of them):',
     '- deploy.kind is "api" or "front" (what the service is); an api sets deploy.docsPath to the path that serves its Swagger/OpenAPI page (for example /docs); deploy.port must be inside 20000-20099, the range the platform publishes to the host so the human can open the service',
@@ -206,33 +206,54 @@ export function planRules(firstSpec: boolean, requireDelivery = false, requireSe
   if (requireSecurityTooling) lines.push(securityToolingRules());
   if (requireE2e) lines.push(`- ${E2E_CONTRACT}`);
   if (requireCoverage) lines.push(`- ${COVERAGE_CONTRACT}`);
-  if (firstSpec) {
+  // A services plan states its scaffolds per service (servicesPlanRules).
+  if (firstSpec === true) {
     lines.push(
       `- first spec of the project: a task with id ${SCAFFOLD_TASK_ID} (owner dev, no dependsOn) creates the project skeleton, build, test and gate configuration; every other task depends on it directly or indirectly`,
       '- first spec of the project: one deploy-infrastructure task owned by devops (Dockerfile, manifests, deployment.json)',
     );
-  } else {
+  } else if (firstSpec === false) {
     lines.push(`- ${SCAFFOLD_TASK_ID} is only allowed on the first spec of a project`);
   }
   return lines.join('\n');
 }
 
+export interface ServicesPack { names: readonly string[]; newServices: ReadonlySet<string>; ports: Readonly<Record<string, number | null>>; platform: readonly PlatformService[] }
+
+/** What a services plan adds to the plan rules (R12.6): one repository and one port per service, a scaffold per new service. */
+export function servicesPlanRules(opts: ServicesPack): string {
+  const fresh = opts.names.filter((s) => opts.newServices.has(s));
+  const existing = opts.names.filter((s) => !opts.newServices.has(s));
+  return [
+    `Services plan (project.json splits the system into services, one repository each: ${opts.names.join(', ')}):`,
+    '- return specId, specHash, adrRefs and e2eExemptions at the top, `tasks` with each task naming its `service`, and `services`: a map from each service this spec changes to its settings (stack, commands, gateImage, junitPath, gates, frozenPaths, deploy, delivery, lockfilePath and the coverage fields), which follow every plan rule above as services.<name>.<field>; list only the services this spec changes, each with at least one task',
+    "- a task changes only its own service's repository; dependsOn may name a task of another service; a service's smoke and e2e suites prove only the criteria its own tasks reference",
+    fresh.length > 0 ? `- new services (their main holds no code yet): ${fresh.join(', ')}. Each gets a task with id T0-scaffold-<service> (owner dev, no dependsOn) that creates its skeleton, build, test and gate configuration, every other task of that service depends on it, and one deploy-infrastructure task owned by devops (Dockerfile, docker-compose.yml)` : '',
+    existing.length > 0 ? `- existing services: ${existing.join(', ')}. Their code is on main: never give them a scaffold task` : '',
+    ...opts.names.flatMap((s) => (opts.ports[s] ? [`- services.${s}.deploy.port is exactly ${opts.ports[s]}: the orchestrator assigned it so no two services share a host port; the service listens on PORT=${opts.ports[s]} and its docker-compose publishes "${opts.ports[s]}:${opts.ports[s]}"`] : [])),
+    "- each service runs in its own compose project; teams-ai joins its main container (the compose service named exactly like the service) to the project's shared network under the service's name, so services call each other at http://<service>:<port>; a suite reads its own address from SERVICE_URL and each other service's from SERVICE_URL_<SERVICE> (upper case, dashes as underscores)",
+    opts.platform.length > 0 ? `- platform containers teams-ai starts before the services, from project.json: ${opts.platform.map((p) => `${p.name} (${p.image})`).join(', ')}. Never plan, build or declare them in a compose file; services reach them by name on the shared network` : '- the project declares no platform containers',
+    '- teams-ai starts the platform first, then the services one by one in name order, each healthy before the next: a service must start and pass its healthcheck without the other services (retry a call to another service instead of failing at start)',
+  ].filter((l) => l !== '').join('\n');
+}
+
 export function planPack(
   base: PackBase,
-  opts: { techSpecText: string; preplan?: Preplan | null; godNodes: ReadonlyArray<{ label: string; edges: number }>; feedback: string | null; firstSpec?: boolean; requireDelivery?: boolean; requireSecurityTooling?: boolean; requireE2e?: boolean; requireCoverage?: boolean; deployPort?: number | null },
+  opts: { techSpecText: string; preplan?: Preplan | null; godNodes: ReadonlyArray<{ label: string; edges: number }>; feedback: string | null; firstSpec?: boolean; requireDelivery?: boolean; requireSecurityTooling?: boolean; requireE2e?: boolean; requireCoverage?: boolean; deployPort?: number | null; services?: ServicesPack },
 ): ContextPackInput {
   const human = (base.spec.tasks ?? []).map((t) => `- ${t.title}: ${t.description}`);
   const nodes = opts.godNodes.map((n) => `- ${n.label} (${n.edges} edges)`);
   const parts = [
-    planRules(opts.firstSpec ?? false, opts.requireDelivery ?? false, opts.requireSecurityTooling ?? false, opts.requireE2e ?? false, opts.requireCoverage ?? false),
-    opts.deployPort ? `deploy.port is exactly ${opts.deployPort}: the orchestrator assigned it so no two projects share a host port; the service listens on PORT=${opts.deployPort} and docker-compose publishes "${opts.deployPort}:${opts.deployPort}"` : '',
+    planRules(opts.services ? 'services' : opts.firstSpec ?? false, opts.requireDelivery ?? false, opts.requireSecurityTooling ?? false, opts.requireE2e ?? false, opts.requireCoverage ?? false),
+    opts.services ? servicesPlanRules(opts.services) : '',
+    !opts.services && opts.deployPort ? `deploy.port is exactly ${opts.deployPort}: the orchestrator assigned it so no two projects share a host port; the service listens on PORT=${opts.deployPort} and docker-compose publishes "${opts.deployPort}:${opts.deployPort}"` : '',
     opts.preplan ? `Pre-plan reviewed at refinement time (context only: follow the real repository, not this; cover at least its acceptance criteria):\n${JSON.stringify(opts.preplan, null, 2)}` : '',
     human.length > 0 ? `Human-defined tasks (derive dependencies, keep them):\n${human.join('\n')}` : '',
     nodes.length > 0 ? `Central modules of the current code (graph god-nodes):\n${nodes.join('\n')}` : '',
     opts.feedback ?? '',
   ].filter((s) => s !== '');
   return {
-    ...common(base, 'plan', 'sm'),
+    ...common(base, opts.services ? 'services-plan' : 'plan', 'sm'),
     criteria: base.spec.acceptanceCriteria,
     objectives: [...base.spec.objectives, ...base.project.constraints.map((c) => `constraint: ${c}`)],
     techSpecExcerpt: opts.techSpecText,

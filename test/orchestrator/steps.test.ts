@@ -7,7 +7,7 @@ import { Accounting } from '../../server/budget/accounting.js';
 import { Governor } from '../../server/budget/governor.js';
 import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
-import { devPack, devResumePrompt, outputContract, planPack, planRules, readmePack, reportPack, reviewPack, runAgentStep, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
+import { devPack, devResumePrompt, outputContract, planPack, planRules, readmePack, reportPack, reviewPack, runAgentStep, servicesPlanRules, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
 import { saveSession } from '../../server/runner/session-store.js';
 import type { StepOutcome } from '../../server/runner/step.js';
 import type { ResultSummary } from '../../server/runner/stream-events.js';
@@ -356,5 +356,19 @@ describe('runAgentStep', () => {
     d.runStep = (async (req, sd) => { seen.push(req); return inner(req, sd); }) as AgentStepDeps['runStep'];
     await runAgentStep({ kind: 'dev', role: 'dev', pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1, model: 'haiku', effort: 'low' }, d);
     expect(seen[0]).toMatchObject({ model: 'haiku', effort: 'low', profile: { model: 'sonnet' } });
+  });
+});
+
+describe('servicesPlanRules', () => {
+  it('states the services plan shape, a scaffold per new service, a port per service and the platform', () => {
+    const text = servicesPlanRules({ names: ['orders', 'inventory'], newServices: new Set(['inventory']), ports: { orders: 20011, inventory: 20012 }, platform: [{ name: 'nats', image: 'nats:2.10.22-alpine' }] });
+    expect(text).toContain('one repository each: orders, inventory');
+    expect(text).toContain('new services (their main holds no code yet): inventory');
+    expect(text).toContain('T0-scaffold-<service>');
+    expect(text).toContain('existing services: orders');
+    expect(text).toContain('services.inventory.deploy.port is exactly 20012');
+    expect(text).toContain('SERVICE_URL_<SERVICE>');
+    expect(text).toContain('nats (nats:2.10.22-alpine)');
+    expect(planRules('services')).not.toContain('first spec of the project');
   });
 });

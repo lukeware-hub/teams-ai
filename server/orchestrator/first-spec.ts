@@ -12,10 +12,14 @@ const DOCS_ONLY = new Set(['docs', '.github']);
  * workflows: counting directories would forbid the scaffold task on a first run that sits beside other spec directories.
  */
 export async function isFirstSpec(opts: { specDirs: readonly string[]; specId: string; repo: string; exec: Exec }): Promise<boolean> {
-  if (opts.specDirs.length === 1) return true;
-  if (!(await fs.access(path.join(opts.repo, '.git')).then(() => true, () => false))) return true;
-  await gitFetch(opts.repo, opts.exec).catch(() => undefined);
-  const top = await git(opts.repo, ['ls-tree', '--name-only', 'origin/main'], opts.exec).catch(() => null);
+  return opts.specDirs.length === 1 || holdsOnlyDocs(opts.repo, opts.exec);
+}
+
+/** Does origin/main hold nothing but docs and workflows: a project, or a service, before its first code? */
+export async function holdsOnlyDocs(repo: string, exec: Exec): Promise<boolean> {
+  if (!(await fs.access(path.join(repo, '.git')).then(() => true, () => false))) return true;
+  await gitFetch(repo, exec).catch(() => undefined);
+  const top = await git(repo, ['ls-tree', '--name-only', 'origin/main'], exec).catch(() => null);
   if (top === null) return true;
   return top.split('\n').filter((f) => f !== '').every((f) => DOCS_ONLY.has(f));
 }

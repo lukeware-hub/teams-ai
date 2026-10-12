@@ -9,7 +9,8 @@ import { runPhase1, runPhase2, type PhaseDeps } from '../../server/orchestrator/
 import type { AgentStepRequest } from '../../server/orchestrator/steps.js';
 import type { StepOutcome } from '../../server/runner/step.js';
 import type { ResultSummary } from '../../server/runner/stream-events.js';
-import { makeFrozenSpec, makePlan, makeProject } from '../fixtures/contracts.js';
+import { makeFrozenSpec, makePlan, makeProject, makeServicesPlan } from '../fixtures/contracts.js';
+import { serviceWorkspace } from '../../server/orchestrator/workspace.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
 import { FakeGh } from '../fixtures/fake-gh.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';
@@ -193,6 +194,47 @@ describe('Phase 2', () => {
     expect(r.ok).toBe(true);
     const deviation = journal.events.find((e) => e.type === OrchEvent.PreplanDeviation);
     expect(deviation?.data.missingCriteria).toEqual([spec.acceptanceCriteria[0]!.id]);
+  });
+
+  it('asks a project of services for a services plan with a scaffold per new service and a port per service', async () => {
+    const services = ['orders', 'inventory'];
+    const shop = makeProject({ projectId: 'shop', services, platform: [{ name: 'nats', image: 'nats:2.10.22-alpine' }] });
+    const ws = deps(async () => ok(null)).ws;
+    // orders already has code on main; inventory holds only its workflows, as Phase 0 and the workflow bootstrap leave it.
+    const origins: Remote[] = [];
+    for (const [service, files] of [['orders', { 'src/index.ts': 'x' }], ['inventory', { '.github/workflows/ci.yml': 'name: ci\n' }]] as const) {
+      const origin = await makeRemote(files);
+      origins.push(origin);
+      const repo = serviceWorkspace(ws, service).repo;
+      await fs.mkdir(path.dirname(repo), { recursive: true });
+      await git(path.dirname(repo), ['clone', '-q', origin.origin, path.basename(repo)]);
+    }
+    const plan = makeServicesPlan(spec);
+    const root = path.join(remote.root, 'workspaces');
+    const r = await runPhase2({ ...deps(async () => ok(plan)), project: shop, workspacesRoot: root }, '# Tech spec');
+    for (const o of origins) await o.cleanup();
+    expect(r.ok).toBe(true);
+    expect(calls[0]!.kind).toBe('services-plan');
+    expect(calls[0]!.pack.feedback).toContain('new services (their main holds no code yet): inventory');
+    const ports = JSON.parse(await fs.readFile(path.join(root, '.ports.json'), 'utf8')) as Record<string, number>;
+    expect(Object.keys(ports).sort()).toEqual(['shop/inventory', 'shop/orders']);
+    expect(ports['shop/orders']).not.toBe(ports['shop/inventory']);
+    await git(remote.repo, ['fetch', '-q', 'origin']);
+    expect(Object.keys(JSON.parse(await git(remote.repo, ['show', 'origin/main:docs/specs/spec-001/plan.json'])).services).sort()).toEqual(['inventory', 'orders']);
+  });
+
+  it('feeds a services plan error back: a new service without its scaffold', async () => {
+    const shop = makeProject({ projectId: 'shop', services: ['orders', 'inventory'] });
+    const plan = makeServicesPlan(spec);
+    const noScaffold = { ...plan, tasks: plan.tasks.filter((t) => t.id !== 'T0-scaffold-inventory').map((t) => ({ ...t, dependsOn: t.dependsOn.filter((d) => d !== 'T0-scaffold-inventory') })) };
+    // The fake agent applies the step's semantic checks, as runAgentStep does after the schema.
+    const agent: Agent = async (req) => {
+      const errors = (req.semantic ?? []).flatMap((check) => (check as (v: unknown) => string[])(noScaffold));
+      return errors.length > 0 ? { ok: false, failure: 'schema', errors, summary, sandboxDisabled: false } : ok(noScaffold);
+    };
+    const r = await runPhase2({ ...deps(agent), project: shop }, '# Tech spec');
+    expect(r.ok).toBe(false);
+    expect(calls[1]!.pack.feedback).toContain('service inventory');
   });
 
   it('feeds validation errors back and fails after the retries', async () => {
