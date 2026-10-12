@@ -669,7 +669,7 @@ export class Run {
     const shared = await import('./phases/shared.js');
     const specId = this.deps.spec.specId;
     const branch = `docs/${specId}-readme`;
-    const wt = await shared.docsWorktree(this.phaseDeps(), branch);
+    const wt = await shared.freshDocsWorktree(this.phaseDeps(), branch, 6);
     const rel = (...p: string[]) => path.join(wt, ...p);
     this.techSpecText = await fs.readFile(rel('docs', 'specs', specId, 'tech-spec.md'), 'utf8').catch(() => '');
     const plan = await fs.readFile(rel('docs', 'specs', specId, 'plan.json'), 'utf8').then((t) => JSON.parse(t) as Plan).catch(() => null);

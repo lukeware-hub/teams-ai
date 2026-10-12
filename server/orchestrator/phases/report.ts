@@ -7,7 +7,7 @@ import type { E2eRow } from '../../exec/e2e.js';
 import { OrchEvent } from '../events.js';
 import { validateDocs } from '../../validators/docs.js';
 import { reportPack } from '../steps.js';
-import { commitAndMergeDocs, currentDocs, docsWorktree, pauseForFailure, specDir, PAUSED_AUTH, type PhaseDeps } from './shared.js';
+import { commitAndMergeDocs, currentDocs, freshDocsWorktree, pauseForFailure, specDir, PAUSED_AUTH, type PhaseDeps } from './shared.js';
 import { serviceLinks } from '../../deploy/service-links.js';
 
 /** One service of a services run, as Phase 5 verified it. */
@@ -52,7 +52,7 @@ export async function runPhase6(deps: Phase6Deps): Promise<{ ok: boolean; report
   const dv = last(OrchEvent.DeployVerified); const failures = events.filter((e) => e.type === OrchEvent.DeployFailed);
   const base = { runId: deps.runId, specId: deps.spec.specId, specHash: deps.specHash, result: deps.result, service: dv ? { url: String(dv.data.url), healthcheck: String(dv.data.healthcheck), smoke: dv.data.smoke as SmokeRow[], ...(dv.data.e2e ? { e2e: dv.data.e2e as E2eRow[] } : {}), ...(typeof dv.data.port === 'number' ? { port: dv.data.port } : {}), ...(typeof dv.data.healthcheckPath === 'string' ? { healthcheckPath: dv.data.healthcheckPath } : {}), ...(dv.data.kind === 'api' || dv.data.kind === 'front' ? { kind: dv.data.kind as 'api' | 'front' } : {}), ...(typeof dv.data.docsPath === 'string' ? { docsPath: dv.data.docsPath } : {}) } : null, ...(Array.isArray(dv?.data.services) ? { services: dv!.data.services as ReportService[] } : {}), deploy: { attempts: failures.length || (dv ? Number(dv.data.attempt) : 0), lastFailure: failures.at(-1)?.data ?? null }, evidence: attachE2e((ve?.data.matrix as EvidenceRow[] | undefined) ?? [], dv?.data.e2e as E2eRow[] | undefined), delivered: [...deps.journal.state.tasks.values()].filter((t) => t.state === 'merged').map((t) => t.def.id), blocked: [...deps.journal.state.tasks.values()].filter((t) => t.state === 'blocked').map((t) => ({ taskId: t.def.id, reason: blockReason(events, t.def.id) })), assumptions: deps.journal.assumptions(), securityFindings: securityFindings(events), tokens: tokensOf(deps.accounting) };
   // The step works in the docs worktree, a checkout of main, so it can read whole any document the pack cuts.
-  const branch = `docs/${deps.spec.specId}-report`; const wt = await docsWorktree(deps, branch); const current = await currentDocs(wt);
+  const branch = `docs/${deps.spec.specId}-report`; const wt = await freshDocsWorktree(deps, branch, 6); const current = await currentDocs(wt);
   let script: Report['exploratoryScript'] = []; let summary = ''; let readme = ''; let runbook = ''; let apiDocs = ''; let error = ''; let docsErrors: string[] = []; let docsOk = false;
   for (let attempt = 1; attempt <= 2; attempt++) {
     const out = await deps.runAgent<'report'>({ kind: 'report', role: 'sm', pack: reportPack(deps.packBase(), { readmeSections: deps.plan?.delivery?.readmeSections, delivered: base.delivered, blocked: base.blocked, evidence: JSON.stringify(base.evidence), assumptions: base.assumptions, deploy: JSON.stringify(base.service && base.services ? { ...withoutUrl(base.service), services: base.services.map(withoutUrl) } : base.service ?? base.deploy), hostUrl: hostUrl(base), tokens: JSON.stringify(base.tokens), security: base.securityFindings.map((f) => `- ${f.taskId} ${f.file}${f.line === null ? '' : `:${f.line}`} [${f.severity}] ${f.category}: ${f.problem}`).join('\n'), docsErrors, current }), cwd: wt, phase: 'phase6', taskId: null, attempt }) as any;

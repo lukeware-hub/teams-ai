@@ -142,4 +142,16 @@ describe('Phase 6 documentation gate', () => {
     await git(remote.repo, ['fetch', '-q', 'origin'], execCommand);
     expect(await git(remote.repo, ['show', 'origin/main:docs/API.md'], execCommand)).toContain('### POST /stock');
   });
+
+  it('starts the docs worktree again from main after a failed report, so the next run sees what other specs merged since', async () => {
+    expect((await p6(async () => report({ readme: '# App', runbook: GOOD.runbook }))).ok).toBe(false);
+    await mainWrites({ 'docs/API.md': '# API\n\n### POST /orders\n' });
+    // The next run of this spec has its own journal and the same project checkout.
+    await journal.close();
+    journal = await Journal.open({ file: path.join(remote.root, 'events-2.ndjson'), runId: 'r2', specHash: HASH });
+    calls = [];
+    const r = await p6(async () => report({ ...GOOD, apiDocs: '# API\n\n### POST /orders\n' }));
+    expect(JSON.stringify(calls[0]!.pack)).toContain('### POST /orders');
+    expect(r.ok).toBe(true);
+  });
 });

@@ -46,10 +46,13 @@ describe('buildContextPack', () => {
       handoffs: [{ taskId: 'T0-scaffold', title: 'Scaffold', summary: 'Project skeleton with Fastify server', changedFiles: ['package.json', 'src/index.ts'], mergedAt: '2026-09-24T10:00:00Z' }],
       code: { source: 'graph', nodes: [{ label: 'createTodo()', file: 'src/todos/create.ts', line: 10 }], affected: [{ label: 'router.ts', relation: 'imports', file: 'src/router.ts', line: 3 }], truncated: false },
       retrieval: [{ chunkId: 'spec-001#2', docId: 'spec-001', kind: 'spec', title: 'Spec 1', heading: 'Decisions', snippet: 'max [discount] 5', text: 'The maximum discount is 5 percent.', score: 1 }],
+      currentDocs: 'Current docs/README.md:\n# Todo',
       feedback: 'Gate unit-test failed: [AC-001] returns 500',
       changeSet: 'Changed files:\nsrc/todos/create.ts',
     });
     expect(pack.sections).toEqual([...SECTION_ORDER]);
+    expect(pack.text.indexOf('## Current docs on main')).toBeGreaterThan(pack.text.indexOf('## Retrieved context'));
+    expect(pack.text.indexOf('## Feedback')).toBeGreaterThan(pack.text.indexOf('## Current docs on main'));
     expect(pack.text).toContain('src/todos/create.ts:10');
     expect(pack.text).toContain('router.ts [imports]');
     expect(pack.text).toContain('Spec 1 › Decisions');

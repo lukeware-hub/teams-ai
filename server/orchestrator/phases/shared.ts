@@ -134,6 +134,12 @@ export async function docsWorktree(deps: PhaseDeps, branch: string, opts: { keep
   return dir;
 }
 
+/** A docs worktree from the current main: one left by a failed or interrupted attempt holds an older main, so it goes unless its commit is confirmed. */
+export async function freshDocsWorktree(deps: PhaseDeps, branch: string, phase: 0 | 1 | 2 | 6 | 7): Promise<string> {
+  if (!deps.journal.isConfirmed(Intent.DocsCommit, docsCommitKey(deps, phase))) await removeWorktree(deps.ws.repo, worktreeDir(deps.ws, branch), deps.exec);
+  return docsWorktree(deps, branch);
+}
+
 /** The shared docs a docs worktree holds, which earlier specs wrote; a missing file reads as empty. */
 export async function currentDocs(worktree: string): Promise<DocsInput> {
   const read = (file: string) => fs.readFile(path.join(worktree, 'docs', file), 'utf8').catch(() => '');

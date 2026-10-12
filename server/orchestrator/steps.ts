@@ -349,20 +349,18 @@ export const DOCS_STRUCTURE = [
 const plannedSections = (sections: readonly string[] | undefined): string[] =>
   sections?.length ? [`docs/README.md also needs a heading naming each section the plan lists: ${sections.join(', ')}.`] : [];
 
-/** Long enough for real docs, short enough that the step's own instructions stay inside the pack budget. */
+/** Long enough for real docs; the pack drops them all before the step's own instructions when over budget. */
 const CURRENT_DOC_CHARS = 8_000;
 
-/** The shared docs on main, which earlier specs wrote; a rewrite keeps what is still true of them. */
-function currentDocsLines(current: DocsInput | undefined): string[] {
+/** The rule of a docs rewrite: earlier specs wrote the current docs, so what is still true of them stays. */
+const KEEP_CURRENT_DOCS = 'Rewrite the current docs, which earlier specs of this project wrote: they are in the section "Current docs on main", or in docs/README.md, docs/RUNBOOK.md and docs/API.md of your working directory when the pack had no room for them. Keep every section, acceptance criterion and endpoint they hold that is still true, and add what this spec delivered. An endpoint docs/API.md documents stays in it; one this spec removed is marked as removed, never deleted.';
+
+/** The shared docs on main, for the pack section of their own. */
+function currentDocsText(current: DocsInput | undefined): string {
   const shown = (file: string, text: string | null | undefined) => (!text?.trim()
     ? `There is no ${file} yet.`
     : `Current ${file}${text.length > CURRENT_DOC_CHARS ? ` (cut at ${CURRENT_DOC_CHARS} characters; read the whole file before you rewrite it)` : ''}:\n${text.slice(0, CURRENT_DOC_CHARS)}`);
-  return [
-    'Rewrite the current docs below, which earlier specs of this project wrote: keep every section, acceptance criterion and endpoint they hold that is still true, and add what this spec delivered. An endpoint docs/API.md documents stays in it; one this spec removed is marked as removed, never deleted.',
-    shown('docs/README.md', current?.readme),
-    shown('docs/RUNBOOK.md', current?.runbook),
-    shown('docs/API.md', current?.apiDocs),
-  ];
+  return [shown('docs/README.md', current?.readme), shown('docs/RUNBOOK.md', current?.runbook), shown('docs/API.md', current?.apiDocs)].join('\n\n');
 }
 
 export function readmePack(base: PackBase, opts: { tasks: readonly string[]; current?: DocsInput; docsErrors?: readonly string[]; readmeSections?: readonly string[] }): ContextPackInput {
@@ -375,15 +373,15 @@ export function readmePack(base: PackBase, opts: { tasks: readonly string[]; cur
     ...plannedSections(opts.readmeSections),
     ...(opts.docsErrors?.length ? [`Your previous documents were rejected, fix every point:\n${opts.docsErrors.map((e) => `- ${e}`).join('\n')}`] : []),
     `Delivered tasks:\n${opts.tasks.join('\n') || '- none'}`,
-    ...currentDocsLines(opts.current),
-  ].join('\n\n') };
+    KEEP_CURRENT_DOCS,
+  ].join('\n\n'), currentDocs: currentDocsText(opts.current) };
 }
 
 export function reportPack(base: PackBase, opts: { delivered: readonly string[]; blocked: ReadonlyArray<{ taskId: string; reason: string }>; evidence: string; assumptions: readonly string[]; deploy: string; hostUrl: string | null; tokens: string; security: string; docsErrors?: readonly string[]; readmeSections?: readonly string[]; current?: DocsInput }): ContextPackInput {
   return { ...common(base, 'report', 'sm'), criteria: base.spec.acceptanceCriteria, feedback: [
     'Write the final report for the human validator. Give concrete exploratory steps for every acceptance criterion.',
     'Write `summary`, `assumptions`, `blocked[].reason` and `exploratoryScript` entirely in Brazilian Portuguese (pt-BR), in plain words a non-developer can follow; no English sentences. Each exploratory step says what to do and what should happen, in one short sentence (for example: "Abra /health no endereço do serviço. Deve aparecer {"ok":true}."). Keep commands, URLs, status codes and JSON between backticks, untranslated.',
-    'Also return `readme`: the Markdown for docs/README.md, a short overview of the project (what it is, how to run and test it, the endpoints or commands it exposes, the acceptance criteria it satisfies). Use only facts from the context pack.',
+    'Also return `readme`: the Markdown for docs/README.md, an overview of the project (what it is, how to run and test it, the endpoints or commands it exposes, the acceptance criteria it satisfies). Use only facts from the context pack and the current docs.',
     DOCS_STRUCTURE,
     ...plannedSections(opts.readmeSections),
     ...(opts.docsErrors?.length ? [`Your previous documents were rejected, fix every point:\n${opts.docsErrors.map((e) => `- ${e}`).join('\n')}`] : []),
@@ -396,8 +394,8 @@ ${opts.security || '- none'}`,
     `Deploy outcome: ${opts.deploy}`,
     opts.hostUrl ? `The human opens the service at ${opts.hostUrl}; the deploy url is internal to the platform and never appears in what you write: use ${opts.hostUrl} in the summary, README, runbook and exploratory steps.` : 'The human cannot open the service from a browser; the deploy url is internal to the platform and never appears in what you write.',
     `Token usage: ${opts.tokens}`,
-    ...currentDocsLines(opts.current),
-  ].join('\n\n') };
+    KEEP_CURRENT_DOCS,
+  ].join('\n\n'), currentDocs: currentDocsText(opts.current) };
 }
 
 export interface AgentStepRequest<K extends StepKind> {

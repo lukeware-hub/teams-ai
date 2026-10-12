@@ -35,6 +35,8 @@ export interface ContextPackInput {
   handoffs?: readonly HandoffSummary[];
   code?: CodeContext;
   retrieval?: readonly Hit[];
+  /** The shared docs a docs step rewrites; they leave the pack right before the feedback, since the step can read them in its working directory. */
+  currentDocs?: string;
   feedback?: string;
   /**
    * What the step judges and cannot do without: the changed files and diff a security review reads. Rendered last,
@@ -63,6 +65,7 @@ export const SECTION_ORDER = [
   'handoffs',
   'code',
   'retrieval',
+  'current-docs',
   'feedback',
   'change-set',
 ] as const;
@@ -71,7 +74,7 @@ type Section = (typeof SECTION_ORDER)[number];
 /** Present in every pack. The optional `change-set` is never dropped either: it is simply absent from DROP_ORDER. */
 export const NEVER_DROP: readonly Section[] = ['principles', 'contract', 'task', 'criteria'];
 /** Drop order when over budget; feedback last because a retry is useless without it. */
-const DROP_ORDER: readonly Section[] = ['retrieval', 'code', 'adrs', 'tech-spec', 'objectives', 'handoffs', 'assumptions', 'feedback'];
+const DROP_ORDER: readonly Section[] = ['retrieval', 'code', 'adrs', 'tech-spec', 'objectives', 'handoffs', 'assumptions', 'current-docs', 'feedback'];
 
 const MAX_HANDOFFS = 6;
 const HANDOFF_SUMMARY_CHARS = 400;
@@ -130,6 +133,7 @@ function render(input: ContextPackInput): Map<Section, string> {
   if (input.retrieval?.length) {
     out.set('retrieval', `## Retrieved context\n${input.retrieval.map((h) => `### ${h.title}${h.heading ? ` › ${h.heading}` : ''} (${h.kind})\n${h.text}`).join('\n')}`);
   }
+  if (input.currentDocs) out.set('current-docs', `## Current docs on main\n${input.currentDocs}`);
   if (input.feedback) out.set('feedback', `## Feedback from the previous attempt\n${input.feedback}`);
   if (input.changeSet) out.set('change-set', `## Change set under review\n${input.changeSet}`);
   return out;

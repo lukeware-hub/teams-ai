@@ -435,17 +435,23 @@ describe('Run', () => {
     await run.close();
   });
 
-  it('spec readme hands the SM the current docs and keeps every endpoint the current API.md documents', async () => {
-    await fs.writeFile(path.join(remote.repo, 'docs', 'API.md'), '# API\n\n### POST /stock\n');
+  /** Another spec's API docs reach main. */
+  const mainApi = async (text: string) => {
+    await fs.writeFile(path.join(remote.repo, 'docs', 'API.md'), text);
     await git(remote.repo, ['add', '-A'], execCommand);
     await git(remote.repo, ['commit', '-q', '-m', 'earlier spec docs'], execCommand);
     await git(remote.repo, ['push', '-q', 'origin', 'HEAD:main'], execCommand);
-    const section = (t: string) => `## ${t}\n\nReal explanatory content that is long enough to count.\n`;
+  };
+  const section = (t: string) => `## ${t}\n\nReal explanatory content that is long enough to count.\n`;
+  /** A readme answer the docs gate accepts, with this API.md. */
+  const readmeAnswer = (apiDocs: string): StepOutcome<any> => ({ ok: true, value: { specHash: HASH, readme: ['Run', 'Test', 'Environment variables', 'Architecture', 'Pipeline'].map(section).join('\n'), runbook: ['Start', 'Stop', 'Logs', 'Rollback'].map(section).join('\n'), apiDocs }, summary: summary() });
+
+  it('spec readme hands the SM the current docs and keeps every endpoint the current API.md documents', async () => {
+    await mainApi('# API\n\n### POST /stock\n');
     const prompts: string[] = [];
     const script: Script = async (req) => {
       prompts.push(req.prompt);
-      const apiDocs = prompts.length === 1 ? '# API\n\n### GET /orders\n' : '# API\n\n### POST /stock\n\n### GET /orders\n';
-      return { ok: true, value: { specHash: HASH, readme: ['Run', 'Test', 'Environment variables', 'Architecture', 'Pipeline'].map(section).join('\n'), runbook: ['Start', 'Stop', 'Logs', 'Rollback'].map(section).join('\n'), apiDocs }, summary: summary() };
+      return readmeAnswer(prompts.length === 1 ? '# API\n\n### GET /orders\n' : '# API\n\n### POST /stock\n\n### GET /orders\n');
     };
     const run = await Run.create(await withAgents(deps(script)));
     expect(await run.writeReadme()).toBe('done');
@@ -454,6 +460,18 @@ describe('Run', () => {
     await git(remote.repo, ['fetch', '-q', 'origin'], execCommand);
     expect(await git(remote.repo, ['show', 'origin/main:docs/API.md'], execCommand)).toContain('### POST /stock');
     await run.close();
+  });
+
+  it('spec readme starts its docs worktree again from main after a failed readme run', async () => {
+    const first = await Run.create(await withAgents(deps(async () => ({ ...readmeAnswer(''), value: { specHash: HASH, readme: '# App', runbook: '', apiDocs: '' } }))));
+    expect(await first.writeReadme()).toBe('phase-failed');
+    await first.close();
+    await mainApi('# API\n\n### POST /orders\n');
+    const prompts: string[] = [];
+    const second = await Run.create(await withAgents(deps(async (req) => { prompts.push(req.prompt); return readmeAnswer('# API\n\n### POST /orders\n'); })));
+    expect(await second.writeReadme()).toBe('done');
+    expect(prompts[0]).toContain('### POST /orders');
+    await second.close();
   });
 
   describe('deployOnly (spec deploy)', () => {

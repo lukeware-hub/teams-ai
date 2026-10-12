@@ -6,6 +6,7 @@ import { loadAgents } from '../../server/agents/registry.js';
 import { Accounting } from '../../server/budget/accounting.js';
 import { Governor } from '../../server/budget/governor.js';
 import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
+import { buildContextPack } from '../../server/knowledge/context-pack.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
 import { devPack, devResumePrompt, fixTasksPack, outputContract, planPack, planRules, readmePack, replanPack, reportPack, reviewPack, runAgentStep, securityPack, servicesPlanRules, specGapPack, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
 import { servicePlans } from '../../server/contracts/plan.js';
@@ -178,18 +179,30 @@ describe('packs', () => {
   it('report and readme packs carry the current docs with the rule to keep what earlier specs wrote', () => {
     const current = { readme: '# Loja\n\n- AC-001: o estoque cadastra um sku.', runbook: '', apiDocs: '### POST /stock' };
     const opts = { delivered: ['T1'], blocked: [], evidence: '[]', assumptions: [], deploy: '{}', hostUrl: null, tokens: '{}', security: '' };
-    for (const f of [reportPack(base, { ...opts, current }).feedback!, readmePack(base, { tasks: [], current }).feedback!]) {
-      expect(f).toContain('keep every section, acceptance criterion and endpoint they hold that is still true');
-      expect(f).toContain('Current docs/README.md:\n# Loja\n\n- AC-001: o estoque cadastra um sku.');
-      expect(f).toContain('There is no docs/RUNBOOK.md yet.');
-      expect(f).toContain('Current docs/API.md:\n### POST /stock');
+    for (const p of [reportPack(base, { ...opts, current }), readmePack(base, { tasks: [], current })]) {
+      expect(p.feedback).toContain('Keep every section, acceptance criterion and endpoint they hold that is still true');
+      expect(p.currentDocs).toContain('Current docs/README.md:\n# Loja\n\n- AC-001: o estoque cadastra um sku.');
+      expect(p.currentDocs).toContain('There is no docs/RUNBOOK.md yet.');
+      expect(p.currentDocs).toContain('Current docs/API.md:\n### POST /stock');
     }
+    // The README keeps what the current docs hold, which the step may read beyond the pack.
+    expect(reportPack(base, { ...opts, current }).feedback).toContain('an overview of the project (what it is, how to run and test it, the endpoints or commands it exposes, the acceptance criteria it satisfies). Use only facts from the context pack and the current docs.');
   });
 
-  it('cuts a long current doc and sends the step to the whole file, so the instructions stay inside the pack budget', () => {
-    const f = readmePack(base, { tasks: [], current: { readme: `# Big\n${'x'.repeat(20_000)}`, runbook: '', apiDocs: '' } }).feedback!;
-    expect(f).toContain('Current docs/README.md (cut at 8000 characters; read the whole file before you rewrite it):\n# Big');
-    expect(f.length).toBeLessThan(12_000);
+  it('cuts a long current doc and sends the step to the whole file', () => {
+    const p = readmePack(base, { tasks: [], current: { readme: `# Big\n${'x'.repeat(20_000)}`, runbook: '', apiDocs: '' } });
+    expect(p.currentDocs).toContain('Current docs/README.md (cut at 8000 characters; read the whole file before you rewrite it):\n# Big');
+  });
+
+  it('keeps the step instructions when the current docs are large, since the docs leave the pack first', () => {
+    const big = (title: string) => `# ${title}\n${'x'.repeat(9_000)}`;
+    // Eight blocked tasks whose reasons carry a gate output tail, as a hard run leaves them.
+    const blocked = Array.from({ length: 8 }, (_, i) => ({ taskId: `T${i + 1}`, reason: 'gate unit-test failed: '.padEnd(2_500, 'y') }));
+    const opts = { delivered: ['T9'], blocked, evidence: '[]', assumptions: [], deploy: '{}', hostUrl: null, tokens: '{}', security: '' };
+    const pack = buildContextPack(reportPack({ ...base, budgetTokens: 12_000 }, { ...opts, current: { readme: big('Readme'), runbook: big('Runbook'), apiDocs: big('Api') } }));
+    expect(pack.dropped).toContain('current-docs');
+    expect(pack.dropped).not.toContain('feedback');
+    expect(pack.text).toContain('Write the final report for the human validator.');
   });
 
   it("readme pack of a project of services points at the docs, since the code lives in each service's repository", () => {
