@@ -700,9 +700,11 @@ The five docs decide whether the software is one application or a system of serv
 - Review (independent, after the plan): a redeploy no longer wipes a running service and its volumes when a suite fails (apply reports the image that ran, even the same one), platform values stay literal, a resumed service is health-checked, a failed rollback is reported and `ROLLBACK_DONE` lists the services restored, a moved port avoids the other services' ports, suites reach the services a spec does not change through their registered port, a service without a compose file is refused, and deleting a project also finds services it no longer lists; whole suite 1504 passed and 4 skipped.
 - Open: the report and the screens show only the first service (R12.5); the agent writes `platform`, `services` and services plans with a port per service (R12.6); a live run with two services and NATS (R12.7).
 
-### R12.5 Report and screens - `todo`
+### R12.5 Report and screens - `done` (unit, plan 64, 2026-10-11)
 
-- The report and the validation page list every service; the project page lists services and platform.
+- Built: the report lists every service of a services run with its address, port, health path, kind and docs page, and gives the SM only the host addresses (`Report.services` in `server/orchestrator/phases/report.ts`); the service check probes each service and is online only when every one answers (`GET /runs/:runId/service`); the validation page lists each service with its state and its link, with one recheck and one start for them all (`ServiceList` in `web/src/pages/Validation.tsx`); the project page lists the services with the GitHub page of each repository, and the platform containers (`ProjectRow.services` and `platform`, `web/src/pages/ProjectHub.tsx`); the run page shows a services plan with each service's stack and each task's service, since the run route parses `AnyPlan`. A single-repository run, report and project show as before.
+- Tests: one new case each in `test/orchestrator/phase6-docs.test.ts`, `test/api/run-index.test.ts`, `web/src/pages/Validation.test.tsx`, `web/src/pages/ProjectHub.test.tsx` and `web/src/pages/Run.test.tsx`, and two in `test/api/run-api.test.ts`; whole suite 1508 passed and 4 skipped, web 170 passed, both type checks clean.
+- Open: the agents write `services`, `platform` and services plans (R12.6); a live run (R12.7).
 
 ### R12.6 Agents - `todo`
 

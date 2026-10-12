@@ -77,7 +77,7 @@ Each slice gets its own detailed plan when the one before it lands. Agent prompt
 - **R12.2 Runs go through service views (plan 61).** The run reads a plan of either shape from main, runs and merges each task in its service's repository, and Phase 4 gives one verdict across every repository; with one view the journal and the behavior stay identical. Validating a services plan the agent writes comes with R12.6.
 - **R12.3 Service repositories (plan 62).** Phase 0 creates or clones each service's repository `<projectId>-<service>`, every new service gets its workflows, and a resumed run reconciles each merge step in its own repository. Per-service workspaces, the scaffold rule and merges per repository came with R12.2.
 - **R12.4 Platform and deploy of several services (plan 63).** The platform the docs declare runs on the project's shared network, every service deploys as its own compose project with its own host port, each service's smoke and e2e suites get the other services' addresses, a failure rolls back every applied service, and deleting the project tears everything down.
-- **R12.5 Report and screens.** The report and the validation page list every service; the project page lists services and platform.
+- **R12.5 Report and screens (plan 64).** The report, the service check, the validation page and the run page show every service, and the project page lists the services with their repositories and the platform.
 - **R12.6 Agents.** Refinement derives services and platform; SM, devops and Test rules; question routing and the delivery contract text of the pre-plan pack.
 - **R12.7 Live check.** Two services in different stacks plus NATS, and one spec that crosses both, taken to `awaiting-validation`.
 

@@ -61,6 +61,7 @@ was implemented. Web UI block A (`2026-09-24-run-api-execution-ui-design.md`) is
 | 61 | [`2026-10-11-teams-ai-61-run-per-service.md`](2026-10-11-teams-ai-61-run-per-service.md) | Done — runs go through service views: each task runs and merges in its service's repository, one verification verdict across repositories; ROADMAP R12.2. |
 | 62 | [`2026-10-11-teams-ai-62-service-repositories.md`](2026-10-11-teams-ai-62-service-repositories.md) | Done — each service gets its GitHub repository and clone, new services get their workflows, a resumed run reconciles per repository; ROADMAP R12.3. |
 | 63 | [`2026-10-11-teams-ai-63-deploy-services.md`](2026-10-11-teams-ai-63-deploy-services.md) | Done — the platform the docs declare and every service deploy on the project's shared network, each with its own port, suites and rollback; ROADMAP R12.4. |
+| 64 | [`2026-10-11-teams-ai-64-report-and-screens.md`](2026-10-11-teams-ai-64-report-and-screens.md) | Done — the report, the service check, the validation page and the run page show every service; the project page lists the services and the platform; ROADMAP R12.5. |
 
 Plans 17 and 19 never existed (not a gap in this audit - no file was ever created at those numbers).
 
