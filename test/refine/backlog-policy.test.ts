@@ -15,11 +15,12 @@ describe('agent policy for the backlog', () => {
     }
   });
 
-  it('tells the SM to review dependency order and feasibility of a derived backlog without asking about service decomposition', async () => {
+  it('tells the SM to review dependency order and feasibility of a derived backlog, asking a split the docs leave open as in refinement', async () => {
     const sm = (await loadAgents(AGENTS)).sm.body;
-    expect(sm).toContain('### Reviewing a backlog');
-    expect(sm).toContain('deliverable in one run');
-    expect(sm).toContain('never a question for the human');
+    const review = sm.slice(sm.indexOf('### Reviewing a backlog'));
+    expect(review).toContain('deliverable in one run');
+    expect(review).toContain('The service and bounded-context decomposition rule above still applies');
+    expect(sm).not.toContain('never a question for the human');
   });
 
   it('tells the PO how to detail a backlog item into a spec and where a backlog decision is written', async () => {
