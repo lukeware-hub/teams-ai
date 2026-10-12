@@ -626,6 +626,8 @@ Across side-by-side panels, tile, overline, title and chip all sit on the same f
 
 ### 11.3 Button
 
+**Label, then one icon.** Every action button and button-styled link shows its label followed by exactly one icon: 16px on regular buttons, 14px on compact row buttons. The icon names the action (`Excluir` trash, `Nova spec` plus, `Abrir` arrow, `Abrir no GitHub` external), never decorates it, and a button never carries two icons. Exceptions, because they are not labelled actions: the icon rail and the theme control (icon toolbars with an accessible name and a tooltip), the info tips, tabs, breadcrumb links, and text buttons inside lists such as task ids.
+
 | Variant | Ground | Text | Border | Hover | Use |
 |---|---|---|---|---|---|
 | **primary** | `accent` + `shadow-button` | white | none | `accent-hover` | the one main action, app-wide |

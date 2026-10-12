@@ -125,7 +125,7 @@ export function ProjectHubView(p: {
         <div className={emptyState}>
           <Icon name="search" size={24} />
           <p>Esse projeto não foi encontrado.</p>
-          <Link className="link-button" to="/projects">Voltar para Projetos</Link>
+          <Link className="link-button" to="/projects">Voltar para Projetos<Icon name="arrow-left" size={16} /></Link>
         </div>
       </main>
     );
@@ -163,7 +163,6 @@ export function ProjectHubView(p: {
           )}
           {pr.repoUrl ? (
             <a className="link-button" data-testid="github-link" href={pr.repoUrl} target="_blank" rel="noreferrer">
-              <Icon name="github" size={16} />
               Abrir no GitHub
               <Icon name="external" size={16} />
             </a>
@@ -205,7 +204,6 @@ export function ProjectHubView(p: {
                   <strong>{s.name}</strong>
                   {s.repoUrl ? (
                     <a className="link-button" href={s.repoUrl} target="_blank" rel="noreferrer" aria-label={`Abrir ${s.name} no GitHub`}>
-                      <Icon name="github" size={16} />
                       Abrir no GitHub
                       <Icon name="external" size={16} />
                     </a>
@@ -230,8 +228,8 @@ export function ProjectHubView(p: {
             </div>
             {creating ? null : (
               <button type="button" className={allConcluded ? action.primary : action.plain} data-testid="open-new-spec" onClick={() => setCreating(true)}>
-                <Icon name="plus" size={14} />
                 Nova spec
+                <Icon name="plus" size={14} />
               </button>
             )}
           </div>
@@ -253,11 +251,11 @@ export function ProjectHubView(p: {
               ) : null}
               {suggestError ? <span className="error" role="alert">{suggestError}</span> : null}
               <div className="flex flex-wrap justify-end gap-2">
-                <button type="button" className={action.secondary} data-testid="cancel-new-spec" onClick={closeNewSpec}>Cancelar</button>
+                <button type="button" className={action.secondary} data-testid="cancel-new-spec" onClick={closeNewSpec}>Cancelar<Icon name="close" size={14} /></button>
                 {idShown ? (
-                  <button type="submit" className={action.plain} data-testid="new-spec" disabled={suggesting || specDraft.trim() === '' || specDescription.trim() === ''}>Começar refinamento</button>
+                  <button type="submit" className={action.plain} data-testid="new-spec" disabled={suggesting || specDraft.trim() === '' || specDescription.trim() === ''}>Começar refinamento<Icon name="arrow-right" size={14} /></button>
                 ) : (
-                  <button type="button" className={action.plain} data-testid="continue-new-spec" disabled={specDescription.trim() === ''} onClick={() => void continueNewSpec()}>Continuar</button>
+                  <button type="button" className={action.plain} data-testid="continue-new-spec" disabled={specDescription.trim() === ''} onClick={() => void continueNewSpec()}>Continuar<Icon name="arrow-right" size={14} /></button>
                 )}
               </div>
             </form>
@@ -275,11 +273,13 @@ export function ProjectHubView(p: {
                     {CONTINUABLE.has(s.status) ? (
                       <button type="button" className={action.secondary} data-testid={`continue-${s.specId}`} aria-label={`Continuar spec ${s.specId}`} onClick={() => p.onContinue(s.specId)}>
                         Continuar spec
+                        <Icon name="arrow-right" size={14} />
                       </button>
                     ) : null}
                     {CONTINUABLE.has(s.status) ? (
                       <button type="button" className={action.secondary} data-testid={`restart-${s.specId}`} aria-label={`Reiniciar spec ${s.specId}`} onClick={() => setPendingRestart(s.specId)}>
                         Reiniciar
+                        <Icon name="refresh" size={14} />
                       </button>
                     ) : null}
                     {s.activeRunId ? (
@@ -296,12 +296,13 @@ export function ProjectHubView(p: {
                       lastRunOf(s.specId) ? (
                         <Link className={action.secondary} data-testid={`validation-${s.specId}`} aria-label={`Ver validação de ${s.specId}`} to={`/runs/${lastRunOf(s.specId)}/validation`}>
                           Ver validação
+                          <Icon name="arrow-right" size={14} />
                         </Link>
                       ) : null
                     ) : (
                       <button type="button" className={action.primary} data-testid={`start-${s.specId}`} aria-label={`Iniciar execução de ${s.specId}`} onClick={() => p.onStart(s.specId)}>
-                        <Icon name="play" size={14} />
                         Iniciar execução
+                        <Icon name="play" size={14} />
                       </button>
                     )}
                   </span>
@@ -353,14 +354,14 @@ export function ProjectHubView(p: {
                             ) : null}
                             {r.stoppable && ACTIVE.has(r.status) ? (
                               <button type="button" className={action.danger} data-testid={`stop-${r.runId}`} aria-label={`Parar ${r.runId}`} onClick={() => p.onStop(r.runId)}>
-                                <Icon name="stop" size={14} />
                                 Parar
+                                <Icon name="stop" size={14} />
                               </button>
                             ) : null}
                             {!r.locked && (r.status === 'paused:auth' || r.status === 'interrupted') ? (
                               <button type="button" className={action.secondary} data-testid={`resume-${r.runId}`} aria-label={`Retomar ${r.runId}`} onClick={() => p.onResume(r.runId)}>
-                                <Icon name="play" size={14} />
                                 Retomar
+                                <Icon name="play" size={14} />
                               </button>
                             ) : null}
                           </span>
@@ -395,8 +396,8 @@ export function ProjectHubView(p: {
                   {chip(d.state)}
                   <span className={rowActions}>
                     <button type="button" className={action.danger} data-testid={`delete-${d.specId}`} aria-label={`Excluir refinamento de ${d.specId}`} onClick={() => setPendingDelete(d.specId)}>
-                      <Icon name="trash" size={14} />
                       Excluir
+                      <Icon name="trash" size={14} />
                     </button>
                     <Link className={action.primary} data-testid={`refine-${d.specId}`} aria-label={`Abrir refinamento de ${d.specId}`} to={`/refine/${pr.projectId}/${d.specId}`}>
                       Abrir

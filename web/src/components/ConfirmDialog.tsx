@@ -61,9 +61,11 @@ export function ConfirmDialog({ title, subject, confirmLabel, onConfirm, onCance
         <div className="confirm-actions">
           <button ref={cancelButton} type="button" className="confirm-cancel" data-testid="delete-cancel" onClick={() => cancel.current()}>
             Cancelar
+            <Icon name="close" size={16} />
           </button>
           <button type="button" className="confirm-danger" data-testid="delete-confirm" onClick={onConfirm}>
             {confirmLabel}
+            <Icon name="trash" size={16} />
           </button>
         </div>
       </div>

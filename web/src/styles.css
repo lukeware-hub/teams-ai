@@ -254,6 +254,8 @@ button { height: var(--control-height); padding: 0 0.95rem; border: 1px solid va
 button:hover:not(:disabled) { background: var(--surface-sunken); }
 button:active:not(:disabled) { filter: brightness(0.96); }
 button:disabled { cursor: not-allowed; opacity: 0.5; }
+/* A button with an icon lines the label and its one trailing icon up on the center line. */
+button:has(> svg) { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; }
 .primary-button, .primary { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: var(--control-height); padding: 0 1rem; border: 1px solid var(--accent); border-radius: var(--control-radius); color: var(--on-accent); background: var(--accent); box-shadow: var(--shadow-accent); font-size: 0.875rem; font-weight: 600; text-decoration: none; }
 .primary-button:hover:not(:disabled), .primary:hover:not(:disabled) { border-color: var(--accent-hover); background: var(--accent-hover); }
 .secondary { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border-color: var(--accent-line); color: var(--accent-text); background: var(--surface); }

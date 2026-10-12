@@ -69,14 +69,14 @@ const openLink = (href: string, testId: string, text: string, primary: boolean, 
 );
 const recheckButton = (checking: boolean, onRecheck: () => void) => (
   <button type="button" className="link-button min-h-8 px-[0.65rem] text-[0.8125rem]" data-testid="recheck-service" onClick={onRecheck} disabled={checking}>
-    <Icon name="refresh" size={14} />
     Verificar de novo
+    <Icon name="refresh" size={14} />
   </button>
 );
 const startButton = (starting: boolean, canStart: boolean, onStart: () => void, [idle, busy]: readonly [string, string]) => (
   <button type="button" className="primary-button" data-testid="start-service" disabled={starting || !canStart} onClick={onStart}>
-    <Icon name="play" size={16} />
     {starting ? busy : idle}
+    <Icon name="play" size={16} />
   </button>
 );
 // Service status and the buttons that open or start it.
@@ -223,8 +223,8 @@ export function ValidationView({ detail, specStatus, actionError = null, service
         </div>
         <div className={RUN_UI.actions}>
           <Link className={`link-button ${RUN_UI.action}`} to={`/runs/${detail.runId}`}>
-            <Icon name="arrow-left" size={16} />
             Execução
+            <Icon name="arrow-left" size={16} />
           </Link>
         </div>
       </header>
@@ -427,12 +427,12 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                   <textarea className="m-0 mt-1 mb-[0.9rem] w-full resize-y px-[0.8rem] py-[0.65rem] text-[0.875rem] leading-normal disabled:cursor-not-allowed disabled:bg-surface-muted" data-testid="problem-text" aria-label="Descrição do problema" rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder="O que deu errado? O refinamento será reaberto com este relato." disabled={!enabled} />
                   <div className="grid gap-2 [&_button]:w-full">
                     <button className="primary-button" data-testid="complete-spec" disabled={!enabled} onClick={onComplete}>
-                      <Icon name="check" size={16} />
                       {completing ? 'Concluindo…' : 'Concluir especificação'}
+                      <Icon name="check" size={16} />
                     </button>
                     <button className="secondary" data-testid="report-problem" disabled={!enabled || text.trim() === ''} onClick={() => onReport(text.trim())}>
-                      <Icon name="alert" size={16} />
                       Relatar problema
+                      <Icon name="alert" size={16} />
                     </button>
                   </div>
                 </section>

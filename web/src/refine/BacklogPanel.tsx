@@ -47,7 +47,7 @@ export function BacklogPanel({ backlog, evaluating, locked, ready = false, onEna
       <div className="my-4 grid gap-3 rounded-lg border border-line bg-surface-sunken p-4" data-testid="backlog-off">
         <h4 className="m-0 flex items-center gap-2"><Icon name="list" size={20} />Backlog<InfoTip text={HELP} /></h4>
         <p className="text-[0.8125rem] text-ink-soft">Quebre os documentos em specs organizadas e priorizadas, em vez de uma spec só.</p>
-        <button type="button" className="secondary" data-testid="enable-backlog" disabled={locked} onClick={onEnable}>Quebrar em backlog</button>
+        <button type="button" className="secondary" data-testid="enable-backlog" disabled={locked} onClick={onEnable}>Quebrar em backlog<Icon name="list" size={16} /></button>
       </div>
     );
   }
@@ -59,7 +59,7 @@ export function BacklogPanel({ backlog, evaluating, locked, ready = false, onEna
       {backlog.items.length === 0 && <p className="text-[0.8125rem] text-ink-soft">{evaluating ? 'Montando o backlog…' : 'O backlog aparece depois da próxima avaliação. Clique em Avaliar.'}</p>}
       {backlog.items.length > 0 && !backlog.detail && onDetail && (
         <p className="m-0 flex items-center gap-2">
-          <button type="button" className="secondary" data-testid="detail-specs" disabled={!ready || locked} onClick={onDetail}>Detalhar specs (~{estimatedCalls(backlog)} chamadas)</button>
+          <button type="button" className="secondary" data-testid="detail-specs" disabled={!ready || locked} onClick={onDetail}>Detalhar specs (~{estimatedCalls(backlog)} chamadas)<Icon name="file" size={16} /></button>
           <InfoTip text={DETAIL_HELP} />
         </p>
       )}

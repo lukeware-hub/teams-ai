@@ -600,14 +600,14 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
         <div className={RUN_UI.actions}>
           {resumeAction && !detail.locked && RESUMABLE.has(status) ? (
             <button type="button" className={`primary-button ${RUN_UI.action}`} data-testid="resume" disabled={resumeAction.busy} onClick={resumeAction.onResume}>
-              <Icon name="play" size={16} />
               {resumeAction.busy ? 'Retomando…' : 'Retomar'}
+              <Icon name="play" size={16} />
             </button>
           ) : null}
           {stopAction && STOPPABLE.has(status) ? (
             <button type="button" className={`secondary ${RUN_UI.action}`} data-testid="stop" disabled={stopAction.busy} onClick={stopAction.onStop}>
-              <Icon name="stop" size={16} />
               {stopAction.busy ? 'Parando…' : 'Parar execução'}
+              <Icon name="stop" size={16} />
             </button>
           ) : null}
           {detail.report ? (
@@ -618,7 +618,6 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
           ) : null}
           {repoUrl ? (
             <a className={`primary-button ${RUN_UI.action}`} data-testid="github-link" href={repoUrl} target="_blank" rel="noreferrer">
-              <Icon name="github" size={16} />
               Abrir no GitHub
               <Icon name="external" size={16} />
             </a>
@@ -697,6 +696,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                           {stop.raw ? (
                             <button type="button" className={DETAIL_BUTTON} data-testid="outcome-detail" onClick={openDetail({ kind: 'outcome' })}>
                               Ver detalhe técnico
+                              <Icon name="code" size={14} />
                             </button>
                           ) : null}
                         </dd>
@@ -728,13 +728,14 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                             {redeploying ? (
                               <button type="button" className="primary-button" data-testid="redeploy" disabled={redeployAction.busy} onClick={redeployAction.onRedeploy}>
                                 {redeployAction.busy ? 'Iniciando o deploy…' : 'Tentar deploy de novo'}
+                                <Icon name="refresh" size={16} />
                               </button>
                             ) : null}
                             {reprocessAction && !detail.locked ? (
                               <span className="inline-flex items-center gap-[0.35rem]">
                                 <button type="button" className={redeploying ? 'secondary' : 'primary-button'} data-testid="reprocess" disabled={reprocessAction.busy} onClick={reprocessAction.onReprocess}>
-                                  <Icon name="refresh" size={16} />
                                   {reprocessAction.busy ? 'Iniciando nova run…' : 'Reprocessar'}
+                                  <Icon name="refresh" size={16} />
                                 </button>
                                 <InfoTip label="Reprocessar" text={TIP.reprocess} />
                               </span>
@@ -777,6 +778,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                           <span className="min-w-0 truncate text-ink max-md:col-span-full max-md:row-start-2 max-md:line-clamp-2 max-md:whitespace-normal max-md:wrap-anywhere">{explainStop(g.reason)?.title ?? firstSentence(explainBlockReason(g.reason))}</span>
                           <button type="button" className={`${DETAIL_BUTTON} max-md:col-start-2 max-md:row-start-1`} aria-label={`Ver detalhe do bloqueio de ${g.taskIds.join(', ')}`} onClick={openDetail({ kind: 'cause', reason: g.reason })}>
                             Ver detalhe
+                            <Icon name="chevron-right" size={14} />
                           </button>
                         </li>
                       ))}
@@ -791,6 +793,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                     {readmeAction && !detail.locked ? (
                       <button type="button" className="secondary h-8 px-3 text-[0.8125rem]" data-testid="readme-generate" disabled={readmeAction.busy} onClick={readmeAction.onGenerate}>
                         {readmeAction.busy ? 'O sm está escrevendo…' : detail.readme ? 'Reescrever com o sm' : 'Gerar README com o sm'}
+                        <Icon name="file" size={14} />
                       </button>
                     ) : null}
                   </header>
@@ -877,6 +880,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                                 </p>
                                 <button type="button" className={DETAIL_BUTTON} aria-label={`Ver detalhe da falha em ${phaseTitle(p.phase)}`} onClick={openDetail({ kind: 'phase', phase: p.phase })}>
                                   Ver detalhe
+                                  <Icon name="chevron-right" size={14} />
                                 </button>
                               </div>
                             ) : null}

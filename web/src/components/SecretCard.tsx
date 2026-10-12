@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, type Item } from '../api.js';
+import { Icon } from './Icons.js';
 import { ItemCard } from './ItemCard.js';
 
 const GITHUB_TOKEN_URL = 'https://github.com/settings/tokens/new?scopes=repo,workflow&description=teams-ai';
@@ -52,6 +53,7 @@ export function SecretCard({ name, title, item, onSaved }: { name: 'GITHUB_TOKEN
         </label>
         <button type="submit" className="primary-button @max-[40rem]:w-full" disabled={busy || value.trim() === ''}>
           {busy ? 'Verificando…' : 'Salvar e verificar'}
+          <Icon name="check" size={16} />
         </button>
       </form>
       {name === 'GITHUB_TOKEN' ? (

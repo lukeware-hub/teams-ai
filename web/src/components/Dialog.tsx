@@ -57,7 +57,8 @@ export function Dialog({ title, onClose, returnFocus, children }: { title: strin
       <div ref={box} className="dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="dialog-header">
           <h2 id={titleId}>{title}</h2>
-          <button ref={closeButton} type="button" className="dialog-close" aria-label="Fechar" onClick={() => close.current()}>
+          <button ref={closeButton} type="button" className="dialog-close w-auto gap-1.5 px-2.5 text-[0.8125rem]" onClick={() => close.current()}>
+            Fechar
             <Icon name="close" size={16} />
           </button>
         </div>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type Item } from '../api.js';
+import { Icon } from './Icons.js';
 import { ItemCard } from './ItemCard.js';
 
 export function OwnerCard({ organizations, initialOwner, loading, loadError, item, onSaved }: { organizations: string[]; initialOwner: string | null; loading: boolean; loadError: string | null; item: Item | null; onSaved: (item: Item) => void }) {
@@ -29,6 +30,7 @@ export function OwnerCard({ organizations, initialOwner, loading, loadError, ite
         </select>
         <button type="submit" className="primary-button max-md:w-full" disabled={loading || owner.trim() === ''}>
           Salvar e verificar
+          <Icon name="check" size={16} />
         </button>
       </form>
       {loadError ? <p className="error">{loadError}</p> : null}

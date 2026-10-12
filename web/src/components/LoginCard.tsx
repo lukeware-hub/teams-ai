@@ -60,8 +60,8 @@ export function LoginCard({ cli, title, item, onDone }: { cli: Cli; title: strin
       {error ? <p className="error">{error}</p> : null}
       {url ? (
         <button type="button" className="link mt-[1.1rem] flex h-auto gap-[0.45rem] w-full items-center justify-between rounded-none border-0 border-t border-line bg-transparent px-0 pt-4 pb-[0.15rem] text-[0.8125rem] text-ink-soft enabled:hover:text-accent-text [&>svg]:text-ink-soft" aria-expanded={showOutput} onClick={() => setShowOutput((v) => !v)}>
-          <span className="inline-flex items-center gap-[0.7rem] [&_svg]:text-accent-text"><Icon name="terminal" size={22} />{showOutput ? 'Ocultar saída do CLI' : 'Mostrar saída do CLI'}</span>
-          <Icon name="chevron" size={22} />
+          <span className="inline-flex items-center gap-[0.7rem]">{showOutput ? 'Ocultar saída do CLI' : 'Mostrar saída do CLI'}</span>
+          <Icon name="chevron" size={16} />
         </button>
       ) : null}
       {showOutput ? (
@@ -92,6 +92,7 @@ export function LoginControls({ state, code, onCode, onStart, onSend, onCancel }
       {!live ? (
         <button type="button" className="primary-button col-3 justify-self-end" onClick={onStart}>
           {state.name === 'failed' ? 'Tentar novamente' : 'Entrar'}
+          <Icon name={state.name === 'failed' ? 'refresh' : 'arrow-right'} size={16} />
         </button>
       ) : null}
       {state.name === 'starting' || state.name === 'verifying' ? <span>{state.name === 'starting' ? 'Iniciando…' : 'Verificando…'}</span> : null}
@@ -99,8 +100,8 @@ export function LoginControls({ state, code, onCode, onStart, onSend, onCancel }
         <div className="col-1 row-1 flex min-w-0 flex-wrap items-center gap-[0.7rem]">
           {safeHttpUrl(state.url) ? (
             <a className="link-button" href={safeHttpUrl(state.url)} target="_blank" rel="noreferrer">
-              <Icon name="external" size={22} />
               Abrir link
+              <Icon name="external" size={16} />
             </a>
           ) : null}
           {state.name === 'awaiting-browser' && state.code ? (
@@ -130,15 +131,15 @@ export function LoginControls({ state, code, onCode, onStart, onSend, onCancel }
             <input className="h-11 w-full min-w-0 text-[1rem]" data-testid="code-input" value={code} onChange={(e) => onCode(e.target.value)} placeholder="Cole o código aqui…" autoComplete="off" />
           </label>
           <button type="submit" className="primary-button @max-[40rem]:w-full" disabled={code.trim() === ''}>
-            <Icon name="send" size={20} />
             Enviar
+            <Icon name="send" size={16} />
           </button>
         </form>
       ) : null}
       {live ? (
         <button type="button" className="secondary col-3 row-1 @max-[40rem]:col-2" onClick={onCancel}>
-          <Icon name="close" size={22} />
           Cancelar
+          <Icon name="close" size={16} />
         </button>
       ) : null}
       {state.name === 'failed' ? <p className="error col-span-full row-2 w-full">{friendlyLoginReason(state.reason)}</p> : null}

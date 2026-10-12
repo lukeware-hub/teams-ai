@@ -104,12 +104,12 @@ export function ProjectsView(p: {
         </div>
         <div className="flex flex-wrap gap-2 max-md:flex-[1_1_100%]">
           <button type="button" className={`secondary ${toggleOpen}`} aria-expanded={panel === 'git'} aria-controls="import-project-panel" onClick={() => toggle('git')}>
-            <Icon name="download" size={16} />
             Importar do Git
+            <Icon name="download" size={16} />
           </button>
           <button type="button" className={`primary-button ${toggleOpen}`} aria-expanded={panel === 'new'} aria-controls="new-project-panel" onClick={() => toggle('new')}>
-            <Icon name="plus" size={16} />
             Novo projeto
+            <Icon name="plus" size={16} />
           </button>
         </div>
       </header>
@@ -134,8 +134,8 @@ export function ProjectsView(p: {
           {p.onSuggestName ? (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[0.8125rem] text-ink-soft">
               <button type="button" className="secondary" data-testid="suggest-project-id" disabled={suggesting || (newProjectName.trim() === '' && newProjectDescription.trim() === '')} onClick={() => void suggest()}>
-                <Icon name="lightbulb" size={16} />
                 {suggesting ? 'Sugerindo…' : 'Sugerir ID com IA'}
+                <Icon name="lightbulb" size={16} />
               </button>
               {firstSpecId ? <span data-testid="first-spec-id">Primeira spec: <code>{firstSpecId}</code></span> : null}
               {suggestError ? <span className="error" role="alert">{suggestError}</span> : null}
@@ -146,7 +146,7 @@ export function ProjectsView(p: {
             <textarea className="w-full min-w-0 resize-y" data-testid="new-project-description" rows={5} value={newProjectDescription} onChange={(e) => setNewProjectDescription(e.target.value)} placeholder="O que é, para quem serve, o que precisa fazer e o que fica de fora." />
           </label>
           <div className="flex justify-end">
-            <button data-testid="new-project" className="primary-button" type="submit" disabled={newProjectId.trim() === '' || newProjectName.trim() === ''}>Criar projeto</button>
+            <button data-testid="new-project" className="primary-button" type="submit" disabled={newProjectId.trim() === '' || newProjectName.trim() === ''}>Criar projeto<Icon name="plus" size={16} /></button>
           </div>
         </form>
       ) : null}
@@ -167,8 +167,8 @@ export function ProjectsView(p: {
           <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
             <label className={field}><span className={fieldLabel}>URL do repositório</span><input className="w-full min-w-0" type="url" autoFocus value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder="https://github.com/sua-org/seu-projeto.git" /></label>
             <button className="primary-button max-md:w-full" type="submit" disabled={repoUrl.trim() === ''}>
-              <Icon name="download" size={16} />
               Baixar e adicionar
+              <Icon name="download" size={16} />
             </button>
           </div>
         </form>
@@ -203,6 +203,7 @@ export function ProjectsView(p: {
             }}
           >
             Limpar filtro
+            <Icon name="close" size={16} />
           </button>
         </div>
       ) : null}
@@ -222,8 +223,8 @@ export function ProjectsView(p: {
                 </div>
                 <div className={cardActions}>
                   <button type="button" className={action.danger} data-testid={`delete-project-${pr.projectId}`} aria-label={`Excluir projeto ${pr.projectId}`} onClick={() => setPendingDeleteProject(pr)}>
-                    <Icon name="trash" size={14} />
                     Excluir
+                    <Icon name="trash" size={14} />
                   </button>
                   <Link className={action.secondary} data-testid={`open-project-${pr.projectId}`} aria-label={`Abrir projeto ${pr.projectId}`} to={`/projects/${pr.projectId}`}>
                     Abrir
@@ -248,8 +249,8 @@ export function ProjectsView(p: {
                 {chip(d.state)}
                 <span className={rowActions}>
                   <button type="button" className={action.danger} data-testid={`delete-${d.projectId}-${d.specId}`} aria-label={`Excluir refinamento de ${d.projectId} / ${d.specId}`} onClick={() => setPendingDeleteDraft({ projectId: d.projectId, specId: d.specId })}>
-                    <Icon name="trash" size={14} />
                     Excluir
+                    <Icon name="trash" size={14} />
                   </button>
                   <Link className={action.secondary} data-testid={`refine-${d.projectId}-${d.specId}`} aria-label={`Abrir refinamento de ${d.projectId} / ${d.specId}`} to={`/refine/${d.projectId}/${d.specId}`}>
                     Abrir

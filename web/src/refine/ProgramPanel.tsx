@@ -88,7 +88,7 @@ export function ProgramStatus({ program, titles, phases, link }: { program: Prog
               {i.runId && <>· <Link to={`/runs/${i.runId}`}>Acompanhar a run</Link></>}
             </p>
           ))}
-          {link && <p className="mt-1"><Link to={link} className="link-button">Abrir a execução do backlog<Icon name="arrow-right" size={14} /></Link></p>}
+          {link && <p className="mt-1"><Link to={link} className="link-button">Abrir a execução do backlog<Icon name="arrow-right" size={16} /></Link></p>}
         </div>
       )}
     </div>
@@ -128,8 +128,8 @@ export function ProgramPanel({ program, titles, onPrioritize }: { program: Progr
                 {i.costUsd != null ? <span data-testid={`program-item-cost-${i.key}`}>{fmtCost(i.costUsd)}</span> : <span className="text-ink-faint" aria-hidden="true">—</span>}
               </span>
               <span className="flex lg:justify-self-end">
-                {i.status === 'pending' && (i.priority ? <span className="status-chip tone-neutral">prioritária</span> : onPrioritize && <button type="button" className={action.secondary} onClick={() => onPrioritize(i.specId)}>Executar agora</button>)}
-                {i.status === 'failed' && onPrioritize && <button type="button" className={action.secondary} onClick={() => onPrioritize(i.specId)}>Tentar de novo</button>}
+                {i.status === 'pending' && (i.priority ? <span className="status-chip tone-neutral">prioritária</span> : onPrioritize && <button type="button" className={action.secondary} onClick={() => onPrioritize(i.specId)}>Executar agora<Icon name="play" size={14} /></button>)}
+                {i.status === 'failed' && onPrioritize && <button type="button" className={action.secondary} onClick={() => onPrioritize(i.specId)}>Tentar de novo<Icon name="refresh" size={14} /></button>}
               </span>
             </div>
           </li>

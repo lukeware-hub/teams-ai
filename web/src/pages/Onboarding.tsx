@@ -91,7 +91,7 @@ export function Onboarding({ compact = false }: { compact?: boolean }) {
       <div className="grid gap-[0.85rem]">{status ? stepContent() : <Loading />}</div>
       {/* On narrow frames the navigation sticks to the bottom over a glass band. */}
       <nav className="flex items-center justify-between gap-4 border-t border-line pt-5 @max-2xl:sticky @max-2xl:bottom-0 @max-2xl:-mx-[clamp(1rem,3vw,2rem)] @max-2xl:bg-surface @max-2xl:px-[clamp(1rem,3vw,2rem)] @max-2xl:py-3 @max-2xl:backdrop-blur-md" aria-label="Navegação da configuração">
-        <button type="button" className="secondary h-11 min-w-32 border-line-strong text-ink enabled:hover:bg-surface-sunken @max-2xl:flex-1" onClick={() => setStep((current) => current - 1)} disabled={step === 0}><Icon name="arrow-left" size={16} />Voltar</button>
+        <button type="button" className="secondary h-11 min-w-32 border-line-strong text-ink enabled:hover:bg-surface-sunken @max-2xl:flex-1" onClick={() => setStep((current) => current - 1)} disabled={step === 0}>Voltar<Icon name="arrow-left" size={16} /></button>
         {step < totalSteps - 1 ? <button type="button" className="primary-button h-11 min-w-32 @max-2xl:flex-1" onClick={next} disabled={!canAdvance}>Próximo<Icon name="arrow-right" size={16} /></button> : null}
       </nav>
     </main>

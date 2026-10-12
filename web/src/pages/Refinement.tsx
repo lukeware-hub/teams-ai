@@ -110,7 +110,7 @@ export function JevActions() {
   };
   return (
     <span className="mt-2 flex flex-wrap items-center gap-x-[0.8rem] gap-y-[0.3rem]">
-      <button type="button" className="rounded-md border-current bg-transparent px-[0.6rem] py-[0.2rem] text-[0.75rem] font-semibold text-current disabled:cursor-default disabled:opacity-60" data-testid="jev-validate" disabled={check.checking} onClick={validate}>{check.checking ? 'Validando…' : 'Validar conexão'}</button>
+      <button type="button" className="rounded-md border-current bg-transparent px-[0.6rem] py-[0.2rem] text-[0.75rem] font-semibold text-current disabled:cursor-default disabled:opacity-60" data-testid="jev-validate" disabled={check.checking} onClick={validate}>{check.checking ? 'Validando…' : 'Validar conexão'}<Icon name="check" size={14} /></button>
       <Link className="font-semibold text-current underline" to="/onboarding?item=openrouter">Informar nova chave</Link>
       {check.ok !== undefined && <span data-testid="jev-validate-result">{check.ok ? 'Conexão com o OpenRouter funcionando. Clique em Reavaliar.' : `Falha na conexão: ${check.detail ?? 'chave inválida.'}`}</span>}
     </span>
@@ -310,13 +310,20 @@ export function RefinementView(p: ViewProps) {
         </div>
       )}
       <p data-testid="doc-impact" className="hint">{backlogOn && tab === 'brief.md' ? briefingImpact : docImpact[tab]}</p>
-      <div className="relative">
-        <button type="button" className="absolute top-[0.65rem] right-[0.65rem] z-1 grid size-9 place-items-center p-0" aria-label="Copiar documento" onClick={() => copyDoc(docs[tab] ?? '')}><Icon name="copy" size={19} /></button>
-        {tab !== 'flow.md' && p.onSuggestDoc && (
-          <button type="button" data-testid="suggest" className="absolute top-[0.65rem] right-[3.4rem] z-1 h-9 px-[0.8rem]" disabled={locked || suggesting} title="Gera este documento a partir do flow.md" onClick={() => suggest(tab)}>
-            {suggesting ? 'Sugerindo…' : 'Sugerir'}
+      <div className="grid gap-2">
+        {/* The editor's actions sit above it, so they never cover the document's first lines. */}
+        <div className="flex justify-end gap-2">
+          {tab !== 'flow.md' && p.onSuggestDoc && (
+            <button type="button" data-testid="suggest" className="h-9 px-[0.8rem]" disabled={locked || suggesting} title="Gera este documento a partir do flow.md" onClick={() => suggest(tab)}>
+              {suggesting ? 'Sugerindo…' : 'Sugerir'}
+              <Icon name="lightbulb" size={16} />
+            </button>
+          )}
+          <button type="button" className="h-9 px-[0.8rem]" aria-label="Copiar documento" onClick={() => copyDoc(docs[tab] ?? '')}>
+            Copiar
+            <Icon name="copy" size={16} />
           </button>
-        )}
+        </div>
         <textarea
         className="min-h-[58vh] w-full resize-y bg-surface-sunken p-4 font-mono text-[0.8125rem] leading-[1.6]"
         aria-label={`${docLabel[tab]} editor`}
@@ -338,7 +345,8 @@ export function RefinementView(p: ViewProps) {
       <div className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-3">
         <span className="inline-flex items-start gap-[0.45rem] text-[0.8125rem] leading-[1.35] text-ink-soft"><Icon name="info" size={18} />As alterações são salvas automaticamente ao sair do editor.</span>
         <button data-testid="evaluate" className="primary min-w-40 justify-self-center" disabled={locked} onClick={p.onEvaluate}>
-        <Icon name="check" size={18} />{st.cycle === 0 ? 'Avaliar' : 'Reavaliar'}
+        {st.cycle === 0 ? 'Avaliar' : 'Reavaliar'}
+        <Icon name="check" size={16} />
         </button>
         {st.status === 'evaluating' && <span className="justify-self-center text-[0.8125rem] text-ink-soft">Avaliando…</span>}
       </div>
@@ -408,10 +416,12 @@ export function RefinementView(p: ViewProps) {
                 }}
               >
                 Responder
+                <Icon name="send" size={16} />
               </button>
               {!current.blocking && (
                 <button data-testid={`skip-${current.questionId}`} disabled={locked} onClick={() => p.onSkip(current.questionId)}>
                   Ignorar
+                  <Icon name="chevron-right" size={16} />
                 </button>
               )}
             </div>
@@ -435,6 +445,7 @@ export function RefinementView(p: ViewProps) {
             <div className="grid grid-cols-2 items-center gap-2">
             <button type="button" className="min-w-[5.5rem] border-good-line bg-good-soft text-good hover:enabled:border-good" data-testid={`accept-${x.patchId}`} disabled={locked} onClick={() => p.onAccept(x.patchId)}>
               Aceitar
+              <Icon name="check" size={16} />
             </button>
             <input
               className="col-span-full row-start-1 m-0 w-full min-w-0"
@@ -446,6 +457,7 @@ export function RefinementView(p: ViewProps) {
             />
             <button type="button" className="min-w-[5.5rem] border-bad-line bg-bad-soft text-bad hover:enabled:border-bad" data-testid={`reject-${x.patchId}`} disabled={locked} onClick={() => p.onReject(x.patchId, reasons[x.patchId] || null)}>
               Rejeitar
+              <Icon name="close" size={16} />
             </button>
             </div>
           </div>
@@ -477,7 +489,8 @@ export function RefinementView(p: ViewProps) {
       </ul>
       {!p.startInHeader && <div className={`mt-5 ${startGroup}`}>
         <button data-testid="start" className="primary w-full flex-auto px-4" disabled={!canStart} onClick={p.onStart}>
-          <Icon name="play" size={18} />Iniciar análise
+          Iniciar análise
+          <Icon name="play" size={16} />
         </button>
         <InfoTip text={startInfo} />
       </div>}
@@ -527,19 +540,19 @@ export function RefinementView(p: ViewProps) {
         </div>
       )}
       <details>
-        <summary><span>spec.json</span>{st.derived ? <a data-testid="download-spec-json" href={jsonDownload(st.derived.spec)} download="spec.json" aria-label="Baixar spec.json" onClick={(e) => e.stopPropagation()}><Icon name="download" size={18} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</summary>
+        <summary><span>spec.json</span>{st.derived ? <a data-testid="download-spec-json" href={jsonDownload(st.derived.spec)} download="spec.json" aria-label="Baixar spec.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</summary>
         {st.derived ? <pre>{JSON.stringify(st.derived.spec, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>}
       </details>
         </>
       )}
       {backlogOn && (
         <details>
-          <summary><span>specs.json</span>{specsIndex ? <a data-testid="download-specs-json" href={jsonDownload(specsIndex)} download="specs.json" aria-label="Baixar specs.json" onClick={(e) => e.stopPropagation()}><Icon name="download" size={18} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</summary>
+          <summary><span>specs.json</span>{specsIndex ? <a data-testid="download-specs-json" href={jsonDownload(specsIndex)} download="specs.json" aria-label="Baixar specs.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</summary>
           {specsIndex ? <pre>{JSON.stringify(specsIndex, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>}
         </details>
       )}
       <details>
-        <summary><span>project.json</span>{projectJson ? <a data-testid="download-project-json" href={jsonDownload(projectJson)} download="project.json" aria-label="Baixar project.json" onClick={(e) => e.stopPropagation()}><Icon name="download" size={18} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</summary>
+        <summary><span>project.json</span>{projectJson ? <a data-testid="download-project-json" href={jsonDownload(projectJson)} download="project.json" aria-label="Baixar project.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</summary>
         {projectJson ? <pre>{JSON.stringify(projectJson, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>}
       </details>
       {!backlogOn && (
@@ -555,16 +568,16 @@ export function RefinementView(p: ViewProps) {
       {(st.derived?.spec.tasks ?? []).length === 0 && <div className="grid place-items-center gap-[0.35rem] rounded-lg border border-line bg-surface-sunken px-[0.8rem] py-[1.4rem] text-center text-ink-soft [&_svg]:text-ink-faint"><Icon name="clipboard" size={26} /><strong className="text-[0.85rem] text-ink">Nenhuma tarefa gerada ainda.</strong><span className="text-[0.78rem]">As tarefas aparecerão aqui após a avaliação.</span></div>}
         </>
       )}
-      <div className="mt-5 flex items-center justify-between gap-3"><h4 className="m-0!"><Icon name="lock" size={20} />Segredos<InfoTip text="Chaves e senhas de serviços externos que o projeto usa, como a URL de um banco de dados. Ficam salvas neste computador e o valor nunca volta a ser exibido." /></h4><button type="button" className="secondary h-9 px-[0.7rem] text-[0.78rem]" onClick={() => setNewSecrets((rows) => [...rows, { id: Date.now(), name: '', value: '' }])}><Icon name="plus" size={16} />Adicionar segredo</button></div>
+      <div className="mt-5 flex items-center justify-between gap-3"><h4 className="m-0!"><Icon name="lock" size={20} />Segredos<InfoTip text="Chaves e senhas de serviços externos que o projeto usa, como a URL de um banco de dados. Ficam salvas neste computador e o valor nunca volta a ser exibido." /></h4><button type="button" className="secondary h-9 px-[0.7rem] text-[0.78rem]" onClick={() => setNewSecrets((rows) => [...rows, { id: Date.now(), name: '', value: '' }])}>Adicionar segredo<Icon name="plus" size={16} /></button></div>
       <ul className="m-0 grid list-none gap-3 p-0">
         {snap.secrets.map((s) => (
           <li key={s.name} className={`${secretRow} border-line bg-surface-sunken`}>
             {/* A hint made only of asterisks is a mask, not a hint: it tells the user nothing. */}
             <div className="flex min-w-0 items-center gap-[0.45rem]"><code className="mr-auto text-[0.78rem] font-bold text-ink wrap-anywhere">{s.name}</code>{s.hint && /[^*]/.test(s.hint) && <small className="text-[0.7rem] text-ink-soft">termina em {s.hint}</small>}<span className={`status-dot ${s.present ? 'ok' : 'warn'}`}>{s.present ? 'Salvo' : 'Não salvo'}</span></div>
-            <div className={`${secretEntry} grid-cols-[minmax(0,1fr)_5.5rem]`}><input type="password" className={secretInput} data-testid={`secret-${s.name}`} aria-label={`Novo valor de ${s.name}`} placeholder={s.present ? 'Digite um novo valor para substituir' : 'Cole o valor da chave'} value={secretValues[s.name] ?? ''} onChange={(e) => setSecretValues({ ...secretValues, [s.name]: e.target.value })} /><button className={secretSave} data-testid={`save-secret-${s.name}`} disabled={locked || !(secretValues[s.name] ?? '')} onClick={() => { p.onSecret(s.name, secretValues[s.name]!); setSecretValues({ ...secretValues, [s.name]: '' }); }}>Salvar</button></div>
+            <div className={`${secretEntry} grid-cols-[minmax(0,1fr)_7rem]`}><input type="password" className={secretInput} data-testid={`secret-${s.name}`} aria-label={`Novo valor de ${s.name}`} placeholder={s.present ? 'Digite um novo valor para substituir' : 'Cole o valor da chave'} value={secretValues[s.name] ?? ''} onChange={(e) => setSecretValues({ ...secretValues, [s.name]: e.target.value })} /><button className={secretSave} data-testid={`save-secret-${s.name}`} disabled={locked || !(secretValues[s.name] ?? '')} onClick={() => { p.onSecret(s.name, secretValues[s.name]!); setSecretValues({ ...secretValues, [s.name]: '' }); }}>Salvar<Icon name="check" size={14} /></button></div>
           </li>
         ))}
-        {newSecrets.map((s) => <li key={s.id} className={`${secretRow} border-accent-line bg-accent-soft`}><div className={`${secretEntry} grid-cols-[minmax(8rem,0.7fr)_minmax(0,1fr)_auto] max-[720px]:grid-cols-1`}><input className={secretInput} aria-label="Nome da chave" placeholder="NOME_DA_CHAVE" value={s.name} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, name: e.target.value.toUpperCase() } : row))} /><input type="password" className={secretInput} aria-label="Valor da chave" placeholder="Cole o valor da chave" value={s.value} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, value: e.target.value } : row))} /><button className={secretSave} disabled={locked || !/^[A-Z][A-Z0-9_]*$/.test(s.name) || !s.value} onClick={() => { p.onSecret(s.name, s.value); setNewSecrets((rows) => rows.filter((row) => row.id !== s.id)); }}>Salvar</button></div></li>)}
+        {newSecrets.map((s) => <li key={s.id} className={`${secretRow} border-accent-line bg-accent-soft`}><div className={`${secretEntry} grid-cols-[minmax(8rem,0.7fr)_minmax(0,1fr)_auto] max-[720px]:grid-cols-1`}><input className={secretInput} aria-label="Nome da chave" placeholder="NOME_DA_CHAVE" value={s.name} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, name: e.target.value.toUpperCase() } : row))} /><input type="password" className={secretInput} aria-label="Valor da chave" placeholder="Cole o valor da chave" value={s.value} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, value: e.target.value } : row))} /><button className={secretSave} disabled={locked || !/^[A-Z][A-Z0-9_]*$/.test(s.name) || !s.value} onClick={() => { p.onSecret(s.name, s.value); setNewSecrets((rows) => rows.filter((row) => row.id !== s.id)); }}>Salvar<Icon name="check" size={16} /></button></div></li>)}
       </ul>
     </section>
   );
@@ -636,7 +649,7 @@ export function RefinementPage() {
       <header className="refine-breadcrumb"><a href="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></a><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span>
         <span className={startGroup}>
           <button data-testid="start" className="primary flex-auto whitespace-nowrap max-[720px]:w-full" disabled={starting || !canStartRun(snap.state, snap.state.status === 'evaluating')} onClick={startRun}>
-            {executing ? <span className="loading-spinner" aria-hidden="true" /> : <Icon name="play" size={18} />}
+            {executing ? <span className="loading-spinner" aria-hidden="true" /> : <Icon name="play" size={16} />}
             {starting ? 'Iniciando…' : executing ? 'Em execução' : 'Iniciar análise'}
           </button>
           <InfoTip text={startInfo} />
