@@ -200,6 +200,13 @@ describe('packs', () => {
     expect(rules).toMatch(/publish(es)? its (own )?port/i);
   });
 
+  it("services plan rules keep a service's own datastore off the host, where two services' databases would collide", () => {
+    const rules = planRules('services');
+    expect(rules).toContain("a datastore only one service uses publishes no host port: it stays on that service's private compose network");
+    expect(rules).toContain('a datastore several services share is a platform container');
+    expect(rules).not.toMatch(/publish(es)? its (own )?port/i);
+  });
+
   it('plan pack carries every criterion, the human tasks and god nodes', () => {
     const p = planPack(
       { ...base, spec: { ...spec, tasks: [{ title: 'Login', description: 'basic login' }] } },
