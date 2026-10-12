@@ -301,6 +301,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       }
     }
   }
+  // The questions only the human can decide, which no role answers from the docs.
+  const forHuman = new Set<string>();
   if (deps.decider) {
     // Decision 3: a new question that asks what an earlier one (new or decided) already asks, on a shared AC.
     const shares = (x: readonly string[], y: readonly string[]) => x.some((id) => y.includes(id));
@@ -320,15 +322,17 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     const hits = retrieval.slice(0, MAX_HISTORY_CHUNKS);
     for (const i of await contradictedChunks(criteria, objectives, hits.map((h) => h.text), decider!, dctx)) {
       const h = hits[i]!;
-      merged.push({ questionId: `po-c${cycle}-${counters.po++}`, role: 'po', text: `The new spec seems to contradict earlier project history (${h.title}${h.heading ? ` › ${h.heading}` : ''}): "${h.snippet}". Which one holds?`, blocking: true, relatedAcIds: [], cycle });
+      const id = `po-c${cycle}-${counters.po++}`;
+      forHuman.add(id);
+      merged.push({ questionId: id, role: 'po', text: `The new spec seems to contradict earlier project history (${h.title}${h.heading ? ` › ${h.heading}` : ''}): "${h.snippet}". Which one holds?`, blocking: true, relatedAcIds: [], cycle });
     }
   }
   // R11.5.7: the route of each blocking question, journaled for the eval; it answers nothing unless decisions.autoAnswerFloor is set.
-  const questionRouting: Record<string, { route: string; confidence: number | null }> = {};
+  const questionRouting: Record<string, { route: string; confidence: number | null; source: string }> = {};
   if (deps.decider) {
     const blocking = merged.filter((q) => q.blocking);
     const routed = await Promise.all(blocking.map((q) => routeQuestion(criteria, q.text, decider!, dctx)));
-    blocking.forEach((q, i) => { const r = routed[i]; if (r) questionRouting[q.questionId] = { route: r.route, confidence: r.confidence }; });
+    blocking.forEach((q, i) => { const r = routed[i]; if (r) questionRouting[q.questionId] = { route: r.route, confidence: r.confidence, source: r.source }; });
   }
 
   // R11.10: PO and SM reading the same docs often propose the identical edit; accepting both would duplicate the
@@ -417,7 +421,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const floor = deps.autoAnswerFloor;
   const eligible = floor === undefined ? [] : merged.filter((q) => {
     const r = questionRouting[q.questionId];
-    return q.blocking && r?.route === 'auto' && r.confidence !== null && r.confidence >= floor;
+    return q.blocking && !forHuman.has(q.questionId) && r?.route === 'auto' && r.source === 'jev' && r.confidence !== null && r.confidence >= floor;
   });
   const answers = await Promise.all(eligible.map(async (q) => {
     if (deps.signal?.aborted) return null;

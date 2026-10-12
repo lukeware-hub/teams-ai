@@ -360,7 +360,7 @@ export function RefinementView(p: ViewProps) {
             <label className="field-label" htmlFor="refinement-answer">Sua resposta</label>
             <textarea id="refinement-answer" data-testid="answer" value={answer} onChange={(e) => setAnswer(e.target.value)} />
             <label className="field-label">
-              <input type="checkbox" data-testid="docs-answered" checked={docsAnswered} onChange={(e) => setDocsAnswered(e.target.checked)} /> Os documentos já respondiam esta pergunta
+              <input type="checkbox" data-testid="docs-answered" checked={docsAnswered} onChange={(e) => setDocsAnswered(e.target.checked)} /> Os documentos já respondiam esta pergunta <InfoTip text="Marque quando a resposta já estava nos documentos: essas marcas medem quando o Jev pode responder sozinho." />
             </label>
             <div className="question-actions">
               <div className="question-actions-buttons">

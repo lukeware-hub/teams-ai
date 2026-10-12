@@ -77,7 +77,8 @@ export interface SessionDeps {
   retrieval: (query: string) => readonly Hit[];
   validateDocs?: CycleDeps['validateDocs'];
   decider?: CycleDeps['decider'];
-  autoAnswerFloor?: number;
+  /** Read at each evaluation, so a floor set in the config reaches drafts already open. */
+  autoAnswerFloor?: () => Promise<number | undefined>;
 }
 export interface SecretRow {
   name: string;
@@ -232,7 +233,8 @@ export class RefineSession {
     this.ensureCanEvaluate();
     const cycle = this.state.cycle + 1;
     const ctl = (this.abortCtl = new AbortController());
-    this.running = runCycle(
+    // Set at once, so no other action slips in while the floor is read.
+    this.running = (async () => runCycle(
       {
         signal: ctl.signal,
         draft: this.deps.draft,
@@ -244,10 +246,10 @@ export class RefineSession {
         secretsDir: this.deps.secretsDir,
         validateDocs: this.deps.validateDocs,
         decider: this.deps.decider,
-        autoAnswerFloor: this.deps.autoAnswerFloor,
+        autoAnswerFloor: await this.deps.autoAnswerFloor?.(),
       },
       cycle,
-    ).finally(() => {
+    ))().finally(() => {
       this.running = null;
       this.abortCtl = null;
     });

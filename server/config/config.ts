@@ -114,7 +114,7 @@ export const Config = z.object({
       tiers: z.enum(['off', 'shadow', 'on']).default('on'),
       models: z.object({ small: z.string().min(1).default('sonnet'), medium: z.string().min(1).default('sonnet'), large: z.string().min(1).default('opus') }).prefault({}),
       stepModels: z.partialRecord(z.enum(STEP_KINDS), z.string().min(1)).default({}),
-      laterCycleModels: z.partialRecord(z.enum(STEP_KINDS), z.string().min(1)).default({ refine: 'sonnet', derive: 'sonnet', coverage: 'sonnet', backlog: 'sonnet' }),
+      laterCycleModels: z.partialRecord(z.enum(STEP_KINDS), z.string().min(1)).default({ refine: 'sonnet', derive: 'sonnet', coverage: 'sonnet', backlog: 'sonnet', answer: 'sonnet' }),
     })
     .prefault({}),
   /**

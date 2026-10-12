@@ -40,6 +40,8 @@ describe('decisions config', () => {
     expect(DEFAULT_CONFIG.decisions.perDecision['model-tier']).toMatchObject({ chain: ['jev', 'local'] });
     // R11.5.7: question routing runs in shadow mode by default, so labelled data builds up.
     expect(DEFAULT_CONFIG.decisions.perDecision['question-routing']).toMatchObject({ enabled: true, chain: ['jev', 'local'], escalateTo: 'po' });
+    // The answer step reads five documents for one question: Sonnet from the second cycle on, as the other refinement checklists.
+    expect(DEFAULT_CONFIG.routing.laterCycleModels.answer).toBe('sonnet');
   });
 
   it('local backend is off by default and points at a llama.cpp server on this host', () => {

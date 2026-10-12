@@ -103,8 +103,9 @@ export function routingSamples(events: readonly JournalEvent[]): RoutingSample[]
   const answers = new Map(events.filter((e) => e.type === 'QUESTION_ANSWERED' && e.data.by === undefined).map((e) => [String(e.data.questionId), e.data.docsAnswered === true]));
   return events
     .filter((e) => e.type === 'REFINE_EVALUATED')
-    .flatMap((e) => Object.entries((e.data.questionRouting ?? {}) as Record<string, { route: string; confidence: number | null }>))
-    .filter(([id]) => answers.has(id))
+    .flatMap((e) => Object.entries((e.data.questionRouting ?? {}) as Record<string, { route: string; confidence: number | null; source?: string }>))
+    // Only Jev's routes are measured: the floor is a floor on Jev's confidence.
+    .filter(([id, r]) => answers.has(id) && r.source === 'jev')
     .map(([id, r]) => ({ route: r.route, confidence: r.confidence, docsAnswered: answers.get(id)! }));
 }
 
@@ -123,4 +124,10 @@ export function autoAnswerFloor(samples: readonly RoutingSample[], opts: { preci
     if (i + 1 >= minSamples && right / (i + 1) >= precision && auto[i + 1]?.confidence !== s.confidence) floor = s.confidence;
   });
   return floor;
+}
+
+/** The share of the `n` least confident questions routed `auto` at or above the floor that the documents answered: the band the overall precision can hide. */
+export function precisionNearFloor(samples: readonly RoutingSample[], floor: number, n = 10): number | null {
+  const near = samples.filter((s) => s.route === 'auto' && s.confidence !== null && s.confidence >= floor).sort((a, b) => a.confidence! - b.confidence!).slice(0, n);
+  return near.length === 0 ? null : near.filter((s) => s.docsAnswered).length / near.length;
 }

@@ -176,6 +176,7 @@ describe('RefinementView', () => {
     fireEvent.click(screen.getByTestId('answer-po-c1-0'));
     expect(h.onAnswer).toHaveBeenCalledWith('po-c1-0', 'Está em project.md › Execução: 8080', true);
     expect((screen.getByTestId('docs-answered') as HTMLInputElement).checked).toBe(false);
+    expect(screen.getByLabelText(/medem quando o Jev pode responder sozinho/)).toBeTruthy();
   });
 
   it('clears the answer and the mark when the question on screen changes, so neither reaches the wrong question', () => {

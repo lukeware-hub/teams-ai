@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { autoAnswerFloor, metrics, routingSamples, samplesFromRecords, type EvalSample, type JournaledDecision } from '../../server/decide/evals.js';
+import { autoAnswerFloor, metrics, precisionNearFloor, routingSamples, samplesFromRecords, type EvalSample, type JournaledDecision } from '../../server/decide/evals.js';
 
 const sample = (over: Partial<EvalSample>): EvalSample => ({ decisionId: 'gate-triage', question: 'kind', probabilities: { code: 0.8, infra: 0.2 }, predicted: 'code', label: 'code', escalated: false, durationMs: 100, ...over });
 
@@ -37,7 +37,9 @@ describe('decision evals', () => {
 describe('question routing eval', () => {
   it('labels each routed question with its answer, and leaves out the ones nobody answered yet', () => {
     const events = [
-      { type: 'REFINE_EVALUATED', data: { questionRouting: { 'po-c1-0': { route: 'auto', confidence: 0.96 }, 'po-c1-1': { route: 'human', confidence: 0.7 }, 'sm-c1-0': { route: 'auto', confidence: 0.9 } } } },
+      { type: 'REFINE_EVALUATED', data: { questionRouting: { 'po-c1-0': { route: 'auto', confidence: 0.96, source: 'jev' }, 'po-c1-1': { route: 'human', confidence: 0.7, source: 'jev' }, 'sm-c1-0': { route: 'auto', confidence: 0.9, source: 'jev' }, 'po-c1-2': { route: 'auto', confidence: 0.97, source: 'local' } } } },
+      // A route from the local model is no measured route, whatever the answer says.
+      { type: 'QUESTION_ANSWERED', data: { questionId: 'po-c1-2', text: 'x', docsAnswered: true } },
       { type: 'QUESTION_ANSWERED', data: { questionId: 'po-c1-0', text: 'project.md › Execução', docsAnswered: true } },
       { type: 'QUESTION_ANSWERED', data: { questionId: 'po-c1-1', text: '5 segundos' } },
       // An answer a role gave from the docs carries no human label, so it never becomes a sample.
@@ -60,5 +62,15 @@ describe('question routing eval', () => {
     expect(autoAnswerFloor(right.map((s, i) => ({ ...s, docsAnswered: i % 2 === 0 })))).toBeNull();
     // Other routes and questions without a confidence never count.
     expect(autoAnswerFloor([...right.map((s) => ({ ...s, route: 'po' })), { route: 'auto', confidence: null, docsAnswered: true }])).toBeNull();
+  });
+});
+
+describe('precision near the floor', () => {
+  it('shows the precision of the band right above the floor, which the overall precision can hide', () => {
+    const auto = (confidence: number, docsAnswered = true) => ({ route: 'auto', confidence, docsAnswered });
+    const samples = [...Array.from({ length: 100 }, () => auto(0.99)), ...[0.9, 0.89, 0.88, 0.87, 0.86].map((c) => auto(c, false))];
+    expect(autoAnswerFloor(samples)).toBeCloseTo(0.86);
+    expect(precisionNearFloor(samples, 0.86)).toBe(0.5);
+    expect(precisionNearFloor([], 0.9)).toBeNull();
   });
 });

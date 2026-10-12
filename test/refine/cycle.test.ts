@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { Decider } from '../../server/decide/decider.js';
 import { buildContextPack } from '../../server/knowledge/context-pack.js';
 import { runCycle } from '../../server/refine/cycle.js';
 import { draftPaths, createNewProject } from '../../server/refine/draft.js';
@@ -313,7 +314,7 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
   });
 
   /** A refinement draft whose PO asks the given blocking questions, and a decider that routes each one `auto` at its confidence. */
-  async function autoRouted(questions: Record<string, number>, docText = '# doc\nA porta é 8080.') {
+  async function autoRouted(questions: Record<string, number>, docText = '# doc\nA porta é 8080.', over: { answer?: string | null; ok?: boolean; backend?: 'jev' | 'local'; contradiction?: boolean; decider?: unknown; confidential?: boolean } = {}) {
     const spec = makeSpec();
     const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
     const docs = path.join(root, 'docs');
@@ -332,27 +333,62 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
     const answered: string[] = [];
     const answerPacks: Array<Parameters<typeof buildContextPack>[0]> = [];
     const runAgent = vi.fn(async (req: { kind: string; role: string; pack: { feedback?: string } }) => {
-      if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
+      if (req.kind === 'derive') return ok({ project: { ...makeProject(), ...(over.confidential ? { confidential: true } : {}) }, spec: { ...spec, status: 'refining', specHash: null } });
       if (req.kind === 'answer') {
         // A marker in the journal order shows when the answer step ran against the evaluation fact.
         events.push({ type: 'ANSWER_STEP', data: {} });
         answerPacks.push(req.pack as never);
         answered.push(`${req.role}: ${Object.keys(questions).find((q) => String(req.pack.feedback).includes(q))}`);
-        return ok({ specHash: 'draft', answer: 'project.md diz 8080.' });
+        if (over.ok === false) return { ok: false, failure: 'schema', errors: ['bad'], summary: {} };
+        return ok({ specHash: 'draft', answer: over.answer === undefined ? 'project.md diz 8080.' : over.answer });
       }
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: Object.keys(questions).map((text) => ({ text, blocking: true, relatedAcIds: [] })), docPatch: [] });
       return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
     });
     const decider = {
       decide: async (id: string, state: string) => {
+        if (id === 'history-contradiction' && over.contradiction) return { answered: true as const, backend: 'jev' as const, escalated: false, answers: { q0: { type: 'noul' as const, value: 1, probabilities: { yes: 1, no: 0 }, confidence: 1 } } };
         if (id !== 'question-routing') return { answered: false as const, reason: 'disabled' as const };
-        const confidence = Object.entries(questions).find(([q]) => state.includes(q))![1];
-        return { answered: true as const, backend: 'jev' as const, escalated: false, answers: { route: { type: 'choice' as const, value: 'auto', probabilities: { auto: confidence }, confidence } } };
+        const confidence = Object.entries(questions).find(([q]) => state.includes(q))?.[1] ?? 0.99;
+        return { answered: true as const, backend: over.backend ?? ('jev' as const), escalated: false, answers: { route: { type: 'choice' as const, value: 'auto', probabilities: { auto: confidence }, confidence } } };
       },
     };
-    const run = (autoAnswerFloor?: number) => runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root, decider, autoAnswerFloor } as never, 1);
+    const history = [{ chunkId: 'c', docId: 'd', kind: 'spec', title: 'Spec 1', heading: 'Decisões', snippet: 'a porta é 9090', text: 'A porta é 9090.', score: 1 }];
+    const run = (autoAnswerFloor?: number) => runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => (over.contradiction ? history : []), secretsDir: root, decider: over.decider ?? decider, autoAnswerFloor } as never, 1);
     return { events, answered, answerPacks, runAgent, run };
   }
+
+  it('leaves the question with the human when the answer step returns null or fails', async () => {
+    for (const over of [{ answer: null }, { ok: false }]) {
+      const r = await autoRouted({ 'Which port?': 0.95 }, undefined, over);
+      await r.run(0.9);
+      expect(r.events.some((e) => e.type === 'QUESTION_ANSWERED')).toBe(false);
+      expect(r.events.some((e) => e.type === 'REFINE_CYCLE_FAILED')).toBe(false);
+    }
+  });
+
+  it('answers only what Jev routed: a route from the local model is no measured route', async () => {
+    const r = await autoRouted({ 'Which port?': 0.99 }, undefined, { backend: 'local' });
+    await r.run(0.9);
+    expect(r.answered).toEqual([]);
+  });
+
+  it('never answers a history contradiction, which exists for the human to decide', async () => {
+    const r = await autoRouted({ 'Which port?': 0.5 }, undefined, { contradiction: true });
+    await r.run(0.9);
+    const evaluated = r.events.find((e) => e.type === 'REFINE_EVALUATED')!.data.questions as Array<{ text: string }>;
+    expect(evaluated.some((q) => q.text.startsWith('The new spec seems to contradict earlier project history'))).toBe(true);
+    expect(r.answered).toEqual([]);
+  });
+
+  it('routes nothing on a confidential draft, where the decider skips Jev, so nothing is answered', async () => {
+    const jev = { evaluate: async () => { throw new Error('a confidential draft never reaches Jev'); } };
+    const decider = new Decider({ backends: { jev } as never, config: () => ({ enabled: true, chain: ['jev', 'local'], thresholds: { jev: 0.8, local: 0.9 }, escalateTo: 'po' }), onDecision: () => undefined, clock: () => new Date() });
+    const r = await autoRouted({ 'Which port?': 0.99 }, undefined, { decider, confidential: true });
+    await r.run(0.9);
+    expect(r.events.find((e) => e.type === 'REFINE_EVALUATED')!.data.questionRouting).toEqual({});
+    expect(r.answered).toEqual([]);
+  });
 
   it('runs the answer steps before journaling the evaluation, so the page stays in evaluating until the answers land', async () => {
     const r = await autoRouted({ 'Which port?': 0.95 });

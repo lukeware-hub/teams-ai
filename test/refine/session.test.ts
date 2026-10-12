@@ -131,6 +131,24 @@ describe('RefineSession', () => {
     expect(answered).toEqual([{ questionId: 'po-c1-0', text: 'project.md › Execução: 8080', docsAnswered: true }]);
   });
 
+  it('reads the auto answer floor at each evaluation, and the next cycle sees the answer a role gave from the docs', async () => {
+    let floor: number | undefined = 0.9;
+    const decider = { decide: async (id: string) => (id === 'question-routing' ? { answered: true as const, backend: 'jev' as const, escalated: false, answers: { route: { type: 'choice' as const, value: 'auto', probabilities: { auto: 0.95 }, confidence: 0.95 } } } : { answered: false as const, reason: 'disabled' as const }) };
+    const s = await RefineSession.create({ ...deps(), decider: decider as never, autoAnswerFloor: async () => floor } as never, 'new-project');
+    script['derive/po'] = [derived, derived];
+    script['refine/po'] = [refineOut(green(PO), [{ id: 'q', text: 'Port?', blocking: true, relatedAcIds: [] }]), refineOut(green(PO), [{ id: 'q2', text: 'Name?', blocking: true, relatedAcIds: [] }])];
+    script['refine/sm'] = [refineOut(green(SM)), refineOut(green(SM))];
+    script['answer/po'] = [{ answer: 'project.md › Execução: 8080.' }];
+    await s.evaluate();
+    expect(s.state.questions.find((q) => q.questionId === 'po-c1-0')).toMatchObject({ status: 'answered', answeredBy: 'po' });
+    floor = undefined;
+    await s.evaluate();
+    expect(calls.filter((c) => c.kind === 'answer')).toHaveLength(1);
+    expect(calls.filter((c) => c.kind === 'refine').at(-1)!.prompt).toContain('project.md › Execução: 8080.');
+    expect(s.state.questions.find((q) => q.questionId === 'po-c2-0')).toMatchObject({ status: 'pending' });
+    await s.close();
+  });
+
   it('routes answers and rejections into the next cycle, refuses skipping a blocking question, and reaches ready', async () => {
     const s = await RefineSession.create(deps(), 'new-project');
     script['derive/po'] = [derived, derived];
