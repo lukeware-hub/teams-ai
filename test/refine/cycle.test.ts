@@ -313,7 +313,7 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
   });
 
   /** A refinement draft whose PO asks the given blocking questions, and a decider that routes each one `auto` at its confidence. */
-  async function autoRouted(questions: Record<string, number>) {
+  async function autoRouted(questions: Record<string, number>, docText = '# doc\nA porta é 8080.') {
     const spec = makeSpec();
     const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
     const docs = path.join(root, 'docs');
@@ -324,15 +324,19 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
       stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
       specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
     };
-    await Promise.all([draft.projectMd, draft.briefMd, draft.stackMd, draft.flowMd, draft.designMd].map((f) => writeFile(f, '# doc\nA porta é 8080.')));
+    await Promise.all([draft.projectMd, draft.briefMd, draft.stackMd, draft.flowMd, draft.designMd].map((f) => writeFile(f, docText)));
     const events: Array<{ type: string; data: Record<string, unknown> }> = [];
     const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'x', specHash: 'draft', type, kind: 'fact' as const, data }; } };
     const ok = (value: unknown) => ({ ok: true, value, summary: {} });
     const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
     const answered: string[] = [];
+    const answerPacks: Array<Parameters<typeof buildContextPack>[0]> = [];
     const runAgent = vi.fn(async (req: { kind: string; role: string; pack: { feedback?: string } }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
       if (req.kind === 'answer') {
+        // A marker in the journal order shows when the answer step ran against the evaluation fact.
+        events.push({ type: 'ANSWER_STEP', data: {} });
+        answerPacks.push(req.pack as never);
         answered.push(`${req.role}: ${Object.keys(questions).find((q) => String(req.pack.feedback).includes(q))}`);
         return ok({ specHash: 'draft', answer: 'project.md diz 8080.' });
       }
@@ -347,8 +351,25 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
       },
     };
     const run = (autoAnswerFloor?: number) => runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root, decider, autoAnswerFloor } as never, 1);
-    return { events, answered, runAgent, run };
+    return { events, answered, answerPacks, runAgent, run };
   }
+
+  it('runs the answer steps before journaling the evaluation, so the page stays in evaluating until the answers land', async () => {
+    const r = await autoRouted({ 'Which port?': 0.95 });
+    await r.run(0.9);
+    const types = r.events.map((e) => e.type);
+    const evaluated = types.indexOf('REFINE_EVALUATED');
+    expect(types.indexOf('ANSWER_STEP')).toBeLessThan(evaluated);
+    expect(types[evaluated + 1]).toBe('QUESTION_ANSWERED');
+  });
+
+  it('fits the answer pack to the docs, so a large draft never loses the question', async () => {
+    const r = await autoRouted({ 'Which port?': 0.95 }, `# doc\n${'x'.repeat(40_000)}`);
+    await r.run(0.9);
+    const pack = buildContextPack(r.answerPacks[0]!);
+    expect(pack.dropped).not.toContain('feedback');
+    expect(pack.text).toContain('Which port?');
+  });
 
   it('answers a question routed auto at the floor or above from the docs, by its owner role, and leaves the others with the human', async () => {
     const r = await autoRouted({ 'Which port?': 0.95, 'Which name?': 0.85 });

@@ -140,6 +140,7 @@ describe('RefinementView backlog mode', () => {
     expect(stage('spec', 'po')).toMatch(/PO está detalhando a spec de cada item do backlog/);
     expect(stage('preplan', 'sm')).toMatch(/SM está fazendo o pré-plano de cada spec/);
     expect(stage('backlog', 'po')).toMatch(/PO está quebrando os documentos em backlog/);
+    expect(stage('answer', 'po')).toMatch(/PO e SM estão respondendo, a partir dos documentos/);
   });
 });
 
@@ -174,6 +175,24 @@ describe('RefinementView', () => {
     fireEvent.click(screen.getByTestId('docs-answered'));
     fireEvent.click(screen.getByTestId('answer-po-c1-0'));
     expect(h.onAnswer).toHaveBeenCalledWith('po-c1-0', 'Está em project.md › Execução: 8080', true);
+    expect((screen.getByTestId('docs-answered') as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('clears the answer and the mark when the question on screen changes, so neither reaches the wrong question', () => {
+    const h = on();
+    const view = (questions: Snapshot['state']['questions']) => (
+      <MemoryRouter>
+        <RefinementView snap={base({ questions })} busy={false} {...h} />
+      </MemoryRouter>
+    );
+    const port = { questionId: 'po-c1-0', role: 'po' as const, text: 'Port?', blocking: true, relatedAcIds: [], cycle: 1, status: 'pending' as const, answer: null };
+    const name = { ...port, questionId: 'po-c1-1', text: 'Name?' };
+    const { rerender } = render(view([port, name]));
+    fireEvent.change(screen.getByTestId('answer'), { target: { value: 'texto para Port?' } });
+    fireEvent.click(screen.getByTestId('docs-answered'));
+    rerender(view([{ ...port, status: 'answered', answer: '8080', answeredBy: 'po' }, name]));
+    expect(screen.getByText('Name?')).toBeTruthy();
+    expect((screen.getByTestId('answer') as HTMLTextAreaElement).value).toBe('');
     expect((screen.getByTestId('docs-answered') as HTMLInputElement).checked).toBe(false);
   });
 

@@ -98,9 +98,9 @@ export interface RoutingSample {
 
 type JournalEvent = { type: string; data: Record<string, unknown> };
 
-/** Joins every route of a refinement journal with the answer to its question; questions nobody answered carry no label yet. */
+/** Joins every route of a refinement journal with the owner's answer to its question; an answer a role gave from the docs carries no label. */
 export function routingSamples(events: readonly JournalEvent[]): RoutingSample[] {
-  const answers = new Map(events.filter((e) => e.type === 'QUESTION_ANSWERED').map((e) => [String(e.data.questionId), e.data.docsAnswered === true]));
+  const answers = new Map(events.filter((e) => e.type === 'QUESTION_ANSWERED' && e.data.by === undefined).map((e) => [String(e.data.questionId), e.data.docsAnswered === true]));
   return events
     .filter((e) => e.type === 'REFINE_EVALUATED')
     .flatMap((e) => Object.entries((e.data.questionRouting ?? {}) as Record<string, { route: string; confidence: number | null }>))

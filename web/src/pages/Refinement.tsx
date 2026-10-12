@@ -113,6 +113,7 @@ function currentClaudeStage(events: StoredEvent[], cycle: number, jevEvent: Stor
   if (active.some((step) => step.kind === 'spec')) return 'PO está detalhando a spec de cada item do backlog.';
   if (active.some((step) => step.kind === 'preplan')) return 'SM está fazendo o pré-plano de cada spec.';
   if (active.some((step) => step.kind === 'derive')) return 'Claude está derivando project.json e spec.json a partir dos cinco documentos.';
+  if (active.some((step) => step.kind === 'answer')) return 'PO e SM estão respondendo, a partir dos documentos, as perguntas que eles já resolvem.';
   const roles = active.filter((step) => step.kind === 'refine').map((step) => step.role);
   if (roles.includes('front')) return 'Front está revisando o contrato visual, responsividade e acessibilidade.';
   if (roles.includes('po') && roles.includes('sm')) return 'PO e SM estão revisando objetivos, critérios e fluxos em paralelo.';
@@ -197,6 +198,11 @@ export function RefinementView(p: ViewProps) {
   const jevAdvisory = st.error?.startsWith('Jev bloqueou') ?? false;
   const pending = [...st.questions.filter((q) => q.status === 'pending')].sort((a, b) => Number(b.blocking) - Number(a.blocking));
   const current = pending[0];
+  // A new question on screen starts with an empty answer and no mark, so neither reaches the wrong question.
+  useEffect(() => {
+    setAnswer('');
+    setDocsAnswered(false);
+  }, [current?.questionId]);
   const canStart = canStartRun(st, busy);
   const backlogOn = st.backlog?.enabled === true;
   // Backlog mode lists specs, not one spec: the generated index replaces spec.json and the tasks of a single spec.

@@ -40,6 +40,8 @@ describe('question routing eval', () => {
       { type: 'REFINE_EVALUATED', data: { questionRouting: { 'po-c1-0': { route: 'auto', confidence: 0.96 }, 'po-c1-1': { route: 'human', confidence: 0.7 }, 'sm-c1-0': { route: 'auto', confidence: 0.9 } } } },
       { type: 'QUESTION_ANSWERED', data: { questionId: 'po-c1-0', text: 'project.md › Execução', docsAnswered: true } },
       { type: 'QUESTION_ANSWERED', data: { questionId: 'po-c1-1', text: '5 segundos' } },
+      // An answer a role gave from the docs carries no human label, so it never becomes a sample.
+      { type: 'QUESTION_ANSWERED', data: { questionId: 'sm-c1-0', text: 'stack.md diz Node 22.', by: 'sm' } },
     ];
     expect(routingSamples(events)).toEqual([
       { route: 'auto', confidence: 0.96, docsAnswered: true },

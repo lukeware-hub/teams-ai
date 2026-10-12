@@ -323,8 +323,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       merged.push({ questionId: `po-c${cycle}-${counters.po++}`, role: 'po', text: `The new spec seems to contradict earlier project history (${h.title}${h.heading ? ` › ${h.heading}` : ''}): "${h.snippet}". Which one holds?`, blocking: true, relatedAcIds: [], cycle });
     }
   }
-  // Plan 53 (R11.5a slice 1): a shadow-mode hint, off by default (`question-routing` disabled in config until an
-  // eval exists). Never drops or answers a question; routed questions still reach the human exactly as before.
+  // R11.5.7: the route of each blocking question, journaled for the eval; it answers nothing unless decisions.autoAnswerFloor is set.
   const questionRouting: Record<string, { route: string; confidence: number | null }> = {};
   if (deps.decider) {
     const blocking = merged.filter((q) => q.blocking);
@@ -413,15 +412,30 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     contradictionItem.passed = false;
     contradictionItem.detail = 'o Jev encontrou divergência entre project.md, briefing.md, stack.md, flow.md e design.md';
   }
-  await journal.fact(RefineEvent.Evaluated, { cycle, checklist, questions: merged, discardedPatches, questionRouting });
-  // R11.5.7: a blocking question routed `auto` at the floor or above is answered by its owner role from the docs.
+  // R11.5.7: a blocking question routed `auto` at the floor or above is answered by its owner role from the docs, before the
+  // evaluation is journaled, so the page shows the cycle running until the answers land with it.
   const floor = deps.autoAnswerFloor;
-  if (floor !== undefined) {
-    for (const q of merged.filter((x) => x.blocking)) {
-      const r = questionRouting[q.questionId];
-      if (r?.route !== 'auto' || r.confidence === null || r.confidence < floor) continue;
-      const out = (await deps.runAgent<'answer'>({ kind: 'answer', role: q.role, pack: answerPack({ specHash: hash, role: q.role, question: q.text, docs: { projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'] } }), cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, ctx)) as StepOutcome<AnswerOutput>;
-      if (out.ok && out.value.answer) await journal.fact(RefineEvent.QuestionAnswered, { questionId: q.questionId, text: out.value.answer, by: q.role });
-    }
+  const eligible = floor === undefined ? [] : merged.filter((q) => {
+    const r = questionRouting[q.questionId];
+    return q.blocking && r?.route === 'auto' && r.confidence !== null && r.confidence >= floor;
+  });
+  const answers = await Promise.all(eligible.map(async (q) => {
+    if (deps.signal?.aborted) return null;
+    const pack = fittedAnswerPack({ specHash: hash, role: q.role, question: q.text, docs: { projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'] } });
+    if (!pack) return null;
+    const out = (await deps.runAgent<'answer'>({ kind: 'answer', role: q.role, pack, cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, ctx)) as StepOutcome<AnswerOutput>;
+    return out.ok && out.value.answer ? { questionId: q.questionId, text: out.value.answer, by: q.role } : null;
+  }));
+  await journal.fact(RefineEvent.Evaluated, { cycle, checklist, questions: merged, discardedPatches, questionRouting });
+  for (const a of answers) if (a) await journal.fact(RefineEvent.QuestionAnswered, a);
+}
+
+/** The answer pack with its budget raised to the docs, so the question never drops out; null when the docs are past the cap. */
+function fittedAnswerPack(input: Parameters<typeof answerPack>[0]): ReturnType<typeof answerPack> | null {
+  try {
+    return fitPackBudget(answerPack(input));
+  } catch (err) {
+    if (err instanceof PackTooLargeError) return null;
+    throw err;
   }
 }
