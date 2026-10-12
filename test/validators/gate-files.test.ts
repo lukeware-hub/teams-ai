@@ -33,6 +33,11 @@ describe('gateFileErrors', () => {
     expect(gateFileErrors(plan([gate('lint', 'node --check smoke/smoke.mjs', false)], []), repo)).toEqual([]);
   });
 
+  it('accepts what the coverage tool writes into coverage/ while the gate runs (live: the summary vitest writes, then read in the same command)', () => {
+    const cmd = "npx vitest run --coverage --coverage.reporter=json-summary && node -e \"const s=require('./coverage/coverage-summary.json');console.log(s.total.lines.pct)\"";
+    expect(gateFileErrors(plan([gate('coverage', cmd)], []), repo)).toEqual([]);
+  });
+
   it('accepts the coverage and junit files the gates themselves write', () => {
     const cmd = "npm test && node -e \"require('fs').writeFileSync('coverage/coverage.json', '{}')\" && cat reports/junit.xml.json";
     const p = { ...plan([gate('coverage', cmd)], []), coveragePath: 'coverage/coverage.json', junitPath: 'reports/junit.xml.json' } as Plan;

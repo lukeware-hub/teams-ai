@@ -28,6 +28,12 @@ describe('validatePlan requireE2e', () => {
     expect(check(plan({}, { gates: [...REQUIRED_GATES, gate] }))).toContain('gate e2e must be blocking');
   });
 
+  it('accepts an e2e command that runs the folder of the suite file, as go test ./e2e/... does', () => {
+    const go = { ...delivery, e2eSuite: 'e2e/e2e_test.go' };
+    expect(check(plan({ e2e: 'go test -v -count=1 ./e2e/...' }, { delivery: go }))).toEqual([]);
+    expect(check(plan({ e2e: 'go test -v ./...' }, { delivery: go })).join()).toContain('must reference delivery.e2eSuite');
+  });
+
   it('rejects an e2e command that does not reference the delivery suite', () => {
     expect(check(plan({ e2e: 'npm run e2e' })).join()).toContain('must reference delivery.e2eSuite');
   });

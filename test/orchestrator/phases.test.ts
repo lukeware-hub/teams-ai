@@ -265,6 +265,14 @@ describe('Phase 2', () => {
     expect(calls[1]!.pack.feedback).not.toContain('service orders');
   });
 
+  it('feeds back the errors of every rejected attempt, so a later plan does not bring back an error an earlier one fixed', async () => {
+    const errors = ['gate coverage names a.json', 'commands.e2e must reference delivery.e2eSuite'];
+    await runPhase2(deps(async () => ({ ok: false, failure: 'schema', errors: [errors[calls.length - 1] ?? 'other'], summary, sandboxDisabled: false })), '# Tech spec');
+    expect(calls).toHaveLength(3);
+    expect(calls[2]!.pack.feedback).toContain(errors[0]);
+    expect(calls[2]!.pack.feedback).toContain(errors[1]);
+  });
+
   it('feeds validation errors back and fails after the retries', async () => {
     const bad = { ...makePlan(spec), tasks: [] };
     const r = await runPhase2(deps(async () => ({ ok: false, failure: 'schema', errors: ['tasks: Too small: expected array to have >=1 items'], summary, sandboxDisabled: false })), '# Tech spec');

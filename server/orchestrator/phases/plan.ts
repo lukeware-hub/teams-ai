@@ -44,6 +44,8 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
     : { repoFiles: new Set((await git(worktree, ['ls-files'], deps.exec)).split('\n').filter((f) => f !== '')), ports: deps.workspacesRoot ? await assignDeployPort(deps.workspacesRoot, deps.ws.projectId, deps.exec) : { port: null, taken: [] as number[] } };
   const check = (p: Plan) => validatePlan(p, deps.spec, { firstSpec: deps.firstSpec, ...require, repoFiles: single!.repoFiles, takenPorts: single!.ports.taken });
   let feedback: string | null = null;
+  // Each attempt writes the whole plan again: every earlier rejection stays in the feedback, or a later plan brings it back.
+  const rejected: string[] = [];
   for (let attempt = 1; attempt <= max; attempt++) {
     const out: StepOutcome<OutputOf<'plan'>> | StepOutcome<OutputOf<'services-plan'>> = services
       ? await deps.runAgent<'services-plan'>({
@@ -72,7 +74,8 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
         attempt -= 1;
         continue;
       }
-      feedback = `Previous plan was rejected (${out.failure}):\n${out.errors.join('\n')}`;
+      rejected.push(...out.errors.filter((e) => !rejected.includes(e)));
+      feedback = `Previous plans were rejected (${out.failure}); the next plan must avoid every one of these errors, also those an earlier attempt already fixed:\n${rejected.join('\n')}`;
       continue;
     }
     // A services plan has no alternatives: the ranking reads one stack.

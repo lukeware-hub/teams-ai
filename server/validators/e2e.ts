@@ -19,7 +19,7 @@ export function validateE2e(plan: Plan): string[] {
   if (plan.commands.smoke && command.trim() === plan.commands.smoke.trim()) errors.push('commands.e2e must differ from commands.smoke');
   const suite = plan.delivery?.e2eSuite;
   if (!suite) errors.push('delivery.e2eSuite is required when the e2e gate is required');
-  else if (!command.includes(suite.replace(/^\.\//, ''))) errors.push(`commands.e2e must reference delivery.e2eSuite (${suite})`);
+  else if (!runsSuite(command, suite.replace(/^\.\//, ''))) errors.push(`commands.e2e must reference delivery.e2eSuite (${suite})`);
   return errors;
 }
 
@@ -37,4 +37,10 @@ export function validateE2eExemptions(plan: Pick<Plan, 'e2eExemptions'>, spec: S
   }
   if (known.size > 0 && [...known].every((id) => seen.has(id))) errors.push('e2eExemptions: at least one criterion must be covered by the e2e suite');
   return errors;
+}
+
+/** The command names the suite, or the folder of a suite file, which runs it too (go test ./e2e/...). */
+function runsSuite(command: string, suite: string): boolean {
+  const folder = suite.slice(0, suite.lastIndexOf('/') + 1);
+  return command.includes(suite) || (folder !== '' && folder !== suite && command.includes(folder));
 }

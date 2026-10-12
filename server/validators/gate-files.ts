@@ -4,8 +4,8 @@ import { BUILD_DIRS } from '../runner/stacks.js';
 
 /** Source-like paths a gate command mentions (`node --check smoke/smoke.mjs`, `python tests/run.py`). */
 const PATH_TOKEN = /(?:^|[\s'"=(])((?:[\w.-]+\/)*[\w-][\w.-]*\.(?:mjs|cjs|js|ts|tsx|jsx|py|go|rs|toml|sh|json|ya?ml))(?=$|[\s'")&;|])/g;
-/** Created by the gate itself or by the orchestrator, never by a task. */
-const GATE_OWNED = new RegExp(`^(?:\\.tools/|reports/|\\./\\.tools/|(?:${BUILD_DIRS.map((d) => d.replace('.', '\\.')).join('|')})/)`);
+/** Created by the gate itself or by the orchestrator, never by a task; coverage/ is where coverage tools write their reports. */
+const GATE_OWNED = new RegExp(`^(?:\\.tools/|reports/|coverage/|\\./\\.tools/|(?:${BUILD_DIRS.map((d) => d.replace('.', '\\.')).join('|')})/)`);
 
 /**
  * Gates run in the worktree of EVERY task, the first one included. A blocking gate that names a file only a later task creates
