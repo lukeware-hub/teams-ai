@@ -56,6 +56,18 @@ describe('Phase 4 with blocked work', () => {
     expect(packs[0]).toContain('Criteria without passed evidence:\n- AC-002');
   });
 
+  it('shows the SM every blocked task with its reason', async () => {
+    await runPhase4(await setup([[fix()]]), 1);
+    expect(packs[0]).toContain('Blocked tasks (their work never reached main; a fix task redoes what a criterion still needs and never depends on them):\n- T2: the Dev found no way to reach the payment API\n- T3: a dependency is blocked');
+  });
+
+  it('refuses a fix task that depends on a blocked task, since it would block at once, and asks again', async () => {
+    const res = await runPhase4(await setup([[fix({ dependsOn: ['T3'] })], [fix({ dependsOn: ['T1'] })]]), 1);
+    expect(packs).toHaveLength(2);
+    expect(packs[1]).toContain('T900-fix-1 depends on T3, which is blocked: a fix task never depends on a blocked task');
+    if (!res.ok) expect(res.fixTasks?.map((t) => t.dependsOn)).toEqual([['T1']]);
+  });
+
   it('ends round 2 failed with the blocked criterion counted, so nothing is deployed', async () => {
     const res = await runPhase4(await setup([]), 2);
     expect(res.ok).toBe(false);

@@ -12,6 +12,7 @@ import { missingReadmeSections } from '../../validators/docs.js';
 import { unpinnedBaseImages } from '../../validators/pinned-image.js';
 import { OrchEvent } from '../events.js';
 import { fixTasksPack } from '../steps.js';
+import { blockReason } from './report.js';
 import { checkoutMain, pauseForFailure, PAUSED_AUTH, type PhaseDeps, type ServiceRepo } from './shared.js';
 
 const WEIGHT: Record<TestResult['status'], number> = { skipped: 0, passed: 1, failed: 2 };
@@ -90,8 +91,14 @@ function deliveryFixTasks(items: readonly MissingItem[], existing: number, depen
   });
 }
 
+/** The run's blocked tasks: a fix task never depends on one, since it would block at once. */
+const blockedTasks = (deps: PhaseDeps) => [...(deps.tasks?.() ?? [])].filter((t) => t.state === 'blocked').map((t) => ({ taskId: t.def.id, reason: blockReason(deps.journal.events, t.def.id) }));
+
 /** Fix tasks join the plan they fix and must keep it valid: one repository's plan, or the whole services plan. */
 function fixTaskErrors(deps: PhaseDeps, fixTasks: readonly PlanTask[]): string[] {
+  const blocked = new Set(blockedTasks(deps).map((b) => b.taskId));
+  const onBlocked = fixTasks.flatMap((t) => t.dependsOn.filter((d) => blocked.has(d)).map((d) => `${t.id} depends on ${d}, which is blocked: a fix task never depends on a blocked task`));
+  if (onBlocked.length > 0) return onBlocked;
   const services = deps.services;
   if (!services) return validatePlan({ ...deps.plan!, tasks: [...deps.plan!.tasks, ...fixTasks] }, deps.spec, { firstSpec: deps.firstSpec });
   const newServices = new Set(services.repos.filter((r) => r.firstSpec).map((r) => r.service!));
@@ -158,7 +165,7 @@ export async function runPhase4(deps: PhaseDeps, round: 1 | 2): Promise<Phase4Re
   // The SM plans across every service: their tasks and test gates, from the repository that failed.
   const plan = services ? { tasks: services.plan.tasks, gates: repos.flatMap((r) => r.plan.gates) } : deps.plan!;
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const out = await deps.runAgent<'fix-tasks'>({ kind: 'fix-tasks', role: 'sm', pack: fixTasksPack(deps.packBase(), { failedTests, tails: tail(results.map((r) => `${r.name}: ${r.stderrTail || r.stdoutTail}`).join('\n')), uncoveredAcs, plan, ...(services ? { services: Object.keys(services.plan.services) } : {}), boundaries: deps.boundaries ? await deps.boundaries() : [], feedback }), cwd: (failing ?? repos[0]!).ws.repo, phase: 'phase4', taskId: null, attempt }) as StepOutcome<FixTasksOutput>;
+    const out = await deps.runAgent<'fix-tasks'>({ kind: 'fix-tasks', role: 'sm', pack: fixTasksPack(deps.packBase(), { failedTests, tails: tail(results.map((r) => `${r.name}: ${r.stderrTail || r.stdoutTail}`).join('\n')), uncoveredAcs, blocked: blockedTasks(deps), plan, ...(services ? { services: Object.keys(services.plan.services) } : {}), boundaries: deps.boundaries ? await deps.boundaries() : [], feedback }), cwd: (failing ?? repos[0]!).ws.repo, phase: 'phase4', taskId: null, attempt }) as StepOutcome<FixTasksOutput>;
     if (!out.ok) { if (await pauseForFailure(deps, out.failure)) return { ok: false, reason: PAUSED_AUTH }; feedback = out.errors.join('\n'); continue; }
     // Ids are assigned here and must stay unique across rounds and resumes.
     const existing = [...deps.journal.state.tasks.keys()].filter((id) => id.startsWith('T900-fix-')).length;

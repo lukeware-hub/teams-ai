@@ -127,7 +127,7 @@ describe('packs', () => {
 
   it('fix-tasks pack names the service of each existing task', () => {
     const plan = makeServicesPlan(spec);
-    const p = fixTasksPack(base, { failedTests: [], tails: '', uncoveredAcs: [], plan: { tasks: plan.tasks, gates: [] }, services: ['orders', 'inventory'], boundaries: [], feedback: null });
+    const p = fixTasksPack(base, { failedTests: [], tails: '', uncoveredAcs: [], blocked: [], plan: { tasks: plan.tasks, gates: [] }, services: ['orders', 'inventory'], boundaries: [], feedback: null });
     expect(p.feedback).toContain('- T1-publish-order (orders):');
   });
 
