@@ -22,7 +22,7 @@ export function derivePack(input: {
     spec: z.toJSONSchema(Spec, { target: 'draft-07', io: 'input' }),
   };
   const feedback = [
-    `specId must be ${input.specId}. Derive project.json and spec.json from the Markdown below. Classify the demand as feature, bug, maintenance, or refactor. For bugs, preserve actual behavior, expected behavior, reproduction steps, and optional evidence in the bug object; do not invent missing reproduction details.`,
+    `specId must be ${input.specId}. Derive project.json and spec.json from the Markdown below. Classify the demand as feature, bug, maintenance, or refactor. For bugs, preserve actual behavior, expected behavior, reproduction steps, and optional evidence in the bug object; do not invent missing reproduction details. In project.json, \`services\` lists the services the docs split the system into (one repository each) and stays out when they describe one application; \`platform\` lists the shared containers stack.md declares for every service, each with an image pinned to a version (never latest) and the command, environment and healthcheck stack.md gives. Invent neither.`,
     'Use flow.md as the business-flow reference and keep the derived objectives, features, and acceptance criteria consistent with its application behavior.',
     '### docs/project.md',
     input.projectMd,

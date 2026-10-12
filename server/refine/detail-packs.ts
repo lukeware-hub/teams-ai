@@ -27,12 +27,12 @@ const PREPLAN_RULES = [
   LANGUAGE,
   SELF_CONTAINED,
   'Pre-plan each spec below: one entry per spec, with the same `key`. This is the contract the human reviews; the real plan is still made at execution against the code, and deviations from this one are recorded.',
-  '- modules (1-8): the parts of the one service this spec ships that the tasks touch (name and purpose).',
+  '- modules (1-8): the parts of the services this spec changes (the one application when the project has no services) that the tasks touch (name and purpose).',
   '- tasks (1-12): ids P1, P2 ... in execution order; owner dev, devops or front; `module` is one of the modules; dependsOn lists earlier task ids of the same pre-plan. Every task cites at least one acceptance criterion id of its own spec in criteriaRefs, and every criterion is cited by some task.',
   '- The spec marked FIRST also carries the walking skeleton (repository scaffold, local docker infra, CI), cited against its smoke criterion. The others build on what the specs they depend on deliver.',
   '- risks (0-5): what could break the plan, and the mitigation.',
   '- Follow stack.md and the technical decisions in project.md.',
-  '- Delivery contract (teams-ai, fixed, not a choice to ask about): one compose stack serves the whole program; it is not torn down or recreated between specs, so a dependent service another spec already added (database, mail catcher, queue) is still running and reachable by its compose service name on the same network — plan to reuse it, never a task to stand it up again or to reset its data.',
+  "- Delivery contract (teams-ai, fixed, not a choice to ask about): the application, or each service the project lists, is its own compose stack that is not torn down or recreated between specs, so a dependent service another spec already added (database, mail catcher, queue) is still running and reachable by its compose service name; the platform containers project.json lists run on the project's shared network, reachable by name — plan to reuse them, never a task to stand them up again or to reset their data.",
 ].join('\n');
 
 const criteriaLines = (spec: Pick<Spec, 'acceptanceCriteria'>) => spec.acceptanceCriteria.map((c) => `- ${c.id}${c.smoke ? ' (smoke)' : ''}: Given ${c.given}, when ${c.when}, then ${c.then}`).join('\n');

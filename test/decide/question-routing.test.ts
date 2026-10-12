@@ -19,6 +19,7 @@ describe('question routing (plan 53, R11.5a slice 1)', () => {
   it('has the four routes with distinct descriptions', () => {
     expect(Object.keys(QUESTION_ROUTES).sort()).toEqual(['auto', 'human', 'po', 'sm']);
     expect(new Set(Object.values(QUESTION_ROUTES)).size).toBe(4);
+    expect(QUESTION_ROUTES.auto).toContain('one repository per service the docs declare');
     expect(questionRoutingQuestions().route).toMatchObject({ type: 'choice', options: QUESTION_ROUTES });
   });
 

@@ -9,14 +9,14 @@ import type { BacklogState } from './state.js';
 const RULES = [
   'LANGUAGE (mandatory): write every title, scope, rationale and epic title 100% in Brazilian Portuguese, even when the docs are in English. Keys stay short lowercase slugs; keep file names and technical identifiers unchanged.',
   'Break the project described by the five docs below into a BACKLOG of specs, grouped into epics and prioritized. The docs are the only source of truth: invent nothing they do not say, and leave out nothing they do.',
-  '- A spec is the smallest deliverable one run can ship and test end to end: a vertical slice of one capability (the delivery contract ships one service per spec, with bounded contexts as internal modules). Not a single task, not a whole product area.',
+  '- A spec is the smallest deliverable one run can ship and test end to end: a vertical slice of one capability (one application with bounded contexts as internal modules, or the services the docs name, each in its own repository; a spec may change several of them). Not a single task, not a whole product area.',
   '- Every item cites where it comes from in `sources`: `doc` is one of project.md, briefing.md, stack.md, flow.md, design.md and `heading` is the exact heading text (for flow.md its headings or numbered sections, such as "2. Checkout"). Every numbered or headed section of flow.md must be cited by at least one item; a section may feed several items.',
   '- priority: P0 = walking skeleton and the foundations everything else needs; P1 = the core value flow; P2 = important, can follow; P3 = later or optional. `rationale` says why in one sentence (value, risk, dependency).',
   '- dependsOn lists the keys an item cannot ship without. A dependency is never lower priority than its dependent, there are no cycles, and there are at most 60 items.',
   '- Treat any explicit priority, cut, merge or split instruction written in the docs (above all briefing.md) as binding.',
   '- key: a short slug. Keep the key of every item that still exists in the previous backlog so the ids derived from them stay stable.',
   '- When the sections an item cites did not change, keep its title, scope and sources verbatim from the previous backlog: a reworded item has its spec and pre-plan derived again.',
-  'Also return `project`: the project.json derived from project.md, exactly as in a normal derivation.',
+  'Also return `project`: the project.json derived from project.md and stack.md, exactly as in a normal derivation (with `services` and `platform` when the docs give them).',
 ].join('\n');
 
 export function backlogPack(input: {

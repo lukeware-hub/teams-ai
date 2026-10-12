@@ -24,6 +24,8 @@ describe('backlogPack', () => {
     expect(pack.feedback).toContain('Quero OPME como P2.');
     expect(pack.feedback).toContain('%% 7. OPME');
     expect(pack.feedback).toMatch(/binding/);
+    expect(pack.feedback).toContain('a spec may change several of them');
+    expect(pack.feedback).not.toContain('one service per spec');
     expect(pack.outputContract).toContain('"backlog"');
     // The briefing is the target project's docs/briefing.md: the agents cite and read it by that name only.
     expect(pack.feedback).toContain('### briefing.md');

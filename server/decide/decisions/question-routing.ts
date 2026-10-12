@@ -10,7 +10,7 @@ import type { BackendName, Questions } from '../types.js';
 export type QuestionRoute = 'auto' | 'po' | 'sm' | 'human';
 
 export const QUESTION_ROUTES: Record<QuestionRoute, string> = {
-  auto: 'teams-ai\'s own fixed delivery contract (one compose stack for the whole program, one repository, one e2e suite per spec) or the documents already attached already answer this, without any product or technical judgement call.',
+  auto: 'teams-ai\'s own fixed delivery contract (one repository per service the docs declare, or the project repository when they declare none; each its own compose stack on the project\'s shared network; the platform containers from the docs; one e2e suite per service) or the documents already attached already answer this, without any product or technical judgement call.',
   po: 'Answering needs product judgement: scope, a persona, priority, or what the acceptance criteria should require.',
   sm: 'Answering needs technical or feasibility judgement: architecture, a dependency, a constraint teams-ai\'s pipeline imposes, or how a task would be planned.',
   human: 'A genuine open decision nothing above resolves: a business choice, a tradeoff, or information only the human has.',

@@ -33,6 +33,17 @@ describe('draft', () => {
     expect(await fs.readFile(d.projectJson, 'utf8')).toBe(compact);
   });
 
+  it('takes the derived project.json when only stack.md changed, since the platform lives there', async () => {
+    const compact = JSON.stringify(makeProject());
+    remote = await makeRemote({ 'docs/project.json': compact, 'docs/stack.md': '# Stack\n' });
+    const d = draftPaths(ws, 'hello-023');
+    await createFromRepo(d, remote.repo, execCommand, { kind: 'new-spec' });
+    const derived = makeProject({ services: ['orders'], platform: [{ name: 'nats', image: 'nats:2.10.22-alpine' }] });
+    expect((await keepBaseProject(d, derived)).platform).toBeUndefined();
+    await fs.writeFile(d.stackMd, '# Stack\n\nNATS 2.10 for every service.\n');
+    expect((await keepBaseProject(d, derived)).platform).toEqual(derived.platform);
+  });
+
   it('copies the docs of main byte for byte, final newline included, into the draft and its base copy', async () => {
     const json = `${JSON.stringify(makeProject(), null, 2)}\n`;
     remote = await makeRemote({ 'docs/project.json': json, 'docs/flow.md': '# Flow\n\n' });

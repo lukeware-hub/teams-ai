@@ -57,6 +57,12 @@ describe('postProcessDerived', () => {
     expect(pack.feedback).toContain('specId must be hello-001');
     expect(pack.feedback).toContain('acceptanceCriteria');
   });
+  it('derivePack asks for the services and the platform the docs give, and invents neither', () => {
+    const pack = derivePack({ specHash: `sha256:${'d'.repeat(64)}`, principles: [], projectMd: '# P', briefMd: '## O', stackMd: '# Stack', previous: null, specId: 'hello-001' });
+    expect(pack.feedback).toContain('`services` lists the services the docs split the system into');
+    expect(pack.feedback).toContain('`platform` lists the shared containers stack.md declares');
+  });
+
   it('requires the agent to classify the demand and preserve bug details', () => {
     const pack = derivePack({ specHash: `sha256:${'d'.repeat(64)}`, principles: [], projectMd: '# P', briefMd: '## Type\nbug', stackMd: '# Stack', flowMd: '# Flow', previous: null, specId: 'hello-001' });
     expect(pack.feedback).toContain('type');

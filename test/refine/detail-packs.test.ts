@@ -68,8 +68,10 @@ describe('preplanPack', () => {
 
   it('states the shared-deploy delivery contract so the SM never plans a task to stand up or reset a sibling spec\'s service (R11.10)', () => {
     const pack = preplanPack({ specHash: HASH, principles: [], projectMd: docs['project.md'], stackMd: docs['stack.md'], batch: [{ item: item('opme', 1), spec: makeSpec({ specId: 'k-001-opme' }), first: true, previous: null, rejection: [] }] });
-    expect(pack.feedback).toMatch(/one compose stack serves the whole program/);
+    expect(pack.feedback).toMatch(/is its own compose stack that is not torn down or recreated between specs/);
     expect(pack.feedback).toMatch(/reachable by its compose service name/);
+    expect(pack.feedback).toMatch(/platform containers project.json lists run on the project's shared network/);
+    expect(pack.feedback).not.toMatch(/the one service this spec ships/);
   });
 
   it('carries project.md, so the pre-plans follow its technical decisions', () => {
