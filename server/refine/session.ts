@@ -105,11 +105,15 @@ const COVERED = 'Este ajuste já foi coberto por outra alteração e foi descart
  * or paused one runs again from its freeze; one awaiting validation, or started on main while this draft re-derived it, refuses.
  */
 export function programEntries(draftId: string, backlog: BacklogState, onMain: Readonly<Record<string, string | undefined>>): ProgramEntry[] {
-  const entries = buildSpecsIndex(draftId, backlog).specs.map((s): ProgramEntry => {
+  const specs = buildSpecsIndex(draftId, backlog).specs;
+  const idOf = new Map(specs.map((s) => [s.key, s.specId]));
+  // The SM's conflict map as each entry's spec ids; no map leaves the field out, so the program runs one at a time.
+  const conflictsWith = (key: string) => ({ conflictsWith: backlog.conflicts!.pairs.flatMap((p) => (p.a === key ? [p.b] : p.b === key ? [p.a] : [])).flatMap((k) => idOf.get(k) ?? []) });
+  const entries = specs.map((s): ProgramEntry => {
     const status = onMain[s.specId];
     if (isStarted(status) && !isStarted(backlog.specs?.[s.key]?.spec?.status)) throw new ConflictError(`A spec ${s.specId} foi iniciada ou entregue enquanto este rascunho refinava; avalie de novo para mantê-la como está na main.`);
     if (status === 'awaiting-validation') throw new ConflictError(`A spec ${s.specId} aguarda validação; valide essa entrega antes de iniciar este programa.`);
-    return { specId: s.specId, key: s.key, rank: s.rank, dependsOn: s.dependsOn, ...(status === 'done' ? { done: true } : {}) };
+    return { specId: s.specId, key: s.key, rank: s.rank, dependsOn: s.dependsOn, ...(backlog.conflicts ? conflictsWith(s.key) : {}), ...(status === 'done' ? { done: true } : {}) };
   });
   if (entries.every((e) => e.done)) throw new ConflictError('Todas as specs deste backlog já foram entregues; não há nada para iniciar.');
   return entries;

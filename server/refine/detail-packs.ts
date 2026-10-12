@@ -91,3 +91,25 @@ export function preplanPack(input: {
   const feedback = [PREPLAN_RULES, '### docs/project.md', input.projectMd, '### stack.md', input.stackMd, '# Specs', ...specs].join('\n\n');
   return { kind: 'preplan', role: 'sm', specHash: input.specHash, principles: input.principles, outputContract: outputContract('preplan'), criteria: [], feedback, budgetTokens: 12_000 };
 }
+
+const CONFLICT_RULES = [
+  SELF_CONTAINED,
+  'Specs of this backlog may run at the same time, each on its own branches merged into main. List every pair of items that must never run together because both would change the same code: the same module, files, database migration or schema, shared configuration, routes or screen. A pair where one item depends on the other, directly or through others, already runs in order: leave it out.',
+  '- One entry per pair: the two item keys and a short reason in Brazilian Portuguese. When in doubt, list the pair: a missed conflict costs a failed merge, an extra one only some speed.',
+  '- Reply with an empty list when every item changes different code.',
+].join('\n');
+
+/** The SM's pack for the conflict map: every item with its dependencies and the modules and tasks of its pre-plan. */
+export function conflictsPack(input: { specHash: string; principles: readonly string[]; items: ReadonlyArray<{ item: RankedItem; preplan: Preplan }> }): ContextPackInput {
+  const items = input.items.map(({ item, preplan }) => [
+    `## ${item.key}: ${item.title}`,
+    `- depends on: ${item.dependsOn.join(', ') || '(nothing)'}`,
+    `- scope: ${item.scope}`,
+    'Modules:',
+    preplan.modules.map((m) => `- ${m.name}: ${m.purpose}`).join('\n'),
+    'Tasks:',
+    preplan.tasks.map((t) => `- ${t.id} [${t.module}] ${t.title}`).join('\n'),
+  ].join('\n'));
+  const feedback = [CONFLICT_RULES, '# Items', ...items].join('\n\n');
+  return { kind: 'conflicts', role: 'sm', specHash: input.specHash, principles: input.principles, outputContract: outputContract('conflicts'), criteria: [], feedback, budgetTokens: 12_000 };
+}

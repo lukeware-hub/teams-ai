@@ -1,7 +1,8 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { ItemPreplan, ItemSpec, PreplanOutput, SpecDetailOutput } from '../agents/outputs.js';
+import type { ConflictsOutput, ItemPreplan, ItemSpec, PreplanOutput, SpecDetailOutput } from '../agents/outputs.js';
 import { Governor } from '../budget/governor.js';
+import { canonicalJson, sha256 } from '../contracts/hash.js';
 import { Preplan } from '../contracts/preplan.js';
 import { computeSpecHash, Spec } from '../contracts/spec.js';
 import { isStarted } from './coverage.js';
@@ -9,7 +10,7 @@ import type { StepOutcome } from '../runner/step.js';
 import { validatePreplan } from '../validators/preplan.js';
 import type { CycleDeps } from './cycle.js';
 import { acNum } from './derive.js';
-import { preplanPack, specPack } from './detail-packs.js';
+import { conflictsPack, preplanPack, specPack } from './detail-packs.js';
 import { batches, preplanInputHash, sourceHashes, specInputHash, type BacklogDocs } from './details.js';
 import { readMainSpec, renderBriefMd, restoreFromBase, type Draft } from './draft.js';
 import { RefineEvent } from './events.js';
@@ -29,6 +30,17 @@ export type DetailResult = { ok: true; backlog: BacklogState } | { ok: false; re
 const itemDir = (draft: Draft, specId: string) => path.posix.join(draft.docs, 'specs', specId);
 const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+/** Pairs of two distinct items of this backlog, each pair once whatever its order. */
+function uniquePairs(pairs: ConflictsOutput['pairs'], keys: ReadonlySet<string>): ConflictsOutput['pairs'] {
+  const seen = new Set<string>();
+  return pairs.filter((p) => {
+    const id = [p.a, p.b].sort().join(' ');
+    if (p.a === p.b || !keys.has(p.a) || !keys.has(p.b) || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
 
 /** A JSON file, or null when it is missing or unreadable: a broken generated file never blocks the refinement. */
 const readJson = (file: string): Promise<unknown> => fs.readFile(file, 'utf8').then((t) => JSON.parse(t) as unknown).catch(() => null);
@@ -234,5 +246,21 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
   const preplanTodo = items.filter((i) => !kept.has(i.key) && planHash.has(i.key) && (!preplans[i.key] || preplans[i.key]!.inputHash !== planHash.get(i.key) || preplans[i.key]!.preplan === null));
   await runBatches(preplanTodo, runPreplans, (v: PreplanOutput, key) => v.preplans.find((p) => p.key === key), acceptPreplan, failPreplan);
   if (stopped) return { ok: false, reason: `detalhamento interrompido (${stopped})` };
-  return { ok: true, backlog: { ...input.backlog, specs, preplans, acHighWater: highWater } };
+
+  // The SM's conflict map, made again only when a pre-plan changed. A failed call leaves none: the program then runs one spec at a time.
+  let conflicts = input.backlog.conflicts;
+  const planned = items.flatMap((item) => (preplans[item.key]?.preplan ? [{ item, preplan: preplans[item.key]!.preplan! }] : []));
+  const conflictsHash = sha256(canonicalJson(planned.map(({ item, preplan }) => ({ key: item.key, dependsOn: item.dependsOn, modules: preplan.modules, tasks: preplan.tasks.map((t) => [t.title, t.module]) }))));
+  if (planned.length === items.length && conflicts?.inputHash !== conflictsHash) {
+    const out = items.length < 2 ? null : await call(() => deps.runAgent<'conflicts'>({
+      kind: 'conflicts', role: 'sm', cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle,
+      pack: fitPackBudget(conflictsPack({ specHash: hash, principles: deps.principles(), items: planned })),
+    }, ctx) as Promise<StepOutcome<ConflictsOutput>>);
+    if (stopped) return { ok: false, reason: `detalhamento interrompido (${stopped})` };
+    if (items.length < 2 || out?.ok) {
+      conflicts = { inputHash: conflictsHash, pairs: out?.ok ? uniquePairs(out.value.pairs, new Set(items.map((i) => i.key))) : [] };
+      await journal.fact(RefineEvent.ConflictsDerived, { ...conflicts });
+    }
+  }
+  return { ok: true, backlog: { ...input.backlog, specs, preplans, acHighWater: highWater, ...(conflicts ? { conflicts } : {}) } };
 }

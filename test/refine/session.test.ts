@@ -337,6 +337,12 @@ describe('programEntries', () => {
     expect(programEntries('shop', backlog('paused:quota', 'planned'), { login: 'paused:quota' })[0]!.done).toBeUndefined();
   });
 
+  it('gives each entry the specs the SM conflict map pairs it with, and none without a map', () => {
+    const mapped = { ...backlog('planned', 'planned'), items: [item('login', 1), item('cart', 2), item('search', 3)], conflicts: { inputHash: 'h', pairs: [{ a: 'cart', b: 'login', reason: 'both change users' }] } } as unknown as BacklogState;
+    expect(programEntries('shop', mapped, {}).map((e) => [e.key, e.conflictsWith])).toEqual([['login', ['cart']], ['cart', ['login']], ['search', []]]);
+    expect('conflictsWith' in programEntries('shop', backlog('planned', 'planned'), {})[0]!).toBe(false);
+  });
+
   it('refuses an item awaiting validation, one delivered while this draft refined, and a backlog with nothing left', () => {
     expect(() => programEntries('shop', backlog('awaiting-validation', 'planned'), { login: 'awaiting-validation' })).toThrow(/login aguarda validação/);
     expect(() => programEntries('shop', backlog('planned', 'planned'), { login: 'done' })).toThrow(/avalie de novo/);

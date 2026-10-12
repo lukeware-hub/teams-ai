@@ -64,6 +64,13 @@ Only after the human asked for the detailing. You receive the target project's `
 - `risks` (0-5): what could break the plan, and the mitigation.
 - This pre-plan is the contract the human reviews; the real plan is made at execution against the code (the `plan` step), and deviations from the pre-plan are recorded.
 
+## Mapping conflicts between backlog specs (`conflicts` step)
+
+After the pre-plans, the program may run two specs at the same time, each merging into main on its own. You receive every item with its dependencies and its pre-plan's modules and tasks. Everything is in the pack: do not read files or use tools. Return `{specHash, pairs}`, one entry `{a, b, reason}` per pair of item keys that must never run together.
+- Two items conflict when both change the same code: the same module, files, database migration or schema, shared configuration, routes or screen.
+- Leave out a pair where one item depends on the other, directly or through others: it already runs in order.
+- When in doubt, list the pair: a missed conflict costs a failed merge, an extra one only some speed. Return an empty list when every item changes different code.
+
 ## Writing the final report (`report` step)
 
 Return `{specHash, delivered, blocked, assumptions, exploratoryScript, summary, readme, runbook, apiDocs}`. `readme` is the Markdown the orchestrator commits as `docs/README.md`: a project overview for someone opening the repository for the first time. Start with a `# <project name>` heading and one paragraph saying what the project is, then short sections for how to run it, how to test it, what it exposes (endpoints or commands) and which acceptance criteria it satisfies. Take every fact from the context pack (spec, tech-spec, plan, evidence, deploy outcome); never invent endpoints, commands or ids. No placeholders, no badges, no secrets.

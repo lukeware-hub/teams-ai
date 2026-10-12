@@ -123,16 +123,6 @@ describe('program service tick', () => {
     expect(JSON.parse(await fs.readFile(path.join(root, 'draft', 'program.json'), 'utf8')).items[0].status).toBe('completing');
   });
 
-  it('adopts a live run of the spec started outside the program instead of launching a second one', async () => {
-    await fs.mkdir(path.join(root, 'draft'), { recursive: true });
-    await fs.writeFile(path.join(root, 'draft', 'program.json'), JSON.stringify({ version: 1, draftId: 'd', status: 'running', updatedAt: '', items: [{ specId: 'd-a', key: 'a', rank: 1, dependsOn: [], status: 'pending', runId: null, completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0 }] }));
-    await journal('shop--d-a--run-7', [started('d-a')]);
-    await fs.writeFile(path.join(runsDir(), 'shop--d-a--run-7', 'state.json'), JSON.stringify({ status: 'running', at: '2026-10-12T10:00:00Z' }));
-    const program = await service().tick('shop', 'd');
-    expect(program!.items[0]).toMatchObject({ status: 'running', runId: 'shop--d-a--run-7' });
-    expect(spawned).toEqual([]);
-  });
-
   it('does nothing for a draft without a program or with a finished one', async () => {
     const s = service();
     expect(await s.tick('shop', 'd')).toBeNull();

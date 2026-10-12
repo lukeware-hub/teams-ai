@@ -170,6 +170,18 @@ describe('spec and preplan outputs', () => {
   });
 });
 
+describe('conflicts output', () => {
+  it('is the step kind of the SM conflict map: pairs of item keys with a reason', async () => {
+    const { ConflictsOutput } = await import('../../server/agents/outputs.js');
+    expect(STEP_KINDS).toContain('conflicts');
+    expect(OUTPUT_SCHEMAS.conflicts).toBe(ConflictsOutput);
+    expect(ConflictsOutput.safeParse({ specHash: HASH, pairs: [{ a: 'login', b: 'cart', reason: 'both change the users table' }] }).success).toBe(true);
+    expect(ConflictsOutput.safeParse({ specHash: HASH, pairs: [] }).success).toBe(true);
+    expect(ConflictsOutput.safeParse({ specHash: HASH, pairs: [{ a: 'Login!', b: 'cart', reason: 'r' }] }).success).toBe(false);
+    expect(ConflictsOutput.safeParse({ specHash: HASH, pairs: [{ a: 'login', b: 'cart', reason: '' }] }).success).toBe(false);
+  });
+});
+
 describe('ServicesPlanOutput', () => {
   it('is the services-plan step schema: every task names its service and a readable id', () => {
     const plan = makeServicesPlan(makeFrozenSpec());
