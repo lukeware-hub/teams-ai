@@ -1,3 +1,4 @@
+import { isStarted } from '@server/refine/coverage';
 import type { BacklogView } from '../api.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
@@ -15,16 +16,17 @@ function estimatedCalls(backlog: BacklogView): number {
   return batches * 2 + 3;
 }
 
-/** Where a detailed item stands: spec and current pre-plan, a failed attempt, or still being derived. */
-function itemStatus(backlog: BacklogView, key: string): 'planejada' | 'em refinamento' | 'erro' {
+/** Where a detailed item stands: delivered or running as main has it, spec and current pre-plan, a failed attempt, or still being derived. */
+function itemStatus(backlog: BacklogView, key: string): 'entregue' | 'em execução' | 'planejada' | 'em refinamento' | 'erro' {
   const spec = backlog.specs?.[key];
   const pre = backlog.preplans?.[key];
+  if (spec?.spec && isStarted(spec.spec.status)) return spec.spec.status === 'done' ? 'entregue' : 'em execução';
   if (spec && !spec.spec) return 'erro';
   if (spec?.spec && pre && !pre.preplan) return 'erro';
   if (spec?.spec && pre?.preplan && pre.specRev === spec.rev) return 'planejada';
   return 'em refinamento';
 }
-const STATUS_CLASS = { planejada: 'bk-planned', 'em refinamento': 'bk-refining', erro: 'bk-error' } as const;
+const STATUS_CLASS = { entregue: 'bk-planned', 'em execução': 'bk-planned', planejada: 'bk-planned', 'em refinamento': 'bk-refining', erro: 'bk-error' } as const;
 
 /** The documents broken into prioritized specs, the way the agents organized them; the human reads and steers through the docs. */
 export function BacklogPanel({ backlog, evaluating, locked, ready = false, onEnable, onDetail }: { backlog: BacklogView | null | undefined; evaluating: boolean; locked: boolean; ready?: boolean; onEnable?: () => void; onDetail?: () => void }) {

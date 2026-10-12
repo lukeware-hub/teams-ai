@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { BacklogItem } from '../../server/contracts/backlog.js';
 import { runCycle } from '../../server/refine/cycle.js';
 import { RefineEvent } from '../../server/refine/events.js';
+import { programEntries } from '../../server/refine/session.js';
 import { applyRefineEvent, emptyRefineState } from '../../server/refine/state.js';
 import { makeProject } from '../fixtures/contracts.js';
 
@@ -57,7 +58,7 @@ async function setup() {
   const docs = `${root}/docs`;
   await mkdir(docs, { recursive: true });
   const draft = {
-    projectId: 'big', specId: 'big-001', root, docs,
+    projectId: 'big', specId: 'big-001', root, docs, base: `${root}/.base/docs`,
     projectMd: `${docs}/project.md`, projectJson: `${docs}/project.json`, briefMd: `${docs}/specs/big-001/brief.md`, briefingMd: `${docs}/briefing.md`,
     stackMd: `${docs}/stack.md`, flowMd: `${docs}/flow.md`, designMd: `${docs}/design.md`,
     specJson: `${docs}/specs/big-001/spec.json`, events: `${root}/events.ndjson`, steps: (seq: number) => `${root}/steps/${seq}`,
@@ -250,19 +251,33 @@ describe('backlog detailing failure paths', () => {
     expect(JSON.parse(await readFile(`${itemDir('caso')}/spec.json`, 'utf8')).acceptanceCriteria[0].id).toBe('AC-041');
   });
 
-  // R11.7.2: a new backlog draft over a delivered item never re-derives nor rewrites its spec.
-  it('keeps an item whose spec on main started or was delivered exactly as it is, and still reaches ready', async () => {
-    const { journal, run, itemDir, agent } = await detailed();
-    const delivered = { specId: 'big-001-caso', specVersion: 2, specHash: H, type: 'feature', objectives: ['Entregar caso'], features: ['caso'], acceptanceCriteria: [{ id: 'AC-001', given: 'g', when: 'w caso', then: 't1', smoke: true }], outOfScope: [], externalDependencies: [], status: 'done', validationReports: [] };
+  // R11.7.2: a new backlog draft over a delivered item never re-derives it, and puts back main's copy over a stale one.
+  it('keeps an item whose spec on main started or was delivered exactly as main has it, and still reaches ready', async () => {
+    const { journal, run, itemDir, agent, draft } = await detailed();
+    const delivered = JSON.stringify({ specId: 'big-001-caso', specVersion: 2, specHash: H, type: 'feature', objectives: ['Entregar caso'], features: ['caso'], acceptanceCriteria: [{ id: 'AC-001', given: 'g', when: 'w caso', then: 't1', smoke: true }], outOfScope: [], externalDependencies: [], status: 'done', validationReports: [] }, null, 2);
+    await mkdir(`${draft.base}/specs/big-001-caso`, { recursive: true });
+    await writeFile(`${draft.base}/specs/big-001-caso/spec.json`, delivered);
+    // A copy this draft wrote before (detailed before R11.7.2), which Phase 0 would publish over main's.
     await mkdir(itemDir('caso'), { recursive: true });
-    await writeFile(`${itemDir('caso')}/spec.json`, JSON.stringify(delivered));
+    await writeFile(`${itemDir('caso')}/spec.json`, JSON.stringify({ ...JSON.parse(delivered), status: 'planned', specVersion: 0 }));
     await run(agent, 2);
     const detailing = agent.calls.filter((c) => c.kind === 'spec' || c.kind === 'preplan');
     expect(detailing.length).toBeGreaterThan(0);
     expect(detailing.some((c) => c.feedback.includes('## Item caso:') || c.feedback.includes('## Spec caso:'))).toBe(false);
-    expect(JSON.parse(await readFile(`${itemDir('caso')}/spec.json`, 'utf8'))).toEqual(delivered);
+    expect(await readFile(`${itemDir('caso')}/spec.json`, 'utf8')).toBe(delivered);
     expect(journal.state.backlog?.specs?.caso?.spec?.status).toBe('done');
     expect(journal.state.status).toBe('ready');
+  });
+
+  // Plan 77 review: a start that froze an item and then failed to launch must not leave the draft refusing it forever.
+  it('keeps detailing an item this draft froze itself, since main still has none started', async () => {
+    const { journal, run, itemDir, agent } = await detailed();
+    await run(agent, 2);
+    const file = `${itemDir('caso')}/spec.json`;
+    await writeFile(file, JSON.stringify({ ...JSON.parse(await readFile(file, 'utf8')), status: 'running', specVersion: 1, specHash: H }));
+    await run(agent, 3);
+    expect(journal.state.backlog?.specs?.caso?.spec?.status).not.toBe('running');
+    expect(programEntries('big-001', journal.state.backlog!, {}).find((e) => e.key === 'caso')?.done).toBeUndefined();
   });
 
   it('writes a spec back to refining on disk when its spec or its pre-plan fails again', async () => {

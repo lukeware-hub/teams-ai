@@ -247,6 +247,24 @@ export const writeDoc = async (d: Draft, file: DocFile, text: string): Promise<v
 export const readBase = (d: Draft, rel: string): Promise<string | null> =>
   d.base ? fs.readFile(path.posix.join(d.base, rel), 'utf8').catch(() => null) : Promise.resolve(null);
 
+/** A spec as main has it: the base copy, which a start's sync keeps equal to main, never the draft's own copy (R11.7.2). */
+export async function readMainSpec(d: Draft, specId: string): Promise<Spec | null> {
+  try {
+    const parsed = Spec.safeParse(JSON.parse((await readBase(d, `specs/${specId}/spec.json`)) ?? 'null'));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Puts main's copy of a spec's folder back in the draft, so a run's Phase 0 never publishes the draft's version over it. */
+export async function restoreFromBase(d: Draft, specId: string): Promise<void> {
+  if (!d.base) return;
+  const target = path.posix.join(d.docs, 'specs', specId);
+  await fs.rm(target, { recursive: true, force: true });
+  await fs.cp(path.posix.join(d.base, 'specs', specId), target, { recursive: true });
+}
+
 /** The project docs: a change main brings to one of them makes a derived spec stale. Other specs' files are not. */
 const PROJECT_DOCS = new Set(['project.md', 'project.json', 'briefing.md', 'stack.md', 'flow.md', 'design.md']);
 

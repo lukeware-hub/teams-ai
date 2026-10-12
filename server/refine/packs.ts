@@ -4,7 +4,7 @@ import { estimateTokens, type ContextPackInput } from '../knowledge/context-pack
 import type { Hit } from '../knowledge/retrieval.js';
 import { outputContract } from '../orchestrator/steps.js';
 import { PO_ITEMS, SM_ITEMS } from './checklist.js';
-import { coverageGaps } from './coverage.js';
+import { coverageGaps, isStarted } from './coverage.js';
 import { DOC_REL, flowTemplate, stackTemplate } from './draft.js';
 import type { BacklogState, PatchRow, QuestionRow } from './state.js';
 import type { JevValidationResult } from './jev-validation.js';
@@ -27,7 +27,7 @@ function blankDocsRule(input: { role: 'po' | 'sm' | 'front'; stackMd?: string; f
 const BACKLOG_REVIEW_RULE = 'Backlog mode: the docs were broken into a prioritized backlog of specs (derived backlog below). Read the checklist ids against it: po.objectives-verifiable = every item has a scope someone can verify; po.scope-explicit = every section of flow.md and every objective of the briefing is covered and nothing outside the docs was invented; po.no-contradictions = priorities and dependencies agree with the docs, above all with explicit decisions written in briefing.md; sm.tasks-feasible = each item is deliverable in one run and the dependency order is feasible. Question or patch only what the human must decide; a priority decision the human gives is recorded as a docPatch to docs/briefing.md.';
 
 /** Detailed backlog: the review reads a digest of every spec and pre-plan, the gaps, and full JSON only for what changed. */
-const DETAIL_REVIEW_RULE = 'Detailed backlog: every item has a spec (PO) and a pre-plan (SM), summarized below with the coverage gaps the orchestrator found; full JSON follows only for the items that changed this cycle. Read the checklist ids against them too: po.objectives-verifiable = every acceptance criterion is testable; sm.tasks-feasible = every pre-plan is deliverable and covers its criteria. Specs change only through the docs: to change one, record the decision in docs/briefing.md (or docs/project.md) through a docPatch, or ask the human; never patch a generated file. Put the AC ids a question is about in relatedAcIds.';
+const DETAIL_REVIEW_RULE = 'Detailed backlog: every item has a spec (PO) and a pre-plan (SM), summarized below with the coverage gaps the orchestrator found; full JSON follows only for the items that changed this cycle. Read the checklist ids against them too: po.objectives-verifiable = every acceptance criterion is testable; sm.tasks-feasible = every pre-plan is deliverable and covers its criteria. Specs change only through the docs: to change one, record the decision in docs/briefing.md (or docs/project.md) through a docPatch, or ask the human; never patch a generated file. Put the AC ids a question is about in relatedAcIds. An item marked entregue or em execução is frozen: its spec already started or was delivered, it has no pre-plan here, and it is never reviewed, questioned or patched.';
 
 /** Up to this many tokens the review also carries the full JSON of the items that changed this cycle. */
 const REVIEW_TOKENS = 100_000;
@@ -39,7 +39,7 @@ function backlogDigest(b: BacklogState): string {
   return [...b.items].sort((x, y) => x.rank - y.rank).map((i) => {
     const spec = b.specs?.[i.key];
     const pre = b.preplans?.[i.key];
-    const status = !spec ? 'sem spec' : !spec.spec ? 'erro na spec' : pre?.preplan && pre.specRev === spec.rev ? 'planejada' : 'em refinamento';
+    const status = !spec ? 'sem spec' : !spec.spec ? 'erro na spec' : isStarted(spec.spec.status) ? (spec.spec.status === 'done' ? 'entregue' : 'em execução') : pre?.preplan && pre.specRev === spec.rev ? 'planejada' : 'em refinamento';
     const lines = [`- [${i.rank}] ${i.priority} ${i.key}: ${i.title} (épico ${i.epic}; depende de: ${i.dependsOn.join(', ') || '-'}; fontes: ${i.sources.map((s) => `${s.doc} › ${s.heading}`).join('; ')}) — ${status}`];
     // A citation the docs no longer answer leaves the PO without its context: the review decides what to do with it.
     for (const s of spec?.spec?.derivedFrom?.sources ?? []) if (s.hash === null) lines.push(`  seção não encontrada: ${s.doc} › ${s.heading}`);
@@ -127,7 +127,8 @@ export function refinePack(input: {
   if (detail) {
     // Full JSON of the items derived this cycle, by rank, while the review stays under REVIEW_TOKENS.
     const b = input.backlog!;
-    const changed = [...b.items].sort((x, y) => x.rank - y.rank).filter((i) => b.specs?.[i.key]?.cycle === input.cycle || b.preplans?.[i.key]?.cycle === input.cycle);
+    // A frozen spec (started or delivered) is never reviewed, so it never takes the changed items' budget.
+    const changed = [...b.items].sort((x, y) => x.rank - y.rank).filter((i) => !isStarted(b.specs?.[i.key]?.spec?.status) && (b.specs?.[i.key]?.cycle === input.cycle || b.preplans?.[i.key]?.cycle === input.cycle));
     const blocks: string[] = [];
     for (const i of changed) {
       const block = JSON.stringify({ key: i.key, spec: b.specs?.[i.key]?.spec ?? null, preplan: b.preplans?.[i.key]?.preplan ?? null }, null, 2);

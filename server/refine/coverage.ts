@@ -19,7 +19,7 @@ export interface CoverageMatrix {
 
 const STARTED: ReadonlySet<SpecStatus> = new Set(['running', 'paused:quota', 'paused:auth', 'awaiting-validation', 'done']);
 /** A spec whose run started (running, paused, awaiting validation or done): refinement never touches it again (R11.7.2). */
-export const isStarted = (status: SpecStatus | undefined): boolean => status !== undefined && STARTED.has(status);
+export const isStarted = (status: string | undefined): boolean => status !== undefined && STARTED.has(status as SpecStatus);
 
 const byRank = (b: BacklogState) => [...b.items].sort((x, y) => x.rank - y.rank);
 

@@ -11,7 +11,7 @@ import type { CycleDeps } from './cycle.js';
 import { acNum } from './derive.js';
 import { preplanPack, specPack } from './detail-packs.js';
 import { batches, preplanInputHash, sourceHashes, specInputHash, type BacklogDocs } from './details.js';
-import { renderBriefMd, type Draft } from './draft.js';
+import { readMainSpec, renderBriefMd, restoreFromBase, type Draft } from './draft.js';
 import { RefineEvent } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
 import { postProcessItemSpec } from './item-spec.js';
@@ -149,16 +149,17 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
   const previous = new Map<string, Spec | null>();
   const idOf = (key: string) => specIdOf(draft.specId, key, input.backlog.keyIds);
   for (const i of items) previous.set(i.key, specs[i.key]?.spec ?? (await readItemSpec(draft, idOf(i.key))));
-  // R11.7.2: an item whose spec on main started or was delivered is kept as it is; only a newer delivery is recorded again.
+  // R11.7.2: an item whose spec on main started or was delivered is kept as main has it; a newer delivery is recorded again.
   const kept = new Set<string>();
   for (const i of items) {
-    const onDisk = await readItemSpec(draft, idOf(i.key));
-    if (!onDisk || !isStarted(onDisk.status)) continue;
+    const onMain = await readMainSpec(draft, idOf(i.key));
+    if (!onMain || !isStarted(onMain.status)) continue;
     kept.add(i.key);
-    const rev = computeSpecHash(onDisk);
-    if (specs[i.key]?.rev === rev && specs[i.key]?.spec?.status === onDisk.status) continue;
-    specs[i.key] = { inputHash: specHash.get(i.key)!, specId: onDisk.specId, rev, spec: onDisk, issues: [], cycle };
-    await journal.fact(RefineEvent.SpecDerived, { cycle, key: i.key, specId: onDisk.specId, inputHash: specHash.get(i.key), rev, spec: onDisk, issues: [], highWater });
+    await restoreFromBase(draft, onMain.specId);
+    const rev = computeSpecHash(onMain);
+    if (specs[i.key]?.rev === rev && specs[i.key]?.spec?.status === onMain.status) continue;
+    specs[i.key] = { inputHash: specHash.get(i.key)!, specId: onMain.specId, rev, spec: onMain, issues: [], cycle };
+    await journal.fact(RefineEvent.SpecDerived, { cycle, key: i.key, specId: onMain.specId, inputHash: specHash.get(i.key), rev, spec: onMain, issues: [], highWater });
   }
   const planHashOf = (item: Item, rev: string) => preplanInputHash(item, rev, docs['stack.md'], item.rank === 1);
   const acceptSpec = async (item: Item, entry: ItemSpec | undefined): Promise<string[]> => {

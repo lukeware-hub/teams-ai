@@ -14,7 +14,7 @@ import { EventStore, type StoredEvent } from '../store/event-store.js';
 import { runCycle, type CycleDeps, type RunAgent } from './cycle.js';
 import { withDecisions } from './decisions.js';
 import { maxCriterionInDraft } from './detail-cycle.js';
-import { designTemplate, flowTemplate, moveBriefingToProject, readDerived, readDoc, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
+import { designTemplate, flowTemplate, moveBriefingToProject, readDerived, readDoc, readMainSpec, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
 import { DRAFT_HASH, RefineEvent } from './events.js';
 import { applyPatch } from './patches.js';
 import { buildSpecsIndex } from './specs-index.js';
@@ -100,11 +100,15 @@ export interface Snapshot {
 
 const COVERED = 'Este ajuste já foi coberto por outra alteração e foi descartado.';
 
-/** R11.7.2: the program's entries; a delivered item starts done, and work still in flight or nothing left to deliver refuses the start. */
-export function programEntries(draftId: string, backlog: BacklogState): ProgramEntry[] {
+/**
+ * R11.7.2: the program's entries from each item's status on main (`onMain`, by spec id). A done item starts done; a running
+ * or paused one runs again from its freeze; one awaiting validation, or started on main while this draft re-derived it, refuses.
+ */
+export function programEntries(draftId: string, backlog: BacklogState, onMain: Readonly<Record<string, string | undefined>>): ProgramEntry[] {
   const entries = buildSpecsIndex(draftId, backlog).specs.map((s): ProgramEntry => {
-    const status = backlog.specs?.[s.key]?.spec?.status;
-    if (status && isStarted(status) && status !== 'done') throw new ConflictError(`A spec ${s.specId} está ${status}; termine ou valide essa entrega antes de iniciar este programa.`);
+    const status = onMain[s.specId];
+    if (isStarted(status) && !isStarted(backlog.specs?.[s.key]?.spec?.status)) throw new ConflictError(`A spec ${s.specId} foi iniciada ou entregue enquanto este rascunho refinava; avalie de novo para mantê-la como está na main.`);
+    if (status === 'awaiting-validation') throw new ConflictError(`A spec ${s.specId} aguarda validação; valide essa entrega antes de iniciar este programa.`);
     return { specId: s.specId, key: s.key, rank: s.rank, dependsOn: s.dependsOn, ...(status === 'done' ? { done: true } : {}) };
   });
   if (entries.every((e) => e.done)) throw new ConflictError('Todas as specs deste backlog já foram entregues; não há nada para iniciar.');
@@ -384,18 +388,21 @@ export class RefineSession {
    * freezes at its turn, `freezeItem`); this checks the gate, takes the `starting` lock and hands back the items in rank order.
    */
   async freezeProgram(): Promise<ProgramEntry[]> {
-    const backlog = this.state.backlog;
-    if (!backlog?.enabled) throw new ConflictError('Esta sessão não está em modo backlog.');
+    if (!this.state.backlog?.enabled) throw new ConflictError('Esta sessão não está em modo backlog.');
     if (this.state.status === 'started') throw new ConflictError('session already started a run');
     if (this.starting) throw new ConflictError('a start is already in progress');
     if (this.running) await this.running;
+    const backlog = this.state.backlog;
+    // Each item's status on main, which the start's sync just brought into the base copy (R11.7.2).
+    const specs = buildSpecsIndex(this.deps.draft.specId, backlog).specs;
+    const onMain = Object.fromEntries(await Promise.all(specs.map(async (s) => [s.specId, (await readMainSpec(this.deps.draft, s.specId))?.status] as const)));
     if (this.starting) throw new ConflictError('a start is already in progress');
     if (!backlog.detail) throw new ConflictError('Detalhe as specs do backlog antes de iniciar: o início a partir do backlog usa as specs planejadas.');
     if (this.state.status !== 'ready' || this.state.stale) {
       throw new ConflictError(`session is ${this.state.status}${this.state.stale ? ' (stale)' : ''}; evaluate until ready`);
     }
     // Built before the start lock, so a refused start leaves the session free to try again.
-    const entries = programEntries(this.deps.draft.specId, backlog);
+    const entries = programEntries(this.deps.draft.specId, backlog, onMain);
     this.starting = true;
     return entries;
   }

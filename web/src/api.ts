@@ -250,6 +250,7 @@ export interface ItemSpecView {
   acceptanceCriteria: AcceptanceCriterion[];
   outOfScope: string[];
   externalDependencies: Array<{ name: string; purpose?: string; secretNames: string[] }>;
+  status?: string;
 }
 /** The SM's pre-plan of one backlog spec. */
 export interface PreplanView {

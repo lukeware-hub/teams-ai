@@ -322,16 +322,24 @@ describe('programEntries', () => {
   const backlog = (login: string, cart: string) =>
     ({ epics: [], keyIds: true, items: [item('login', 1), item('cart', 2, ['login'])], specs: { login: { spec: { status: login } }, cart: { spec: { status: cart } } } }) as unknown as BacklogState;
 
-  it('starts a delivered item done and every other one pending', () => {
-    expect(programEntries('shop', backlog('done', 'planned'))).toEqual([
+  it('starts an item main has done as done, and every other one pending', () => {
+    expect(programEntries('shop', backlog('done', 'planned'), { login: 'done' })).toEqual([
       { specId: 'login', key: 'login', rank: 1, dependsOn: [], done: true },
       { specId: 'cart', key: 'cart', rank: 2, dependsOn: ['login'] },
     ]);
+    // Plan 77 review: validated on main after this draft kept it awaiting validation, so it is done now.
+    expect(programEntries('shop', backlog('awaiting-validation', 'planned'), { login: 'done' })[0]!.done).toBe(true);
   });
 
-  it('refuses while an item is running, paused or awaiting validation, and when nothing is left to deliver', () => {
-    expect(() => programEntries('shop', backlog('awaiting-validation', 'planned'))).toThrow(/login está awaiting-validation/);
-    expect(() => programEntries('shop', backlog('paused:quota', 'planned'))).toThrow(ConflictError);
-    expect(() => programEntries('shop', backlog('done', 'done'))).toThrow(/já foram entregues/);
+  // Plan 77 review: a run that died leaves running on main; the program runs it again from the same freeze.
+  it('runs again an item main still shows running or paused', () => {
+    expect(programEntries('shop', backlog('running', 'planned'), { login: 'running' })[0]).toEqual({ specId: 'login', key: 'login', rank: 1, dependsOn: [] });
+    expect(programEntries('shop', backlog('paused:quota', 'planned'), { login: 'paused:quota' })[0]!.done).toBeUndefined();
+  });
+
+  it('refuses an item awaiting validation, one delivered while this draft refined, and a backlog with nothing left', () => {
+    expect(() => programEntries('shop', backlog('awaiting-validation', 'planned'), { login: 'awaiting-validation' })).toThrow(/login aguarda validação/);
+    expect(() => programEntries('shop', backlog('planned', 'planned'), { login: 'done' })).toThrow(/avalie de novo/);
+    expect(() => programEntries('shop', backlog('done', 'done'), { login: 'done', cart: 'done' })).toThrow(ConflictError);
   });
 });

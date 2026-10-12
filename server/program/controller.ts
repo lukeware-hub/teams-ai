@@ -69,7 +69,7 @@ export interface ProgramEntry {
 export const MAX_RESUMES = 3;
 
 export function newProgram(draftId: string, entries: readonly ProgramEntry[], now: Date): Program {
-  const items = [...entries].sort((a, b) => a.rank - b.rank).map(({ done, ...e }): ProgramItem => ({ ...e, dependsOn: [...e.dependsOn], status: done ? 'done' : 'pending', runId: null, completeRunId: null, startedAt: null, finishedAt: done ? now.toISOString() : null, reason: done ? 'entregue antes deste programa' : null, resumes: 0, costUsd: null }));
+  const items = [...entries].sort((a, b) => a.rank - b.rank).map(({ done, ...e }): ProgramItem => ({ ...e, dependsOn: [...e.dependsOn], status: done ? 'done' : 'pending', runId: null, completeRunId: null, startedAt: null, finishedAt: done ? now.toISOString() : null, reason: null, resumes: 0, costUsd: null }));
   return { version: 1, draftId, status: 'running', items, updatedAt: now.toISOString() };
 }
 

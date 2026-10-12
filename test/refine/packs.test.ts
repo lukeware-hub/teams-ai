@@ -94,6 +94,17 @@ describe('refinePack in detail mode', () => {
     expect(pack.feedback).toMatch(/specs change only through the docs/i);
   });
 
+  // Plan 77 review: a started or delivered spec is frozen; the review neither re-reads it as changed nor expects a pre-plan.
+  it('marks a delivered item in the digest, tells the reviewers it is frozen, and leaves it out of the changed items', () => {
+    const b = detailed(2, 3);
+    const done = { ...b.specs!['item-0']!, spec: { ...b.specs!['item-0']!.spec!, status: 'done' as const } };
+    const pack = refinePack({ ...base, role: 'sm', derived: { project: {}, spec: null }, backlog: { ...b, specs: { ...b.specs, 'item-0': done }, preplans: { 'item-1': b.preplans!['item-1']! } }, projectBriefing: true, cycle: 3 } as never);
+    expect(pack.feedback).toMatch(/item-0: Item 0 .*— entregue/);
+    expect(pack.feedback).toContain('never reviewed, questioned or patched');
+    expect(pack.feedback).not.toContain('"specId": "k-item-0"');
+    expect(pack.feedback).toContain('"specId": "k-item-1"');
+  });
+
   it('lists the coverage gaps for the agents to resolve', () => {
     const b = detailed(2, 2);
     const pack = refinePack({ ...base, role: 'sm', derived: { project: {}, spec: null }, backlog: { ...b, preplans: { 'item-0': b.preplans!['item-0']! } }, projectBriefing: true, cycle: 3 } as never);

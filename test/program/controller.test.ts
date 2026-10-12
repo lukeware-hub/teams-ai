@@ -51,6 +51,8 @@ describe('program controller', () => {
     let p = newProgram('d', [{ ...entry('a', 1), done: true }, entry('b', 2, ['a'])], NOW);
     expect(status(p)).toEqual({ a: 'done', b: 'pending' });
     expect('done' in p.items[0]!).toBe(false);
+    // Plan 77 review: no reason on it, since a start that launches nothing reports the first item's reason as the cause.
+    expect(p.items[0]!.reason).toBeNull();
     p = await tick(p, fx, save);
     expect(calls).toEqual(['start d-b']);
   });

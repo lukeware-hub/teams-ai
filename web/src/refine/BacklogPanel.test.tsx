@@ -83,4 +83,16 @@ describe('BacklogPanel detailing', () => {
     expect(within(screen.getByTestId('item-casos')).getByText('erro')).toBeTruthy();
     expect(within(screen.getByTestId('item-cobranca')).getByText('em refinamento')).toBeTruthy();
   });
+
+  // Plan 77 review: a delivered item is kept as main has it, so the panel says so instead of "em refinamento".
+  it('marks an item whose spec was delivered or is running', () => {
+    const spec = (status: string) => ({ specId: 'p', type: 'feature', objectives: ['o'], features: [], acceptanceCriteria: [], outOfScope: [], externalDependencies: [], status });
+    const detailed = {
+      ...view(items), detail: true,
+      specs: { base: { inputHash: 'h', specId: 'p-base', rev: REV, spec: spec('done'), issues: [], cycle: 2 }, casos: { inputHash: 'h', specId: 'p-casos', rev: REV, spec: spec('running'), issues: [], cycle: 2 } },
+    } as BacklogView;
+    render(<BacklogPanel backlog={detailed} evaluating={false} locked={false} />);
+    expect(within(screen.getByTestId('item-base')).getByText('entregue')).toBeTruthy();
+    expect(within(screen.getByTestId('item-casos')).getByText('em execução')).toBeTruthy();
+  });
 });
