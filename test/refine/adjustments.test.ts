@@ -83,6 +83,14 @@ describe('adjustments due', () => {
     expect(adjustmentsDue({ items: [{ ...opme, rank: 1 }, { ...first!, rank: 2 }], specs: rows }, { ...gone, 'briefing.md': approved }, [])).toMatchObject([{ key: 'opme-ajuste-2', removed: true }]);
   });
 
+  // Plan 80 review: an approval section is the owner's instruction, not the feature.
+  it('asks nothing when the owner only removed the approval section of a delivered adjustment', () => {
+    const approved = '# Briefing\n\n## Ajuste aprovado: opme-ajuste-1\n\ntexto\n';
+    const [first] = adjustmentItems([opme], ['opme-ajuste-1']);
+    const rows = { opme: started('opme', opme, before, 'done'), 'opme-ajuste-1': started('opme-ajuste-1', first!, { ...before, 'briefing.md': approved }, 'done') };
+    expect(due(rows, [opme, first!], before)).toEqual([]);
+  });
+
   it('asks nothing for unchanged sections, a spec not started, or one with no provenance', () => {
     expect(due({ opme: started('opme', opme, before, 'done') }, [opme], before)).toEqual([]);
     expect(due({ opme: started('opme', opme, before, 'planned') })).toEqual([]);

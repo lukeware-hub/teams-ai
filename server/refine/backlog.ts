@@ -90,9 +90,11 @@ export function postProcessBacklog(out: { project: unknown; backlog: unknown }, 
   // A started item the agent dropped stays as it was, with only the dependencies still in the outline.
   const keys = new Set([...items, ...started].map((i) => i.key));
   const all = [...items, ...started.filter((s) => !items.some((i) => i.key === s.key)).map((s) => ({ ...s, dependsOn: s.dependsOn.filter((d) => keys.has(d)) }))];
+  // The backlog views group items by epic: a kept item keeps its epic from the previous outline.
+  const epics = [...backlog.data.epics, ...(previous?.epics ?? []).filter((e) => !backlog.data.epics.some((x) => x.key === e.key) && all.some((i) => i.epic === e.key))];
   // Adjustments first: rank breaks ties by position, so each runs right after its original, before what waits on it.
   const adjustments = adjustmentItems(all, approved).filter((a) => !all.some((i) => i.key === a.key));
-  return { ok: true, value: { project: project.data, backlog: { epics: backlog.data.epics, items: rankItems([...adjustments, ...all]) } } };
+  return { ok: true, value: { project: project.data, backlog: { epics, items: rankItems([...adjustments, ...all]) } } };
 }
 
 /** The backlog as a Markdown view for people (and later agents); generated, never edited by hand. */

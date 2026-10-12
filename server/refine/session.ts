@@ -418,7 +418,8 @@ export class RefineSession {
     const spec = Spec.parse(JSON.parse(await fs.readFile(file, 'utf8')));
     // A crash after the freeze and before the launch leaves it frozen: the second attempt keeps that freeze.
     if (spec.status === 'running' && spec.specHash) return spec;
-    const frozen = freezeSpec(spec);
+    // R11.7.5: main retired it while this backlog kept it, so the owner wants it again.
+    const frozen = freezeSpec(spec.status === 'retired' ? { ...spec, status: 'planned' } : spec);
     await writeFileAtomic(file, `${JSON.stringify(frozen, null, 2)}
 `);
     return frozen;

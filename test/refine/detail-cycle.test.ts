@@ -311,6 +311,17 @@ describe('backlog detailing in the refinement cycle', () => {
     expect(approvals(second)).toEqual([expect.objectContaining({ status: 'pending', replace: expect.stringMatching(/^## Ajuste aprovado: fat-ajuste-1\n[\s\S]*remove essa funcionalidade/) })]);
   });
 
+  // Plan 80 review: an item main retired and a later outline brings back unchanged is planned again, not retired forever.
+  it('plans again an item whose spec main retired, when the outline brings it back unchanged', async () => {
+    const { second } = await secondDraft(async (d) => {
+      const file = `${d.draft.base}/specs/big-001-fat/spec.json`;
+      await writeFile(file, JSON.stringify({ ...JSON.parse(await readFile(file, 'utf8')), status: 'retired' }));
+    });
+    expect(JSON.parse(await readFile(`${second.itemDir('fat')}/spec.json`, 'utf8')).status).toBe('planned');
+    expect(second.journal.state.backlog!.specs?.fat?.spec?.status).toBe('planned');
+    expect(second.journal.state.status).toBe('ready');
+  });
+
   // Security: main's specs.json is a file of the target repository, and its keys become paths in the draft.
   it("ignores main's outline when a key in its index is not a slug, and deletes nothing outside the draft", async () => {
     const { second } = await secondDraft(async (d) => {
@@ -338,6 +349,8 @@ describe('backlog detailing in the refinement cycle', () => {
     const { second } = await secondDraft((d) => markStatus(d, 'opme-ajuste-1', 'running'), fakeAgent(() => OUTLINE), approve);
     expect(second.journal.state.backlog!.items.find((i) => i.key === 'opme-ajuste-1')).toMatchObject({ dependsOn: ['opme'] });
     expect(second.journal.state.backlog!.specs?.['opme-ajuste-1']?.spec?.status).toBe('running');
+    // Plan 80 review: removing the approval section is no change to the feature, so nothing is asked.
+    expect(approvals(second)).toEqual([]);
   });
 
   it('retries an item alone with its rejection when its spec or pre-plan breaks a rule', async () => {

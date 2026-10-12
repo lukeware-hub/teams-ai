@@ -104,6 +104,13 @@ describe('postProcessBacklog', () => {
     expect(out.ok && out.value.backlog.items.map((i) => [i.key, i.title, i.dependsOn])).toEqual([['opme', 'Item opme', []], ['caso', 'reescrito', []], ['fat', 'Item fat', ['opme']]]);
   });
 
+  // Plan 80 review: the backlog views group by epic, so a kept item without its epic would vanish from them.
+  it('keeps the epic of a started item whose epic the agent dropped', () => {
+    const prev = { ...previous([item('opme')]), epics: [{ key: 'core', title: 'Core' }, { key: 'fin', title: 'Financeiro' }] };
+    const out = postProcessBacklog(raw([item('opme')]), prev, '', [], [item('fat', { epic: 'fin' })]);
+    expect(out.ok && out.value.backlog.epics.map((e) => e.key)).toEqual(['core', 'fin']);
+  });
+
   it('keeps a started adjustment whose approval is gone, and puts a later approved one after it', () => {
     const out = postProcessBacklog(raw([item('opme')]), null, '', ['opme-ajuste-2'], [item('opme-ajuste-1', { title: 'Ajuste 1: Item opme', dependsOn: ['opme'] })]);
     expect(out.ok && out.value.backlog.items.map((i) => [i.key, i.dependsOn])).toEqual([['opme', []], ['opme-ajuste-1', ['opme']], ['opme-ajuste-2', ['opme-ajuste-1']]]);

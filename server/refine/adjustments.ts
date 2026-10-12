@@ -72,14 +72,15 @@ export function adjustmentsDue(backlog: Pick<BacklogState, 'items' | 'specs'>, d
     // Below the heading line when the spec recorded it, so a renumbered or renamed section is no change.
     const byBody = spec.derivedFrom.sources.every((s) => s.bodyHash !== undefined);
     const hashOf = (s: SpecProvenance['sources'][number]) => (byBody ? (s.bodyHash ?? null) : s.hash);
-    const was = spec.derivedFrom.sources.map(hashOf);
-    const now = sourceHashes(latest, docs);
-    if (sameHashes(was, now.map(hashOf))) return [];
+    // An approval section is the owner's instruction, not the feature: editing or removing it changes nothing to adjust.
+    const feature = (sources: SpecProvenance['sources']) => sources.filter((s) => !approvalKey(s.heading));
+    const was = feature(spec.derivedFrom.sources).map(hashOf);
+    const cites = feature(sourceHashes(latest, docs));
+    if (sameHashes(was, cites.map(hashOf))) return [];
     const key = `${original.key}-ajuste-${numberOf(latest.key) + 1}`;
     if (patches.some((p) => (p.status === 'pending' || p.status === 'rejected') && p.replace.startsWith(`## ${approvalHeading(key)}\n`))) return [];
-    const cites = now.filter((s) => !approvalKey(s.heading));
     const removed = cites.length > 0 && cites.every((s) => s.hash === null);
-    return [{ key, specId: spec.specId, status: spec.status, changed: (removed ? cites : now.filter((s) => !was.includes(hashOf(s)))).map((s) => `${s.doc} › ${s.heading}`), ...(removed ? { removed: true as const } : {}) }];
+    return [{ key, specId: spec.specId, status: spec.status, changed: (removed ? cites : cites.filter((s) => !was.includes(hashOf(s)))).map((s) => `${s.doc} › ${s.heading}`), ...(removed ? { removed: true as const } : {}) }];
   });
 }
 

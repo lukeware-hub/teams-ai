@@ -192,9 +192,12 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     if (!onMain || onMain.derivedFrom?.inputHash !== specHash.get(i.key)) continue;
     // Main's folder back in the draft: an item dropped and added again in this draft lost it, and its run reads it.
     await restoreFromBase(draft, onMain.specId);
-    const rev = computeSpecHash(onMain);
-    specs[i.key] = { inputHash: specHash.get(i.key)!, specId: onMain.specId, rev, spec: onMain, issues: [], cycle };
-    await journal.fact(RefineEvent.SpecDerived, { cycle, key: i.key, specId: onMain.specId, inputHash: specHash.get(i.key), rev, spec: onMain, issues: [], highWater });
+    // R11.7.5: a retired spec whose item is back is planned again, and Phase 0 publishes that.
+    const spec = onMain.status === 'retired' ? { ...onMain, status: 'planned' as const } : onMain;
+    if (spec !== onMain) await fs.writeFile(path.posix.join(itemDir(draft, spec.specId), 'spec.json'), json(spec));
+    const rev = computeSpecHash(spec);
+    specs[i.key] = { inputHash: specHash.get(i.key)!, specId: spec.specId, rev, spec, issues: [], cycle };
+    await journal.fact(RefineEvent.SpecDerived, { cycle, key: i.key, specId: spec.specId, inputHash: specHash.get(i.key), rev, spec, issues: [], highWater });
     const pre = Preplan.safeParse(draft.base ? await readJson(path.posix.join(draft.base, 'specs', onMain.specId, 'preplan.json')) : null);
     if (!pre.success || pre.data.specRev !== rev || pre.data.inputHash !== planHashOf(i, rev)) continue;
     preplans[i.key] = { inputHash: pre.data.inputHash, specRev: rev, preplan: pre.data, issues: [], cycle };

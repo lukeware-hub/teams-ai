@@ -132,6 +132,21 @@ describe('phase 0', () => {
       await run.close();
     });
 
+    // Plan 80 review (security): the phases write into a checkout of main, which may carry a link pointing anywhere.
+    it('refuses a docs tree from main that holds a symbolic link, and writes nothing through it', { timeout: 60_000 }, async () => {
+      const run = await setup({ 'flow.md': '# Flow v1\n' }, { 'flow.md': '# Flow v1\n' }, { 'flow.md': '# Flow v2\n' });
+      const victim = path.join(remote.root, 'victim.txt');
+      await fs.writeFile(victim, 'VICTIM\n');
+      await fs.rm(path.join(remote.repo, 'docs', 'flow.md'));
+      await fs.symlink(victim, path.join(remote.repo, 'docs', 'flow.md'));
+      await git(remote.repo, ['add', '-A'], execCommand);
+      await git(remote.repo, ['commit', '-q', '-m', 'link'], execCommand);
+      await git(remote.repo, ['push', '-q', 'origin', 'main'], execCommand);
+      await expect(run.executePhase0()).rejects.toThrow(/symbolic links/);
+      expect(await fs.readFile(victim, 'utf8')).toBe('VICTIM\n');
+      await run.close();
+    });
+
     // R11.7.5: a retirement reaches main, but never over a spec another program started meanwhile.
     it('publishes a retired spec, and never replaces the folder of a spec main started or delivered', { timeout: 60_000 }, async () => {
       const at = (status: string) => `${JSON.stringify({ specId: 'x', status }, null, 2)}\n`;
