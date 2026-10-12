@@ -419,7 +419,10 @@ export class RefineSession {
     // A crash after the freeze and before the launch leaves it frozen: the second attempt keeps that freeze.
     if (spec.status === 'running' && spec.specHash) return spec;
     // R11.7.5: main retired it while this backlog kept it, so the owner wants it again.
-    const frozen = freezeSpec(spec.status === 'retired' ? { ...spec, status: 'planned' } : spec);
+    const planned = spec.status === 'retired' ? { ...spec, status: 'planned' as const } : spec;
+    // R11.7.6: the owner's answers about this spec's criteria travel with it to the delivery.
+    const ids = new Set(spec.acceptanceCriteria.map((c) => c.id));
+    const frozen = freezeSpec(withDecisions(planned, this.state.questions.filter((q) => q.relatedAcIds.some((id) => ids.has(id)))));
     await writeFileAtomic(file, `${JSON.stringify(frozen, null, 2)}
 `);
     return frozen;

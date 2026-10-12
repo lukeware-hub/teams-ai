@@ -326,6 +326,31 @@ describe('refine api', () => {
     expect(JSON.parse(await fs.readFile(file, 'utf8'))).toMatchObject({ status: 'running', specVersion: 1 });
   });
 
+  // R11.7.6: the owner's answer about a criterion travels with the item spec the program freezes.
+  it('freezes an item with the answers to the questions about its criteria, and only those', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    const url = '/api/refine/hello-app/hello-app-001';
+    await call('POST', `${url}/backlog`);
+    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
+    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
+    const asked = [{ id: 'q1', text: 'O health responde em JSON?', blocking: false, relatedAcIds: ['AC-001'] }, { id: 'q2', text: 'Qual o nome do produto?', blocking: false, relatedAcIds: [] }];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }, { checklist: PO, questions: asked, docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }, { checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', `${url}/evaluate`);
+    await settle();
+    await call('POST', `${url}/backlog/detail`);
+    script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
+    script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
+    await call('POST', `${url}/evaluate`);
+    await settle();
+    for (const q of (await snapshot()).state.questions) {
+      await call('POST', `${url}/answers`, { questionId: q.questionId, text: q.text.includes('JSON') ? 'Sim, application/json.' : 'Hello.' });
+    }
+    expect((await call('POST', `${url}/start`)).status).toBe(200);
+    const file = `${home}/ws/hello-app/refine/hello-app-001/docs/specs/base/spec.json`;
+    expect(JSON.parse(await fs.readFile(file, 'utf8')).decisions).toEqual([{ question: 'O health responde em JSON?', answer: 'Sim, application/json.' }]);
+  });
+
   it('starts a detailed backlog by itself once it is ready, and tries a failed start again only after a new cycle', async () => {
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     const url = '/api/refine/hello-app/hello-app-001';
