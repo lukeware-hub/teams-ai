@@ -78,6 +78,9 @@ was implemented. Web UI block A (`2026-09-24-run-api-execution-ui-design.md`) is
 | 78 | [`2026-10-12-teams-ai-78-unchanged-items-reused.md`](2026-10-12-teams-ai-78-unchanged-items-reused.md) | Done — a new backlog draft derives again only the items whose sources changed; ROADMAP R11.7.3. |
 | 79 | [`2026-10-12-teams-ai-79-adjustment-specs.md`](2026-10-12-teams-ai-79-adjustment-specs.md) | Done — a change to the sections of a started or delivered spec becomes an adjustment spec the owner approves in briefing.md; ROADMAP R11.7.4. |
 | 80 | [`2026-10-12-teams-ai-80-retired-items-leave-main.md`](2026-10-12-teams-ai-80-retired-items-leave-main.md) | Done — a planned item that leaves the backlog is retired on main, and a started one stays until the owner approves its removal; ROADMAP R11.7.5. |
+| 81 | [`2026-10-12-teams-ai-81-repair-loop-failed-spec.md`](2026-10-12-teams-ai-81-repair-loop-failed-spec.md) | Approved, not built — a failed spec is classified by the Jev and run again up to two times before it stays failed; ROADMAP R11.14. |
+| 82 | [`2026-10-12-teams-ai-82-prebuilt-image-ghcr.md`](2026-10-12-teams-ai-82-prebuilt-image-ghcr.md) | Approved, not built — a private GHCR image the platform pulls instead of building, with the build as fallback; ROADMAP R9.4. |
+| 83 | [`2026-10-12-teams-ai-83-security-audit-status.md`](2026-10-12-teams-ai-83-security-audit-status.md) | Report — the status of each finding of the 2026-10-04 audit against today's code, and the edits to bring the roadmap and spec section 14 up to date. |
 
 Plans 17 and 19 never existed (not a gap in this audit - no file was ever created at those numbers).
 
