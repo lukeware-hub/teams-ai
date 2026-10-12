@@ -496,6 +496,20 @@ describe('Run', () => {
       await run.close();
     });
 
+    it('installs the plan dependencies before it deploys, because a fresh clone has none', async () => {
+      const base = deps(noAgent, { target: target() as never });
+      const installs: string[] = [];
+      const exec: RunDeps['exec'] = async (spec) => {
+        if (spec.bin !== 'sh') return base.exec(spec);
+        installs.push(spec.args.join(' '));
+        return { exitCode: 0, signal: null, stdout: '', stderr: '', timedOut: false, durationMs: 0, truncated: false };
+      };
+      const run = await Run.create({ ...base, exec }, 'spec-001-deploy-r4');
+      expect(await run.deployOnly()).toBe('done');
+      expect(installs).toEqual(['-lc npm ci']);
+      await run.close();
+    });
+
     it('a failed deploy ends deploy-failed with the reason and plans no fix task', async () => {
       const run = await Run.create(deps(noAgent, { target: target({ validate: async () => ['kind target requires at least one manifest'] }) as never }), 'spec-001-deploy-r2');
       expect(await run.deployOnly()).toBe('deploy-failed');

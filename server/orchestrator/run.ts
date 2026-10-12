@@ -712,6 +712,11 @@ export class Run {
     const text = await this.gitLocked(['show', `origin/main:docs/specs/${specId}/plan.json`]).catch(() => null);
     if (!text) return this.finish('phase-failed', `main has no docs/specs/${specId}/plan.json`);
     this.plan = parseAnyPlan(JSON.parse(text));
+    // A fresh clone (an import) has no installed test dependencies, and smoke and e2e run from them.
+    for (const view of servicePlans(this.plan)) {
+      const install = await this.installDeps(view, this.wsOf(view).repo);
+      if (install) return this.finish('deploy-failed', `install failed: ${install.stderrTail || install.stdoutTail}`);
+    }
     const p5 = await this.phase5(1, { fixTasks: false });
     return p5.ok ? this.finish('done') : this.finish('deploy-failed', p5.reason);
   }
