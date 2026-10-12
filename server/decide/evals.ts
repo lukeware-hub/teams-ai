@@ -87,3 +87,40 @@ export function metrics(samples: readonly EvalSample[], bins = 10): EvalMetrics 
     latencyP95: percentile(latency, 0.95),
   };
 }
+
+/** One routed blocking refinement question, labelled by its owner's answer (R11.5.7). */
+export interface RoutingSample {
+  route: string;
+  confidence: number | null;
+  /** The owner marked that the documents already answered it; an answer without the mark counts as the human being needed. */
+  docsAnswered: boolean;
+}
+
+type JournalEvent = { type: string; data: Record<string, unknown> };
+
+/** Joins every route of a refinement journal with the answer to its question; questions nobody answered carry no label yet. */
+export function routingSamples(events: readonly JournalEvent[]): RoutingSample[] {
+  const answers = new Map(events.filter((e) => e.type === 'QUESTION_ANSWERED').map((e) => [String(e.data.questionId), e.data.docsAnswered === true]));
+  return events
+    .filter((e) => e.type === 'REFINE_EVALUATED')
+    .flatMap((e) => Object.entries((e.data.questionRouting ?? {}) as Record<string, { route: string; confidence: number | null }>))
+    .filter(([id]) => answers.has(id))
+    .map(([id, r]) => ({ route: r.route, confidence: r.confidence, docsAnswered: answers.get(id)! }));
+}
+
+/**
+ * The lowest confidence at which the questions routed `auto`, counted from the most confident down, were answered by the
+ * documents at least `precision` of the time over at least `minSamples` of them; null until the data shows one.
+ */
+export function autoAnswerFloor(samples: readonly RoutingSample[], opts: { precision?: number; minSamples?: number } = {}): number | null {
+  const { precision = 0.95, minSamples = 20 } = opts;
+  const auto = samples.filter((s) => s.route === 'auto' && s.confidence !== null).sort((a, b) => b.confidence! - a.confidence!);
+  let floor: number | null = null;
+  let right = 0;
+  auto.forEach((s, i) => {
+    if (s.docsAnswered) right++;
+    // A floor sits at the end of a run of equal confidences, so every question at that confidence is counted.
+    if (i + 1 >= minSamples && right / (i + 1) >= precision && auto[i + 1]?.confidence !== s.confidence) floor = s.confidence;
+  });
+  return floor;
+}
