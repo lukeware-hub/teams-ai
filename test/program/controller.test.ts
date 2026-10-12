@@ -45,6 +45,16 @@ describe('program controller', () => {
     expect(p.items.find((i) => i.key === 'a')!.runId).toBe('d-a-r1');
   });
 
+  // R11.7.2: an item delivered before this program starts done, so its dependents run and it never runs again.
+  it('starts an item delivered before the program as done and runs its dependents', async () => {
+    const { fx, calls } = world();
+    let p = newProgram('d', [{ ...entry('a', 1), done: true }, entry('b', 2, ['a'])], NOW);
+    expect(status(p)).toEqual({ a: 'done', b: 'pending' });
+    expect('done' in p.items[0]!).toBe(false);
+    p = await tick(p, fx, save);
+    expect(calls).toEqual(['start d-b']);
+  });
+
   it('completes a delivered item, then starts the next only after it is done', async () => {
     const { fx, calls } = world({ 'd-a-r1': { kind: 'delivered' }, 'd-a-complete-r1': { kind: 'done' } });
     let p = newProgram('d', [entry('a', 1), entry('b', 2, ['a'])], NOW);

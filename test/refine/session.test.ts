@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { writeSecret } from '../../server/core/secrets.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
 import { createNewProject, draftPaths, readDoc, renderBriefMd, writeDoc } from '../../server/refine/draft.js';
-import { ConflictError, RefineSession } from '../../server/refine/session.js';
+import { ConflictError, programEntries, RefineSession } from '../../server/refine/session.js';
+import type { BacklogState } from '../../server/refine/state.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 import { calls, makeFakeRunAgent, type Script } from '../fixtures/fake-run-agent.js';
 
@@ -312,5 +313,25 @@ describe('RefineSession', () => {
       { name: 'CUSTOM_KEY', present: true, hint: '****' },
       { name: 'DB_URL', present: true, hint: '****' },
     ]);
+  });
+});
+
+// R11.7.2: a program never runs again what an earlier one delivered, and never starts over work still in flight.
+describe('programEntries', () => {
+  const item = (key: string, rank: number, dependsOn: string[] = []) => ({ key, title: key, epic: 'e', priority: 'P1', rank, size: 'M', scope: 's', rationale: 'r', dependsOn, sources: [] });
+  const backlog = (login: string, cart: string) =>
+    ({ epics: [], keyIds: true, items: [item('login', 1), item('cart', 2, ['login'])], specs: { login: { spec: { status: login } }, cart: { spec: { status: cart } } } }) as unknown as BacklogState;
+
+  it('starts a delivered item done and every other one pending', () => {
+    expect(programEntries('shop', backlog('done', 'planned'))).toEqual([
+      { specId: 'login', key: 'login', rank: 1, dependsOn: [], done: true },
+      { specId: 'cart', key: 'cart', rank: 2, dependsOn: ['login'] },
+    ]);
+  });
+
+  it('refuses while an item is running, paused or awaiting validation, and when nothing is left to deliver', () => {
+    expect(() => programEntries('shop', backlog('awaiting-validation', 'planned'))).toThrow(/login está awaiting-validation/);
+    expect(() => programEntries('shop', backlog('paused:quota', 'planned'))).toThrow(ConflictError);
+    expect(() => programEntries('shop', backlog('done', 'done'))).toThrow(/já foram entregues/);
   });
 });

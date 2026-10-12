@@ -20,7 +20,8 @@ import { applyPatch } from './patches.js';
 import { buildSpecsIndex } from './specs-index.js';
 import { fitPackBudget } from './fit-pack.js';
 import { SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
-import { applyRefineEvent, emptyRefineState, type RefineState } from './state.js';
+import { applyRefineEvent, emptyRefineState, type BacklogState, type RefineState } from './state.js';
+import { isStarted } from './coverage.js';
 
 export type { RunAgent } from './cycle.js';
 export class ConflictError extends Error {}
@@ -98,6 +99,17 @@ export interface Snapshot {
 }
 
 const COVERED = 'Este ajuste já foi coberto por outra alteração e foi descartado.';
+
+/** R11.7.2: the program's entries; a delivered item starts done, and work still in flight or nothing left to deliver refuses the start. */
+export function programEntries(draftId: string, backlog: BacklogState): ProgramEntry[] {
+  const entries = buildSpecsIndex(draftId, backlog).specs.map((s): ProgramEntry => {
+    const status = backlog.specs?.[s.key]?.spec?.status;
+    if (status && isStarted(status) && status !== 'done') throw new ConflictError(`A spec ${s.specId} está ${status}; termine ou valide essa entrega antes de iniciar este programa.`);
+    return { specId: s.specId, key: s.key, rank: s.rank, dependsOn: s.dependsOn, ...(status === 'done' ? { done: true } : {}) };
+  });
+  if (entries.every((e) => e.done)) throw new ConflictError('Todas as specs deste backlog já foram entregues; não há nada para iniciar.');
+  return entries;
+}
 
 export class RefineSession {
   private running: Promise<void> | null = null;
@@ -382,8 +394,10 @@ export class RefineSession {
     if (this.state.status !== 'ready' || this.state.stale) {
       throw new ConflictError(`session is ${this.state.status}${this.state.stale ? ' (stale)' : ''}; evaluate until ready`);
     }
+    // Built before the start lock, so a refused start leaves the session free to try again.
+    const entries = programEntries(this.deps.draft.specId, backlog);
     this.starting = true;
-    return buildSpecsIndex(this.deps.draft.specId, backlog).specs.map((s) => ({ specId: s.specId, key: s.key, rank: s.rank, dependsOn: s.dependsOn }));
+    return entries;
   }
 
   /** R11.4: freezes one planned item spec at its turn (specVersion+1, running, specHash) in the draft, where its run reads it. Idempotent. */
