@@ -109,19 +109,28 @@ export function routingSamples(events: readonly JournalEvent[]): RoutingSample[]
     .map(([id, r]) => ({ route: r.route, confidence: r.confidence, docsAnswered: answers.get(id)! }));
 }
 
+/** The one-sided 95% Wilson lower bound of a precision of `right` out of `n`: what the labels prove, not what they happen to show. */
+export function wilsonLower(right: number, n: number, z = 1.645): number {
+  if (n === 0) return 0;
+  const p = right / n;
+  const z2 = z * z;
+  return (p + z2 / (2 * n) - z * Math.sqrt((p * (1 - p)) / n + z2 / (4 * n * n))) / (1 + z2 / n);
+}
+
 /**
- * The lowest confidence at which the questions routed `auto`, counted from the most confident down, were answered by the
- * documents at least `precision` of the time over at least `minSamples` of them; null until the data shows one.
+ * The lowest confidence floor whose questions routed `auto` at or above it the documents answered at least `min` of the time,
+ * proven by the Wilson bound over at least `minSamples` of them; null until the labels prove one. A lucky top does not pass,
+ * since the bound needs about 25 right answers in a row before it reaches 0.9.
  */
-export function autoAnswerFloor(samples: readonly RoutingSample[], opts: { precision?: number; minSamples?: number } = {}): number | null {
-  const { precision = 0.95, minSamples = 20 } = opts;
+export function measuredFloor(samples: readonly RoutingSample[], opts: { min?: number; minSamples?: number } = {}): number | null {
+  const { min = 0.9, minSamples = 20 } = opts;
   const auto = samples.filter((s) => s.route === 'auto' && s.confidence !== null).sort((a, b) => b.confidence! - a.confidence!);
   let floor: number | null = null;
   let right = 0;
   auto.forEach((s, i) => {
     if (s.docsAnswered) right++;
     // A floor sits at the end of a run of equal confidences, so every question at that confidence is counted.
-    if (i + 1 >= minSamples && right / (i + 1) >= precision && auto[i + 1]?.confidence !== s.confidence) floor = s.confidence;
+    if (i + 1 >= minSamples && auto[i + 1]?.confidence !== s.confidence && wilsonLower(right, i + 1) >= min) floor = s.confidence;
   });
   return floor;
 }

@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { Decider } from '../../server/decide/decider.js';
+import { heldForOwner } from '../../server/refine/auto-floor.js';
 import { buildContextPack } from '../../server/knowledge/context-pack.js';
 import { runCycle } from '../../server/refine/cycle.js';
 import { draftPaths, createNewProject } from '../../server/refine/draft.js';
@@ -358,6 +359,15 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
     return { events, answered, answerPacks, runAgent, run };
   }
 
+  it('keeps about one question in ten above the floor for the owner, so labels keep coming once the floor is on', async () => {
+    const questions = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`Question ${String(i).padStart(2, '0')}?`, 0.99]));
+    const r = await autoRouted(questions);
+    await r.run(0.9);
+    const ids = Array.from({ length: 20 }, (_, i) => `po-c1-${i}`);
+    expect(ids.filter(heldForOwner).length).toBeGreaterThan(0);
+    expect(r.events.filter((e) => e.type === 'QUESTION_ANSWERED').map((e) => e.data.questionId)).toEqual(ids.filter((id) => !heldForOwner(id)));
+  });
+
   it('leaves the question with the human when the answer step returns null or fails', async () => {
     for (const over of [{ answer: null }, { ok: false }]) {
       const r = await autoRouted({ 'Which port?': 0.95 }, undefined, over);
@@ -416,6 +426,8 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
     const evaluated = r.events.findIndex((e) => e.type === 'REFINE_EVALUATED');
     const answers = r.events.filter((e) => e.type === 'QUESTION_ANSWERED');
     expect(answers.map((e) => e.data)).toEqual([{ questionId: 'po-c1-0', text: 'project.md diz 8080.', by: 'po' }]);
+    // The floor the cycle answered at stays on record, so a later reader knows when and where it switched on.
+    expect(r.events.find((e) => e.type === 'REFINE_EVALUATED')!.data.autoAnswerFloor).toBe(0.9);
     expect(r.events.indexOf(answers[0]!)).toBeGreaterThan(evaluated);
   });
 

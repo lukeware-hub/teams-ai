@@ -131,6 +131,20 @@ describe('RefineSession', () => {
     expect(answered).toEqual([{ questionId: 'po-c1-0', text: 'project.md › Execução: 8080', docsAnswered: true }]);
   });
 
+  it('starts no cycle when the evaluation is aborted while the floor is read', async () => {
+    let release!: (floor: number | undefined) => void;
+    const reading = new Promise<number | undefined>((resolve) => { release = resolve; });
+    const s = await RefineSession.create({ ...deps(), autoAnswerFloor: () => reading } as never, 'new-project');
+    script['derive/po'] = [derived];
+    const evaluating = s.evaluate();
+    const aborting = s.abort();
+    release(undefined);
+    await aborting;
+    await evaluating;
+    await s.close();
+    expect(await fs.readFile(draft().events, 'utf8')).not.toContain('REFINE_CYCLE_STARTED');
+  });
+
   it('reads the auto answer floor at each evaluation, and the next cycle sees the answer a role gave from the docs', async () => {
     let floor: number | undefined = 0.9;
     const decider = { decide: async (id: string) => (id === 'question-routing' ? { answered: true as const, backend: 'jev' as const, escalated: false, answers: { route: { type: 'choice' as const, value: 'auto', probabilities: { auto: 0.95 }, confidence: 0.95 } } } : { answered: false as const, reason: 'disabled' as const }) };

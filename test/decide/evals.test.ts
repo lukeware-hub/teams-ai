@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { autoAnswerFloor, metrics, precisionNearFloor, routingSamples, samplesFromRecords, type EvalSample, type JournaledDecision } from '../../server/decide/evals.js';
+import { measuredFloor, metrics, precisionNearFloor, routingSamples, samplesFromRecords, wilsonLower, type EvalSample, type JournaledDecision } from '../../server/decide/evals.js';
 
 const sample = (over: Partial<EvalSample>): EvalSample => ({ decisionId: 'gate-triage', question: 'kind', probabilities: { code: 0.8, infra: 0.2 }, predicted: 'code', label: 'code', escalated: false, durationMs: 100, ...over });
 
@@ -51,17 +51,24 @@ describe('question routing eval', () => {
     ]);
   });
 
-  it('finds the lowest confidence at which questions routed auto were answered by the documents often enough', () => {
+  it('finds the lowest floor whose questions the documents answered at least 90% of the time, with 95% confidence', () => {
     const auto = (confidence: number, docsAnswered = true) => ({ route: 'auto', confidence, docsAnswered });
-    // 20 right answers from 0.99 down to 0.80, then a wrong one at 0.79 and more right ones below it.
-    const right = Array.from({ length: 20 }, (_, i) => auto(0.99 - i * 0.01));
-    expect(autoAnswerFloor(right)).toBeCloseTo(0.8);
-    expect(autoAnswerFloor([...right, auto(0.79, false), auto(0.78), auto(0.77)], { precision: 0.99 })).toBeCloseTo(0.8);
-    // Too few samples, or too many wrong ones: no floor yet.
-    expect(autoAnswerFloor(right.slice(0, 19))).toBeNull();
-    expect(autoAnswerFloor(right.map((s, i) => ({ ...s, docsAnswered: i % 2 === 0 })))).toBeNull();
+    // 30 right answers from 0.99 down to 0.845: 30 of 30 is above 0.9 with 95% confidence.
+    const right = Array.from({ length: 30 }, (_, i) => auto(0.99 - i * 0.005));
+    expect(measuredFloor(right)).toBeCloseTo(0.845);
+    // Five wrong ones below them pull the bound under 0.9, so the floor stays where it held.
+    expect(measuredFloor([...right, ...[0.84, 0.835, 0.83, 0.825, 0.82].map((c) => auto(c, false))])).toBeCloseTo(0.845);
+    // 24 of 24 is not enough evidence yet, and a Jev right 86% of the time never gets there.
+    expect(measuredFloor(right.slice(0, 24))).toBeNull();
+    expect(measuredFloor(Array.from({ length: 100 }, (_, i) => auto(0.99 - i * 0.001, i % 7 !== 6)))).toBeNull();
     // Other routes and questions without a confidence never count.
-    expect(autoAnswerFloor([...right.map((s) => ({ ...s, route: 'po' })), { route: 'auto', confidence: null, docsAnswered: true }])).toBeNull();
+    expect(measuredFloor([...right.map((s) => ({ ...s, route: 'po' })), { route: 'auto', confidence: null, docsAnswered: true }])).toBeNull();
+  });
+
+  it('bounds the precision from below, so 20 of 20 is still too little and 25 of 25 is enough', () => {
+    expect(wilsonLower(20, 20)).toBeLessThan(0.9);
+    expect(wilsonLower(25, 25)).toBeGreaterThan(0.9);
+    expect(wilsonLower(0, 0)).toBe(0);
   });
 });
 
@@ -69,7 +76,8 @@ describe('precision near the floor', () => {
   it('shows the precision of the band right above the floor, which the overall precision can hide', () => {
     const auto = (confidence: number, docsAnswered = true) => ({ route: 'auto', confidence, docsAnswered });
     const samples = [...Array.from({ length: 100 }, () => auto(0.99)), ...[0.9, 0.89, 0.88, 0.87, 0.86].map((c) => auto(c, false))];
-    expect(autoAnswerFloor(samples)).toBeCloseTo(0.86);
+    // 100 of 105 still bounds above 0.9: the band right above the floor shows the five misses the total hides.
+    expect(measuredFloor(samples)).toBeCloseTo(0.86);
     expect(precisionNearFloor(samples, 0.86)).toBe(0.5);
     expect(precisionNearFloor([], 0.9)).toBeNull();
   });

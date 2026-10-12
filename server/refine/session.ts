@@ -234,22 +234,27 @@ export class RefineSession {
     const cycle = this.state.cycle + 1;
     const ctl = (this.abortCtl = new AbortController());
     // Set at once, so no other action slips in while the floor is read.
-    this.running = (async () => runCycle(
-      {
-        signal: ctl.signal,
-        draft: this.deps.draft,
-        journal: this.journal,
-        runAgent: this.deps.runAgent,
-        frontAgent: this.deps.frontAgent,
-        principles: () => this.state.derived?.project.principles ?? this.state.backlog?.project?.principles ?? [],
-        retrieval: this.deps.retrieval,
-        secretsDir: this.deps.secretsDir,
-        validateDocs: this.deps.validateDocs,
-        decider: this.deps.decider,
-        autoAnswerFloor: await this.deps.autoAnswerFloor?.(),
-      },
-      cycle,
-    ))().finally(() => {
+    this.running = (async () => {
+      const autoAnswerFloor = await this.deps.autoAnswerFloor?.();
+      // Aborted while the floor was read: no cycle starts at all.
+      if (ctl.signal.aborted) return;
+      await runCycle(
+        {
+          signal: ctl.signal,
+          draft: this.deps.draft,
+          journal: this.journal,
+          runAgent: this.deps.runAgent,
+          frontAgent: this.deps.frontAgent,
+          principles: () => this.state.derived?.project.principles ?? this.state.backlog?.project?.principles ?? [],
+          retrieval: this.deps.retrieval,
+          secretsDir: this.deps.secretsDir,
+          validateDocs: this.deps.validateDocs,
+          decider: this.deps.decider,
+          autoAnswerFloor,
+        },
+        cycle,
+      );
+    })().finally(() => {
       this.running = null;
       this.abortCtl = null;
     });

@@ -45,9 +45,12 @@ export const DOC_REL: Record<DocFile, (specId: string, projectBriefing?: boolean
   'design.md': () => 'docs/design.md',
 };
 
+/** The project's refinement directory: one draft per spec, each with its own journal. */
+export const refineRoot = (ws: Pick<Workspace, 'root'>): string => path.posix.join(ws.root, 'refine');
+
 /** Spec (refinement) §2: the draft lives beside the workspace, never inside the clone. */
 export function draftPaths(ws: Workspace, specId: string): Draft {
-  const root = path.posix.join(ws.root, 'refine', specId);
+  const root = path.posix.join(refineRoot(ws), specId);
   const docs = path.posix.join(root, 'docs');
   return {
     projectId: ws.projectId,

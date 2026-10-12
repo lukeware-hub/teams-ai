@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execCommand } from '../../server/exec/command.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
-import { briefTemplate, createFromRepo, createNewProject, DOC_REL, draftExists, draftHash, draftPaths, keepBaseProject, moveBriefingToProject, readBase, readDerived, readDoc, renderBriefMd, syncWithMain, writeDerived, writeDoc } from '../../server/refine/draft.js';
+import { briefTemplate, createFromRepo, createNewProject, DOC_REL, draftExists, draftHash, draftPaths, keepBaseProject, moveBriefingToProject, readBase, readDerived, readDoc, refineRoot, renderBriefMd, syncWithMain, writeDerived, writeDoc } from '../../server/refine/draft.js';
 import { git } from '../../server/git/git.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';
@@ -24,6 +24,10 @@ afterEach(async () => {
 });
 
 describe('draft', () => {
+  it("keeps every draft under the project's refinement directory, where the answer floor reads the labels", () => {
+    expect(draftPaths(ws, 'hello-024').root).toBe(path.posix.join(refineRoot(ws), 'hello-024'));
+  });
+
   it('keeps the base project.json bytes when the project is unchanged, so the start does not publish a reformatted copy', async () => {
     const compact = JSON.stringify(makeProject());
     remote = await makeRemote({ 'docs/project.json': compact });

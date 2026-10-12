@@ -3,8 +3,8 @@ import type { DecideContext, Decider } from '../decider.js';
 import type { BackendName, Questions } from '../types.js';
 
 /**
- * Roadmap R11.5a slice 1 (plan 53), R11.5.7 (plan 72): the route rides along the journaled cycle for the eval; only with
- * decisions.autoAnswerFloor set, measured by that eval, does a question routed `auto` get answered from the docs.
+ * Roadmap R11.5a slice 1 (plan 53), R11.5.7 (plans 72 to 74): the route rides along the journaled cycle for the eval; a
+ * question routed `auto` is answered from the docs only at the floor the config fixes or the project's labels prove.
  */
 export type QuestionRoute = 'auto' | 'po' | 'sm' | 'human';
 

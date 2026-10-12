@@ -13,6 +13,7 @@ import type { StepOutcome } from '../runner/step.js';
 import { mergeChecklist, type ChecklistItem } from './checklist.js';
 import { derivePack, postProcessDerived } from './derive.js';
 import { answerPack } from './answer.js';
+import { heldForOwner } from './auto-floor.js';
 import { backlogPack, postProcessBacklog, renderBacklogMd, type BacklogCheck } from './backlog.js';
 import { fitPackBudget, PackTooLargeError } from './fit-pack.js';
 import { sha256 } from '../contracts/hash.js';
@@ -327,7 +328,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       merged.push({ questionId: id, role: 'po', text: `The new spec seems to contradict earlier project history (${h.title}${h.heading ? ` › ${h.heading}` : ''}): "${h.snippet}". Which one holds?`, blocking: true, relatedAcIds: [], cycle });
     }
   }
-  // R11.5.7: the route of each blocking question, journaled for the eval; it answers nothing unless decisions.autoAnswerFloor is set.
+  // R11.5.7: the route of each blocking question, journaled for the eval; it answers only at the floor the config fixes or the labels prove.
   const questionRouting: Record<string, { route: string; confidence: number | null; source: string }> = {};
   if (deps.decider) {
     // A question only the human decides is never answered on its own, so routing it would only spend a Jev call.
@@ -422,7 +423,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const floor = deps.autoAnswerFloor;
   const eligible = floor === undefined ? [] : merged.filter((q) => {
     const r = questionRouting[q.questionId];
-    return q.blocking && !forHuman.has(q.questionId) && r?.route === 'auto' && r.source === 'jev' && r.confidence !== null && r.confidence >= floor;
+    return q.blocking && !forHuman.has(q.questionId) && !heldForOwner(q.questionId) && r?.route === 'auto' && r.source === 'jev' && r.confidence !== null && r.confidence >= floor;
   });
   const answers = await Promise.all(eligible.map(async (q) => {
     if (deps.signal?.aborted) return null;
@@ -431,7 +432,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     const out = (await deps.runAgent<'answer'>({ kind: 'answer', role: q.role, pack, cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, ctx)) as StepOutcome<AnswerOutput>;
     return out.ok && out.value.answer ? { questionId: q.questionId, text: out.value.answer, by: q.role } : null;
   }));
-  await journal.fact(RefineEvent.Evaluated, { cycle, checklist, questions: merged, discardedPatches, questionRouting });
+  await journal.fact(RefineEvent.Evaluated, { cycle, checklist, questions: merged, discardedPatches, questionRouting, autoAnswerFloor: floor ?? null });
   for (const a of answers) if (a) await journal.fact(RefineEvent.QuestionAnswered, a);
 }
 

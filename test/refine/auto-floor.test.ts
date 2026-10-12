@@ -2,10 +2,14 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { answerFloor } from '../../server/refine/auto-floor.js';
+import { loadConfig } from '../../server/config/config.js';
+import { answerFloor, heldForOwner } from '../../server/refine/auto-floor.js';
 
 let dir: string;
 afterEach(() => rm(dir, { recursive: true, force: true }));
+
+/** Decisions on, with the floor setting given. */
+const cfg = (autoAnswerFloor: number | 'measured' | 'off' = 'measured', enabled = true) => loadConfig({ decisions: { enabled, autoAnswerFloor } });
 
 /** A refinement journal whose questions Jev routed `auto` at these confidences, each answered with the owner's mark when `docs` says so. */
 async function draft(specId: string, routes: Array<{ confidence: number; docs: boolean }>): Promise<void> {
@@ -18,28 +22,47 @@ async function draft(specId: string, routes: Array<{ confidence: number; docs: b
   await writeFile(path.join(dir, specId, 'events.ndjson'), `${lines.map((l) => JSON.stringify(l)).join('\n')}\n`);
 }
 
+/** 27 right answers over two drafts: 27 of 27 bounds above 0.9, down to 0.86. */
+async function measuring(): Promise<void> {
+  await draft('a', Array.from({ length: 15 }, (_, i) => ({ confidence: 0.99 - i * 0.005, docs: true })));
+  await draft('b', Array.from({ length: 12 }, (_, i) => ({ confidence: 0.915 - i * 0.005, docs: true })));
+}
+
 describe('answerFloor', () => {
-  it('measures the floor from the labelled answers of every draft of the project', async () => {
+  it('measures the floor from the labelled answers of every draft, and a broken journal counts for nothing', async () => {
     dir = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-floor-'));
-    await draft('a', Array.from({ length: 12 }, (_, i) => ({ confidence: 0.99 - i * 0.005, docs: true })));
-    await draft('b', Array.from({ length: 8 }, (_, i) => ({ confidence: 0.92 - i * 0.005, docs: true })));
+    await measuring();
     await mkdir(path.join(dir, 'empty'));
-    expect(await answerFloor('measured', dir)).toBeCloseTo(0.885);
+    await mkdir(path.join(dir, 'torn'));
+    await writeFile(path.join(dir, 'torn', 'events.ndjson'), '{"seq":\n{"seq":2,"type":"QUESTION_ANSWERED"}\n');
+    expect(await answerFloor(cfg(), dir)).toBeCloseTo(0.86);
   });
 
-  it('stays off without enough labels, or when the band right above the floor fails', async () => {
+  it('stays off without enough labels, or for a Jev right only 86% of the time', async () => {
     dir = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-floor-'));
-    await draft('a', Array.from({ length: 19 }, (_, i) => ({ confidence: 0.99 - i * 0.005, docs: true })));
-    expect(await answerFloor('measured', dir)).toBeUndefined();
-    // 100 right and five wrong just below them: 95% overall, 50% near the floor.
-    await draft('b', [...Array.from({ length: 81 }, () => ({ confidence: 0.99, docs: true })), ...[0.9, 0.89, 0.88, 0.87, 0.86].map((confidence) => ({ confidence, docs: false }))]);
-    expect(await answerFloor('measured', dir)).toBeUndefined();
+    await draft('a', Array.from({ length: 24 }, (_, i) => ({ confidence: 0.99 - i * 0.005, docs: true })));
+    expect(await answerFloor(cfg(), dir)).toBeUndefined();
+    await rm(path.join(dir, 'a'), { recursive: true });
+    await draft('b', Array.from({ length: 100 }, (_, i) => ({ confidence: 0.99 - i * 0.001, docs: i % 7 !== 6 })));
+    expect(await answerFloor(cfg(), dir)).toBeUndefined();
   });
 
-  it('takes a fixed number or off from the config over the measurement, and survives a missing directory', async () => {
+  it('takes a fixed number or off over the measurement, answers nothing with the decision layer off, and survives a missing directory', async () => {
     dir = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-floor-'));
-    expect(await answerFloor(0.93, dir)).toBe(0.93);
-    expect(await answerFloor('off', dir)).toBeUndefined();
-    expect(await answerFloor('measured', path.join(dir, 'missing'))).toBeUndefined();
+    await measuring();
+    expect(await answerFloor(cfg(0.93), dir)).toBe(0.93);
+    expect(await answerFloor(cfg('off'), dir)).toBeUndefined();
+    expect(await answerFloor(cfg('measured', false), dir)).toBeUndefined();
+    expect(await answerFloor(cfg(), path.join(dir, 'missing'))).toBeUndefined();
+  });
+});
+
+describe('heldForOwner', () => {
+  it('keeps about one question in ten above the floor for the owner, always the same ones, so labels keep coming', () => {
+    const ids = Array.from({ length: 1000 }, (_, i) => `po-c${Math.floor(i / 20) + 1}-${i % 20}`);
+    const held = ids.filter(heldForOwner).length;
+    expect(held).toBeGreaterThan(70);
+    expect(held).toBeLessThan(130);
+    expect(ids.filter(heldForOwner)).toEqual(ids.filter(heldForOwner));
   });
 });
