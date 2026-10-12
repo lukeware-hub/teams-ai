@@ -1,6 +1,6 @@
 # Plan 83: security audit status, R7.3, R7.4 and R7.6 brought up to date
 
-Status: proposal. Nothing in ROADMAP.md, the audit or the spec was edited; the human approves first.
+Status: applied on 2026-10-12 to ROADMAP.md (R7.3, R7.4, R7.6 and the Stage 7b and 7c rows), the audit and spec section 14, with the human's approval. Section 4 stays as the list of real fix tasks.
 Checked on 2026-10-12 against the current code (branch `diego-dm-morais/feature`, commit 40e4232).
 
 Tests run (read-only): `npx vitest run` on `test/api/security.test.ts`, `auth.test.ts`, `run-index.test.ts`, `onboarding-api.test.ts`, `ops-routes.test.ts`, `test/runner/runner-security.test.ts`, `role-settings.test.ts`, `test/core/redact.test.ts`, `test/infra/compose.test.ts`, `test/supervisor/supervise.test.ts`: 10 files, 88 tests, all passing.

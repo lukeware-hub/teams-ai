@@ -1,6 +1,6 @@
 # System security audit (2026-10-04)
 
-Scope: the whole system, read for a Kubernetes deployment with all NetworkPolicies open (any pod, and anything that can reach the Service, can talk to any other pod). Read-only review; no source was changed. Only flaws traced to code that was read are reported; where a step depends on deployment configuration it is stated.
+Scope: the whole system, read for a Kubernetes deployment (since removed; the system is now one compose container plus a rootless `dind` sidecar) with all NetworkPolicies open (any pod, and anything that can reach the Service, can talk to any other pod). Read-only review; no source was changed. Only flaws traced to code that was read are reported; where a step depends on deployment configuration it is stated.
 
 Areas covered: `server/api`, `server/core`, `server/exec`, `server/git`, `server/runner`, `server/agents/registry.ts`, `server/config`, `web/src/components/Markdown.tsx` and the places that render URLs, `Dockerfile`, `docker-compose.yml`, `config.example.json`, spec section 14.
 
@@ -197,3 +197,11 @@ Fix: pin the base image by digest and the two global packages by exact version, 
 - **C1/H3:** absolute `Read` denies for the orchestrator's real HOME added. Still open: whether the sandbox confines reads outside
   the worktree (probe needs a `claude` login), the agent-readable credential copy, and `docker`/`gh` binaries on the agent PATH.
 - **Egress:** agent steps have no network restriction beyond the sandbox's Bash `allowedDomains` (human decision, accepted risk).
+
+## Status update 2026-10-12 (plan 83)
+
+Checked against the code of 2026-10-12; the per-finding evidence is in `plans/2026-10-12-teams-ai-83-security-audit-status.md`.
+
+- **Fixed (13):** H1, H2, M1, M2, M4, M5 and L1 to L7 (L7: spec section 14 rewritten the same day).
+- **Partly fixed (5):** C1 (credential copy readable, read confinement not proven on the real CLI), H3 (`gh` and `docker` on the agent PATH), H4 (`seccomp` and `apparmor` unconfined, nested daemon API without auth), M3 (`waitForRunJournal` returns an unredacted `ui.log` tail), M6 (helper images pinned by tag, not by digest).
+- **Moot:** the Kubernetes parts of the C1, H1 and H4 fixes.

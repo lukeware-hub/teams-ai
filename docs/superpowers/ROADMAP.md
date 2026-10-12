@@ -242,10 +242,10 @@ branch (768 passing, typecheck clean). Nothing below was applied to a cluster or
 | Id | Item | State | Open |
 |----|------|-------|------|
 | R7.2 | API auth, plan 15 (bearer `TEAMS_AI_UI_TOKEN`, HttpOnly cookie for SSE, web client prompt) | done, unit | no browser check |
-| R7.3 | Supervisor, plan 16 (`teams-ai supervise`) | done, unit | not run live; a run stopped, hand-resumed, then crashed is never auto-resumed |
-| R7.4 | System security audit (`docs/superpowers/security/2026-10-04-system-audit.md`) | done | 1 critical, 4 high, 6 medium, 7 low, none fixed yet |
+| R7.3 | Supervisor, plan 16 (`teams-ai supervise`) | done, unit | not run live; a hand resume lifts an earlier stop, so a crash after it is resumed (plan 24, `supervise.test.ts`); it watches one project and compose does not start it |
+| R7.4 | System security audit (`docs/superpowers/security/2026-10-04-system-audit.md`), status checked against the code on 2026-10-12 (plan 83) | done | 18 findings: 13 fixed (H1, H2, M1, M2, M4, M5, L1-L7), 5 partly (C1 credential copy readable and no real-CLI proof of read confinement, H3 `gh`/`docker` still on the agent PATH, H4 compose still runs `seccomp`/`apparmor` unconfined and the nested daemon API has no auth, M3 `waitForRunJournal` tail unredacted, M6 helper images not pinned by digest); the Kubernetes-only fixes are moot |
 | R7.5 | CI + pipeline e2e, plan 18 (`test/e2e/pipeline.e2e.test.ts`) | done | see the plan for the furthest milestone reached without Docker |
-| R7.6 | Ops: `/healthz`, `/metrics`, backup CronJob, runbooks (`docs/superpowers/ops/`) | done, unit | not run in a cluster |
+| R7.6 | Ops: `/healthz`, `/metrics` (unit tested) and a runbook (`docs/superpowers/ops/runbook.md`) | partly obsolete | the runbook and the backup CronJob were written for Kubernetes, which was removed; the runbook links three files that do not exist and there is no backup for the compose volumes (`teams-ai-data`, `teams-ai-claude`, `teams-ai-gh`, `dind-data`); compose health uses the image `HEALTHCHECK` on `/`, not `/healthz` |
 
 ### Stage 7b — Second workflow (2026-10-04): the code items, each with an independent reviewer
 
@@ -253,15 +253,15 @@ Five branches built, reviewed, merged and fixed (855 passing, typecheck clean). 
 
 | Item | What changed | Left |
 |------|--------------|------|
-| R7.4 runner (plan 20, audit C1/H3/M2) | Sandbox mandatory (two opt-ins to disable), per-step empty HOME with a copy of the credential only, nested-interpreter denies, worktree `.claude` settings ignored; a run now refuses an unsandboxed config before any phase | Probe `scripts/wsl/probes/p7-step-home.sh` on the real CLI (2026-10-04, $0.02): login works from an empty step HOME (A pass), and a worktree `.claude/settings.json` allowing `Bash(touch:*)` is not honored under `--setting-sources user` (B pass, the touch was denied). Still unverified: the wildcard deny syntax (`Bash(* gh *)`); the credential copy is still readable by the agent; the backend pod runs unsandboxed with both opt-ins until agent steps are their own pods |
-| R7.4 API (plan 21, H2/M1/M3–M5/L1–L6, plan 15 leftovers) | CSRF and clickjacking guards, clone-host allowlist, redaction fixes, shared SSE poller with a cap, security headers, configurable allowed Hosts | SSE idle timeouts; clone allowlist is `github.com` only by default; DNS-rebinding window on clone |
-| Orchestrator (plan 24) | Explicit `blocked` status in the Dev/DevOps output (no spec-gap rounds burned), supervisor stop-marker rule; a hand resume (`RUN_RESUMED {manual:true}`) now lifts a stop but never an exhausted budget | supervise CLI test covers argument validation only |
+| R7.4 runner (plan 20, audit C1/H3/M2) | Sandbox mandatory (two opt-ins to disable), per-step empty HOME with a copy of the credential only, nested-interpreter denies, worktree `.claude` settings ignored; a run now refuses an unsandboxed config before any phase | Probe `scripts/wsl/probes/p7-step-home.sh` on the real CLI (2026-10-04, $0.02): login works from an empty step HOME (A pass), and a worktree `.claude/settings.json` allowing `Bash(touch:*)` is not honored under `--setting-sources user` (B pass, the touch was denied). Still unverified: the wildcard deny syntax (`Bash(* gh *)`); the credential copy is still readable by the agent; the compose container runs sandboxed (no opt-in set); the `gh` and `docker` binaries are still on the agent PATH |
+| R7.4 API (plan 21, H2/M1/M3–M5/L1–L6, plan 15 leftovers) | CSRF and clickjacking guards, clone-host allowlist, redaction fixes, shared SSE poller with a cap, security headers, configurable allowed Hosts | clone allowlist is `github.com` only by default; DNS-rebinding window on clone (narrowed in plan 25, not closed); `waitForRunJournal` still returns an unredacted `ui.log` tail to the refine start route (M3) |
+| Orchestrator (plan 24) | Explicit `blocked` status in the Dev/DevOps output (no spec-gap rounds burned), supervisor stop-marker rule; a hand resume (`RUN_RESUMED {manual:true}`) now lifts a stop but never an exhausted budget | supervise is not run live |
 
 ### Stage 7c — Leftovers (2026-10-04, plans 25–27; 874 passing)
 
 - **SSE lifetime:** streams close after 30 min total or 10 min idle with `event: reconnect`; the client reconnects with `Last-Event-ID`. Timeouts are `ApiDeps` options, not yet read from the config file.
 - **Clone host check:** a host that does not resolve is now refused; the DNS-rebinding window (git resolves again at clone time) is narrowed, not closed (pinning the IP breaks TLS/SNI with plain git); see plan 25.
-- **Supervise CLI test:** the loop is tested through `main()` with injected index, liveness and spawner; `docker-compose.yml` no longer mounts the Docker socket or `/root` (not validated with `docker compose config`).
+- **Supervise CLI test:** the loop is tested through `main()` with injected index, liveness and spawner; `docker-compose.yml` no longer mounts the Docker socket or `/root`; `test/infra/compose.test.ts` now checks the compose file.
 
 ### Stage 7d — Gaps left open by Stage 8 and R2.2 (2026-10-04, plans 35–38; 981 root and 58 web tests passing)
 

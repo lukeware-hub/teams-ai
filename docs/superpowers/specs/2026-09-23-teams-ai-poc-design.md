@@ -504,11 +504,12 @@ Raw agent streams are stored per step in `runs/<runId>/steps/<stepId>.ndjson`. W
 
 ## 14. Security model
 
-- Agents run in the Claude Code sandbox in WSL2: filesystem limited to the working directory, network limited to an allowlist.
-- Agents have no GitHub token, no secrets and no cloud credentials in their environment; `gh`, `git push`, `docker` and `kubectl` are denied.
-- Gate commands run in disposable containers with resource limits; test gates run without network.
+- Agents run in the Claude Code sandbox (bubblewrap), which is mandatory; running without it needs both a config flag and an environment opt-in. The network access of Bash is limited to an allowlist; the sandbox does not limit other egress (accepted risk).
+- Each agent step runs with an empty home directory and an allowlisted environment, so it has no GitHub token and no secrets store; the only credential in it is a copy of the Claude login. `gh`, `git push`, `docker` and `kubectl` are denied by rules that match command text only, so the real protection is the empty home, not the rules.
+- Gate commands run in disposable containers with resource limits; test gates run without network. They run on a rootless Docker daemon in a separate container (`dind`); the host Docker socket is never mounted.
 - Secrets are stored outside workspaces and injected only into gate/deploy containers that need them; the UI never displays secret values.
-- Residual risk (documented, accepted for the POC): `gh` is authenticated for the WSL user; isolation relies on the sandbox and tool deny rules rather than on separate OS users.
+- The API requires a bearer token when it listens beyond loopback; in the compose setup the port is published on the host loopback only and the token is optional. State-changing requests must be JSON and same-origin, responses carry framing and content security headers, and clone sources are limited to an allowlist of hosts (default `github.com`).
+- Residual risk (accepted): the Claude login copy in each step home is readable by the agent; the `gh` and `docker` binaries are still on the agent path; the app container and the nested daemon run with `seccomp` and `apparmor` unconfined (needed by bubblewrap and rootless Docker); the nested Docker API has no authentication inside the compose network; isolation relies on the sandbox and the empty home, not on separate operating system users.
 
 ## 15. Prerequisites (host setup)
 
