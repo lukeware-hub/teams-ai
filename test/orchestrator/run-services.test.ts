@@ -177,6 +177,23 @@ describe('Run with a services plan', () => {
     await run.close();
   });
 
+  it('moves on when a resumed run finds its service workflows merged, even from a branch main does not contain', async () => {
+    const run = await Run.create(await deps());
+    const withScaffolds = { ...plan, tasks: [...plan.tasks, scaffold('orders'), scaffold('inventory')] };
+    expect(await run.executeWorkflows(withScaffolds)).toEqual({ ok: true });
+    // Live: a squash merge leaves the branch's own commit outside main, and the resumed process has no worktree for it.
+    for (const service of ['orders', 'inventory']) {
+      const repo = serviceWorkspace(ws, service).repo;
+      const worktree = (await git(repo, ['worktree', 'list', '--porcelain'])).split('\n').find((l) => l.startsWith('worktree ') && l.includes('workflows'));
+      if (worktree) await git(repo, ['worktree', 'remove', '--force', worktree.slice('worktree '.length)]);
+      const squashed = (await git(repo, ['commit-tree', 'origin/main^{tree}', '-p', 'origin/main', '-m', 'ci: workflows'])).trim();
+      await git(repo, ['branch', '-f', `docs/spec-001-${service}-workflows`, squashed]);
+    }
+    expect(await run.executeWorkflows(withScaffolds)).toEqual({ ok: true });
+    for (const service of ['orders', 'inventory']) expect(ghs.get(service)!.prs).toHaveLength(1);
+    await run.close();
+  });
+
   it("names the service whose workflows did not land", async () => {
     const inventory = serviceWorkspace(ws, 'inventory').repo;
     const refusing = new FakeExec().onArgs('gh', ['pr', 'merge'], () => ({ exitCode: 1, stderr: 'merge blocked by a branch rule' }));

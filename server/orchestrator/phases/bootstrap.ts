@@ -182,6 +182,8 @@ async function listFiles(dir: string, rel = ''): Promise<string[]> {
 export async function runWorkflowBootstrap(deps: PhaseDeps, plan: Plan): Promise<PhaseResult> {
   const { journal, spec } = deps;
   const branch = `docs/${spec.specId}${deps.service ? `-${deps.service}` : ''}-workflows`;
+  // Already merged: a squash merge leaves the branch's commit outside main, so a new worktree on it would be refused.
+  if (journal.events.some((e) => e.type === OrchEvent.DocsMerged && e.data.phase === 7 && e.data.branch === branch)) return { ok: true };
   const resumed = journal.isConfirmed(Intent.DocsCommit, docsCommitKey(deps, 7));
   const wt = await docsWorktree(deps, branch, { keepCommits: resumed });
   if (!resumed) {
