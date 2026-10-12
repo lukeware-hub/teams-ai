@@ -28,6 +28,10 @@ describe('agent prompts for a project of services (R12.6)', () => {
     expect(agent('dev')).toContain('A command Bash refuses never makes a task blocked');
   });
 
+  it('tell the Dev how to resolve the conflict markers of a task the orchestrator moved onto main', () => {
+    expect(agent('dev')).toContain('When the feedback says the orchestrator moved the task onto origin/main');
+  });
+
   it('tell devops, Test and the PO what a service, its suites and the platform are', () => {
     const devops = agent('devops');
     expect(devops).toContain('named exactly like the service');
