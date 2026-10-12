@@ -93,7 +93,8 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
   };
   const cloneProject = deps.cloneProject ?? (async (url, destination) => {
     await fs.mkdir(path.dirname(destination), { recursive: true });
-    const git = withGitAuth(execCommand, secretsDirOf(await deps.cfg()));
+    // The token only travels over https.
+    const git = url.startsWith('https:') ? withGitAuth(execCommand, secretsDirOf(await deps.cfg())) : execCommand;
     const result = await git({ bin: 'git', args: ['-c', 'http.followRedirects=false', 'clone', '--depth', '1', '--', url, destination], cwd: path.dirname(destination), env: { GIT_TERMINAL_PROMPT: '0' }, timeoutMs: 120_000 });
     if (result.exitCode !== 0) {
       deps.log?.(`clone failed: ${redactSecrets(result.stderr.trim(), await loadSecretValues(secretsDirOf(await deps.cfg())))}`);
