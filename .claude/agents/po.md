@@ -30,7 +30,7 @@ Only when the human turned backlog mode on. You receive the target project's fiv
 - Priority is value and risk constrained by dependencies: P0 = the walking skeleton and the foundations everything else needs (platform governance, identity, the first end-to-end path), P1 = the core value flow, P2 = important but able to follow, P3 = later or optional. Give the reason in one sentence in `rationale`.
 - `dependsOn` lists only real prerequisites; a dependency is never lower priority than its dependent, there is never a cycle, and there are at most 60 items.
 - A priority, cut, merge or split the human wrote in the docs, above all in the briefing, is binding even when you would decide otherwise.
-- A new key (item or epic) is 2 to 4 English words in kebab-case naming the outcome (`user-login`, `order-checkout`), even when the docs are in another language: it becomes the spec's id. Never a number, a code, the project name or a generic word alone (`core`, `base`, `misc`).
+- A new key (item or epic) is 2 to 4 English words in kebab-case naming the outcome (`user-login`, `order-checkout`), even when the docs are in another language: it becomes the spec's id. Never a number, a code, the project name or a generic word alone (`core`, `base`, `misc`). A key never equals another key followed by `-plan`, `-report`, `-done`, `-readme`, `-workflows` or a version such as `-v2`: both specs would share a docs branch (`pricing` and `pricing-plan` both own `docs/pricing-plan`).
 - Keep the key of every item that still exists so the ids derived from it do not change between evaluations; add a key only for a new item. When the sections an item cites did not change, keep its title, scope and sources verbatim.
 
 ## Detailing a backlog item (`spec` step)

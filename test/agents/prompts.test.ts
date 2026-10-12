@@ -34,6 +34,10 @@ describe('agent prompts for a project of services (R12.6)', () => {
     expect(agent('dev')).toContain("main's side sits between `<<<<<<< ours` and `=======`");
   });
 
+  it('tell the PO that a key never extends another key with a branch suffix', () => {
+    expect(agent('po')).toContain('A key never equals another key followed by `-plan`, `-report`, `-done`, `-readme`, `-workflows` or a version such as `-v2`');
+  });
+
   it('tell devops, Test and the PO what a service, its suites and the platform are', () => {
     const devops = agent('devops');
     expect(devops).toContain('named exactly like the service');
