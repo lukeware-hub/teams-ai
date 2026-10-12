@@ -11,6 +11,8 @@ services:
     depends_on:
       dind:
         condition: service_healthy
+      goproxy:
+        condition: service_healthy
     ports:
       # Loopback by default; the LAN needs TEAMS_AI_UI_BIND=0.0.0.0 and a TEAMS_AI_UI_TOKEN (both in .env, which git ignores).
       - '${TEAMS_AI_UI_BIND:-127.0.0.1}:8787:8787'
@@ -22,6 +24,7 @@ services:
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       DOCKER_HOST: tcp://dind:2375
+      TEAMS_AI_GO_PROXY: http://goproxy:8080
     # The bwrap sandbox of each agent step needs user namespaces and a fresh /proc mount, which Docker's default profiles and masked paths block.
     security_opt:
       - seccomp:unconfined
@@ -33,6 +36,23 @@ services:
       - teams-ai-data:/home/node/.teams-ai
       - teams-ai-claude:/home/node/.claude
       - teams-ai-gh:/home/node/.config/gh
+
+  # The Go module proxy of the agent sandboxes: proxy.golang.org redirects larger zips to storage.googleapis.com, which a
+  # sandbox must never reach, so this service follows the redirect and a Go step reaches only it (server/runner/go-proxy.ts).
+  goproxy:
+    build: .
+    image: teams-ai:local
+    init: true
+    command: ['npx', 'tsx', '--no-warnings=ExperimentalWarning', 'server/runner/go-proxy.ts']
+    cap_drop:
+      - ALL
+    expose:
+      - '8080'
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:8080/').then((r)=>process.exit(r.status===404?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   dind:
     image: docker:27-dind-rootless

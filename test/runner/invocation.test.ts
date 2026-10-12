@@ -104,6 +104,12 @@ describe('buildInvocation', () => {
     expect(inv.args.indexOf('--agents')).toBeGreaterThan(inv.args.indexOf('--agent'));
   });
 
+  it("points a step's go command at the platform's module proxy when the platform runs one", () => {
+    const step = { ...base, home: '/home/u/.teams-ai/runs/r1/home' };
+    expect(buildInvocation(step, { ...hostEnv, TEAMS_AI_GO_PROXY: 'http://goproxy:8080' }).env.GOPROXY).toBe('http://goproxy:8080');
+    expect(buildInvocation(step, hostEnv).env).not.toHaveProperty('GOPROXY');
+  });
+
   it('sets the fixed step environment on top of the allowlisted host variables', () => {
     const env = buildInvocation(base, hostEnv).env;
     expect(env).toMatchObject({ CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS: '1', CLAUDE_CODE_DISABLE_ATTACHMENTS: '1', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', DISABLE_AUTOUPDATER: '1', CLAUDE_CODE_MAX_RETRIES: '5' });

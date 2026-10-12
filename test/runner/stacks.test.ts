@@ -6,10 +6,11 @@ import { STACK_BASH, UNCOMMITTED_BUILD_DIRS, copyCargoRoot, stackDomains, stackE
 
 describe('stacks', () => {
   it('reaches only the registries of the run stack, plus npm', () => {
-    // proxy.golang.org answers a larger module zip with a redirect to storage.googleapis.com (live: klauspost/compress, which nats.go needs).
-    expect(stackDomains('go')).toEqual(['registry.npmjs.org', 'proxy.golang.org', 'sum.golang.org', 'storage.googleapis.com']);
-    expect(stackDomains('node')).toEqual(['registry.npmjs.org']);
-    expect(stackDomains('python')).not.toContain('storage.googleapis.com');
+    expect(stackDomains('go', null)).toEqual(['registry.npmjs.org', 'proxy.golang.org', 'sum.golang.org']);
+    // Behind the platform's module proxy a Go step reaches only it and the checksum database, never storage.googleapis.com,
+    // where proxy.golang.org redirects larger zips (any bucket there would be a way out for data).
+    expect(stackDomains('go', 'http://goproxy:8080')).toEqual(['registry.npmjs.org', 'goproxy', 'sum.golang.org']);
+    expect(stackDomains('node', 'http://goproxy:8080')).toEqual(['registry.npmjs.org']);
     expect(stackDomains('other')).toEqual(['registry.npmjs.org']);
     expect(stackDomains('python')).not.toContain('crates.io');
   });

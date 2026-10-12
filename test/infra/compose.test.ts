@@ -22,6 +22,16 @@ describe('docker-compose.yml (audit H4)', () => {
     expect(platform.depends_on.dind.condition).toBe('service_healthy');
   });
 
+  it("runs the agent sandboxes' Go module proxy as its own service, publishing nothing, and points the orchestrator at it", () => {
+    const goproxy = compose.services.goproxy;
+    expect(goproxy.command.join(' ')).toContain('server/runner/go-proxy.ts');
+    expect(goproxy.expose).toEqual(['8080']);
+    expect(goproxy.ports).toBeUndefined();
+    expect(goproxy.cap_drop).toEqual(['ALL']);
+    expect(platform.environment.TEAMS_AI_GO_PROXY).toBe('http://goproxy:8080');
+    expect(platform.depends_on.goproxy.condition).toBe('service_healthy');
+  });
+
   it('publishes only the deployed-service port range, on the host loopback, and never the Docker API', () => {
     expect(dind.ports).toEqual(['127.0.0.1:20000-20099:20000-20099', '127.0.0.1:3000-3019:3000-3019']);
     expect(JSON.stringify(dind.ports)).not.toContain('2375');

@@ -5,15 +5,18 @@ import path from 'node:path';
 const REGISTRIES: Record<StackKind, readonly string[]> = {
   node: [],
   python: ['pypi.org', 'files.pythonhosted.org'],
-  // proxy.golang.org redirects a larger module zip to storage.googleapis.com; without it such a dependency never downloads.
-  go: ['proxy.golang.org', 'sum.golang.org', 'storage.googleapis.com'],
+  go: ['proxy.golang.org', 'sum.golang.org'],
   rust: ['crates.io', 'index.crates.io', 'static.crates.io'],
   other: [],
 };
 
+/** The Go module proxy the platform runs for agent sandboxes (the goproxy service, runner/go-proxy.ts); null outside the platform. */
+export const goProxyUrl = (env: Record<string, string | undefined> = process.env): string | null => env.TEAMS_AI_GO_PROXY?.trim() || null;
+
 /** The registries a step's sandbox may reach: only those of the run's stack (least privilege). */
-export function stackDomains(kind: StackKind): string[] {
-  return ['registry.npmjs.org', ...REGISTRIES[kind]];
+export function stackDomains(kind: StackKind, goProxy: string | null = goProxyUrl()): string[] {
+  // Behind the platform's module proxy a Go step reaches only it and the checksum database, never the storage it redirects to.
+  return ['registry.npmjs.org', ...(kind === 'go' && goProxy ? [new URL(goProxy).hostname, 'sum.golang.org'] : REGISTRIES[kind])];
 }
 
 /** Toolchain commands a Dev or Test may run besides npm and node (Python goes through the virtualenv in `.tools/venv`). */
