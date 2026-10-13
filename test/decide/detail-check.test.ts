@@ -71,4 +71,19 @@ describe('detail-check', () => {
     expect(state.indexOf('### stack.md')).toBeLessThan(state.indexOf('### project.md'));
     expect(await preplanFlags({ preplan, projectMd: '', stackMd: '' }, fakeDecider(() => null) as never, ctx)).toEqual([]);
   });
+
+  it('reads a long stack.md whole, in windows that each carry the pre-plan, and flags when any window flags', async () => {
+    const preplan = { modules: [{ name: 'agenda', purpose: 'agenda' }], tasks: [{ id: 'P1', title: 'Usar o relógio do banco', module: 'agenda', owner: 'dev' as const, criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] };
+    const stackMd = [...Array.from({ length: 3_000 }, (_, n) => `Decisão ${n}: o serviço segue a regra técnica ${n}.`), 'O horário vem do relógio do banco.'].join('\n');
+    const d = fakeDecider((state) => (state.includes('O horário vem do relógio do banco') ? 0.9 : 0.1));
+    const issues = await preplanFlags({ preplan, projectMd: '# Projeto\n\nTexto do projeto.', stackMd }, d as never, ctx);
+    expect(d.calls.length).toBeGreaterThan(2);
+    expect(d.calls.every((c) => c.id === 'preplan-tech-decisions' && c.state.length <= MAX_STATE_CHARS && c.state.startsWith('pre-plan:'))).toBe(true);
+    // Every line of both docs reaches the Jev in some window.
+    const seen = d.calls.map((c) => c.state).join('\n');
+    expect(stackMd.split('\n').every((line) => seen.includes(line))).toBe(true);
+    expect(seen).toContain('Texto do projeto.');
+    expect(issues).toHaveLength(1);
+    expect(await preplanFlags({ preplan, projectMd: '', stackMd }, fakeDecider(() => 0.1) as never, ctx)).toEqual([]);
+  });
 });

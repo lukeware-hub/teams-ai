@@ -1,4 +1,5 @@
 import { redactSecrets } from '../core/redact.js';
+import { splitSections } from '../decide/windows.js';
 import { JevOpenRouterBackend } from '../decide/jev-openrouter.js';
 import type { Config } from '../config/config.js';
 
@@ -71,21 +72,8 @@ export function summarizeJevChecks(checks: Record<string, number>, model: string
 }
 
 /** The documents cut at line breaks into windows of at most `max` characters; a window that starts mid-document says which one. */
-export function splitWindows(docs: ValidationDocs, max: number): string[] {
-  const windows: string[] = [];
-  let current = '';
-  for (const name of ['project', 'briefing', 'stack', 'flow', 'design'] as const) {
-    const lines = [`${name}.md:`, ...docs[name].split('\n').flatMap((line) => line.match(new RegExp(`[^]{1,${max - 100}}`, 'g')) ?? [''])];
-    lines.forEach((line, i) => {
-      if (current.length + line.length + 1 > max) {
-        windows.push(current);
-        current = '';
-      }
-      current += `${current === '' && i > 0 ? `${name}.md (continued):\n` : ''}${line}\n`;
-    });
-  }
-  return current === '' ? windows : [...windows, current];
-}
+export const splitWindows = (docs: ValidationDocs, max: number): string[] =>
+  splitSections((['project', 'briefing', 'stack', 'flow', 'design'] as const).map((name) => ({ title: `${name}.md`, text: docs[name] })), max);
 
 const unavailable = (): JevValidationResult => ({ available: false, decision: 'review', consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false });
 

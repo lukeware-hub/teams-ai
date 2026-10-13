@@ -2,6 +2,7 @@ import type { Preplan } from '../../contracts/preplan.js';
 import type { AcceptanceCriterion, Spec } from '../../contracts/spec.js';
 import { MAX_STATE_CHARS, type DecideContext, type Decider } from '../decider.js';
 import type { DecisionId } from '../types.js';
+import { splitSections } from '../windows.js';
 import { noul } from './gate1.js';
 
 /**
@@ -79,8 +80,13 @@ export interface PreplanCheck {
 /** The issue for the SM's retry, in Brazilian Portuguese; empty when the Jev flags nothing or does not answer. */
 export async function preplanFlags({ preplan, projectMd, stackMd }: PreplanCheck, decider: Decide, ctx: DecideContext): Promise<string[]> {
   const { modules, tasks, risks } = preplan;
-  // The pre-plan first and project.md last: a state cut at the cap loses the end of project.md, which can only hide a contradiction.
-  const state = ['pre-plan:', JSON.stringify({ modules, tasks, risks }, null, 2), '### stack.md', stackMd, '### project.md', projectMd].join('\n\n');
-  if (!(await flagged(decider, state, PROJECT, ctx))) return [];
+  const head = ['pre-plan:', JSON.stringify({ modules, tasks, risks }, null, 2)].join('\n\n');
+  const whole = [head, '### stack.md', stackMd, '### project.md', projectMd].join('\n\n');
+  // Docs past the cap are cut into windows that each carry the pre-plan, so a long stack.md is read whole, not cut at the cap.
+  const room = MAX_STATE_CHARS - head.length - 100;
+  const states = whole.length <= MAX_STATE_CHARS || room < 2_000
+    ? [whole]
+    : splitSections([{ title: 'stack.md', text: stackMd }, { title: 'project.md', text: projectMd }], room).map((window) => `${head}\n\n${window}`);
+  if (!(await Promise.all(states.map((state) => flagged(decider, state, PROJECT, ctx)))).some(Boolean)) return [];
   return [`${JEV} esta tentativa do pré-plano contradiz uma decisão técnica do stack.md ou do project.md; ela tinha os módulos "${modules.map((m) => m.name).join('; ')}" e as tarefas "${tasks.map((t) => `${t.id} ${t.title}`).join('; ')}": siga essas decisões e mantenha o que já as segue`];
 }
