@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { runApi, type AcceptanceCriterion, type Report, type RunDetail, type ServiceStatus } from '../api.js';
+import { ActionButton } from '../components/ActionButton.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
@@ -68,16 +69,14 @@ const openLink = (href: string, testId: string, text: string, primary: boolean, 
   </a>
 );
 const recheckButton = (checking: boolean, onRecheck: () => void) => (
-  <button type="button" className="link-button min-h-8 px-[0.65rem] text-[0.8125rem]" data-testid="recheck-service" onClick={onRecheck} disabled={checking}>
+  <ActionButton className="link-button min-h-8 px-[0.65rem] text-[0.8125rem]" data-testid="recheck-service" onClick={onRecheck} busy={checking} icon={<Icon name="refresh" size={14} />}>
     Verificar de novo
-    <Icon name="refresh" size={14} />
-  </button>
+  </ActionButton>
 );
-const startButton = (starting: boolean, canStart: boolean, onStart: () => void, [idle, busy]: readonly [string, string]) => (
-  <button type="button" className="primary-button" data-testid="start-service" disabled={starting || !canStart} onClick={onStart}>
+const startButton = (starting: boolean, canStart: boolean, onStart: () => unknown, [idle, busy]: readonly [string, string]) => (
+  <ActionButton className="primary-button" data-testid="start-service" busy={starting} disabled={!canStart} onClick={onStart} icon={<Icon name="play" size={16} />}>
     {starting ? busy : idle}
-    <Icon name="play" size={16} />
-  </button>
+  </ActionButton>
 );
 // Service status and the buttons that open or start it.
 const SERVICE = {
@@ -85,7 +84,7 @@ const SERVICE = {
   status: 'flex flex-wrap items-center justify-between gap-x-4 gap-y-2',
   actions: 'flex flex-wrap gap-2 empty:hidden',
 };
-interface ControlProps { status: ServiceStatus | null; starting: boolean; canStart: boolean; onStart: () => void; onRecheck: () => void }
+interface ControlProps { status: ServiceStatus | null; starting: boolean; canStart: boolean; onStart: () => unknown; onRecheck: () => void }
 
 const appLabel = (docsUrl: string | null, kind?: string) => (docsUrl || kind === 'front' ? 'Abrir aplicação' : 'Abrir serviço');
 
@@ -171,13 +170,13 @@ interface ServiceProps {
   /** null until the first check answers. */
   serviceStatus?: ServiceStatus | null;
   startingService?: boolean;
-  onStartService?: () => void;
+  onStartService?: () => unknown;
   onRecheckService?: () => void;
   /** The run completing the spec, while it goes. */
   completing?: string | null;
 }
 
-export function ValidationView({ detail, specStatus, actionError = null, serviceStatus = null, startingService = false, onStartService = () => undefined, onRecheckService = () => undefined, completing = null, onReport, onComplete }: { detail: RunDetail; specStatus: string; actionError?: string | null; onReport: (text: string) => void; onComplete: () => void } & ServiceProps) {
+export function ValidationView({ detail, specStatus, actionError = null, serviceStatus = null, startingService = false, onStartService = () => undefined, onRecheckService = () => undefined, completing = null, onReport, onComplete }: { detail: RunDetail; specStatus: string; actionError?: string | null; onReport: (text: string) => unknown; onComplete: () => unknown } & ServiceProps) {
   const [checks, setChecks] = useState<Record<string, boolean>>(() => readChecks(detail.runId));
   const [text, setText] = useState('');
   const report: Report | null = detail.report;
@@ -427,14 +426,12 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                   {actionError ? <p data-testid="action-error" className={`error ${RUN_UI.asideNote}`}>{actionError}</p> : null}
                   <textarea className="m-0 mt-1 mb-[0.9rem] w-full resize-y px-[0.8rem] py-[0.65rem] text-[0.875rem] leading-normal disabled:cursor-not-allowed disabled:bg-surface-muted" data-testid="problem-text" aria-label="Descrição do problema" rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder="O que deu errado? O refinamento será reaberto com este relato." disabled={!enabled} />
                   <div className="grid gap-2 [&_button]:w-full">
-                    <button className="primary-button" data-testid="complete-spec" disabled={!enabled} onClick={onComplete}>
+                    <ActionButton className="primary-button" data-testid="complete-spec" busy={!!completing} disabled={!enabled} onClick={onComplete} icon={<Icon name="check" size={16} />}>
                       {completing ? 'Concluindo…' : 'Concluir especificação'}
-                      <Icon name="check" size={16} />
-                    </button>
-                    <button className="secondary" data-testid="report-problem" disabled={!enabled || text.trim() === ''} onClick={() => onReport(text.trim())}>
+                    </ActionButton>
+                    <ActionButton className="secondary" data-testid="report-problem" disabled={!enabled || text.trim() === ''} onClick={() => onReport(text.trim())} icon={<Icon name="alert" size={16} />}>
                       Relatar problema
-                      <Icon name="alert" size={16} />
-                    </button>
+                    </ActionButton>
                   </div>
                 </section>
                 {report ? (
@@ -484,10 +481,10 @@ function ValidationRun({ runId }: { runId: string }) {
   const [completion, setCompletion] = useState<string | null>(null); // the run that completes the spec, followed until it ends
   const inFlight = useRef(false); // a double click must send one request, not two (the second would 409 and mask the first's success)
   const guarded = (call: () => Promise<void>) => {
-    if (inFlight.current) return;
+    if (inFlight.current) return Promise.resolve();
     inFlight.current = true;
     setActionError(null);
-    call().catch((e: Error) => setActionError(e.message)).finally(() => { inFlight.current = false; });
+    return call().catch((e: Error) => setActionError(e.message)).finally(() => { inFlight.current = false; });
   };
   const load = async () => {
     const d = await runApi.run(runId);

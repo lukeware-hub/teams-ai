@@ -12,7 +12,7 @@ export function ProgramPage() {
   const [error, setError] = useState<string | null>(null);
   const prioritize = (itemSpecId: string) => {
     setError(null);
-    refineApi.prioritize(projectId, specId, itemSpecId).then((r) => setProgram(r.program), (e: Error) => setError(e.message));
+    return refineApi.prioritize(projectId, specId, itemSpecId).then((r) => setProgram(r.program), (e: Error) => setError(e.message));
   };
   return (
     <main className="flex flex-col gap-5">

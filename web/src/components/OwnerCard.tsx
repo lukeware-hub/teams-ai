@@ -1,18 +1,23 @@
 import { useEffect, useState } from 'react';
 import { api, type Item } from '../api.js';
+import { ActionButton } from './ActionButton.js';
 import { Icon } from './Icons.js';
 import { ItemCard } from './ItemCard.js';
 
 export function OwnerCard({ organizations, initialOwner, loading, loadError, item, onSaved }: { organizations: string[]; initialOwner: string | null; loading: boolean; loadError: string | null; item: Item | null; onSaved: (item: Item) => void }) {
   const [owner, setOwner] = useState(initialOwner ?? '');
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   useEffect(() => setOwner(initialOwner ?? ''), [initialOwner]);
   const save = async () => {
     setError(null);
+    setSaving(true);
     try {
       onSaved((await api.owner(owner)).item);
     } catch {
       setError('Não foi possível salvar a organização. Tente novamente.');
+    } finally {
+      setSaving(false);
     }
   };
   return (
@@ -28,10 +33,9 @@ export function OwnerCard({ organizations, initialOwner, loading, loadError, ite
           <option value="">{loading ? 'Carregando organizações…' : organizations.length === 0 ? 'Nenhuma organização encontrada' : 'Selecione uma organização'}</option>
           {organizations.map((organization) => <option key={organization} value={organization}>{organization}</option>)}
         </select>
-        <button type="submit" className="primary-button max-md:w-full" disabled={loading || owner.trim() === ''}>
+        <ActionButton type="submit" className="primary-button max-md:w-full" busy={saving} disabled={loading || owner.trim() === ''} icon={<Icon name="check" size={16} />}>
           Salvar e verificar
-          <Icon name="check" size={16} />
-        </button>
+        </ActionButton>
       </form>
       {loadError ? <p className="error">{loadError}</p> : null}
       {!loading && !loadError && organizations.length === 0 ? <p className="error">Nenhuma organização foi encontrada para esta conta do GitHub.</p> : null}

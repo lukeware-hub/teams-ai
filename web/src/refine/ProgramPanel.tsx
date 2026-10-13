@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { refineApi, runApi, type ProgramView, type RefineState } from '../api.js';
+import { ActionButton } from '../components/ActionButton.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { phaseTitle } from '../run/selectors.js';
@@ -96,7 +97,7 @@ export function ProgramStatus({ program, titles, phases, link }: { program: Prog
 }
 
 /** Every spec of the backlog in run order: its rank, title and run, where it stands, what it cost and what can be done. */
-export function ProgramPanel({ program, titles, onPrioritize }: { program: ProgramView; titles: Record<string, string>; onPrioritize?: (specId: string) => void }) {
+export function ProgramPanel({ program, titles, onPrioritize }: { program: ProgramView; titles: Record<string, string>; onPrioritize?: (specId: string) => unknown }) {
   const done = program.items.filter((i) => i.status === 'done').length;
   const totalCost = program.items.reduce((sum, i) => sum + (i.costUsd ?? 0), 0);
   return (
@@ -128,8 +129,8 @@ export function ProgramPanel({ program, titles, onPrioritize }: { program: Progr
                 {i.costUsd != null ? <span data-testid={`program-item-cost-${i.key}`}>{fmtCost(i.costUsd)}</span> : <span className="text-ink-faint" aria-hidden="true">—</span>}
               </span>
               <span className="flex lg:justify-self-end">
-                {i.status === 'pending' && (i.priority ? <span className="status-chip tone-neutral">prioritária</span> : onPrioritize && <button type="button" className={action.secondary} onClick={() => onPrioritize(i.specId)}>Executar agora<Icon name="play" size={14} /></button>)}
-                {i.status === 'failed' && onPrioritize && <button type="button" className={action.secondary} onClick={() => onPrioritize(i.specId)}>Tentar de novo<Icon name="refresh" size={14} /></button>}
+                {i.status === 'pending' && (i.priority ? <span className="status-chip tone-neutral">prioritária</span> : onPrioritize && <ActionButton className={action.secondary} onClick={() => onPrioritize(i.specId)} icon={<Icon name="play" size={14} />}>Executar agora</ActionButton>)}
+                {i.status === 'failed' && onPrioritize && <ActionButton className={action.secondary} onClick={() => onPrioritize(i.specId)} icon={<Icon name="refresh" size={14} />}>Tentar de novo</ActionButton>}
               </span>
             </div>
           </li>

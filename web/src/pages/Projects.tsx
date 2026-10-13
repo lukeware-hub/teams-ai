@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { refineApi, runApi, type DraftRow, type NameRequest, type NameSuggestion, type ProjectRow } from '../api.js';
+import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
@@ -56,17 +57,18 @@ export function ProjectsView(p: {
   loading?: boolean;
   error: string | null;
   deleteError?: { projectId: string; specId: string; message: string } | null;
-  onAdd: (dir: string) => void;
-  onNewProject: (projectId: string, name: string, description: string, firstSpecId: string) => void;
+  onAdd: (dir: string) => void | Promise<void>;
+  onNewProject: (projectId: string, name: string, description: string, firstSpecId: string) => void | Promise<void>;
   onSuggestName?: (input: NameRequest) => Promise<NameSuggestion>;
-  onDeleteDraft: (projectId: string, specId: string) => void;
-  onDeleteProject: (projectId: string) => void;
+  onDeleteDraft: (projectId: string, specId: string) => void | Promise<void>;
+  onDeleteProject: (projectId: string) => void | Promise<void>;
 }) {
   const [repoUrl, setRepoUrl] = useState('');
   const [newProjectId, setNewProjectId] = useState('');
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDescription, setNewProjectDescription] = useState('');
   const [firstSpecId, setFirstSpecId] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
   const suggest = async () => {
@@ -120,7 +122,8 @@ export function ProjectsView(p: {
           aria-labelledby="new-project-title"
           onSubmit={(e) => {
             e.preventDefault();
-            p.onNewProject(newProjectId, newProjectName, newProjectDescription, firstSpecId);
+            setSubmitting(true);
+            void Promise.resolve(p.onNewProject(newProjectId, newProjectName, newProjectDescription, firstSpecId)).finally(() => setSubmitting(false));
           }}
         >
           <div>
@@ -133,10 +136,9 @@ export function ProjectsView(p: {
           </div>
           {p.onSuggestName ? (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[0.8125rem] text-ink-soft">
-              <button type="button" className="secondary" data-testid="suggest-project-id" disabled={suggesting || (newProjectName.trim() === '' && newProjectDescription.trim() === '')} onClick={() => void suggest()}>
+              <ActionButton className="secondary" data-testid="suggest-project-id" busy={suggesting} disabled={newProjectName.trim() === '' && newProjectDescription.trim() === ''} onClick={suggest} icon={<Icon name="lightbulb" size={16} />}>
                 {suggesting ? 'Sugerindo…' : 'Sugerir ID com IA'}
-                <Icon name="lightbulb" size={16} />
-              </button>
+              </ActionButton>
               {firstSpecId ? <span data-testid="first-spec-id">Primeira spec: <code>{firstSpecId}</code></span> : null}
               {suggestError ? <span className="error" role="alert">{suggestError}</span> : null}
             </div>
@@ -146,7 +148,7 @@ export function ProjectsView(p: {
             <textarea className="w-full min-w-0 resize-y" data-testid="new-project-description" rows={5} value={newProjectDescription} onChange={(e) => setNewProjectDescription(e.target.value)} placeholder="O que é, para quem serve, o que precisa fazer e o que fica de fora." />
           </label>
           <div className="flex justify-end">
-            <button data-testid="new-project" className="primary-button" type="submit" disabled={newProjectId.trim() === '' || newProjectName.trim() === ''}>Criar projeto<Icon name="plus" size={16} /></button>
+            <ActionButton data-testid="new-project" className="primary-button" type="submit" busy={submitting} disabled={newProjectId.trim() === '' || newProjectName.trim() === ''} icon={<Icon name="plus" size={16} />}>Criar projeto</ActionButton>
           </div>
         </form>
       ) : null}
@@ -157,7 +159,8 @@ export function ProjectsView(p: {
           aria-labelledby="import-project-title"
           onSubmit={(e) => {
             e.preventDefault();
-            p.onAdd(repoUrl);
+            setSubmitting(true);
+            void Promise.resolve(p.onAdd(repoUrl)).finally(() => setSubmitting(false));
           }}
         >
           <div>
@@ -166,10 +169,9 @@ export function ProjectsView(p: {
           </div>
           <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
             <label className={field}><span className={fieldLabel}>URL do repositório</span><input className="w-full min-w-0" type="url" autoFocus value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder="https://github.com/sua-org/seu-projeto.git" /></label>
-            <button className="primary-button max-md:w-full" type="submit" disabled={repoUrl.trim() === ''}>
+            <ActionButton className="primary-button max-md:w-full" type="submit" busy={submitting} disabled={repoUrl.trim() === ''} icon={<Icon name="download" size={16} />}>
               Baixar e adicionar
-              <Icon name="download" size={16} />
-            </button>
+            </ActionButton>
           </div>
         </form>
       ) : null}
@@ -269,8 +271,8 @@ export function ProjectsView(p: {
           subject={`${pendingDeleteDraft.projectId} / ${pendingDeleteDraft.specId}`}
           confirmLabel="Excluir"
           onCancel={() => setPendingDeleteDraft(null)}
-          onConfirm={() => {
-            p.onDeleteDraft(pendingDeleteDraft.projectId, pendingDeleteDraft.specId);
+          onConfirm={async () => {
+            await p.onDeleteDraft(pendingDeleteDraft.projectId, pendingDeleteDraft.specId);
             setPendingDeleteDraft(null);
           }}
         >
@@ -283,8 +285,8 @@ export function ProjectsView(p: {
           subject={pendingDeleteProject.name || pendingDeleteProject.projectId}
           confirmLabel="Excluir projeto"
           onCancel={() => setPendingDeleteProject(null)}
-          onConfirm={() => {
-            p.onDeleteProject(pendingDeleteProject.projectId);
+          onConfirm={async () => {
+            await p.onDeleteProject(pendingDeleteProject.projectId);
             setPendingDeleteProject(null);
           }}
         >
@@ -343,11 +345,11 @@ export function Projects() {
       drafts={drafts}
       loading={loading}
       error={error}
-      onAdd={(d) => void act(() => runApi.addProject(d))()}
-      onNewProject={(id, name, description, firstSpecId) => void go(() => refineApi.newProject(id, name, description, firstSpecId))()}
+      onAdd={(d) => act(() => runApi.addProject(d))()}
+      onNewProject={(id, name, description, firstSpecId) => go(() => refineApi.newProject(id, name, description, firstSpecId))()}
       onSuggestName={refineApi.suggestName}
       deleteError={deleteError}
-      onDeleteDraft={(p, s) => void (async () => {
+      onDeleteDraft={(p, s) => (async () => {
         setDeleteError(null);
         try {
           await refineApi.delete(p, s);
@@ -356,7 +358,7 @@ export function Projects() {
         }
         await refresh();
       })()}
-      onDeleteProject={(projectId) => void act(() => runApi.deleteProject(projectId))()}
+      onDeleteProject={(projectId) => act(() => runApi.deleteProject(projectId))()}
     />
   );
 }

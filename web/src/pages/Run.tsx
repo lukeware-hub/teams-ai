@@ -2,6 +2,7 @@ import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { parseRunId } from '@server/core/ids';
 import { runApi, startedPath, type RunDetail, type StoredEvent } from '../api.js';
+import { ActionButton } from '../components/ActionButton.js';
 import { Dialog } from '../components/Dialog.js';
 import { Icon, type IconName } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
@@ -599,16 +600,14 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
         </div>
         <div className={RUN_UI.actions}>
           {resumeAction && !detail.locked && RESUMABLE.has(status) ? (
-            <button type="button" className={`primary-button ${RUN_UI.action}`} data-testid="resume" disabled={resumeAction.busy} onClick={resumeAction.onResume}>
+            <ActionButton className={`primary-button ${RUN_UI.action}`} data-testid="resume" busy={resumeAction.busy} onClick={resumeAction.onResume} icon={<Icon name="play" size={16} />}>
               {resumeAction.busy ? 'Retomando…' : 'Retomar'}
-              <Icon name="play" size={16} />
-            </button>
+            </ActionButton>
           ) : null}
           {stopAction && STOPPABLE.has(status) ? (
-            <button type="button" className={`secondary ${RUN_UI.action}`} data-testid="stop" disabled={stopAction.busy} onClick={stopAction.onStop}>
+            <ActionButton className={`secondary ${RUN_UI.action}`} data-testid="stop" busy={stopAction.busy} onClick={stopAction.onStop} icon={<Icon name="stop" size={16} />}>
               {stopAction.busy ? 'Parando…' : 'Parar execução'}
-              <Icon name="stop" size={16} />
-            </button>
+            </ActionButton>
           ) : null}
           {detail.report ? (
             <Link className={`link-button ${RUN_UI.action}`} data-testid="validation-link" to={`/runs/${detail.runId}/validation`}>
@@ -726,17 +725,15 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                           <p data-testid="outcome-hint">{stop.hint}</p>
                           <div className="flex flex-wrap items-center gap-3">
                             {redeploying ? (
-                              <button type="button" className="primary-button" data-testid="redeploy" disabled={redeployAction.busy} onClick={redeployAction.onRedeploy}>
+                              <ActionButton className="primary-button" data-testid="redeploy" busy={redeployAction.busy} onClick={redeployAction.onRedeploy} icon={<Icon name="refresh" size={16} />}>
                                 {redeployAction.busy ? 'Iniciando o deploy…' : 'Tentar deploy de novo'}
-                                <Icon name="refresh" size={16} />
-                              </button>
+                              </ActionButton>
                             ) : null}
                             {reprocessAction && !detail.locked ? (
                               <span className="inline-flex items-center gap-[0.35rem]">
-                                <button type="button" className={redeploying ? 'secondary' : 'primary-button'} data-testid="reprocess" disabled={reprocessAction.busy} onClick={reprocessAction.onReprocess}>
+                                <ActionButton className={redeploying ? 'secondary' : 'primary-button'} data-testid="reprocess" busy={reprocessAction.busy} onClick={reprocessAction.onReprocess} icon={<Icon name="refresh" size={16} />}>
                                   {reprocessAction.busy ? 'Iniciando nova run…' : 'Reprocessar'}
-                                  <Icon name="refresh" size={16} />
-                                </button>
+                                </ActionButton>
                                 <InfoTip label="Reprocessar" text={TIP.reprocess} />
                               </span>
                             ) : null}
@@ -791,10 +788,9 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                     <h2 className="basis-auto">README do projeto</h2>
                     <span className="font-mono text-[0.75rem] text-ink-soft">docs/README.md</span>
                     {readmeAction && !detail.locked ? (
-                      <button type="button" className="secondary h-8 px-3 text-[0.8125rem]" data-testid="readme-generate" disabled={readmeAction.busy} onClick={readmeAction.onGenerate}>
+                      <ActionButton className="secondary h-8 px-3 text-[0.8125rem]" data-testid="readme-generate" busy={readmeAction.busy} onClick={readmeAction.onGenerate} icon={<Icon name="file" size={14} />}>
                         {readmeAction.busy ? 'O sm está escrevendo…' : detail.readme ? 'Reescrever com o sm' : 'Gerar README com o sm'}
-                        <Icon name="file" size={14} />
-                      </button>
+                      </ActionButton>
                     ) : null}
                   </header>
                   {readmeAction?.error ? <p className="error" data-testid="readme-error">{readmeAction.error}</p> : null}

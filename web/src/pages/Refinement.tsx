@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, refineApi, type AcceptanceCriterion, type ChecklistItem, type Snapshot, type StoredEvent } from '../api.js';
 import { applyToSnapshot, type LiveSnapshot } from '../refine/reducer.js';
 import { useJournal } from '../useSse.js';
+import { ActionButton } from '../components/ActionButton.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
@@ -111,7 +112,7 @@ export function JevActions() {
   };
   return (
     <span className="mt-2 flex flex-wrap items-center gap-x-[0.8rem] gap-y-[0.3rem]">
-      <button type="button" className="rounded-md border-current bg-transparent px-[0.6rem] py-[0.2rem] text-[0.75rem] font-semibold text-current disabled:cursor-default disabled:opacity-60" data-testid="jev-validate" disabled={check.checking} onClick={validate}>{check.checking ? 'Validando…' : 'Validar conexão'}<Icon name="check" size={14} /></button>
+      <ActionButton className="rounded-md border-current bg-transparent px-[0.6rem] py-[0.2rem] text-[0.75rem] font-semibold text-current disabled:cursor-default disabled:opacity-60" data-testid="jev-validate" busy={check.checking} onClick={validate} icon={<Icon name="check" size={14} />}>{check.checking ? 'Validando…' : 'Validar conexão'}</ActionButton>
       <Link className="font-semibold text-current underline" to="/onboarding?item=openrouter">Informar nova chave</Link>
       {check.ok !== undefined && <span data-testid="jev-validate-result">{check.ok ? 'Conexão com o OpenRouter funcionando. Clique em Reavaliar.' : `Falha na conexão: ${check.detail ?? 'chave inválida.'}`}</span>}
     </span>
@@ -150,15 +151,15 @@ export interface ViewProps {
   onSaveDoc(file: DocFile, text: string): void;
   /** "Sugerir": the agent's version of a document written from flow.md, or null when it failed. */
   onSuggestDoc?(file: Exclude<DocFile, 'flow.md'>): Promise<string | null>;
-  onEvaluate(): void;
-  onEnableBacklog?(): void;
-  onEnableDetail?(): void;
-  onAnswer(id: string, text: string, docsAnswered: boolean): void;
-  onSkip(id: string): void;
-  onAccept(id: string): void;
-  onReject(id: string, reason: string | null): void;
-  onSecret(name: string, value: string): void;
-  onStart(): void;
+  onEvaluate(): void | Promise<unknown>;
+  onEnableBacklog?(): void | Promise<unknown>;
+  onEnableDetail?(): void | Promise<unknown>;
+  onAnswer(id: string, text: string, docsAnswered: boolean): void | Promise<unknown>;
+  onSkip(id: string): void | Promise<unknown>;
+  onAccept(id: string): void | Promise<unknown>;
+  onReject(id: string, reason: string | null): void | Promise<unknown>;
+  onSecret(name: string, value: string): void | Promise<unknown>;
+  onStart(): void | Promise<unknown>;
   startInHeader?: boolean;
   events?: StoredEvent[];
 }
@@ -284,7 +285,7 @@ export function RefinementView(p: ViewProps) {
   const existing = st.mode === 'new-spec' || st.mode === 'continue';
   const suggest = (file: Exclude<DocFile, 'flow.md'>) => {
     setSuggesting(true);
-    void p.onSuggestDoc!(file)
+    return p.onSuggestDoc!(file)
       .then((text) => { if (text !== null) setDocs((d) => ({ ...d, [file]: text })); })
       .finally(() => setSuggesting(false));
   };
@@ -329,10 +330,9 @@ export function RefinementView(p: ViewProps) {
         {/* The editor's actions sit above it, so they never cover the document's first lines. */}
         <div className="flex justify-end gap-2">
           {tab !== 'flow.md' && p.onSuggestDoc && (
-            <button type="button" data-testid="suggest" className="h-9 px-[0.8rem]" disabled={locked || suggesting} title="Gera este documento a partir do flow.md" onClick={() => suggest(tab)}>
+            <ActionButton data-testid="suggest" className="h-9 px-[0.8rem]" busy={suggesting} disabled={locked} title="Gera este documento a partir do flow.md" onClick={() => suggest(tab)} icon={<Icon name="lightbulb" size={16} />}>
               {suggesting ? 'Sugerindo…' : 'Sugerir'}
-              <Icon name="lightbulb" size={16} />
-            </button>
+            </ActionButton>
           )}
           <button type="button" className="h-9 px-[0.8rem]" aria-label="Copiar documento" onClick={() => copyDoc(docs[tab] ?? '')}>
             Copiar
@@ -359,10 +359,9 @@ export function RefinementView(p: ViewProps) {
       {jevAdvisory && <p className={notice}>O Jev é obrigatório no refinamento: ele valida os documentos e decide pontos da avaliação, e seus apontamentos são considerados por Claude, PO e SM. <InfoTip text={jevInfo} /></p>}
       <div className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-3">
         <span className="inline-flex items-start gap-[0.45rem] text-[0.8125rem] leading-[1.35] text-ink-soft"><Icon name="info" size={18} />As alterações são salvas automaticamente ao sair do editor.</span>
-        <button data-testid="evaluate" className="primary min-w-40 justify-self-center" disabled={locked} onClick={p.onEvaluate}>
+        <ActionButton data-testid="evaluate" className="primary min-w-40 justify-self-center" busy={evaluating} disabled={locked} onClick={p.onEvaluate} icon={<Icon name="check" size={16} />}>
         {st.cycle === 0 ? 'Avaliar' : 'Reavaliar'}
-        <Icon name="check" size={16} />
-        </button>
+        </ActionButton>
         {st.status === 'evaluating' && <span className="justify-self-center text-[0.8125rem] text-ink-soft">Avaliando…</span>}
       </div>
     </section>
@@ -420,24 +419,24 @@ export function RefinementView(p: ViewProps) {
           </div>
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <div className="flex items-center gap-2">
-              <button
+              <ActionButton
                 className="primary"
                 data-testid={`answer-${current.questionId}`}
                 disabled={locked || answer.trim() === ''}
                 onClick={() => {
-                  p.onAnswer(current.questionId, answer, docsAnswered);
+                  const sent = p.onAnswer(current.questionId, answer, docsAnswered);
                   setAnswer('');
                   setDocsAnswered(false);
+                  return sent;
                 }}
+                icon={<Icon name="send" size={16} />}
               >
                 Responder
-                <Icon name="send" size={16} />
-              </button>
+              </ActionButton>
               {!current.blocking && (
-                <button data-testid={`skip-${current.questionId}`} disabled={locked} onClick={() => p.onSkip(current.questionId)}>
+                <ActionButton data-testid={`skip-${current.questionId}`} disabled={locked} onClick={() => p.onSkip(current.questionId)} icon={<Icon name="chevron-right" size={16} />}>
                   Ignorar
-                  <Icon name="chevron-right" size={16} />
-                </button>
+                </ActionButton>
               )}
             </div>
             <small className="text-ink-soft">{pending.length === 1 ? 'Esta é a última pergunta em aberto.' : pending.length === 2 ? 'Mais 1 pergunta depois desta.' : `Mais ${pending.length - 1} perguntas depois desta.`}</small>
@@ -458,10 +457,9 @@ export function RefinementView(p: ViewProps) {
             </div>
             <pre className="mx-0 my-3 overflow-auto rounded-md bg-term-bg p-[0.8rem] text-[0.75rem] leading-normal text-term-ink">{x.diff}</pre>
             <div className="grid grid-cols-2 items-center gap-2">
-            <button type="button" className="min-w-[5.5rem] border-good-line bg-good-soft text-good hover:enabled:border-good" data-testid={`accept-${x.patchId}`} disabled={locked} onClick={() => p.onAccept(x.patchId)}>
+            <ActionButton className="min-w-[5.5rem] border-good-line bg-good-soft text-good hover:enabled:border-good" data-testid={`accept-${x.patchId}`} disabled={locked} onClick={() => p.onAccept(x.patchId)} icon={<Icon name="check" size={16} />}>
               Aceitar
-              <Icon name="check" size={16} />
-            </button>
+            </ActionButton>
             <input
               className="col-span-full row-start-1 m-0 w-full min-w-0"
               data-testid={`reject-reason-${x.patchId}`}
@@ -470,10 +468,9 @@ export function RefinementView(p: ViewProps) {
               value={reasons[x.patchId] ?? ''}
               onChange={(e) => setReasons({ ...reasons, [x.patchId]: e.target.value })}
             />
-            <button type="button" className="min-w-[5.5rem] border-bad-line bg-bad-soft text-bad hover:enabled:border-bad" data-testid={`reject-${x.patchId}`} disabled={locked} onClick={() => p.onReject(x.patchId, reasons[x.patchId] || null)}>
+            <ActionButton className="min-w-[5.5rem] border-bad-line bg-bad-soft text-bad hover:enabled:border-bad" data-testid={`reject-${x.patchId}`} disabled={locked} onClick={() => p.onReject(x.patchId, reasons[x.patchId] || null)} icon={<Icon name="close" size={16} />}>
               Rejeitar
-              <Icon name="close" size={16} />
-            </button>
+            </ActionButton>
             </div>
           </div>
         ))}
@@ -503,10 +500,9 @@ export function RefinementView(p: ViewProps) {
           ))}
       </ul>
       {!p.startInHeader && <div className={`mt-5 ${startGroup}`}>
-        <button data-testid="start" className="primary w-full flex-auto px-4" disabled={!canStart} onClick={p.onStart}>
+        <ActionButton data-testid="start" className="primary w-full flex-auto px-4" disabled={!canStart} onClick={p.onStart} icon={<Icon name="play" size={16} />}>
           Iniciar análise
-          <Icon name="play" size={16} />
-        </button>
+        </ActionButton>
         <InfoTip text={startInfo} />
       </div>}
     </section>
@@ -653,7 +649,7 @@ export function RefinementPage() {
   );
   const act = (f: () => Promise<unknown>) => () => {
     setError(null);
-    f().catch((e: Error) => setError(e.message));
+    return f().catch((e: Error) => setError(e.message));
   };
   const startRun = act(() => {
     setStarting(true);
@@ -664,10 +660,9 @@ export function RefinementPage() {
     <main className="flex flex-col gap-4 lg:h-full lg:min-h-0">
       <header className="refine-breadcrumb"><a href="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></a><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span>
         <span className={startGroup}>
-          <button data-testid="start" className="primary flex-auto whitespace-nowrap max-[720px]:w-full" disabled={starting || !canStartRun(snap.state, snap.state.status === 'evaluating')} onClick={startRun}>
-            {executing ? <span className="loading-spinner" aria-hidden="true" /> : <Icon name="play" size={16} />}
+          <ActionButton data-testid="start" className="primary flex-auto whitespace-nowrap max-[720px]:w-full" busy={executing} disabled={!canStartRun(snap.state, snap.state.status === 'evaluating')} onClick={startRun} icon={<Icon name="play" size={16} />}>
             {starting ? 'Iniciando…' : executing ? 'Em execução' : 'Iniciar análise'}
-          </button>
+          </ActionButton>
           <InfoTip text={startInfo} />
         </span>
       </header>

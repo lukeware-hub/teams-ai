@@ -1,11 +1,12 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { ActionButton } from './ActionButton.js';
 import { Icon } from './Icons.js';
 
 /**
  * A compact confirmation for a destructive action. Focus starts on Cancel (the safe answer), Escape and a click on the
  * backdrop cancel, Tab cycles inside, and focus returns to whatever opened it.
  */
-export function ConfirmDialog({ title, subject, confirmLabel, onConfirm, onCancel, children }: { title: string; subject?: string; confirmLabel: string; onConfirm: () => void; onCancel: () => void; children: ReactNode }) {
+export function ConfirmDialog({ title, subject, confirmLabel, onConfirm, onCancel, children }: { title: string; subject?: string; confirmLabel: string; onConfirm: () => void | Promise<void>; onCancel: () => void; children: ReactNode }) {
   const titleId = useId();
   const box = useRef<HTMLDivElement>(null);
   const cancelButton = useRef<HTMLButtonElement>(null);
@@ -63,10 +64,9 @@ export function ConfirmDialog({ title, subject, confirmLabel, onConfirm, onCance
             Cancelar
             <Icon name="close" size={16} />
           </button>
-          <button type="button" className="confirm-danger" data-testid="delete-confirm" onClick={onConfirm}>
+          <ActionButton className="confirm-danger" data-testid="delete-confirm" onClick={onConfirm} icon={<Icon name="trash" size={16} />}>
             {confirmLabel}
-            <Icon name="trash" size={16} />
-          </button>
+          </ActionButton>
         </div>
       </div>
     </div>

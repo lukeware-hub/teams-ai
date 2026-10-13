@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { serviceLinks } from '@server/deploy/service-links';
 import { refineApi, runApi, startedPath, type DraftRow, type NameRequest, type NameSuggestion, type ProjectRow, type Report, type RunRow, type ServiceStatus } from '../api.js';
+import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
@@ -98,12 +99,12 @@ export function ProjectHubView(p: {
   apps?: AppLinks | null;
   error: string | null;
   deleteError: string | null;
-  onStart: (specId: string) => void;
-  onResume: (runId: string) => void;
-  onStop: (runId: string) => void;
-  onNewSpec: (specId: string, description: string) => void;
-  onContinue: (specId: string) => void;
-  onRestart: (specId: string) => void;
+  onStart: (specId: string) => void | Promise<void>;
+  onResume: (runId: string) => void | Promise<void>;
+  onStop: (runId: string) => void | Promise<void>;
+  onNewSpec: (specId: string, description: string) => void | Promise<void>;
+  onContinue: (specId: string) => void | Promise<void>;
+  onRestart: (specId: string) => void | Promise<void>;
   /** Brings up a spec delivered elsewhere (an import) that has no run here, then opens its validation. */
   onValidate?: (specId: string) => void;
   /** Brings the concluded project's application up from its last delivery. */
@@ -120,6 +121,7 @@ export function ProjectHubView(p: {
   const [idShown, setIdShown] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const closeNewSpec = () => {
     setCreating(false);
     setIdShown(false);
@@ -282,7 +284,8 @@ export function ProjectHubView(p: {
               className="mt-3 flex flex-col flex-nowrap items-stretch gap-2"
               onSubmit={(e) => {
                 e.preventDefault();
-                p.onNewSpec(specDraft.trim(), specDescription);
+                setSubmitting(true);
+                void Promise.resolve(p.onNewSpec(specDraft.trim(), specDescription)).finally(() => setSubmitting(false));
               }}
             >
               <label className={newSpecLabel} htmlFor="new-spec-description">Descreva o serviço</label>
@@ -297,9 +300,9 @@ export function ProjectHubView(p: {
               <div className="flex flex-wrap justify-end gap-2">
                 <button type="button" className={action.secondary} data-testid="cancel-new-spec" onClick={closeNewSpec}>Cancelar<Icon name="close" size={14} /></button>
                 {idShown ? (
-                  <button type="submit" className={action.plain} data-testid="new-spec" disabled={suggesting || specDraft.trim() === '' || specDescription.trim() === ''}>Começar refinamento<Icon name="arrow-right" size={14} /></button>
+                  <ActionButton key="new-spec" type="submit" className={action.plain} data-testid="new-spec" busy={submitting} disabled={suggesting || specDraft.trim() === '' || specDescription.trim() === ''} icon={<Icon name="arrow-right" size={14} />}>Começar refinamento</ActionButton>
                 ) : (
-                  <button type="button" className={action.plain} data-testid="continue-new-spec" disabled={specDescription.trim() === ''} onClick={() => void continueNewSpec()}>Continuar<Icon name="arrow-right" size={14} /></button>
+                  <ActionButton key="continue-new-spec" className={action.plain} data-testid="continue-new-spec" disabled={specDescription.trim() === ''} onClick={continueNewSpec} icon={<Icon name="arrow-right" size={14} />}>Continuar</ActionButton>
                 )}
               </div>
             </form>
@@ -315,10 +318,9 @@ export function ProjectHubView(p: {
                   {chip(s.activeRunId ? (p.runs.find((r) => r.runId === s.activeRunId)?.status ?? 'running') : s.status === 'running' ? 'idle' : s.status)}
                   <span className={rowActions}>
                     {CONTINUABLE.has(s.status) ? (
-                      <button type="button" className={action.secondary} data-testid={`continue-${s.specId}`} aria-label={`Continuar spec ${s.specId}`} onClick={() => p.onContinue(s.specId)}>
+                      <ActionButton className={action.secondary} data-testid={`continue-${s.specId}`} aria-label={`Continuar spec ${s.specId}`} onClick={() => p.onContinue(s.specId)} icon={<Icon name="arrow-right" size={14} />}>
                         Continuar spec
-                        <Icon name="arrow-right" size={14} />
-                      </button>
+                      </ActionButton>
                     ) : null}
                     {CONTINUABLE.has(s.status) ? (
                       <button type="button" className={action.secondary} data-testid={`restart-${s.specId}`} aria-label={`Reiniciar spec ${s.specId}`} onClick={() => setPendingRestart(s.specId)}>
@@ -338,10 +340,9 @@ export function ProjectHubView(p: {
                           <Icon name="arrow-right" size={14} />
                         </Link>
                       ) : (
-                        <button type="button" className={action.primary} data-testid={`validate-${s.specId}`} aria-label={`Validar ${s.specId}`} onClick={() => p.onValidate?.(s.specId)}>
+                        <ActionButton key="validate" className={action.primary} data-testid={`validate-${s.specId}`} aria-label={`Validar ${s.specId}`} onClick={() => p.onValidate?.(s.specId)} icon={<Icon name="arrow-right" size={14} />}>
                           Validar
-                          <Icon name="arrow-right" size={14} />
-                        </button>
+                        </ActionButton>
                       )
                     ) : s.status === 'done' ? (
                       lastRunOf(s.specId) ? (
@@ -351,10 +352,9 @@ export function ProjectHubView(p: {
                         </Link>
                       ) : null
                     ) : (
-                      <button type="button" className={action.primary} data-testid={`start-${s.specId}`} aria-label={`Iniciar execução de ${s.specId}`} onClick={() => p.onStart(s.specId)}>
+                      <ActionButton key="start" className={action.primary} data-testid={`start-${s.specId}`} aria-label={`Iniciar execução de ${s.specId}`} onClick={() => p.onStart(s.specId)} icon={<Icon name="play" size={14} />}>
                         Iniciar execução
-                        <Icon name="play" size={14} />
-                      </button>
+                      </ActionButton>
                     )}
                   </span>
                 </li>
@@ -404,16 +404,14 @@ export function ProjectHubView(p: {
                               </span>
                             ) : null}
                             {r.stoppable && ACTIVE.has(r.status) ? (
-                              <button type="button" className={action.danger} data-testid={`stop-${r.runId}`} aria-label={`Parar ${r.runId}`} onClick={() => p.onStop(r.runId)}>
+                              <ActionButton className={action.danger} data-testid={`stop-${r.runId}`} aria-label={`Parar ${r.runId}`} onClick={() => p.onStop(r.runId)} icon={<Icon name="stop" size={14} />}>
                                 Parar
-                                <Icon name="stop" size={14} />
-                              </button>
+                              </ActionButton>
                             ) : null}
                             {!r.locked && (r.status === 'paused:auth' || r.status === 'interrupted') ? (
-                              <button type="button" className={action.secondary} data-testid={`resume-${r.runId}`} aria-label={`Retomar ${r.runId}`} onClick={() => p.onResume(r.runId)}>
+                              <ActionButton className={action.secondary} data-testid={`resume-${r.runId}`} aria-label={`Retomar ${r.runId}`} onClick={() => p.onResume(r.runId)} icon={<Icon name="play" size={14} />}>
                                 Retomar
-                                <Icon name="play" size={14} />
-                              </button>
+                              </ActionButton>
                             ) : null}
                           </span>
                         </td>
@@ -468,8 +466,8 @@ export function ProjectHubView(p: {
           subject={`${pr.projectId} / ${pendingRestart}`}
           confirmLabel="Reiniciar"
           onCancel={() => setPendingRestart(null)}
-          onConfirm={() => {
-            p.onRestart(pendingRestart);
+          onConfirm={async () => {
+            await p.onRestart(pendingRestart);
             setPendingRestart(null);
           }}
         >
@@ -482,8 +480,8 @@ export function ProjectHubView(p: {
           subject={`${pr.projectId} / ${pendingDelete}`}
           confirmLabel="Excluir"
           onCancel={() => setPendingDelete(null)}
-          onConfirm={() => {
-            p.onDeleteDraft(pendingDelete);
+          onConfirm={async () => {
+            await p.onDeleteDraft(pendingDelete);
             setPendingDelete(null);
           }}
         >
@@ -540,6 +538,15 @@ export function ProjectHub() {
       setError((e as Error).message);
     }
   }, [projectId]);
+  const autoStarted = useRef(false);
+  // A concluded project with nothing answering is brought up once; the polling below then shows its links.
+  useEffect(() => {
+    const last = project?.specs.at(-1);
+    const down = apps !== null && !apps.web && !apps.swagger;
+    if (!projectId || !last || !down || autoStarted.current || runs.some((r) => ACTIVE.has(r.status))) return;
+    autoStarted.current = true;
+    runApi.deployAgain(projectId, last.specId).then(refresh, (e: Error) => setError(e.message));
+  }, [project, apps, runs, projectId, refresh]);
   useEffect(() => {
     void refresh();
     const id = setInterval(() => {
@@ -577,7 +584,7 @@ export function ProjectHub() {
       apps={apps}
       error={error}
       deleteError={deleteError}
-      onStart={(specId) => void act(async () => {
+      onStart={(specId) => act(async () => {
         // A spec the running program owns is prioritized there: follow it on the program's execution screen.
         const r = await runApi.startRun(projectId, specId);
         if (r.queued) navigate(startedPath(projectId, r));
@@ -590,7 +597,7 @@ export function ProjectHub() {
       onStartApp={() => void act(() => runApi.deployAgain(projectId, project!.specs.at(-1)!.specId))()}
       onValidate={(specId) => void act(async () => navigate(`/runs/${(await runApi.deployAgain(projectId, specId)).runId}/validation`))()}
       onSuggestName={refineApi.suggestName}
-      onDeleteDraft={(specId) => void (async () => {
+      onDeleteDraft={(specId) => (async () => {
         setDeleteError(null);
         try {
           await refineApi.delete(projectId, specId);

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type Cli, type Item, type SessionState } from '../api.js';
 import { ItemCard } from './ItemCard.js';
+import { ActionButton } from './ActionButton.js';
 import { Icon } from './Icons.js';
 import { safeHttpUrl } from '../safeUrl.js';
 import { useSse } from '../useSse.js';
@@ -74,9 +75,10 @@ export function LoginCard({ cli, title, item, onDone }: { cli: Cli; title: strin
   );
 }
 
-export function LoginControls({ state, code, onCode, onStart, onSend, onCancel }: { state: SessionState; code: string; onCode: (v: string) => void; onStart: () => void; onSend: () => void; onCancel: () => void }) {
+export function LoginControls({ state, code, onCode, onStart, onSend, onCancel }: { state: SessionState; code: string; onCode: (v: string) => void; onStart: () => unknown; onSend: () => unknown; onCancel: () => unknown }) {
   const live = state.name === 'starting' || state.name === 'awaiting-browser' || state.name === 'awaiting-code' || state.name === 'verifying';
   const [copied, setCopied] = useState(false);
+  const [sending, setSending] = useState(false);
   useEffect(() => {
     if (!copied) return;
     const timer = setTimeout(() => setCopied(false), 1600);
@@ -90,10 +92,9 @@ export function LoginControls({ state, code, onCode, onStart, onSend, onCancel }
   return (
     <div className="controls grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-3 @max-[40rem]:grid-cols-[minmax(0,1fr)_auto]">
       {!live ? (
-        <button type="button" className="primary-button col-3 justify-self-end" onClick={onStart}>
+        <ActionButton className="primary-button col-3 justify-self-end" onClick={onStart} icon={<Icon name={state.name === 'failed' ? 'refresh' : 'arrow-right'} size={16} />}>
           {state.name === 'failed' ? 'Tentar novamente' : 'Entrar'}
-          <Icon name={state.name === 'failed' ? 'refresh' : 'arrow-right'} size={16} />
-        </button>
+        </ActionButton>
       ) : null}
       {state.name === 'starting' || state.name === 'verifying' ? <span>{state.name === 'starting' ? 'Iniciando…' : 'Verificando…'}</span> : null}
       {state.name === 'awaiting-browser' || state.name === 'awaiting-code' ? (
@@ -123,24 +124,23 @@ export function LoginControls({ state, code, onCode, onStart, onSend, onCancel }
           className="col-2 row-1 m-0 grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-end gap-[0.7rem] @max-[40rem]:col-span-full @max-[40rem]:row-2 @max-[40rem]:grid-cols-[minmax(0,1fr)]"
           onSubmit={(e) => {
             e.preventDefault();
-            onSend();
+            setSending(true);
+            void Promise.resolve(onSend()).finally(() => setSending(false));
           }}
         >
           <label className="grid min-w-0 gap-[0.38rem] text-[0.8125rem] font-semibold text-ink-soft">
             <span>Cole o código mostrado pela página</span>
             <input className="h-11 w-full min-w-0 text-[1rem]" data-testid="code-input" value={code} onChange={(e) => onCode(e.target.value)} placeholder="Cole o código aqui…" autoComplete="off" />
           </label>
-          <button type="submit" className="primary-button @max-[40rem]:w-full" disabled={code.trim() === ''}>
+          <ActionButton type="submit" className="primary-button @max-[40rem]:w-full" busy={sending} disabled={code.trim() === ''} icon={<Icon name="send" size={16} />}>
             Enviar
-            <Icon name="send" size={16} />
-          </button>
+          </ActionButton>
         </form>
       ) : null}
       {live ? (
-        <button type="button" className="secondary col-3 row-1 @max-[40rem]:col-2" onClick={onCancel}>
+        <ActionButton className="secondary col-3 row-1 @max-[40rem]:col-2" onClick={onCancel} icon={<Icon name="close" size={16} />}>
           Cancelar
-          <Icon name="close" size={16} />
-        </button>
+        </ActionButton>
       ) : null}
       {state.name === 'failed' ? <p className="error col-span-full row-2 w-full">{friendlyLoginReason(state.reason)}</p> : null}
     </div>

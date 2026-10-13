@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, type Item } from '../api.js';
+import { ActionButton } from './ActionButton.js';
 import { Icon } from './Icons.js';
 import { ItemCard } from './ItemCard.js';
 
@@ -51,10 +52,9 @@ export function SecretCard({ name, title, item, onSaved }: { name: 'GITHUB_TOKEN
           <span>{item?.secret?.set ? copy.replace : copy.field}</span>
           <input className="w-full min-w-0" type="password" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Cole o valor aqui…" autoComplete="off" />
         </label>
-        <button type="submit" className="primary-button @max-[40rem]:w-full" disabled={busy || value.trim() === ''}>
+        <ActionButton type="submit" className="primary-button @max-[40rem]:w-full" busy={busy} disabled={value.trim() === ''} icon={<Icon name="check" size={16} />}>
           {busy ? 'Verificando…' : 'Salvar e verificar'}
-          <Icon name="check" size={16} />
-        </button>
+        </ActionButton>
       </form>
       {name === 'GITHUB_TOKEN' ? (
         <p>
