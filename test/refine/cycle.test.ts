@@ -6,6 +6,7 @@ import { Decider } from '../../server/decide/decider.js';
 import { heldForOwner } from '../../server/refine/auto-floor.js';
 import { buildContextPack } from '../../server/knowledge/context-pack.js';
 import { runCycle } from '../../server/refine/cycle.js';
+import { PACK_TOKEN_CAP } from '../../server/refine/fit-pack.js';
 import { draftPaths, createNewProject } from '../../server/refine/draft.js';
 import { emptyRefineState } from '../../server/refine/state.js';
 import { summarizeJevChecks, type JevValidationResult, type ValidationDocs } from '../../server/refine/jev-validation.js';
@@ -570,11 +571,14 @@ describe('refinement cycle with large documents', () => {
     expect(built.sections).toContain('feedback');
   });
 
-  it('fails the cycle in Portuguese, without calling an agent, when the documents cannot fit', async () => {
+  it('sends a digest of the documents, not a failed cycle, when they do not fit whole', async () => {
     const { draft, journal, events, runAgent, root } = await setup(`# Brief\n${'x'.repeat(700_000)}`);
     await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1);
-    expect(runAgent).not.toHaveBeenCalled();
-    expect(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason).toMatch(/grandes demais/);
+    expect(runAgent).toHaveBeenCalled();
+    expect(String(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason)).not.toMatch(/grandes demais/);
+    const pack = runAgent.mock.calls[0]![0].pack;
+    expect(pack.feedback).toContain('are a digest');
+    expect(buildContextPack(pack).tokens).toBeLessThan(PACK_TOKEN_CAP);
   });
 });
 

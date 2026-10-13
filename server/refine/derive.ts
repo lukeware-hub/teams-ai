@@ -3,6 +3,7 @@ import { Project } from '../contracts/project.js';
 import { AcceptanceCriterion, Spec, type SpecDecision } from '../contracts/spec.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
+import { buildWithDocs, DIGEST_NOTE } from './docs-view.js';
 import type { JevValidationResult } from './jev-validation.js';
 
 export function derivePack(input: {
@@ -21,23 +22,24 @@ export function derivePack(input: {
     project: z.toJSONSchema(Project, { target: 'draft-07', io: 'input' }),
     spec: z.toJSONSchema(Spec, { target: 'draft-07', io: 'input' }),
   };
-  const feedback = [
+  const feedback = buildWithDocs({ project: input.projectMd, brief: input.briefMd, stack: input.stackMd, flow: input.flowMd, design: input.designMd }, (d, digested) => [
     `specId must be ${input.specId}. Derive project.json and spec.json from the Markdown below. Classify the demand as feature, bug, maintenance, or refactor. For bugs, preserve actual behavior, expected behavior, reproduction steps, and optional evidence in the bug object; do not invent missing reproduction details. In project.json, \`services\` lists the services the docs split the system into (one repository each) and stays out when they describe one application; \`platform\` lists the shared containers stack.md declares for every service, each with an image pinned to a version (never latest) and the command, environment and healthcheck stack.md gives; \`platform\` stays out too when \`services\` does, since a single application keeps the containers it needs in its own docker-compose.yml. Invent neither.`,
     'Use flow.md as the business-flow reference and keep the derived objectives, features, and acceptance criteria consistent with its application behavior.',
+    ...(digested ? [DIGEST_NOTE] : []),
     '### docs/project.md',
-    input.projectMd,
+    d.project,
     '### brief.md',
-    input.briefMd,
-    ...(input.stackMd ? ['### stack.md', input.stackMd] : []),
-    ...(input.flowMd ? ['### flow.md (Mermaid)', input.flowMd] : []),
-    ...(input.designMd ? ['### design.md', input.designMd] : []),
+    d.brief,
+    ...(input.stackMd ? ['### stack.md', d.stack] : []),
+    ...(input.flowMd ? ['### flow.md (Mermaid)', d.flow] : []),
+    ...(input.designMd ? ['### design.md', d.design] : []),
     '### Jev preflight validation',
     input.jevValidation ? JSON.stringify(input.jevValidation, null, 2) : '(not available)',
     '### previous derived JSON (keep unchanged acceptance criterion ids)',
     input.previous ? JSON.stringify(input.previous, null, 2) : '(none)',
     '### JSON schemas',
     JSON.stringify(schemas),
-  ].join('\n\n');
+  ].join('\n\n'));
   return {
     kind: 'derive',
     role: 'po',

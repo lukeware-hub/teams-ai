@@ -4,6 +4,7 @@ import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
 import { branchOwner, flowHeadings, MAX_ITEMS, rankItems, validateBacklog } from '../validators/backlog.js';
 import { adjustmentItems, isAdjustment } from './adjustments.js';
+import { buildWithDocs, DIGEST_NOTE } from './docs-view.js';
 import type { BacklogDocs } from './details.js';
 import type { JevValidationResult } from './jev-validation.js';
 import type { BacklogState } from './state.js';
@@ -42,21 +43,22 @@ export function backlogPack(input: {
 }): ContextPackInput {
   const started = new Set(input.started);
   const previous = input.previous?.items.length ? JSON.stringify({ epics: input.previous.epics, items: input.previous.items.map((i) => ({ key: i.key, title: i.title, epic: i.epic, priority: i.priority, scope: i.scope, sources: i.sources, ...(started.has(i.key) ? { started: true } : {}) })) }, null, 2) : '(none)';
-  const feedback = [
+  const feedback = buildWithDocs({ project: input.projectMd, brief: input.briefMd, stack: input.stackMd, flow: input.flowMd, design: input.designMd }, (d, digested) => [
     RULES,
+    ...(digested ? [DIGEST_NOTE] : []),
     '### docs/project.md',
-    input.projectMd,
+    d.project,
     '### briefing.md',
-    input.briefMd,
-    ...(input.stackMd ? ['### stack.md', input.stackMd] : []),
-    ...(input.flowMd ? ['### flow.md (Mermaid)', input.flowMd] : []),
-    ...(input.designMd ? ['### design.md', input.designMd] : []),
+    d.brief,
+    ...(input.stackMd ? ['### stack.md', d.stack] : []),
+    ...(input.flowMd ? ['### flow.md (Mermaid)', d.flow] : []),
+    ...(input.designMd ? ['### design.md', d.design] : []),
     '### Jev preflight validation',
     input.jevValidation ? JSON.stringify(input.jevValidation, null, 2) : '(not available)',
     '### previous backlog (keep the keys)',
     previous,
     ...(input.rejection?.length ? ['### Your last attempt was rejected: fix every point', input.rejection.map((r) => `- ${r}`).join('\n')] : []),
-  ].join('\n\n');
+  ].join('\n\n'));
   return { kind: 'backlog', role: 'po', specHash: input.specHash, principles: input.principles, outputContract: outputContract('backlog'), criteria: [], feedback, budgetTokens: 20_000 };
 }
 

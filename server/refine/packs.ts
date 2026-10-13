@@ -5,6 +5,7 @@ import type { Hit } from '../knowledge/retrieval.js';
 import { outputContract } from '../orchestrator/steps.js';
 import { PO_ITEMS, SM_ITEMS } from './checklist.js';
 import { coverageGaps, isStarted } from './coverage.js';
+import { buildWithDocs, DIGEST_NOTE } from './docs-view.js';
 import { DOC_REL, flowTemplate, stackTemplate } from './draft.js';
 import type { BacklogState, PatchRow, QuestionRow } from './state.js';
 import type { JevValidationResult } from './jev-validation.js';
@@ -90,7 +91,7 @@ export function refinePack(input: {
   const skipped = input.history.filter((q) => q.status === 'skipped').map((q) => `- [${q.role}] ${q.text}`);
   const rejected = input.rejected.map((p) => `- ${rel(p.file)}: "${p.find.slice(0, 80)}" → rejected${p.decision ? `: ${p.decision}` : ''}`);
   const ids = input.role === 'po' ? PO_ITEMS : input.role === 'sm' ? SM_ITEMS : [];
-  const parts = [
+  const parts = (d: Record<'project' | 'brief' | 'stack' | 'flow' | 'design', string | undefined>, digested: boolean) => [
     `LANGUAGE (mandatory): write every question, checklist detail, patch reason, summary, and explanation 100% in Brazilian Portuguese, even when project.md, ${brief}, the acceptance criteria, or this prompt are in English. Never copy English sentences into a question; translate the idea. Keep only technical identifiers, JSON keys, file names, HTTP status codes, and checklist ids unchanged.`,
     `Review flow.md as the business and application flow contract. Check that create, validate, persist, list, search, detail, update, delete, error, health, and persistence flows agree with project.md and ${brief}. Ask a question or propose a patch when a flow is missing, ambiguous, or contradictory.`,
     `Treat design.md as the frontend source of truth. Validate distinctive web and mobile direction, responsive states, accessibility, keyboard focus, reduced motion, touch targets, and consistency with project.md, ${brief}, stack.md, and flow.md. Reject generic AI-looking UI choices and propose a precise patch when design.md is incomplete or contradictory. Write every new design.md heading, description, label, and patch reason in Brazilian Portuguese; preserve only technical identifiers, file names, code, and color tokens.`,
@@ -103,13 +104,14 @@ export function refinePack(input: {
     input.role === 'front'
       ? `Patch files: ${rel('design.md')} only. Do not ask questions; return an empty questions array. This is a review, not an implementation task: do not edit or create files, do not run skills, a browser or shell commands, and do not follow your implementation workflow. Read what you need, then reply with the single JSON object and nothing else.`
       : `Patch files: ${rel('project.md')}, ${rel('brief.md')}.`,
+    ...(digested ? [DIGEST_NOTE] : []),
     `### ${rel('project.md')}`,
-    input.projectMd,
+    d.project,
     `### ${rel('brief.md')}`,
-    input.briefMd,
-    ...(input.stackMd ? ['### stack.md', input.stackMd] : []),
-    ...(input.flowMd ? ['### flow.md (Mermaid)', input.flowMd] : []),
-    ...(input.designMd ? ['### design.md (frontend source of truth)', input.designMd] : []),
+    d.brief,
+    ...(input.stackMd ? ['### stack.md', d.stack] : []),
+    ...(input.flowMd ? ['### flow.md (Mermaid)', d.flow] : []),
+    ...(input.designMd ? ['### design.md (frontend source of truth)', d.design] : []),
     '### Jev preflight validation',
     input.jevValidation ? JSON.stringify(input.jevValidation, null, 2) : '(not available)',
     ...(input.notReady ? ['### System 1 readiness (decision 2, a hint)', input.notReady.length ? `Not ready: ${input.notReady.join(', ')}. Focus questions and patches on these; the other criteria were judged ready.` : 'Every acceptance criterion was judged ready.'] : []),
@@ -130,7 +132,8 @@ export function refinePack(input: {
     '### Rejected patches (do not propose again)',
     rejected.join('\n') || '(none)',
   ];
-  let feedback = parts.join('\n\n');
+  // A detailed backlog keeps room under REVIEW_TOKENS for the full JSON of the items that changed.
+  let feedback = buildWithDocs({ project: input.projectMd, brief: input.briefMd, stack: input.stackMd, flow: input.flowMd, design: input.designMd }, (d, digested) => parts(d, digested).join('\n\n'), detail ? REVIEW_TOKENS - 20_000 : undefined);
   if (detail) {
     // Full JSON of the items derived this cycle, by rank, while the review stays under REVIEW_TOKENS.
     const b = input.backlog!;
