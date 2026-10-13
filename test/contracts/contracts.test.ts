@@ -62,6 +62,12 @@ describe('Spec', () => {
     expect(result.success).toBe(false);
   });
 
+  it('accepts ids of four digits and more, but one way to write each number', () => {
+    const ok = (id: string) => Spec.safeParse({ ...makeSpec(), acceptanceCriteria: [{ id, given: 'g', when: 'w', then: 't' }] }).success;
+    expect([ok('AC-999'), ok('AC-1000'), ok('AC-12345')]).toEqual([true, true, true]);
+    expect([ok('AC-0034'), ok('AC-01000'), ok('AC-99')]).toEqual([false, false, false]);
+  });
+
   it('rejects duplicate acceptance criterion ids', () => {
     const spec = makeSpec();
     const result = Spec.safeParse({

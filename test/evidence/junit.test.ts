@@ -16,6 +16,10 @@ describe('extractAcIds', () => {
     expect(extractAcIds('tests::ac_001_lists_books test_ac-002_health stack_ac_0034 tractac_005')).toEqual(['AC-001', 'AC-002']);
   });
 
+  it('reads ids of four digits and more, but not a leading zero', () => {
+    expect(extractAcIds('[ac-1000] ac_1001_x test_ac-0034 stack_ac_01000')).toEqual(['AC-1000', 'AC-1001']);
+  });
+
   it('accepts any case but requires three digits', () => {
     expect(extractAcIds('[ac-003] and [AC-001] and [AC-3] and [AC-001]')).toEqual(['AC-003', 'AC-001']);
   });

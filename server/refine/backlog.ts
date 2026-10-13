@@ -2,7 +2,7 @@ import { Backlog, type BacklogItem } from '../contracts/backlog.js';
 import { Project } from '../contracts/project.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
-import { branchOwner, flowHeadings, rankItems, validateBacklog } from '../validators/backlog.js';
+import { branchOwner, flowHeadings, MAX_ITEMS, rankItems, validateBacklog } from '../validators/backlog.js';
 import { adjustmentItems, isAdjustment } from './adjustments.js';
 import type { BacklogDocs } from './details.js';
 import type { JevValidationResult } from './jev-validation.js';
@@ -17,7 +17,7 @@ const RULES = [
   '- An item marked `started` keeps its sources exactly as they are, broad ones included: only re-point a heading that was renamed or renumbered.',
   '- When a rule in one section needs what a later item delivers (such as a deletion an active loan blocks), that later item cites the section too, so its spec, which can check the rule, carries it.',
   '- priority: P0 = walking skeleton and the foundations everything else needs; P1 = the core value flow; P2 = important, can follow; P3 = later or optional. `rationale` says why in one sentence (value, risk, dependency).',
-  '- dependsOn lists the keys an item cannot ship without. A dependency is never lower priority than its dependent, there are no cycles, and there are at most 60 items.',
+  `- dependsOn lists the keys an item cannot ship without. A dependency is never lower priority than its dependent, there are no cycles, and there are at most ${MAX_ITEMS} items.`,
   '- Treat any explicit priority, cut, merge or split instruction written in the docs (above all briefing.md) as binding.',
   '- key: a short slug. Keep the key of every item that still exists in the previous backlog so the ids derived from them stay stable.',
   '- Never write an item whose key ends in -ajuste-<n>: the orchestrator adds one, after its original, for each "## Ajuste aprovado:" section of briefing.md.',

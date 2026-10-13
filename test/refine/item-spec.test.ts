@@ -28,10 +28,13 @@ describe('allocateCriteria', () => {
     expect(allocateCriteria([ac('AC-009', 'a'), ac('AC-001', 'b')], first.criteria, first.highWater)).toEqual(first);
   });
 
-  it('fails closed at AC-999', () => {
-    const r = allocateCriteria([ac('AC-001', 'a'), ac('AC-002', 'b')], [], 998);
+  it('goes past AC-999 with four digits and fails closed at AC-9999', () => {
+    const past = allocateCriteria([ac('AC-001', 'a'), ac('AC-002', 'b')], [], 998);
+    expect(past).toMatchObject({ ok: true });
+    if (past.ok) expect(past.criteria.map((c) => c.id)).toEqual(['AC-999', 'AC-1000']);
+    const r = allocateCriteria([ac('AC-001', 'a'), ac('AC-002', 'b')], [], 9998);
     expect(r).toMatchObject({ ok: false });
-    if (!r.ok) expect(r.issues.join(' ')).toMatch(/AC-999/);
+    if (!r.ok) expect(r.issues.join(' ')).toMatch(/AC-9999/);
   });
 });
 

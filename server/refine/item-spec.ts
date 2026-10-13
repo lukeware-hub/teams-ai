@@ -2,8 +2,8 @@ import type { ItemSpec } from '../agents/outputs.js';
 import { Spec, type AcceptanceCriterion, type SpecProvenance } from '../contracts/spec.js';
 import { acId, sameText } from './derive.js';
 
-/** `AC-\d{3}`: the format JUnit tags and every validator read; widening it is a change to two regexes. */
-const MAX_AC = 999;
+/** The highest criterion number; the id format (`AC_ID`) and the JUnit tags read any number of four digits. */
+const MAX_AC = 9999;
 
 export type Allocation = { ok: true; criteria: AcceptanceCriterion[]; highWater: number } | { ok: false; issues: string[] };
 

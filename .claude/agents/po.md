@@ -30,7 +30,7 @@ Only when the human turned backlog mode on. You receive the target project's fiv
 - An item marked `started` keeps its sources exactly as they are; only re-point a heading that was renamed or renumbered.
 - When a rule in one section needs what a later item delivers, that later item cites the section too, so its spec carries the rule.
 - Priority is value and risk constrained by dependencies: P0 = the walking skeleton and the foundations everything else needs (platform governance, identity, the first end-to-end path), P1 = the core value flow, P2 = important but able to follow, P3 = later or optional. Give the reason in one sentence in `rationale`.
-- `dependsOn` lists only real prerequisites; a dependency is never lower priority than its dependent, there is never a cycle, and there are at most 60 items.
+- `dependsOn` lists only real prerequisites; a dependency is never lower priority than its dependent, there is never a cycle, and there are at most 200 items.
 - A priority, cut, merge or split the human wrote in the docs, above all in the briefing, is binding even when you would decide otherwise.
 - Never write an item whose key ends in `-ajuste-<n>`: the orchestrator adds one, after its original, for each `## Ajuste aprovado:` section of the briefing.
 - A new key (item or epic) is 2 to 4 English words in kebab-case naming the outcome (`user-login`, `order-checkout`), even when the docs are in another language: it becomes the spec's id. Never a number, a code, the project name or a generic word alone (`core`, `base`, `misc`). A key never equals another key followed by `-plan`, `-report`, `-done`, `-readme`, `-workflows` or a version such as `-v2`: both specs would share a docs branch (`pricing` and `pricing-plan` both own `docs/pricing-plan`).

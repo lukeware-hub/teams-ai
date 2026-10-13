@@ -7,6 +7,7 @@ import { canonicalJson, sha256 } from '../contracts/hash.js';
 import { Preplan } from '../contracts/preplan.js';
 import { computeSpecHash, Spec } from '../contracts/spec.js';
 import { preplanFlags, specFlags } from '../decide/decisions/detail-check.js';
+import { AC_ID } from '../contracts/patterns.js';
 import { adjusted } from './adjustments.js';
 import { isStarted } from './coverage.js';
 import type { StepOutcome } from '../runner/step.js';
@@ -79,7 +80,7 @@ export async function maxCriterionInDraft(draft: Draft): Promise<number> {
   for (const dir of dirs) {
     const spec = (await readJson(path.posix.join(root, dir, 'spec.json'))) as { acceptanceCriteria?: Array<{ id?: unknown }> } | null;
     for (const c of Array.isArray(spec?.acceptanceCriteria) ? spec.acceptanceCriteria : []) {
-      if (typeof c?.id === 'string' && /^AC-\d{3}$/.test(c.id)) max = Math.max(max, acNum(c.id));
+      if (typeof c?.id === 'string' && AC_ID.test(c.id)) max = Math.max(max, acNum(c.id));
     }
   }
   return max;

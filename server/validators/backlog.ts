@@ -4,7 +4,7 @@ import type { BacklogDocs } from '../refine/details.js';
 import { onlySubsections, resolveHeading } from '../refine/sections.js';
 import { findCycle } from '../contracts/plan.js';
 
-export const MAX_ITEMS = 60;
+export const MAX_ITEMS = 200;
 /** Keys that would collide with run ids and docs branches (`<spec>-complete`, `docs/<spec>-v2`, `<spec>-r1` ...). */
 const RESERVED_KEY = /^(primary|plan|complete|readme|deploy|report|workflows|done|v\d+|r\d+)$/;
 /** What follows `<spec>-` in a spec's docs branches in the project's repository; a service's workflows branch lives in that service's. */
