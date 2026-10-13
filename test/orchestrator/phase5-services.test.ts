@@ -36,6 +36,8 @@ interface TargetOpts {
   previous?: Record<string, string>;
   unhealthy?: string;
   urlThrows?: string;
+  /** A service of an earlier spec that cannot be started again. */
+  cannotStart?: string;
 }
 
 /** A target that records what it does. */
@@ -56,6 +58,7 @@ function target(log: string[], o: TargetOpts = {}) {
     serviceUrl: (i: DeploymentIntent) => `http://127.0.0.1:${i.port}`,
     gateServiceUrl: (i: DeploymentIntent) => { if (o.urlThrows === i.shared!.alias) throw new Error('no container port'); return `http://${i.shared!.alias}:${i.port}`; },
     gateNetwork: (i: DeploymentIntent) => i.shared!.network,
+    ensureRunning: async (_project: string, service: string) => { log.push(`ensure:${service}`); return o.cannotStart === service ? { ok: false, detail: 'no container found' } : { ok: true, detail: 'running' }; },
     startPlatform: async () => { log.push('platform'); return o.fail === 'platform' ? { ok: false, detail: 'nats did not start' } : { ok: true, detail: 'platform up' }; },
   };
 }
@@ -220,6 +223,21 @@ describe('Phase 5 with several services', () => {
     const { deps, scopes } = await setup([], { services: ['orders', 'inventory', 'ledger'], ports: { 'shop/ledger': 20009 } });
     await runServicesPhase5(deps, 1);
     expect(scopes.find((s) => s.service === 'orders')!.urls).toEqual({ SERVICE_URL_INVENTORY: 'http://inventory:3001', SERVICE_URL_LEDGER: 'http://ledger:20009' });
+  });
+
+  it('starts again the services of earlier specs before proving anything', async () => {
+    const log: string[] = [];
+    const { deps } = await setup(log, { services: ['orders', 'inventory', 'ledger'], ports: { 'shop/ledger': 20009 } });
+    expect(await runServicesPhase5(deps, 1)).toEqual({ ok: true });
+    expect(log.filter((l) => l.startsWith('ensure'))).toEqual(['ensure:ledger']);
+    expect(log.indexOf('ensure:ledger')).toBeLessThan(log.indexOf('smoke:orders'));
+  });
+
+  it('says a failed proof may be the environment\'s when a service of an earlier spec cannot be started', async () => {
+    const { deps } = await setup([], { services: ['orders', 'inventory', 'ledger'], ports: { 'shop/ledger': 20009 }, cannotStart: 'ledger', e2eFails: 'e2e:orders', detail: 'AC-001: failed' });
+    expect((await runServicesPhase5(deps, 1)).ok).toBe(false);
+    expect(String(failure().detail)).toContain('AC-001: failed');
+    expect(String(failure().detail)).toContain('environment: a service of an earlier spec is not running (ledger: no container found)');
   });
 
   it("refuses a service without a compose file, which would replace the project's single container", async () => {

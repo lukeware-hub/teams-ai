@@ -248,21 +248,23 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
   }
   // A service this spec does not change still runs from an earlier spec: its registered port reaches it on the shared network.
   const registry = deps.workspacesRoot ? await registeredPorts(deps.workspacesRoot) : {};
-  const untouched = (deps.project.services ?? []).filter((s) => !services.repos.some((r) => r.service === s)).flatMap((s) => {
-    const port = registry[portKey(deps.project.projectId, s)];
-    return port ? [[serviceUrlEnv(s), `http://${s}:${port}`] as const] : [];
-  });
+  const untouchedServices = (deps.project.services ?? []).filter((s) => !services.repos.some((r) => r.service === s) && registry[portKey(deps.project.projectId, s)]);
+  const untouched = untouchedServices.map((s) => [serviceUrlEnv(s), `http://${s}:${registry[portKey(deps.project.projectId, s)]}`] as const);
+  // They may have stopped since their own spec (a restart of the host): start them again, and say so when one cannot, so the failure reads as the environment's.
+  const revived = await Promise.all(untouchedServices.map(async (s) => [s, await (target.ensureRunning?.(deps.project.projectId, s) ?? { ok: true, detail: '' })] as const));
+  const down = revived.filter(([, r]) => !r.ok).map(([s, r]) => `${s}: ${r.detail}`);
+  const withEnvironment = (detail: string) => (down.length > 0 ? `${detail}\n\nenvironment: a service of an earlier spec is not running (${down.join('; ')})` : detail);
   const smoke: SmokeRow[] = [];
   const e2e: E2eRow[] = [];
   for (const a of addresses) {
     const urls = Object.fromEntries([...untouched, ...addresses.filter((o) => o !== a).map((o) => [serviceUrlEnv(o.repo.service!), o.gateUrl] as const)]);
     const scope: GateScope = { service: a.repo.service!, plan: a.repo.plan, spec: specShare(deps.spec, a.repo.plan.tasks), urls };
     const s = await deps.smoke(a.repo.ws.repo, a.url, a.gateUrl, a.network, scope);
-    if (!s.ok) return failed('smoke', s.detail, a.repo);
+    if (!s.ok) return failed('smoke', withEnvironment(s.detail), a.repo);
     smoke.push(...s.rows.map((r) => ({ ...r, service: a.repo.service! })));
     if (deps.e2e && (e2eCommand(a.repo.plan) || deps.requireE2e)) {
       const e = await deps.e2e(a.repo.ws.repo, a.url, a.gateUrl, a.network, scope);
-      if (!e.ok) return failed('e2e', e.detail, a.repo);
+      if (!e.ok) return failed('e2e', withEnvironment(e.detail), a.repo);
       e2e.push(...e.rows);
     }
   }

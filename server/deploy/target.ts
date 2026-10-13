@@ -33,6 +33,8 @@ export interface DeployTarget {
   gateNetwork?(intent: DeploymentIntent): string | undefined;
   /** Creates the project's shared network and starts the platform containers the docs declare. */
   startPlatform?(projectId: string, platform: readonly PlatformService[]): Promise<{ ok: boolean; detail: string }>;
+  /** Starts again what a service deployed by an earlier spec left stopped (a restart of the host or of the docker daemon), and waits until it is healthy. */
+  ensureRunning?(projectId: string, service: string): Promise<{ ok: boolean; detail: string }>;
 }
 
 export type DeployStage = 'validate' | 'build' | 'apply' | 'verify' | 'smoke' | 'e2e';

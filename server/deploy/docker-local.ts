@@ -176,6 +176,12 @@ export class DockerLocalTarget implements DeployTarget {
     return mappings.map((m) => `${m.host_ip ? `${m.host_ip}:` : ''}${m === main ? intent.port : m.published ?? ''}:${m.target}${m.protocol && m.protocol !== 'tcp' ? `/${m.protocol}` : ''}`);
   }
 
+  async ensureRunning(projectId: string, service: string): Promise<{ ok: boolean; detail: string }> {
+    // `start` needs no compose file, only the project name; it starts the stopped containers in dependency order and leaves one-shot ones (migrations) done.
+    const r = await this.docker(['compose', '-p', serviceComposeProject(projectId, service), 'start', '--wait'], undefined, TIMEOUT);
+    return r.exitCode === 0 ? { ok: true, detail: 'running' } : { ok: false, detail: dockerFailure(`docker compose start (${service})`, r.stderr) };
+  }
+
   async startPlatform(projectId: string, platform: readonly PlatformService[]): Promise<{ ok: boolean; detail: string }> {
     const network = sharedNetwork(projectId);
     if ((await this.docker(['network', 'inspect', network], undefined, 30_000)).exitCode !== 0) {
@@ -262,6 +268,9 @@ export class DockerLocalTarget implements DeployTarget {
     if (intent.compose) {
       const r = await this.compose(intent, ['up', '-d', '--build', '--wait'], imageRef(intent), TIMEOUT);
       if (r.exitCode !== 0) throw new Error(dockerFailure('docker compose up', r.stderr));
+      // A restart of the docker daemon would leave the stack stopped for good: the running containers come back by themselves, and a one-shot one that already ended is not among them.
+      const running = (await this.compose(intent, ['ps', '-q'], null, 60_000)).stdout.trim().split(/\s+/).filter((id) => id !== '');
+      if (running.length > 0) await this.docker(['update', '--restart', 'unless-stopped', ...running], undefined, 60_000);
       // The image that ran before, even this very one: a failed redeploy restarts it and never tears it down with its data.
       return { previous };
     }

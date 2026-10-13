@@ -36,6 +36,22 @@ describe('DockerLocalTarget with a compose file', () => {
     expect(fake.lines('docker').some((l) => l.startsWith('run '))).toBe(false);
   });
 
+  it('keeps the running containers of a deployed stack coming back after a restart of the docker daemon', async () => {
+    const fake = new FakeExec().on((s) => s.args.includes('ps') && s.args.includes('-q'), () => ({ stdout: 'c1\nc2\n' })).onArgs('docker', ['inspect'], () => ({ stdout: 'todo-api:old\n' }));
+    await mk(fake).apply(intent);
+    expect(fake.lines('docker')).toContain('update --restart unless-stopped c1 c2');
+  });
+
+  it('starts again a stopped service of an earlier spec by its project name, waiting for it to be healthy', async () => {
+    const fake = new FakeExec();
+    expect(await mk(fake).ensureRunning('Todo-Api', 'orders')).toEqual({ ok: true, detail: 'running' });
+    expect(fake.lines('docker')).toEqual(['compose -p teams-ai-todo-api--orders start --wait']);
+    const bad = new FakeExec().onArgs('docker', ['compose'], () => ({ exitCode: 1, stderr: 'no container found for project' }));
+    const r = await mk(bad).ensureRunning('Todo-Api', 'orders');
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain('no container found for project');
+  });
+
   it('throws when compose up fails', async () => {
     const fake = new FakeExec().on((s) => s.args.includes('up'), () => ({ exitCode: 1, stderr: 'unhealthy' }));
     await expect(mk(fake).apply(intent)).rejects.toThrow(/compose up failed: unhealthy/);
