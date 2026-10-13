@@ -15,7 +15,7 @@ const backlog = {
 describe('SpecTree', () => {
   it('counts sections, specs, criteria and tasks, and lists the gaps', () => {
     render(<SpecTree backlog={backlog} />);
-    expect(screen.getByTestId('spec-tree').textContent).toMatch(/2 seções · 1 spec · 2 critérios · 1 tarefa · 2 lacunas/);
+    expect(within(screen.getByLabelText('Resumo da cobertura')).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['2 seções', '1 spec', '2 critérios', '1 tarefa', '2 lacunas']);
     const gaps = within(screen.getByTestId('tree-gaps'));
     expect(gaps.getByText(/9\. Faturamento/)).toBeTruthy();
     expect(gaps.getByText(/AC-002 sem tarefa/)).toBeTruthy();

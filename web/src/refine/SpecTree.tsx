@@ -4,6 +4,7 @@ import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 
 const HELP = 'Cada seção do flow.md deve ser coberta por um item; cada item tem uma spec com critérios de aceite; cada critério é coberto por tarefas do pré-plano. O que falta aparece em vermelho e impede o refinamento de ficar pronto.';
+const stat = 'rounded-md border px-[0.6rem] py-[0.3rem] text-[0.8125rem] font-semibold normal-case tracking-normal';
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const criterionText = (c: AcceptanceCriterion) => `${c.id}: dado ${c.given}, quando ${c.when}, então ${c.then}`;
 
@@ -18,23 +19,34 @@ export function SpecTree({ backlog, evaluating = false }: { backlog: BacklogView
   const preplans = Object.values(backlog.preplans ?? {}).filter((row) => row.preplan).length;
   return (
     <div className="my-4 grid gap-[0.6rem]" data-testid="spec-tree">
-      <h4 className="m-0 flex flex-wrap items-center gap-2">
-        <Icon name="list" size={20} />
-        Cobertura · {count(matrix.sections.length, 'seção', 'seções')} · {count(specs, 'spec', 'specs')} · {count(criteria, 'critério', 'critérios')} · {count(tasks, 'tarefa', 'tarefas')} · {count(gaps.length, 'lacuna', 'lacunas')}
-        <InfoTip text={HELP} />
-      </h4>
-      {evaluating && <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid="tree-progress">Detalhando… {specs}/{matrix.items.length} specs · {preplans}/{matrix.items.length} pré-planos</p>}
+      <h4 className="m-0 flex items-center gap-2"><Icon name="list" size={20} />Cobertura<InfoTip text={HELP} /></h4>
+      <ul className="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="Resumo da cobertura">
+        {[
+          count(matrix.sections.length, 'seção', 'seções'),
+          count(specs, 'spec', 'specs'),
+          count(criteria, 'critério', 'critérios'),
+          count(tasks, 'tarefa', 'tarefas'),
+        ].map((text) => <li key={text} className={`${stat} border-line bg-surface text-ink-soft`}>{text}</li>)}
+        <li className={`${stat} ${gaps.length === 0 ? 'border-good-line bg-good-soft text-good' : 'border-bad bg-bad-soft text-bad'}`}>{count(gaps.length, 'lacuna', 'lacunas')}</li>
+      </ul>
+      {evaluating && (
+        <p className="m-0 flex items-center gap-2 rounded-lg border border-accent-line bg-accent-soft px-3 py-2 text-[0.8125rem] text-ink" role="status" aria-live="polite" data-testid="tree-progress">
+          <span className="button-spinner" aria-hidden="true" />Detalhando… {specs}/{matrix.items.length} specs · {preplans}/{matrix.items.length} pré-planos
+        </p>
+      )}
       {!evaluating && gaps.length > 0 && (
         <ul className="m-0 grid gap-1 rounded-md border border-bad bg-bad-soft py-[0.6rem] pr-[0.8rem] pl-[1.6rem] text-[0.8125rem] text-bad" data-testid="tree-gaps">
           {gaps.map((g, n) => <li key={n}>{g}</li>)}
         </ul>
       )}
       {matrix.sections.length > 0 && (
-        <ol className="m-0 grid gap-[0.3rem] pl-[1.2rem] text-[0.8125rem] [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:gap-[0.35rem]">
+        <ol className="m-0 grid list-none gap-2 p-0 text-[0.8125rem]">
           {matrix.sections.map((s, n) => (
-            <li key={n} data-testid={`tree-section-${n}`} className={s.items.length > 0 ? '' : 'text-bad'}>
-              <b>{s.heading}</b>
-              {s.items.length > 0 ? s.items.map((k) => <span key={k} className="rounded-full bg-surface-muted px-[0.45rem] py-[0.05rem]">{titles.get(k) ?? k}</span>) : <span>sem item</span>}
+            <li key={n} data-testid={`tree-section-${n}`} className={`grid gap-[0.45rem] rounded-md border border-line bg-surface-sunken px-3 py-[0.6rem] ${s.items.length > 0 ? '' : 'text-bad'}`}>
+              <b className="text-[0.8125rem] leading-snug normal-case tracking-normal wrap-anywhere">{s.heading}</b>
+              <span className="flex flex-wrap gap-[0.35rem]">
+                {s.items.length > 0 ? s.items.map((k) => <span key={k} className="rounded-full bg-surface-muted px-[0.6rem] py-[0.15rem] leading-snug text-ink-soft">{titles.get(k) ?? k}</span>) : <span>sem item</span>}
+              </span>
             </li>
           ))}
         </ol>
@@ -44,8 +56,8 @@ export function SpecTree({ backlog, evaluating = false }: { backlog: BacklogView
         const planned = backlog.preplans?.[item.key]?.preplan?.tasks ?? [];
         return (
           <details key={item.key} className="rounded-md border border-line bg-surface" data-testid={`tree-${item.key}`}>
-            <summary className="flex cursor-pointer items-center gap-2 px-[0.65rem] py-[0.45rem]"><b>{titles.get(item.key) ?? item.key}</b>{item.specId ? <code className="text-[0.75rem] text-ink-faint">{item.specId}</code> : evaluating ? <span>pendente</span> : <span className="text-bad">sem spec</span>}</summary>
-            <ul className="m-0 grid gap-1 pt-0 pr-[0.65rem] pb-[0.6rem] pl-[1.6rem] text-[0.8125rem]">
+            <summary className="flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 px-[0.65rem] py-2"><b className="min-w-[10rem] flex-[1_1_10rem] normal-case tracking-normal wrap-anywhere">{titles.get(item.key) ?? item.key}</b>{item.specId ? <code className="text-[0.75rem] text-ink-faint">{item.specId}</code> : evaluating ? <span>pendente</span> : <span className="text-bad">sem spec</span>}</summary>
+            <ul className="m-0 grid list-none gap-[0.4rem] border-t border-line px-[0.65rem] py-[0.6rem] text-[0.8125rem] leading-snug text-ink-soft">
               {item.criteria.map((c) => {
                 const full = spec?.acceptanceCriteria.find((a) => a.id === c.id);
                 return (

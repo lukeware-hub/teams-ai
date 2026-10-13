@@ -25,6 +25,13 @@ function itemStatus(backlog: BacklogView, key: string): 'entregue' | 'em execuç
   if (spec?.spec && pre?.preplan && pre.specRev === spec.rev) return 'planejada';
   return 'em refinamento';
 }
+/** What the agents are doing to the backlog while an evaluation runs. */
+function processingText(backlog: BacklogView): string {
+  if (backlog.items.length === 0) return 'Montando a lista de specs a partir dos documentos.';
+  if (!backlog.detail) return 'Atualizando a lista de specs.';
+  const planned = backlog.items.filter((i) => itemStatus(backlog, i.key) !== 'em refinamento').length;
+  return `Gerando a spec e o pré-plano de cada item: ${planned} de ${backlog.items.length} prontos.`;
+}
 /** A small backlog chip and its tones, shared with the program panel. */
 export const bkChip = 'flex-none rounded-full px-2 py-[0.1rem] text-[0.6875rem] font-bold';
 export const bkTone = {
@@ -56,7 +63,13 @@ export function BacklogPanel({ backlog, evaluating, locked, ready = false, onEna
   return (
     <div className="my-4 grid gap-3" data-testid="backlog-on">
       <h4 className="m-0 flex items-center gap-2"><Icon name="list" size={20} />Backlog{backlog.items.length > 0 ? ` · ${backlog.items.length} specs em ${epics.length} épicos` : ''}<InfoTip text={HELP} /></h4>
-      {backlog.items.length === 0 && <p className="text-[0.8125rem] text-ink-soft">{evaluating ? 'Montando o backlog…' : 'O backlog aparece depois da próxima avaliação. Clique em Avaliar.'}</p>}
+      {evaluating && (
+        <p className="m-0 flex items-center gap-2 rounded-lg border border-accent-line bg-accent-soft px-3 py-2 text-[0.8125rem] text-ink" role="status" aria-live="polite" data-testid="backlog-processing">
+          <span className="button-spinner" aria-hidden="true" />
+          <span><b>Processando o backlog.</b> {processingText(backlog)}</span>
+        </p>
+      )}
+      {backlog.items.length === 0 && !evaluating && <p className="text-[0.8125rem] text-ink-soft">O backlog aparece depois da próxima avaliação. Clique em Avaliar.</p>}
       {backlog.items.length > 0 && !backlog.detail && onDetail && (
         <p className="m-0 flex items-center gap-2">
           <button type="button" className="secondary" data-testid="detail-specs" disabled={!ready || locked} onClick={onDetail}>Detalhar specs (~{estimatedCalls(backlog)} chamadas)<Icon name="file" size={16} /></button>
@@ -70,9 +83,9 @@ export function BacklogPanel({ backlog, evaluating, locked, ready = false, onEna
             {epic.items.map((i) => (
               <li key={i.key} className="rounded-md border border-line bg-surface" data-testid={`item-${i.key}`}>
                 <details>
-                  <summary className="flex cursor-pointer list-none items-center gap-2 px-[0.65rem] py-2 [&::-webkit-details-marker]:hidden">
+                  <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-2 gap-y-1 px-[0.65rem] py-2 [&::-webkit-details-marker]:hidden">
                     <span className={`${bkChip} ${bkTone[i.priority]}`}>{i.priority}</span>
-                    <b className="min-w-0 flex-1 font-semibold wrap-anywhere">{i.title}</b>
+                    <b className="min-w-[10rem] flex-[1_1_10rem] font-semibold wrap-anywhere">{i.title}</b>
                     {backlog.detail && <span className={`${bkChip} ${STATUS_TONE[itemStatus(backlog, i.key)]}`}>{itemStatus(backlog, i.key)}</span>}
                     <span className={bkMeta}>#{i.rank} · {SIZE[i.size]}</span>
                   </summary>
