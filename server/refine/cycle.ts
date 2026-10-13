@@ -22,6 +22,7 @@ import { fitPackBudget, PackTooLargeError } from './fit-pack.js';
 import { sha256 } from '../contracts/hash.js';
 import { flowHeadings } from '../validators/backlog.js';
 import { flowIsMermaid } from './sections.js';
+import { uniqueHeadingFixes } from './heading-fixes.js';
 import { detailBacklog, maxCriterionInDraft, retireDropped } from './detail-cycle.js';
 import { isStarted } from './coverage.js';
 import { DOC_REL, draftHash, flowTemplate, keepBaseProject, readBase, readDerived, readDoc, readMainSpec, stackTemplate, writeBacklogMd, writeDerived, writeDoc, writeProject, writeSpecsIndex, type DocFile, type Draft } from './draft.js';
@@ -270,6 +271,16 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         reason: p.reason, diff: unifiedDiff(c.file, docs[c.file], after), cycle,
       });
     }
+  }
+
+  // A repeated design.md heading makes a backlog item cite an ambiguous section: the human gets unique headings to accept, none one already pending or rejected.
+  let fixIndex = journal.state.patches.filter((p) => p.cycle === cycle && p.role === 'front').length;
+  for (const fix of uniqueHeadingFixes(docs['design.md'])) {
+    if (journal.state.patches.some((p) => p.file === 'design.md' && p.find === fix.find && p.replace === fix.replace && (p.status === 'pending' || p.status === 'rejected'))) continue;
+    await journal.fact(RefineEvent.PatchProposed, {
+      patchId: patchId('front', cycle, fixIndex++), role: 'front', file: 'design.md', ...fix,
+      diff: unifiedDiff('design.md', docs['design.md'], applyPatch(docs['design.md'], fix)!), cycle,
+    });
   }
 
   const state = journal.state;

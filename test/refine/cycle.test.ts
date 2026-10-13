@@ -183,6 +183,49 @@ describe('refinement cycle patch dedup (R11.10)', () => {
   });
 });
 
+describe('refinement cycle repeated design.md headings', () => {
+  const DESIGN = '# Design\n\n## 1. Médico\n\n### Navegação\n\nPainel do médico.\n\n## 2. Hospital\n\n### Navegação\n\nPainel do hospital.\n';
+  const run = async (prepare?: (state: ReturnType<typeof emptyRefineState>) => void) => {
+    const spec = makeSpec();
+    const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
+    const docs = path.join(root, 'docs');
+    await mkdir(docs, { recursive: true });
+    const draft = {
+      projectId: 'shop', specId: spec.specId, root, docs,
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+      stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
+      specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
+    };
+    await Promise.all([draft.projectMd, draft.briefMd, draft.stackMd, draft.flowMd].map((f) => writeFile(f, '# doc')));
+    await writeFile(draft.designMd, DESIGN);
+    const events: Array<{ type: string; data: Record<string, unknown> }> = [];
+    const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'shop/shop-002', specHash: 'draft', type, kind: 'fact' as const, data }; } };
+    prepare?.(journal.state);
+    const ok = (value: unknown) => ({ ok: true, value, summary: {} });
+    const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
+    const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
+      if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
+      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [] });
+      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
+    });
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1);
+    return events.filter((e) => e.type === 'PATCH_PROPOSED').map((e) => e.data);
+  };
+
+  it('proposes unique headings as front patches for the human to accept', async () => {
+    const proposed = await run();
+    expect(proposed.map((p) => p.patchId)).toEqual(['front-c1-0', 'front-c1-1']);
+    expect(proposed.every((p) => p.role === 'front' && p.file === 'design.md')).toBe(true);
+    expect(proposed.map((p) => String(p.replace).split('\n')[0])).toEqual(['### Navegação (1. Médico)', '### Navegação (2. Hospital)']);
+  });
+
+  it('does not propose again a patch the human rejected or one still pending', async () => {
+    const first = await run();
+    const row = (p: Record<string, unknown>, status: 'rejected' | 'pending') => ({ ...p, status, decision: null }) as never;
+    expect(await run((state) => state.patches.push(row(first[0]!, 'rejected'), row(first[1]!, 'pending')))).toEqual([]);
+  });
+});
+
 describe('refinement cycle patch dedup (R11.5a item 2)', () => {
   it('drops a paraphrased patch on the same file when the decision says it is the same change', async () => {
     const spec = makeSpec();
