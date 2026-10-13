@@ -6,8 +6,8 @@ const MARGIN_TOKENS = 2_000;
 export class PackTooLargeError extends Error {}
 
 /**
- * The docs travel in the droppable `feedback` section, which the pack removes whole when over budget. Raise the budget to
- * what the pack needs, so a large flow.md is never silently left out of derive or review; refuse beyond the cap.
+ * The docs travel in the `feedback` section, which the pack never drops and keeps outside the budget. Raise the budget to
+ * what the pack needs so the context around the docs is not trimmed, and refuse beyond the cap.
  */
 export function fitPackBudget(input: ContextPackInput): ContextPackInput {
   const needed = buildContextPack({ ...input, budgetTokens: Number.MAX_SAFE_INTEGER }).tokens + MARGIN_TOKENS;

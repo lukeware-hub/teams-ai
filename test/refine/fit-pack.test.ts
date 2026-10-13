@@ -14,9 +14,10 @@ const pack = (feedback: string, budgetTokens = 20_000): ContextPackInput => ({
 });
 
 describe('fitPackBudget', () => {
-  it('shows the defect it fixes: over budget, the unfitted pack drops all the docs', () => {
+  it('the pack itself never drops the docs any more, fitted or not', () => {
     const built = buildContextPack(pack('x'.repeat(100_000)));
-    expect(built.dropped).toContain('feedback');
+    expect(built.dropped).toEqual([]);
+    expect(built.sections).toContain('feedback');
   });
 
   it('keeps the docs when the pack is bigger than the default budget', () => {

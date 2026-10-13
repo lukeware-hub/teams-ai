@@ -212,11 +212,11 @@ describe('packs', () => {
   });
 
   it('keeps the step instructions when the current docs are large, since the docs leave the pack first', () => {
-    const big = (title: string) => `# ${title}\n${'x'.repeat(9_000)}`;
+    const big = (title: string) => `# ${title}\n${'x'.repeat(20_000)}`;
     // Eight blocked tasks whose reasons carry a gate output tail, as a hard run leaves them.
     const blocked = Array.from({ length: 8 }, (_, i) => ({ taskId: `T${i + 1}`, reason: 'gate unit-test failed: '.padEnd(2_500, 'y') }));
     const opts = { delivered: ['T9'], blocked, evidence: '[]', assumptions: [], deploy: '{}', hostUrl: null, tokens: '{}', security: '' };
-    const pack = buildContextPack(reportPack({ ...base, budgetTokens: 12_000 }, { ...opts, current: { readme: big('Readme'), runbook: big('Runbook'), apiDocs: big('Api') } }));
+    const pack = buildContextPack(reportPack({ ...base, budgetTokens: 4_000 }, { ...opts, current: { readme: big('Readme'), runbook: big('Runbook'), apiDocs: big('Api') } }));
     expect(pack.dropped).toContain('current-docs');
     expect(pack.dropped).not.toContain('feedback');
     expect(pack.text).toContain('Write the final report for the human validator.');

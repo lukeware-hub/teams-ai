@@ -70,13 +70,14 @@ describe('buildContextPack', () => {
     const big = 'x'.repeat(4000);
     const pack = buildContextPack({
       ...base,
-      budgetTokens: 1200,
+      budgetTokens: 1100,
       techSpecExcerpt: big,
       adrs: [{ id: 'ADR-001', title: 'Stack', text: big }],
       retrieval: [{ chunkId: 'c', docId: 'd', kind: 'spec', title: 't', heading: null, snippet: 's', text: big, score: 1 }],
       feedback: 'keep me',
     });
-    expect(pack.tokens).toBeLessThanOrEqual(1200);
+    // The feedback is outside the budget, so the tokens of the rest stay within it.
+    expect(pack.tokens - estimateTokens('## Feedback from the previous attempt\nkeep me')).toBeLessThanOrEqual(1100);
     expect(pack.dropped).toEqual(['retrieval', 'adrs', 'tech-spec']);
     expect(pack.sections).toEqual(['principles', 'contract', 'task', 'criteria', 'feedback']);
     expect(pack.text).toContain('Dropped for budget: retrieval, adrs, tech-spec');
@@ -110,7 +111,7 @@ describe('buildContextPack', () => {
     const big = 'x'.repeat(4000);
     const around: ContextPackInput = {
       ...base,
-      budgetTokens: 1200,
+      budgetTokens: 1100,
       techSpecExcerpt: big,
       adrs: [{ id: 'ADR-001', title: 'Stack', text: big }],
       retrieval: [{ chunkId: 'c', docId: 'd', kind: 'spec', title: 't', heading: null, snippet: 's', text: big, score: 1 }],
@@ -125,7 +126,17 @@ describe('buildContextPack', () => {
     expect(pack.dropped).toEqual(buildContextPack(around).dropped);
     expect(pack.dropped).toEqual(['retrieval', 'adrs', 'tech-spec']);
     expect(pack.tokens).toBe(estimateTokens(pack.text));
-    expect(pack.tokens - estimateTokens(changeSet)).toBeLessThanOrEqual(1200);
+    expect(pack.tokens - estimateTokens(changeSet) - estimateTokens('## Feedback from the previous attempt\nkeep me')).toBeLessThanOrEqual(1100);
+  });
+
+  it('never drops the feedback and keeps it outside the budget: a plan retry always sees its rules and its earlier errors', () => {
+    const rules = `Plan rules:\n- deploy.port is exactly 20037\n${'- another rule\n'.repeat(400)}`;
+    const pack = buildContextPack({ ...base, budgetTokens: 10, techSpecExcerpt: 'x'.repeat(4000), feedback: rules });
+    expect(pack.sections).toEqual([...NEVER_DROP, 'feedback']);
+    expect(pack.text).toContain('deploy.port is exactly 20037');
+    expect(pack.dropped).toEqual(['tech-spec', '!over-budget']);
+    const fits = buildContextPack({ ...base, budgetTokens: 1100, techSpecExcerpt: 'short spec', feedback: rules });
+    expect(fits.dropped).toEqual([]);
   });
 
   it('never drops the change set, not even when the budget is impossible for the rest', () => {

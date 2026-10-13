@@ -40,6 +40,7 @@ export interface ContextPackInput {
   retrieval?: readonly Hit[];
   /** The shared docs a docs step rewrites; they leave the pack right before the feedback, since the step can read them in its working directory. */
   currentDocs?: string;
+  /** The rules of the step and the errors of its earlier attempts: never dropped and outside `budgetTokens`, like the change set (live: three plan attempts with an identical prompt, every rule and error cut for budget). */
   feedback?: string;
   /**
    * What the step judges and cannot do without: the changed files and diff a security review reads. Rendered last,
@@ -75,10 +76,10 @@ export const SECTION_ORDER = [
 ] as const;
 type Section = (typeof SECTION_ORDER)[number];
 
-/** Present in every pack. The optional `change-set` is never dropped either: it is simply absent from DROP_ORDER. */
+/** Present in every pack. The optional `feedback` and `change-set` are never dropped either: they are simply absent from DROP_ORDER. */
 export const NEVER_DROP: readonly Section[] = ['principles', 'contract', 'task', 'criteria'];
-/** Drop order when over budget; feedback last because a retry is useless without it. */
-const DROP_ORDER: readonly Section[] = ['retrieval', 'code', 'adrs', 'tech-spec', 'objectives', 'handoffs', 'assumptions', 'current-docs', 'feedback'];
+/** Drop order when over budget. */
+const DROP_ORDER: readonly Section[] = ['retrieval', 'code', 'adrs', 'tech-spec', 'objectives', 'handoffs', 'assumptions', 'current-docs'];
 
 const MAX_HANDOFFS = 6;
 const HANDOFF_SUMMARY_CHARS = 400;
@@ -156,8 +157,8 @@ function assemble(sections: Map<Section, string>, dropped: string[]): string {
 export function buildContextPack(input: ContextPackInput): ContextPack {
   const sections = render(input);
   const dropped: string[] = [];
-  // The change set is outside DROP_ORDER and outside the budget, so a diff bigger than the whole budget cannot push itself out.
-  const budget = input.budgetTokens + estimateTokens(sections.get('change-set') ?? '');
+  // Feedback and the change set are outside DROP_ORDER and outside the budget, so neither can push itself or the other out.
+  const budget = input.budgetTokens + estimateTokens(sections.get('feedback') ?? '') + estimateTokens(sections.get('change-set') ?? '');
   let text = assemble(sections, dropped);
   for (const s of DROP_ORDER) {
     if (estimateTokens(text) <= budget) break;
