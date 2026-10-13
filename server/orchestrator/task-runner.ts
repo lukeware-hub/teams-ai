@@ -597,10 +597,15 @@ export class TaskRunner {
         // `merging` cannot go straight to `implementing`; step back through `rebasing` first.
         if (this.task.state === 'merging') await this.transition('rebasing');
         // Spec 10A.5 decision 6: once two attempts have failed, stalled or diverging progress replans early
-        // instead of spending the remaining attempts; a replacement task is never replanned again.
+        // instead of spending the remaining attempts; a replacement task is never replanned again, so it blocks.
         const next = this.task.attempts + 2;
-        if (next >= 3 && !this.task.replanned) {
+        if (next >= 3) {
           const { progress, source } = await assessAttemptProgress(this.task.def, next, [...this.attemptDeltas(), text], this.deps.decider, this.ctx);
+          if (progress !== 'converging' && this.task.replanned) {
+            await this.feedback(text, { attempt: true });
+            await this.deps.journal.fact(RunEvent.AttemptConsumed, { taskId: this.taskId });
+            return this.block(`${text}\n\nAttempt progress judged ${progress} (${source}) on a replanned task; blocked instead of spending its remaining attempts.`);
+          }
           if (progress !== 'converging') {
             await this.feedback(`${text}\n\nAttempt progress judged ${progress} (${source}); replanning early.`, { attempt: true });
             await this.deps.journal.fact(RunEvent.AttemptConsumed, { taskId: this.taskId });

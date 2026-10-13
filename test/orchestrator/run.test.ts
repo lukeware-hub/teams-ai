@@ -268,7 +268,8 @@ describe('Run', () => {
     };
     const run = await Run.create(await withAgents(deps(script, { maxParallel: 1 })));
     expect(await run.execute()).toBe('complete');
-    expect(reviews).toBe(3);
+    // The same finding twice in a row is a stalled attempt: the replan comes after the second review, not the third.
+    expect(reviews).toBe(2);
     const s = run.journal.state;
     expect(s.tasks.get('T1')!.state).toBe('superseded');
     expect(s.tasks.get('T1-r1')).toMatchObject({ state: 'merged', replanned: true });

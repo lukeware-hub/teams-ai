@@ -27,7 +27,22 @@ export function attemptProgressState(task: PlanTask, attempt: number, history: r
 
 export interface ProgressResult {
   progress: AttemptProgress;
-  source: 'default' | BackendName;
+  source: 'default' | 'rule' | BackendName;
+}
+
+/** What a delta complains about: the file and severity of each review finding above minor, or the whole text of any other failure. */
+function complaints(delta: string): Set<string> {
+  if (!delta.startsWith('Review requested changes:')) return new Set([delta.trim()]);
+  const keys = [...delta.matchAll(/^- (\S+?)(?::\d+)? \[(\w+)\]/gm)].filter((m) => m[2] !== 'minor').map((m) => `${m[1]} [${m[2]}]`);
+  return new Set(keys);
+}
+
+/** The last attempt fixed nothing: every complaint of its delta was already in the delta before it (live: a file the orchestrator's commit kept dropping, flagged three times in a row). */
+export function repeatedFailure(history: readonly string[]): boolean {
+  if (history.length < 2) return false;
+  const last = complaints(history[history.length - 1]!);
+  const before = complaints(history[history.length - 2]!);
+  return last.size > 0 && [...last].every((k) => before.has(k));
 }
 
 /** The weighted level index may fall between levels; round to the nearest one. */
@@ -38,6 +53,7 @@ export async function assessAttemptProgress(
   decider: Pick<Decider, 'decide'>,
   ctx: DecideContext,
 ): Promise<ProgressResult> {
+  if (repeatedFailure(history)) return { progress: 'stalled', source: 'rule' };
   const outcome = await decider.decide('attempt-progress', attemptProgressState(task, attempt, history), attemptProgressQuestions(), ctx);
   if (!outcome.answered) return { progress: ATTEMPT_PROGRESS_DEFAULT, source: 'default' };
   const answer = outcome.answers.progress;

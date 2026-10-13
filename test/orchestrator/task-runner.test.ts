@@ -759,7 +759,7 @@ describe('TaskRunner: attempt progress', () => {
     expect(journal.events.find((e) => e.type === RunEvent.TaskReplanned)).toBeTruthy();
   });
 
-  it('never replans a task that was already replanned; it retries instead', async () => {
+  it('never replans a task that was already replanned; when its attempts stall it blocks instead of spending the rest', async () => {
     // The reducer marks replacements `replanned: true`; replace T1 by T2 through the journal, then run T2.
     const T2 = makePlanTask({ id: 'T2', criteriaRefs: ['AC-001'], affectedPaths: ['src'], dependsOn: [] });
     await journal.fact(RunEvent.TaskReplanned, { taskId: 'T1', replacements: [T2] });
@@ -767,7 +767,8 @@ describe('TaskRunner: attempt progress', () => {
     const r = new TaskRunner('T2', deps({ agent: replanAgent, gates: failingGates, decider: stalled }));
     await r.advance(); await r.advance(); await r.advance(); await r.advance();
     expect(agentCalls.filter((c) => c.kind === 'replan')).toHaveLength(0);
-    expect(journal.state.tasks.get('T2')).toMatchObject({ state: 'implementing', attempts: 2, replanned: true });
+    expect(journal.state.tasks.get('T2')).toMatchObject({ state: 'blocked', attempts: 2, replanned: true });
+    expect(journal.events.find((e) => e.type === OrchEvent.TaskBlocked)!.data.reason).toContain('on a replanned task');
   });
 });
 
@@ -891,7 +892,10 @@ describe('TaskRunner: final review fixes', () => {
       return devDone()(req);
     };
     const d = stalledRecording();
-    const r = new TaskRunner('T1', deps({ agent, gates: failingGates, decider: d }));
+    // A different failure each time, so the repeated-failure rule stays out and the decider is asked.
+    let gateCalls = 0;
+    const changingGates = async () => { const f = gate('unit-test', { passed: false, exitCode: 1, stderrTail: `boom ${++gateCalls}`, failure: 'code' as const }); return { results: [f], blockingFailure: f }; };
+    const r = new TaskRunner('T1', deps({ agent, gates: changingGates, decider: d }));
     for (let i = 0; i < 5; i++) await r.advance();
     expect(d.states).toHaveLength(1);
     expect(d.states[0]).not.toContain('SCHEMA-RETRY-TEXT');

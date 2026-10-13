@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ATTEMPT_PROGRESS_LEVELS, assessAttemptProgress, attemptProgressQuestions, attemptProgressState } from '../../server/decide/decisions/attempt-progress.js';
+import { ATTEMPT_PROGRESS_LEVELS, assessAttemptProgress, attemptProgressQuestions, attemptProgressState, repeatedFailure } from '../../server/decide/decisions/attempt-progress.js';
 import type { DecisionOutcome } from '../../server/decide/types.js';
 import { makePlanTask } from '../fixtures/contracts.js';
 
@@ -23,6 +23,16 @@ describe('attempt progress', () => {
     expect((await assessAttemptProgress(task, 2, history, fake(score(0.4)), { confidential: false })).progress).toBe('diverging');
     expect((await assessAttemptProgress(task, 2, history, fake(score(1.4)), { confidential: false })).progress).toBe('stalled');
     expect((await assessAttemptProgress(task, 2, history, fake(score(1.6)), { confidential: false })).progress).toBe('converging');
+  });
+  it('judges stalled by rule, before any backend, when the last delta repeats the complaints of the one before', async () => {
+    const review = (sev: string, extra = '') => `Review requested changes:\n- .env.example [${sev}] not in the change set (fix: add it)${extra}`;
+    expect(repeatedFailure([review('important'), review('important', '\n- go.mod [minor] all indirect (fix: tidy)')])).toBe(true);
+    expect(repeatedFailure([review('important'), review('critical')])).toBe(false);
+    expect(repeatedFailure([review('important'), `${review('important')}\n- src/b.go:12 [important] new bug (fix: x)`])).toBe(false);
+    expect(repeatedFailure(['Gate unit-test failed (code, exit 1)\na::adds', 'Gate unit-test failed (code, exit 1)\na::adds'])).toBe(true);
+    expect(repeatedFailure(['Gate unit-test failed (code, exit 1)\na::adds', 'Gate unit-test failed (code, exit 1)\nb::subs'])).toBe(false);
+    expect(repeatedFailure([review('important')])).toBe(false);
+    expect(await assessAttemptProgress(task, 3, [review('important'), review('important')], fake(score(2)), { confidential: false })).toEqual({ progress: 'stalled', source: 'rule' });
   });
   it('defaults to converging when unanswered, so the retry policy is unchanged', async () => {
     expect(await assessAttemptProgress(task, 2, history, fake({ answered: false, reason: 'disabled' }), { confidential: false })).toEqual({ progress: 'converging', source: 'default' });
