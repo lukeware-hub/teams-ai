@@ -172,9 +172,18 @@ export async function rebaseOnto(
   dir: string,
   base: string,
   exec: Exec = execCommand,
+  opts: { union?: readonly string[] } = {},
 ): Promise<{ ok: true; baseSha: string } | { ok: false; conflicts: string[] }> {
   const baseSha = await git(dir, ['rev-parse', base], exec);
-  const r = await run(dir, ['rebase', base], exec);
+  // `union` names files (pathspecs of .gitattributes) where both sides' lines are kept when they changed the same ones: shared docs two specs extend at once.
+  const attrs = opts.union?.length ? path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-attrs-')), 'attributes') : null;
+  if (attrs) await fs.writeFile(attrs, `${opts.union!.map((p) => `${p} merge=union`).join('\n')}\n`);
+  let r;
+  try {
+    r = await run(dir, [...(attrs ? ['-c', `core.attributesFile=${attrs.replace(/\\/g, '/')}`] : []), 'rebase', base], exec);
+  } finally {
+    if (attrs) await fs.rm(path.dirname(attrs), { recursive: true, force: true });
+  }
   if (r.exitCode === 0) return { ok: true, baseSha };
   const unmerged = await git(dir, ['diff', '--name-only', '--diff-filter=U'], exec).catch(() => '');
   const conflicts = unmerged === '' ? [] : unmerged.split('\n');

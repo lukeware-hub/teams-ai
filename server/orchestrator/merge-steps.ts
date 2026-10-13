@@ -59,13 +59,13 @@ async function guarded(journal: Journal, type: (typeof Intent)[keyof typeof Inte
   return result;
 }
 
-function common(deps: MergeStepsDeps, worktree: string, branch: string, title: string, body: () => Promise<string>, runGates: boolean, taskId: string | null = null) {
+function common(deps: MergeStepsDeps, worktree: string, branch: string, title: string, body: () => Promise<string>, runGates: boolean, taskId: string | null = null, union: readonly string[] = []) {
   const repo = deps.ws.repo;
   return {
     alreadyMerged: async () => findMergedPr({ cwd: repo, head: branch, base: 'main', headSha: await headSha(worktree, deps.exec).catch(() => undefined) }, deps.ghExec),
     rebase: async () => {
       await gitFetch(repo, deps.exec);
-      const r = await rebaseOnto(worktree, 'origin/main', deps.exec);
+      const r = await rebaseOnto(worktree, 'origin/main', deps.exec, { union });
       // A worktree whose commit (or lack of one) left it exactly on baseSha has nothing to push or PR:
       // content already identical to main, typically a retry of a Phase 0 whose docs already merged.
       return r.ok && (await headSha(worktree, deps.exec)) === r.baseSha ? { ...r, empty: true } : r;
@@ -163,7 +163,8 @@ export function taskMergeSteps(deps: MergeStepsDeps, task: PlanTask, worktree: s
 
 /** Docs branches (Phase 1 and 2) take the same path, minus gates and graph update (spec (orchestrator) §4.2). */
 export function docsMergeSteps(deps: MergeStepsDeps, branch: string, worktree: string, title: string, specId: string): MergeSteps {
-  const base = common(deps, worktree, branch, title, async () => `Documentation update for the orchestrator run.\n\nSpec: ${specId}`, false);
+  // Two specs that run together extend the same README, RUNBOOK and API pages: a conflict there keeps both texts.
+  const base = common(deps, worktree, branch, title, async () => `Documentation update for the orchestrator run.\n\nSpec: ${specId}`, false, null, ['docs/*.md']);
   return {
     ...base,
     afterMerge: async () => {

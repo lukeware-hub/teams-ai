@@ -147,6 +147,34 @@ describe('changedFiles and rebase', () => {
     expect(await fs.readFile(path.join(wt, 'README.md'), 'utf8')).toBe('from task\n');
   });
 
+  it('keeps both sides of a file named as unionable when both changed the same lines', async () => {
+    const wt = path.join(root, 'wt');
+    await createWorktree(repo, wt, 'task/x', 'main');
+    await write(wt, 'docs/README.md', '# Docs\n\nfrom task\n');
+    await commitAll(wt, 'docs: task');
+    await write(repo, 'docs/README.md', '# Docs\n\nfrom main\n');
+    await commitAll(repo, 'docs: main');
+    const result = await rebaseOnto(wt, 'main', undefined, { union: ['docs/*.md'] });
+    expect(result.ok).toBe(true);
+    const text = await fs.readFile(path.join(wt, 'docs/README.md'), 'utf8');
+    expect(text).toContain('from main');
+    expect(text).toContain('from task');
+    expect(text).not.toContain('<<<<<<<');
+    expect(await git(wt, ['status', '--porcelain'])).toBe('');
+  });
+
+  it('still reports a conflict in a file the union does not name', async () => {
+    const wt = path.join(root, 'wt');
+    await createWorktree(repo, wt, 'task/x', 'main');
+    await write(wt, 'docs/README.md', '# Docs\n\nfrom task\n');
+    await write(wt, 'src/a.ts', 'task\n');
+    await commitAll(wt, 'docs: task');
+    await write(repo, 'docs/README.md', '# Docs\n\nfrom main\n');
+    await write(repo, 'src/a.ts', 'main\n');
+    await commitAll(repo, 'docs: main');
+    expect(await rebaseOnto(wt, 'main', undefined, { union: ['docs/*.md'] })).toEqual({ ok: false, conflicts: ['src/a.ts'] });
+  });
+
   it('replays a conflicting branch onto the base as one commit, with markers where both sides changed the same lines', async () => {
     const wt = path.join(root, 'wt');
     await createWorktree(repo, wt, 'task/x', 'main');
