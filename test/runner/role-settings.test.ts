@@ -19,6 +19,12 @@ describe('buildRoleSettings', () => {
     expect(buildRoleSettings('dev', { allowedDomains: [] }).permissions.deny.some((d) => d.startsWith('Read(/'))).toBe(false);
   });
 
+  it('hides the credential stores of the orchestrator HOME from every command in the sandbox, not only from the Read tool', () => {
+    const { filesystem } = buildRoleSettings('dev', { allowedDomains: [], hostHome: '/home/node/' }).sandbox;
+    expect(filesystem?.denyRead).toEqual(expect.arrayContaining(['/home/node/.teams-ai/secrets', '/home/node/.config/gh', '/home/node/.claude/.credentials.json']));
+    expect(buildRoleSettings('dev', { allowedDomains: [] }).sandbox.filesystem).toBeUndefined();
+  });
+
   it('denies secrets, credential stores, the settings directory and orchestrator-only commands for every role', () => {
     for (const role of ROLES) {
       const deny = buildRoleSettings(role, { allowedDomains: [] }).permissions.deny;

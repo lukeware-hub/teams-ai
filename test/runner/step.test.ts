@@ -232,7 +232,8 @@ describe('runStep', () => {
     const settingsPath = captured.argv[captured.argv.indexOf('--settings') + 1];
     expect(settingsPath).toBe(path.join(deps.settingsDir, 'dev.settings.json'));
     const settings = JSON.parse(await fs.readFile(settingsPath, 'utf8'));
-    expect(settings.sandbox).toEqual({ enabled: true, network: { allowedDomains: ['registry.npmjs.org'] } });
+    expect(settings.sandbox).toMatchObject({ enabled: true, network: { allowedDomains: ['registry.npmjs.org'] } });
+    expect(settings.sandbox.filesystem.denyRead).toContain(`${dir}/.teams-ai/secrets`);
     expect(settings.permissions.deny).toContain('Edit(.claude/**)');
     expect(captured.prompt).toBe('Implement it');
   });

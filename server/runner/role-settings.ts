@@ -73,7 +73,7 @@ export interface RoleSettingsInput {
 }
 
 export interface RoleSettings {
-  sandbox: { enabled: boolean; network: { allowedDomains: string[] } };
+  sandbox: { enabled: boolean; network: { allowedDomains: string[] }; filesystem?: { denyRead: string[] } };
   permissions: { allow: string[]; deny: string[] };
 }
 
@@ -86,8 +86,10 @@ export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSet
     ...ALWAYS_DENIED,
     ...NESTED_DENIED,
   ];
+  // Read rules only stop the Read tool; the sandbox stops every command (`cat`) from opening the credential stores.
+  const denyRead = input.hostHome ? PROTECTED_READ_PATHS.map((p) => `${input.hostHome!.replace(/\/+$/, '')}/${p.slice(2).replace(/\/\*\*$/, '')}`) : [];
   return {
-    sandbox: { enabled: input.sandboxEnabled ?? true, network: { allowedDomains: [...input.allowedDomains] } },
+    sandbox: { enabled: input.sandboxEnabled ?? true, network: { allowedDomains: [...input.allowedDomains] }, ...(denyRead.length > 0 ? { filesystem: { denyRead } } : {}) },
     permissions: { allow: [...ROLE_ALLOW[role], ...(input.extraAllow ?? [])], deny: [...new Set(deny)] },
   };
 }

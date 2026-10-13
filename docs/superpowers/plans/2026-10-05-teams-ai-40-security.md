@@ -84,7 +84,7 @@ Deviations from the plan:
 - The `docker` and `gh` binaries stay on the agent PATH (`/usr/local/bin` also holds node, npm and claude, so the directory
   cannot be dropped). With the host socket gone and `DOCKER_HOST` outside the agent env allowlist, `docker` has no daemon to
   reach; the nested daemon is not the host's. Revisit if the probe shows a path to `dind:2375`.
-- The second-uid and probe items (`p8-agent-reach.sh`) are not done: they need a working `claude` login. Open.
+- The probe ran on 2026-10-13 (`scripts/wsl/probes/p8-agent-reach.ts`, not `.sh`): the `Read` deny rules did not stop `cat` on the credential stores, so `sandbox.filesystem.denyRead` now hides them from every command (`server/runner/role-settings.ts`); the same probe then found nothing. The second uid stays open as a stronger layer, and `CLAUDE_CODE_OAUTH_TOKEN` is still in the step environment.
 
 Not verified live: `docker compose up` with `dind-rootless` on this host (user namespaces, port publishing through
 rootlesskit, `host-gateway` for the smoke gate) and `spec deploy --target docker-local` through `dind`.
