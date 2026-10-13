@@ -35,7 +35,7 @@ Status values: `todo` → `planning` → `approved` → `in progress` → `done`
 sibling containers through the mounted docker socket. Generated projects deploy with `docker-local` only. The UI needs no token:
 the port is published on the host loopback only (`TEAMS_AI_UI_LOOPBACK_PUBLISHED`).
 
-**Security block (plan 40, 2026-10-05):** code and tests done (rootless `dind` instead of the host socket, gate hardening, absolute secret denies). Open: live check of `docker compose up` with `dind` and of a docker-local deploy through it; the agent-reach probe (needs a `claude` login). Egress stays unrestricted by decision.
+**Security block (plan 40, 2026-10-05):** code and tests done (rootless `dind` instead of the host socket, gate hardening, absolute secret denies). Checked 2026-10-13: the rootless `dind` runs healthy for 10 hours and the Kayron Hub services (`hospital-web`, `doctor-web`) run healthy inside it, so `docker compose up` with `dind` and docker-local deploys through it work. Open: the agent-reach probe (needs a `claude` login). Egress stays unrestricted by decision.
 
 ## Pause log
 
@@ -387,6 +387,7 @@ unit-tested with fixtures. Each one needs a plan file in `plans/` before impleme
 - Built (plan 82): the compose services use `ghcr.io/diego-dm-morais/teams-ai:latest` (or `TEAMS_AI_IMAGE`) and `task up` and `task start` pull it and build when the pull fails, `task up:source` builds from the folder, and a `publish` job in `ci.yml` pushes the image on `main` or a `v*` tag for amd64 only (the arm64 build failed under emulation on 2026-10-12; a native arm64 runner can bring it back), scanned with trivy before `latest` moves. The package is private (human, 2026-10-12).
 - Published on 2026-10-12 (CI run on `5b0621d`: build, trivy scan, then `latest`). The scan found 15 critical findings with fixes in the base image and the docker CLI, fixed by new digests (`node:22-bookworm`, `docker:29-cli`); the arm64 build failed under emulation and was dropped, and the runner needed its disk freed.
 - Open: a `task start` on a clean machine after `docker login ghcr.io`; the docker CLI and compose plugin moved to the 29 line against the 27 daemon, which only a real run shows.
+
 ## Stage 10 - Agent quality (2026-10-06)
 
 ### R10.1 Route tasks to the owning role; repair agent prompts; distill skill guidance - `done` (plan 46, 2026-10-06)
@@ -421,7 +422,8 @@ The docs (project, briefing, stack, flow, design) stay the only hand-edited trut
 
 - Explicit "Quebrar em backlog" mode; `backlog` agent step; deterministic validators; panel grouped by epic with P0-P3 priority and dependencies; the human adjusts priority by writing in `briefing.md`.
 - Built (one commit per task): `server/contracts/backlog.ts` and `server/validators/backlog.ts` (keys, reserved keys, epics, dependencies and cycles, a dependency never lower priority, 60 items, every `flow.md` section cited, `rankItems`); step kind `backlog`; `server/refine/backlog.ts` (`backlogPack`, `postProcessBacklog` with stable keys, `renderBacklogMd`); `BACKLOG_ENABLED` and `BACKLOG_DERIVED` in the journal and the shared reducer; a backlog branch in `runCycle` (one retry carrying the rejection, writes `project.json` and a generated `docs/backlog.md`, PO and SM review the backlog with the same checklist); `POST /api/refine/:p/:s/backlog`; `BacklogPanel` and the button; policy in `po.md` and `sm.md`. Start is refused in backlog mode until R11.3.
-- Open: the live cycle on the Kayron docs (spends quota, needs the human's ok) is the real test of the breakdown quality, the coverage rule and the priorities; the container still runs the older image until it is rebuilt; once a single-spec session turns backlog mode on, its old spec.json and tasks blocks stay visible until it is re-evaluated; `refine-api.test.ts` still shows a timing flake in full parallel runs (passes alone).
+- Checked 2026-10-13: the live cycle on the Kayron docs ran (the outline became 42 specs, 5 `done`); the breakdown quality, the coverage rule and the priorities were exercised there.
+- Open: the container still runs the older image until it is rebuilt; once a single-spec session turns backlog mode on, its old spec.json and tasks blocks stay visible until it is re-evaluated; `refine-api.test.ts` still shows a timing flake in full parallel runs (passes alone).
 
 ### R11.1b `specs.json` index on the screen and on main - `done` (screen and draft; publishing to main is R11.3, 2026-10-06)
 
@@ -467,7 +469,7 @@ The docs (project, briefing, stack, flow, design) stay the only hand-edited trut
   - Both: criterion ids unique (agenda AC-001..AC-103, 102 ids; biblio 52), every criterion covered by a pre-plan task, Start answers 409, `specs.json` and `backlog.md` match the items. Secrets are per target project (`ws.secrets`, `server/refine/registry.ts:66`); the placeholders live in each throwaway workspace.
   - Not reached: `ready` after detailing. Every review finds new real gaps and every fix is a doc edit that re-runs the cycle: convergence is the blocker (R11.10), and the PO and SM ask the owner what the delivery contract or the docs already answer (R11.5a).
   - Decisions (human, 2026-10-07): refinement keeps PO and SM together, supported by Jev; Jev's classification is the backbone of refinement (R11.5a).
-- Open: delete `r112-agenda`, `r112-biblioteca` and `r112-biblio` (UI or `DELETE /api/refine/<p>/<p>-001`).
+- Checked 2026-10-13: `r112-agenda`, `r112-biblioteca` and `r112-biblio` no longer exist (`/api/projects` lists only `kayron-hub`), so nothing is left to delete. The Kayron Hub program (refinement cycle 28, 35 `planned`, 5 `done`, 2 `running`) already ran the outline and the detailing live.
 
 ### R11.5a Jev at the center of refinement - `partial` (human, 2026-10-07: Jev's classification is the backbone of refinement; PO and SM decide on it; slice 1 built 2026-10-08, plan 53; item 3 built 2026-10-12, plan 85)
 
