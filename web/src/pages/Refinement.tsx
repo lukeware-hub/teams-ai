@@ -244,6 +244,9 @@ export function RefinementView(p: ViewProps) {
         : { label: 'Atual', tone: 'ok' };
   const green = allGreen(st.checklist);
   const pendingSuggestion = st.patches.some((x) => x.status === 'pending');
+  // The secrets item fails with the names the specs need; the screen lists a field for each in Segredos.
+  const missingSecrets = /^missing secrets: (.+)$/.exec(st.checklist.find((i) => i.id === 'sm.dependencies-and-secrets' && !i.passed)?.detail ?? '')?.[1];
+  const backlogDetailed = st.backlog?.items.every((i) => st.backlog?.specs?.[i.key]?.spec && st.backlog.preplans?.[i.key]?.preplan) ?? false;
   const nextStep = st.status === 'started' && st.backlog?.enabled
     ? 'Os agentes estão executando o backlog, até duas specs ao mesmo tempo quando não mexem no mesmo código. Acompanhe cada uma na tela de execução do backlog.'
     : st.status === 'evaluating'
@@ -258,6 +261,8 @@ export function RefinementView(p: ViewProps) {
         ? 'Aprove ou rejeite o ajuste proposto abaixo; as outras sugestões são opcionais.'
       : st.status === 'answering' && st.patches.some((x) => x.status === 'pending')
         ? 'Revise as sugestões de alteração abaixo e aceite ou rejeite cada uma.'
+        : missingSecrets
+        ? `Faltam segredos: ${missingSecrets}. Salve o valor de cada um na seção Segredos e clique em Reavaliar.`
         : st.backlog?.enabled && st.status === 'ready'
           ? st.backlog.detail
             ? st.autoStartFailure?.cycle === st.cycle
@@ -266,7 +271,7 @@ export function RefinementView(p: ViewProps) {
                 ? 'O backlog detalhado está pronto, mas só começa sozinho sem sugestões pendentes: aceite ou rejeite cada uma, ou clique em Iniciar análise para começar sem elas, que vão para o histórico.'
                 : 'O backlog detalhado está pronto: cada item tem spec e pré-plano, e o programa começa sozinho em instantes. Para mudar algo antes, escreva nos documentos e reavalie.'
             : 'O backlog está pronto para revisão. Para mudar prioridades ou cortes, escreva no briefing.md e reavalie; quando o esboço estiver certo, clique em Detalhar specs para gerar a spec e o pré-plano de cada item.'
-        : st.backlog?.detail
+        : st.backlog?.detail && !backlogDetailed
           ? 'Detalhamento pedido: clique em Reavaliar para gerar a spec e o pré-plano de cada item; o que faltar aparece em vermelho na cobertura.'
         : canStart
           ? 'Tudo pronto. Clique em Iniciar análise para os agentes desenvolverem o projeto.'

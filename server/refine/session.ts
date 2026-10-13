@@ -82,6 +82,13 @@ export interface SessionDeps {
   /** Read at each evaluation, so a floor set in the config reaches drafts already open. */
   autoAnswerFloor?: () => Promise<number | undefined>;
 }
+/** The secrets the specs list as external dependencies, so the screen offers a field for each one that is missing. */
+function requiredSecretNames(state: RefineState): string[] {
+  const dependencies = state.backlog?.enabled
+    ? Object.values(state.backlog.specs ?? {}).flatMap((row) => row.spec?.externalDependencies ?? [])
+    : state.derived?.spec.externalDependencies ?? [];
+  return dependencies.flatMap((dep) => dep.secretNames);
+}
 export interface SecretRow {
   name: string;
   present: boolean;
@@ -191,7 +198,7 @@ export class RefineSession {
       'design.md': await readDoc(this.deps.draft, 'design.md'),
     } as Record<DocFile, string>;
     const present = await loadSecrets(this.deps.secretsDir);
-    const names = Object.keys(present).sort();
+    const names = [...new Set([...Object.keys(present), ...requiredSecretNames(this.state)])].sort();
     const secrets = names.map((name) => ({ name, present: name in present, hint: name in present ? '****' : null }));
     const tokens = { inputTokens: 0, outputTokens: 0, costUsd: 0, steps: 0 };
     for (const e of this.journal.events) {

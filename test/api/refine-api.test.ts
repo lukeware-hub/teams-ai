@@ -569,6 +569,16 @@ describe('refine api', () => {
     ]);
   });
 
+  it('lists a secret an external dependency needs even before it is saved', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    script['derive/po'] = [{ ...derived, spec: { ...derived.spec, externalDependencies: [{ name: 'db', purpose: 'p', secretNames: ['DB_URL'] }] } }];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
+    await settle();
+    expect((await (await fetch(`${base()}/api/refine/hello-app/hello-app-001`)).json()).secrets).toEqual([{ name: 'DB_URL', present: false, hint: null }]);
+  });
+
   it('start freezes the spec, spawns run --draft with the draft root, registers it, and refuses when stale', async () => {
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/start')).status).toBe(409);
