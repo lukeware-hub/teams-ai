@@ -21,6 +21,9 @@ export const GIT_IDENTITY: Record<string, string> = {
  * Repository content that must never reach a commit: secrets, dependency trees and gate artifacts.
  * The caller adds the plan's junitPath. Pathspecs use the exclude magic so `add -A` stays otherwise complete.
  */
+/** The `.env` files meant to be committed: they list the variables with no real value. */
+const ENV_TEMPLATES: readonly string[] = ['.env.example', '.env.sample', '.env.template', '.env.dist'].map((n) => `:(glob)**/${n}`);
+
 export const DEFAULT_COMMIT_EXCLUDES: readonly string[] = ['.env', '.env.*', '**/.env', '**/.env.*', 'node_modules', '**/node_modules', 'reports/junit.xml', '.tools'];
 
 /** Hardening applied to every git command: hooks and fsmonitor from a (possibly agent-written) config never execute. */
@@ -144,7 +147,10 @@ export async function commitAll(
   // ("paths are ignored by one of your .gitignore files"), which the first live run hit.
   await git(dir, ['add', '-A', '--', '.'], exec);
   if (exclude.length > 0) {
+    // The `.env.*` exclusion is for real secrets: the templates it also matches go back in, unless the repository ignores them.
+    const templates = exclude.some((p) => p.endsWith('.env.*')) ? (await git(dir, ['ls-files', '--cached', '--', ...ENV_TEMPLATES], exec)).split('\n').filter((f) => f !== '') : [];
     await git(dir, ['rm', '-r', '-q', '--cached', '--ignore-unmatch', '--', ...exclude.map((p) => `:(glob)${p}`)], exec);
+    if (templates.length > 0) await git(dir, ['add', '-f', '--', ...templates.map((f) => `:(literal)${f}`)], exec);
   }
   const staged = await run(dir, ['diff', '--cached', '--quiet'], exec);
   if (staged.exitCode === 0) return null;

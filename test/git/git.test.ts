@@ -64,6 +64,18 @@ describe('commitAll', () => {
     expect((await git(repo, ['show', '--name-only', '--format=', 'HEAD'])).split('\n')).toEqual(['src/ok.ts']);
   });
 
+  it('commits the .env templates, which hold no secret by convention, while the real .env files stay out (live-run finding)', async () => {
+    await write(repo, '.env', 'SECRET=1');
+    await write(repo, '.env.production', 'SECRET=2');
+    await write(repo, '.env.example', 'PORT=8080');
+    await write(repo, 'svc/.env.sample', 'PORT=9090');
+    await write(repo, 'svc/.env', 'SECRET=3');
+    const sha = await commitAll(repo, 'feat: env');
+    expect(sha).not.toBeNull();
+    expect((await git(repo, ['show', '--name-only', '--format=', 'HEAD'])).split('\n').sort()).toEqual(['.env.example', 'svc/.env.sample']);
+    expect(await git(repo, ['status', '--porcelain'])).not.toContain('.env.example');
+  });
+
   it('commits when an excluded path is also ignored by the repository .gitignore (live-run finding)', async () => {
     await write(repo, '.gitignore', 'reports/\nnode_modules/\n');
     await write(repo, 'reports/junit.xml', '<testsuite/>');
