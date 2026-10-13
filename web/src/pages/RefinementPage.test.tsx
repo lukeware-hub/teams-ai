@@ -8,7 +8,7 @@ const journal = vi.hoisted(() => ({ events: [] as unknown[] }));
 vi.mock('../useSse.js', () => ({ useJournal: (url: string | null) => ({ events: url ? journal.events : [], ended: false, error: null }) }));
 
 const event = (seq: number, type: string, data: Record<string, unknown>): StoredEvent => ({ seq, at: '', runId: 'hello-app/hello-001', specHash: 'draft', type, kind: 'fact', data });
-const patch = { patchId: 'sm-c1-0', role: 'sm', file: 'brief.md', find: 'a', replace: 'b', reason: 'clearer', diff: '--- brief.md\n-a\n+b\n', cycle: 1 };
+const patch = { patchId: 'sm-c1-0', role: 'sm' as const, file: 'brief.md', find: 'a', replace: 'b', reason: 'clearer', diff: '--- brief.md\n-a\n+b\n', cycle: 1 };
 const snapshot = (seq: number): Snapshot => ({
   projectId: 'hello-app',
   specId: 'hello-001',
