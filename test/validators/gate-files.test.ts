@@ -3,9 +3,10 @@ import type { Plan } from '../../server/contracts/plan.js';
 import { gateFileErrors } from '../../server/validators/gate-files.js';
 
 const gate = (name: string, command: string, blocking = true) => ({ name, command, blocking });
-const plan = (gates: ReturnType<typeof gate>[], roots: string[]): Plan =>
+const plan = (gates: ReturnType<typeof gate>[], roots: string[], commands: Plan['commands'] = {} as Plan['commands']): Plan =>
   ({
     gates,
+    commands,
     tasks: [
       { id: 'T0-scaffold', dependsOn: [], affectedPaths: roots },
       { id: 'T1', dependsOn: ['T0-scaffold'], affectedPaths: ['smoke/smoke.mjs'] },
@@ -42,6 +43,19 @@ describe('gateFileErrors', () => {
     const cmd = "npm test && node -e \"require('fs').writeFileSync('coverage/coverage.json', '{}')\" && cat reports/junit.xml.json";
     const p = { ...plan([gate('coverage', cmd)], []), coveragePath: 'coverage/coverage.json', junitPath: 'reports/junit.xml.json' } as Plan;
     expect(gateFileErrors(p, repo)).toEqual([]);
+  });
+});
+
+describe('gateFileErrors on commands.smoke and commands.e2e', () => {
+  it('rejects a suite file that is neither on main nor in any task (live: "Could not find \'smoke/smoke.test.mjs\'" after deploy)', () => {
+    const errs = gateFileErrors(plan([], [], { smoke: 'node --test smoke/smoke.test.mjs', e2e: 'node --test e2e/missing.test.mjs' } as Plan['commands']), repo);
+    expect(errs).toHaveLength(2);
+    expect(errs[0]).toMatch(/commands\.smoke names smoke\/smoke\.test\.mjs/);
+    expect(errs[1]).toMatch(/commands\.e2e names e2e\/missing\.test\.mjs/);
+  });
+
+  it('accepts a suite file on main or created by any task, the last one included: the suites run only after every task merged', () => {
+    expect(gateFileErrors(plan([], [], { smoke: 'node --test smoke/smoke.mjs', e2e: 'node --test test/hello.test.mjs' } as Plan['commands']), repo)).toEqual([]);
   });
 });
 

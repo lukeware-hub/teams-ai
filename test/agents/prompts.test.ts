@@ -34,6 +34,19 @@ describe('agent prompts for a project of services (R12.6)', () => {
     expect(agent('dev')).toContain("main's side sits between `<<<<<<< ours` and `=======`");
   });
 
+  it('tell devops and the reviewer that a digest no one can look up is no blocker: the docs tag pins the image', () => {
+    // Live: kayron-hub design-tokens-shell run-1 and run-2 blocked the Dockerfile tasks on "faltam os digests reais".
+    expect(agent('devops')).toContain('A step has no network and no docker, so it can never look up an image digest');
+    expect(agent('test')).toContain('Never ask for an image digest');
+  });
+
+  it('tell Front and the Dev to take fonts from npm and never to reach the git remote (live: github.com denied in kayron-hub)', () => {
+    for (const role of ['front', 'dev']) {
+      expect(agent(role)).toContain("The sandbox reaches only the package registries (npm and the stack's own), never github.com, raw.githubusercontent.com");
+      expect(agent(role)).toContain('Never run `git fetch`, `git pull`, `git push` or `git rebase`');
+    }
+  });
+
   it('tell the PO that a key never extends another key with a branch suffix', () => {
     expect(agent('po')).toContain('A key never equals another key followed by `-plan`, `-report`, `-done`, `-readme`, `-workflows` or a version such as `-v2`');
   });
