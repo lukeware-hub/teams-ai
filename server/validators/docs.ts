@@ -106,7 +106,8 @@ export function resolveDocs(answer: DocsAnswer, current: DocsInput | undefined):
   const docs: DocsInput = { readme: answer.readme ?? current?.readme ?? '', runbook: answer.runbook ?? current?.runbook ?? '', apiDocs: answer.apiDocs ?? current?.apiDocs ?? '' };
   const errors: string[] = [];
   for (const p of answer.docPatches ?? []) {
-    const key = DOC_KEYS[p.file]!;
+    const key = DOC_KEYS[p.file];
+    if (!key) { errors.push(`${p.file}: not one of docs/README.md, docs/RUNBOOK.md or docs/API.md`); continue; }
     if (answer[key] !== undefined) { errors.push(`${p.file}: a patch and a whole file were both given; send one of them`); continue; }
     const next = applyPatch(docs[key] ?? '', p);
     if (next === null) errors.push(`${p.file}: the patch's find must occur exactly once in the current file: ${JSON.stringify(p.find.slice(0, 80))}`);

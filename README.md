@@ -221,8 +221,7 @@ Para compartilhar a UI na rede local (opcional): defina `TEAMS_AI_UI_BIND=0.0.0.
 e adicione o hostname que você usa em `TEAMS_AI_ALLOWED_HOSTS` (a API rejeita `Host` desconhecido). Nunca exponha sem token.
 
 > Observação: o `dind` sem root precisa de `/dev/net/tun` e de seccomp/AppArmor mais flexíveis. Ele está implementado e
-> coberto por testes unitários; a verificação ponta a ponta em cada máquina ainda consta como pendente em
-> `docs/superpowers/ROADMAP.md`. Se o `dind` não ficar saudável no seu computador, veja [Solução de problemas](#solução-de-problemas).
+> coberto por testes unitários. Se o `dind` não ficar saudável no seu computador, veja [Solução de problemas](#solução-de-problemas).
 
 ### Caminho B: WSL2 a partir do código (desenvolvimento)
 
@@ -438,7 +437,7 @@ scripts/   Setup do WSL, smoke tests, scripts de integração e avaliação
 
 ## Mais documentação
 
-- `docs/superpowers/ROADMAP.md`: o que já foi feito e o que falta.
+- `docs/superpowers/BACKLOG.md`: os bugs conhecidos do sistema, com a evidência de cada um.
 - `docs/superpowers/specs/`: especificações de design. `docs/superpowers/plans/`: planos de implementação.
 - `docs/superpowers/ops/runbook.md`: runbook do operador para o Docker Compose: runs, quota, diário, saúde, backup e restauração dos volumes.
 

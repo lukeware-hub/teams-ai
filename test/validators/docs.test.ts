@@ -97,6 +97,7 @@ describe('resolveDocs', () => {
   it('takes whole files as before, and needs a README from somewhere', () => {
     expect(resolveDocs({ readme: '# New', runbook: 'r' }, undefined)).toEqual({ docs: { readme: '# New', runbook: 'r', apiDocs: '' }, errors: [] });
     expect(resolveDocs({}, undefined).errors).toEqual(['docs/README.md is empty: return `readme` with the whole file, or `docPatches` on the current one']);
+    expect(resolveDocs({ docPatches: [{ file: 'docs/OTHER.md', find: '', replace: 'x' }] }, current).errors).toEqual(['docs/OTHER.md: not one of docs/README.md, docs/RUNBOOK.md or docs/API.md']);
   });
 });
 
