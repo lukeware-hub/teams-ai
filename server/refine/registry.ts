@@ -199,7 +199,7 @@ export class SessionRegistry {
     return this.programs.view(projectId, specId);
   }
 
-  async programDecisions(projectId: string, specId: string): Promise<ProgramDecision[]> {
+  async programDecisions(projectId: string, specId: string): Promise<{ decisions: ProgramDecision[]; unanswered: number }> {
     await this.get(projectId, specId);
     return this.programs.decisions(projectId, specId);
   }

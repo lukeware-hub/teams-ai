@@ -111,7 +111,8 @@ export class ProgramService {
         if (e.type === OrchEvent.DecisionMade) decisions.push(decisionOf(e.data.record as DecisionRecord, item.key, runId));
       }
       const last = [...events].reverse().find((e) => e.type === RunEvent.RunPaused || e.type === RunEvent.RunResumed || e.type === 'RUN_FINISHED');
-      if (last?.type === RunEvent.RunPaused) pause = { reason: last.data.reason === 'auth' ? 'auth' : 'quota', ...(typeof last.data.until === 'string' ? { until: last.data.until } : {}) };
+      // A restart does not journal a resume, so the last pause only counts while the run's own state still says it waits.
+      if (last?.type === RunEvent.RunPaused && (await runRow(await this.index(), runId))?.status.startsWith('paused:')) pause = { reason: last.data.reason === 'auth' ? 'auth' : 'quota', ...(typeof last.data.until === 'string' ? { until: last.data.until } : {}) };
     }
     const facts = { prs: [...prs.values()].sort((a, b) => a.number - b.number), decisions, ...(pause ? { pause } : {}) };
     if (settled) this.settledFacts.set(key, facts);
@@ -130,13 +131,14 @@ export class ProgramService {
     return { ...program, items };
   }
 
-  /** The System 1 decisions of the program's runs, the newest first and at most `limit`. */
-  async decisions(projectId: string, draftId: string, limit = 100): Promise<ProgramDecision[]> {
+  /** The System 1 decisions of the program's runs that got an answer, the newest first and at most `limit`, and how many asked nobody answered. */
+  async decisions(projectId: string, draftId: string, limit = 100): Promise<{ decisions: ProgramDecision[]; unanswered: number }> {
     const program = await this.read(projectId, draftId);
-    if (program === null) return [];
+    if (program === null) return { decisions: [], unanswered: 0 };
     const runs = runsDirOf(await this.index());
     const all = (await Promise.all(program.items.map(async (item) => (await this.runFacts(item, runs)).decisions))).flat();
-    return all.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit);
+    const answered = all.filter((d) => d.backend !== null);
+    return { decisions: answered.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit), unanswered: all.length - answered.length };
   }
 
   /** Puts a pending item ahead of the queue and takes a tick, which starts it if a slot is free and nothing in flight conflicts. */

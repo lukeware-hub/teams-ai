@@ -31,13 +31,16 @@ describe('ProgramPanel', () => {
 
   it('links the pull requests of a spec and says why and until when a run waits', () => {
     renderPanel(program([
-      item('a', { status: 'running', runId: 'd-a-r1', prs: [{ number: 7, url: 'https://github.com/o/r/pull/7' }], pause: { reason: 'quota', until: '2026-10-13T18:30:00.000Z' } }),
+      item('a', { status: 'running', runId: 'd-a-r1', prs: [{ number: 7, url: 'https://github.com/o/audit-service/pull/7' }, { number: 7, url: 'https://github.com/o/identity-service/pull/7' }], pause: { reason: 'quota', until: '2026-10-13T18:30:00.000Z' } }),
       item('b', { status: 'running', runId: 'd-b-r1', pause: { reason: 'auth' } }),
       item('c', { status: 'pending' }),
     ]));
-    const link = within(screen.getByTestId('program-item-prs-a')).getByRole('link', { name: 'PR #7' }) as HTMLAnchorElement;
-    expect(link.getAttribute('href')).toBe('https://github.com/o/r/pull/7');
+    const prs = within(screen.getByTestId('program-item-prs-a'));
+    expect(prs.getByText('2 pull requests')).toBeTruthy();
+    const link = prs.getByRole('link', { name: 'identity-service#7' }) as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('https://github.com/o/identity-service/pull/7');
     expect(link.getAttribute('rel')).toContain('noreferrer');
+    expect(prs.getByRole('link', { name: 'audit-service#7' })).toBeTruthy();
     expect(screen.getByTestId('program-item-pause-a').textContent).toMatch(/^Pausada pela cota do Claude até \d{2}:\d{2}\.$/);
     expect(screen.getByTestId('program-item-pause-b').textContent).toMatch(/login/);
     expect(screen.queryByTestId('program-item-prs-c')).toBeNull();

@@ -241,7 +241,7 @@ describe('refine api', () => {
     expect(registered).toContain(`${home}/ws/hello-app/refine/hello-app-001`);
     expect((await (await fetch(`${base()}${url}/program`)).json()).program.items[0].status).toBe('running');
     expect((await (await fetch(`${base()}${url}/program`)).json()).program.items[0].prs).toEqual([]);
-    expect(await (await fetch(`${base()}${url}/program/decisions`)).json()).toEqual({ decisions: [] });
+    expect(await (await fetch(`${base()}${url}/program/decisions`)).json()).toEqual({ decisions: [], unanswered: 0 });
     // The docs are read-only from now on, and a second start does not launch another run.
     expect((await snapshot()).state.status).toBe('started');
     expect((await call('POST', `${url}/evaluate`)).status).toBe(409);

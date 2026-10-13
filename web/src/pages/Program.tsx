@@ -10,7 +10,7 @@ export function ProgramPage() {
   const { projectId = '', specId = '' } = useParams();
   const titles = useBacklogTitles(projectId, specId);
   const { program, phases, setProgram } = useProgram(projectId, specId, true);
-  const decisions = useDecisions(projectId, specId, program?.status !== 'finished');
+  const { decisions, unanswered } = useDecisions(projectId, specId, program?.status !== 'finished');
   const [error, setError] = useState<string | null>(null);
   const prioritize = (itemSpecId: string) => {
     setError(null);
@@ -22,7 +22,7 @@ export function ProgramPage() {
       <ProgramStatus program={program} titles={titles} phases={phases} />
       {error && <p className="error" role="alert">{error}</p>}
       {program && <ProgramPanel program={program} titles={titles} onPrioritize={prioritize} />}
-      {program && <DecisionTimeline decisions={decisions} titles={titles} />}
+      {program && <DecisionTimeline decisions={decisions} unanswered={unanswered} titles={titles} />}
     </main>
   );
 }

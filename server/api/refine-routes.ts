@@ -192,7 +192,7 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     {
       method: 'GET',
       path: `${S}/program/decisions`,
-      handler: wrap(async ({ params, json }) => json(200, { decisions: await registry.programDecisions(params.projectId!, params.specId!) })),
+      handler: wrap(async ({ params, json }) => json(200, await registry.programDecisions(params.projectId!, params.specId!))),
     },
     {
       method: 'POST',

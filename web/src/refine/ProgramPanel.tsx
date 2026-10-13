@@ -31,6 +31,9 @@ export function canStartRun(st: Pick<RefineState, 'status' | 'stale' | 'backlog'
 /** The program that runs the backlog: every spec with where it stands, the run to follow and why one failed or waits. */
 const fmtCost = (v: number) => `US$ ${v.toFixed(2)}`;
 
+/** `repo#7`: services keep their own repositories, so a number alone would name several pull requests. */
+export const prLabel = (pr: { number: number; url: string }): string => `${/github\.com\/[^/]+\/([^/]+)\/pull\//.exec(pr.url)?.[1] ?? 'PR'}#${pr.number}`;
+
 /** Why a run waits, and until when the Claude quota lets it go on. */
 export function pauseText(pause: NonNullable<ProgramViewItem['pause']>): string {
   if (pause.reason === 'auth') return 'Pausada: o login do Claude precisa ser refeito.';
@@ -130,9 +133,12 @@ export function ProgramPanel({ program, titles, onPrioritize }: { program: Progr
               {i.runId && <Link to={`/runs/${i.runId}`} className="w-fit max-w-full truncate font-mono text-[0.75rem] no-underline hover:underline">{i.runId}</Link>}
               {i.pause && <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid={`program-item-pause-${i.key}`}>{pauseText(i.pause)}</p>}
               {i.prs && i.prs.length > 0 && (
-                <p className="m-0 flex flex-wrap gap-x-3 text-[0.8125rem]" data-testid={`program-item-prs-${i.key}`}>
-                  {i.prs.map((pr) => <a key={pr.number} href={pr.url} target="_blank" rel="noreferrer" className="font-mono">PR #{pr.number}</a>)}
-                </p>
+                <details className="text-[0.8125rem]" data-testid={`program-item-prs-${i.key}`}>
+                  <summary className="w-fit cursor-pointer text-ink-soft">{i.prs.length} {i.prs.length === 1 ? 'pull request' : 'pull requests'}</summary>
+                  <p className="m-0 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                    {i.prs.map((pr) => <a key={pr.url} href={pr.url} target="_blank" rel="noreferrer" className="font-mono">{prLabel(pr)}</a>)}
+                  </p>
+                </details>
               )}
               {i.reason && <p className={`m-0 text-[0.8125rem] wrap-anywhere ${i.status === 'failed' || i.status === 'blocked' ? 'text-bad' : 'text-ink-soft'}`}>{i.reason}</p>}
             </div>

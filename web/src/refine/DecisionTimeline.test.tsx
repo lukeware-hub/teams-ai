@@ -18,8 +18,13 @@ describe('DecisionTimeline', () => {
     expect(items[2]).toMatch(/pr-risk.*sem resposta/);
   });
 
+  it('says how many asks nobody answered, without listing them', () => {
+    render(<DecisionTimeline titles={{}} decisions={[]} unanswered={1} />);
+    expect(screen.getByText(/1 consulta ficou sem resposta de nenhum modelo e não aparece aqui/)).toBeTruthy();
+  });
+
   it('says so when no decision was recorded', () => {
     render(<DecisionTimeline titles={{}} decisions={[]} />);
-    expect(screen.getByText('Nenhuma decisão registrada ainda.')).toBeTruthy();
+    expect(screen.getByText('Nenhuma decisão respondida ainda.')).toBeTruthy();
   });
 });
