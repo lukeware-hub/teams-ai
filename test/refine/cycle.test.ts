@@ -743,3 +743,31 @@ describe('refinement cycle in backlog mode', () => {
     expect(events.some((e) => e.type === 'BACKLOG_DERIVED')).toBe(false);
   });
 });
+
+describe('refinement cycle unexpected errors', () => {
+  it('journals any unexpected error as a failed cycle and rethrows it, so the session never stays evaluating', async () => {
+    const { draft, journal, events, runAgent, root } = await setup('# Brief\n');
+    runAgent.mockRejectedValue(new Error('disk full'));
+    await expect(runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1)).rejects.toThrow('disk full');
+    expect(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data).toEqual({ cycle: 1, reason: 'disk full' });
+  });
+});
+
+describe('refinement cycle pending questions', () => {
+  it('does not ask again a question still pending from an earlier cycle', async () => {
+    const { draft, journal, events, runAgent, root } = await setup('# Brief\n');
+    journal.state.questions.push({ questionId: 'po-c1-0', role: 'po', text: 'Which port?', blocking: true, relatedAcIds: [], cycle: 1, status: 'pending', answer: null } as never);
+    const ok = (value: unknown) => ({ ok: true, value, summary: {} });
+    const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
+    runAgent.mockImplementation(async (req: { kind: string; role: string }) => {
+      if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...makeSpec(), specId: draft.specId, status: 'refining', specHash: null } });
+      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [{ text: 'Which port?', blocking: true, relatedAcIds: [] }], docPatch: [] });
+      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
+    });
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root }, 2);
+    const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
+    expect(evaluated.data.questions).toEqual([]);
+    const open = (evaluated.data.checklist as Array<{ id: string; detail: string }>).find((i) => i.id === 'sm.no-open-questions')!;
+    expect(open.detail).toBe('1 blocking question(s) open');
+  });
+});

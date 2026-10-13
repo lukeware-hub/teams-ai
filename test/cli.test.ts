@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { chooseSpecId, main, markAwaitingValidation, startsAsDraft } from '../server/cli.js';
+import { chooseSpecId, failedDecision, main, markAwaitingValidation, startsAsDraft } from '../server/cli.js';
 import { loadConfig } from '../server/config/config.js';
 import type { RunControlDeps, SpawnArgs } from '../server/api/run-control.js';
 import { writeRun } from './fixtures/runs/write-run.js';
@@ -208,5 +208,11 @@ describe('markAwaitingValidation', () => {
     const done = await draft('done');
     await markAwaitingValidation(done.dir, 'hello-001', '/elsewhere/repo');
     expect(await done.read()).toBe('done');
+  });
+});
+
+describe('ui decider failure', () => {
+  it('reports a thrown decider as an error with the redacted message, never as exhausted', () => {
+    expect(failedDecision(new Error('openrouter down for sk-or-v1-abcdefghijklmnopqrstuv'))).toEqual({ answered: false, reason: 'error', message: 'openrouter down for [REDACTED]' });
   });
 });

@@ -340,6 +340,8 @@ export interface Snapshot {
   docs: { 'project.md': string; 'brief.md': string; 'stack.md': string; 'flow.md': string; 'design.md': string };
   secrets: Array<{ name: string; present: boolean; hint: string | null }>;
   tokens: { inputTokens: number; outputTokens: number; costUsd: number; steps: number };
+  /** The seq of the last journal event the state holds. */
+  seq?: number;
 }
 export interface DraftRow {
   projectId: string;

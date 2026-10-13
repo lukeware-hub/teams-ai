@@ -609,6 +609,11 @@ export function RefinementView(p: ViewProps) {
 
 export function RefinementPage() {
   const { projectId = '', specId = '' } = useParams();
+  // Another session remounts the page, so no state or replayed event of the previous one carries over.
+  return <RefinementSession key={`${projectId}/${specId}`} projectId={projectId} specId={specId} />;
+}
+
+function RefinementSession({ projectId, specId }: { projectId: string; specId: string }) {
   const navigate = useNavigate();
   const [snap, setSnap] = useState<LiveSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -618,7 +623,11 @@ export function RefinementPage() {
   const load = () =>
     refineApi
       .snapshot(projectId, specId)
-      .then((s) => setSnap({ ...s, docsDirty: false }))
+      .then((s) => {
+        // The snapshot already holds every event up to its seq: the replay applies only the ones after it.
+        applied.current = s.seq ?? 0;
+        setSnap({ ...s, docsDirty: false });
+      })
       .catch((e: Error) => setError(e.message));
   useEffect(() => {
     void load();
@@ -641,7 +650,7 @@ export function RefinementPage() {
       if (next.docsDirty) void load();
       else setSnap(next);
     }
-  }, [events]);
+  }, [events, snap]);
   if (!snap) return (
     <main>
       {error ? <p className="error">{error}</p> : <Loading />}

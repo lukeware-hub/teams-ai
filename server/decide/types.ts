@@ -118,7 +118,9 @@ export interface DecisionRecord {
 
 export type DecisionOutcome =
   | { answered: true; answers: Answers; backend: BackendName; escalated: boolean }
-  | { answered: false; reason: 'disabled' | 'exhausted' };
+  | { answered: false; reason: 'disabled' | 'exhausted' }
+  /** The decider threw; `message` is redacted. */
+  | { answered: false; reason: 'error'; message: string };
 
 export function noulConfidence(p: number): number {
   return Math.max(p, 1 - p);

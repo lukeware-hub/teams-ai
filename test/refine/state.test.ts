@@ -140,3 +140,17 @@ describe('answers a role gave from the docs', () => {
     expect(s.questions[0]).toMatchObject({ status: 'answered', answer: '8080', answeredBy: 'po' });
   });
 });
+
+describe('staleness of an evaluation', () => {
+  const evaluated = (n: number) => ({ type: RefineEvent.Evaluated, data: { cycle: n, checklist: allGreen, questions: [], discardedPatches: [] } });
+  const edit = (file: string, source: string) => ({ type: RefineEvent.DocEdited, data: { file, hash: 'x', source } });
+  it('stays stale when a doc was edited while the cycle ran, and clears when nothing changed', () => {
+    expect(reduceRefineEvents([...cycle(1), evaluated(1)]).stale).toBe(false);
+    expect(reduceRefineEvents([...cycle(1), edit('stack.md', 'autofill'), evaluated(1)])).toMatchObject({ stale: true, status: 'ready' });
+    // An edit before the first derivation of the session still makes it stale.
+    const early = [{ type: RefineEvent.CycleStarted, data: { cycle: 1, draftHash: 'h' } }, edit('brief.md', 'decision'), { type: RefineEvent.Derived, data: { cycle: 1, ...derived } }, evaluated(1)];
+    expect(reduceRefineEvents(early).stale).toBe(true);
+    // The next cycle without edits clears it.
+    expect(reduceRefineEvents([...cycle(1), edit('stack.md', 'autofill'), evaluated(1), ...cycle(2), evaluated(2)]).stale).toBe(false);
+  });
+});

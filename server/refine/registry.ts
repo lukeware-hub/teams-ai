@@ -244,7 +244,12 @@ export class SessionRegistry {
 
   /** One reconciliation of every backlog program, started or ready to start: the UI server calls it on a timer and once at boot. */
   async tickPrograms(): Promise<void> {
-    for (const row of await this.list()) {
+    // A broken config.json must not reject the timer's tick: it is logged and read again on the next one.
+    const rows = await this.list().catch((err) => {
+      console.error(`programs tick: ${err instanceof Error ? err.message : String(err)}`);
+      return [];
+    });
+    for (const row of rows) {
       if (row.state === 'ready') await this.autoStart(row.projectId, row.specId).catch(() => undefined);
       if (row.state !== 'started') continue;
       await this.programs.tick(row.projectId, row.specId).catch((err) => console.error(`program ${row.projectId}/${row.specId}: ${err instanceof Error ? err.message : String(err)}`));
@@ -263,16 +268,17 @@ export class SessionRegistry {
     const runId = await nextRunId({ runs, projectId }, specId);
     await fs.mkdir(path.posix.join(runs, runId), { recursive: true });
     const { pid } = spawnRun(this.deps.control, { projectDir: draft.root, specId, runId, mode: 'run', draft: true, logFile: path.posix.join(runs, runId, 'ui.log') });
+    // Any failure until the session records the run stops it, so the session never stays locked by a start.
     try {
       await waitForRunJournal(this.deps.control, runs, runId, pid, this.deps.secretsDir);
+      await writePid(runs, runId, pid);
+      await this.deps.register(draft.root);
+      await session.markStarted(runId);
     } catch (err) {
       await abandonLaunch(this.deps.control, runs, runId, pid);
       session.failStart();
       throw new HttpError(500, err instanceof Error ? err.message : String(err));
     }
-    await writePid(runs, runId, pid);
-    await this.deps.register(draft.root);
-    await session.markStarted(runId);
     return { runId };
   }
 
