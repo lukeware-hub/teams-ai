@@ -3,6 +3,7 @@ import type { Preplan } from '../contracts/preplan.js';
 import type { Spec } from '../contracts/spec.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
+import { buildWithDocs, DIGEST_NOTE } from './docs-view.js';
 import { fitPackBudget, PackTooLargeError } from './fit-pack.js';
 import type { BacklogDocs } from './details.js';
 import { sectionText } from './sections.js';
@@ -98,7 +99,7 @@ export function preplanPack(input: {
     ...(previous ? ['Previous pre-plan (keep what still holds):', JSON.stringify({ modules: previous.modules, tasks: previous.tasks, risks: previous.risks }, null, 2)] : []),
     ...(rejection.length ? ['Your last attempt for this spec was rejected; fix every point:', rejection.map((r) => `- ${r}`).join('\n')] : []),
   ].join('\n'));
-  const feedback = [PREPLAN_RULES, '### docs/project.md', input.projectMd, '### stack.md', input.stackMd, '# Specs', ...specs].join('\n\n');
+  const feedback = buildWithDocs({ project: input.projectMd, stack: input.stackMd }, (d, digested) => [PREPLAN_RULES, ...(digested ? [DIGEST_NOTE] : []), '### docs/project.md', d.project, '### stack.md', d.stack, '# Specs', ...specs].join('\n\n'));
   return { kind: 'preplan', role: 'sm', specHash: input.specHash, principles: input.principles, outputContract: outputContract('preplan'), criteria: [], feedback, budgetTokens: 12_000 };
 }
 

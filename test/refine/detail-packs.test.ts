@@ -113,6 +113,20 @@ describe('backlogPack previous backlog', () => {
   });
 });
 
+describe('preplanPack with large documents', () => {
+  it('shows stack.md as a digest of its headings when the documents are past the budget, and whole otherwise', () => {
+    const base = { specHash: HASH, principles: [], batch: [] };
+    const small = preplanPack({ ...base, projectMd: '# P', stackMd: '# Stack\n\n## Banco\n\nPostgres 16' }).feedback ?? '';
+    expect(small).toContain('Postgres 16');
+    expect(small).not.toContain('are a digest');
+    const huge = preplanPack({ ...base, projectMd: '# P', stackMd: `# Stack\n\n## Banco\n\n${'x'.repeat(600_000)}\n\n## Fila\n\nRabbit` }).feedback ?? '';
+    expect(huge).toContain('are a digest');
+    expect(huge).toContain('## Banco');
+    expect(huge).toContain('## Fila');
+    expect(huge.length).toBeLessThan(300_000);
+  });
+});
+
 describe('fitConflictsPack', () => {
   const planned = (n: number, taskChars: number) =>
     Array.from({ length: n }, (_, i) => ({
