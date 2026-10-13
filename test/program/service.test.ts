@@ -259,6 +259,18 @@ describe('program service view', () => {
     expect(view!.items[1]!.pause).toBeUndefined();
   });
 
+  it('lists the decisions of the runs, the newest first, with what each question came to', async () => {
+    await write([item('a', 'running', 'a-r1'), item('b', 'running', 'b-r1')]);
+    const decision = (decisionId: string, at: string, answers: unknown) => ({ type: 'DECISION_MADE', data: { record: { decisionId, backend: 'jev', model: 'm', escalated: false, answers, attempts: [], usage: {}, at } } });
+    await journal('a-r1', [started('d-a'), decision('model-tier', '2026-10-13T10:00:00.000Z', { tier: { type: 'choice', value: 'large', probabilities: {}, confidence: 0.9 } })]);
+    await journal('b-r1', [started('d-b'), decision('pr-risk', '2026-10-13T11:00:00.000Z', null), decision('failure-cause', '2026-10-13T09:00:00.000Z', { cause: { type: 'noul', value: 0.7, probabilities: { yes: 0.7, no: 0.3 }, confidence: 0.7 } })]);
+    const list = await service().decisions('shop', 'd');
+    expect(list.map((x) => `${x.key}:${x.decisionId}`)).toEqual(['b:pr-risk', 'a:model-tier', 'b:failure-cause']);
+    expect(list[1]!.answers).toEqual([{ question: 'tier', value: 'large', confidence: 0.9 }]);
+    expect(list[0]!.answers).toEqual([]);
+    expect(await service().decisions('shop', 'd', 2)).toHaveLength(2);
+  });
+
   it('is null without a program, and keeps the pull requests of a finished item without reading its journal again', async () => {
     const s = service();
     expect(await s.view('shop', 'd')).toBeNull();

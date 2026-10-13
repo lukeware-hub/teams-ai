@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { refineApi } from '../api.js';
 import { Icon } from '../components/Icons.js';
+import { DecisionTimeline, useDecisions } from '../refine/DecisionTimeline.js';
 import { ProgramPanel, ProgramStatus, useBacklogTitles, useProgram } from '../refine/ProgramPanel.js';
 
 /** The execution of a started backlog: what runs now, the progress, and every spec with its run. */
@@ -9,6 +10,7 @@ export function ProgramPage() {
   const { projectId = '', specId = '' } = useParams();
   const titles = useBacklogTitles(projectId, specId);
   const { program, phases, setProgram } = useProgram(projectId, specId, true);
+  const decisions = useDecisions(projectId, specId, program?.status !== 'finished');
   const [error, setError] = useState<string | null>(null);
   const prioritize = (itemSpecId: string) => {
     setError(null);
@@ -20,6 +22,7 @@ export function ProgramPage() {
       <ProgramStatus program={program} titles={titles} phases={phases} />
       {error && <p className="error" role="alert">{error}</p>}
       {program && <ProgramPanel program={program} titles={titles} onPrioritize={prioritize} />}
+      {program && <DecisionTimeline decisions={decisions} titles={titles} />}
     </main>
   );
 }

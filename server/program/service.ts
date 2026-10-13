@@ -7,6 +7,7 @@ import { Project } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 import { writeFileAtomic } from '../core/atomic-write.js';
 import type { Decider } from '../decide/decider.js';
+import type { DecisionRecord } from '../decide/types.js';
 import { classifyFailure, retryable } from '../decide/decisions/failure-cause.js';
 import { OrchEvent } from '../orchestrator/events.js';
 import { expandHome, nextRunId } from '../orchestrator/workspace.js';
@@ -33,8 +34,27 @@ export interface ProgramServiceDeps {
 
 /** A pull request a run opened for a spec. */
 export interface ProgramPr { number: number; url: string }
+/** One System 1 decision of a run, as the decision timeline lists it. */
+export interface ProgramDecision {
+  at: string;
+  /** The key of the backlog item whose run decided. */
+  key: string;
+  runId: string;
+  decisionId: string;
+  /** Who answered: `jev`, `local`, `claude`, or null when none did. */
+  backend: string | null;
+  escalated: boolean;
+  answers: Array<{ question: string; value: string | number; confidence: number | null }>;
+}
+interface RunFacts { prs: ProgramPr[]; decisions: ProgramDecision[]; pause?: { reason: 'quota' | 'auth'; until?: string } }
+
+const decisionOf = (r: DecisionRecord, key: string, runId: string): ProgramDecision => ({
+  at: r.at, key, runId, decisionId: r.decisionId, backend: r.backend, escalated: r.escalated,
+  answers: Object.entries(r.answers ?? {}).map(([question, a]) => ({ question, value: a.value, confidence: a.confidence })),
+});
+
 /** An item as the screen reads it: the ledger's item, the pull requests of its runs and, while a run waits, why and until when. */
-export type ProgramItemView = ProgramItem & { prs: ProgramPr[]; pause?: { reason: 'quota' | 'auth'; until?: string } };
+export type ProgramItemView = ProgramItem & Pick<RunFacts, 'prs' | 'pause'>;
 export type ProgramView = Omit<Program, 'items'> & { items: ProgramItemView[] };
 
 export const programFile = (draftRoot: string): string => path.posix.join(draftRoot, 'program.json');
@@ -53,8 +73,8 @@ export class ProgramService {
   /** When this server started: a run launched before it died in the restart, not on its own. */
   private readonly bootedAt = Date.now();
 
-  /** The pull requests of an item whose runs ended: they never change, so the screen's polling reads them once. */
-  private readonly settledPrs = new Map<string, ProgramPr[]>();
+  /** What the journals of an item whose runs ended say: it never changes, so the screen's polling reads it once. */
+  private readonly settledFacts = new Map<string, RunFacts>();
 
   constructor(private readonly deps: ProgramServiceDeps) {}
 
@@ -74,29 +94,49 @@ export class ProgramService {
     return readProgram(await this.deps.draftRoot(projectId, draftId));
   }
 
+  /** What the journals of an item's runs say: its pull requests, why and until when a run waits, and the System 1 decisions. */
+  private async runFacts(item: ProgramItem, runs: string): Promise<RunFacts> {
+    const runIds = [item.runId, item.completeRunId].filter((id): id is string => id !== null);
+    const settled = item.status === 'done' || item.status === 'failed' || item.status === 'blocked';
+    const key = runIds.join('+');
+    const cached = settled ? this.settledFacts.get(key) : undefined;
+    if (cached) return cached;
+    const prs = new Map<number, ProgramPr>();
+    const decisions: ProgramDecision[] = [];
+    let pause: RunFacts['pause'];
+    for (const runId of runIds) {
+      const events = await loadEvents(path.join(runs, runId, 'events.ndjson')).catch(() => []);
+      for (const e of events) {
+        if (e.type === OrchEvent.PrCreated) prs.set(Number(e.data.number), { number: Number(e.data.number), url: String(e.data.url) });
+        if (e.type === OrchEvent.DecisionMade) decisions.push(decisionOf(e.data.record as DecisionRecord, item.key, runId));
+      }
+      const last = [...events].reverse().find((e) => e.type === RunEvent.RunPaused || e.type === RunEvent.RunResumed || e.type === 'RUN_FINISHED');
+      if (last?.type === RunEvent.RunPaused) pause = { reason: last.data.reason === 'auth' ? 'auth' : 'quota', ...(typeof last.data.until === 'string' ? { until: last.data.until } : {}) };
+    }
+    const facts = { prs: [...prs.values()].sort((a, b) => a.number - b.number), decisions, ...(pause ? { pause } : {}) };
+    if (settled) this.settledFacts.set(key, facts);
+    return facts;
+  }
+
   /** The ledger with each item's pull requests and, for a run paused by the quota or the login, why and until when. */
   async view(projectId: string, draftId: string): Promise<ProgramView | null> {
     const program = await this.read(projectId, draftId);
     if (program === null) return null;
     const runs = runsDirOf(await this.index());
     const items = await Promise.all(program.items.map(async (item): Promise<ProgramItemView> => {
-      const runIds = [item.runId, item.completeRunId].filter((id): id is string => id !== null);
-      const settled = item.status === 'done' || item.status === 'failed' || item.status === 'blocked';
-      const cached = settled ? this.settledPrs.get(runIds.join('+')) : undefined;
-      if (cached) return { ...item, prs: cached };
-      const prs = new Map<number, ProgramPr>();
-      let pause: ProgramItemView['pause'];
-      for (const runId of runIds) {
-        const events = await loadEvents(path.join(runs, runId, 'events.ndjson')).catch(() => []);
-        for (const e of events) if (e.type === OrchEvent.PrCreated) prs.set(Number(e.data.number), { number: Number(e.data.number), url: String(e.data.url) });
-        const last = [...events].reverse().find((e) => e.type === RunEvent.RunPaused || e.type === RunEvent.RunResumed || e.type === 'RUN_FINISHED');
-        if (last?.type === RunEvent.RunPaused) pause = { reason: last.data.reason === 'auth' ? 'auth' : 'quota', ...(typeof last.data.until === 'string' ? { until: last.data.until } : {}) };
-      }
-      const list = [...prs.values()].sort((a, b) => a.number - b.number);
-      if (settled) this.settledPrs.set(runIds.join('+'), list);
-      return { ...item, prs: list, ...(pause ? { pause } : {}) };
+      const { prs, pause } = await this.runFacts(item, runs);
+      return { ...item, prs, ...(pause ? { pause } : {}) };
     }));
     return { ...program, items };
+  }
+
+  /** The System 1 decisions of the program's runs, the newest first and at most `limit`. */
+  async decisions(projectId: string, draftId: string, limit = 100): Promise<ProgramDecision[]> {
+    const program = await this.read(projectId, draftId);
+    if (program === null) return [];
+    const runs = runsDirOf(await this.index());
+    const all = (await Promise.all(program.items.map(async (item) => (await this.runFacts(item, runs)).decisions))).flat();
+    return all.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit);
   }
 
   /** Puts a pending item ahead of the queue and takes a tick, which starts it if a slot is free and nothing in flight conflicts. */
