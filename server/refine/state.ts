@@ -118,8 +118,8 @@ export function computeStatus(s: RefineState): RefineStatus {
   // Once every item is green, a suggestion is nothing the owner owes.
   const pendingAny = (green ? pendingApproval : pendingPatch) || s.questions.some((q) => q.status === 'pending');
   // A detailed backlog is ready only when every section, spec, criterion and task is accounted for.
-  const covered = !s.backlog?.detail || coverageGaps(s.backlog).length === 0;
-  if (green && covered && !pendingBlocking && !pendingApproval) return 'ready';
+  // The coverage scan is costly, so it runs last: only when nothing else already blocks `ready`.
+  if (green && !pendingBlocking && !pendingApproval && (!s.backlog?.detail || coverageGaps(s.backlog).length === 0)) return 'ready';
   return pendingAny ? 'answering' : 'drafting';
 }
 

@@ -38,8 +38,11 @@ export function coverageMatrix(b: BacklogState): CoverageMatrix {
 /** What still keeps a detailed backlog from `ready`, in Portuguese for the screen and the review pack. */
 export function coverageGaps(b: BacklogState): string[] {
   const gaps: string[] = [];
-  for (const heading of b.flowHeadings ?? []) {
-    if (!b.items.some((i) => itemCites(i, heading, b.flowHeadings ?? []))) gaps.push(`seção do flow.md sem nenhum item: "${heading}"`);
+  const headings = b.flowHeadings ?? [];
+  // Each citation resolves once, not once per section.
+  const cited = new Set(b.items.flatMap((i) => i.sources.filter((s) => s.doc === 'flow.md').map((s) => resolveHeading(s.heading, headings))));
+  for (const heading of headings) {
+    if (!cited.has(heading)) gaps.push(`seção do flow.md sem nenhum item: "${heading}"`);
   }
   for (const item of byRank(b)) {
     const spec = b.specs?.[item.key];
