@@ -242,7 +242,8 @@ export class EventStore {
 
   append(input: EventInput): Promise<StoredEvent> {
     return this.enqueue(async () => {
-      if (this.closed) throw new Error('event store is closed');
+      // Fatal: a run that kept going would retry every step against a journal that can no longer record it.
+      if (this.closed) throw Object.assign(new Error('event store is closed'), { fatal: true });
       const kind = input.kind ?? 'fact';
       if (kind !== 'fact' && !input.intentId) {
         throw new Error(`${kind} events require an intentId`);
@@ -273,7 +274,7 @@ export class EventStore {
         this.closed = true;
         heldLocks.delete(this.lockFile);
         await fs.rm(this.lockFile, { force: true }).catch(() => undefined);
-        throw err;
+        throw Object.assign(err as Error, { fatal: true });
       }
       this.seq = event.seq;
       return event;

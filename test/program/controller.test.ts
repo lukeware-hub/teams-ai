@@ -133,6 +133,37 @@ describe('program controller', () => {
     expect(p.items[0]!.reason).toMatch(/interrupted/);
   });
 
+  it('marks the run stopped when it gives up resuming it, so the supervisor does not resume it either', async () => {
+    const { fx, calls } = world({ 'd-a-r1': { kind: 'interrupted' } });
+    fx.stopRun = async (runId) => void calls.push(`stop ${runId}`);
+    let p = newProgram('d', [entry('a', 1)], NOW);
+    for (let i = 0; i < 6; i++) p = await tick(p, fx, save);
+    expect(p.items[0]!.status).toBe('failed');
+    expect(calls.filter((c) => c.startsWith('stop'))).toEqual(['stop d-a-r1']);
+  });
+
+  it('persists the spent resume before it launches it, so a crash in between never gives a free one', async () => {
+    saved.length = 0;
+    const { fx } = world({ 'd-a-r1': { kind: 'interrupted' } });
+    let seen: number | undefined;
+    fx.resumeRun = async () => void (seen = saved.at(-1)!.items[0]!.resumes);
+    let p = newProgram('d', [entry('a', 1)], NOW);
+    p = await tick(p, fx, save);
+    await tick(p, fx, save);
+    expect(seen).toBe(1);
+  });
+
+  it('leaves a run the user stopped alone: no resume, no repair, the item waits; a stopped run that finished fails without repair', async () => {
+    let repairs = 0;
+    const { fx, calls } = world({ 'd-x-r1': { kind: 'stopped' }, 'd-b-r2': { kind: 'stopped', finished: true, costUsd: 1 } }, async () => (repairs++, true));
+    let p = newProgram('d', [{ ...entry('a', 1), done: true }, mapped('x', 2), mapped('b', 3)], NOW);
+    for (let i = 0; i < 3; i++) p = await tick(p, fx, save);
+    expect(calls.filter((c) => !c.startsWith('start'))).toEqual([]);
+    expect(repairs).toBe(0);
+    expect(status(p)).toEqual({ a: 'done', x: 'running', b: 'failed' });
+    expect(p.items[2]).toMatchObject({ reason: 'stopped by the user', costUsd: 1 });
+  });
+
   it('resumes a run a server restart interrupted without spending one of its bounded resumes', async () => {
     const { fx, calls } = world({ 'd-a-r1': { kind: 'interrupted', restart: true } });
     let p = newProgram('d', [entry('a', 1)], NOW);

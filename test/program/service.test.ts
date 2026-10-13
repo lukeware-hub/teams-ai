@@ -110,6 +110,21 @@ describe('program service outcomes', () => {
     expect(await svc.outcome('e-r1')).toEqual({ kind: 'interrupted' });
   });
 
+  it('a run the user stopped is stopped, never interrupted or failed, so the program neither resumes nor repairs it', async () => {
+    await journal('s-r1', [started('s')]);
+    await fs.writeFile(path.join(runsDir(), 's-r1', 'state.json'), JSON.stringify({ runId: 's-r1', status: 'running', tasks: [], tokens: {} }));
+    await fs.writeFile(path.join(runsDir(), 's-r1', 'pid.gone'), '999999');
+    await fs.writeFile(path.join(runsDir(), 's-r1', 'stop-requested'), '');
+    await journal('t-r1', [started('t'), finished('drained', { tokens: { costUsd: 0.5 } })]);
+    await fs.writeFile(path.join(runsDir(), 't-r1', 'stop-requested'), '');
+    await journal('u-r1', [started('u'), finished('drained')]);
+    const s = service();
+    expect(await s.outcome('s-r1')).toEqual({ kind: 'stopped' });
+    expect(await s.outcome('t-r1')).toEqual({ kind: 'stopped', finished: true, costUsd: 0.5 });
+    // A drain with no stop marker (an exhausted budget) is still a failure.
+    expect(await s.outcome('u-r1')).toMatchObject({ kind: 'failed' });
+  });
+
   it('says a run whose process was launched before this server booted died in the restart', async () => {
     await journal('r-r1', [started('r')]);
     await fs.writeFile(path.join(runsDir(), 'r-r1', 'state.json'), JSON.stringify({ runId: 'r-r1', status: 'running', tasks: [], tokens: {} }));

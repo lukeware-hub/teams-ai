@@ -109,6 +109,28 @@ describe('taskMergeSteps', () => {
     expect(again).toEqual({ ok: true, pr: 1, already: true });
   });
 
+  it('tries a merge again on the same head after a transient refusal, but keeps a definitive one', async () => {
+    const d = deps();
+    let flaky = 1;
+    const ghExec = d.ghExec;
+    d.ghExec = async (s) => (s.bin === 'gh' && s.args[1] === 'merge' && flaky-- > 0 ? { exitCode: 1, signal: null, stdout: '', stderr: 'HTTP 502: Bad Gateway', timedOut: false, durationMs: 1, truncated: false } : ghExec(s));
+    const first = await new MergeQueue().enqueue('T1', taskMergeSteps(d, task, worktree, 'task/spec-001-T1', spec, 's'));
+    expect(first).toMatchObject({ ok: false, stage: 'merge', detail: expect.stringContaining('HTTP 502') });
+    const again = await new MergeQueue().enqueue('T1', taskMergeSteps(d, task, worktree, 'task/spec-001-T1', spec, 's'));
+    expect(again).toEqual({ ok: true, pr: 1 });
+  });
+
+  it('remembers a merge refused because the pull request is closed', async () => {
+    const d = deps();
+    const steps = taskMergeSteps(d, task, worktree, 'task/spec-001-T1', spec, 's');
+    await steps.push();
+    const { number } = await steps.ensurePr();
+    gh.prs[0]!.state = 'CLOSED';
+    expect(await steps.merge(number)).toEqual({ merged: false, reason: 'PR is closed' });
+    gh.prs[0]!.state = 'OPEN';
+    expect(await steps.merge(number)).toEqual({ merged: false, reason: 'PR is closed' });
+  });
+
   it('redacts the PR body', async () => {
     const d = deps();
     await new MergeQueue().enqueue('T1', taskMergeSteps(d, task, worktree, 'task/spec-001-T1', spec, 'password hunter2 leaked'));
@@ -149,7 +171,7 @@ describe('docsMergeSteps', () => {
     const gates = async () => { throw new Error('gates must not run for an empty docs branch'); };
     const steps = docsMergeSteps(deps({ gates }), 'docs/spec-001-retry', docsWt, 'docs(spec-001): retry', 'spec-001');
     const out = await new MergeQueue().enqueue('docs-retry', steps);
-    expect(out).toEqual({ ok: true, pr: 0, already: true });
+    expect(out).toEqual({ ok: true, pr: 0, already: true, empty: true });
     expect(gh.prs).toEqual([]);
     await expect(fs.access(docsWt)).rejects.toThrow();
   });

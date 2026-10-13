@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { abandonLaunch, isAlive, spawnRun, waitForRunJournal, type RunControlDeps } from '../api/run-control.js';
-import { claimLaunch, claimsSpec, clearStopRequested, listRuns, runRow, runsDir as runsDirOf, writePid, type IndexDeps } from '../api/run-index.js';
+import { claimLaunch, claimsSpec, clearStopRequested, isStopRequested, listRuns, markStopRequested, runRow, runsDir as runsDirOf, writePid, type IndexDeps } from '../api/run-index.js';
 import type { Config } from '../config/config.js';
 import { Project } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
@@ -217,6 +217,7 @@ export class ProgramService {
           await release();
         }
       },
+      stopRun: async (runId) => markStopRequested(runsDirOf(await this.index()), runId),
       completeSpec: async (specId) => {
         // The draft root keeps the status the freeze gave it (running); `spec complete` runs from it and wants awaiting-validation.
         const file = path.posix.join(root, 'docs', 'specs', specId, 'spec.json');
@@ -257,6 +258,8 @@ export class ProgramService {
         return { kind: 'running' };
       case 'interrupted':
       case 'unknown': {
+        // The user's Stop holds until they resume the run themselves.
+        if (await isStopRequested(runsDirOf(idx), runId)) return { kind: 'stopped' };
         // The pid file (retired to pid.gone once its process is dead) is written at each launch and resume.
         const dir = path.join(runsDirOf(idx), runId);
         const launched = (await fs.stat(path.join(dir, 'pid')).catch(() => fs.stat(path.join(dir, 'pid.gone'))).catch(() => null))?.mtimeMs;
@@ -277,6 +280,8 @@ export class ProgramService {
       }
       default: {
         const data = await finished();
+        // A run the user stopped drained to its end: not a failure to repair.
+        if (row.status === 'drained' && (await isStopRequested(runsDirOf(idx), runId))) return { kind: 'stopped', finished: true, costUsd: data?.tokens?.costUsd ?? null };
         // The tasks that blocked on their own cause tell why criteria went without evidence; their dependents add nothing.
         const own = (data?.blocked ?? []).filter((b) => b.reason !== DEPENDENCY_BLOCKED).map((b) => `${b.taskId} (${b.reason})`);
         return { kind: 'failed', reason: `${row.status}${data?.reason ? `: ${String(data.reason).slice(0, 400)}` : ''}${own.length ? `; blocked: ${own.join('; ').slice(0, 400)}` : ''}`, costUsd: data?.tokens?.costUsd ?? null };

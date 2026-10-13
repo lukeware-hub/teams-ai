@@ -70,7 +70,7 @@ describe('MergeQueue', () => {
     const log: string[] = [];
     const q = new MergeQueue();
     const r = await q.enqueue('T1', steps({ rebase: async () => (log.push('rebase'), { ok: true, baseSha: 'main1', empty: true }) }, log));
-    expect(r).toEqual({ ok: true, pr: 0, already: true });
+    expect(r).toEqual({ ok: true, pr: 0, already: true, empty: true });
     expect(log).toEqual(['check', 'rebase', 'after']);
   });
 

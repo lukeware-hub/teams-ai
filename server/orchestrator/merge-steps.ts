@@ -26,6 +26,8 @@ export interface MergeStepsDeps {
 }
 
 const BODY_LIMIT = 8 * 1024;
+/** The refusals of mergePr (github.ts) that no retry on the same head sha can change. */
+const DEFINITIVE_REFUSAL = /^(PR is closed|head moved)/;
 
 export function prBody(input: { summary: string; criteria: readonly AcceptanceCriterion[]; gateLines: readonly string[]; specId: string }, secretValues: readonly string[]): string {
   const text = [
@@ -103,6 +105,8 @@ function common(deps: MergeStepsDeps, worktree: string, branch: string, title: s
       // taskId travels with the intent so reconcile can finish the task after a crash between merge and confirm.
       const data = await guarded(deps.journal, Intent.PrMerge, `${branch}@${sha}`, { branch, number, sha, taskId, repo }, async () => {
         const r = await mergePr({ cwd: repo, number, headSha: sha, body: await body() }, deps.ghExec);
+        // Only a closed PR or a moved head refuses this sha for good; any other refusal (a 5xx, a base race) is tried again unconfirmed.
+        if (!r.merged && !r.already && !DEFINITIVE_REFUSAL.test(r.reason ?? '')) throw new Error(r.reason ?? 'merge refused');
         return { merged: r.merged || r.already, already: r.already, reason: r.reason ?? null };
       });
       return data.merged ? { merged: true } : { merged: false, reason: String(data.reason ?? 'merge refused') };

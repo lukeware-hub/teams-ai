@@ -275,6 +275,8 @@ export class TaskRunner {
       if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
         throw new Error(`deletedFiles path escapes the worktree: ${p}`);
       }
+      // The worktree's .git file links it to the repository; without it every later git call fails.
+      if (rel.split(path.sep)[0]!.toLowerCase() === '.git') throw new Error(`deletedFiles path is inside .git: ${p}`);
       await fs.rm(resolved, { force: true });
     }
   }
@@ -534,8 +536,8 @@ export class TaskRunner {
     };
     const outcome = await this.deps.mergeQueue.enqueue(this.taskId, wrapped);
     if (outcome.ok) {
-      // The queue short-circuits an already-merged PR before afterMerge; the cleanup still has to happen.
-      if (outcome.already && steps.afterMerge) await steps.afterMerge();
+      // The queue short-circuits an already-merged PR before afterMerge; the cleanup still has to happen (an empty rebase already ran it).
+      if (outcome.already && !outcome.empty && steps.afterMerge) await steps.afterMerge();
       const handoff = this.deps.handoffs().find((h) => h.taskId === this.taskId) ?? null;
       const sha = await git(this.worktree, ['rev-parse', 'HEAD'], this.deps.exec).catch(() => null);
       await this.deps.journal.fact(OrchEvent.PrMerged, { taskId: this.taskId, pr: outcome.pr, sha, already: outcome.already ?? false, warning: outcome.warning ?? null, handoff });
@@ -608,10 +610,12 @@ export class TaskRunner {
           }
           if (progress !== 'converging') {
             await this.feedback(`${text}\n\nAttempt progress judged ${progress} (${source}); replanning early.`, { attempt: true });
-            await this.deps.journal.fact(RunEvent.AttemptConsumed, { taskId: this.taskId });
             // A System 1 verdict may route to the SM but never end the task: if the SM cannot replan, retry as usual.
-            if (await this.replan({ early: true })) return;
-            await this.transition('implementing');
+            const settled = await this.replan({ early: true });
+            // A replan the quota or the login paused left the task where it was: its next failure charges the attempt.
+            if (settled && !this.done) return;
+            if (!settled) await this.transition('implementing');
+            await this.deps.journal.fact(RunEvent.AttemptConsumed, { taskId: this.taskId });
             return;
           }
         }

@@ -90,6 +90,13 @@ describe('reduceEvents', () => {
     const draining = reduceEvents([{ type: RunEvent.RunBudgetExhausted, data: {} }, { type: RunEvent.RunResumed, data: {} }]);
     expect(draining.status).toBe('draining');
   });
+
+  it('keeps an auth pause when a quota pause follows, so the run never resumes on its own with the login still broken', () => {
+    const state = reduceEvents([{ type: RunEvent.RunPaused, data: { reason: 'auth' } }, { type: RunEvent.RunPaused, data: { reason: 'quota' } }]);
+    expect(state.status).toBe('paused:auth');
+    const auth = reduceEvents([{ type: RunEvent.RunPaused, data: { reason: 'quota' } }, { type: RunEvent.RunPaused, data: { reason: 'auth' } }]);
+    expect(auth.status).toBe('paused:auth');
+  });
 });
 
 describe('replan', () => {

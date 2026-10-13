@@ -53,6 +53,12 @@ describe('run index', () => {
     await expect(fs.access(path.join(runs, 'hello-001-r3', 'pid'))).rejects.toThrow();
   });
 
+  it('keeps a run paused by an expired login as paused:auth after its process exits, so nothing resumes it on the same login', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('paused:auth'), 779);
+    const [row] = await listRuns(deps(), 'hello-app');
+    expect(row).toMatchObject({ runId: 'hello-001-r1', status: 'paused:auth', stoppable: false });
+  });
+
   it('reads a run that left only ui.log behind as launch-failed, dated by that log', async () => {
     await fs.mkdir(path.join(runs, 'hello-001-r1'), { recursive: true });
     await fs.writeFile(path.join(runs, 'hello-001-r1', 'ui.log'), 'boom');

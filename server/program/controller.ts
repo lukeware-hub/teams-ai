@@ -52,7 +52,9 @@ export type RunOutcome =
   | { kind: 'delivered'; costUsd?: number | null }
   /** A `complete` run ended `done`. */
   | { kind: 'done'; costUsd?: number | null }
-  | { kind: 'failed'; reason: string; costUsd?: number | null };
+  | { kind: 'failed'; reason: string; costUsd?: number | null }
+  /** The user stopped it: never resumed nor repaired. `finished`: it drained to its end and can no longer resume. */
+  | { kind: 'stopped'; finished?: true; costUsd?: number | null };
 
 export interface ProgramEffects {
   now(): Date;
@@ -61,6 +63,8 @@ export interface ProgramEffects {
   /** Freezes the item's spec and launches its run. */
   startRun(specId: string): Promise<{ runId: string }>;
   resumeRun(runId: string): Promise<void>;
+  /** Marks a run the program gave up on as stopped, so no supervisor resumes it either. */
+  stopRun?(runId: string): Promise<void>;
   /** Marks the delivered spec ready to complete and launches the `spec complete` run. */
   completeSpec(specId: string): Promise<{ runId: string }>;
   outcome(runId: string): Promise<RunOutcome>;
@@ -161,10 +165,22 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
   };
   // A run the server's own restart killed is resumed for free: only runs that die on their own spend the bounded resumes.
   const resume = async (item: ProgramItem, runId: string, what: string, restart = false) => {
-    if (!restart && item.resumes >= MAX_RESUMES) return fail(item, `${what} interrupted ${MAX_RESUMES} times and was not finished`);
-    if (!restart) item.resumes += 1;
+    if (!restart && item.resumes >= MAX_RESUMES) {
+      fail(item, `${what} interrupted ${MAX_RESUMES} times and was not finished`);
+      await fx.stopRun?.(runId).catch(() => undefined);
+      return;
+    }
     dirty = true;
+    if (!restart) {
+      // Saved before the launch: a crash in between must not give a free resume.
+      item.resumes += 1;
+      await persist();
+    }
     await fx.resumeRun(runId).catch((err) => fail(item, `resume failed: ${message(err)}`));
+  };
+  // A run the user stopped waits for them; one that drained to its end can only be retried by hand.
+  const stopped = (item: ProgramItem, o: Extract<RunOutcome, { kind: 'stopped' }>) => {
+    if (o.finished) fail(item, 'stopped by the user', o.costUsd);
   };
 
   for (const item of p.items) {
@@ -184,6 +200,7 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
       }
       const o = await fx.outcome(item.runId);
       if (o.kind === 'failed') await failOrRepair(item, o.reason, o.costUsd);
+      else if (o.kind === 'stopped') stopped(item, o);
       else if (o.kind === 'interrupted') await resume(item, item.runId, 'the run', o.restart);
       else if (o.kind === 'delivered') {
         addCost(item, o.costUsd);
@@ -212,6 +229,7 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
         addCost(item, o.costUsd);
         dirty = true;
       } else if (o.kind === 'failed') fail(item, `completion failed: ${o.reason}`, o.costUsd);
+      else if (o.kind === 'stopped') stopped(item, o);
       else if (o.kind === 'interrupted') await resume(item, item.completeRunId, 'the completion', o.restart);
     }
   }

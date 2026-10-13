@@ -6,8 +6,10 @@ import type { Accounting } from '../../server/budget/accounting.js';
 import { loadConfig } from '../../server/config/config.js';
 import { execCommand } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
-import { CrashInjected, gateSecrets, Run, type RunDeps } from '../../server/orchestrator/run.js';
+import { CrashInjected, gateSecrets, Run, withInflightClaimed, type RunDeps } from '../../server/orchestrator/run.js';
 import { OrchEvent } from '../../server/orchestrator/events.js';
+import { reduceEvents, RunEvent } from '../../server/pipeline/run-state.js';
+import { nextRunnable } from '../../server/scheduler/scheduler.js';
 import type { StepRequest, StepOutcome } from '../../server/runner/step.js';
 import type { ResultSummary } from '../../server/runner/stream-events.js';
 import { makeFrozenSpec, makePlan, makePlanTask, makeProject } from '../fixtures/contracts.js';
@@ -108,6 +110,15 @@ describe('gateSecrets', () => {
   });
 });
 
+describe('withInflightClaimed', () => {
+  it('counts a task already handed to a runner as claimed before its first transition lands', () => {
+    const ready = (id: string) => [{ type: RunEvent.TaskPlanned, data: { task: makePlanTask({ id, affectedPaths: ['src/a'] }) } }, { type: RunEvent.TaskStateChanged, data: { taskId: id, to: 'ready' } }];
+    const state = reduceEvents([...ready('T1'), ...ready('T2')]);
+    expect(nextRunnable(withInflightClaimed(state, ['T1']), 3)).toEqual([]);
+    expect(nextRunnable(withInflightClaimed(state, []), 3)).toEqual(['T1']);
+  });
+});
+
 describe('Run', () => {
   it("lets a step's sandbox reach the deployed service's own host, not just npm's registry", async () => {
     // cfg.docker.serviceHost (dind in this teams-ai setup) is where the orchestrator and the gates already reach a
@@ -179,6 +190,32 @@ describe('Run', () => {
     expect(run.journal.events.map((e) => e.type)).toContain('RUN_BUDGET_EXHAUSTED');
     await run.close();
   });
+
+  it('a budget drain lets an active task finish its step but never starts another Dev attempt', async () => {
+    let reviews = 0;
+    const script: Script = async (req) => {
+      if (req.kind === 'dev') return { ...(await happy(req)), summary: summary({ usage: { inputTokens: 3000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 } }) };
+      if (req.kind === 'review' && reviews++ === 0) return { ok: true, value: { specHash: HASH, decision: 'changes', criteria: [{ id: 'AC-001', status: 'failed', evidence: [] }], findings: [{ file: 'src/a/index.ts', line: 1, severity: 'major', text: 'wrong', acIds: ['AC-001'] }] }, summary: summary() };
+      return happy(req);
+    };
+    const d = await withAgents(deps(script, { maxParallel: 1 }));
+    d.cfg = loadConfig({ ...JSON.parse(JSON.stringify(d.cfg)), budgets: { observeOnly: false, perTaskTokens: 50_000, perRunTokens: 2_000 } });
+    const run = await Run.create(d);
+    expect(await run.execute()).toBe('drained');
+    expect(run.journal.events.filter((e) => e.type === OrchEvent.StepStarted && e.data.kind === 'dev')).toHaveLength(1);
+    await run.close();
+  }, 30_000);
+
+  it('journals the spent run budget once in observe mode and keeps going', async () => {
+    const d = await withAgents(deps(happy));
+    d.cfg = loadConfig({ ...JSON.parse(JSON.stringify(d.cfg)), budgets: { observeOnly: true, perTaskTokens: 50_000, perRunTokens: 2_000 } });
+    const run = await Run.create(d);
+    expect(await run.execute()).toBe('complete');
+    const facts = run.journal.events.filter((e) => e.type === OrchEvent.BudgetExceeded && e.data.taskId === null);
+    expect(facts).toHaveLength(1);
+    expect(facts[0]!.data).toMatchObject({ cap: 2_000 });
+    await run.close();
+  }, 30_000);
 
   it('charges a task over its budget with a failed attempt', async () => {
     const d = await withAgents(deps(async (req) => (req.kind === 'dev' ? { ...(await happy(req)), summary: summary({ usage: { inputTokens: 60_000, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 } }) } : happy(req)), { maxParallel: 1 }));
@@ -304,6 +341,14 @@ describe('Run', () => {
     expect(resumed.journal.state.tasks.get('T1')!.attempts).toBe(0);
     await resumed.close();
   }, 30_000);
+
+  it('writes paused:auth to the state file when a phase pauses for the login, so the run list keeps it waiting after the process exits', async () => {
+    const run = await Run.create(await withAgents(deps(happy)));
+    await (run as unknown as { pauseFor(f: 'auth'): Promise<unknown> }).pauseFor('auth');
+    const state = JSON.parse(await fs.readFile(path.join(remote.root, 'runs', run.runId, 'state.json'), 'utf8')) as { status: string };
+    expect(state.status).toBe('paused:auth');
+    await run.close();
+  });
 
   it('rebuilds accounting from the journal on resume', async () => {
     const d = await withAgents(deps(happy, { maxParallel: 1, crashAfterIntent: (id) => id.startsWith('PR_MERGE:task/spec-001-T1@') }));

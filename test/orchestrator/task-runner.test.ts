@@ -144,6 +144,15 @@ describe('TaskRunner: implementing', () => {
     expect(event.changedFiles).toContain('src/old.ts');
   });
 
+  it('refuses to delete the worktree .git file or anything under .git', async () => {
+    for (const target of ['.git', '.GIT', '.git/config']) {
+      const agent: Agent = async (req) => (req.kind === 'dev' ? { ...(await devDone()(req)), value: { specHash: HASH, status: 'done', summary: 'x', changedFiles: ['src/a.ts'], deletedFiles: [target], commitMessage: 'feat: T1' } } : devDone()(req));
+      const r = new TaskRunner('T1', deps({ agent }));
+      await r.advance();
+      await expect(fs.access(path.join(r.worktree, '.git'))).resolves.toBeUndefined();
+    }
+  });
+
   it('passes the ephemeral test database URL as extraEnv to Dev and Test when one was provisioned for this run', async () => {
     const agent: Agent = async (req) => {
       if (req.kind === 'review') return approve();
@@ -555,6 +564,14 @@ describe('TaskRunner: merging', () => {
     return r;
   }
 
+  it('runs afterMerge once when the rebase left nothing to merge', async () => {
+    let after = 0;
+    const r = await reviewed({ merge: { rebase: async () => ({ ok: true, baseSha: 'base', empty: true }), afterMerge: async () => void after++ } });
+    await r.advance();
+    expect(state().state).toBe('merged');
+    expect(after).toBe(1);
+  });
+
   it('merges through the queue and finishes the task', async () => {
     const r = await reviewed();
     await r.advance();
@@ -907,6 +924,14 @@ describe('TaskRunner: final review fixes', () => {
     const r = new TaskRunner('T1', deps({ agent, gates: failingGates, decider: stalledRecording() }));
     for (let i = 0; i < 4; i++) await r.advance();
     expect(state()).toMatchObject({ state: 'superseded', attempts: 2 });
+  });
+
+  it('an early replan stopped by the quota charges no attempt: the task waits where it was', async () => {
+    const agent: Agent = async (req) => (req.kind === 'replan' ? failed('quota', 'usage limit') : devDone()(req));
+    const r = new TaskRunner('T1', deps({ agent, gates: failingGates, decider: stalledRecording() }));
+    for (let i = 0; i < 4; i++) await r.advance();
+    expect(journal.state.status).toBe('paused:quota');
+    expect(state()).toMatchObject({ state: 'validating', attempts: 1 });
   });
 
   it('a failed early replan falls back to the normal retry instead of blocking', async () => {
