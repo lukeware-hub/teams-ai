@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { loadSecrets, writeSecret } from '../../server/core/secrets.js';
+import { ensureGeneratedSecrets, loadSecrets, writeSecret } from '../../server/core/secrets.js';
 
 let dir = '';
 afterEach(async () => {
@@ -56,5 +56,25 @@ describe('writeSecret', () => {
     await expect(writeSecret(dir, 'lowercase', 'x')).rejects.toThrow(RangeError);
     await expect(writeSecret(dir, 'TWO_LINES', 'a\nb')).rejects.toThrow(RangeError);
     await expect(writeSecret(dir, 'EMPTY', '   ')).rejects.toThrow(RangeError);
+  });
+});
+
+describe('ensureGeneratedSecrets', () => {
+  it('creates a missing secret as 64 hex characters, once, and never replaces one that exists', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-secrets-'));
+    await writeSecret(dir, 'KEPT', 'mine');
+    await ensureGeneratedSecrets(dir, ['PLATFORM_ADMIN_TOKEN', 'PLATFORM_ADMIN_TOKEN', 'KEPT'], {});
+    const first = await loadSecrets(dir);
+    expect(first.PLATFORM_ADMIN_TOKEN).toMatch(/^[0-9a-f]{64}$/);
+    expect(first.KEPT).toBe('mine');
+    expect(((await fs.stat(path.join(dir, 'PLATFORM_ADMIN_TOKEN'))).mode & 0o777).toString(8)).toBe('600');
+    await ensureGeneratedSecrets(dir, ['PLATFORM_ADMIN_TOKEN'], {});
+    expect((await loadSecrets(dir)).PLATFORM_ADMIN_TOKEN).toBe(first.PLATFORM_ADMIN_TOKEN);
+  });
+
+  it('leaves a secret the platform directory already holds to that directory', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-secrets-'));
+    await ensureGeneratedSecrets(dir, ['PLATFORM_ADMIN_TOKEN'], { PLATFORM_ADMIN_TOKEN: 'platform-value' });
+    expect(await loadSecrets(dir)).toEqual({});
   });
 });

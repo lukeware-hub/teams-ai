@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { promises as fs, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { writeFileAtomic } from './atomic-write.js';
@@ -58,4 +59,10 @@ export async function writeSecret(dir: string, name: string, value: string): Pro
   await fs.mkdir(dir, { recursive: true, mode: 0o700 });
   await fs.chmod(dir, 0o700).catch(() => undefined);
   await writeFileAtomic(path.join(dir, name), trimmed, { mode: 0o600 });
+}
+
+/** Creates each generated secret that no directory holds yet, as 64 random hex characters; one that exists is never replaced. */
+export async function ensureGeneratedSecrets(dir: string, names: readonly string[], existing: Readonly<Record<string, string>>): Promise<void> {
+  const held = { ...existing, ...(await loadSecrets(dir)) };
+  for (const name of new Set(names)) if (!(name in held)) await writeSecret(dir, name, randomBytes(32).toString('hex'));
 }

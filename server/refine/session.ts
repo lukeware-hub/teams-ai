@@ -4,7 +4,7 @@ import { sha256 } from '../contracts/hash.js';
 import type { SuggestOutput } from '../agents/outputs.js';
 import type { StepOutcome } from '../runner/step.js';
 import type { Project } from '../contracts/project.js';
-import { freezeSpec, Spec } from '../contracts/spec.js';
+import { freezeSpec, providedSecretNames, Spec } from '../contracts/spec.js';
 import { writeFileAtomic } from '../core/atomic-write.js';
 import { loadSecrets, SECRET_NAME, writeSecret } from '../core/secrets.js';
 import type { ProgramEntry } from '../program/controller.js';
@@ -87,7 +87,7 @@ function requiredSecretNames(state: RefineState): string[] {
   const dependencies = state.backlog?.enabled
     ? Object.values(state.backlog.specs ?? {}).flatMap((row) => row.spec?.externalDependencies ?? [])
     : state.derived?.spec.externalDependencies ?? [];
-  return dependencies.flatMap((dep) => dep.secretNames);
+  return providedSecretNames(dependencies);
 }
 export interface SecretRow {
   name: string;

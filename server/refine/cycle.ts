@@ -1,7 +1,7 @@
 import type { AnswerOutput, BacklogOutput, DeriveOutput, OutputOf, RefineOutput, StepKind } from '../agents/outputs.js';
 import type { z } from 'zod';
 import { Project } from '../contracts/project.js';
-import type { AcceptanceCriterion, Spec } from '../contracts/spec.js';
+import { providedSecretNames, type AcceptanceCriterion, type Spec } from '../contracts/spec.js';
 import { ID_PATTERNS } from '../core/ids.js';
 import { redactSecrets } from '../core/redact.js';
 import { loadSecrets } from '../core/secrets.js';
@@ -210,7 +210,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         return;
       }
       backlog = detailed.backlog;
-      secretNames = [...new Set(Object.values(backlog.specs ?? {}).flatMap((row) => row.spec?.externalDependencies.flatMap((dep) => dep.secretNames) ?? []))];
+      secretNames = [...new Set(Object.values(backlog.specs ?? {}).flatMap((row) => providedSecretNames(row.spec?.externalDependencies ?? [])))];
       // R11.7.4: a started spec whose cited sections changed gets an adjustment for the owner to approve.
       due = adjustmentsDue(backlog, backlogDocs, journal.state.patches);
     }
@@ -246,7 +246,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     derived = checked.value;
     criteria = checked.value.spec.acceptanceCriteria;
     objectives = checked.value.spec.objectives;
-    secretNames = checked.value.spec.externalDependencies.flatMap((dep) => dep.secretNames);
+    secretNames = providedSecretNames(checked.value.spec.externalDependencies);
   }
   const dctx = { confidential: derived.project.confidential };
   const notReady = !backlogMode && deps.decider ? await notReadyCriteria(criteria, decider!, dctx) : null;

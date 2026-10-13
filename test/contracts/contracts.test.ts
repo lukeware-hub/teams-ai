@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { canonicalJson, HASH_PATTERN, sha256 } from '../../server/contracts/hash.js';
 import { Plan } from '../../server/contracts/plan.js';
-import { Spec, SpecFrozenError, computeSpecHash, freezeSpec } from '../../server/contracts/spec.js';
+import { Spec, SpecFrozenError, computeSpecHash, freezeSpec, generatedSecretNames, providedSecretNames } from '../../server/contracts/spec.js';
 import { makePlan, makeProject, makeSpec } from '../fixtures/contracts.js';
 
 describe('canonicalJson', () => {
@@ -52,6 +52,14 @@ describe('Spec', () => {
     const before = sha256(canonicalJson({ specId, specVersion, type, bug, objectives, features, acceptanceCriteria, outOfScope, externalDependencies, tasks }));
     expect(computeSpecHash(spec)).toBe(before);
     expect(computeSpecHash({ ...spec, decisions: [{ question: 'Port?', answer: '8080' }] })).not.toBe(before);
+  });
+
+  it('splits the secrets a person provides from the ones the platform generates, and a spec without the flag keeps its hash', () => {
+    const spec = Spec.parse({ ...makeSpec(), externalDependencies: [{ name: 'db', purpose: 'dados', secretNames: ['DATABASE_URL'] }, { name: 'identity', purpose: 'admin', secretNames: ['PLATFORM_ADMIN_TOKEN'], generated: true }] });
+    expect(providedSecretNames(spec.externalDependencies)).toEqual(['DATABASE_URL']);
+    expect(generatedSecretNames(spec.externalDependencies)).toEqual(['PLATFORM_ADMIN_TOKEN']);
+    const plain = Spec.parse({ ...makeSpec(), externalDependencies: [{ name: 'db', purpose: 'dados', secretNames: ['DATABASE_URL'] }] });
+    expect(plain.externalDependencies[0]).not.toHaveProperty('generated');
   });
 
   it('rejects malformed acceptance criterion ids', () => {

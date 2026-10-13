@@ -20,7 +20,14 @@ export const ExternalDependency = z.object({
   name: z.string().min(1),
   purpose: z.string().min(1),
   secretNames: z.array(z.string().regex(/^[A-Z][A-Z0-9_]*$/)),
+  /** An internal credential of this project (one service accepts it, another sends it): the platform creates it, a person never types it. */
+  generated: z.boolean().optional(),
 });
+type ExternalDependency = z.infer<typeof ExternalDependency>;
+
+/** The secrets a person must provide; the generated ones are the platform's to create. */
+export const providedSecretNames = (deps: readonly ExternalDependency[]): string[] => deps.filter((d) => !d.generated).flatMap((d) => d.secretNames);
+export const generatedSecretNames = (deps: readonly ExternalDependency[]): string[] => deps.filter((d) => d.generated).flatMap((d) => d.secretNames);
 
 /** Human-defined tasks carry no dependencies; the SM derives them in the plan. */
 export const HumanTask = z.object({

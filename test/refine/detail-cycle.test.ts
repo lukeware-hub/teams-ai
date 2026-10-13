@@ -714,4 +714,19 @@ describe('backlog detailing secrets', () => {
     const secrets = (evaluated.data.checklist as Array<{ id: string; detail: string }>).find((i) => i.id === 'sm.dependencies-and-secrets')!;
     expect(secrets.detail).toBe('missing secrets: DATABASE_URL');
   });
+
+  it('never asks a person for a generated secret', async () => {
+    const { journal, events, run } = await setup();
+    const agent = fakeAgent(() => OUTLINE, (req) => {
+      if (req.kind !== 'spec') return undefined;
+      const fb = String(req.pack.feedback);
+      return ok({ specHash: H, specs: [...fb.matchAll(/^## Item ([a-z0-9-]+):/gm)].map((m) => ({ ...itemSpec(m[1]!), externalDependencies: [{ name: 'identity', purpose: 'admin', secretNames: ['PLATFORM_ADMIN_TOKEN'], generated: true }] })) });
+    });
+    await run(agent, 1);
+    await journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    await run(agent, 2);
+    const evaluated = events.filter((e) => e.type === 'REFINE_EVALUATED').at(-1)!;
+    const secrets = (evaluated.data.checklist as Array<{ id: string; detail: string }>).find((i) => i.id === 'sm.dependencies-and-secrets')!;
+    expect(secrets.detail).toBe('every listed secret is present');
+  });
 });
