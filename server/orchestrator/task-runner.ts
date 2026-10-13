@@ -22,7 +22,7 @@ import type { TestResult } from '../evidence/junit.js';
 import { verifyClaimedEvidence } from '../evidence/matrix.js';
 import type { Exec } from '../exec/command.js';
 import type { GateResult } from '../exec/gate-runner.js';
-import { changedFiles, commitAll, conflictMarkerFiles, createWorktree, fetch as gitFetch, git, removeWorktree, replayOnto } from '../git/git.js';
+import { changedFiles, commitAll, commitExcludes, conflictMarkerFiles, createWorktree, fetch as gitFetch, git, removeWorktree, replayOnto } from '../git/git.js';
 import type { MergeQueue, MergeSteps } from '../git/merge-queue.js';
 import type { CodeContext, HandoffSummary } from '../knowledge/context-pack.js';
 import { RunEvent, type TaskRuntime } from '../pipeline/run-state.js';
@@ -336,14 +336,14 @@ export class TaskRunner {
     this.specGapRounds = 0;
     await this.deleteFiles(value.deletedFiles ?? []);
     // Gate artifacts (the JUnit report) are written by the orchestrator, not by the Dev, and are never committed.
-    const touched = (await porcelainNames(this.worktree, this.deps.exec)).filter((f) => f !== this.deps.plan.junitPath);
+    const touched = (await porcelainNames(this.worktree, this.deps.exec)).filter((f) => f !== this.deps.plan.junitPath && f !== this.deps.plan.coveragePath);
     const scope = checkScope({ changedFiles: touched, affectedPaths: task.def.affectedPaths, frozenPaths: this.deps.plan.frozenPaths, scopeJustification: value.scopeJustification, allowFrozen: this.deps.firstSpec && task.bootstrapsFrozenPaths });
     if (!scope.ok) return this.fail('review-changes', `Scope violation:\n${scope.errors.join('\n')}`);
     this.scopeJustification = value.scopeJustification;
     // baseSha lets reconcile tell "committed, then crashed" from "crashed before committing" (spec §6).
     const baseSha = await git(this.worktree, ['rev-parse', 'HEAD'], this.deps.exec);
     await this.deps.journal.intent(Intent.Commit, commitKey, { taskId: this.taskId, worktree: this.worktree, message: value.commitMessage, baseSha });
-    const sha = (await commitAll(this.worktree, value.commitMessage, {}, this.deps.exec)) ?? (await git(this.worktree, ['rev-parse', 'HEAD'], this.deps.exec));
+    const sha = (await commitAll(this.worktree, value.commitMessage, { exclude: commitExcludes(this.deps.plan.junitPath, this.deps.plan.coveragePath) }, this.deps.exec)) ?? (await git(this.worktree, ['rev-parse', 'HEAD'], this.deps.exec));
     await this.deps.journal.confirm(Intent.Commit, commitKey, { sha });
     const changed = await changedFiles(this.worktree, 'origin/main', this.deps.exec);
     if (changed.length === 0) {

@@ -33,7 +33,7 @@ describe('runE2e', () => {
   it("passes the other services' addresses to the suite like SERVICE_URL", async () => {
     const exec = new FakeExec();
     await runE2e(plan, spec, ctx, 'http://inventory:3000', deps(exec, junit(ok('AC-001') + ok('AC-002'))), { SERVICE_URL_ORDERS: 'http://orders:3000' });
-    const call = exec.calls[0]!;
+    const call = exec.calls.find((c) => c.args[0] === 'run')!;
     expect(call.env).toMatchObject({ SERVICE_URL: 'http://inventory:3000', SERVICE_URL_ORDERS: 'http://orders:3000' });
     expect(call.args.join(' ')).toContain('-e SERVICE_URL_ORDERS');
   });
@@ -47,7 +47,7 @@ describe('runE2e', () => {
     const exec = new FakeExec();
     const r = await runE2e(plan, spec, { ...ctx, network: 'proj_default' }, 'http://app:3000', deps(exec, junit(ok('AC-001') + ok('AC-002'))));
     expect(r.ok).toBe(true);
-    const call = exec.calls[0]!;
+    const call = exec.calls.find((c) => c.args[0] === 'run')!;
     expect(call.env?.SERVICE_URL).toBe('http://app:3000');
     expect(call.args.join(' ')).toContain('--network proj_default');
   });

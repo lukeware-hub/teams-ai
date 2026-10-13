@@ -54,6 +54,9 @@ export interface GateResult {
   failure: 'infra' | 'code' | null;
 }
 
+/** What `classifyGate` reads; `oomKilled` is true when the gate hit its own memory limit. */
+type Classified = Pick<GateResult, 'exitCode' | 'timedOut' | 'stderrTail'> & { oomKilled?: boolean };
+
 export const TAIL_CHARS = 4000;
 
 /** Only messages the Docker CLI / daemon produce; a test's own ENOENT or heap message is the Dev's problem. */
@@ -109,8 +112,8 @@ export function dockerArgs(gate: Gate, ctx: GateContext): DockerInvocation {
   const workdir = ctx.containerWorkdir ?? '/work';
   const source = rewriteBindSource(ctx.worktree.replace(/\\/g, '/'), ctx.bindRewrite);
   const args = [
+    // No --rm: the executor inspects an exit 137 for OOMKilled and removes the container itself.
     'run',
-    '--rm',
     '--init',
     '--name',
     `${ctx.containerName}-${gate.name}`,
@@ -166,10 +169,12 @@ export function dockerArgs(gate: Gate, ctx: GateContext): DockerInvocation {
   return { args, env };
 }
 
-export function classifyGate(r: Pick<GateResult, 'exitCode' | 'timedOut' | 'stderrTail'>): 'infra' | 'code' {
+export function classifyGate(r: Classified): 'infra' | 'code' {
   // A gate that ran into its timeout hung on its own command; repeating it as an infra retry only multiplies the wait.
   if (r.timedOut) return 'code';
-  if (r.exitCode === 137 || r.exitCode === 125) return 'infra';
+  // A test that outgrows the gate's memory limit fails the same way on every retry.
+  if (r.exitCode === 137) return r.oomKilled ? 'code' : 'infra';
+  if (r.exitCode === 125) return 'infra';
   if (INFRA_PATTERNS.some((p) => p.test(r.stderrTail))) return 'infra';
   return 'code';
 }
@@ -183,6 +188,7 @@ export interface GateRunOutcome {
   durationMs: number;
   stdout: string;
   stderr: string;
+  oomKilled?: boolean;
 }
 
 /** Runs one gate command in the toolchain image against the worktree. A rejection is an infrastructure failure. */
@@ -196,12 +202,17 @@ export function dockerGateExecutor(exec: Exec): GateExecutor {
     kind: 'docker',
     async run(gate, ctx) {
       const invocation = dockerArgs(gate, ctx);
-      const r = await exec({ bin: 'docker', args: invocation.args, env: invocation.env, timeoutMs: ctx.timeoutMs });
-      if (r.timedOut) {
-        // SIGTERM reaches the docker CLI, not PID 1 in the container; make sure nothing keeps running.
-        await exec({ bin: 'docker', args: ['rm', '-f', `${ctx.containerName}-${gate.name}`], timeoutMs: 60_000 }).catch(() => undefined);
+      const name = `${ctx.containerName}-${gate.name}`;
+      // Also stops a timed-out gate: SIGTERM reaches the docker CLI, not PID 1 in the container.
+      const remove = () => exec({ bin: 'docker', args: ['rm', '-f', name], timeoutMs: 60_000 }).catch(() => undefined);
+      await remove(); // a container left by a crashed orchestrator would hold the name
+      try {
+        const r = await exec({ bin: 'docker', args: invocation.args, env: invocation.env, timeoutMs: ctx.timeoutMs });
+        const oomKilled = r.exitCode === 137 && !r.timedOut && (await exec({ bin: 'docker', args: ['inspect', '--format', '{{.State.OOMKilled}}', name], timeoutMs: 60_000 }).catch(() => null))?.stdout.trim() === 'true';
+        return { exitCode: r.exitCode, timedOut: r.timedOut, durationMs: r.durationMs, stdout: r.stdout, stderr: r.stderr, oomKilled };
+      } finally {
+        await remove();
       }
-      return { exitCode: r.exitCode, timedOut: r.timedOut, durationMs: r.durationMs, stdout: r.stdout, stderr: r.stderr };
     },
   };
 }
@@ -240,14 +251,17 @@ export async function runGate(gate: Gate, ctx: GateContext, deps: GateDeps): Pro
 
   let base: Omit<GateResult, 'name' | 'blocking' | 'passed' | 'junit' | 'failure'>;
   let stdout = '';
+  let oomKilled = false;
   // Tails reach the event store and UI; secret values injected into the container never do.
   const secretValues = Object.values(ctx.secrets);
-  const clean = (s: string) => redactSecrets(tail(s), secretValues);
+  // Redact before the cut, or a secret split by it would leave its suffix visible.
+  const clean = (s: string) => tail(redactSecrets(s, secretValues));
   const executor = deps.executor ?? dockerGateExecutor(deps.exec);
   try {
     const r = await executor.run(gate, ctx);
     stdout = `${r.stdout}\n${r.stderr}`; // python unittest and cargo print their result lines on stderr
     base = { exitCode: r.exitCode, timedOut: r.timedOut, durationMs: r.durationMs, stdoutTail: clean(r.stdout), stderrTail: clean(r.stderr) };
+    oomKilled = r.oomKilled === true;
   } catch (err) {
     base = { exitCode: null, timedOut: false, durationMs: Date.now() - started, stderrTail: clean((err as Error).message), stdoutTail: '' };
     return { name: gate.name, blocking: gate.blocking, passed: false, junit: null, failure: 'infra', ...base };
@@ -269,7 +283,7 @@ export async function runGate(gate: Gate, ctx: GateContext, deps: GateDeps): Pro
   // The coverage gate's exit code alone proves nothing: a stack-agnostic command could exit 0 without ever
   // writing the summary, or below the floor. Read the normalized signal and fail closed on anything unverifiable.
   let finalPassed = passed;
-  let failure: GateResult['failure'] = passed ? null : classifyGate(base);
+  let failure: GateResult['failure'] = passed ? null : classifyGate({ ...base, oomKilled });
   if (passed && gate.name === COVERAGE_GATE) {
     const file = coverageFile(ctx);
     const raw = file !== null ? await deps.readFile(file) : null;

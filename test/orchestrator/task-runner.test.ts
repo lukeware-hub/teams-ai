@@ -255,6 +255,22 @@ describe('TaskRunner: implementing', () => {
     expect(journal.events.some((e) => e.type === Intent.Commit)).toBe(false);
   });
 
+  it('keeps the JUnit and coverage reports out of the scope check and the commit, wherever the plan puts them', async () => {
+    const agent: Agent = async (req) => {
+      await devDone()(req);
+      // What the gates of an earlier attempt left in the worktree.
+      for (const f of ['test-results/junit.xml', 'coverage/summary.json']) {
+        await fs.mkdir(path.join(req.cwd, path.dirname(f)), { recursive: true });
+        await fs.writeFile(path.join(req.cwd, f), 'report');
+      }
+      return ok({ specHash: HASH, status: 'done', summary: 'did T1', changedFiles: ['src/a.ts'], commitMessage: 'feat: T1' });
+    };
+    const r = new TaskRunner('T1', deps({ agent, plan: makePlan(spec, { tasks: [T1], junitPath: 'test-results/junit.xml', coveragePath: 'coverage/summary.json' }) }));
+    await r.advance();
+    expect(state().state).toBe('validating');
+    expect(await git(r.worktree, ['show', '--name-only', '--format=', 'HEAD'])).toBe('src/a.ts');
+  });
+
   it('a Dev that changes nothing fails the attempt instead of reaching gates, review and a PR', async () => {
     const r = new TaskRunner('T1', deps({ agent: async () => ok({ specHash: HASH, status: 'done', summary: 'nothing', changedFiles: [], commitMessage: 'feat: nothing' }) }));
     await r.advance();

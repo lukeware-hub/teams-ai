@@ -75,6 +75,28 @@ describe('validatePlan security tooling', () => {
     );
   });
 
+  it('rejects a security gate chained with another command', () => {
+    const chained = {
+      'secret-scan': `${P} gitleaks detect --no-git --source . --redact --exit-code 1 | cat`,
+      sast: `${P} semgrep scan --config p/ci --severity ERROR --error --metrics off . ; true`,
+      'dependency-scan': `${P} npm audit --audit-level=high || echo skip`,
+    };
+    for (const [name, command] of Object.entries(chained)) {
+      expect(check(withGates(secureGates({ [name]: { command } }))), name).toEqual([expect.stringContaining(`security gate ${name} must be one command`)]);
+    }
+    const trivy = prescribedCommands('node')['image-scan']!.map((c) => `${P} ${c}`).join(' && ');
+    for (const tail of [' & true', ' $(true)', ' `true`', '\ntrue']) {
+      expect(check(withGates(secureGates({ 'image-scan': { command: `${trivy}${tail}` } }))), tail).toEqual([expect.stringContaining('security gate image-scan must be one command')]);
+    }
+  });
+
+  it('strips only the prescribed PATH prefix', () => {
+    expect(check(withGates(secureGates({ 'security-tools': { command: 'PATH=/work/bin:$PATH sh .tools/install.sh' } })))).toEqual([expect.stringContaining('must run exactly')]);
+    expect(check(withGates(secureGates({ 'secret-scan': { command: 'PATH=/work/bin:$PATH gitleaks detect --no-git --source . --redact --exit-code 1' } })))).toEqual([expect.stringContaining('secret-scan must run')]);
+    const trivy = prescribedCommands('node')['image-scan']!.map((c) => `PATH=/work/bin:$PATH ${c}`).join(' && ');
+    expect(check(withGates(secureGates({ 'image-scan': { command: trivy } })))).toEqual([expect.stringContaining('image-scan must run')]);
+  });
+
   it('requires both the config and the fs scan of the image-scan gate', () => {
     expect(check(withGates(secureGates({ 'image-scan': { command: 'trivy fs --severity CRITICAL --exit-code 1 .' } })))).toEqual([expect.stringContaining('a trivy config command')]);
     expect(check(withGates(secureGates({ 'image-scan': { command: 'trivy image --input a.tar --severity CRITICAL --exit-code 1' } })))).toEqual([expect.stringContaining('image-scan must run')]);

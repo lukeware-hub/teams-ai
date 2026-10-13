@@ -2,6 +2,7 @@ import { randomInt } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { updateFileAtomic } from '../core/atomic-write.js';
+import { lockFile, withFileLock } from '../core/file-lock.js';
 import type { Exec } from '../exec/command.js';
 import { PUBLISHED_PORTS } from './service-links.js';
 
@@ -29,7 +30,9 @@ export async function portHeldByOthers(exec: Exec, composeProject: string, port:
 
 async function updateRegistry(workspacesRoot: string, update: (registry: Record<string, number>) => Record<string, number>): Promise<void> {
   await fs.mkdir(workspacesRoot, { recursive: true });
-  await updateFileAtomic(registryFile(workspacesRoot), (text) => `${JSON.stringify(update(parseRegistry(text)), null, 2)}\n`);
+  const file = registryFile(workspacesRoot);
+  // Run processes share the registry; without the lock two of them can draw the same port.
+  await withFileLock(lockFile(file, 'repo'), () => updateFileAtomic(file, (text) => `${JSON.stringify(update(parseRegistry(text)), null, 2)}\n`));
 }
 
 /**

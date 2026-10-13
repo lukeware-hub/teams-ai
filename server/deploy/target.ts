@@ -83,7 +83,7 @@ export function imageName(image: string): string {
 export const imageRef = (intent: DeploymentIntent) => `${imageName(intent.image)}:${intent.tag}`;
 
 /**
- * Spec Phase 5: validate → build → apply → verify → smoke. Any failure after apply rolls back to the
+ * Spec Phase 5: validate → build → apply → verify → smoke. Any failure from apply on rolls back to the
  * previous version (when one exists), re-verifies health and confirms the previous image is the one
  * running, so the environment is known-good before the failure is reported and the fix goes through a PR.
  * Nothing here rejects: every path ends in a DeployResult.
@@ -100,12 +100,8 @@ export async function runDeployment(
   } catch (err) {
     return { ok: false, stage: 'build', detail: (err as Error).message, rolledBack: false, rollbackHealthy: null };
   }
-  let previous: string | null = null;
-  try {
-    previous = (await target.apply(intent)).previous;
-  } catch (err) {
-    return { ok: false, stage: 'apply', detail: (err as Error).message, rolledBack: false, rollbackHealthy: null };
-  }
+  // Read before apply: a compose up that fails has already replaced the containers that ran.
+  let previous: string | null = await target.currentImage(intent).catch(() => null);
   const fail = async (stage: DeployStage, detail: string): Promise<DeployResult> => {
     if (!previous) {
       // First deploy: nothing to go back to, and the failed stack must not keep running (R8.2).
@@ -132,6 +128,12 @@ export async function runDeployment(
       return { ok: false, stage, detail: `${detail}; rollback verify failed: ${(err as Error).message}`, rolledBack: true, rollbackHealthy: false };
     }
   };
+  try {
+    previous = (await target.apply(intent)).previous;
+  } catch (err) {
+    if (previous) return fail('apply', (err as Error).message);
+    return { ok: false, stage: 'apply', detail: (err as Error).message, rolledBack: false, rollbackHealthy: null };
+  }
   let health: { healthy: boolean; detail: string };
   try {
     health = await target.verify(intent);

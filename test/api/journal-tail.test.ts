@@ -93,4 +93,40 @@ describe('tailJournal', () => {
     open.mockRestore();
     await fs.rm(home, { recursive: true, force: true });
   });
+
+  it('starts at the byte offset the caller already replayed, and a late subscriber replays only from its own offset', async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-tail-'));
+    await writeRun(home, 'r1', [{ type: 'A' }, { type: 'B' }]);
+    const file = path.join(home, 'r1', 'events.ndjson');
+    const replayed = (await fs.stat(file)).size;
+    const s = stepper();
+    const first: string[] = [];
+    const late: string[] = [];
+    const t1 = tailJournal(file, 0, (e) => first.push(e.type), { sleep: s.sleep, from: replayed });
+    await s.started();
+    expect(first).toEqual([]);
+    await appendEvents(home, 'r1', [{ type: 'C' }], 3);
+    await s.tick();
+    expect(first).toEqual(['C']);
+    // An offset taken while C was half written still finds the start of its line.
+    const t2 = tailJournal(file, 0, (e) => late.push(e.type), { sleep: s.sleep, from: replayed + 5 });
+    await vi.waitFor(() => expect(late).toEqual(['C']));
+    t1.close();
+    t2.close();
+    s.release();
+    await fs.rm(home, { recursive: true, force: true });
+  });
+
+  it('reads a line longer than one read chunk whole', async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-tail-'));
+    await writeRun(home, 'r1', [{ type: 'A', data: { blob: 'x'.repeat(3 << 20) } }, { type: 'B' }]);
+    const seen: string[] = [];
+    const s = stepper();
+    const t = tailJournal(path.join(home, 'r1', 'events.ndjson'), 0, (e) => seen.push(e.type), { sleep: s.sleep });
+    await s.started();
+    expect(seen).toEqual(['A', 'B']);
+    t.close();
+    s.release();
+    await fs.rm(home, { recursive: true, force: true });
+  });
 });

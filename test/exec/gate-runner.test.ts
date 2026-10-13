@@ -72,7 +72,7 @@ describe('dockerArgs', () => {
 
   it('runs the command offline in a named, init-managed, non-root container with limits and read-only .git', () => {
     const { args, env } = dockerArgs(gate({ name: 'unit-test', command: 'npm test' }), ctx);
-    expect(args.slice(0, 3)).toEqual(['run', '--rm', '--init']);
+    expect(args.slice(0, 2)).toEqual(['run', '--init']);
     expect(args).toEqual(
       expect.arrayContaining([
         '--name', 'gate-T1-create-a1-unit-test',
@@ -181,11 +181,32 @@ describe('runGate', () => {
     expect(r.junit).toBeNull();
   });
 
-  it('reports infra when the container is OOM-killed', async () => {
+  it('reports infra when the container is killed from outside', async () => {
     const f = files({});
     const fake = new FakeExec().onArgs('docker', ['run'], () => ({ exitCode: 137 }));
     const r = await runGate(gate({ name: 'build', command: 'npm run build' }), ctx, { exec: fake.exec, ...f.deps });
     expect(r.failure).toBe('infra');
+  });
+
+  it('reports code when the gate ran out of its own memory limit, and removes the container it kept for the check', async () => {
+    const fake = new FakeExec()
+      .onArgs('docker', ['run'], () => ({ exitCode: 137 }))
+      .onArgs('docker', ['inspect'], () => ({ stdout: 'true\n' }));
+    const r = await runGate(gate({ name: 'unit-test', command: 'npm test' }), ctx, { exec: fake.exec, ...files({}).deps });
+    expect(r.failure).toBe('code');
+    expect(fake.calls.find((c) => c.args[0] === 'run')!.args).not.toContain('--rm');
+    expect(fake.lines('docker')).toEqual([
+      'rm -f gate-T1-create-a1-unit-test',
+      expect.stringMatching(/^run /),
+      'inspect --format {{.State.OOMKilled}} gate-T1-create-a1-unit-test',
+      'rm -f gate-T1-create-a1-unit-test',
+    ]);
+  });
+
+  it('redacts a secret before cutting the tail, so no piece of it survives the cut', async () => {
+    const fake = new FakeExec().onArgs('docker', ['run'], () => ({ exitCode: 1, stdout: `supersecretvalue${'y'.repeat(3995)}` }));
+    const r = await runGate(gate({ name: 'unit-test', command: 'npm test' }), { ...ctx, secrets: { T: 'supersecretvalue' } }, { exec: fake.exec, ...files({}).deps });
+    expect(r.stdoutTail).not.toContain('value');
   });
 
   it('force-removes the named container after a timeout so nothing keeps running', async () => {

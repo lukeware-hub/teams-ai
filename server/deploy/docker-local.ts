@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { PlatformService } from '../contracts/project.js';
 import type { Exec } from '../exec/command.js';
-import { imageRef, waitHealthy, type DeploymentIntent, type DeployTarget, type HttpGet } from './target.js';
+import { imageName, imageRef, waitHealthy, type DeploymentIntent, type DeployTarget, type HttpGet } from './target.js';
 
 const TIMEOUT = 600_000;
 
@@ -172,8 +172,10 @@ export class DockerLocalTarget implements DeployTarget {
       return null;
     }
     const main = mappings.find((m) => Number(m.published) === intent.port) ?? mappings[0];
-    if (!main) return [`${this.deps.publishBind ?? '127.0.0.1'}:${intent.port}:${intent.port}`];
-    return mappings.map((m) => `${m.host_ip ? `${m.host_ip}:` : ''}${m === main ? intent.port : m.published ?? ''}:${m.target}${m.protocol && m.protocol !== 'tcp' ? `/${m.protocol}` : ''}`);
+    const bind = this.deps.publishBind ?? '127.0.0.1';
+    if (!main) return [`${bind}:${intent.port}:${intent.port}`];
+    // The main port goes on publishBind like `docker run`, never on the address the file chose.
+    return mappings.map((m) => `${m === main ? `${bind}:${intent.port}` : `${m.host_ip ? `${m.host_ip}:` : ''}${m.published ?? ''}`}:${m.target}${m.protocol && m.protocol !== 'tcp' ? `/${m.protocol}` : ''}`);
   }
 
   async ensureRunning(projectId: string, service: string): Promise<{ ok: boolean; detail: string }> {
@@ -203,8 +205,19 @@ export class DockerLocalTarget implements DeployTarget {
   async validate(intent: DeploymentIntent): Promise<string[]> {
     const errors = intent.secretNames.filter((n) => this.deps.secrets[n] === undefined).map((n) => `missing secret ${n}`);
     if (intent.compose && errors.length === 0) {
-      const r = await this.compose(intent, ['config', '--quiet'], imageRef(intent), 60_000);
+      const r = await this.compose(intent, ['config', '--format', 'json'], imageRef(intent), 60_000);
       if (r.exitCode !== 0) errors.push(`docker compose config failed: ${r.stderr.slice(-1000)}`);
+      else {
+        // Rollback restores the previous image only through TEAMS_AI_IMAGE; a fixed name would come back as the new build.
+        const service = await this.service(intent);
+        let image: string | undefined;
+        try {
+          image = JSON.parse(r.stdout).services?.[service]?.image;
+        } catch {
+          // unreadable output: reported as no image below
+        }
+        if (image !== imageRef(intent)) errors.push(`compose service ${service} must use image: \${TEAMS_AI_IMAGE:-${imageName(intent.image)}:latest} (the deploy contract rollback relies on); it resolves to ${image ?? 'no image'}`);
+      }
     }
     return errors;
   }
@@ -235,14 +248,15 @@ export class DockerLocalTarget implements DeployTarget {
   private async run(intent: DeploymentIntent, image: string): Promise<void> {
     const name = this.container(intent);
     const prev = `${name}-prev`;
-    const exists = (await this.docker(['inspect', '--format', '{{.Id}}', name], undefined, 60_000)).exitCode === 0;
-    let parked = false;
-    if (exists) {
+    const parked = (await this.docker(['inspect', '--format', '{{.Id}}', name], undefined, 60_000)).exitCode === 0;
+    if (parked) {
       await this.docker(['rm', '-f', prev], undefined, 60_000); // a stale park from an interrupted apply
-      parked = (await this.docker(['rename', name, prev], undefined, 60_000)).exitCode === 0;
+      const renamed = await this.docker(['rename', name, prev], undefined, 60_000);
+      // Unparked, the failed run's `rm -f name` below would delete the only container there is to go back to.
+      if (renamed.exitCode !== 0) throw new Error(dockerFailure('docker rename', renamed.stderr));
       // Parked but still running, it keeps the published port and the new container cannot bind it
       // ("port is already allocated", 1387253335-001-r13). Rollback starts it again after renaming it back.
-      if (parked) await this.docker(['stop', prev], undefined, 60_000);
+      await this.docker(['stop', prev], undefined, 60_000);
     }
     const args = ['run', '-d', '--name', name, '--restart', 'unless-stopped', '-p', `${this.deps.publishBind ?? '127.0.0.1'}:${intent.port}:${intent.port}`];
     const env: Record<string, string> = {};
