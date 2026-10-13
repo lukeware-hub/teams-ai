@@ -254,17 +254,24 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
   const revived = await Promise.all(untouchedServices.map(async (s) => [s, await (target.ensureRunning?.(deps.project.projectId, s) ?? { ok: true, detail: '' })] as const));
   const down = revived.filter(([, r]) => !r.ok).map(([s, r]) => `${s}: ${r.detail}`);
   const withEnvironment = (detail: string) => (down.length > 0 ? `${detail}\n\nenvironment: a service of an earlier spec is not running (${down.join('; ')})` : detail);
+  // A service of another spec that never published has no address; a suite that fails reaching it needs that spec, not a fix task.
+  const unpublished = (deps.project.services ?? []).filter((s) => !services.repos.some((r) => r.service === s) && !registry[portKey(deps.project.projectId, s)]);
+  const unreachable = (detail: string) => unpublished.filter((s) => new RegExp(`(?<![\\w-])${s}(?![\\w-])`).test(detail) || detail.includes(serviceUrlEnv(s)));
+  const suiteFailed = (stage: 'smoke' | 'e2e', detail: string, repo: ServiceRepo) => {
+    const missing = unreachable(detail);
+    return missing.length > 0 ? failed(stage, `environment: ${missing.join(', ')} of another spec was never published, so the suites cannot reach it; deliver that spec first\n\n${detail}`, null) : failed(stage, withEnvironment(detail), repo);
+  };
   const smoke: SmokeRow[] = [];
   const e2e: E2eRow[] = [];
   for (const a of addresses) {
     const urls = Object.fromEntries([...untouched, ...addresses.filter((o) => o !== a).map((o) => [serviceUrlEnv(o.repo.service!), o.gateUrl] as const)]);
     const scope: GateScope = { service: a.repo.service!, plan: a.repo.plan, spec: specShare(deps.spec, a.repo.plan.tasks), urls };
     const s = await deps.smoke(a.repo.ws.repo, a.url, a.gateUrl, a.network, scope);
-    if (!s.ok) return failed('smoke', withEnvironment(s.detail), a.repo);
+    if (!s.ok) return suiteFailed('smoke', s.detail, a.repo);
     smoke.push(...s.rows.map((r) => ({ ...r, service: a.repo.service! })));
     if (deps.e2e && (e2eCommand(a.repo.plan) || deps.requireE2e)) {
       const e = await deps.e2e(a.repo.ws.repo, a.url, a.gateUrl, a.network, scope);
-      if (!e.ok) return failed('e2e', withEnvironment(e.detail), a.repo);
+      if (!e.ok) return suiteFailed('e2e', e.detail, a.repo);
       e2e.push(...e.rows);
     }
   }

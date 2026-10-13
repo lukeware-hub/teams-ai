@@ -105,7 +105,8 @@ export function applyEvent(state: RunState, event: ReducibleEvent): void {
     case RunEvent.RunPaused: {
       const reason = PausedData.parse(event.data).reason;
       // Draining is terminal for scheduling; a pause must not let a resume undo it.
-      if (state.status !== 'draining') state.status = `paused:${reason}`;
+      // A quota pause lifts on its own, so it must not hide an auth pause that waits for a human.
+      if (state.status !== 'draining' && !(state.status === 'paused:auth' && reason === 'quota')) state.status = `paused:${reason}`;
       return;
     }
     case RunEvent.RunResumed: {

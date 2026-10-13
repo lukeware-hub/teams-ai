@@ -18,7 +18,8 @@ export interface MergeSteps {
 }
 
 export type MergeOutcome =
-  | { ok: true; pr: number; already?: true; warning?: string }
+  /** `empty`: the rebase left nothing to merge and the queue already ran afterMerge. */
+  | { ok: true; pr: number; already?: true; empty?: true; warning?: string }
   | { ok: false; stage: MergeStage; conflicts?: string[]; detail?: string; gateFailure?: GateResult };
 
 /**
@@ -73,9 +74,9 @@ export class MergeQueue {
           await steps.afterMerge?.();
         } catch (err) {
           if ((err as { fatal?: boolean }).fatal === true) throw err;
-          return { ok: true, pr: 0, already: true, warning: `afterMerge: ${(err as Error).message}` };
+          return { ok: true, pr: 0, already: true, empty: true, warning: `afterMerge: ${(err as Error).message}` };
         }
-        return { ok: true, pr: 0, already: true };
+        return { ok: true, pr: 0, already: true, empty: true };
       }
       stage = 'gates';
       const gates = await steps.gates();

@@ -213,6 +213,17 @@ describe('EventStore crash recovery', () => {
     expect((await reopened.append({ type: 'B' })).seq).toBe(2);
   });
 
+  it('makes a failed append and every append after it fatal, so the run stops instead of retrying against a dead journal', async () => {
+    const store = await open();
+    const failing = { ...store, file: path.join(dir, 'missing-dir', 'x', 'events.ndjson') } as unknown as EventStore;
+    Object.setPrototypeOf(failing, EventStore.prototype);
+    const first = await failing.append({ type: 'B' }).catch((err: { fatal?: boolean }) => err);
+    const next = await failing.append({ type: 'C' }).catch((err: { fatal?: boolean }) => err);
+    expect((first as { fatal?: boolean }).fatal).toBe(true);
+    expect((next as { fatal?: boolean }).fatal).toBe(true);
+    opened.splice(opened.indexOf(store), 1);
+  });
+
   it('drops a torn tail that still parses as JSON but lacks the stored fields', async () => {
     await writeLines(rawEvent(1), '{"seq":2}\n');
     expect(await repairEventLog(file)).toBe(10);

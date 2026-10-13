@@ -240,6 +240,20 @@ describe('Phase 5 with several services', () => {
     expect(String(failure().detail)).toContain('environment: a service of an earlier spec is not running (ledger: no container found)');
   });
 
+  it('fails as the environment, with no fix task, when a suite cannot reach a service of another spec that was never published', async () => {
+    const { deps } = await setup([], { services: ['orders', 'inventory', 'audit-service'], e2eFails: 'e2e:orders', detail: 'getaddrinfo ENOTFOUND audit-service' });
+    const res = await runServicesPhase5(deps, 1);
+    expect(res.ok ? null : res.fixTask).toBeUndefined();
+    expect(res.ok ? '' : res.reason).toContain('environment: audit-service of another spec was never published');
+    expect(journal.state.tasks.size).toBe(0);
+  });
+
+  it('still plans a fix task when a suite fails for its own reason beside an unpublished service', async () => {
+    const { deps } = await setup([], { services: ['orders', 'inventory', 'audit-service'], e2eFails: 'e2e:orders', detail: 'AC-001: expected 201, got 500' });
+    const res = await runServicesPhase5(deps, 1);
+    expect(res.ok ? null : res.fixTask).toMatchObject({ service: 'orders' });
+  });
+
   it("refuses a service without a compose file, which would replace the project's single container", async () => {
     const log: string[] = [];
     const { deps } = await setup(log, { plan: makeServicesPlan(spec) });

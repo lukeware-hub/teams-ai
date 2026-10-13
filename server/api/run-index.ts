@@ -198,7 +198,8 @@ export async function runRow(deps: IndexDeps, runId: string): Promise<RunRow | n
   if (finished) status = String(finished.data.result) as RunListStatus;
   // Phases 0-2 journal before the first state snapshot: a live process is running, not unknown (the spec must stay claimed).
   else if (!state?.status) status = alive ? 'running' : events.length === 0 && launchLog ? 'launch-failed' : 'unknown';
-  else if (interrupted) status = 'interrupted';
+  // A run paused by an expired login exits on purpose and waits for a human, not for a resume on the same login.
+  else if (interrupted && state.status !== 'paused:auth') status = 'interrupted';
   else status = state.status as RunListStatus;
   const stopped = status === 'interrupted' && (await isStopRequested(runs, runId));
   const tokens = (state?.tokens?.inputTokens ?? 0) + (state?.tokens?.outputTokens ?? 0);

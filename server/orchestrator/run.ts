@@ -23,7 +23,7 @@ import { MergeQueue } from '../git/merge-queue.js';
 import type { CodeContext, HandoffSummary } from '../knowledge/context-pack.js';
 import { grepFallback, MIN_COVERAGE, type Graphify } from '../knowledge/graphify.js';
 import type { KnowledgeIndex } from '../knowledge/retrieval.js';
-import { RunEvent } from '../pipeline/run-state.js';
+import { RunEvent, type RunState } from '../pipeline/run-state.js';
 import { ACTIVE_STATES, DEPENDENCY_BLOCKED } from '../pipeline/task-state.js';
 import type { RunnerBinary } from '../runner/process-runner.js';
 import type { runStep as runStepFn, StepDeps, StepOutcome } from '../runner/step.js';
@@ -131,6 +131,16 @@ function viewOf(plan: AnyPlan, service: string | undefined): ServiceView {
   return view;
 }
 
+/** The state the scheduler reads: a task handed to a runner holds its paths and its slot before its first transition lands. */
+export function withInflightClaimed(state: RunState, inflight: Iterable<string>): RunState {
+  const tasks = new Map(state.tasks);
+  for (const id of inflight) {
+    const t = tasks.get(id);
+    if (t && (t.state === 'planned' || t.state === 'ready')) tasks.set(id, { ...t, state: 'implementing' });
+  }
+  return { ...state, tasks };
+}
+
 /** Docs merges run no gates. */
 const NO_GATES = async (): Promise<{ results: GateResult[]; blockingFailure: GateResult | null }> => ({ results: [], blockingFailure: null });
 
@@ -154,6 +164,8 @@ export class Run {
   private design: string | null = null;
   private readonly runners = new Map<string, TaskRunner>();
   private readonly inflight = new Map<string, Promise<void>>();
+  /** Observe mode journaled the spent run budget already. */
+  private runBudgetNoted: boolean;
   private readonly deps: RunDeps;
 
   private constructor(
@@ -168,6 +180,7 @@ export class Run {
     this.log = deps.log ?? ((l) => process.stderr.write(`${l}\n`));
     this.maxParallel = deps.maxParallel ?? deps.cfg.concurrency.maxParallel;
     this.handoffs = journal.handoffs();
+    this.runBudgetNoted = journal.events.some((e) => e.type === OrchEvent.BudgetExceeded && e.data.taskId === null);
     this.rebuildAccounting();
     this.governor = new Governor(deps.cfg.concurrency.maxClaudeProcesses);
     this.breaker = new QuotaBreaker(DEFAULT_BREAKER, this.clock);
@@ -561,6 +574,8 @@ export class Run {
   private async pauseFor(failure: 'quota' | 'auth'): Promise<'resumed' | 'auth'> {
     if (failure === 'auth') {
       if (this.journal.state.status === 'running') await this.journal.fact(RunEvent.RunPaused, { reason: 'auth' });
+      // The process exits next; the run list reads the pause from the state file.
+      await this.writeState();
       return 'auth';
     }
     await this.waitWhilePaused();
@@ -768,7 +783,8 @@ export class Run {
         if (p5.ok) break;
         if (!p5.fixTask) { result = 'deploy-failed'; reason = p5.reason; break; }
         // Same rule as Phase 4: the fix task is best effort and the next deploy attempt is the verdict.
-        const back = await runFix([p5.fixTask]); if (back !== 'merged' && back !== 'blocked') { result = 'deploy-failed'; reason = p5.reason; break; }
+        // A drain, a deadlock or a login pause already ended the run inside the loop, as in Phase 4.
+        const back = await runFix([p5.fixTask]); if (back !== 'merged' && back !== 'blocked') return back;
       }
     }
     const p6 = await runPhase6({ ...this.phaseDeps(), runId: this.runId, accounting: this.accounting, result });
@@ -795,8 +811,14 @@ export class Run {
         continue;
       }
       if (state.status === 'paused:quota') await this.journal.fact(RunEvent.RunResumed, {});
-      if (state.status === 'running' && !cfg.budgets.observeOnly && this.accounting.tokensOf(this.accounting.total()) > cfg.budgets.perRunTokens) {
-        await this.journal.fact(RunEvent.RunBudgetExhausted, {});
+      const runTokens = this.accounting.tokensOf(this.accounting.total());
+      if (state.status === 'running' && runTokens > cfg.budgets.perRunTokens) {
+        if (!cfg.budgets.observeOnly) await this.journal.fact(RunEvent.RunBudgetExhausted, {});
+        // Observe mode only records the spent budget, once per run.
+        else if (!this.runBudgetNoted) {
+          this.runBudgetNoted = true;
+          await this.journal.fact(OrchEvent.BudgetExceeded, { taskId: null, tokens: runTokens, cap: cfg.budgets.perRunTokens });
+        }
       }
       for (const id of tasksToBlock(this.journal.state)) {
         const t = this.journal.state.tasks.get(id)!;
@@ -813,7 +835,7 @@ export class Run {
         return this.finish(progress === 'complete' ? 'complete' : progress);
       }
       if (this.journal.state.status === 'running') {
-        for (const id of nextRunnable(this.journal.state, this.maxParallel)) {
+        for (const id of nextRunnable(withInflightClaimed(this.journal.state, this.inflight.keys()), this.maxParallel)) {
           // Replacements from a replan are born `planned`; the runner only acts from `ready` onward.
           if (this.journal.state.tasks.get(id)!.state === 'planned') await this.journal.fact(RunEvent.TaskStateChanged, { taskId: id, to: 'ready' });
           if (!this.runners.has(id)) this.runners.set(id, new TaskRunner(id, this.runnerDeps(this.taskView(id))));
@@ -826,7 +848,9 @@ export class Run {
       if (this.journal.state.status === 'running' || (this.journal.state.status === 'draining' && !this.journal.state.stopOnly)) {
         // Tasks left active by a previous process (resume) get a runner too; nothing new is admitted here.
         for (const [id, t] of this.journal.state.tasks) if (ACTIVE_STATES.has(t.state) && !this.runners.has(id)) this.runners.set(id, new TaskRunner(id, this.runnerDeps(this.taskView(id))));
-        for (const [id, r] of this.runners) if (!r.done && !this.inflight.has(id) && ACTIVE_STATES.has(r.task.state)) this.start(id);
+        // A budget drain never starts another Dev attempt: a task sent back to implementing waits for a resume.
+        const draining = this.journal.state.status === 'draining';
+        for (const [id, r] of this.runners) if (!r.done && !this.inflight.has(id) && ACTIVE_STATES.has(r.task.state) && !(draining && r.task.state === 'implementing')) this.start(id);
       }
       if (this.inflight.size === 0) {
         if (this.journal.state.status === 'draining') return this.finish('drained');
