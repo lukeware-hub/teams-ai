@@ -8,11 +8,13 @@ import { Spec } from '../contracts/spec.js';
 import { writeFileAtomic } from '../core/atomic-write.js';
 import type { Decider } from '../decide/decider.js';
 import { classifyFailure, retryable } from '../decide/decisions/failure-cause.js';
+import { OrchEvent } from '../orchestrator/events.js';
 import { expandHome, nextRunId } from '../orchestrator/workspace.js';
+import { RunEvent } from '../pipeline/run-state.js';
 import { DEPENDENCY_BLOCKED } from '../pipeline/task-state.js';
 import { loadEvents } from '../store/event-store.js';
 import { writeRepairNotes } from './repair-notes.js';
-import { newProgram, prioritizeItem, retryItem, tick, type Program, type ProgramEffects, type ProgramEntry, type RunOutcome } from './controller.js';
+import { newProgram, prioritizeItem, retryItem, tick, type Program, type ProgramEffects, type ProgramEntry, type ProgramItem, type RunOutcome } from './controller.js';
 
 export interface ProgramServiceDeps {
   cfg: () => Promise<Config>;
@@ -28,6 +30,12 @@ export interface ProgramServiceDeps {
   /** Classifies a failed run (R11.14); absent means a failed run is never repaired. */
   decider?: Pick<Decider, 'decide'>;
 }
+
+/** A pull request a run opened for a spec. */
+export interface ProgramPr { number: number; url: string }
+/** An item as the screen reads it: the ledger's item, the pull requests of its runs and, while a run waits, why and until when. */
+export type ProgramItemView = ProgramItem & { prs: ProgramPr[]; pause?: { reason: 'quota' | 'auth'; until?: string } };
+export type ProgramView = Omit<Program, 'items'> & { items: ProgramItemView[] };
 
 export const programFile = (draftRoot: string): string => path.posix.join(draftRoot, 'program.json');
 
@@ -45,6 +53,9 @@ export class ProgramService {
   /** When this server started: a run launched before it died in the restart, not on its own. */
   private readonly bootedAt = Date.now();
 
+  /** The pull requests of an item whose runs ended: they never change, so the screen's polling reads them once. */
+  private readonly settledPrs = new Map<string, ProgramPr[]>();
+
   constructor(private readonly deps: ProgramServiceDeps) {}
 
   private now(): Date {
@@ -61,6 +72,31 @@ export class ProgramService {
 
   async read(projectId: string, draftId: string): Promise<Program | null> {
     return readProgram(await this.deps.draftRoot(projectId, draftId));
+  }
+
+  /** The ledger with each item's pull requests and, for a run paused by the quota or the login, why and until when. */
+  async view(projectId: string, draftId: string): Promise<ProgramView | null> {
+    const program = await this.read(projectId, draftId);
+    if (program === null) return null;
+    const runs = runsDirOf(await this.index());
+    const items = await Promise.all(program.items.map(async (item): Promise<ProgramItemView> => {
+      const runIds = [item.runId, item.completeRunId].filter((id): id is string => id !== null);
+      const settled = item.status === 'done' || item.status === 'failed' || item.status === 'blocked';
+      const cached = settled ? this.settledPrs.get(runIds.join('+')) : undefined;
+      if (cached) return { ...item, prs: cached };
+      const prs = new Map<number, ProgramPr>();
+      let pause: ProgramItemView['pause'];
+      for (const runId of runIds) {
+        const events = await loadEvents(path.join(runs, runId, 'events.ndjson')).catch(() => []);
+        for (const e of events) if (e.type === OrchEvent.PrCreated) prs.set(Number(e.data.number), { number: Number(e.data.number), url: String(e.data.url) });
+        const last = [...events].reverse().find((e) => e.type === RunEvent.RunPaused || e.type === RunEvent.RunResumed || e.type === 'RUN_FINISHED');
+        if (last?.type === RunEvent.RunPaused) pause = { reason: last.data.reason === 'auth' ? 'auth' : 'quota', ...(typeof last.data.until === 'string' ? { until: last.data.until } : {}) };
+      }
+      const list = [...prs.values()].sort((a, b) => a.number - b.number);
+      if (settled) this.settledPrs.set(runIds.join('+'), list);
+      return { ...item, prs: list, ...(pause ? { pause } : {}) };
+    }));
+    return { ...program, items };
   }
 
   /** Puts a pending item ahead of the queue and takes a tick, which starts it if a slot is free and nothing in flight conflicts. */

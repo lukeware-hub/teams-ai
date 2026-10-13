@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { RunControlDeps } from '../api/run-control.js';
 import { abandonLaunch, isAlive, spawnRun, waitForRunJournal } from '../api/run-control.js';
-import { ProgramService, programFile } from '../program/service.js';
+import { ProgramService, programFile, type ProgramView } from '../program/service.js';
 import type { Program } from '../program/controller.js';
 import { claimsSpec, listRuns, writePid } from '../api/run-index.js';
 import { HttpError } from '../api/server.js';
@@ -194,9 +194,9 @@ export class SessionRegistry {
     }
   }
 
-  async program(projectId: string, specId: string): Promise<Program | null> {
+  async program(projectId: string, specId: string): Promise<ProgramView | null> {
     await this.get(projectId, specId);
-    return this.programs.read(projectId, specId);
+    return this.programs.view(projectId, specId);
   }
 
   /** R11.4 continuation: retries one failed item of a started program. */

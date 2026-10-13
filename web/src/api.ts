@@ -295,6 +295,10 @@ export interface ProgramViewItem {
   reason: string | null;
   resumes: number;
   costUsd: number | null;
+  /** The pull requests the item's runs opened. */
+  prs?: Array<{ number: number; url: string }>;
+  /** The run waits for the Claude quota or for a new login. */
+  pause?: { reason: 'quota' | 'auth'; until?: string };
   /** Asked to run now: it starts at the next free slot. */
   priority?: boolean;
 }

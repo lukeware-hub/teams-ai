@@ -233,3 +233,39 @@ describe('program service retry', () => {
     await expect(s.retry('shop', 'd', 'd-a')).rejects.toThrow(/no program/);
   });
 });
+
+describe('program service view', () => {
+  const item = (key: string, status: string, runId: string | null) => ({ specId: `d-${key}`, key, rank: key.charCodeAt(0), dependsOn: [], status, runId, completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0, costUsd: null });
+  const write = async (items: unknown[]) => {
+    await fs.mkdir(path.join(root, 'draft'), { recursive: true });
+    await fs.writeFile(path.join(root, 'draft', 'program.json'), JSON.stringify({ version: 1, draftId: 'd', status: 'running', updatedAt: '', items }));
+  };
+  const pr = (number: number) => ({ type: 'PR_CREATED', data: { branch: `b${number}`, number, url: `https://github.com/o/r/pull/${number}`, created: true } });
+
+  it('lists the pull requests of an item\'s runs once each, by number, and none for an item that never ran', async () => {
+    await write([item('a', 'running', 'a-r1'), item('b', 'pending', null)]);
+    await journal('a-r1', [started('d-a'), pr(7), pr(3), pr(7)]);
+    const view = await service().view('shop', 'd');
+    expect(view!.items[0]!.prs).toEqual([{ number: 3, url: 'https://github.com/o/r/pull/3' }, { number: 7, url: 'https://github.com/o/r/pull/7' }]);
+    expect(view!.items[1]!.prs).toEqual([]);
+  });
+
+  it('says why and until when a run waits, and stops saying it once the run goes on', async () => {
+    await write([item('a', 'running', 'a-r1'), item('b', 'running', 'b-r1')]);
+    await journal('a-r1', [started('d-a'), { type: 'RUN_PAUSED', data: { reason: 'quota', until: '2026-10-13T18:30:00.000Z' } }]);
+    await journal('b-r1', [started('d-b'), { type: 'RUN_PAUSED', data: { reason: 'quota', until: 'x' } }, { type: 'RUN_RESUMED', data: {} }]);
+    const view = await service().view('shop', 'd');
+    expect(view!.items[0]!.pause).toEqual({ reason: 'quota', until: '2026-10-13T18:30:00.000Z' });
+    expect(view!.items[1]!.pause).toBeUndefined();
+  });
+
+  it('is null without a program, and keeps the pull requests of a finished item without reading its journal again', async () => {
+    const s = service();
+    expect(await s.view('shop', 'd')).toBeNull();
+    await write([item('a', 'done', 'a-r1')]);
+    await journal('a-r1', [started('d-a'), pr(4)]);
+    expect((await s.view('shop', 'd'))!.items[0]!.prs).toHaveLength(1);
+    await fs.rm(path.join(runsDir(), 'a-r1'), { recursive: true });
+    expect((await s.view('shop', 'd'))!.items[0]!.prs).toHaveLength(1);
+  });
+});

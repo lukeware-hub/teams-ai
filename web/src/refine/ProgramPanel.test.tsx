@@ -29,6 +29,21 @@ describe('ProgramPanel', () => {
     expect(within(screen.getByTestId('program-item-c')).getByText(/depends on b, which failed/)).toBeTruthy();
   });
 
+  it('links the pull requests of a spec and says why and until when a run waits', () => {
+    renderPanel(program([
+      item('a', { status: 'running', runId: 'd-a-r1', prs: [{ number: 7, url: 'https://github.com/o/r/pull/7' }], pause: { reason: 'quota', until: '2026-10-13T18:30:00.000Z' } }),
+      item('b', { status: 'running', runId: 'd-b-r1', pause: { reason: 'auth' } }),
+      item('c', { status: 'pending' }),
+    ]));
+    const link = within(screen.getByTestId('program-item-prs-a')).getByRole('link', { name: 'PR #7' }) as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('https://github.com/o/r/pull/7');
+    expect(link.getAttribute('rel')).toContain('noreferrer');
+    expect(screen.getByTestId('program-item-pause-a').textContent).toMatch(/^Pausada pela cota do Claude até \d{2}:\d{2}\.$/);
+    expect(screen.getByTestId('program-item-pause-b').textContent).toMatch(/login/);
+    expect(screen.queryByTestId('program-item-prs-c')).toBeNull();
+    expect(screen.queryByTestId('program-item-pause-c')).toBeNull();
+  });
+
   it('counts what is done and says when the program finished with failures', () => {
     renderPanel(program([item('a', { status: 'done' }), item('b', { status: 'failed', reason: 'verification-failed: AC-004' }), item('c', { status: 'blocked' })], 'finished'));
     expect(screen.getByText(/1 de 3 concluídas/)).toBeTruthy();
