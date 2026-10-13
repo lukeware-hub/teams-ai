@@ -29,7 +29,7 @@ describe('stacks', () => {
 
   it('keeps every cache inside the worktree', () => {
     const env = stackEnv('/w/t1');
-    for (const key of ['GOPATH', 'GOCACHE', 'CARGO_HOME', 'PIP_CACHE_DIR', 'PYTHONPYCACHEPREFIX', 'PYTHONPATH']) expect(env[key]).toMatch(/^\/w\/t1\/\.tools\//);
+    for (const key of ['GOPATH', 'GOCACHE', 'CARGO_HOME', 'PIP_CACHE_DIR', 'PYTHONPYCACHEPREFIX', 'PYTHONPATH', 'BUF_CACHE_DIR', 'XDG_CACHE_HOME']) expect(env[key]).toMatch(/^\/w\/t1\/\.tools\//);
   });
 
   it('copies the binaries and records cargo install leaves, so a seeded root sees the tools installed', async () => {

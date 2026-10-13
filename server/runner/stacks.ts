@@ -50,6 +50,9 @@ export function stackEnv(cwd: string): Record<string, string> {
     CARGO_HOME: path.join(tools, 'cargo'),
     RUSTUP_HOME: '/usr/local/rustup',
     PIP_CACHE_DIR: path.join(tools, 'pip-cache'),
+    // The step HOME is read-only in the sandbox: buf, and any tool that writes `~/.cache`, would stop on it.
+    BUF_CACHE_DIR: path.join(tools, 'buf-cache'),
+    XDG_CACHE_HOME: path.join(tools, 'cache'),
     PYTHONPATH: path.join(tools, 'py'),
     PIP_DISABLE_PIP_VERSION_CHECK: '1',
     PYTHONPYCACHEPREFIX: path.join(tools, 'pycache'),
