@@ -251,7 +251,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       pack: fitPackBudget(refinePack({ role: 'front', specHash: hash, principles: deps.principles(), specId: draft.specId,
         projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'],
         derived, backlog, retrieval: [], history: journal.state.questions,
-        rejected: journal.state.patches.filter((p) => p.status === 'rejected'), jevValidation, projectBriefing: backlogMode, cycle })),
+        rejected: journal.state.patches.filter((p) => p.status === 'rejected'), pending: journal.state.patches.filter((p) => p.status === 'pending'), jevValidation, projectBriefing: backlogMode, cycle })),
       cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, ctx);
     if (!review.ok) { await fail(`front validation failed: ${review.failure}: ${review.errors.join('; ')}`); return; }
     let i = 0;
@@ -305,6 +305,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           retrieval,
           history: state.questions,
           rejected: state.patches.filter((p) => p.status === 'rejected'),
+          pending: state.patches.filter((p) => p.status === 'pending'),
           jevValidation,
           notReady,
           projectBriefing: backlogMode,
@@ -381,6 +382,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   // text. The first role to propose it (po, by iteration order) wins; a byte-identical later one is dropped.
   const proposedPatches = new Set<string>();
   const patchKey = (file: string, p: { find: string; replace: string }) => `${file}\u0000${p.find.trim()}\u0000${p.replace.trim()}`;
+  // Earlier cycles' suggestions still wait for the owner: proposing one again would only pile up copies of it.
+  const stillPending = new Set(state.patches.filter((p) => p.status === 'pending').map((p) => patchKey(p.file, p)));
   // R11.5a item 2: a paraphrase of an already-accepted patch on the same file (same resulting content, different
   // wording), which the byte-identical check above cannot catch. One per file, so the comparison set stays small.
   const acceptedByFile = new Map<string, Array<{ find: string; replace: string }>>();
@@ -408,6 +411,10 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       const key = patchKey(c.file, p);
       if (proposedPatches.has(key)) {
         discardedPatches.push({ role, file: p.file, reason: 'the same change was already proposed this cycle' });
+        continue;
+      }
+      if (stillPending.has(key)) {
+        discardedPatches.push({ role, file: p.file, reason: 'the same change is already waiting for the owner' });
         continue;
       }
       const priorOnFile = acceptedByFile.get(c.file) ?? [];

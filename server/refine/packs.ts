@@ -74,6 +74,8 @@ export function refinePack(input: {
   retrieval: readonly Hit[];
   history: readonly QuestionRow[];
   rejected: readonly PatchRow[];
+  /** Suggestions an earlier cycle made that still wait for the owner. */
+  pending?: readonly PatchRow[];
   jevValidation?: JevValidationResult;
   /** Decision 2: criteria System 1 judged not ready; null or absent means no hint. */
   notReady?: readonly string[] | null;
@@ -90,6 +92,7 @@ export function refinePack(input: {
   const answered = [...recorded, ...input.history.filter((q) => q.status === 'answered').map((q) => `- [${q.role}] ${q.text}\n  answer: ${q.answer}`)];
   const skipped = input.history.filter((q) => q.status === 'skipped').map((q) => `- [${q.role}] ${q.text}`);
   const rejected = input.rejected.map((p) => `- ${rel(p.file)}: "${p.find.slice(0, 80)}" → rejected${p.decision ? `: ${p.decision}` : ''}`);
+  const pending = (input.pending ?? []).map((p) => `- ${rel(p.file)}: "${p.find.slice(0, 80)}" → ${clip(p.reason, 120)}`);
   const ids = input.role === 'po' ? PO_ITEMS : input.role === 'sm' ? SM_ITEMS : [];
   const parts = (d: Record<'project' | 'brief' | 'stack' | 'flow' | 'design', string | undefined>, digested: boolean) => [
     `LANGUAGE (mandatory): write every question, checklist detail, patch reason, summary, and explanation 100% in Brazilian Portuguese, even when project.md, ${brief}, the acceptance criteria, or this prompt are in English. Never copy English sentences into a question; translate the idea. Keep only technical identifiers, JSON keys, file names, HTTP status codes, and checklist ids unchanged.`,
@@ -131,6 +134,8 @@ export function refinePack(input: {
     skipped.join('\n') || '(none)',
     '### Rejected patches (do not propose again)',
     rejected.join('\n') || '(none)',
+    '### Pending suggestions (already proposed, waiting for the owner: do not propose them again, not even reworded)',
+    pending.join('\n') || '(none)',
   ];
   // A detailed backlog keeps room under REVIEW_TOKENS for the full JSON of the items that changed.
   let feedback = buildWithDocs({ project: input.projectMd, brief: input.briefMd, stack: input.stackMd, flow: input.flowMd, design: input.designMd }, (d, digested) => parts(d, digested).join('\n\n'), detail ? REVIEW_TOKENS - 20_000 : undefined);

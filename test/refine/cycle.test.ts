@@ -184,6 +184,44 @@ describe('refinement cycle patch dedup (R11.10)', () => {
   });
 });
 
+describe('refinement cycle suggestions that still wait for the owner', () => {
+  it('drops a patch an earlier cycle already suggested and shows the reviewers what is pending', async () => {
+    const spec = makeSpec();
+    const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
+    const docs = path.join(root, 'docs');
+    await mkdir(docs, { recursive: true });
+    const draft = {
+      projectId: 'shop', specId: spec.specId, root, docs,
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+      stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
+      specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
+    };
+    await writeFile(draft.briefMd, '# Brief\n\nTODO: port.\nTODO: logs.\n');
+    await Promise.all([draft.projectMd, draft.stackMd, draft.flowMd, draft.designMd].map((f) => writeFile(f, '# doc')));
+    const events: Array<{ type: string; data: Record<string, unknown> }> = [];
+    const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'r', specHash: 'h', type, kind: 'fact', data } as never; } } as never as Parameters<typeof runCycle>[0]['journal'];
+    const file = `docs/specs/${spec.specId}/brief.md`;
+    const waiting = { patchId: 'po-c1-0', role: 'po', file: 'brief.md', find: 'TODO: port.', replace: 'Port: 8080.', reason: 'fill in the port', diff: '', cycle: 1, status: 'pending', decision: null };
+    journal.state.patches.push(waiting as never);
+    const ok = (value: unknown) => ({ ok: true, value, summary: {} });
+    const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
+    const again = { file, find: 'TODO: port.', replace: 'Port: 8080.', reason: 'fill it in' };
+    const other = { file, find: 'TODO: logs.', replace: 'Logs: stdout.', reason: 'fill in the logs' };
+    const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
+      if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
+      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [again, other] });
+      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
+    });
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root }, 2);
+    expect(events.filter((e) => e.type === 'PATCH_PROPOSED').map((e) => e.data.find)).toEqual(['TODO: logs.']);
+    const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
+    expect(evaluated.data.discardedPatches as unknown[]).toContainEqual({ role: 'po', file, reason: 'the same change is already waiting for the owner' });
+    const review = runAgent.mock.calls.find((c) => c[0].kind === 'refine')![0] as unknown as { pack: { feedback: string } };
+    expect(review.pack.feedback).toContain('### Pending suggestions');
+    expect(review.pack.feedback).toContain('"TODO: port." → fill in the port');
+  });
+});
+
 describe('refinement cycle repeated design.md headings', () => {
   const DESIGN = '# Design\n\n## 1. Médico\n\n### Navegação\n\nPainel do médico.\n\n## 2. Hospital\n\n### Navegação\n\nPainel do hospital.\n';
   const run = async (prepare?: (state: ReturnType<typeof emptyRefineState>) => void) => {
