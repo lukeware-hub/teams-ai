@@ -14,7 +14,7 @@ import type { StepOutcome } from '../runner/step.js';
 import { validatePreplan } from '../validators/preplan.js';
 import type { CycleDeps } from './cycle.js';
 import { acNum } from './derive.js';
-import { citedSections, conflictsPack, preplanPack, specPack } from './detail-packs.js';
+import { citedSections, fitConflictsPack, preplanPack, specPack } from './detail-packs.js';
 import { batches, preplanInputHash, sourceHashes, specInputHash, type BacklogDocs } from './details.js';
 import { readMainSpec, renderBriefMd, restoreFromBase, type Draft } from './draft.js';
 import { RefineEvent } from './events.js';
@@ -296,7 +296,7 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
   if (planned.length === items.length && conflicts?.inputHash !== conflictsHash) {
     const out = items.length < 2 ? null : await call(() => deps.runAgent<'conflicts'>({
       kind: 'conflicts', role: 'sm', cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle,
-      pack: fitPackBudget(conflictsPack({ specHash: hash, principles: deps.principles(), items: planned })),
+      pack: fitConflictsPack({ specHash: hash, principles: deps.principles(), items: planned }),
     }, ctx) as Promise<StepOutcome<ConflictsOutput>>);
     if (stopped) return { ok: false, reason: `detalhamento interrompido (${stopped})` };
     if (items.length < 2 || out?.ok) {

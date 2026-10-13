@@ -3,6 +3,7 @@ import type { Preplan } from '../contracts/preplan.js';
 import type { Spec } from '../contracts/spec.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
+import { fitPackBudget, PackTooLargeError } from './fit-pack.js';
 import type { BacklogDocs } from './details.js';
 import { sectionText } from './sections.js';
 
@@ -108,17 +109,28 @@ const CONFLICT_RULES = [
   '- Reply with an empty list when every item changes different code.',
 ].join('\n');
 
-/** The SM's pack for the conflict map: every item with its dependencies and the modules and tasks of its pre-plan. */
-export function conflictsPack(input: { specHash: string; principles: readonly string[]; items: ReadonlyArray<{ item: RankedItem; preplan: Preplan }> }): ContextPackInput {
+const COMPACT_NOTE = 'The task lists are left out so every item fits in this pack: judge by each item\'s scope and modules.';
+
+/** The SM's pack for the conflict map: every item with its dependencies and the modules and tasks of its pre-plan (`compact`: without the tasks). */
+export function conflictsPack(input: { specHash: string; principles: readonly string[]; items: ReadonlyArray<{ item: RankedItem; preplan: Preplan }>; compact?: boolean }): ContextPackInput {
   const items = input.items.map(({ item, preplan }) => [
     `## ${item.key}: ${item.title}`,
     `- depends on: ${item.dependsOn.join(', ') || '(nothing)'}`,
     `- scope: ${item.scope}`,
     'Modules:',
     preplan.modules.map((m) => `- ${m.name}: ${m.purpose}`).join('\n'),
-    'Tasks:',
-    preplan.tasks.map((t) => `- ${t.id} [${t.module}] ${t.title}`).join('\n'),
+    ...(input.compact ? [] : ['Tasks:', preplan.tasks.map((t) => `- ${t.id} [${t.module}] ${t.title}`).join('\n')]),
   ].join('\n'));
-  const feedback = [CONFLICT_RULES, '# Items', ...items].join('\n\n');
+  const feedback = [CONFLICT_RULES, ...(input.compact ? [COMPACT_NOTE] : []), '# Items', ...items].join('\n\n');
   return { kind: 'conflicts', role: 'sm', specHash: input.specHash, principles: input.principles, outputContract: outputContract('conflicts'), criteria: [], feedback, budgetTokens: 12_000 };
+}
+
+/** The conflicts pack with the tasks of every item, or without them when a large backlog would not fit the pack cap with them. */
+export function fitConflictsPack(input: Parameters<typeof conflictsPack>[0]): ContextPackInput {
+  try {
+    return fitPackBudget(conflictsPack(input));
+  } catch (err) {
+    if (!(err instanceof PackTooLargeError)) throw err;
+    return fitPackBudget(conflictsPack({ ...input, compact: true }));
+  }
 }

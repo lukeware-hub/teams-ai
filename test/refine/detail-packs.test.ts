@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { BacklogItem } from '../../server/contracts/backlog.js';
 import type { Spec } from '../../server/contracts/spec.js';
 import { backlogPack } from '../../server/refine/backlog.js';
-import { preplanPack, specPack } from '../../server/refine/detail-packs.js';
+import { fitPackBudget, PackTooLargeError } from '../../server/refine/fit-pack.js';
+import { conflictsPack, fitConflictsPack, preplanPack, specPack } from '../../server/refine/detail-packs.js';
 import type { BacklogDocs } from '../../server/refine/details.js';
 import type { BacklogState } from '../../server/refine/state.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
@@ -109,5 +110,27 @@ describe('backlogPack previous backlog', () => {
     expect(pack.feedback).toContain('Pedido, cotação e consumo de OPME');
     expect(pack.feedback).toContain('"heading": "7. OPME"');
     expect(pack.feedback).toMatch(/verbatim/);
+  });
+});
+
+describe('fitConflictsPack', () => {
+  const planned = (n: number, taskChars: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      item: item(`item-${i}`, i + 1),
+      preplan: { modules: [{ name: `modulo-${i}`, purpose: 'faz uma parte' }], tasks: Array.from({ length: 12 }, (_, t) => ({ id: `T${t}`, module: `modulo-${i}`, title: 'x'.repeat(taskChars) })), risks: [] },
+    })) as never;
+  const input = (items: ReturnType<typeof planned>) => ({ specHash: HASH, principles: [], items });
+
+  it('keeps every task while the backlog fits the pack cap', () => {
+    expect(fitConflictsPack(input(planned(5, 40))).feedback ?? '').toContain('Tasks:');
+  });
+
+  it('leaves the tasks out, and says so, when a large backlog would not fit with them', () => {
+    const big = input(planned(200, 300));
+    expect(() => fitPackBudget(conflictsPack(big))).toThrow(PackTooLargeError);
+    const text = fitConflictsPack(big).feedback ?? '';
+    expect(text).not.toContain('Tasks:');
+    expect(text).toContain('left out');
+    expect(text).toContain('modulo-199');
   });
 });
