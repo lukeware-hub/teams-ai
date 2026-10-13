@@ -30,6 +30,14 @@ describe('e2e rows per acceptance criterion', () => {
 });
 
 describe('runE2e', () => {
+  it('hands the suite the secrets the spec declares, never a name the context does not hold', async () => {
+    const exec = new FakeExec();
+    await runE2e(plan, spec, { ...ctx, secrets: { PLATFORM_ADMIN_TOKEN: 't'.repeat(32) } }, 'http://app:3000', deps(exec, junit(ok('AC-001') + ok('AC-002'))));
+    const call = exec.calls.find((c) => c.args[0] === 'run')!;
+    expect(call.env).toMatchObject({ PLATFORM_ADMIN_TOKEN: 't'.repeat(32), SERVICE_URL: 'http://app:3000' });
+    expect(call.args.filter((a) => a === 'PLATFORM_ADMIN_TOKEN')).toHaveLength(1);
+    expect(call.args.join(' ')).not.toContain('t'.repeat(32));
+  });
   it("passes the other services' addresses to the suite like SERVICE_URL", async () => {
     const exec = new FakeExec();
     await runE2e(plan, spec, ctx, 'http://inventory:3000', deps(exec, junit(ok('AC-001') + ok('AC-002'))), { SERVICE_URL_ORDERS: 'http://orders:3000' });

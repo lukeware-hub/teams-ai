@@ -36,7 +36,7 @@ export async function runSmoke(plan: Plan, spec: Spec, ctx: GateContext, service
   if (!spec.acceptanceCriteria.some((ac) => ac.smoke)) return { ok: true, rows: [], detail: 'no smoke criteria', result: null };
   const gate = smokeGate(plan);
   if (!gate) return { ok: false, rows: evaluateSmoke(spec, null).rows, detail: 'plan.commands.smoke missing', result: null };
-  const result = await runGate({ ...gate, secrets: [...gate.secrets, ...Object.keys(urls)] }, { ...ctx, secrets: { ...ctx.secrets, SERVICE_URL: serviceUrl, ...urls } }, deps);
+  const result = await runGate({ ...gate, secrets: [...new Set([...gate.secrets, ...Object.keys(ctx.secrets), ...Object.keys(urls)])] }, { ...ctx, secrets: { ...ctx.secrets, SERVICE_URL: serviceUrl, ...urls } }, deps);
   const evaluated = evaluateSmoke(spec, result.junit);
   if (!result.passed && evaluated.ok) return { ok: false, rows: evaluated.rows, detail: `smoke command exited ${result.exitCode ?? 'null'}${result.timedOut ? ' (timeout)' : ''}`, result };
   return { ...evaluated, result };

@@ -36,7 +36,7 @@ export function evaluateE2e(spec: Spec, junit: readonly TestResult[] | null, exe
 export async function runE2e(plan: Plan, spec: Spec, ctx: GateContext, serviceUrl: string, deps: GateDeps, urls: Readonly<Record<string, string>> = {}): Promise<{ ok: boolean; rows: E2eRow[]; detail: string; result: GateResult | null }> {
   const gate = e2eGate(plan);
   if (!gate) return { ok: false, rows: evaluateE2e(spec, null, plan.e2eExemptions).rows, detail: 'plan.commands.e2e missing', result: null };
-  const result = await runGate({ ...gate, secrets: [...gate.secrets, ...Object.keys(urls)] }, { ...ctx, secrets: { ...ctx.secrets, SERVICE_URL: serviceUrl, ...urls } }, deps);
+  const result = await runGate({ ...gate, secrets: [...new Set([...gate.secrets, ...Object.keys(ctx.secrets), ...Object.keys(urls)])] }, { ...ctx, secrets: { ...ctx.secrets, SERVICE_URL: serviceUrl, ...urls } }, deps);
   const evaluated = evaluateE2e(spec, result.junit, plan.e2eExemptions);
   if (!result.passed && evaluated.ok) return { ok: false, rows: evaluated.rows, detail: `e2e command exited ${result.exitCode ?? 'null'}${result.timedOut ? ' (timeout)' : ''}`, result };
   return { ...evaluated, result };
