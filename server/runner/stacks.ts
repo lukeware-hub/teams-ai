@@ -13,10 +13,13 @@ const REGISTRIES: Record<StackKind, readonly string[]> = {
 /** The Go module proxy the platform runs for agent sandboxes (the goproxy service, runner/go-proxy.ts); null outside the platform. */
 export const goProxyUrl = (env: Record<string, string | undefined> = process.env): string | null => env.TEAMS_AI_GO_PROXY?.trim() || null;
 
-/** The registries a step's sandbox may reach: only those of the run's stack (least privilege). */
+/** Read-only vulnerability advisories: a Dev must be able to check one before it asks for an exception to a security gate. */
+const ADVISORIES = ['osv.dev', 'api.osv.dev'];
+
+/** The registries a step's sandbox may reach: only those of the run's stack (least privilege), plus the advisory databases. */
 export function stackDomains(kind: StackKind, goProxy: string | null = goProxyUrl()): string[] {
   // Behind the platform's module proxy a Go step reaches only it and the checksum database, never the storage it redirects to.
-  return ['registry.npmjs.org', ...(kind === 'go' && goProxy ? [new URL(goProxy).hostname, 'sum.golang.org'] : REGISTRIES[kind])];
+  return ['registry.npmjs.org', ...(kind === 'go' && goProxy ? [new URL(goProxy).hostname, 'sum.golang.org'] : REGISTRIES[kind]), ...ADVISORIES, ...(kind === 'go' ? ['vuln.go.dev'] : [])];
 }
 
 /** Toolchain commands a Dev or Test may run besides npm and node (Python goes through the virtualenv in `.tools/venv`). */
