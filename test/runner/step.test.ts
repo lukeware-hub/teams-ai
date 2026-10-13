@@ -297,6 +297,31 @@ describe('runStep', () => {
     expect(deps.accounting.records().map((r) => r.costUsd)).toEqual([0.37, second.summary.costUsd]);
   });
 
+  it('books only the tokens a resumed session added, and flags totals that went down instead of booking zero', async () => {
+    const store = path.join(dir, 'store');
+    const result = (cost: number, input: number, output: number) => ({ type: 'result', subtype: 'success', is_error: false, duration_ms: 5, duration_api_ms: 1_000, num_turns: 1, result: JSON.stringify(okValue), structured_output: okValue, session_id: 's', total_cost_usd: cost, usage: { input_tokens: input, output_tokens: output } });
+    const run = async (name: string, event: object, resume: boolean) => {
+      withFake({ FAKE_CLAUDE_FIXTURE: await writeStream(name, [init, event]), FAKE_CLAUDE_SESSION: '1' });
+      return runStep(request({ sessionId: 'sess-1', resume, sessionStore: store }), deps);
+    };
+    await run('first.ndjson', result(0.37, 100, 20), false);
+    await run('second.ndjson', result(0.55, 160, 50), true);
+    const third = await run('third.ndjson', result(0.1, 40, 10), true);
+    expect(deps.accounting.records().map((r) => [r.usage.inputTokens, r.usage.outputTokens])).toEqual([[100, 20], [60, 30], [40, 10]]);
+    expect(deps.accounting.records()[2]!.costUsd).toBe(0.1);
+    expect(third.summary.profile?.sessionTotalsReset).toBe(true);
+  });
+
+  it('ends with an environment failure when the step setup throws before the agent runs', async () => {
+    await fs.writeFile(path.join(dir, 'not-a-dir'), '');
+    const outcome = await runStep(request(), { ...deps, settingsDir: path.join(dir, 'not-a-dir', 'settings') });
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) {
+      expect(outcome.failure).toBe('environment');
+      expect(outcome.errors[0]).toMatch(/ENOTDIR/);
+    }
+  });
+
   it('hands the step only the API key the config chose, and drops one that sits in the host env', async () => {
     const capture = path.join(dir, 'capture.json');
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });

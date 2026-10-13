@@ -131,7 +131,8 @@ export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessE
     args.push('--no-session-persistence');
   }
 
-  const env = { ...sanitizeEnv(hostEnv), ...STEP_ENV };
+  // extraEnv goes first: HOME, PATH, the fixed step env and the credentials set below always win over it.
+  const env = { ...input.extraEnv, ...sanitizeEnv(hostEnv), ...STEP_ENV };
   if (env.PATH) env.PATH = env.PATH.split(path.delimiter).filter((dir) => path.posix.resolve('/', dir) !== ORCHESTRATOR_BIN_DIR).join(path.delimiter);
   if (input.home) {
     env.HOME = input.home;
@@ -145,7 +146,6 @@ export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessE
   // Never read from the host env: only the key the config chose (`claude.auth: "api-key"`) reaches a step.
   if (input.apiKey) env.ANTHROPIC_API_KEY = input.apiKey;
   if (input.cacheTtl) env.CLAUDE_CODE_PROMPT_CACHE_TTL = input.cacheTtl;
-  if (input.extraEnv) Object.assign(env, input.extraEnv);
   return { args, env, cwd: input.cwd, stdin: input.prompt };
 }
 

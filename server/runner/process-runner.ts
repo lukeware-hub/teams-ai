@@ -93,6 +93,8 @@ export function runProcess(
     const lines: string[] = [];
     const turnIds = new Set<string>();
     let stderr = '';
+    let stderrTail = '';
+    let sandboxDisabled = false;
     let killedBy: KillReason = null;
     let settled = false;
     let graceTimer: NodeJS.Timeout | null = null;
@@ -122,13 +124,19 @@ export function runProcess(
     if (abortSignal?.aborted) onAbort();
     else abortSignal?.addEventListener('abort', onAbort, { once: true });
 
-    const finish = (code: number | null) => {
-      if (settled) return;
-      settled = true;
+    const cleanup = () => {
       abortSignal?.removeEventListener('abort', onAbort);
       clearTimeout(timer);
       if (graceTimer) clearTimeout(graceTimer);
       if (drainTimer) clearTimeout(drainTimer);
+    };
+
+    const finish = (code: number | null) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      // Whatever the agent left running (a dev server holding the task port) dies with the step.
+      if (posix) signal('SIGKILL');
       const parsed = parseStreamJson(lines.join('\n'));
       resolve({
         parsed,
@@ -136,7 +144,7 @@ export function runProcess(
         stderr,
         exitCode: code,
         killedBy,
-        sandboxDisabled: SANDBOX_DISABLED_PATTERN.test(stderr),
+        sandboxDisabled,
         durationMs: Date.now() - started,
         turns: turnIds.size,
       });
@@ -149,21 +157,26 @@ export function runProcess(
       const id = messageId(line);
       if (id) {
         turnIds.add(id);
+        // A turn is seen only once the API has served it, so maxTurns N pays N + 1 turns; killing at N would lose a result on turn N.
         if (turnIds.size > caps.maxTurns) kill('turns');
       }
     });
 
     child.stderr!.on('data', (chunk: Buffer) => {
-      if (stderr.length < STDERR_LIMIT) stderr += chunk.toString('utf8');
-      // Fail closed the moment the CLI admits it is running unsandboxed.
-      if (SANDBOX_DISABLED_PATTERN.test(stderr)) kill('environment');
+      const text = chunk.toString('utf8');
+      if (stderr.length < STDERR_LIMIT) stderr += text;
+      // Fail closed the moment the CLI admits it is running unsandboxed; the previous chunk's end catches a split warning.
+      if (SANDBOX_DISABLED_PATTERN.test(stderrTail + text)) {
+        sandboxDisabled = true;
+        kill('environment');
+      }
+      stderrTail = text.slice(-16);
     });
 
     child.on('error', (err) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
-      if (graceTimer) clearTimeout(graceTimer);
+      cleanup();
       reject(err);
     });
 

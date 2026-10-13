@@ -26,7 +26,9 @@ if (expired) {
   fs.chmodSync(file, 0o600);
   fs.writeFileSync(file, JSON.stringify({ claudeAiOauth: { accessToken: 'b', refreshToken: 'r2', expiresAt: now + 3600000 } }));
 }
+if (process.env.FAKE_TRACE) fs.appendFileSync(process.env.FAKE_TRACE, 'start\\n');
 await new Promise((r) => setTimeout(r, 300));
+if (process.env.FAKE_TRACE) fs.appendFileSync(process.env.FAKE_TRACE, 'end\\n');
 const value = { specHash: '${HASH}', status: 'done', summary: 's', commitMessage: 'feat: x', changedFiles: ['a'] };
 console.log(JSON.stringify({ type: 'system', subtype: 'init', session_id: 's', model: 'm' }));
 console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, duration_ms: 1, num_turns: 1, result: JSON.stringify(value), structured_output: value, session_id: 's' }));
@@ -77,6 +79,28 @@ describe('refresh gate (plan 38)', () => {
     await fs.writeFile(path.join(host, '.claude', '.credentials.json'), cred(NOW.getTime() + 3_600_000, 'r1'));
     await Promise.all([runStep(request({ taskId: 'A' }), deps), runStep(request({ taskId: 'B' }), deps)]);
     expect((await fs.readFile(log, 'utf8')).trim().split('\n')).toEqual(['fresh', 'fresh']);
+  });
+
+  it('runs steps one at a time when the token expires before a step could time out', async () => {
+    await fs.writeFile(path.join(host, '.claude', '.credentials.json'), cred(NOW.getTime() + 10 * 60_000, 'r1'));
+    const trace = path.join(dir, 'trace.txt');
+    deps.binary = { ...deps.binary, env: { ...deps.binary.env, FAKE_TRACE: trace } };
+    deps.caps = { ...deps.caps, timeoutMs: 20 * 60_000 };
+    await Promise.all([runStep(request({ taskId: 'A' }), deps), runStep(request({ taskId: 'B' }), deps)]);
+    expect((await fs.readFile(trace, 'utf8')).trim().split('\n')).toEqual(['start', 'end', 'start', 'end']);
+  });
+});
+
+describe('createStepHome', () => {
+  it('works where the platform has no user ids (Windows)', async () => {
+    const getuid = process.getuid;
+    (process as { getuid?: unknown }).getuid = undefined;
+    try {
+      const home = await createStepHome(path.join(dir, 'homes'), { HOME: host });
+      expect((await fs.stat(path.join(home, 'tmp'))).isDirectory()).toBe(true);
+    } finally {
+      process.getuid = getuid;
+    }
   });
 });
 

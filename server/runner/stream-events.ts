@@ -93,6 +93,8 @@ export interface StepProfile {
   toolResultChars: number;
   /** A tool result said the CLI's own sandbox could not start (the agent may report it in any language, the tool result does not). */
   sandboxInitFailed?: boolean;
+  /** The resumed session reported lower totals than the attempt before it, so this step booked its reported numbers whole. */
+  sessionTotalsReset?: boolean;
 }
 
 export interface ResultSummary {

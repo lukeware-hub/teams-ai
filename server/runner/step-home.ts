@@ -45,7 +45,9 @@ export async function hostTokenExpiresAt(hostEnv: NodeJS.ProcessEnv): Promise<nu
 export async function createStepHome(parentDir: string, hostEnv: NodeJS.ProcessEnv): Promise<string> {
   await fs.mkdir(parentDir, { recursive: true, mode: 0o700 });
   const parent = await fs.lstat(parentDir);
-  if (!parent.isDirectory() || (parent.mode & 0o077) !== 0 || parent.uid !== process.getuid?.()) throw new Error(`step home parent ${parentDir} must be a private directory owned by this user`);
+  // Windows has no user ids or POSIX modes (getuid is undefined there): only the directory check applies.
+  const uid = process.getuid?.();
+  if (!parent.isDirectory() || (uid !== undefined && ((parent.mode & 0o077) !== 0 || parent.uid !== uid))) throw new Error(`step home parent ${parentDir} must be a private directory owned by this user`);
   const home = await fs.mkdtemp(path.join(parentDir, 'home-'));
   await fs.mkdir(path.join(home, 'tmp'), { recursive: true });
   const hostHome = hostEnv.HOME;

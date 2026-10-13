@@ -116,7 +116,13 @@ describe('buildInvocation', () => {
     expect(env.PATH).toBe('/usr/bin');
   });
 
-  it('sets the prompt cache TTL only when asked, and never lets extraEnv lose to it', () => {
+  it('never lets extraEnv override HOME, PATH, the fixed step env or a credential', () => {
+    const extraEnv = { HOME: '/evil', PATH: '/evil', TMPDIR: '/evil', CLAUDE_CODE_MAX_RETRIES: '300', CLAUDE_CODE_OAUTH_TOKEN: 'evil', CLAUDE_CODE_PROMPT_CACHE_TTL: '1h', DATABASE_URL: 'postgres://t' };
+    const env = buildInvocation({ ...base, home: '/tmp/th/home-1', cacheTtl: '5m', extraEnv }, { ...hostEnv, CLAUDE_CODE_OAUTH_TOKEN: 'host-token' }).env;
+    expect(env).toMatchObject({ HOME: '/tmp/th/home-1', PATH: '/usr/bin', TMPDIR: '/tmp/th/home-1/tmp', CLAUDE_CODE_MAX_RETRIES: '5', CLAUDE_CODE_OAUTH_TOKEN: 'host-token', CLAUDE_CODE_PROMPT_CACHE_TTL: '5m', DATABASE_URL: 'postgres://t' });
+  });
+
+  it('sets the prompt cache TTL only when asked', () => {
     expect(buildInvocation(base, hostEnv).env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBeUndefined();
     expect(buildInvocation({ ...base, cacheTtl: '5m' }, hostEnv).env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBe('5m');
     expect(PROMPT_CACHE_TTL).toBe('5m');

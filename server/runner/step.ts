@@ -17,7 +17,7 @@ import { readTotals, restoreSession, saveSession, writeTotals } from './session-
 import { API_KEY_ENV, createStepHome, hasStaticCredential, hostTokenExpiresAt, removeStepHome, syncBackCredentials } from './step-home.js';
 import { preflightSandbox, runProcess, type ProcessCaps, type RawStepResult, type RunnerBinary } from './process-runner.js';
 import { writeRoleSettings, type RoleSettingsInput } from './role-settings.js';
-import { isRateLimitRejected, type ResultSummary } from './stream-events.js';
+import { isRateLimitRejected, type ResultSummary, type Usage } from './stream-events.js';
 import { redactSecrets } from '../core/redact.js';
 
 export interface StepRequest {
@@ -160,15 +160,21 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
   }
 
   const clock = deps.clock ?? (() => new Date());
-  return withRefreshGate(hostEnv, clock, async () => {
-    // A short path: the sandbox socket in $HOME/tmp must fit the 108 characters of a Unix socket path.
-    const home = await createStepHome(path.join(os.tmpdir(), `th-${process.getuid?.() ?? 0}`), hostEnv);
+  return withRefreshGate(hostEnv, clock, deps.caps.timeoutMs + REFRESH_WINDOW_MS, async () => {
+    let home: string | undefined;
     try {
+      // A short path: the sandbox socket in $HOME/tmp must fit the 108 characters of a Unix socket path.
+      home = await createStepHome(path.join(os.tmpdir(), `th-${process.getuid?.() ?? 0}`), hostEnv);
       return await runStepIn(req, deps, hostEnv, home);
+    } catch (err) {
+      // A throw outside the agent process (trust, settings, session restore) still ends the step with an outcome.
+      return environmentFailure(`step failed outside the agent process: ${(err as Error).message}`);
     } finally {
-      await syncBackCredentials(home, hostEnv);
-      if (req.sessionStore) await saveSession(home, req.sessionStore, req.cwd);
-      await removeStepHome(home);
+      if (home) {
+        await syncBackCredentials(home, hostEnv);
+        if (req.sessionStore) await saveSession(home, req.sessionStore, req.cwd);
+        await removeStepHome(home);
+      }
     }
   });
 }
@@ -191,7 +197,7 @@ export function jsonFromResultText(text: string | null): unknown {
   }
 }
 
-/** A stored token that expires within this window is refreshed by one step at a time. */
+/** Margin on top of the step timeout: a stored token that expires within both is refreshed by one step at a time. */
 export const REFRESH_WINDOW_MS = 5 * 60_000;
 
 let refreshTail: Promise<void> = Promise.resolve();
@@ -199,15 +205,15 @@ let refreshTail: Promise<void> = Promise.resolve();
 /**
  * Plan 38: the CLI refreshes an expired token inside its own step HOME and the server rotates the refresh token, so two steps that
  * start together on an expired token would each use the same (now stale) refresh token. While the host token is expired or within
- * REFRESH_WINDOW_MS of expiry, steps run one at a time through this per-process mutex (copy, run, write back); each waiter re-reads
- * the token after its turn, so once one step has refreshed it the rest run in parallel again. A fresh token (the normal case)
- * or CLAUDE_CODE_OAUTH_TOKEN never takes the lock.
+ * `windowMs` of expiry (the step timeout plus REFRESH_WINDOW_MS, since a step can refresh at any point of its run), steps run one at
+ * a time through this per-process mutex (copy, run, write back); each waiter re-reads the token after its turn, so once one step has
+ * refreshed it the rest run in parallel again. A fresh token (the normal case) or CLAUDE_CODE_OAUTH_TOKEN never takes the lock.
  */
-export async function withRefreshGate<T>(hostEnv: NodeJS.ProcessEnv, clock: () => Date, fn: () => Promise<T>): Promise<T> {
+export async function withRefreshGate<T>(hostEnv: NodeJS.ProcessEnv, clock: () => Date, windowMs: number, fn: () => Promise<T>): Promise<T> {
   if (hasStaticCredential(hostEnv)) return fn();
   const stale = async (): Promise<boolean> => {
     const at = await hostTokenExpiresAt(hostEnv);
-    return at !== null && at - clock().getTime() < REFRESH_WINDOW_MS;
+    return at !== null && at - clock().getTime() < windowMs;
   };
   if (!(await stale())) return fn();
   const prev = refreshTail;
@@ -224,6 +230,31 @@ export async function withRefreshGate<T>(hostEnv: NodeJS.ProcessEnv, clock: () =
   } finally {
     if (!released) release();
   }
+}
+
+/** `total_cost_usd`, `duration_api_ms` and `usage` of a resumed session include the attempts before it: book only this step's share. */
+async function bookSessionShare(s: ResultSummary, store: string, resume: boolean): Promise<void> {
+  // Without a result event the step reports only its own stream, never the session totals.
+  if (!s.found) return;
+  const before = resume ? await readTotals(store) : null;
+  const apiMs = s.profile?.durationApiMs ?? 0;
+  await writeTotals(store, { costUsd: s.costUsd ?? before?.costUsd ?? 0, durationApiMs: apiMs, usage: s.usage });
+  if (!before) return;
+  const usage: Usage = {
+    inputTokens: s.usage.inputTokens - before.usage.inputTokens,
+    outputTokens: s.usage.outputTokens - before.usage.outputTokens,
+    cacheReadTokens: s.usage.cacheReadTokens - before.usage.cacheReadTokens,
+    cacheWriteTokens: s.usage.cacheWriteTokens - before.usage.cacheWriteTokens,
+  };
+  const costUsd = s.costUsd === null ? null : Math.round((s.costUsd - before.costUsd) * 1e6) / 1e6;
+  if ([...Object.values(usage), costUsd ?? 0, apiMs - before.durationApiMs].some((n) => n < 0)) {
+    // The CLI started its totals over: the reported numbers are this step's own, and the journal says so.
+    if (s.profile) s.profile = { ...s.profile, sessionTotalsReset: true };
+    return;
+  }
+  s.usage = usage;
+  s.costUsd = costUsd;
+  if (s.profile) s.profile = { ...s.profile, durationApiMs: apiMs - before.durationApiMs };
 }
 
 async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, hostEnv: NodeJS.ProcessEnv, home: string): Promise<StepOutcome<OutputOf<K>>> {
@@ -262,14 +293,7 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
     return environmentFailure(`spawn failed: ${(err as Error).message}`);
   }
 
-  // `total_cost_usd` and `duration_api_ms` of a resumed session include the attempts before it: book only this step's share.
-  if (req.sessionStore) {
-    const before = req.resume ? await readTotals(req.sessionStore) : { costUsd: 0, durationApiMs: 0 };
-    const s = raw.summary;
-    await writeTotals(req.sessionStore, { costUsd: s.costUsd ?? before.costUsd, durationApiMs: s.profile?.durationApiMs ?? before.durationApiMs });
-    if (s.costUsd !== null) s.costUsd = Math.max(0, Math.round((s.costUsd - before.costUsd) * 1e6) / 1e6);
-    if (s.profile) s.profile = { ...s.profile, durationApiMs: Math.max(0, s.profile.durationApiMs - before.durationApiMs) };
-  }
+  if (req.sessionStore) await bookSessionShare(raw.summary, req.sessionStore, req.resume === true);
 
   deps.accounting.record({
     role: req.role,

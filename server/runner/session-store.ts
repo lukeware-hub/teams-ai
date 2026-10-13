@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import type { Usage } from './stream-events.js';
 
 /**
  * A step's HOME is deleted when it ends, and with it the CLI's session transcript (`.claude/projects/<cwd>/<id>.jsonl`).
@@ -37,18 +38,24 @@ export async function restoreSession(storeDir: string, home: string): Promise<vo
 
 const TOTALS_FILE = 'totals.json';
 
-/** What the CLI reported for the whole session so far; a resumed session reports its cost and API time cumulatively. */
+/** What the CLI reported for the whole session so far; a resumed session reports its cost, API time and usage cumulatively. */
 export interface SessionTotals {
   costUsd: number;
   durationApiMs: number;
+  usage: Usage;
 }
+
+const ZERO_USAGE: Usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
 
 export async function readTotals(storeDir: string): Promise<SessionTotals> {
   try {
     const t = JSON.parse(await fs.readFile(path.join(storeDir, TOTALS_FILE), 'utf8')) as Partial<SessionTotals>;
-    return { costUsd: Number(t.costUsd) || 0, durationApiMs: Number(t.durationApiMs) || 0 };
+    // A totals file written before usage was kept reads as zero usage.
+    const u: Partial<Usage> = t.usage ?? {};
+    const usage = { inputTokens: Number(u.inputTokens) || 0, outputTokens: Number(u.outputTokens) || 0, cacheReadTokens: Number(u.cacheReadTokens) || 0, cacheWriteTokens: Number(u.cacheWriteTokens) || 0 };
+    return { costUsd: Number(t.costUsd) || 0, durationApiMs: Number(t.durationApiMs) || 0, usage };
   } catch {
-    return { costUsd: 0, durationApiMs: 0 };
+    return { costUsd: 0, durationApiMs: 0, usage: { ...ZERO_USAGE } };
   }
 }
 

@@ -116,7 +116,68 @@ describe('runProcess', () => {
   it('rejects when the binary cannot be spawned', async () => {
     await expect(runProcess({ bin: path.join(dir, 'no-such-binary'), prefixArgs: [], env: {}, requireSandboxTools: false }, inv(), caps)).rejects.toThrow();
   });
+
+  it('drops the abort listener when the binary cannot be spawned', async () => {
+    const ctl = new AbortController();
+    const removed = vi.spyOn(ctl.signal, 'removeEventListener');
+    await expect(runProcess({ bin: path.join(dir, 'no-such-binary'), prefixArgs: [], env: {}, requireSandboxTools: false }, inv(), caps, undefined, ctl.signal)).rejects.toThrow();
+    expect(removed).toHaveBeenCalledWith('abort', expect.any(Function));
+  });
+
+  it.skipIf(process.platform === 'win32')('kills what the agent left running when the child exits normally', async () => {
+    const pidFile = path.join(dir, 'pid');
+    const bin = await script('leaves-server.mjs', `
+      import { spawn } from 'node:child_process';
+      import fs from 'node:fs';
+      const server = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+      fs.writeFileSync(${JSON.stringify(pidFile)}, String(server.pid));
+      process.exit(0);
+    `);
+    await runProcess(bin, inv(), caps);
+    const pid = Number(await fs.readFile(pidFile, 'utf8'));
+    try {
+      for (let i = 0; i < 40 && alive(pid); i++) await new Promise((r) => setTimeout(r, 50));
+      expect(alive(pid)).toBe(false);
+    } finally {
+      if (alive(pid)) process.kill(pid, 'SIGKILL');
+    }
+  });
+
+  it('lets maxTurns turns run and kills on the next one, which the API has already served', async () => {
+    const turn = (id: string) => JSON.stringify({ type: 'assistant', message: { id, content: [] } });
+    const stream = path.join(dir, 'two-turns.ndjson');
+    await fs.writeFile(stream, [turn('m1'), turn('m2')].join('\n'));
+    const result = await runProcess(fake({ FAKE_CLAUDE_FIXTURE: stream, FAKE_CLAUDE_HANG_AFTER: '2' }), inv(), { ...caps, maxTurns: 1 });
+    expect(result.killedBy).toBe('turns');
+    expect(result.turns).toBe(2);
+  });
+
+  it('detects a disabled sandbox even after stderr passed the stored limit', async () => {
+    const bin = await script('late-warning.mjs', `
+      process.stderr.write('x'.repeat(100_000));
+      setTimeout(() => process.stderr.write('Sandbox disabled: bubblewrap missing\\n'), 100);
+      setInterval(() => {}, 60_000);
+    `);
+    const result = await runProcess(bin, inv(), { ...caps, timeoutMs: 3_000 });
+    expect(result.killedBy).toBe('environment');
+    expect(result.sandboxDisabled).toBe(true);
+  });
 });
+
+async function script(name: string, code: string): Promise<RunnerBinary> {
+  const file = path.join(dir, name);
+  await fs.writeFile(file, code);
+  return { bin: process.execPath, prefixArgs: [file], env: {}, requireSandboxTools: false };
+}
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 describe('preflightSandbox', () => {
   it('passes when both tools are on PATH', async () => {
