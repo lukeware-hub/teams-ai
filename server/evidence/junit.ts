@@ -15,8 +15,8 @@ export class JUnitParseError extends Error {}
 
 type XmlNode = Record<string, unknown>;
 
-// `[AC-001]` in a test name, or `ac_001` / `ac-001` where an identifier cannot hold brackets (Rust fn, pytest def).
-const AC_TAG = /\[ac-(\d{3}|[1-9]\d{3,})\]|(?<![a-z0-9])ac[_-](\d{3}|[1-9]\d{3,})(?!\d)/gi;
+// `[AC-001]` in a test name, or `ac_001` / `ac-001` where an identifier cannot hold brackets (Rust fn, pytest def, Go `TestAc_001_...`).
+const AC_TAG = /\[ac-(\d{3}|[1-9]\d{3,})\]|(?:(?<![a-z0-9])|(?<=test))ac[_-](\d{3}|[1-9]\d{3,})(?!\d)/gi;
 
 export function extractAcIds(text: string): string[] {
   const ids = new Set<string>();

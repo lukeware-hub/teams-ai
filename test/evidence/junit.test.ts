@@ -12,6 +12,10 @@ const REPORT = `<?xml version="1.0" encoding="UTF-8"?>
 </testsuites>`;
 
 describe('extractAcIds', () => {
+  it('reads the Go idiom TestAc_001_..., and still not an ac_ glued to other letters', () => {
+    expect(extractAcIds('TestAc_054_Cria TestRelay/Test_ac_081_x TestAC_002 tractac_005 TestAc054')).toEqual(['AC-054', 'AC-081', 'AC-002']);
+  });
+
   it('reads ac_001 and ac-001 where an identifier cannot hold brackets (Rust fn, pytest def)', () => {
     expect(extractAcIds('tests::ac_001_lists_books test_ac-002_health stack_ac_0034 tractac_005')).toEqual(['AC-001', 'AC-002']);
   });
