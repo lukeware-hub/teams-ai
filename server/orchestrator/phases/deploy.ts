@@ -11,9 +11,6 @@ import { Intent, OrchEvent } from '../events.js';
 import { E2E_CONTRACT, SMOKE_CONTRACT } from '../steps.js';
 import { checkoutMain, type GateScope, type PhaseDeps, type ServiceRepo } from './shared.js';
 
-/** Archive the deploy build exports for plans that carry an image-scan gate (plan 37). */
-export const IMAGE_ARCHIVE = '.tools/image.tar';
-
 export type Phase5Result = { ok: true; url: string; smoke: SmokeRow[]; healthcheck: string; e2e?: E2eRow[] } | { ok: false; reason: string; fixTask?: PlanTask };
 export const MAX_DEPLOY_ATTEMPTS = 3;
 
@@ -35,7 +32,7 @@ const planGap = (stage: DeployStage, detail: string) => (stage === 'smoke' && de
 
 export function deployIntent(deps: PhaseDeps, tag: string): DeploymentIntent {
   const p = deps.plan!;
-  return { projectId: deps.project.projectId, image: p.deploy.image, tag, port: deployPort(deps), healthcheckPath: p.deploy.healthcheckPath, manifests: [...p.deploy.manifests], secretNames: deps.secretNames ? deps.secretNames() : [...new Set(deps.spec.externalDependencies.flatMap((d) => d.secretNames))], contextDir: deps.ws.repo, ...(p.delivery?.compose ? { compose: p.delivery.compose } : {}), ...(p.gates.some((g) => g.name === 'image-scan') ? { imageArchive: IMAGE_ARCHIVE } : {}) };
+  return { projectId: deps.project.projectId, image: p.deploy.image, tag, port: deployPort(deps), healthcheckPath: p.deploy.healthcheckPath, manifests: [...p.deploy.manifests], secretNames: deps.secretNames ? deps.secretNames() : [...new Set(deps.spec.externalDependencies.flatMap((d) => d.secretNames))], contextDir: deps.ws.repo, ...(p.delivery?.compose ? { compose: p.delivery.compose } : {}) };
 }
 
 /** A service's port: the plan's, unless a failed deploy of that service moved it. */

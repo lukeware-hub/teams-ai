@@ -12,15 +12,8 @@ export interface DeploymentIntent {
   contextDir: string;
   /** Repository-relative compose file (`plan.delivery.compose`); when set, docker-local deploys with `docker compose`. */
   compose?: string;
-  /** Repository-relative path (e.g. `.tools/image.tar`): when set, build also exports the image as an archive there. */
-  imageArchive?: string;
   /** A service of a system of services: its own compose project, its main container on the project's network under `alias`. */
   shared?: { composeProject: string; network: string; alias: string };
-}
-
-/** Absolute archive path for an intent, or null when no export is requested. */
-export function archivePath(intent: DeploymentIntent): string | null {
-  return intent.imageArchive ? `${intent.contextDir.replaceAll('\\', '/').replace(/\/+$/, '')}/${intent.imageArchive}` : null;
 }
 
 export interface DeployTarget {
