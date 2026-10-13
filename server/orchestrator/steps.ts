@@ -15,6 +15,7 @@ import { repoName, stepId } from '../core/ids.js';
 import { redactSecrets } from '../core/redact.js';
 import { buildContextPack, estimateTokens, type CodeContext, type ContextPack, type ContextPackInput, type HandoffSummary } from '../knowledge/context-pack.js';
 import type { Hit } from '../knowledge/retrieval.js';
+import { effortFor, fallbackModel } from '../runner/model-policy.js';
 import { hasSession } from '../runner/session-store.js';
 import type { runStep as runStepFn, StepDeps, StepOutcome, StepRequest } from '../runner/step.js';
 import type { TestResult } from '../evidence/junit.js';
@@ -455,7 +456,10 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
   const dir = deps.stepDir(seq);
   await fs.mkdir(dir, { recursive: true });
   const profile = deps.profile(req.role);
-  const model = req.model ?? deps.stepModel?.(req.kind, req.attempt) ?? profile.model;
+  const planned = req.model ?? deps.stepModel?.(req.kind, req.attempt) ?? profile.model;
+  // A step with a kept session belongs to its model; only a fresh one may move to the lower model when the quota is out.
+  const lower = sessionStore ? undefined : fallbackModel(planned);
+  let model = lower && deps.breaker.modelPaused(planned) ? lower : planned;
   await deps.journal.fact(OrchEvent.StepStarted, {
     stepId: id,
     kind: req.kind,
@@ -471,15 +475,15 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
   const clean = (s: string) => redactSecrets(s, deps.secretValues());
   const release = await deps.governor.acquire();
   let outcome: StepOutcome<OutputOf<K>>;
-  try {
-    outcome = await deps.runStep<K>(
+  const attempt = (m: string) =>
+    deps.runStep<K>(
       {
         kind: req.kind,
         role: req.role,
         agent: deps.agents[req.role],
         profile,
-        model,
-        effort: req.effort,
+        model: m,
+        effort: effortFor(m, req.effort),
         cwd: req.cwd,
         prompt: pack.text,
         expectedSpecHash: deps.specHash,
@@ -495,6 +499,14 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
       },
       deps.stepDeps,
     );
+  try {
+    outcome = await attempt(model);
+    // The step itself tests the lower model: it runs there at once, and the global pause comes only if that is out too.
+    if (!outcome.ok && outcome.failure === 'quota' && lower && model === planned) {
+      deps.breaker.pauseModel(planned, outcome.summary.rateLimit);
+      model = lower;
+      outcome = await attempt(model);
+    }
   } finally {
     release();
   }
@@ -512,6 +524,7 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
     taskId: req.taskId,
     attempt: req.attempt,
     ok: outcome.ok,
+    ...(model !== planned ? { model, fellBackFrom: planned } : {}),
     failure: outcome.ok ? null : outcome.failure,
     usage: outcome.summary.usage,
     costUsd: outcome.summary.costUsd,

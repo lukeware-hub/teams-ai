@@ -15,15 +15,19 @@ export const RoleProfile = z
   .strict();
 export type RoleProfile = z.infer<typeof RoleProfile>;
 
+/** Sonnet runs every role; Opus is only for the architecture steps (`ARCHITECTURE_MODELS`) and Haiku for small tasks (`routing.models`). */
 const CLAUDE_DEFAULTS: Record<Role, RoleProfile> = {
-  sm: { model: 'opus' },
-  po: { model: 'opus' },
-  front: { model: 'opus' },
-  dev: { model: 'opus' },
+  sm: { model: 'sonnet' },
+  po: { model: 'sonnet' },
+  front: { model: 'sonnet' },
+  dev: { model: 'sonnet' },
   test: { model: 'sonnet' },
   sec: { model: 'sonnet' },
   devops: { model: 'sonnet' },
 };
+
+/** The steps that decide architecture: the only ones that run on Opus (always at low effort, see `effortFor`). */
+const ARCHITECTURE_MODELS: Partial<Record<StepKind, string>> = { 'tech-spec': 'opus', plan: 'opus', 'services-plan': 'opus' };
 
 const positive = z.number().int().min(1);
 const linuxPath = z
@@ -109,7 +113,7 @@ export const Config = z.object({
     })
     .prefault({}),
   /**
-   * Which model a step runs on, beyond the role profile (R11.13 slices 6 and 10). Defaults: Dev tiers on and Sonnet after the first refinement cycle (cheaper, measured 2026-10-09); set `tiers: "off"` and `laterCycleModels: {}` for Opus everywhere.
+   * Which model a step runs on, beyond the role profile (R11.13 slices 6 and 10). Defaults (human, 2026-10-13): Sonnet everywhere, Haiku for small tasks, Opus only for the architecture steps.
    * `tiers`: the Dev's model per task size; `shadow` journals the choice (MODEL_TIER_CHOSEN) without applying it, `on` applies it.
    * `stepModels`: a model for every step of one kind (e.g. the refinement checklists), whatever the role profile says.
    * `laterCycleModels`: the same for refinement steps from the second cycle on, ahead of `stepModels` (Opus finds the gaps in the
@@ -118,8 +122,8 @@ export const Config = z.object({
   routing: z
     .object({
       tiers: z.enum(['off', 'shadow', 'on']).default('on'),
-      models: z.object({ small: z.string().min(1).default('sonnet'), medium: z.string().min(1).default('sonnet'), large: z.string().min(1).default('opus') }).prefault({}),
-      stepModels: z.partialRecord(z.enum(STEP_KINDS), z.string().min(1)).default({}),
+      models: z.object({ small: z.string().min(1).default('haiku'), medium: z.string().min(1).default('sonnet'), large: z.string().min(1).default('sonnet') }).prefault({}),
+      stepModels: z.partialRecord(z.enum(STEP_KINDS), z.string().min(1)).default(ARCHITECTURE_MODELS),
       laterCycleModels: z.partialRecord(z.enum(STEP_KINDS), z.string().min(1)).default({ refine: 'sonnet', derive: 'sonnet', coverage: 'sonnet', backlog: 'sonnet', answer: 'sonnet' }),
     })
     .prefault({}),
@@ -170,7 +174,7 @@ export const Config = z.object({
       enabled: z.boolean().default(false),
       /** Spec 10A.5 decision 10: tier names map to the role's Claude models. */
       modelTiers: z
-        .object({ small: z.string().min(1).default('haiku'), medium: z.string().min(1).default('sonnet'), large: z.string().min(1).default('opus') })
+        .object({ small: z.string().min(1).default('haiku'), medium: z.string().min(1).default('sonnet'), large: z.string().min(1).default('sonnet') })
         .prefault({}),
       openrouter: z
         .object({

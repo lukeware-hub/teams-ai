@@ -14,11 +14,18 @@ describe('loadConfig', () => {
   it('fills every default from an empty object', () => {
     const cfg = loadConfig({});
     expect(cfg).toEqual(DEFAULT_CONFIG);
-    expect(cfg.roles.dev).toEqual({ model: 'opus' });
+    expect(cfg.roles.dev).toEqual({ model: 'sonnet' });
     expect(cfg.roles.test).toEqual({ model: 'sonnet' });
     expect(cfg.concurrency.maxParallel).toBe(3);
     expect(cfg.retry.maxAttempts).toBe(3);
     expect(cfg.budgets.observeOnly).toBe(true);
+  });
+
+  it('runs Opus only on the architecture steps, Haiku on small tasks and Sonnet on the rest', () => {
+    const cfg = loadConfig({});
+    expect(Object.values(cfg.roles).every((r) => r.model === 'sonnet')).toBe(true);
+    expect(cfg.routing.stepModels).toEqual({ 'tech-spec': 'opus', plan: 'opus', 'services-plan': 'opus' });
+    expect(cfg.routing.models).toEqual({ small: 'haiku', medium: 'sonnet', large: 'sonnet' });
   });
 
   it('merges partial overrides without dropping sibling defaults', () => {

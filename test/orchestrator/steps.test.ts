@@ -454,7 +454,55 @@ describe('runAgentStep', () => {
     const inner = d.runStep;
     d.runStep = (async (req, sd) => { seen.push(req); return inner(req, sd); }) as AgentStepDeps['runStep'];
     await runAgentStep({ kind: 'dev', role: 'dev', pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1, model: 'haiku', effort: 'low' }, d);
-    expect(seen[0]).toMatchObject({ model: 'haiku', effort: 'low', profile: { model: 'sonnet' } });
+    // Haiku takes no effort setting.
+    expect(seen[0]).toMatchObject({ model: 'haiku', effort: undefined, profile: { model: 'sonnet' } });
+  });
+
+  async function seeing(model: string | undefined, effort: 'low' | 'max' | undefined, fake?: (model: string) => Promise<StepOutcome<unknown>>) {
+    const ok = { ok: true as const, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() };
+    const d = await deps(async () => ok);
+    const seen: Array<{ model: string; effort?: string }> = [];
+    d.runStep = (async (req: { model: string; effort?: string }) => { seen.push(req); return fake ? fake(req.model) : ok; }) as unknown as AgentStepDeps['runStep'];
+    const out = await runAgentStep({ kind: 'dev', role: 'dev', pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1, ...(model ? { model } : {}), effort }, d);
+    return { d, seen, out };
+  }
+  const quota = (): StepOutcome<unknown> => ({ ok: false, failure: 'quota', errors: ['rate limited'], summary: summary({ isError: true }), sandboxDisabled: false });
+
+  it('keeps Sonnet effort at high or below and Opus at low', async () => {
+    expect((await seeing('sonnet', undefined)).seen[0]!.effort).toBe('high');
+    expect((await seeing('sonnet', 'max')).seen[0]!.effort).toBe('high');
+    expect((await seeing('opus', 'max')).seen[0]!.effort).toBe('low');
+  });
+
+  it('runs an Opus step on Sonnet when Opus is out of quota, without pausing the run', async () => {
+    const { d, seen, out } = await seeing('opus', undefined, async (m) => (m === 'opus' ? quota() : { ok: true, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() }));
+    expect(seen.map((s) => s.model)).toEqual(['opus', 'sonnet']);
+    expect(out.ok).toBe(true);
+    expect(d.breaker.canStart()).toBe(true);
+    expect(d.breaker.modelPaused('opus')).toBe(true);
+    const finished = d.journal.events.find((e) => e.type === OrchEvent.StepFinished)!;
+    expect(finished.data).toMatchObject({ model: 'sonnet', fellBackFrom: 'opus' });
+  });
+
+  it('starts the next Opus step on Sonnet while Opus is paused', async () => {
+    const first = await seeing('opus', undefined, async (m) => (m === 'opus' ? quota() : { ok: true, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() }));
+    const ok = { ok: true as const, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() };
+    const seen: string[] = [];
+    first.d.runStep = (async (req: { model: string }) => { seen.push(req.model); return ok; }) as unknown as AgentStepDeps['runStep'];
+    await runAgentStep({ kind: 'dev', role: 'dev', pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1, model: 'opus' }, first.d);
+    expect(seen).toEqual(['sonnet']);
+  });
+
+  it('pauses the whole run when the lower model is out of quota too', async () => {
+    const { d, seen } = await seeing('opus', undefined, async () => quota());
+    expect(seen.map((s) => s.model)).toEqual(['opus', 'sonnet']);
+    expect(d.breaker.canStart()).toBe(false);
+  });
+
+  it('does not move a Sonnet step to a lower model on quota failure', async () => {
+    const { d, seen } = await seeing('sonnet', undefined, async () => quota());
+    expect(seen).toHaveLength(1);
+    expect(d.breaker.canStart()).toBe(false);
   });
 });
 

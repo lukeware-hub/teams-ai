@@ -20,6 +20,7 @@ export type BreakerState = { status: 'closed' } | { status: 'paused'; until: Dat
 export class QuotaBreaker {
   private current: BreakerState = { status: 'closed' };
   private backoffIndex = 0;
+  private readonly modelUntil = new Map<string, Date>();
 
   constructor(
     private readonly cfg: BreakerConfig = DEFAULT_BREAKER,
@@ -33,6 +34,19 @@ export class QuotaBreaker {
   canStart(): boolean {
     this.tick();
     return this.current.status === 'closed';
+  }
+
+  /** A model whose own quota is out until its reset (or the first probe time); the others keep working. */
+  pauseModel(model: string, info: RateLimitInfo | null): void {
+    const reset = info ? (this.exhaustedResets(info)[0] ?? this.topLevelReset(info)) : null;
+    this.modelUntil.set(model, reset ?? new Date(this.clock().getTime() + this.cfg.probeBackoffMinutes[0]! * 60_000));
+  }
+
+  modelPaused(model: string): boolean {
+    const until = this.modelUntil.get(model);
+    if (until && this.clock() < until) return true;
+    this.modelUntil.delete(model);
+    return false;
   }
 
   tick(): void {

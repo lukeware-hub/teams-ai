@@ -58,8 +58,8 @@ describe('decisions config', () => {
     expect(() => loadConfig({ decisions: { local: { baseUrl: 'not a url' } } })).toThrow(ConfigError);
   });
 
-  it('model tiers default to haiku / sonnet / opus and must be non-empty', () => {
-    expect(DEFAULT_CONFIG.decisions.modelTiers).toEqual({ small: 'haiku', medium: 'sonnet', large: 'opus' });
+  it('model tiers default to haiku / sonnet / sonnet and must be non-empty', () => {
+    expect(DEFAULT_CONFIG.decisions.modelTiers).toEqual({ small: 'haiku', medium: 'sonnet', large: 'sonnet' });
     expect(() => loadConfig({ decisions: { modelTiers: { small: '' } } })).toThrow(ConfigError);
   });
 
