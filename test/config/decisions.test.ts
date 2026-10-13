@@ -40,10 +40,10 @@ describe('decisions config', () => {
     expect(DEFAULT_CONFIG.decisions.perDecision['model-tier']).toMatchObject({ chain: ['jev', 'local'] });
     // R11.5.7: question routing runs in shadow mode by default, so labelled data builds up.
     expect(DEFAULT_CONFIG.decisions.perDecision['question-routing']).toMatchObject({ enabled: true, chain: ['jev', 'local'], escalateTo: 'po' });
-    // R11.5a item 3: only the criterion check acts until an eval measures the other two (human, 2026-10-12).
+    // R11.5a item 3: all three detailing checks ask the Jev (the human turned the last two on, 2026-10-13).
     expect(DEFAULT_CONFIG.decisions.perDecision['criterion-shared-deploy']).toMatchObject({ enabled: true, chain: ['jev', 'local'], escalateTo: 'po' });
-    expect(DEFAULT_CONFIG.decisions.perDecision['spec-cited-sections']).toMatchObject({ enabled: false, chain: ['jev', 'local'], escalateTo: 'po' });
-    expect(DEFAULT_CONFIG.decisions.perDecision['preplan-tech-decisions']).toMatchObject({ enabled: false, chain: ['jev', 'local'], escalateTo: 'sm' });
+    expect(DEFAULT_CONFIG.decisions.perDecision['spec-cited-sections']).toMatchObject({ enabled: true, chain: ['jev', 'local'], escalateTo: 'po' });
+    expect(DEFAULT_CONFIG.decisions.perDecision['preplan-tech-decisions']).toMatchObject({ enabled: true, chain: ['jev', 'local'], escalateTo: 'sm' });
     // The answer step reads five documents for one question: Sonnet from the second cycle on, as the other refinement checklists.
     expect(DEFAULT_CONFIG.routing.laterCycleModels.answer).toBe('sonnet');
     // The floor measures itself from the labelled answers unless the config fixes a number or turns it off.
@@ -66,7 +66,7 @@ describe('decisions config', () => {
   it('the Docker config turns on only the refinement decisions Jev takes', () => {
     const cfg = loadConfig(JSON.parse(readFileSync(new URL('../../docker/config.json', import.meta.url), 'utf8')));
     const enabled = DECISION_IDS.filter((id) => resolveDecision(cfg, id).enabled);
-    expect(enabled).toEqual(['gate1-readiness', 'question-dedup', 'history-contradiction', 'question-routing', 'patch-dedup', 'failure-cause', 'criterion-shared-deploy']);
+    expect(enabled).toEqual(['gate1-readiness', 'question-dedup', 'history-contradiction', 'question-routing', 'patch-dedup', 'failure-cause', 'spec-cited-sections', 'criterion-shared-deploy', 'preplan-tech-decisions']);
     for (const id of enabled) expect(resolveDecision(cfg, id).chain).toEqual(['jev', 'local']);
   });
 });
