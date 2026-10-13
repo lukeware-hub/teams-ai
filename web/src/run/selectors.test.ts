@@ -87,6 +87,7 @@ describe('stopped run explanations', () => {
     // Every criterion passed and a gate such as lint failed: no criterion lacks evidence.
     expect(explainStop('verification failed in round 2: 0 failing tests, 0 uncovered criteria; gate lint failed')?.title).toBe('Uma verificação obrigatória falhou');
     expect(explainStop('spec-gap rounds exhausted (3); last question: which currency?')).toMatchObject({ owner: 'Você' });
+    expect(explainStop('gen/** está em frozenPaths, e a verificação de escopo recusou esses arquivos')).toMatchObject({ owner: 'Plano', title: expect.stringContaining('protege') });
     expect(explainStop('something nobody has seen before')).toBeNull();
     // A service's workflows failing to land explain themselves like the project's.
     expect(explainStop('service inventory: docs merge failed: blocked')).toEqual(explainStop('docs merge failed: blocked'));

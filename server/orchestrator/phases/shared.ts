@@ -53,6 +53,7 @@ export interface PhaseDeps {
   requireE2e?: boolean;
   /** Phase 2 requires a coverage gate clearing the line-coverage floor (roadmap R10.2). */
   requireCoverage?: boolean;
+  requireFrozenScope?: boolean;
   exec: Exec;
   runAgent: <K extends StepKind>(req: AgentStepRequest<K>) => Promise<StepOutcome<OutputOf<K>>>;
   mergeQueue: MergeQueue;

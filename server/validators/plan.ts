@@ -3,6 +3,7 @@ import { IMAGE_REFERENCE } from '../exec/gate-runner.js';
 import { gateFileErrors, gateTerminationErrors } from './gate-files.js';
 import { specShare, type Spec } from '../contracts/spec.js';
 import { validateCoverage } from './coverage.js';
+import { checkScope } from './diff-guard.js';
 import { validateE2e, validateE2eExemptions } from './e2e.js';
 import { validateSecurityGates } from './security-tooling.js';
 
@@ -21,6 +22,8 @@ export interface PlanCheckOptions {
   requireE2e?: boolean;
   /** New plans must carry a `coverage` gate clearing the line-coverage floor (roadmap R10.2); false keeps older plans valid. */
   requireCoverage?: boolean;
+  /** New plans must keep every task off the frozen paths; false keeps older plans valid (a fix task revalidates the whole plan). */
+  requireFrozenScope?: boolean;
   /** Files already tracked on main; when given, blocking gates may only name files that exist or that a root task creates. */
   repoFiles?: ReadonlySet<string>;
 }
@@ -177,6 +180,12 @@ function repositoryErrors(plan: Plan, spec: Spec, opts: PlanCheckOptions, scaffo
   for (const gate of plan.gates) for (const name of gate.secrets) if (!declared.has(name) && !/^SERVICE_URL(_[A-Z0-9_]+)?$/.test(name)) errors.push(`gate ${gate.name} declares secret ${name}, which no externalDependencies entry of the spec names`);
   // The JUnit report is gate output the orchestrator never commits; a task listing it can never deliver it (live: a review loop).
   for (const task of plan.tasks) if (task.affectedPaths.includes(plan.junitPath)) errors.push(`task ${task.id} lists ${plan.junitPath} in affectedPaths, but the JUnit report is gate output and never committed`);
+  // A frozen file is rejected at merge even with a justification, so a task that lists one can never finish; only the first spec's scaffold may.
+  if (opts.requireFrozenScope) for (const task of plan.tasks) {
+    if (opts.firstSpec && task.id === scaffold) continue;
+    const frozen = checkScope({ changedFiles: task.affectedPaths, affectedPaths: [], frozenPaths: plan.frozenPaths }).frozenTouched;
+    if (frozen.length > 0) errors.push(`task ${task.id} lists frozen paths in affectedPaths: ${frozen.join(', ')}; frozenPaths (${plan.frozenPaths.join(', ')}) are rejected at merge, so no task can deliver them. Take them out of frozenPaths or of this task`);
+  }
   // A tool fetched at a moving reference changes under the same plan (supply chain); pin a version or commit.
   // A tool pinned below a known floor cannot read the current toolchain's output (live: cargo-tarpaulin 0.31 "Parsing failed" on Rust 1.99).
   for (const command of [...plan.gates.map((g) => g.command), ...Object.values(plan.commands)]) {

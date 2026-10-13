@@ -57,6 +57,7 @@ export interface RunDeps {
   requireSecurityTooling?: boolean;
   requireE2e?: boolean;
   requireCoverage?: boolean;
+  requireFrozenScope?: boolean;
   exec: Exec;
   ghExec: Exec;
   runStep: typeof runStepFn;
@@ -527,7 +528,7 @@ export class Run {
   private phaseDeps(): PhaseDeps {
     const single = singlePlan(this.plan);
     return {
-      journal: this.journal, ws: this.deps.ws, workspacesRoot: expandHome(this.deps.cfg.paths.workspaces), spec: this.deps.spec, project: this.deps.project, specHash: this.deps.spec.specHash!, firstSpec: this.deps.firstSpec, requireDelivery: this.deps.requireDelivery, requireSecurityTooling: this.deps.requireSecurityTooling, requireE2e: this.deps.requireE2e, requireCoverage: this.deps.requireCoverage, exec: this.deps.exec,
+      journal: this.journal, ws: this.deps.ws, workspacesRoot: expandHome(this.deps.cfg.paths.workspaces), spec: this.deps.spec, project: this.deps.project, specHash: this.deps.spec.specHash!, firstSpec: this.deps.firstSpec, requireDelivery: this.deps.requireDelivery, requireSecurityTooling: this.deps.requireSecurityTooling, requireE2e: this.deps.requireE2e, requireCoverage: this.deps.requireCoverage, requireFrozenScope: this.deps.requireFrozenScope, exec: this.deps.exec,
       runAgent: this.runAgent,
       decider: this.decider(),
       mergeQueue: this.mergeQueue,
