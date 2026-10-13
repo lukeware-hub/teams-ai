@@ -9,7 +9,7 @@ import {
   InvocationError,
   buildInvocation,
   ensureTrusted,
-  promptCacheTtl,
+  PROMPT_CACHE_TTL,
   removeTrusted,
   sanitizeEnv,
   type InvocationInput,
@@ -119,9 +119,7 @@ describe('buildInvocation', () => {
   it('sets the prompt cache TTL only when asked, and never lets extraEnv lose to it', () => {
     expect(buildInvocation(base, hostEnv).env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBeUndefined();
     expect(buildInvocation({ ...base, cacheTtl: '5m' }, hostEnv).env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBe('5m');
-    expect(promptCacheTtl('review')).toBe('5m');
-    expect(promptCacheTtl('dev')).toBeUndefined();
-    expect(promptCacheTtl('deployment')).toBeUndefined();
+    expect(PROMPT_CACHE_TTL).toBe('5m');
   });
 
   it('omits --agents when no definition is given', () => {

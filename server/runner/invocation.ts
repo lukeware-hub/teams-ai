@@ -2,7 +2,6 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { RoleProfile, Role } from '../config/config.js';
 import { updateFileAtomic } from '../core/atomic-write.js';
-import type { StepKind } from '../agents/outputs.js';
 import type { Effort } from '../decide/decisions/model-tier.js';
 import { goProxyUrl, stackEnv } from './stacks.js';
 
@@ -34,18 +33,12 @@ export const ENV_ALLOWLIST: readonly string[] = ['HOME', 'PATH', 'TERM', 'LANG',
 export const ORCHESTRATOR_BIN_DIR = '/opt/teams-ai-bin';
 
 /**
- * R11.13 slice 1: steps that never wait on a long command write their prompt cache with the 5-minute TTL (1.25x the input
- * price) instead of the subscription default of 1 hour (2x). Dev and deployment steps run suites and installs that can
- * outlast 5 minutes, which would expire the cache mid-step, so they keep the default.
+ * R11.13 slice 1: every step writes its prompt cache with the 5-minute TTL (1.25x the input price) instead of the
+ * subscription default of 1 hour (2x). Dev and deployment steps first kept the default in case a long command expired the
+ * cache mid-step; measured on run sla-engine-3 (28 dev steps, 18 turns each, cache writes 42% of the dev cost), no dev
+ * turn waited 5 minutes, and one expiry costs a single rewrite at 1.25x, less than paying 2x on every write.
  */
-const SHORT_CACHE_KINDS: ReadonlySet<StepKind> = new Set<StepKind>([
-  'refine', 'derive', 'coverage', 'plan', 'services-plan', 'review', 'security', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'answer',
-]);
-
-/** The `CLAUDE_CODE_PROMPT_CACHE_TTL` value for a step kind, or undefined to keep the CLI default. */
-export function promptCacheTtl(kind: StepKind): '5m' | undefined {
-  return SHORT_CACHE_KINDS.has(kind) ? '5m' : undefined;
-}
+export const PROMPT_CACHE_TTL = '5m';
 
 /**
  * Fixed child environment (R11.13 slice 9), set by the orchestrator, never read from the host. Git instructions and per-turn

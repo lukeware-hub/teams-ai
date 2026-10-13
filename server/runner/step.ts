@@ -11,7 +11,7 @@ import type { CliErrorInput } from '../decide/decisions/cli-error.js';
 import type { FailureKind } from '../scheduler/retry-policy.js';
 import { validateAgentOutput } from '../validators/agent-output.js';
 import type { RefContext, References } from '../validators/references.js';
-import { buildInvocation, ensureTrusted, promptCacheTtl } from './invocation.js';
+import { buildInvocation, ensureTrusted, PROMPT_CACHE_TTL } from './invocation.js';
 import { sandboxPolicyViolation } from './sandbox-policy.js';
 import { readTotals, restoreSession, saveSession, writeTotals } from './session-store.js';
 import { API_KEY_ENV, createStepHome, hasStaticCredential, hostTokenExpiresAt, removeStepHome, syncBackCredentials } from './step-home.js';
@@ -247,7 +247,7 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
       sessionId: req.sessionId,
       resume: req.resume,
       agentDefinition: agent,
-      cacheTtl: promptCacheTtl(req.kind),
+      cacheTtl: PROMPT_CACHE_TTL,
       apiKey: deps.apiKey,
       effort: req.effort,
       extraEnv: req.extraEnv,

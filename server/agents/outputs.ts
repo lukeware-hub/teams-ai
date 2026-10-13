@@ -158,8 +158,22 @@ export const DeploymentOutput = z.object({
   notes: z.string(),
 });
 
+/** A change to one of the shared docs on main: `find` is a verbatim excerpt that occurs exactly once (empty appends); cheaper than returning the whole file. */
+export const DocsPatch = z.object({ file: z.enum(['docs/README.md', 'docs/RUNBOOK.md', 'docs/API.md']), find: z.string(), replace: z.string() });
+
+/** The three docs the orchestrator commits: each as a whole file, or as `docPatches` over the current file on main. */
+const docsFields = {
+  /** Markdown for docs/README.md: a project overview the orchestrator commits with the report; omitted when `docPatches` change the current one. */
+  readme: z.string().optional(),
+  /** Markdown for docs/RUNBOOK.md (start, stop, logs, rollback); validated by the docs gate. */
+  runbook: z.string().optional(),
+  /** Markdown for docs/API.md listing every endpoint the spec features name. */
+  apiDocs: z.string().optional(),
+  docPatches: z.array(DocsPatch).optional(),
+};
+
 /** `spec readme`: the SM alone writes docs/README.md for a spec that already has code on main. */
-export const ReadmeOutput = z.object({ specHash, readme: z.string().min(1), runbook: z.string().optional(), apiDocs: z.string().optional() });
+export const ReadmeOutput = z.object({ specHash, ...docsFields });
 
 export const ReportOutput = z.object({
   specHash,
@@ -168,12 +182,7 @@ export const ReportOutput = z.object({
   assumptions: z.array(z.string()),
   exploratoryScript: z.array(z.object({ acId, steps: z.array(z.string().min(1)).min(1) })),
   summary: z.string().min(1),
-  /** Markdown for docs/README.md: a project overview the orchestrator commits with the report. */
-  readme: z.string().min(1),
-  /** Markdown for docs/RUNBOOK.md (start, stop, logs, rollback); validated by the docs gate. */
-  runbook: z.string().optional(),
-  /** Markdown for docs/API.md listing every endpoint the spec features name. */
-  apiDocs: z.string().optional(),
+  ...docsFields,
 });
 
 /** Spec 10A.3: a System 2 answer to typed questions; no probabilities, the value only. */

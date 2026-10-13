@@ -255,11 +255,11 @@ describe('runStep', () => {
     expect(agents.dev).toMatchObject({ prompt: devAgent.body, tools: devAgent.tools, model: 'sonnet' });
   });
 
-  it('gives a short prompt cache TTL to steps that run no long command, and the CLI default to dev', async () => {
+  it('gives the 5-minute prompt cache TTL to every step, dev included', async () => {
     const capture = path.join(dir, 'capture.json');
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
     await runStep(request({ kind: 'dev' }), deps);
-    expect(JSON.parse(await fs.readFile(capture, 'utf8')).env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBeUndefined();
+    expect(JSON.parse(await fs.readFile(capture, 'utf8')).env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBe('5m');
     await runStep(request({ kind: 'security' }), deps);
     expect(JSON.parse(await fs.readFile(capture, 'utf8')).env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBe('5m');
   });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { documentedEndpoints, featureEndpoints, missingReadmeSections, validateApiDocs, validateDocs, validateReadme, validateRunbook } from '../../server/validators/docs.js';
+import { documentedEndpoints, featureEndpoints, missingReadmeSections, resolveDocs, validateApiDocs, validateDocs, validateReadme, validateRunbook } from '../../server/validators/docs.js';
 
 const body = 'Some real explanatory text that is long enough to count.';
 const md = (...titles: string[]) => titles.map((t) => `## ${t}\n\n${body}\n`).join('\n');
@@ -74,6 +74,29 @@ describe('validateDocs', () => {
     expect(validateDocs({ readme: GOOD_README, runbook: GOOD_RUNBOOK, apiDocs: '/health' }, ['GET /health'], ['Environment', 'Monitoring'])).toEqual([
       'docs/README.md is missing a "Monitoring" section the plan requires (add a heading naming it)',
     ]);
+  });
+});
+
+describe('resolveDocs', () => {
+  const current = { readme: GOOD_README, runbook: GOOD_RUNBOOK, apiDocs: '# API\n\n### GET /stock\n' };
+  it('applies patches on the current docs and keeps the files the answer leaves alone', () => {
+    const r = resolveDocs({ docPatches: [{ file: 'docs/README.md', find: '# Shop', replace: '# Shop v2' }, { file: 'docs/API.md', find: '', replace: '### GET /orders\n' }] }, current);
+    expect(r.errors).toEqual([]);
+    expect(r.docs.readme.startsWith('# Shop v2')).toBe(true);
+    expect(r.docs.runbook).toBe(GOOD_RUNBOOK);
+    expect(r.docs.apiDocs).toBe('# API\n\n### GET /stock\n\n### GET /orders\n');
+  });
+  it('rejects a find that is missing or ambiguous, and a file given both whole and patched', () => {
+    const r = resolveDocs({ apiDocs: '# API', docPatches: [{ file: 'docs/README.md', find: 'nowhere', replace: 'x' }, { file: 'docs/RUNBOOK.md', find: body, replace: 'x' }, { file: 'docs/API.md', find: '', replace: 'x' }] }, current);
+    expect(r.errors).toEqual([
+      'docs/README.md: the patch\'s find must occur exactly once in the current file: "nowhere"',
+      `docs/RUNBOOK.md: the patch's find must occur exactly once in the current file: ${JSON.stringify(body)}`,
+      'docs/API.md: a patch and a whole file were both given; send one of them',
+    ]);
+  });
+  it('takes whole files as before, and needs a README from somewhere', () => {
+    expect(resolveDocs({ readme: '# New', runbook: 'r' }, undefined)).toEqual({ docs: { readme: '# New', runbook: 'r', apiDocs: '' }, errors: [] });
+    expect(resolveDocs({}, undefined).errors).toEqual(['docs/README.md is empty: return `readme` with the whole file, or `docPatches` on the current one']);
   });
 });
 

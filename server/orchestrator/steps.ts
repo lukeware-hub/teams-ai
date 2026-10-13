@@ -357,7 +357,7 @@ const plannedSections = (sections: readonly string[] | undefined): string[] =>
 const CURRENT_DOC_CHARS = 8_000;
 
 /** The rule of a docs rewrite: earlier specs wrote the current docs, so what is still true of them stays. */
-const KEEP_CURRENT_DOCS = 'Rewrite the current docs, which earlier specs of this project wrote: they are in the section "Current docs on main", or in docs/README.md, docs/RUNBOOK.md and docs/API.md of your working directory when the pack had no room for them. Keep every section, acceptance criterion and endpoint they hold that is still true, and add what this spec delivered. An endpoint docs/API.md documents stays in it; one this spec removed is marked as removed, never deleted.';
+const KEEP_CURRENT_DOCS = 'Earlier specs of this project wrote the current docs: they are in the section "Current docs on main", or in docs/README.md, docs/RUNBOOK.md and docs/API.md of your working directory when the pack had no room for them. Keep every section, acceptance criterion and endpoint they hold that is still true, and add what this spec delivered. An endpoint docs/API.md documents stays in it; one this spec removed is marked as removed, never deleted. When a current file exists, change it with `docPatches` instead of returning it whole: each patch names the file, a `find` that is a verbatim excerpt occurring exactly once in the current file (empty `find` appends at the end) and its `replace`; return `readme`, `runbook` or `apiDocs` whole only for a file that does not exist yet or that must change in most of its lines. Never send both a whole file and patches for the same file.';
 
 /** The shared docs on main, for the pack section of their own. */
 function currentDocsText(current: DocsInput | undefined): string {

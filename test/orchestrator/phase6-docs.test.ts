@@ -143,6 +143,21 @@ describe('Phase 6 documentation gate', () => {
     expect(await git(remote.repo, ['show', 'origin/main:docs/API.md'], execCommand)).toContain('### POST /stock');
   });
 
+  it('accepts docPatches over the docs on main instead of whole files, and feeds a bad find back', async () => {
+    await mainWrites({ 'docs/README.md': `${GOOD.readme}\n- AC-001: o estoque cadastra um sku.\n`, 'docs/RUNBOOK.md': GOOD.runbook, 'docs/API.md': '# API\n\n### POST /stock\n' });
+    let n = 0;
+    const r = await p6(async () => ok({ specHash: HASH, delivered: [], blocked: [], assumptions: [], exploratoryScript: [], summary: 'done', docPatches: [
+      { file: 'docs/README.md', find: ++n === 1 ? 'not there' : '- AC-001: o estoque cadastra um sku.', replace: '- AC-001: o estoque cadastra um sku.\n- AC-002: o pedido reserva o estoque.' },
+      { file: 'docs/API.md', find: '', replace: '### GET /orders\n' },
+    ] }));
+    expect(r.ok).toBe(true);
+    expect(calls).toHaveLength(2);
+    expect(JSON.stringify(calls[1]!.pack)).toContain('find must occur exactly once');
+    await git(remote.repo, ['fetch', '-q', 'origin'], execCommand);
+    expect(await git(remote.repo, ['show', 'origin/main:docs/README.md'], execCommand)).toContain('AC-002: o pedido reserva o estoque.');
+    expect(await git(remote.repo, ['show', 'origin/main:docs/API.md'], execCommand)).toContain('### POST /stock\n\n### GET /orders');
+  });
+
   it('lists the pull requests of the run in report.json', async () => {
     await journal.fact(OrchEvent.PrCreated, { branch: 'task/spec-001-T1', number: 4, url: 'https://github.com/o/shop/pull/4', created: true });
     const r = await p6(async () => report(GOOD));

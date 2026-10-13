@@ -5,7 +5,7 @@ import { attachE2e, type EvidenceRow } from '../../evidence/matrix.js';
 import type { SmokeRow } from '../../exec/smoke.js';
 import type { E2eRow } from '../../exec/e2e.js';
 import { OrchEvent } from '../events.js';
-import { validateDocs } from '../../validators/docs.js';
+import { resolveDocs, validateDocs } from '../../validators/docs.js';
 import { reportPack } from '../steps.js';
 import { commitAndMergeDocs, currentDocs, freshDocsWorktree, pauseForFailure, specDir, PAUSED_AUTH, type PhaseDeps } from './shared.js';
 import { serviceLinks } from '../../deploy/service-links.js';
@@ -79,8 +79,9 @@ export async function runPhase6(deps: Phase6Deps): Promise<{ ok: boolean; report
   for (let attempt = 1; attempt <= 2; attempt++) {
     const out = await deps.runAgent<'report'>({ kind: 'report', role: 'sm', pack: reportPack(deps.packBase(), { readmeSections: deps.plan?.delivery?.readmeSections, delivered: base.delivered, blocked: base.blocked, evidence: JSON.stringify(base.evidence), assumptions: base.assumptions, deploy: JSON.stringify(base.service && base.services ? { ...withoutUrl(base.service), services: base.services.map(withoutUrl) } : base.service ?? base.deploy), hostUrl: hostUrl(base), tokens: JSON.stringify(base.tokens), security: base.securityFindings.map((f) => `- ${f.taskId} ${f.file}${f.line === null ? '' : `:${f.line}`} [${f.severity}] ${f.category}: ${f.problem}`).join('\n'), docsErrors, current }), cwd: wt, phase: 'phase6', taskId: null, attempt }) as any;
     if (out.ok && out.value) {
-      script = out.value.exploratoryScript; summary = out.value.summary; readme = out.value.readme; runbook = out.value.runbook ?? ''; apiDocs = out.value.apiDocs ?? '';
-      docsErrors = validateDocs({ readme, runbook, apiDocs }, deps.spec.features, deps.plan?.delivery?.readmeSections, current);
+      script = out.value.exploratoryScript; summary = out.value.summary;
+      const resolved = resolveDocs(out.value, current); readme = resolved.docs.readme; runbook = resolved.docs.runbook ?? ''; apiDocs = resolved.docs.apiDocs ?? '';
+      docsErrors = [...resolved.errors, ...validateDocs(resolved.docs, deps.spec.features, deps.plan?.delivery?.readmeSections, current)];
       if (docsErrors.length === 0) { docsOk = true; break; }
       error = `documentation rejected: ${docsErrors.join('; ')}`; continue;
     }
