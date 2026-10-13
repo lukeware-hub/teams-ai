@@ -26,8 +26,11 @@ export function prescribedCommands(kind: StackKind): Record<string, string[]> {
 }
 
 const DISARMED = /\|\|\s*(true|exit\s+0|:)|--exit-code[= ]0\b|--exit-zero\b|--no-fail\b/;
-const ENV_PREFIX = /^(?:[A-Za-z_]\w*=\S*\s+)+/;
+// Only the prescribed prefix is stripped: any other PATH would run worktree binaries next to the shared gate cache.
+const ENV_PREFIX = /^PATH=\$PWD\/\.tools\/bin:\$PATH\s+/;
 const bare = (command: string) => command.trim().replace(ENV_PREFIX, '');
+/** Shell syntax that runs a second command or redirects output; image-scan's own `&&` is split off first. */
+const CHAINED = /[;|&`<>\n]|\$\(/;
 
 interface Rule {
   name: string;
@@ -123,6 +126,9 @@ export function validateSecurityGates(plan: Plan): string[] {
       if (missing.length > 0) errors.push(`security gate ${rule.name} command must include ${missing.join(' and ')}`);
     }
     if (DISARMED.test(gate.command)) errors.push(`security gate ${rule.name} command ignores findings (${gate.command})`);
+    // license-scan runs any tool, so its quoted lists (`"MIT;ISC"`) stay allowed.
+    else if (rule.name !== 'license-scan' && CHAINED.test(rule.name === 'image-scan' ? gate.command.replaceAll('&&', ' ') : gate.command))
+      errors.push(`security gate ${rule.name} must be one command, without ; | & $( backticks or redirects (${gate.command})`);
     if (rule.egress(gate) && gate.network !== 'egress') errors.push(`security gate ${rule.name} needs network egress (rule or database download)`);
     if (tools && index(TOOLS_GATE) > index(rule.name)) errors.push(`gate ${TOOLS_GATE} must come before ${rule.name}`);
   }
@@ -150,6 +156,6 @@ export function securityToolingRules(): string {
     `  - dependency-scan (egress): node stacks ${PATH_PREFIX} ${node['dependency-scan']![0]} (or ${node['dependency-scan']![1]}); python stacks ${py['dependency-scan']![0]} (or ${py['dependency-scan']![1]}); go stacks ${PATH_PREFIX} ${go['dependency-scan']![0]}; other stacks ${other['dependency-scan']![0]}`,
     '  - license-scan (after dependency-scan): no tool is prescribed, use whatever your stack offers to list each dependency\'s license (e.g. `license-checker` for node, `pip-licenses` for python, `go-licenses` for go, installed with `GOBIN=$PWD/.tools/bin go install github.com/google/go-licenses/v2@3e084b0caf71` (a fixed commit) because v2.0.0 does not build on Go 1.22 or newer); fail the command on a copyleft license (GPL, AGPL, LGPL) unless the project\'s own ADRs say otherwise',
     `  - image-scan (egress, after build): ${other['image-scan']!.map((c) => `${PATH_PREFIX} ${c}`).join(' && ')} (each command needs its own PATH prefix; gates have no docker, so the Dockerfile, manifests and source tree are scanned instead of an image)`,
-    '  - never weaken a security gate: no `|| true`, no `--exit-code 0`, no non-blocking gates; other tools are rejected (license-scan excepted - its tool is never prescribed)',
+    '  - never weaken a security gate: no `|| true`, no `--exit-code 0`, no non-blocking gates, no `;`, `|`, `&`, `$(`, backticks or redirects (image-scan joins its two trivy commands with `&&` only), no PATH prefix other than ${PATH_PREFIX}; other tools are rejected (license-scan excepted - its tool is never prescribed)',
   ].join('\n');
 }

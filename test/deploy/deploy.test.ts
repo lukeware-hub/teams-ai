@@ -80,6 +80,17 @@ describe('DockerLocalTarget', () => {
     expect(fake.lines('docker')).not.toContain('rename teams-ai-todo-api teams-ai-todo-api-prev');
   });
 
+  it('leaves the old container alone when it cannot be parked', async () => {
+    const fake = new FakeExec()
+      .onArgs('docker', ['inspect'], () => ({ stdout: 'todo-api:old\n' }))
+      .onArgs('docker', ['rename'], () => ({ exitCode: 1, stderr: 'rename failed' }));
+    const t = new DockerLocalTarget({ exec: fake.exec, get: okGet, secrets });
+    await expect(t.apply(intent)).rejects.toThrow(/rename failed/);
+    const lines = fake.lines('docker');
+    expect(lines.some((l) => l.startsWith('run '))).toBe(false);
+    expect(lines).not.toContain('rm -f teams-ai-todo-api');
+  });
+
   it('rolls back by running the previous image and validates missing secrets', async () => {
     const fake = new FakeExec();
     const t = new DockerLocalTarget({ exec: fake.exec, get: okGet, secrets: {} });
@@ -110,7 +121,20 @@ describe('runDeployment', () => {
     const log: string[] = [];
     const r = await runDeployment(target({}, log), intent, { smoke: smokeOk, baseUrl: 'http://127.0.0.1:3000' });
     expect(r).toEqual({ ok: true, previous: 'img:old' });
-    expect(log).toEqual(['validate', 'build', 'apply', 'verify']);
+    expect(log).toEqual(['validate', 'build', 'image', 'apply', 'verify']);
+  });
+
+  it('rolls back when apply fails after it may have replaced what ran', async () => {
+    const log: string[] = [];
+    const apply = async (): Promise<{ previous: string | null }> => {
+      log.push('apply');
+      throw new Error('docker compose up failed: unhealthy');
+    };
+    const r = await runDeployment(target({ apply }, log), intent, { smoke: smokeOk, baseUrl: 'u' });
+    expect(r).toEqual({ ok: false, stage: 'apply', detail: 'docker compose up failed: unhealthy', rolledBack: true, rollbackHealthy: true });
+    expect(log).toEqual(['validate', 'build', 'image', 'apply', 'rollback', 'verify', 'image']);
+    const first = await runDeployment(target({ apply, currentImage: async () => null }), intent, { smoke: smokeOk, baseUrl: 'u' });
+    expect(first).toEqual({ ok: false, stage: 'apply', detail: 'docker compose up failed: unhealthy', rolledBack: false, rollbackHealthy: null });
   });
 
   it('stops on validation errors without building', async () => {
@@ -124,7 +148,7 @@ describe('runDeployment', () => {
     const log: string[] = [];
     const r = await runDeployment(target({}, log), intent, { smoke: async () => ({ ok: false, detail: '[AC-001] failed' }), baseUrl: 'u' });
     expect(r).toEqual({ ok: false, stage: 'smoke', detail: '[AC-001] failed', rolledBack: true, rollbackHealthy: true });
-    expect(log).toEqual(['validate', 'build', 'apply', 'verify', 'rollback', 'verify', 'image']);
+    expect(log).toEqual(['validate', 'build', 'image', 'apply', 'verify', 'rollback', 'verify', 'image']);
   });
 
   it('reports rollbackHealthy=false when a different image is running after the rollback', async () => {
@@ -147,7 +171,7 @@ describe('runDeployment', () => {
     const log: string[] = [];
     const r = await runDeployment(target({ apply: async () => ({ previous: null }) }, log), intent, { smoke: async () => ({ ok: false, detail: 'x' }), baseUrl: 'u' });
     expect(r).toMatchObject({ ok: false, stage: 'smoke', rolledBack: false });
-    expect(log).toEqual(['validate', 'build', 'verify', 'destroy']);
+    expect(log).toEqual(['validate', 'build', 'image', 'verify', 'destroy']);
   });
 
   it('reports a failing teardown of a first deploy instead of rejecting', async () => {
@@ -161,7 +185,8 @@ describe('runDeployment', () => {
   });
 
   it('docker-local compose: a failed first deploy runs compose down for the project', async () => {
-    const fake = new FakeExec().onArgs('docker', ['compose'], (s) => (s.args.includes('ps') ? { stdout: '' } : {}));
+    const config = JSON.stringify({ services: { 'todo-api': { image: 'todo-api:spec-001-abc1234' } } });
+    const fake = new FakeExec().onArgs('docker', ['compose'], (s) => (s.args.includes('ps') ? { stdout: '' } : s.args.includes('--format') ? { stdout: config } : {}));
     const t = new DockerLocalTarget({ exec: fake.exec, get: okGet, secrets });
     const ci = { ...intent, compose: 'docker-compose.yml' };
     const r = await runDeployment(Object.assign(Object.create(t), { apply: async () => ({ previous: null }) }) as DeployTarget, ci, { smoke: smokeOk, baseUrl: 'u' });

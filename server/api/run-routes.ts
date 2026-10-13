@@ -566,6 +566,8 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const runId = safe(params.runId!);
         const runs = runsDir(idx);
         const file = path.join(runs, runId, 'events.ndjson');
+        // Taken before the replay read, so the tail resumes there and no event falls between the two.
+        const replayed = (await fs.stat(file).catch(() => null))?.size ?? 0;
         const evs = await events(runs, runId);
         const header = req.headers['last-event-id'];
         const after = Number(Array.isArray(header) ? header[0] : (header ?? 0)) || 0;
@@ -583,7 +585,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         };
         for (const e of evs) if (e.seq > after) send(e);
         if (evs.some((e) => e.type === 'RUN_FINISHED')) return;
-        tail = tailJournal(file, last, send);
+        tail = tailJournal(file, last, send, { from: replayed });
         w.onClose(() => tail?.close());
       },
     },

@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { lockFile, withFileLock } from '../../server/core/file-lock.js';
 import type { Exec } from '../../server/exec/command.js';
 import { assignDeployPort, portHeldByOthers, portKey, releaseDeployPort } from '../../server/deploy/port-registry.js';
 import { PUBLISHED_PORTS, serviceLinks } from '../../server/deploy/service-links.js';
@@ -70,6 +71,20 @@ describe('assignDeployPort', () => {
     const { port } = await assignDeployPort(dir, 'a', docker());
     await releaseDeployPort(dir, 'a');
     expect((await assignDeployPort(dir, 'b', docker())).taken).not.toContain(port);
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it('waits for the registry lock another process holds before drawing a port', async () => {
+    const dir = await root();
+    let done = false;
+    let assigned: Promise<unknown> = Promise.resolve();
+    await withFileLock(lockFile(path.join(dir, '.ports.json'), 'repo'), async () => {
+      assigned = assignDeployPort(dir, 'a', docker()).then(() => (done = true));
+      await new Promise((r) => setTimeout(r, 300));
+      expect(done).toBe(false);
+    });
+    await assigned;
+    expect(done).toBe(true);
     await fs.rm(dir, { recursive: true, force: true });
   });
 

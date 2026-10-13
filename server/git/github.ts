@@ -4,8 +4,11 @@ export class GitHubError extends Error {}
 
 const TIMEOUT = 120_000;
 
+/** git.ts SAFE_CONFIG through the environment, so it also reaches the git that gh runs: no clone hook runs on the host. */
+const SAFE_GIT_ENV = { GIT_CONFIG_COUNT: '2', GIT_CONFIG_KEY_0: 'core.hooksPath', GIT_CONFIG_VALUE_0: '/dev/null', GIT_CONFIG_KEY_1: 'core.fsmonitor', GIT_CONFIG_VALUE_1: '' };
+
 async function gh(cwd: string, args: readonly string[], exec: Exec, stdin?: string) {
-  return exec({ bin: 'gh', args, cwd, timeoutMs: TIMEOUT, stdin, env: { GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' } });
+  return exec({ bin: 'gh', args, cwd, timeoutMs: TIMEOUT, stdin, env: { GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1', ...SAFE_GIT_ENV } });
 }
 
 async function ghJson<T>(cwd: string, args: readonly string[], exec: Exec): Promise<T> {
@@ -51,7 +54,7 @@ export async function ensureRepo(
 }
 
 async function reconcileRemote(cwd: string, url: string, exec: Exec): Promise<void> {
-  const git = (args: string[]) => exec({ bin: 'git', args, cwd, timeoutMs: TIMEOUT, env: { GIT_TERMINAL_PROMPT: '0' } });
+  const git = (args: string[]) => exec({ bin: 'git', args, cwd, timeoutMs: TIMEOUT, env: { GIT_TERMINAL_PROMPT: '0', ...SAFE_GIT_ENV } });
   const remote = await git(['remote', 'get-url', 'origin']);
   if (remote.exitCode !== 0) {
     const add = await git(['remote', 'add', 'origin', `${url}.git`]);

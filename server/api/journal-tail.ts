@@ -4,31 +4,61 @@ import type { StoredEvent } from '../store/event-store.js';
 export interface TailOpts {
   pollMs?: number;
   sleep?: (ms: number) => Promise<void>;
+  /** File size the caller took before its own replay; the tail starts at the line holding it instead of byte 0. */
+  from?: number;
 }
 
-/** Complete lines of `file` from byte `from` (only lines ending in '\n'), parsed; `end` is the offset after the last complete line. */
-async function readEvents(file: string, from: number, to?: number): Promise<{ events: StoredEvent[]; end: number }> {
+/** One read's size: a journal of hundreds of MB is never held in memory at once. */
+const CHUNK = 1 << 20;
+
+/** Parses the complete lines (ending in '\n') of `file` from byte `from` up to `to`, a chunk at a time; returns the offset after the last one. */
+async function readEvents(file: string, from: number, each: (e: StoredEvent) => void, to = Infinity): Promise<number> {
   const handle = await fs.open(file, 'r').catch(() => null);
-  if (!handle) return { events: [], end: from };
+  if (!handle) return from;
   try {
-    const size = Math.min((await handle.stat()).size, to ?? Infinity);
-    if (size <= from) return { events: [], end: from };
-    const buf = Buffer.alloc(size - from);
-    await handle.read(buf, 0, buf.length, from);
-    const text = buf.toString('utf8');
-    const end = text.lastIndexOf('\n');
-    if (end < 0) return { events: [], end: from };
-    const events: StoredEvent[] = [];
-    for (const line of text.slice(0, end).split('\n')) {
-      if (line.trim() === '') continue;
-      try {
-        const e = JSON.parse(line) as StoredEvent;
-        if (typeof e.seq === 'number') events.push(e);
-      } catch {
+    const size = Math.min((await handle.stat()).size, to);
+    let offset = from;
+    let length = CHUNK;
+    while (offset < size) {
+      const buf = Buffer.alloc(Math.min(length, size - offset));
+      const { bytesRead } = await handle.read(buf, 0, buf.length, offset);
+      const end = buf.subarray(0, bytesRead).lastIndexOf(0x0a);
+      if (end < 0) {
+        // A torn last line waits for the next poll; a line longer than the chunk is read again with a bigger one.
+        if (offset + bytesRead >= size) break;
+        length *= 2;
         continue;
       }
+      for (const line of buf.toString('utf8', 0, end).split('\n')) {
+        if (line.trim() === '') continue;
+        try {
+          const e = JSON.parse(line) as StoredEvent;
+          if (typeof e.seq === 'number') each(e);
+        } catch {
+          continue;
+        }
+      }
+      offset += end + 1;
+      length = CHUNK;
     }
-    return { events, end: from + Buffer.byteLength(text.slice(0, end + 1), 'utf8') };
+    return offset;
+  } finally {
+    await handle.close();
+  }
+}
+
+/** The start of the line that holds byte `offset - 1`, so a size taken mid-append never starts a parse inside a line. */
+async function lineStart(file: string, offset: number): Promise<number> {
+  const handle = await fs.open(file, 'r').catch(() => null);
+  if (!handle) return 0;
+  try {
+    for (let pos = offset; pos > 0; pos -= CHUNK) {
+      const buf = Buffer.alloc(Math.min(CHUNK, pos));
+      await handle.read(buf, 0, buf.length, pos - buf.length);
+      const nl = buf.lastIndexOf(0x0a);
+      if (nl >= 0) return pos - buf.length + nl + 1;
+    }
+    return 0;
   } finally {
     await handle.close();
   }
@@ -67,19 +97,21 @@ function deliver(sub: Subscriber, e: StoredEvent): void {
  * used: it is unreliable for appends on some WSL filesystems and the poll is cheap.
  *
  * Audit M5: one poller per file serves every subscriber. A subscriber that joins after the poller has
- * advanced first replays the bytes already read (events after its own `afterSeq`), then goes live.
+ * advanced first replays the bytes already read from its own `from` (events after its own `afterSeq`), then goes live.
  */
 export function tailJournal(file: string, afterSeq: number, onEvent: (e: StoredEvent) => void, opts: TailOpts = {}): { close(): void } {
   const pollMs = opts.pollMs ?? 500;
   const sleep = opts.sleep ?? ((ms) => new Promise<void>((r) => setTimeout(r, ms)));
   const sub: Subscriber = { last: afterSeq, onEvent, queue: null, closed: false };
+  const start = () => (opts.from ? lineStart(file, opts.from) : Promise.resolve(0));
   let state = shared.get(file);
   if (state) {
     sub.queue = [];
     const upTo = state.offset;
     state.subscribers.add(sub);
     void (async () => {
-      const { events } = await readEvents(file, 0, upTo);
+      const events: StoredEvent[] = [];
+      await readEvents(file, await start(), (e) => events.push(e), upTo);
       const queued = sub.queue ?? [];
       sub.queue = null;
       if (sub.closed) return;
@@ -91,10 +123,11 @@ export function tailJournal(file: string, afterSeq: number, onEvent: (e: StoredE
     shared.set(file, state);
     const own = state;
     void (async () => {
+      own.offset = await start();
       while (!own.stopped) {
-        const { events, end } = await readEvents(file, own.offset);
-        own.offset = end;
-        for (const e of events) for (const s of [...own.subscribers]) deliver(s, e);
+        own.offset = await readEvents(file, own.offset, (e) => {
+          for (const s of [...own.subscribers]) deliver(s, e);
+        });
         if (own.stopped) break;
         await sleep(pollMs);
       }

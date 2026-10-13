@@ -20,7 +20,7 @@ function setup(ps: string, apply: (intent: { port: number }) => Promise<{ previo
     isConfirmed: () => false,
   };
   const fake = new FakeExec().onArgs('docker', ['ps'], () => ({ stdout: ps }));
-  const target = { validate: async () => [], build: async () => undefined, apply, verify: async () => ({ healthy: true, detail: 'ok' }), destroy: async () => undefined, serviceUrl: () => 'http://x' };
+  const target = { validate: async () => [], build: async () => undefined, currentImage: async () => null, apply, verify: async () => ({ healthy: true, detail: 'ok' }), destroy: async () => undefined, serviceUrl: () => 'http://x' };
   const deps = {
     journal,
     exec: fake.exec,

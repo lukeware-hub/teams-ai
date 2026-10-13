@@ -34,6 +34,20 @@ describe('ensureRepo', () => {
     expect(fake.lines('gh')[1]).toBe('repo create acme/todo-api --private --source . --remote origin --push');
   });
 
+  it('pushes with the clone hooks disabled, both its own git push and the one gh repo create runs', async () => {
+    const noHooks = { GIT_CONFIG_KEY_0: 'core.hooksPath', GIT_CONFIG_VALUE_0: '/dev/null' };
+    const created = new FakeExec()
+      .onArgs('gh', ['repo', 'view'], () => ({ exitCode: 1, stderr: 'HTTP 404' }))
+      .onArgs('gh', ['repo', 'create'], () => ({ stdout: 'https://github.com/acme/todo-api\n' }));
+    await ensureRepo({ owner: 'acme', name: 'todo-api', private: true, cwd }, created.exec);
+    expect(created.calls.find((c) => c.args[1] === 'create')!.env).toMatchObject(noHooks);
+    const reconciled = new FakeExec()
+      .onArgs('gh', ['repo', 'view'], () => ({ stdout: '{"nameWithOwner":"acme/todo-api","url":"https://github.com/acme/todo-api"}' }))
+      .onArgs('git', ['ls-remote'], () => ({ stdout: '' }));
+    await ensureRepo({ owner: 'acme', name: 'todo-api', private: true, cwd }, reconciled.exec);
+    expect(reconciled.calls.find((c) => c.args[0] === 'push')!.env).toMatchObject(noHooks);
+  });
+
   it('keeps only the repository link when the push output follows it', async () => {
     const fake = new FakeExec()
       .onArgs('gh', ['repo', 'view'], () => ({ exitCode: 1, stderr: 'GraphQL: Could not resolve to a Repository with the name' }))

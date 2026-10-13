@@ -17,12 +17,22 @@ const P = 'compose -p teams-ai-todo-api -f /ws/repo/docker-compose.yml --project
 const READ = [`${P} config --services`, `${P} config --format json`];
 
 describe('DockerLocalTarget with a compose file', () => {
+  /** A compose whose `config` resolves the main service's image to `image`. */
+  const configured = (image: string | undefined) => new FakeExec().on((s) => s.args.includes('--format'), () => ({ stdout: JSON.stringify({ services: { 'Todo-Api': { image } } }) }));
+
   it('validates with compose config', async () => {
-    const fake = new FakeExec();
+    const fake = configured('todo-api:t1');
     expect(await mk(fake).validate(intent)).toEqual([]);
-    expect(fake.lines('docker')).toEqual([...READ, `${P} config --quiet`]);
+    expect(fake.lines('docker').slice(0, 2)).toEqual(READ);
+    expect(fake.lines('docker')[2]).toMatch(/ config --format json$/);
     const bad = new FakeExec().onArgs('docker', ['compose'], () => ({ exitCode: 1, stderr: 'yaml error' }));
     expect((await mk(bad).validate(intent))[0]).toContain('yaml error');
+  });
+
+  it('rejects a main service whose image is not TEAMS_AI_IMAGE, since a rollback would restart the new build', async () => {
+    for (const image of ['todo-api', undefined]) {
+      expect(await mk(configured(image)).validate(intent), String(image)).toEqual([expect.stringContaining('image: ${TEAMS_AI_IMAGE:-')]);
+    }
   });
 
   it('applies with up --build --wait, image tag and secrets via env only', async () => {
@@ -236,13 +246,16 @@ describe('the host port of a compose service', () => {
   const ports = (o: unknown) => (o as { services: Record<string, { ports: string[] }> }).services['Todo-Api']!.ports;
 
   it('is the assigned port, whatever port the imported file publishes', async () => {
-    expect(ports(await upOverride([{ target: 8000, published: '8000' }]))).toEqual(['3000:8000']);
+    expect(ports(await upOverride([{ target: 8000, published: '8000' }]))).toEqual(['127.0.0.1:3000:8000']);
   });
   it('keeps the container port of the mapping already published as the assigned port, and the other mappings as they are', async () => {
-    expect(ports(await upOverride([{ target: 9090, published: '9090', host_ip: '127.0.0.1' }, { target: 8080, published: '3000' }]))).toEqual(['127.0.0.1:9090:9090', '3000:8080']);
+    expect(ports(await upOverride([{ target: 9090, published: '9090', host_ip: '127.0.0.1' }, { target: 8080, published: '3000' }]))).toEqual(['127.0.0.1:9090:9090', '127.0.0.1:3000:8080']);
   });
   it('takes the first of several mappings when none is the assigned port', async () => {
-    expect(ports(await upOverride([{ target: 8000, published: '8000' }, { target: 9000, published: '9000', protocol: 'udp' }]))).toEqual(['3000:8000', '9000:9000/udp']);
+    expect(ports(await upOverride([{ target: 8000, published: '8000' }, { target: 9000, published: '9000', protocol: 'udp' }]))).toEqual(['127.0.0.1:3000:8000', '9000:9000/udp']);
+  });
+  it('publishes the main port on the loopback even when the file binds it to every address', async () => {
+    expect(ports(await upOverride([{ target: 8000, published: '8000', host_ip: '0.0.0.0' }]))).toEqual(['127.0.0.1:3000:8000']);
   });
   it('publishes port:port on the loopback when the file publishes nothing', async () => {
     expect(ports(await upOverride([]))).toEqual(['127.0.0.1:3000:3000']);
