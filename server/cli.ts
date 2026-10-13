@@ -6,6 +6,7 @@ import { loadConfig, type Config } from './config/config.js';
 import { Project } from './contracts/project.js';
 import { Spec } from './contracts/spec.js';
 import { writeFileAtomic } from './core/atomic-write.js';
+import { redactSecrets } from './core/redact.js';
 import { loadSecrets } from './core/secrets.js';
 import { execCommand, type Exec } from './exec/command.js';
 import { gitAuthEnv, withGitAuth } from './git/auth.js';
@@ -27,6 +28,7 @@ import { makeRunAgent } from './refine/agent.js';
 import { SessionRegistry } from './refine/registry.js';
 import { createJevValidator } from './refine/jev-validation.js';
 import { createDecider } from './decide/create-decider.js';
+import type { DecisionOutcome } from './decide/types.js';
 import { routeReport } from './decide/decisions/report-routing.js';
 import { Accounting } from './budget/accounting.js';
 import { addProject, readUserConfig } from './onboarding/config-store.js';
@@ -62,6 +64,9 @@ export interface UiHooks {
 
 /** How often the program controller looks at every started backlog (a delivered spec is noticed within this). */
 const PROGRAM_TICK_MS = 15_000;
+
+/** A decider that threw answers nothing, with its redacted reason, instead of passing for an exhausted one. */
+export const failedDecision = (err: unknown): DecisionOutcome => ({ answered: false, reason: 'error', message: redactSecrets(err instanceof Error ? err.message : String(err)) });
 
 function realSignals(onStop: () => void): () => void {
   process.on('SIGTERM', onStop);
@@ -106,12 +111,14 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
       // The route is only a hint for PO and SM; a broken System 1 must not block reopening the spec.
       routeReport(criteria, report, await uiDecider(), { confidential }).catch(() => null),
     // Gate 1 filters only route and drop; a broken System 1 must not fail a refinement cycle.
-    decider: { decide: async (...args) => (await uiDecider()).decide(...args).catch(() => ({ answered: false as const, reason: 'exhausted' as const })) },
+    decider: { decide: (...args) => uiDecider().then((d) => d.decide(...args)).catch(failedDecision) },
   });
   // R11.4: the program ledgers of started backlogs are reconciled here, so a restart of the container picks every one up again.
-  const programTimer = setInterval(() => void registry.tickPrograms(), PROGRAM_TICK_MS);
+  // A rejected tick would be an unhandled rejection, which ends the process.
+  const tick = () => registry.tickPrograms().catch((err) => io.stderr(`programs tick: ${err instanceof Error ? err.message : String(err)}`));
+  const programTimer = setInterval(tick, PROGRAM_TICK_MS);
   programTimer.unref();
-  setTimeout(() => void registry.tickPrograms(), 5_000).unref();
+  setTimeout(tick, 5_000).unref();
   const api = await startApi(
     {
       routes: [

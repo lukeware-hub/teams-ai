@@ -15,6 +15,7 @@ import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 
 let home = '';
 let spawnShouldFail = false;
+let registerShouldFail = false;
 let failLog = '';
 let api: { port: number; close(): Promise<void> };
 let registry: SessionRegistry;
@@ -53,7 +54,8 @@ beforeEach(async () => {
   spawns = [];
   registered = [];
   spawnShouldFail = false;
-  failLog = 'preconditions failed:\n- docker daemon is not reachable\n';
+  registerShouldFail = false;
+  failLog ='preconditions failed:\n- docker daemon is not reachable\n';
   const control: RunControlDeps = {
     spawn: (a) => {
       spawns.push({ args: a.args, logFile: a.logFile });
@@ -86,7 +88,10 @@ beforeEach(async () => {
     projectDir: async (projectId) => (registered.find((d) => d.includes(`/${projectId}/refine/`)) ?? null),
     control,
     runsDir: async () => `${home}/runs`,
-    register: async (dir) => { registered.push(dir); },
+    register: async (dir) => {
+      if (registerShouldFail) throw new Error('config.json is broken');
+      registered.push(dir);
+    },
     routeReport: async (_criteria, report) => ({ route: report.includes('/hello') ? 'bug-existing-ac' : 'unclear', confidence: 0.9, source: 'jev' }),
   });
   api = await startApi({ routes: refineRoutes({ registry }) }, 0);
@@ -734,5 +739,27 @@ describe('refine api', () => {
     const text = JSON.stringify(await failed.json());
     expect(text).not.toContain('p@ss');
     expect(text).toContain('[REDACTED]');
+  });
+
+  it('a failure after the child wrote its journal stops the run and leaves the session retryable', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    script['derive/po'] = [derived];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
+    await settle();
+    registerShouldFail = true;
+    const failed = await call('POST', '/api/refine/hello-app/hello-app-001/start');
+    expect(failed.status).toBe(500);
+    expect((await failed.json()).error).toContain('config.json is broken');
+    expect((await snapshot()).state.status).toBe('ready');
+    await expect(fs.access(`${home}/runs/hello-app--hello-app-001--run-1`)).rejects.toThrow();
+    registerShouldFail = false;
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/start')).status).toBe(200);
+  });
+
+  it('a broken config.json never rejects the program tick, which would kill the UI server', async () => {
+    await fs.writeFile(`${home}/.teams-ai/config.json`, '{');
+    await expect(registry.tickPrograms()).resolves.toBeUndefined();
   });
 });

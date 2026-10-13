@@ -3,6 +3,7 @@ import type { z } from 'zod';
 import { Project } from '../contracts/project.js';
 import type { AcceptanceCriterion, Spec } from '../contracts/spec.js';
 import { ID_PATTERNS } from '../core/ids.js';
+import { redactSecrets } from '../core/redact.js';
 import { loadSecrets } from '../core/secrets.js';
 import type { Hit } from '../knowledge/retrieval.js';
 import type { Journal } from '../orchestrator/events.js';
@@ -83,7 +84,7 @@ function recorded(decider: Pick<Decider, 'decide'>, journal: Pick<Journal, 'fact
       const outcome = await decider.decide(id, state, questions, ctx);
       const record = outcome.answered
         ? { decisionId: id, backend: outcome.backend, escalated: outcome.escalated, answers: outcome.answers, durationMs: Date.now() - started }
-        : { decisionId: id, backend: null, escalated: false, answers: null, durationMs: Date.now() - started, unanswered: outcome.reason };
+        : { decisionId: id, backend: null, escalated: false, answers: null, durationMs: Date.now() - started, unanswered: outcome.reason, ...(outcome.reason === 'error' ? { error: outcome.message } : {}) };
       await journal.fact(RefineEvent.DecisionMade, { cycle, record });
       return outcome;
     },
@@ -98,9 +99,9 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
   try {
     await runCycleSteps(deps, cycle);
   } catch (err) {
-    // Documents beyond the pack cap fail the cycle with a readable reason instead of reaching an agent without them.
+    // Any error fails the cycle, so the session never stays in `evaluating`; documents beyond the pack cap are an expected failure.
+    await deps.journal.fact(RefineEvent.CycleFailed, { cycle, reason: redactSecrets(err instanceof Error ? err.message : String(err)) });
     if (!(err instanceof PackTooLargeError)) throw err;
-    await deps.journal.fact(RefineEvent.CycleFailed, { cycle, reason: err.message });
   }
 }
 
@@ -334,7 +335,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   }
 
   // Spec §3.2 step 3: dedup by normalized text, blocking first, PO before SM within a class; a decision counts as decided (R11.7.1).
-  const decided = new Set([...state.questions.filter((q) => q.status !== 'pending').map((q) => q.text), ...(derived.spec?.decisions ?? []).map((d) => d.question)].map(norm));
+  // A question still pending from an earlier cycle is not asked again.
+  const decided = new Set([...state.questions.map((q) => q.text), ...(derived.spec?.decisions ?? []).map((d) => d.question)].map(norm));
   const seen = new Set<string>();
   const merged: Question[] = [];
   const counters = { po: 0, sm: 0 };
@@ -351,9 +353,9 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   // The questions only the human can decide, which no role answers from the docs.
   const forHuman = new Set<string>();
   if (deps.decider) {
-    // Decision 3: a new question that asks what an earlier one (new or decided) already asks, on a shared AC.
+    // Decision 3: a new question that asks what an earlier one (new, pending or decided) already asks, on a shared AC.
     const shares = (x: readonly string[], y: readonly string[]) => x.some((id) => y.includes(id));
-    const earlier = [...state.questions.filter((q) => q.status !== 'pending'), ...merged];
+    const earlier = [...state.questions, ...merged];
     const pairs: Array<{ a: string; b: string; drop: Question }> = [];
     for (const q of merged) {
       for (const e of earlier) {

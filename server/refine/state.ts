@@ -70,6 +70,8 @@ export interface ConflictMap {
 export interface RefineState {
   status: RefineStatus;
   stale: boolean;
+  /** A doc changed after the running cycle started, so its evaluation is stale on arrival. */
+  editedInCycle?: boolean;
   cycle: number;
   derived: { project: Project; spec: Spec } | null;
   checklist: ChecklistItem[];
@@ -136,6 +138,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
       s.cycle = Number(d.cycle);
       s.status = 'evaluating';
       s.error = null;
+      s.editedInCycle = false;
       break;
     case RefineEvent.Derived:
       s.derived = { project: d.project as Project, spec: d.spec as Spec };
@@ -148,7 +151,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
       s.checklist = v.checklist;
       s.questions.push(...v.questions.map((q) => ({ ...q, status: 'pending' as const, answer: null })));
       s.discarded.push(...v.discardedPatches.map((x) => ({ cycle: v.cycle, ...x })));
-      s.stale = false;
+      s.stale = s.editedInCycle === true;
       s.status = 'drafting';
       s.status = computeStatus(s);
       break;
@@ -184,6 +187,9 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
       s.mode = (d.mode as RefineState['mode']) ?? null;
       break;
     case RefineEvent.DocEdited:
+      if (s.status === 'evaluating') s.editedInCycle = true;
+      if (hasDerivation(s)) s.stale = true;
+      break;
     case RefineEvent.SecretWritten:
       if (hasDerivation(s)) s.stale = true;
       break;
