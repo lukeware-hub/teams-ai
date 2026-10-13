@@ -359,6 +359,7 @@ const STOP_RULES: Array<[RegExp, StopExplanation]> = [
   [/^Task token budget exceeded/, { title: 'A tarefa estourou o orçamento de tokens', hint: 'Divida a tarefa em partes menores no plano ou aumente o limite por tarefa.', owner: 'Sistema' }],
   [/^replan (rejected|failed)/, { title: 'O replanejamento da tarefa falhou', hint: 'O Scrum Master não conseguiu dividir a tarefa. Veja o detalhe técnico.', owner: 'Sistema' }],
   // An agent's own words, not an orchestrator string (runs hello-001-r4 and r5): last, so no prefix above is shadowed.
+  [/frozenPaths/, { title: 'O plano pede arquivos que ele mesmo protege', hint: 'Uma tarefa precisa criar arquivos que estão em frozenPaths. Tire o caminho de frozenPaths no plano da main (ou da tarefa) e reprocesse: sem isso o Dev bloqueia de novo.', owner: 'Plano' }],
   [/security-tools'? gate/i, { title: 'As ferramentas de segurança não rodam no ambiente do gate', hint: 'O gate security-tools falha antes de analisar o código, e os arquivos dele são protegidos: nenhum agente consegue corrigir. Ajuste a imagem ou o instalador do gate e reprocesse a spec.', owner: 'Sistema' }],
 ];
 

@@ -260,3 +260,24 @@ describe('validatePlan: devops-only criteria need a smoke flag', () => {
     expect(errors).not.toMatch(/only covered by devops task/);
   });
 });
+
+describe('validatePlan: no task lists a frozen path', () => {
+  const frozen = (paths: string[]) => (extra: Plan['tasks']): Plan => ({ ...makePlan(spec), frozenPaths: paths, tasks: [...makePlan(spec).tasks, ...extra] });
+  const task = (affectedPaths: string[]) => makePlanTask({ id: 'T4-generate', dependsOn: ['T0-scaffold'], affectedPaths });
+
+  it('rejects a task that lists a file or a directory under a frozen glob', () => {
+    for (const p of ['gen/kayron/v1/', 'gen/kayron/v1/api.pb.go', 'gen/**/*.go']) {
+      expect(validatePlan(frozen(['gen/**'])([task([p])]), spec, { firstSpec: true, requireFrozenScope: true }).join('\n'), p).toMatch(/T4-generate lists frozen paths/);
+    }
+  });
+  it('lets the first spec scaffold list frozen files, and a later spec has no scaffold to exempt', () => {
+    expect(validatePlan(makePlan(spec), spec, { firstSpec: true, requireFrozenScope: true })).toEqual([]);
+    expect(validatePlan(frozen(['package.json'])([task(['package.json'])]), spec, { firstSpec: false, requireFrozenScope: true }).join('\n')).toMatch(/T4-generate lists frozen paths in affectedPaths: package\.json/);
+  });
+  it('keeps older plans valid while requireFrozenScope is off', () => {
+    expect(validatePlan(frozen(['gen/**'])([task(['gen/v1/api.pb.go'])]), spec, { firstSpec: true })).toEqual([]);
+  });
+  it('accepts a task beside a frozen path', () => {
+    expect(validatePlan(frozen(['gen/**', 'package.json'])([task(['src/gen-client/**', 'proto/**'])]), spec, { firstSpec: true, requireFrozenScope: true })).toEqual([]);
+  });
+});
