@@ -79,10 +79,10 @@ Severidade: **crítico** = segredo exposto ou custo sem limite; **importante** =
 
 ## Abertos depois da rodada de correções
 
-- [ ] **Aviso de rebase sem arquivos gasta uma tentativa.** `server/orchestrator/task-runner.ts:557`: quando o rebase falha sem conflito (erro do `gh`, por exemplo), o feedback é só "Rebase conflicts on origin/main:" sem nenhum arquivo e consome uma tentativa sem nada para o agente corrigir. Visto em run: design-domain-components run-1.
+- [x] **Aviso de rebase sem arquivos gasta uma tentativa.** `server/orchestrator/task-runner.ts:557`: quando o rebase falha sem conflito (erro do `gh`, por exemplo), o feedback é só "Rebase conflicts on origin/main:" sem nenhum arquivo e consome uma tentativa sem nada para o agente corrigir. Visto em run: design-domain-components run-1.
 - [ ] **Gate-cache ainda depende do worktree.** `.tools/bin` e `PYTHONPATH=/work/.tools/py` vêm do worktree e ficam ao lado do cache gravável. A solução completa é montar o cache só para leitura, com uma cópia por run (`server/exec/gate-runner.ts`).
 - [ ] **Digest de imagem nunca é resolvido pelo orquestrador.** Hoje o devops fixa a tag que os docs nomeiam e avisa no resumo; resolver o digest de verdade (consulta ao registro depois do step) ainda não existe.
 - [ ] **Commit de docs não exclui o relatório do plano.** `server/orchestrator/phases/shared.ts:156` `commitDocs` não recebe o plano; hoje o caso não acontece, mas qualquer chamada futura com gates antes do commit repete o bug da JUnit.
-- [ ] **Refinamento reenvia o histórico inteiro no SSE.** `server/api/refine-routes.ts:213,226` abre o fluxo no byte 0; a interface descarta os repetidos, mas o servidor ainda os envia.
+- [ ] **Refinamento reenvia o histórico inteiro no SSE.** `server/api/refine-routes.ts:213,226` abre o fluxo no byte 0; a interface descarta os repetidos, mas o servidor ainda os envia. A rota só aceita `Last-Event-ID` (enviado pelo navegador apenas ao reconectar); falta aceitar `?after=<seq>` e a página abrir o fluxo com o `seq` do snapshot (`web/src/pages/Refinement.tsx`).
 - [ ] **Serviço ausente só é nomeado quando o smoke falha citando-o.** `server/orchestrator/phases/deploy.ts`: com um nome curto como `api`, o texto da falha pode coincidir com URLs e tirar uma fix-task útil.
 - [ ] **Projetos cujo compose não usa `${TEAMS_AI_IMAGE`** passam a falhar no estágio `validate` do próximo deploy (contrato agora verificado em `docker-local.ts`).

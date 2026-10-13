@@ -648,9 +648,15 @@ describe('TaskRunner: merging', () => {
   it('never replays when the rebase stage failed without conflicts, such as a gh call that failed', async () => {
     // Live risk: a clean replay keeps the task in rebasing for free, so this failure would loop forever.
     const r = await reviewed({ merge: { alreadyMerged: async () => { throw new Error('gh pr list failed (1): HTTP 401'); } } });
+    // Infrastructure, not a conflict: three free retries first, then one attempt whose feedback names the real cause.
+    for (let i = 0; i < 3; i++) {
+      await r.advance();
+      expect(state()).toMatchObject({ state: 'rebasing', attempts: 0 });
+    }
     await r.advance();
     expect(journal.events.some((e) => e.type === OrchEvent.RebaseReplayed)).toBe(false);
-    expect(state().attempts).toBe(1);
+    expect(state()).toMatchObject({ state: 'implementing', attempts: 1 });
+    expect(journal.lastFeedback('T1')).toContain('Rebase stage failed without conflicts: gh pr list failed (1): HTTP 401');
   });
 
   it('refuses to merge a task whose branch still holds conflict markers, as a replay interrupted by a crash leaves it', async () => {

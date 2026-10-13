@@ -555,8 +555,8 @@ export class TaskRunner {
     switch (outcome.stage) {
       case 'rebase': {
         const conflicts = outcome.conflicts ?? [];
-        // A rebase stage that failed without conflicts (a gh call, say) is no conflict to replay: a clean replay would loop on it.
-        if (conflicts.length === 0) return this.fail('rebase-conflict', 'Rebase conflicts on origin/main:\n');
+        // A rebase stage that failed without conflicts (a gh call, say) is no conflict to replay and nothing for the Dev to fix: retry it as infrastructure, and say why when the retries run out.
+        if (conflicts.length === 0) return this.fail('infra', `Rebase stage failed without conflicts: ${this.clean(outcome.detail ?? 'no detail')}`, 'rebase');
         // A retry on the old base replays the same conflicting commit (the Dev cannot rebase), so move the task onto main first.
         await gitFetch(this.deps.ws.repo, this.deps.exec);
         let failure = '';
