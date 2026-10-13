@@ -13,22 +13,28 @@ const GATE_OWNED = new RegExp(`^(?:\\.tools/|reports/|coverage/|\\./\\.tools/|(?
  * Each such file must already be in the repo or be owned by a root task (no dependencies), which then creates it first.
  */
 export function gateFileErrors(plan: Plan, repoFiles: ReadonlySet<string>): string[] {
-  const rootOwners = plan.tasks.filter((t) => t.dependsOn.length === 0).flatMap((t) => t.affectedPaths).map((p) => picomatch(p, { dot: true }));
+  const owners = (tasks: Plan['tasks']) => tasks.flatMap((t) => t.affectedPaths).map((p) => picomatch(p, { dot: true }));
+  const rootOwners = owners(plan.tasks.filter((t) => t.dependsOn.length === 0));
+  const anyOwners = owners(plan.tasks);
   const gateOutputs = new Set([plan.coveragePath, plan.junitPath].filter(Boolean));
+  const missing = (command: string, own: ReturnType<typeof owners>) =>
+    [...new Set([...command.matchAll(PATH_TOKEN)].map((m) => m[1]!.replace(/^\.\//, '')))].filter(
+      (file) => !(GATE_OWNED.test(file) || gateOutputs.has(file) || repoFiles.has(file) || own.some((match) => match(file))),
+    );
   const errors: string[] = [];
   for (const gate of plan.gates) {
     if (!gate.blocking) continue;
-    const missing = new Set<string>();
-    for (const m of gate.command.matchAll(PATH_TOKEN)) {
-      const file = m[1]!.replace(/^\.\//, '');
-      if (GATE_OWNED.test(file) || gateOutputs.has(file) || repoFiles.has(file) || rootOwners.some((own) => own(file))) continue;
-      missing.add(file);
-    }
-    if (missing.size > 0) {
+    const files = missing(gate.command, rootOwners);
+    if (files.length > 0) {
       errors.push(
-        `gate ${gate.name} names ${[...missing].join(', ')}, which neither exists in the repo nor belongs to a task without dependencies; gates run on every task's worktree, so the first task could never pass. Give the file to the root task (a stub is enough) or make the gate command skip a missing file`,
+        `gate ${gate.name} names ${files.join(', ')}, which neither exists in the repo nor belongs to a task without dependencies; gates run on every task's worktree, so the first task could never pass. Give the file to the root task (a stub is enough) or make the gate command skip a missing file`,
       );
     }
+  }
+  // The smoke and e2e suites run after every task merged, so any task may create their files (live: a wrong smoke path failed the deploy).
+  for (const name of ['smoke', 'e2e'] as const) {
+    const files = missing(plan.commands[name] ?? '', anyOwners);
+    if (files.length > 0) errors.push(`commands.${name} names ${files.join(', ')}, which neither exists in the repo nor is in any task's affectedPaths; point the command at the suite a task creates`);
   }
   return errors;
 }

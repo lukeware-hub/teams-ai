@@ -243,6 +243,10 @@ describe('packs', () => {
     expect(rules).toContain('20000-20099');
   });
 
+  it('plan rules never ask a task for an image digest the docs do not give (live: kayron-hub Dockerfile tasks blocked)', () => {
+    for (const delivery of [true, false]) expect(planRules(true, delivery)).toContain('no step can look up an image digest');
+  });
+
   it('plan rules ask for dependsOn only on a real dependency, so independent tasks run in parallel', () => {
     expect(planRules(true)).toMatch(/dependsOn names only a real dependency/);
   });

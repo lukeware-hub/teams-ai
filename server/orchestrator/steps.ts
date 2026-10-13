@@ -232,6 +232,7 @@ export function planRules(firstSpec: boolean | 'services', requireDelivery = fal
     requireDelivery
       ? '- lockfilePath is required: the repository-relative path of whatever lockfile the stack\'s own package manager produces (package-lock.json, poetry.lock, go.sum, Cargo.lock, ... - name the real one, there is no fixed list); Phase 4 fails if it is missing on main. Every FROM line in the Dockerfile must carry a @sha256 digest or an explicit non-latest tag (never a bare image or image:latest); Phase 4 fails on an unpinned base image'
       : '- when delivery.dockerfile is present, every FROM line must carry a @sha256 digest or an explicit non-latest tag (never a bare image or image:latest)',
+    '- no step can look up an image digest (steps have no network and no docker): a task asks for a @sha256 digest only when the docs or the repository already give its value, and otherwise pins the version tag the docs name; a task that needs a digest looked up can never finish',
   ];
   if (requireSecurityTooling) lines.push(securityToolingRules());
   if (requireE2e) lines.push(`- ${E2E_CONTRACT}`);
