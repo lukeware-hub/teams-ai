@@ -77,14 +77,21 @@ Severidade: **crítico** = segredo exposto ou custo sem limite; **importante** =
 - [x] **Rede negada para `github.com` e `raw.githubusercontent.com` bloqueia tarefas de front.** design-tokens-shell run-1: fontes não baixáveis; design-domain-components run-1: `origin/main` não atualizável de dentro do step.
 - [x] **Caminho do smoke errado passa pelo validador.** design-tokens-shell run-2: deploy falhou com "Could not find 'smoke/smoke.test.m…'", o plano apontou um arquivo que não existe em main.
 
-## Abertos depois da rodada de correções
+## Fechados depois da rodada de correções
 
-- [x] **Aviso de rebase sem arquivos gasta uma tentativa.** `server/orchestrator/task-runner.ts:557`: quando o rebase falha sem conflito (erro do `gh`, por exemplo), o feedback é só "Rebase conflicts on origin/main:" sem nenhum arquivo e consome uma tentativa sem nada para o agente corrigir. Visto em run: design-domain-components run-1.
-- [ ] **Gate-cache ainda depende do worktree.** `.tools/bin` e `PYTHONPATH=/work/.tools/py` vêm do worktree e ficam ao lado do cache gravável. A solução completa é montar o cache só para leitura, com uma cópia por run (`server/exec/gate-runner.ts`).
-- [ ] **Digest de imagem nunca é resolvido pelo orquestrador.** Hoje o devops fixa a tag que os docs nomeiam e avisa no resumo; resolver o digest de verdade (consulta ao registro depois do step) ainda não existe.
-- [ ] **Commit de docs não exclui o relatório do plano.** `server/orchestrator/phases/shared.ts:156` `commitDocs` não recebe o plano; hoje o caso não acontece, mas qualquer chamada futura com gates antes do commit repete o bug da JUnit.
-- [ ] **Refinamento reenvia o histórico inteiro no SSE.** `server/api/refine-routes.ts:213,226` abre o fluxo no byte 0; a interface descarta os repetidos, mas o servidor ainda os envia. A rota só aceita `Last-Event-ID` (enviado pelo navegador apenas ao reconectar); falta aceitar `?after=<seq>` e a página abrir o fluxo com o `seq` do snapshot (`web/src/pages/Refinement.tsx`).
+- [x] **Aviso de rebase sem arquivos gasta uma tentativa.** `server/orchestrator/task-runner.ts`: a falha do estágio de rebase sem conflitos agora é infraestrutura (3 retentativas grátis e o feedback com a causa real).
+- [x] **Testes Go `TestAc_NNN_...` não contavam como prova do critério.** `server/evidence/junit.ts`: o matcher aceita `Test` seguido de `Ac_NNN`; a regra do dev.md também proíbe build tags nos testes que provam critérios. Visto em run: privacy-engine run-1, ai-governance-registry run-1 e signature-approval-pattern run-4.
+- [x] **Gate-cache compartilhado entre projetos.** `server/orchestrator/run.ts` `gateCacheDir`: cada projeto tem o próprio cache (`<gateCache>/gates/<projectId>`); um gate que o agente de um projeto controla já não escreve onde os gates de outro leem. Custo: o banco do scanner é baixado uma vez por projeto.
+
+## Fechados sem mudança de código
+
+- [x] **Commit de docs não exclui o relatório do plano.** `commitDocs` roda só em worktrees de docs recém-criados a partir da main, onde nenhum gate roda; o relatório nunca existe ali. Não é bug hoje.
+- [x] **Refinamento reenvia o histórico inteiro no SSE.** O journal de um refinamento é pequeno e o cliente já descarta os eventos repetidos; trocar a URL do fluxo reiniciaria a lista de eventos da página. Rever se o journal crescer.
+- [x] **O Dev às vezes devolve `done` sem `commitMessage`.** 4 ocorrências em 21 runs, cada uma um turno retomado barato (menos de US$ 1 no total). O campo obrigatório orienta o modelo; torná-lo opcional tiraria essa garantia do schema.
+- [x] **Compose sem `${TEAMS_AI_IMAGE`** falha na validação do deploy: é o contrato de deploy já escrito nas regras do plano, agora verificado em vez de só pedido.
+
+## Abertos
+
+- [ ] **Digest de imagem nunca é resolvido pelo orquestrador.** Hoje o devops fixa a tag que os docs nomeiam e avisa no resumo; resolver o digest de verdade (consulta ao registro depois do step, gravando a linha `FROM`) ainda não existe.
 - [ ] **Serviço ausente só é nomeado quando o smoke falha citando-o.** `server/orchestrator/phases/deploy.ts`: com um nome curto como `api`, o texto da falha pode coincidir com URLs e tirar uma fix-task útil.
-- [ ] **Projetos cujo compose não usa `${TEAMS_AI_IMAGE`** passam a falhar no estágio `validate` do próximo deploy (contrato agora verificado em `docker-local.ts`).
-- [x] **Testes Go `TestAc_NNN_...` não contavam como prova do critério.** `server/evidence/junit.ts`: o matcher exigia que `ac_` não viesse colado a uma letra, então o idioma comum de Go era rejeitado e a revisão falhava com "cited test is not tagged with this criterion". Visto em run: 3 rodadas por critério em privacy-engine run-1 (T2, T3, T5), 3 em ai-governance-registry run-1 e em signature-approval-pattern run-4. A regra do dev.md recomendava justamente essa forma. O matcher agora aceita `Test` seguido de `Ac_NNN`; a regra também proíbe build tags (`integration`, `e2e`) nos testes que provam critérios, porque os gates rodam sem tags e o teste nunca chega ao relatório JUnit.
-- [ ] **O Dev às vezes devolve `done` sem `commitMessage`.** `server/agents/outputs.ts` DevOutput: falha de schema e nova rodada do step (T4 de ai-governance-registry run-2 duas vezes, T950-deploy-fix-2 de privacy-engine). Cada uma custa um turno retomado; um fallback derivado do `summary` removeria a classe inteira.
+- [ ] **`.tools/bin` e `PYTHONPATH=/work/.tools/py` vêm do worktree** e ficam ao lado do cache gravável do próprio projeto. Já não atravessam projetos; o fechamento completo é montar o cache só para leitura depois do download.

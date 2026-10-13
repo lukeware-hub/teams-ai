@@ -107,6 +107,9 @@ function withApiKeySplit(deps: RunDeps): RunDeps {
   return { ...deps, secrets, ...(key && key.trim() !== '' ? { apiKey: key } : {}) };
 }
 
+/** One cache per project: a gate a project's own agents can steer never writes where another project's gates read (a poisoned scanner database). */
+export const gateCacheDir = (root: string, projectId: string): string => path.join(root, 'gates', projectId);
+
 /** Only the secrets the spec declares reach a gate container: the platform's (GitHub token, API keys) never do, whatever the plan asks. */
 export function gateSecrets(spec: Pick<Spec, 'externalDependencies'>, all: Readonly<Record<string, string>>): Record<string, string> {
   const declared = new Set(spec.externalDependencies.flatMap((d) => d.secretNames));
@@ -402,8 +405,8 @@ export class Run {
       const install = await this.installDeps(view, worktree);
       if (install) return { results: [install], blockingFailure: install };
       if (plan.gates.some((g) => g.name === TOOLS_GATE)) await writeToolsInstaller(worktree);
-      const cacheDir = expandHome(this.deps.cfg.paths.gateCache);
-      // The gate user may differ from the orchestrator's (rootless dind maps it to its own root), so the shared cache is open to all.
+      const cacheDir = gateCacheDir(expandHome(this.deps.cfg.paths.gateCache), this.deps.ws.projectId);
+      // The gate user may differ from the orchestrator's (rootless dind maps it to its own root), so the cache is open to all.
       await fs.mkdir(cacheDir, { recursive: true, mode: 0o777 }).then(() => fs.chmod(cacheDir, 0o777)).catch(() => undefined);
       return runGates(
         plan.gates.filter((g) => g.blocking && g.name !== E2E_GATE), // the e2e gate runs in Phase 5 only

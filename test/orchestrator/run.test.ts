@@ -6,7 +6,7 @@ import type { Accounting } from '../../server/budget/accounting.js';
 import { loadConfig } from '../../server/config/config.js';
 import { execCommand } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
-import { CrashInjected, gateSecrets, Run, withInflightClaimed, type RunDeps } from '../../server/orchestrator/run.js';
+import { CrashInjected, gateCacheDir, gateSecrets, Run, withInflightClaimed, type RunDeps } from '../../server/orchestrator/run.js';
 import { OrchEvent } from '../../server/orchestrator/events.js';
 import { reduceEvents, RunEvent } from '../../server/pipeline/run-state.js';
 import { nextRunnable } from '../../server/scheduler/scheduler.js';
@@ -116,6 +116,13 @@ describe('withInflightClaimed', () => {
     const state = reduceEvents([...ready('T1'), ...ready('T2')]);
     expect(nextRunnable(withInflightClaimed(state, ['T1']), 3)).toEqual([]);
     expect(nextRunnable(withInflightClaimed(state, []), 3)).toEqual(['T1']);
+  });
+});
+
+describe('gateCacheDir', () => {
+  it('gives every project its own gate cache', () => {
+    expect(gateCacheDir('/c', 'shop')).toBe('/c/gates/shop');
+    expect(gateCacheDir('/c', 'shop')).not.toBe(gateCacheDir('/c', 'blog'));
   });
 });
 
