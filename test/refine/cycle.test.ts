@@ -649,6 +649,32 @@ describe('refinement cycle Jev requirement', () => {
   });
 });
 
+describe('refinement cycle of a confidential project', () => {
+  it('never sends the docs to Jev, and lets the agents run without its findings', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
+    const docs = path.join(root, 'docs');
+    await mkdir(docs, { recursive: true });
+    const draft = {
+      projectId: 'demo', specId: 'demo-001', root, docs,
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+      stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
+      specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
+    };
+    await Promise.all([draft.projectMd, draft.briefMd, draft.stackMd, draft.flowMd, draft.designMd].map((f) => writeFile(f, '# doc')));
+    await writeFile(draft.projectJson, JSON.stringify({ ...makeProject(), confidential: true }));
+    await writeFile(draft.specJson, JSON.stringify({ ...makeSpec(), status: 'refining', specHash: null }));
+    const events: Array<{ type: string; data: Record<string, unknown> }> = [];
+    const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'demo/demo-001', specHash: 'draft', type, kind: 'fact', data }; } } as never;
+    const runAgent = vi.fn(async () => ({ ok: false, failure: 'schema', errors: ['stop here'], summary: {} }));
+    const validateDocs = vi.fn();
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root, validateDocs }, 1).catch(() => undefined);
+    expect(validateDocs).not.toHaveBeenCalled();
+    expect(events.find((e) => e.type === 'REFINE_DOCS_VALIDATED')?.data).toMatchObject({ skipped: 'confidential', available: true });
+    expect(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason).not.toBe('Jev indisponível: confira a chave do OpenRouter.');
+    expect(runAgent).toHaveBeenCalled();
+  });
+});
+
 describe('refinement cycle in backlog mode', () => {
   const item = (key: string, over: Partial<BacklogItem> = {}): BacklogItem => ({ key, title: `Item ${key}`, epic: 'core', scope: `Entrega ${key}`, priority: 'P1', rationale: 'valor', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'M', ...over });
   const raw = (items: BacklogItem[]) => ({ project: makeProject(), backlog: { epics: [{ key: 'core', title: 'Core' }], items } });

@@ -6,7 +6,7 @@ import type { Accounting } from '../../server/budget/accounting.js';
 import { loadConfig } from '../../server/config/config.js';
 import { execCommand } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
-import { CrashInjected, Run, type RunDeps } from '../../server/orchestrator/run.js';
+import { CrashInjected, gateSecrets, Run, type RunDeps } from '../../server/orchestrator/run.js';
 import { OrchEvent } from '../../server/orchestrator/events.js';
 import type { StepRequest, StepOutcome } from '../../server/runner/step.js';
 import type { ResultSummary } from '../../server/runner/stream-events.js';
@@ -99,6 +99,14 @@ function deps(script: Script, over: Partial<RunDeps> = {}): RunDeps {
 async function withAgents(d: RunDeps): Promise<RunDeps> {
   return { ...d, agents: await loadAgents(path.resolve('.claude/agents')) };
 }
+
+describe('gateSecrets', () => {
+  it('hands a gate only the secrets the spec declares, never the platform ones', () => {
+    const spec = { externalDependencies: [{ name: 'db', kind: 'database', secretNames: ['DATABASE_URL'] }] } as never;
+    expect(gateSecrets(spec, { GITHUB_TOKEN: 'ghp', ANTHROPIC_API_KEY: 'sk', DATABASE_URL: 'postgres://x' })).toEqual({ DATABASE_URL: 'postgres://x' });
+    expect(gateSecrets({ externalDependencies: [] }, { GITHUB_TOKEN: 'ghp' })).toEqual({});
+  });
+});
 
 describe('Run', () => {
   it("lets a step's sandbox reach the deployed service's own host, not just npm's registry", async () => {

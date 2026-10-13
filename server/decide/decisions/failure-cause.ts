@@ -24,4 +24,5 @@ export async function classifyFailure(failures: readonly string[], decider: Pick
   return answer?.type === 'choice' && answer.value in FAILURE_CAUSES ? (answer.value as FailureCause) : null;
 }
 
-export const retryable = (cause: FailureCause | null): boolean => cause !== 'spec-problem';
+/** Without a classification nothing says another run would end differently, so an unanswered cause is not retried (live: three identical plan failures). */
+export const retryable = (cause: FailureCause | null): boolean => cause !== null && cause !== 'spec-problem';

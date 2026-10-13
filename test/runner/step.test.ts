@@ -230,10 +230,14 @@ describe('runStep', () => {
     await expect(fs.access(deps.claudeJsonPath!)).rejects.toThrow();
     const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
     const settingsPath = captured.argv[captured.argv.indexOf('--settings') + 1];
-    expect(settingsPath).toBe(path.join(deps.settingsDir, 'dev.settings.json'));
+    // One file per step, named after the step HOME, so two steps of one role never overwrite each other's policy.
+    expect(path.dirname(path.dirname(settingsPath))).toBe(deps.settingsDir);
+    expect(path.basename(settingsPath)).toBe('dev.settings.json');
     const settings = JSON.parse(await fs.readFile(settingsPath, 'utf8'));
     expect(settings.sandbox).toMatchObject({ enabled: true, network: { allowedDomains: ['registry.npmjs.org'] } });
     expect(settings.sandbox.filesystem.denyRead).toContain(`${dir}/.teams-ai/secrets`);
+    // The step HOME holds a copy of the credentials: no command of the step reads it.
+    expect(settings.sandbox.filesystem.denyRead).toContain(`${captured.env.HOME}/.claude`);
     expect(settings.permissions.deny).toContain('Edit(.claude/**)');
     expect(captured.prompt).toBe('Implement it');
   });

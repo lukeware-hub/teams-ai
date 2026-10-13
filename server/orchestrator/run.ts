@@ -106,6 +106,12 @@ function withApiKeySplit(deps: RunDeps): RunDeps {
   return { ...deps, secrets, ...(key && key.trim() !== '' ? { apiKey: key } : {}) };
 }
 
+/** Only the secrets the spec declares reach a gate container: the platform's (GitHub token, API keys) never do, whatever the plan asks. */
+export function gateSecrets(spec: Pick<Spec, 'externalDependencies'>, all: Readonly<Record<string, string>>): Record<string, string> {
+  const declared = new Set(spec.externalDependencies.flatMap((d) => d.secretNames));
+  return Object.fromEntries(Object.entries(all).filter(([name]) => declared.has(name)));
+}
+
 function assertApiKey(deps: RunDeps): void {
   if (deps.cfg.claude.auth === 'api-key' && !(deps.secrets.ANTHROPIC_API_KEY ?? '').trim()) {
     throw new Error('claude.auth is "api-key" but the secret ANTHROPIC_API_KEY is not set (store it with the other secrets)');
@@ -396,7 +402,7 @@ export class Run {
           cpus: 2,
           memory: '2g',
           timeoutMs: buildTimeoutMs(plan),
-          secrets: this.deps.secrets,
+          secrets: gateSecrets(this.deps.spec, this.deps.secrets),
           containerName: `teams-ai-${this.runId}-${branch.replace(/\//g, '__')}`,
           // Files the gate writes into the bind-mounted worktree (the JUnit report) must stay owned by the
           // orchestrator user, or the next attempt cannot remove them (EACCES on the first live run).
@@ -536,14 +542,14 @@ export class Run {
       target: this.deps.target,
       smoke: async (contextDir, url, gateUrl, gateNetwork, scope) => {
         const p = scope?.plan ?? singlePlan(this.plan)!;
-        const r = await runSmoke(p, scope?.spec ?? this.deps.spec, { worktree: contextDir, image: await this.gateImage(p.gateImage), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-smoke${scope ? `-${scope.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : gateReachableUrl(url), { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) }, scope?.urls);
+        const r = await runSmoke(p, scope?.spec ?? this.deps.spec, { worktree: contextDir, image: await this.gateImage(p.gateImage), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: gateSecrets(this.deps.spec, this.deps.secrets), containerName: `teams-ai-${this.runId}-smoke${scope ? `-${scope.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : gateReachableUrl(url), { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) }, scope?.urls);
         // The gate's output is the only clue the fix task gets about why a smoke test is missing or failing.
         const tail = r.ok || !r.result ? '' : `\n\nsmoke gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
       },
       e2e: async (contextDir, url, gateUrl, gateNetwork, scope) => {
         const p = scope?.plan ?? singlePlan(this.plan)!;
-        const r = await runE2e(p, scope?.spec ?? this.deps.spec, { worktree: contextDir, image: await this.gateImage(p.gateImage), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: this.deps.secrets, containerName: `teams-ai-${this.runId}-e2e${scope ? `-${scope.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) }, scope?.urls);
+        const r = await runE2e(p, scope?.spec ?? this.deps.spec, { worktree: contextDir, image: await this.gateImage(p.gateImage), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: gateSecrets(this.deps.spec, this.deps.secrets), containerName: `teams-ai-${this.runId}-e2e${scope ? `-${scope.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) }, scope?.urls);
         const tail = r.ok || !r.result ? '' : `\n\ne2e gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
       },

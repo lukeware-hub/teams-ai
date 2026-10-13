@@ -228,7 +228,7 @@ export async function withRefreshGate<T>(hostEnv: NodeJS.ProcessEnv, clock: () =
 
 async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, hostEnv: NodeJS.ProcessEnv, home: string): Promise<StepOutcome<OutputOf<K>>> {
   await ensureTrusted(req.cwd, path.join(home, '.claude.json'));
-  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: req.extraAllow, sandboxEnabled: deps.sandbox?.enabled, hostHome: hostEnv.HOME });
+  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: req.extraAllow, sandboxEnabled: deps.sandbox?.enabled, hostHome: hostEnv.HOME, stepHome: home });
   if (req.resume && req.sessionStore) await restoreSession(req.sessionStore, home);
   // A review judges a diff the gates already tested: it never edits the code under review (R11.13 slice 2).
   const agent = req.kind === 'review' ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : req.agent;

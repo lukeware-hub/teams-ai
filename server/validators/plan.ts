@@ -171,6 +171,10 @@ function repositoryErrors(plan: Plan, spec: Spec, opts: PlanCheckOptions, scaffo
   if (opts.takenPorts?.includes(plan.deploy.port)) errors.push(`deploy.port ${plan.deploy.port} is already used by another project; use the port the orchestrator assigned`);
   if (opts.repoFiles) errors.push(...gateFileErrors(plan, opts.repoFiles));
   errors.push(...gateTerminationErrors(plan));
+  // A gate may only read the secrets the spec declares; the platform's (GitHub token, API keys) never reach a gate container.
+  // SERVICE_URL and SERVICE_URL_<SERVICE> are the addresses the orchestrator itself hands to the smoke and e2e gates.
+  const declared = new Set(spec.externalDependencies.flatMap((d) => d.secretNames));
+  for (const gate of plan.gates) for (const name of gate.secrets) if (!declared.has(name) && !/^SERVICE_URL(_[A-Z0-9_]+)?$/.test(name)) errors.push(`gate ${gate.name} declares secret ${name}, which no externalDependencies entry of the spec names`);
   // The JUnit report is gate output the orchestrator never commits; a task listing it can never deliver it (live: a review loop).
   for (const task of plan.tasks) if (task.affectedPaths.includes(plan.junitPath)) errors.push(`task ${task.id} lists ${plan.junitPath} in affectedPaths, but the JUnit report is gate output and never committed`);
   // A tool fetched at a moving reference changes under the same plan (supply chain); pin a version or commit.

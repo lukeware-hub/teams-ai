@@ -1,6 +1,6 @@
 import type { AnswerOutput, BacklogOutput, DeriveOutput, OutputOf, RefineOutput, StepKind } from '../agents/outputs.js';
 import type { z } from 'zod';
-import type { Project } from '../contracts/project.js';
+import { Project } from '../contracts/project.js';
 import type { AcceptanceCriterion, Spec } from '../contracts/spec.js';
 import { ID_PATTERNS } from '../core/ids.js';
 import { loadSecrets } from '../core/secrets.js';
@@ -122,7 +122,12 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const previous = await readDerived(draft);
   const fail = (reason: string) => journal.fact(RefineEvent.CycleFailed, { cycle, reason });
   let jevValidation: JevValidationResult | undefined;
-  if (deps.validateDocs) {
+  // A confidential project never sends its docs to the OpenRouter: Jev is skipped and the agents run without its findings.
+  const confidential = previous?.project.confidential ?? Project.safeParse(JSON.parse((await readBase(draft, 'project.json')) ?? 'null')).data?.confidential ?? false;
+  if (deps.validateDocs && confidential) {
+    jevValidation = { available: true, decision: 'review', consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false };
+    await journal.fact(RefineEvent.DocsValidated, { cycle, backend: 'jev', ...jevValidation, skipped: 'confidential' });
+  } else if (deps.validateDocs) {
     jevValidation = await deps.validateDocs({ project: docs['project.md'], briefing: docs['brief.md'], stack: docs['stack.md'], flow: docs['flow.md'], design: docs['design.md'] }).catch(() => ({ available: false, decision: 'review' as const, consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false }));
     const validation = jevValidation;
     await journal.fact(RefineEvent.DocsValidated, { cycle, backend: 'jev', ...validation });
