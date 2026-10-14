@@ -9,7 +9,7 @@ import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { BacklogBanner } from '../refine/ProgramPanel.js';
 import { Bone, Skeleton } from '../components/Loading.js';
-import { ACTIVE, CONTINUABLE, HELP, LABEL, RECENT_RUNS, action, chip, emptyState, grouped, money, panel, plural, row, rowActions, rowId, rows, runName, sectionHeading, sectionTitle, when } from './project-shared.js';
+import { ACTIVE, CONTINUABLE, HELP, LABEL, RECENT_RUNS, STATUS_HELP, action, chip, emptyState, grouped, money, panel, plural, row, rowActions, rowId, rows, runName, sectionHeading, sectionTitle, when } from './project-shared.js';
 
 const header = 'card flex flex-wrap items-center justify-between gap-x-6 gap-y-2';
 const title = 'm-0 text-[1.375rem] leading-[1.3] text-ink';
@@ -386,9 +386,9 @@ export function ProjectHubView(p: {
                   <colgroup><col className="w-[13%]" /><col className="w-[20%]" /><col className="w-[14%]" /><col className="w-[17%]" /><col className="w-[11%]" /><col className="w-[10%]" /><col className="w-[15%]" /></colgroup>
                   <thead>
                     <tr>
-                      <SortHeader view={runsView} column="run">Execução</SortHeader>
-                      <SortHeader view={runsView} column="spec">Spec</SortHeader>
-                      <SortHeader view={runsView} column="at">Quando</SortHeader>
+                      <SortHeader view={runsView} column="run" tip={<InfoTip text={HELP.runName} />}>Execução</SortHeader>
+                      <SortHeader view={runsView} column="spec" tip={<InfoTip text={HELP.runSpec} />}>Spec</SortHeader>
+                      <SortHeader view={runsView} column="at" tip={<InfoTip text={HELP.runAt} />}>Quando</SortHeader>
                       <SortHeader view={runsView} column="status" tip={<InfoTip text={HELP.runStatus} />}>Status</SortHeader>
                       <SortHeader view={runsView} column="tokens" className="num" tip={<InfoTip text={HELP.tokens} />}>Tokens</SortHeader>
                       <SortHeader view={runsView} column="cost" className="num" tip={<InfoTip text={HELP.cost} />}>Custo</SortHeader>
@@ -402,7 +402,7 @@ export function ProjectHubView(p: {
                         <td><Link className="font-medium no-underline hover:underline" to={`/runs/${r.runId}`} title={r.runId}>{runName(r)}</Link></td>
                         <td className="truncate" title={r.specId}>{r.specId}</td>
                         <td className="whitespace-nowrap text-ink-soft tabular-nums">{when(r.at)}</td>
-                        <td>{chip(r.status)}</td>
+                        <td><span className="inline-flex items-center gap-1">{chip(r.status)}<InfoTip text={STATUS_HELP[r.status] ?? STATUS_HELP.unknown!} /></span></td>
                         <td className="num">{grouped(r.tokens)}</td>
                         <td className="num">{money(r.cost)}</td>
                         <td>

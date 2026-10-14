@@ -47,7 +47,30 @@ export const rowActions = 'flex justify-end gap-2 max-lg:col-span-full max-lg:fl
 
 export const chip = (status: string) =><span className={TONE[status] ? `status-pill tone-${TONE[status]}` : 'status-pill'}>{LABEL[status] ?? status}</span>;
 
+// What each run status flag means, one or two sentences for the info glyph beside the flag.
+export const STATUS_HELP: Record<string, string> = {
+  running: 'Os agentes estão trabalhando nesta execução agora.',
+  draining: 'Você pediu para parar: a execução termina o que está em curso e encerra.',
+  'paused:quota': 'O limite de uso do Claude acabou. A execução continua sozinha quando o limite renovar.',
+  'paused:auth': 'A sessão do Claude expirou. Entre de novo e use Retomar.',
+  interrupted: 'O processo parou antes do fim. Use Retomar para continuar.',
+  'awaiting-validation': 'Terminou e o serviço foi publicado. Falta você validar o resultado.',
+  done: 'Terminou com sucesso.',
+  complete: 'Terminou com sucesso.',
+  drained: 'Encerrada depois de você pedir para parar.',
+  blocked: 'Alguma tarefa não pôde ser concluída. Abra a execução para ver o motivo.',
+  deadlocked: 'As tarefas que sobraram dependem umas das outras e nenhuma pode começar.',
+  'phase-failed': 'Uma fase da execução falhou. Abra a execução para ver qual.',
+  'verification-failed': 'Os testes ou as verificações de qualidade não passaram.',
+  'deploy-failed': 'O serviço não subiu no ambiente local.',
+  'launch-failed': 'A execução não chegou a começar.',
+  unknown: 'Não há registro suficiente para saber o estado desta execução.',
+};
+
 export const HELP = {
+  runName: 'Execução é uma rodada dos agentes sobre uma spec. Conclusão, Deploy e README são as etapas de fechamento. O número identifica a rodada.',
+  runSpec: 'A especificação que esta execução entrega.',
+  runAt: 'Data e hora do último registro da execução: o fim, quando terminou, ou o andamento mais recente.',
   services: 'Cada serviço tem o seu repositório no GitHub. A plataforma são os contêineres que todos os serviços usam, como um broker de mensagens.',
   specs: 'Cada spec descreve uma entrega do projeto. O status mostra a etapa: pronta para executar, em execução, pausada, aguardando validação ou concluída. Continuar spec reabre uma spec aguardando validação para um novo refinamento. Reiniciar descarta a sessão de refinamento atual e recomeça do zero. Uma spec concluída fica somente leitura; a próxima entrega começa em Nova spec.',
   runStatus: 'Pausada por cota: continua sozinha quando o limite de uso renovar. Aguardando login: a sessão do Claude expirou; entre de novo e use Retomar. Interrompida: o processo parou; use Retomar. Finalizando: encerrando depois de Parar.',

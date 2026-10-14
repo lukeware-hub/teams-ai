@@ -77,12 +77,13 @@ export function TableFilters({ view, subject, placeholder, facetName }: { view: 
         <input ref={search} className="w-full min-w-0 appearance-none pl-[2.375rem]" type="search" value={view.query} onChange={(e) => view.setQuery(e.target.value)} placeholder={placeholder} />
       </label>
       {view.options.length > 1 ? (
-        <label className="block min-w-0 flex-none max-md:basis-full">
+        <label className="relative block min-w-0 flex-none max-md:basis-full [&_svg]:pointer-events-none [&_svg]:absolute [&_svg]:top-1/2 [&_svg]:right-3 [&_svg]:-translate-y-1/2 [&_svg]:text-ink-faint">
           <span className="sr-only">{facetName}</span>
-          <select className="w-full min-w-0 flex-none md:w-48" value={view.facet} onChange={(e) => view.setFacet(e.target.value)}>
+          <select className="w-full min-w-0 flex-none appearance-none pr-9 md:w-48" value={view.facet} onChange={(e) => view.setFacet(e.target.value)}>
             <option value="">{facetName}: todos</option>
             {view.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
+          <Icon name="chevron" size={16} />
         </label>
       ) : null}
       {view.filtered ? (

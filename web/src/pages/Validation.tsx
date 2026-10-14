@@ -28,17 +28,24 @@ const STATUS_LABEL: Record<string, string> = {
   'phase-failed': 'fase falhou',
 };
 const statusLabel = (status: string) => STATUS_LABEL[status] ?? status;
-const RESULT: Record<string, { label: string; tone: string }> = {
-  passed: { label: 'Passou', tone: 'tone-good' },
-  failed: { label: 'Falhou', tone: 'tone-bad' },
-  blocked: { label: 'Bloqueado', tone: 'tone-bad' },
-  missing: { label: 'Sem teste', tone: 'tone-warn' },
-  'not-applicable': { label: 'Não se aplica', tone: '' },
+const RESULT: Record<string, { label: string; tone: string; help: string }> = {
+  passed: { label: 'Passou', tone: 'tone-good', help: 'O teste rodou e confirmou o critério.' },
+  failed: { label: 'Falhou', tone: 'tone-bad', help: 'O teste rodou e o critério não foi cumprido.' },
+  blocked: { label: 'Bloqueado', tone: 'tone-bad', help: 'Não foi possível testar: uma tarefa ligada ao critério ficou bloqueada.' },
+  missing: { label: 'Sem teste', tone: 'tone-warn', help: 'Não há teste que comprove este critério.' },
+  'not-applicable': { label: 'Não se aplica', tone: '', help: 'Este critério não pede este tipo de teste.' },
 };
 function ResultChip({ status }: { status: string }) {
   const r = RESULT[status];
-  return <span className={`status-chip ${r?.tone ?? ''}`}>{r?.label ?? status}</span>;
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className={`status-chip ${r?.tone ?? ''}`}>{r?.label ?? status}</span>
+      {r ? <InfoTip text={r.help} /> : null}
+    </span>
+  );
 }
+const CRITERION_HELP = 'Critério de aceite: uma condição que o serviço publicado precisa cumprir para a spec ser aceita.';
+const RESULT_HELP = 'Passou: o teste confirmou o critério. Falhou: o teste rodou e não confirmou. Bloqueado: uma tarefa ligada ao critério ficou bloqueada. Sem teste: não há teste que o comprove.'
 const resultLabel = (status: string) => RESULT[status]?.label ?? status;
 type Smoke = NonNullable<Report['service']>['smoke'][number];
 type Evidence = Report['evidence'][number];
@@ -57,9 +64,9 @@ function SmokeTable({ smoke }: { smoke: Smoke[] }) {
           <colgroup><col className="w-[9rem]" /><col /><col className="w-[8rem]" /></colgroup>
           <thead>
             <tr>
-              <SortHeader view={view} column="criterion">Critério</SortHeader>
+              <SortHeader view={view} column="criterion" tip={<InfoTip text={`${CRITERION_HELP} Entre parênteses, o serviço que o testa.`} />}>Critério</SortHeader>
               <SortHeader view={view} column="test" tip={<InfoTip text="Smoke test: teste automático curto, rodado no serviço publicado, que confirma o essencial de cada critério." />}>Teste rápido</SortHeader>
-              <SortHeader view={view} column="result">Resultado</SortHeader>
+              <SortHeader view={view} column="result" tip={<InfoTip text={RESULT_HELP} />}>Resultado</SortHeader>
             </tr>
           </thead>
           <tbody>
@@ -92,11 +99,11 @@ function EvidenceTable({ evidence }: { evidence: Evidence[] }) {
           <colgroup><col className="w-[7.5rem]" /><col className="w-[9rem]" /><col /><col className="w-[8rem]" /><col className="w-[8rem]" /></colgroup>
           <thead>
             <tr>
-              <SortHeader view={view} column="criterion">Critério</SortHeader>
-              <SortHeader view={view} column="tasks">Tarefas</SortHeader>
-              <SortHeader view={view} column="tests">Testes</SortHeader>
+              <SortHeader view={view} column="criterion" tip={<InfoTip text={CRITERION_HELP} />}>Critério</SortHeader>
+              <SortHeader view={view} column="tasks" tip={<InfoTip text="As tarefas dos agentes que implementaram o critério." />}>Tarefas</SortHeader>
+              <SortHeader view={view} column="tests" tip={<InfoTip text="Os testes automáticos que comprovam o critério." />}>Testes</SortHeader>
               <SortHeader view={view} column="e2e" tip={<InfoTip text="Teste ponta a ponta: simula uma pessoa usando o serviço publicado, do início ao fim do fluxo." />}>Teste E2E</SortHeader>
-              <SortHeader view={view} column="result">Resultado</SortHeader>
+              <SortHeader view={view} column="result" tip={<InfoTip text={RESULT_HELP} />}>Resultado</SortHeader>
             </tr>
           </thead>
           <tbody>

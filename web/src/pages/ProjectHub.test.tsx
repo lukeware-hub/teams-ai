@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { appLinks, ProjectHubView } from './ProjectHub.js';
@@ -187,6 +187,23 @@ describe('ProjectHubView', () => {
     fireEvent.click(screen.getByTestId('restart-hello-009'));
     fireEvent.click(screen.getByTestId('delete-confirm'));
     expect(o.restart).toHaveBeenCalledWith('hello-009');
+  });
+  it('explains every column of the runs table and every status flag, and lets each column sort and filter', () => {
+    const o = on();
+    const runs = [row({ runId: 'hello-001-r1', n: 1, specId: 'hello-001', projectId: 'hello-app', status: 'deploy-failed', at: null, tokens: 10, cost: 0.1, stoppable: false })];
+    render(
+      <MemoryRouter>
+        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+      </MemoryRouter>,
+    );
+    const table = within(screen.getByRole('table'));
+    for (const column of ['Execução', 'Spec', 'Quando', 'Status', 'Tokens', 'Custo']) {
+      const header = table.getByRole('columnheader', { name: new RegExp(`^${column}`) });
+      expect(within(header).getByRole('button', { name: column })).toBeTruthy();
+      expect(within(header).getAllByRole('button')).toHaveLength(2);
+    }
+    expect(table.getByRole('button', { name: 'O serviço não subiu no ambiente local.' })).toBeTruthy();
+    expect(screen.getByLabelText('Filtrar execuções')).toBeTruthy();
   });
   it('lists the five latest runs and expands to all of them', () => {
     const o = on();
