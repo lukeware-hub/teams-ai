@@ -165,7 +165,7 @@ export const EnvironmentVariable = z.discriminatedUnion('strategy', [
   /** An internal credential: random, kept once per project so every service of the project reads the same value. */
   z.object({ ...envBase, strategy: z.literal('random'), format: z.enum(['hex', 'base64url', 'alnum']).optional(), minLength: z.number().int().min(16).max(128).optional() }),
   /** A third party's key in a local test: a made-up value shaped like the real one (prefix and length), the code under test talks to a double. */
-  z.object({ ...envBase, strategy: z.literal('fake'), prefix: z.string().max(24).optional(), minLength: z.number().int().min(16).max(128).optional() }),
+  z.object({ ...envBase, strategy: z.literal('fake'), prefix: z.string().max(24).regex(/^[A-Za-z0-9_.-]*$/).optional(), minLength: z.number().int().min(16).max(128).optional() }),
   /** The value a service that is already deployed runs with (an admin token that one service accepts and another sends). */
   z.object({ ...envBase, strategy: z.literal('from-service'), service: z.string().min(1), variable: envName }),
   /** A value got by calling a deployed service after the deploy (a session header minted with the admin token). `${NAME}` in headers and body is another variable. */

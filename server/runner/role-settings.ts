@@ -73,8 +73,8 @@ export interface RoleSettingsInput {
   hostHome?: string;
   /** The step's own HOME: it holds a copy of the credentials, which no command of the step may read either. */
   stepHome?: string;
-  /** The secrets directory of the project the step works in (`<workspaces>/<project>/secrets`): the values the platform made up or the owner gave, which no step may read. */
-  projectSecretsDir?: string;
+  /** The secrets directory of every project (`<workspaces>/<project>/secrets`): the values the platform made up or the owner gave, which no step may read, whatever project it works in. */
+  projectSecretsDirs?: readonly string[];
 }
 
 export interface RoleSettings {
@@ -86,7 +86,7 @@ export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSet
   const deny = [
     ...PROTECTED_READ_PATHS.map((p) => `Read(${p})`),
     ...(input.hostHome ? PROTECTED_READ_PATHS.map((p) => `Read(${input.hostHome!.replace(/\/+$/, '')}/${p.slice(2)})`) : []),
-    ...(input.projectSecretsDir ? [`Read(${input.projectSecretsDir.replace(/\/+$/, '')}/**)`] : []),
+    ...(input.projectSecretsDirs ?? []).map((d) => `Read(${d.replace(/\/+$/, '')}/**)`),
     // Edit(path) rules cover every file-editing tool; a Write(path) rule is not matched by the file permission checks.
     'Edit(.claude/**)',
     ...ALWAYS_DENIED,
@@ -96,7 +96,7 @@ export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSet
   const denyRead = [
     ...(input.hostHome ? PROTECTED_READ_PATHS.map((p) => `${input.hostHome!.replace(/\/+$/, '')}/${p.slice(2).replace(/\/\*\*$/, '')}`) : []),
     ...(input.stepHome ? [`${input.stepHome.replace(/\/+$/, '')}/.claude`] : []),
-    ...(input.projectSecretsDir ? [input.projectSecretsDir.replace(/\/+$/, '')] : []),
+    ...(input.projectSecretsDirs ?? []).map((d) => d.replace(/\/+$/, '')),
   ];
   return {
     sandbox: { enabled: input.sandboxEnabled ?? true, network: { allowedDomains: [...input.allowedDomains] }, ...(denyRead.length > 0 ? { filesystem: { denyRead } } : {}) },

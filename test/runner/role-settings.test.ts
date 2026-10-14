@@ -47,10 +47,10 @@ describe('buildRoleSettings', () => {
     expect(buildRoleSettings('env', { allowedDomains: [] }).permissions.allow).toEqual([]);
   });
 
-  it('denies every read of the project secrets directory, by the Read tool and by any command of the sandbox', () => {
-    const s = buildRoleSettings('dev', { allowedDomains: [], projectSecretsDir: '/ws/kayron-hub/secrets/' });
-    expect(s.permissions.deny).toContain('Read(/ws/kayron-hub/secrets/**)');
-    expect(s.sandbox.filesystem?.denyRead).toContain('/ws/kayron-hub/secrets');
+  it('denies every read of the secrets directory of every project, by the Read tool and by any command of the sandbox', () => {
+    const s = buildRoleSettings('dev', { allowedDomains: [], projectSecretsDirs: ['/ws/kayron-hub/secrets/', '/ws/other/secrets'] });
+    expect(s.permissions.deny).toEqual(expect.arrayContaining(['Read(/ws/kayron-hub/secrets/**)', 'Read(/ws/other/secrets/**)']));
+    expect(s.sandbox.filesystem?.denyRead).toEqual(expect.arrayContaining(['/ws/kayron-hub/secrets', '/ws/other/secrets']));
     expect(buildRoleSettings('dev', { allowedDomains: [] }).sandbox.filesystem).toBeUndefined();
   });
 

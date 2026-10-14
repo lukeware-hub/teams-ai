@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Plan } from '../../server/contracts/plan.js';
 import { makeFrozenSpec, makePlan, makePlanTask, makeServicesPlan } from '../fixtures/contracts.js';
-import { DevOutput, OUTPUT_SCHEMAS, PlanOutput, RefineOutput, ReviewOutput, SecurityOutput, ServicesPlanOutput, STEP_KINDS, blockingFindings, toJsonSchema } from '../../server/agents/outputs.js';
+import { DevOutput, EnvironmentVariable, OUTPUT_SCHEMAS, PlanOutput, RefineOutput, ReviewOutput, SecurityOutput, ServicesPlanOutput, STEP_KINDS, blockingFindings, toJsonSchema } from '../../server/agents/outputs.js';
 
 const HASH = `sha256:${'a'.repeat(64)}`;
 
@@ -190,5 +190,13 @@ describe('ServicesPlanOutput', () => {
     const { service: _, ...loose } = plan.tasks[0]!;
     expect(ServicesPlanOutput.safeParse({ ...plan, tasks: [loose, ...plan.tasks.slice(1)] }).success).toBe(false);
     expect(ServicesPlanOutput.safeParse({ ...plan, tasks: [{ ...plan.tasks[0]!, id: 'T1' }, ...plan.tasks.slice(1)] }).success).toBe(false);
+  });
+});
+
+describe('EnvironmentVariable', () => {
+  const fake = { name: 'LLM_API_KEY', scope: 'both', reason: 'r', strategy: 'fake' } as const;
+  it('takes a fake key prefix of plain characters only, never a line break or a quote', () => {
+    for (const prefix of ['sk-local-', 'pk.test_', 'AKIA']) expect(EnvironmentVariable.safeParse({ ...fake, prefix }).success).toBe(true);
+    for (const prefix of ['sk\nINJECTED=1', 'a b', 'x"', '$(id)']) expect(EnvironmentVariable.safeParse({ ...fake, prefix }).success).toBe(false);
   });
 });
