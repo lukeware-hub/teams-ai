@@ -253,15 +253,19 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
 
   const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];
   if (deps.frontAgent) {
-    const review = await deps.frontAgent({ kind: 'refine', role: 'front',
+    const askFront = () => deps.frontAgent!({ kind: 'refine', role: 'front',
       pack: fitPackBudget(refinePack({ role: 'front', specHash: hash, principles: deps.principles(), specId: draft.specId,
         projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'],
         derived, backlog, retrieval: [], history: journal.state.questions,
         rejected: journal.state.patches.filter((p) => p.status === 'rejected'), pending: journal.state.patches.filter((p) => p.status === 'pending'), jevValidation, projectBriefing: backlogMode, cycle })),
       cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, ctx);
-    if (!review.ok) { await fail(`front validation failed: ${review.failure}: ${review.errors.join('; ')}`); return; }
+    let review = await askFront();
+    // The model now and then drops a required field of one suggestion. The suggestions are advice, so one more try, and then the cycle goes on without them instead of failing.
+    if (!review.ok && review.failure === 'schema') review = await askFront();
+    if (!review.ok && review.failure !== 'schema') { await fail(`front validation failed: ${review.failure}: ${review.errors.join('; ')}`); return; }
+    if (!review.ok) discardedPatches.push({ role: 'front', file: 'design.md', reason: 'O agente Front respondeu fora do formato duas vezes, então as sugestões visuais deste ciclo foram puladas. Use Reavaliar para tentar de novo.' });
     let i = 0;
-    for (const p of (review.value as z.infer<typeof RefineOutput>).docPatch) {
+    for (const p of review.ok ? (review.value as z.infer<typeof RefineOutput>).docPatch : []) {
       const c = checkPatch(p, draft.specId, docs, backlogMode);
       if (!c.ok) {
         discardedPatches.push({ role: 'front', file: p.file, reason: c.reason });

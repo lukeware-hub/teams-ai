@@ -104,6 +104,40 @@ describe('RefineSession', () => {
     expect(s.state.patches[0]!.diff).toContain('+# Product design');
   });
 
+  const frontSchemaFailures = (times: number) => {
+    const inner = makeFakeRunAgent(script);
+    let left = times;
+    return (async (req: Parameters<typeof inner>[0], ctx: Parameters<typeof inner>[1]) => {
+      if (req.role === 'front' && left-- > 0) {
+        const usage = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+        return { ok: false, failure: 'schema', errors: ['docPatch.3.reason: Invalid input: expected string, received undefined'], summary: { usage, costUsd: 0, durationMs: 1, numTurns: 1, rateLimit: null }, sandboxDisabled: false } as never;
+      }
+      return inner(req, ctx);
+    }) as typeof inner;
+  };
+
+  it('asks the Front again when it answers outside the format once, and keeps its suggestions', async () => {
+    const s = await RefineSession.create({ ...deps(), frontAgent: frontSchemaFailures(1) }, 'new-project');
+    script['derive/po'] = [derived];
+    script['refine/front'] = [refineOut([], [], [{ file: 'docs/design.md', find: '# Design', replace: '# Product design', reason: 'define the visual contract' }])];
+    script['refine/po'] = [refineOut(green(PO))];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await s.evaluate();
+    expect(s.state.status).not.toBe('error');
+    expect(s.state.patches[0]).toMatchObject({ role: 'front', file: 'design.md', status: 'pending' });
+  });
+
+  it('goes on without the Front suggestions, and says so, when it answers outside the format twice, instead of failing the evaluation', async () => {
+    const s = await RefineSession.create({ ...deps(), frontAgent: frontSchemaFailures(2) }, 'new-project');
+    script['derive/po'] = [derived];
+    script['refine/po'] = [refineOut(green(PO))];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await s.evaluate();
+    expect(s.state.status).not.toBe('error');
+    expect(s.state.patches).toHaveLength(0);
+    expect(s.state.discarded).toEqual([expect.objectContaining({ role: 'front', reason: expect.stringContaining('fora do formato duas vezes') })]);
+  });
+
   it('continues after a Jev advisory without requiring a document edit', async () => {
     let validations = 0;
     const s = await RefineSession.create({
