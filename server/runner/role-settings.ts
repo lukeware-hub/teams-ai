@@ -75,6 +75,8 @@ export interface RoleSettingsInput {
   stepHome?: string;
   /** The secrets directory of every project (`<workspaces>/<project>/secrets`): the values the platform made up or the owner gave, which no step may read, whatever project it works in. */
   projectSecretsDirs?: readonly string[];
+  /** Directories (globs allowed) this step must not read at all, for a step that gets Read and Bash but needs none of the project data. */
+  extraDenyRead?: readonly string[];
 }
 
 export interface RoleSettings {
@@ -90,6 +92,7 @@ export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSet
     ...PROTECTED_READ_PATHS.map((p) => `Read(${p})`),
     ...(input.hostHome ? PROTECTED_READ_PATHS.map((p) => `Read(${absoluteRule(input.hostHome!)}/${p.slice(2)})`) : []),
     ...(input.projectSecretsDirs ?? []).map((d) => `Read(${absoluteRule(d)}/**)`),
+    ...(input.extraDenyRead ?? []).map((d) => `Read(${absoluteRule(d)}/**)`),
     // Edit(path) rules cover every file-editing tool; a Write(path) rule is not matched by the file permission checks.
     'Edit(.claude/**)',
     ...ALWAYS_DENIED,
@@ -100,6 +103,7 @@ export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSet
     ...(input.hostHome ? PROTECTED_READ_PATHS.map((p) => `${input.hostHome!.replace(/\/+$/, '')}/${p.slice(2).replace(/\/\*\*$/, '')}`) : []),
     ...(input.stepHome ? [`${input.stepHome.replace(/\/+$/, '')}/.claude`] : []),
     ...(input.projectSecretsDirs ?? []).map((d) => d.replace(/\/+$/, '')),
+    ...(input.extraDenyRead ?? []).map((d) => d.replace(/\/+$/, '')),
   ];
   return {
     sandbox: { enabled: input.sandboxEnabled ?? true, network: { allowedDomains: [...input.allowedDomains] }, ...(denyRead.length > 0 ? { filesystem: { denyRead } } : {}) },

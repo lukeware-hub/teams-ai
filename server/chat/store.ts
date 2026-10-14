@@ -20,7 +20,7 @@ export interface ChatMessage {
 
 /** One conversation per project, kept as a JSON file; `projectId` must already be a validated slug. */
 export class ChatStore {
-  constructor(private readonly dir: string) {}
+  constructor(readonly dir: string) {}
 
   private file(projectId: string): string {
     return path.join(this.dir, `${projectId}.json`);

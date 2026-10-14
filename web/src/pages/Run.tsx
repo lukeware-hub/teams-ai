@@ -645,7 +645,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
         {resumeAction?.error ? <p className="error" data-testid="resume-error">{resumeAction.error}</p> : null}
         {detail.locked ? (
           <p className="hint" data-testid="locked-notice">
-            Esta execução é somente leitura porque a spec foi concluída. Para a próxima entrega, crie uma <Link to={`/projects/${detail.projectId}`}>nova spec no projeto</Link>.
+            Esta execução é somente leitura porque a spec foi concluída. Para a próxima entrega, crie uma <Link to={`/projects/${detail.projectId}?novaSpec=1`}>nova spec no projeto</Link>.
           </p>
         ) : null}
         {stopAction?.error ? <p className="error" data-testid="stop-error">{stopAction.error}</p> : null}

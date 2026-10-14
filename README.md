@@ -319,6 +319,9 @@ Quando todos os itens estiverem verdes, está tudo pronto.
 4. **Valide.** Quando a execução chega a `awaiting-validation`, o serviço já foi publicado (`docker-local`) e os testes de
    smoke e e2e passaram. Experimente e então aceite ou reporte problemas; eles voltam ao Gate 1 como continuação da mesma especificação.
 
+O **Chat de dúvidas** responde sobre o projeto e sobre como usar o Teams AI. O guia de uso que ele pesquisa fica em `docs/guia/`:
+quando mudar uma tela ou um botão, atualize o guia e rode `task guia:grafo` para refazer o grafo de busca dele (um teste falha se o guia mudou e o grafo não).
+
 Status de execução que você verá: `running`, `paused:quota`, `paused:auth`, `draining`, `interrupted`, `blocked`, `deadlocked`,
 `phase-failed`, `done`. `paused:auth` significa que o login do Claude expirou: entre de novo e depois clique em Retomar.
 

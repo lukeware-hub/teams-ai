@@ -65,7 +65,7 @@ export function Onboarding({ compact = false }: { compact?: boolean }) {
           <span className="grid size-14 place-items-center rounded-tile bg-good-soft text-good" aria-hidden="true"><Icon name="check" size={28} /></span>
           <p className="m-0 inline-flex items-center gap-1.5 rounded-full bg-good-soft px-[0.65rem] py-[0.2rem] text-[0.8125rem] font-semibold text-good before:size-[0.45rem] before:rounded-full before:bg-current before:content-['']">Configuração concluída</p>
           <h2 id="welcome-title" className="mx-0 mt-1 mb-0 text-[1.75rem] leading-[1.2] tracking-[-0.025em]">Tudo pronto para começar</h2>
-          <p className="m-0 max-w-[60ch] text-[0.9375rem] leading-[1.55] text-ink-soft">O Teams AI está conectado às suas ferramentas e pronto para ajudar a organizar projetos, executar tarefas e acompanhar o trabalho da equipe.</p>
+          <p className="m-0 max-w-[60ch] text-[0.9375rem] leading-[1.55] text-ink-soft">O Teams AI está conectado às suas ferramentas e pronto para ajudar a organizar projetos, executar tarefas e acompanhar o trabalho da equipe. Para começar, abra Projetos e use Nova spec ou Novo projeto.</p>
           <Link className="primary-button mt-3 min-h-11 border-transparent px-5 [background:var(--gradient-primary)] [box-shadow:var(--shadow-primary)] hover:border-transparent hover:[background:var(--gradient-primary-hover)] @max-2xl:w-full" to="/projects">Ir para projetos<Icon name="arrow-right" size={16} /></Link>
           <div className="col-start-2 row-[1/span_5] w-full @max-2xl:hidden" aria-hidden="true"><img className="block max-h-72 w-full rounded-lg object-contain [background:var(--art-plate)] [mix-blend-mode:var(--art-blend)]" src="/onboarding-complete.png" alt="" /></div>
         </section>

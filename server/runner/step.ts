@@ -42,6 +42,8 @@ export interface StepRequest {
   sessionStore?: string;
   /** Extra allow rules for this step's role settings (from the plan's commands). */
   extraAllow?: readonly string[];
+  /** Directories this step must not read (see `RoleSettingsInput.extraDenyRead`). */
+  denyRead?: readonly string[];
   effort?: Effort;
   /** Env entries the orchestrator provisioned for this one step (e.g. an ephemeral test database's DATABASE_URL). */
   extraEnv?: Readonly<Record<string, string>>;
@@ -77,6 +79,11 @@ export interface StepDeps {
 
 /** Tools a review step does not get, whatever its role may use elsewhere. */
 const REVIEW_DENIED_TOOLS: readonly string[] = ['Edit', 'Write', 'MultiEdit'];
+/** What the chat step may use: read files in its working directory and run the graphify queries its settings allow. */
+export const CHAT_TOOLS: readonly string[] = ['Read', 'Grep', 'Glob', 'Bash'];
+/** A search or two and the answer: a chat that loops is cut short instead of spending the step budget. */
+export const CHAT_MAX_TURNS = 8;
+export const stepCaps = (kind: StepKind, caps: ProcessCaps): ProcessCaps => (kind === 'chat' ? { ...caps, maxTurns: Math.min(caps.maxTurns, CHAT_MAX_TURNS) } : caps);
 
 const QUOTA_TEXT = /usage limit|rate limit|out of .*quota/i;
 const AUTH_TEXT = /not logged in|authentication|failed to authenticate|oauth session expired|could not be refreshed|invalid api key|please run (claude login|\/login)/i;
@@ -269,11 +276,11 @@ async function bookSessionShare(s: ResultSummary, store: string, resume: boolean
 
 async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, hostEnv: NodeJS.ProcessEnv, home: string): Promise<StepOutcome<OutputOf<K>>> {
   await ensureTrusted(req.cwd, path.join(home, '.claude.json'));
-  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: req.extraAllow, sandboxEnabled: deps.sandbox?.enabled, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });
+  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: req.extraAllow, extraDenyRead: req.denyRead, sandboxEnabled: deps.sandbox?.enabled, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });
   if (req.resume && req.sessionStore) await restoreSession(req.sessionStore, home);
   // A review judges a diff the gates already tested: it never edits the code under review (R11.13 slice 2).
-  // The chat answers from the context in its prompt alone: it reads no file and runs nothing.
-  const agent = req.kind === 'review' ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : req.kind === 'chat' ? { ...req.agent, tools: [] } : req.agent;
+  // The chat searches its own guide and history with the tools of CHAT_TOOLS only; its Bash rules allow graphify queries and nothing else.
+  const agent = req.kind === 'review' ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : req.kind === 'chat' ? { ...req.agent, tools: [...CHAT_TOOLS] } : req.agent;
   const invocation = buildInvocation(
     {
       role: req.role,
@@ -299,7 +306,7 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
 
   let raw: RawStepResult;
   try {
-    raw = await runProcess(deps.binary, invocation, deps.caps, deps.onEvent, deps.signal);
+    raw = await runProcess(deps.binary, invocation, stepCaps(req.kind, deps.caps), deps.onEvent, deps.signal);
   } catch (err) {
     return environmentFailure(`spawn failed: ${(err as Error).message}`);
   }

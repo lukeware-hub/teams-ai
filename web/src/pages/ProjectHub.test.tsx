@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { appLinks, ProjectHubView } from './ProjectHub.js';
 
 const project = {
@@ -90,6 +90,32 @@ describe('ProjectHubView', () => {
     fireEvent.change(screen.getByTestId('new-spec-id'), { target: { value: 'user-sign-in' } });
     fireEvent.click(screen.getByTestId('new-spec'));
     expect(o.newSpec).toHaveBeenCalledWith('user-sign-in', 'Entrar com e-mail e senha');
+  });
+  it('opens the new spec form straight from a ?novaSpec=1 link and drops the parameter when it closes', () => {
+    const o = on();
+    const Where = () => <output data-testid="where">{useLocation().search}</output>;
+    render(
+      <MemoryRouter initialEntries={['/projects/hello-app?novaSpec=1']}>
+        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <Where />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('new-spec-description')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('cancel-new-spec'));
+    expect(screen.queryByTestId('new-spec-description')).toBeNull();
+    expect(screen.getByTestId('where').textContent).toBe('');
+  });
+  it('a project with no spec teaches the path and offers Nova spec, which opens the form', () => {
+    const o = on();
+    render(
+      <MemoryRouter>
+        <ProjectHubView project={{ ...project, specs: [] }} notFound={false} runs={[]} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('no-specs').textContent).toContain('descrever, responder as perguntas e avaliar, iniciar a execução e validar o resultado');
+    fireEvent.click(screen.getByTestId('empty-new-spec'));
+    expect(screen.getByTestId('new-spec-description')).toBeTruthy();
+    expect(screen.queryByTestId('no-specs')).toBeNull();
   });
   it('a failed suggestion leaves the id field to fill by hand, and Cancelar closes the panel', async () => {
     const o = on();

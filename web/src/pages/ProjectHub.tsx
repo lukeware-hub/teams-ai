@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { serviceLinks } from '@server/deploy/service-links';
 import { refineApi, runApi, startedPath, type DraftRow, type NameRequest, type NameSuggestion, type ProjectRow, type Report, type RunRow, type ServiceStatus } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
@@ -124,12 +124,18 @@ export function ProjectHubView(p: {
   const [specDescription, setSpecDescription] = useState('');
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [pendingRestart, setPendingRestart] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
+  // A link with ?novaSpec=1 (project card, chat, finished run) opens the form straight away.
+  const [search, setSearch] = useSearchParams();
+  const [creating, setCreating] = useState(search.get('novaSpec') === '1');
   const [idShown, setIdShown] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const closeNewSpec = () => {
+    if (search.has('novaSpec')) {
+      search.delete('novaSpec');
+      setSearch(search, { replace: true });
+    }
     setCreating(false);
     setIdShown(false);
     setSpecDraft('');
@@ -280,7 +286,7 @@ export function ProjectHubView(p: {
               <InfoTip label="Especificações" text={HELP.specs} />
             </div>
             {creating ? null : (
-              <button type="button" className={allConcluded ? action.primary : action.plain} data-testid="open-new-spec" onClick={() => setCreating(true)}>
+              <button type="button" className={allConcluded ? action.primary : action.secondary} data-testid="open-new-spec" onClick={() => setCreating(true)}>
                 Nova spec
                 <Icon name="plus" size={14} />
               </button>
@@ -316,7 +322,17 @@ export function ProjectHubView(p: {
           ) : null}
           {allConcluded && !creating ? <p className="m-0 rounded-lg border border-good-line bg-good-soft px-3.5 py-2.5 text-[0.875rem] text-ink" data-testid="all-concluded">Todas as specs foram concluídas. Crie uma nova spec para a próxima entrega.</p> : null}
           {pr.specs.length === 0 ? (
-            <p className={empty}>Nenhuma spec criada ainda. Use Nova spec para criar a primeira.</p>
+            creating ? null : (
+              <div className={emptyState} data-testid="no-specs">
+                <Icon name="list" size={24} />
+                <p>Este projeto ainda não tem specs.</p>
+                <p>Uma spec descreve uma entrega. O caminho é: descrever, responder as perguntas e avaliar, iniciar a execução e validar o resultado.</p>
+                <button type="button" className={action.primary} data-testid="empty-new-spec" onClick={() => setCreating(true)}>
+                  Nova spec
+                  <Icon name="plus" size={14} />
+                </button>
+              </div>
+            )
           ) : (
             <ul className={rows}>
               {pr.specs.map((s) => (

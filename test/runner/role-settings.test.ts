@@ -54,6 +54,12 @@ describe('buildRoleSettings', () => {
     expect(buildRoleSettings('dev', { allowedDomains: [] }).sandbox.filesystem).toBeUndefined();
   });
 
+  it('denies reads of the extra directories a step is fenced from, by the Read tool and by any command of the sandbox', () => {
+    const s = buildRoleSettings('po', { allowedDomains: [], extraDenyRead: ['/ws/*/repo/', '/home/node/.teams-ai/runs'] });
+    expect(s.permissions.deny).toEqual(expect.arrayContaining(['Read(//ws/*/repo/**)', 'Read(//home/node/.teams-ai/runs/**)']));
+    expect(s.sandbox.filesystem?.denyRead).toEqual(['/ws/*/repo', '/home/node/.teams-ai/runs']);
+  });
+
   it('grants the file editing tools to editing roles, since dontAsk denies anything not allowed', () => {
     // Found by the first live run: the Dev answered techSpecPath "NOT_WRITTEN:..." because Write was denied.
     for (const role of ['dev', 'test', 'devops'] as const) {

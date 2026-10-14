@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { IndexDeps } from '../api/run-index.js';
+import { runsDir, type IndexDeps } from '../api/run-index.js';
 import type { ChatOutput } from '../agents/outputs.js';
 import { canonicalJson, sha256 } from '../contracts/hash.js';
 import { redactSecrets } from '../core/redact.js';
@@ -12,6 +12,7 @@ import { fitPackBudget } from '../refine/fit-pack.js';
 import type { FailureKind } from '../scheduler/retry-policy.js';
 import type { StepOutcome } from '../runner/step.js';
 import { buildChatContext, withoutCodes } from './context.js';
+import { stageChatFiles } from './guide.js';
 import { chatPack } from './pack.js';
 import type { ChatCorrection, ChatMessage, ChatStore } from './store.js';
 
@@ -29,7 +30,14 @@ const UNAVAILABLE: Partial<Record<FailureKind, string>> = {
 };
 const UNAVAILABLE_DEFAULT = 'Não consegui responder agora. Tente de novo em instantes.';
 
+/** The only commands the chat may run: queries on the guide graph. */
+export const CHAT_ALLOW: readonly string[] = ['Bash(graphify query:*)', 'Bash(graphify explain:*)', 'Bash(graphify path:*)'];
+/** What a project keeps inside its workspace that the chat must never read. */
+const PRIVATE_IN_WORKSPACE = ['repo', 'worktrees', 'graph', 'knowledge.sqlite'];
+
 export interface ChatDeps {
+  /** The folder of the user guide (`docs/guia`), copied into each question's working directory. */
+  guideDir: string;
   /** Where the technical detail of a failure goes; the screen only gets the plain message. */
   log?: (line: string) => void;
   store: ChatStore;
@@ -74,7 +82,7 @@ export class ChatService {
       if (!context) throw new NotFoundError(`projeto ${projectId} não encontrado`);
       const history = await this.deps.store.read(projectId);
       const at = (this.deps.now?.() ?? new Date()).toISOString();
-      const value = await this.run(projectId, { context: context.text, history: history.slice(-HISTORY_MESSAGES), opened: history.flatMap((m) => (m.correction?.specId ? [m.correction.title] : [])), question }, at);
+      const value = await this.run(projectId, { context: context.text, history, opened: history.flatMap((m) => (m.correction?.specId ? [m.correction.title] : [])), question }, at);
       const correction = value.correction ? await this.open(projectId, value.correction) : undefined;
       const answer: ChatMessage = { role: 'assistant', text: withoutCodes(value.answer), at, ...(correction ? { correction } : {}) };
       await this.deps.store.append(projectId, { role: 'user', text: question, at }, answer);
@@ -87,12 +95,14 @@ export class ChatService {
   /** One read-only agent step in a throwaway directory, like the name suggestion. */
   private async run(projectId: string, input: { context: string; history: readonly ChatMessage[]; opened: readonly string[]; question: string }, at: string): Promise<ChatOutput> {
     const specHash = sha256(canonicalJson({ projectId, question: input.question, at }));
-    const cwd = path.join(await this.deps.workspacesRoot(), '_chat', randomUUID());
+    const root = await this.deps.workspacesRoot();
+    const cwd = path.join(root, '_chat', randomUUID());
     await fs.mkdir(cwd, { recursive: true });
     let seq = 0;
     try {
+      await stageChatFiles(cwd, this.deps.guideDir, input.history);
       const out = (await this.deps.runAgent<'chat'>(
-        { kind: 'chat', role: 'po', pack: fitPackBudget(chatPack({ ...input, specHash })), cwd, phase: 'refine', taskId: null, attempt: 1 },
+        { kind: 'chat', role: 'po', pack: fitPackBudget(chatPack({ ...input, history: input.history.slice(-HISTORY_MESSAGES), specHash })), cwd, phase: 'refine', taskId: null, attempt: 1, extraAllow: CHAT_ALLOW, denyRead: await this.privateDirs(root) },
         { journal: { allocStepSeq: () => ++seq, fact: async () => undefined } as never, stepDir: (n) => path.join(cwd, 'steps', stepId(n)), specHash, signal: AbortSignal.timeout(TIMEOUT_MS) },
       )) as StepOutcome<ChatOutput>;
       if (out.ok) return out.value;
@@ -105,6 +115,17 @@ export class ChatService {
     } finally {
       await fs.rm(cwd, { recursive: true, force: true });
     }
+  }
+
+  /** Every project's code, worktrees, graph and index, the runs and the conversations: the chat reads none of them. The wildcards cover a project created while it runs. */
+  private async privateDirs(root: string): Promise<string[]> {
+    const projects = (await fs.readdir(root)).filter((name) => !name.startsWith('_'));
+    return [
+      ...PRIVATE_IN_WORKSPACE.map((dir) => path.join(root, '*', dir)),
+      ...projects.flatMap((project) => PRIVATE_IN_WORKSPACE.map((dir) => path.join(root, project, dir))),
+      runsDir(await this.deps.index()),
+      this.deps.store.dir,
+    ];
   }
 
   /** A failure to open the correction never loses the answer: the message says why instead. */

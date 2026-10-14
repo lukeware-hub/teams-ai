@@ -36,6 +36,11 @@ tasks:
     cmds:
       - docker compose up -d --build
 
+  guia:grafo:
+    desc: Rebuild the graph of docs/guia (the chat searches it) with the platform's graphify and Claude login; run after editing the guide
+    cmds:
+      - sh scripts/guia/atualizar-grafo.sh
+
   doctor:
     desc: Check the prerequisites and say how to fix what is missing (messages in pt-br)
     silent: true

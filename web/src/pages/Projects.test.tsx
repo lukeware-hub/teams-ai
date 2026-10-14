@@ -29,6 +29,15 @@ describe('ProjectsView', () => {
     expect(screen.getByRole('status').textContent).toContain('Carregando');
     expect(screen.queryByText('Seus projetos aparecem aqui.')).toBeNull();
   });
+  it('each project card has a Nova spec shortcut that opens the form of that project', () => {
+    const o = on();
+    render(
+      <MemoryRouter>
+        <ProjectsView projects={[{ projectId: 'hello-app', dir: '/p', name: 'Hello app', description: 'x', specs: [] }]} drafts={[]} error={null} onAdd={o.add} onNewProject={o.newProject} onDeleteDraft={o.deleteDraft} onDeleteProject={o.deleteProject} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('new-spec-hello-app').getAttribute('href')).toBe('/projects/hello-app?novaSpec=1');
+  });
   it('suggests the project id and first spec with AI and submits them', async () => {
     const o = on();
     const suggest = vi.fn(async () => ({ id: 'soap-shop', firstSpecId: 'product-catalog' }));

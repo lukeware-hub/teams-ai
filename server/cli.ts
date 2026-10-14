@@ -137,6 +137,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
         }),
         ...chatRoutes({
           chat: new ChatService({
+            guideDir: path.join(repoRoot, 'docs', 'guia'),
             store: new ChatStore(path.join(expandHome('~/.teams-ai'), 'chats')),
             index: async () => ({ cfg: (await readUserConfig()).cfg, isAlive: (pid) => isAlive(defaultRunControl(repoRoot), pid) }),
             runAgent,

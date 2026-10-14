@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { chatApi, runApi, type ChatCorrection, type ChatMessage, type ProjectRow } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
@@ -12,7 +12,7 @@ import { Select } from '../components/Select.js';
 import { emptyState } from './project-shared.js';
 
 const HELP = 'Aqui você só tira dúvidas. O chat não dá ordens aos agentes: eles seguem apenas as specs e o backlog. Se o chat achar algo sendo feito que não deveria, ele abre uma spec de correção para você revisar.';
-const EXAMPLES = ['O que está sendo desenvolvido agora?', 'Quais tarefas estão bloqueadas e por quê?', 'Algo está sendo feito fora do que foi pedido?'];
+const EXAMPLES = ['Como crio uma nova spec?', 'O que está sendo desenvolvido agora?', 'Quais tarefas estão bloqueadas e por quê?', 'Algo está sendo feito fora do que foi pedido?'];
 
 // Same panel, heading and callout shapes as the refinement screen.
 const panelCard = 'edge-lit grid min-w-0 gap-4 rounded-xl border border-line bg-surface p-5 shadow-card';
@@ -70,6 +70,7 @@ export function ChatPage() {
   const [draft, setDraft] = useState('');
   const [problem, setProblem] = useState<Problem | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  const navigate = useNavigate();
   const current = useRef('');
   current.current = projectId;
 
@@ -157,6 +158,10 @@ export function ChatPage() {
               <Select wrapperClassName="min-w-[14rem] max-md:flex-1" aria-label="Projeto" value={projectId} disabled={asking !== null} onChange={(e) => setProjectId(e.target.value)}>
                 {projects.map((p) => <option key={p.projectId} value={p.projectId}>{p.name}</option>)}
               </Select>
+              <button type="button" className="secondary" disabled={!projectId} onClick={() => navigate(`/projects/${projectId}?novaSpec=1`)}>
+                Nova spec
+                <Icon name="plus" size={16} />
+              </button>
               <button type="button" className="secondary" disabled={!messages?.length || asking !== null} onClick={() => setConfirmClear(true)}>
                 Limpar conversa
                 <Icon name="trash" size={16} />

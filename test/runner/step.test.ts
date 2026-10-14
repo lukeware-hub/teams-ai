@@ -6,7 +6,7 @@ import { parseAgentFile } from '../../server/agents/registry.js';
 import { Accounting } from '../../server/budget/accounting.js';
 import type { RawStepResult } from '../../server/runner/process-runner.js';
 import { hasSession } from '../../server/runner/session-store.js';
-import { classifyFailure, runStep, type StepDeps, type StepRequest } from '../../server/runner/step.js';
+import { classifyFailure, runStep, stepCaps, type StepDeps, type StepRequest } from '../../server/runner/step.js';
 import { parseStreamJson, summarizeStream } from '../../server/runner/stream-events.js';
 
 const FAKE = path.resolve('test/fixtures/fake-claude/fake-claude.mjs');
@@ -361,6 +361,20 @@ describe('runStep', () => {
     expect(JSON.parse(captured.argv[captured.argv.indexOf('--agents') + 1]).dev.tools).toEqual(['Read', 'Grep', 'Glob', 'Bash']);
     await runStep(request({ kind: 'dev', agent }), deps);
     expect(JSON.parse(await fs.readFile(capture, 'utf8')).argv).toContain('Read,Edit,Write,Grep,Glob,Bash');
+  });
+
+  it('gives a chat step Read, Grep, Glob and Bash with only its graphify rules allowed and its fenced directories denied, and a short turn cap', async () => {
+    const capture = path.join(dir, 'capture.json');
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
+    await runStep(request({ kind: 'chat', role: 'po', agent: { ...devAgent, tools: [] }, extraAllow: ['Bash(graphify query:*)'], denyRead: ['/ws/*/repo'] }), deps);
+    const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
+    expect(captured.argv[captured.argv.indexOf('--tools') + 1]).toBe('Read,Grep,Glob,Bash');
+    const settings = JSON.parse(await fs.readFile(captured.argv[captured.argv.indexOf('--settings') + 1], 'utf8'));
+    expect(settings.permissions.allow).toEqual(['Bash(graphify query:*)']);
+    expect(settings.permissions.deny).toContain('Read(//ws/*/repo/**)');
+    expect(stepCaps('chat', deps.caps).maxTurns).toBe(8);
+    expect(stepCaps('dev', deps.caps).maxTurns).toBe(50);
+    expect(stepCaps('chat', { ...deps.caps, maxTurns: 3 }).maxTurns).toBe(3);
   });
 
   it('returns an environment failure when the working directory does not exist, without trusting it', async () => {

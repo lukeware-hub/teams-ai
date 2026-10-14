@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../../server/config/config.js';
-import { ChatService, ChatUnavailableError } from '../../server/chat/service.js';
+import { CHAT_ALLOW, ChatService, ChatUnavailableError } from '../../server/chat/service.js';
 import { ChatStore } from '../../server/chat/store.js';
 import { ConflictError, NotFoundError } from '../../server/refine/session.js';
 
@@ -19,12 +19,13 @@ afterEach(async () => {
 
 const ok = (value: unknown) => ({ ok: true, value: { specHash: 'x', ...(value as object) }, summary: {} });
 
-interface Req { kind: string; role: string; cwd: string; pack: { feedback?: string } }
+interface Req { kind: string; role: string; cwd: string; pack: { feedback?: string }; extraAllow?: string[]; denyRead?: string[] }
 
 function make(runAgent: (req: Req) => Promise<unknown>, extra: { newSpec?: () => Promise<unknown>; log?: (line: string) => void } = {}) {
   const newSpec = vi.fn(extra.newSpec ?? (async () => undefined));
   const suggestSpecId = vi.fn(async () => 'fix-greeting');
   const service = new ChatService({
+    guideDir: path.resolve('docs/guia'),
     store: new ChatStore(path.join(home, 'chats')),
     index: async () => ({ cfg: loadConfig({ paths: { runs: path.join(home, 'runs').replace(/\\/g, '/') }, projects: [{ dir: HELLO }] }), home, isAlive: () => false }),
     runAgent: runAgent as never,
@@ -48,6 +49,28 @@ describe('ChatService.ask', () => {
     expect((await service.messages('hello-app')).map((m) => [m.role, m.text])).toEqual([['user', 'o que está sendo feito?'], ['assistant', 'Está sendo feito o cumprimento.']]);
     expect(newSpec).not.toHaveBeenCalled();
     await expect(fs.readdir(path.join(home, 'ws', '_chat'))).resolves.toEqual([]);
+  });
+
+  it('stages the guide, its graph and the conversation in the working directory and fences the step', async () => {
+    let staged: Record<string, string> = {};
+    const runAgent = vi.fn(async (req: Req) => {
+      const read = (rel: string) => fs.readFile(path.join(req.cwd, rel), 'utf8').catch(() => 'MISSING');
+      staged = { guide: await read('guia/criar-spec.md'), graph: (await read('graphify-out/graph.json')).slice(0, 1), history: await read('historico.md') };
+      return ok({ answer: 'ok', correction: null });
+    });
+    const { service } = make(runAgent);
+    await service.ask('hello-app', 'primeira pergunta');
+    await service.ask('hello-app', 'e a segunda?');
+    expect(staged.guide).toContain('Como criar uma nova spec');
+    expect(staged.graph).toBe('{');
+    expect(staged.history).toContain('## Pergunta');
+    expect(staged.history).toContain('primeira pergunta');
+    const call = runAgent.mock.calls[1]![0];
+    expect(call.extraAllow).toEqual([...CHAT_ALLOW]);
+    expect(CHAT_ALLOW).toEqual(['Bash(graphify query:*)', 'Bash(graphify explain:*)', 'Bash(graphify path:*)']);
+    const ws = path.join(home, 'ws');
+    expect(call.denyRead).toEqual(expect.arrayContaining([path.join(ws, '*', 'repo'), path.join(ws, '*', 'worktrees'), path.join(home, 'runs'), path.join(home, 'chats')]));
+    expect(call.denyRead!.some((d) => d.includes('_chat'))).toBe(false);
   });
 
   it('opens a correction spec draft when the answer proposes one, and never lists it again as new', async () => {

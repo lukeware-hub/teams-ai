@@ -228,6 +228,10 @@ export function ProjectsView(p: {
                     Excluir
                     <Icon name="trash" size={14} />
                   </button>
+                  <Link className={action.secondary} data-testid={`new-spec-${pr.projectId}`} aria-label={`Nova spec no projeto ${pr.projectId}`} to={`/projects/${pr.projectId}?novaSpec=1`}>
+                    Nova spec
+                    <Icon name="plus" size={14} />
+                  </Link>
                   <Link className={action.secondary} data-testid={`open-project-${pr.projectId}`} aria-label={`Abrir projeto ${pr.projectId}`} to={`/projects/${pr.projectId}`}>
                     Abrir
                     <Icon name="arrow-right" size={14} />
