@@ -8,14 +8,14 @@ import { Spec } from '../contracts/spec.js';
 import { writeFileAtomic } from '../core/atomic-write.js';
 import type { Decider } from '../decide/decider.js';
 import type { DecisionRecord } from '../decide/types.js';
-import { classifyFailure, retryable } from '../decide/decisions/failure-cause.js';
+import { classifyFailure } from '../decide/decisions/failure-cause.js';
 import { OrchEvent } from '../orchestrator/events.js';
 import { expandHome, nextRunId } from '../orchestrator/workspace.js';
 import { RunEvent } from '../pipeline/run-state.js';
 import { DEPENDENCY_BLOCKED } from '../pipeline/task-state.js';
 import { loadEvents } from '../store/event-store.js';
 import { writeRepairNotes } from './repair-notes.js';
-import { newProgram, prioritizeItem, retryItem, tick, type Program, type ProgramEffects, type ProgramEntry, type ProgramItem, type RunOutcome } from './controller.js';
+import { newProgram, prioritizeItem, retryItem, tick, type Program, type ProgramEffects, type ProgramEntry, type ProgramItem, type RepairVerdict, type RunOutcome } from './controller.js';
 
 export interface ProgramServiceDeps {
   cfg: () => Promise<Config>;
@@ -244,12 +244,14 @@ export class ProgramService {
     return rows.map((r) => r.runId).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).at(-1) ?? null;
   }
 
-  /** Classifies the latest failure; when another run may fix it, leaves every failure for that run to read. */
-  private async repair(root: string, specId: string, failures: readonly string[]): Promise<boolean> {
+  /** Classifies the latest failure; a code defect leaves every failure for the next run to read, the environment or no answer waits. */
+  private async repair(root: string, specId: string, failures: readonly string[]): Promise<RepairVerdict> {
     const { confidential } = Project.parse(JSON.parse(await fs.readFile(path.join(root, 'docs', 'project.json'), 'utf8')));
-    if (!retryable(await classifyFailure(failures, this.deps.decider!, { confidential }))) return false;
+    const cause = await classifyFailure(failures, this.deps.decider!, { confidential });
+    if (cause === 'spec-problem') return 'give-up';
+    if (cause !== 'code-defect') return 'wait';
     await writeRepairNotes(root, specId, failures);
-    return true;
+    return 'retry-now';
   }
 
   /** What the controller needs to know about a run: still going, resumable, delivered clean, done, or failed and why. */

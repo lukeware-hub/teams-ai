@@ -208,6 +208,28 @@ describe('program service tick', () => {
     const final = await service(cause('spec-problem')).tick('shop', 'd');
     expect(final!.items[0]).toMatchObject({ status: 'failed', reason: 'verification-failed: AC-004 missing' });
   });
+
+  // 24/7: an environment failure or one nobody classified waits and starts again; a ledger written before waits still reads.
+  it('puts an environment failure or an unclassified one to wait without a repair note, and starts it again once its time has come', async () => {
+    await fs.mkdir(path.join(root, 'draft', 'docs'), { recursive: true });
+    await fs.writeFile(path.join(root, 'draft', 'docs', 'project.json'), JSON.stringify(makeProject()));
+    const item = { specId: 'd-a', key: 'a', rank: 1, dependsOn: [], status: 'running', runId: 'd-a-r1', completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0 };
+    const ledger = path.join(root, 'draft', 'program.json');
+    await journal('d-a-r1', [started('d-a'), finished('deploy-failed', { reason: 'docker daemon down' })]);
+    const environment = { decide: async () => ({ answered: true as const, backend: 'jev' as const, escalated: false, answers: { cause: { type: 'choice' as const, value: 'environment', probabilities: { environment: 1 }, confidence: 1 } } }) };
+    const unanswered = { decide: async () => ({ answered: false as const, reason: 'exhausted' as const }) };
+    for (const decider of [environment, unanswered]) {
+      await fs.writeFile(ledger, JSON.stringify({ version: 1, draftId: 'd', status: 'running', updatedAt: '', items: [item] }));
+      const p = await service(decider).tick('shop', 'd');
+      expect(p).toMatchObject({ status: 'running', items: [{ status: 'waiting', reason: 'deploy-failed: docker daemon down', waits: 1 }] });
+      expect(p!.items[0]!.repairs).toBeUndefined();
+    }
+    await expect(fs.access(path.join(root, 'draft', 'repair', 'd-a.md'))).rejects.toThrow();
+    await fs.writeFile(ledger, JSON.stringify({ version: 1, draftId: 'd', status: 'running', updatedAt: '', items: [{ ...item, status: 'waiting', retryAt: new Date(Date.now() - 1000).toISOString(), waits: 1 }] }));
+    const again = await service(environment).tick('shop', 'd');
+    expect(again!.items[0]).toMatchObject({ status: 'running', runId: expect.stringMatching(/^shop--d-a--run-\d+$/), waits: 1 });
+    expect(spawned).toHaveLength(1);
+  });
 });
 
 describe('a spec already delivered', () => {

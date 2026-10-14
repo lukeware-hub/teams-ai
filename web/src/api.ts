@@ -287,7 +287,7 @@ export interface ProgramViewItem {
   key: string;
   rank: number;
   dependsOn: string[];
-  status: 'pending' | 'running' | 'completing' | 'done' | 'failed' | 'blocked';
+  status: 'pending' | 'running' | 'completing' | 'waiting' | 'done' | 'failed' | 'blocked';
   runId: string | null;
   completeRunId: string | null;
   startedAt: string | null;
@@ -301,6 +301,8 @@ export interface ProgramViewItem {
   pause?: { reason: 'quota' | 'auth'; until?: string };
   /** Asked to run now: it starts at the next free slot. */
   priority?: boolean;
+  /** While waiting after an environment failure: when it starts again. */
+  retryAt?: string;
 }
 export interface ProgramDecision {
   at: string;

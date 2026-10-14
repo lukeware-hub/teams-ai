@@ -123,13 +123,13 @@ describe('program controller', () => {
     expect(status(p)).toEqual({ a: 'failed', b: 'blocked' });
   });
 
-  it('resumes an interrupted run a bounded number of times, then fails the item', async () => {
+  it('resumes an interrupted run a bounded number of times, then the item waits to start again', async () => {
     const { fx, calls } = world({ 'd-a-r1': { kind: 'interrupted' } });
     let p = newProgram('d', [entry('a', 1)], NOW);
     p = await tick(p, fx, save);
     for (let i = 0; i < 5; i++) p = await tick(p, fx, save);
     expect(calls.filter((c) => c.startsWith('resume'))).toHaveLength(3);
-    expect(p.items[0]!.status).toBe('failed');
+    expect(p.items[0]!.status).toBe('waiting');
     expect(p.items[0]!.reason).toMatch(/interrupted/);
   });
 
@@ -138,7 +138,7 @@ describe('program controller', () => {
     fx.stopRun = async (runId) => void calls.push(`stop ${runId}`);
     let p = newProgram('d', [entry('a', 1)], NOW);
     for (let i = 0; i < 6; i++) p = await tick(p, fx, save);
-    expect(p.items[0]!.status).toBe('failed');
+    expect(p.items[0]!.status).toBe('waiting');
     expect(calls.filter((c) => c.startsWith('stop'))).toEqual(['stop d-a-r1']);
   });
 
@@ -155,7 +155,7 @@ describe('program controller', () => {
 
   it('leaves a run the user stopped alone: no resume, no repair, the item waits; a stopped run that finished fails without repair', async () => {
     let repairs = 0;
-    const { fx, calls } = world({ 'd-x-r1': { kind: 'stopped' }, 'd-b-r2': { kind: 'stopped', finished: true, costUsd: 1 } }, async () => (repairs++, true));
+    const { fx, calls } = world({ 'd-x-r1': { kind: 'stopped' }, 'd-b-r2': { kind: 'stopped', finished: true, costUsd: 1 } }, async () => (repairs++, 'retry-now'));
     let p = newProgram('d', [{ ...entry('a', 1), done: true }, mapped('x', 2), mapped('b', 3)], NOW);
     for (let i = 0; i < 3; i++) p = await tick(p, fx, save);
     expect(calls.filter((c) => !c.startsWith('start'))).toEqual([]);
@@ -183,7 +183,7 @@ describe('program controller', () => {
     expect(calls).toEqual([]);
   });
 
-  it('records a start failure on the item and goes on', async () => {
+  it('puts an item whose start failed to wait and goes on', async () => {
     const { fx } = world();
     fx.startRun = async (specId) => {
       if (specId === 'd-a') throw new Error('docker is not reachable');
@@ -192,7 +192,7 @@ describe('program controller', () => {
     let p = newProgram('d', [entry('a', 1), entry('b', 2)], NOW);
     p = await tick(p, fx, save);
     p = await tick(p, fx, save);
-    expect(status(p)).toEqual({ a: 'failed', b: 'running' });
+    expect(status(p)).toEqual({ a: 'waiting', b: 'running' });
     expect(p.items[0]!.reason).toMatch(/docker is not reachable/);
   });
 
@@ -279,7 +279,7 @@ describe('program controller', () => {
         'd-a-r2': { kind: 'failed', reason: 'two', costUsd: 2 },
         'd-a-r3': { kind: 'failed', reason: 'three', costUsd: 3 },
       },
-      async (_specId, failures) => (seen.push([...failures]), true),
+      async (_specId, failures) => (seen.push([...failures]), 'retry-now'),
     );
     let p = newProgram('d', [entry('a', 1), entry('b', 2, ['a'])], NOW);
     p = await tick(p, fx, save);
@@ -292,12 +292,13 @@ describe('program controller', () => {
     expect(status(p)).toEqual({ a: 'failed', b: 'blocked' });
     expect(p.items[0]!.reason).toBe(`three; ${MAX_REPAIRS} reparo(s) automático(s) não resolveram`);
     expect(p.items[0]!.costUsd).toBe(6);
-    expect(seen).toEqual([['one'], ['one', 'two']]);
+    // The last failure is classified too: an environment failure waits even after the repairs ran out.
+    expect(seen).toEqual([['one'], ['one', 'two'], ['one', 'two', 'three']]);
     expect(calls).toEqual(['start d-a', 'start d-a', 'start d-a']);
   });
 
   it('stops at the second identical failure instead of spending the remaining repairs on it', async () => {
-    const { fx, calls } = world({ 'd-a-r1': { kind: 'failed', reason: 'e2e needs PLATFORM_ADMIN_TOKEN', costUsd: 1 }, 'd-a-r2': { kind: 'failed', reason: 'e2e needs PLATFORM_ADMIN_TOKEN', costUsd: 2 } }, async () => true);
+    const { fx, calls } = world({ 'd-a-r1': { kind: 'failed', reason: 'e2e needs PLATFORM_ADMIN_TOKEN', costUsd: 1 }, 'd-a-r2': { kind: 'failed', reason: 'e2e needs PLATFORM_ADMIN_TOKEN', costUsd: 2 } }, async () => 'retry-now');
     let p = newProgram('d', [entry('a', 1), entry('b', 2, ['a'])], NOW);
     for (let i = 0; i < 4; i++) p = await tick(p, fx, save);
     expect(status(p)).toEqual({ a: 'failed', b: 'blocked' });
@@ -306,7 +307,7 @@ describe('program controller', () => {
   });
 
   it('fails at once when the repair says no, and never repairs without the effect', async () => {
-    const refused = world({ 'd-a-r1': { kind: 'failed', reason: 'criteria contradict' } }, async () => false);
+    const refused = world({ 'd-a-r1': { kind: 'failed', reason: 'criteria contradict' } }, async () => 'give-up');
     let p = await tick(newProgram('d', [entry('a', 1)], NOW), refused.fx, save);
     p = await tick(p, refused.fx, save);
     expect(p.items[0]).toMatchObject({ status: 'failed', reason: 'criteria contradict' });
@@ -317,15 +318,82 @@ describe('program controller', () => {
     expect(q.items[0]!.status).toBe('failed');
   });
 
-  it('does not repair a failed completion, and a classification that throws counts as no repair', async () => {
-    const { fx } = world({ 'd-a-r1': { kind: 'delivered' }, 'd-a-complete-r1': { kind: 'failed', reason: 'merge' } }, async () => true);
+  it('does not repair a failed completion, and a classification that throws counts as unclassified, so the item waits', async () => {
+    const { fx } = world({ 'd-a-r1': { kind: 'delivered' }, 'd-a-complete-r1': { kind: 'failed', reason: 'merge' } }, async () => 'retry-now');
     let p = await tick(newProgram('d', [entry('a', 1)], NOW), fx, save);
     for (let i = 0; i < 3; i++) p = await tick(p, fx, save);
     expect(p.items[0]).toMatchObject({ status: 'failed', reason: 'completion failed: merge' });
     const broken = world({ 'd-a-r1': { kind: 'failed', reason: 'x' } }, async () => { throw new Error('down'); });
     let q = await tick(newProgram('d', [entry('a', 1)], NOW), broken.fx, save);
     q = await tick(q, broken.fx, save);
-    expect(q.items[0]!.status).toBe('failed');
+    expect(q.items[0]).toMatchObject({ status: 'waiting', reason: 'x', waits: 1 });
+  });
+
+  // 24/7: an environment failure, or one nobody classified, never ends the item; it waits longer each time, up to an hour.
+  it('puts an environment failure to wait with a growing backoff, never spends a repair on it and never fails it', async () => {
+    const failed = Object.fromEntries(Array.from({ length: 8 }, (_, n) => [`d-a-r${n + 1}`, { kind: 'failed', reason: 'docker daemon down', costUsd: 1 } as RunOutcome]));
+    const { fx, calls } = world(failed, async () => 'wait');
+    let clock = NOW.getTime();
+    fx.now = () => new Date(clock);
+    let p = newProgram('d', [entry('a', 1), entry('b', 2, ['a'])], NOW);
+    p = await tick(p, fx, save); // start a
+    p = await tick(p, fx, save); // r1 fails: waits 1 minute
+    expect(status(p)).toEqual({ a: 'waiting', b: 'pending' });
+    expect(p.status).toBe('running');
+    expect(p.items[0]).toMatchObject({ reason: 'docker daemon down', waits: 1, retryAt: new Date(clock + 60_000).toISOString(), costUsd: 1 });
+    expect(p.items[0]!.repairs).toBeUndefined();
+    p = await tick(p, fx, save); // not yet time
+    expect(calls).toEqual(['start d-a']);
+    for (let n = 2; n <= 6; n++) {
+      clock = Date.parse(p.items[0]!.retryAt!);
+      p = await tick(p, fx, save); // time has come: back to pending and started again
+      expect(p.items[0]).toMatchObject({ status: 'running', runId: `d-a-r${n}` });
+      expect(p.items[0]!.retryAt).toBeUndefined();
+      p = await tick(p, fx, save); // fails again, the same way
+      expect(p.items[0]).toMatchObject({ status: 'waiting', waits: n, retryAt: new Date(clock + 60_000 * 2 ** (n - 1)).toISOString() });
+    }
+    expect(calls).toHaveLength(6);
+    p.items[0]!.waits = 10;
+    clock = Date.parse(p.items[0]!.retryAt!);
+    p = await tick(p, fx, save);
+    p = await tick(p, fx, save);
+    expect(p.items[0]).toMatchObject({ status: 'waiting', waits: 11, retryAt: new Date(clock + 3_600_000).toISOString() });
+    expect(status(p).b).toBe('pending');
+  });
+
+  it('holds no slot while waiting, yet keeps the program live and its dependents pending', async () => {
+    const { fx, calls } = world({ 'd-x-r1': { kind: 'failed', reason: 'network down' } }, async () => 'wait');
+    let p = newProgram('d', [{ ...mapped('a', 1), done: true }, mapped('x', 2), mapped('b', 3), mapped('c', 4), mapped('y', 5, ['x'])], NOW);
+    p = await tick(p, fx, save); // x and b start
+    p = await tick(p, fx, save); // x waits; its slot goes to c
+    expect(status(p)).toEqual({ a: 'done', x: 'waiting', b: 'running', c: 'running', y: 'pending' });
+    expect(calls).toEqual(['start d-x', 'start d-b', 'start d-c']);
+    const alone = world({ 'd-a-r1': { kind: 'failed', reason: 'network down' } }, async () => 'wait');
+    let q = await tick(newProgram('d', [entry('a', 1)], NOW), alone.fx, save);
+    q = await tick(q, alone.fx, save);
+    expect(q).toMatchObject({ status: 'running', items: [{ status: 'waiting' }] });
+  });
+
+  it('waits when a run cannot be adopted nor started, or cannot be resumed, and stops the run it gave up on', async () => {
+    const { fx, calls } = world({ 'd-a-r1': { kind: 'interrupted' } });
+    fx.stopRun = async (runId) => void calls.push(`stop ${runId}`);
+    fx.startRun = async () => { throw new Error('spawn EAGAIN'); };
+    const adopt = newProgram('d', [entry('a', 1)], NOW);
+    adopt.items[0]!.status = 'running';
+    expect((await tick(adopt, fx, save)).items[0]).toMatchObject({ status: 'waiting', reason: 'spawn EAGAIN', waits: 1 });
+    fx.resumeRun = async () => { throw new Error('journal never appeared'); };
+    const p = newProgram('d', [entry('a', 1)], NOW);
+    Object.assign(p.items[0]!, { status: 'running', runId: 'd-a-r1' });
+    expect((await tick(p, fx, save)).items[0]).toMatchObject({ status: 'waiting', reason: 'resume failed: journal never appeared' });
+    expect(calls).toEqual(['stop d-a-r1']);
+  });
+
+  it('runs a waiting item now when it is prioritized', () => {
+    const p = newProgram('d', [entry('a', 1)], NOW);
+    Object.assign(p.items[0]!, { status: 'waiting', reason: 'network down', runId: 'd-a-r1', retryAt: '2026-10-07T13:00:00.000Z', waits: 3 });
+    const next = prioritizeItem(p, 'd-a', NOW);
+    expect(next.items[0]).toMatchObject({ status: 'pending', priority: true, runId: null, reason: null, waits: 3 });
+    expect(next.items[0]!.retryAt).toBeUndefined();
   });
 
   it('retryItem clears a failed item back to pending and un-blocks its dependents, so the next tick gives it another try', () => {

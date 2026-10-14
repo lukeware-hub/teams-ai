@@ -9,12 +9,13 @@ import { action, panel, sectionHeading, sectionTitle } from '../pages/project-sh
 
 const HELP = 'Depois do início, os agentes executam o backlog inteiro sozinhos, na ordem de prioridade e de dependência, até duas specs ao mesmo tempo quando elas não mexem no mesmo código: planejam, implementam, testam, publicam e marcam cada spec como concluída. Uma spec que falha é isolada e só bloqueia as que dependem dela; as demais seguem. Executar agora passa uma spec à frente da fila.';
 
-const LABEL = { pending: 'na fila', running: 'em execução', completing: 'concluindo', done: 'concluída', failed: 'falhou', blocked: 'bloqueada' } as const;
+const LABEL = { pending: 'na fila', running: 'em execução', completing: 'concluindo', waiting: 'aguardando', done: 'concluída', failed: 'falhou', blocked: 'bloqueada' } as const;
 // Same pills as the hub's spec rows; a live spec's dot pulses.
 const PILL = {
   pending: 'status-pill',
   running: 'status-pill tone-neutral motion-safe:before:animate-pulse',
   completing: 'status-pill tone-neutral motion-safe:before:animate-pulse',
+  waiting: 'status-pill tone-warn',
   done: 'status-pill tone-good',
   failed: 'status-pill tone-bad',
   blocked: 'status-pill tone-bad',
@@ -51,11 +52,14 @@ const fmtCost = (v: number) => `US$ ${v.toFixed(2)}`;
 /** `repo#7`: services keep their own repositories, so a number alone would name several pull requests. */
 export const prLabel = (pr: { number: number; url: string }): string => `${/github\.com\/[^/]+\/([^/]+)\/pull\//.exec(pr.url)?.[1] ?? 'PR'}#${pr.number}`;
 
+/** The time of day as HH:MM. */
+const hhmm = (d: Date) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
 /** Why a run waits, and until when the Claude quota lets it go on. */
 export function pauseText(pause: NonNullable<ProgramViewItem['pause']>): string {
   if (pause.reason === 'auth') return 'Pausada: o login do Claude precisa ser refeito.';
   const until = pause.until ? new Date(pause.until) : null;
-  return until && !Number.isNaN(until.getTime()) ? `Pausada pela cota do Claude até ${until.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.` : 'Pausada pela cota do Claude.';
+  return until && !Number.isNaN(until.getTime()) ? `Pausada pela cota do Claude até ${hhmm(until)}.` : 'Pausada pela cota do Claude.';
 }
 
 /** Polls a started backlog's program every 5 seconds, with the phase of each run in progress, until it finishes. */
@@ -149,6 +153,7 @@ export function ProgramPanel({ program, titles, onPrioritize }: { program: Progr
               <b className="font-semibold text-ink wrap-anywhere">{titles[i.key] ?? i.key}</b>
               {i.runId && <Link to={`/runs/${i.runId}`} className="w-fit max-w-full truncate font-mono text-[0.75rem] no-underline hover:underline">{i.runId}</Link>}
               {i.pause && <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid={`program-item-pause-${i.key}`}>{pauseText(i.pause)}</p>}
+              {i.status === 'waiting' && i.retryAt && <p className="m-0 text-[0.8125rem] text-ink-soft">tenta de novo às {hhmm(new Date(i.retryAt))}</p>}
               {i.prs && i.prs.length > 0 && (
                 <details className="text-[0.8125rem]" data-testid={`program-item-prs-${i.key}`}>
                   <summary className="w-fit cursor-pointer text-ink-soft">{i.prs.length} {i.prs.length === 1 ? 'pull request' : 'pull requests'}</summary>
