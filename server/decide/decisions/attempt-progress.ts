@@ -30,19 +30,43 @@ export interface ProgressResult {
   source: 'default' | 'rule' | BackendName;
 }
 
-/** What a delta complains about: the file and severity of each review finding above minor, or the whole text of any other failure. */
-function complaints(delta: string): Set<string> {
-  if (!delta.startsWith('Review requested changes:')) return new Set([delta.trim()]);
-  const keys = [...delta.matchAll(/^- (\S+?)(?::\d+)? \[(\w+)\]/gm)].filter((m) => m[2] !== 'minor').map((m) => `${m[1]} [${m[2]}]`);
-  return new Set(keys);
+interface Finding {
+  file: string;
+  line: number | null;
+  severity: string;
+  text: string;
 }
 
-/** The last attempt fixed nothing: every complaint of its delta was already in the delta before it (live: a file the orchestrator's commit kept dropping, flagged three times in a row). */
+/** The findings above minor of a review delta, or null when the delta is not a review (a gate failure, say). */
+function findings(delta: string): Finding[] | null {
+  if (!delta.startsWith('Review requested changes:')) return null;
+  return [...delta.matchAll(/^- (\S+?)(?::(\d+))? \[(\w+)\] (.*?)(?: \(fix: [\s\S]*?\))?$/gm)].filter((m) => m[3] !== 'minor').map((m) => ({ file: m[1]!, line: m[2] ? Number(m[2]) : null, severity: m[3]!, text: m[4]! }));
+}
+
+const words = (text: string): Set<string> => new Set(text.toLowerCase().match(/[a-zà-ú_]{5,}/g) ?? []);
+
+/** Share of the longer words two texts have in common, 0 to 1. */
+function overlap(a: string, b: string): number {
+  const x = words(a);
+  const y = words(b);
+  const common = [...x].filter((w) => y.has(w)).length;
+  return common / Math.max(1, x.size + y.size - common);
+}
+
+/** The same complaint: same file and severity, and the same spot (a whole-file finding, a line within 10, or a text saying much the same). Two findings in one file about different code are progress. */
+function sameComplaint(x: Finding, y: Finding): boolean {
+  return x.file === y.file && x.severity === y.severity && (x.line === null || y.line === null || Math.abs(x.line - y.line) <= 10 || overlap(x.text, y.text) >= 0.25);
+}
+
+/** The last attempt fixed nothing: every complaint of its delta was already in the delta before it (live: a file the orchestrator's commit kept dropping, flagged three times in a row; but a new problem in the same file, found once the first is fixed, is progress). */
 export function repeatedFailure(history: readonly string[]): boolean {
   if (history.length < 2) return false;
-  const last = complaints(history[history.length - 1]!);
-  const before = complaints(history[history.length - 2]!);
-  return last.size > 0 && [...last].every((k) => before.has(k));
+  const last = history[history.length - 1]!;
+  const before = history[history.length - 2]!;
+  const now = findings(last);
+  const then = findings(before);
+  if (now === null || then === null) return now === null && then === null && last.trim() === before.trim();
+  return now.length > 0 && now.every((x) => then.some((y) => sameComplaint(x, y)));
 }
 
 /** The weighted level index may fall between levels; round to the nearest one. */

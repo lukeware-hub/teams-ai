@@ -111,6 +111,8 @@ Severidade: **crítico** = segredo exposto ou custo sem limite; **importante** =
 - [x] **Falha de ambiente encerrava um item como `failed`.** `server/program/`: estado `waiting` com espera crescente até 1 hora (`retryAt`, `waits`), sem gastar `MAX_REPAIRS`; erros de `startRun`, `resumeRun` e `MAX_RESUMES` também esperam. `failed` fica só para defeito da spec ou a mesma falha de código repetida.
 - [x] **Os passos podiam ler `workspaces/<projeto>/secrets` com `cat`.** `server/runner/role-settings.ts` `projectSecretsDir`: negado ao Read e ao sandbox, em todo passo.
 
+- [x] **Achado novo no mesmo arquivo era julgado como repetição.** `server/decide/decisions/attempt-progress.ts` `repeatedFailure`: comparava só arquivo e severidade, então duas revisões que achavam problemas diferentes em `validate.go` bloqueavam uma tarefa que estava avançando. Agora o mesmo achado exige arquivo e severidade iguais e o mesmo ponto (achado do arquivo inteiro, linha a até 10 de distância, ou texto parecido). Medido nos journals: mantém os 16 estancamentos reais (scaffold com `.env.example`) e libera os 2 falsos positivos (surgical-request-draft T5 e T900-fix-3).
+
 ## Abertos
 
 Nenhum bug conhecido. Ação do dono, fora do código: o e2e de privacy-engine precisa de `PLATFORM_ADMIN_TOKEN` (ADR-030, pelo menos 32 caracteres, o mesmo valor do identity-service) nos segredos do projeto, declarado em `externalDependencies` da spec; sem a declaração o gate não o recebe.

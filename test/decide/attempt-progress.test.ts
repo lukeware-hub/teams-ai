@@ -34,6 +34,18 @@ describe('attempt progress', () => {
     expect(repeatedFailure([review('important')])).toBe(false);
     expect(await assessAttemptProgress(task, 3, [review('important'), review('important')], fake(score(2)), { confidential: false })).toEqual({ progress: 'stalled', source: 'rule' });
   });
+  it('treats a new problem found in the same file as progress, and the same spot as a repeat', () => {
+    const review = (line: number, text: string) => `Review requested changes:\n- internal/application/validate.go:${line} [important] ${text} (fix: change it)`;
+    const a = review(145, 'A tarefa de item faltante não guarda o médico responsável nem a data da notificação, que a tarefa exige.');
+    const b = review(130, 'requestMissing cria uma tarefa nova e um prazo novo no sla-service a cada chamada, sem idempotência.');
+    expect(repeatedFailure([a, b])).toBe(false);
+    // The same spot a few lines away, or the same words far away, is the same complaint.
+    expect(repeatedFailure([a, review(150, 'Outra frase sobre outro assunto.')])).toBe(true);
+    expect(repeatedFailure([a, review(40, 'A tarefa de item faltante não guarda o médico responsável nem a data da notificação.')])).toBe(true);
+    // A finding with no line is about the whole file.
+    expect(repeatedFailure([a, 'Review requested changes:\n- internal/application/validate.go [important] algo de outro tipo (fix: x)'])).toBe(true);
+  });
+
   it('defaults to converging when unanswered, so the retry policy is unchanged', async () => {
     expect(await assessAttemptProgress(task, 2, history, fake({ answered: false, reason: 'disabled' }), { confidential: false })).toEqual({ progress: 'converging', source: 'default' });
   });
