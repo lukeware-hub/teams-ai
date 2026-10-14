@@ -75,7 +75,11 @@ export interface RoleSettingsInput {
   stepHome?: string;
   /** The secrets directory of every project (`<workspaces>/<project>/secrets`): the values the platform made up or the owner gave, which no step may read, whatever project it works in. */
   projectSecretsDirs?: readonly string[];
-  /** Directories (globs allowed) this step must not read at all, for a step that gets Read and Bash but needs none of the project data. */
+  /**
+   * Directories (globs allowed) the step's commands must not read, for a step that gets Bash but needs none of the project data.
+   * Sandbox only, on purpose: a `Read(dir/**)` rule over a workspace with millions of files made the CLI take gigabytes of
+   * memory for every command (it killed the container). The Read tool is already confined to the working directory by dontAsk.
+   */
   extraDenyRead?: readonly string[];
 }
 
@@ -92,7 +96,6 @@ export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSet
     ...PROTECTED_READ_PATHS.map((p) => `Read(${p})`),
     ...(input.hostHome ? PROTECTED_READ_PATHS.map((p) => `Read(${absoluteRule(input.hostHome!)}/${p.slice(2)})`) : []),
     ...(input.projectSecretsDirs ?? []).map((d) => `Read(${absoluteRule(d)}/**)`),
-    ...(input.extraDenyRead ?? []).map((d) => `Read(${absoluteRule(d)}/**)`),
     // Edit(path) rules cover every file-editing tool; a Write(path) rule is not matched by the file permission checks.
     'Edit(.claude/**)',
     ...ALWAYS_DENIED,
