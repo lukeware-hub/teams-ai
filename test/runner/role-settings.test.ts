@@ -54,10 +54,11 @@ describe('buildRoleSettings', () => {
     expect(buildRoleSettings('dev', { allowedDomains: [] }).sandbox.filesystem).toBeUndefined();
   });
 
-  it('denies the extra directories to every command of the sandbox, with no Read rule that would make the CLI walk them', () => {
+  it('denies the extra directories to every command of the sandbox and to the Read tools, with a bare path rule that does not make the CLI walk the tree', () => {
     const s = buildRoleSettings('po', { allowedDomains: [], extraDenyRead: ['/ws/*/repo/', '/home/node/.teams-ai/runs'] });
     expect(s.sandbox.filesystem?.denyRead).toEqual(['/ws/*/repo', '/home/node/.teams-ai/runs']);
-    expect(s.permissions.deny.filter((d) => d.includes('/ws/') || d.includes('.teams-ai/runs'))).toEqual([]);
+    expect(s.permissions.deny.filter((d) => d.includes('/ws/') || d.includes('.teams-ai/runs'))).toEqual(['Read(//ws/*/repo)', 'Read(//home/node/.teams-ai/runs)']);
+    expect(s.permissions.deny.some((d) => d.includes('/**') && (d.includes('/ws/') || d.includes('.teams-ai/runs')))).toBe(false);
   });
 
   it('grants the file editing tools to editing roles, since dontAsk denies anything not allowed', () => {

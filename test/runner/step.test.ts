@@ -372,6 +372,7 @@ describe('runStep', () => {
     const settings = JSON.parse(await fs.readFile(captured.argv[captured.argv.indexOf('--settings') + 1], 'utf8'));
     expect(settings.permissions.allow).toEqual(['Bash(graphify query:*)']);
     expect(settings.sandbox.filesystem.denyRead).toContain('/ws/*/repo');
+    expect(settings.permissions.deny).toContain('Read(//ws/*/repo)');
     expect(stepCaps('chat', deps.caps).maxTurns).toBe(8);
     expect(stepCaps('dev', deps.caps).maxTurns).toBe(50);
     expect(stepCaps('chat', { ...deps.caps, maxTurns: 3 }).maxTurns).toBe(3);
