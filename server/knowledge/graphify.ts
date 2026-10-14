@@ -1,3 +1,4 @@
+import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { Exec } from '../exec/command.js';
 
@@ -123,6 +124,16 @@ export class Graphify {
     const result = previous.then(work, work);
     this.updates.set(key, result.catch(() => undefined));
     return result;
+  }
+
+  /** One graph over the repositories' graphs (graphify merge-graphs); false when none of them has a graph yet. */
+  async merge(graphDirs: readonly string[], outDir: string): Promise<boolean> {
+    const inputs: string[] = [];
+    for (const dir of graphDirs) if (await this.deps.readFile(this.graphPath(dir))) inputs.push(this.graphPath(dir));
+    if (inputs.length === 0) return false;
+    await mkdir(path.join(outDir, 'graphify-out'), { recursive: true });
+    const r = await this.deps.exec({ bin: 'graphify', args: ['merge-graphs', ...inputs, '--out', this.graphPath(outDir)], timeoutMs: TIMEOUT });
+    return r.exitCode === 0;
   }
 
   /**

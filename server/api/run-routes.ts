@@ -8,7 +8,9 @@ import { AnyPlan } from '../contracts/plan.js';
 import { loadSecretValues } from '../core/secrets.js';
 import { redactSecrets } from '../core/redact.js';
 import { addProject, removeProjectDirs } from '../onboarding/config-store.js';
-import { expandHome, serviceWorkspace, workspacePaths } from '../orchestrator/workspace.js';
+import { repoName } from '../core/ids.js';
+import type { Graphify } from '../knowledge/graphify.js';
+import { expandHome, graphDir, serviceWorkspace, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
 import { execCommand, type Exec } from '../exec/command.js';
 import { nextRunId } from '../orchestrator/workspace.js';
 import { reduceEvents } from '../pipeline/run-state.js';
@@ -30,6 +32,8 @@ export interface RunRoutesDeps {
   control: RunControlDeps;
   log?: (line: string) => void;
   cloneProject?: (url: string, destination: string) => Promise<void>;
+  /** Builds the project's code graph after an import; without it the import only clones. */
+  graphify?: Graphify;
   /** Name resolution for the clone-host check; defaults to the system resolver. */
   resolveHost?: ResolveHost;
   /** Probe of the deployed service for the validation page; the real one is fetch with a timeout. */
@@ -44,6 +48,13 @@ const str = (v: unknown, field: string): string => {
   if (typeof v !== 'object' || v === null || typeof (v as Record<string, unknown>)[field] !== 'string') throw new HttpError(400, `${field} must be a string`);
   return (v as Record<string, string>)[field]!;
 };
+
+/** Address of a sibling repository of the same owner, e.g. the service repo next to the project's docs repo. */
+export function siblingRepoUrl(remote: string, name: string): string {
+  const url = new URL(remote);
+  url.pathname = path.posix.join(path.posix.dirname(url.pathname), `${name}.git`);
+  return url.toString();
+}
 
 /** Browsable https URL of a GitHub remote (https or ssh form), or null for any other host. */
 export function githubRepoUrl(remote: string): string | null {
@@ -130,6 +141,25 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     }
     await removeProjectDirs([downloaded], deps.home);
     return repo;
+  };
+  /** Clones the project's services next to it; returns the ones that failed, which do not stop the import. */
+  const cloneServices = async (cfg: Config, remote: string, projectId: string, services: string[]): Promise<string[]> => {
+    const ws = workspacePaths(cfg, projectId, deps.home);
+    const results = await Promise.all(services.map(async (service) => {
+      const repo = serviceWorkspace(ws, service).repo;
+      if (await fs.access(path.join(repo, '.git')).then(() => true, () => false)) return null;
+      return cloneProject(siblingRepoUrl(remote, repoName(projectId, service)), repo).then(() => null, (err: Error) => {
+        deps.log?.(`service ${service} not cloned: ${err.message}`);
+        return service;
+      });
+    }));
+    return results.filter((s): s is string => s !== null);
+  };
+  /** One code graph of the project: each cloned repository's graph, merged, so the chat can query all of it. */
+  const buildProjectGraph = async (graphify: Graphify, ws: Workspace, services: string[]): Promise<void> => {
+    const repos = [ws, ...services.map((service) => serviceWorkspace(ws, service))];
+    for (const repo of repos) await graphify.update(repo.repo, graphDir(repo, null));
+    await graphify.merge(repos.map((repo) => graphDir(repo, null)), path.posix.join(ws.graph, 'project'));
   };
   const events = async (runs: string, runId: string): Promise<StoredEvent[]> => {
     const file = path.join(runs, runId, 'events.ndjson');
@@ -277,12 +307,20 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const read = await readProject(dir).catch((err: Error) => {
           throw new HttpError(400, `${typeof source.url === 'string' ? 'repositório inválido' : 'not a project directory'}: ${err.message.includes('ENOENT') ? `docs/project.json não foi encontrado${typeof source.url === 'string' ? '; se este repositório é um serviço de um sistema, importe o repositório de documentação do projeto, que clona os serviços sozinho' : ''}` : 'docs/project.json inválido'}`);
         });
-        if (typeof source.url === 'string') dir = await settleImport(cfg, dir, safe(read.project.projectId));
+        let servicesNotCloned: string[] = [];
+        if (typeof source.url === 'string') {
+          dir = await settleImport(cfg, dir, safe(read.project.projectId));
+          const services = read.project.services ?? [];
+          servicesNotCloned = await cloneServices(cfg, source.url, read.project.projectId, services);
+          const cloned = services.filter((s) => !servicesNotCloned.includes(s));
+          if (deps.graphify) buildProjectGraph(deps.graphify, workspacePaths(cfg, read.project.projectId, deps.home), cloned).catch((err: Error) => deps.log?.(`project graph not built: ${err.message}`));
+        }
         await addProject(dir, deps.home);
         const idx = await index();
         const rows = await listProjects(idx);
         const row = rows.find((r) => r.dir === dir);
-        json(200, row ? await projectView(idx, row) : { projectId: read.project.projectId, dir, name: read.project.name, description: read.project.vision, specs: [] });
+        const view = row ? await projectView(idx, row) : { projectId: read.project.projectId, dir, name: read.project.name, description: read.project.vision, specs: [] };
+        json(200, { ...view, servicesNotCloned });
       },
     },
     {

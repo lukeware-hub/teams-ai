@@ -13,7 +13,7 @@ import type { FailureKind } from '../scheduler/retry-policy.js';
 import type { StepOutcome } from '../runner/step.js';
 import type { ResultSummary } from '../runner/stream-events.js';
 import { buildChatContext, withoutCodes } from './context.js';
-import { relatedMessages, stageChatFiles } from './guide.js';
+import { relatedMessages, stageChatFiles, stageProjectGraph } from './guide.js';
 import { chatPack, chatSystem } from './pack.js';
 import type { ChatCorrection, ChatMessage, ChatStore, ChatUsage } from './store.js';
 
@@ -113,6 +113,7 @@ export class ChatService {
     let seq = 0;
     try {
       await stageChatFiles(cwd, this.deps.guideDir);
+      await stageProjectGraph(cwd, path.join(root, projectId, 'graph', 'project', 'graphify-out', 'graph.json'));
       const out = (await this.deps.runAgent<'chat'>(
         { kind: 'chat', role: 'po', pack: fitPackBudget(chatPack({ opened: input.opened, question: input.question, history: input.history.slice(-HISTORY_MESSAGES), older: relatedMessages(input.history.slice(0, -HISTORY_MESSAGES), input.question), specHash })), systemExtra: chatSystem(input.context), cwd, phase: 'refine', taskId: null, attempt: 1, model: CHAT_MODEL, extraAllow: CHAT_ALLOW, denyRead: await this.privateDirs(root, cwd) },
         { journal: { allocStepSeq: () => ++seq, fact: async () => undefined } as never, stepDir: (n) => path.join(cwd, 'steps', stepId(n)), specHash, signal: AbortSignal.timeout(TIMEOUT_MS), noQuotaWait: true },

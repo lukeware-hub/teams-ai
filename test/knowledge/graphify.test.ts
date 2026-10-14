@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { promises as fs, readFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Graphify, MIN_COVERAGE, grepFallback, parseAffected, parseGodNodes, parseQuery } from '../../server/knowledge/graphify.js';
@@ -164,5 +165,23 @@ describe('Graphify.update concurrency', () => {
     release();
     await Promise.all([first, second]);
     expect(order).toEqual(['graphify', 'move', 'graphify', 'move']);
+  });
+});
+
+describe('merge', () => {
+  it('merges the graphs that exist into one graph under the output folder', async () => {
+    const out = (await fs.mkdtemp(path.join(os.tmpdir(), 'graphify-merge-'))).replace(/\\/g, '/');
+    const fake = new FakeExec();
+    const g = new Graphify({ exec: fake.exec, readFile: async (p) => (p.includes('a-repo') ? '{}' : null) });
+    expect(await g.merge([path.join(out, 'a-repo'), path.join(out, 'b-repo')], path.join(out, 'project'))).toBe(true);
+    expect(fake.calls[0]).toMatchObject({ bin: 'graphify', args: ['merge-graphs', `${out}/a-repo/graphify-out/graph.json`, '--out', `${out}/project/graphify-out/graph.json`] });
+    await fs.rm(out, { recursive: true, force: true });
+  });
+
+  it('builds nothing when no repository has a graph yet', async () => {
+    const fake = new FakeExec();
+    const g = new Graphify({ exec: fake.exec, readFile: async () => null });
+    expect(await g.merge(['/ws/a'], '/ws/project')).toBe(false);
+    expect(fake.calls).toHaveLength(0);
   });
 });

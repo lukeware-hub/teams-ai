@@ -31,6 +31,14 @@ export function relatedMessages(history: readonly ChatMessage[], question: strin
     .map((m) => m.message);
 }
 
+/** Puts the project's code graph in the step's working directory; absent until the import has built it. */
+export async function stageProjectGraph(cwd: string, projectGraph: string): Promise<void> {
+  await fs.mkdir(path.join(cwd, 'project-graph'), { recursive: true });
+  await fs.copyFile(projectGraph, path.join(cwd, 'project-graph', 'graph.json')).catch((err: NodeJS.ErrnoException) => {
+    if (err.code !== 'ENOENT') throw err;
+  });
+}
+
 /** Puts the guide and its graph in the step's working directory, the only place it can read. */
 export async function stageChatFiles(cwd: string, guideDir: string): Promise<void> {
   await fs.mkdir(path.join(cwd, 'guia'), { recursive: true });

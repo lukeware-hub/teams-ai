@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { GUIDE_GRAPH, GUIDE_HASH, guideHash, relatedMessages, stageChatFiles } from '../../server/chat/guide.js';
+import { GUIDE_GRAPH, GUIDE_HASH, guideHash, relatedMessages, stageChatFiles, stageProjectGraph } from '../../server/chat/guide.js';
 
 const GUIDE = path.resolve('docs/guia');
 const hasGraphify = spawnSync('graphify', ['--version']).status === 0;
@@ -67,5 +67,24 @@ describe('the user guide the chat searches', () => {
       const top = out.split('\n').filter((l) => l.startsWith('NODE ')).slice(0, 4).join('\n');
       expect(top, question).toContain(`src=${file}`);
     }
+  });
+});
+
+describe('the project code graph the chat queries', () => {
+  it('copies the project graph into the working directory when the import built it', async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-cwd-'));
+    const src = await fs.mkdtemp(path.join(os.tmpdir(), 'project-graph-'));
+    await fs.writeFile(path.join(src, 'graph.json'), '{"nodes":[]}');
+    await stageProjectGraph(cwd, path.join(src, 'graph.json'));
+    expect(await fs.readFile(path.join(cwd, 'project-graph', 'graph.json'), 'utf8')).toBe('{"nodes":[]}');
+    await fs.rm(cwd, { recursive: true, force: true });
+    await fs.rm(src, { recursive: true, force: true });
+  });
+
+  it('stages nothing and does not fail when the import has not built the graph yet', async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-cwd-'));
+    await stageProjectGraph(cwd, path.join(cwd, 'missing', 'graph.json'));
+    await expect(fs.access(path.join(cwd, 'project-graph', 'graph.json'))).rejects.toThrow();
+    await fs.rm(cwd, { recursive: true, force: true });
   });
 });

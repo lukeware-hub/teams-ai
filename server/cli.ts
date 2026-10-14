@@ -129,7 +129,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     {
       routes: [
         ...onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr, onClaudeLogin: () => runAgent.resetQuota() }),
-        ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr, queueInProgram: (p, s) => registry.queueInProgram(p, s) }),
+        ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr, queueInProgram: (p, s) => registry.queueInProgram(p, s), graphify: new Graphify({ exec: execCommand, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null) }) }),
         ...opsRoutes({ index: async () => ({ cfg: (await readUserConfig()).cfg, isAlive: (pid) => isAlive(defaultRunControl(repoRoot), pid) }) }),
         ...refineRoutes({
           registry,
