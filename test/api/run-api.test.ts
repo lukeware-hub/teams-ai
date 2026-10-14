@@ -75,7 +75,7 @@ beforeEach(async () => {
     repoRoot: '/repo',
   };
   docker.length = 0;
-  api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, exec: async (s) => { docker.push(s.args.join(" ")); return { exitCode: 0, stdout: "", stderr: "", timedOut: false } as never; }, httpGet: async (u, t) => { probed.push(u); return probe(u, t); }, resolveHost: async (n) => [resolved[n] ?? '140.82.112.3'], cloneProject: async (url, destination) => { cloned.push({ url, destination }); await (url.includes('no-docs') ? fs.mkdir(destination, { recursive: true }) : fs.cp(HELLO, destination, { recursive: true })); } }) }, 0);
+  api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, exec: async (s) => { docker.push(s.args.join(" ")); return { exitCode: 0, stdout: "", stderr: "", timedOut: false } as never; }, httpGet: async (u, t) => { probed.push(u); return probe(u, t); }, clearChat: async (id) => fs.rm(path.join(home, '.teams-ai', 'chats', `${id}.json`), { force: true }), resolveHost: async (n) => [resolved[n] ?? '140.82.112.3'], cloneProject: async (url, destination) => { cloned.push({ url, destination }); await (url.includes('no-docs') ? fs.mkdir(destination, { recursive: true }) : fs.cp(HELLO, destination, { recursive: true })); } }) }, 0);
 });
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -249,6 +249,9 @@ describe('projects', () => {
     const ws = path.join(home, '.teams-ai', 'workspaces', 'hello-app');
     await fs.mkdir(ws, { recursive: true });
     await fs.writeFile(path.join(ws, 'marker.txt'), 'x');
+    const chat = path.join(home, '.teams-ai', 'chats', 'hello-app.json');
+    await fs.mkdir(path.dirname(chat), { recursive: true });
+    await fs.writeFile(chat, '[]');
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), { type: 'RUN_FINISHED', data: { result: 'done' } }], state('done'), 1);
     // Another project with a spec of the same id keeps its run.
     const other = { type: 'RUN_STARTED', data: { runId: 'other-app--hello-001--run-1', specId: 'hello-001', projectId: 'other-app' } };
@@ -259,6 +262,7 @@ describe('projects', () => {
     expect(await res.json()).toEqual({ deleted: true });
     expect(await exists(project)).toBe(false);
     expect(await exists(ws)).toBe(false);
+    expect(await exists(chat)).toBe(false);
     expect(await exists(path.join(runs, 'hello-001-r1'))).toBe(false);
     expect(await exists(path.join(runs, 'other-app--hello-001--run-1'))).toBe(true);
     expect((await readUserConfig(home)).cfg.projects).toEqual([]);

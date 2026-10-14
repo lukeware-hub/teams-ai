@@ -34,6 +34,8 @@ export interface RunRoutesDeps {
   cloneProject?: (url: string, destination: string) => Promise<void>;
   /** Builds the project's code graph after an import; without it the import only clones. */
   graphify?: Graphify;
+  /** Erases the project's chat history, which lives outside its workspace. */
+  clearChat?: (projectId: string) => Promise<void>;
   /** Name resolution for the clone-host check; defaults to the system resolver. */
   resolveHost?: ResolveHost;
   /** Probe of the deployed service for the validation page; the real one is fetch with a timeout. */
@@ -353,6 +355,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           if (row && (row.projectId === projectId || (row.projectId === '' && specIds.has(row.specId)))) await fs.rm(path.join(runs, runId), { recursive: true, force: true });
         }
         await removeProjectDirs(dirs, deps.home);
+        await deps.clearChat?.(projectId);
         await teardownProject(deps.exec ?? execCommand, projectId, [...new Set(services)]); // frees the ports; no daemon means nothing runs
         await releaseDeployPort(path.dirname(ws.root), projectId);
         json(200, { deleted: true });
