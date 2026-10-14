@@ -296,6 +296,15 @@ describe('program controller', () => {
     expect(calls).toEqual(['start d-a', 'start d-a', 'start d-a']);
   });
 
+  it('stops at the second identical failure instead of spending the remaining repairs on it', async () => {
+    const { fx, calls } = world({ 'd-a-r1': { kind: 'failed', reason: 'e2e needs PLATFORM_ADMIN_TOKEN', costUsd: 1 }, 'd-a-r2': { kind: 'failed', reason: 'e2e needs PLATFORM_ADMIN_TOKEN', costUsd: 2 } }, async () => true);
+    let p = newProgram('d', [entry('a', 1), entry('b', 2, ['a'])], NOW);
+    for (let i = 0; i < 4; i++) p = await tick(p, fx, save);
+    expect(status(p)).toEqual({ a: 'failed', b: 'blocked' });
+    expect(p.items[0]!.reason).toContain('the same failure came back after a repair');
+    expect(calls).toEqual(['start d-a', 'start d-a']);
+  });
+
   it('fails at once when the repair says no, and never repairs without the effect', async () => {
     const refused = world({ 'd-a-r1': { kind: 'failed', reason: 'criteria contradict' } }, async () => false);
     let p = await tick(newProgram('d', [entry('a', 1)], NOW), refused.fx, save);

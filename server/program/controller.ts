@@ -83,6 +83,9 @@ export interface ProgramEntry {
 }
 
 export const MAX_RESUMES = 3;
+const SAME_FAILURE_CHARS = 400;
+/** Two failures are the same when their first characters match: the rest is run-specific output. */
+const sameFailure = (a: string, b: string): boolean => a.trim().slice(0, SAME_FAILURE_CHARS) === b.trim().slice(0, SAME_FAILURE_CHARS);
 /** Automatic repairs of one failed spec; after them the owner decides. */
 export const MAX_REPAIRS = 2;
 /** Specs running at once: each run already uses several Claude processes, so two keep the quota and merges calm. */
@@ -157,6 +160,8 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
   const failOrRepair = async (item: ProgramItem, reason: string, costUsd?: number | null) => {
     const repairs = item.repairs ?? 0;
     const failures = [...(item.failures ?? []), reason];
+    // The same failure after a repair needs a person, not a third identical run (live: a credential only the owner can provide, three runs of 3 deploys each).
+    if ((item.failures ?? []).some((f) => sameFailure(f, reason))) return fail(item, `${reason}; the same failure came back after a repair, so the owner has to act`, costUsd);
     if (fx.repair && repairs < MAX_REPAIRS && (await fx.repair(item.specId, failures).catch(() => false))) {
       addCost(item, costUsd);
       Object.assign(clearForRetry(item), { repairs: repairs + 1, failures });

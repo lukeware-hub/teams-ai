@@ -94,6 +94,8 @@ Severidade: **crítico** = segredo exposto ou custo sem limite; **importante** =
 - [x] **Digest de imagem não é resolvido pelo orquestrador.** Decisão de projeto: o contrato de plano aceita tag explícita que não seja `latest`; o digest é um reforço, não uma regra. O devops usa o digest quando ele está no repositório ou no pacote e avisa no resumo quando fixou só a tag.
 - [x] **`.tools/bin` e `PYTHONPATH` vêm do worktree.** Decisão de projeto: os gates executam código do agente por natureza (testes, build). Com o cache por projeto e o prefixo de `PATH` validado, o que um agente alcança é o gate do próprio projeto.
 
+- [x] **O programa reexecutava a mesma falha até esgotar os reparos.** `server/program/controller.ts` `failOrRepair`: uma falha cujo início (400 caracteres) repete uma que já gerou reparo deixa o item `failed` para o dono agir. Visto em run: privacy-engine run-1, run-2 e run-3 falharam no e2e com o mesmo `PLATFORM_ADMIN_TOKEN` ausente (3 deploys cada).
+
 ## Abertos
 
-Nenhum bug conhecido.
+Nenhum bug conhecido. Ação do dono, fora do código: o e2e de privacy-engine precisa de `PLATFORM_ADMIN_TOKEN` (ADR-030, pelo menos 32 caracteres, o mesmo valor do identity-service) nos segredos do projeto, declarado em `externalDependencies` da spec; sem a declaração o gate não o recebe.
