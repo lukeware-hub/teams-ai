@@ -82,11 +82,14 @@ export interface RoleSettings {
   permissions: { allow: string[]; deny: string[] };
 }
 
+// A permission rule with one leading slash is relative to the working directory: only `//path` is the absolute path.
+const absoluteRule = (dir: string) => `/${dir.replace(/\/+$/, '')}`;
+
 export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSettings {
   const deny = [
     ...PROTECTED_READ_PATHS.map((p) => `Read(${p})`),
-    ...(input.hostHome ? PROTECTED_READ_PATHS.map((p) => `Read(${input.hostHome!.replace(/\/+$/, '')}/${p.slice(2)})`) : []),
-    ...(input.projectSecretsDirs ?? []).map((d) => `Read(${d.replace(/\/+$/, '')}/**)`),
+    ...(input.hostHome ? PROTECTED_READ_PATHS.map((p) => `Read(${absoluteRule(input.hostHome!)}/${p.slice(2)})`) : []),
+    ...(input.projectSecretsDirs ?? []).map((d) => `Read(${absoluteRule(d)}/**)`),
     // Edit(path) rules cover every file-editing tool; a Write(path) rule is not matched by the file permission checks.
     'Edit(.claude/**)',
     ...ALWAYS_DENIED,

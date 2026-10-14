@@ -234,8 +234,11 @@ describe('runStep', () => {
     const settings = JSON.parse(await fs.readFile(captured.argv[captured.argv.indexOf('--settings') + 1], 'utf8'));
     for (const project of ['kayron-hub', 'other-project']) {
       expect(settings.sandbox.filesystem.denyRead).toContain(path.join(dir, project, 'secrets'));
-      expect(settings.permissions.deny).toContain(`Read(${path.join(dir, project, 'secrets')}/**)`);
+      expect(settings.permissions.deny).toContain(`Read(/${path.join(dir, project, 'secrets')}/**)`);
     }
+    // A project created after the settings were written is covered by the wildcard.
+    expect(settings.sandbox.filesystem.denyRead).toContain(path.join(dir, '*', 'secrets'));
+    expect(settings.permissions.deny).toContain(`Read(/${path.join(dir, '*', 'secrets')}/**)`);
   });
 
   it('writes the role settings before spawning and never touches the host claude.json', async () => {

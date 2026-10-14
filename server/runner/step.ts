@@ -232,10 +232,14 @@ export async function withRefreshGate<T>(hostEnv: NodeJS.ProcessEnv, clock: () =
   }
 }
 
-/** `<workspaces>/<project>/secrets` of every project: a step reads no project's secrets, neither its own nor another's. A listing that fails ends the step: it never runs without the rule. */
+/**
+ * `<workspaces>/<project>/secrets` of every project: a step reads no project's secrets, neither its own nor another's.
+ * The wildcard covers a project created while the step runs; the listed ones cover a sandbox that expands paths when it starts.
+ * A listing that fails ends the step: it never runs without the rule.
+ */
 async function projectSecretsDirs(workspacesRoot: string): Promise<string[]> {
   const projects = await fs.readdir(workspacesRoot);
-  return projects.map((project) => path.join(workspacesRoot, project, 'secrets'));
+  return [path.join(workspacesRoot, '*', 'secrets'), ...projects.map((project) => path.join(workspacesRoot, project, 'secrets'))];
 }
 
 /** `total_cost_usd`, `duration_api_ms` and `usage` of a resumed session include the attempts before it: book only this step's share. */

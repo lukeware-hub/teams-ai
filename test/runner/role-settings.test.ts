@@ -14,8 +14,8 @@ describe('buildRoleSettings', () => {
 
   it('adds absolute deny rules for the orchestrator HOME, which the ~ rules do not reach', () => {
     const deny = buildRoleSettings('dev', { allowedDomains: [], hostHome: '/home/node/' }).permissions.deny;
-    expect(deny).toContain('Read(/home/node/.teams-ai/secrets/**)');
-    expect(deny).toContain('Read(/home/node/.config/gh/**)');
+    expect(deny).toContain('Read(//home/node/.teams-ai/secrets/**)');
+    expect(deny).toContain('Read(//home/node/.config/gh/**)');
     expect(buildRoleSettings('dev', { allowedDomains: [] }).permissions.deny.some((d) => d.startsWith('Read(/'))).toBe(false);
   });
 
@@ -49,7 +49,7 @@ describe('buildRoleSettings', () => {
 
   it('denies every read of the secrets directory of every project, by the Read tool and by any command of the sandbox', () => {
     const s = buildRoleSettings('dev', { allowedDomains: [], projectSecretsDirs: ['/ws/kayron-hub/secrets/', '/ws/other/secrets'] });
-    expect(s.permissions.deny).toEqual(expect.arrayContaining(['Read(/ws/kayron-hub/secrets/**)', 'Read(/ws/other/secrets/**)']));
+    expect(s.permissions.deny).toEqual(expect.arrayContaining(['Read(//ws/kayron-hub/secrets/**)', 'Read(//ws/other/secrets/**)']));
     expect(s.sandbox.filesystem?.denyRead).toEqual(expect.arrayContaining(['/ws/kayron-hub/secrets', '/ws/other/secrets']));
     expect(buildRoleSettings('dev', { allowedDomains: [] }).sandbox.filesystem).toBeUndefined();
   });
