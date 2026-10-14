@@ -113,7 +113,7 @@ export function classifyFailure(raw: RawStepResult): FailureKind | null {
   return 'code';
 }
 
-const EMPTY_SUMMARY: ResultSummary = {
+export const EMPTY_SUMMARY: ResultSummary = {
   found: false,
   isError: true,
   subtype: null,

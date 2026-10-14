@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../../server/config/config.js';
-import { CHAT_ALLOW, ChatService, ChatUnavailableError } from '../../server/chat/service.js';
+import { CHAT_ALLOW, CHAT_MODEL, ChatService, ChatUnavailableError } from '../../server/chat/service.js';
 import { ChatStore, type ChatMessage } from '../../server/chat/store.js';
 import { ConflictError, NotFoundError } from '../../server/refine/session.js';
 
@@ -21,7 +21,7 @@ afterEach(async () => {
 
 const ok = (value: unknown) => ({ ok: true, value: { specHash: 'x', ...(value as object) }, summary: {} });
 
-interface Req { kind: string; role: string; cwd: string; pack: { feedback?: string }; extraAllow?: string[]; denyRead?: string[]; systemExtra?: string }
+interface Req { model?: string; kind: string; role: string; cwd: string; pack: { feedback?: string }; extraAllow?: string[]; denyRead?: string[]; systemExtra?: string }
 
 function make(runAgent: (req: Req) => Promise<unknown>, extra: { newSpec?: () => Promise<unknown>; log?: (line: string) => void } = {}) {
   const newSpec = vi.fn(extra.newSpec ?? (async () => undefined));
@@ -46,7 +46,8 @@ describe('ChatService.ask', () => {
     const { service, newSpec } = make(runAgent);
     const reply = await service.ask('hello-app', ' o que está sendo feito? ');
     expect(reply).toEqual({ role: 'assistant', text: 'Está sendo feito o cumprimento.', at: '2026-10-14T10:00:00.000Z' });
-    expect(runAgent.mock.calls[0]![0]).toMatchObject({ kind: 'chat', role: 'po' });
+    expect(runAgent.mock.calls[0]![0]).toMatchObject({ kind: 'chat', role: 'po', model: 'haiku' });
+    expect(CHAT_MODEL).toBe('haiku');
     expect(runAgent.mock.calls[0]![0].pack.feedback).toContain('o que está sendo feito?');
     expect((await service.messages('hello-app')).map((m) => [m.role, m.text])).toEqual([['user', 'o que está sendo feito?'], ['assistant', 'Está sendo feito o cumprimento.']]);
     expect(newSpec).not.toHaveBeenCalled();
@@ -158,6 +159,15 @@ describe('ChatService.ask', () => {
     const { service } = make(broken);
     await expect(service.ask('hello-app', 'oi')).rejects.toBeInstanceOf(ChatUnavailableError);
     expect(await service.messages('hello-app')).toEqual([]);
+  });
+
+  it('never waits for a paused quota: the person gets the plain message at once', async () => {
+    const seen: Array<boolean | undefined> = [];
+    const runAgent = async (_req: Req, ctx?: { noQuotaWait?: boolean }) => { seen.push(ctx?.noQuotaWait); return { ok: false, failure: 'quota', errors: ['the Claude quota is paused'], summary: {}, sandboxDisabled: false }; };
+    const { service } = make(runAgent as never);
+    await expect(service.ask('hello-app', 'oi')).rejects.toThrow('O limite de uso do Claude acabou por agora');
+    expect(seen).toEqual([true]);
+    await expect(service.ask('hello-app', 'oi')).rejects.not.toBeInstanceOf(ConflictError);
   });
 
   it('refuses a second question while one is running', async () => {

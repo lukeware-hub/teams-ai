@@ -1,4 +1,5 @@
 import type { QuotaBreaker } from '../budget/quota-breaker.js';
+import { EMPTY_SUMMARY } from '../runner/step.js';
 import type { RunAgent } from './cycle.js';
 
 /** The 5 hour usage window plus a margin; a longer reset (the 7 day window) is left to the human. */
@@ -34,12 +35,14 @@ export function withQuotaWait(inner: RunAgent, breaker: QuotaBreaker, io: QuotaW
   return async (req, ctx) => {
     for (let retries = 0; ; retries++) {
       const wait = remaining();
+      // A person is waiting at the screen: a paused quota answers at once instead of holding the question for hours.
+      if (wait > 0 && ctx.noQuotaWait) return { ok: false, failure: 'quota', errors: ['the Claude quota is paused'], summary: EMPTY_SUMMARY, sandboxDisabled: false };
       if (wait > 0 && wait <= QUOTA_WAIT_MAX_MS) {
         io.log(`refinement waits ${Math.round(wait / 1000)}s for the Claude quota`);
         await io.sleep(wait, ctx.signal);
       }
       const out = await inner(req, ctx);
-      if (out.ok || out.failure !== 'quota') return out;
+      if (out.ok || out.failure !== 'quota' || ctx.noQuotaWait) return out;
       const next = remaining();
       if (next > QUOTA_WAIT_MAX_MS) {
         const s = breaker.state();

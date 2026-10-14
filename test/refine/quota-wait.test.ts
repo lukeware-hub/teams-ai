@@ -43,6 +43,23 @@ describe('withQuotaWait', () => {
     expect(t.inner).toHaveBeenCalledTimes(1);
   });
 
+  it('answers at once, without sleeping or running the step, when a person is waiting and the quota is paused', async () => {
+    const t = setup([good]);
+    t.breaker.onQuotaFailure(reading(30_000));
+    const out = (await withQuotaWait(t.inner as never, t.breaker, { sleep: t.sleep, now: () => T0, log: () => undefined })({} as never, { noQuotaWait: true } as never)) as { ok: boolean; failure: string };
+    expect(out).toMatchObject({ ok: false, failure: 'quota' });
+    expect(t.inner).not.toHaveBeenCalled();
+    expect(t.sleep).not.toHaveBeenCalled();
+  });
+
+  it('does not repeat a step the quota rejected when a person is waiting', async () => {
+    const t = setup([fail('quota'), good]);
+    const out = (await withQuotaWait(t.inner as never, t.breaker, { sleep: t.sleep, now: () => T0, log: () => undefined })({} as never, { noQuotaWait: true } as never)) as { failure: string };
+    expect(out.failure).toBe('quota');
+    expect(t.inner).toHaveBeenCalledTimes(1);
+    expect(t.sleep).not.toHaveBeenCalled();
+  });
+
   it('returns the failure with the reset time when the reset is past the cap, with no sleep', async () => {
     const t = setup([fail('quota')], QUOTA_WAIT_MAX_MS + 60_000);
     const out = (await t.agent()) as { ok: boolean; errors: string[] };

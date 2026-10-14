@@ -18,6 +18,8 @@ import { chatPack, chatSystem } from './pack.js';
 import type { ChatCorrection, ChatMessage, ChatStore, ChatUsage } from './store.js';
 
 const MAX_QUESTION = 2_000;
+/** The chat always answers with the small model: it only explains what the context and the guide say, and every question pays for the whole prompt. */
+export const CHAT_MODEL = 'haiku';
 const HISTORY_MESSAGES = 6;
 const TIMEOUT_MS = 120_000;
 
@@ -112,8 +114,8 @@ export class ChatService {
     try {
       await stageChatFiles(cwd, this.deps.guideDir);
       const out = (await this.deps.runAgent<'chat'>(
-        { kind: 'chat', role: 'po', pack: fitPackBudget(chatPack({ opened: input.opened, question: input.question, history: input.history.slice(-HISTORY_MESSAGES), older: relatedMessages(input.history.slice(0, -HISTORY_MESSAGES), input.question), specHash })), systemExtra: chatSystem(input.context), cwd, phase: 'refine', taskId: null, attempt: 1, extraAllow: CHAT_ALLOW, denyRead: await this.privateDirs(root, cwd) },
-        { journal: { allocStepSeq: () => ++seq, fact: async () => undefined } as never, stepDir: (n) => path.join(cwd, 'steps', stepId(n)), specHash, signal: AbortSignal.timeout(TIMEOUT_MS) },
+        { kind: 'chat', role: 'po', pack: fitPackBudget(chatPack({ opened: input.opened, question: input.question, history: input.history.slice(-HISTORY_MESSAGES), older: relatedMessages(input.history.slice(0, -HISTORY_MESSAGES), input.question), specHash })), systemExtra: chatSystem(input.context), cwd, phase: 'refine', taskId: null, attempt: 1, model: CHAT_MODEL, extraAllow: CHAT_ALLOW, denyRead: await this.privateDirs(root, cwd) },
+        { journal: { allocStepSeq: () => ++seq, fact: async () => undefined } as never, stepDir: (n) => path.join(cwd, 'steps', stepId(n)), specHash, signal: AbortSignal.timeout(TIMEOUT_MS), noQuotaWait: true },
       )) as StepOutcome<ChatOutput>;
       const usage = usageOf(out.summary);
       if (usage) this.deps.log?.(`chat ${projectId}: ${usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens} tokens read, ${usage.outputTokens} written, ${usage.turns} turns, ${usage.seconds}s, ${usage.costUsd === null ? 'no price' : `US$ ${usage.costUsd.toFixed(4)}`}${out.ok ? '' : ` (${out.failure})`}`);
