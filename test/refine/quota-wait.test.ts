@@ -52,6 +52,15 @@ describe('withQuotaWait', () => {
     expect(t.sleep).not.toHaveBeenCalled();
   });
 
+  it('lets a step through when a person is waiting and the window is only close to its limit, which the CLI still allows', async () => {
+    const t = setup([good]);
+    t.breaker.observe({ status: 'allowed_warning', resetsAt: (T0.getTime() + 3_600_000) / 1000, fiveHourUtilization: 0.19, fiveHourResetsAt: (T0.getTime() + 3_600_000) / 1000, sevenDayUtilization: 0.99, sevenDayResetsAt: (T0.getTime() + 3_600_000) / 1000 } as never);
+    expect(t.breaker.state()).toMatchObject({ status: 'paused', reason: 'window' });
+    const out = await withQuotaWait(t.inner as never, t.breaker, { sleep: t.sleep, now: () => T0, log: () => undefined })({} as never, { noQuotaWait: true } as never);
+    expect(out).toBe(good);
+    expect(t.sleep).not.toHaveBeenCalled();
+  });
+
   it('does not repeat a step the quota rejected when a person is waiting', async () => {
     const t = setup([fail('quota'), good]);
     const out = (await withQuotaWait(t.inner as never, t.breaker, { sleep: t.sleep, now: () => T0, log: () => undefined })({} as never, { noQuotaWait: true } as never)) as { failure: string };

@@ -11,6 +11,9 @@ import { Markdown } from '../components/Markdown.js';
 import { Select } from '../components/Select.js';
 import { emptyState, grouped, money } from './project-shared.js';
 
+/** Small answers cost cents of a cent: two decimals would read as zero. */
+const price = (usd: number) => (usd < 0.01 ? `US$ ${usd.toFixed(4)}` : money(usd));
+
 const HELP = 'Aqui você só tira dúvidas. O chat não dá ordens aos agentes: eles seguem apenas as specs e o backlog. Se o chat achar algo sendo feito que não deveria, ele abre uma spec de correção para você revisar.';
 const EXAMPLES = ['Como crio uma nova spec?', 'O que está sendo desenvolvido agora?', 'Quais tarefas estão bloqueadas e por quê?', 'Algo está sendo feito fora do que foi pedido?'];
 
@@ -45,7 +48,7 @@ const USAGE_HELP = 'Lidos: tudo que o Claude leu para responder (contexto do pro
 /** What one answer cost, as one meta line (design.md §11.12). */
 export function usageLine(u: ChatUsage): string {
   const read = u.inputTokens + u.cacheReadTokens + u.cacheWriteTokens;
-  return [u.costUsd === null ? null : `Custo estimado ${money(u.costUsd)}`, `${grouped(read)} tokens lidos`, `${grouped(u.outputTokens)} escritos`, u.seconds < 1 ? 'menos de 1 s' : `${u.seconds} s`].filter(Boolean).join(' · ');
+  return [u.costUsd === null ? null : `Custo estimado ${price(u.costUsd)}`, `${grouped(read)} tokens lidos`, `${grouped(u.outputTokens)} escritos`, u.seconds < 1 ? 'menos de 1 s' : `${u.seconds} s`].filter(Boolean).join(' · ');
 }
 
 function Correction({ projectId, correction }: { projectId: string; correction: ChatCorrection }) {

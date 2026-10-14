@@ -35,9 +35,10 @@ export function withQuotaWait(inner: RunAgent, breaker: QuotaBreaker, io: QuotaW
   return async (req, ctx) => {
     for (let retries = 0; ; retries++) {
       const wait = remaining();
-      // A person is waiting at the screen: a paused quota answers at once instead of holding the question for hours.
-      if (wait > 0 && ctx.noQuotaWait) return { ok: false, failure: 'quota', errors: ['the Claude quota is paused'], summary: EMPTY_SUMMARY, sandboxDisabled: false };
-      if (wait > 0 && wait <= QUOTA_WAIT_MAX_MS) {
+      // A person is waiting at the screen: a quota the CLI rejected answers at once instead of holding the question for hours.
+      // A window merely close to its limit (the CLI still says allowed) does not stop a small step: only a real rejection does.
+      if (wait > 0 && ctx.noQuotaWait && breaker.state().status === 'paused' && (breaker.state() as { reason: string }).reason !== 'window') return { ok: false, failure: 'quota', errors: ['the Claude quota is paused'], summary: EMPTY_SUMMARY, sandboxDisabled: false };
+      if (wait > 0 && wait <= QUOTA_WAIT_MAX_MS && !ctx.noQuotaWait) {
         io.log(`refinement waits ${Math.round(wait / 1000)}s for the Claude quota`);
         await io.sleep(wait, ctx.signal);
       }
