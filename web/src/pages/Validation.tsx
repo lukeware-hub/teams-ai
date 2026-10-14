@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { runApi, type AcceptanceCriterion, type Report, type RunDetail, type ServiceStatus } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
+import { SortHeader, TableFilters, useTableView } from '../components/DataTable.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
@@ -37,6 +38,83 @@ const RESULT: Record<string, { label: string; tone: string }> = {
 function ResultChip({ status }: { status: string }) {
   const r = RESULT[status];
   return <span className={`status-chip ${r?.tone ?? ''}`}>{r?.label ?? status}</span>;
+}
+const resultLabel = (status: string) => RESULT[status]?.label ?? status;
+type Smoke = NonNullable<Report['service']>['smoke'][number];
+type Evidence = Report['evidence'][number];
+function SmokeTable({ smoke }: { smoke: Smoke[] }) {
+  const view = useTableView(smoke, {
+    sorts: { criterion: (s) => `${s.acId} ${s.service ?? ''}`, test: (s) => s.testId ?? null, result: (s) => resultLabel(s.status) },
+    text: (s) => [s.acId, s.service ?? '', s.testId ?? ''],
+    facet: (s) => s.status,
+    facetLabel: resultLabel,
+  });
+  return (
+    <>
+      <TableFilters view={view} subject="testes rápidos" placeholder="Filtrar por critério, serviço ou teste" facetName="Resultado" />
+      <div className="overflow-x-auto">
+        <table className={`${TABLE} min-w-[26rem] table-fixed`}>
+          <colgroup><col className="w-[9rem]" /><col /><col className="w-[8rem]" /></colgroup>
+          <thead>
+            <tr>
+              <SortHeader view={view} column="criterion">Critério</SortHeader>
+              <SortHeader view={view} column="test" tip={<InfoTip text="Smoke test: teste automático curto, rodado no serviço publicado, que confirma o essencial de cada critério." />}>Teste rápido</SortHeader>
+              <SortHeader view={view} column="result">Resultado</SortHeader>
+            </tr>
+          </thead>
+          <tbody>
+            {view.rows.length === 0 ? <tr><td colSpan={3} className="text-ink-soft">Nenhum teste corresponde ao filtro.</td></tr> : null}
+            {view.rows.map((s) => (
+              <tr key={`${s.service ?? ''}-${s.acId}`} data-testid={`smoke-${s.service ? `${s.service}-` : ''}${s.acId}`} className={`result-${s.status}`}>
+                <td className={TD_ID}>{s.acId}{s.service ? ` (${s.service})` : ''}</td>
+                <td className={TD_MONO}>{s.testId ?? '—'}</td>
+                <td><ResultChip status={s.status} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+function EvidenceTable({ evidence }: { evidence: Evidence[] }) {
+  const view = useTableView(evidence, {
+    sorts: { criterion: (r) => r.criterion, tasks: (r) => r.tasks.join(', ') || null, tests: (r) => r.tests.join(', ') || null, e2e: (r) => (r.e2e ? resultLabel(r.e2e) : null), result: (r) => resultLabel(r.status) },
+    text: (r) => [r.criterion, ...r.tasks, ...r.tests],
+    facet: (r) => r.status,
+    facetLabel: resultLabel,
+  });
+  return (
+    <>
+      <TableFilters view={view} subject="evidências" placeholder="Filtrar por critério, tarefa ou teste" facetName="Resultado" />
+      <div className="overflow-x-auto">
+        <table className={`${TABLE} min-w-[46rem] table-fixed`}>
+          <colgroup><col className="w-[7.5rem]" /><col className="w-[9rem]" /><col /><col className="w-[8rem]" /><col className="w-[8rem]" /></colgroup>
+          <thead>
+            <tr>
+              <SortHeader view={view} column="criterion">Critério</SortHeader>
+              <SortHeader view={view} column="tasks">Tarefas</SortHeader>
+              <SortHeader view={view} column="tests">Testes</SortHeader>
+              <SortHeader view={view} column="e2e" tip={<InfoTip text="Teste ponta a ponta: simula uma pessoa usando o serviço publicado, do início ao fim do fluxo." />}>Teste E2E</SortHeader>
+              <SortHeader view={view} column="result">Resultado</SortHeader>
+            </tr>
+          </thead>
+          <tbody>
+            {view.rows.length === 0 ? <tr><td colSpan={5} className="text-ink-soft">Nenhuma evidência corresponde ao filtro.</td></tr> : null}
+            {view.rows.map((r) => (
+              <tr key={r.criterion} data-testid={`evidence-${r.criterion}`} className={`result-${r.status}`}>
+                <td className={TD_ID}>{r.criterion}</td>
+                <td className={TD_MONO}>{r.tasks.join(', ')}</td>
+                <td className={TD_MONO}>{r.tests.join(', ') || '—'}</td>
+                <td data-testid={`e2e-${r.criterion}`} title={r.e2eReason}>{r.e2e ? <ResultChip status={r.e2e} /> : '—'}{r.e2eReason ? ` (${r.e2eReason})` : ''}</td>
+                <td><ResultChip status={r.status} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
 }
 // Ids stay on one line and long test names break between words, so a narrow screen scrolls the table instead of wrapping letter by letter.
 const TABLE = 'mt-0 wrap-break-word';
@@ -286,26 +364,7 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                           ) : (
                             <ServiceControls service={report.service} status={serviceStatus} starting={startingService} canStart={specStatus === 'awaiting-validation'} onStart={onStartService} onRecheck={onRecheckService} />
                           )}
-                          <div className="overflow-x-auto">
-                            <table className={`${TABLE} min-w-[26rem]`}>
-                              <thead>
-                                <tr>
-                                  <th>Critério</th>
-                                  <th>Teste rápido <InfoTip text="Smoke test: teste automático curto, rodado no serviço publicado, que confirma o essencial de cada critério." /></th>
-                                  <th>Resultado</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {report.service.smoke.map((s) => (
-                                  <tr key={`${s.service ?? ''}-${s.acId}`} data-testid={`smoke-${s.service ? `${s.service}-` : ''}${s.acId}`} className={`result-${s.status}`}>
-                                    <td className={TD_ID}>{s.acId}{s.service ? ` (${s.service})` : ''}</td>
-                                    <td className={TD_MONO}>{s.testId ?? '—'}</td>
-                                    <td><ResultChip status={s.status} /></td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
+                          <SmokeTable smoke={report.service.smoke} />
                         </>
                       ) : (
                         <p data-testid="deploy-failure" className="error">
@@ -353,30 +412,7 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                           <InfoTip text="Para cada critério de aceite: as tarefas que o implementaram e os testes automáticos que comprovam que ele funciona." />
                         </div>
                       </div>
-                      <div className="overflow-x-auto">
-                        <table className={`${TABLE} min-w-[38rem]`}>
-                          <thead>
-                            <tr>
-                              <th>Critério</th>
-                              <th>Tarefas</th>
-                              <th>Testes</th>
-                              <th>Teste E2E <InfoTip text="Teste ponta a ponta: simula uma pessoa usando o serviço publicado, do início ao fim do fluxo." /></th>
-                              <th>Resultado</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {report.evidence.map((r) => (
-                              <tr key={r.criterion} data-testid={`evidence-${r.criterion}`} className={`result-${r.status}`}>
-                                <td className={TD_ID}>{r.criterion}</td>
-                                <td className={TD_MONO}>{r.tasks.join(', ')}</td>
-                                <td className={TD_MONO}>{r.tests.join(', ') || '—'}</td>
-                                <td data-testid={`e2e-${r.criterion}`} title={r.e2eReason}>{r.e2e ? <ResultChip status={r.e2e} /> : '—'}{r.e2eReason ? ` (${r.e2eReason})` : ''}</td>
-                                <td><ResultChip status={r.status} /></td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                      <EvidenceTable evidence={report.evidence} />
                     </section>
                     {report.securityFindings?.length ? (
                       <section className="card">

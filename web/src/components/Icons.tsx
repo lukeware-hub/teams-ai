@@ -1,4 +1,4 @@
-export type IconName = 'claude' | 'github' | 'user' | 'external' | 'send' | 'close' | 'chevron' | 'terminal' | 'check' | 'file' | 'clipboard' | 'shield' | 'clock' | 'list' | 'lock' | 'home' | 'copy' | 'download' | 'play' | 'info' | 'lightbulb' | 'sun' | 'moon' | 'monitor' | 'arrow-left' | 'arrow-right' | 'search' | 'plus' | 'refresh' | 'alert' | 'chevron-right' | 'stop' | 'code' | 'server' | 'trash' | 'grid' | 'folder' | 'activity';
+export type IconName = 'claude' | 'github' | 'user' | 'external' | 'send' | 'close' | 'chevron' | 'terminal' | 'check' | 'file' | 'clipboard' | 'shield' | 'clock' | 'list' | 'lock' | 'home' | 'copy' | 'download' | 'play' | 'info' | 'lightbulb' | 'sun' | 'moon' | 'monitor' | 'arrow-left' | 'arrow-right' | 'search' | 'plus' | 'refresh' | 'alert' | 'chevron-right' | 'stop' | 'code' | 'server' | 'trash' | 'grid' | 'folder' | 'activity' | 'sort' | 'sort-up' | 'sort-down';
 
 export function Icon({ name, size = 24 }: { name: IconName; size?: number }) {
   const common = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true };
@@ -38,6 +38,9 @@ export function Icon({ name, size = 24 }: { name: IconName; size?: number }) {
   if (name === 'monitor') return <svg {...common}><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8M12 16v4" /></svg>;
   if (name === 'arrow-left') return <svg {...common}><path d="M19 12H5M11 6l-6 6 6 6" /></svg>;
   if (name === 'arrow-right') return <svg {...common}><path d="M5 12h14M13 6l6 6-6 6" /></svg>;
+  if (name === 'sort') return <svg {...common}><path d="m8 9 4-4 4 4M8 15l4 4 4-4" /></svg>;
+  if (name === 'sort-up') return <svg {...common}><path d="M12 19V5M6 11l6-6 6 6" /></svg>;
+  if (name === 'sort-down') return <svg {...common}><path d="M12 5v14M6 13l6 6 6-6" /></svg>;
   if (name === 'search') return <svg {...common}><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>;
   if (name === 'plus') return <svg {...common}><path d="M12 5v14M5 12h14" /></svg>;
   if (name === 'refresh') return <svg {...common}><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4" /></svg>;

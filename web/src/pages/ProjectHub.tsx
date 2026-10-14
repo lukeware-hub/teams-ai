@@ -4,11 +4,12 @@ import { serviceLinks } from '@server/deploy/service-links';
 import { refineApi, runApi, startedPath, type DraftRow, type NameRequest, type NameSuggestion, type ProjectRow, type Report, type RunRow, type ServiceStatus } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
+import { SortHeader, TableFilters, useTableView } from '../components/DataTable.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { BacklogBanner } from '../refine/ProgramPanel.js';
 import { Bone, Skeleton } from '../components/Loading.js';
-import { ACTIVE, CONTINUABLE, HELP, RECENT_RUNS, action, chip, emptyState, grouped, money, panel, plural, row, rowActions, rowId, rows, runName, sectionHeading, sectionTitle, when } from './project-shared.js';
+import { ACTIVE, CONTINUABLE, HELP, LABEL, RECENT_RUNS, action, chip, emptyState, grouped, money, panel, plural, row, rowActions, rowId, rows, runName, sectionHeading, sectionTitle, when } from './project-shared.js';
 
 const header = 'card flex flex-wrap items-center justify-between gap-x-6 gap-y-2';
 const title = 'm-0 text-[1.375rem] leading-[1.3] text-ink';
@@ -113,6 +114,12 @@ export function ProjectHubView(p: {
   onSuggestName?: (input: NameRequest) => Promise<NameSuggestion>;
 }) {
   const [showAll, setShowAll] = useState(false);
+  const runsView = useTableView(p.runs, {
+    sorts: { run: runName, spec: (r) => r.specId, at: (r) => (r.at ? Date.parse(r.at) : null), status: (r) => LABEL[r.status] ?? r.status, tokens: (r) => r.tokens, cost: (r) => r.cost },
+    text: (r) => [runName(r), r.runId, r.specId],
+    facet: (r) => r.status,
+    facetLabel: (status) => LABEL[status] ?? status,
+  });
   const [specDraft, setSpecDraft] = useState('');
   const [specDescription, setSpecDescription] = useState('');
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
@@ -373,24 +380,27 @@ export function ProjectHubView(p: {
             <p className={empty}>Nenhuma execução registrada ainda. Use Iniciar execução em uma spec para começar.</p>
           ) : (
             <>
+              <TableFilters view={runsView} subject="execuções" placeholder="Filtrar por execução ou spec" facetName="Status" />
               <div className="relative -mx-[0.6rem] min-w-0 overflow-x-auto [&_td]:h-12 [&_td]:py-2 [&_td]:align-middle [&_td]:whitespace-nowrap [&_th]:align-middle [&_th]:whitespace-nowrap">
-                <table className="m-0" id={`runs-${pr.projectId}`}>
+                <table className="m-0 min-w-[60rem] table-fixed" id={`runs-${pr.projectId}`}>
+                  <colgroup><col className="w-[13%]" /><col className="w-[20%]" /><col className="w-[14%]" /><col className="w-[17%]" /><col className="w-[11%]" /><col className="w-[10%]" /><col className="w-[15%]" /></colgroup>
                   <thead>
                     <tr>
-                      <th scope="col">Execução</th>
-                      <th scope="col">Spec</th>
-                      <th scope="col">Quando</th>
-                      <th scope="col">Status <InfoTip text={HELP.runStatus} /></th>
-                      <th scope="col" className="num">Tokens <InfoTip text={HELP.tokens} /></th>
-                      <th scope="col" className="num">Custo <InfoTip text={HELP.cost} /></th>
+                      <SortHeader view={runsView} column="run">Execução</SortHeader>
+                      <SortHeader view={runsView} column="spec">Spec</SortHeader>
+                      <SortHeader view={runsView} column="at">Quando</SortHeader>
+                      <SortHeader view={runsView} column="status" tip={<InfoTip text={HELP.runStatus} />}>Status</SortHeader>
+                      <SortHeader view={runsView} column="tokens" className="num" tip={<InfoTip text={HELP.tokens} />}>Tokens</SortHeader>
+                      <SortHeader view={runsView} column="cost" className="num" tip={<InfoTip text={HELP.cost} />}>Custo</SortHeader>
                       <th scope="col"><span className="sr-only">Ações</span></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(showAll ? p.runs : p.runs.slice(0, RECENT_RUNS)).map((r) => (
+                    {runsView.rows.length === 0 ? <tr><td colSpan={7} className="text-ink-soft">Nenhuma execução corresponde ao filtro.</td></tr> : null}
+                    {(showAll ? runsView.rows : runsView.rows.slice(0, RECENT_RUNS)).map((r) => (
                       <tr key={r.runId} className={ACTIVE.has(r.status) ? live : r.locked ? '[&>td]:text-ink-soft' : ''}>
                         <td><Link className="font-medium no-underline hover:underline" to={`/runs/${r.runId}`} title={r.runId}>{runName(r)}</Link></td>
-                        <td>{r.specId}</td>
+                        <td className="truncate" title={r.specId}>{r.specId}</td>
                         <td className="whitespace-nowrap text-ink-soft tabular-nums">{when(r.at)}</td>
                         <td>{chip(r.status)}</td>
                         <td className="num">{grouped(r.tokens)}</td>
@@ -420,9 +430,9 @@ export function ProjectHubView(p: {
                   </tbody>
                 </table>
               </div>
-              {p.runs.length > RECENT_RUNS ? (
+              {runsView.rows.length > RECENT_RUNS ? (
                 <button type="button" className="inline-flex h-8 items-center gap-1.5 justify-self-start border-0 bg-transparent p-0 text-[0.8125rem] text-ink-soft hover:not-disabled:text-ink hover:not-disabled:underline hover:not-disabled:underline-offset-3 aria-expanded:[&_svg]:rotate-180 pointer-coarse:h-[var(--control-height)]" aria-expanded={showAll} aria-controls={`runs-${pr.projectId}`} onClick={() => setShowAll(!showAll)}>
-                  {showAll ? 'Mostrar menos' : `Mostrar todas (${p.runs.length})`}
+                  {showAll ? 'Mostrar menos' : `Mostrar todas (${runsView.rows.length})`}
                   <Icon name="chevron" size={14} />
                 </button>
               ) : null}
