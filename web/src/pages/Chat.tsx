@@ -9,10 +9,10 @@ import { InfoTip } from '../components/InfoTip.js';
 import { Bone, Loading, Skeleton } from '../components/Loading.js';
 import { Markdown } from '../components/Markdown.js';
 import { Select } from '../components/Select.js';
-import { emptyState, grouped, money } from './project-shared.js';
+import { emptyState, grouped } from './project-shared.js';
 
-/** Small answers cost cents of a cent: two decimals would read as zero. */
-const price = (usd: number) => (usd < 0.01 ? `US$ ${usd.toFixed(4)}` : money(usd));
+/** A chat answer costs a fraction of a cent: seven decimals, the precision the CLI reports. */
+const price = (usd: number) => `US$ ${usd.toFixed(7)}`;
 
 const HELP = 'Aqui você só tira dúvidas. O chat não dá ordens aos agentes: eles seguem apenas as specs e o backlog. Se o chat achar algo sendo feito que não deveria, ele abre uma spec de correção para você revisar.';
 const EXAMPLES = ['Como crio uma nova spec?', 'O que está sendo desenvolvido agora?', 'Quais tarefas estão bloqueadas e por quê?', 'Algo está sendo feito fora do que foi pedido?'];
