@@ -65,7 +65,7 @@ const steps = (n: number) => `${n} ${n === 1 ? 'etapa' : 'etapas'}`;
 // Journal keys of the token breakdown by phase; any other key shows as recorded.
 const PHASE_LABEL: Record<string, string> = { decide: 'Decisões automáticas', phase: 'Especificação, plano e relatório', phase3: 'Tarefas' };
 // Journal role ids. The id stays beside the name because plan owners and step rows on this screen use it.
-const ROLE_LABEL: Record<string, string> = { dev: 'Desenvolvimento', sm: 'Scrum Master', po: 'Product Owner', test: 'Testes', sec: 'Segurança', devops: 'DevOps', system1: 'Decisões automáticas' };
+const ROLE_LABEL: Record<string, string> = { dev: 'Desenvolvimento', sm: 'Scrum Master', po: 'Product Owner', test: 'Testes', sec: 'Segurança', devops: 'DevOps', env: 'Ambiente', system1: 'Decisões automáticas' };
 const TIP = {
   merged: 'Tarefas cujo pull request já entrou na branch main. A barra mostra a mesma proporção.',
   steps: 'Cada chamada a um agente (Dev, Scrum Master, revisão, segurança) ou decisão automática conta como uma etapa.',

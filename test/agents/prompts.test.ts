@@ -40,6 +40,13 @@ describe('agent prompts for a project of services (R12.6)', () => {
     expect(agent('test')).toContain('Never ask for an image digest');
   });
 
+  it('the environment agent names recipes, never sees a value, and picks the strategy by what the variable is', () => {
+    const env = agent('env');
+    expect(env).toContain('You never see, ask for or write a secret value');
+    for (const strategy of ['`random`', '`fake`', '`from-service`', '`mint`']) expect(env).toContain(strategy);
+    expect(env).toContain('A variable the pack already says exists is never in your answer');
+  });
+
   it('tell Front and the Dev to take fonts from npm and never to reach the git remote (live: github.com denied in kayron-hub)', () => {
     for (const role of ['front', 'dev']) {
       expect(agent(role)).toContain("The sandbox reaches only the package registries (npm and the stack's own), never github.com, raw.githubusercontent.com");

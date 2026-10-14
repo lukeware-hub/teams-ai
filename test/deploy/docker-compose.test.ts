@@ -52,6 +52,25 @@ describe('DockerLocalTarget with a compose file', () => {
     expect(fake.calls.find((c) => c.args.includes('up'))!.env).toEqual({ POSTGRES_PASSWORD: 'made-up', DATABASE_URL: 'postgres://x', TEAMS_AI_IMAGE: 'todo-api:t1' });
   });
 
+  it('hands the credentials the environment step makes up during the run to the next compose call', async () => {
+    const fake = new FakeExec().on((s) => s.args.includes('ps'), () => ({ stdout: 'abc\n' })).onArgs('docker', ['inspect'], () => ({ stdout: 'todo-api:old\n' }));
+    const target = mk(fake);
+    target.provide({ PLATFORM_ADMIN_TOKEN: 'made-up' });
+    await target.apply(intent);
+    expect(fake.calls.find((c) => c.args.includes('up'))!.env).toMatchObject({ PLATFORM_ADMIN_TOKEN: 'made-up', DATABASE_URL: 'postgres://x' });
+  });
+
+  it('reads the value a variable has inside the running container of another service, or null', async () => {
+    const fake = new FakeExec()
+      .on((s) => s.args.includes('ps') && s.args.includes('identity-service'), () => ({ stdout: 'cid1\n' }))
+      .on((s) => s.args.includes('inspect'), () => ({ stdout: 'PATH=/bin\nPLATFORM_ADMIN_TOKEN=running-value\nEMPTY=\n' }));
+    const target = mk(fake);
+    expect(await target.serviceEnv('Todo-Api', 'identity-service', 'PLATFORM_ADMIN_TOKEN')).toBe('running-value');
+    expect(await target.serviceEnv('Todo-Api', 'identity-service', 'EMPTY')).toBeNull();
+    expect(await target.serviceEnv('Todo-Api', 'identity-service', 'MISSING')).toBeNull();
+    expect(await target.serviceEnv('Todo-Api', 'other-service', 'PLATFORM_ADMIN_TOKEN')).toBeNull();
+  });
+
   it('adds the last lines the containers printed to a failed compose up, with the secrets redacted', async () => {
     const fake = new FakeExec()
       .on((s) => s.args.includes('up'), () => ({ exitCode: 1, stderr: 'dependency failed to start: container x-postgres-1 is unhealthy' }))

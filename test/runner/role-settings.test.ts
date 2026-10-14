@@ -44,6 +44,14 @@ describe('buildRoleSettings', () => {
     expect(buildRoleSettings('dev', { allowedDomains: [] }).permissions.allow).toContain('Bash(mkdir:*)');
     expect(buildRoleSettings('devops', { allowedDomains: [] }).permissions.allow).not.toContain('Bash(npm:*)');
     expect(buildRoleSettings('sm', { allowedDomains: [] }).permissions.allow).toEqual([]);
+    expect(buildRoleSettings('env', { allowedDomains: [] }).permissions.allow).toEqual([]);
+  });
+
+  it('denies every read of the project secrets directory, by the Read tool and by any command of the sandbox', () => {
+    const s = buildRoleSettings('dev', { allowedDomains: [], projectSecretsDir: '/ws/kayron-hub/secrets/' });
+    expect(s.permissions.deny).toContain('Read(/ws/kayron-hub/secrets/**)');
+    expect(s.sandbox.filesystem?.denyRead).toContain('/ws/kayron-hub/secrets');
+    expect(buildRoleSettings('dev', { allowedDomains: [] }).sandbox.filesystem).toBeUndefined();
   });
 
   it('grants the file editing tools to editing roles, since dontAsk denies anything not allowed', () => {

@@ -72,10 +72,15 @@ function dockerFailure(what: string, stderr: string): string {
 export class DockerLocalTarget implements DeployTarget {
   readonly name = 'docker-local' as const;
 
+  /** The made-up credentials every compose call gets; the environment step adds to it while the run goes on. */
+  private readonly generated: Record<string, string>;
+
   /** `serviceHost` is where the orchestrator (and the smoke gate) reach the service; `publishBind` is the
    * address the container port is published on. Both default to loopback; when the orchestrator itself
    * runs in a container the service lives on the host daemon, so it needs host.docker.internal / 0.0.0.0. */
-  constructor(private readonly deps: { exec: Exec; get: HttpGet; secrets: Record<string, string>; /** Datastore passwords the platform made up for the compose files that ask for them. */ generated?: Record<string, string>; serviceHost?: string; publishBind?: string }) {}
+  constructor(private readonly deps: { exec: Exec; get: HttpGet; secrets: Record<string, string>; /** Datastore passwords the platform made up for the compose files that ask for them. */ generated?: Record<string, string>; serviceHost?: string; publishBind?: string }) {
+    this.generated = { ...deps.generated };
+  }
 
   private container(intent: DeploymentIntent) {
     return `teams-ai-${intent.projectId}`;
@@ -134,7 +139,7 @@ export class DockerLocalTarget implements DeployTarget {
 
   /** `shared` false reads the service's own compose file alone, as `service()` does to name the container the extra file joins. */
   private async compose(intent: DeploymentIntent, args: string[], image: string | null, timeoutMs = 120_000, shared = true) {
-    const env: Record<string, string> = { ...this.deps.generated, ...(image ? { TEAMS_AI_IMAGE: image } : {}) };
+    const env: Record<string, string> = { ...this.generated, ...(image ? { TEAMS_AI_IMAGE: image } : {}) };
     for (const n of intent.secretNames) env[n] = this.deps.secrets[n]!;
     const run = (extra: string[]) =>
       this.deps.exec({ bin: 'docker', args: ['compose', '-p', this.project(intent), '-f', `${intent.contextDir.replaceAll('\\', '/')}/${intent.compose}`, ...extra, '--project-directory', intent.contextDir, ...args], env, timeoutMs });
@@ -185,6 +190,19 @@ export class DockerLocalTarget implements DeployTarget {
     // `start` needs no compose file, only the project name; it starts the stopped containers in dependency order and leaves one-shot ones (migrations) done.
     const r = await this.docker(['compose', '-p', serviceComposeProject(projectId, service), 'start', '--wait'], undefined, TIMEOUT);
     return r.exitCode === 0 ? { ok: true, detail: 'running' } : { ok: false, detail: dockerFailure(`docker compose start (${service})`, r.stderr) };
+  }
+
+  provide(env: Readonly<Record<string, string>>): void {
+    Object.assign(this.generated, env);
+  }
+
+  async serviceEnv(projectId: string, service: string, variable: string): Promise<string | null> {
+    const ps = await this.docker(['compose', '-p', serviceComposeProject(projectId, service), 'ps', '-q', service], undefined, 60_000);
+    const id = ps.stdout.trim().split(/\s+/)[0];
+    if (ps.exitCode !== 0 || !id) return null;
+    const env = await this.docker(['inspect', '--format', '{{range .Config.Env}}{{println .}}{{end}}', id], undefined, 60_000);
+    const line = env.stdout.split('\n').find((l) => l.startsWith(`${variable}=`));
+    return line === undefined || line.length === variable.length + 1 ? null : line.slice(variable.length + 1);
   }
 
   async startPlatform(projectId: string, platform: readonly PlatformService[]): Promise<{ ok: boolean; detail: string }> {
@@ -298,7 +316,7 @@ export class DockerLocalTarget implements DeployTarget {
   /** The last lines the stack's containers printed: the Dev that fixes a failed deploy reads them, or it guesses (live: a postgres that never started, and nobody saw why). */
   private async containerLogs(intent: DeploymentIntent): Promise<string> {
     const r = await this.compose(intent, ['logs', '--no-color', '--tail', '25'], null, 60_000).catch(() => null);
-    const text = redactSecrets(`${r?.stdout ?? ''}${r?.stderr ?? ''}`.trim(), [...Object.values(this.deps.secrets), ...Object.values(this.deps.generated ?? {})]);
+    const text = redactSecrets(`${r?.stdout ?? ''}${r?.stderr ?? ''}`.trim(), [...Object.values(this.deps.secrets), ...Object.values(this.generated)]);
     return text === '' ? '' : `\n\ncontainer logs (last lines):\n${text.slice(-CONTAINER_LOG_CHARS)}`;
   }
 

@@ -525,6 +525,7 @@ const STEP_DOING: Record<string, string> = {
   review: 'revisando o código',
   security: 'revisando a segurança',
   deployment: 'preparando o deploy',
+  environment: 'criando o ambiente do teste local',
   report: 'escrevendo o relatório',
   readme: 'escrevendo o README',
   decide: 'tomando uma decisão automática',

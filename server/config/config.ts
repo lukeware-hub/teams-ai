@@ -4,7 +4,7 @@ import { DEFAULT_MAX_PARALLEL } from '../scheduler/scheduler.js';
 import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
 import { BACKEND_NAMES, DECISION_IDS, type DecisionConfig, type DecisionId } from '../decide/types.js';
 
-export const ROLES = ['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops'] as const;
+export const ROLES = ['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops', 'env'] as const;
 export type Role = (typeof ROLES)[number];
 
 /** Every role runs the Claude Code CLI; strict, so a leftover `provider` key is refused instead of ignored. */
@@ -24,6 +24,7 @@ const CLAUDE_DEFAULTS: Record<Role, RoleProfile> = {
   test: { model: 'sonnet' },
   sec: { model: 'sonnet' },
   devops: { model: 'sonnet' },
+  env: { model: 'sonnet' },
 };
 
 /** The steps that decide architecture: the only ones that run on Opus (always at low effort, see `effortFor`). */

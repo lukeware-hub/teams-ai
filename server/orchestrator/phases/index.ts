@@ -2,6 +2,6 @@ export { ensureServiceRepos, runPhase0, runWorkflowBootstrap } from './bootstrap
 export { runPhase1 } from './tech-spec.js';
 export { runPhase2 } from './plan.js';
 export { runPhase4, type Phase4Result } from './verify.js';
-export { runPhase5, runServicesPhase5, deployIntent, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, type Phase5Result } from './deploy.js';
+export { runPhase5, runServicesPhase5, deployIntent, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, MAX_ENV_RERUNS, type Phase5Result } from './deploy.js';
 export { runPhase6, type Phase6Deps, type Report } from './report.js';
 export { PAUSED_AUTH, checkoutMain, readDocs, type GateScope, type PhaseDeps, type PhaseResult, type ServiceRepo } from './shared.js';

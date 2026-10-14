@@ -327,6 +327,19 @@ const EVIDENCE_RULE =
 const OWNER_RULE =
   '- owner is dev, devops or front: use front only when every affectedPaths entry is UI code (e.g. web/src/**); use devops only for Dockerfile, deploy manifests, CI/release workflows and docker-compose; everything else is dev';
 
+/** `environment`: the variables the local test needs that nothing provides yet, with where each is read; the agent answers a recipe per variable. */
+export function environmentPack(base: PackBase, opts: { unknown: Readonly<Record<string, readonly string[]>>; existing: readonly string[]; services: readonly string[]; failure: string | null }): ContextPackInput {
+  const unknown = Object.entries(opts.unknown).map(([name, files]) => `- ${name}: read in ${files.join(', ') || 'a file of the repository'}`);
+  return { ...common(base, 'environment', 'env'), criteria: base.spec.acceptanceCriteria, feedback: [
+    'The deploy of this spec is a local Docker test of what was built, so every credential it needs is made up by the platform and nobody types one. Decide how the platform creates each variable below, with one recipe per variable (random, fake, from-service or mint, as your rules say).',
+    `Unknown variables (name and where it is read):\n${unknown.join('\n') || '- none'}`,
+    `Variables that already exist (names only, never list them in your answer):\n${opts.existing.map((n) => `- ${n}`).join('\n') || '- none'}`,
+    `Services of this project (the names a from-service or mint recipe may use):\n${opts.services.map((s) => `- ${s}`).join('\n') || '- the project has a single service, named like the project'}`,
+    opts.failure ? `The deploy or its suite just failed with this output; add a recipe for any variable it names that is not in the lists above:\n${opts.failure.slice(0, 3_000)}` : '',
+    'Read the compose file, `.env.example`, the smoke and e2e suites and the docs of the services you point at, to write each reason and each mint request from what the code does.',
+  ].filter((p) => p !== '').join('\n\n') };
+}
+
 export function fixTasksPack(base: PackBase, opts: { failedTests: readonly string[]; tails: string; uncoveredAcs: readonly string[]; blocked: ReadonlyArray<{ taskId: string; reason: string; service?: string }>; plan: Pick<Plan, 'tasks' | 'gates'>; services?: readonly string[]; boundaries: readonly string[]; feedback: string | null }): ContextPackInput {
   const feedback = [
     'Integrated verification on main failed. Plan 1 to 3 fix tasks. Ids are assigned by the orchestrator.',

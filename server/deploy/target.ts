@@ -35,6 +35,10 @@ export interface DeployTarget {
   startPlatform?(projectId: string, platform: readonly PlatformService[]): Promise<{ ok: boolean; detail: string }>;
   /** Starts again what a service deployed by an earlier spec left stopped (a restart of the host or of the docker daemon), and waits until it is healthy. */
   ensureRunning?(projectId: string, service: string): Promise<{ ok: boolean; detail: string }>;
+  /** Adds values to the environment every later compose call of this run gets (credentials the environment step made up). */
+  provide?(env: Readonly<Record<string, string>>): void;
+  /** The value `variable` has inside the running main container of a service of the project, or null when the service or the variable is not there. */
+  serviceEnv?(projectId: string, service: string, variable: string): Promise<string | null>;
 }
 
 export type DeployStage = 'validate' | 'build' | 'apply' | 'verify' | 'smoke' | 'e2e';

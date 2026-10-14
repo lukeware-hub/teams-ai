@@ -48,6 +48,10 @@ export const OrchEvent = {
   DeployPortReassigned: 'DEPLOY_PORT_REASSIGNED',
   RollbackDone: 'ROLLBACK_DONE',
   DeployVerified: 'DEPLOY_VERIFIED',
+  /** The environment step's recipes and what the orchestrator did with each (names and strategies, never a value). */
+  EnvironmentPlanned: 'ENVIRONMENT_PLANNED',
+  /** Values got from deployed services before the suites ran: the names that came and the ones that did not. */
+  EnvironmentMinted: 'ENVIRONMENT_MINTED',
   ReportReady: 'REPORT_READY',
 } as const;
 

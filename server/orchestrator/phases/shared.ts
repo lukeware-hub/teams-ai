@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { OutputOf, StepKind } from '../../agents/outputs.js';
+import type { EnvironmentRepo } from '../../environment/service.js';
 import { parseAnyPlan, Plan, type AnyPlan, type ServicesPlan, type ServiceView } from '../../contracts/plan.js';
 import { Preplan } from '../../contracts/preplan.js';
 import type { Project } from '../../contracts/project.js';
@@ -79,6 +80,11 @@ export interface PhaseDeps {
   secretNames?: () => string[];
   /** `environment.generatedSecrets`: secrets every gate of the project may read. */
   generatedSecretNames?: readonly string[];
+  /** The environment step: creates the variables the compose file and the suites need before a deploy and after a failure that names one, and asks deployed services for what only they issue. */
+  environment?: {
+    prepare(repo: EnvironmentRepo, failure: string | null): Promise<boolean>;
+    mint(urls: Record<string, string>): Promise<void>;
+  };
   /** A services plan and its repositories; absent means the project repository with `plan` and `gates`. */
   services?: { plan: ServicesPlan; repos: ServiceRepo[] };
   /** The service whose repository `ws` is; absent for the project repository. */

@@ -32,10 +32,11 @@ import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
 import { CrashInjected, Intent, Journal, OrchEvent, type IntentType, type RunResult } from './events.js';
 export { CrashInjected };
 import { taskMergeSteps, type MergeStepsDeps } from './merge-steps.js';
-import { PAUSED_AUTH, ensureServiceRepos, runPhase0, runWorkflowBootstrap, runPhase1, runPhase2, runPhase4, runPhase5, runServicesPhase5, runPhase6, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, type PhaseDeps, type PhaseResult } from './phases/index.js';
+import { PAUSED_AUTH, ensureServiceRepos, runPhase0, runWorkflowBootstrap, runPhase1, runPhase2, runPhase4, runPhase5, runServicesPhase5, runPhase6, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, MAX_ENV_RERUNS, type PhaseDeps, type PhaseResult } from './phases/index.js';
 import { withMainSnapshot } from './phases/shared.js';
 import { reconcile } from './reconcile.js';
 import { resolveDocs, validateDocs, type DocsAnswer } from '../validators/docs.js';
+import { mintEnvironment, prepareEnvironment, type EnvironmentHost } from '../environment/service.js';
 import { readmePack, runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
 import { TaskRunner, type TaskRunnerDeps } from './task-runner.js';
 import { portKey, registeredPorts } from '../deploy/port-registry.js';
@@ -344,6 +345,33 @@ export class Run {
     };
   }
 
+  /** The names the environment step made readable by the suites, on top of the machine's own generated secrets. */
+  private readonly environmentSuiteNames = new Set<string>();
+  private environmentNames(): string[] {
+    return [...this.deps.cfg.environment.generatedSecrets, ...this.environmentSuiteNames];
+  }
+
+  private environmentPhase?: PhaseDeps['environment'];
+  /** The environment step of this run: one host, so the values it creates stay visible to every later deploy attempt. */
+  private environment(): PhaseDeps['environment'] {
+    if (this.environmentPhase) return this.environmentPhase;
+    const host: EnvironmentHost = {
+      projectId: this.deps.project.projectId,
+      specId: this.deps.spec.specId,
+      secretsDir: path.posix.join(this.deps.ws.root, 'secrets'),
+      manifestDir: path.posix.join(this.deps.ws.root, 'environment'),
+      secrets: this.deps.secrets,
+      suiteNames: this.environmentSuiteNames,
+      services: this.deps.project.services ?? [],
+      target: this.deps.target ?? {},
+      runAgent: this.runAgent,
+      packBase: this.packBase,
+      pause: async (failure) => (await this.pauseFor(failure as 'quota' | 'auth')) === 'auth',
+      journal: this.journal,
+    };
+    return (this.environmentPhase = { prepare: (repo, failure) => prepareEnvironment(host, repo, failure), mint: (urls) => mintEnvironment(host, urls) });
+  }
+
   private runAgent = <K extends StepKind>(req: AgentStepRequest<K>): Promise<StepOutcome<OutputOf<K>>> => runAgentStep(req, this.agentDeps());
 
   /**
@@ -419,7 +447,7 @@ export class Run {
           cpus: 2,
           memory: '2g',
           timeoutMs: buildTimeoutMs(plan),
-          secrets: gateSecrets(this.deps.spec, this.deps.secrets, this.deps.cfg.environment.generatedSecrets),
+          secrets: gateSecrets(this.deps.spec, this.deps.secrets, this.environmentNames()),
           containerName: `teams-ai-${this.runId}-${branch.replace(/\//g, '__')}`,
           // Files the gate writes into the bind-mounted worktree (the JUnit report) must stay owned by the
           // orchestrator user, or the next attempt cannot remove them (EACCES on the first live run).
@@ -547,6 +575,7 @@ export class Run {
       journal: this.journal, ws: this.deps.ws, workspacesRoot: expandHome(this.deps.cfg.paths.workspaces), spec: this.deps.spec, project: this.deps.project, specHash: this.deps.spec.specHash!, firstSpec: this.deps.firstSpec, requireDelivery: this.deps.requireDelivery, requireSecurityTooling: this.deps.requireSecurityTooling, requireE2e: this.deps.requireE2e, requireCoverage: this.deps.requireCoverage, requireFrozenScope: this.deps.requireFrozenScope, exec: this.deps.exec,
       runAgent: this.runAgent,
       generatedSecretNames: this.deps.cfg.environment.generatedSecrets,
+      environment: this.environment(),
       decider: this.decider(),
       mergeQueue: this.mergeQueue,
       mergeDeps: this.mergeDeps(null),
@@ -560,14 +589,14 @@ export class Run {
       target: this.deps.target,
       smoke: async (contextDir, url, gateUrl, gateNetwork, scope) => {
         const p = scope?.plan ?? singlePlan(this.plan)!;
-        const r = await runSmoke(p, scope?.spec ?? this.deps.spec, { worktree: contextDir, image: await this.gateImage(p.gateImage), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: gateSecrets(this.deps.spec, this.deps.secrets, this.deps.cfg.environment.generatedSecrets), containerName: `teams-ai-${this.runId}-smoke${scope ? `-${scope.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : gateReachableUrl(url), { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) }, scope?.urls);
+        const r = await runSmoke(p, scope?.spec ?? this.deps.spec, { worktree: contextDir, image: await this.gateImage(p.gateImage), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: gateSecrets(this.deps.spec, this.deps.secrets, this.environmentNames()), containerName: `teams-ai-${this.runId}-smoke${scope ? `-${scope.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : gateReachableUrl(url), { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) }, scope?.urls);
         // The gate's output is the only clue the fix task gets about why a smoke test is missing or failing.
         const tail = r.ok || !r.result ? '' : `\n\nsmoke gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
       },
       e2e: async (contextDir, url, gateUrl, gateNetwork, scope) => {
         const p = scope?.plan ?? singlePlan(this.plan)!;
-        const r = await runE2e(p, scope?.spec ?? this.deps.spec, { worktree: contextDir, image: await this.gateImage(p.gateImage), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: gateSecrets(this.deps.spec, this.deps.secrets, this.deps.cfg.environment.generatedSecrets), containerName: `teams-ai-${this.runId}-e2e${scope ? `-${scope.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) }, scope?.urls);
+        const r = await runE2e(p, scope?.spec ?? this.deps.spec, { worktree: contextDir, image: await this.gateImage(p.gateImage), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: gateSecrets(this.deps.spec, this.deps.secrets, this.environmentNames()), containerName: `teams-ai-${this.runId}-e2e${scope ? `-${scope.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) }, scope?.urls);
         const tail = r.ok || !r.result ? '' : `\n\ne2e gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
       },
@@ -758,8 +787,12 @@ export class Run {
 
   /** One deploy attempt, holding the main checkout still: it builds from it, and another spec's merge would reset it. */
   // ponytail: holds the project repo only; a services project's service repos are not held, lock each if they run in parallel.
-  private phase5(attempt: 1 | 2 | 3, opts?: { fixTasks?: boolean }) {
-    return withCheckoutLock(this.deps.ws.repo, () => (singlePlan(this.plan) ? runPhase5(this.phaseDeps(), attempt, opts) : runServicesPhase5(this.phaseDeps(), attempt, opts)));
+  private async phase5(attempt: 1 | 2 | 3, opts?: { fixTasks?: boolean }) {
+    const once = (envRerun: number) => withCheckoutLock(this.deps.ws.repo, () => (singlePlan(this.plan) ? runPhase5(this.phaseDeps(), attempt, { ...opts, envRerun }) : runServicesPhase5(this.phaseDeps(), attempt, { ...opts, envRerun })));
+    let result = await once(0);
+    // The environment step created what the failure said was missing: the same attempt runs again, no fix task and no attempt spent.
+    for (let n = 1; !result.ok && result.retryEnvironment && n <= MAX_ENV_RERUNS; n++) result = await once(n);
+    return result;
   }
 
   private async postPhases(): Promise<ExecuteResult> {

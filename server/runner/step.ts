@@ -232,6 +232,12 @@ export async function withRefreshGate<T>(hostEnv: NodeJS.ProcessEnv, clock: () =
   }
 }
 
+/** `<workspaces>/<project>/secrets` for a step working under `<workspaces>/<project>/...`, or undefined outside any project. */
+function projectSecretsDir(workspacesRoot: string, cwd: string): string | undefined {
+  const project = path.relative(workspacesRoot, cwd).split(path.sep)[0];
+  return project ? path.join(workspacesRoot, project, 'secrets') : undefined;
+}
+
 /** `total_cost_usd`, `duration_api_ms` and `usage` of a resumed session include the attempts before it: book only this step's share. */
 async function bookSessionShare(s: ResultSummary, store: string, resume: boolean): Promise<void> {
   // Without a result event the step reports only its own stream, never the session totals.
@@ -259,7 +265,7 @@ async function bookSessionShare(s: ResultSummary, store: string, resume: boolean
 
 async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, hostEnv: NodeJS.ProcessEnv, home: string): Promise<StepOutcome<OutputOf<K>>> {
   await ensureTrusted(req.cwd, path.join(home, '.claude.json'));
-  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: req.extraAllow, sandboxEnabled: deps.sandbox?.enabled, hostHome: hostEnv.HOME, stepHome: home });
+  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: req.extraAllow, sandboxEnabled: deps.sandbox?.enabled, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDir: projectSecretsDir(deps.workspacesRoot, req.cwd) });
   if (req.resume && req.sessionStore) await restoreSession(req.sessionStore, home);
   // A review judges a diff the gates already tested: it never edits the code under review (R11.13 slice 2).
   const agent = req.kind === 'review' ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : req.agent;

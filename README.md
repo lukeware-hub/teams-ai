@@ -87,7 +87,7 @@ Principais peças:
 | Peça | O que faz |
 | --- | --- |
 | Orquestrador (`server/orchestrator`) | Máquina de estados baseada em eventos. Um processo `claude -p` por etapa de agente. O journal só acrescenta registros, então nada se perde se o processo cair. |
-| Agentes (`server/agents`) | Papéis `sm`, `po`, `dev`, `front`, `test`, `sec` e `devops`, cada um com permissões restritas. |
+| Agentes (`server/agents`) | Papéis `sm`, `po`, `dev`, `front`, `test`, `sec`, `devops` e `env` (cria o ambiente do teste local), cada um com permissões restritas. |
 | Plano de execução (`server/exec`, `server/deploy`) | Roda gates (testes, scans) e deploys dentro de um Docker aninhado e sem root, nunca no Docker do seu computador. |
 | Orçamento e cota (`server/budget`) | Controla tokens e custo; pausa a execução quando a janela da assinatura do Claude está quase no fim e retoma sozinho. |
 | Camada de decisão (`server/decide`) | Opcional. Responde decisões simples localmente antes de chamar o Claude. |

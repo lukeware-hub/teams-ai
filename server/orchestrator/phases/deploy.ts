@@ -9,10 +9,14 @@ import { RunEvent } from '../../pipeline/run-state.js';
 import { TERMINAL_STATES } from '../../pipeline/task-state.js';
 import { Intent, OrchEvent } from '../events.js';
 import { E2E_CONTRACT, SMOKE_CONTRACT } from '../steps.js';
+import { MISSING_VARIABLE } from '../../environment/service.js';
 import { checkoutMain, type GateScope, type PhaseDeps, type ServiceRepo } from './shared.js';
 
-export type Phase5Result = { ok: true; url: string; smoke: SmokeRow[]; healthcheck: string; e2e?: E2eRow[] } | { ok: false; reason: string; fixTask?: PlanTask };
+/** `retryEnvironment`: a missing variable was created, so the same attempt runs again without a fix task. */
+export type Phase5Result = { ok: true; url: string; smoke: SmokeRow[]; healthcheck: string; e2e?: E2eRow[] } | { ok: false; reason: string; fixTask?: PlanTask; retryEnvironment?: true };
 export const MAX_DEPLOY_ATTEMPTS = 3;
+/** How many times one attempt may run again because the environment step created what the failure said was missing. */
+export const MAX_ENV_RERUNS = 2;
 
 /** The plan's port, unless a failed deploy moved it to a free one. */
 const deployPort = (deps: PhaseDeps) => Number([...deps.journal.events].reverse().find((e) => e.type === OrchEvent.DeployPortReassigned)?.data.to ?? deps.plan!.deploy.port);
@@ -129,15 +133,18 @@ export function deployStartAttempt(deps: PhaseDeps): 1 | 2 | 3 {
 }
 
 /** `fixTasks: false` (deploy-only runs): a failure is reported, never turned into agent work. */
-export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fixTasks?: boolean } = {}): Promise<Phase5Result> {
+export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fixTasks?: boolean; envRerun?: number } = {}): Promise<Phase5Result> {
   if (!deps.plan || !deps.target || !deps.smoke) throw new Error('Phase 5 needs plan, target and smoke');
   const done = deps.journal.events.find((e) => e.type === OrchEvent.DeployVerified && e.data.attempt === attempt);
   if (done) return { ok: true, url: String(done.data.url), smoke: done.data.smoke as SmokeRow[], healthcheck: String(done.data.healthcheck), ...(done.data.e2e ? { e2e: done.data.e2e as E2eRow[] } : {}) };
   if (!deps.journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 5)) await deps.journal.fact(OrchEvent.PhaseStarted, { phase: 5 });
-  const tag = await checkoutMain(deps); let intent = deployIntent(deps, tag); const key = `deploy-${attempt}`;
+  const tag = await checkoutMain(deps); let intent = deployIntent(deps, tag); const envRerun = opts.envRerun ?? 0; const key = `deploy-${attempt}${envRerun > 0 ? `-e${envRerun}` : ''}`;
+  await deps.environment?.prepare({ service: null, dir: deps.ws.repo, plan: deps.plan }, null);
   const failed = async (stage: DeployStage, detail: string, rolledBack: boolean, rollbackHealthy: boolean | null, previous: string | null): Promise<Phase5Result> => {
     await deps.journal.fact(OrchEvent.DeployFailed, { attempt, stage, detail, rolledBack, rollbackHealthy, tag });
     if (rolledBack) await deps.journal.fact(OrchEvent.RollbackDone, { attempt, previous });
+    // A variable the failure says is missing is made up by the environment step and the same attempt runs again: no fix task could provide it.
+    if (envRerun < MAX_ENV_RERUNS && deps.environment && MISSING_VARIABLE.test(detail) && (await deps.environment.prepare({ service: null, dir: deps.ws.repo, plan: deps.plan! }, detail))) return { ok: false, reason: `deploy failed at ${stage}: a missing variable was created, retrying`, retryEnvironment: true };
     if (attempt >= 3 || opts.fixTasks === false) return { ok: false, reason: `deploy failed on attempt ${attempt} at ${stage}: ${detail}` };
     if (planGap(stage, detail)) return { ok: false, reason: `deploy failed at ${stage}: ${detail}` };
     const newPort = stage === 'apply' && PORT_TAKEN.test(detail) ? await reassignPort(deps, intent.port) : null;
@@ -163,6 +170,7 @@ export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fix
     healthcheck = (await deps.target.verify(intent)).detail;
   }
   let url: string; let gateUrl: string | undefined; let gateNet: string | undefined; try { url = await (deps.target.serviceUrl ? deps.target.serviceUrl(intent) : ''); gateUrl = deps.target.gateServiceUrl ? await deps.target.gateServiceUrl(intent) : undefined; gateNet = deps.target.gateNetwork?.(intent); } catch (e) { return failed('verify', (e as Error).message, false, null, previous); }
+  await deps.environment?.mint({ [deps.project.projectId]: gateUrl ?? url });
   const s = await deps.smoke(deps.ws.repo, url, gateUrl, gateNet); if (!s.ok) { let rb = false; let rh: boolean | null = null; if (previous) { await deps.target.rollback(intent, previous); rb = true; rh = (await deps.target.verify(intent)).healthy; } else await deps.target.destroy(intent).catch(() => undefined); return failed('smoke', s.detail, rb, rh, previous); }
   // The e2e suite runs only against a deployment whose smoke already passed (roadmap R8.4). Legacy plans without commands.e2e skip it unless the run requires it.
   let e2eRows: E2eRow[] | undefined;
@@ -178,7 +186,8 @@ export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fix
  * R12.4: the platform first, then every service on the shared network, then each service's smoke and e2e suites with the
  * other services' addresses. A failure rolls back every service this attempt applied; the fix goes to the failing service.
  */
-export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fixTasks?: boolean } = {}): Promise<{ ok: true } | { ok: false; reason: string; fixTask?: PlanTask }> {
+export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fixTasks?: boolean; envRerun?: number } = {}): Promise<{ ok: true } | { ok: false; reason: string; fixTask?: PlanTask; retryEnvironment?: true }> {
+  const envRerun = opts.envRerun ?? 0;
   const { journal, target, services } = deps;
   if (!services || !target || !deps.smoke) throw new Error('Phase 5 needs the services, target and smoke');
   if (journal.events.some((e) => e.type === OrchEvent.DeployVerified && e.data.attempt === attempt)) return { ok: true };
@@ -187,6 +196,7 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
   const tags: string[] = [];
   for (const repo of services.repos) tags.push(await checkoutMain({ ...deps, ws: repo.ws }));
   const intents = services.repos.map((repo, i) => serviceIntent(deps, repo, tags[i]!));
+  for (const repo of services.repos) await deps.environment?.prepare({ service: repo.service, dir: repo.ws.repo, plan: repo.plan }, null);
   const applied: Array<{ repo: ServiceRepo; intent: DeploymentIntent; previous: string | null; healthcheck: string }> = [];
   const failed = async (stage: DeployStage | 'platform', detail: string, repo: ServiceRepo | null, own: { intent?: DeploymentIntent; rolledBack?: boolean; rollbackHealthy?: boolean | null; fixable?: boolean } = {}) => {
     // Every applied service goes back to its previous image, or away when this was its first deploy; a failed rollback is said.
@@ -205,6 +215,8 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
     const rolledBack = restored.length > 0 && broken.length === 0;
     await journal.fact(OrchEvent.DeployFailed, { attempt, stage, detail: `${detail}${broken.length > 0 ? `; rollback failed for ${broken.join('; ')}` : ''}`, rolledBack, rollbackHealthy: broken.length > 0 ? false : own.rollbackHealthy ?? null, ...(repo ? { service: repo.service } : {}) });
     if (rolledBack) await journal.fact(OrchEvent.RollbackDone, { attempt, services: restored });
+    // A variable the failure says is missing is made up by the environment step and the same attempt runs again: no fix task could provide it.
+    if (repo && envRerun < MAX_ENV_RERUNS && deps.environment && MISSING_VARIABLE.test(detail) && (await deps.environment.prepare({ service: repo.service, dir: repo.ws.repo, plan: repo.plan }, detail))) return { ok: false as const, reason: `deploy failed at ${stage} (${repo.service}): a missing variable was created, retrying`, retryEnvironment: true as const };
     // The platform comes from the docs, never from the code: no task could fix it.
     if (!repo || attempt >= 3 || opts.fixTasks === false) return { ok: false as const, reason: `deploy failed on attempt ${attempt} at ${stage}${repo ? ` (${repo.service})` : ''}: ${detail}` };
     if (own.fixable === false || planGap(stage as DeployStage, detail)) return { ok: false as const, reason: `deploy failed at ${stage} (${repo.service}): ${detail}` };
@@ -221,7 +233,7 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
   if (!platform.ok) return failed('platform', platform.detail, null);
   for (const [i, repo] of services.repos.entries()) {
     const intent = intents[i]!;
-    const key = `deploy-${repo.service}-${attempt}`;
+    const key = `deploy-${repo.service}-${attempt}${envRerun > 0 ? `-e${envRerun}` : ''}`;
     if (journal.isConfirmed(Intent.DeployApply, key)) {
       const previous = ([...journal.events].reverse().find((e) => e.kind === 'confirm' && e.intentId === `${Intent.DeployApply}:${key}`)?.data.previous as string | null | undefined) ?? null;
       // A resumed run proves the service still answers before its suites run, as runPhase5 does.
@@ -262,6 +274,8 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
     const missing = unreachable(detail);
     return missing.length > 0 ? failed(stage, `environment: ${missing.join(', ')} of another spec was never published, so the suites cannot reach it; deliver that spec first\n\n${detail}`, null) : failed(stage, withEnvironment(detail), repo);
   };
+  // The services this run deployed and the ones earlier specs left running: the only addresses a minted value may be asked from.
+  await deps.environment?.mint({ ...Object.fromEntries(untouchedServices.map((s) => [s, `http://${s}:${registry[portKey(deps.project.projectId, s)]}`])), ...Object.fromEntries(addresses.map((a) => [a.repo.service!, a.gateUrl])) });
   const smoke: SmokeRow[] = [];
   const e2e: E2eRow[] = [];
   for (const a of addresses) {

@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execCommand } from '../../server/exec/command.js';
-import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
+import { Intent, Journal, OrchEvent } from '../../server/orchestrator/events.js';
 import { runPhase5, type PhaseDeps } from '../../server/orchestrator/phases/index.js';
 import { deployStartAttempt } from '../../server/orchestrator/phases/deploy.js';
 import { RunEvent } from '../../server/pipeline/run-state.js';
@@ -175,5 +175,58 @@ describe('Phase 5', () => {
     expect(r.ok ? null : r.fixTask).toBeUndefined();
     expect(r.ok ? '' : r.reason).toContain('AC-001: smoke test failed');
     expect(journal.events.some((e) => e.type === 'FIX_TASKS_PLANNED')).toBe(false);
+  });
+});
+
+describe('Phase 5 environment step', () => {
+  const MISSING = 'e2e gate: PLATFORM_ADMIN_TOKEN e SERVICE_URL_IDENTITY_SERVICE não foram definidos';
+  const hooks = (prepared: boolean[]) => {
+    const calls: Array<{ kind: string; failure?: string | null; urls?: Record<string, string> }> = [];
+    return {
+      calls,
+      environment: {
+        prepare: async (_repo: unknown, failure: string | null) => (calls.push({ kind: 'prepare', failure }), prepared.shift() ?? false),
+        mint: async (urls: Record<string, string>) => void calls.push({ kind: 'mint', urls }),
+      },
+    };
+  };
+  const planned = () => journal.events.filter((e) => e.type === RunEvent.FixTasksPlanned);
+
+  it('prepares the environment before the deploy and asks the deployed service for minted values before the suites', async () => {
+    const h = hooks([]);
+    await runPhase5({ ...deps('AC-001: smoke test failed'), environment: h.environment }, 1);
+    expect(h.calls).toEqual([{ kind: 'prepare', failure: null }, { kind: 'mint', urls: { [project.projectId]: 'http://127.0.0.1:3000' } }]);
+  });
+
+  it('runs the same attempt again, with no fix task, when the failure names a variable the environment step then created', async () => {
+    const h = hooks([false, true]);
+    const r = await runPhase5({ ...deps(MISSING), environment: h.environment }, 1);
+    expect(r).toMatchObject({ ok: false, retryEnvironment: true });
+    expect(h.calls.filter((c) => c.kind === 'prepare').map((c) => c.failure)).toEqual([null, MISSING]);
+    expect(planned()).toHaveLength(0);
+    expect(journal.events.some((e) => e.type === OrchEvent.DeployFailed)).toBe(true);
+  });
+
+  it('plans the fix task as before when the environment step has nothing to create', async () => {
+    const h = hooks([false, false]);
+    const r = await runPhase5({ ...deps(MISSING), environment: h.environment }, 1);
+    expect(r.ok ? null : r.fixTask?.id).toBe('T950-deploy-fix-1');
+    expect(r).not.toHaveProperty('retryEnvironment');
+  });
+
+  it('never asks the environment step about a failure that does not name a missing variable, nor after the reruns are spent', async () => {
+    const h = hooks([true, true]);
+    await runPhase5({ ...deps('AC-001: smoke test failed'), environment: h.environment }, 1);
+    expect(h.calls.filter((c) => c.kind === 'prepare')).toHaveLength(1);
+    const spent = hooks([true, true]);
+    const r = await runPhase5({ ...deps(MISSING), environment: spent.environment }, 1, { envRerun: 2 });
+    expect(r.ok ? null : r.fixTask?.id).toMatch(/^T950-deploy-fix-\d+$/);
+    expect(spent.calls.filter((c) => c.kind === 'prepare').map((c) => c.failure)).toEqual([null]);
+  });
+
+  it('applies a rerun under its own intent key, so a rolled-back first try is never replayed', async () => {
+    await runPhase5({ ...deps('AC-001: smoke test failed') }, 1, { envRerun: 1 });
+    expect(journal.events.some((e) => e.intentId === `${Intent.DeployApply}:deploy-1-e1`)).toBe(true);
+    expect(journal.events.some((e) => e.intentId === `${Intent.DeployApply}:deploy-1`)).toBe(false);
   });
 });

@@ -8,7 +8,7 @@ import { ID_PATTERNS } from '../core/ids.js';
 import { Project, ServiceName } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 
-export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'deployment', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'deployment', 'environment', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -158,6 +158,33 @@ export const DeploymentOutput = z.object({
   notes: z.string(),
 });
 
+const envName = z.string().regex(/^[A-Z][A-Z0-9_]*$/);
+const envBase = { name: envName, scope: z.enum(['compose', 'suites', 'both']), reason: z.string().min(1) };
+/** How the platform makes one variable exist for a local test: the agent names the recipe, the orchestrator creates the value (an agent never sees a secret). */
+export const EnvironmentVariable = z.discriminatedUnion('strategy', [
+  /** An internal credential: random, kept once per project so every service of the project reads the same value. */
+  z.object({ ...envBase, strategy: z.literal('random'), format: z.enum(['hex', 'base64url', 'alnum']).optional(), minLength: z.number().int().min(16).max(128).optional() }),
+  /** A third party's key in a local test: a made-up value shaped like the real one (prefix and length), the code under test talks to a double. */
+  z.object({ ...envBase, strategy: z.literal('fake'), prefix: z.string().max(24).optional(), minLength: z.number().int().min(16).max(128).optional() }),
+  /** The value a service that is already deployed runs with (an admin token that one service accepts and another sends). */
+  z.object({ ...envBase, strategy: z.literal('from-service'), service: z.string().min(1), variable: envName }),
+  /** A value got by calling a deployed service after the deploy (a session header minted with the admin token). `${NAME}` in headers and body is another variable. */
+  z.object({
+    ...envBase,
+    strategy: z.literal('mint'),
+    service: z.string().min(1),
+    request: z.object({ method: z.enum(['GET', 'POST', 'PUT']), path: z.string().startsWith('/'), headers: z.record(z.string(), z.string()).optional(), body: z.string().optional() }),
+    extract: z.object({ from: z.enum(['json', 'header']), path: z.string().min(1) }),
+    /** The value's shape around the extracted text, `{value}` marking it: `Bearer {value}`. */
+    template: z.string().optional(),
+  }),
+]);
+export type EnvironmentVariable = z.infer<typeof EnvironmentVariable>;
+
+/** `environment`: what a local deploy and its smoke and e2e suites need that does not exist yet, as a recipe per variable. */
+export const EnvironmentOutput = z.object({ specHash, variables: z.array(EnvironmentVariable), notes: z.string() });
+export type EnvironmentAnswer = z.infer<typeof EnvironmentOutput>;
+
 /** A change to one of the shared docs on main: `find` is a verbatim excerpt that occurs exactly once (empty appends); cheaper than returning the whole file. */
 export const DocsPatch = z.object({ file: z.enum(['docs/README.md', 'docs/RUNBOOK.md', 'docs/API.md']), find: z.string(), replace: z.string() });
 
@@ -235,6 +262,7 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   review: ReviewOutput,
   security: SecurityOutput,
   deployment: DeploymentOutput,
+  environment: EnvironmentOutput,
   report: ReportOutput,
   readme: ReadmeOutput,
   decide: DecideOutput,

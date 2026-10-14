@@ -223,6 +223,18 @@ describe('runStep', () => {
     if (!outcome.ok) expect(outcome.failure).toBe('schema');
   });
 
+  it('denies the secrets directory of the project a step works in, and none for a step outside any project', async () => {
+    const capture = path.join(dir, 'capture.json');
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
+    const cwd = path.join(dir, 'kayron-hub', 'worktrees', 't1');
+    await fs.mkdir(cwd, { recursive: true });
+    await runStep(request({ cwd }), deps);
+    const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
+    const settings = JSON.parse(await fs.readFile(captured.argv[captured.argv.indexOf('--settings') + 1], 'utf8'));
+    expect(settings.sandbox.filesystem.denyRead).toContain(path.join(dir, 'kayron-hub', 'secrets'));
+    expect(settings.permissions.deny).toContain(`Read(${path.join(dir, 'kayron-hub', 'secrets')}/**)`);
+  });
+
   it('writes the role settings before spawning and never touches the host claude.json', async () => {
     const capture = path.join(dir, 'capture.json');
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
