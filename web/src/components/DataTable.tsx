@@ -51,7 +51,7 @@ type View = ReturnType<typeof useTableView<unknown>>;
 export function SortHeader({ view, column, className, tip, children }: { view: Pick<View, 'sort' | 'toggleSort'>; column: string; className?: string; tip?: ReactNode; children: ReactNode }) {
   const active = view.sort?.key === column ? view.sort.direction : null;
   return (
-    <th scope="col" className={className} aria-sort={active === 'asc' ? 'ascending' : active === 'desc' ? 'descending' : undefined}>
+    <th scope="col" className={`whitespace-nowrap ${className ?? ''}`} aria-sort={active === 'asc' ? 'ascending' : active === 'desc' ? 'descending' : undefined}>
       <button
         type="button"
         className="inline-flex h-auto min-h-0 items-center gap-1 border-0 bg-transparent p-0 font-[inherit] text-[inherit] tracking-[inherit] uppercase hover:not-disabled:bg-transparent hover:not-disabled:text-ink"

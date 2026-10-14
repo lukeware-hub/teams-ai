@@ -60,8 +60,8 @@ function SmokeTable({ smoke }: { smoke: Smoke[] }) {
     <>
       <TableFilters view={view} subject="testes rápidos" placeholder="Filtrar por critério, serviço ou teste" facetName="Resultado" />
       <div className="overflow-x-auto">
-        <table className={`${TABLE} min-w-[26rem] table-fixed`}>
-          <colgroup><col className="w-[9rem]" /><col /><col className="w-[8rem]" /></colgroup>
+        <table className={`${TABLE} min-w-[32rem] table-fixed`}>
+          <colgroup><col className="w-[11rem]" /><col /><col className="w-[10rem]" /></colgroup>
           <thead>
             <tr>
               <SortHeader view={view} column="criterion" tip={<InfoTip text={`${CRITERION_HELP} Entre parênteses, o serviço que o testa.`} />}>Critério</SortHeader>
@@ -95,8 +95,8 @@ function EvidenceTable({ evidence }: { evidence: Evidence[] }) {
     <>
       <TableFilters view={view} subject="evidências" placeholder="Filtrar por critério, tarefa ou teste" facetName="Resultado" />
       <div className="overflow-x-auto">
-        <table className={`${TABLE} min-w-[46rem] table-fixed`}>
-          <colgroup><col className="w-[7.5rem]" /><col className="w-[9rem]" /><col /><col className="w-[8rem]" /><col className="w-[8rem]" /></colgroup>
+        <table className={`${TABLE} min-w-[44rem] table-fixed`}>
+          <colgroup><col className="w-[8rem]" /><col className="w-[8rem]" /><col /><col className="w-[8.5rem]" /><col className="w-[9rem]" /></colgroup>
           <thead>
             <tr>
               <SortHeader view={view} column="criterion" tip={<InfoTip text={CRITERION_HELP} />}>Critério</SortHeader>
