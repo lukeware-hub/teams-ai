@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { StoredEvent } from '../api.js';
-import { blockedSummary, currentActivity, deployOutcome, evidence, explainPhase, explainStop, firstSentence, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseTitle, runState, stopSummary, taskDetail, tokens } from './selectors.js';
+import { blockedSummary, citedVariables, currentActivity, deployOutcome, evidence, explainPhase, explainStop, firstSentence, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseTitle, runState, stopSummary, taskDetail, tokens } from './selectors.js';
 
 // jsdom gives import.meta.url an http: scheme; vitest runs with cwd = web/
 const events: StoredEvent[] = readFileSync(path.resolve('../test/fixtures/runs/hello-run.ndjson'), 'utf8')
@@ -76,6 +76,22 @@ it('phases 4-6 end on their own events', () => {
 
 describe('stopped run explanations', () => {
   const evs = (list: Array<[string, Record<string, unknown>]>) => list.map(([type, data], i) => ({ seq: i + 1, at: '2026-09-24T10:00:00.000Z', runId: 'r', specHash: 'h', type, kind: 'fact' as const, data }));
+
+  it('explains a missing credential naming the variables the failure cites, but never the ones the platform provides', () => {
+    const detail = 'e2e gate (exit 1)\nprivacy_test.go:123: SERVICE_URL_IDENTITY_SERVICE e PLATFORM_ADMIN_TOKEN não foram definidos; AC_054 TEAMS_AI_IMAGE';
+    expect(citedVariables(detail)).toEqual(['PLATFORM_ADMIN_TOKEN']);
+    const why = explainStop(detail)!;
+    expect(why).toMatchObject({ owner: 'Você', title: 'Falta uma credencial ou variável de ambiente' });
+    expect(why.hint).toContain('PLATFORM_ADMIN_TOKEN');
+    expect(why.hint).toContain('environment.generatedSecrets');
+    expect(explainStop('docker compose config failed: required variable POSTGRES_PASSWORD is missing a value')!.hint).toContain('POSTGRES_PASSWORD');
+  });
+
+  it('explains an unhealthy container, an unreachable service and a spec waiting for another one', () => {
+    expect(explainStop('docker compose up failed: dependency failed to start: container x-postgres-1 is unhealthy')).toMatchObject({ owner: 'Sistema', title: 'Um container do deploy não ficou saudável' });
+    expect(explainStop('dial tcp: lookup audit-service on 127.0.0.11:53: no such host')).toMatchObject({ title: 'Um serviço de outra spec não está acessível' });
+    expect(explainStop('depends on privacy-engine, which failed')).toMatchObject({ owner: 'Você', title: 'Aguarda a spec privacy-engine', hint: expect.stringContaining('Tentar de novo') });
+  });
 
   it('explainStop names the cause and the owner, and returns null for unknown reasons', () => {
     expect(explainStop('Dev reported done but produced no changes against origin/main. Implement the task or return spec-gap.')).toMatchObject({ owner: 'Sistema', title: expect.stringContaining('não alterou') });

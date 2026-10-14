@@ -26,6 +26,13 @@ describe('validatePlan requireE2e', () => {
     expect(check(plan({}, { gates: [...REQUIRED_GATES, urls] }))).toEqual([]);
   });
 
+  it('accepts a gate that reads a secret the environment generates for every project', () => {
+    const admin = Gate.parse({ name: 'lint', command: 'npm run lint', blocking: false, network: 'egress', secrets: ['PLATFORM_ADMIN_TOKEN'] });
+    const withGate = plan({}, { gates: [...REQUIRED_GATES, admin] });
+    expect(check(withGate)).toEqual([expect.stringContaining('gate lint declares secret PLATFORM_ADMIN_TOKEN')]);
+    expect(validatePlan(withGate, spec, { firstSpec: true, requireE2e: true, generatedSecretNames: ['PLATFORM_ADMIN_TOKEN'] })).toEqual([]);
+  });
+
   it('rejects a plan with no e2e command', () => {
     expect(check(plan({ e2e: undefined }))).toEqual([expect.stringContaining('commands.e2e is required')]);
   });

@@ -152,6 +152,13 @@ export const Config = z.object({
   /** The Claude Code sandbox (bubblewrap) for agent steps. Mandatory: `enabled: false` is refused unless
    * `unsafeNoSandbox` is true AND the env TEAMS_AI_UNSAFE_NO_SANDBOX=1 is set (see runner/sandbox-policy.ts). */
   sandbox: z.object({ enabled: z.boolean().default(true), unsafeNoSandbox: z.boolean().default(false) }).prefault({}),
+  /** What this machine's environment provides to every project it runs. */
+  environment: z
+    .object({
+      /** Names of internal credentials the platform creates for each project and hands to every service's compose file and to the smoke and e2e gates (an admin token one service accepts and another sends). A value already in the project's secrets wins. */
+      generatedSecrets: z.array(z.string().regex(/^[A-Z][A-Z0-9_]*$/)).default([]),
+    })
+    .prefault({}),
   docker: z
     .object({
       /** When the orchestrator itself runs in a container, the daemon it talks to cannot see its paths.

@@ -97,9 +97,9 @@ const blockedTasks = (deps: PhaseDeps) => [...deps.tasks!()].filter((t) => t.sta
 /** Fix tasks join the plan they fix and must keep it valid: one repository's plan, or the whole services plan. */
 function fixTaskErrors(deps: PhaseDeps, fixTasks: readonly PlanTask[]): string[] {
   const services = deps.services;
-  if (!services) return validatePlan({ ...deps.plan!, tasks: [...deps.plan!.tasks, ...fixTasks] }, deps.spec, { firstSpec: deps.firstSpec });
+  if (!services) return validatePlan({ ...deps.plan!, tasks: [...deps.plan!.tasks, ...fixTasks] }, deps.spec, { firstSpec: deps.firstSpec, generatedSecretNames: deps.generatedSecretNames });
   const newServices = new Set(services.repos.filter((r) => r.firstSpec).map((r) => r.service!));
-  return validateServicesPlan({ ...services.plan, tasks: [...services.plan.tasks, ...fixTasks] }, deps.spec, { services: Object.keys(services.plan.services), newServices });
+  return validateServicesPlan({ ...services.plan, tasks: [...services.plan.tasks, ...fixTasks] }, deps.spec, { services: Object.keys(services.plan.services), newServices, generatedSecretNames: deps.generatedSecretNames });
 }
 
 /** Asks the SM for 1 to 3 fix tasks; `planned` are fix tasks this round already holds, so the new ids come after theirs. */

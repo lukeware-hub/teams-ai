@@ -77,6 +77,8 @@ export interface PhaseDeps {
   /** Post-deploy e2e suite (roadmap R8.4); same arguments as `smoke`. */
   e2e?: (contextDir: string, serviceUrl: string, gateServiceUrl?: string, gateNetwork?: string, scope?: GateScope) => Promise<{ ok: boolean; rows: E2eRow[]; detail: string }>;
   secretNames?: () => string[];
+  /** `environment.generatedSecrets`: secrets every gate of the project may read. */
+  generatedSecretNames?: readonly string[];
   /** A services plan and its repositories; absent means the project repository with `plan` and `gates`. */
   services?: { plan: ServicesPlan; repos: ServiceRepo[] };
   /** The service whose repository `ws` is; absent for the project repository. */

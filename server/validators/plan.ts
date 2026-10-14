@@ -26,6 +26,8 @@ export interface PlanCheckOptions {
   requireFrozenScope?: boolean;
   /** Files already tracked on main; when given, blocking gates may only name files that exist or that a root task creates. */
   repoFiles?: ReadonlySet<string>;
+  /** Secrets the environment creates for every project (`environment.generatedSecrets`): a gate may read them without the spec declaring them. */
+  generatedSecretNames?: readonly string[];
 }
 
 export interface ServicesPlanCheckOptions extends Omit<PlanCheckOptions, 'firstSpec' | 'repoFiles'> {
@@ -176,7 +178,7 @@ function repositoryErrors(plan: Plan, spec: Spec, opts: PlanCheckOptions, scaffo
   errors.push(...gateTerminationErrors(plan));
   // A gate may only read the secrets the spec declares; the platform's (GitHub token, API keys) never reach a gate container.
   // SERVICE_URL and SERVICE_URL_<SERVICE> are the addresses the orchestrator itself hands to the smoke and e2e gates.
-  const declared = new Set(spec.externalDependencies.flatMap((d) => d.secretNames));
+  const declared = new Set([...spec.externalDependencies.flatMap((d) => d.secretNames), ...(opts.generatedSecretNames ?? [])]);
   for (const gate of plan.gates) for (const name of gate.secrets) if (!declared.has(name) && !/^SERVICE_URL(_[A-Z0-9_]+)?$/.test(name)) errors.push(`gate ${gate.name} declares secret ${name}, which no externalDependencies entry of the spec names`);
   // The JUnit report is gate output the orchestrator never commits; a task listing it can never deliver it (live: a review loop).
   for (const task of plan.tasks) if (task.affectedPaths.includes(plan.junitPath)) errors.push(`task ${task.id} lists ${plan.junitPath} in affectedPaths, but the JUnit report is gate output and never committed`);

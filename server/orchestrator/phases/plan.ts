@@ -38,7 +38,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
   const max = deps.maxPhaseAttempts ?? 3;
   const names = deps.project.services ?? [];
   const services = names.length > 0 ? await servicesContext(deps, names) : null;
-  const require = { requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e, requireCoverage: deps.requireCoverage, requireFrozenScope: deps.requireFrozenScope };
+  const require = { requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e, generatedSecretNames: deps.generatedSecretNames, requireCoverage: deps.requireCoverage, requireFrozenScope: deps.requireFrozenScope };
   const single = services
     ? null
     : { repoFiles: new Set((await git(worktree, ['ls-files'], deps.exec)).split('\n').filter((f) => f !== '')), ports: deps.workspacesRoot ? await assignDeployPort(deps.workspacesRoot, deps.ws.projectId, deps.exec) : { port: null, taken: [] as number[] } };

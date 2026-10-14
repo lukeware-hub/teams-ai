@@ -14,6 +14,6 @@ export const DATASTORE_CREDENTIALS: readonly string[] = [
   'RABBITMQ_DEFAULT_PASS',
 ];
 
-/** The datastore passwords among a project's secrets, for the compose environment. */
-export const datastoreCredentialsOf = (secrets: Readonly<Record<string, string>>): Record<string, string> =>
-  Object.fromEntries(DATASTORE_CREDENTIALS.filter((n) => secrets[n] !== undefined).map((n) => [n, secrets[n]!]));
+/** The datastore passwords, and the environment's own generated secrets, among a project's secrets, for the compose environment. */
+export const datastoreCredentialsOf = (secrets: Readonly<Record<string, string>>, environmentNames: readonly string[] = []): Record<string, string> =>
+  Object.fromEntries([...DATASTORE_CREDENTIALS, ...environmentNames].filter((n) => secrets[n] !== undefined).map((n) => [n, secrets[n]!]));

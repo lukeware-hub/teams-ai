@@ -334,7 +334,17 @@ export interface StopExplanation {
 
 // First match wins. Reasons are the orchestrator's English strings (server/orchestrator/task-runner.ts, phases/*.ts);
 // the anchored ones come first so a failure that quotes an agent's text is matched by its own prefix.
-const STOP_RULES: Array<[RegExp, StopExplanation]> = [
+/** Variable names a failure text cites (A_B style), without the ones the platform itself provides to every suite. */
+export function citedVariables(text: string, max = 6): string[] {
+  const names = text.match(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g) ?? [];
+  return [...new Set(names)].filter((n) => !/^(SERVICE_URL(_\w+)?|TEAMS_AI_IMAGE|AC_\d+)$/.test(n)).slice(0, max);
+}
+
+const CREDENTIAL_HINT = (names: string[]) =>
+  `${names.length > 0 ? `O deploy ou os testes pedem ${names.join(', ')}, que não existem no ambiente.` : 'O deploy ou os testes pedem uma variável de ambiente que não existe.'} Se for uma credencial interna do projeto, como um token de administração entre serviços, liste o nome em environment.generatedSecrets no config.json da plataforma: ela cria o valor sozinha. Se for um valor de terceiros, grave um arquivo com o nome dele em workspaces/<projeto>/secrets. Depois use "Tentar de novo".`;
+
+type StopRule = [RegExp, StopExplanation | ((match: RegExpMatchArray, text: string) => StopExplanation)];
+const STOP_RULES: StopRule[] = [
   [/^gh repo view failed/, { title: 'Não foi possível consultar o repositório no GitHub', hint: 'Confira se o GitHub CLI está autenticado e tem acesso ao repositório, depois reprocesse a spec.', owner: 'Você' }],
   [/^Phase 1 exhausted/, { title: 'A especificação técnica não cobriu todos os critérios de aceitação', hint: 'Deixe mais claros na spec os critérios citados no detalhe técnico e reprocesse.', owner: 'Você' }],
   [/^Phase 2 exhausted/, { title: 'O plano de tarefas não passou na validação', hint: 'Leia o último motivo no detalhe técnico. Se ele apontar algo ambíguo na spec, ajuste e reprocesse.', owner: 'Sistema' }],
@@ -358,6 +368,10 @@ const STOP_RULES: Array<[RegExp, StopExplanation]> = [
   [/^Merge (refused|queue)/, { title: 'O merge foi recusado', hint: 'O GitHub ou a fila de merge recusou a mudança várias vezes. Confira permissões e proteção de branch do repositório.', owner: 'Você' }],
   [/^Task token budget exceeded/, { title: 'A tarefa estourou o orçamento de tokens', hint: 'Divida a tarefa em partes menores no plano ou aumente o limite por tarefa.', owner: 'Sistema' }],
   [/^replan (rejected|failed)/, { title: 'O replanejamento da tarefa falhou', hint: 'O Scrum Master não conseguiu dividir a tarefa. Veja o detalhe técnico.', owner: 'Sistema' }],
+  [/^depends on (\S+?),? which (?:failed|is blocked)/, (m) => ({ title: `Aguarda a spec ${m[1]}`, hint: `Esta spec só começa quando ${m[1]} for entregue. Resolva a falha dela primeiro e use "Tentar de novo" nela: esta segue sozinha.`, owner: 'Você' })],
+  [/required variable|is missing a value|missing secret|não foram? definid|not (?:been )?defined|is not set/i, (_m, text) => ({ title: 'Falta uma credencial ou variável de ambiente', hint: CREDENTIAL_HINT(citedVariables(text)), owner: 'Você' })],
+  [/is unhealthy|dependency failed to start/, { title: 'Um container do deploy não ficou saudável', hint: 'Um container do deploy reiniciou ou não passou no healthcheck. As últimas linhas de log dele estão no detalhe técnico, e a próxima tentativa já as recebe.', owner: 'Sistema' }],
+  [/no such host|ENOTFOUND|was never published|name does not resolve/i, { title: 'Um serviço de outra spec não está acessível', hint: 'Os testes precisam de um serviço entregue por outra spec que não está no ar. Entregue ou reinicie essa spec primeiro.', owner: 'Você' }],
   // An agent's own words, not an orchestrator string (runs hello-001-r4 and r5): last, so no prefix above is shadowed.
   [/frozenPaths/, { title: 'O plano pede arquivos que ele mesmo protege', hint: 'Uma tarefa precisa criar arquivos que estão em frozenPaths. Tire o caminho de frozenPaths no plano da main (ou da tarefa) e reprocesse: sem isso o Dev bloqueia de novo.', owner: 'Plano' }],
   [/security-tools'? gate/i, { title: 'As ferramentas de segurança não rodam no ambiente do gate', hint: 'O gate security-tools falha antes de analisar o código, e os arquivos dele são protegidos: nenhum agente consegue corrigir. Ajuste a imagem ou o instalador do gate e reprocesse a spec.', owner: 'Sistema' }],
@@ -365,7 +379,11 @@ const STOP_RULES: Array<[RegExp, StopExplanation]> = [
 
 /** A pt-BR explanation of a raw stop reason, or null when it is not one the UI knows (callers then show it raw). */
 export function explainStop(reason: string): StopExplanation | null {
-  return STOP_RULES.find(([re]) => re.test(reason))?.[1] ?? null;
+  for (const [re, explanation] of STOP_RULES) {
+    const match = reason.match(re);
+    if (match) return typeof explanation === 'function' ? explanation(match, reason) : explanation;
+  }
+  return null;
 }
 
 /** The first sentence of a free-text reason, cut to `max` characters: a one-line title for a long explanation. */

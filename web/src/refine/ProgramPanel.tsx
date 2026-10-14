@@ -4,7 +4,7 @@ import { refineApi, runApi, type ProgramView, type ProgramViewItem, type RefineS
 import { ActionButton } from '../components/ActionButton.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
-import { phaseTitle } from '../run/selectors.js';
+import { explainStop, phaseTitle } from '../run/selectors.js';
 import { action, panel, sectionHeading, sectionTitle } from '../pages/project-shared.js';
 
 const HELP = 'Depois do início, os agentes executam o backlog inteiro sozinhos, na ordem de prioridade e de dependência, até duas specs ao mesmo tempo quando elas não mexem no mesmo código: planejam, implementam, testam, publicam e marcam cada spec como concluída. Uma spec que falha é isolada e só bloqueia as que dependem dela; as demais seguem. Executar agora passa uma spec à frente da fila.';
@@ -23,6 +23,23 @@ const PILL = {
 const ROW = 'grid grid-cols-[2.5rem_minmax(0,1fr)_8rem_5.5rem_9rem] items-center gap-x-4 gap-y-2 border-b border-line px-3 py-[0.9rem] last:border-b-0 max-lg:grid-cols-[2rem_minmax(0,1fr)]';
 
 /** Can the refinement start a run: one spec when ready, a backlog only once it is detailed (the program runs its planned specs). */
+/** Why an item failed or waits: what happened, who has to act and what to do, with the orchestrator's own words one click away. */
+export function ItemReason({ status, reason }: { status: ProgramViewItem['status']; reason: string }) {
+  const bad = status === 'failed' || status === 'blocked';
+  const why = bad ? explainStop(reason) : null;
+  if (!why) return <p className={`m-0 text-[0.8125rem] wrap-anywhere ${bad ? 'text-bad' : 'text-ink-soft'}`}>{reason}</p>;
+  return (
+    <div className="flex flex-col gap-1" data-testid="item-reason">
+      <p className="m-0 text-[0.8125rem] font-medium text-bad">{why.title} <span className="status-pill tone-neutral">{why.owner}</span></p>
+      <p className="hint m-0">{why.hint}</p>
+      <details>
+        <summary className="cursor-pointer text-[0.75rem] text-ink-soft">Detalhe técnico</summary>
+        <pre className="m-0 max-h-48 overflow-auto text-[0.75rem] whitespace-pre-wrap wrap-anywhere">{reason}</pre>
+      </details>
+    </div>
+  );
+}
+
 export function canStartRun(st: Pick<RefineState, 'status' | 'stale' | 'backlog'>, busy: boolean): boolean {
   if (st.status !== 'ready' || st.stale || busy) return false;
   return st.backlog?.enabled ? st.backlog.detail === true : true;
@@ -140,7 +157,7 @@ export function ProgramPanel({ program, titles, onPrioritize }: { program: Progr
                   </p>
                 </details>
               )}
-              {i.reason && <p className={`m-0 text-[0.8125rem] wrap-anywhere ${i.status === 'failed' || i.status === 'blocked' ? 'text-bad' : 'text-ink-soft'}`}>{i.reason}</p>}
+              {i.reason && <ItemReason status={i.status} reason={i.reason} />}
             </div>
             <div className="flex flex-wrap items-center gap-3 max-lg:col-start-2 lg:contents">
               <span className={`${PILL[i.status]} justify-self-start`}>{LABEL[i.status]}</span>

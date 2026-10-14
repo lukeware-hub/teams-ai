@@ -107,6 +107,8 @@ describe('gateSecrets', () => {
     const spec = { externalDependencies: [{ name: 'db', kind: 'database', secretNames: ['DATABASE_URL'] }] } as never;
     expect(gateSecrets(spec, { GITHUB_TOKEN: 'ghp', ANTHROPIC_API_KEY: 'sk', DATABASE_URL: 'postgres://x' })).toEqual({ DATABASE_URL: 'postgres://x' });
     expect(gateSecrets({ externalDependencies: [] }, { GITHUB_TOKEN: 'ghp' })).toEqual({});
+    // The environment's own generated secrets reach every gate of every project, whatever the spec declares.
+    expect(gateSecrets({ externalDependencies: [] }, { GITHUB_TOKEN: 'ghp', PLATFORM_ADMIN_TOKEN: 'adm' }, ['PLATFORM_ADMIN_TOKEN'])).toEqual({ PLATFORM_ADMIN_TOKEN: 'adm' });
   });
 });
 
