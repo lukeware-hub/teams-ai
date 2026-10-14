@@ -33,8 +33,8 @@ describe('failure cause classification (R11.14)', () => {
     expect(await classifyFailure(['x'], odd, { confidential: false })).toBeNull();
   });
 
-  it('retries a code defect or an environment failure, never a spec problem or an unanswered classification', () => {
-    expect([null, 'code-defect', 'environment'].map((c) => retryable(c as never))).toEqual([false, true, true]);
+  it('retries everything but a spec problem, an unanswered classification included, so a classifier that is down never stops the program', () => {
+    expect([null, 'code-defect', 'environment'].map((c) => retryable(c as never))).toEqual([true, true, true]);
     expect(retryable('spec-problem')).toBe(false);
   });
 });
