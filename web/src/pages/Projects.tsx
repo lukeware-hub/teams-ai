@@ -16,7 +16,7 @@ const cardBody = 'grid min-w-0 gap-1.5';
 const cardTitle = 'm-0 text-[1.0625rem] leading-[1.3] text-ink wrap-anywhere';
 const cardDesc = 'm-0 line-clamp-3 text-[0.875rem] leading-[1.45] text-ink-soft';
 const cardFacts = 'm-0 text-[0.8125rem] text-ink-faint tabular-nums';
-const cardActions = 'mt-auto flex flex-wrap justify-end gap-2';
+const cardActions = 'mt-auto flex flex-wrap gap-2 [&>*]:flex-auto';
 // An open toggle reads as selected, so the form's own submit is the only filled button in view.
 const toggleOpen = 'max-md:flex-[1_1_0] aria-expanded:border-accent-line aria-expanded:bg-accent-soft aria-expanded:text-accent-ink aria-expanded:shadow-none aria-expanded:hover:not-disabled:bg-accent-soft-hover';
 const form = 'card grid gap-4 px-6 pt-5 pb-6 max-md:p-4';

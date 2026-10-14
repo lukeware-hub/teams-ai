@@ -172,7 +172,7 @@ const startButton = (starting: boolean, canStart: boolean, onStart: () => unknow
 const SERVICE = {
   controls: 'mb-[0.9rem] grid gap-3',
   status: 'flex flex-wrap items-center justify-between gap-x-4 gap-y-2',
-  actions: 'flex flex-wrap gap-2 empty:hidden',
+  actions: 'flex flex-wrap gap-2 empty:hidden [&>*]:flex-auto',
 };
 interface ControlProps { status: ServiceStatus | null; starting: boolean; canStart: boolean; onStart: () => unknown; onRecheck: () => void }
 
