@@ -40,4 +40,16 @@ describe('ProgramPage', () => {
     expect(within(failed).getByText('Detalhe técnico')).toBeTruthy();
     expect(within(screen.getByTestId('program-item-gateway')).getByText(/Aguarda a spec privacy/)).toBeTruthy();
   });
+  it('shows a spec the environment made wait, why, and at what time it tries again', async () => {
+    const retryAt = '2026-10-13T15:07:00.000Z';
+    const waiting: ProgramView = { ...program, items: [{ ...program.items[0]!, status: 'waiting', reason: 'deploy-failed: docker daemon down', retryAt }] };
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ state: { backlog: { items: [{ key: 'base', title: 'Fundação' }] } } } as never);
+    vi.spyOn(refineApi, 'program').mockResolvedValue({ program: waiting });
+    vi.spyOn(refineApi, 'programDecisions').mockResolvedValue({ unanswered: 0, decisions: [] });
+    render(<MemoryRouter initialEntries={['/refine/p/d/program']}><Routes><Route path="/refine/:projectId/:specId/program" element={<ProgramPage />} /></Routes></MemoryRouter>);
+    const row = await screen.findByTestId('program-item-base');
+    expect(within(row).getByText('aguardando')).toBeTruthy();
+    expect(within(row).getByText(`tenta de novo às ${new Date(retryAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`)).toBeTruthy();
+    expect(within(row).getByText('deploy-failed: docker daemon down')).toBeTruthy();
+  });
 });

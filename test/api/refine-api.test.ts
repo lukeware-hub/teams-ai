@@ -280,6 +280,12 @@ describe('refine api', () => {
     await fs.writeFile(programFile, JSON.stringify(again, null, 2));
     expect(await registry.queueInProgram('hello-app', 'base')).toEqual({ draftId: 'hello-app-001' });
     expect(spawns).toHaveLength(4);
+    // A waiting item runs now through its program, never as a loose run beside it.
+    again.status = 'running';
+    again.items[0] = { ...again.items[0], status: 'waiting', reason: 'docker daemon down', retryAt: '2999-01-01T00:00:00.000Z', waits: 1 };
+    await fs.writeFile(programFile, JSON.stringify(again, null, 2));
+    expect(await registry.queueInProgram('hello-app', 'base')).toEqual({ draftId: 'hello-app-001' });
+    expect(spawns).toHaveLength(5);
     again.items[0] = { ...again.items[0], status: 'blocked', reason: 'depends on x, which failed' };
     await fs.writeFile(programFile, JSON.stringify(again, null, 2));
     expect(await registry.queueInProgram('hello-app', 'base')).toEqual({ refused: 'A spec base está bloqueada no programa: depends on x, which failed. Rode antes a spec da qual ela depende.' });

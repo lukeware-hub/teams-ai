@@ -5,9 +5,10 @@
  * file locks in the runs themselves. The ledger (`Program`) is the only state: `tick` reads it, settles what is in flight, starts the next item and
  * writes it back before it launches anything, so a restart finds the claim and adopts the run instead of starting another.
  * A failed spec is isolated: its dependents wait while it is repaired (R11.14, bounded by MAX_REPAIRS) and are blocked once it stays failed; everything independent of it keeps going.
+ * A failure of the environment never fails a spec: it waits, longer each time up to an hour, and starts again.
  */
 
-export type ItemStatus = 'pending' | 'running' | 'completing' | 'done' | 'failed' | 'blocked';
+export type ItemStatus = 'pending' | 'running' | 'completing' | 'waiting' | 'done' | 'failed' | 'blocked';
 
 export interface ProgramItem {
   specId: string;
@@ -34,6 +35,10 @@ export interface ProgramItem {
   repairs?: number;
   /** The failure of each attempt, oldest first; the next run reads them. */
   failures?: string[];
+  /** While waiting: when it starts again. */
+  retryAt?: string;
+  /** Waits after an environment failure so far; absent in a ledger written before them. */
+  waits?: number;
 }
 
 export interface Program {
@@ -68,9 +73,12 @@ export interface ProgramEffects {
   /** Marks the delivered spec ready to complete and launches the `spec complete` run. */
   completeSpec(specId: string): Promise<{ runId: string }>;
   outcome(runId: string): Promise<RunOutcome>;
-  /** Whether another run can fix this failure; when it can, it also hands the failures to that run. Absent: a failure is final. */
-  repair?(specId: string, failures: readonly string[]): Promise<boolean>;
+  /** What to do with this failure; on `retry-now` it also hands the failures to the next run. Absent: a failure is final. */
+  repair?(specId: string, failures: readonly string[]): Promise<RepairVerdict>;
 }
+
+/** `retry-now`: a code defect another run can fix; `wait`: the environment failed or nobody could tell; `give-up`: the owner must act. */
+export type RepairVerdict = 'retry-now' | 'wait' | 'give-up';
 
 export interface ProgramEntry {
   specId: string;
@@ -90,6 +98,8 @@ const sameFailure = (a: string, b: string): boolean => a.trim().slice(0, SAME_FA
 export const MAX_REPAIRS = 2;
 /** Specs running at once: each run already uses several Claude processes, so two keep the quota and merges calm. */
 export const MAX_PARALLEL = 2;
+/** The longest wait after an environment failure; the first is one minute and each next one doubles. */
+const MAX_WAIT_MS = 3_600_000;
 
 export function newProgram(draftId: string, entries: readonly ProgramEntry[], now: Date): Program {
   const items = [...entries].sort((a, b) => a.rank - b.rank).map(({ done, ...e }): ProgramItem => ({ ...e, dependsOn: [...e.dependsOn], status: done ? 'done' : 'pending', runId: null, completeRunId: null, startedAt: null, finishedAt: done ? now.toISOString() : null, reason: null, resumes: 0, costUsd: null }));
@@ -111,13 +121,17 @@ export function prioritizeItem(program: Program, specId: string, now: Date): Pro
   if (!found) throw new RangeError(`unknown spec ${specId}`);
   const p = found.status === 'failed' ? retryItem(program, specId, now) : structuredClone(program);
   const item = p.items.find((i) => i.specId === specId)!;
+  if (item.status === 'waiting') clearForRetry(item);
   if (item.status !== 'pending') throw new RangeError(`item ${specId} is ${item.status}${item.reason ? `: ${item.reason}` : ''}`);
   item.priority = true;
   p.updatedAt = now.toISOString();
   return p;
 }
 
-const clearForRetry = (item: ProgramItem) => Object.assign(item, { status: 'pending', runId: null, completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0 });
+const clearForRetry = (item: ProgramItem) => {
+  delete item.retryAt;
+  return Object.assign(item, { status: 'pending', runId: null, completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0 });
+};
 
 export function retryItem(program: Program, specId: string, now: Date): Program {
   const p: Program = structuredClone(program);
@@ -132,6 +146,8 @@ export function retryItem(program: Program, specId: string, now: Date): Program 
 }
 
 const IN_FLIGHT: ReadonlySet<ItemStatus> = new Set(['running', 'completing']);
+/** Not settled yet: it still runs or will run, so its dependents wait and the program goes on. */
+const LIVE: ReadonlySet<ItemStatus> = new Set(['pending', 'waiting', ...IN_FLIGHT]);
 /** Two items may run together only when both carry a conflict map and neither names the other. */
 const compatible = (a: ProgramItem, b: ProgramItem) => !!a.conflictsWith && !!b.conflictsWith && !a.conflictsWith.includes(b.specId) && !b.conflictsWith.includes(a.specId);
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -156,13 +172,22 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
     addCost(item, costUsd);
     dirty = true;
   };
-  // A failed delivering run goes again with its failures while it has repairs left; an unwilling or broken repair leaves it failed.
+  // The environment failed: the item holds no slot and starts again after a wait that doubles from one minute up to an hour.
+  const wait = (item: ProgramItem, reason: string, costUsd?: number | null) => {
+    const waits = item.waits ?? 0;
+    Object.assign(item, { status: 'waiting', reason, waits: waits + 1, retryAt: new Date(fx.now().getTime() + Math.min(MAX_WAIT_MS, 60_000 * 2 ** waits)).toISOString() });
+    addCost(item, costUsd);
+    dirty = true;
+  };
+  // A code defect goes again with its failures while it has repairs left; an environment failure or a broken classification waits; a spec problem fails.
   const failOrRepair = async (item: ProgramItem, reason: string, costUsd?: number | null) => {
     const repairs = item.repairs ?? 0;
     const failures = [...(item.failures ?? []), reason];
+    const verdict = fx.repair ? await fx.repair(item.specId, failures).catch((): RepairVerdict => 'wait') : 'give-up';
+    if (verdict === 'wait') return wait(item, reason, costUsd);
     // The same failure after a repair needs a person, not a third identical run (live: a credential only the owner can provide, three runs of 3 deploys each).
-    if ((item.failures ?? []).some((f) => sameFailure(f, reason))) return fail(item, `${reason}; the same failure came back after a repair, so the owner has to act`, costUsd);
-    if (fx.repair && repairs < MAX_REPAIRS && (await fx.repair(item.specId, failures).catch(() => false))) {
+    if (verdict === 'retry-now' && (item.failures ?? []).some((f) => sameFailure(f, reason))) return fail(item, `${reason}; the same failure came back after a repair, so the owner has to act`, costUsd);
+    if (verdict === 'retry-now' && repairs < MAX_REPAIRS) {
       addCost(item, costUsd);
       Object.assign(clearForRetry(item), { repairs: repairs + 1, failures });
       dirty = true;
@@ -171,7 +196,7 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
   // A run the server's own restart killed is resumed for free: only runs that die on their own spend the bounded resumes.
   const resume = async (item: ProgramItem, runId: string, what: string, restart = false) => {
     if (!restart && item.resumes >= MAX_RESUMES) {
-      fail(item, `${what} interrupted ${MAX_RESUMES} times and was not finished`);
+      wait(item, `${what} interrupted ${MAX_RESUMES} times and was not finished`);
       await fx.stopRun?.(runId).catch(() => undefined);
       return;
     }
@@ -181,7 +206,11 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
       item.resumes += 1;
       await persist();
     }
-    await fx.resumeRun(runId).catch((err) => fail(item, `resume failed: ${message(err)}`));
+    // The item starts a new run after the wait, so no supervisor may resume this one beside it.
+    await fx.resumeRun(runId).catch(async (err) => {
+      wait(item, `resume failed: ${message(err)}`);
+      await fx.stopRun?.(runId).catch(() => undefined);
+    });
   };
   // A run the user stopped waits for them; one that drained to its end can only be retried by hand.
   const stopped = (item: ProgramItem, o: Extract<RunOutcome, { kind: 'stopped' }>) => {
@@ -197,7 +226,7 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
           try {
             item.runId = (await fx.startRun(item.specId)).runId;
           } catch (err) {
-            fail(item, message(err));
+            wait(item, message(err));
           }
         }
         dirty = true;
@@ -236,6 +265,9 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
       } else if (o.kind === 'failed') fail(item, `completion failed: ${o.reason}`, o.costUsd);
       else if (o.kind === 'stopped') stopped(item, o);
       else if (o.kind === 'interrupted') await resume(item, item.completeRunId, 'the completion', o.restart);
+    } else if (item.status === 'waiting' && !(Date.parse(item.retryAt ?? '') > fx.now().getTime())) {
+      clearForRetry(item);
+      dirty = true;
     }
   }
 
@@ -271,13 +303,13 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
     try {
       next.runId = (await fx.startRun(next.specId)).runId;
     } catch (err) {
-      fail(next, message(err));
+      wait(next, message(err));
     }
     await persist();
     dirty = false;
   }
 
-  if (!p.items.some((i) => i.status === 'pending' || IN_FLIGHT.has(i.status)) && p.status !== 'finished') {
+  if (!p.items.some((i) => LIVE.has(i.status)) && p.status !== 'finished') {
     p.status = 'finished';
     dirty = true;
   }
