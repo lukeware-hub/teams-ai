@@ -24,9 +24,30 @@ describe('LoginControls', () => {
     expect(screen.getByText('O login demorou demais. Tente novamente.')).toBeTruthy();
   });
 
+  it('offers Reconectar to the Claude login once it is connected, and starts a new login from it', async () => {
+    const login = vi.spyOn(api, 'login').mockResolvedValue({ state: { name: 'starting' } });
+    class FakeEventSource { addEventListener() {} close() {} onerror = null; }
+    vi.stubGlobal('EventSource', FakeEventSource);
+    render(<LoginCard cli="claude" title="Login do Claude" item={{ ok: true, detail: 'ana@example.com (max)' }} onDone={noop} />);
+    expect(screen.queryByText('Entrar')).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Reconectar' }));
+    await vi.waitFor(() => expect(login).toHaveBeenCalledWith('claude'));
+    // while the new login runs the card shows the login controls, not the reconnect button
+    await vi.waitFor(() => expect(screen.queryByTestId('reconnect')).toBeNull());
+    vi.unstubAllGlobals();
+    login.mockRestore();
+  });
+
+  it('shows no Reconectar before the Claude login is connected', () => {
+    render(<LoginCard cli="claude" title="Login do Claude" item={{ ok: false, detail: 'not logged in' }} onDone={noop} />);
+    expect(screen.queryByRole('button', { name: 'Reconectar' })).toBeNull();
+    expect(screen.getByText('Entrar')).toBeTruthy();
+  });
+
   it('hides the login button once the item is logged in', () => {
     render(<LoginCard cli="gh" title="Login do GitHub CLI" item={{ ok: true, detail: 'octocat' }} onDone={noop} />);
     expect(screen.queryByText('Entrar')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reconectar' })).toBeNull();
   });
 
   it('shows an API error when starting login fails', async () => {

@@ -23,6 +23,17 @@ function breaker(start = T0) {
 }
 
 describe('QuotaBreaker', () => {
+  it('reset lets steps start again at once, the pause of every model included', () => {
+    const breaker = new QuotaBreaker(DEFAULT_BREAKER, () => new Date('2026-10-14T12:00:00Z'));
+    breaker.onQuotaFailure(null);
+    breaker.pauseModel('haiku', null);
+    expect(breaker.canStart()).toBe(false);
+    expect(breaker.modelPaused('haiku')).toBe(true);
+    breaker.reset();
+    expect(breaker.canStart()).toBe(true);
+    expect(breaker.modelPaused('haiku')).toBe(false);
+  });
+
   it('stays closed while every window is under the threshold', () => {
     const { b } = breaker();
     b.observe(info());

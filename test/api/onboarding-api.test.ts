@@ -28,12 +28,14 @@ let api: { port: number; close(): Promise<void> };
 let ptys: FakePty[];
 let exec: FakeExec;
 let logs: string[];
+let claudeLogins = 0;
 const base = () => `http://127.0.0.1:${api.port}`;
 
 beforeEach(async () => {
   home = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-api-'));
   ptys = [];
   logs = [];
+  claudeLogins = 0;
   exec = new FakeExec()
     .onArgs('claude', ['auth', 'status'], () => ({ stdout: JSON.stringify({ loggedIn: true, email: 'a@b.c', subscriptionType: 'max' }) }))
     .onArgs('gh', ['auth', 'status'], () => ({ exitCode: 1, stderr: 'not logged in' }))
@@ -41,7 +43,7 @@ beforeEach(async () => {
     .onArgs('gh', ['api', 'user'], (s) => (s.env?.GH_TOKEN === TOKEN ? { stdout: `HTTP/2.0 200 OK\nX-Oauth-Scopes: repo\n\n{"login":"diego"}` } : { exitCode: 1, stderr: `HTTP 401 for ${s.env?.GH_TOKEN ?? ''}` }));
   const okFetch = (async () => new Response(JSON.stringify({ model: 'typesafe/jev-1.13', answers: { probe: { type: 'noul', noul: 0.9 } }, usage: { input_tokens: 1, output_tokens: 1, cost: 0.000001 } }), { status: 200 })) as typeof fetch;
   api = await startApi(
-    { routes: onboardingRoutes({ exec: exec.exec, fetch: okFetch, home, secretsDir: path.join(home, 'secrets'), spawn: (_s: PtySpec) => { const p = new FakePty(); ptys.push(p); return p; } }), log: (l) => logs.push(l) },
+    { routes: onboardingRoutes({ exec: exec.exec, fetch: okFetch, home, secretsDir: path.join(home, 'secrets'), onClaudeLogin: () => { claudeLogins += 1; }, spawn: (_s: PtySpec) => { const p = new FakePty(); ptys.push(p); return p; } }), log: (l) => logs.push(l) },
     0,
   );
 });
@@ -159,6 +161,7 @@ describe('api server', () => {
     for (let i = 0; i < 5 && !all.includes('"done"'); i++) all += await read();
     expect(all).toContain('"name":"done"');
     expect(all).not.toContain('c0de#st');
+    expect(claudeLogins).toBe(1);
     await reader.cancel();
     const cancel = await fetch(`${base()}/api/onboarding/claude/cancel`, { method: 'POST', headers: { 'content-type': 'application/json' } });
     expect(cancel.status).toBe(200);

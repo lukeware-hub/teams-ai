@@ -27,6 +27,13 @@ export class QuotaBreaker {
     private readonly clock: () => Date = () => new Date(),
   ) {}
 
+  /** The account changed: what the old account's quota said no longer applies. */
+  reset(): void {
+    this.current = { status: 'closed' };
+    this.backoffIndex = 0;
+    this.modelUntil.clear();
+  }
+
   state(): BreakerState {
     return this.current;
   }

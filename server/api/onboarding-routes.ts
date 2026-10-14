@@ -13,6 +13,8 @@ export interface OnboardingDeps extends StatusDeps {
   spawn: SpawnPty;
   commands?: { claude: PtySpec; gh: PtySpec };
   log?: (line: string) => void;
+  /** A Claude login just finished (the same account or another): the quota the old one reported no longer applies. */
+  onClaudeLogin?: () => void;
 }
 
 const SECRETS: Record<string, ItemName> = { GITHUB_TOKEN: 'githubToken', OPENROUTER_API_KEY: 'openrouterKey' };
@@ -34,6 +36,9 @@ export class Onboarding {
       claude: new LoginSession({ cli: 'claude', spawn: deps.spawn, command: commands.claude, probe: () => claudeStatus(deps), knownSecrets: known }),
       gh: new LoginSession({ cli: 'gh', spawn: deps.spawn, command: commands.gh, probe: () => ghStatus(deps), knownSecrets: known, timeoutMs: GITHUB_LOGIN_TIMEOUT_MS }),
     };
+    this.sessions.claude.on((e) => {
+      if (e.type === 'state' && e.state.name === 'done') deps.onClaudeLogin?.();
+    });
   }
 }
 

@@ -28,7 +28,7 @@ export function refineStepModel(routing: Config['routing'], kind: StepKind, cycl
 }
 
 /** One governor, breaker and ledger for every refinement session of the UI process (spec §2). */
-export async function makeRunAgent(w: AgentWiring): Promise<RunAgent> {
+export async function makeRunAgent(w: AgentWiring): Promise<RunAgent & { resetQuota(): void }> {
   const agents = await loadAgents(w.agentsDir);
   const governor = new Governor(w.cfg.concurrency.maxClaudeProcesses);
   const breaker = new QuotaBreaker(DEFAULT_BREAKER, () => new Date());
@@ -62,5 +62,5 @@ export async function makeRunAgent(w: AgentWiring): Promise<RunAgent> {
       specHash: ctx.specHash,
     });
   };
-  return withQuotaWait(run, breaker, { sleep: abortableSleep, now: () => new Date(), log: (l) => process.stderr.write(`${l}\n`) });
+  return Object.assign(withQuotaWait(run, breaker, { sleep: abortableSleep, now: () => new Date(), log: (l) => process.stderr.write(`${l}\n`) }), { resetQuota: () => breaker.reset() });
 }
