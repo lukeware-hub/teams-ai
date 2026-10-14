@@ -60,8 +60,7 @@ export function ConfirmDialog({ title, subject, confirmLabel, onConfirm, onCance
         {subject ? <code className="confirm-subject">{subject}</code> : null}
         <p>{children as ReactNode}</p>
         <div className="confirm-actions">
-          <button ref={cancelButton} type="button" className="confirm-cancel" data-testid="delete-cancel" onClick={() => cancel.current()}>
-            Cancelar
+          <button ref={cancelButton} type="button" className="confirm-cancel" data-testid="delete-cancel" aria-label="Cancelar" onClick={() => cancel.current()}>
             <Icon name="close" size={16} />
           </button>
           <ActionButton className="confirm-danger" data-testid="delete-confirm" onClick={onConfirm} icon={<Icon name="trash" size={16} />}>

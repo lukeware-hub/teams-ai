@@ -199,12 +199,12 @@ export function ProjectsView(p: {
           <p>Busque pelo ID do projeto, pelo nome, pela pasta ou por uma spec.</p>
           <button
             type="button"
+            aria-label="Limpar filtro"
             onClick={() => {
               setQuery('');
               filterRef.current?.focus();
             }}
           >
-            Limpar filtro
             <Icon name="close" size={16} />
           </button>
         </div>

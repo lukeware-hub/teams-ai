@@ -314,11 +314,11 @@ td.num { color: var(--ink); font-weight: 500; }
 .confirm h2 { margin: 0; color: var(--ink); font-size: 1.125rem; font-weight: 650; letter-spacing: -0.01em; line-height: 1.3; text-wrap: balance; }
 .confirm-subject { max-width: 100%; padding: 0.2rem 0.55rem; border-radius: 8px; color: var(--ink); background: var(--surface-muted); font-size: 0.8125rem; overflow-wrap: anywhere; }
 .confirm p { margin: 0.25rem 0 0; color: var(--ink-soft); font-size: 0.875rem; line-height: 1.55; text-wrap: balance; }
-.confirm-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.625rem; width: 100%; margin-top: 1.25rem; }
+.confirm-actions { display: grid; grid-template-columns: 2.5rem 1fr; gap: 0.625rem; width: 100%; margin-top: 1.25rem; }
 .confirm-actions button { height: 2.5rem; border-radius: 10px; font-size: 0.875rem; font-weight: 600; transition: background-color var(--duration-fast) ease, transform 120ms var(--ease-out), box-shadow var(--duration-fast) ease; }
 .confirm-actions button:active:not(:disabled) { transform: scale(0.97); filter: none; }
 .confirm-actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.confirm-cancel { border-color: var(--line-strong); color: var(--ink); background: var(--surface); }
+.confirm-cancel { padding: 0; border-color: var(--line-strong); color: var(--ink); background: var(--surface); }
 .confirm-danger { border-color: transparent; color: var(--on-bad); background: var(--bad); box-shadow: 0 1px 2px rgb(0 0 0 / 0.2), inset 0 1px 0 rgb(255 255 255 / 0.18); }
 .confirm-danger:hover:not(:disabled) { background: var(--bad); filter: brightness(0.93); }
 .confirm-danger:focus-visible { outline-color: var(--bad); }

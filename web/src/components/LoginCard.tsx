@@ -138,9 +138,7 @@ export function LoginControls({ state, code, onCode, onStart, onSend, onCancel }
         </form>
       ) : null}
       {live ? (
-        <ActionButton className="secondary col-3 row-1 @max-[40rem]:col-2" onClick={onCancel} icon={<Icon name="close" size={16} />}>
-          Cancelar
-        </ActionButton>
+        <ActionButton className="secondary col-3 row-1 @max-[40rem]:col-2" aria-label="Cancelar" onClick={onCancel} icon={<Icon name="close" size={16} />} />
       ) : null}
       {state.name === 'failed' ? <p className="error col-span-full row-2 w-full">{friendlyLoginReason(state.reason)}</p> : null}
     </div>

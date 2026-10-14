@@ -298,7 +298,7 @@ export function ProjectHubView(p: {
               ) : null}
               {suggestError ? <span className="error" role="alert">{suggestError}</span> : null}
               <div className="flex flex-wrap justify-end gap-2">
-                <button type="button" className={action.secondary} data-testid="cancel-new-spec" onClick={closeNewSpec}>Cancelar<Icon name="close" size={14} /></button>
+                <button type="button" className={action.secondary} data-testid="cancel-new-spec" aria-label="Cancelar" onClick={closeNewSpec}><Icon name="close" size={14} /></button>
                 {idShown ? (
                   <ActionButton key="new-spec" type="submit" className={action.plain} data-testid="new-spec" busy={submitting} disabled={suggesting || specDraft.trim() === '' || specDescription.trim() === ''} icon={<Icon name="arrow-right" size={14} />}>Começar refinamento</ActionButton>
                 ) : (
