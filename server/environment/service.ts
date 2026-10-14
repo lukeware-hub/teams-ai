@@ -56,6 +56,9 @@ async function writeManifest(host: EnvironmentHost, variables: readonly Environm
   await writeFileAtomic(manifestFile(host), `${JSON.stringify({ specId: host.specId, variables }, null, 2)}\n`);
 }
 
+/** Names the platform keeps for itself: a recipe for one would shadow the real credential in the project's secrets at the next run. */
+export const RESERVED = /^(ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_\w+|GITHUB_TOKEN|GH_TOKEN|OPENROUTER_API_KEY|TEAMS_AI_\w+)$/;
+
 /** A recipe per name; a newer one replaces an older one. */
 const merged = (older: readonly EnvironmentVariable[], newer: readonly EnvironmentVariable[]): EnvironmentVariable[] => [...new Map([...older, ...newer].map((v) => [v.name, v] as const)).values()];
 
@@ -97,10 +100,12 @@ export async function prepareEnvironment(host: EnvironmentHost, repo: Environmen
   const files = await scanRepository(repo.dir, { compose: repo.plan.delivery?.compose, e2eSuite: repo.plan.delivery?.e2eSuite });
   const wanted = new Set(unknownVariables(files, known));
   for (const n of failure === null ? [] : citedVariables(failure)) if (!known.has(n)) wanted.add(n);
+  for (const n of wanted) if (RESERVED.test(n)) wanted.delete(n);
   const fresh = wanted.size > 0 ? await askAgent(host, repo, files, [...wanted], failure) : [];
   const recipes = merged(remembered, fresh);
   if (recipes.length === 0) return false;
-  const applied = await applyRecipes(recipes, { secretsDir: host.secretsDir, held: host.secrets, serviceEnv: (service, variable) => host.target.serviceEnv?.(host.projectId, service, variable) ?? Promise.resolve(null) });
+  const applied = await applyRecipes(recipes, { secretsDir: host.secretsDir, held: host.secrets, // Only a service of this project: the name goes to the docker command.
+    serviceEnv: (service, variable) => (host.services.includes(service) ? host.target.serviceEnv?.(host.projectId, service, variable) ?? Promise.resolve(null) : Promise.resolve(null)) });
   await register(host, recipes, applied.values);
   const created = applied.applied.some((a) => a.outcome === 'created' || a.outcome === 'fallback');
   if (fresh.length > 0) {

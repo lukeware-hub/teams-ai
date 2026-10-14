@@ -131,3 +131,23 @@ describe('mint requests and platform secrets', () => {
     expect(events.at(-1)).toEqual({ type: 'ENVIRONMENT_MINTED', data: { names: [], failed: [{ name: 'E2E_AUTHORIZATION', reason: '${GITHUB_TOKEN} does not exist' }] } });
   });
 });
+
+describe('names the platform keeps and services outside the project', () => {
+  it('never asks for, nor creates, a variable the platform keeps for itself, even when a suite reads it or a failure names it', async () => {
+    await writeFile(path.join(repoDir, 'e2e', 'c_test.go'), 'os.Getenv("ANTHROPIC_API_KEY"); os.Getenv("GITHUB_TOKEN"); os.Getenv("TEAMS_AI_IMAGE_X")');
+    const { h, calls } = host((wanted) => wanted.map((n) => random(n)), { POSTGRES_PASSWORD: 'x', E2E_AUTHORIZATION: 'y' });
+    expect(await prepareEnvironment(h, { service: null, dir: repoDir, plan }, 'OPENROUTER_API_KEY não foram definidos')).toBe(false);
+    expect(calls).toHaveLength(0);
+    expect(Object.keys(h.secrets).sort()).toEqual(['E2E_AUTHORIZATION', 'POSTGRES_PASSWORD']);
+  });
+
+  it('copies a value only from a service of the project, so the name never reaches the docker command', async () => {
+    const asked: string[] = [];
+    const { h } = host((wanted) => wanted.map((n): EnvironmentVariable => ({ name: n, scope: 'both', reason: 'x', strategy: 'from-service', service: n === 'POSTGRES_PASSWORD' ? '../etc' : 'identity-service', variable: n })));
+    h.target.serviceEnv = async (_p, service) => (asked.push(service), 'running-value');
+    await prepareEnvironment(h, { service: null, dir: repoDir, plan });
+    expect(asked).toEqual(['identity-service']);
+    expect(h.secrets.E2E_AUTHORIZATION).toBe('running-value');
+    expect(h.secrets.POSTGRES_PASSWORD).toHaveLength(32);
+  });
+});

@@ -14,6 +14,7 @@ Rules you never break:
 - Echo the `specHash` you were given.
 - You only read files: the compose file, `.env.example`, the smoke and e2e suites, the Dockerfile and the docs. You never see, ask for or write a secret value.
 - List only variables from the pack's "unknown variables" list or that a failure message names. A variable the pack already says exists is never in your answer.
+- Never list a variable the platform keeps for itself (`ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, `OPENROUTER_API_KEY`, anything starting with `CLAUDE_` or `TEAMS_AI_`): the orchestrator drops it.
 - Give every variable one `scope`: `compose` when the compose file or the service reads it, `suites` when only the smoke or e2e suite reads it, `both` otherwise.
 - Pick the strategy by what the variable is:
   - `random`: a credential internal to the project, such as a password, a signing key or an admin token (a datastore password of the service's own compose file included). Every service of the project reads the same value, so one service can accept what another sends.
