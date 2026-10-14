@@ -90,8 +90,10 @@ Severidade: **crítico** = segredo exposto ou custo sem limite; **importante** =
 - [x] **O Dev às vezes devolve `done` sem `commitMessage`.** 4 ocorrências em 21 runs, cada uma um turno retomado barato (menos de US$ 1 no total). O campo obrigatório orienta o modelo; torná-lo opcional tiraria essa garantia do schema.
 - [x] **Compose sem `${TEAMS_AI_IMAGE`** falha na validação do deploy: é o contrato de deploy já escrito nas regras do plano, agora verificado em vez de só pedido.
 
+- [x] **Serviço ausente só era nomeado por palavra solta.** `server/orchestrator/phases/deploy.ts`: o nome só conta onde é endereço (host de URL, falha de DNS, `host:porta`) ou a variável `SERVICE_URL_X`; um nome curto como `api` não tira mais uma fix-task útil por aparecer em `/api/`.
+- [x] **Digest de imagem não é resolvido pelo orquestrador.** Decisão de projeto: o contrato de plano aceita tag explícita que não seja `latest`; o digest é um reforço, não uma regra. O devops usa o digest quando ele está no repositório ou no pacote e avisa no resumo quando fixou só a tag.
+- [x] **`.tools/bin` e `PYTHONPATH` vêm do worktree.** Decisão de projeto: os gates executam código do agente por natureza (testes, build). Com o cache por projeto e o prefixo de `PATH` validado, o que um agente alcança é o gate do próprio projeto.
+
 ## Abertos
 
-- [ ] **Digest de imagem nunca é resolvido pelo orquestrador.** Hoje o devops fixa a tag que os docs nomeiam e avisa no resumo; resolver o digest de verdade (consulta ao registro depois do step, gravando a linha `FROM`) ainda não existe.
-- [ ] **Serviço ausente só é nomeado quando o smoke falha citando-o.** `server/orchestrator/phases/deploy.ts`: com um nome curto como `api`, o texto da falha pode coincidir com URLs e tirar uma fix-task útil.
-- [ ] **`.tools/bin` e `PYTHONPATH=/work/.tools/py` vêm do worktree** e ficam ao lado do cache gravável do próprio projeto. Já não atravessam projetos; o fechamento completo é montar o cache só para leitura depois do download.
+Nenhum bug conhecido.

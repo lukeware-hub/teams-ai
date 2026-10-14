@@ -248,6 +248,19 @@ describe('Phase 5 with several services', () => {
     expect(journal.state.tasks.size).toBe(0);
   });
 
+  it('names an unpublished service with a short name only where it is an address, never in a /api/ path', async () => {
+    const { deps } = await setup([], { services: ['orders', 'inventory', 'api'], e2eFails: 'e2e:orders', detail: 'AC-001: GET /api/orders expected 200, got 500' });
+    const res = await runServicesPhase5(deps, 1);
+    expect(res.ok ? null : res.fixTask).toMatchObject({ service: 'orders' });
+  });
+
+  it('recognizes a failed DNS lookup of an unpublished service with a short name', async () => {
+    const { deps } = await setup([], { services: ['orders', 'inventory', 'api'], e2eFails: 'e2e:orders', detail: 'dial tcp: lookup api on 127.0.0.11:53: no such host' });
+    const res = await runServicesPhase5(deps, 1);
+    expect(res.ok ? null : res.fixTask).toBeUndefined();
+    expect(res.ok ? '' : res.reason).toContain('environment: api of another spec was never published');
+  });
+
   it('still plans a fix task when a suite fails for its own reason beside an unpublished service', async () => {
     const { deps } = await setup([], { services: ['orders', 'inventory', 'audit-service'], e2eFails: 'e2e:orders', detail: 'AC-001: expected 201, got 500' });
     const res = await runServicesPhase5(deps, 1);

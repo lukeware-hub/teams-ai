@@ -256,7 +256,8 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
   const withEnvironment = (detail: string) => (down.length > 0 ? `${detail}\n\nenvironment: a service of an earlier spec is not running (${down.join('; ')})` : detail);
   // A service of another spec that never published has no address; a suite that fails reaching it needs that spec, not a fix task.
   const unpublished = (deps.project.services ?? []).filter((s) => !services.repos.some((r) => r.service === s) && !registry[portKey(deps.project.projectId, s)]);
-  const unreachable = (detail: string) => unpublished.filter((s) => new RegExp(`(?<![\\w-])${s}(?![\\w-])`).test(detail) || detail.includes(serviceUrlEnv(s)));
+  // The name counts only where it is an address (a URL host, a failed DNS lookup, host:port) or its variable: a short name such as `api` also sits in every /api/ path.
+  const unreachable = (detail: string) => unpublished.filter((s) => new RegExp(`(?:\\/\\/|lookup\\s+|host\\s+|ENOTFOUND\\s+|EAI_AGAIN\\s+|getaddrinfo\\s+)${s}(?![\\w-])|(?<![\\w/-])${s}:\\d+`).test(detail) || detail.includes(serviceUrlEnv(s)));
   const suiteFailed = (stage: 'smoke' | 'e2e', detail: string, repo: ServiceRepo) => {
     const missing = unreachable(detail);
     return missing.length > 0 ? failed(stage, `environment: ${missing.join(', ')} of another spec was never published, so the suites cannot reach it; deliver that spec first\n\n${detail}`, null) : failed(stage, withEnvironment(detail), repo);
