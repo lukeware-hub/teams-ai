@@ -10,7 +10,7 @@ import { action, chip, emptyState, panel, plural, row, rowActions, rowId, rows, 
 
 const toolbar = 'flex flex-wrap items-center gap-x-4 gap-y-2';
 const filter = 'relative block min-w-0 flex-[0_1_24rem] max-md:basis-full [&_svg]:pointer-events-none [&_svg]:absolute [&_svg]:top-1/2 [&_svg]:left-3 [&_svg]:-translate-y-1/2 [&_svg]:text-ink-faint';
-const grid = 'grid grid-cols-[repeat(auto-fill,minmax(min(100%,17.5rem),1fr))] gap-4';
+const grid = 'grid grid-cols-[repeat(auto-fill,minmax(min(100%,21rem),1fr))] gap-4';
 const card = 'card flex flex-col gap-4 p-5 transition-[border-color,box-shadow,translate] duration-[var(--duration-fast)] hover:-translate-y-px hover:border-accent-line hover:shadow-pop';
 const cardBody = 'grid min-w-0 gap-1.5';
 const cardTitle = 'm-0 text-[1.0625rem] leading-[1.3] text-ink wrap-anywhere';
