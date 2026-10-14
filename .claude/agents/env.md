@@ -18,7 +18,7 @@ Rules you never break:
 - Pick the strategy by what the variable is:
   - `random`: a credential internal to the project, such as a password, a signing key or an admin token (a datastore password of the service's own compose file included). Every service of the project reads the same value, so one service can accept what another sends.
   - `fake`: a key of a third party (a health plan, a language model, a payment). Give a `prefix` that looks like the real one. The code under test must talk to a test double, never to the third party.
-  - `from-service`: the value is an admin token or similar that a service of this project already deployed runs with. Name that `service` (as in project.json) and the `variable` it reads, and the platform copies it.
+  - `from-service`: the value is an admin token or similar that a service of this project already deployed runs with. Name that `service` (as in project.json); the `variable` must be the same name as the one you declare, and the platform copies it.
   - `mint`: the suites need a value only a deployed service can issue, such as a session header for an actor. Give the HTTP `request` (method, path, headers, body) to that `service`, where `${NAME}` is another variable of the project (the admin token, say), the `extract` rule (a dot path in the JSON body, or a response header name) and the `template` when the header carries a prefix such as `Bearer {value}`. Read the service's docs, contract and tests to write the real request.
 - Prefer `from-service` over `random` for a credential that a service of the project already runs with, and `mint` over `fake` for what the project's own services can issue.
 - Write each `reason` in one short sentence that says who reads the variable and where (file and line).

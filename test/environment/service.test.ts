@@ -95,11 +95,14 @@ describe('prepareEnvironment', () => {
 
 describe('mintEnvironment', () => {
   it('asks the deployed services for the values only they issue and makes them readable by the suites', async () => {
+    await writeFile(path.join(repoDir, 'e2e', 'b_test.go'), 'os.Getenv("PLATFORM_ADMIN_TOKEN")');
     const mint: EnvironmentVariable = { name: 'E2E_AUTHORIZATION', scope: 'suites', reason: 'sessão', strategy: 'mint', service: 'identity-service', request: { method: 'POST', path: '/v1/sessions', headers: { authorization: 'Bearer ${PLATFORM_ADMIN_TOKEN}' } }, extract: { from: 'json', path: 'token' }, template: 'Bearer {value}' };
-    const { h, events } = host((wanted) => wanted.map((n) => (n === 'E2E_AUTHORIZATION' ? mint : random(n))), { PLATFORM_ADMIN_TOKEN: 'admin' });
+    const { h, events } = host((wanted) => wanted.map((n) => (n === 'E2E_AUTHORIZATION' ? mint : random(n))));
     await prepareEnvironment(h, { service: null, dir: repoDir, plan });
     expect(h.secrets.E2E_AUTHORIZATION).toBeUndefined();
-    h.fetch = (async (_u: URL, init: RequestInit) => new Response(JSON.stringify({ token: (init.headers as Record<string, string>).authorization === 'Bearer admin' ? 'minted' : 'denied' }))) as unknown as typeof fetch;
+    const admin = h.secrets.PLATFORM_ADMIN_TOKEN!;
+    h.fetch = (async (_u: URL, init: RequestInit) => new Response(JSON.stringify({ token: (init.headers as Record<string, string>).authorization === `Bearer ${admin}` ? 'minted' : 'denied' }))) as unknown as typeof fetch;
+    h.secrets.GITHUB_TOKEN = 'platform-token';
     await mintEnvironment(h, { 'identity-service': 'http://identity-service:1' });
     expect(h.secrets.E2E_AUTHORIZATION).toBe('Bearer minted');
     expect(h.suiteNames.has('E2E_AUTHORIZATION')).toBe(true);
@@ -112,5 +115,19 @@ describe('failure signatures', () => {
     expect(citedVariables('PLATFORM_ADMIN_TOKEN e SERVICE_URL_IDENTITY_SERVICE não foram definidos; AC_054')).toEqual(['PLATFORM_ADMIN_TOKEN']);
     for (const text of ['required variable POSTGRES_PASSWORD is missing a value', 'missing secret X_KEY', 'gate lint declares secret A_B but it is not available', 'E2E_AUTHORIZATION não foram definidos']) expect(MISSING_VARIABLE.test(text)).toBe(true);
     for (const text of ['AC-001: expected 201, got 500', 'dependency failed to start: container x is unhealthy']) expect(MISSING_VARIABLE.test(text)).toBe(false);
+  });
+});
+
+describe('mint requests and platform secrets', () => {
+  it('lets a request name only the values this environment made up, never a platform secret', async () => {
+    const mint: EnvironmentVariable = { name: 'E2E_AUTHORIZATION', scope: 'suites', reason: 'sessão', strategy: 'mint', service: 'identity-service', request: { method: 'GET', path: '/x', headers: { authorization: 'Bearer ${GITHUB_TOKEN}' } }, extract: { from: 'json', path: 'token' } };
+    const { h, events } = host((wanted) => wanted.map((n) => (n === 'E2E_AUTHORIZATION' ? mint : random(n))), { GITHUB_TOKEN: 'platform-token' });
+    await prepareEnvironment(h, { service: null, dir: repoDir, plan });
+    let sent = false;
+    h.fetch = (async () => ((sent = true), new Response('{"token":"x"}'))) as unknown as typeof fetch;
+    await mintEnvironment(h, { 'identity-service': 'http://identity-service:1' });
+    expect(sent).toBe(false);
+    expect(h.secrets.E2E_AUTHORIZATION).toBeUndefined();
+    expect(events.at(-1)).toEqual({ type: 'ENVIRONMENT_MINTED', data: { names: [], failed: [{ name: 'E2E_AUTHORIZATION', reason: '${GITHUB_TOKEN} does not exist' }] } });
   });
 });

@@ -114,7 +114,9 @@ export async function prepareEnvironment(host: EnvironmentHost, repo: Environmen
 export async function mintEnvironment(host: EnvironmentHost, urls: Readonly<Record<string, string>>): Promise<void> {
   const mints = (await readManifest(host)).filter((v): v is MintRecipe => v.strategy === 'mint');
   if (mints.length === 0) return;
-  const result = await mintValues(mints, { urls, secrets: host.secrets, fetch: host.fetch });
+  // A request may name only the values this environment made up: a platform or third-party secret never reaches a service.
+  const ours = new Set((await readManifest(host)).map((v) => v.name));
+  const result = await mintValues(mints, { urls, secrets: Object.fromEntries(Object.entries(host.secrets).filter(([name]) => ours.has(name))), fetch: host.fetch });
   Object.assign(host.secrets, result.values);
   for (const name of Object.keys(result.values)) host.suiteNames.add(name);
   await host.journal.fact(OrchEvent.EnvironmentMinted, { names: Object.keys(result.values), failed: result.failed });

@@ -47,6 +47,15 @@ describe('applyRecipes', () => {
     expect(asked).toEqual(['identity-service:PLATFORM_ADMIN_TOKEN', 'audit-service:OTHER_TOKEN']);
   });
 
+  it('copies only the variable of the same name, never another variable of a service relabelled', async () => {
+    const asked: string[] = [];
+    const vars: EnvironmentVariable[] = [{ ...base, name: 'IDENTITY_TOKEN', strategy: 'from-service', service: 'identity-service', variable: 'OPENROUTER_API_KEY' }];
+    const r = await applyRecipes(vars, { secretsDir: await dir(), held: {}, serviceEnv: async (s, v) => (asked.push(`${s}:${v}`), 'would-leak') });
+    expect(asked).toEqual([]);
+    expect(r.values.IDENTITY_TOKEN).not.toBe('would-leak');
+    expect(r.applied[0]!.outcome).toBe('fallback');
+  });
+
   it('defers a mint recipe to after the deploy and lists a variable once', async () => {
     const mint: EnvironmentVariable = { ...base, scope: 'suites', name: 'E2E_AUTHORIZATION', strategy: 'mint', service: 'identity-service', request: { method: 'POST', path: '/v1/sessions' }, extract: { from: 'json', path: 'token' } };
     const r = await applyRecipes([mint, mint, { ...base, name: 'A_KEY', strategy: 'random' }, { ...base, name: 'A_KEY', strategy: 'random' }], { secretsDir: await dir(), held: {}, serviceEnv: async () => null });
@@ -87,6 +96,17 @@ describe('mintValues', () => {
     const r = await mintValues([recipe({ service: 'unknown-service' }), recipe({ name: 'B_ONE', request: { method: 'GET', path: '//evil.example/x' } }), recipe({ name: 'C_TWO' })], { urls, secrets: {}, fetch: never });
     expect(r.values).toEqual({});
     expect(r.failed.map((f) => f.reason)).toEqual(['service unknown-service is not deployed', 'path //evil.example/x leaves the service', '${PLATFORM_ADMIN_TOKEN} does not exist']);
+  });
+
+  it('never follows a redirect, and takes a secret outside the ones it was given as missing', async () => {
+    const seen: RequestInit[] = [];
+    const fetch = (async (_u: URL, init: RequestInit) => (seen.push(init), new Response('', { status: 302, headers: { location: 'http://169.254.169.254/latest' } }))) as unknown as typeof globalThis.fetch;
+    const urls = { 'identity-service': 'http://identity-service:1' };
+    const r = await mintValues([recipe()], { urls, secrets: { PLATFORM_ADMIN_TOKEN: 'a' }, fetch });
+    expect(seen[0]!.redirect).toBe('manual');
+    expect(r.failed[0]!.reason).toContain('answered 302');
+    const stolen = await mintValues([recipe({ request: { method: 'GET', path: '/x', headers: { authorization: 'Bearer ${GITHUB_TOKEN}' } } })], { urls, secrets: { PLATFORM_ADMIN_TOKEN: 'a' }, fetch });
+    expect(stolen.failed[0]!.reason).toBe('${GITHUB_TOKEN} does not exist');
   });
 
   it('reports a failed call and never repeats a secret in the reason', async () => {

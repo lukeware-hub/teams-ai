@@ -68,7 +68,8 @@ export async function applyRecipes(variables: readonly EnvironmentVariable[], de
       applied.push({ ...base, outcome: 'kept' });
       continue;
     }
-    const copied = v.strategy === 'from-service' ? await deps.serviceEnv(v.service, v.variable).catch(() => null) : null;
+    // Only the variable of the same name: a recipe cannot read another variable of a service and relabel it.
+    const copied = v.strategy === 'from-service' && v.variable === v.name ? await deps.serviceEnv(v.service, v.variable).catch(() => null) : null;
     const value = copied ?? valueOf(v, random);
     await writeSecret(deps.secretsDir, v.name, value);
     values[v.name] = value;
@@ -80,7 +81,7 @@ export async function applyRecipes(variables: readonly EnvironmentVariable[], de
 export interface MintDeps {
   /** The address of each deployed service of the project: a recipe may call only these. */
   urls: Readonly<Record<string, string>>;
-  /** Every secret that exists, for the `${NAME}` of a request. */
+  /** The secrets a request may name with `${NAME}`: only the ones this environment made up, never a platform or third-party secret. */
   secrets: Readonly<Record<string, string>>;
   fetch?: typeof fetch;
   timeoutMs?: number;
@@ -127,7 +128,8 @@ export async function mintValues(mints: readonly MintRecipe[], deps: MintDeps): 
       if (url.origin !== new URL(base).origin) throw new Error(`path ${m.request.path} leaves the service`);
       const headers = Object.fromEntries(Object.entries(m.request.headers ?? {}).map(([k, v]) => [k, resolveTemplate(v, known)]));
       const body = m.request.body === undefined ? undefined : resolveTemplate(m.request.body, known);
-      const res = await doFetch(url, { method: m.request.method, headers, ...(body === undefined ? {} : { body }), signal: AbortSignal.timeout(deps.timeoutMs ?? MINT_TIMEOUT_MS) });
+      // A redirect is never followed: it could leave the one service the recipe may call.
+      const res = await doFetch(url, { method: m.request.method, headers, ...(body === undefined ? {} : { body }), redirect: 'manual', signal: AbortSignal.timeout(deps.timeoutMs ?? MINT_TIMEOUT_MS) });
       if (!res.ok) throw new Error(`${m.request.method} ${m.request.path} answered ${res.status}`);
       let raw: string;
       if (m.extract.from === 'header') {
