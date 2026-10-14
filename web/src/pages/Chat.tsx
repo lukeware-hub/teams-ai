@@ -80,6 +80,8 @@ export function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[] | null>(null);
   const [asking, setAsking] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+  /** Browsing the earlier questions with the arrow keys: where it is, and the text that was being typed. */
+  const [recall, setRecall] = useState<{ index: number; draft: string } | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const navigate = useNavigate();
@@ -112,6 +114,7 @@ export function ChatPage() {
       if (current.current !== asked) return;
       setMessages((m) => [...(m ?? []), { role: 'user', text, at: message.at }, message]);
       setDraft('');
+      setRecall(null);
     } catch (e) {
       if (current.current === asked) setProblem({ title: 'Não consegui responder', message: plainError((e as Error).message), retry: send });
     } finally {
@@ -122,6 +125,24 @@ export function ChatPage() {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       void send();
+    }
+    // Up recalls only from an empty box or the start of the text, so arrows still move the caret inside a text being edited.
+    const atStart = e.currentTarget.selectionStart === 0 && e.currentTarget.selectionEnd === 0;
+    if (e.key === 'ArrowUp' && questions.length > 0 && (recall !== null || draft === '' || atStart)) {
+      e.preventDefault();
+      const index = recall === null ? 0 : Math.min(recall.index + 1, questions.length - 1);
+      setRecall({ index, draft: recall?.draft ?? draft });
+      setDraft(questions[index]!);
+    }
+    if (e.key === 'ArrowDown' && recall !== null) {
+      e.preventDefault();
+      if (recall.index === 0) {
+        setDraft(recall.draft);
+        setRecall(null);
+      } else {
+        setRecall({ ...recall, index: recall.index - 1 });
+        setDraft(questions[recall.index - 1]!);
+      }
     }
   };
   const clear = async () => {
@@ -136,6 +157,8 @@ export function ChatPage() {
 
   if (projects === null) return <main><Loading /></main>;
   const project = projects.find((p) => p.projectId === projectId);
+  // The questions of the chosen project, newest first, each text once.
+  const questions = [...new Set((messages ?? []).filter((m) => m.role === 'user').map((m) => m.text).reverse())];
   return (
     <main>
       <nav className="refine-breadcrumb" aria-label="Navegação">
@@ -167,7 +190,7 @@ export function ChatPage() {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 max-md:w-full">
-              <Select wrapperClassName="min-w-[14rem] max-md:flex-1" aria-label="Projeto" value={projectId} disabled={asking !== null} onChange={(e) => setProjectId(e.target.value)}>
+              <Select wrapperClassName="min-w-[14rem] max-md:flex-1" aria-label="Projeto" value={projectId} disabled={asking !== null} onChange={(e) => { setProjectId(e.target.value); setRecall(null); }}>
                 {projects.map((p) => <option key={p.projectId} value={p.projectId}>{p.name}</option>)}
               </Select>
               <button type="button" className="secondary" disabled={!projectId} onClick={() => navigate(`/projects/${projectId}?novaSpec=1`)}>
@@ -217,7 +240,7 @@ export function ChatPage() {
                 placeholder="Ex.: o que está sendo desenvolvido agora?"
                 value={draft}
                 disabled={messages === null}
-                onChange={(e) => setDraft(e.target.value)}
+                onChange={(e) => { setDraft(e.target.value); setRecall(null); }}
                 onKeyDown={onKeyDown}
               />
               <ActionButton className="primary-button max-md:w-full" busy={asking !== null} disabled={draft.trim() === ''} onClick={send} icon={<Icon name="send" size={16} />}>
@@ -227,7 +250,7 @@ export function ChatPage() {
           </div>
           <p className="m-0 flex items-center gap-1.5 border-t border-line pt-4 text-[0.8125rem] text-ink-soft">
             <Icon name="info" size={16} />
-            As conversas ficam salvas neste computador. Enter envia a pergunta e Shift+Enter quebra a linha.
+            As conversas ficam salvas neste computador. Enter envia a pergunta, Shift+Enter quebra a linha e a seta para cima traz as perguntas anteriores.
           </p>
         </section>
       )}

@@ -114,6 +114,81 @@ describe('ChatPage', () => {
     expect(usageLine({ inputTokens: 2, outputTokens: 1572, cacheReadTokens: 0, cacheWriteTokens: 24874, costUsd: 0.0039, seconds: 8, turns: 1 })).toBe('Custo estimado US$ 0.0039000 · 24 876 tokens lidos · 1 572 escritos · 8 s');
   });
 
+  it('brings back the earlier questions with the arrow keys, and Enter sends the one on screen', async () => {
+    vi.spyOn(runApi, 'projects').mockResolvedValue(projects as never);
+    vi.spyOn(chatApi, 'messages').mockResolvedValue({ messages: [
+      { role: 'user', text: 'primeira', at },
+      { role: 'assistant', text: 'Resposta um.', at },
+      { role: 'user', text: 'segunda', at },
+      { role: 'assistant', text: 'Resposta dois.', at },
+    ] });
+    const ask = vi.spyOn(chatApi, 'ask').mockResolvedValue({ message: { role: 'assistant', text: 'Certo.', at } });
+    page();
+    await screen.findByText('Resposta dois.');
+    const input = screen.getByTestId('chat-input') as HTMLTextAreaElement;
+    fireEvent.keyDown(input, { key: 'ArrowUp' });
+    expect(input.value).toBe('segunda');
+    fireEvent.keyDown(input, { key: 'ArrowUp' });
+    expect(input.value).toBe('primeira');
+    fireEvent.keyDown(input, { key: 'ArrowUp' });
+    expect(input.value).toBe('primeira');
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(input.value).toBe('segunda');
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(input.value).toBe('');
+    fireEvent.keyDown(input, { key: 'ArrowUp' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(ask).toHaveBeenCalledWith('hello-app', 'segunda'));
+  });
+
+  it('leaves a question being edited alone: arrow up recalls only from the start of the box', async () => {
+    vi.spyOn(runApi, 'projects').mockResolvedValue(projects as never);
+    vi.spyOn(chatApi, 'messages').mockResolvedValue({ messages: [{ role: 'user', text: 'primeira', at }] });
+    page();
+    await screen.findByText('primeira');
+    const input = screen.getByTestId('chat-input') as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: 'texto em edição' } });
+    input.setSelectionRange(5, 5);
+    fireEvent.keyDown(input, { key: 'ArrowUp' });
+    expect(input.value).toBe('texto em edição');
+    input.setSelectionRange(0, 0);
+    fireEvent.keyDown(input, { key: 'ArrowUp' });
+    expect(input.value).toBe('primeira');
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(input.value).toBe('texto em edição');
+  });
+
+  it('lists each earlier question once, the newest first', async () => {
+    vi.spyOn(runApi, 'projects').mockResolvedValue(projects as never);
+    vi.spyOn(chatApi, 'messages').mockResolvedValue({ messages: [
+      { role: 'user', text: 'repetida', at },
+      { role: 'assistant', text: 'Resposta um.', at },
+      { role: 'user', text: 'repetida', at },
+      { role: 'assistant', text: 'Resposta dois.', at },
+      { role: 'user', text: 'outra', at },
+      { role: 'assistant', text: 'Resposta tres.', at },
+    ] });
+    page();
+    await screen.findByText('Resposta tres.');
+    const input = screen.getByTestId('chat-input') as HTMLTextAreaElement;
+    fireEvent.keyDown(input, { key: 'ArrowUp' });
+    expect(input.value).toBe('outra');
+    fireEvent.keyDown(input, { key: 'ArrowUp' });
+    expect(input.value).toBe('repetida');
+    fireEvent.keyDown(input, { key: 'ArrowUp' });
+    expect(input.value).toBe('repetida');
+  });
+
+  it('does nothing on arrow up when there is no earlier question', async () => {
+    vi.spyOn(runApi, 'projects').mockResolvedValue(projects as never);
+    vi.spyOn(chatApi, 'messages').mockResolvedValue({ messages: [] });
+    page();
+    await screen.findByText('Nenhuma pergunta feita ainda.');
+    const input = screen.getByTestId('chat-input') as HTMLTextAreaElement;
+    fireEvent.keyDown(input, { key: 'ArrowUp' });
+    expect(input.value).toBe('');
+  });
+
   it('says so when there is no project', async () => {
     vi.spyOn(runApi, 'projects').mockResolvedValue([]);
     page();
