@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../../server/config/config.js';
 import { CHAT_ALLOW, ChatService, ChatUnavailableError } from '../../server/chat/service.js';
-import { ChatStore } from '../../server/chat/store.js';
+import { ChatStore, type ChatMessage } from '../../server/chat/store.js';
 import { ConflictError, NotFoundError } from '../../server/refine/session.js';
 
 const HELLO = path.resolve('test/fixtures/hello-app');
@@ -21,7 +21,7 @@ afterEach(async () => {
 
 const ok = (value: unknown) => ({ ok: true, value: { specHash: 'x', ...(value as object) }, summary: {} });
 
-interface Req { kind: string; role: string; cwd: string; pack: { feedback?: string }; extraAllow?: string[]; denyRead?: string[] }
+interface Req { kind: string; role: string; cwd: string; pack: { feedback?: string }; extraAllow?: string[]; denyRead?: string[]; systemExtra?: string }
 
 function make(runAgent: (req: Req) => Promise<unknown>, extra: { newSpec?: () => Promise<unknown>; log?: (line: string) => void } = {}) {
   const newSpec = vi.fn(extra.newSpec ?? (async () => undefined));
@@ -53,12 +53,12 @@ describe('ChatService.ask', () => {
     await expect(fs.readdir(path.join(home, 'ws', '_chat'))).resolves.toEqual([]);
   });
 
-  it('stages the guide, its graph and the conversation in the working directory and fences the step', async () => {
+  it('stages the guide and its graph in the working directory and fences the step', async () => {
     let staged: Record<string, string> = {};
     await fs.mkdir(path.join(home, 'ws', '_chat', 'stale-chat'), { recursive: true });
     const runAgent = vi.fn(async (req: Req) => {
       const read = (rel: string) => fs.readFile(path.join(req.cwd, rel), 'utf8').catch(() => 'MISSING');
-      staged = { guide: await read('guia/criar-spec.md'), graph: (await read('graphify-out/graph.json')).slice(0, 1), history: await read('historico.md') };
+      staged = { guide: await read('guia/criar-spec.md'), graph: (await read('graphify-out/graph.json')).slice(0, 1) };
       return ok({ answer: 'ok', correction: null });
     });
     const { service } = make(runAgent);
@@ -66,8 +66,6 @@ describe('ChatService.ask', () => {
     await service.ask('hello-app', 'e a segunda?');
     expect(staged.guide).toContain('Como criar uma nova spec');
     expect(staged.graph).toBe('{');
-    expect(staged.history).toContain('## Pergunta');
-    expect(staged.history).toContain('primeira pergunta');
     const call = runAgent.mock.calls[1]![0];
     expect(call.extraAllow).toEqual([...CHAT_ALLOW]);
     expect(CHAT_ALLOW).toEqual(['Bash(graphify query:*)', 'Bash(graphify explain:*)', 'Bash(graphify path:*)']);
@@ -78,6 +76,39 @@ describe('ChatService.ask', () => {
     expect(call.denyRead).toContain(path.join(ws, '_naming'));
     // an earlier chat's directory is fenced off; this question's own directory is not
     expect(call.denyRead!.filter((d) => d.includes('_chat'))).toEqual([path.join(ws, '_chat', 'stale-chat')]);
+  });
+
+  it('keeps what each answer cost on the answer, and logs it, also when the agent skipped the JSON', async () => {
+    const summary = { usage: { inputTokens: 1200, outputTokens: 340, cacheReadTokens: 5000, cacheWriteTokens: 800 }, costUsd: 0.0421, durationMs: 14_400, numTurns: 3 };
+    const lines: string[] = [];
+    const { service } = make(async (_req: Req) => ({ ok: true, value: { specHash: 'x', answer: 'ok', correction: null }, summary }), { log: (l) => lines.push(l) });
+    const reply = await service.ask('hello-app', 'pergunta');
+    expect(reply.usage).toEqual({ inputTokens: 1200, outputTokens: 340, cacheReadTokens: 5000, cacheWriteTokens: 800, costUsd: 0.0421, seconds: 14, turns: 3 });
+    expect((await service.messages('hello-app'))[1]!.usage).toEqual(reply.usage);
+    expect(lines).toEqual(['chat hello-app: 7000 tokens read, 340 written, 3 turns, 14s, US$ 0.0421']);
+    const prose = make(async (_req: Req) => ({ ok: false, failure: 'schema', errors: ['no JSON'], summary: { ...summary, costUsd: null, resultText: 'Texto livre.' }, sandboxDisabled: false }));
+    expect((await prose.service.ask('hello-app', 'outra')).usage).toMatchObject({ costUsd: null, turns: 3 });
+  });
+
+  it('brings the older messages that match the question into the prompt, with no search step, and keeps the prompt prefix the same for every question', async () => {
+    const store = new ChatStore(path.join(home, 'chats'));
+    const old = Array.from({ length: 10 }, (_, i): ChatMessage => ({ role: i % 2 ? 'assistant' : 'user', text: i === 0 ? 'Como funciona a comunicação assíncrona entre os microsserviços?' : `Mensagem ${i} sobre outro assunto`, at: '2026-10-14T10:00:00.000Z' }));
+    await store.append('hello-app', ...old);
+    const runAgent = vi.fn(async (_req: Req) => ok({ answer: 'ok', correction: null }));
+    const { service } = make(runAgent);
+    await service.ask('hello-app', 'E a comunicação assíncrona dos microsserviços, como era?');
+    await service.ask('hello-app', 'outra pergunta qualquer');
+    const [first, second] = runAgent.mock.calls.map((c) => c[0].pack.feedback!);
+    expect(first).toContain('### Older conversation excerpts\nPerson: Como funciona a comunicação assíncrona');
+    expect(second).not.toContain('Older conversation excerpts');
+    // the rules and the project context go in the agent's prompt (cached by the API) and are the same for both questions; the question prompt carries only what changes
+    const [sys1, sys2] = runAgent.mock.calls.map((c) => c[0].systemExtra!);
+    expect(sys1).toContain('### Project context');
+    expect(sys1).toContain('Greet a caller by name over HTTP');
+    expect(sys1).toBe(sys2);
+    expect(first).not.toContain('Greet a caller by name');
+    // the contract (with the hash) opens the prompt and is the same for both questions, so the cache serves everything above the question
+    expect(JSON.stringify(runAgent.mock.calls[0]![0])).toContain('"kind":"chat"');
   });
 
   it('opens a correction spec draft when the answer proposes one, and never lists it again as new', async () => {

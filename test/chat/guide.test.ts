@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { GUIDE_GRAPH, GUIDE_HASH, guideHash, historyMarkdown, stageChatFiles } from '../../server/chat/guide.js';
+import { GUIDE_GRAPH, GUIDE_HASH, guideHash, relatedMessages, stageChatFiles } from '../../server/chat/guide.js';
 
 const GUIDE = path.resolve('docs/guia');
 const hasGraphify = spawnSync('graphify', ['--version']).status === 0;
@@ -25,28 +25,31 @@ describe('the user guide the chat searches', () => {
     }
   });
 
-  it('stages the guide, the graph and the conversation for one question and leaves the graph out when the guide has none', async () => {
+  it('stages the guide and its graph for one question and leaves the graph out when the guide has none', async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'guide-stage-'));
-    await stageChatFiles(cwd, GUIDE, [{ role: 'user', text: 'oi', at: '2026-10-14T10:00:00.000Z' }]);
+    await stageChatFiles(cwd, GUIDE);
     expect((await fs.readdir(path.join(cwd, 'guia'))).sort()).toEqual((await fs.readdir(GUIDE)).filter((n) => n.endsWith('.md')).sort());
     await expect(fs.access(path.join(cwd, GUIDE_GRAPH))).resolves.toBeUndefined();
-    expect(await fs.readFile(path.join(cwd, 'historico.md'), 'utf8')).toContain('## Pergunta (2026-10-14)\noi');
     const bare = await fs.mkdtemp(path.join(os.tmpdir(), 'guide-bare-'));
     await fs.writeFile(path.join(bare, 'a.md'), '# a');
     const cwd2 = await fs.mkdtemp(path.join(os.tmpdir(), 'guide-stage-'));
-    await stageChatFiles(cwd2, bare, []);
+    await stageChatFiles(cwd2, bare);
     await expect(fs.access(path.join(cwd2, GUIDE_GRAPH))).rejects.toThrow();
-    expect(await fs.readFile(path.join(cwd2, 'historico.md'), 'utf8')).toBe('(sem conversas anteriores)\n');
   });
 
-  it('turns the conversation into searchable text', () => {
-    expect(historyMarkdown([{ role: 'user', text: 'a', at: '2026-10-14T10:00:00.000Z' }, { role: 'assistant', text: 'b', at: '2026-10-15T10:00:00.000Z' }])).toBe('## Pergunta (2026-10-14)\na\n\n## Resposta (2026-10-15)\nb\n');
+  it('finds the older messages that share at least two words with the question, best first, ignoring accents and case', () => {
+    const at = '2026-10-14T10:00:00.000Z';
+    const m = (text: string) => ({ role: 'user' as const, text, at });
+    const history = [m('Comunicação assíncrona entre microsserviços e eventos'), m('Só um assunto: comunicação'), m('Nada a ver com isso'), m('comunicacao assincrona')];
+    expect(relatedMessages(history, 'Como é a COMUNICAÇÃO assíncrona dos microsserviços?').map((x) => x.text)).toEqual(['Comunicação assíncrona entre microsserviços e eventos', 'comunicacao assincrona']);
+    expect(relatedMessages(history, 'oi')).toEqual([]);
+    expect(relatedMessages([], 'comunicação assíncrona')).toEqual([]);
   });
 
   // Runs only where graphify is installed (the platform image has it).
   it.skipIf(!hasGraphify)('finds the right guide file among the first matches of a plain Portuguese question', async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'guide-query-'));
-    await stageChatFiles(cwd, GUIDE, []);
+    await stageChatFiles(cwd, GUIDE);
     const cases: Array<[string, string]> = [
       ['como criar uma nova spec', 'criar-spec.md'],
       ['onde fica o botão Nova spec', 'criar-spec.md'],

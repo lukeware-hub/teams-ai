@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chatApi, runApi, type ChatMessage } from '../api.js';
-import { ChatPage, plainError } from './Chat.js';
+import { ChatPage, plainError, usageLine } from './Chat.js';
 
 const projects = [
   { projectId: 'hello-app', name: 'Hello app', description: '', dir: '/d', specs: [] },
@@ -98,6 +98,19 @@ describe('ChatPage', () => {
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'other' } });
     fireEvent.click(screen.getByRole('button', { name: 'Nova spec' }));
     expect(screen.getByTestId('hub').textContent).toBe('?novaSpec=1');
+  });
+
+  it('shows what an answer cost under it, and nothing for an old answer saved before the cost was measured', async () => {
+    vi.spyOn(runApi, 'projects').mockResolvedValue(projects as never);
+    vi.spyOn(chatApi, 'messages').mockResolvedValue({ messages: [
+      { role: 'assistant', text: 'Resposta nova.', at, usage: { inputTokens: 1200, outputTokens: 340, cacheReadTokens: 5000, cacheWriteTokens: 800, costUsd: 0.0421, seconds: 14, turns: 3 } },
+      { role: 'assistant', text: 'Resposta antiga.', at },
+    ] });
+    page();
+    await screen.findByText('Resposta nova.');
+    expect(screen.getAllByTestId('usage')).toHaveLength(1);
+    expect(screen.getByTestId('usage').textContent).toContain('Custo estimado US$ 0.04 · 7 000 tokens lidos · 340 escritos · 14 s');
+    expect(usageLine({ inputTokens: 10, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: null, seconds: 0, turns: 1 })).toBe('10 tokens lidos · 2 escritos · menos de 1 s');
   });
 
   it('says so when there is no project', async () => {

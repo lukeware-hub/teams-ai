@@ -431,6 +431,8 @@ export interface AgentStepRequest<K extends StepKind> {
   extraAllow?: readonly string[];
   /** Directories the step must not read (the chat's project data). */
   denyRead?: readonly string[];
+  /** Added to the agent's prompt for this step; see `StepRequest.systemExtra`. */
+  systemExtra?: string;
   /** Spec 10A.5 decisions 10/11: per-step model and effort; absent means the role profile. */
   model?: string;
   effort?: Effort;
@@ -512,6 +514,7 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
         attempt: req.attempt,
         extraAllow: req.extraAllow,
         denyRead: req.denyRead,
+        systemExtra: req.systemExtra,
         extraEnv: req.extraEnv,
         ...(sessionStore ? { sessionId: req.session!.id, resume, sessionStore } : {}),
       },

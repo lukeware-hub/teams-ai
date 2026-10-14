@@ -48,9 +48,12 @@ async function tasksOf(idx: IndexDeps, runId: string): Promise<string[]> {
   return tasks.map((t) => `- ${withoutCodes(t.def.title)} (${TASK_STATE[t.state]}): ${cut(withoutCodes(t.def.description))}`);
 }
 
+/** Specs being worked on get everything; every other spec is one line (name and situation), which keeps the prompt small. */
+const IN_PLAY: ReadonlySet<string> = new Set(['running', 'paused:quota', 'paused:auth', 'awaiting-validation']);
+
 async function specBlock(idx: IndexDeps, spec: Spec, status: string, runId: string | null): Promise<string> {
   const bug = spec.bug ? [`Problema a corrigir: ${withoutCodes(spec.bug.actual)}`, `O esperado: ${withoutCodes(spec.bug.expected)}`] : [];
-  const tasks = runId && status !== 'done' ? await tasksOf(idx, runId) : [];
+  const tasks = runId ? await tasksOf(idx, runId) : [];
   return [
     `### ${withoutCodes(spec.objectives[0]!)}`,
     `Situação: ${SPEC_STATUS[status] ?? status}`,
@@ -75,15 +78,22 @@ export async function buildChatContext(idx: IndexDeps, projectId: string): Promi
     .sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status));
   const head = [`## Projeto: ${project.name}`, `Visão: ${withoutCodes(project.vision)}`, '', '## Specs (as entregas planejadas do projeto)'].join('\n');
   const blocks: string[] = [];
+  const others: string[] = [];
   let size = head.length;
   for (const { spec, status } of ordered) {
+    if (!IN_PLAY.has(status)) {
+      others.push(`- ${withoutCodes(spec.objectives[0]!)}: ${SPEC_STATUS[status] ?? status}`);
+      continue;
+    }
     const latest = runs.find((r) => r.specId === spec.specId && r.kind === 'run');
     const block = await specBlock(idx, spec, status, latest?.runId ?? null);
-    if (size + block.length > MAX_CHARS) break;
+    if (size + block.length > MAX_CHARS) {
+      others.push(`- ${withoutCodes(spec.objectives[0]!)}: ${SPEC_STATUS[status] ?? status} (sem detalhes por causa do tamanho)`);
+      continue;
+    }
     blocks.push(block);
     size += block.length;
   }
-  const cut = ordered.length - blocks.length;
-  const note = cut > 0 ? [`\n(${cut} spec(s) mais antigas ficaram de fora por causa do tamanho.)`] : [];
-  return { name: project.name, text: [head, blocks.length ? blocks.join('\n\n') : '(o projeto ainda não tem specs)', ...note].join('\n\n') };
+  const rest = others.length ? [`### Outras specs (só o nome e a situação)\n${others.join('\n')}`] : [];
+  return { name: project.name, text: [head, blocks.length || rest.length ? [...blocks, ...rest].join('\n\n') : '(o projeto ainda não tem specs)'].join('\n\n') };
 }

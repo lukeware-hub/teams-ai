@@ -11,10 +11,11 @@ import type { RunAgent } from '../refine/cycle.js';
 import { fitPackBudget } from '../refine/fit-pack.js';
 import type { FailureKind } from '../scheduler/retry-policy.js';
 import type { StepOutcome } from '../runner/step.js';
+import type { ResultSummary } from '../runner/stream-events.js';
 import { buildChatContext, withoutCodes } from './context.js';
-import { stageChatFiles } from './guide.js';
-import { chatPack } from './pack.js';
-import type { ChatCorrection, ChatMessage, ChatStore } from './store.js';
+import { relatedMessages, stageChatFiles } from './guide.js';
+import { chatPack, chatSystem } from './pack.js';
+import type { ChatCorrection, ChatMessage, ChatStore, ChatUsage } from './store.js';
 
 const MAX_QUESTION = 2_000;
 const HISTORY_MESSAGES = 6;
@@ -34,6 +35,13 @@ const UNAVAILABLE_DEFAULT = 'Não consegui responder agora. Tente de novo em ins
 export const CHAT_ALLOW: readonly string[] = ['Bash(graphify query:*)', 'Bash(graphify explain:*)', 'Bash(graphify path:*)'];
 /** What a project keeps inside its workspace; the wildcards cover a project created while a step runs. */
 const PRIVATE_IN_WORKSPACE = ['repo', 'worktrees', 'graph', 'knowledge.sqlite', 'refine', 'services', 'environment', 'secrets'];
+
+/** What the step reported it spent; absent when it reported nothing. */
+export function usageOf(summary: Partial<ResultSummary> | undefined): ChatUsage | undefined {
+  if (!summary?.usage) return undefined;
+  const { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens } = summary.usage;
+  return { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, costUsd: summary.costUsd ?? null, seconds: Math.round((summary.durationMs ?? 0) / 1000), turns: summary.numTurns ?? 0 };
+}
 
 export interface ChatDeps {
   /** The folder of the user guide (`docs/guia`), copied into each question's working directory. */
@@ -83,9 +91,9 @@ export class ChatService {
       if (!context) throw new NotFoundError(`projeto ${projectId} não encontrado`);
       const history = await this.deps.store.read(projectId);
       const at = (this.deps.now?.() ?? new Date()).toISOString();
-      const value = await this.run(projectId, { context: context.text, history, opened: history.flatMap((m) => (m.correction?.specId ? [m.correction.title] : [])), question }, at);
+      const { value, usage } = await this.run(projectId, { context: context.text, history, opened: history.flatMap((m) => (m.correction?.specId ? [m.correction.title] : [])), question });
       const correction = value.correction ? await this.open(projectId, value.correction) : undefined;
-      const answer: ChatMessage = { role: 'assistant', text: withoutCodes(value.answer), at, ...(correction ? { correction } : {}) };
+      const answer: ChatMessage = { role: 'assistant', text: withoutCodes(value.answer), at, ...(correction ? { correction } : {}), ...(usage ? { usage } : {}) };
       await this.deps.store.append(projectId, { role: 'user', text: question, at }, answer);
       return answer;
     } finally {
@@ -94,23 +102,26 @@ export class ChatService {
   }
 
   /** One read-only agent step in a throwaway directory, like the name suggestion. */
-  private async run(projectId: string, input: { context: string; history: readonly ChatMessage[]; opened: readonly string[]; question: string }, at: string): Promise<ChatOutput> {
-    const specHash = sha256(canonicalJson({ projectId, question: input.question, at }));
+  private async run(projectId: string, input: { context: string; history: readonly ChatMessage[]; opened: readonly string[]; question: string }): Promise<{ value: ChatOutput; usage: ChatUsage | undefined }> {
+    // The same for every question of a project: the hash sits above the project context in the prompt, and a prompt that starts the same way is read from the cache instead of paid for again.
+    const specHash = sha256(canonicalJson({ kind: 'chat', projectId }));
     const root = await this.deps.workspacesRoot();
     const cwd = path.join(root, '_chat', randomUUID());
     await fs.mkdir(cwd, { recursive: true });
     let seq = 0;
     try {
-      await stageChatFiles(cwd, this.deps.guideDir, input.history);
+      await stageChatFiles(cwd, this.deps.guideDir);
       const out = (await this.deps.runAgent<'chat'>(
-        { kind: 'chat', role: 'po', pack: fitPackBudget(chatPack({ ...input, history: input.history.slice(-HISTORY_MESSAGES), specHash })), cwd, phase: 'refine', taskId: null, attempt: 1, extraAllow: CHAT_ALLOW, denyRead: await this.privateDirs(root, cwd) },
+        { kind: 'chat', role: 'po', pack: fitPackBudget(chatPack({ opened: input.opened, question: input.question, history: input.history.slice(-HISTORY_MESSAGES), older: relatedMessages(input.history.slice(0, -HISTORY_MESSAGES), input.question), specHash })), systemExtra: chatSystem(input.context), cwd, phase: 'refine', taskId: null, attempt: 1, extraAllow: CHAT_ALLOW, denyRead: await this.privateDirs(root, cwd) },
         { journal: { allocStepSeq: () => ++seq, fact: async () => undefined } as never, stepDir: (n) => path.join(cwd, 'steps', stepId(n)), specHash, signal: AbortSignal.timeout(TIMEOUT_MS) },
       )) as StepOutcome<ChatOutput>;
-      if (out.ok) return out.value;
+      const usage = usageOf(out.summary);
+      if (usage) this.deps.log?.(`chat ${projectId}: ${usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens} tokens read, ${usage.outputTokens} written, ${usage.turns} turns, ${usage.seconds}s, ${usage.costUsd === null ? 'no price' : `US$ ${usage.costUsd.toFixed(4)}`}${out.ok ? '' : ` (${out.failure})`}`);
+      if (out.ok) return { value: out.value, usage };
       // An answer in plain prose, with no JSON around it, is still the answer: only a correction proposal is lost.
       const prose = out.failure === 'schema' ? redactSecrets(out.summary.resultText?.trim() ?? '') : '';
       // Broken JSON is not an answer a person can read.
-      if (prose && !/^\s*[{[]|```/.test(prose)) return { specHash, answer: prose, correction: null };
+      if (prose && !/^\s*[{[]|```/.test(prose)) return { value: { specHash, answer: prose, correction: null }, usage };
       this.deps.log?.(`chat ${projectId}: ${out.failure}: ${out.errors.join('; ')}`);
       throw new ChatUnavailableError(UNAVAILABLE[out.failure] ?? UNAVAILABLE_DEFAULT);
     } finally {

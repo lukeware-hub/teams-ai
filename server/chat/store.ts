@@ -11,11 +11,24 @@ export interface ChatCorrection {
   error?: string;
 }
 
+/** What one answer cost: tokens the model read and wrote, the estimated price at API rates, the time and the turns it took. */
+export interface ChatUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  costUsd: number | null;
+  seconds: number;
+  turns: number;
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   text: string;
   at: string;
   correction?: ChatCorrection;
+  /** Assistant messages only; absent in conversations saved before the cost was measured. */
+  usage?: ChatUsage;
 }
 
 /** One conversation per project, kept as a JSON file; `projectId` must already be a validated slug. */

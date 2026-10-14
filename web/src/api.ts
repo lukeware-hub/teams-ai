@@ -398,11 +398,21 @@ export interface ChatCorrection {
   specId?: string;
   error?: string;
 }
+export interface ChatUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  costUsd: number | null;
+  seconds: number;
+  turns: number;
+}
 export interface ChatMessage {
   role: 'user' | 'assistant';
   text: string;
   at: string;
   correction?: ChatCorrection;
+  usage?: ChatUsage;
 }
 const chatUrl = (projectId: string) => `${R}/chat/${encodeURIComponent(projectId)}`;
 export const chatApi = {

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '../../server/config/config.js';
 import { buildChatContext, withoutCodes } from '../../server/chat/context.js';
-import { makePlanTask } from '../fixtures/contracts.js';
+import { makePlanTask, makeSpec } from '../fixtures/contracts.js';
 import { writeRun } from '../fixtures/runs/write-run.js';
 
 const HELLO = path.resolve('test/fixtures/hello-app');
@@ -41,6 +41,20 @@ describe('buildChatContext', () => {
     expect(out.text).toContain('Criar o endpoint de saudação (sendo desenvolvida agora)');
     expect(out.text).toContain('Fora do escopo (não deve ser feito)');
     expect(out.text).not.toMatch(/AC-\d|T\d+-/);
+  });
+
+  it('gives specs in play everything and every other spec one line with its name and situation', async () => {
+    const dir = path.join(home, 'proj');
+    await fs.cp(HELLO, dir, { recursive: true });
+    const write = (id: string, status: 'planned' | 'done', objective: string) => fs.mkdir(path.join(dir, 'docs', 'specs', id), { recursive: true }).then(() => fs.writeFile(path.join(dir, 'docs', 'specs', id, 'spec.json'), JSON.stringify(makeSpec({ specId: id, status, objectives: [objective], features: [`Funcionalidade de ${id}`], outOfScope: [`Fora de ${id}`] }))));
+    await write('planned-one', 'planned', 'Entrega planejada');
+    await write('done-one', 'done', 'Entrega antiga');
+    const cfg = loadConfig({ paths: { runs: path.join(home, 'runs').replace(/\\/g, '/') }, projects: [{ dir }] });
+    const { text } = (await buildChatContext({ cfg, home, isAlive: () => false }, 'hello-app'))!;
+    expect(text).toContain('Funcionalidades:\n- GET /hello');
+    expect(text).toContain('### Outras specs (só o nome e a situação)\n- Entrega planejada: planejada, ainda não iniciada\n- Entrega antiga: concluída');
+    expect(text).not.toContain('Fora de planned-one');
+    expect(text).not.toContain('Fora de done-one');
   });
 
   it('is null for an unknown project', async () => {

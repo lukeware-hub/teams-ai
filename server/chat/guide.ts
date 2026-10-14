@@ -14,14 +14,25 @@ export async function guideHash(dir: string): Promise<string> {
   return hash.digest('hex');
 }
 
-/** The conversation as text the step can search with Grep. */
-export function historyMarkdown(messages: readonly ChatMessage[]): string {
-  if (messages.length === 0) return '(sem conversas anteriores)\n';
-  return messages.map((m) => `## ${m.role === 'user' ? 'Pergunta' : 'Resposta'} (${m.at.slice(0, 10)})\n${m.text}\n`).join('\n');
+const plain = (text: string): string => text.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+const words = (text: string): string[] => [...new Set(plain(text).split(/[^a-z0-9]+/).filter((w) => w.length >= 4))];
+
+/**
+ * The older messages that share the most words with the question, best first: the chat remembers more than the last few
+ * messages without a search step (each tool call re-reads the whole prompt). A message must share at least two words.
+ */
+export function relatedMessages(history: readonly ChatMessage[], question: string, limit = 3): ChatMessage[] {
+  const wanted = words(question);
+  return history
+    .map((message) => ({ message, hits: words(message.text).filter((w) => wanted.includes(w)).length }))
+    .filter((m) => m.hits >= 2)
+    .sort((a, b) => b.hits - a.hits)
+    .slice(0, limit)
+    .map((m) => m.message);
 }
 
-/** Puts the guide, its graph and the conversation in the step's working directory, the only place it can read. */
-export async function stageChatFiles(cwd: string, guideDir: string, history: readonly ChatMessage[]): Promise<void> {
+/** Puts the guide and its graph in the step's working directory, the only place it can read. */
+export async function stageChatFiles(cwd: string, guideDir: string): Promise<void> {
   await fs.mkdir(path.join(cwd, 'guia'), { recursive: true });
   for (const name of (await fs.readdir(guideDir)).filter((n) => n.endsWith('.md'))) await fs.copyFile(path.join(guideDir, name), path.join(cwd, 'guia', name));
   await fs.mkdir(path.join(cwd, 'graphify-out'), { recursive: true });
@@ -29,5 +40,4 @@ export async function stageChatFiles(cwd: string, guideDir: string, history: rea
   await fs.copyFile(path.join(guideDir, GUIDE_GRAPH), path.join(cwd, GUIDE_GRAPH)).catch((err: NodeJS.ErrnoException) => {
     if (err.code !== 'ENOENT') throw err;
   });
-  await fs.writeFile(path.join(cwd, 'historico.md'), historyMarkdown(history));
 }

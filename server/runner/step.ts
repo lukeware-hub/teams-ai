@@ -44,6 +44,8 @@ export interface StepRequest {
   extraAllow?: readonly string[];
   /** Directories this step must not read (see `RoleSettingsInput.extraDenyRead`). */
   denyRead?: readonly string[];
+  /** Text added to the agent's own prompt for this step. The API caches that part, so what repeats from one step to the next is read from the cache instead of paid for again. */
+  systemExtra?: string;
   effort?: Effort;
   /** Env entries the orchestrator provisioned for this one step (e.g. an ephemeral test database's DATABASE_URL). */
   extraEnv?: Readonly<Record<string, string>>;
@@ -82,7 +84,7 @@ const REVIEW_DENIED_TOOLS: readonly string[] = ['Edit', 'Write', 'MultiEdit'];
 /** What the chat step may use: read files in its working directory and run the graphify queries its settings allow. */
 export const CHAT_TOOLS: readonly string[] = ['Read', 'Grep', 'Glob', 'Bash'];
 /** A search or two and the answer: a chat that loops is cut short instead of spending the step budget. */
-export const CHAT_MAX_TURNS = 8;
+export const CHAT_MAX_TURNS = 6;
 export const stepCaps = (kind: StepKind, caps: ProcessCaps): ProcessCaps => (kind === 'chat' ? { ...caps, maxTurns: Math.min(caps.maxTurns, CHAT_MAX_TURNS) } : caps);
 
 const QUOTA_TEXT = /usage limit|rate limit|out of .*quota/i;
@@ -281,6 +283,7 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
   // A review judges a diff the gates already tested: it never edits the code under review (R11.13 slice 2).
   // The chat searches its own guide and history with the tools of CHAT_TOOLS only; its Bash rules allow graphify queries and nothing else.
   const agent = req.kind === 'review' ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : req.kind === 'chat' ? { ...req.agent, tools: [...CHAT_TOOLS] } : req.agent;
+  const agentWithExtra = req.systemExtra ? { ...agent, body: `${agent.body}\n\n${req.systemExtra}` } : agent;
   const invocation = buildInvocation(
     {
       role: req.role,
@@ -295,7 +298,7 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
       home,
       sessionId: req.sessionId,
       resume: req.resume,
-      agentDefinition: agent,
+      agentDefinition: agentWithExtra,
       cacheTtl: PROMPT_CACHE_TTL,
       apiKey: deps.apiKey,
       effort: req.effort,

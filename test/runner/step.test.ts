@@ -373,9 +373,20 @@ describe('runStep', () => {
     expect(settings.permissions.allow).toEqual(['Bash(graphify query:*)']);
     expect(settings.sandbox.filesystem.denyRead).toContain('/ws/*/repo');
     expect(settings.permissions.deny).toContain('Read(//ws/*/repo)');
-    expect(stepCaps('chat', deps.caps).maxTurns).toBe(8);
+    expect(stepCaps('chat', deps.caps).maxTurns).toBe(6);
     expect(stepCaps('dev', deps.caps).maxTurns).toBe(50);
     expect(stepCaps('chat', { ...deps.caps, maxTurns: 3 }).maxTurns).toBe(3);
+  });
+
+  it('adds the step\'s own text to the end of the agent prompt, which is the part the API caches', async () => {
+    const capture = path.join(dir, 'capture.json');
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
+    await runStep(request({ kind: 'dev', systemExtra: 'EXTRA RULES' }), deps);
+    let captured = JSON.parse(await fs.readFile(capture, 'utf8'));
+    expect(JSON.parse(captured.argv[captured.argv.indexOf('--agents') + 1]).dev.prompt).toBe(`${devAgent.body}\n\nEXTRA RULES`);
+    await runStep(request({ kind: 'dev' }), deps);
+    captured = JSON.parse(await fs.readFile(capture, 'utf8'));
+    expect(JSON.parse(captured.argv[captured.argv.indexOf('--agents') + 1]).dev.prompt).toBe(devAgent.body);
   });
 
   it('returns an environment failure when the working directory does not exist, without trusting it', async () => {

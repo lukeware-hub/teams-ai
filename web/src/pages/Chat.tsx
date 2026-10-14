@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { chatApi, runApi, type ChatCorrection, type ChatMessage, type ProjectRow } from '../api.js';
+import { chatApi, runApi, type ChatCorrection, type ChatMessage, type ChatUsage, type ProjectRow } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { Dialog } from '../components/Dialog.js';
@@ -9,7 +9,7 @@ import { InfoTip } from '../components/InfoTip.js';
 import { Bone, Loading, Skeleton } from '../components/Loading.js';
 import { Markdown } from '../components/Markdown.js';
 import { Select } from '../components/Select.js';
-import { emptyState } from './project-shared.js';
+import { emptyState, grouped, money } from './project-shared.js';
 
 const HELP = 'Aqui você só tira dúvidas. O chat não dá ordens aos agentes: eles seguem apenas as specs e o backlog. Se o chat achar algo sendo feito que não deveria, ele abre uma spec de correção para você revisar.';
 const EXAMPLES = ['Como crio uma nova spec?', 'O que está sendo desenvolvido agora?', 'Quais tarefas estão bloqueadas e por quê?', 'Algo está sendo feito fora do que foi pedido?'];
@@ -40,6 +40,14 @@ export function plainError(message: string): string {
 const bubble = 'max-w-[48rem] rounded-lg px-4 py-2.5 text-[0.9375rem] leading-[1.5] wrap-anywhere';
 const notice = 'm-0 max-w-[48rem] rounded-md bg-warn-soft px-3 py-[0.65rem] text-[0.8125rem] text-warn';
 
+const USAGE_HELP = 'Lidos: tudo que o Claude leu para responder (contexto do projeto, conversa e guia). Escritos: o que ele escreveu. O custo é uma estimativa nos preços da API; na assinatura ele conta como uso do seu limite.';
+
+/** What one answer cost, as one meta line (design.md §11.12). */
+export function usageLine(u: ChatUsage): string {
+  const read = u.inputTokens + u.cacheReadTokens + u.cacheWriteTokens;
+  return [u.costUsd === null ? null : `Custo estimado ${money(u.costUsd)}`, `${grouped(read)} tokens lidos`, `${grouped(u.outputTokens)} escritos`, u.seconds < 1 ? 'menos de 1 s' : `${u.seconds} s`].filter(Boolean).join(' · ');
+}
+
 function Correction({ projectId, correction }: { projectId: string; correction: ChatCorrection }) {
   return (
     <p className={notice}>
@@ -57,6 +65,7 @@ function Message({ projectId, message }: { projectId: string; message: ChatMessa
   return (
     <div className="grid justify-items-start gap-2">
       <div className={`${bubble} border border-line bg-surface text-ink`}><Markdown source={message.text} /></div>
+      {message.usage ? <p className="m-0 flex items-center gap-1 text-[0.75rem] text-ink-soft tabular-nums" data-testid="usage">{usageLine(message.usage)}<InfoTip text={USAGE_HELP} /></p> : null}
       {message.correction ? <Correction projectId={projectId} correction={message.correction} /> : null}
     </div>
   );
