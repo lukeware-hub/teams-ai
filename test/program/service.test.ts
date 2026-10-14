@@ -76,6 +76,15 @@ describe('program service outcomes', () => {
     expect(await s.outcome('c-r1')).toMatchObject({ kind: 'failed' });
   });
 
+  it('delivers a run that ended delivered with only a fix task of an earlier deploy attempt blocked', async () => {
+    const planned = { type: 'FIX_TASKS_PLANNED', data: { tasks: [{ id: 'T950-deploy-fix-1', origin: 'deploy-fix' }, { id: 'T900-fix-1', origin: 'fix' }] } };
+    await journal('a-r1', [started('a'), planned, finished('awaiting-validation', { blocked: [{ taskId: 'T950-deploy-fix-1', reason: 'the environment lacks X' }] })]);
+    await journal('b-r1', [started('b'), planned, finished('awaiting-validation', { blocked: [{ taskId: 'T950-deploy-fix-1', reason: 'x' }, { taskId: 'T5', reason: 'no change' }] })]);
+    const s = service();
+    expect(await s.outcome('a-r1')).toEqual({ kind: 'delivered', costUsd: null });
+    expect(await s.outcome('b-r1')).toMatchObject({ kind: 'failed', reason: expect.stringMatching(/^finished with 1 blocked task\(s\): T5 /) });
+  });
+
   it('a completion run that ended done is done; every other end is a failure with its reason', async () => {
     await journal('a-complete-r1', [started('a'), finished('done')]);
     await journal('c-r1', [started('c'), finished('verification-failed', { reason: 'AC-004 missing' })]);
@@ -198,6 +207,24 @@ describe('program service tick', () => {
     await fs.writeFile(ledger, JSON.stringify({ version: 1, draftId: 'd', status: 'running', updatedAt: '', items: [item] }));
     const final = await service(cause('spec-problem')).tick('shop', 'd');
     expect(final!.items[0]).toMatchObject({ status: 'failed', reason: 'verification-failed: AC-004 missing' });
+  });
+});
+
+describe('a spec already delivered', () => {
+  it('is never frozen again: the repair reads the run that delivered it and ends with its real reason', async () => {
+    await fs.mkdir(path.join(root, 'draft', 'docs', 'specs', 'd-a'), { recursive: true });
+    await fs.writeFile(path.join(root, 'draft', 'docs', 'project.json'), JSON.stringify(makeProject()));
+    await fs.writeFile(path.join(root, 'draft', 'docs', 'specs', 'd-a', 'spec.json'), JSON.stringify({ ...makeFrozenSpec({ specId: 'd-a' }), status: 'awaiting-validation' }));
+    const item = { specId: 'd-a', key: 'a', rank: 1, dependsOn: [], status: 'running', runId: 'd-a-r1', completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0 };
+    await fs.writeFile(path.join(root, 'draft', 'program.json'), JSON.stringify({ version: 1, draftId: 'd', status: 'running', updatedAt: '', items: [item] }));
+    await journal('d-a-r1', [started('d-a'), finished('awaiting-validation', { blocked: [{ taskId: 'T5', reason: 'no change' }] })]);
+    const cause = { decide: async () => ({ answered: true as const, backend: 'jev' as const, escalated: false, answers: { cause: { type: 'choice' as const, value: 'code-defect', probabilities: { 'code-defect': 1 }, confidence: 1 } } }) };
+    let p = await service(cause).tick('shop', 'd');
+    expect(p!.items[0]).toMatchObject({ repairs: 1 });
+    for (let i = 0; i < 3 && p!.items[0]!.status !== 'failed'; i++) p = await service(cause).tick('shop', 'd');
+    expect(p!.items[0]).toMatchObject({ status: 'failed' });
+    expect(p!.items[0]!.reason).toMatch(/^finished with 1 blocked task\(s\): T5 /);
+    expect(p!.items[0]!.reason).not.toContain('only refining or planned specs can be frozen');
   });
 });
 

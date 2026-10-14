@@ -196,6 +196,9 @@ export class ProgramService {
       now: () => this.now(),
       findActiveRun: async (specId) => (await listRuns(await this.index(), projectId)).find((r) => r.specId === specId && claimsSpec(r))?.runId ?? null,
       startRun: async (specId) => {
+        // A spec already delivered cannot be frozen again: the run that delivered it is the one to read (live: guide-detail-timeline failed on that freeze after its own delivery).
+        const delivered = await this.deliveredRun(projectId, root, specId);
+        if (delivered) return { runId: delivered };
         await this.deps.freezeItem(projectId, draftId, specId);
         const runs = runsDirOf(await this.index());
         const runId = await nextRunId({ runs, projectId }, specId);
@@ -231,6 +234,14 @@ export class ProgramService {
       outcome: async (runId) => this.outcome(runId),
       repair: this.deps.decider && ((specId, failures) => this.repair(root, specId, failures)),
     };
+  }
+
+  /** The latest run that ended awaiting validation, when the draft's spec is already past it. */
+  private async deliveredRun(projectId: string, root: string, specId: string): Promise<string | null> {
+    const spec = Spec.safeParse(JSON.parse((await fs.readFile(path.posix.join(root, 'docs', 'specs', specId, 'spec.json'), 'utf8').catch(() => 'null'))));
+    if (!spec.success || spec.data.status !== 'awaiting-validation') return null;
+    const rows = (await listRuns(await this.index(), projectId)).filter((r) => r.specId === specId && r.status === 'awaiting-validation');
+    return rows.map((r) => r.runId).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).at(-1) ?? null;
   }
 
   /** Classifies the latest failure; when another run may fix it, leaves every failure for that run to read. */
@@ -274,7 +285,9 @@ export class ProgramService {
         // The repair loop redid a blocked task's work when every criterion it owns passed verification; one that owns none is work nothing measured.
         const matrix = (([...(await events())].reverse().find((e) => e.type === 'VERIFICATION_PASSED')?.data.matrix ?? []) as Array<{ tasks: string[]; status: string }>);
         const covered = (taskId: string) => matrix.some((r) => r.tasks.includes(taskId)) && matrix.every((r) => !r.tasks.includes(taskId) || r.status === 'passed');
-        const blocked = (data?.blocked ?? []).filter((b) => !covered(b.taskId));
+        // A fix task that blocked on an earlier deploy attempt is moot once the run was delivered: the deploy and the verification it served passed (live: guide-detail-timeline, delivered with T950-deploy-fix-1 blocked, then failed on a restart of a spec already delivered).
+        const fixTasks = new Set([...(await events())].flatMap((e) => (e.type === 'FIX_TASKS_PLANNED' ? ((e.data.tasks ?? []) as Array<{ id: string; origin?: string }>) : e.type === 'TASK_PLANNED' ? [e.data.task as { id: string; origin?: string }] : [])).filter((t) => t.origin === 'fix' || t.origin === 'deploy-fix').map((t) => t.id));
+        const blocked = (data?.blocked ?? []).filter((b) => !covered(b.taskId) && !fixTasks.has(b.taskId));
         const costUsd = data?.tokens?.costUsd ?? null;
         return blocked.length === 0 ? { kind: 'delivered', costUsd } : { kind: 'failed', reason: `finished with ${blocked.length} blocked task(s): ${blocked.map((b) => `${b.taskId} (${b.reason})`).join('; ').slice(0, 400)}`, costUsd };
       }
