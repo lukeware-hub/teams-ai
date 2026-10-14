@@ -232,9 +232,9 @@ export async function withRefreshGate<T>(hostEnv: NodeJS.ProcessEnv, clock: () =
   }
 }
 
-/** `<workspaces>/<project>/secrets` of every project: a step reads no project's secrets, neither its own nor another's. */
+/** `<workspaces>/<project>/secrets` of every project: a step reads no project's secrets, neither its own nor another's. A listing that fails ends the step: it never runs without the rule. */
 async function projectSecretsDirs(workspacesRoot: string): Promise<string[]> {
-  const projects = await fs.readdir(workspacesRoot).catch(() => []);
+  const projects = await fs.readdir(workspacesRoot);
   return projects.map((project) => path.join(workspacesRoot, project, 'secrets'));
 }
 
