@@ -12,6 +12,8 @@ let home = '';
 
 beforeEach(async () => {
   home = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-chatsvc-'));
+  await fs.mkdir(path.join(home, 'ws', 'imports'), { recursive: true });
+  await fs.writeFile(path.join(home, 'config.json'), '{}');
 });
 afterEach(async () => {
   await fs.rm(home, { recursive: true, force: true });
@@ -69,7 +71,9 @@ describe('ChatService.ask', () => {
     expect(call.extraAllow).toEqual([...CHAT_ALLOW]);
     expect(CHAT_ALLOW).toEqual(['Bash(graphify query:*)', 'Bash(graphify explain:*)', 'Bash(graphify path:*)']);
     const ws = path.join(home, 'ws');
-    expect(call.denyRead).toEqual(expect.arrayContaining([path.join(ws, '*', 'repo'), path.join(ws, '*', 'worktrees'), path.join(home, 'runs'), path.join(home, 'chats')]));
+    // the whole workspace of each project (drafts, services, environment, code), the folders next to it, and nothing of the chat's own directory
+    expect(call.denyRead).toEqual(expect.arrayContaining([path.join(ws, '*', 'repo'), path.join(ws, '*', 'refine'), path.join(ws, '*', 'services'), path.join(ws, 'imports'), path.join(home, 'runs'), path.join(home, 'chats'), path.join(home, 'config.json')]));
+    expect(call.denyRead).not.toContain(ws);
     expect(call.denyRead!.some((d) => d.includes('_chat'))).toBe(false);
   });
 

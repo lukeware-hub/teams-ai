@@ -32,8 +32,8 @@ const UNAVAILABLE_DEFAULT = 'Não consegui responder agora. Tente de novo em ins
 
 /** The only commands the chat may run: queries on the guide graph. */
 export const CHAT_ALLOW: readonly string[] = ['Bash(graphify query:*)', 'Bash(graphify explain:*)', 'Bash(graphify path:*)'];
-/** What a project keeps inside its workspace that the chat must never read. */
-const PRIVATE_IN_WORKSPACE = ['repo', 'worktrees', 'graph', 'knowledge.sqlite'];
+/** What a project keeps inside its workspace; the wildcards cover a project created while a step runs. */
+const PRIVATE_IN_WORKSPACE = ['repo', 'worktrees', 'graph', 'knowledge.sqlite', 'refine', 'services', 'environment', 'secrets'];
 
 export interface ChatDeps {
   /** The folder of the user guide (`docs/guia`), copied into each question's working directory. */
@@ -117,15 +117,22 @@ export class ChatService {
     }
   }
 
-  /** Every project's code, worktrees, graph and index, the runs and the conversations: the chat reads none of them. The wildcards cover a project created while it runs. */
+  /**
+   * Everything of the user that the chat must not read, by listing instead of trusting the prompt: every project's whole workspace
+   * and every entry of the data folder except the workspaces (configuration and its backups, runs, conversations, caches, secrets).
+   * The step reads only its own working directory, which the staging filled. A listing that fails ends the step.
+   */
   private async privateDirs(root: string): Promise<string[]> {
+    const base = path.dirname(this.deps.store.dir);
     const projects = (await fs.readdir(root)).filter((name) => !name.startsWith('_'));
-    return [
+    const data = (await fs.readdir(base)).filter((name) => name !== path.basename(root));
+    return [...new Set([
       ...PRIVATE_IN_WORKSPACE.map((dir) => path.join(root, '*', dir)),
-      ...projects.flatMap((project) => PRIVATE_IN_WORKSPACE.map((dir) => path.join(root, project, dir))),
+      ...projects.map((project) => path.join(root, project)),
+      ...data.map((name) => path.join(base, name)),
       runsDir(await this.deps.index()),
       this.deps.store.dir,
-    ];
+    ])];
   }
 
   /** A failure to open the correction never loses the answer: the message says why instead. */
