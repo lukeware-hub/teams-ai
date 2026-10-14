@@ -10,7 +10,8 @@ import { redactSecrets } from '../core/redact.js';
 import { addProject, removeProjectDirs } from '../onboarding/config-store.js';
 import { repoName } from '../core/ids.js';
 import type { Graphify } from '../knowledge/graphify.js';
-import { expandHome, graphDir, serviceWorkspace, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
+import { buildProjectGraph } from '../knowledge/project-graph.js';
+import { expandHome, serviceWorkspace, workspacePaths } from '../orchestrator/workspace.js';
 import { execCommand, type Exec } from '../exec/command.js';
 import { nextRunId } from '../orchestrator/workspace.js';
 import { reduceEvents } from '../pipeline/run-state.js';
@@ -156,12 +157,6 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       });
     }));
     return results.filter((s): s is string => s !== null);
-  };
-  /** One code graph of the project: each cloned repository's graph, merged, so the chat can query all of it. */
-  const buildProjectGraph = async (graphify: Graphify, ws: Workspace, services: string[]): Promise<void> => {
-    const repos = [ws, ...services.map((service) => serviceWorkspace(ws, service))];
-    for (const repo of repos) await graphify.update(repo.repo, graphDir(repo, null));
-    await graphify.merge(repos.map((repo) => graphDir(repo, null)), path.posix.join(ws.graph, 'project'));
   };
   const events = async (runs: string, runId: string): Promise<StoredEvent[]> => {
     const file = path.join(runs, runId, 'events.ndjson');
@@ -315,7 +310,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           const services = read.project.services ?? [];
           servicesNotCloned = await cloneServices(cfg, source.url, read.project.projectId, services);
           const cloned = services.filter((s) => !servicesNotCloned.includes(s));
-          if (deps.graphify) buildProjectGraph(deps.graphify, workspacePaths(cfg, read.project.projectId, deps.home), cloned).catch((err: Error) => deps.log?.(`project graph not built: ${err.message}`));
+          if (deps.graphify) buildProjectGraph(deps.graphify, workspacePaths(cfg, read.project.projectId, deps.home), read.project, cloned).catch((err: Error) => deps.log?.(`project graph not built: ${err.message}`));
         }
         await addProject(dir, deps.home);
         const idx = await index();
