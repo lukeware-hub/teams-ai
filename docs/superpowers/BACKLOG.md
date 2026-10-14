@@ -96,6 +96,11 @@ Severidade: **crítico** = segredo exposto ou custo sem limite; **importante** =
 
 - [x] **O programa reexecutava a mesma falha até esgotar os reparos.** `server/program/controller.ts` `failOrRepair`: uma falha cujo início (400 caracteres) repete uma que já gerou reparo deixa o item `failed` para o dono agir. Visto em run: privacy-engine run-1, run-2 e run-3 falharam no e2e com o mesmo `PLATFORM_ADMIN_TOKEN` ausente (3 deploys cada).
 
+- [x] **Uma classe de falha de deploy sem causa visível ao Dev.** `server/deploy/docker-local.ts`: quando `compose up` falha, as últimas linhas de log dos containers (com segredos redigidos) entram na mensagem, então a fix-task vê o motivo real. Visto em run: signature-approval-pattern, postgres em loop de reinício e ninguém sabia o porquê.
+- [x] **Senha de banco do próprio compose sem ninguém para fornecê-la.** `server/deploy/datastore-credentials.ts`: a plataforma cria uma vez por projeto `POSTGRES_PASSWORD` e as equivalentes de MySQL, MariaDB, MongoDB, Redis e RabbitMQ (um valor que o dono já tenha fornecido prevalece) e as entrega ao `compose`. Visto em run: signature-approval-pattern, 3 deploys falhados por `POSTGRES_PASSWORD` vazio.
+- [x] **Specs cujos testes precisam de credencial não a declaravam.** `.claude/agents/po.md`: a regra manda declarar em `externalDependencies` toda credencial que teste, smoke, e2e ou deploy precise, com `generated: true` para as internas do projeto (token de administração entre serviços, chave de assinatura). Visto em run: privacy-engine (`PLATFORM_ADMIN_TOKEN`) e guide-detail-timeline (`E2E_AUTHORIZATION`), ambos `externalDependencies: []`.
+- [x] **Falha do classificador parava o programa.** `server/decide/decisions/failure-cause.ts`: o erro anterior (causa não classificada = não repetir) deixava specs `failed` sem nenhum reparo; revertido, a repetição idêntica já é barrada pelo controlador.
+
 ## Abertos
 
 Nenhum bug conhecido. Ação do dono, fora do código: o e2e de privacy-engine precisa de `PLATFORM_ADMIN_TOKEN` (ADR-030, pelo menos 32 caracteres, o mesmo valor do identity-service) nos segredos do projeto, declarado em `externalDependencies` da spec; sem a declaração o gate não o recebe.

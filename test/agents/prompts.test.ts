@@ -59,6 +59,9 @@ describe('agent prompts for a project of services (R12.6)', () => {
     expect(agent('test')).toContain('SERVICE_URL_<SERVICE>');
     expect(agent('po')).toContain('`project.services`');
     expect(agent('po')).toContain('`project.platform`');
+    // A credential a suite needs is declared up front, and an internal one is generated, so the run never fails at the end for a value nobody provided.
+    expect(agent('po')).toContain('set `generated: true` for an internal credential of the project');
+    expect(agent('po')).toContain('A datastore password of the service\'s own compose file needs no entry');
     for (const text of [SMOKE_CONTRACT, E2E_CONTRACT, e2eSuiteRules('e2e/')]) expect(text).toContain('SERVICE_URL_<SERVICE>');
   });
 });

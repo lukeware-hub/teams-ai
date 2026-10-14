@@ -2,10 +2,13 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { PlatformService } from '../contracts/project.js';
+import { redactSecrets } from '../core/redact.js';
 import type { Exec } from '../exec/command.js';
 import { imageName, imageRef, waitHealthy, type DeploymentIntent, type DeployTarget, type HttpGet } from './target.js';
 
 const TIMEOUT = 600_000;
+/** Longest container log a failed deploy carries into the feedback of the fix task. */
+const CONTAINER_LOG_CHARS = 2_500;
 
 /** Compose project name derived from the projectId (compose allows lowercase letters, digits, '-' and '_'). */
 export const composeProject = (projectId: string) => `teams-ai-${projectId}`.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
@@ -72,7 +75,7 @@ export class DockerLocalTarget implements DeployTarget {
   /** `serviceHost` is where the orchestrator (and the smoke gate) reach the service; `publishBind` is the
    * address the container port is published on. Both default to loopback; when the orchestrator itself
    * runs in a container the service lives on the host daemon, so it needs host.docker.internal / 0.0.0.0. */
-  constructor(private readonly deps: { exec: Exec; get: HttpGet; secrets: Record<string, string>; serviceHost?: string; publishBind?: string }) {}
+  constructor(private readonly deps: { exec: Exec; get: HttpGet; secrets: Record<string, string>; /** Datastore passwords the platform made up for the compose files that ask for them. */ generated?: Record<string, string>; serviceHost?: string; publishBind?: string }) {}
 
   private container(intent: DeploymentIntent) {
     return `teams-ai-${intent.projectId}`;
@@ -131,7 +134,7 @@ export class DockerLocalTarget implements DeployTarget {
 
   /** `shared` false reads the service's own compose file alone, as `service()` does to name the container the extra file joins. */
   private async compose(intent: DeploymentIntent, args: string[], image: string | null, timeoutMs = 120_000, shared = true) {
-    const env: Record<string, string> = image ? { TEAMS_AI_IMAGE: image } : {};
+    const env: Record<string, string> = { ...this.deps.generated, ...(image ? { TEAMS_AI_IMAGE: image } : {}) };
     for (const n of intent.secretNames) env[n] = this.deps.secrets[n]!;
     const run = (extra: string[]) =>
       this.deps.exec({ bin: 'docker', args: ['compose', '-p', this.project(intent), '-f', `${intent.contextDir.replaceAll('\\', '/')}/${intent.compose}`, ...extra, '--project-directory', intent.contextDir, ...args], env, timeoutMs });
@@ -281,7 +284,7 @@ export class DockerLocalTarget implements DeployTarget {
     const previous = await this.currentImage(intent);
     if (intent.compose) {
       const r = await this.compose(intent, ['up', '-d', '--build', '--wait'], imageRef(intent), TIMEOUT);
-      if (r.exitCode !== 0) throw new Error(dockerFailure('docker compose up', r.stderr));
+      if (r.exitCode !== 0) throw new Error(`${dockerFailure('docker compose up', r.stderr)}${await this.containerLogs(intent)}`);
       // A restart of the docker daemon would leave the stack stopped for good: the running containers come back by themselves, and a one-shot one that already ended is not among them.
       const running = (await this.compose(intent, ['ps', '-q'], null, 60_000)).stdout.trim().split(/\s+/).filter((id) => id !== '');
       if (running.length > 0) await this.docker(['update', '--restart', 'unless-stopped', ...running], undefined, 60_000);
@@ -290,6 +293,13 @@ export class DockerLocalTarget implements DeployTarget {
     }
     await this.run(intent, imageRef(intent));
     return { previous };
+  }
+
+  /** The last lines the stack's containers printed: the Dev that fixes a failed deploy reads them, or it guesses (live: a postgres that never started, and nobody saw why). */
+  private async containerLogs(intent: DeploymentIntent): Promise<string> {
+    const r = await this.compose(intent, ['logs', '--no-color', '--tail', '25'], null, 60_000).catch(() => null);
+    const text = redactSecrets(`${r?.stdout ?? ''}${r?.stderr ?? ''}`.trim(), [...Object.values(this.deps.secrets), ...Object.values(this.deps.generated ?? {})]);
+    return text === '' ? '' : `\n\ncontainer logs (last lines):\n${text.slice(-CONTAINER_LOG_CHARS)}`;
   }
 
   async verify(intent: DeploymentIntent) {

@@ -46,6 +46,22 @@ describe('DockerLocalTarget with a compose file', () => {
     expect(fake.lines('docker').some((l) => l.startsWith('run '))).toBe(false);
   });
 
+  it('hands the generated datastore passwords to the compose call, and a declared secret of the same name wins', async () => {
+    const fake = new FakeExec().on((s) => s.args.includes('ps'), () => ({ stdout: 'abc\n' })).onArgs('docker', ['inspect'], () => ({ stdout: 'todo-api:old\n' }));
+    await new DockerLocalTarget({ exec: fake.exec, get: okGet, secrets, generated: { POSTGRES_PASSWORD: 'made-up', DATABASE_URL: 'ignored' } }).apply(intent);
+    expect(fake.calls.find((c) => c.args.includes('up'))!.env).toEqual({ POSTGRES_PASSWORD: 'made-up', DATABASE_URL: 'postgres://x', TEAMS_AI_IMAGE: 'todo-api:t1' });
+  });
+
+  it('adds the last lines the containers printed to a failed compose up, with the secrets redacted', async () => {
+    const fake = new FakeExec()
+      .on((s) => s.args.includes('up'), () => ({ exitCode: 1, stderr: 'dependency failed to start: container x-postgres-1 is unhealthy' }))
+      .on((s) => s.args.includes('logs'), () => ({ stdout: 'postgres-1  | Error: Database is uninitialized\npostgres-1  | url postgres://x' }));
+    const err = await mk(fake).apply(intent).catch((e: Error) => e);
+    expect((err as Error).message).toContain('is unhealthy');
+    expect((err as Error).message).toContain('container logs (last lines):\npostgres-1  | Error: Database is uninitialized\npostgres-1  | url [REDACTED]');
+    expect((err as Error).message).not.toContain('postgres://x');
+  });
+
   it('keeps the running containers of a deployed stack coming back after a restart of the docker daemon', async () => {
     const fake = new FakeExec().on((s) => s.args.includes('ps') && s.args.includes('-q'), () => ({ stdout: 'c1\nc2\n' })).onArgs('docker', ['inspect'], () => ({ stdout: 'todo-api:old\n' }));
     await mk(fake).apply(intent);

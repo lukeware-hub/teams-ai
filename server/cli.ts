@@ -33,6 +33,7 @@ import { routeReport } from './decide/decisions/report-routing.js';
 import { Accounting } from './budget/accounting.js';
 import { addProject, readUserConfig } from './onboarding/config-store.js';
 import { hasScript, spawnScriptPty } from './onboarding/pty.js';
+import { DATASTORE_CREDENTIALS, datastoreCredentialsOf } from './deploy/datastore-credentials.js';
 import { DockerLocalTarget } from './deploy/docker-local.js';
 import { httpGet } from './deploy/target.js';
 import { readRepairNotes } from './program/repair-notes.js';
@@ -213,7 +214,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   const allowed = opts.readme ? spec.status !== 'refining' : opts.deploy ? spec.status === 'awaiting-validation' || spec.status === 'done' : opts.complete ? spec.status === 'awaiting-validation' : spec.status === 'running';
   if (!allowed || !spec.specHash) throw new Error(`spec ${specId} is not ${opts.readme ? 'past refinement' : opts.deploy ? 'delivered (awaiting-validation or done)' : opts.complete ? 'awaiting-validation' : 'running'} (status ${spec.status}); finish Gate 1 first`);
   const platformSecrets = await loadSecrets(expandHome(cfg.paths.secrets));
-  await ensureGeneratedSecrets(path.posix.join(ws.root, 'secrets'), generatedSecretNames(spec.externalDependencies), platformSecrets);
+  await ensureGeneratedSecrets(path.posix.join(ws.root, 'secrets'), [...generatedSecretNames(spec.externalDependencies), ...DATASTORE_CREDENTIALS], platformSecrets);
   const secrets = { ...platformSecrets, ...(await loadSecrets(path.posix.join(ws.root, 'secrets'))) };
   const gitAuth = gitAuthEnv(platformSecrets.GITHUB_TOKEN);
   const exec: Exec = (s) => execCommand(s.bin === 'git' ? { ...s, env: { ...(s.env ?? {}), ...gitAuth } } : s);
@@ -241,7 +242,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
     io.stderr('dry run: every agent step answers from the fake claude scenario (set steps in code before use)');
   }
   const bootstrap = draft ? { docsDir: path.join(projectDir, 'docs'), owner: project.github.owner ?? cfg.github.owner } : undefined;
-  const target = new DockerLocalTarget({ exec, get: httpGet, secrets, serviceHost: cfg.docker.serviceHost, publishBind: cfg.docker.publishBind });
+  const target = new DockerLocalTarget({ exec, get: httpGet, secrets, generated: datastoreCredentialsOf(secrets), serviceHost: cfg.docker.serviceHost, publishBind: cfg.docker.publishBind });
   return { cfg, ws, project, spec, repairNotes: await readRepairNotes(projectDir, specId), firstSpec, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, requireCoverage: true, requireFrozenScope: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target };
 }
 
