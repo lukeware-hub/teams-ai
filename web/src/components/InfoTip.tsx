@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Icon } from './Icons.js';
 
 /**
@@ -30,5 +30,15 @@ export function InfoTip({ text, label }: { text: string; label?: string }) {
         </span>
       ) : null}
     </button>
+  );
+}
+
+/** A flag with its explanation beside it. */
+export function Tipped({ text, children }: { text: string; children: ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1 justify-self-start">
+      {children}
+      <InfoTip text={text} />
+    </span>
   );
 }

@@ -4,11 +4,12 @@ import { runApi, type AcceptanceCriterion, type Report, type RunDetail, type Ser
 import { ActionButton } from '../components/ActionButton.js';
 import { SortHeader, TableFilters, useTableView } from '../components/DataTable.js';
 import { Icon } from '../components/Icons.js';
-import { InfoTip } from '../components/InfoTip.js';
+import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { explainBlockReason, rootBlockers, stopBefore, stopSummary } from '../run/selectors.js';
 import { PUBLISHED_PORTS, serviceLinks } from '@server/deploy/service-links';
 import { RUN_UI } from './Run.js';
+import { STATUS_HELP } from './project-shared.js';
 import { Workspace } from '../components/Workspace.js';
 
 /** Run and spec statuses in the words the Run page uses for them. */
@@ -38,10 +39,9 @@ const RESULT: Record<string, { label: string; tone: string; help: string }> = {
 function ResultChip({ status }: { status: string }) {
   const r = RESULT[status];
   return (
-    <span className="inline-flex items-center gap-1">
+    <Tipped text={r?.help ?? 'Resultado informado pelo teste.'}>
       <span className={`status-chip ${r?.tone ?? ''}`}>{r?.label ?? status}</span>
-      {r ? <InfoTip text={r.help} /> : null}
-    </span>
+    </Tipped>
   );
 }
 const CRITERION_HELP = 'Critério de aceite: uma condição que o serviço publicado precisa cumprir para a spec ser aceita.';
@@ -131,11 +131,11 @@ const TD_MONO = 'font-mono text-[0.78rem] text-ink-soft';
 const FINDINGS = `${RUN_UI.boxList} [&>li]:px-[0.9rem] [&>li]:py-[0.7rem] [&>li]:text-[0.875rem] [&>li]:leading-normal`;
 // Commands, URLs and JSON the agents quoted between backticks.
 const CODE = '[&_code]:rounded-sm [&_code]:bg-surface-muted [&_code]:px-[0.35rem] [&_code]:py-[0.05rem] [&_code]:text-[0.8125rem] [&_code]:text-ink [&_code]:wrap-anywhere';
-const SEVERITY: Record<string, { label: string; tone: string }> = {
-  critical: { label: 'Gravidade crítica', tone: 'tone-bad' },
-  high: { label: 'Gravidade alta', tone: 'tone-bad' },
-  medium: { label: 'Gravidade média', tone: 'tone-warn' },
-  low: { label: 'Gravidade baixa', tone: '' },
+const SEVERITY: Record<string, { label: string; tone: string; help: string }> = {
+  critical: { label: 'Gravidade crítica', tone: 'tone-bad', help: 'Falha de segurança grave: corrija antes de aceitar o serviço.' },
+  high: { label: 'Gravidade alta', tone: 'tone-bad', help: 'Falha de segurança importante: corrija antes de aceitar o serviço.' },
+  medium: { label: 'Gravidade média', tone: 'tone-warn', help: 'Falha de segurança moderada: vale corrigir em breve.' },
+  low: { label: 'Gravidade baixa', tone: '', help: 'Falha de segurança leve, com pouco risco.' },
 };
 /** Agent text marks commands, URLs and JSON with backticks: show them as code instead of loose quote marks. */
 function Rich({ text }: { text: string }) {
@@ -145,7 +145,12 @@ function Rich({ text }: { text: string }) {
 }
 /** A service's state: still checking, answering or not. */
 function StatePill({ checking, online, testId }: { checking: boolean; online: boolean; testId?: string }) {
-  return <span data-testid={testId} className={`status-pill tone-${checking ? 'neutral' : online ? 'good' : 'bad'}`}>{checking ? 'Verificando' : online ? 'No ar' : 'Fora do ar'}</span>;
+  const help = checking ? 'A plataforma está perguntando ao serviço se ele responde.' : online ? 'O serviço respondeu à verificação e está no ar.' : 'O serviço não respondeu à verificação.';
+  return (
+    <Tipped text={help}>
+      <span data-testid={testId} className={`status-pill tone-${checking ? 'neutral' : online ? 'good' : 'bad'}`}>{checking ? 'Verificando' : online ? 'No ar' : 'Fora do ar'}</span>
+    </Tipped>
+  );
 }
 const openLink = (href: string, testId: string, text: string, primary: boolean, label?: string) => (
   <a className={`${primary ? 'primary-button' : 'link-button'} ${RUN_UI.action}`} data-testid={testId} href={href} target="_blank" rel="noreferrer" aria-label={label}>
@@ -299,7 +304,9 @@ export function ValidationView({ detail, specStatus, actionError = null, service
         <div className="min-w-0">
           <h1 className={RUN_UI.title}>Validação</h1>
           <div className={RUN_UI.meta}>
-            <span className={`status-pill tone-${enabled ? 'neutral' : specStatus === 'done' ? 'good' : 'warn'}`}>{statusLabel(report && specStatus ? specStatus : detail.status)}</span>
+            <Tipped text={STATUS_HELP[report && specStatus ? specStatus : detail.status] ?? STATUS_HELP.unknown!}>
+              <span className={`status-pill tone-${enabled ? 'neutral' : specStatus === 'done' ? 'good' : 'warn'}`}>{statusLabel(report && specStatus ? specStatus : detail.status)}</span>
+            </Tipped>
             <span className="hint">
               {detail.runId} / {detail.specId}
             </span>
@@ -429,7 +436,7 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                         <ul className={FINDINGS} data-testid="security-findings">
                           {report.securityFindings.map((f, i) => (
                             <li key={i} data-testid={`security-${i}`}>
-                              <span className={`status-chip ${SEVERITY[f.severity]?.tone ?? ''}`}>{SEVERITY[f.severity]?.label ?? f.severity}</span>{' '}
+                              <Tipped text={SEVERITY[f.severity]?.help ?? 'Gravidade informada pelo agente de segurança.'}><span className={`status-chip ${SEVERITY[f.severity]?.tone ?? ''}`}>{SEVERITY[f.severity]?.label ?? f.severity}</span></Tipped>{' '}
                               {f.taskId ? `${f.taskId} · ` : ''}{f.file}{f.line === null ? '' : `:${f.line}`} · {f.category}: {f.problem} <span className="hint">Correção sugerida: {f.fix}</span>
                             </li>
                           ))}

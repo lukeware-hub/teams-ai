@@ -5,7 +5,8 @@ import { runApi, startedPath, type RunDetail, type StoredEvent } from '../api.js
 import { ActionButton } from '../components/ActionButton.js';
 import { Dialog } from '../components/Dialog.js';
 import { Icon, type IconName } from '../components/Icons.js';
-import { InfoTip } from '../components/InfoTip.js';
+import { InfoTip, Tipped } from '../components/InfoTip.js';
+import { STATUS_HELP } from './project-shared.js';
 import { Loading } from '../components/Loading.js';
 import { Markdown } from '../components/Markdown.js';
 import { safeHttpUrl } from '../safeUrl.js';
@@ -118,6 +119,16 @@ const roleName = (role: string) =>
 
 const OWNER_ICON: Record<string, IconName> = { dev: 'code', devops: 'server', test: 'check', sec: 'shield', po: 'clipboard', sm: 'list' };
 const ORIGIN_LABEL: Record<string, string> = { fix: 'correção', 'deploy-fix': 'correção de deploy' };
+const ORIGIN_HELP: Record<string, string> = { fix: 'Tarefa criada para corrigir um problema encontrado numa tarefa anterior.', 'deploy-fix': 'Tarefa criada para corrigir uma falha do deploy.' };
+const SERVICE_HELP = 'O serviço do projeto ao qual esta tarefa pertence.';
+const PHASE_HELP: Record<string, string> = {
+  concluída: 'A fase terminou.',
+  falhou: 'A fase falhou. Abra a fase para ver o que aconteceu.',
+  'em execução': 'A fase está rodando agora.',
+  interrompida: 'O processo parou no meio desta fase. Use Retomar.',
+  pausada: 'A execução está pausada por limite de uso ou por login. A fase continua quando isso se resolver.',
+  'com bloqueios': 'A fase terminou, mas algumas tarefas ficaram bloqueadas.',
+};
 const PATHS_SHOWN = 3;
 const FACET_ICON = 'inline-grid h-6 cursor-help place-items-center text-ink-faint';
 const FACET_ITEMS = 'flex min-h-6 min-w-0 flex-wrap items-center gap-[0.35rem]';
@@ -172,12 +183,14 @@ function PlanCard({ plan }: { plan: NonNullable<RunDetail['plan']> }) {
                 <span className={`min-w-[5.75rem] flex-none text-ink-soft ${TASK_ID}`}>{task.id}</span>
                 <span className={`${ROW_TITLE} font-medium wrap-anywhere`}>{task.title}</span>
                 <span className="inline-flex flex-none items-center gap-[0.4rem] [&_.tag]:m-0">
-                  {task.service ? <span className="tag" title="Serviço">{task.service}</span> : null}
-                  {task.origin !== 'plan' ? <span className="tag">{ORIGIN_LABEL[task.origin] ?? task.origin}</span> : null}
-                  <span className="owner-chip" title={`Responsável pela tarefa: ${owner}`}>
-                    <Icon name={OWNER_ICON[task.owner] ?? 'user'} size={14} />
-                    {owner}
-                  </span>
+                  {task.service ? <Tipped text={SERVICE_HELP}><span className="tag" title="Serviço">{task.service}</span></Tipped> : null}
+                  {task.origin !== 'plan' ? <Tipped text={ORIGIN_HELP[task.origin] ?? 'De onde esta tarefa veio.'}><span className="tag">{ORIGIN_LABEL[task.origin] ?? task.origin}</span></Tipped> : null}
+                  <Tipped text={`Responsável pela tarefa: ${owner}.`}>
+                    <span className="owner-chip" title={`Responsável pela tarefa: ${owner}`}>
+                      <Icon name={OWNER_ICON[task.owner] ?? 'user'} size={14} />
+                      {owner}
+                    </span>
+                  </Tipped>
                 </span>
               </div>
               <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-[0.6rem] gap-y-[0.4rem] pl-[6.6rem] max-md:pl-0">
@@ -221,9 +234,9 @@ function PlanCard({ plan }: { plan: NonNullable<RunDetail['plan']> }) {
   );
 }
 
-const TEST_RESULT: Record<string, { label: string; tone: string; icon: IconName }> = {
-  passed: { label: 'Passou', tone: 'good', icon: 'check' },
-  failed: { label: 'Falhou', tone: 'bad', icon: 'close' },
+const TEST_RESULT: Record<string, { label: string; tone: string; icon: IconName; help?: string }> = {
+  passed: { label: 'Passou', tone: 'good', icon: 'check', help: 'O teste rodou e passou.' },
+  failed: { label: 'Falhou', tone: 'bad', icon: 'close', help: 'O teste rodou e falhou.' },
 };
 /** `test::[AC-001] health endpoint answers 200` reads as `health endpoint answers 200`; the full id stays in the tooltip. */
 const testName = (id: string) => id.replace(/^.*?::/, '').replace(/^\[[^\]]+\]\s*/, '');
@@ -254,7 +267,7 @@ function EvidenceCard({ criteria, rows }: { criteria: RunDetail['acceptanceCrite
               <div className="grid min-w-0 gap-[0.4rem] [&_p]:m-0">
                 <p className="flex min-h-6 items-center gap-2 [&_.tag]:m-0">
                   <span className={TASK_ID}>{row.acId}</span>
-                  {criterion?.smoke ? <span className="tag" title="Também roda como teste rápido depois do deploy">smoke</span> : null}
+                  {criterion?.smoke ? <Tipped text="Também roda como teste rápido depois do deploy."><span className="tag" title="Também roda como teste rápido depois do deploy">smoke</span></Tipped> : null}
                 </p>
                 {criterion ? (
                   <p className="text-[0.875rem] leading-normal text-ink-soft wrap-anywhere [&_b]:font-semibold [&_b]:text-ink">
@@ -267,10 +280,12 @@ function EvidenceCard({ criteria, rows }: { criteria: RunDetail['acceptanceCrite
                       const result = TEST_RESULT[x.status] ?? { label: x.status, tone: 'warn', icon: 'info' as IconName };
                       return (
                         <li key={x.id} title={x.id} className="flex flex-wrap items-center gap-x-[0.6rem] gap-y-1">
-                          <span className={`status-pill gap-[0.3rem] px-2 py-[0.05rem] text-[0.75rem] before:hidden tone-${result.tone}`}>
-                            <Icon name={result.icon} size={12} />
-                            {result.label}
-                          </span>
+                          <Tipped text={result.help ?? 'O teste não rodou ou o resultado não é conhecido.'}>
+                            <span className={`status-pill gap-[0.3rem] px-2 py-[0.05rem] text-[0.75rem] before:hidden tone-${result.tone}`}>
+                              <Icon name={result.icon} size={12} />
+                              {result.label}
+                            </span>
+                          </Tipped>
                           <span className="min-w-0 text-[0.875rem] text-ink wrap-anywhere">{testName(x.id)}</span>
                           <span className="hint">tarefa {x.taskId}</span>
                         </li>
@@ -290,10 +305,13 @@ function EvidenceCard({ criteria, rows }: { criteria: RunDetail['acceptanceCrite
 }
 
 const OWNER_TONE: Partial<Record<StopOwner, string>> = { Plano: 'text-warn bg-warn-soft', Você: 'text-bad bg-bad-soft' };
+const OWNER_HELP: Record<StopOwner, string> = { Sistema: 'Quem precisa agir: o sistema, que resolve sozinho ou precisa de um ajuste da plataforma.', Plano: 'Quem precisa agir: o plano ou a spec precisa ser corrigido.', Você: 'Quem precisa agir: você.' };
 const ownerChip = (owner: StopOwner, testId?: string) => (
-  <span className={`owner-chip ${OWNER_TONE[owner] ?? ''}`} data-testid={testId}>
-    {owner}
-  </span>
+  <Tipped text={OWNER_HELP[owner]}>
+    <span className={`owner-chip ${OWNER_TONE[owner] ?? ''}`} data-testid={testId}>
+      {owner}
+    </span>
+  </Tipped>
 );
 
 /** Label/value rows of a failure dialog; a null row is skipped. */
@@ -505,7 +523,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
       <Dialog title={failed ? `${phaseTitle(openedPhase.phase)} falhou` : phaseTitle(openedPhase.phase)} onClose={closeDetail} returnFocus={opened.opener}>
         <Facts
           rows={[
-            ['Situação', <span className={tone ? `status-pill tone-${tone}` : 'status-pill'}>{label}</span>],
+            ['Situação', <Tipped text={PHASE_HELP[label] ?? STATUS_HELP.unknown!}><span className={tone ? `status-pill tone-${tone}` : 'status-pill'}>{label}</span></Tipped>],
             ['Início', hhmm(openedPhase.startedAt)],
             openedPhase.endedAt ? ['Duração', formatDuration(Date.parse(openedPhase.endedAt) - Date.parse(openedPhase.startedAt))] : null,
             openedPhase.attempt > 1 ? ['Tentativa', `${openedPhase.attempt}ª`] : null,
@@ -587,10 +605,12 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
         <div className="min-w-0">
           <h1 className={RUN_UI.title}>{detail.runId}</h1>
           <div className={RUN_UI.meta}>
-            <span data-testid="status" className={`status-pill tone-${statusTone(status)}`}>
-              {statusLabel(status)}
-              {ended ? ' (encerrada)' : ''}
-            </span>
+            <Tipped text={STATUS_HELP[status] ?? STATUS_HELP.unknown!}>
+              <span data-testid="status" className={`status-pill tone-${statusTone(status)}`}>
+                {statusLabel(status)}
+                {ended ? ' (encerrada)' : ''}
+              </span>
+            </Tipped>
             <span className="hint">
               {detail.projectId} / {detail.specId}
             </span>
@@ -821,11 +841,11 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                                 {id}
                               </button>
                               <span className={`${ROW_TITLE} leading-[1.45]`}>{tk.def.title}</span>
-                              {tk.def.service ? <span className="tag" title="Serviço">{tk.def.service}</span> : null}
+                              {tk.def.service ? <Tipped text={SERVICE_HELP}><span className="tag" title="Serviço">{tk.def.service}</span></Tipped> : null}
                               <span className="ml-auto inline-flex items-center gap-[0.4rem] text-[0.8125rem] whitespace-nowrap text-ink-soft max-md:ml-0 max-md:whitespace-normal [&_.tag]:m-0">
                                 {tk.attempts > 0 ? `${tk.attempts} ${tk.attempts === 1 ? 'tentativa' : 'tentativas'}` : null}
-                                {tk.replanned ? <span className="tag">replanejada</span> : null}
-                                {tk.def.origin && tk.def.origin !== 'plan' ? <span className={`tag tag-${tk.def.origin}`}>{tk.def.origin}</span> : null}
+                                {tk.replanned ? <Tipped text="O plano desta tarefa foi refeito durante a execução."><span className="tag">replanejada</span></Tipped> : null}
+                                {tk.def.origin && tk.def.origin !== 'plan' ? <Tipped text={ORIGIN_HELP[tk.def.origin] ?? 'De onde esta tarefa veio.'}><span className={`tag tag-${tk.def.origin}`}>{tk.def.origin}</span></Tipped> : null}
                               </span>
                             </li>
                           );
@@ -862,7 +882,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                             <button type="button" className="phase-name h-auto min-w-0 border-0 bg-transparent p-0 text-left text-[0.875rem] leading-[1.4] font-semibold text-ink tabular-nums hover:bg-transparent hover:text-accent-text hover:underline" aria-label={`Ver o que aconteceu em ${phaseTitle(p.phase)}`} onClick={openDetail({ kind: 'phase', phase: p.phase })}>
                               {phaseTitle(p.phase)}
                             </button>{' '}
-                            <span className={tone ? `status-pill tone-${tone}` : 'status-pill'}>{label}</span>
+                            <Tipped text={PHASE_HELP[label] ?? STATUS_HELP.unknown!}><span className={tone ? `status-pill tone-${tone}` : 'status-pill'}>{label}</span></Tipped>
                             {p.attempt > 1 ? <span className={`${META} text-ink-soft`}>{p.attempt}ª tentativa</span> : null}
                             {problems && p.result !== 'failed' ? (
                               <span className={`${META} text-warn`} data-testid="phase-problems-count">

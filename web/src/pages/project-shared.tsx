@@ -1,5 +1,7 @@
 // Shared between the project list (Projects.tsx) and the per-project hub (ProjectHub.tsx): status vocabulary,
 // chips and small formatters used by both screens' specs and runs rows.
+import { Tipped } from '../components/InfoTip.js';
+
 // A concluded spec is read-only: the next delivery is a new spec.
 export const CONTINUABLE = new Set(['awaiting-validation']);
 export const ACTIVE = new Set(['running', 'paused:quota', 'paused:auth', 'draining']);
@@ -41,11 +43,15 @@ export const sectionHeading = 'm-0 text-[0.875rem] font-semibold tracking-normal
 export const emptyState = 'grid justify-items-center gap-1 rounded-lg border border-line bg-surface-sunken px-6 py-10 text-center text-ink-faint [&_svg]:mb-2 [&_p]:m-0 [&_p]:max-w-[52ch] [&_p]:text-ink [&_p+p]:text-ink-soft [&_button]:mt-3';
 // Spec and draft rows share the list's columns, so ids, chips and actions line up; the list bleeds into the panel padding.
 export const rows = 'my-0 -mx-[0.6rem] grid list-none grid-cols-[minmax(0,16rem)_minmax(max-content,1fr)_auto] gap-x-3 p-0 max-lg:grid-cols-[minmax(0,1fr)_auto]';
-export const row = 'col-span-full grid min-h-12 grid-cols-subgrid items-center gap-y-2 border-b border-line px-[0.6rem] py-2 last:border-b-0 hover:bg-surface-sunken [&>.status-pill]:justify-self-start';
+export const row = 'col-span-full grid min-h-12 grid-cols-subgrid items-center gap-y-2 border-b border-line px-[0.6rem] py-2 last:border-b-0 hover:bg-surface-sunken';
 export const rowId = 'min-w-0 text-[0.875rem] font-medium text-ink wrap-anywhere';
 export const rowActions = 'flex justify-end gap-2 max-lg:col-span-full max-lg:flex-wrap max-lg:justify-start';
 
-export const chip = (status: string) =><span className={TONE[status] ? `status-pill tone-${TONE[status]}` : 'status-pill'}>{LABEL[status] ?? status}</span>;
+export const chip = (status: string) => (
+  <Tipped text={STATUS_HELP[status] ?? STATUS_HELP.unknown!}>
+    <span className={TONE[status] ? `status-pill tone-${TONE[status]}` : 'status-pill'}>{LABEL[status] ?? status}</span>
+  </Tipped>
+);
 
 // What each run status flag means, one or two sentences for the info glyph beside the flag.
 export const STATUS_HELP: Record<string, string> = {
@@ -64,7 +70,16 @@ export const STATUS_HELP: Record<string, string> = {
   'verification-failed': 'Os testes ou as verificações de qualidade não passaram.',
   'deploy-failed': 'O serviço não subiu no ambiente local.',
   'launch-failed': 'A execução não chegou a começar.',
-  unknown: 'Não há registro suficiente para saber o estado desta execução.',
+  idle: 'A spec está pronta: ainda não foi executada e pode ser iniciada.',
+  refining: 'A spec ainda está sendo escrita e refinada, e ainda não pode ser executada.',
+  planned: 'A spec está planejada no backlog e espera a vez de ser executada.',
+  retired: 'A spec foi retirada e não será executada.',
+  drafting: 'Rascunho em edição: a descrição ainda está sendo escrita.',
+  evaluating: 'A IA está revisando os documentos desta spec.',
+  answering: 'Há perguntas ou sugestões esperando a sua resposta.',
+  ready: 'A lista de verificação foi atendida: abra o rascunho e inicie a execução.',
+  error: 'A avaliação falhou. Abra o rascunho para ver o erro.',
+  unknown: 'Não há registro suficiente para saber o estado.',
 };
 
 export const HELP = {

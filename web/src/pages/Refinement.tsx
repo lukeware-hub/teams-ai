@@ -5,7 +5,7 @@ import { applyToSnapshot, type LiveSnapshot } from '../refine/reducer.js';
 import { useJournal } from '../useSse.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { Icon } from '../components/Icons.js';
-import { InfoTip } from '../components/InfoTip.js';
+import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { buildSpecsIndex } from '@server/refine/specs-index';
 import { allGreen, isApproval } from '@server/refine/state';
@@ -375,7 +375,9 @@ export function RefinementView(p: ViewProps) {
           <h2 className={panelTitle}>Área de revisão</h2>
           </div>
         </div>
-        <span className={`count-pill ${pending.length > 0 ? 'tone-warn' : 'tone-good'}`}>{pending.length === 1 ? '1 pergunta em aberto' : `${pending.length} perguntas em aberto`}</span>
+        <Tipped text="Quantas perguntas dos agentes ainda esperam a sua resposta.">
+          <span className={`count-pill ${pending.length > 0 ? 'tone-warn' : 'tone-good'}`}>{pending.length === 1 ? '1 pergunta em aberto' : `${pending.length} perguntas em aberto`}</span>
+        </Tipped>
       </div>
       <p className="m-0 mb-4 flex items-start gap-[0.6rem] rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-[0.8125rem] leading-[1.45] text-ink [&_svg]:flex-none [&_svg]:text-accent-text"><Icon name="lightbulb" size={20} /><span><b>Próximo passo:</b> {nextStep}{optional}</span></p>
       {busy && (
@@ -395,7 +397,7 @@ export function RefinementView(p: ViewProps) {
           <div className="flex flex-wrap items-center gap-[0.35rem]">
             <span className={badge(current.role)}>{current.role.toUpperCase()}</span>
             <InfoTip text={roleInfo[current.role]} />
-            {current.blocking && <span className="tag ml-0">Obrigatória</span>}
+            {current.blocking && <Tipped text="Pergunta que bloqueia o avanço: precisa de resposta antes de seguir."><span className="tag ml-0">Obrigatória</span></Tipped>}
           </div>
           <p>{questionText(current.text)}</p>
           {current.relatedAcIds.length > 0 && (

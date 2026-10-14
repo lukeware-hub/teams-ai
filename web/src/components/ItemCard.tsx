@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Item } from '../api.js';
 import { Icon, type IconName } from './Icons.js';
-import { InfoTip } from './InfoTip.js';
+import { InfoTip, Tipped } from './InfoTip.js';
 
 function friendlyDetail(detail: string) {
   const normalized = detail.trim().toLowerCase();
@@ -23,6 +23,7 @@ function friendlyDetail(detail: string) {
 export function ItemCard({ title, item, children, variant = 'default', subtitle, info, icon, illustration }: { title: string; item: Item | null; children?: ReactNode; variant?: 'default' | 'login'; subtitle?: string; info?: string; icon?: IconName; illustration?: string }) {
   const status = item === null ? 'checking' : item.ok ? 'ok' : 'todo';
   const statusLabel = status === 'checking' ? 'Verificando' : status === 'ok' ? 'Concluído' : 'Pendente';
+  const statusHelp = status === 'checking' ? 'A plataforma está verificando esta conexão.' : status === 'ok' ? 'A conexão está configurada e funcionando.' : 'Falta configurar esta conexão.';
   const login = variant === 'login';
   // Container queries let the card stack by its own width inside the frame.
   return (
@@ -36,7 +37,11 @@ export function ItemCard({ title, item, children, variant = 'default', subtitle,
           </div>
           {subtitle ? <p className="mx-0 mt-[0.3rem] mb-0 text-[0.9375rem] leading-[1.4] text-ink-soft">{subtitle}</p> : null}
         </div>
-        <span className={`status-chip ml-auto ${login ? '@max-[40rem]:col-start-2 @max-[40rem]:ml-0 @max-[40rem]:justify-self-start' : ''}`}>{statusLabel}</span>
+        <span className={`ml-auto ${login ? '@max-[40rem]:col-start-2 @max-[40rem]:ml-0 @max-[40rem]:justify-self-start' : ''}`}>
+          <Tipped text={statusHelp}>
+            <span className="status-chip">{statusLabel}</span>
+          </Tipped>
+        </span>
         {variant !== 'login' && item?.secret?.set ? <code className="hint flex-none text-[0.75rem]">…{item.secret.hint}</code> : null}
       </header>
       <p className={`detail mx-0 mt-0 leading-[1.45] wrap-anywhere ${login ? 'mb-[1.15rem] flex items-center gap-[0.85rem] border-b border-line pb-4 text-[1rem]' : 'mb-[1.1rem] text-[0.9375rem]'}`}>

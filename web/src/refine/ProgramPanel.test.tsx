@@ -58,11 +58,11 @@ describe('ProgramPanel', () => {
   it('offers to run a queued spec now, and marks one already prioritized', () => {
     const onPrioritize = vi.fn();
     render(<MemoryRouter><ProgramPanel program={program([item('a', { status: 'running', runId: 'd-a-r1' }), item('b', { rank: 2 }), item('c', { rank: 3, priority: true })])} titles={titles} onPrioritize={onPrioritize} /></MemoryRouter>);
-    expect(within(screen.getByTestId('program-item-a')).queryByRole('button')).toBeNull();
+    expect(within(screen.getByTestId('program-item-a')).queryAllByRole('button').filter((b) => !b.classList.contains('info-tip'))).toHaveLength(0);
     fireEvent.click(within(screen.getByTestId('program-item-b')).getByRole('button', { name: 'Executar agora' }));
     expect(onPrioritize).toHaveBeenCalledWith('d-b');
     expect(within(screen.getByTestId('program-item-c')).getByText('prioritária')).toBeTruthy();
-    expect(within(screen.getByTestId('program-item-c')).queryByRole('button')).toBeNull();
+    expect(within(screen.getByTestId('program-item-c')).queryAllByRole('button').filter((b) => !b.classList.contains('info-tip'))).toHaveLength(0);
   });
 
   it('offers to try a failed spec again', () => {

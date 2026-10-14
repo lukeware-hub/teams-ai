@@ -22,6 +22,11 @@ describe('ItemCard', () => {
     expect(screen.getByText('acme (organização)')).toBeTruthy();
     rerender(<ItemCard title="Token do GitHub" item={{ ok: true, detail: 'diego · scopes: repo, workflow' }} />);
     expect(screen.getByText('diego · permissões: repo, workflow')).toBeTruthy();
-    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryAllByRole('button').filter((b) => !b.classList.contains('info-tip'))).toHaveLength(0);
+  });
+
+  it('explains the status flag of the card', () => {
+    render(<ItemCard title="Token do GitHub" item={{ ok: false, detail: 'sem token' }} />);
+    expect(screen.getByRole('button', { name: 'Falta configurar esta conexão.' })).toBeTruthy();
   });
 });

@@ -3,12 +3,22 @@ import { Link } from 'react-router-dom';
 import { refineApi, runApi, type ProgramView, type ProgramViewItem, type RefineState } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { Icon } from '../components/Icons.js';
-import { InfoTip } from '../components/InfoTip.js';
+import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { explainStop, phaseTitle } from '../run/selectors.js';
 import { action, panel, sectionHeading, sectionTitle } from '../pages/project-shared.js';
 
 const HELP = 'Depois do início, os agentes executam o backlog inteiro sozinhos, na ordem de prioridade e de dependência, até duas specs ao mesmo tempo quando elas não mexem no mesmo código: planejam, implementam, testam, publicam e marcam cada spec como concluída. Uma spec que falha é isolada e só bloqueia as que dependem dela; as demais seguem. Executar agora passa uma spec à frente da fila.';
 
+const ITEM_HELP = {
+  pending: 'Na fila: a spec espera a vez, por prioridade e por dependência de outras specs.',
+  running: 'Os agentes estão executando esta spec agora.',
+  completing: 'A spec foi entregue e está sendo concluída.',
+  waiting: 'A spec espera um tempo depois de uma falha de ambiente e começa de novo sozinha.',
+  done: 'A spec foi entregue e concluída.',
+  failed: 'A execução desta spec falhou. Veja o motivo abaixo.',
+  blocked: 'A spec não pôde seguir. Veja o motivo abaixo.',
+} as const;
+const OWNER_HELP: Record<string, string> = { Sistema: 'Quem precisa agir: o sistema, que resolve sozinho ou precisa de um ajuste da plataforma.', Plano: 'Quem precisa agir: o plano ou a spec precisa ser corrigido.', Você: 'Quem precisa agir: você.' };
 const LABEL = { pending: 'na fila', running: 'em execução', completing: 'concluindo', waiting: 'aguardando', done: 'concluída', failed: 'falhou', blocked: 'bloqueada' } as const;
 // Same pills as the hub's spec rows; a live spec's dot pulses.
 const PILL = {
@@ -31,7 +41,7 @@ export function ItemReason({ status, reason }: { status: ProgramViewItem['status
   if (!why) return <p className={`m-0 text-[0.8125rem] wrap-anywhere ${bad ? 'text-bad' : 'text-ink-soft'}`}>{reason}</p>;
   return (
     <div className="flex flex-col gap-1" data-testid="item-reason">
-      <p className="m-0 text-[0.8125rem] font-medium text-bad">{why.title} <span className="status-pill tone-neutral">{why.owner}</span></p>
+      <p className="m-0 text-[0.8125rem] font-medium text-bad">{why.title} <Tipped text={OWNER_HELP[why.owner] ?? 'Quem precisa agir para resolver.'}><span className="status-pill tone-neutral">{why.owner}</span></Tipped></p>
       <p className="hint m-0">{why.hint}</p>
       <details>
         <summary className="cursor-pointer text-[0.75rem] text-ink-soft">Detalhe técnico</summary>
@@ -165,12 +175,12 @@ export function ProgramPanel({ program, titles, onPrioritize }: { program: Progr
               {i.reason && <ItemReason status={i.status} reason={i.reason} />}
             </div>
             <div className="flex flex-wrap items-center gap-3 max-lg:col-start-2 lg:contents">
-              <span className={`${PILL[i.status]} justify-self-start`}>{LABEL[i.status]}</span>
+              <Tipped text={ITEM_HELP[i.status]}><span className={PILL[i.status]}>{LABEL[i.status]}</span></Tipped>
               <span className="text-right text-[0.8125rem] text-ink-soft tabular-nums lg:justify-self-end">
                 {i.costUsd != null ? <span data-testid={`program-item-cost-${i.key}`}>{fmtCost(i.costUsd)}</span> : <span className="text-ink-faint" aria-hidden="true">—</span>}
               </span>
               <span className="flex lg:justify-self-end">
-                {i.status === 'pending' && (i.priority ? <span className="status-chip tone-neutral">prioritária</span> : onPrioritize && <ActionButton className={action.secondary} onClick={() => onPrioritize(i.specId)} icon={<Icon name="play" size={14} />}>Executar agora</ActionButton>)}
+                {i.status === 'pending' && (i.priority ? <Tipped text="Esta spec foi escolhida para executar antes das outras da fila."><span className="status-chip tone-neutral">prioritária</span></Tipped> : onPrioritize && <ActionButton className={action.secondary} onClick={() => onPrioritize(i.specId)} icon={<Icon name="play" size={14} />}>Executar agora</ActionButton>)}
                 {i.status === 'failed' && onPrioritize && <ActionButton className={action.secondary} onClick={() => onPrioritize(i.specId)} icon={<Icon name="refresh" size={14} />}>Tentar de novo</ActionButton>}
               </span>
             </div>

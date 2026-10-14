@@ -9,7 +9,7 @@ import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { BacklogBanner } from '../refine/ProgramPanel.js';
 import { Bone, Skeleton } from '../components/Loading.js';
-import { ACTIVE, CONTINUABLE, HELP, LABEL, RECENT_RUNS, STATUS_HELP, action, chip, emptyState, grouped, money, panel, plural, row, rowActions, rowId, rows, runName, sectionHeading, sectionTitle, when } from './project-shared.js';
+import { ACTIVE, CONTINUABLE, HELP, LABEL, RECENT_RUNS, action, chip, emptyState, grouped, money, panel, plural, row, rowActions, rowId, rows, runName, sectionHeading, sectionTitle, when } from './project-shared.js';
 
 const header = 'card flex flex-wrap items-center justify-between gap-x-6 gap-y-2';
 const title = 'm-0 text-[1.375rem] leading-[1.3] text-ink';
@@ -402,7 +402,7 @@ export function ProjectHubView(p: {
                         <td><Link className="font-medium no-underline hover:underline" to={`/runs/${r.runId}`} title={r.runId}>{runName(r)}</Link></td>
                         <td className="truncate" title={r.specId}>{r.specId}</td>
                         <td className="whitespace-nowrap text-ink-soft tabular-nums">{when(r.at)}</td>
-                        <td><span className="inline-flex items-center gap-1">{chip(r.status)}<InfoTip text={STATUS_HELP[r.status] ?? STATUS_HELP.unknown!} /></span></td>
+                        <td>{chip(r.status)}</td>
                         <td className="num">{grouped(r.tokens)}</td>
                         <td className="num">{money(r.cost)}</td>
                         <td>
