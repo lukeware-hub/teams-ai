@@ -22,6 +22,9 @@ import { defaultRunControl, isAlive, type RunControlDeps } from './api/run-contr
 import { opsRoutes } from './api/ops-routes.js';
 import { runRoutes } from './api/run-routes.js';
 import { refineRoutes } from './api/refine-routes.js';
+import { chatRoutes } from './api/chat-routes.js';
+import { ChatService } from './chat/service.js';
+import { ChatStore } from './chat/store.js';
 import { readProject, runsDir, type IndexDeps } from './api/run-index.js';
 import { supervise } from './supervisor/supervise.js';
 import { makeRunAgent } from './refine/agent.js';
@@ -92,9 +95,11 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     accounting: new Accounting(),
     runEscalation: async () => { throw new Error('UI-server decisions do not escalate to Claude'); },
   });
+  // One agent runner for refinement and chat, so both share the governor, the quota breaker and the ledger.
+  const runAgent = await makeRunAgent({ cfg, agentsDir: path.join(repoRoot, '.claude', 'agents'), hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), workspacesRoot: expandHome(cfg.paths.workspaces) });
   const registry = new SessionRegistry({
     cfg: async () => (await readUserConfig()).cfg,
-    runAgent: await makeRunAgent({ cfg, agentsDir: path.join(repoRoot, '.claude', 'agents'), hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), workspacesRoot: expandHome(cfg.paths.workspaces) }),
+    runAgent,
     validateDocs: createJevValidator(cfg, async () => loadSecrets(expandHome(cfg.paths.secrets))),
     secretsDir: expandHome(cfg.paths.secrets),
     exec: withGitAuth(execCommand, expandHome(cfg.paths.secrets)),
@@ -129,6 +134,17 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
         ...refineRoutes({
           registry,
           log: io.stderr,
+        }),
+        ...chatRoutes({
+          chat: new ChatService({
+            store: new ChatStore(path.join(expandHome('~/.teams-ai'), 'chats')),
+            index: async () => ({ cfg: (await readUserConfig()).cfg, isAlive: (pid) => isAlive(defaultRunControl(repoRoot), pid) }),
+            runAgent,
+            log: io.stderr,
+            workspacesRoot: async () => expandHome((await readUserConfig()).cfg.paths.workspaces),
+            suggestSpecId: async (projectId, description) => (await registry.suggestName('spec', { projectId, name: '', description })).id,
+            newSpec: (projectId, specId, description) => registry.newSpec(projectId, specId, description),
+          }),
         }),
       ],
       staticDir: hasDist ? staticDir : null,

@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { refineApi, runApi } from './api.js';
 import { Loading } from './components/Loading.js';
 import { AppShell } from './components/AppShell.js';
+import { ChatPage } from './pages/Chat.js';
 import { Onboarding } from './pages/Onboarding.js';
 import { ProjectHub } from './pages/ProjectHub.js';
 import { Projects } from './pages/Projects.js';
@@ -29,6 +30,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/onboarding" element={<Onboarding />} />
+          <Route path="/chat" element={<ChatPage />} />
           <Route path="/status" element={<StatusPage />} />
           <Route path="/projects" element={<Projects />} />
           <Route path="/projects/:projectId" element={<ProjectHub />} />

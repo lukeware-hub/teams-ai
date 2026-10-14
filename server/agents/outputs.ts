@@ -8,7 +8,7 @@ import { ID_PATTERNS } from '../core/ids.js';
 import { Project, ServiceName } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 
-export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'deployment', 'environment', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'deployment', 'environment', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -251,6 +251,14 @@ export type SuggestOutput = z.infer<typeof SuggestOutput>;
 export const AnswerOutput = z.object({ specHash, answer: z.string().min(1).nullable() });
 export type AnswerOutput = z.infer<typeof AnswerOutput>;
 
+/** Chat screen: a plain answer, plus a correction when what is being built goes against its spec. */
+export const ChatOutput = z.object({
+  specHash,
+  answer: z.string().min(1),
+  correction: z.object({ title: z.string().min(1).max(120), whatHappens: z.string().min(1), whatShouldHappen: z.string().min(1) }).nullable(),
+});
+export type ChatOutput = z.infer<typeof ChatOutput>;
+
 export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> = {
   refine: RefineOutput,
   derive: DeriveOutput,
@@ -276,6 +284,7 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   name: NameOutput,
   suggest: SuggestOutput,
   answer: AnswerOutput,
+  chat: ChatOutput,
 };
 
 export type OutputOf<K extends StepKind> = z.infer<(typeof OUTPUT_SCHEMAS)[K]>;

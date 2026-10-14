@@ -272,7 +272,8 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
   const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: req.extraAllow, sandboxEnabled: deps.sandbox?.enabled, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });
   if (req.resume && req.sessionStore) await restoreSession(req.sessionStore, home);
   // A review judges a diff the gates already tested: it never edits the code under review (R11.13 slice 2).
-  const agent = req.kind === 'review' ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : req.agent;
+  // The chat answers from the context in its prompt alone: it reads no file and runs nothing.
+  const agent = req.kind === 'review' ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : req.kind === 'chat' ? { ...req.agent, tools: [] } : req.agent;
   const invocation = buildInvocation(
     {
       role: req.role,

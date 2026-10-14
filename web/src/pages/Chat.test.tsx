@@ -1,0 +1,89 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { chatApi, runApi, type ChatMessage } from '../api.js';
+import { ChatPage, plainError } from './Chat.js';
+
+const projects = [
+  { projectId: 'hello-app', name: 'Hello app', description: '', dir: '/d', specs: [] },
+  { projectId: 'other', name: 'Outro', description: '', dir: '/o', specs: [] },
+];
+const at = '2026-10-14T10:00:00.000Z';
+const page = () => render(<MemoryRouter><ChatPage /></MemoryRouter>);
+
+afterEach(() => vi.restoreAllMocks());
+
+describe('ChatPage', () => {
+  it('asks a question, shows the answer and keeps the question until it is answered', async () => {
+    vi.spyOn(runApi, 'projects').mockResolvedValue(projects as never);
+    vi.spyOn(chatApi, 'messages').mockResolvedValue({ messages: [] });
+    const ask = vi.spyOn(chatApi, 'ask').mockResolvedValue({ message: { role: 'assistant', text: 'Estão criando o login.', at } });
+    page();
+    await screen.findByText('Nenhuma pergunta feita ainda.');
+    fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'O que está sendo feito?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+    expect(await screen.findByText('Estão criando o login.')).toBeTruthy();
+    expect(ask).toHaveBeenCalledWith('hello-app', 'O que está sendo feito?');
+    expect(screen.getByText('O que está sendo feito?')).toBeTruthy();
+    expect((screen.getByTestId('chat-input') as HTMLTextAreaElement).value).toBe('');
+  });
+
+  it('shows the saved conversation and the correction spec the chat opened', async () => {
+    vi.spyOn(runApi, 'projects').mockResolvedValue(projects as never);
+    const saved: ChatMessage[] = [
+      { role: 'user', text: 'Tem algo fora do escopo?', at },
+      { role: 'assistant', text: 'Sim, um login.', at, correction: { title: 'Login indevido', specId: 'fix-login' } },
+      { role: 'assistant', text: 'Outra coisa.', at: '2026-10-14T10:01:00.000Z', correction: { title: 'Outra', error: 'sem workspace' } },
+    ];
+    vi.spyOn(chatApi, 'messages').mockResolvedValue({ messages: saved });
+    page();
+    expect(await screen.findByText('Sim, um login.')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Abrir para revisar e iniciar' }).getAttribute('href')).toBe('/refine/hello-app/fix-login');
+    expect(screen.getByText(/Não consegui abrir a spec de correção “Outra”: sem workspace/)).toBeTruthy();
+  });
+
+  it('keeps the typed text, explains the failure in a popup and sends again on request', async () => {
+    vi.spyOn(runApi, 'projects').mockResolvedValue(projects as never);
+    vi.spyOn(chatApi, 'messages').mockResolvedValue({ messages: [] });
+    const ask = vi.spyOn(chatApi, 'ask').mockRejectedValueOnce(new Error('internal error')).mockResolvedValueOnce({ message: { role: 'assistant', text: 'Agora foi.', at } });
+    page();
+    await screen.findByText('Nenhuma pergunta feita ainda.');
+    fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'oi' } });
+    fireEvent.keyDown(screen.getByTestId('chat-input'), { key: 'Enter' });
+    const popup = await screen.findByRole('dialog', { name: 'Não consegui responder' });
+    expect(popup.textContent).toContain('Algo deu errado do nosso lado');
+    expect(popup.textContent).not.toContain('internal error');
+    expect((screen.getByTestId('chat-input') as HTMLTextAreaElement).value).toBe('oi');
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar de novo' }));
+    expect(await screen.findByText('Agora foi.')).toBeTruthy();
+    expect(ask).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('shows the server message as it is when it is already plain Portuguese, and a connection message when the server is unreachable', async () => {
+    expect(plainError('O limite de uso do Claude acabou por agora.')).toBe('O limite de uso do Claude acabou por agora.');
+    expect(plainError('Failed to fetch')).toContain('Não consegui falar com o Teams AI');
+    expect(plainError('HTTP 502')).toContain('Algo deu errado do nosso lado');
+  });
+
+  it('loads the conversation of the chosen project and clears it after confirming', async () => {
+    vi.spyOn(runApi, 'projects').mockResolvedValue(projects as never);
+    const messages = vi.spyOn(chatApi, 'messages').mockImplementation(async (id) => ({ messages: id === 'other' ? [{ role: 'user', text: 'pergunta do outro', at }] : [] }));
+    const clear = vi.spyOn(chatApi, 'clear').mockResolvedValue({ ok: true });
+    page();
+    await screen.findByText('Nenhuma pergunta feita ainda.');
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'other' } });
+    expect(await screen.findByText('pergunta do outro')).toBeTruthy();
+    expect(messages).toHaveBeenLastCalledWith('other');
+    fireEvent.click(screen.getByRole('button', { name: 'Limpar conversa' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Limpar' }));
+    await waitFor(() => expect(screen.queryByText('pergunta do outro')).toBeNull());
+    expect(clear).toHaveBeenCalledWith('other');
+  });
+
+  it('says so when there is no project', async () => {
+    vi.spyOn(runApi, 'projects').mockResolvedValue([]);
+    page();
+    expect(await screen.findByText('Nenhum projeto para perguntar ainda.')).toBeTruthy();
+  });
+});

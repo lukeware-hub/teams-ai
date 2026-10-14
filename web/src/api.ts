@@ -392,3 +392,21 @@ export const refineApi = {
   prioritize: (p: string, s: string, item: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/program/${encodeURIComponent(item)}/prioritize`).then((r) => json<{ program: ProgramView }>(r)),
   events: (p: string, s: string) => `${R}/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/events`,
 };
+
+export interface ChatCorrection {
+  title: string;
+  specId?: string;
+  error?: string;
+}
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  text: string;
+  at: string;
+  correction?: ChatCorrection;
+}
+const chatUrl = (projectId: string) => `${R}/chat/${encodeURIComponent(projectId)}`;
+export const chatApi = {
+  messages: (projectId: string) => authFetch(chatUrl(projectId)).then((r) => json<{ messages: ChatMessage[] }>(r)),
+  ask: (projectId: string, text: string) => jsonPost(`/chat/${encodeURIComponent(projectId)}/messages`, { text }).then((r) => json<{ message: ChatMessage }>(r)),
+  clear: (projectId: string) => authFetch(chatUrl(projectId), { method: 'DELETE', headers: { 'content-type': 'application/json' } }).then((r) => json<{ ok: true }>(r)),
+};
