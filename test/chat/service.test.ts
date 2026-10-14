@@ -55,6 +55,7 @@ describe('ChatService.ask', () => {
 
   it('stages the guide, its graph and the conversation in the working directory and fences the step', async () => {
     let staged: Record<string, string> = {};
+    await fs.mkdir(path.join(home, 'ws', '_chat', 'stale-chat'), { recursive: true });
     const runAgent = vi.fn(async (req: Req) => {
       const read = (rel: string) => fs.readFile(path.join(req.cwd, rel), 'utf8').catch(() => 'MISSING');
       staged = { guide: await read('guia/criar-spec.md'), graph: (await read('graphify-out/graph.json')).slice(0, 1), history: await read('historico.md') };
@@ -74,7 +75,9 @@ describe('ChatService.ask', () => {
     // the whole workspace of each project (drafts, services, environment, code), the folders next to it, and nothing of the chat's own directory
     expect(call.denyRead).toEqual(expect.arrayContaining([path.join(ws, '*', 'repo'), path.join(ws, '*', 'refine'), path.join(ws, '*', 'services'), path.join(ws, 'imports'), path.join(home, 'runs'), path.join(home, 'chats'), path.join(home, 'config.json')]));
     expect(call.denyRead).not.toContain(ws);
-    expect(call.denyRead!.some((d) => d.includes('_chat'))).toBe(false);
+    expect(call.denyRead).toContain(path.join(ws, '_naming'));
+    // an earlier chat's directory is fenced off; this question's own directory is not
+    expect(call.denyRead!.filter((d) => d.includes('_chat'))).toEqual([path.join(ws, '_chat', 'stale-chat')]);
   });
 
   it('opens a correction spec draft when the answer proposes one, and never lists it again as new', async () => {
@@ -133,6 +136,7 @@ describe('ChatService.ask', () => {
     const first = service.ask('hello-app', 'primeira');
     await new Promise((r) => setTimeout(r, 20));
     await expect(service.ask('hello-app', 'segunda')).rejects.toBeInstanceOf(ConflictError);
+    await expect(service.ask('another-project', 'terceira')).rejects.toBeInstanceOf(ConflictError);
     release();
     await first;
   });

@@ -54,7 +54,8 @@ export interface ChatDeps {
 
 /** Answers questions about a project and opens a correction spec when what is built goes against its spec. It never orders the orchestrator. */
 export class ChatService {
-  private readonly asking = new Set<string>();
+  /** One question at a time: another chat's working directory is then never there for this step to read. */
+  private asking = false;
 
   constructor(private readonly deps: ChatDeps) {}
 
@@ -75,8 +76,8 @@ export class ChatService {
     this.slug(projectId);
     const question = text.trim();
     if (question === '' || question.length > MAX_QUESTION) throw new RangeError(`a pergunta deve ter de 1 a ${MAX_QUESTION} caracteres`);
-    if (this.asking.has(projectId)) throw new ConflictError('o chat ainda está respondendo a pergunta anterior deste projeto');
-    this.asking.add(projectId);
+    if (this.asking) throw new ConflictError('o chat ainda está respondendo a pergunta anterior. Aguarde a resposta e pergunte de novo.');
+    this.asking = true;
     try {
       const context = await buildChatContext(await this.deps.index(), projectId);
       if (!context) throw new NotFoundError(`projeto ${projectId} não encontrado`);
@@ -88,7 +89,7 @@ export class ChatService {
       await this.deps.store.append(projectId, { role: 'user', text: question, at }, answer);
       return answer;
     } finally {
-      this.asking.delete(projectId);
+      this.asking = false;
     }
   }
 
@@ -102,7 +103,7 @@ export class ChatService {
     try {
       await stageChatFiles(cwd, this.deps.guideDir, input.history);
       const out = (await this.deps.runAgent<'chat'>(
-        { kind: 'chat', role: 'po', pack: fitPackBudget(chatPack({ ...input, history: input.history.slice(-HISTORY_MESSAGES), specHash })), cwd, phase: 'refine', taskId: null, attempt: 1, extraAllow: CHAT_ALLOW, denyRead: await this.privateDirs(root) },
+        { kind: 'chat', role: 'po', pack: fitPackBudget(chatPack({ ...input, history: input.history.slice(-HISTORY_MESSAGES), specHash })), cwd, phase: 'refine', taskId: null, attempt: 1, extraAllow: CHAT_ALLOW, denyRead: await this.privateDirs(root, cwd) },
         { journal: { allocStepSeq: () => ++seq, fact: async () => undefined } as never, stepDir: (n) => path.join(cwd, 'steps', stepId(n)), specHash, signal: AbortSignal.timeout(TIMEOUT_MS) },
       )) as StepOutcome<ChatOutput>;
       if (out.ok) return out.value;
@@ -119,17 +120,20 @@ export class ChatService {
 
   /**
    * Everything of the user that the chat must not read, by listing instead of trusting the prompt: every project's whole workspace
-   * and every entry of the data folder except the workspaces (configuration and its backups, runs, conversations, caches, secrets).
+   * and every entry of the data folder except the workspaces (configuration and its backups, runs, conversations, caches, secrets), and the leftovers of other steps.
    * The step reads only its own working directory, which the staging filled. A listing that fails ends the step.
    */
-  private async privateDirs(root: string): Promise<string[]> {
+  private async privateDirs(root: string, cwd: string): Promise<string[]> {
     const base = path.dirname(this.deps.store.dir);
     const projects = (await fs.readdir(root)).filter((name) => !name.startsWith('_'));
     const data = (await fs.readdir(base)).filter((name) => name !== path.basename(root));
+    // What an earlier chat or a name suggestion left in the workspaces folder (the chat's own directory stays readable).
+    const leftovers = [path.join(root, '_naming'), ...(await fs.readdir(path.join(root, '_chat'))).filter((name) => name !== path.basename(cwd)).map((name) => path.join(root, '_chat', name))];
     return [...new Set([
       ...PRIVATE_IN_WORKSPACE.map((dir) => path.join(root, '*', dir)),
       ...projects.map((project) => path.join(root, project)),
       ...data.map((name) => path.join(base, name)),
+      ...leftovers,
       runsDir(await this.deps.index()),
       this.deps.store.dir,
     ])];
