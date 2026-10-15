@@ -30,6 +30,15 @@ const empty = 'm-0 rounded-lg border border-line bg-surface-sunken px-4 py-3 tex
 const newSpecLabel = 'text-[0.8125rem] font-semibold';
 // Runs in flight stand out from the history instead of blending into the table.
 const live = '[&>td]:bg-good-soft [&>td:first-child]:shadow-[inset_3px_0_0_var(--good-live)]';
+// A group title spans the spec list; the first group's title needs no space above it.
+const groupHeading = 'col-span-full px-[0.6rem] pt-3 text-[0.75rem] font-[650] uppercase tracking-[0.07em] text-ink-soft first:pt-0';
+// Specs sit in the first group that names their status, so the human's work comes first; unknown statuses fall in the first group too.
+const SPEC_GROUPS: ReadonlyArray<{ title: string; statuses: readonly string[] }> = [
+  { title: 'Precisam de você', statuses: ['awaiting-validation', 'answering', 'paused:auth', 'interrupted', 'drained', 'blocked', 'deadlocked', 'phase-failed', 'verification-failed', 'deploy-failed', 'launch-failed', 'error'] },
+  { title: 'Em andamento', statuses: ['running', 'draining', 'paused:quota', 'evaluating', 'refining', 'drafting'] },
+  { title: 'Prontas', statuses: ['idle', 'ready', 'planned'] },
+  { title: 'Concluídas', statuses: ['done', 'complete', 'retired'] },
+];
 
 /** The hub before its data arrives: the real breadcrumb, then the header, the four counters and the specs panel as placeholders. */
 function ProjectHubSkeleton({ projectId, error }: { projectId: string; error: string | null }) {
@@ -105,7 +114,7 @@ function RunProcessSection({ run, events }: { run: RunRow; events: StoredEvent[]
         <div className={sectionHead}>
           <div className={sectionTitle}>
             <span className={sectionIcon}><Icon name="code" size={14} /></span>
-            <h3 className={sectionHeading}>Processo da execução</h3>
+            <h2 className={sectionHeading}>Processo da execução</h2>
           </div>
           <Link className={action.primary} to={`/runs/${run.runId}`}>Abrir execução</Link>
         </div>
@@ -169,6 +178,8 @@ export function ProjectHubView(p: {
     facet: shownStatus,
     facetLabel: (status) => LABEL[status] ?? status,
   });
+  const groupOf = (status: string) => SPEC_GROUPS.find((g) => g.statuses.includes(status)) ?? SPEC_GROUPS[0]!;
+  const groupedSpecs = SPEC_GROUPS.map((g) => ({ title: g.title, rows: specsView.rows.filter((s) => groupOf(shownStatus(s)) === g) })).filter((g) => g.rows.length > 0);
   const [specDraft, setSpecDraft] = useState('');
   const [specDescription, setSpecDescription] = useState('');
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
@@ -281,7 +292,7 @@ export function ProjectHubView(p: {
             <div className={sectionHead}>
               <div className={sectionTitle}>
                 <span className={sectionIcon}><Icon name="external" size={14} /></span>
-                <h3 className={sectionHeading}>Aplicação no ar</h3>
+                <h2 className={sectionHeading}>Aplicação no ar</h2>
               </div>
               <div className="flex flex-wrap gap-2">
                 {p.apps.web ? <a className="primary-button" data-testid="open-web-ui" href={p.apps.web} target="_blank" rel="noreferrer">Abrir Web UI<Icon name="external" size={16} /></a> : null}
@@ -303,21 +314,23 @@ export function ProjectHubView(p: {
             <div className={sectionHead}>
               <div className={sectionTitle}>
                 <span className={sectionIcon}><Icon name="code" size={14} /></span>
-                <h3 className={sectionHeading}>Serviços</h3>
+                <h2 className={sectionHeading}>Serviços</h2>
                 <InfoTip label="Serviços" text={HELP.services} />
               </div>
             </div>
-            <ul className="m-0 grid list-none gap-2 p-0">
+            <ul className="m-0 grid list-none grid-cols-1 gap-2 p-0 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-8">
               {pr.services.map((s) => (
-                <li className="grid items-center gap-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-x-4" key={s.name} data-testid={`project-service-${s.name}`}>
-                  <strong>{s.name}</strong>
+                <li className="min-w-0" key={s.name} data-testid={`project-service-${s.name}`}>
                   {s.repoUrl ? (
-                    <a className="link-button justify-self-start" href={s.repoUrl} target="_blank" rel="noreferrer" aria-label={`Abrir ${s.name} no GitHub`}>
-                      Abrir no GitHub
+                    <a className="link-button w-full min-w-0 justify-between" href={s.repoUrl} target="_blank" rel="noreferrer" aria-label={`Abrir ${s.name} no GitHub`}>
+                      <span className="wrap-anywhere">{s.name}</span>
                       <Icon name="external" size={16} />
                     </a>
                   ) : (
-                    <span className="hint">Repositório ainda não criado</span>
+                    <span className="flex w-full min-w-0 flex-col rounded-md border border-line px-3 py-2">
+                      <strong className="wrap-anywhere">{s.name}</strong>
+                      <span className="hint">Repositório ainda não criado</span>
+                    </span>
                   )}
                 </li>
               ))}
@@ -332,7 +345,7 @@ export function ProjectHubView(p: {
           <div className={sectionHead}>
             <div className={sectionTitle}>
               <span className={sectionIcon}><Icon name="list" size={14} /></span>
-              <h3 className={sectionHeading}>Especificações</h3>
+              <h2 className={sectionHeading}>Especificações</h2>
               <InfoTip label="Especificações" text={HELP.specs} />
             </div>
             {creating ? null : (
@@ -352,20 +365,20 @@ export function ProjectHubView(p: {
               }}
             >
               <label className={newSpecLabel} htmlFor="new-spec-description">Descreva o serviço</label>
-              <textarea className="w-full min-w-0 resize-y text-[0.8125rem]" id="new-spec-description" data-testid="new-spec-description" rows={5} autoFocus value={specDescription} onChange={(e) => setSpecDescription(e.target.value)} placeholder="Ex.: listar todos os usuários com o e-mail mascarado. Os documentos do projeto entram como contexto; só esta spec passa pelo refinamento." />
+              <textarea className="w-full min-w-0 resize-y p-3 text-[0.875rem] leading-normal" id="new-spec-description" data-testid="new-spec-description" rows={5} autoFocus value={specDescription} onChange={(e) => setSpecDescription(e.target.value)} placeholder="Ex.: listar todos os usuários com o e-mail mascarado. Os documentos do projeto entram como contexto; só esta spec passa pelo refinamento." />
               {idShown ? (
                 <>
                   <label className={newSpecLabel} htmlFor="new-spec-id">ID da spec</label>
-                  <input className="h-8 w-full max-w-[24rem] min-w-0 text-[0.8125rem] pointer-coarse:h-[var(--control-height)]" id="new-spec-id" data-testid="new-spec-id" value={specDraft} disabled={suggesting} onChange={(e) => setSpecDraft(e.target.value)} placeholder={suggesting ? 'Sugerindo…' : 'ex.: list-users'} />
+                  <input className="w-full max-w-[24rem] min-w-0" id="new-spec-id" data-testid="new-spec-id" value={specDraft} disabled={suggesting} onChange={(e) => setSpecDraft(e.target.value)} placeholder={suggesting ? 'Sugerindo…' : 'ex.: list-users'} />
                 </>
               ) : null}
               {suggestError ? <span className="error" role="alert">{suggestError}</span> : null}
               <div className="flex flex-wrap justify-end gap-2">
-                <button type="button" className={`${action.secondary} min-w-[auto]`} data-testid="cancel-new-spec" aria-label="Cancelar" onClick={closeNewSpec}><Icon name="close" size={14} /></button>
+                <button type="button" className={action.secondary} data-testid="cancel-new-spec" onClick={closeNewSpec}>Cancelar</button>
                 {idShown ? (
-                  <ActionButton key="new-spec" type="submit" className={action.plain} data-testid="new-spec" busy={submitting} disabled={suggesting || specDraft.trim() === '' || specDescription.trim() === ''} icon={<Icon name="arrow-right" size={14} />}>Começar refinamento</ActionButton>
+                  <ActionButton key="new-spec" type="submit" className={action.primary} data-testid="new-spec" busy={submitting} disabled={suggesting || specDraft.trim() === '' || specDescription.trim() === ''} icon={<Icon name="arrow-right" size={14} />}>Começar refinamento</ActionButton>
                 ) : (
-                  <ActionButton key="continue-new-spec" className={action.plain} data-testid="continue-new-spec" disabled={specDescription.trim() === ''} onClick={continueNewSpec} icon={<Icon name="arrow-right" size={14} />}>Continuar</ActionButton>
+                  <ActionButton key="continue-new-spec" className={action.primary} data-testid="continue-new-spec" disabled={specDescription.trim() === ''} onClick={continueNewSpec} icon={<Icon name="arrow-right" size={14} />}>Continuar</ActionButton>
                 )}
               </div>
             </form>
@@ -388,7 +401,9 @@ export function ProjectHubView(p: {
             <p className={empty}>Nenhuma spec corresponde ao filtro.</p>
           ) : (
             <ul className={rows}>
-              {specsView.rows.map((s) => (
+              {groupedSpecs.flatMap((g) => [
+                <li role="presentation" key={g.title} className={groupHeading}>{g.title}</li>,
+                ...g.rows.map((s) => (
                 <li className={row} key={s.specId}>
                   <span className={rowId}>{s.specId}</span>
                   {chip(shownStatus(s))}
@@ -436,7 +451,8 @@ export function ProjectHubView(p: {
                     )}
                   </span>
                 </li>
-              ))}
+                )),
+              ])}
             </ul>
           )}
         </div>
@@ -445,7 +461,7 @@ export function ProjectHubView(p: {
         <div className={section}>
           <div className={sectionTitle}>
             <span className={sectionIcon}><Icon name="code" size={14} /></span>
-            <h3 className={sectionHeading}>Execuções</h3>
+            <h2 className={sectionHeading}>Execuções</h2>
           </div>
           {p.runs.length === 0 ? (
             <p className={empty}>Nenhuma execução registrada ainda. Use Iniciar execução em uma spec para começar.</p>
@@ -516,7 +532,7 @@ export function ProjectHubView(p: {
           <div className={section}>
             <div className={sectionTitle}>
               <span className={sectionIcon}><Icon name="file" size={14} /></span>
-              <h3 className={sectionHeading}>Refinamentos em andamento</h3>
+              <h2 className={sectionHeading}>Refinamentos em andamento</h2>
               <InfoTip label="Refinamentos em andamento" text={HELP.drafts} />
             </div>
             <ul className={rows}>

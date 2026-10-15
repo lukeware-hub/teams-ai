@@ -735,7 +735,7 @@ The in-panel divider the second reference establishes: `HISTÓRICO`, `ARQUIVOS G
 
 ### 11.10 File row
 
-`row` surface, 10px/12px, `ui` role. Leading 16px chevron (`ink-faint`, rotates 90° when expanded), filename in `ink`, trailing `icon` button for download. Whole row is the expand target; the download button is not. Rows stack with 8px gaps, never a shared border.
+`row` surface, 10px/12px, `ui` role. Leading 16px chevron (`ink-faint`, rotates 90° when expanded), filename in `ink`, trailing `icon` button for download. Whole row is the expand target; the download button is not. Rows stack with 8px gaps, never a shared border. The one exception is the agent list in Configurações, whose rows separate with `accent-line`.
 
 ### 11.11 Empty state
 
@@ -1108,12 +1108,14 @@ Every screen, onboarding included, lives in one shell that fills the window, the
 | Region | Spec |
 |---|---|
 | Shell | Full window height (`100dvh`), 16px around, the rail on the left and an empty column of the same width on the right, so the content is always exactly centered in the window; the whole shell is at most 1760px wide. The page itself never scrolls. |
-| Rail | A rounded glass pill (`surface`, `line` border, lit rim but no top glint, because a straight glint floats off its round top), vertically centered. From top: the product mark (a `gradient-primary` tile with the grid glyph, links to `/`, named `Teams AI, início`), a hairline, then one 44px icon button per destination — `Projetos` (folder) and `Status do ambiente` (chart) — then the theme control stacked vertically (§3.10). The current destination has an `accent-soft` ground, `accent-ink` glyph, a small dot beside it and `aria-current="page"`. Every icon carries an `aria-label` and a `title`. |
+| Rail | A rounded glass pill (`surface`, `line` border, lit rim but no top glint, because a straight glint floats off its round top), vertically centered. From top: the product mark (a `gradient-primary` tile with the grid glyph, links to `/`, named `Teams AI, início`), a hairline, then one 44px icon button per destination — `Projetos` (folder) and `Status do ambiente` (chart) — then the theme control stacked vertically (§3.10). The current destination has an `accent-soft` ground, `accent-ink` glyph, a small dot beside it and `aria-current="page"`. Every icon carries an `aria-label` and a `title`. The rail shows icons only: no visible words. |
 | Content area | Holds the current screen and scrolls inside. It has no background, border or edge of its own: the screen sits straight on the page gradient, and only the cards carry edges. |
 | Workspace | A screen with more than one panel uses the shared Workspace: from 1024px up the panels sit side by side, fill the window height and each scrolls on its own; below 1024px a tab bar shows one panel at a time, and hidden panels stay mounted so typed text survives. Panels can share a group: between 1024px and 1280px the refinement stacks Revisão and Verificação in one right column at full height with a single scroll, so neither is squeezed to half the window. |
 | Below 768px | The rail becomes a bottom bar across the window and the frame loses its border and radius, so the content gets the whole width. |
 | Breadcrumb | §11.14, first line of the frame, no rule beneath unless a screen has no panels |
 | Page title | **None** where the breadcrumb names the thing |
+| Document title | Every route sets the browser tab title to the destination name followed by `· Teams AI`. |
+| Skip link and focus | The first focus stop is `Pular para o conteúdo`, which moves focus to the content area. Each route change starts the content at its top, with focus on it. |
 
 The rail holds destinations only; the breadcrumb still carries the path inside a project.
 
@@ -1191,6 +1193,7 @@ Not yet pinned by a reference. Until one exists, they inherit Part I and §25 wi
 
 - **Projects** — breadcrumb `⌂ › Projetos`, one panel per project or a table (§11.16) where the count exceeds a screen. Empty state per §11.11, sectional form.
 - **Run** — breadcrumb `⌂ › Projetos › <project> › <run>`, a phase timeline using chips (§11.4), a task list using rows (§11.10), the terminal (§11.15), and the meta line (§11.12) for tokens and cost. The existing `.phase`, `.test` and `.status-pill` classes all collapse into the one chip family.
+- **Project hub** (`/projects/:projectId`) — section headings are H2. Services are a grid of links to their repositories: one column on a phone, up to eight on a wide screen. The specs are one list in groups by who must act next: `Precisam de você`, `Em andamento`, `Prontas`, `Concluídas`; a group with no spec is left out. Each row has one primary action. The new spec form uses the app's own fields and buttons: a padded textarea, a 40px input, `Cancelar` as the secondary action and the primary action at the right.
 - **Status** — a single panel, no breadcrumb beyond `⌂ › Status`.
 
 **Nothing on these screens invents a component.** If one of them needs a shape this document does not describe, that shape is added here first.

@@ -697,7 +697,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   const executing = starting || (following && program?.status !== 'finished');
   return (
     <main className="flex flex-col gap-4 lg:h-full lg:min-h-0">
-      <header className="refine-breadcrumb"><a href="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></a><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span>
+      <header className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></Link><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span>
         <span className={startGroup}>
           <ActionButton data-testid="start" className="primary flex-auto whitespace-nowrap max-[720px]:w-full" busy={executing} disabled={!canStartRun(snap.state, snap.state.status === 'evaluating')} onClick={startRun} icon={<Icon name="play" size={16} />}>
             {starting ? 'Iniciando…' : executing ? 'Em execução' : 'Iniciar análise'}

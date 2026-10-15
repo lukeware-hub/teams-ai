@@ -122,7 +122,7 @@ export function SettingsPage() {
             <h2 className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="agents-title">Agentes</h2>
             <InfoTip label="Agentes" text={HELP_AGENTS} />
           </div>
-          {agents ? <ul className={rows}>{agents.map((agent) => <AgentLine key={`${projectId}/${agent.role}`} projectId={projectId} row={agent} onFailed={saveFailed} />)}</ul> : <Loading />}
+          {agents ? <ul className={`${rows} [&>li]:border-accent-line`}>{agents.map((agent) => <AgentLine key={`${projectId}/${agent.role}`} projectId={projectId} row={agent} onFailed={saveFailed} />)}</ul> : <Loading />}
         </section>
       ) : null}
     </main>

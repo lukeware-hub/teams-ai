@@ -301,6 +301,22 @@ describe('ProjectHubView', () => {
     expect(specs.getByText('hello-001')).toBeTruthy();
     expect(specs.getByText('hello-003')).toBeTruthy();
   });
+  it('groups the specs by who must act next, the human first, and leaves out the empty groups', () => {
+    const o = on();
+    const grouped = { ...project, specs: [
+      { specId: 'hello-010', status: 'done', activeRunId: null },
+      { specId: 'hello-011', status: 'awaiting-validation', activeRunId: null },
+      { specId: 'hello-012', status: 'planned', activeRunId: null },
+    ] };
+    const { container } = render(
+      <MemoryRouter>
+        <ProjectHubView project={grouped} notFound={false} runs={[]} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+      </MemoryRouter>,
+    );
+    const groups = Array.from(container.querySelectorAll('li[role="presentation"]'), (li) => li.textContent);
+    expect(groups).toEqual(['Precisam de você', 'Prontas', 'Concluídas']);
+    expect(screen.getByTestId('validate-hello-011')).toBeTruthy();
+  });
   it('shows a not-found state with a link back to Projetos', () => {
     render(
       <MemoryRouter>

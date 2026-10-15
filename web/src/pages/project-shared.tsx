@@ -39,7 +39,7 @@ export const action = {
 };
 export const panel = 'card grid px-6 pt-5 pb-6 max-md:p-4';
 export const sectionTitle = 'flex min-w-0 items-center gap-1';
-export const sectionHeading = 'm-0 text-[0.875rem] font-semibold tracking-normal text-ink normal-case';
+export const sectionHeading = 'm-0 flex-none text-[0.875rem] font-semibold tracking-normal text-ink normal-case';
 export const emptyState = 'grid justify-items-center gap-1 rounded-lg border border-line bg-surface-sunken px-6 py-10 text-center text-ink-faint [&_svg]:mb-2 [&_p]:m-0 [&_p]:max-w-[52ch] [&_p]:text-ink [&_p+p]:text-ink-soft [&_button]:mt-3';
 // Spec and draft rows share the list's columns, so ids, chips and actions line up; the list bleeds into the panel padding.
 export const rows = 'my-0 -mx-[0.6rem] grid list-none grid-cols-[minmax(0,16rem)_minmax(max-content,1fr)_auto] gap-x-3 p-0 max-lg:grid-cols-[minmax(0,1fr)_auto]';
