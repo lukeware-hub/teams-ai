@@ -34,6 +34,27 @@ const base = (over: Partial<Snapshot['state']>): Snapshot => ({
 const on = () => ({ onSaveDoc: vi.fn(), onEvaluate: vi.fn(), onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn() });
 const event = (seq: number, type: string, data: Record<string, unknown>): StoredEvent => ({ seq, at: '', runId: 'hello-app/hello-001', specHash: 'draft', type, kind: 'fact', data });
 
+describe('RefinementView re-evaluation', () => {
+  const evaluated = event(3, 'REFINE_EVALUATED', { cycle: 1, checklist: [] });
+
+  it('asks before re-evaluating when nothing changed since the last evaluation, and runs it once confirmed', () => {
+    const h = on();
+    render(<MemoryRouter><RefinementView snap={base({ cycle: 1, status: 'ready', stale: false })} busy={false} events={[evaluated]} {...h} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('evaluate'));
+    expect(h.onEvaluate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Reavaliar mesmo assim' }));
+    expect(h.onEvaluate).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-evaluates at once when a document changed after the last evaluation', () => {
+    const h = on();
+    const edited = event(4, 'DOC_EDITED', { file: 'brief.md' });
+    render(<MemoryRouter><RefinementView snap={base({ cycle: 1, status: 'ready', stale: false })} busy={false} events={[evaluated, edited]} {...h} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('evaluate'));
+    expect(h.onEvaluate).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('RefinementView divergences', () => {
   const divergence = {
     fact: 'porta da API',

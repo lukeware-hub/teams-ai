@@ -4,6 +4,7 @@ import { api, refineApi, type AcceptanceCriterion, type ChecklistItem, type Snap
 import { applyToSnapshot, type LiveSnapshot } from '../refine/reducer.js';
 import { useJournal } from '../useSse.js';
 import { ActionButton } from '../components/ActionButton.js';
+import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
@@ -46,6 +47,8 @@ const docImpact: Record<DocFile, string> = {
 /** Backlog mode: the briefing is the target project's docs/briefing.md, one file for the whole backlog. */
 const briefingImpact = 'Briefing do projeto (docs/briefing.md): objetivos, prioridades, cortes e decisões que valem para todo o backlog. Os agentes seguem o que estiver escrito aqui.';
 const docName = (file: string) => docLabel[file.split('/').pop() as DocFile] ?? file;
+/** Journal events that change a document, a decision or a secret: after one of them a new evaluation is not a repeat. */
+const CHANGE_EVENTS = new Set(['DOC_EDITED', 'PATCH_ACCEPTED', 'PATCH_REJECTED', 'QUESTION_ANSWERED', 'QUESTION_SKIPPED', 'SECRET_WRITTEN']);
 const roleInfo: Record<'po' | 'sm', string> = {
   po: 'Pergunta do PO (Product Owner), o agente que revisa objetivos, critérios de aceite e o fluxo de negócio.',
   sm: 'Pergunta do SM (Scrum Master), o agente que revisa stack, tarefas, validação e viabilidade técnica.',
@@ -204,6 +207,11 @@ export function RefinementView(p: ViewProps) {
   const [tab, setTab] = useState<DocFile>('brief.md');
   const [docs, setDocs] = useState(snap.docs);
   const [suggesting, setSuggesting] = useState(false);
+  const [askRe, setAskRe] = useState(false);
+  // Nothing changed since the last evaluation: a new one would spend the same calls on the same documents.
+  const lastEvaluated = (p.events ?? []).filter((e) => e.type === 'REFINE_EVALUATED').at(-1)?.seq ?? 0;
+  const changedSince = (p.events ?? []).some((e) => e.seq > lastEvaluated && CHANGE_EVENTS.has(e.type));
+  const unchanged = st.cycle > 0 && !st.stale && !changedSince;
   const attachInput = useRef<HTMLInputElement>(null);
   const [answer, setAnswer] = useState('');
   const [docsAnswered, setDocsAnswered] = useState(false);
@@ -406,9 +414,14 @@ export function RefinementView(p: ViewProps) {
       {jevAdvisory && <p className={notice}>O Jev é obrigatório no refinamento: ele valida os documentos e decide pontos da avaliação, e seus apontamentos são considerados por Claude, PO e SM. <InfoTip text={jevInfo} /></p>}
       <div className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-3">
         <span className="inline-flex items-start gap-[0.45rem] text-[0.8125rem] leading-[1.35] text-ink-soft"><Icon name="info" size={18} />As alterações são salvas automaticamente ao sair do editor.</span>
-        <ActionButton data-testid="evaluate" className="primary min-w-40 justify-self-center" busy={evaluating} disabled={locked} onClick={p.onEvaluate} icon={<Icon name="check" size={16} />}>
+        <ActionButton data-testid="evaluate" className="primary min-w-40 justify-self-center" busy={evaluating} disabled={locked} onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
         {st.cycle === 0 ? 'Avaliar' : 'Reavaliar'}
         </ActionButton>
+        {askRe && (
+          <ConfirmDialog title="Reavaliar sem mudanças" confirmLabel="Reavaliar mesmo assim" onConfirm={() => { setAskRe(false); void p.onEvaluate(); }} onCancel={() => setAskRe(false)}>
+            <p>Nada mudou desde a última avaliação. Reavaliar gasta de novo as chamadas dos agentes (cerca de US$ 0,7) e pode dar um veredito diferente sobre os mesmos documentos.</p>
+          </ConfirmDialog>
+        )}
         {st.status === 'evaluating' && <span className="justify-self-center text-[0.8125rem] text-ink-soft">Avaliando…</span>}
       </div>
     </section>
