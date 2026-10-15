@@ -151,6 +151,8 @@ export interface ViewProps {
   onSaveDoc(file: DocFile, text: string): void;
   /** "Sugerir": the agent's version of a document written from flow.md, or null when it failed. */
   onSuggestDoc?(file: Exclude<DocFile, 'flow.md'>): Promise<string | null>;
+  /** "Anexar imagem": the agent's design.md adjusted from template images (base64), or null when it failed. */
+  onDesignFromImages?(images: { data: string }[]): Promise<string | null>;
   onEvaluate(): void | Promise<unknown>;
   onEnableBacklog?(): void | Promise<unknown>;
   onEnableDetail?(): void | Promise<unknown>;
@@ -289,6 +291,24 @@ export function RefinementView(p: ViewProps) {
       .then((text) => { if (text !== null) setDocs((d) => ({ ...d, [file]: text })); })
       .finally(() => setSuggesting(false));
   };
+  const toBase64 = (f: File) =>
+    new Promise<string>((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).split(',')[1] ?? '');
+      r.onerror = () => reject(r.error);
+      r.readAsDataURL(f);
+    });
+  const attach = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setSuggesting(true);
+    try {
+      const images = await Promise.all([...files].map((f) => toBase64(f).then((data) => ({ data }))));
+      const text = await p.onDesignFromImages!(images);
+      if (text !== null) setDocs((d) => ({ ...d, 'design.md': text }));
+    } finally {
+      setSuggesting(false);
+    }
+  };
   const tabButton = (f: DocFile) => (
     <button
       key={f}
@@ -333,6 +353,13 @@ export function RefinementView(p: ViewProps) {
             <ActionButton data-testid="suggest" className="h-9 px-[0.8rem]" busy={suggesting} disabled={locked} title="Gera este documento a partir do flow.md" onClick={() => suggest(tab)} icon={<Icon name="lightbulb" size={16} />}>
               {suggesting ? 'Sugerindo…' : 'Sugerir'}
             </ActionButton>
+          )}
+          {tab === 'design.md' && p.onDesignFromImages && (
+            <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-line px-[0.8rem] text-sm" title="Ajusta o design.md pelas cores, fontes e alinhamentos de imagens de exemplo; as imagens são apagadas depois">
+              <Icon name="file" size={16} />
+              Anexar imagem
+              <input data-testid="attach-images" type="file" accept="image/png,image/jpeg" multiple hidden disabled={locked || suggesting} onChange={(e) => { void attach(e.target.files); e.target.value = ''; }} />
+            </label>
           )}
           <button type="button" className="h-9 px-[0.8rem]" aria-label="Copiar documento" onClick={() => copyDoc(docs[tab] ?? '')}>
             Copiar
@@ -689,6 +716,10 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onSuggestDoc={(f) => {
           setError(null);
           return refineApi.suggestDoc(projectId, specId, f).then((r) => r.text, (e: Error) => (setError(e.message), null));
+        }}
+        onDesignFromImages={(images) => {
+          setError(null);
+          return refineApi.suggestDesignFromImages(projectId, specId, images).then((r) => r.text, (e: Error) => (setError(e.message), null));
         }}
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}

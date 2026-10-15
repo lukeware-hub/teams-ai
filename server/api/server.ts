@@ -14,7 +14,7 @@ export interface RouteContext {
   req: IncomingMessage;
   res: ServerResponse;
   params: Record<string, string>;
-  body: () => Promise<unknown>;
+  body: (maxBytes?: number) => Promise<unknown>;
   json: (status: number, value: unknown) => void;
   sse: () => SseWriter;
 }
@@ -98,12 +98,12 @@ export function isAllowedHost(host: string | undefined, extra: readonly string[]
   return name === 'localhost' || name === '127.0.0.1' || name === '[::1]' || extra.includes(name) || extra.includes(full);
 }
 
-async function readBody(req: IncomingMessage): Promise<unknown> {
+async function readBody(req: IncomingMessage, maxBytes = MAX_BODY): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > MAX_BODY) throw new HttpError(413, 'body too large');
+    if (size > maxBytes) throw new HttpError(413, 'body too large');
     chunks.push(chunk as Buffer);
   }
   const text = Buffer.concat(chunks).toString('utf8');
@@ -217,7 +217,7 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
       };
     };
     try {
-      await match.route.handler({ req, res, params: match.params, body: () => readBody(req), json, sse });
+      await match.route.handler({ req, res, params: match.params, body: (maxBytes) => readBody(req, maxBytes), json, sse });
     } catch (err) {
       const status = err instanceof HttpError ? err.status : 500;
       if (!(err instanceof HttpError)) log(`${req.method} ${url.pathname} failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);

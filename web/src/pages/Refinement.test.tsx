@@ -467,6 +467,19 @@ describe('RefinementView: a new spec in an existing project', () => {
   });
 });
 
+describe('RefinementView: Anexar imagem', () => {
+  it('only on design.md; fills the editor with the adjusted text without saving', async () => {
+    const h = { ...on(), onDesignFromImages: vi.fn().mockResolvedValue('# Design ajustado') };
+    render(<MemoryRouter><RefinementView snap={base({ mode: 'new-project' })} busy={false} {...h} /></MemoryRouter>);
+    expect(screen.queryByTestId('attach-images')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'design.md' }));
+    fireEvent.change(screen.getByTestId('attach-images'), { target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] } });
+    await screen.findByDisplayValue('# Design ajustado');
+    expect(h.onDesignFromImages).toHaveBeenCalledWith([{ data: 'eA==' }]);
+    expect(h.onSaveDoc).not.toHaveBeenCalled();
+  });
+});
+
 describe('RefinementView: Sugerir', () => {
   it('fills the editor with the suggestion from flow.md without saving, and has no button on flow.md', async () => {
     const h = { ...on(), onSuggestDoc: vi.fn().mockResolvedValue('# Stack sugerida') };

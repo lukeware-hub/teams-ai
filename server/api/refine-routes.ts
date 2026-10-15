@@ -8,6 +8,8 @@ import { tailJournal } from './journal-tail.js';
 import { HttpError, type Route, type RouteContext } from './server.js';
 
 const P = '/api';
+/** Up to four 5 MB images as base64 (a third larger) plus the JSON around them. */
+const IMAGES_BODY_MAX = 28 * 1024 * 1024;
 
 const str = (v: unknown, field: string, optional = false): string => {
   const x = (v as Record<string, unknown> | null)?.[field];
@@ -95,6 +97,15 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
         if (!['project.md', 'brief.md', 'stack.md', 'flow.md', 'design.md'].includes(file)) throw new HttpError(400, `unknown doc ${file}`);
         await (await get(params)).saveDoc(file as DocFile, str(await body(), 'text'));
         json(200, { ok: true });
+      }),
+    },
+    {
+      method: 'POST',
+      path: `${S}/docs/design.md/images`,
+      handler: wrap(async ({ params, body, json }) => {
+        const images = (await body(IMAGES_BODY_MAX) as { images?: unknown }).images;
+        if (!Array.isArray(images) || images.some((i) => typeof i?.data !== 'string')) throw new HttpError(400, 'images must be a list of {data}');
+        json(200, { text: await (await get(params)).suggestDesignFromImages(images as { data: string }[]) });
       }),
     },
     {

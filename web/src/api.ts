@@ -392,6 +392,7 @@ export const refineApi = {
   delete: (p: string, s: string) => send('DELETE', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}`).then((r) => json<{ ok: true }>(r)),
   saveDoc: (p: string, s: string, file: 'project.md' | 'brief.md' | 'stack.md' | 'flow.md' | 'design.md', text: string) => send('PUT', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${file}`, { text }).then((r) => json<{ ok: true }>(r)),
   suggestDoc: (p: string, s: string, file: 'project.md' | 'brief.md' | 'stack.md' | 'design.md') => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${file}/suggest`).then((r) => json<{ text: string }>(r)),
+  suggestDesignFromImages: (p: string, s: string, images: { data: string }[]) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/design.md/images`, { images }).then((r) => json<{ text: string }>(r)),
   enableBacklog: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/backlog`).then((r) => json<{ ok: true }>(r)),
   enableDetail: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/backlog/detail`).then((r) => json<{ ok: true }>(r)),
   evaluate: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/evaluate`).then((r) => json<{ state: string }>(r)),

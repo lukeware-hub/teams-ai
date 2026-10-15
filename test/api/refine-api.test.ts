@@ -170,6 +170,22 @@ describe('refine api', () => {
     expect((await snapshot()).docs['stack.md']).toBe(before);
   });
 
+  it('adjusts design.md from template images without saving, and deletes the images', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    const url = '/api/refine/hello-app/hello-app-001/docs/design.md/images';
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2]).toString('base64');
+    const before = (await snapshot()).docs['design.md'];
+    script['suggest/po'] = [{ text: '# Design\n\nAzul #0055ff' }];
+    const res = await call('POST', url, { images: [{ data: png }] });
+    expect(await res.json()).toEqual({ text: '# Design\n\nAzul #0055ff' });
+    expect(calls.at(-1)?.prompt).toMatch(/\.attach-[^/]+\/1\.png/);
+    expect((await snapshot()).docs['design.md']).toBe(before);
+    const draft = `${home}/ws/hello-app/refine/hello-app-001`;
+    expect((await fs.readdir(draft)).filter((n) => n.startsWith('.attach-'))).toEqual([]);
+    expect((await call('POST', url, { images: [{ data: Buffer.from('GIF89a').toString('base64') }] })).status).toBe(400);
+    expect((await call('POST', url, { images: [] })).status).toBe(400);
+  });
+
   it('concurrent first reads of a draft share one session instead of failing on the journal lock', async () => {
     expect((await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' })).status).toBe(200);
     await registry.close();

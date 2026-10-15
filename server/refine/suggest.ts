@@ -24,3 +24,19 @@ export function suggestPack(input: { file: SuggestFile; projectId: string; specH
   ].join('\n\n');
   return { kind: 'suggest', role: SUGGEST_ROLE[input.file], specHash: input.specHash, principles: [], outputContract: outputContract('suggest'), criteria: [], feedback, budgetTokens: 30_000 };
 }
+
+/** "Anexar imagem": one step that adjusts design.md from template images the agent opens with Read; the images are deleted afterwards. */
+export function designFromImagesPack(input: { projectId: string; specHash: string; currentMd: string; imagePaths: string[] }): ContextPackInput {
+  const feedback = [
+    'Write the complete docs/design.md in `text`, adjusted to follow the example template shown in the images below.',
+    '- Open every image with the Read tool before writing.',
+    '- From the images take the color palette (hex values), fonts, spacing, alignment and the order of the screen sections.',
+    '- Keep the headings and the decisions of the current design.md that the images do not contradict; the images win when they do.',
+    '- Never invent what the images do not show.',
+    '- Write the content in Brazilian Portuguese. Do not edit any file.',
+    `### images\n${input.imagePaths.map((f) => `- ${f}`).join('\n')}`,
+    `### current design.md\n${input.currentMd.trim() || '(empty)'}`,
+    `### template\n${designTemplate()}`,
+  ].join('\n\n');
+  return { kind: 'suggest', role: SUGGEST_ROLE['design.md'], specHash: input.specHash, principles: [], outputContract: outputContract('suggest'), criteria: [], feedback, budgetTokens: 30_000 };
+}

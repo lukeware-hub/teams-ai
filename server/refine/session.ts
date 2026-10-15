@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { sha256 } from '../contracts/hash.js';
 import type { SuggestOutput } from '../agents/outputs.js';
+import type { ContextPackInput } from '../knowledge/context-pack.js';
 import type { StepOutcome } from '../runner/step.js';
 import type { Project } from '../contracts/project.js';
 import { freezeSpec, providedSecretNames, Spec } from '../contracts/spec.js';
@@ -19,11 +21,16 @@ import { DRAFT_HASH, RefineEvent } from './events.js';
 import { applyPatch } from './patches.js';
 import { buildSpecsIndex } from './specs-index.js';
 import { fitPackBudget } from './fit-pack.js';
-import { SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
+import { designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
 import { applyRefineEvent, emptyRefineState, type BacklogState, type RefineState } from './state.js';
 import { isStarted } from './coverage.js';
 
 export type { RunAgent } from './cycle.js';
+const MAX_IMAGES = 4;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff]);
+
 export class ConflictError extends Error {}
 export class NotFoundError extends Error {}
 
@@ -227,9 +234,36 @@ export class RefineSession {
     if (flowMd.trim() === '' || flowMd === flowTemplate()) throw new ConflictError('Preencha o flow.md antes de pedir uma sugestão.');
     const currentMd = await readDoc(this.deps.draft, file);
     const specHash = sha256(`${file}\n${flowMd}\n${currentMd}`);
-    const pack = fitPackBudget(suggestPack({ file, projectId: this.deps.draft.projectId, specHash, flowMd, currentMd }));
+    return this.runSuggest(SUGGEST_ROLE[file], fitPackBudget(suggestPack({ file, projectId: this.deps.draft.projectId, specHash, flowMd, currentMd })), specHash);
+  }
+
+  /** "Anexar imagem": the agent's design.md adjusted from template images; nothing is saved and the images are deleted after the step. */
+  async suggestDesignFromImages(images: { data: string }[]): Promise<string> {
+    this.guard();
+    if (images.length < 1 || images.length > MAX_IMAGES) throw new RangeError(`envie de 1 a ${MAX_IMAGES} imagens`);
+    const files = images.map((img) => {
+      const bytes = Buffer.from(img.data, 'base64');
+      const ext = bytes.subarray(0, 4).equals(PNG_MAGIC) ? 'png' : bytes.subarray(0, 3).equals(JPEG_MAGIC) ? 'jpg' : null;
+      if (ext === null) throw new RangeError('só imagens png ou jpg');
+      if (bytes.length > MAX_IMAGE_BYTES) throw new RangeError('cada imagem deve ter até 5 MB');
+      return { bytes, ext };
+    });
+    const dir = path.posix.join(this.deps.draft.root, `.attach-${randomUUID()}`);
+    try {
+      await fs.mkdir(dir, { recursive: true });
+      const imagePaths = files.map((f, i) => path.posix.join(dir, `${i + 1}.${f.ext}`));
+      await Promise.all(files.map((f, i) => fs.writeFile(imagePaths[i]!, f.bytes)));
+      const currentMd = await readDoc(this.deps.draft, 'design.md');
+      const specHash = sha256(`design-images\n${currentMd}\n${files.map((f) => sha256(f.bytes.toString('base64'))).join()}`);
+      return await this.runSuggest(SUGGEST_ROLE['design.md'], fitPackBudget(designFromImagesPack({ projectId: this.deps.draft.projectId, specHash, currentMd, imagePaths })), specHash);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  private async runSuggest(role: 'po' | 'sm', pack: ContextPackInput, specHash: string): Promise<string> {
     const out = (await this.deps.runAgent<'suggest'>(
-      { kind: 'suggest', role: SUGGEST_ROLE[file], pack, cwd: this.deps.draft.root, phase: 'refine', taskId: null, attempt: 1 },
+      { kind: 'suggest', role, pack, cwd: this.deps.draft.root, phase: 'refine', taskId: null, attempt: 1 },
       { journal: this.journal, stepDir: this.deps.draft.steps, specHash },
     )) as StepOutcome<SuggestOutput>;
     if (!out.ok) throw new Error(`suggestion failed: ${out.failure}: ${out.errors.join('; ')}`);
