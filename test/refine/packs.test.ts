@@ -54,6 +54,13 @@ describe('refinePack', () => {
     expect(po).toContain('An answer the owner gave is final');
   });
 
+  it('gives reviewers the Jev scores as a hint, not as raw JSON', () => {
+    const jevValidation = { available: true, decision: 'blocked', consistent: false, confidence: 0.56, model: 'jev', checks: { documents_consistent: 0.44 }, stateTruncated: false };
+    const po = refinePack({ ...base, role: 'po', jevValidation } as never).feedback ?? '';
+    expect(po).toContain('Automatic and often wrong, never a verdict. Scores (probability of yes): documents_consistent 0.44.');
+    expect(po).not.toContain('"decision"');
+  });
+
   it('asks only the PO for the contradictions it can prove with quotes', () => {
     const po = refinePack({ ...base, role: 'po' }).feedback ?? '';
     expect(po).toContain('add one entry to `contradictions`');

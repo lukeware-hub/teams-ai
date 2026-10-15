@@ -6,7 +6,7 @@ import { branchOwner, flowHeadings, MAX_ITEMS, rankItems, validateBacklog } from
 import { adjustmentItems, isAdjustment } from './adjustments.js';
 import { buildWithDocs, DIGEST_NOTE } from './docs-view.js';
 import type { BacklogDocs } from './details.js';
-import type { JevValidationResult } from './jev-validation.js';
+import { jevHint, type JevValidationResult } from './jev-validation.js';
 import type { BacklogState } from './state.js';
 
 const RULES = [
@@ -54,7 +54,7 @@ export function backlogPack(input: {
     ...(input.flowMd ? ['### flow.md (Mermaid)', d.flow] : []),
     ...(input.designMd ? ['### design.md', d.design] : []),
     '### Jev preflight validation',
-    input.jevValidation ? JSON.stringify(input.jevValidation, null, 2) : '(not available)',
+    jevHint(input.jevValidation),
     '### previous backlog (keep the keys)',
     previous,
     ...(input.rejection?.length ? ['### Your last attempt was rejected: fix every point', input.rejection.map((r) => `- ${r}`).join('\n')] : []),

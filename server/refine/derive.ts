@@ -4,7 +4,7 @@ import { AcceptanceCriterion, Spec, type SpecDecision } from '../contracts/spec.
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
 import { buildWithDocs, DIGEST_NOTE } from './docs-view.js';
-import type { JevValidationResult } from './jev-validation.js';
+import { jevHint, type JevValidationResult } from './jev-validation.js';
 
 export function derivePack(input: {
   specHash: string;
@@ -34,7 +34,7 @@ export function derivePack(input: {
     ...(input.flowMd ? ['### flow.md (Mermaid)', d.flow] : []),
     ...(input.designMd ? ['### design.md', d.design] : []),
     '### Jev preflight validation',
-    input.jevValidation ? JSON.stringify(input.jevValidation, null, 2) : '(not available)',
+    jevHint(input.jevValidation),
     '### previous derived JSON (keep unchanged acceptance criterion ids)',
     input.previous ? JSON.stringify(input.previous, null, 2) : '(none)',
     '### JSON schemas',

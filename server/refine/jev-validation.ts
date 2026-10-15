@@ -75,6 +75,12 @@ export function summarizeJevChecks(checks: Record<string, number>, model: string
 export const splitWindows = (docs: ValidationDocs, max: number): string[] =>
   splitSections((['project', 'briefing', 'stack', 'flow', 'design'] as const).map((name) => ({ title: `${name}.md`, text: docs[name] })), max);
 
+/** What the reviewers read of the Jev: its scores as a hint, never a verdict. */
+export function jevHint(validation?: JevValidationResult): string {
+  const scores = Object.entries(validation?.checks ?? {}).map(([id, score]) => `${id} ${score.toFixed(2)}`);
+  return scores.length ? `Automatic and often wrong, never a verdict. Scores (probability of yes): ${scores.join(', ')}.` : '(not available)';
+}
+
 const unavailable = (): JevValidationResult => ({ available: false, decision: 'review', consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false });
 
 /** Runs independent Jev consistency checks before Claude derives the specification. */

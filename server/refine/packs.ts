@@ -8,7 +8,7 @@ import { coverageGaps, isStarted } from './coverage.js';
 import { buildWithDocs, DIGEST_NOTE } from './docs-view.js';
 import { DOC_REL, flowTemplate, stackTemplate } from './draft.js';
 import type { BacklogState, PatchRow, QuestionRow } from './state.js';
-import type { JevValidationResult } from './jev-validation.js';
+import { jevHint, type JevValidationResult } from './jev-validation.js';
 
 /** A stack.md or flow.md that is still the blank template is filled by the SM in one patch each; nobody is asked about a placeholder. */
 /** From the second cycle on a review converges: only defects block the spec (live: Front polished design.md for 8 cycles). */
@@ -121,7 +121,7 @@ export function refinePack(input: {
     ...(input.flowMd ? ['### flow.md (Mermaid)', d.flow] : []),
     ...(input.designMd ? ['### design.md (frontend source of truth)', d.design] : []),
     '### Jev preflight validation',
-    input.jevValidation ? JSON.stringify(input.jevValidation, null, 2) : '(not available)',
+    jevHint(input.jevValidation),
     ...(input.notReady ? ['### System 1 readiness (decision 2, a hint)', input.notReady.length ? `Not ready: ${input.notReady.join(', ')}. Focus questions and patches on these; the other criteria were judged ready.` : 'Every acceptance criterion was judged ready.'] : []),
     '### derived project.json',
     JSON.stringify(input.derived.project, null, 2),
