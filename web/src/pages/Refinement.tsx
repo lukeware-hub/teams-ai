@@ -356,11 +356,13 @@ export function RefinementView(p: ViewProps) {
             </ActionButton>
           )}
           {tab === 'design.md' && p.onDesignFromImages && (
+            <>
             <button type="button" className="h-9 px-[0.8rem] max-[720px]:w-full" disabled={locked || suggesting} title="Ajusta o design.md pelas cores, fontes e alinhamentos de imagens de exemplo; as imagens são apagadas depois" onClick={() => attachInput.current?.click()}>
               Anexar imagem
               <Icon name="file" size={16} />
             </button>
             <input ref={attachInput} data-testid="attach-images" type="file" accept="image/png,image/jpeg" multiple hidden onChange={(e) => { void attach(e.target.files); e.target.value = ''; }} />
+            </>
           )}
           <button type="button" className="h-9 px-[0.8rem] max-[720px]:w-full" aria-label="Copiar documento" onClick={() => copyDoc(docs[tab] ?? '')}>
             Copiar
