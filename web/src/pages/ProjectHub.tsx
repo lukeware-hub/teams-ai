@@ -301,10 +301,10 @@ export function ProjectHubView(p: {
             </div>
             <ul className="m-0 grid list-none gap-2 p-0">
               {pr.services.map((s) => (
-                <li className="flex flex-wrap items-center gap-3" key={s.name} data-testid={`project-service-${s.name}`}>
+                <li className="grid items-center gap-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-x-4" key={s.name} data-testid={`project-service-${s.name}`}>
                   <strong>{s.name}</strong>
                   {s.repoUrl ? (
-                    <a className="link-button" href={s.repoUrl} target="_blank" rel="noreferrer" aria-label={`Abrir ${s.name} no GitHub`}>
+                    <a className="link-button justify-self-start" href={s.repoUrl} target="_blank" rel="noreferrer" aria-label={`Abrir ${s.name} no GitHub`}>
                       Abrir no GitHub
                       <Icon name="external" size={16} />
                     </a>
