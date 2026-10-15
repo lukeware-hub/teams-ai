@@ -1180,8 +1180,8 @@ The save explanation is a **statement of system behavior**, so it is `meta` with
 
 ### 26.4 Responsive
 
-**≥1440px** — three columns as above.
-**1024–1439px** — two columns: the documents beside a right column that stacks Revisão and Verificação (§25).
+**≥1280px** — three columns as above.
+**1024–1279px** — two columns: the documents beside a right column that stacks Revisão and Verificação (§25).
 **Below 1024px** — one panel at a time behind the tab bar (§25). The editor keeps its cap; the tab strip scrolls horizontally if it ever exceeds the width.
 **<720px** — 24px gutter; panel padding 20px; `radius-lg`; editor gutter narrows to 36px; file rows keep their download button at 32px with a 44px hit area.
 
