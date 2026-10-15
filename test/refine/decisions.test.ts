@@ -55,6 +55,20 @@ describe('recordDecision on real briefings', () => {
   });
 });
 
+// A subject names the decision heading, so the question's own words stay out of the briefing.
+describe('recordDecision with a subject', () => {
+  it('heads the decision with its subject and writes only the answer', () => {
+    expect(recordDecision('# Briefing\n\n## Objetivos\n\n- agendar\n', 'Qual o prazo de devolução, e quem paga o frete?', '15 dias.', 'Prazo de devolução')).toBe('# Briefing\n\n## Objetivos\n\n- agendar\n\n## Decisões\n\n### Prazo de devolução\n\n> 15 dias.\n');
+  });
+
+  it('replaces the answer under the same subject, and never overwrites prose a person wrote under it', () => {
+    const answered = '# Briefing\n\n## Decisões\n\n### Prazo de devolução\n\n> 7 dias.\n';
+    expect(recordDecision(answered, 'Prazo?', '15 dias.', 'Prazo de devolução')).toBe('# Briefing\n\n## Decisões\n\n### Prazo de devolução\n\n> 15 dias.\n');
+    const curated = '# Briefing\n\n## Decisões\n\n### Prazo de devolução\n\nRever com o jurídico.\n';
+    expect(recordDecision(curated, 'Prazo?', '15 dias.', 'Prazo de devolução')).toBe('# Briefing\n\n## Decisões\n\n### Prazo de devolução\n\nRever com o jurídico.\n\n### Prazo de devolução (2)\n\n> 15 dias.\n');
+  });
+});
+
 describe('withDecisions', () => {
   it('records each answered question with the role that answered from the docs, and skips pending and skipped ones', () => {
     const spec = withDecisions(makeSpec(), [row('q1', 'Port?', 'answered', '8080'), row('q2', 'Region?', 'answered', 'eu', 'sm'), row('q3', 'Cache?', 'pending', null), row('q4', 'Queue?', 'skipped', null)]);

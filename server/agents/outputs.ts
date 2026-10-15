@@ -40,6 +40,8 @@ export const RefineOutput = z.object({
       text: z.string().min(1),
       blocking: z.boolean(),
       relatedAcIds: z.array(acId).default([]),
+      // A bad subject is dropped alone; the question still reaches the owner.
+      subject: z.string().optional().catch(undefined),
     }),
   ),
   docPatch: z.array(DocPatch),

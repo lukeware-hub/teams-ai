@@ -228,6 +228,7 @@ export interface QuestionRow {
   status: 'pending' | 'answered' | 'skipped';
   answer: string | null;
   answeredBy?: 'po' | 'sm' | null;
+  subject?: string;
 }
 export interface PatchRow {
   patchId: string;

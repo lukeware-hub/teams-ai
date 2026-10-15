@@ -79,7 +79,8 @@ describe('refinePack', () => {
     // R11.10 (plan 87): one heading per decision, so each item cites only the decisions it needs.
     expect(pack.feedback).toContain('its own `### <subject>` heading under the `## Decisões` section of docs/briefing.md');
     // R11.10 (plan 90): the orchestrator writes the owner's answers, so no agent records one again.
-    expect(pack.feedback).toContain('The orchestrator writes each answer the owner gives as its own `### <question>` heading there, so never propose a patch that records an answer again.');
+    expect(pack.feedback).toContain('Give every question a `subject`: 3 to 8 words in Brazilian Portuguese naming its topic');
+    expect(pack.feedback).toContain('The orchestrator writes each answer the owner gives under that subject as its own heading there, so never propose a patch that records an answer again.');
     expect(pack.feedback).not.toContain('recorded as a docPatch');
     // Plan 90 review: an older list turns into headings through a patch of its own, and the outline rule no longer asks to record answers.
     expect(pack.feedback).toContain('propose one patch that turns each of its lines into its own heading');

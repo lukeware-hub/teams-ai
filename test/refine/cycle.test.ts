@@ -168,6 +168,18 @@ describe('refinement cycle flow.md must be mermaid (R11.11)', () => {
     expect(data.unverifiedContradictions).toHaveLength(1);
   });
 
+  it('keeps a question subject only once, so two questions never share a decision heading', async () => {
+    const data = await evaluate('# Flow', undefined, {
+      questions: [
+        { id: 'a', text: 'Qual a porta?', blocking: false, relatedAcIds: [], subject: 'Porta da API' },
+        { id: 'b', text: 'Qual a porta do painel?', blocking: false, relatedAcIds: [], subject: 'Porta da API' },
+      ],
+    });
+    const questions = data.questions as Array<{ text: string; subject?: string }>;
+    expect(questions.find((q) => q.text === 'Qual a porta?')?.subject).toBe('Porta da API');
+    expect(questions.find((q) => q.text === 'Qual a porta do painel?')?.subject).toBeUndefined();
+  });
+
   it('keeps po.no-contradictions failed when the PO did not report it', async () => {
     expect(contradictionOf(await evaluate('# Flow', undefined, { checklist: [] }))).toMatchObject({ passed: false, detail: 'not reported' });
   });

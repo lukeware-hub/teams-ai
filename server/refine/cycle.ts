@@ -342,6 +342,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   // Spec §3.2 step 3: dedup by normalized text, blocking first, PO before SM within a class; a decision counts as decided (R11.7.1).
   // A question still pending from an earlier cycle is not asked again.
   const decided = new Set([...state.questions.map((q) => q.text), ...(derived.spec?.decisions ?? []).map((d) => d.question)].map(norm));
+  // A subject is a decision heading, so it is used once: a repeat, or one that equals a heading already taken, falls back to the question text.
+  const taken = new Set([...decided, ...state.questions.flatMap((q) => (q.subject ? [norm(q.subject)] : []))]);
   const seen = new Set<string>();
   const merged: Question[] = [];
   const counters = { po: 0, sm: 0 };
@@ -351,7 +353,9 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         const key = norm(q.text);
         if (seen.has(key) || decided.has(key)) continue;
         seen.add(key);
-        merged.push({ questionId: `${role}-c${cycle}-${counters[role]++}`, role, text: q.text, blocking: q.blocking, relatedAcIds: q.relatedAcIds, cycle });
+        const subject = q.subject && q.subject.length <= 80 && !taken.has(norm(q.subject)) ? q.subject : undefined;
+        taken.add(norm(subject ?? q.text));
+        merged.push({ questionId: `${role}-c${cycle}-${counters[role]++}`, role, text: q.text, blocking: q.blocking, relatedAcIds: q.relatedAcIds, cycle, ...(subject ? { subject } : {}) });
       }
     }
   }

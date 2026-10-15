@@ -37,6 +37,8 @@ export interface Question {
   blocking: boolean;
   relatedAcIds: string[];
   cycle: number;
+  /** A short topic that names the decision heading in the briefing; the question text is the heading when absent. */
+  subject?: string;
 }
 /** The journal's specHash field before a spec is frozen. */
 export const DRAFT_HASH = 'draft';

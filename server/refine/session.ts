@@ -277,7 +277,7 @@ export class RefineSession {
     // Plan 90: the owner's earlier answers go into the brief before the move, which carries them, so a crash loses none.
     const answered = this.state.questions.filter((q) => q.status === 'answered' && q.answer && !q.answeredBy);
     if (answered.length > 0) {
-      const after = answered.reduce((doc, q) => recordDecision(doc, q.text, q.answer!), await readDoc(this.deps.draft, 'brief.md'));
+      const after = answered.reduce((doc, q) => recordDecision(doc, q.text, q.answer!, q.subject), await readDoc(this.deps.draft, 'brief.md'));
       await writeDoc(this.deps.draft, 'brief.md', after);
       await this.journal.fact(RefineEvent.DocEdited, { file: 'brief.md', hash: sha256(after), source: 'decision' });
     }
@@ -350,7 +350,7 @@ export class RefineSession {
     const q = this.question(questionId);
     // R11.10 (plan 90): a backlog reads the owner's answer from the briefing; written first, a retry rewrites the same heading.
     if (this.state.backlog?.enabled) {
-      const after = recordDecision(await readDoc(this.deps.draft, 'brief.md'), q.text, text);
+      const after = recordDecision(await readDoc(this.deps.draft, 'brief.md'), q.text, text, q.subject);
       await writeDoc(this.deps.draft, 'brief.md', after);
       await this.journal.fact(RefineEvent.DocEdited, { file: 'brief.md', hash: sha256(after), source: 'decision' });
     }
