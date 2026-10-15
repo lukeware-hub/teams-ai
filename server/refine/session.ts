@@ -165,7 +165,7 @@ export class RefineSession {
     return new RefineSession(deps, journal);
   }
 
-  static async create(deps: SessionDeps, mode: 'new-project' | 'new-spec' | 'continue'): Promise<RefineSession> {
+  static async create(deps: SessionDeps, mode: 'new-project' | 'new-spec' | 'continue' | 'backlog'): Promise<RefineSession> {
     const s = await RefineSession.open(deps);
     await s.journal.fact(RefineEvent.Created, { projectId: deps.draft.projectId, specId: deps.draft.specId, mode });
     return s;

@@ -27,6 +27,7 @@ let spawning: Promise<void> = Promise.resolve();
 let onSignal: () => void;
 let onSleep: () => Promise<void>;
 let cloned: Array<{ url: string; destination: string }>;
+let backlogStarted: string[];
 let probe: HttpGet;
 let probed: string[];
 const docker: string[] = [];
@@ -44,6 +45,7 @@ beforeEach(async () => {
   spawns = [];
   signals = [];
   cloned = [];
+  backlogStarted = [];
   probed = [];
   probe = async () => ({ status: 200 });
   resolved = {};
@@ -75,7 +77,7 @@ beforeEach(async () => {
     repoRoot: '/repo',
   };
   docker.length = 0;
-  api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, exec: async (s) => { docker.push(s.args.join(" ")); return { exitCode: 0, stdout: "", stderr: "", timedOut: false } as never; }, httpGet: async (u, t) => { probed.push(u); return probe(u, t); }, clearChat: async (id) => fs.rm(path.join(home, '.teams-ai', 'chats', `${id}.json`), { force: true }), resolveHost: async (n) => [resolved[n] ?? '140.82.112.3'], cloneProject: async (url, destination) => { cloned.push({ url, destination }); await (url.includes('no-docs') ? fs.mkdir(destination, { recursive: true }) : fs.cp(HELLO, destination, { recursive: true })); if (url.includes('walks-out')) await fs.writeFile(path.join(destination, 'docs', 'project.json'), JSON.stringify({ ...JSON.parse(await fs.readFile(path.join(HELLO, 'docs', 'project.json'), 'utf8')), services: ['../../../escaped'] })); } }) }, 0);
+  api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, exec: async (s) => { docker.push(s.args.join(" ")); return { exitCode: 0, stdout: "", stderr: "", timedOut: false } as never; }, httpGet: async (u, t) => { probed.push(u); return probe(u, t); }, clearChat: async (id) => fs.rm(path.join(home, '.teams-ai', 'chats', `${id}.json`), { force: true }), resolveHost: async (n) => [resolved[n] ?? '140.82.112.3'], importBacklog: async (projectId) => { backlogStarted.push(projectId); }, cloneProject: async (url, destination) => { cloned.push({ url, destination }); await (url.includes('no-docs') ? fs.mkdir(destination, { recursive: true }) : fs.cp(HELLO, destination, { recursive: true })); if (url.includes('backlog-app')) await fs.writeFile(path.join(destination, 'docs', 'specs', 'hello-001', 'spec.json'), (await fs.readFile(path.join(destination, 'docs', 'specs', 'hello-001', 'spec.json'), 'utf8')).replace('"status": "running"', '"status": "planned"'));if (url.includes('walks-out')) await fs.writeFile(path.join(destination, 'docs', 'project.json'), JSON.stringify({ ...JSON.parse(await fs.readFile(path.join(HELLO, 'docs', 'project.json'), 'utf8')), services: ['../../../escaped'] })); } }) }, 0);
 });
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -203,6 +205,13 @@ describe('projects', () => {
     // Both fixtures are the same project, so they share one clone.
     expect((await readUserConfig(home)).cfg.projects.map((p) => p.dir)).toEqual(expect.arrayContaining([repo]));
     expect((await readUserConfig(home)).cfg.projects.map((p) => p.dir)).not.toContain(cloned[0]!.destination);
+  });
+
+  it('starts the backlog of a git import only when it holds a planned spec', async () => {
+    expect((await post('/api/projects', { url: 'https://github.com/acme/hello-app.git' })).status).toBe(200);
+    expect(backlogStarted).toEqual([]);
+    expect((await post('/api/projects', { url: 'https://github.com/acme/backlog-app.git' })).status).toBe(200);
+    expect(backlogStarted).toEqual(['hello-app']);
   });
 
   it('tells an import of a repository without docs/project.json to import the project repository instead', async () => {

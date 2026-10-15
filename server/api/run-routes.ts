@@ -45,6 +45,8 @@ export interface RunRoutesDeps {
   exec?: Exec;
   /** Prioritizes the spec in the started backlog program that still has it pending; null when no program owns it. */
   queueInProgram?: (projectId: string, specId: string) => Promise<{ draftId: string } | { refused: string } | null>;
+  /** Starts the backlog of a project imported from git; the import answers without waiting for it. */
+  importBacklog?: (projectId: string) => Promise<void>;
 }
 
 const str = (v: unknown, field: string): string => {
@@ -313,6 +315,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           if (deps.graphify) buildProjectGraph(deps.graphify, workspacePaths(cfg, read.project.projectId, deps.home), read.project, cloned).catch((err: Error) => deps.log?.(`project graph not built: ${err.message}`));
         }
         await addProject(dir, deps.home);
+        if (typeof source.url === 'string' && read.specs.some((s) => s.status === 'planned')) deps.importBacklog?.(read.project.projectId).catch((err: Error) => deps.log?.(`backlog import: ${err.message}`));
         const idx = await index();
         const rows = await listProjects(idx);
         const row = rows.find((r) => r.dir === dir);

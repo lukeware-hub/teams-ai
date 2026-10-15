@@ -198,7 +198,7 @@ export async function createNewProject(d: Draft, name: string, description = '')
 const mainDocFiles = async (repo: string, exec: Exec): Promise<string[]> =>
   (await git(repo, ['ls-tree', '-r', '--name-only', 'origin/main', 'docs/'], exec)).split('\n').filter((f) => f !== '');
 
-export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: { kind: 'new-spec'; description?: string } | { kind: 'continue'; report?: string; route?: RouteReport }): Promise<void> {
+export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: { kind: 'new-spec'; description?: string } | { kind: 'continue'; report?: string; route?: RouteReport } | { kind: 'backlog' }): Promise<void> {
   await gitFetch(repo, exec);
   const files = await mainDocFiles(repo, exec);
   for (const rel of files) {
@@ -216,6 +216,8 @@ export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: {
   }
   // The docs as the session received them: the start publishes only what differs from this copy.
   await fs.cp(d.docs, d.base!, { recursive: true });
+  // A backlog draft starts from the docs alone: its outline comes from the evaluation.
+  if (mode.kind === 'backlog') return;
   if (mode.kind === 'new-spec') {
     await fs.writeFile(d.briefMd, briefWith(cleanDescription(mode.description)));
     return;

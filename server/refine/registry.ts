@@ -81,7 +81,7 @@ export class SessionRegistry {
     return workspacePaths(await this.deps.cfg(), projectId, this.deps.home);
   }
 
-  private session(draft: Draft, ws: Workspace, create?: 'new-project' | 'new-spec' | 'continue'): Promise<RefineSession> {
+  private session(draft: Draft, ws: Workspace, create?: 'new-project' | 'new-spec' | 'continue' | 'backlog'): Promise<RefineSession> {
     const key = `${draft.projectId}/${draft.specId}`;
     const p = (async () => {
       const retrieval = (await exists(ws.knowledgeDb)) ? (q: string) => KnowledgeIndex.open(ws.knowledgeDb).search(q, { k: 5 }) : () => [];
@@ -287,6 +287,28 @@ export class SessionRegistry {
       throw new HttpError(500, err instanceof Error ? err.message : String(err));
     }
     return { runId };
+  }
+
+  /**
+   * A git import with a planned backlog starts it by itself: its docs become a backlog draft, enabled here, and the outline
+   * and detail run in the background. Once that session is ready, tickPrograms starts the program. One session per project.
+   */
+  async startImportedBacklog(projectId: string): Promise<void> {
+    if ((await this.list()).some((row) => row.projectId === projectId)) return;
+    const ws = await this.ws(projectId);
+    const draft = draftPaths(ws, `${projectId}-backlog`);
+    await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'backlog' });
+    const session = await this.session(draft, ws, 'backlog');
+    await session.enableBacklog();
+    // Many agent calls: the import does not wait for them.
+    void this.planBacklog(session).catch((err: Error) => console.error(`backlog import ${projectId}: ${err.message}`));
+  }
+
+  /** The outline, then the detail, then the outline again with it: the session is ready when the last evaluation ends. */
+  private async planBacklog(session: RefineSession): Promise<void> {
+    await session.evaluate();
+    await session.enableDetail();
+    await session.evaluate();
   }
 
   /** Discards a draft that never started a run, so the user can begin that spec's refinement again from scratch. */

@@ -155,6 +155,25 @@ describe('refine api', () => {
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/answers', { questionId: 'nope', text: 'x' })).status).toBe(404);
   });
 
+  it('starts the backlog of an imported project once, in backlog mode', async () => {
+    hangAgent = true;
+    remote = await makeRemote({
+      'docs/project.md': '# Hello\n',
+      'docs/project.json': JSON.stringify(HELLO_PROJECT),
+      'docs/briefing.md': '## Objetivos\n- entregar\n',
+      'docs/stack.md': '# Stack\n',
+      'docs/flow.md': '# Fluxo\n',
+      'docs/design.md': '# Design\n',
+    });
+    await fs.mkdir(`${home}/ws/hello-app`, { recursive: true });
+    await execCommand({ bin: 'git', args: ['clone', '-q', remote.origin, `${home}/ws/hello-app/repo`], cwd: home, env: {}, timeoutMs: 60_000 });
+    await registry.startImportedBacklog('hello-app');
+    await registry.startImportedBacklog('hello-app');
+    expect((await (await fetch(`${base()}/api/refine`)).json()).map((r: { specId: string }) => r.specId)).toEqual(['hello-app-backlog']);
+    const session = await registry.get('hello-app', 'hello-app-backlog');
+    expect(session.state.mode).toBe('backlog');
+    expect(session.state.backlog?.enabled).toBe(true);
+  });
   it('suggests a document from flow.md without saving it', async () => {
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     const url = '/api/refine/hello-app/hello-app-001/docs';

@@ -82,7 +82,7 @@ export interface RefineState {
   runId: string | null;
   backlog: BacklogState | null;
   /** How the session was created; null on drafts from before it was kept. */
-  mode: 'new-project' | 'new-spec' | 'continue' | null;
+  mode: 'new-project' | 'new-spec' | 'continue' | 'backlog' | null;
   /** Why the program did not start by itself, and in which cycle; a new cycle tries again. */
   autoStartFailure?: { cycle: number; reason: string };
 }
