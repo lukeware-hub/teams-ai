@@ -59,4 +59,5 @@ EXPOSE 8787
 # Any HTTP answer below 500 means the server is up (the API may answer 401 once authentication is on).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:8787/').then((r)=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
-CMD ["sh", "-lc", "export PATH=/opt/teams-ai-bin:$PATH; [ -f \"$HOME/.teams-ai/config.json\" ] || { mkdir -p \"$HOME/.teams-ai\" && cp /app/docker/config.json \"$HOME/.teams-ai/config.json\"; }; find \"$HOME/.teams-ai/workspaces\" -name '*.ndjson.lock' -delete 2>/dev/null || true; exec npm run ui -- --port 8787"]
+# The graphify skill for Claude Code is written at each start, not at build: ~/.claude is a volume that keeps only what it had when first created.
+CMD ["sh", "-lc", "export PATH=/opt/teams-ai-bin:$PATH; [ -f \"$HOME/.teams-ai/config.json\" ] || { mkdir -p \"$HOME/.teams-ai\" && cp /app/docker/config.json \"$HOME/.teams-ai/config.json\"; }; find \"$HOME/.teams-ai/workspaces\" -name '*.ndjson.lock' -delete 2>/dev/null || true; graphify install --platform claude >/dev/null || echo 'graphify: skill not installed' >&2; exec npm run ui -- --port 8787"]
