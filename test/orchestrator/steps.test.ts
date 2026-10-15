@@ -490,6 +490,15 @@ describe('runAgentStep', () => {
     expect(seen[1]).toMatchObject({ model: 'haiku', effort: 'low' });
   });
 
+  it('journals the effort each step ran on, and the model and effort it ended on after a fallback', async () => {
+    const ok = { ok: true as const, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() };
+    const { d } = await seeing('opus', 'max', async (m) => (m === 'opus' ? quota() : ok));
+    const started = d.journal.events.find((e) => e.type === OrchEvent.StepStarted)!.data;
+    const finished = d.journal.events.find((e) => e.type === OrchEvent.StepFinished)!.data;
+    expect(started).toMatchObject({ model: 'opus', effort: 'low' });
+    expect(finished).toMatchObject({ model: 'claude-sonnet-5-5', effort: 'high', fellBackFrom: 'opus' });
+  });
+
   it('runs an Opus step on Sonnet when Opus is out of quota, without pausing the run', async () => {
     const { d, seen, out } = await seeing('opus', undefined, async (m) => (m === 'opus' ? quota() : { ok: true, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() }));
     expect(seen.map((s) => s.model)).toEqual(['opus', 'claude-sonnet-5-5']);

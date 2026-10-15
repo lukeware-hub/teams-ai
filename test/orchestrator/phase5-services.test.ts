@@ -284,3 +284,38 @@ describe('Phase 5 with several services', () => {
     expect(failure()).toMatchObject({ stage: 'verify', service: 'inventory', detail: 'no container port' });
   });
 });
+
+/** A service of an earlier spec: its repo sits under the workspace and its plan is on the project's main. */
+async function earlierService(deps: PhaseDeps, root: string, plan: ServicesPlan): Promise<void> {
+  await fs.mkdir(path.join(remotes[0]!.repo, 'docs', 'specs', 'earlier'), { recursive: true });
+  await fs.writeFile(path.join(remotes[0]!.repo, 'docs', 'specs', 'earlier', 'plan.json'), JSON.stringify(plan));
+  const dep = await makeRemote({ 'README.md': '#\n' });
+  remotes.push(dep);
+  await fs.mkdir(path.join(root, 'services', 'ledger'), { recursive: true });
+  await fs.rename(dep.repo, path.join(root, 'services', 'ledger', 'repo'));
+  Object.assign(deps, { ws: { ...deps.ws, root } });
+}
+
+describe('Phase 5 rebuilds a service of an earlier spec whose container is gone', () => {
+  const ledgerPlan = { ...plan, services: { ...plan.services, ledger: plan.services.inventory! } };
+
+  it('builds it from its plan before the suites reach it', async () => {
+    const log: string[] = [];
+    const { deps, root } = await setup(log, { services: ['orders', 'inventory', 'ledger'], ports: { 'shop/ledger': 20009 }, cannotStart: 'ledger' });
+    await earlierService(deps, root, ledgerPlan);
+    const res = await runServicesPhase5(deps, 1);
+    expect(log).toContain('apply:ledger');
+    expect(res.ok).toBe(true);
+    expect(journal.events.some((e) => e.type === OrchEvent.DeployFailed)).toBe(false);
+  });
+
+  it('says which service could not be built when the suites then fail on it', async () => {
+    const log: string[] = [];
+    const { deps, root } = await setup(log, { services: ['orders', 'inventory', 'ledger'], ports: { 'shop/ledger': 20009 }, cannotStart: 'ledger', fail: 'apply:ledger', applyError: 'image build failed', e2eFails: 'e2e:inventory', detail: 'AC-002: failed' });
+    await earlierService(deps, root, ledgerPlan);
+    const res = await runServicesPhase5(deps, 1);
+    expect(res.ok).toBe(false);
+    expect(String(failure().detail)).toContain('environment: a service of an earlier spec is not running (ledger: image build failed)');
+  });
+});
+

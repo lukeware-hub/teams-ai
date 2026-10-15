@@ -13,7 +13,7 @@ import { safeHttpUrl } from '../safeUrl.js';
 import { StepList } from '../components/StepList.js';
 import { TaskDetail } from '../components/TaskDetail.js';
 import { Workspace } from '../components/Workspace.js';
-import { currentActivity, evidence, explainBlockReason, explainPhase, explainStop, firstSentence, formatDuration, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseState, phaseTitle, rootBlockers, runState, stepDoing, stopBefore, stopSummary, tokens, type ActivityItem, type PhaseRow, type StopOwner } from '../run/selectors.js';
+import { type ModelUse, currentActivity, evidence, explainBlockReason, explainPhase, explainStop, firstSentence, formatDuration, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseState, phaseTitle, rootBlockers, runState, stepDoing, stopBefore, stopSummary, tokens, type ActivityItem, type PhaseRow, type StopOwner } from '../run/selectors.js';
 import { useJournal } from '../useSse.js';
 
 // A panel title with its info tip right beside it, not pushed to the far edge.
@@ -85,7 +85,12 @@ const TIP = {
 
 type UsageRow = [string, { inputTokens: number; outputTokens: number; costUsd: number; steps: number }];
 
-function UsageList({ title, tip, rows, label, testIdPrefix }: { title: string; tip: string; rows: UsageRow[]; label: (key: string) => ReactNode; testIdPrefix?: string }) {
+const MODEL_NAME: Record<string, string> = { 'claude-haiku-5-5': 'Haiku 5.5', 'claude-sonnet-5-5': 'Sonnet 5.5', 'claude-opus-5-5': 'Opus 5.5', haiku: 'Haiku', sonnet: 'Sonnet', opus: 'Opus' };
+const EFFORT_NAME: Record<string, string> = { low: 'baixo', medium: 'médio', high: 'alto', max: 'máximo' };
+/** One line per model and effort an agent ran on; runs journaled before the effort was recorded say so. */
+const modelUseLabel = (u: ModelUse) => `${MODEL_NAME[u.model] ?? u.model} · esforço ${u.effort ? (EFFORT_NAME[u.effort] ?? u.effort) : 'não registrado'} · ${steps(u.steps)}`;
+
+function UsageList({ title, tip, rows, label, testIdPrefix, details }: { title: string; tip: string; rows: UsageRow[]; label: (key: string) => ReactNode; testIdPrefix?: string; details?: (key: string) => ReactNode }) {
   return (
     <>
       <div className="mt-[1.1rem] mb-1 flex items-center gap-1">
@@ -100,6 +105,7 @@ function UsageList({ title, tip, rows, label, testIdPrefix }: { title: string; t
             <span className={`${META} text-ink-soft`}>
               {u.inputTokens} entrada · {u.outputTokens} saída · {steps(u.steps)}
             </span>
+            {details?.(key)}
           </li>
         ))}
       </ul>
@@ -957,7 +963,20 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                       <dd>{t.total.steps}</dd>
                     </div>
                   </dl>
-                  {Object.keys(t.byRole).length ? <UsageList title="Por agente" tip={TIP.byRole} rows={Object.entries(t.byRole)} label={roleName} testIdPrefix="tokens-" /> : null}
+                  {Object.keys(t.byRole).length ? (
+                    <UsageList
+                      title="Por agente"
+                      tip={TIP.byRole}
+                      rows={Object.entries(t.byRole)}
+                      label={roleName}
+                      testIdPrefix="tokens-"
+                      details={(role) => (t.modelsByRole[role] ?? []).map((u) => (
+                        <span key={`${u.model}|${u.effort ?? ''}`} className={`${META} block text-ink-soft`} data-testid={`models-${role}`}>
+                          {modelUseLabel(u)}
+                        </span>
+                      ))}
+                    />
+                  ) : null}
                   {Object.keys(t.byPhase).length ? <UsageList title="Por fase" tip={TIP.byPhase} rows={Object.entries(t.byPhase)} label={(key) => PHASE_LABEL[key] ?? key} /> : null}
                 </section>
               </aside>

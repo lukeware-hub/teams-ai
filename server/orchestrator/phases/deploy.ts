@@ -1,4 +1,4 @@
-import type { PlanTask } from '../../contracts/plan.js';
+import { parseAnyPlan, servicePlans, type PlanTask, type ServiceView } from '../../contracts/plan.js';
 import { specShare } from '../../contracts/spec.js';
 import { assignDeployPort, portHeldByOthers, portKey, registeredPorts } from '../../deploy/port-registry.js';
 import { composeProject, serviceComposeProject, sharedNetwork } from '../../deploy/docker-local.js';
@@ -11,6 +11,9 @@ import { Intent, OrchEvent } from '../events.js';
 import { E2E_CONTRACT, SMOKE_CONTRACT } from '../steps.js';
 import { MISSING_VARIABLE } from '../../environment/service.js';
 import { checkoutMain, type GateScope, type PhaseDeps, type ServiceRepo } from './shared.js';
+import { serviceWorkspace } from '../workspace.js';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 
 /** `retryEnvironment`: a missing variable was created, so the same attempt runs again without a fix task. */
 export type Phase5Result = { ok: true; url: string; smoke: SmokeRow[]; healthcheck: string; e2e?: E2eRow[] } | { ok: false; reason: string; fixTask?: PlanTask; retryEnvironment?: true };
@@ -22,6 +25,8 @@ export const MAX_ENV_RERUNS = 2;
 const deployPort = (deps: PhaseDeps) => Number([...deps.journal.events].reverse().find((e) => e.type === OrchEvent.DeployPortReassigned)?.data.to ?? deps.plan!.deploy.port);
 
 const PORT_TAKEN = /port is already allocated/;
+/** The start of a service whose container is gone: its daemon was recreated, so only a build brings it back. */
+const NO_CONTAINER = /no container found/;
 
 /** Draws a free port in place of `from`, never one of `avoid`, and records it; null when none is left. */
 async function reassignPort(deps: PhaseDeps, from: number, service: string | null = null, avoid: readonly number[] = []): Promise<number | null> {
@@ -40,12 +45,27 @@ export function deployIntent(deps: PhaseDeps, tag: string): DeploymentIntent {
 }
 
 /** A service's port: the plan's, unless a failed deploy of that service moved it. */
-const servicePort = (deps: PhaseDeps, repo: ServiceRepo) => Number([...deps.journal.events].reverse().find((e) => e.type === OrchEvent.DeployPortReassigned && e.data.service === repo.service)?.data.to ?? repo.plan.deploy.port);
+const servicePort = (deps: PhaseDeps, repo: Pick<ServiceRepo, 'service' | 'plan'>) => Number([...deps.journal.events].reverse().find((e) => e.type === OrchEvent.DeployPortReassigned && e.data.service === repo.service)?.data.to ?? repo.plan.deploy.port);
 
 /** A service deploys like a single plan, as its own compose project on the project's shared network. */
-function serviceIntent(deps: PhaseDeps, repo: ServiceRepo, tag: string): DeploymentIntent {
+function serviceIntent(deps: PhaseDeps, repo: Pick<ServiceRepo, 'service' | 'plan' | 'ws'>, tag: string): DeploymentIntent {
   const service = repo.service!;
   return { ...deployIntent({ ...deps, plan: repo.plan, ws: repo.ws }, tag), port: servicePort(deps, repo), shared: { composeProject: serviceComposeProject(deps.project.projectId, service), network: sharedNetwork(deps.project.projectId), alias: service } };
+}
+/** The view of a service as the first spec on the project's main that declares it; null when none does. */
+export async function declaredService(projectRepo: string, service: string): Promise<ServiceView | null> {
+  const specs = await fs.readdir(path.join(projectRepo, 'docs', 'specs')).catch(() => [] as string[]);
+  for (const spec of specs.sort()) {
+    const text = await fs.readFile(path.join(projectRepo, 'docs', 'specs', spec, 'plan.json'), 'utf8').catch(() => null);
+    if (text === null) continue;
+    try {
+      const view = servicePlans(parseAnyPlan(JSON.parse(text))).find((v) => v.service === service);
+      if (view) return view;
+    } catch {
+      continue; // a plan that does not parse declares nothing here
+    }
+  }
+  return null;
 }
 /** Dependency manifests of the supported stacks: a smoke or e2e fix may need to add a test dependency. */
 const MANIFESTS = ['package.json', 'go.mod', 'go.sum', 'requirements.txt', 'pyproject.toml', 'Cargo.toml', 'Cargo.lock'];
@@ -263,7 +283,26 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
   const untouchedServices = (deps.project.services ?? []).filter((s) => !services.repos.some((r) => r.service === s) && registry[portKey(deps.project.projectId, s)]);
   const untouched = untouchedServices.map((s) => [serviceUrlEnv(s), `http://${s}:${registry[portKey(deps.project.projectId, s)]}`] as const);
   // They may have stopped since their own spec (a restart of the host): start them again, and say so when one cannot, so the failure reads as the environment's.
-  const revived = await Promise.all(untouchedServices.map(async (s) => [s, await (target.ensureRunning?.(deps.project.projectId, s) ?? { ok: true, detail: '' })] as const));
+  const started = await Promise.all(untouchedServices.map(async (s) => [s, await (target.ensureRunning?.(deps.project.projectId, s) ?? { ok: true, detail: '' })] as const));
+  // A service whose container is gone is built again from the plan of its spec; without one the start failure stands.
+  const restore = async (service: string): Promise<{ ok: boolean; detail: string } | null> => {
+    const view = await declaredService(deps.ws.repo, service);
+    if (!view) return null;
+    const ws = serviceWorkspace(deps.ws, service);
+    try {
+      const tag = await checkoutMain({ ...deps, ws });
+      // Consumers address the service on the port the registry holds, so the rebuilt one keeps it.
+      const intent = { ...serviceIntent(deps, { service, plan: view.plan, ws }, tag), port: registry[portKey(deps.project.projectId, service)] ?? view.plan.deploy.port };
+      await deps.environment?.prepare({ service, dir: ws.repo, plan: view.plan }, null);
+      await target.apply(intent);
+      const health = await target.verify(intent);
+      return { ok: health.healthy, detail: health.healthy ? 'running' : health.detail };
+    } catch (err) {
+      return { ok: false, detail: (err as Error).message };
+    }
+  };
+  const revived: Array<readonly [string, { ok: boolean; detail: string }]> = [];
+  for (const [s, r] of started) revived.push([s, r.ok || !NO_CONTAINER.test(r.detail) ? r : ((await restore(s)) ?? r)]);
   const down = revived.filter(([, r]) => !r.ok).map(([s, r]) => `${s}: ${r.detail}`);
   const withEnvironment = (detail: string) => (down.length > 0 ? `${detail}\n\nenvironment: a service of an earlier spec is not running (${down.join('; ')})` : detail);
   // A service of another spec that never published has no address; a suite that fails reaching it needs that spec, not a fix task.
