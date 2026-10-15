@@ -75,7 +75,7 @@ beforeEach(async () => {
     repoRoot: '/repo',
   };
   docker.length = 0;
-  api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, exec: async (s) => { docker.push(s.args.join(" ")); return { exitCode: 0, stdout: "", stderr: "", timedOut: false } as never; }, httpGet: async (u, t) => { probed.push(u); return probe(u, t); }, clearChat: async (id) => fs.rm(path.join(home, '.teams-ai', 'chats', `${id}.json`), { force: true }), resolveHost: async (n) => [resolved[n] ?? '140.82.112.3'], cloneProject: async (url, destination) => { cloned.push({ url, destination }); await (url.includes('no-docs') ? fs.mkdir(destination, { recursive: true }) : fs.cp(HELLO, destination, { recursive: true })); } }) }, 0);
+  api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, exec: async (s) => { docker.push(s.args.join(" ")); return { exitCode: 0, stdout: "", stderr: "", timedOut: false } as never; }, httpGet: async (u, t) => { probed.push(u); return probe(u, t); }, clearChat: async (id) => fs.rm(path.join(home, '.teams-ai', 'chats', `${id}.json`), { force: true }), resolveHost: async (n) => [resolved[n] ?? '140.82.112.3'], cloneProject: async (url, destination) => { cloned.push({ url, destination }); await (url.includes('no-docs') ? fs.mkdir(destination, { recursive: true }) : fs.cp(HELLO, destination, { recursive: true })); if (url.includes('walks-out')) await fs.writeFile(path.join(destination, 'docs', 'project.json'), JSON.stringify({ ...JSON.parse(await fs.readFile(path.join(HELLO, 'docs', 'project.json'), 'utf8')), services: ['../../../escaped'] })); } }) }, 0);
 });
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -209,6 +209,13 @@ describe('projects', () => {
     const res = await post('/api/projects', { url: 'https://github.com/acme/shop-no-docs.git' });
     expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(/docs\/project\.json não foi encontrado; .*serviço.*repositório de documentação/);
+  });
+
+  it('refuses a service name that walks out of the workspace, before any service is cloned', async () => {
+    const res = await post('/api/projects', { url: 'https://github.com/acme/walks-out.git' });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/docs\/project\.json inválido/);
+    expect(cloned.map((c) => c.url)).toEqual(['https://github.com/acme/walks-out.git']);
   });
 
   it('refuses an import whose project id already belongs to a clone of another repository', async () => {
