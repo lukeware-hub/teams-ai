@@ -429,7 +429,7 @@ export function RefinementView(p: ViewProps) {
             <InfoTip text={roleInfo[current.role]} />
             {current.blocking && <Tipped text="Pergunta que bloqueia o avanço: precisa de resposta antes de seguir."><span className="tag ml-0">Obrigatória</span></Tipped>}
           </div>
-          <p>{questionText(current.text)}</p>
+          <p className="text-justify">{questionText(current.text)}</p>
           {current.relatedAcIds.length > 0 && (
             <small className="question-criteria block leading-[1.6] text-ink-soft [&_.info-tip]:ml-[0.15rem]">
               Critérios de aceite:{' '}
@@ -450,29 +450,27 @@ export function RefinementView(p: ViewProps) {
             <InfoTip text="Marque quando a resposta já estava nos documentos: essas marcas medem quando o Jev pode responder sozinho." />
           </div>
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-            <div className="flex items-center gap-2">
-              <ActionButton
-                className="primary"
-                data-testid={`answer-${current.questionId}`}
-                disabled={locked || answer.trim() === ''}
-                onClick={() => {
-                  const sent = p.onAnswer(current.questionId, answer, docsAnswered);
-                  setAnswer('');
-                  setDocsAnswered(false);
-                  return sent;
-                }}
-                icon={<Icon name="send" size={16} />}
-              >
-                Responder
+            <ActionButton
+              className="primary"
+              data-testid={`answer-${current.questionId}`}
+              disabled={locked || answer.trim() === ''}
+              onClick={() => {
+                const sent = p.onAnswer(current.questionId, answer, docsAnswered);
+                setAnswer('');
+                setDocsAnswered(false);
+                return sent;
+              }}
+              icon={<Icon name="send" size={16} />}
+            >
+              Responder
+            </ActionButton>
+            {!current.blocking && (
+              <ActionButton data-testid={`skip-${current.questionId}`} disabled={locked} onClick={() => p.onSkip(current.questionId)} icon={<Icon name="chevron-right" size={16} />}>
+                Ignorar
               </ActionButton>
-              {!current.blocking && (
-                <ActionButton data-testid={`skip-${current.questionId}`} disabled={locked} onClick={() => p.onSkip(current.questionId)} icon={<Icon name="chevron-right" size={16} />}>
-                  Ignorar
-                </ActionButton>
-              )}
-            </div>
-            <small className="text-ink-soft">{pending.length === 1 ? 'Esta é a última pergunta em aberto.' : pending.length === 2 ? 'Mais 1 pergunta depois desta.' : `Mais ${pending.length - 1} perguntas depois desta.`}</small>
+            )}
           </div>
+          <small className="mt-2 block text-ink-soft">{pending.length === 1 ? 'Esta é a última pergunta em aberto.' : pending.length === 2 ? 'Mais 1 pergunta depois desta.' : `Mais ${pending.length - 1} perguntas depois desta.`}</small>
         </div>
       ) : (
         <p className={muted}>Nenhuma pergunta em aberto.</p>
@@ -510,7 +508,7 @@ export function RefinementView(p: ViewProps) {
         </p>
       ))}
       <h4 className="mx-0 mt-5 mb-[0.7rem] flex items-center gap-[0.55rem] text-[0.8rem] tracking-[0.06em] text-ink uppercase [&>svg]:text-ink-soft"><Icon name="clock" size={20} />Histórico</h4>
-      <ul className="m-0 list-none rounded-lg border border-line bg-surface px-4 py-[0.8rem] text-[0.8rem] leading-normal text-ink-soft empty:grid empty:min-h-[3.3rem] empty:place-items-center empty:before:text-ink-soft empty:before:content-['Nenhum_registro_no_momento.'] [&>li+li]:mt-[0.6rem] [&>li+li]:border-t [&>li+li]:border-line [&>li+li]:pt-[0.6rem]">
+      <ul className="m-0 list-none rounded-lg border border-line bg-surface px-4 py-[0.8rem] text-[0.8rem] leading-normal text-justify text-ink-soft empty:grid empty:min-h-[3.3rem] empty:place-items-center empty:before:text-ink-soft empty:before:content-['Nenhum_registro_no_momento.'] [&>li+li]:mt-[0.6rem] [&>li+li]:border-t [&>li+li]:border-line [&>li+li]:pt-[0.6rem]">
         {[...st.questions]
           .filter((q) => q.status !== 'pending')
           .reverse()
