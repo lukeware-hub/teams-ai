@@ -92,7 +92,7 @@ describe('program service outcomes', () => {
     const s = service();
     expect(await s.outcome('a-complete-r1')).toEqual({ kind: 'done', costUsd: null });
     expect(await s.outcome('c-r1')).toEqual({ kind: 'failed', reason: 'verification-failed: AC-004 missing', costUsd: null });
-    expect(await s.outcome('d-r1')).toEqual({ kind: 'failed', reason: 'deploy-failed: smoke 500', costUsd: null });
+    expect(await s.outcome('d-r1')).toEqual({ kind: 'failed', reason: 'deploy-failed: smoke 500', costUsd: null, merged: true });
     await journal('e-r1', [started('e'), finished('verification-failed', { reason: 'verification failed in round 2: 0 failing tests, 1 uncovered criteria', blocked: [{ taskId: 'T2', reason: 'the Dev found no way' }, { taskId: 'T3', reason: 'a dependency is blocked' }] })]);
     expect(await s.outcome('e-r1')).toEqual({ kind: 'failed', reason: 'verification-failed: verification failed in round 2: 0 failing tests, 1 uncovered criteria; blocked: T2 (the Dev found no way)', costUsd: null });
   });

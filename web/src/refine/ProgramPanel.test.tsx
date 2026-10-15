@@ -29,6 +29,16 @@ describe('ProgramPanel', () => {
     expect(within(screen.getByTestId('program-item-c')).getByText(/depends on b, which failed/)).toBeTruthy();
   });
 
+  it('shows a spec whose code is on main but whose deploy failed as partly done, with the reason and no retry', () => {
+    renderPanel(program([
+      item('a', { rank: 1, status: 'partial', runId: 'd-a-r1', reason: 'deploy-failed: smoke 500' }),
+    ], 'finished'));
+    const a = within(screen.getByTestId('program-item-a'));
+    expect(a.getByText('concluída parcialmente')).toBeTruthy();
+    expect(a.queryByRole('button', { name: 'Tentar de novo' })).toBeNull();
+    expect(screen.getByText(/há specs concluídas parcialmente/)).toBeTruthy();
+  });
+
   it('links the pull requests of a spec and says why and until when a run waits', () => {
     renderPanel(program([
       item('a', { status: 'running', runId: 'd-a-r1', prs: [{ number: 7, url: 'https://github.com/o/audit-service/pull/7' }, { number: 7, url: 'https://github.com/o/identity-service/pull/7' }], pause: { reason: 'quota', until: '2026-10-13T18:30:00.000Z' } }),

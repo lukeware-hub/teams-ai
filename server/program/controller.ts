@@ -6,9 +6,10 @@
  * writes it back before it launches anything, so a restart finds the claim and adopts the run instead of starting another.
  * A failed spec is isolated: its dependents wait while it is repaired (R11.14, bounded by MAX_REPAIRS) and are blocked once it stays failed; everything independent of it keeps going.
  * A failure of the environment waits, longer each time up to an hour, and starts again; after MAX_ENV_RETRIES finished runs it fails.
+ * A spec whose code is already on main when it fails for good (a deploy) ends `partial`, and its dependents still run.
  */
 
-export type ItemStatus = 'pending' | 'running' | 'completing' | 'waiting' | 'done' | 'failed' | 'blocked';
+export type ItemStatus = 'pending' | 'running' | 'completing' | 'waiting' | 'done' | 'partial' | 'failed' | 'blocked';
 
 export interface ProgramItem {
   specId: string;
@@ -57,7 +58,8 @@ export type RunOutcome =
   | { kind: 'delivered'; costUsd?: number | null }
   /** A `complete` run ended `done`. */
   | { kind: 'done'; costUsd?: number | null }
-  | { kind: 'failed'; reason: string; costUsd?: number | null }
+  /** `merged`: the spec's code is already on main, only a later step failed. */
+  | { kind: 'failed'; reason: string; costUsd?: number | null; merged?: true }
   /** The user stopped it: never resumed nor repaired. `finished`: it drained to its end and can no longer resume. */
   | { kind: 'stopped'; finished?: true; costUsd?: number | null };
 
@@ -148,6 +150,8 @@ export function retryItem(program: Program, specId: string, now: Date): Program 
 }
 
 const IN_FLIGHT: ReadonlySet<ItemStatus> = new Set(['running', 'completing']);
+/** Its code is on main: a partial spec counts as delivered, so its dependents and the next free slot go ahead. */
+const isDelivered = (status: ItemStatus | undefined) => status === 'done' || status === 'partial';
 /** Not settled yet: it still runs or will run, so its dependents wait and the program goes on. */
 const LIVE: ReadonlySet<ItemStatus> = new Set(['pending', 'waiting', ...IN_FLIGHT]);
 /** Two items may run together only when both carry a conflict map and neither names the other. */
@@ -167,8 +171,8 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
     if (costUsd == null) return;
     item.costUsd = (item.costUsd ?? 0) + costUsd;
   };
-  const fail = (item: ProgramItem, reason: string, costUsd?: number | null) => {
-    item.status = 'failed';
+  const fail = (item: ProgramItem, reason: string, costUsd?: number | null, merged?: true) => {
+    item.status = merged ? 'partial' : 'failed';
     item.reason = reason;
     item.finishedAt = stamp();
     addCost(item, costUsd);
@@ -182,23 +186,24 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
     dirty = true;
   };
   // A code defect goes again with its failures while it has repairs left; an environment failure or a broken classification waits; a spec problem fails.
-  const failOrRepair = async (item: ProgramItem, reason: string, costUsd?: number | null) => {
+  // `merged` is passed on every final failure, so a spec whose code is already on main ends partial wherever it gives up.
+  const failOrRepair = async (item: ProgramItem, reason: string, costUsd?: number | null, merged?: true) => {
     const repairs = item.repairs ?? 0;
     const failures = [...(item.failures ?? []), reason];
     const verdict = fx.repair ? await fx.repair(item.specId, failures).catch((): RepairVerdict => 'wait') : 'give-up';
     if (verdict === 'wait') {
       // A finished run is paid for: after a few of them, "the environment" is no longer an excuse (live: a spec ran six times, $38).
-      if (failures.length > MAX_ENV_RETRIES) return fail(item, `${reason}; ${failures.length} runs in a row failed and were put down to the environment, so the owner has to act`, costUsd);
+      if (failures.length > MAX_ENV_RETRIES) return fail(item, `${reason}; ${failures.length} runs in a row failed and were put down to the environment, so the owner has to act`, costUsd, merged);
       item.failures = failures;
       return wait(item, reason, costUsd);
     }
     // The same failure after a repair needs a person, not a third identical run (live: a credential only the owner can provide, three runs of 3 deploys each).
-    if (verdict === 'retry-now' && (item.failures ?? []).some((f) => sameFailure(f, reason))) return fail(item, `${reason}; the same failure came back after a repair, so the owner has to act`, costUsd);
+    if (verdict === 'retry-now' && (item.failures ?? []).some((f) => sameFailure(f, reason))) return fail(item, `${reason}; the same failure came back after a repair, so the owner has to act`, costUsd, merged);
     if (verdict === 'retry-now' && repairs < MAX_REPAIRS) {
       addCost(item, costUsd);
       Object.assign(clearForRetry(item), { repairs: repairs + 1, failures });
       dirty = true;
-    } else fail(item, repairs > 0 ? `${reason}; ${repairs} reparo(s) automático(s) não resolveram` : reason, costUsd);
+    } else fail(item, repairs > 0 ? `${reason}; ${repairs} reparo(s) automático(s) não resolveram` : reason, costUsd, merged);
   };
   // A run the server's own restart killed is resumed for free: only runs that die on their own spend the bounded resumes.
   const resume = async (item: ProgramItem, runId: string, what: string, restart = false) => {
@@ -240,7 +245,7 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
         continue;
       }
       const o = await fx.outcome(item.runId);
-      if (o.kind === 'failed') await failOrRepair(item, o.reason, o.costUsd);
+      if (o.kind === 'failed') await failOrRepair(item, o.reason, o.costUsd, o.merged);
       else if (o.kind === 'stopped') stopped(item, o);
       else if (o.kind === 'interrupted') await resume(item, item.runId, 'the run', o.restart);
       else if (o.kind === 'delivered') {
@@ -297,9 +302,9 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
   // Until one spec is done, one runs alone: the first spec lays the project's foundation.
   for (;;) {
     const inFlight = p.items.filter((i) => IN_FLIGHT.has(i.status));
-    const slots = p.items.some((i) => i.status === 'done') ? MAX_PARALLEL : 1;
+    const slots = p.items.some((i) => isDelivered(i.status)) ? MAX_PARALLEL : 1;
     if (inFlight.length >= slots) break;
-    const ready = p.items.filter((i) => i.status === 'pending' && i.dependsOn.every((d) => p.items.find((x) => x.specId === d)?.status === 'done'));
+    const ready = p.items.filter((i) => i.status === 'pending' && i.dependsOn.every((d) => isDelivered(p.items.find((x) => x.specId === d)?.status)));
     const next = [...ready.filter((i) => i.priority), ...ready.filter((i) => !i.priority)].find((i) => inFlight.every((f) => compatible(i, f)));
     if (!next) break;
     delete next.priority;

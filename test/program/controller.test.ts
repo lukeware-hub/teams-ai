@@ -104,6 +104,32 @@ describe('program controller', () => {
     expect(calls).toEqual(['start d-a', 'start d-c']);
   });
 
+  it('ends a spec whose code is on main but whose deploy failed as partial, and its dependents still run', async () => {
+    const { fx, calls } = world({ 'd-a-r1': { kind: 'failed', reason: 'deploy-failed: smoke 500', merged: true } });
+    let p = newProgram('d', [entry('a', 1), entry('b', 2, ['a'])], NOW);
+    p = await tick(p, fx, save);
+    p = await tick(p, fx, save);
+    expect(status(p)).toEqual({ a: 'partial', b: 'running' });
+    expect(p.items[0]!.reason).toBe('deploy-failed: smoke 500');
+    expect(calls).toEqual(['start d-a', 'start d-b']);
+  });
+
+  it('ends a merged spec partial once its repairs run out, not failed', async () => {
+    const merged = (reason: string) => ({ kind: 'failed' as const, reason, merged: true as const });
+    const { fx } = world({ 'd-a-r1': merged('one'), 'd-a-r2': merged('two'), 'd-a-r3': merged('three') }, async () => 'retry-now');
+    let p = newProgram('d', [entry('a', 1)], NOW);
+    for (let i = 0; i < 4; i++) p = await tick(p, fx, save);
+    expect(p.items[0]).toMatchObject({ status: 'partial', repairs: MAX_REPAIRS });
+  });
+
+  it('keeps an item failed and its dependents blocked when the code is not on main', async () => {
+    const { fx } = world({ 'd-a-r1': { kind: 'failed', reason: 'verification-failed: AC-003' } });
+    let p = newProgram('d', [entry('a', 1), entry('b', 2, ['a'])], NOW);
+    p = await tick(p, fx, save);
+    p = await tick(p, fx, save);
+    expect(status(p)).toEqual({ a: 'failed', b: 'blocked' });
+  });
+
   it('blocks an item whose dependency names no item of the program, so a wrong id shows instead of stalling', async () => {
     const { fx, calls } = world();
     // A program saved before dependencies used the items' real ids names d-shop-a, which no item is.

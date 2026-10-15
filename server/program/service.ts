@@ -97,7 +97,7 @@ export class ProgramService {
   /** What the journals of an item's runs say: its pull requests, why and until when a run waits, and the System 1 decisions. */
   private async runFacts(item: ProgramItem, runs: string): Promise<RunFacts> {
     const runIds = [item.runId, item.completeRunId].filter((id): id is string => id !== null);
-    const settled = item.status === 'done' || item.status === 'failed' || item.status === 'blocked';
+    const settled = item.status === 'done' || item.status === 'partial' || item.status === 'failed' || item.status === 'blocked';
     const key = runIds.join('+');
     const cached = settled ? this.settledFacts.get(key) : undefined;
     if (cached) return cached;
@@ -299,7 +299,8 @@ export class ProgramService {
         if (row.status === 'drained' && (await isStopRequested(runsDirOf(idx), runId))) return { kind: 'stopped', finished: true, costUsd: data?.tokens?.costUsd ?? null };
         // The tasks that blocked on their own cause tell why criteria went without evidence; their dependents add nothing.
         const own = (data?.blocked ?? []).filter((b) => b.reason !== DEPENDENCY_BLOCKED).map((b) => `${b.taskId} (${b.reason})`);
-        return { kind: 'failed', reason: `${row.status}${data?.reason ? `: ${String(data.reason).slice(0, 400)}` : ''}${own.length ? `; blocked: ${own.join('; ').slice(0, 400)}` : ''}`, costUsd: data?.tokens?.costUsd ?? null };
+        // A deploy runs after every task merged: its failure leaves the code on main.
+        return { kind: 'failed', reason: `${row.status}${data?.reason ? `: ${String(data.reason).slice(0, 400)}` : ''}${own.length ? `; blocked: ${own.join('; ').slice(0, 400)}` : ''}`, costUsd: data?.tokens?.costUsd ?? null, ...(row.status === 'deploy-failed' ? { merged: true as const } : {}) };
       }
     }
   }

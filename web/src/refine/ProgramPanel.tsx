@@ -15,11 +15,12 @@ const ITEM_HELP = {
   completing: 'A spec foi entregue e está sendo concluída.',
   waiting: 'A spec espera um tempo depois de uma falha de ambiente e começa de novo sozinha.',
   done: 'A spec foi entregue e concluída.',
+  partial: 'O código da spec já está na main, mas uma etapa depois dele falhou (como o deploy). Veja o motivo abaixo.',
   failed: 'A execução desta spec falhou. Veja o motivo abaixo.',
   blocked: 'A spec não pôde seguir. Veja o motivo abaixo.',
 } as const;
 const OWNER_HELP: Record<string, string> = { Sistema: 'Quem precisa agir: o sistema, que resolve sozinho ou precisa de um ajuste da plataforma.', Plano: 'Quem precisa agir: o plano ou a spec precisa ser corrigido.', Você: 'Quem precisa agir: você.' };
-const LABEL = { pending: 'na fila', running: 'em execução', completing: 'concluindo', waiting: 'aguardando', done: 'concluída', failed: 'falhou', blocked: 'bloqueada' } as const;
+const LABEL = { pending: 'na fila', running: 'em execução', completing: 'concluindo', waiting: 'aguardando', done: 'concluída', partial: 'concluída parcialmente', failed: 'falhou', blocked: 'bloqueada' } as const;
 // Same pills as the hub's spec rows; a live spec's dot pulses.
 const PILL = {
   pending: 'status-pill',
@@ -27,6 +28,7 @@ const PILL = {
   completing: 'status-pill tone-neutral motion-safe:before:animate-pulse',
   waiting: 'status-pill tone-warn',
   done: 'status-pill tone-good',
+  partial: 'status-pill tone-warn',
   failed: 'status-pill tone-bad',
   blocked: 'status-pill tone-bad',
 } as const;
@@ -37,11 +39,12 @@ const ROW = 'grid grid-cols-[2.5rem_minmax(0,1fr)_8rem_5.5rem_9rem] items-center
 /** Why an item failed or waits: what happened, who has to act and what to do, with the orchestrator's own words one click away. */
 export function ItemReason({ status, reason }: { status: ProgramViewItem['status']; reason: string }) {
   const bad = status === 'failed' || status === 'blocked';
-  const why = bad ? explainStop(reason) : null;
-  if (!why) return <p className={`m-0 text-[0.8125rem] wrap-anywhere ${bad ? 'text-bad' : 'text-ink-soft'}`}>{reason}</p>;
+  const tone = bad ? 'text-bad' : status === 'partial' ? 'text-warn' : 'text-ink-soft';
+  const why = bad || status === 'partial' ? explainStop(reason) : null;
+  if (!why) return <p className={`m-0 text-[0.8125rem] wrap-anywhere ${tone}`}>{reason}</p>;
   return (
     <div className="flex flex-col gap-1" data-testid="item-reason">
-      <p className="m-0 text-[0.8125rem] font-medium text-bad">{why.title} <Tipped text={OWNER_HELP[why.owner] ?? 'Quem precisa agir para resolver.'}><span className="status-pill tone-neutral">{why.owner}</span></Tipped></p>
+      <p className={`m-0 text-[0.8125rem] font-medium ${tone}`}>{why.title} <Tipped text={OWNER_HELP[why.owner] ?? 'Quem precisa agir para resolver.'}><span className="status-pill tone-neutral">{why.owner}</span></Tipped></p>
       <p className="hint m-0">{why.hint}</p>
       <details>
         <summary className="cursor-pointer text-[0.75rem] text-ink-soft">Detalhe técnico</summary>
@@ -154,7 +157,7 @@ export function ProgramPanel({ program, titles, onPrioritize }: { program: Progr
           {totalCost > 0 && <span data-testid="program-total-cost"> · {fmtCost(totalCost)}</span>}
         </p>
       </div>
-      {program.status === 'finished' && <p className="hint m-0">Programa encerrado{program.items.some((i) => i.status === 'failed' || i.status === 'blocked') ? ': há specs que falharam ou ficaram bloqueadas.' : '.'}</p>}
+      {program.status === 'finished' && <p className="hint m-0">Programa encerrado{program.items.some((i) => i.status === 'failed' || i.status === 'blocked') ? ': há specs que falharam ou ficaram bloqueadas.' : program.items.some((i) => i.status === 'partial') ? ': há specs concluídas parcialmente.' : '.'}</p>}
       <ol className="-mx-3 my-0 list-none p-0">
         {[...program.items].sort((a, b) => a.rank - b.rank).map((i) => (
           <li key={i.specId} className={`${ROW} ${i.status === 'running' || i.status === 'completing' ? 'bg-accent-soft/40' : 'hover:bg-surface-sunken'}`} data-testid={`program-item-${i.key}`}>
