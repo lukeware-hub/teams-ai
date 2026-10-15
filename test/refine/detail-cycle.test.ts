@@ -67,7 +67,7 @@ function fakeAgent(outline: () => BacklogItem[], hook: (req: Req, n: number) => 
     if (req.kind === 'preplan') return ok({ specHash: H, preplans: feedback.split(/^## Spec /m).slice(1).map(preplanFor) });
     if (req.kind === 'conflicts') return ok({ specHash: H, pairs: [{ a: 'triagem', b: 'opme', reason: 'mesmo módulo m' }, { a: 'opme', b: 'triagem', reason: 'eco' }, { a: 'opme', b: 'zzz', reason: 'chave inexistente' }] });
     if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [] });
-    return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
+    return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
   });
   const kinds = (from = 0) => calls.slice(from).map((c) => c.kind);
   return { fn, calls, kinds };
@@ -101,7 +101,7 @@ async function setup(existing?: string) {
     },
   };
   await journal.fact(RefineEvent.BacklogEnabled, {});
-  const run = (agent: ReturnType<typeof fakeAgent>, cycle: number, decider?: ReturnType<typeof jev>) => runCycle({ draft, journal, runAgent: agent.fn as never, principles: () => [], retrieval: () => [], secretsDir: root, decider: decider as never }, cycle);
+  const run = (agent: ReturnType<typeof fakeAgent>, cycle: number, decider?: ReturnType<typeof jev>) => runCycle({ draft, journal, runAgent: agent.fn as never, principles: () => [], retrieval: () => [], decider: decider as never }, cycle);
   const itemDir = (key: string) => `${docs}/specs/big-001-${key}`;
   return { draft, journal, events, run, itemDir, docs };
 }
@@ -699,8 +699,8 @@ describe('backlog detailing checked by the Jev', () => {
   });
 });
 
-describe('backlog detailing secrets', () => {
-  it('lists each missing secret of the item specs once', async () => {
+describe('backlog detailing without secrets', () => {
+  it('leaves the secrets out of the checklist, saved or not', async () => {
     const { journal, events, run } = await setup();
     const agent = fakeAgent(() => OUTLINE, (req) => {
       if (req.kind !== 'spec') return undefined;
@@ -711,22 +711,6 @@ describe('backlog detailing secrets', () => {
     await journal.fact(RefineEvent.BacklogDetailEnabled, {});
     await run(agent, 2);
     const evaluated = events.filter((e) => e.type === 'REFINE_EVALUATED').at(-1)!;
-    const secrets = (evaluated.data.checklist as Array<{ id: string; detail: string }>).find((i) => i.id === 'sm.dependencies-and-secrets')!;
-    expect(secrets.detail).toBe('missing secrets: DATABASE_URL');
-  });
-
-  it('never asks a person for a generated secret', async () => {
-    const { journal, events, run } = await setup();
-    const agent = fakeAgent(() => OUTLINE, (req) => {
-      if (req.kind !== 'spec') return undefined;
-      const fb = String(req.pack.feedback);
-      return ok({ specHash: H, specs: [...fb.matchAll(/^## Item ([a-z0-9-]+):/gm)].map((m) => ({ ...itemSpec(m[1]!), externalDependencies: [{ name: 'identity', purpose: 'admin', secretNames: ['PLATFORM_ADMIN_TOKEN'], generated: true }] })) });
-    });
-    await run(agent, 1);
-    await journal.fact(RefineEvent.BacklogDetailEnabled, {});
-    await run(agent, 2);
-    const evaluated = events.filter((e) => e.type === 'REFINE_EVALUATED').at(-1)!;
-    const secrets = (evaluated.data.checklist as Array<{ id: string; detail: string }>).find((i) => i.id === 'sm.dependencies-and-secrets')!;
-    expect(secrets.detail).toBe('every listed secret is present');
+    expect((evaluated.data.checklist as Array<{ id: string }>).some((i) => i.id === 'sm.dependencies-and-secrets')).toBe(false);
   });
 });

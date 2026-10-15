@@ -317,7 +317,6 @@ export class RefineSession {
           frontAgent: this.deps.frontAgent,
           principles: () => this.state.derived?.project.principles ?? this.state.backlog?.project?.principles ?? [],
           retrieval: this.deps.retrieval,
-          secretsDir: this.deps.secretsDir,
           validateDocs: this.deps.validateDocs,
           decider: this.deps.decider,
           autoAnswerFloor,

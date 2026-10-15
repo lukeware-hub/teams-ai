@@ -41,7 +41,7 @@ const settle = async () => {
 const HELLO_PROJECT = makeProject({ projectId: 'hello-app' });
 const derived = { project: HELLO_PROJECT, spec: { ...makeSpec(), status: 'refining', specHash: null } };
 const PO = ['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions'].map((id) => ({ id, passed: true, detail: 'ok' }));
-const SM = ['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions'].map((id) => ({ id, passed: true, detail: 'ok' }));
+const SM = ['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions'].map((id) => ({ id, passed: true, detail: 'ok' }));
 
 beforeEach(async () => {
   home = (await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-refapi-'))).replace(/\\/g, '/');

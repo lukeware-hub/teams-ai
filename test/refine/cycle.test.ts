@@ -57,7 +57,6 @@ describe('refinement cycle Jev advisory', () => {
       runAgent: runAgent as never,
       principles: () => [],
       retrieval: () => [],
-      secretsDir: root,
       validateDocs: async () => ({ available: true, decision: 'blocked' as const, consistent: false, confidence: 0.99, model: 'jev', checks: { documents_consistent: 0.2 }, stateTruncated: false }),
     }, 1);
     expect(events.some((event) => event.type === 'REFINE_DOCS_VALIDATED')).toBe(true);
@@ -83,9 +82,9 @@ describe('refinement cycle acceptance criterion ids (R11.8)', () => {
     const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...makeSpec(), specId: 'shop-002', acceptanceCriteria: [{ id: 'AC-001', given: 'g', when: 'w', then: 't2', smoke: false }] } });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [] });
-      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
+      return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
     });
-    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1);
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [] }, 1);
     const derived = events.find((e) => e.type === 'DERIVED')!;
     const ids = (derived.data.spec as { acceptanceCriteria: Array<{ id: string }> }).acceptanceCriteria.map((c) => c.id);
     expect(ids).toEqual(['AC-002']);
@@ -113,9 +112,9 @@ describe('refinement cycle flow.md must be mermaid (R11.11)', () => {
     const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [], ...po });
-      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions', 'sm.flow-is-mermaid']), questions: [], docPatch: [] });
+      return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions', 'sm.flow-is-mermaid']), questions: [], docPatch: [] });
     });
-    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root, validateDocs }, 1);
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], validateDocs }, 1);
     return events.find((e) => e.type === 'REFINE_EVALUATED')!.data;
   };
   const build = async (flow: string, validateDocs?: (docs: ValidationDocs) => Promise<JevValidationResult>, id = 'sm.flow-is-mermaid') =>
@@ -207,9 +206,9 @@ describe('refinement cycle patch dedup (R11.10)', () => {
     const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [samePatch] });
-      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [samePatch] });
+      return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [samePatch] });
     });
-    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1);
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [] }, 1);
     const proposed = events.filter((e) => e.type === 'PATCH_PROPOSED');
     expect(proposed).toHaveLength(1);
     expect(proposed[0]!.data.role).toBe('po');
@@ -245,9 +244,9 @@ describe('refinement cycle suggestions that still wait for the owner', () => {
     const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [again, other] });
-      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
+      return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
     });
-    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root }, 2);
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [] }, 2);
     expect(events.filter((e) => e.type === 'PATCH_PROPOSED').map((e) => e.data.find)).toEqual(['TODO: logs.']);
     const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
     expect(evaluated.data.discardedPatches as unknown[]).toContainEqual({ role: 'po', file, reason: 'the same change is already waiting for the owner' });
@@ -280,9 +279,9 @@ describe('refinement cycle repeated design.md headings', () => {
     const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [] });
-      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
+      return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
     });
-    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1);
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [] }, 1);
     return events.filter((e) => e.type === 'PATCH_PROPOSED').map((e) => e.data);
   };
 
@@ -323,7 +322,7 @@ describe('refinement cycle patch dedup (R11.5a item 2)', () => {
     const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [poPatch] });
-      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [smPatch] });
+      return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [smPatch] });
     });
     const decider = {
       decide: async (id: string, _state: string, questions: Record<string, unknown>) => {
@@ -331,7 +330,7 @@ describe('refinement cycle patch dedup (R11.5a item 2)', () => {
         return { answered: true as const, backend: 'jev' as const, escalated: false, answers: Object.fromEntries(Object.keys(questions).map((k) => [k, { type: 'noul' as const, value: 0.9, probabilities: { yes: 0.9, no: 0.1 }, confidence: 0.9 }])) };
       },
     };
-    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root, decider }, 1);
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], decider }, 1);
     const proposed = events.filter((e) => e.type === 'PATCH_PROPOSED');
     expect(proposed).toHaveLength(1);
     expect(proposed[0]!.data.role).toBe('po');
@@ -362,7 +361,7 @@ describe('refinement cycle patch dedup (R11.5a item 2)', () => {
     const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [poPatch] });
-      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [smPatch] });
+      return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [smPatch] });
     });
     const decider = {
       decide: async (id: string, _state: string, questions: Record<string, unknown>) => {
@@ -370,7 +369,7 @@ describe('refinement cycle patch dedup (R11.5a item 2)', () => {
         return { answered: true as const, backend: 'jev' as const, escalated: false, answers: Object.fromEntries(Object.keys(questions).map((k) => [k, { type: 'noul' as const, value: 0.1, probabilities: { yes: 0.1, no: 0.9 }, confidence: 0.9 }])) };
       },
     };
-    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root, decider }, 1);
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], decider }, 1);
     const proposed = events.filter((e) => e.type === 'PATCH_PROPOSED');
     expect(proposed).toHaveLength(2);
   });
@@ -396,7 +395,7 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
     const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [{ text: 'How does the e2e suite reach MailHog?', blocking: true, relatedAcIds: ['AC-001'] }], docPatch: [] });
-      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
+      return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
     });
     const decider = {
       decide: async (id: string, _state: string, questions: Record<string, unknown>) => {
@@ -404,7 +403,7 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
         return { answered: true as const, backend: 'jev' as const, escalated: false, answers: Object.fromEntries(Object.keys(questions).map((k) => [k, { type: 'choice' as const, value: 'auto', probabilities: { auto: 0.95 }, confidence: 0.95 }])) };
       },
     };
-    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root, decider }, 1);
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], decider }, 1);
     const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
     const questions = evaluated.data.questions as Array<{ questionId: string; text: string }>;
     expect(questions).toHaveLength(1); // the question still reaches the human: shadow mode changes nothing observable
@@ -431,9 +430,9 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
     const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [{ text: 'Which port?', blocking: true, relatedAcIds: ['AC-001'] }], docPatch: [] });
-      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
+      return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
     });
-    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1); // no decider at all
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [] }, 1); // no decider at all
     const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
     expect(evaluated.data.questionRouting).toEqual({});
   });
@@ -468,7 +467,7 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
         return ok({ specHash: 'draft', answer: over.answer === undefined ? 'project.md diz 8080.' : over.answer });
       }
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: Object.keys(questions).map((text) => ({ text, blocking: true, relatedAcIds: [] })), docPatch: [] });
-      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
+      return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
     });
     const decider = {
       decide: async (id: string, state: string) => {
@@ -479,7 +478,7 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
       },
     };
     const history = [{ chunkId: 'c', docId: 'd', kind: 'spec', title: 'Spec 1', heading: 'Decisões', snippet: 'a porta é 9090', text: 'A porta é 9090.', score: 1 }];
-    const run = (autoAnswerFloor?: number) => runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => (over.contradiction ? history : []), secretsDir: root, decider: over.decider ?? decider, autoAnswerFloor } as never, 1);
+    const run = (autoAnswerFloor?: number) => runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => (over.contradiction ? history : []), decider: over.decider ?? decider, autoAnswerFloor } as never, 1);
     return { events, answered, answerPacks, runAgent, run };
   }
 
@@ -585,7 +584,7 @@ describe('refinement cycle System 1 filters (decisions 2-4)', () => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
       packs[req.role] = String(req.pack.feedback);
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [{ text: 'Which port?', blocking: true, relatedAcIds: ['AC-001'] }, { text: 'What port does it listen on?', blocking: true, relatedAcIds: ['AC-001'] }], docPatch: [] });
-      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
+      return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
     });
     const asked: string[] = [];
     const decider = {
@@ -596,7 +595,7 @@ describe('refinement cycle System 1 filters (decisions 2-4)', () => {
       },
     };
     const hit = { chunkId: 'c1', docId: 'd1', kind: 'spec' as never, title: 'spec-000', heading: 'Ports', snippet: 'the service listens on 8080', text: 'the service listens on 8080', score: 1 };
-    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [hit], secretsDir: root, decider }, 1);
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [hit], decider }, 1);
     const order = [...new Set(asked)];
     expect(order).toEqual(['gate1-readiness', 'question-dedup', 'history-contradiction', 'question-routing']);
     expect(asked.filter((id) => id === 'gate1-readiness')).toHaveLength(spec.acceptanceCriteria.length); // one call per criterion
@@ -638,7 +637,7 @@ const setup = async (brief: string) => {
 describe('refinement cycle with large documents', () => {
   it('never lets the derive pack drop the documents when they exceed the default budget', async () => {
     const { draft, journal, runAgent, root } = await setup(`# Brief\n${'x'.repeat(100_000)}`);
-    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1);
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [] }, 1);
     const built = buildContextPack(runAgent.mock.calls[0]![0].pack);
     expect(built.dropped).toEqual([]);
     expect(built.sections).toContain('feedback');
@@ -646,7 +645,7 @@ describe('refinement cycle with large documents', () => {
 
   it('sends a digest of the documents, not a failed cycle, when they do not fit whole', async () => {
     const { draft, journal, events, runAgent, root } = await setup(`# Brief\n${'x'.repeat(700_000)}`);
-    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1);
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [] }, 1);
     expect(runAgent).toHaveBeenCalled();
     expect(String(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason)).not.toMatch(/grandes demais/);
     const pack = runAgent.mock.calls[0]![0].pack;
@@ -676,7 +675,6 @@ describe('refinement cycle Jev requirement', () => {
       runAgent: runAgent as never,
       principles: () => [],
       retrieval: () => [],
-      secretsDir: root,
       validateDocs: async () => ({ available: false, decision: 'review' as const, consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false }),
     }, 1);
     expect(runAgent).not.toHaveBeenCalled();
@@ -702,7 +700,7 @@ describe('refinement cycle of a confidential project', () => {
     const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'demo/demo-001', specHash: 'draft', type, kind: 'fact', data }; } } as never;
     const runAgent = vi.fn(async () => ({ ok: false, failure: 'schema', errors: ['stop here'], summary: {} }));
     const validateDocs = vi.fn();
-    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root, validateDocs }, 1).catch(() => undefined);
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], validateDocs }, 1).catch(() => undefined);
     expect(validateDocs).not.toHaveBeenCalled();
     expect(events.find((e) => e.type === 'REFINE_DOCS_VALIDATED')?.data).toMatchObject({ skipped: 'confidential', available: true });
     expect(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason).not.toBe('Jev indisponível: confira a chave do OpenRouter.');
@@ -722,7 +720,7 @@ describe('refinement cycle in backlog mode', () => {
       packs.push({ kind: req.kind, role: req.role, feedback: String(req.pack.feedback) });
       if (req.kind === 'backlog') return ok(answers.shift());
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [] });
-      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
+      return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
     });
     return { fn, packs };
   };
@@ -732,7 +730,7 @@ describe('refinement cycle in backlog mode', () => {
     const { draft, journal, events, root } = await setup('# Briefing');
     on(journal);
     const { fn, packs } = agent([raw([item('casos', { dependsOn: ['base'] }), item('base', { priority: 'P0' })])]);
-    await runCycle({ draft, journal, runAgent: fn as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1);
+    await runCycle({ draft, journal, runAgent: fn as never, principles: () => [], retrieval: () => [] }, 1);
     expect(packs.map((p) => p.kind)).toEqual(['backlog', 'refine', 'refine']);
     const derived = events.find((e) => e.type === 'BACKLOG_DERIVED')!.data as { items: Array<{ key: string; rank: number }> };
     expect(derived.items.map((i) => [i.key, i.rank])).toEqual([['base', 1], ['casos', 2]]);
@@ -751,7 +749,7 @@ describe('refinement cycle in backlog mode', () => {
     const { draft, journal, root } = await setup('# Briefing');
     journal.state.backlog = { enabled: true, project: null, epics: [], items: [], cycle: 0, keyIds: true };
     const { fn } = agent([raw([item('casos', { dependsOn: ['base'] }), item('base', { priority: 'P0' })])]);
-    await runCycle({ draft, journal, runAgent: fn as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1);
+    await runCycle({ draft, journal, runAgent: fn as never, principles: () => [], retrieval: () => [] }, 1);
     const index = JSON.parse(await readFile(path.join(draft.docs, 'specs.json'), 'utf8')) as { specs: Array<{ specId: string; dependsOn: string[] }> };
     expect(index.specs.map((x) => [x.specId, x.dependsOn])).toEqual([['base', []], ['casos', ['base']]]);
   });
@@ -760,7 +758,7 @@ describe('refinement cycle in backlog mode', () => {
     const { draft, journal, events, root } = await setup('# Briefing');
     on(journal);
     const { fn, packs } = agent([raw([item('a', { dependsOn: ['zzz'] })]), raw([item('a')])]);
-    await runCycle({ draft, journal, runAgent: fn as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1);
+    await runCycle({ draft, journal, runAgent: fn as never, principles: () => [], retrieval: () => [] }, 1);
     const asks = packs.filter((p) => p.kind === 'backlog');
     expect(asks).toHaveLength(2);
     expect(asks[0]!.feedback).not.toContain('zzz');
@@ -772,7 +770,7 @@ describe('refinement cycle in backlog mode', () => {
     const { draft, journal, events, root } = await setup('# Briefing');
     on(journal);
     const { fn, packs } = agent([raw([item('a', { dependsOn: ['zzz'] })]), raw([item('a', { dependsOn: ['zzz'] })])]);
-    await runCycle({ draft, journal, runAgent: fn as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1);
+    await runCycle({ draft, journal, runAgent: fn as never, principles: () => [], retrieval: () => [] }, 1);
     expect(packs.map((p) => p.kind)).toEqual(['backlog', 'backlog']);
     expect(String(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason)).toMatch(/^backlog: .*zzz/);
     expect(events.some((e) => e.type === 'BACKLOG_DERIVED')).toBe(false);
@@ -783,7 +781,7 @@ describe('refinement cycle unexpected errors', () => {
   it('journals any unexpected error as a failed cycle and rethrows it, so the session never stays evaluating', async () => {
     const { draft, journal, events, runAgent, root } = await setup('# Brief\n');
     runAgent.mockRejectedValue(new Error('disk full'));
-    await expect(runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root }, 1)).rejects.toThrow('disk full');
+    await expect(runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [] }, 1)).rejects.toThrow('disk full');
     expect(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data).toEqual({ cycle: 1, reason: 'disk full' });
   });
 });
@@ -797,9 +795,9 @@ describe('refinement cycle pending questions', () => {
     runAgent.mockImplementation(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...makeSpec(), specId: draft.specId, status: 'refining', specHash: null } });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [{ text: 'Which port?', blocking: true, relatedAcIds: [] }], docPatch: [] });
-      return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
+      return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
     });
-    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root }, 2);
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [] }, 2);
     const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
     expect(evaluated.data.questions).toEqual([]);
     const open = (evaluated.data.checklist as Array<{ id: string; detail: string }>).find((i) => i.id === 'sm.no-open-questions')!;

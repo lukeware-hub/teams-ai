@@ -18,7 +18,7 @@ let script: Script;
 const derived = { project: makeProject(), spec: { ...makeSpec(), status: 'refining', specHash: null, externalDependencies: [{ name: 'db', purpose: 'p', secretNames: ['DB_URL'] }] } };
 const green = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
 const PO = ['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions'];
-const SM = ['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions'];
+const SM = ['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions'];
 const refineOut = (checklist: unknown[], questions: unknown[] = [], docPatch: unknown[] = []) => ({ checklist, questions, docPatch });
 const draft = () => draftPaths(ws, 'hello-001');
 const deps = () => ({ ws, draft: draft(), runAgent: makeFakeRunAgent(script), secretsDir, retrieval: () => [] });
@@ -69,7 +69,7 @@ describe('RefineSession', () => {
     await s.close();
   });
 
-  it('evaluates: derive, PO and SM, questions merged blocking-first, patches proposed or discarded, secrets item computed', async () => {
+  it('evaluates: derive, PO and SM, questions merged blocking-first, patches proposed or discarded, no secrets item', async () => {
     const s = await RefineSession.create(deps(), 'new-project');
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO), [{ id: 'q1', text: 'Which DB?', blocking: false, relatedAcIds: [] }], [{ file: 'docs/project.md', find: '## Vision', replace: '## Product vision', reason: 'clearer' }, { file: 'docs/project.md', find: 'nope', replace: 'x', reason: 'r' }])];
@@ -82,7 +82,7 @@ describe('RefineSession', () => {
     expect(st.patches.map((p) => p.status)).toEqual(['pending']);
     expect(st.patches[0]!.diff).toContain('+## Product vision');
     expect(st.discarded[0]).toMatchObject({ reason: 'find not found in project.md' });
-    expect(st.checklist.find((i) => i.id === 'sm.dependencies-and-secrets')).toMatchObject({ passed: false });
+    expect(st.checklist.map((i) => i.id)).not.toContain('sm.dependencies-and-secrets');
     expect(st.checklist.find((i) => i.id === 'sm.no-open-questions')).toMatchObject({ passed: false });
     expect(calls.map((c) => c.kind)).toEqual(['derive', 'refine', 'refine']);
     expect((await s.snapshot()).tokens.steps).toBe(3);

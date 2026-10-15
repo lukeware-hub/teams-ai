@@ -20,7 +20,7 @@ O refinamento prepara a spec. Os agentes conferem se a descrição está complet
 
 ## Segredos
 
-Se a spec depende de uma chave de outro serviço, a seção **Segredos** pede o valor. Salve cada um e clique em Reavaliar. Os agentes nunca veem o valor.
+Se a spec depende de uma chave de outro serviço, a seção **Segredos** guarda o valor. Ela não bloqueia a spec: sem a chave salva, a spec fica pronta, mas o serviço que depende dela pode não funcionar até a chave ser salva. Os agentes nunca veem o valor.
 
 ## O Jev
 

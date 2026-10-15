@@ -6,7 +6,7 @@ import type { StoredEvent } from '../api.js';
 import { JevActions, RefinementView } from './Refinement.js';
 
 const green = (ids: string[]) => ids.map((id) => ({ id, role: (id.startsWith('po') ? 'po' : 'sm') as 'po' | 'sm', passed: true, detail: 'ok' }));
-const ALL = ['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions', 'sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions'];
+const ALL = ['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions'];
 
 const base = (over: Partial<Snapshot['state']>): Snapshot => ({
   projectId: 'hello-app',
@@ -214,17 +214,6 @@ describe('RefinementView backlog mode', () => {
     fireEvent.click(start);
     expect(h.onStart).toHaveBeenCalledOnce();
     expect(screen.getByText(/o programa começa sozinho em instantes/)).toBeTruthy();
-  });
-
-  it('names the missing secrets in the next step once the backlog is detailed, instead of asking to detail again', () => {
-    const REV = `sha256:${'2'.repeat(64)}`;
-    const spec = { specId: 'hello-001-base', type: 'feature', objectives: ['o'], features: [], acceptanceCriteria: [{ id: 'AC-007', given: 'g', when: 'w', then: 't', smoke: true }], outOfScope: [], externalDependencies: [] };
-    const preplan = { specId: 'hello-001-base', specRev: REV, inputHash: 'h', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-007'], dependsOn: [] }], risks: [] };
-    const detailed = { ...backlog, detail: true, flowHeadings: [], specs: { base: { inputHash: 'h', specId: 'hello-001-base', rev: REV, spec, issues: [], cycle: 2 } }, preplans: { base: { inputHash: 'h', specRev: REV, preplan, issues: [], cycle: 2 } } };
-    const checklist = green(ALL).map((c) => (c.id === 'sm.dependencies-and-secrets' ? { ...c, passed: false, detail: 'missing secrets: LLM_API_KEY, HEALTH_PLAN_API_TOKEN' } : c));
-    render(<MemoryRouter><RefinementView snap={base({ ...ready, status: 'drafting', checklist, backlog: detailed as never })} busy={false} {...on()} /></MemoryRouter>);
-    expect(screen.getByText(/Faltam segredos: LLM_API_KEY, HEALTH_PLAN_API_TOKEN\. Salve o valor de cada um na seção Segredos e clique em Reavaliar/)).toBeTruthy();
-    expect(screen.queryByText(/Detalhamento pedido/)).toBeNull();
   });
 
   it('keeps asking for a new evaluation while a requested detail has no specs yet', () => {

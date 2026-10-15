@@ -58,7 +58,6 @@ const checkLabel: Record<string, string> = {
   'po.personas': 'Público e personas definidos',
   'po.scope-explicit': 'Escopo explícito',
   'po.no-contradictions': 'Documentos sem contradições',
-  'sm.dependencies-and-secrets': 'Dependências e segredos informados',
   'sm.constraints-clear': 'Restrições técnicas claras',
   'sm.tasks-feasible': 'Tarefas viáveis',
   'sm.no-open-questions': 'Sem perguntas obrigatórias em aberto',
@@ -67,12 +66,9 @@ const checkLabel: Record<string, string> = {
 /** The server writes these details itself; details written by the agents pass through unchanged. */
 const checkDetail = (detail: string) => {
   if (detail === 'not reported') return 'O agente não avaliou este item.';
-  if (detail === 'every listed secret is present') return 'Todos os segredos necessários estão salvos.';
   if (detail === 'no blocking question open') return 'Nenhuma pergunta obrigatória em aberto.';
   if (detail === 'flow.md has a mermaid diagram') return 'flow.md tem um diagrama mermaid.';
   if (detail === 'flow.md has no ```mermaid block; it must be a diagram, not markdown headings') return 'flow.md precisa ser um diagrama mermaid, não títulos em markdown.';
-  const missing = /^missing secrets: (.+)$/.exec(detail);
-  if (missing) return `Faltam segredos: ${missing[1]}.`;
   const open = /^(\d+) blocking question\(s\) open$/.exec(detail);
   if (open) return open[1] === '1' ? '1 pergunta obrigatória em aberto.' : `${open[1]} perguntas obrigatórias em aberto.`;
   return detail;
@@ -273,8 +269,6 @@ export function RefinementView(p: ViewProps) {
         : { label: 'Atual', tone: 'ok' };
   const green = allGreen(st.checklist);
   const pendingSuggestion = st.patches.some((x) => x.status === 'pending');
-  // The secrets item fails with the names the specs need; the screen lists a field for each in Segredos.
-  const missingSecrets = /^missing secrets: (.+)$/.exec(st.checklist.find((i) => i.id === 'sm.dependencies-and-secrets' && !i.passed)?.detail ?? '')?.[1];
   const backlogDetailed = st.backlog?.items.every((i) => st.backlog?.specs?.[i.key]?.spec && st.backlog.preplans?.[i.key]?.preplan) ?? false;
   const nextStep = st.status === 'started' && st.backlog?.enabled
     ? 'Os agentes estão executando o backlog, até duas specs ao mesmo tempo quando não mexem no mesmo código. Acompanhe cada uma na tela de execução do backlog.'
@@ -290,8 +284,6 @@ export function RefinementView(p: ViewProps) {
         ? 'Aprove ou rejeite o ajuste proposto abaixo; as outras sugestões são opcionais.'
       : st.status === 'answering' && st.patches.some((x) => x.status === 'pending')
         ? 'Revise as sugestões de alteração abaixo e aceite ou rejeite cada uma.'
-        : missingSecrets
-        ? `Faltam segredos: ${missingSecrets}. Salve o valor de cada um na seção Segredos e clique em Reavaliar.`
         : st.backlog?.enabled && st.status === 'ready'
           ? st.backlog.detail
             ? st.autoStartFailure?.cycle === st.cycle

@@ -91,13 +91,21 @@ describe('DockerLocalTarget', () => {
     expect(lines).not.toContain('rm -f teams-ai-todo-api');
   });
 
-  it('rolls back by running the previous image and validates missing secrets', async () => {
+  it('rolls back by running the previous image and does not refuse a deploy for a secret not saved yet', async () => {
     const fake = new FakeExec();
     const t = new DockerLocalTarget({ exec: fake.exec, get: okGet, secrets: {} });
-    expect(await t.validate(intent)).toEqual(['missing secret DATABASE_URL']);
+    expect(await t.validate(intent)).toEqual([]);
     await new DockerLocalTarget({ exec: fake.exec, get: okGet, secrets }).rollback(intent, 'todo-api:spec-001-old0000');
     const run = fake.calls.filter((c) => c.args[0] === 'run').pop()!;
     expect(run.args.at(-1)).toBe('todo-api:spec-001-old0000');
+  });
+
+  it('starts the container without a secret that is not saved, never with an undefined value', async () => {
+    const fake = new FakeExec();
+    await new DockerLocalTarget({ exec: fake.exec, get: okGet, secrets: {} }).apply(intent);
+    const run = fake.calls.filter((c) => c.args[0] === 'run').pop()!;
+    expect(run.args).not.toContain('DATABASE_URL');
+    expect(Object.keys(run.env ?? {})).not.toContain('DATABASE_URL');
   });
 });
 

@@ -140,7 +140,11 @@ export class DockerLocalTarget implements DeployTarget {
   /** `shared` false reads the service's own compose file alone, as `service()` does to name the container the extra file joins. */
   private async compose(intent: DeploymentIntent, args: string[], image: string | null, timeoutMs = 120_000, shared = true) {
     const env: Record<string, string> = { ...this.generated, ...(image ? { TEAMS_AI_IMAGE: image } : {}) };
-    for (const n of intent.secretNames) env[n] = this.deps.secrets[n]!;
+    // Only saved secrets: an unset one must not reach the process as "undefined".
+    for (const n of intent.secretNames) {
+      const value = this.deps.secrets[n];
+      if (value !== undefined) env[n] = value;
+    }
     const run = (extra: string[]) =>
       this.deps.exec({ bin: 'docker', args: ['compose', '-p', this.project(intent), '-f', `${intent.contextDir.replaceAll('\\', '/')}/${intent.compose}`, ...extra, '--project-directory', intent.contextDir, ...args], env, timeoutMs });
     const override = shared ? await this.override(intent) : null;
@@ -224,8 +228,8 @@ export class DockerLocalTarget implements DeployTarget {
   }
 
   async validate(intent: DeploymentIntent): Promise<string[]> {
-    const errors = intent.secretNames.filter((n) => this.deps.secrets[n] === undefined).map((n) => `missing secret ${n}`);
-    if (intent.compose && errors.length === 0) {
+    const errors: string[] = [];
+    if (intent.compose) {
       const r = await this.compose(intent, ['config', '--format', 'json'], imageRef(intent), 60_000);
       if (r.exitCode !== 0) errors.push(`docker compose config failed: ${r.stderr.slice(-1000)}`);
       else {
@@ -282,8 +286,10 @@ export class DockerLocalTarget implements DeployTarget {
     const args = ['run', '-d', '--name', name, '--restart', 'unless-stopped', '-p', `${this.deps.publishBind ?? '127.0.0.1'}:${intent.port}:${intent.port}`];
     const env: Record<string, string> = {};
     for (const n of intent.secretNames) {
+      const value = this.deps.secrets[n];
+      if (value === undefined) continue;
       args.push('-e', n);
-      env[n] = this.deps.secrets[n]!;
+      env[n] = value;
     }
     args.push(image);
     const r = await this.docker(args, env);

@@ -5,7 +5,7 @@ import { reduceRefineEvents } from '../../server/refine/state.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 
 const item = (id: string, passed: boolean) => ({ id, role: id.startsWith('po') ? 'po' : 'sm', passed, detail: '' });
-const allGreen = ['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions', 'sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions'].map((id) => item(id, true));
+const allGreen = ['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions'].map((id) => item(id, true));
 const q = (questionId: string, blocking: boolean) => ({ questionId, role: 'po', text: 't', blocking, relatedAcIds: [], cycle: 1 });
 const patch = (patchId: string) => ({ patchId, role: 'sm', file: 'brief.md', find: 'a', replace: 'b', reason: 'r', diff: '', cycle: 1 });
 const derived = { project: makeProject(), spec: { ...makeSpec(), status: 'refining', specHash: null } };
