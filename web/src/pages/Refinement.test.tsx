@@ -107,10 +107,13 @@ describe('RefinementView secrets', () => {
     expect(h.onSecret).toHaveBeenCalledWith('DB_URL', 'x');
   });
 
-  it('keeps secrets locked once the run has started', () => {
-    render(<MemoryRouter><RefinementView snap={base({ status: 'started' })} busy={false} {...on()} /></MemoryRouter>);
+  it('saves a secret once the run has started', () => {
+    const h = on();
+    render(<MemoryRouter><RefinementView snap={base({ status: 'started' })} busy={false} {...h} /></MemoryRouter>);
     fireEvent.change(screen.getByTestId('secret-DB_URL'), { target: { value: 'x' } });
-    expect((screen.getByTestId('save-secret-DB_URL') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('save-secret-DB_URL') as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByTestId('save-secret-DB_URL'));
+    expect(h.onSecret).toHaveBeenCalledWith('DB_URL', 'x');
   });
 });
 

@@ -188,13 +188,13 @@ export class RefineSession {
     return this.journal.close();
   }
 
-  private guardStarted(): void {
-    if (this.state.status === 'started') throw new ConflictError('session already started a run');
+  private guardStarting(): void {
     if (this.starting) throw new ConflictError('a start is already in progress');
   }
 
   private guard(): void {
-    this.guardStarted();
+    if (this.state.status === 'started') throw new ConflictError('session already started a run');
+    this.guardStarting();
     if (this.busy) throw new ConflictError('evaluation in progress');
   }
 
@@ -400,7 +400,7 @@ export class RefineSession {
   }
 
   async writeSecret(name: string, value: string): Promise<void> {
-    this.guardStarted();
+    this.guardStarting();
     if (!SECRET_NAME.test(name)) throw new NotFoundError(`invalid secret name ${name}`);
     await writeSecret(this.deps.secretsDir, name, value);
     await this.journal.fact(RefineEvent.SecretWritten, { name });

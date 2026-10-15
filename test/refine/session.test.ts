@@ -384,6 +384,14 @@ describe('RefineSession', () => {
     expect(await fs.readFile(path.join(secretsDir, 'DB_URL'), 'utf8')).toBe('postgres://x');
     expect(s.state.stale).toBe(false);
   });
+
+  it('writes a secret once the run has started', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    await s.markStarted('run-1');
+    await s.writeSecret('DB_URL', 'postgres://x');
+    expect(await fs.readFile(path.join(secretsDir, 'DB_URL'), 'utf8')).toBe('postgres://x');
+    expect(s.state.status).toBe('started');
+  });
 });
 
 // R11.7.2: a program never runs again what an earlier one delivered, and never starts over work still in flight.
