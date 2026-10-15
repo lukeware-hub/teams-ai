@@ -53,6 +53,14 @@ describe('RefinementView re-evaluation', () => {
     fireEvent.click(screen.getByTestId('evaluate'));
     expect(h.onEvaluate).toHaveBeenCalledTimes(1);
   });
+
+  it('re-evaluates at once after a detailing was requested, because that request is new work', () => {
+    const h = on();
+    const detailRequested = event(4, 'BACKLOG_DETAIL_ENABLED', {});
+    render(<MemoryRouter><RefinementView snap={base({ cycle: 1, status: 'ready', stale: false })} busy={false} events={[evaluated, detailRequested]} {...h} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('evaluate'));
+    expect(h.onEvaluate).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('RefinementView divergences', () => {
