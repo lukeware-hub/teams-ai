@@ -582,19 +582,19 @@ export function RefinementView(p: ViewProps) {
       )}
       <details>
         <summary><span>spec.json</span>{st.derived ? <a data-testid="download-spec-json" href={jsonDownload(st.derived.spec)} download="spec.json" aria-label="Baixar spec.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</summary>
-        {st.derived ? <pre>{JSON.stringify(st.derived.spec, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>}
+        {st.derived ? <pre className="whitespace-pre-wrap break-words">{JSON.stringify(st.derived.spec, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>}
       </details>
         </>
       )}
       {backlogOn && (
         <details>
           <summary><span>specs.json</span>{specsIndex ? <a data-testid="download-specs-json" href={jsonDownload(specsIndex)} download="specs.json" aria-label="Baixar specs.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</summary>
-          {specsIndex ? <pre>{JSON.stringify(specsIndex, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>}
+          {specsIndex ? <pre className="whitespace-pre-wrap break-words">{JSON.stringify(specsIndex, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>}
         </details>
       )}
       <details>
         <summary><span>project.json</span>{projectJson ? <a data-testid="download-project-json" href={jsonDownload(projectJson)} download="project.json" aria-label="Baixar project.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</summary>
-        {projectJson ? <pre>{JSON.stringify(projectJson, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>}
+        {projectJson ? <pre className="whitespace-pre-wrap break-words">{JSON.stringify(projectJson, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>}
       </details>
       {!backlogOn && (
         <>
@@ -625,7 +625,7 @@ export function RefinementView(p: ViewProps) {
   );
   return (
     <Workspace
-      columns="lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.08fr)_minmax(0,1fr)_minmax(0,1fr)]"
+      columns="lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] min-[1440px]:grid-cols-[minmax(0,1.08fr)_minmax(0,1fr)_minmax(0,1fr)]"
       // Below xl, review and quality share the right column at full height with one scroll; from xl each gets its own column.
       groupClass="grid min-h-0 min-w-0 content-start gap-6 lg:-m-1 lg:overflow-y-auto lg:p-1 max-xl:[&>section]:min-h-auto max-xl:[&>section]:overflow-visible xl:contents"
       panels={[

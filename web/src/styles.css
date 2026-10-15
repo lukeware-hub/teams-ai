@@ -381,6 +381,8 @@ button[aria-busy='true']:disabled { cursor: progress; opacity: 0.75; }
 @media (pointer: coarse) {
   .info-tip, .dialog-close { position: relative; }
   .info-tip::after, .dialog-close::after { content: ''; position: absolute; inset: -13px; }
+  .refine-breadcrumb a { position: relative; }
+  .refine-breadcrumb a::after { content: ''; position: absolute; inset: -12px -4px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .dialog, .confirm, .step-in { animation-name: fade-in; }

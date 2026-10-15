@@ -27,7 +27,7 @@ export const RUN_UI = {
   meta: 'mt-2 flex flex-wrap items-center gap-x-3 gap-y-2',
   // On narrow screens the buttons fill the row and wrap whole, never squeezing their labels.
   actions: 'flex flex-wrap justify-end gap-2 max-md:justify-stretch max-md:[&>*]:flex-auto',
-  action: 'inline-flex min-h-[var(--control-height)] items-center justify-center gap-2 rounded-control px-[0.95rem] text-[0.875rem] font-semibold whitespace-nowrap no-underline',
+  action: 'inline-flex min-h-[var(--control-height)] relative pointer-coarse:after:absolute pointer-coarse:after:-inset-[3px] pointer-coarse:after:content-[""] items-center justify-center gap-2 rounded-control px-[0.95rem] text-[0.875rem] font-semibold whitespace-nowrap no-underline',
   columns: 'lg:grid-cols-[minmax(0,1fr)_20rem]',
   column: 'grid min-w-0 content-start gap-5',
   aside: 'grid min-w-0 content-start gap-5 [&_.card]:px-[1.15rem] [&_.card]:py-[1.1rem]',
@@ -234,7 +234,7 @@ function PlanCard({ plan }: { plan: NonNullable<RunDetail['plan']> }) {
       </ul>
       <details className="mt-[0.9rem]">
         <summary>Ver plan.json</summary>
-        <pre>{JSON.stringify(plan, null, 2)}</pre>
+        <pre className={RUN_UI.raw}>{JSON.stringify(plan, null, 2)}</pre>
       </details>
     </section>
   );

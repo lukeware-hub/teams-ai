@@ -6,6 +6,7 @@ import { SortHeader, TableFilters, useTableView } from '../components/DataTable.
 import { Icon } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
+import { responsiveCell, responsiveHead, responsiveRow, responsiveTable } from './project-shared.js';
 import { explainBlockReason, rootBlockers, stopBefore, stopSummary } from '../run/selectors.js';
 import { PUBLISHED_PORTS, serviceLinks } from '@server/deploy/service-links';
 import { RUN_UI } from './Run.js';
@@ -59,23 +60,23 @@ function SmokeTable({ smoke }: { smoke: Smoke[] }) {
   return (
     <>
       <TableFilters view={view} subject="testes rápidos" placeholder="Filtrar por critério, serviço ou teste" facetName="Resultado" />
-      <div className="overflow-x-auto">
-        <table className={`${TABLE} min-w-[32rem] table-fixed`}>
+      <div className="@container overflow-x-auto">
+        <table className={`${TABLE} ${responsiveTable} @min-[32rem]:min-w-[32rem] table-fixed`}>
           <colgroup><col className="w-[11rem]" /><col /><col className="w-[10rem]" /></colgroup>
-          <thead>
+          <thead className={responsiveHead}>
             <tr>
               <SortHeader view={view} column="criterion" tip={<InfoTip text={`${CRITERION_HELP} Entre parênteses, o serviço que o testa.`} />}>Critério</SortHeader>
               <SortHeader view={view} column="test" tip={<InfoTip text="Smoke test: teste automático curto, rodado no serviço publicado, que confirma o essencial de cada critério." />}>Teste rápido</SortHeader>
               <SortHeader view={view} column="result" tip={<InfoTip text={RESULT_HELP} />}>Resultado</SortHeader>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="@max-[44rem]:block">
             {view.rows.length === 0 ? <tr><td colSpan={3} className="text-ink-soft">Nenhum teste corresponde ao filtro.</td></tr> : null}
             {view.rows.map((s) => (
-              <tr key={`${s.service ?? ''}-${s.acId}`} data-testid={`smoke-${s.service ? `${s.service}-` : ''}${s.acId}`} className={`result-${s.status}`}>
-                <td className={TD_ID}>{s.acId}{s.service ? ` (${s.service})` : ''}</td>
-                <td className={TD_MONO}>{s.testId ?? '—'}</td>
-                <td><ResultChip status={s.status} /></td>
+              <tr key={`${s.service ?? ''}-${s.acId}`} data-testid={`smoke-${s.service ? `${s.service}-` : ''}${s.acId}`} className={`result-${s.status} ${responsiveRow}`}>
+                <td className={`${TD_ID} ${responsiveCell}`} data-label="Critério">{s.acId}{s.service ? ` (${s.service})` : ''}</td>
+                <td className={`${TD_MONO} ${responsiveCell}`} data-label="Teste rápido">{s.testId ?? '—'}</td>
+                <td className={responsiveCell} data-label="Resultado"><ResultChip status={s.status} /></td>
               </tr>
             ))}
           </tbody>
@@ -94,10 +95,10 @@ function EvidenceTable({ evidence }: { evidence: Evidence[] }) {
   return (
     <>
       <TableFilters view={view} subject="evidências" placeholder="Filtrar por critério, tarefa ou teste" facetName="Resultado" />
-      <div className="overflow-x-auto">
-        <table className={`${TABLE} min-w-[44rem] table-fixed`}>
+      <div className="@container overflow-x-auto">
+        <table className={`${TABLE} ${responsiveTable} @min-[44rem]:min-w-[44rem] table-fixed`}>
           <colgroup><col className="w-[8rem]" /><col className="w-[8rem]" /><col /><col className="w-[8.5rem]" /><col className="w-[9rem]" /></colgroup>
-          <thead>
+          <thead className={responsiveHead}>
             <tr>
               <SortHeader view={view} column="criterion" tip={<InfoTip text={CRITERION_HELP} />}>Critério</SortHeader>
               <SortHeader view={view} column="tasks" tip={<InfoTip text="As tarefas dos agentes que implementaram o critério." />}>Tarefas</SortHeader>
@@ -106,15 +107,15 @@ function EvidenceTable({ evidence }: { evidence: Evidence[] }) {
               <SortHeader view={view} column="result" tip={<InfoTip text={RESULT_HELP} />}>Resultado</SortHeader>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="@max-[44rem]:block">
             {view.rows.length === 0 ? <tr><td colSpan={5} className="text-ink-soft">Nenhuma evidência corresponde ao filtro.</td></tr> : null}
             {view.rows.map((r) => (
-              <tr key={r.criterion} data-testid={`evidence-${r.criterion}`} className={`result-${r.status}`}>
-                <td className={TD_ID}>{r.criterion}</td>
-                <td className={TD_MONO}>{r.tasks.join(', ')}</td>
-                <td className={TD_MONO}>{r.tests.join(', ') || '—'}</td>
-                <td data-testid={`e2e-${r.criterion}`} title={r.e2eReason}>{r.e2e ? <ResultChip status={r.e2e} /> : '—'}{r.e2eReason ? ` (${r.e2eReason})` : ''}</td>
-                <td><ResultChip status={r.status} /></td>
+              <tr key={r.criterion} data-testid={`evidence-${r.criterion}`} className={`result-${r.status} ${responsiveRow}`}>
+                <td className={`${TD_ID} ${responsiveCell}`} data-label="Critério">{r.criterion}</td>
+                <td className={`${TD_MONO} ${responsiveCell}`} data-label="Tarefas">{r.tasks.join(', ')}</td>
+                <td className={`${TD_MONO} ${responsiveCell}`} data-label="Testes">{r.tests.join(', ') || '—'}</td>
+                <td className={responsiveCell} data-label="Teste E2E" data-testid={`e2e-${r.criterion}`} title={r.e2eReason}>{r.e2e ? <ResultChip status={r.e2e} /> : '—'}{r.e2eReason ? ` (${r.e2eReason})` : ''}</td>
+                <td className={responsiveCell} data-label="Resultado"><ResultChip status={r.status} /></td>
               </tr>
             ))}
           </tbody>

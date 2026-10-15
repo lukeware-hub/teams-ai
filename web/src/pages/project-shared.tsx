@@ -30,7 +30,7 @@ export const TONE: Record<string, string> = {
   blocked: 'bad', deadlocked: 'bad', 'phase-failed': 'bad', 'verification-failed': 'bad', 'deploy-failed': 'bad', 'launch-failed': 'bad', error: 'bad',
 };
 // Compact row controls: the button, .secondary and .primary primitives supply the colors and hover grounds.
-const actionBase = 'inline-flex h-10 min-h-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md border px-3 text-[0.8125rem] font-semibold no-underline transition-colors duration-[var(--duration-fast)] pointer-coarse:h-[var(--control-height)]';
+const actionBase = 'inline-flex h-10 min-h-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md border px-3 text-[0.8125rem] font-semibold no-underline transition-colors duration-[var(--duration-fast)] relative pointer-coarse:after:absolute pointer-coarse:after:-inset-[3px] pointer-coarse:after:content-[""]';
 export const action = {
   plain: actionBase,
   secondary: `secondary ${actionBase}`,
@@ -46,6 +46,11 @@ export const rows = 'my-0 -mx-[0.6rem] grid list-none grid-cols-[minmax(0,16rem)
 export const row = 'col-span-full grid min-h-12 grid-cols-subgrid items-center gap-y-2 border-b border-line px-[0.6rem] py-2 last:border-b-0 hover:bg-surface-sunken';
 export const rowId = 'min-w-0 text-[0.875rem] font-medium text-ink wrap-anywhere';
 export const rowActions = 'flex justify-end gap-2 max-lg:col-span-full max-lg:flex-wrap max-lg:justify-start';
+// Inside a container narrower than 44rem a table becomes a list of cards: each row a card, each cell a line labelled by its column (data-label). The wrapper of the table must be a @container.
+export const responsiveTable = '@max-[44rem]:block @max-[44rem]:min-w-0';
+export const responsiveHead = '@max-[44rem]:hidden';
+export const responsiveRow = '@max-[44rem]:mb-3 @max-[44rem]:grid @max-[44rem]:gap-1 @max-[44rem]:rounded-lg @max-[44rem]:border @max-[44rem]:border-line @max-[44rem]:p-3';
+export const responsiveCell = '@max-[44rem]:flex @max-[44rem]:h-auto @max-[44rem]:flex-col @max-[44rem]:items-start @max-[44rem]:gap-0.5 @max-[44rem]:border-0 @max-[44rem]:p-0 @max-[44rem]:py-[0.2rem] @max-[44rem]:whitespace-normal @max-[44rem]:wrap-anywhere @max-[44rem]:text-left @max-[44rem]:before:shrink-0 @max-[44rem]:before:text-left @max-[44rem]:before:text-[0.75rem] @max-[44rem]:before:font-semibold @max-[44rem]:before:text-ink-soft @max-[44rem]:before:content-[attr(data-label)]';
 
 export const chip = (status: string) => (
   <Tipped text={STATUS_HELP[status] ?? STATUS_HELP.unknown!}>

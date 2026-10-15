@@ -776,7 +776,7 @@ Light-on-dark needs compensation on all three axes: one step more leading, sligh
 
 ### 11.16 Table
 
-`ui` role. Header cells `overline` with a `line` bottom rule. Body cells 9px/10px, top-aligned, `line` bottom rule, none on the last row. Row hover `surface-sunken`. Numeric columns right-aligned, tabular. Column widths declared, not content-derived.
+`ui` role. Header cells `overline` with a `line` bottom rule. Body cells 9px/10px, top-aligned, `line` bottom rule, none on the last row. Row hover `surface-sunken`. Numeric columns right-aligned, tabular. Column widths declared, not content-derived. Inside a container narrower than 44rem a table becomes a list of cards: each row a card, each cell a line with its column name above the value, and the header hidden.
 
 ### 11.17 Progress
 
@@ -1181,8 +1181,8 @@ The save explanation is a **statement of system behavior**, so it is `meta` with
 ### 26.4 Responsive
 
 **≥1440px** — three columns as above.
-**1100–1440px** — quality panel drops to a full-width row beneath the other two; its PO/SM fields go side by side.
-**720–1100px** — single column: documents, review, quality. The editor keeps its cap; the tab strip scrolls horizontally if it ever exceeds the width.
+**1024–1439px** — two columns: the documents beside a right column that stacks Revisão and Verificação (§25).
+**Below 1024px** — one panel at a time behind the tab bar (§25). The editor keeps its cap; the tab strip scrolls horizontally if it ever exceeds the width.
 **<720px** — 24px gutter; panel padding 20px; `radius-lg`; editor gutter narrows to 36px; file rows keep their download button at 32px with a 44px hit area.
 
 **Each panel scrolls its own body with its header pinned** — never the whole column, and never the page behind a fixed panel.

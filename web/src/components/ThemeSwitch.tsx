@@ -15,7 +15,7 @@ export function ThemeSwitch() {
         <button
           key={o.value}
           type="button"
-          className="min-w-[auto] grid size-8 place-items-center rounded-md border-transparent bg-transparent p-0 text-ink-soft hover:text-ink aria-pressed:border-line-strong aria-pressed:bg-surface aria-pressed:text-ink aria-pressed:shadow-button"
+          className="relative min-w-[auto] grid size-8 place-items-center rounded-md border-transparent bg-transparent p-0 text-ink-soft pointer-coarse:after:absolute pointer-coarse:after:-inset-[7px] pointer-coarse:after:content-[''] hover:text-ink aria-pressed:border-line-strong aria-pressed:bg-surface aria-pressed:text-ink aria-pressed:shadow-button"
           aria-label={o.label}
           title={o.label}
           aria-pressed={preference === o.value}

@@ -38,7 +38,7 @@ export function Workspace({ panels, columns, groupClass = '' }: { panels: Worksp
             aria-controls={`${base}-panel-${p.id}`}
             aria-selected={active === p.id}
             onClick={() => setActive(p.id)}
-            className="h-9 min-w-0 flex-1 truncate rounded-md border-transparent bg-transparent px-2 text-ink-soft aria-selected:border-line-strong aria-selected:bg-surface aria-selected:text-ink aria-selected:shadow-button"
+            className="h-9 relative pointer-coarse:after:absolute pointer-coarse:after:-inset-[5px] pointer-coarse:after:content-[''] min-w-0 flex-1 truncate rounded-md border-transparent bg-transparent px-2 text-ink-soft aria-selected:border-line-strong aria-selected:bg-surface aria-selected:text-ink aria-selected:shadow-button"
           >
             {p.label}
           </button>
