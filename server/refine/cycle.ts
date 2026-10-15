@@ -476,17 +476,11 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const flowItem = checklist.find((i) => i.id === 'sm.flow-is-mermaid')!;
   flowItem.passed = flowIsMermaid(docs['flow.md']);
   flowItem.detail = flowItem.passed ? 'flow.md has a mermaid diagram' : 'flow.md has no ```mermaid block; it must be a diagram, not markdown headings';
-  // The five documents must agree: a contradiction Jev finds fails the item whatever the PO reported.
+  // The Jev only warns: its doubt goes into the item's detail, and the PO's verdict stands.
   const consistent = jevValidation?.checks.documents_consistent;
   if (consistent !== undefined && consistent < 0.5) {
     const contradictionItem = checklist.find((i) => i.id === 'po.no-contradictions')!;
-    // A read of documents cut at the Jev's cap is no verdict, so the PO's answer stands and says why.
-    if (jevValidation!.stateTruncated) {
-      contradictionItem.detail = `${contradictionItem.detail} (o Jev não entrou na conta: os documentos passam do limite que ele lê e foram cortados)`;
-    } else {
-      contradictionItem.passed = false;
-      contradictionItem.detail = 'o Jev encontrou divergência entre project.md, briefing.md, stack.md, flow.md e design.md';
-    }
+    contradictionItem.detail = `${contradictionItem.detail} Aviso do Jev (automático, pode errar, não bloqueia): duvidou da consistência (${consistent.toFixed(2).replace('.', ',')}).`;
   }
   // R11.5.7: a blocking question routed `auto` at the floor or above is answered by its owner role from the docs, before the
   // evaluation is journaled, so the page shows the cycle running until the answers land with it.

@@ -1290,4 +1290,4 @@ The user-provided reference images 2 and 3 are the approved visual target for `/
 
 ### 30.6 Jev role in refinement
 
-Jev is an advisory assistant, never a hard gate for derivation. Its document consistency checks must be recorded in the refinement journal and passed to Claude, PO, and SM as review context. A low-confidence or negative Jev finding may create guidance or a checklist item, but it must not create `CycleFailed`, prevent derivation, disable `Reavaliar`, or require a document edit before the next cycle.
+Jev is an advisory assistant, never a hard gate for derivation. Its document consistency checks must be recorded in the refinement journal and passed to Claude, PO, and SM as review context. A low-confidence or negative Jev finding may create guidance, but it must not create `CycleFailed`, fail a checklist item, prevent derivation, disable `Reavaliar`, or require a document edit before the next cycle; it is only noted in the item's detail.
