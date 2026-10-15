@@ -172,6 +172,12 @@ describe('RefinementView backlog mode', () => {
     expect(screen.getByTestId('download-project-json')).toBeTruthy();
   });
 
+  it('offers the base docs as JSON, briefing.json from briefing.md', () => {
+    render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog })} busy={false} {...on()} /></MemoryRouter>);
+    for (const name of ['flow-json', 'briefing-json', 'stack-json', 'design-json']) expect(screen.getByTestId(`download-${name}`)).toBeTruthy();
+    expect(decodeURIComponent((screen.getByTestId('download-briefing-json') as HTMLAnchorElement).href)).toContain('"doc": "briefing.md"');
+  });
+
   it('shows the backlog and keeps Start disabled even when the session is ready', () => {
     render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog })} busy={false} {...on()} /></MemoryRouter>);
     expect(screen.getByTestId('item-base')).toBeTruthy();
