@@ -3,6 +3,10 @@ import { STEP_KINDS, type StepKind } from '../agents/outputs.js';
 import { DEFAULT_MAX_PARALLEL } from '../scheduler/scheduler.js';
 import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
 import { BACKEND_NAMES, DECISION_IDS, type DecisionConfig, type DecisionId } from '../decide/types.js';
+import { EFFORT_LEVELS } from '../decide/decisions/model-tier.js';
+
+/** Pinned model ids: an alias like `sonnet` resolves to whichever version the CLI ships, so a run would not be reproducible. */
+export const MODELS = { haiku: 'claude-haiku-5-5', sonnet: 'claude-sonnet-5-5', opus: 'claude-opus-5-5' } as const;
 
 export const ROLES = ['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops', 'env'] as const;
 export type Role = (typeof ROLES)[number];
@@ -17,18 +21,18 @@ export type RoleProfile = z.infer<typeof RoleProfile>;
 
 /** Sonnet runs every role; Opus is only for the architecture steps (`ARCHITECTURE_MODELS`) and Haiku for small tasks (`routing.models`). */
 const CLAUDE_DEFAULTS: Record<Role, RoleProfile> = {
-  sm: { model: 'sonnet' },
-  po: { model: 'sonnet' },
-  front: { model: 'sonnet' },
-  dev: { model: 'sonnet' },
-  test: { model: 'sonnet' },
-  sec: { model: 'sonnet' },
-  devops: { model: 'sonnet' },
-  env: { model: 'sonnet' },
+  sm: { model: MODELS.sonnet },
+  po: { model: MODELS.sonnet },
+  front: { model: MODELS.sonnet },
+  dev: { model: MODELS.sonnet },
+  test: { model: MODELS.sonnet },
+  sec: { model: MODELS.sonnet },
+  devops: { model: MODELS.sonnet },
+  env: { model: MODELS.sonnet },
 };
 
 /** The steps that decide architecture: the only ones that run on Opus (always at low effort, see `effortFor`). */
-const ARCHITECTURE_MODELS: Partial<Record<StepKind, string>> = { 'tech-spec': 'opus', plan: 'opus', 'services-plan': 'opus' };
+const ARCHITECTURE_MODELS: Partial<Record<StepKind, string>> = { 'tech-spec': MODELS.opus, plan: MODELS.opus, 'services-plan': MODELS.opus };
 
 const positive = z.number().int().min(1);
 const linuxPath = z
@@ -100,8 +104,19 @@ const RolesSchema = z
   >)
   .strict();
 
+/** A model and effort the user fixed for one agent of one project; the orchestrator picks them when absent. */
+export const AgentSetting = z
+  .object({
+    model: z.enum([MODELS.haiku, MODELS.sonnet, MODELS.opus]),
+    effort: z.enum(EFFORT_LEVELS),
+  })
+  .strict();
+export type AgentSetting = z.infer<typeof AgentSetting>;
+
 export const Config = z.object({
   roles: RolesSchema.prefault({}),
+  /** Per project id, per role: the manual model and effort; a role absent here runs on the automatic choice. */
+  agentSettings: z.record(z.string().min(1), z.partialRecord(z.enum(ROLES), AgentSetting)).default({}),
   budgets: z
     .object({
       step: StepBudget.prefault({}),
@@ -123,9 +138,9 @@ export const Config = z.object({
   routing: z
     .object({
       tiers: z.enum(['off', 'shadow', 'on']).default('on'),
-      models: z.object({ small: z.string().min(1).default('haiku'), medium: z.string().min(1).default('sonnet'), large: z.string().min(1).default('sonnet') }).prefault({}),
+      models: z.object({ small: z.string().min(1).default(MODELS.haiku), medium: z.string().min(1).default(MODELS.sonnet), large: z.string().min(1).default(MODELS.sonnet) }).prefault({}),
       stepModels: z.partialRecord(z.enum(STEP_KINDS), z.string().min(1)).default(ARCHITECTURE_MODELS),
-      laterCycleModels: z.partialRecord(z.enum(STEP_KINDS), z.string().min(1)).default({ refine: 'sonnet', derive: 'sonnet', coverage: 'sonnet', backlog: 'sonnet', answer: 'sonnet' }),
+      laterCycleModels: z.partialRecord(z.enum(STEP_KINDS), z.string().min(1)).default({ refine: MODELS.sonnet, derive: MODELS.sonnet, coverage: MODELS.sonnet, backlog: MODELS.sonnet, answer: MODELS.sonnet }),
     })
     .prefault({}),
   /**
@@ -182,7 +197,7 @@ export const Config = z.object({
       enabled: z.boolean().default(false),
       /** Spec 10A.5 decision 10: tier names map to the role's Claude models. */
       modelTiers: z
-        .object({ small: z.string().min(1).default('haiku'), medium: z.string().min(1).default('sonnet'), large: z.string().min(1).default('sonnet') })
+        .object({ small: z.string().min(1).default(MODELS.haiku), medium: z.string().min(1).default(MODELS.sonnet), large: z.string().min(1).default(MODELS.sonnet) })
         .prefault({}),
       openrouter: z
         .object({

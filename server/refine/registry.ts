@@ -53,6 +53,12 @@ const slug = (v: string, what: string) => {
 };
 const exists = (p: string) => fs.access(p).then(() => true, () => false);
 
+/** Every step of one refinement session belongs to its project, so its agent settings apply. */
+const inProject =
+  (run: RunAgent, projectId: string): RunAgent =>
+  (req, ctx) =>
+    run(req, { ...ctx, projectId });
+
 /** Spec (refinement) §5: one live session per spec, opened from disk on demand. */
 export class SessionRegistry {
   private readonly sessions = new Map<string, Promise<RefineSession>>();
@@ -79,7 +85,8 @@ export class SessionRegistry {
     const key = `${draft.projectId}/${draft.specId}`;
     const p = (async () => {
       const retrieval = (await exists(ws.knowledgeDb)) ? (q: string) => KnowledgeIndex.open(ws.knowledgeDb).search(q, { k: 5 }) : () => [];
-      const deps = { ws, draft, runAgent: this.deps.runAgent, frontAgent: this.deps.runAgent, secretsDir: ws.secrets, retrieval, validateDocs: this.deps.validateDocs, decider: this.deps.decider, autoAnswerFloor: async () => answerFloor(await this.deps.cfg(), refineRoot(ws)) };
+      const runAgent = inProject(this.deps.runAgent, draft.projectId);
+      const deps = { ws, draft, runAgent, frontAgent: runAgent, secretsDir: ws.secrets, retrieval, validateDocs: this.deps.validateDocs, decider: this.deps.decider, autoAnswerFloor: async () => answerFloor(await this.deps.cfg(), refineRoot(ws)) };
       return create ? RefineSession.create(deps, create) : RefineSession.open(deps);
     })();
     this.sessions.set(key, p);

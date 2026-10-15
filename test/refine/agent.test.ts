@@ -7,7 +7,7 @@ const routing = { ...DEFAULT_CONFIG.routing, stepModels: { refine: 'opus', deriv
 describe('refineStepModel', () => {
   it('runs the first cycle on the role profile and later cycles on sonnet by default', () => {
     expect(refineStepModel(DEFAULT_CONFIG.routing, 'refine', 1)).toBeUndefined();
-    expect(refineStepModel(DEFAULT_CONFIG.routing, 'refine', 5)).toBe('sonnet');
+    expect(refineStepModel(DEFAULT_CONFIG.routing, 'refine', 5)).toBe('claude-sonnet-5-5');
   });
 
   it('uses stepModels on the first cycle and laterCycleModels from the second on', () => {

@@ -478,14 +478,26 @@ describe('runAgentStep', () => {
     expect((await seeing('opus', 'max')).seen[0]!.effort).toBe('low');
   });
 
+  it('a manual agent setting wins over the request and keeps its effort unclamped, for that role only', async () => {
+    const d = await deps(async () => ({ ok: true, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() }));
+    const seen: Array<{ model: string; effort?: string }> = [];
+    d.runStep = (async (req: { model: string; effort?: string }) => { seen.push(req); return { ok: true, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() }; }) as unknown as AgentStepDeps['runStep'];
+    d.agentSetting = (role) => (role === 'dev' ? { model: 'claude-opus-5-5', effort: 'max' } : undefined);
+    const dev = { kind: 'dev' as const, role: 'dev' as const, pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1, model: 'haiku', effort: 'low' as const };
+    await runAgentStep(dev, d);
+    await runAgentStep({ ...dev, role: 'sec', taskId: 'T2' }, d);
+    expect(seen[0]).toMatchObject({ model: 'claude-opus-5-5', effort: 'max' });
+    expect(seen[1]).toMatchObject({ model: 'haiku', effort: 'low' });
+  });
+
   it('runs an Opus step on Sonnet when Opus is out of quota, without pausing the run', async () => {
     const { d, seen, out } = await seeing('opus', undefined, async (m) => (m === 'opus' ? quota() : { ok: true, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() }));
-    expect(seen.map((s) => s.model)).toEqual(['opus', 'sonnet']);
+    expect(seen.map((s) => s.model)).toEqual(['opus', 'claude-sonnet-5-5']);
     expect(out.ok).toBe(true);
     expect(d.breaker.canStart()).toBe(true);
     expect(d.breaker.modelPaused('opus')).toBe(true);
     const finished = d.journal.events.find((e) => e.type === OrchEvent.StepFinished)!;
-    expect(finished.data).toMatchObject({ model: 'sonnet', fellBackFrom: 'opus' });
+    expect(finished.data).toMatchObject({ model: 'claude-sonnet-5-5', fellBackFrom: 'opus' });
   });
 
   it('starts the next Opus step on Sonnet while Opus is paused', async () => {
@@ -494,12 +506,12 @@ describe('runAgentStep', () => {
     const seen: string[] = [];
     first.d.runStep = (async (req: { model: string }) => { seen.push(req.model); return ok; }) as unknown as AgentStepDeps['runStep'];
     await runAgentStep({ kind: 'dev', role: 'dev', pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1, model: 'opus' }, first.d);
-    expect(seen).toEqual(['sonnet']);
+    expect(seen).toEqual(['claude-sonnet-5-5']);
   });
 
   it('pauses the whole run when the lower model is out of quota too', async () => {
     const { d, seen } = await seeing('opus', undefined, async () => quota());
-    expect(seen.map((s) => s.model)).toEqual(['opus', 'sonnet']);
+    expect(seen.map((s) => s.model)).toEqual(['opus', 'claude-sonnet-5-5']);
     expect(d.breaker.canStart()).toBe(false);
   });
 

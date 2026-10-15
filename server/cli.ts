@@ -18,6 +18,7 @@ import { expandHome, firstSpecForRun, firstSpecForSpec, nextRunId, specForRun, s
 import { runStep } from './runner/step.js';
 import { startApi } from './api/server.js';
 import { onboardingRoutes } from './api/onboarding-routes.js';
+import { settingsRoutes } from './api/settings-routes.js';
 import { defaultRunControl, isAlive, type RunControlDeps } from './api/run-control.js';
 import { opsRoutes } from './api/ops-routes.js';
 import { runRoutes } from './api/run-routes.js';
@@ -96,7 +97,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     runEscalation: async () => { throw new Error('UI-server decisions do not escalate to Claude'); },
   });
   // One agent runner for refinement and chat, so both share the governor, the quota breaker and the ledger.
-  const runAgent = await makeRunAgent({ cfg, agentsDir: path.join(repoRoot, '.claude', 'agents'), hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), workspacesRoot: expandHome(cfg.paths.workspaces) });
+  const runAgent = await makeRunAgent({ cfg, agentsDir: path.join(repoRoot, '.claude', 'agents'), hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), workspacesRoot: expandHome(cfg.paths.workspaces), agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {} });
   const registry = new SessionRegistry({
     cfg: async () => (await readUserConfig()).cfg,
     runAgent,
@@ -146,6 +147,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
           log: io.stderr,
         }),
         ...chatRoutes({ chat }),
+        ...settingsRoutes({}),
       ],
       staticDir: hasDist ? staticDir : null,
       log: io.stderr,

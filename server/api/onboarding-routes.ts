@@ -48,7 +48,7 @@ const str = (v: unknown, field: string): string => {
 };
 
 /** A config.json the user has to fix (not JSON, not a config) is reported with the reason; the server hides any other error as "internal error". */
-const configProblem = (err: unknown): never => {
+export const configProblem = (err: unknown): never => {
   throw err instanceof ConfigError ? new HttpError(500, err.message) : err;
 };
 

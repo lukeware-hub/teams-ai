@@ -1,4 +1,4 @@
-export type IconName = 'claude' | 'github' | 'user' | 'external' | 'send' | 'close' | 'chevron' | 'terminal' | 'check' | 'file' | 'clipboard' | 'shield' | 'clock' | 'list' | 'lock' | 'home' | 'copy' | 'download' | 'play' | 'info' | 'lightbulb' | 'sun' | 'moon' | 'monitor' | 'arrow-left' | 'arrow-right' | 'search' | 'plus' | 'refresh' | 'alert' | 'chevron-right' | 'stop' | 'code' | 'server' | 'trash' | 'grid' | 'folder' | 'activity' | 'sort' | 'sort-up' | 'sort-down' | 'chat';
+export type IconName = 'claude' | 'github' | 'user' | 'external' | 'send' | 'close' | 'chevron' | 'terminal' | 'check' | 'file' | 'clipboard' | 'shield' | 'clock' | 'list' | 'lock' | 'home' | 'copy' | 'download' | 'play' | 'info' | 'lightbulb' | 'sun' | 'moon' | 'monitor' | 'arrow-left' | 'arrow-right' | 'search' | 'plus' | 'refresh' | 'alert' | 'chevron-right' | 'stop' | 'code' | 'server' | 'trash' | 'grid' | 'folder' | 'activity' | 'settings' | 'sort' | 'sort-up' | 'sort-down' | 'chat';
 
 export function Icon({ name, size = 24 }: { name: IconName; size?: number }) {
   const common = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true };
@@ -54,6 +54,7 @@ export function Icon({ name, size = 24 }: { name: IconName; size?: number }) {
   if (name === 'folder') return <svg {...common}><path d="M3.5 7a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" /></svg>;
   if (name === 'chat') return <svg {...common}><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 4v-4h0A1.5 1.5 0 0 1 4 14.5z" /><path d="M8 9h8M8 12h5" /></svg>;
   if (name === 'activity') return <svg {...common}><rect x="3.5" y="3.5" width="17" height="17" rx="3" /><path d="M8 15v-3M12 15V9M16 15v-5" /></svg>;
+  if (name === 'settings') return <svg {...common}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>;
   if (name === 'terminal') {
     return <svg {...common}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="m7 9 3 3-3 3M13 15h4" /></svg>;
   }

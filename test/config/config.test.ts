@@ -14,8 +14,8 @@ describe('loadConfig', () => {
   it('fills every default from an empty object', () => {
     const cfg = loadConfig({});
     expect(cfg).toEqual(DEFAULT_CONFIG);
-    expect(cfg.roles.dev).toEqual({ model: 'sonnet' });
-    expect(cfg.roles.test).toEqual({ model: 'sonnet' });
+    expect(cfg.roles.dev).toEqual({ model: 'claude-sonnet-5-5' });
+    expect(cfg.roles.test).toEqual({ model: 'claude-sonnet-5-5' });
     expect(cfg.concurrency.maxParallel).toBe(3);
     expect(cfg.retry.maxAttempts).toBe(3);
     expect(cfg.budgets.observeOnly).toBe(true);
@@ -23,9 +23,9 @@ describe('loadConfig', () => {
 
   it('runs Opus only on the architecture steps, Haiku on small tasks and Sonnet on the rest', () => {
     const cfg = loadConfig({});
-    expect(Object.values(cfg.roles).every((r) => r.model === 'sonnet')).toBe(true);
-    expect(cfg.routing.stepModels).toEqual({ 'tech-spec': 'opus', plan: 'opus', 'services-plan': 'opus' });
-    expect(cfg.routing.models).toEqual({ small: 'haiku', medium: 'sonnet', large: 'sonnet' });
+    expect(Object.values(cfg.roles).every((r) => r.model === 'claude-sonnet-5-5')).toBe(true);
+    expect(cfg.routing.stepModels).toEqual({ 'tech-spec': 'claude-opus-5-5', plan: 'claude-opus-5-5', 'services-plan': 'claude-opus-5-5' });
+    expect(cfg.routing.models).toEqual({ small: 'claude-haiku-5-5', medium: 'claude-sonnet-5-5', large: 'claude-sonnet-5-5' });
   });
 
   it('merges partial overrides without dropping sibling defaults', () => {
@@ -47,5 +47,17 @@ describe('loadConfig', () => {
 
   it('rejects a paths entry under /mnt/c', () => {
     expect(() => loadConfig({ paths: { workspaces: '/mnt/c/Users/x/ws' } })).toThrow(/paths\.workspaces/);
+  });
+
+  it('keeps agent settings empty by default and accepts a manual pick per project and role', () => {
+    expect(loadConfig({}).agentSettings).toEqual({});
+    const cfg = loadConfig({ agentSettings: { demo: { dev: { model: 'claude-opus-5-5', effort: 'max' } } } });
+    expect(cfg.agentSettings.demo.dev).toEqual({ model: 'claude-opus-5-5', effort: 'max' });
+  });
+
+  it('rejects an agent setting with an unknown role, model or effort', () => {
+    expect(() => loadConfig({ agentSettings: { demo: { qa: { model: 'opus', effort: 'low' } } } })).toThrow(/agentSettings/);
+    expect(() => loadConfig({ agentSettings: { demo: { dev: { model: 'gpt', effort: 'low' } } } })).toThrow(/agentSettings/);
+    expect(() => loadConfig({ agentSettings: { demo: { dev: { model: 'opus', effort: 'turbo' } } } })).toThrow(/agentSettings/);
   });
 });

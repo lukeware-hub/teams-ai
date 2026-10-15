@@ -340,6 +340,7 @@ export class Run {
       stepDir: (seq) => stepDir(this.deps.ws, this.runId, seq),
       sessionDir: (taskId) => sessionDir(this.deps.ws, this.runId, taskId),
       stepModel: (kind) => stepModelFor(cfg.routing, kind),
+      agentSetting: (role) => cfg.agentSettings[this.deps.project.projectId]?.[role],
       secretValues: () => this.secretValues(),
       specHash: this.deps.spec.specHash!,
     };
