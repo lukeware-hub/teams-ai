@@ -62,7 +62,7 @@ export function Onboarding({ compact = false }: { compact?: boolean }) {
       default: return (
         // Completion screen: the flow's one gradient object.
         <section className="edge-lit grid grid-cols-[minmax(0,1fr)_minmax(16rem,0.8fr)] items-center justify-items-start gap-x-10 gap-y-3 rounded-2xl border border-good-line bg-surface p-10 shadow-card @max-2xl:grid-cols-[minmax(0,1fr)] @max-2xl:rounded-xl @max-2xl:p-6" aria-labelledby="welcome-title">
-          <span className="grid size-14 place-items-center rounded-tile bg-good-soft text-good" aria-hidden="true"><Icon name="check" size={28} /></span>
+          <span className="relative grid size-14 place-items-center rounded-tile bg-good-soft text-good" aria-hidden="true"><Icon name="check" size={28} /><span className="confetti"><i /><i /><i /><i /><i /></span></span>
           <p className="m-0 inline-flex items-center gap-1.5 rounded-full bg-good-soft px-[0.65rem] py-[0.2rem] text-[0.8125rem] font-semibold text-good before:size-[0.45rem] before:rounded-full before:bg-current before:content-['']">Configuração concluída</p>
           <h2 id="welcome-title" className="mx-0 mt-1 mb-0 text-[1.75rem] leading-[1.2] tracking-[-0.025em]">Tudo pronto para começar</h2>
           <p className="m-0 max-w-[60ch] text-[0.9375rem] leading-[1.55] text-ink-soft">O Teams AI está conectado às suas ferramentas e pronto para ajudar a organizar projetos, executar tarefas e acompanhar o trabalho da equipe. Para começar, abra Projetos e use Nova spec ou Novo projeto.</p>
@@ -84,11 +84,11 @@ export function Onboarding({ compact = false }: { compact?: boolean }) {
             <span>Progresso</span>
             <strong className="text-[1.125rem] text-ink tabular-nums">{step + 1}/{totalSteps}</strong>
           </div>
-          <div className="mt-[0.65rem] mb-2 h-1.5 overflow-hidden rounded-full bg-surface-muted"><span className="block size-full origin-left rounded-[inherit] transition-transform duration-[var(--duration-slow)] ease-[var(--ease-out)] [background:var(--gradient-primary)] motion-reduce:transition-none" style={{ transform: `scaleX(${(step + 1) / totalSteps})` }} /></div>
+          <div className="mt-[0.65rem] mb-2 h-1.5 overflow-hidden rounded-full bg-surface-muted"><span className="block size-full origin-left rounded-[inherit] transition-transform duration-[var(--duration-slow)] ease-[var(--ease-out)] [background:var(--gradient-primary)]" style={{ transform: `scaleX(${(step + 1) / totalSteps})` }} /></div>
           <small className="text-[0.8125rem] text-ink-soft">{step === totalSteps - 1 ? 'Configuração concluída' : 'Complete esta etapa para continuar'}</small>
         </div>
       </header>
-      <div className="grid gap-[0.85rem]">{status ? stepContent() : <Loading />}</div>
+      <div key={step} className="step-in grid gap-[0.85rem]">{status ? stepContent() : <Loading />}</div>
       {/* On narrow frames the navigation sticks to the bottom over a glass band. */}
       <nav className="flex items-center justify-between gap-4 border-t border-line pt-5 @max-2xl:sticky @max-2xl:bottom-0 @max-2xl:-mx-[clamp(1rem,3vw,2rem)] @max-2xl:bg-surface @max-2xl:px-[clamp(1rem,3vw,2rem)] @max-2xl:py-3 @max-2xl:backdrop-blur-md" aria-label="Navegação da configuração">
         <button type="button" className="secondary h-10 border-line-strong text-ink enabled:hover:bg-surface-sunken @max-2xl:flex-1" onClick={() => setStep((current) => current - 1)} disabled={step === 0}>Voltar<Icon name="arrow-left" size={16} /></button>

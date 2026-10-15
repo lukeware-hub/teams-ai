@@ -243,7 +243,7 @@ export function ProjectHubView(p: {
         <div className="grid flex-none justify-items-end gap-3">
           {percent === null ? null : (
             <div className="flex flex-none items-center gap-2.5" role="img" aria-label={`${percent}% concluído`}>
-              <div className="h-2 w-32 overflow-hidden rounded-full bg-surface-muted"><span className="block h-full rounded-full bg-good-live transition-[width] duration-[var(--duration-fast)]" style={{ width: `${percent}%` }} /></div>
+              <div className="h-2 w-32 overflow-hidden rounded-full bg-surface-muted"><span className="block size-full origin-left rounded-full bg-good-live transition-transform duration-[var(--duration-slow)] ease-[var(--ease-out)]" style={{ transform: `scaleX(${percent / 100})` }} /></div>
               <span className="text-[0.8125rem] font-[650] text-ink-soft tabular-nums">{percent}%</span>
             </div>
           )}
