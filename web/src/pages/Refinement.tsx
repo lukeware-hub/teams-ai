@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, refineApi, type AcceptanceCriterion, type ChecklistItem, type Snapshot, type StoredEvent } from '../api.js';
+import { docToJson } from '../refine/docJson.js';
 import { applyToSnapshot, type LiveSnapshot } from '../refine/reducer.js';
 import { useJournal } from '../useSse.js';
 import { ActionButton } from '../components/ActionButton.js';
@@ -253,6 +254,13 @@ export function RefinementView(p: ViewProps) {
   // Backlog mode lists specs, not one spec: the generated index replaces spec.json and the tasks of a single spec.
   const specsIndex = backlogOn && (st.backlog?.items.length ?? 0) > 0 ? buildSpecsIndex(snap.specId, st.backlog as never) : null;
   const projectJson = backlogOn ? st.backlog?.project ?? null : st.derived?.project ?? null;
+  // The base docs as JSON, by the names the generated files use; briefing.md is the brief in backlog mode.
+  const docFiles = [
+    { doc: 'flow.md', name: 'flow.json', text: snap.docs['flow.md'] },
+    { doc: 'briefing.md', name: 'briefing.json', text: snap.docs['brief.md'] },
+    { doc: 'stack.md', name: 'stack.json', text: snap.docs['stack.md'] },
+    { doc: 'design.md', name: 'design.json', text: snap.docs['design.md'] },
+  ];
   const derivedThisCycle = (p.events ?? []).some((e) => e.type === 'DERIVED' && Number(e.data.cycle) === st.cycle);
   const jevEvent = (p.events ?? []).find((e) => e.type === 'REFINE_DOCS_VALIDATED' && Number(e.data.cycle) === st.cycle);
   const jevDown = jevEvent?.data.available === false;
@@ -618,6 +626,12 @@ export function RefinementView(p: ViewProps) {
         <summary><span>project.json</span>{projectJson ? <a data-testid="download-project-json" href={jsonDownload(projectJson)} download="project.json" aria-label="Baixar project.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</summary>
         {projectJson ? <pre className="whitespace-pre-wrap break-words">{JSON.stringify(projectJson, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>}
       </details>
+      {docFiles.map(({ doc, name, text }) => (
+        <details key={name}>
+          <summary><span>{name}</span><a data-testid={`download-${name.replace('.', '-')}`} href={jsonDownload(docToJson(doc, text))} download={name} aria-label={`Baixar ${name}`} onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a></summary>
+          <pre className="whitespace-pre-wrap break-words">{JSON.stringify(docToJson(doc, text), null, 2)}</pre>
+        </details>
+      ))}
       {!backlogOn && (
         <>
       <h4><Icon name="list" size={20} />Tarefas<InfoTip text="Tarefas descritas no briefing, extraídas a cada avaliação. Na execução, o SM as usa para montar o plano de trabalho." /></h4>
