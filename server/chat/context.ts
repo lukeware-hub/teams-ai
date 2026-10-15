@@ -19,6 +19,9 @@ const SPEC_STATUS: Record<string, string> = {
   retired: 'descartada, nunca será feita',
 };
 
+/** A spec frozen for running with no run going is ready to start, not in development. */
+const situationOf = (status: string, active: boolean): string => (status === 'running' && !active ? 'pronta para executar, sem execução ativa' : (SPEC_STATUS[status] ?? status));
+
 const TASK_STATE: Record<TaskState, string> = {
   planned: 'aguardando a vez',
   ready: 'pronta para começar',
@@ -51,12 +54,12 @@ async function tasksOf(idx: IndexDeps, runId: string): Promise<string[]> {
 /** Specs being worked on get everything; every other spec is one line (name and situation), which keeps the prompt small. */
 const IN_PLAY: ReadonlySet<string> = new Set(['running', 'paused:quota', 'paused:auth', 'awaiting-validation']);
 
-async function specBlock(idx: IndexDeps, spec: Spec, status: string, runId: string | null): Promise<string> {
+async function specBlock(idx: IndexDeps, spec: Spec, situation: string, runId: string | null): Promise<string> {
   const bug = spec.bug ? [`Problema a corrigir: ${withoutCodes(spec.bug.actual)}`, `O esperado: ${withoutCodes(spec.bug.expected)}`] : [];
   const tasks = runId ? await tasksOf(idx, runId) : [];
   return [
     `### ${withoutCodes(spec.objectives[0]!)}`,
-    `Situação: ${SPEC_STATUS[status] ?? status}`,
+    `Situação: ${situation}`,
     ...bug,
     ...list('Objetivos', spec.objectives),
     ...list('Funcionalidades', spec.features),
@@ -72,23 +75,24 @@ export async function buildChatContext(idx: IndexDeps, projectId: string): Promi
   if (!row) return null;
   const { project, specs } = await readProject(row.dir);
   const runs = await listRuns(idx, projectId);
-  const statusOf = new Map(row.specs.map((s) => [s.specId, s.status]));
+  const rows = new Map(row.specs.map((s) => [s.specId, s]));
   const ordered = specs
-    .map((spec) => ({ spec, status: statusOf.get(spec.specId) ?? spec.status }))
+    .map((spec) => ({ spec, status: rows.get(spec.specId)?.status ?? spec.status, active: rows.get(spec.specId)?.activeRunId != null }))
     .sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status));
   const head = [`## Projeto: ${project.name}`, `Visão: ${withoutCodes(project.vision)}`, '', '## Specs (as entregas planejadas do projeto)'].join('\n');
   const blocks: string[] = [];
   const others: string[] = [];
   let size = head.length;
-  for (const { spec, status } of ordered) {
+  for (const { spec, status, active } of ordered) {
+    const situation = situationOf(status, active);
     if (!IN_PLAY.has(status)) {
-      others.push(`- ${withoutCodes(spec.objectives[0]!)}: ${SPEC_STATUS[status] ?? status}`);
+      others.push(`- ${withoutCodes(spec.objectives[0]!)}: ${situation}`);
       continue;
     }
     const latest = runs.find((r) => r.specId === spec.specId && r.kind === 'run');
-    const block = await specBlock(idx, spec, status, latest?.runId ?? null);
+    const block = await specBlock(idx, spec, situation, latest?.runId ?? null);
     if (size + block.length > MAX_CHARS) {
-      others.push(`- ${withoutCodes(spec.objectives[0]!)}: ${SPEC_STATUS[status] ?? status} (sem detalhes por causa do tamanho)`);
+      others.push(`- ${withoutCodes(spec.objectives[0]!)}: ${situation} (sem detalhes por causa do tamanho)`);
       continue;
     }
     blocks.push(block);

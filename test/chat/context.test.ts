@@ -43,6 +43,18 @@ describe('buildChatContext', () => {
     expect(out.text).not.toMatch(/AC-\d|T\d+-/);
   });
 
+  it('says a spec frozen for running with no run going is ready, not in development', async () => {
+    const dir = path.join(home, 'proj');
+    await fs.cp(HELLO, dir, { recursive: true });
+    await fs.mkdir(path.join(dir, 'docs', 'specs', 'ready-one'), { recursive: true });
+    await fs.writeFile(path.join(dir, 'docs', 'specs', 'ready-one', 'spec.json'), JSON.stringify(makeSpec({ specId: 'ready-one', status: 'running', objectives: ['Entrega pronta'], features: ['Funcionalidade pronta'], outOfScope: ['Fora pronta'] })));
+    const cfg = loadConfig({ paths: { runs: path.join(home, 'runs').replace(/\\/g, '/') }, projects: [{ dir }] });
+    const { text } = (await buildChatContext({ cfg, home, isAlive: () => false }, 'hello-app'))!;
+    expect(text).toContain('### Entrega pronta');
+    expect(text).toContain('Situação: pronta para executar, sem execução ativa');
+    expect(text).not.toContain('em desenvolvimento agora');
+  });
+
   it('gives specs in play everything and every other spec one line with its name and situation', async () => {
     const dir = path.join(home, 'proj');
     await fs.cp(HELLO, dir, { recursive: true });
