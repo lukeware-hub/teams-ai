@@ -1277,6 +1277,7 @@ The user-provided reference images 2 and 3 are the approved visual target for `/
 - Use the green shield tile, `Controle de qualidade` eyebrow, `Lista de verificação` title, and `Atual` state chip.
 - PO and SM are review-agent roles, not user-entered fields. Show them as clearly labeled checklist groups; do not ask the user to enter agent names.
 - Generated files use bordered rows with a chevron/summary affordance and download action. Tasks use a bordered empty state with `Nenhuma tarefa gerada ainda.` and `As tarefas aparecerão aqui após a análise.`.
+- A red `Documentos sem contradições` item lists each verified divergence beneath it: the fact, the document and section of both quotes, and the fix. The item is red only when the orchestrator finds both quotes in the documents.
 - Keep the secrets and token summary at the bottom. `Iniciar análise` is the panel's primary action and occupies the full available width.
 - Surface the current analysis cost immediately below the quality-panel header in a highlighted summary: steps, tokens, and USD cost. Cost visibility is part of the primary workspace hierarchy, not a footer detail.
 - Render secrets as compact key/value rows with an `Adicionar segredo` action. Accept any valid uppercase environment-style key, support multiple rows, never echo stored values, and keep saving controls aligned with the panel grid.
