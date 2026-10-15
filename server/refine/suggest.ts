@@ -1,6 +1,7 @@
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
 import { briefTemplate, designTemplate, projectTemplate, stackTemplate, type DocFile } from './draft.js';
+import { buildWithDocs } from './docs-view.js';
 
 /** Every document but flow.md, which is the source the others are suggested from. */
 export type SuggestFile = Exclude<DocFile, 'flow.md'>;
@@ -10,16 +11,22 @@ export const SUGGEST_ROLE: Record<SuggestFile, 'po' | 'sm'> = { 'project.md': 'p
 
 const TEMPLATE: Record<SuggestFile, (projectId: string) => string> = { 'project.md': projectTemplate, 'brief.md': briefTemplate, 'stack.md': stackTemplate, 'design.md': designTemplate };
 
-/** Refinement "Sugerir": one step that writes `file` in full from flow.md, keeping only what of the current text agrees with it. */
-export function suggestPack(input: { file: SuggestFile; projectId: string; specHash: string; flowMd: string; currentMd: string }): ContextPackInput {
+/** Every document of the refinement draft. */
+export const DOC_FILES: DocFile[] = ['project.md', 'brief.md', 'stack.md', 'flow.md', 'design.md'];
+
+/** Refinement "Sugerir": one step that writes `file` in full, coherent with the other four documents and their recorded decisions. */
+export function suggestPack(input: { file: SuggestFile; projectId: string; specHash: string; docs: Record<DocFile, string> }): ContextPackInput {
+  const others = DOC_FILES.filter((f) => f !== input.file);
+  const viewed = buildWithDocs(Object.fromEntries(others.map((f) => [f, input.docs[f]])) as Record<DocFile, string>, (view) => others.map((f) => `### ${f}\n${view[f]}`).join('\n\n'));
   const feedback = [
-    `Write the complete docs/${input.file} in \`text\`, derived from docs/flow.md. flow.md is the source of truth: when the current ${input.file} disagrees with it, flow.md wins.`,
+    `Write the complete docs/${input.file} in \`text\`, coherent with the other documents below.`,
+    'Precedence when they disagree: the decisions recorded under "## Decisões" in the briefing first, then docs/flow.md, then the rest. Never remove, reword or reorder a recorded decision.',
     `- Keep the headings of the current ${input.file}; use the template's headings only when it is empty or still the template.`,
-    `- Keep from the current ${input.file} only the decisions flow.md does not contradict.`,
-    '- Never invent scope flow.md does not support.',
+    `- Keep from the current ${input.file} only what the other documents do not contradict.`,
+    '- Never invent scope the documents do not support.',
     '- Write the content in Brazilian Portuguese. Do not edit any file.',
-    `### flow.md\n${input.flowMd}`,
-    `### current ${input.file}\n${input.currentMd.trim() || '(empty)'}`,
+    viewed,
+    `### current ${input.file}\n${input.docs[input.file].trim() || '(empty)'}`,
     `### template\n${TEMPLATE[input.file](input.projectId)}`,
   ].join('\n\n');
   return { kind: 'suggest', role: SUGGEST_ROLE[input.file], specHash: input.specHash, principles: [], outputContract: outputContract('suggest'), criteria: [], feedback, budgetTokens: 30_000 };

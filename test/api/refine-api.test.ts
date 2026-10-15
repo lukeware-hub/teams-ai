@@ -185,7 +185,7 @@ describe('refine api', () => {
     const res = await call('POST', `${url}/stack.md/suggest`);
     expect(await res.json()).toEqual({ text: '# Stack\n\n## Runtime\n\n- Node.js' });
     expect(calls.at(-1)?.prompt).toContain('Cliente se cadastra com nome e e-mail.');
-    expect(calls.at(-1)?.prompt).toContain('flow.md wins');
+    expect(calls.at(-1)?.prompt).toContain('then docs/flow.md, then the rest');
     expect((await snapshot()).docs['stack.md']).toBe(before);
   });
 

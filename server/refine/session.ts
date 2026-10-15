@@ -21,7 +21,7 @@ import { DRAFT_HASH, RefineEvent } from './events.js';
 import { applyPatch } from './patches.js';
 import { buildSpecsIndex } from './specs-index.js';
 import { fitPackBudget } from './fit-pack.js';
-import { designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
+import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
 import { applyRefineEvent, emptyRefineState, type BacklogState, type RefineState } from './state.js';
 import { isStarted } from './coverage.js';
 
@@ -230,11 +230,10 @@ export class RefineSession {
   /** "Sugerir": the agent's version of `file` written from flow.md; nothing is saved, the human reviews it in the editor. */
   async suggest(file: SuggestFile): Promise<string> {
     this.guard();
-    const flowMd = await readDoc(this.deps.draft, 'flow.md');
-    if (flowMd.trim() === '' || flowMd === flowTemplate()) throw new ConflictError('Preencha o flow.md antes de pedir uma sugestão.');
-    const currentMd = await readDoc(this.deps.draft, file);
-    const specHash = sha256(`${file}\n${flowMd}\n${currentMd}`);
-    return this.runSuggest(SUGGEST_ROLE[file], fitPackBudget(suggestPack({ file, projectId: this.deps.draft.projectId, specHash, flowMd, currentMd })), specHash);
+    const docs = Object.fromEntries(await Promise.all(DOC_FILES.map(async (f) => [f, await readDoc(this.deps.draft, f)]))) as Record<DocFile, string>;
+    if (docs['flow.md'].trim() === '' || docs['flow.md'] === flowTemplate()) throw new ConflictError('Preencha o flow.md antes de pedir uma sugestão.');
+    const specHash = sha256(`${file}\n${DOC_FILES.map((f) => docs[f]).join('\n')}`);
+    return this.runSuggest(SUGGEST_ROLE[file], fitPackBudget(suggestPack({ file, projectId: this.deps.draft.projectId, specHash, docs })), specHash);
   }
 
   /** "Anexar imagem": the agent's design.md adjusted from template images; nothing is saved and the images are deleted after the step. */
