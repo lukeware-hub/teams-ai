@@ -14,6 +14,7 @@ import type { AgentStepRequest } from '../orchestrator/steps.js';
 import type { StepOutcome } from '../runner/step.js';
 import { adjustmentsDue, approvalPatch, approvedAdjustments, isAdjustment, type DueAdjustment } from './adjustments.js';
 import { mergeChecklist, type ChecklistItem } from './checklist.js';
+import { verifyContradictions } from './contradictions.js';
 import { norm, parseDecisions } from './decisions.js';
 import { derivePack, postProcessDerived } from './derive.js';
 import { answerPack } from './answer.js';
@@ -476,10 +477,21 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const flowItem = checklist.find((i) => i.id === 'sm.flow-is-mermaid')!;
   flowItem.passed = flowIsMermaid(docs['flow.md']);
   flowItem.detail = flowItem.passed ? 'flow.md has a mermaid diagram' : 'flow.md has no ```mermaid block; it must be a diagram, not markdown headings';
+  // The PO's divergences count only when the documents hold both quotes; an unverified verdict is noted, not enforced.
+  const contradictionItem = checklist.find((i) => i.id === 'po.no-contradictions')!;
+  const { verified, dropped } = verifyContradictions(docs, po.value.contradictions ?? []);
+  const poReported = po.value.checklist.some((r) => r.id === 'po.no-contradictions');
+  if (verified.length > 0) {
+    contradictionItem.passed = false;
+    contradictionItem.detail = `${verified.length} divergência(s) comprovada(s) nos documentos.`;
+    contradictionItem.divergences = verified;
+  } else if (poReported && !contradictionItem.passed) {
+    contradictionItem.passed = true;
+    contradictionItem.detail = `${contradictionItem.detail} Sem trecho comprovado nos documentos, por isso não bloqueia.`;
+  }
   // The Jev only warns: its doubt goes into the item's detail, and the PO's verdict stands.
   const consistent = jevValidation?.checks.documents_consistent;
   if (consistent !== undefined && consistent < 0.5) {
-    const contradictionItem = checklist.find((i) => i.id === 'po.no-contradictions')!;
     contradictionItem.detail = `${contradictionItem.detail} Aviso do Jev (automático, pode errar, não bloqueia): duvidou da consistência (${consistent.toFixed(2).replace('.', ',')}).`;
   }
   // R11.5.7: a blocking question routed `auto` at the floor or above is answered by its owner role from the docs, before the
@@ -496,7 +508,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     const out = (await deps.runAgent<'answer'>({ kind: 'answer', role: q.role, pack, cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, ctx)) as StepOutcome<AnswerOutput>;
     return out.ok && out.value.answer ? { questionId: q.questionId, text: out.value.answer, by: q.role } : null;
   }));
-  await journal.fact(RefineEvent.Evaluated, { cycle, checklist, questions: merged, discardedPatches, questionRouting, autoAnswerFloor: floor ?? null });
+  await journal.fact(RefineEvent.Evaluated, { cycle, checklist, questions: merged, discardedPatches, questionRouting, autoAnswerFloor: floor ?? null, unverifiedContradictions: dropped });
   for (const a of answers) if (a) await journal.fact(RefineEvent.QuestionAnswered, a);
 }
 

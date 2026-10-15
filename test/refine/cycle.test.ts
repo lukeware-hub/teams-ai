@@ -93,7 +93,7 @@ describe('refinement cycle acceptance criterion ids (R11.8)', () => {
 });
 
 describe('refinement cycle flow.md must be mermaid (R11.11)', () => {
-  const build = async (flow: string, validateDocs?: (docs: ValidationDocs) => Promise<JevValidationResult>, id = 'sm.flow-is-mermaid') => {
+  const evaluate = async (flow: string, validateDocs?: (docs: ValidationDocs) => Promise<JevValidationResult>, po: Record<string, unknown> = {}) => {
     const spec = makeSpec();
     const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
     const docs = path.join(root, 'docs');
@@ -112,13 +112,16 @@ describe('refinement cycle flow.md must be mermaid (R11.11)', () => {
     const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
     const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
-      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [] });
+      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [], ...po });
       return ok({ checklist: check(['sm.dependencies-and-secrets', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions', 'sm.flow-is-mermaid']), questions: [], docPatch: [] });
     });
     await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], secretsDir: root, validateDocs }, 1);
-    const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
-    return (evaluated.data.checklist as Array<{ id: string; passed: boolean; detail: string }>).find((i) => i.id === id)!;
+    return events.find((e) => e.type === 'REFINE_EVALUATED')!.data;
   };
+  const build = async (flow: string, validateDocs?: (docs: ValidationDocs) => Promise<JevValidationResult>, id = 'sm.flow-is-mermaid') =>
+    ((await evaluate(flow, validateDocs)).checklist as Array<{ id: string; passed: boolean; detail: string }>).find((i) => i.id === id)!;
+  type Item = { id: string; passed: boolean; detail: string; divergences?: Array<{ fact: string; a: { file: string }; b: { file: string } }> };
+  const contradictionOf = (data: Record<string, unknown>) => (data.checklist as Item[]).find((i) => i.id === 'po.no-contradictions')!;
 
   it('fails deterministically, overriding the agent, when flow.md has no mermaid fence', async () => {
     const item = await build('# Flow\n\n## 1. Checkout\n\nUser pays.\n');
@@ -142,6 +145,31 @@ describe('refinement cycle flow.md must be mermaid (R11.11)', () => {
     expect(doubtful.detail).toMatch(/Aviso do Jev \(automático, pode errar, não bloqueia\): duvidou da consistência \(0,20\)/);
     expect(await build('# Flow', jev(0.9), 'po.no-contradictions')).toMatchObject({ passed: true });
     expect(Object.keys(seen[0]!).sort()).toEqual(['briefing', 'design', 'flow', 'project', 'stack']);
+  });
+
+  it('fails po.no-contradictions when the documents hold both quotes of a divergence, and locates it', async () => {
+    const flow = '# Flow\n\n## 1. Checkout\n\nUser pays by card.\n\n## 2. Payment\n\nUser pays by cash.\n';
+    const data = await evaluate(flow, undefined, {
+      checklist: [{ id: 'po.no-contradictions', passed: true, detail: 'ok' }],
+      contradictions: [{ fact: 'pagamento', a: { file: 'flow.md', quote: 'User pays by card' }, b: { file: 'flow.md', quote: 'User pays by cash' }, fix: 'Mantenha um meio de pagamento.' }],
+    });
+    expect(contradictionOf(data)).toMatchObject({ passed: false, detail: '1 divergência(s) comprovada(s) nos documentos.' });
+    expect(contradictionOf(data).divergences?.[0]).toMatchObject({ fact: 'pagamento', a: { file: 'flow.md' }, b: { file: 'flow.md' } });
+    expect(data.unverifiedContradictions).toEqual([]);
+  });
+
+  it('passes po.no-contradictions when the PO fails it on quotes the documents do not hold, and journals them', async () => {
+    const data = await evaluate('# Flow', undefined, {
+      checklist: [{ id: 'po.no-contradictions', passed: false, detail: 'Porta divergente.' }],
+      contradictions: [{ fact: 'porta', a: { file: 'flow.md', quote: 'porta 9999 do serviço' }, b: { file: 'stack.md', quote: 'porta 1111 do serviço' }, fix: 'Alinhe.' }],
+    });
+    expect(contradictionOf(data)).toMatchObject({ passed: true });
+    expect(contradictionOf(data).detail).toMatch(/Sem trecho comprovado nos documentos, por isso não bloqueia\./);
+    expect(data.unverifiedContradictions).toHaveLength(1);
+  });
+
+  it('keeps po.no-contradictions failed when the PO did not report it', async () => {
+    expect(contradictionOf(await evaluate('# Flow', undefined, { checklist: [] }))).toMatchObject({ passed: false, detail: 'not reported' });
   });
 });
 

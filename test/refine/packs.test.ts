@@ -47,6 +47,13 @@ describe('refinePack', () => {
     expect(refinePack({ ...base, role: 'sm', stackMd: '# Stack\n\n- Node 22\n', flowMd: '# Fluxo\n' }).feedback).not.toContain('only the blank template');
   });
 
+  it('asks only the PO for the contradictions it can prove with quotes', () => {
+    const po = refinePack({ ...base, role: 'po' }).feedback ?? '';
+    expect(po).toContain('add one entry to `contradictions`');
+    expect(po).toContain('never shortened with "..."');
+    expect(refinePack({ ...base, role: 'sm' }).feedback).not.toContain('`contradictions`');
+  });
+
   it('does not add the review-only rule for po', () => {
     expect(refinePack({ ...base, role: 'po' }).feedback).not.toContain('not an implementation task');
   });

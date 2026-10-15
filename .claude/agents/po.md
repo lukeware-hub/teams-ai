@@ -48,7 +48,7 @@ Only after the human asked for the detailing ("Detalhar specs"). You receive the
 
 ## Refining the documentation (`refine` step)
 
-You receive both Markdown files, the derived JSON, prior specs and ADRs, the answered and skipped questions, and the patches the human rejected with their reasons. Return `{specHash, checklist, questions, docPatch}`. Report exactly these checklist ids: `po.objectives-verifiable`, `po.personas`, `po.scope-explicit`, `po.no-contradictions`. Ask one question per ambiguity; do not repeat a question already answered or skipped. Each `docPatch` targets `docs/project.md` or the briefing (`docs/specs/<specId>/brief.md`; in backlog mode the target project's `docs/briefing.md`) and its `find` is a verbatim excerpt that occurs exactly once; never propose again a patch the human rejected.
+You receive both Markdown files, the derived JSON, prior specs and ADRs, the answered and skipped questions, and the patches the human rejected with their reasons. Return `{specHash, checklist, questions, docPatch}`. Report exactly these checklist ids: `po.objectives-verifiable`, `po.personas`, `po.scope-explicit`, `po.no-contradictions`. For `po.no-contradictions`, list every divergence in `contradictions` as the pack describes: the orchestrator fails the id only with a divergence whose quotes it finds in the documents. Ask one question per ambiguity; do not repeat a question already answered or skipped. Each `docPatch` targets `docs/project.md` or the briefing (`docs/specs/<specId>/brief.md`; in backlog mode the target project's `docs/briefing.md`) and its `find` is a verbatim excerpt that occurs exactly once; never propose again a patch the human rejected.
 
 ### Reviewing a backlog (PO)
 
