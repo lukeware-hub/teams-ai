@@ -26,7 +26,7 @@ export function StepList({ steps, loadStep }: { steps: StepRow[]; loadStep: (ste
         const art = open[s.stepId];
         return (
           <li key={s.stepId}>
-            <button data-testid={`step-${s.stepId}`} onClick={() => void toggle(s.stepId)}>
+            <button className="min-w-[auto]" data-testid={`step-${s.stepId}`} onClick={() => void toggle(s.stepId)}>
               {s.stepId}
             </button>{' '}
             {s.kind} · {s.role}

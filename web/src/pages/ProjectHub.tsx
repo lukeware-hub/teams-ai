@@ -353,7 +353,7 @@ export function ProjectHubView(p: {
               ) : null}
               {suggestError ? <span className="error" role="alert">{suggestError}</span> : null}
               <div className="flex flex-wrap justify-end gap-2">
-                <button type="button" className={action.secondary} data-testid="cancel-new-spec" aria-label="Cancelar" onClick={closeNewSpec}><Icon name="close" size={14} /></button>
+                <button type="button" className={`${action.secondary} min-w-[auto]`} data-testid="cancel-new-spec" aria-label="Cancelar" onClick={closeNewSpec}><Icon name="close" size={14} /></button>
                 {idShown ? (
                   <ActionButton key="new-spec" type="submit" className={action.plain} data-testid="new-spec" busy={submitting} disabled={suggesting || specDraft.trim() === '' || specDescription.trim() === ''} icon={<Icon name="arrow-right" size={14} />}>Começar refinamento</ActionButton>
                 ) : (
@@ -489,7 +489,7 @@ export function ProjectHubView(p: {
                 </table>
               </div>
               {runsView.rows.length > RECENT_RUNS ? (
-                <button type="button" className="inline-flex h-8 items-center gap-1.5 justify-self-start border-0 bg-transparent p-0 text-[0.8125rem] text-ink-soft hover:not-disabled:text-ink hover:not-disabled:underline hover:not-disabled:underline-offset-3 aria-expanded:[&_svg]:rotate-180 pointer-coarse:h-[var(--control-height)]" aria-expanded={showAll} aria-controls={`runs-${pr.projectId}`} onClick={() => setShowAll(!showAll)}>
+                <button type="button" className="min-w-[auto] inline-flex h-8 items-center gap-1.5 justify-self-start border-0 bg-transparent p-0 text-[0.8125rem] text-ink-soft hover:not-disabled:text-ink hover:not-disabled:underline hover:not-disabled:underline-offset-3 aria-expanded:[&_svg]:rotate-180 pointer-coarse:h-[var(--control-height)]" aria-expanded={showAll} aria-controls={`runs-${pr.projectId}`} onClick={() => setShowAll(!showAll)}>
                   {showAll ? 'Mostrar menos' : `Mostrar todas (${runsView.rows.length})`}
                   <Icon name="chevron" size={14} />
                 </button>

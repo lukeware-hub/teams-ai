@@ -313,7 +313,7 @@ export function RefinementView(p: ViewProps) {
   const tabButton = (f: DocFile) => (
     <button
       key={f}
-      className={`h-auto min-h-11 rounded-none border-0 border-b-2 bg-transparent px-3 py-[0.55rem] whitespace-nowrap transition-none hover:enabled:bg-surface-sunken hover:enabled:text-ink ${tab === f ? 'border-accent text-accent-text' : 'border-transparent text-ink-soft'}`}
+      className={`min-w-[auto] h-auto min-h-11 rounded-none border-0 border-b-2 bg-transparent px-3 py-[0.55rem] whitespace-nowrap transition-none hover:enabled:bg-surface-sunken hover:enabled:text-ink ${tab === f ? 'border-accent text-accent-text' : 'border-transparent text-ink-soft'}`}
       onClick={() => setTab(f)}
     >
       {docLabel[f]}

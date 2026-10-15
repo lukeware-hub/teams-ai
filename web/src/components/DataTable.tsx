@@ -54,7 +54,7 @@ export function SortHeader({ view, column, className, tip, children }: { view: P
     <th scope="col" className={`whitespace-nowrap ${className ?? ''}`} aria-sort={active === 'asc' ? 'ascending' : active === 'desc' ? 'descending' : undefined}>
       <button
         type="button"
-        className="inline-flex h-auto min-h-0 items-center gap-1 border-0 bg-transparent p-0 font-[inherit] text-[inherit] tracking-[inherit] uppercase hover:not-disabled:bg-transparent hover:not-disabled:text-ink"
+        className="min-w-[auto] inline-flex h-auto min-h-0 items-center gap-1 border-0 bg-transparent p-0 font-[inherit] text-[inherit] tracking-[inherit] uppercase hover:not-disabled:bg-transparent hover:not-disabled:text-ink"
         onClick={() => view.toggleSort(column)}
       >
         {children}
@@ -90,7 +90,7 @@ export function TableFilters({ view, subject, placeholder, facetName }: { view: 
         <button
           type="button"
           aria-label="Limpar filtros"
-          className="w-[var(--control-height)] flex-none px-0"
+          className="min-w-[auto] w-[var(--control-height)] flex-none px-0"
           onClick={() => {
             view.clear();
             search.current?.focus();

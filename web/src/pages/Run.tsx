@@ -212,7 +212,7 @@ function PlanCard({ plan }: { plan: NonNullable<RunDetail['plan']> }) {
                 <span className={FACET_ITEMS}>
                   {paths.map((path) => <code key={path} className={PLAN_PATH}>{path}</code>)}
                   {hidden > 0 ? (
-                    <button type="button" className="h-6 border-0 bg-transparent px-[0.45rem] text-[0.75rem] text-accent-text underline-offset-[3px] hover:bg-transparent hover:underline" aria-expanded={open} onClick={() => toggle(task.id)}>
+                    <button type="button" className="min-w-[auto] h-6 border-0 bg-transparent px-[0.45rem] text-[0.75rem] text-accent-text underline-offset-[3px] hover:bg-transparent hover:underline" aria-expanded={open} onClick={() => toggle(task.id)}>
                       {open ? 'Mostrar menos' : `+${hidden}`}
                     </button>
                   ) : null}
@@ -783,7 +783,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                         <li key={g.reason} data-testid="cause-group" className="grid grid-cols-[minmax(0,max-content)_minmax(0,1fr)_auto] items-center gap-[0.85rem] px-[0.9rem] py-[0.6rem] max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-3 max-md:gap-y-2">
                           <span className="flex max-w-64 min-w-0 flex-wrap gap-x-3 gap-y-1">
                             {g.taskIds.map((id) => (
-                              <button key={id} type="button" className={TASK_ID_BUTTON} onClick={() => setSelected(id)}>
+                              <button key={id} type="button" className={`min-w-[auto] ${TASK_ID_BUTTON}`} onClick={() => setSelected(id)}>
                                 {id}
                               </button>
                             ))}
