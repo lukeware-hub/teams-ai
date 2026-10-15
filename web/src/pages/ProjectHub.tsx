@@ -416,6 +416,8 @@ export function ProjectHubView(p: {
                           <Icon name="arrow-right" size={14} />
                         </Link>
                       ) : null
+                    ) : s.status === 'planned' ? (
+                      <span className="text-ink-soft">Inicia com o programa do backlog</span>
                     ) : (
                       <ActionButton key="start" className={action.primary} data-testid={`start-${s.specId}`} aria-label={`Iniciar execução de ${s.specId}`} onClick={() => p.onStart(s.specId)} icon={<Icon name="play" size={14} />}>
                         Iniciar execução

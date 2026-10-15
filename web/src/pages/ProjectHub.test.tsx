@@ -12,6 +12,7 @@ const project = {
     { specId: 'hello-001', status: 'running', activeRunId: null },
     { specId: 'hello-002', status: 'running', activeRunId: 'hello-002-r1' },
     { specId: 'hello-000', status: 'done', activeRunId: null },
+    { specId: 'hello-003', status: 'planned', activeRunId: null },
   ],
 };
 type Row = Parameters<typeof ProjectHubView>[0]['runs'][number];
@@ -65,6 +66,8 @@ describe('ProjectHubView', () => {
     expect(o.start).toHaveBeenCalledWith('hello-001');
     expect(screen.getByTestId('open-hello-002').getAttribute('href')).toBe('/runs/hello-002-r1');
     expect(screen.queryByTestId('start-hello-000')).toBeNull();
+    expect(screen.queryByTestId('start-hello-003')).toBeNull();
+    expect(screen.getByText('Inicia com o programa do backlog')).toBeTruthy();
     fireEvent.click(screen.getByTestId('resume-hello-001-r1'));
     expect(o.resume).toHaveBeenCalledWith('hello-001-r1');
     fireEvent.click(screen.getByTestId('stop-hello-002-r1'));
