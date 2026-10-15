@@ -1,4 +1,5 @@
 import { authFetch } from './auth.js';
+import type { Divergence } from '@server/refine/checklist';
 export type ItemName = 'claude' | 'githubOwner' | 'ghLogin' | 'githubToken' | 'openrouterKey';
 export interface Item { ok: boolean; detail: string; secret?: { set: boolean; hint: string } }
 export interface Status { items: Record<ItemName, Item>; allOk: boolean }
@@ -215,6 +216,7 @@ export interface ChecklistItem {
   role: 'po' | 'sm' | 'front';
   passed: boolean;
   detail: string;
+  divergences?: Divergence[];
 }
 export interface QuestionRow {
   questionId: string;

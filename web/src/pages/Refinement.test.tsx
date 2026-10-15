@@ -34,6 +34,35 @@ const base = (over: Partial<Snapshot['state']>): Snapshot => ({
 const on = () => ({ onSaveDoc: vi.fn(), onEvaluate: vi.fn(), onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn() });
 const event = (seq: number, type: string, data: Record<string, unknown>): StoredEvent => ({ seq, at: '', runId: 'hello-app/hello-001', specHash: 'draft', type, kind: 'fact', data });
 
+describe('RefinementView divergences', () => {
+  const divergence = {
+    fact: 'porta da API',
+    a: { file: 'brief.md', heading: 'Porta', quote: 'A API responde na porta 8080' },
+    b: { file: 'flow.md', heading: '1. Entrada', quote: 'chama a API pela porta 18080' },
+    fix: 'Alinhe a porta nos dois documentos.',
+  };
+  const red = (over: object) => green(ALL).map((c) => (c.id === 'po.no-contradictions' ? { ...c, passed: false, detail: '1 divergência comprovada.', ...over } : c));
+
+  it('shows each verified divergence under a red item, with both places, the quotes and the fix', () => {
+    render(<MemoryRouter><RefinementView snap={base({ checklist: red({ divergences: [divergence] }) })} busy={false} {...on()} /></MemoryRouter>);
+    expect(screen.getByText('porta da API')).toBeTruthy();
+    expect(screen.getByText('Onde: briefing.md › Porta — “A API responde na porta 8080” × flow.md › 1. Entrada — “chama a API pela porta 18080”')).toBeTruthy();
+    expect(screen.getByText('Como corrigir: Alinhe a porta nos dois documentos.')).toBeTruthy();
+  });
+
+  it('gives a plain instruction when the fix is empty, and names the file alone when a side has no heading', () => {
+    const bare = { ...divergence, fix: '', a: { ...divergence.a, heading: null } };
+    render(<MemoryRouter><RefinementView snap={base({ checklist: red({ divergences: [bare] }) })} busy={false} {...on()} /></MemoryRouter>);
+    expect(screen.getByText(/^Onde: briefing\.md — “A API responde na porta 8080”/)).toBeTruthy();
+    expect(screen.getByText('Como corrigir: corrija o trecho divergente nos documentos e reavalie.')).toBeTruthy();
+  });
+
+  it('shows nothing extra for an item without divergences', () => {
+    render(<MemoryRouter><RefinementView snap={base({ checklist: red({}) })} busy={false} {...on()} /></MemoryRouter>);
+    expect(screen.queryByText(/^Onde:/)).toBeNull();
+  });
+});
+
 describe('RefinementView secrets', () => {
   it('keeps the browser from filling a saved password into a secret field', () => {
     render(<MemoryRouter><RefinementView snap={base({ status: 'answering' })} busy={false} {...on()} /></MemoryRouter>);

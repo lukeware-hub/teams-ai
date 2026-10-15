@@ -9,6 +9,7 @@ import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { buildSpecsIndex } from '@server/refine/specs-index';
 import { allGreen, isApproval } from '@server/refine/state';
+import type { Divergence, DivergenceSide } from '@server/refine/checklist';
 import { BacklogPanel } from '../refine/BacklogPanel.js';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { SpecTree } from '../refine/SpecTree.js';
@@ -166,6 +167,22 @@ export interface ViewProps {
   events?: StoredEvent[];
 }
 
+/** Each verified divergence: the fact, both places with their quotes, and how to correct it. */
+function Divergences({ items }: { items: Divergence[] }) {
+  const place = (s: DivergenceSide) => `${docName(s.file)}${s.heading ? ` › ${s.heading}` : ''}`;
+  return (
+    <ul className="m-0 mt-[0.35rem] list-none space-y-[0.45rem] p-0 text-ink-soft">
+      {items.map((d, n) => (
+        <li key={n}>
+          <span className="block text-ink">{d.fact}</span>
+          <span className="block">{`Onde: ${place(d.a)} — “${d.a.quote}” × ${place(d.b)} — “${d.b.quote}”`}</span>
+          <span className="block">{`Como corrigir: ${d.fix || 'corrija o trecho divergente nos documentos e reavalie.'}`}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function Checklist({ items, role }: { items: ChecklistItem[]; role: 'po' | 'sm' }) {
   const own = items.filter((i) => i.role === role);
   if (own.length === 0) return <p className={fileEmpty}>Preenchida na primeira avaliação.</p>;
@@ -174,7 +191,7 @@ function Checklist({ items, role }: { items: ChecklistItem[]; role: 'po' | 'sm' 
       {own.map((i) => (
         <li key={i.id} className="grid grid-cols-[1rem_minmax(0,1fr)] gap-2 py-[0.4rem] text-[0.8125rem] text-ink">
           <span className={`grid h-5 place-items-center ${i.passed ? 'text-good' : 'text-bad'}`} role="img" aria-label={i.passed ? 'Atendido' : 'Não atendido'}><Icon name={i.passed ? 'check' : 'close'} size={16} /></span>
-          <span>{checkLabel[i.id] ?? i.id.slice(3)}<small className="mx-0 mt-[0.15rem] mb-0 block leading-[1.35] text-ink-soft">{checkDetail(i.detail)}</small></span>
+          <div>{checkLabel[i.id] ?? i.id.slice(3)}<small className="mx-0 mt-[0.15rem] mb-0 block leading-[1.35] text-ink-soft">{checkDetail(i.detail)}</small>{i.divergences?.length ? <Divergences items={i.divergences} /> : null}</div>
         </li>
       ))}
     </ul>
