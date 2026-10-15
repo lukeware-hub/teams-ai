@@ -187,6 +187,7 @@ export function RefinementView(p: ViewProps) {
   const [tab, setTab] = useState<DocFile>('brief.md');
   const [docs, setDocs] = useState(snap.docs);
   const [suggesting, setSuggesting] = useState(false);
+  const attachInput = useRef<HTMLInputElement>(null);
   const [answer, setAnswer] = useState('');
   const [docsAnswered, setDocsAnswered] = useState(false);
   const [reasons, setReasons] = useState<Record<string, string>>({});
@@ -348,20 +349,20 @@ export function RefinementView(p: ViewProps) {
       <p data-testid="doc-impact" className="hint">{backlogOn && tab === 'brief.md' ? briefingImpact : docImpact[tab]}</p>
       <div className="grid gap-2">
         {/* The editor's actions sit above it, so they never cover the document's first lines. */}
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-end gap-2 max-[720px]:flex-col">
           {tab !== 'flow.md' && p.onSuggestDoc && (
-            <ActionButton data-testid="suggest" className="h-9 px-[0.8rem]" busy={suggesting} disabled={locked} title="Gera este documento a partir do flow.md" onClick={() => suggest(tab)} icon={<Icon name="lightbulb" size={16} />}>
+            <ActionButton data-testid="suggest" className="h-9 px-[0.8rem] max-[720px]:w-full" busy={suggesting} disabled={locked} title="Gera este documento a partir do flow.md" onClick={() => suggest(tab)} icon={<Icon name="lightbulb" size={16} />}>
               {suggesting ? 'Sugerindo…' : 'Sugerir'}
             </ActionButton>
           )}
           {tab === 'design.md' && p.onDesignFromImages && (
-            <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-line px-[0.8rem] text-sm" title="Ajusta o design.md pelas cores, fontes e alinhamentos de imagens de exemplo; as imagens são apagadas depois">
-              <Icon name="file" size={16} />
+            <button type="button" className="h-9 px-[0.8rem] max-[720px]:w-full" disabled={locked || suggesting} title="Ajusta o design.md pelas cores, fontes e alinhamentos de imagens de exemplo; as imagens são apagadas depois" onClick={() => attachInput.current?.click()}>
               Anexar imagem
-              <input data-testid="attach-images" type="file" accept="image/png,image/jpeg" multiple hidden disabled={locked || suggesting} onChange={(e) => { void attach(e.target.files); e.target.value = ''; }} />
-            </label>
+              <Icon name="file" size={16} />
+            </button>
+            <input ref={attachInput} data-testid="attach-images" type="file" accept="image/png,image/jpeg" multiple hidden onChange={(e) => { void attach(e.target.files); e.target.value = ''; }} />
           )}
-          <button type="button" className="h-9 px-[0.8rem]" aria-label="Copiar documento" onClick={() => copyDoc(docs[tab] ?? '')}>
+          <button type="button" className="h-9 px-[0.8rem] max-[720px]:w-full" aria-label="Copiar documento" onClick={() => copyDoc(docs[tab] ?? '')}>
             Copiar
             <Icon name="copy" size={16} />
           </button>
