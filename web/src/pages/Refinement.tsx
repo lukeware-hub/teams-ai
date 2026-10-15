@@ -498,7 +498,9 @@ export function RefinementView(p: ViewProps) {
               value={reasons[x.patchId] ?? ''}
               onChange={(e) => setReasons({ ...reasons, [x.patchId]: e.target.value })}
             />
-            <ActionButton className="border-bad-line bg-bad-soft text-bad hover:enabled:border-bad" data-testid={`reject-${x.patchId}`} aria-label="Rejeitar" disabled={locked} onClick={() => p.onReject(x.patchId, reasons[x.patchId] || null)} icon={<Icon name="close" size={16} />} />
+            <ActionButton className="min-w-[5.5rem] border-bad-line bg-bad-soft text-bad hover:enabled:border-bad" data-testid={`reject-${x.patchId}`} disabled={locked} onClick={() => p.onReject(x.patchId, reasons[x.patchId] || null)} icon={<Icon name="close" size={16} />}>
+              Rejeitar
+            </ActionButton>
             </div>
           </div>
         ))}
