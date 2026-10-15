@@ -339,3 +339,29 @@ describe('project apps', () => {
     expect(at({ online: false, ui: true })).toEqual({ swagger: null, web: null });
   });
 });
+
+describe('the process of the running execution on the project page', () => {
+  const o = on();
+  const journal = (seq: number, type: string, data: Record<string, unknown>) => ({ seq, at: '2026-09-24T10:00:00.000Z', runId: 'hello-002-r1', specHash: 'sha256:x', type, kind: 'fact', data });
+  const view = (extra: object) => (
+    <MemoryRouter>
+      <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} {...extra} />
+    </MemoryRouter>
+  );
+  it('shows the phases of the running execution in order, each with the state its journal gives', () => {
+    const events = [journal(1, 'PHASE_STARTED', { phase: 1, round: 1 }), journal(2, 'PHASE_STARTED', { phase: 2, round: 1 }), journal(3, 'PHASE_STARTED', { phase: 3, round: 1 })];
+    render(view({ processRun: runs[0], processEvents: events }));
+    const section = screen.getByTestId('run-process');
+    expect(within(section).getByRole('link', { name: 'Abrir execução' }).getAttribute('href')).toBe('/runs/hello-002-r1');
+    const items = within(section).getAllByTestId('process-phase');
+    expect(items).toHaveLength(6);
+    expect(items[0]!.textContent).toContain('1 · Especificação técnica');
+    expect(items[0]!.textContent).toContain('concluída');
+    expect(items[2]!.textContent).toContain('em execução');
+    expect(items[3]!.textContent).toContain('aguardando');
+  });
+  it('shows nothing when no execution is running or stopped', () => {
+    render(view({ processRun: null, processEvents: [] }));
+    expect(screen.queryByTestId('run-process')).toBeNull();
+  });
+});

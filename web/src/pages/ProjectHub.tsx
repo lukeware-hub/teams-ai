@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { serviceLinks } from '@server/deploy/service-links';
-import { refineApi, runApi, startedPath, type DraftRow, type NameRequest, type NameSuggestion, type ProjectRow, type Report, type RunRow, type ServiceStatus } from '../api.js';
+import { refineApi, runApi, startedPath, type DraftRow, type NameRequest, type NameSuggestion, type ProjectRow, type Report, type RunRow, type ServiceStatus, type StoredEvent } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { SortHeader, TableFilters, useTableView } from '../components/DataTable.js';
@@ -10,6 +10,8 @@ import { InfoTip } from '../components/InfoTip.js';
 import { BacklogBanner } from '../refine/ProgramPanel.js';
 import { Bone, Skeleton } from '../components/Loading.js';
 import { ACTIVE, CONTINUABLE, HELP, LABEL, RECENT_RUNS, action, chip, emptyState, grouped, money, panel, plural, row, rowActions, rowId, rows, runName, sectionHeading, sectionTitle, when } from './project-shared.js';
+import { phaseState, phases, phaseTitle, runState } from '../run/selectors.js';
+import { useJournal } from '../useSse.js';
 
 const header = 'card flex flex-wrap items-center justify-between gap-x-6 gap-y-2';
 const title = 'm-0 text-[1.375rem] leading-[1.3] text-ink';
@@ -89,6 +91,42 @@ export function appLinks(report: Report | null, status: ServiceStatus, hostname:
   return found;
 }
 
+const PROCESS_PHASES = [1, 2, 3, 4, 5, 6];
+
+/** The whole process of the execution that is going or was stopped: each phase in order, with the state its journal gives. */
+function RunProcessSection({ run, events }: { run: RunRow; events: StoredEvent[] }) {
+  const unique = events.filter((e, i) => events.findIndex((x) => x.seq === e.seq) === i);
+  const journal = phases(unique);
+  const blocked = [...runState(unique).tasks.values()].filter((t) => t.state === 'blocked').length;
+  const order = [...new Set([...PROCESS_PHASES, ...journal.map((j) => j.phase)])].sort((a, b) => a - b);
+  return (
+    <section className={panel} data-testid="run-process">
+      <div className={section}>
+        <div className={sectionHead}>
+          <div className={sectionTitle}>
+            <span className={sectionIcon}><Icon name="code" size={14} /></span>
+            <h3 className={sectionHeading}>Processo da execução</h3>
+          </div>
+          <Link className={action.primary} to={`/runs/${run.runId}`}>Abrir execução</Link>
+        </div>
+        <ol className="m-0 grid list-none gap-2 p-0">
+          {order.map((phase) => {
+            const row = journal.find((j) => j.phase === phase);
+            const [label, tone] = row ? phaseState(row, run.status, blocked) : ['aguardando', ''];
+            return (
+              <li key={phase} data-testid="process-phase" className="flex flex-wrap items-center gap-2 text-[0.875rem] text-ink">
+                <span className="font-semibold">{phaseTitle(phase)}</span>
+                <span className={tone ? `status-pill tone-${tone}` : 'status-pill'}>{label}</span>
+                {row && row.attempt > 1 ? <span className="text-ink-soft">{row.attempt}ª tentativa</span> : null}
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+    </section>
+  );
+}
+
 export function ProjectHubView(p: {
   project: ProjectRow | null;
   notFound: boolean;
@@ -98,6 +136,9 @@ export function ProjectHubView(p: {
   backlogs?: string[];
   /** Links of the latest delivery; shown only when every spec is concluded. */
   apps?: AppLinks | null;
+  /** The execution that is going or was stopped, and its journal: the project shows its whole process. */
+  processRun?: RunRow | null;
+  processEvents?: StoredEvent[];
   error: string | null;
   deleteError: string | null;
   onStart: (specId: string) => void | Promise<void>;
@@ -225,6 +266,7 @@ export function ProjectHubView(p: {
           <span className={statLabel}>custo total</span>
         </div>
       </div>
+      {p.processRun ? <RunProcessSection run={p.processRun} events={p.processEvents ?? []} /> : null}
       {allConcluded && p.apps ? (
         <section className={panel} data-testid="project-apps">
           <div className={section}>
@@ -598,6 +640,8 @@ export function ProjectHub() {
       setError((e as Error).message);
     }
   };
+  const processRun = runs.find((r) => r.kind === 'run' && (ACTIVE.has(r.status) || r.status === 'interrupted')) ?? null;
+  const { events: processEvents } = useJournal(processRun ? runApi.runEvents(processRun.runId) : null);
   if (!projectId) return null;
   if (!project && !notFound) return <ProjectHubSkeleton projectId={projectId} error={error} />;
   return (
@@ -608,6 +652,8 @@ export function ProjectHub() {
       drafts={drafts}
       backlogs={backlogs}
       apps={apps}
+      processRun={processRun}
+      processEvents={processEvents}
       error={error}
       deleteError={deleteError}
       onStart={(specId) => act(async () => {

@@ -64,6 +64,16 @@ export function phaseTitle(phase: number): string {
   return phase <= 6 ? `${phase} · ${name}` : name;
 }
 
+const PHASE_STATE: Record<PhaseRow['result'], [label: string, tone: string]> = { done: ['concluída', 'good'], failed: ['falhou', 'bad'], running: ['em execução', 'neutral'], stopped: ['interrompida', ''] };
+
+/** A phase row's chip. The journal alone keeps a paused or dead run's phase running, so the run status refines it. */
+export function phaseState(p: PhaseRow, runStatus: string, blockedTasks: number): [label: string, tone: string] {
+  if (p.result === 'running' && runStatus.startsWith('paused')) return ['pausada', 'warn'];
+  if (p.result === 'running' && runStatus === 'interrupted') return PHASE_STATE.stopped;
+  if (p.result === 'done' && p.phase === 3 && blockedTasks > 0) return ['com bloqueios', 'warn'];
+  return PHASE_STATE[p.result];
+}
+
 const SUCCESS_RESULTS = new Set(['complete', 'awaiting-validation', 'done']);
 
 /** The round-2 verdict in the server's own wording (phases/verify.ts), plus the ids it names. */

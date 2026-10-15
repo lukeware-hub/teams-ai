@@ -13,7 +13,7 @@ import { safeHttpUrl } from '../safeUrl.js';
 import { StepList } from '../components/StepList.js';
 import { TaskDetail } from '../components/TaskDetail.js';
 import { Workspace } from '../components/Workspace.js';
-import { currentActivity, evidence, explainBlockReason, explainPhase, explainStop, firstSentence, formatDuration, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseTitle, rootBlockers, runState, stepDoing, stopBefore, stopSummary, tokens, type ActivityItem, type PhaseRow, type StopOwner } from '../run/selectors.js';
+import { currentActivity, evidence, explainBlockReason, explainPhase, explainStop, firstSentence, formatDuration, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseState, phaseTitle, rootBlockers, runState, stepDoing, stopBefore, stopSummary, tokens, type ActivityItem, type PhaseRow, type StopOwner } from '../run/selectors.js';
 import { useJournal } from '../useSse.js';
 
 // A panel title with its info tip right beside it, not pushed to the far edge.
@@ -328,16 +328,6 @@ function Facts({ rows }: { rows: Array<[string, ReactNode] | null> }) {
         ))}
     </dl>
   );
-}
-
-const PHASE_STATE: Record<PhaseRow['result'], [label: string, tone: string]> = { done: ['concluída', 'good'], failed: ['falhou', 'bad'], running: ['em execução', 'neutral'], stopped: ['interrompida', ''] };
-
-/** A phase row's chip. The journal alone keeps a paused or dead run's phase running, so the run status refines it. */
-function phaseState(p: PhaseRow, runStatus: string, blockedTasks: number): [label: string, tone: string] {
-  if (p.result === 'running' && runStatus.startsWith('paused')) return ['pausada', 'warn'];
-  if (p.result === 'running' && runStatus === 'interrupted') return PHASE_STATE.stopped;
-  if (p.result === 'done' && p.phase === 3 && blockedTasks > 0) return ['com bloqueios', 'warn'];
-  return PHASE_STATE[p.result];
 }
 
 const ACTIVITY_TONE: Record<string, string> = { bad: 'text-bad', good: 'text-good' };
