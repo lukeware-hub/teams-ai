@@ -74,6 +74,13 @@ describe('postProcessDerived', () => {
     expect(pack.feedback).toContain('`platform` stays out too when `services` does');
   });
 
+  it('derivePack carries the spec text that names a service, so the agent can pick its repository', () => {
+    const brief = '## Escopo\nAlterar `identity-service` para listar usuários com e-mail mascarado.';
+    const pack = derivePack({ specHash: `sha256:${'d'.repeat(64)}`, principles: [], projectMd: '# P', briefMd: brief, stackMd: '# Stack', previous: null, specId: 'hello-001' });
+    expect(pack.feedback).toContain(brief);
+    expect(pack.feedback).toContain('`services` lists the services the docs split the system into');
+  });
+
   it('requires the agent to classify the demand and preserve bug details', () => {
     const pack = derivePack({ specHash: `sha256:${'d'.repeat(64)}`, principles: [], projectMd: '# P', briefMd: '## Type\nbug', stackMd: '# Stack', flowMd: '# Flow', previous: null, specId: 'hello-001' });
     expect(pack.feedback).toContain('type');
