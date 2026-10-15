@@ -416,7 +416,7 @@ export function RefinementView(p: ViewProps) {
       {jevAdvisory && <p className={notice}>O Jev é obrigatório no refinamento: ele valida os documentos e decide pontos da avaliação, e seus apontamentos são considerados por Claude, PO e SM. <InfoTip text={jevInfo} /></p>}
       <div className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-3">
         <span className="inline-flex items-start gap-[0.45rem] text-[0.8125rem] leading-[1.35] text-ink-soft"><Icon name="info" size={18} />As alterações são salvas automaticamente ao sair do editor.</span>
-        <ActionButton data-testid="evaluate" className="primary min-w-40 justify-self-center" busy={evaluating} disabled={locked} onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
+        <ActionButton data-testid="evaluate" className="primary min-w-40 justify-self-stretch" busy={evaluating} disabled={locked} onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
         {st.cycle === 0 ? 'Avaliar' : 'Reavaliar'}
         </ActionButton>
         {askRe && (
