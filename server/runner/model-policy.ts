@@ -6,17 +6,18 @@ import type { Effort } from '../decide/decisions/model-tier.js';
  */
 const family = (model: string): 'opus' | 'sonnet' | 'haiku' | null => /opus/i.test(model) ? 'opus' : /sonnet/i.test(model) ? 'sonnet' : /haiku/i.test(model) ? 'haiku' : null;
 
-/** The effort a step may use on this model; another model name passes through untouched. */
-export function effortFor(model: string, effort: Effort | undefined): Effort | undefined {
+/** The effort a step may use on this model; low when nothing was asked. */
+export function effortFor(model: string, effort: Effort | undefined): Effort {
+  const asked = effort ?? 'low';
   switch (family(model)) {
     case 'opus':
       return 'low';
     case 'sonnet':
-      return effort === undefined || effort === 'max' ? 'high' : effort;
+      return asked === 'max' ? 'high' : asked;
     case 'haiku':
       return 'low';
     default:
-      return effort;
+      return asked;
   }
 }
 

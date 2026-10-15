@@ -458,8 +458,8 @@ describe('runAgentStep', () => {
     const inner = d.runStep;
     d.runStep = (async (req, sd) => { seen.push(req); return inner(req, sd); }) as AgentStepDeps['runStep'];
     await runAgentStep({ kind: 'dev', role: 'dev', pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1, model: 'haiku', effort: 'low' }, d);
-    // Haiku takes no effort setting.
-    expect(seen[0]).toMatchObject({ model: 'haiku', effort: undefined, profile: { model: 'sonnet' } });
+    // Haiku always runs at low effort.
+    expect(seen[0]).toMatchObject({ model: 'haiku', effort: 'low', profile: { model: 'sonnet' } });
   });
 
   async function seeing(model: string | undefined, effort: 'low' | 'max' | undefined, fake?: (model: string) => Promise<StepOutcome<unknown>>) {
@@ -473,7 +473,7 @@ describe('runAgentStep', () => {
   const quota = (): StepOutcome<unknown> => ({ ok: false, failure: 'quota', errors: ['rate limited'], summary: summary({ isError: true }), sandboxDisabled: false });
 
   it('keeps Sonnet effort at high or below and Opus at low', async () => {
-    expect((await seeing('sonnet', undefined)).seen[0]!.effort).toBe('high');
+    expect((await seeing('sonnet', undefined)).seen[0]!.effort).toBe('low');
     expect((await seeing('sonnet', 'max')).seen[0]!.effort).toBe('high');
     expect((await seeing('opus', 'max')).seen[0]!.effort).toBe('low');
   });

@@ -6,8 +6,8 @@ describe('effortFor', () => {
     for (const e of [undefined, 'low', 'high', 'max'] as const) expect(effortFor('opus', e)).toBe('low');
   });
 
-  it('lets Sonnet reason up to high and never above, high when nothing was asked', () => {
-    expect(effortFor('sonnet', undefined)).toBe('high');
+  it('lets Sonnet reason up to high and never above, low when nothing was asked', () => {
+    expect(effortFor('sonnet', undefined)).toBe('low');
     expect(effortFor('sonnet', 'low')).toBe('low');
     expect(effortFor('sonnet', 'medium')).toBe('medium');
     expect(effortFor('sonnet', 'max')).toBe('high');
@@ -21,6 +21,7 @@ describe('effortFor', () => {
     expect(effortFor('claude-opus-5-5', 'high')).toBe('low');
     expect(effortFor('claude-haiku-5-5', 'high')).toBe('low');
     expect(effortFor('other-model', 'max')).toBe('max');
+    expect(effortFor('other-model', undefined)).toBe('low');
   });
 });
 
