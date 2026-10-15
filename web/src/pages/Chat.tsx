@@ -67,7 +67,7 @@ function Message({ projectId, message }: { projectId: string; message: ChatMessa
   if (message.role === 'user') return <p className={`${bubble} m-0 justify-self-end bg-accent-soft text-ink`}>{message.text}</p>;
   return (
     <div className="grid justify-items-start gap-2">
-      <div className={`${bubble} border border-line bg-surface text-ink`}><Markdown source={message.text} /></div>
+      <div className={`${bubble} border border-line bg-surface text-ink text-justify`}><Markdown source={message.text} /></div>
       {message.usage ? <p className="m-0 flex items-center gap-1 text-[0.75rem] text-ink-soft tabular-nums" data-testid="usage">{usageLine(message.usage)}<InfoTip text={USAGE_HELP} /></p> : null}
       {message.correction ? <Correction projectId={projectId} correction={message.correction} /> : null}
     </div>
