@@ -45,6 +45,14 @@ const docImpact: Record<DocFile, string> = {
   'flow.md': 'Fluxos de uso e regras de negócio, passo a passo. Base dos critérios de aceite e dos testes.',
   'design.md': 'Contrato visual: cores, tipografia, componentes e acessibilidade. Seguido pelo agente Front, que cuida da interface.',
 };
+/** Short text for the info icon on each document tab. */
+const docTip: Record<DocFile, string> = {
+  'project.md': 'Explica o que é o projeto, para quem ele serve e as regras que valem para todas as demandas.',
+  'brief.md': 'Diz o que esta demanda deve entregar: objetivos, o que entra, o que fica de fora e como saber que ficou pronto.',
+  'stack.md': 'Lista as tecnologias, as dependências e os limites técnicos que os agentes precisam seguir.',
+  'flow.md': 'Mostra, passo a passo, como o usuário usa o sistema e as regras do negócio. Serve de base para os critérios de aceite e os testes.',
+  'design.md': 'Define o visual do projeto: cores, letras, componentes e acessibilidade. O agente Front segue este documento na interface.',
+};
 /** Backlog mode: the briefing is the target project's docs/briefing.md, one file for the whole backlog. */
 const briefingImpact = 'Briefing do projeto (docs/briefing.md): objetivos, prioridades, cortes e decisões que valem para todo o backlog. Os agentes seguem o que estiver escrito aqui.';
 const docName = (file: string) => docLabel[file.split('/').pop() as DocFile] ?? file;
@@ -336,13 +344,16 @@ export function RefinementView(p: ViewProps) {
     }
   };
   const tabButton = (f: DocFile) => (
-    <button
-      key={f}
-      className={`min-w-[auto] h-auto min-h-11 rounded-none border-0 border-b-2 bg-transparent px-3 py-[0.55rem] whitespace-nowrap transition-none hover:enabled:bg-surface-sunken hover:enabled:text-ink ${tab === f ? 'border-accent text-accent-text' : 'border-transparent text-ink-soft'}`}
-      onClick={() => setTab(f)}
-    >
-      {docLabel[f]}
-    </button>
+    <span key={f} className="inline-flex items-center">
+      <button
+        className={`min-w-[auto] h-auto min-h-11 rounded-none border-0 border-b-2 bg-transparent px-3 py-[0.55rem] whitespace-nowrap transition-none hover:enabled:bg-surface-sunken hover:enabled:text-ink ${tab === f ? 'border-accent text-accent-text' : 'border-transparent text-ink-soft'}`}
+        onClick={() => setTab(f)}
+      >
+        {docLabel[f]}
+      </button>
+      {/* The icon sits beside the tab: a button cannot hold another button. */}
+      <InfoTip text={backlogOn && f === 'brief.md' ? briefingImpact : docTip[f]} label={docLabel[f]} />
+    </span>
   );
   const docsTitle = existing ? (st.mode === 'continue' ? 'Continuação da spec' : 'Spec nova') : 'Documentos do projeto';
   const docsPanel = (
