@@ -22,6 +22,15 @@ export const DocPatch = z.object({
   reason: z.string().min(1),
 });
 
+/** A contradiction the PO found: two quotes from two documents that disagree on one fact. The orchestrator checks the quotes. */
+export const Contradiction = z.object({
+  fact: z.string().min(1),
+  a: z.object({ file: z.string().min(1), quote: z.string().min(1) }),
+  b: z.object({ file: z.string().min(1), quote: z.string().min(1) }),
+  fix: z.string(),
+});
+export type Contradiction = z.infer<typeof Contradiction>;
+
 export const RefineOutput = z.object({
   specHash,
   checklist: z.array(z.object({ id: z.string().min(1), passed: z.boolean(), detail: z.string() })),
@@ -34,6 +43,8 @@ export const RefineOutput = z.object({
     }),
   ),
   docPatch: z.array(DocPatch),
+  // A malformed item is dropped on its own, so a bad contradiction never fails the cycle.
+  contradictions: z.preprocess((v) => (Array.isArray(v) ? v.filter((x) => Contradiction.safeParse(x).success) : []), z.array(Contradiction)).optional(),
 });
 
 /** Spec (refinement) §3.2 step 1: Markdown → project.json + spec.json; the orchestrator re-validates and forces status/hash/version. */

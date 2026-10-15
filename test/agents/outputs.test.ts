@@ -68,6 +68,17 @@ describe('output contracts', () => {
     });
     expect(ok.success).toBe(true);
   });
+
+  it('refine contradictions are optional, and a malformed one is dropped on its own', () => {
+    const base = { specHash: HASH, checklist: [], questions: [], docPatch: [] };
+    const good = { fact: 'porta', a: { file: 'brief.md', quote: 'porta 8080' }, b: { file: 'flow.md', quote: 'porta 18080' }, fix: 'Alinhe.' };
+    expect(RefineOutput.parse(base).contradictions).toBeUndefined();
+    expect(RefineOutput.parse({ ...base, contradictions: [good, { fact: 'sem lados' }, 'texto'] }).contradictions).toEqual([good]);
+    expect(RefineOutput.parse({ ...base, contradictions: 'nope' }).contradictions).toEqual([]);
+    const schema = toJsonSchema('refine') as { required?: string[]; properties?: Record<string, unknown> };
+    expect(schema.properties).toHaveProperty('contradictions');
+    expect(schema.required).not.toContain('contradictions');
+  });
 });
 
 describe('dev output JSON Schema carries the status-dependent requirements', () => {
