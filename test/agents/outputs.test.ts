@@ -79,6 +79,18 @@ describe('output contracts', () => {
     expect(schema.properties).toHaveProperty('contradictions');
     expect(schema.required).not.toContain('contradictions');
   });
+
+  it('refine docPatch: a malformed patch is dropped on its own, and the schema still lists its fields', () => {
+    const base = { specHash: HASH, checklist: [], questions: [] };
+    const good = { file: 'docs/stack.md', find: '# Stack', replace: '# Stack\n\n- Node 22', reason: 'Preenche a pilha.' };
+    const noReason = { file: 'docs/flow.md', find: '# Fluxo', replace: '# Fluxo' };
+    expect(RefineOutput.parse({ ...base, docPatch: [good, noReason, 'texto'] }).docPatch).toEqual([good]);
+    expect(RefineOutput.parse({ ...base, docPatch: 'nope' }).docPatch).toEqual([]);
+    expect(RefineOutput.parse(base).docPatch).toEqual([]);
+    const schema = toJsonSchema('refine') as { required?: string[]; properties?: Record<string, { items?: { required?: string[] } }> };
+    expect(schema.required).toContain('docPatch');
+    expect(schema.properties?.docPatch?.items?.required).toContain('reason');
+  });
 });
 
 describe('dev output JSON Schema carries the status-dependent requirements', () => {

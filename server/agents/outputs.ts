@@ -31,6 +31,9 @@ export const Contradiction = z.object({
 });
 export type Contradiction = z.infer<typeof Contradiction>;
 
+/** Keeps the valid items of a list: a malformed one is dropped on its own, so it never fails the whole output. */
+const keepValid = <T extends z.ZodType>(item: T) => z.preprocess((v) => (Array.isArray(v) ? v.filter((x) => item.safeParse(x).success) : []), z.array(item));
+
 export const RefineOutput = z.object({
   specHash,
   checklist: z.array(z.object({ id: z.string().min(1), passed: z.boolean(), detail: z.string() })),
@@ -44,9 +47,8 @@ export const RefineOutput = z.object({
       subject: z.string().optional().catch(undefined),
     }),
   ),
-  docPatch: z.array(DocPatch),
-  // A malformed item is dropped on its own, so a bad contradiction never fails the cycle.
-  contradictions: z.preprocess((v) => (Array.isArray(v) ? v.filter((x) => Contradiction.safeParse(x).success) : []), z.array(Contradiction)).optional(),
+  docPatch: keepValid(DocPatch),
+  contradictions: keepValid(Contradiction).optional(),
 });
 
 /** Spec (refinement) §3.2 step 1: Markdown → project.json + spec.json; the orchestrator re-validates and forces status/hash/version. */
