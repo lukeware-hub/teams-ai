@@ -50,6 +50,17 @@ describe('run selectors', () => {
     expect(attempts.at(-1)!.security).toEqual({ findings: [sec] });
     expect(taskDetail(events, 'T1').attempts[0]!.security).toBeNull();
   });
+  it('tokens count each agent by the model and effort its steps ran on, and say when the effort was not recorded', () => {
+    const step = (seq: number, stepId: string, model: string, effort?: string) => [
+      { ...events[0]!, seq, type: 'STEP_STARTED', data: { stepId, kind: 'dev', role: 'dev', model, ...(effort ? { effort } : {}), attempt: 1 } } as StoredEvent,
+      { ...events[0]!, seq: seq + 1, type: 'STEP_FINISHED', data: { stepId, kind: 'dev', attempt: 1, ok: true, usage: { inputTokens: 10, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0 }, costUsd: 0.1, model, ...(effort ? { effort } : {}) } } as StoredEvent,
+    ];
+    const t = tokens([...step(9001, 'sx1', 'claude-sonnet-5-5', 'medium'), ...step(9003, 'sx2', 'claude-sonnet-5-5', 'medium'), ...step(9005, 'sx3', 'claude-opus-5-5')]);
+    expect(t.modelsByRole.dev).toEqual([
+      { model: 'claude-sonnet-5-5', effort: 'medium', steps: 2 },
+      { model: 'claude-opus-5-5', effort: null, steps: 1 },
+    ]);
+  });
   it('tokens by phase, by role, with system1 from decisions', () => {
     const t = tokens(events);
     expect(t.byRole.dev).toMatchObject({ inputTokens: 4100, outputTokens: 900, costUsd: 0.6, steps: 2 });

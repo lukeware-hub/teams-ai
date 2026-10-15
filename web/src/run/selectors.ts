@@ -276,11 +276,22 @@ export function taskDetail(events: StoredEvent[], taskId: string) {
   return { attempts: [...attempts.values()].sort((a, b) => a.attempt - b.attempt), pr, merged, blockedReason, lockHeld };
 }
 
+/** How many steps of one agent ran on one model at one effort; effort is null for runs journaled before it was recorded. */
+export interface ModelUse { model: string; effort: string | null; steps: number }
+
 export function tokens(events: StoredEvent[]) {
   const byPhase: Record<string, Usage> = {};
   const byRole: Record<string, Usage> = {};
+  const modelUses: Record<string, Map<string, ModelUse>> = {};
   let total = zero();
   const started = new Map<string, Record<string, unknown>>();
+  const useModel = (role: string, model: string, effort: string | null) => {
+    const uses = (modelUses[role] ??= new Map());
+    const key = `${model}|${effort ?? ''}`;
+    const use = uses.get(key) ?? { model, effort, steps: 0 };
+    use.steps += 1;
+    uses.set(key, use);
+  };
   const book = (phase: string, role: string, u: { inputTokens: number; outputTokens: number; cacheReadTokens?: number; cacheWriteTokens?: number }, cost: number | null) => {
     byPhase[phase] = add(byPhase[phase] ?? zero(), u, cost);
     byRole[role] = add(byRole[role] ?? zero(), u, cost);
@@ -291,14 +302,20 @@ export function tokens(events: StoredEvent[]) {
     if (e.type === 'STEP_FINISHED') {
       const s = started.get(String(e.data.stepId));
       const u = e.data.usage as Usage | undefined;
-      if (s && u) book(e.data.taskId ? 'phase3' : 'phase', String(s.role), u, (e.data.costUsd as number | null) ?? null);
+      if (s && u) {
+        book(e.data.taskId ? 'phase3' : 'phase', String(s.role), u, (e.data.costUsd as number | null) ?? null);
+        // The finish carries the model the step ended on (after a fallback); older runs only have the start's.
+        const model = String(e.data.model ?? s.model ?? '');
+        if (model) useModel(String(s.role), model, (e.data.effort ?? s.effort ?? null) as string | null);
+      }
     }
     if (e.type === 'DECISION_MADE') {
       const r = e.data.record as { usage?: { inputTokens: number; outputTokens: number; costUsd: number | null } } | undefined;
       if (r?.usage) book('decide', 'system1', r.usage, r.usage.costUsd);
     }
   }
-  return { byPhase, byRole, total };
+  const modelsByRole = Object.fromEntries(Object.entries(modelUses).map(([role, uses]) => [role, [...uses.values()].sort((a, b) => b.steps - a.steps)]));
+  return { byPhase, byRole, total, modelsByRole };
 }
 
 export function evidence(events: StoredEvent[], criteria: string[]) {
