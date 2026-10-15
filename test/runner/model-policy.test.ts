@@ -27,8 +27,8 @@ describe('effortFor', () => {
 
 describe('fallbackModel', () => {
   it('moves only Opus down, to Sonnet', () => {
-    expect(fallbackModel('opus')).toBe('sonnet');
-    expect(fallbackModel('claude-opus-5-5')).toBe('sonnet');
+    expect(fallbackModel('opus')).toBe('claude-sonnet-5-5');
+    expect(fallbackModel('claude-opus-5-5')).toBe('claude-sonnet-5-5');
     expect(fallbackModel('sonnet')).toBeUndefined();
     expect(fallbackModel('haiku')).toBeUndefined();
   });

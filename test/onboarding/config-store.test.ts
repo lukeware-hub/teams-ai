@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConfigError } from '../../server/config/config.js';
-import { GITHUB_OWNER, addProject, readUserConfig, setGithubOwner, userConfigFile } from '../../server/onboarding/config-store.js';
+import { GITHUB_OWNER, addProject, readUserConfig, removeAgentSettings, setAgentSetting, setGithubOwner, userConfigFile } from '../../server/onboarding/config-store.js';
 
 let home = '';
 afterEach(async () => {
@@ -124,5 +124,23 @@ describe('config store', () => {
     await expect(readUserConfig(home)).rejects.toThrow(/EBUSY/);
     expect(await fs.readFile(userConfigFile(home), 'utf8')).toBe(kept);
     expect(await fs.readdir(path.dirname(userConfigFile(home)))).toEqual(['config.json']);
+  });
+
+  it('sets one agent of one project, keeps the others, and removes it with null', async () => {
+    home = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-home-'));
+    await setAgentSetting('demo', 'dev', { model: 'claude-opus-5-5', effort: 'high' }, home);
+    await setAgentSetting('demo', 'sm', { model: 'claude-haiku-5-5', effort: 'low' }, home);
+    await setAgentSetting('other', 'dev', { model: 'claude-sonnet-5-5', effort: 'max' }, home);
+    await setAgentSetting('demo', 'sm', null, home);
+    const { cfg } = await readUserConfig(home);
+    expect(cfg.agentSettings).toEqual({ demo: { dev: { model: 'claude-opus-5-5', effort: 'high' } }, other: { dev: { model: 'claude-sonnet-5-5', effort: 'max' } } });
+  });
+
+  it('removeAgentSettings drops one project settings and keeps the others', async () => {
+    home = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-home-'));
+    await setAgentSetting('demo', 'dev', { model: 'claude-opus-5-5', effort: 'high' }, home);
+    await setAgentSetting('other', 'dev', { model: 'claude-sonnet-5-5', effort: 'max' }, home);
+    await removeAgentSettings('demo', home);
+    expect((await readUserConfig(home)).cfg.agentSettings).toEqual({ other: { dev: { model: 'claude-sonnet-5-5', effort: 'max' } } });
   });
 });

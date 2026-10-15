@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { ConfigError, loadConfig, type Config } from '../config/config.js';
+import { ConfigError, loadConfig, type AgentSetting, type Config, type Role } from '../config/config.js';
 import { updateFileAtomic } from '../core/atomic-write.js';
 import { expandHome } from '../orchestrator/workspace.js';
 
@@ -64,6 +64,26 @@ export async function setGithubOwner(owner: string, home?: string): Promise<Conf
   return updateUserConfig(home, (raw) => {
     const github = typeof raw.github === 'object' && raw.github !== null ? (raw.github as Record<string, unknown>) : {};
     return { ...raw, github: { ...github, owner } };
+  });
+}
+
+/** Fixes one agent's model and effort in one project; `null` gives it back to the automatic choice. */
+export async function setAgentSetting(projectId: string, role: Role, setting: AgentSetting | null, home?: string): Promise<Config> {
+  return updateUserConfig(home, (raw, cfg) => {
+    const roles = { ...cfg.agentSettings[projectId] };
+    if (setting) roles[role] = setting;
+    else delete roles[role];
+    return { ...raw, agentSettings: { ...cfg.agentSettings, [projectId]: roles } };
+  });
+}
+
+/** Drops a project's agent settings, so a project created later under the same id starts on automatic. */
+export async function removeAgentSettings(projectId: string, home?: string): Promise<Config> {
+  return updateUserConfig(home, (raw, cfg) => {
+    if (!(projectId in cfg.agentSettings)) return undefined;
+    const agentSettings = { ...cfg.agentSettings };
+    delete agentSettings[projectId];
+    return { ...raw, agentSettings };
   });
 }
 

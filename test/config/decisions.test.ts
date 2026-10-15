@@ -45,7 +45,7 @@ describe('decisions config', () => {
     expect(DEFAULT_CONFIG.decisions.perDecision['spec-cited-sections']).toMatchObject({ enabled: true, chain: ['jev', 'local'], escalateTo: 'po' });
     expect(DEFAULT_CONFIG.decisions.perDecision['preplan-tech-decisions']).toMatchObject({ enabled: true, chain: ['jev', 'local'], escalateTo: 'sm' });
     // The answer step reads five documents for one question: Sonnet from the second cycle on, as the other refinement checklists.
-    expect(DEFAULT_CONFIG.routing.laterCycleModels.answer).toBe('sonnet');
+    expect(DEFAULT_CONFIG.routing.laterCycleModels.answer).toBe('claude-sonnet-5-5');
     // The floor measures itself from the labelled answers unless the config fixes a number or turns it off.
     expect(DEFAULT_CONFIG.decisions.autoAnswerFloor).toBe('measured');
     expect(loadConfig({ decisions: { autoAnswerFloor: 0.9 } }).decisions.autoAnswerFloor).toBe(0.9);
@@ -59,7 +59,7 @@ describe('decisions config', () => {
   });
 
   it('model tiers default to haiku / sonnet / sonnet and must be non-empty', () => {
-    expect(DEFAULT_CONFIG.decisions.modelTiers).toEqual({ small: 'haiku', medium: 'sonnet', large: 'sonnet' });
+    expect(DEFAULT_CONFIG.decisions.modelTiers).toEqual({ small: 'claude-haiku-5-5', medium: 'claude-sonnet-5-5', large: 'claude-sonnet-5-5' });
     expect(() => loadConfig({ decisions: { modelTiers: { small: '' } } })).toThrow(ConfigError);
   });
 

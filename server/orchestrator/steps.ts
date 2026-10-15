@@ -4,7 +4,7 @@ import { toJsonSchema, type OutputOf, type StepKind } from '../agents/outputs.js
 import type { AgentDefinition } from '../agents/registry.js';
 import type { Governor } from '../budget/governor.js';
 import type { QuotaBreaker } from '../budget/quota-breaker.js';
-import type { RoleProfile, Role } from '../config/config.js';
+import type { AgentSetting, RoleProfile, Role } from '../config/config.js';
 import { SCAFFOLD_TASK_ID, type Plan, type PlanTask } from '../contracts/plan.js';
 import type { Preplan } from '../contracts/preplan.js';
 import type { PlatformService, Project } from '../contracts/project.js';
@@ -458,6 +458,8 @@ export interface AgentStepDeps {
   sessionDir?: (taskId: string) => string;
   /** A model for every step of one kind, ahead of the role profile (config `routing.stepModels`); `attempt` is the refinement cycle there. */
   stepModel?: (kind: StepKind, attempt: number) => string | undefined;
+  /** A model and effort the user fixed for this role in this project; they win over the request and the routing, and skip `effortFor`. */
+  agentSetting?: (role: Role) => AgentSetting | undefined;
   secretValues: () => readonly string[];
   specHash: string;
 }
@@ -475,7 +477,8 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
   const dir = deps.stepDir(seq);
   await fs.mkdir(dir, { recursive: true });
   const profile = deps.profile(req.role);
-  const planned = req.model ?? deps.stepModel?.(req.kind, req.attempt) ?? profile.model;
+  const manual = deps.agentSetting?.(req.role);
+  const planned = manual?.model ?? req.model ?? deps.stepModel?.(req.kind, req.attempt) ?? profile.model;
   // A step with a kept session belongs to its model; only a fresh one may move to the lower model when the quota is out.
   const lower = sessionStore ? undefined : fallbackModel(planned);
   let model = lower && deps.breaker.modelPaused(planned) ? lower : planned;
@@ -502,7 +505,7 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
         agent: deps.agents[req.role],
         profile,
         model: m,
-        effort: effortFor(m, req.effort),
+        effort: manual ? manual.effort : effortFor(m, req.effort),
         cwd: req.cwd,
         prompt: pack.text,
         expectedSpecHash: deps.specHash,

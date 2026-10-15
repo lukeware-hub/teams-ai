@@ -36,7 +36,7 @@ import { applyRefineEvent, type BacklogState, type RefineState } from './state.j
 
 export type RunAgent = <K extends StepKind>(
   req: AgentStepRequest<K>,
-  ctx: { journal: Pick<Journal, 'allocStepSeq' | 'fact'>; stepDir: (seq: number) => string; specHash: string; signal?: AbortSignal; /** Answer at once when the quota is paused instead of waiting for it (a person is at the screen). */ noQuotaWait?: boolean },
+  ctx: { journal: Pick<Journal, 'allocStepSeq' | 'fact'>; stepDir: (seq: number) => string; specHash: string; signal?: AbortSignal; /** Answer at once when the quota is paused instead of waiting for it (a person is at the screen). */ noQuotaWait?: boolean; /** The project whose agent settings apply to the step. */ projectId?: string },
 ) => Promise<StepOutcome<OutputOf<K>>>;
 
 export interface CycleJournal extends Pick<Journal, 'allocStepSeq' | 'fact'> {

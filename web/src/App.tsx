@@ -10,6 +10,7 @@ import { Projects } from './pages/Projects.js';
 import { ProgramPage } from './pages/Program.js';
 import { RefinementPage } from './pages/Refinement.js';
 import { RunPage } from './pages/Run.js';
+import { SettingsPage } from './pages/Settings.js';
 import { StatusPage } from './pages/StatusPage.js';
 import { ValidationPage } from './pages/Validation.js';
 
@@ -32,6 +33,7 @@ export function App() {
           <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/status" element={<StatusPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="/projects" element={<Projects />} />
           <Route path="/projects/:projectId" element={<ProjectHub />} />
           <Route path="/runs/:runId" element={<RunPage />} />

@@ -29,6 +29,21 @@ export const api = {
   events: (cli: Cli) => `${P}/${cli}/events`,
 };
 
+export const AGENT_MODELS = ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5'] as const;
+export const AGENT_EFFORTS = ['low', 'medium', 'high', 'max'] as const;
+export type AgentModel = (typeof AGENT_MODELS)[number];
+export type AgentEffort = (typeof AGENT_EFFORTS)[number];
+export interface AgentSetting { model: AgentModel; effort: AgentEffort }
+export interface AgentRow { role: string; setting: AgentSetting | null }
+export type AgentChoice = { mode: 'auto' } | ({ mode: 'manual' } & AgentSetting);
+
+const S = '/api/settings';
+export const settingsApi = {
+  agents: (projectId: string) => authFetch(`${S}/agents/${projectId}`).then((r) => json<{ agents: AgentRow[] }>(r)),
+  setAgent: (projectId: string, role: string, choice: AgentChoice) =>
+    authFetch(`${S}/agents/${projectId}/${role}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(choice) }).then((r) => json<{ setting: AgentSetting | null }>(r)),
+};
+
 export interface SpecRow {
   specId: string;
   status: string;
