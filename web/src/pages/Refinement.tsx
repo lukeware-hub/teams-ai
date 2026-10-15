@@ -349,7 +349,7 @@ export function RefinementView(p: ViewProps) {
       <p data-testid="doc-impact" className="hint">{backlogOn && tab === 'brief.md' ? briefingImpact : docImpact[tab]}</p>
       <div className="grid gap-2">
         {/* The editor's actions sit above it, so they never cover the document's first lines. */}
-        <div className="ml-auto flex w-fit flex-col gap-2 max-[720px]:w-full">
+        <div className="flex flex-col gap-2">
           {tab !== 'flow.md' && p.onSuggestDoc && (
             <ActionButton data-testid="suggest" className="h-9 px-[0.8rem]" busy={suggesting} disabled={locked} title="Gera este documento a partir do flow.md" onClick={() => suggest(tab)} icon={<Icon name="lightbulb" size={16} />}>
               {suggesting ? 'Sugerindo…' : 'Sugerir'}
