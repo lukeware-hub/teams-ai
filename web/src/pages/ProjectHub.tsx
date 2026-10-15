@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { serviceLinks } from '@server/deploy/service-links';
-import { refineApi, runApi, startedPath, type DraftRow, type NameRequest, type NameSuggestion, type ProjectRow, type Report, type RunRow, type ServiceStatus, type StoredEvent } from '../api.js';
+import { refineApi, runApi, startedPath, type DraftRow, type NameRequest, type NameSuggestion, type ProjectRow, type Report, type RunRow, type ServiceStatus, type SpecRow, type StoredEvent } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { SortHeader, TableFilters, useTableView } from '../components/DataTable.js';
@@ -159,6 +159,14 @@ export function ProjectHubView(p: {
     sorts: { run: runName, spec: (r) => r.specId, at: (r) => (r.at ? Date.parse(r.at) : null), status: (r) => LABEL[r.status] ?? r.status, tokens: (r) => r.tokens, cost: (r) => r.cost },
     text: (r) => [runName(r), r.runId, r.specId],
     facet: (r) => r.status,
+    facetLabel: (status) => LABEL[status] ?? status,
+  });
+  // The chip's status: the active run's, or 'idle' for a running spec with no run.
+  const shownStatus = (s: SpecRow) => (s.activeRunId ? (p.runs.find((r) => r.runId === s.activeRunId)?.status ?? 'running') : s.status === 'running' ? 'idle' : s.status);
+  const specsView = useTableView(p.project?.specs ?? [], {
+    sorts: {},
+    text: (s) => [s.specId],
+    facet: shownStatus,
     facetLabel: (status) => LABEL[status] ?? status,
   });
   const [specDraft, setSpecDraft] = useState('');
@@ -319,7 +327,7 @@ export function ProjectHubView(p: {
         </section>
       ) : null}
       {p.error ? <p className="error m-0" role="alert">{p.error}</p> : null}
-      <section className={panel}>
+      <section className={panel} data-testid="project-specs">
         <div className={section}>
           <div className={sectionHead}>
             <div className={sectionTitle}>
@@ -363,6 +371,7 @@ export function ProjectHubView(p: {
             </form>
           ) : null}
           {allConcluded && !creating ? <p className="m-0 rounded-lg border border-good-line bg-good-soft px-3.5 py-2.5 text-[0.875rem] text-ink" data-testid="all-concluded">Todas as specs foram concluídas. Crie uma nova spec para a próxima entrega.</p> : null}
+          {pr.specs.length > 0 ? <TableFilters view={specsView} subject="especificações" placeholder="Filtrar por alias da spec" facetName="Status" /> : null}
           {pr.specs.length === 0 ? (
             creating ? null : (
               <div className={emptyState} data-testid="no-specs">
@@ -375,12 +384,14 @@ export function ProjectHubView(p: {
                 </button>
               </div>
             )
+          ) : specsView.rows.length === 0 ? (
+            <p className={empty}>Nenhuma spec corresponde ao filtro.</p>
           ) : (
             <ul className={rows}>
-              {pr.specs.map((s) => (
+              {specsView.rows.map((s) => (
                 <li className={row} key={s.specId}>
                   <span className={rowId}>{s.specId}</span>
-                  {chip(s.activeRunId ? (p.runs.find((r) => r.runId === s.activeRunId)?.status ?? 'running') : s.status === 'running' ? 'idle' : s.status)}
+                  {chip(shownStatus(s))}
                   <span className={rowActions}>
                     {CONTINUABLE.has(s.status) ? (
                       <ActionButton className={action.secondary} data-testid={`continue-${s.specId}`} aria-label={`Continuar spec ${s.specId}`} onClick={() => p.onContinue(s.specId)} icon={<Icon name="arrow-right" size={14} />}>

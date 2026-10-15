@@ -279,6 +279,28 @@ describe('ProjectHubView', () => {
     expect(screen.getByTestId('all-concluded').textContent).toContain('nova spec');
     expect(screen.getByTestId('open-new-spec').className).toContain('primary');
   });
+  it('filters the specs by alias and by status, and says when none match', () => {
+    const o = on();
+    render(
+      <MemoryRouter>
+        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+      </MemoryRouter>,
+    );
+    const specs = within(screen.getByTestId('project-specs'));
+    fireEvent.change(specs.getByLabelText('Filtrar especificações'), { target: { value: '003' } });
+    expect(specs.getByText('hello-003')).toBeTruthy();
+    expect(specs.queryByText('hello-000')).toBeNull();
+    expect(screen.getByText('1 de 4')).toBeTruthy();
+    fireEvent.change(specs.getByLabelText('Filtrar especificações'), { target: { value: '' } });
+    fireEvent.change(specs.getByRole('combobox'), { target: { value: 'done' } });
+    expect(specs.getByText('hello-000')).toBeTruthy();
+    expect(specs.queryByText('hello-003')).toBeNull();
+    fireEvent.change(specs.getByLabelText('Filtrar especificações'), { target: { value: 'zzz' } });
+    expect(specs.getByText('Nenhuma spec corresponde ao filtro.')).toBeTruthy();
+    fireEvent.click(specs.getByRole('button', { name: 'Limpar filtros' }));
+    expect(specs.getByText('hello-001')).toBeTruthy();
+    expect(specs.getByText('hello-003')).toBeTruthy();
+  });
   it('shows a not-found state with a link back to Projetos', () => {
     render(
       <MemoryRouter>
