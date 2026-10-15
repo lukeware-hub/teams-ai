@@ -23,7 +23,7 @@ const ok = (value: unknown) => ({ ok: true, value: { specHash: 'x', ...(value as
 
 interface Req { model?: string; kind: string; role: string; cwd: string; pack: { feedback?: string }; extraAllow?: string[]; denyRead?: string[]; systemExtra?: string }
 
-function make(runAgent: (req: Req) => Promise<unknown>, extra: { newSpec?: () => Promise<unknown>; log?: (line: string) => void } = {}) {
+function make(runAgent: (req: Req) => Promise<unknown>, extra: { newSpec?: () => Promise<unknown>; log?: (line: string) => void; refreshProjectGraph?: (projectId: string) => Promise<void> } = {}) {
   const newSpec = vi.fn(extra.newSpec ?? (async () => undefined));
   const suggestSpecId = vi.fn(async () => 'fix-greeting');
   const service = new ChatService({
@@ -36,6 +36,7 @@ function make(runAgent: (req: Req) => Promise<unknown>, extra: { newSpec?: () =>
     newSpec,
     now: () => new Date('2026-10-14T10:00:00.000Z'),
     log: extra.log,
+    refreshProjectGraph: extra.refreshProjectGraph,
   });
   return { service, newSpec, suggestSpecId };
 }
@@ -197,3 +198,51 @@ describe('ChatService.ask', () => {
     expect(await service.messages('hello-app')).toEqual([]);
   });
 });
+
+describe('ChatService project graph', () => {
+  const graphFile = () => path.join(home, 'ws', 'hello-app', 'graph', 'project', 'graphify-out', 'graph.json');
+  const writeGraph = async (ageMs = 0) => {
+    await fs.mkdir(path.dirname(graphFile()), { recursive: true });
+    await fs.writeFile(graphFile(), '{"nodes":[]}');
+    const at = new Date(Date.now() - ageMs);
+    await fs.utimes(graphFile(), at, at);
+  };
+  const answer = ok({ answer: 'ok', correction: null });
+
+  it('builds the graph before the first question and hands it to the step', async () => {
+    let staged: string | null = null;
+    const runAgent = vi.fn(async (req: Req) => {
+      staged = await fs.readFile(path.join(req.cwd, 'project-graph', 'graph.json'), 'utf8').catch(() => null);
+      return answer;
+    });
+    const refresh = vi.fn(async () => writeGraph());
+    await make(runAgent, { refreshProjectGraph: refresh }).service.ask('hello-app', 'e o código?');
+    expect(refresh).toHaveBeenCalledWith('hello-app');
+    expect(staged).toBe('{"nodes":[]}');
+  });
+
+  it('does not build a graph that is fresh', async () => {
+    await writeGraph();
+    const refresh = vi.fn(async () => undefined);
+    await make(vi.fn(async (_req: Req) => answer), { refreshProjectGraph: refresh }).service.ask('hello-app', 'e o código?');
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it('answers from an old graph while a new one builds, and starts one build at a time', async () => {
+    await writeGraph(60 * 60_000);
+    const refresh = vi.fn(() => new Promise<void>(() => undefined));
+    const { service } = make(vi.fn(async (_req: Req) => answer), { refreshProjectGraph: refresh });
+    await service.ask('hello-app', 'primeira?');
+    await service.ask('hello-app', 'segunda?');
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs a failed build and still answers', async () => {
+    const log = vi.fn();
+    const refresh = vi.fn(async () => { throw new Error('graphify missing'); });
+    const reply = await make(vi.fn(async (_req: Req) => answer), { refreshProjectGraph: refresh, log }).service.ask('hello-app', 'e o código?');
+    expect(reply.text).toBe('ok');
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('project graph not built for hello-app: graphify missing'));
+  });
+});
+

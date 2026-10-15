@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Exec } from '../exec/command.js';
 
@@ -126,10 +126,23 @@ export class Graphify {
     return result;
   }
 
-  /** One graph over the repositories' graphs (graphify merge-graphs); false when none of them has a graph yet. */
-  async merge(graphDirs: readonly string[], outDir: string): Promise<boolean> {
+  /**
+   * One graph over the repositories' graphs (graphify merge-graphs); false when none of them has a graph yet. graphify tags every
+   * node with the folder name of its graph, and every repository's graph sits at the same inner path, so each one is copied
+   * under its own name first: the tag then says which repository a node belongs to.
+   */
+  async merge(graphs: ReadonlyArray<{ dir: string; name: string }>, outDir: string): Promise<boolean> {
+    const staged = path.join(outDir, 'inputs');
+    await rm(staged, { recursive: true, force: true });
     const inputs: string[] = [];
-    for (const dir of graphDirs) if (await this.deps.readFile(this.graphPath(dir))) inputs.push(this.graphPath(dir));
+    for (const { dir, name } of graphs) {
+      const raw = await this.deps.readFile(this.graphPath(dir));
+      if (!raw) continue;
+      const file = this.graphPath(path.join(staged, path.basename(name)));
+      await mkdir(path.dirname(file), { recursive: true });
+      await writeFile(file, raw);
+      inputs.push(file);
+    }
     if (inputs.length === 0) return false;
     await mkdir(path.join(outDir, 'graphify-out'), { recursive: true });
     const r = await this.deps.exec({ bin: 'graphify', args: ['merge-graphs', ...inputs, '--out', this.graphPath(outDir)], timeoutMs: TIMEOUT });

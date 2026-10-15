@@ -173,15 +173,17 @@ describe('merge', () => {
     const out = (await fs.mkdtemp(path.join(os.tmpdir(), 'graphify-merge-'))).replace(/\\/g, '/');
     const fake = new FakeExec();
     const g = new Graphify({ exec: fake.exec, readFile: async (p) => (p.includes('a-repo') ? '{}' : null) });
-    expect(await g.merge([path.join(out, 'a-repo'), path.join(out, 'b-repo')], path.join(out, 'project'))).toBe(true);
-    expect(fake.calls[0]).toMatchObject({ bin: 'graphify', args: ['merge-graphs', `${out}/a-repo/graphify-out/graph.json`, '--out', `${out}/project/graphify-out/graph.json`] });
+    expect(await g.merge([{ dir: path.join(out, 'a-repo'), name: 'audit-service' }, { dir: path.join(out, 'b-repo'), name: 'rules-service' }], path.join(out, 'project'))).toBe(true);
+    // The input sits under the repository's name, so graphify tags its nodes with that name.
+    expect(fake.calls[0]).toMatchObject({ bin: 'graphify', args: ['merge-graphs', `${out}/project/inputs/audit-service/graphify-out/graph.json`, '--out', `${out}/project/graphify-out/graph.json`] });
+    expect(await fs.readFile(`${out}/project/inputs/audit-service/graphify-out/graph.json`, 'utf8')).toBe('{}');
     await fs.rm(out, { recursive: true, force: true });
   });
 
   it('builds nothing when no repository has a graph yet', async () => {
     const fake = new FakeExec();
     const g = new Graphify({ exec: fake.exec, readFile: async () => null });
-    expect(await g.merge(['/ws/a'], '/ws/project')).toBe(false);
+    expect(await g.merge([{ dir: '/ws/a', name: 'a' }], path.join(os.tmpdir(), 'graphify-merge-none'))).toBe(false);
     expect(fake.calls).toHaveLength(0);
   });
 });

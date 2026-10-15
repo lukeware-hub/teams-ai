@@ -11,6 +11,7 @@ import { ensureGeneratedSecrets, loadSecrets } from './core/secrets.js';
 import { execCommand, type Exec } from './exec/command.js';
 import { gitAuthEnv, withGitAuth } from './git/auth.js';
 import { Graphify } from './knowledge/graphify.js';
+import { mergeProjectGraph } from './knowledge/project-graph.js';
 import { KnowledgeIndex } from './knowledge/retrieval.js';
 import { isFirstSpec } from './orchestrator/first-spec.js';
 import { Run, type ExecuteResult, type RunDeps } from './orchestrator/run.js';
@@ -98,19 +99,21 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
   });
   // One agent runner for refinement and chat, so both share the governor, the quota breaker and the ledger.
   const runAgent = await makeRunAgent({ cfg, agentsDir: path.join(repoRoot, '.claude', 'agents'), hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), workspacesRoot: expandHome(cfg.paths.workspaces), agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {} });
+  const projectDirOf = async (projectId: string): Promise<string | null> => {
+    for (const { dir } of (await readUserConfig()).cfg.projects) {
+      const read = await readProject(dir).catch(() => null);
+      if (read?.project.projectId === projectId) return dir;
+    }
+    return null;
+  };
+  const graphify = new Graphify({ exec: execCommand, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null) });
   const registry = new SessionRegistry({
     cfg: async () => (await readUserConfig()).cfg,
     runAgent,
     validateDocs: createJevValidator(cfg, async () => loadSecrets(expandHome(cfg.paths.secrets))),
     secretsDir: expandHome(cfg.paths.secrets),
     exec: withGitAuth(execCommand, expandHome(cfg.paths.secrets)),
-    projectDir: async (projectId) => {
-      for (const { dir } of (await readUserConfig()).cfg.projects) {
-        const read = await readProject(dir).catch(() => null);
-        if (read?.project.projectId === projectId) return dir;
-      }
-      return null;
-    },
+    projectDir: projectDirOf,
     control: defaultRunControl(repoRoot),
     runsDir: async () => runsDir({ cfg: (await readUserConfig()).cfg, isAlive: () => false }),
     register: (dir) => addProject(dir).then(() => undefined),
@@ -135,12 +138,18 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     workspacesRoot: async () => expandHome((await readUserConfig()).cfg.paths.workspaces),
     suggestSpecId: async (projectId, description) => (await registry.suggestName('spec', { projectId, name: '', description })).id,
     newSpec: (projectId, specId, description) => registry.newSpec(projectId, specId, description),
+    refreshProjectGraph: async (projectId) => {
+      const dir = await projectDirOf(projectId);
+      const read = dir ? await readProject(dir) : null;
+      if (!read) throw new Error('project not found');
+      await mergeProjectGraph(graphify, workspacePaths((await readUserConfig()).cfg, projectId), read.project, read.project.services ?? []);
+    },
   });
   const api = await startApi(
     {
       routes: [
         ...onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr, onClaudeLogin: () => runAgent.resetQuota() }),
-        ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr, queueInProgram: (p, s) => registry.queueInProgram(p, s), graphify: new Graphify({ exec: execCommand, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null) }), clearChat: (projectId) => chat.clear(projectId) }),
+        ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr, queueInProgram: (p, s) => registry.queueInProgram(p, s), graphify, clearChat: (projectId) => chat.clear(projectId) }),
         ...opsRoutes({ index: async () => ({ cfg: (await readUserConfig()).cfg, isAlive: (pid) => isAlive(defaultRunControl(repoRoot), pid) }) }),
         ...refineRoutes({
           registry,

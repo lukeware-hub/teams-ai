@@ -59,13 +59,22 @@ export interface ChatDeps {
   suggestSpecId: (projectId: string, description: string) => Promise<string>;
   /** Opens the refinement draft of a spec; it never starts a run. */
   newSpec: (projectId: string, specId: string, description: string) => Promise<unknown>;
+  /** Builds the project graph the chat queries again from the graphs its repositories already have. */
+  refreshProjectGraph?: (projectId: string) => Promise<void>;
   now?: () => Date;
 }
+
+/** A project graph older than this is rebuilt in the background; a question never waits for it. */
+const GRAPH_TTL_MS = 30 * 60_000;
+/** How long the first question of a project waits for its graph to be built. */
+const GRAPH_WAIT_MS = 60_000;
 
 /** Answers questions about a project and opens a correction spec when what is built goes against its spec. It never orders the orchestrator. */
 export class ChatService {
   /** One question at a time: another chat's working directory is then never there for this step to read. */
   private asking = false;
+  /** The graph builds in flight, so two questions never build the same project graph at once. */
+  private readonly refreshing = new Map<string, Promise<void>>();
 
   constructor(private readonly deps: ChatDeps) {}
 
@@ -103,6 +112,22 @@ export class ChatService {
     }
   }
 
+  /** Without a graph the first question waits for the build; with an old one it answers from it while the build runs. A failed build only reaches the log. */
+  private async ensureProjectGraph(projectId: string, graphFile: string): Promise<void> {
+    const refresh = this.deps.refreshProjectGraph;
+    if (!refresh) return;
+    const age = await fs.stat(graphFile).then((s) => Date.now() - s.mtimeMs, () => null);
+    if (age !== null && age < GRAPH_TTL_MS) return;
+    let build = this.refreshing.get(projectId);
+    if (!build) {
+      build = refresh(projectId)
+        .catch((err: Error) => this.deps.log?.(`project graph not built for ${projectId}: ${err.message}`))
+        .finally(() => this.refreshing.delete(projectId));
+      this.refreshing.set(projectId, build);
+    }
+    if (age === null) await Promise.race([build, new Promise<void>((resolve) => setTimeout(resolve, GRAPH_WAIT_MS).unref())]);
+  }
+
   /** One read-only agent step in a throwaway directory, like the name suggestion. */
   private async run(projectId: string, input: { context: string; history: readonly ChatMessage[]; opened: readonly string[]; question: string }): Promise<{ value: ChatOutput; usage: ChatUsage | undefined }> {
     // The same for every question of a project: the hash sits above the project context in the prompt, and a prompt that starts the same way is read from the cache instead of paid for again.
@@ -113,7 +138,9 @@ export class ChatService {
     let seq = 0;
     try {
       await stageChatFiles(cwd, this.deps.guideDir);
-      await stageProjectGraph(cwd, path.join(root, projectId, 'graph', 'project', 'graphify-out', 'graph.json'));
+      const projectGraph = path.join(root, projectId, 'graph', 'project', 'graphify-out', 'graph.json');
+      await this.ensureProjectGraph(projectId, projectGraph);
+      await stageProjectGraph(cwd, projectGraph);
       const out = (await this.deps.runAgent<'chat'>(
         { kind: 'chat', role: 'po', pack: fitPackBudget(chatPack({ opened: input.opened, question: input.question, history: input.history.slice(-HISTORY_MESSAGES), older: relatedMessages(input.history.slice(0, -HISTORY_MESSAGES), input.question), specHash })), systemExtra: chatSystem(input.context), cwd, phase: 'refine', taskId: null, attempt: 1, model: CHAT_MODEL, extraAllow: CHAT_ALLOW, denyRead: await this.privateDirs(root, cwd) },
         { journal: { allocStepSeq: () => ++seq, fact: async () => undefined } as never, stepDir: (n) => path.join(cwd, 'steps', stepId(n)), specHash, signal: AbortSignal.timeout(TIMEOUT_MS), noQuotaWait: true, projectId },

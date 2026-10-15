@@ -5,14 +5,19 @@ import { graphDir, serviceWorkspace, type Workspace } from '../orchestrator/work
 import type { Graphify } from './graphify.js';
 import { projectInfoMarkdown } from './project-info.js';
 
-/** One code graph of the project: each cloned repository's graph and the project's own description, merged so the chat can query all of it. */
-export async function buildProjectGraph(graphify: Graphify, ws: Workspace, project: Project, cloned: string[]): Promise<void> {
-  const repos = [ws, ...cloned.map((service) => serviceWorkspace(ws, service))];
-  for (const repo of repos) await graphify.update(repo.repo, graphDir(repo, null));
+/** The project's description and the graphs its repositories already have, merged into the one graph the chat queries; nothing is written inside a repository. */
+export async function mergeProjectGraph(graphify: Graphify, ws: Workspace, project: Project, services: string[]): Promise<void> {
   const info = path.posix.join(ws.graph, 'project-info');
   await fs.mkdir(info, { recursive: true });
   await fs.writeFile(path.join(info, 'projeto.md'), projectInfoMarkdown(project));
   const infoGraph = path.posix.join(ws.graph, 'project-info-graph');
   await graphify.update(info, infoGraph);
-  await graphify.merge([...repos.map((repo) => graphDir(repo, null)), infoGraph], path.posix.join(ws.graph, 'project'));
+  const repos = [{ dir: graphDir(ws, null), name: project.projectId }, ...services.map((service) => ({ dir: graphDir(serviceWorkspace(ws, service), null), name: service }))];
+  await graphify.merge([...repos, { dir: infoGraph, name: 'project-info' }], path.posix.join(ws.graph, 'project'));
+}
+
+/** One code graph of the project: each cloned repository's graph built again, then merged with the project's own description. */
+export async function buildProjectGraph(graphify: Graphify, ws: Workspace, project: Project, cloned: string[]): Promise<void> {
+  for (const repo of [ws, ...cloned.map((service) => serviceWorkspace(ws, service))]) await graphify.update(repo.repo, graphDir(repo, null));
+  await mergeProjectGraph(graphify, ws, project, cloned);
 }
