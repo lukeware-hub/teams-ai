@@ -103,9 +103,9 @@ This is **not** a second accent. It never fills a control, never marks state, ne
 
 ### 3.3 The gradient rule
 
-`gradient-primary` appears **only in the onboarding flow**, on its primary action and its progress fill — which are the same object in two shapes. One gradient object per screen.
+`gradient-primary` is the look of **every primary action in the app** (decision of 2026-10-15, replacing the earlier rule that kept it to the onboarding flow). It also fills the onboarding progress bar and the product mark in the rail.
 
-Everywhere else — refinement, projects, run, status — the primary action is **flat `accent`**. The second reference confirms this: `Avaliar` and `Iniciar análise` are both flat.
+The primary button carries `gradient-primary` with `shadow-primary`, and `gradient-primary-hover` on hover. `accent` stays the flat color of links, focus, selection and the active tab.
 
 Never on text, a card, a border, a chip, a heading, or an icon.
 
@@ -630,7 +630,7 @@ Across side-by-side panels, tile, overline, title and chip all sit on the same f
 
 | Variant | Ground | Text | Border | Hover | Use |
 |---|---|---|---|---|---|
-| **primary** | `accent` + `shadow-button` | white | none | `accent-hover` | the one main action, app-wide |
+| **primary** | `gradient-primary` + `shadow-primary` | white | none | `gradient-primary-hover` | the one main action, app-wide |
 | **primary-flow** | `gradient-primary` + `shadow-primary` | white | none | ramp darkens 6% | **onboarding only** |
 | secondary | `surface` | `accent-ink` | 1px `accent-line` | ground `accent-soft` | alternate action |
 | default | `surface` | `ink` | 1px `line-strong` | ground `surface-sunken` | back, neutral |
@@ -641,7 +641,7 @@ Across side-by-side panels, tile, overline, title and chip all sit on the same f
 Height **40px** in-app, **44px** in the onboarding flow, **32px** for `icon`. Radius `radius-md`. `ui` role at weight 600. Leading icon 16px, trailing arrow 16px, gap 8px, horizontal padding 16px (20px on a primary, 0 on `icon`).
 
 - **Full width** is legitimate for a panel's terminal action — `Iniciar análise` — when that action is the panel's whole purpose and nothing competes with it.
-- **Disabled:** 48% opacity, `not-allowed`, plus a reason wherever the user could not guess it. A disabled `primary-flow` loses its gradient to flat `accent` at 48%.
+- **Disabled:** 48% opacity, `not-allowed`, plus a reason wherever the user could not guess it. A disabled primary keeps its gradient at 48%.
 - **Loading:** label replaced, control disabled, **control not removed** — removing it mid-flow collapses the layout under the pointer.
 - **One primary per screen.** The refinement screen has two visible — `Avaliar` and `Iniciar análise` — and that is the one sanctioned exception: they belong to **different panels with different jobs**, and no panel has two. The rule is one primary per panel, one per screen where the screen is a single unit.
 - A destructive action is never the default focus target and never sits beside the primary without a larger gap.
