@@ -103,20 +103,24 @@ export function ChatPage() {
     document.getElementById('chat-end')?.scrollIntoView?.({ block: 'end' });
   }, [messages, asking]);
 
-  const send = async () => {
-    const text = draft.trim();
-    if (!text || asking) return;
+  const send = async (question = draft.trim()) => {
+    if (!question || asking) return;
     const asked = projectId;
     setProblem(null);
-    setAsking(text);
+    setAsking(question);
+    // The box is free for the next question at once; it is emptied only while it still holds this question.
+    setDraft((d) => (d.trim() === question ? '' : d));
+    setRecall(null);
     try {
-      const { message } = await chatApi.ask(asked, text);
+      const { message } = await chatApi.ask(asked, question);
       if (current.current !== asked) return;
-      setMessages((m) => [...(m ?? []), { role: 'user', text, at: message.at }, message]);
-      setDraft('');
-      setRecall(null);
+      setMessages((m) => [...(m ?? []), { role: 'user', text: question, at: message.at }, message]);
     } catch (e) {
-      if (current.current === asked) setProblem({ title: 'Não consegui responder', message: plainError((e as Error).message), retry: send });
+      if (current.current === asked) {
+        // The question goes back to the box unless the person has already started the next one.
+        setDraft((d) => (d.trim() === '' ? question : d));
+        setProblem({ title: 'Não consegui responder', message: plainError((e as Error).message), retry: () => send(question) });
+      }
     } finally {
       setAsking(null);
     }
@@ -243,7 +247,7 @@ export function ChatPage() {
                 onChange={(e) => { setDraft(e.target.value); setRecall(null); }}
                 onKeyDown={onKeyDown}
               />
-              <ActionButton className="primary-button max-md:w-full" busy={asking !== null} disabled={draft.trim() === ''} onClick={send} icon={<Icon name="send" size={16} />}>
+              <ActionButton className="primary-button max-md:w-full" busy={asking !== null} disabled={draft.trim() === ''} onClick={() => send()} icon={<Icon name="send" size={16} />}>
                 Enviar
               </ActionButton>
             </div>
@@ -257,7 +261,7 @@ export function ChatPage() {
       {problem ? (
         <Dialog title={problem.title} onClose={() => setProblem(null)}>
           <p className="m-0 text-[0.9375rem] text-ink">{problem.message}</p>
-          {problem.retry ? <p className="mt-2 mb-0 text-[0.8125rem] text-ink-soft">Sua pergunta continua na caixa de texto.</p> : null}
+          {problem.retry ? <p className="mt-2 mb-0 text-[0.8125rem] text-ink-soft">Sua pergunta não foi respondida. Tentar de novo envia ela outra vez.</p> : null}
           {problem.retry ? (
             <div className="mt-4 flex justify-end">
               <ActionButton className="primary-button" onClick={() => { const again = problem.retry; setProblem(null); return again?.(); }} icon={<Icon name="refresh" size={16} />}>Tentar de novo</ActionButton>

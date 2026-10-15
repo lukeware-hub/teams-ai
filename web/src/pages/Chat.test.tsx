@@ -189,6 +189,45 @@ describe('ChatPage', () => {
     expect(input.value).toBe('');
   });
 
+  it('clears the box when the question is sent, lets the person type the next one, and keeps the send button locked until the answer comes', async () => {
+    vi.spyOn(runApi, 'projects').mockResolvedValue(projects as never);
+    vi.spyOn(chatApi, 'messages').mockResolvedValue({ messages: [] });
+    let answer: (r: { message: ChatMessage }) => void = () => undefined;
+    const ask = vi.spyOn(chatApi, 'ask').mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+    page();
+    await screen.findByText('Nenhuma pergunta feita ainda.');
+    const input = screen.getByTestId('chat-input') as HTMLTextAreaElement;
+    const sendButton = () => screen.getByRole('button', { name: /Enviar/ }) as HTMLButtonElement;
+    fireEvent.change(input, { target: { value: 'quais o nome dos serviços?' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(input.value).toBe('');
+    expect(screen.getByText('quais o nome dos serviços?')).toBeTruthy();
+    expect(sendButton().disabled).toBe(true);
+    fireEvent.change(input, { target: { value: 'e a próxima?' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(ask).toHaveBeenCalledTimes(1);
+    answer({ message: { role: 'assistant', text: 'São dezesseis.', at } });
+    expect(await screen.findByText('São dezesseis.')).toBeTruthy();
+    expect(input.value).toBe('e a próxima?');
+    await waitFor(() => expect(sendButton().disabled).toBe(false));
+  });
+
+  it('does not put a failed question over the next one the person has started typing', async () => {
+    vi.spyOn(runApi, 'projects').mockResolvedValue(projects as never);
+    vi.spyOn(chatApi, 'messages').mockResolvedValue({ messages: [] });
+    let fail: (e: Error) => void = () => undefined;
+    vi.spyOn(chatApi, 'ask').mockImplementation(() => new Promise((_, reject) => { fail = reject; }));
+    page();
+    await screen.findByText('Nenhuma pergunta feita ainda.');
+    const input = screen.getByTestId('chat-input') as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: 'primeira' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.change(input, { target: { value: 'segunda' } });
+    fail(new Error('internal error'));
+    expect(await screen.findByRole('dialog', { name: 'Não consegui responder' })).toBeTruthy();
+    expect(input.value).toBe('segunda');
+  });
+
   it('says so when there is no project', async () => {
     vi.spyOn(runApi, 'projects').mockResolvedValue([]);
     page();
