@@ -43,6 +43,25 @@ describe('buildChatContext', () => {
     expect(out.text).not.toMatch(/AC-\d|T\d+-/);
   });
 
+  it('names the spec, the run in progress (not a newer finished one) and how far its tasks have come', async () => {
+    const tasks = [['T1-first', 'Primeira'], ['T2-second', 'Segunda'], ['T3-third', 'Terceira']].map(([id, title]) => makePlanTask({ id, title, description: `Descrição da ${title.toLowerCase()}` }));
+    await writeRun(path.join(home, 'runs'), 'hello-001-r1', [
+      { type: 'RUN_STARTED', data: { runId: 'hello-001-r1', specId: 'hello-001', projectId: 'hello-app' } },
+      ...tasks.map((task) => ({ type: 'TASK_PLANNED', data: { task } })),
+      { type: 'TASK_STATE_CHANGED', data: { taskId: 'T1-first', to: 'merged' } },
+      { type: 'TASK_STATE_CHANGED', data: { taskId: 'T2-second', to: 'ready' } },
+      { type: 'TASK_STATE_CHANGED', data: { taskId: 'T2-second', to: 'implementing' } },
+    ], { runId: 'hello-001-r1', at: '2026-09-24T10:01:00.000Z', status: 'running', tasks: [], tokens: {} });
+    await writeRun(path.join(home, 'runs'), 'hello-001-r2', [{ type: 'RUN_STARTED', data: { runId: 'hello-001-r2', specId: 'hello-001', projectId: 'hello-app' } }], { runId: 'hello-001-r2', at: '2026-09-25T10:01:00.000Z', status: 'done', tasks: [], tokens: {} });
+    const { text } = (await buildChatContext(deps(), 'hello-app'))!;
+    expect(text).toContain('Nome da spec: hello-001');
+    expect(text).toContain('Execução: número 1 (em andamento)');
+    expect(text).toContain('Progresso: 1 de 3 tarefas concluídas, 1 em andamento');
+    expect(text).toContain('- Primeira (concluída): Descrição da primeira');
+    expect(text).toContain('- Segunda (sendo desenvolvida agora): Descrição da segunda');
+    expect(text).not.toContain('- - ');
+  });
+
   it('says a spec frozen for running with no run going is ready, not in development', async () => {
     const dir = path.join(home, 'proj');
     await fs.cp(HELLO, dir, { recursive: true });
