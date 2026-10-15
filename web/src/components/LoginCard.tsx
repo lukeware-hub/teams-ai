@@ -116,7 +116,7 @@ export function LoginControls({ state, code, onCode, onStart, onSend, onCancel }
             <p className="m-0 inline-flex flex-wrap items-center gap-[0.55rem] text-[0.875rem] leading-[1.35] text-ink-soft">
               Digite este código na página:{' '}
               <span className="relative inline-flex">
-                <button type="button" className="relative inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-md border border-accent-line bg-accent-soft px-[0.7rem] py-[0.3rem] text-accent-ink hover:bg-accent-line [&_svg]:text-ink-soft" aria-label="Copiar código" onClick={() => copyCode(state.code)}>
+                <button type="button" className="relative inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-md border border-accent-line bg-accent-soft px-[0.7rem] py-[0.3rem] text-accent-ink hover:bg-accent-line [&_svg]:text-ink-soft" aria-label="Copiar código" onClick={() => copyCode(state.code)}>
                   <code className="text-[0.9375rem] font-bold tracking-[0.045em]" data-testid="one-time-code">{state.code}</code>
                   <Icon name="copy" size={16} />
                 </button>

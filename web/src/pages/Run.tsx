@@ -48,7 +48,7 @@ const TASK_ID = 'font-mono text-[0.8125rem] font-semibold';
 // A task id as a text button, underlined on hover.
 const TASK_ID_BUTTON = `h-auto flex-none border-0 bg-transparent p-0 text-left text-accent-text underline-offset-[3px] hover:bg-transparent hover:underline ${TASK_ID}`;
 // The compact secondary button that opens a failure's detail dialog, with a 44px hit area on touch.
-const DETAIL_BUTTON = 'secondary h-8 flex-none px-3 text-[0.8125rem] pointer-coarse:relative pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-inset-y-1.5';
+const DETAIL_BUTTON = 'secondary h-10 flex-none px-3 text-[0.8125rem] pointer-coarse:relative pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-inset-y-1.5';
 // On narrow screens a title keeps a readable width instead of squeezing beside its id and chips.
 const ROW_TITLE = 'min-w-0 flex-1 text-ink max-md:basis-32';
 const FACT_ROWS = 'm-0 grid gap-[0.6rem] [&>div]:grid [&>div]:grid-cols-[8.5rem_minmax(0,1fr)] [&>div]:gap-3 max-md:[&>div]:grid-cols-1 max-md:[&>div]:gap-1 [&_dt]:text-[0.8125rem] [&_dt]:font-semibold [&_dt]:text-ink-soft [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:wrap-anywhere';
@@ -804,7 +804,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                     <h2 className="basis-auto">README do projeto</h2>
                     <span className="font-mono text-[0.75rem] text-ink-soft">docs/README.md</span>
                     {readmeAction && !detail.locked ? (
-                      <ActionButton className="secondary h-8 px-3 text-[0.8125rem]" data-testid="readme-generate" busy={readmeAction.busy} onClick={readmeAction.onGenerate} icon={<Icon name="file" size={14} />}>
+                      <ActionButton className="secondary h-10 px-3 text-[0.8125rem]" data-testid="readme-generate" busy={readmeAction.busy} onClick={readmeAction.onGenerate} icon={<Icon name="file" size={14} />}>
                         {readmeAction.busy ? 'O sm está escrevendo…' : detail.readme ? 'Reescrever com o sm' : 'Gerar README com o sm'}
                       </ActionButton>
                     ) : null}

@@ -30,7 +30,7 @@ export const TONE: Record<string, string> = {
   blocked: 'bad', deadlocked: 'bad', 'phase-failed': 'bad', 'verification-failed': 'bad', 'deploy-failed': 'bad', 'launch-failed': 'bad', error: 'bad',
 };
 // Compact row controls: the button, .secondary and .primary primitives supply the colors and hover grounds.
-const actionBase = 'inline-flex h-8 min-h-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md border px-3 text-[0.8125rem] font-semibold no-underline transition-colors duration-[var(--duration-fast)] pointer-coarse:h-[var(--control-height)]';
+const actionBase = 'inline-flex h-10 min-h-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md border px-3 text-[0.8125rem] font-semibold no-underline transition-colors duration-[var(--duration-fast)] pointer-coarse:h-[var(--control-height)]';
 export const action = {
   plain: actionBase,
   secondary: `secondary ${actionBase}`,

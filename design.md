@@ -628,7 +628,7 @@ Across side-by-side panels, tile, overline, title and chip all sit on the same f
 
 **Label, then one icon.** Every action button and button-styled link shows its label followed by exactly one icon: 16px on regular buttons, 14px on compact row buttons. The icon names the action (`Excluir` trash, `Nova spec` plus, `Abrir` arrow, `Abrir no GitHub` external), never decorates it, and a button never carries two icons. Exceptions, because they are not labelled actions: the icon rail and the theme control (icon toolbars with an accessible name and a tooltip), the info tips, tabs, breadcrumb links, and text buttons inside lists such as task ids.
 
-**Minimum width.** Every button with text is at least as wide as the primary button (`--button-min-width`, 9rem), so actions line up; a longer label still widens its button. Icon buttons, tabs, table headers and inline text links are exempt.
+**Size.** Every button with text is at least as wide as the primary button (`--button-min-width`, 9rem) and 2.5rem tall (`--control-height`), so actions line up; a longer label still widens its button. Icon buttons, tabs, table headers and inline text links are exempt.
 
 | Variant | Ground | Text | Border | Hover | Use |
 |---|---|---|---|---|---|
@@ -819,7 +819,7 @@ For anything rendering a collection, add **empty** and **skeleton**. Empty state
 - **Contrast:** body and placeholder ≥4.5:1, large text and glyphs ≥3:1. §3.7 is the verified table; `ink-faint` is non-text except the editor gutter; the gradient's light end, the violet tile and the sampled warn ground are unverified and must be measured.
 - **Focus:** one ring app-wide — 2px `accent`, 2px offset, never removed. Focus order matches visual order. Inside the editor, focus is the caret, not the ring.
 - **State is never color-only.** Shape, glyph or word accompanies every colored state.
-- **Targets:** 40px in-app, 44px in the flow, 32px for icon buttons — with a 44px hit area on coarse pointers via padding, not by growing the visual control.
+- **Targets:** 40px for every button with text, in-app and in the flow; 32px for icon buttons — with a 44px hit area on coarse pointers via padding, not by growing the visual control.
 - **Semantics:** tabs are a real tablist; the breadcrumb is a `nav` + `ol` with `aria-current`; disclosures are `<button aria-expanded>`; the flow is an ordered list of steps with `aria-current="step"`; disabled items carry `aria-disabled` plus a visible reason; icon-only controls carry `aria-label`.
 - **Live regions:** analysis progress, step state and any change that happens without a click are announced `polite`.
 - **Illustrations are `aria-hidden`.**

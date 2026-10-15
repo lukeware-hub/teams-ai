@@ -150,7 +150,7 @@ describe('ValidationView service card', () => {
     expect(screen.getByTestId('service-unpublished').textContent).toContain(`${PUBLISHED_PORTS.from} a ${PUBLISHED_PORTS.to}`);
   });
 
-  it('names each service in its smoke rows and links, keeps the recheck compact and gives the published range', () => {
+  it('names each service in its smoke rows and links, keeps the recheck at button height and gives the published range', () => {
     const card = (service: string, port: number) => ({ service, url: `http://dind:${port}`, port, healthcheck: 'HTTP 200', healthcheckPath: '/health', kind: 'api' as const, docsPath: '/docs' });
     const smoke = [{ acId: 'AC-001', testId: 's::[AC-001] a', status: 'passed' as const, service: 'orders' }, { acId: 'AC-001', testId: 's::[AC-001] b', status: 'passed' as const, service: 'inventory' }];
     const status = { online: true, status: 200, checkedAt: '2026-10-06T10:00:00.000Z', services: ['orders', 'inventory', 'ledger'].map((service) => ({ service, online: true, status: 200 })) };
@@ -158,7 +158,7 @@ describe('ValidationView service card', () => {
     expect(screen.getByTestId('smoke-orders-AC-001').textContent).toContain('orders');
     expect(screen.getByTestId('smoke-inventory-AC-001').textContent).toContain('inventory');
     expect(screen.getByTestId('open-orders').getAttribute('aria-label')).toBe('Abrir Swagger (orders)');
-    expect(screen.getByTestId('recheck-service').className).toContain('min-h-8');
+    expect(screen.getByTestId('recheck-service').className).toContain('min-h-10');
     expect(screen.getByTestId('service-ledger').textContent).toContain(`${PUBLISHED_PORTS.from} a ${PUBLISHED_PORTS.to}`);
   });
 

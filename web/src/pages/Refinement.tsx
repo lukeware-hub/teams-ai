@@ -351,20 +351,20 @@ export function RefinementView(p: ViewProps) {
         {/* The editor's actions sit above it, so they never cover the document's first lines. */}
         <div className="flex flex-col gap-2">
           {tab !== 'flow.md' && p.onSuggestDoc && (
-            <ActionButton data-testid="suggest" className="h-9 px-[0.8rem]" busy={suggesting} disabled={locked} title="Gera este documento a partir do flow.md" onClick={() => suggest(tab)} icon={<Icon name="lightbulb" size={16} />}>
+            <ActionButton data-testid="suggest" className="h-10 px-[0.8rem]" busy={suggesting} disabled={locked} title="Gera este documento a partir do flow.md" onClick={() => suggest(tab)} icon={<Icon name="lightbulb" size={16} />}>
               {suggesting ? 'Sugerindo…' : 'Sugerir'}
             </ActionButton>
           )}
           {tab === 'design.md' && p.onDesignFromImages && (
             <>
-            <button type="button" className="h-9 px-[0.8rem]" disabled={locked || suggesting} title="Ajusta o design.md pelas cores, fontes e alinhamentos de imagens de exemplo; as imagens são apagadas depois" onClick={() => attachInput.current?.click()}>
+            <button type="button" className="h-10 px-[0.8rem]" disabled={locked || suggesting} title="Ajusta o design.md pelas cores, fontes e alinhamentos de imagens de exemplo; as imagens são apagadas depois" onClick={() => attachInput.current?.click()}>
               Anexar imagem
               <Icon name="file" size={16} />
             </button>
             <input ref={attachInput} data-testid="attach-images" type="file" accept="image/png,image/jpeg" multiple hidden onChange={(e) => { void attach(e.target.files); e.target.value = ''; }} />
             </>
           )}
-          <button type="button" className="h-9 px-[0.8rem]" aria-label="Copiar documento" onClick={() => copyDoc(docs[tab] ?? '')}>
+          <button type="button" className="h-10 px-[0.8rem]" aria-label="Copiar documento" onClick={() => copyDoc(docs[tab] ?? '')}>
             Copiar
             <Icon name="copy" size={16} />
           </button>
@@ -609,7 +609,7 @@ export function RefinementView(p: ViewProps) {
       {(st.derived?.spec.tasks ?? []).length === 0 && <div className="grid place-items-center gap-[0.35rem] rounded-lg border border-line bg-surface-sunken px-[0.8rem] py-[1.4rem] text-center text-ink-soft [&_svg]:text-ink-faint"><Icon name="clipboard" size={26} /><strong className="text-[0.85rem] text-ink">Nenhuma tarefa gerada ainda.</strong><span className="text-[0.78rem]">As tarefas aparecerão aqui após a avaliação.</span></div>}
         </>
       )}
-      <div className="mt-5 flex items-center justify-between gap-3"><h4 className="m-0!"><Icon name="lock" size={20} />Segredos<InfoTip text="Chaves e senhas de serviços externos que o projeto usa, como a URL de um banco de dados. Ficam salvas neste computador e o valor nunca volta a ser exibido." /></h4><button type="button" className="secondary h-9 px-[0.7rem] text-[0.78rem]" onClick={() => setNewSecrets((rows) => [...rows, { id: Date.now(), name: '', value: '' }])}>Adicionar segredo<Icon name="plus" size={16} /></button></div>
+      <div className="mt-5 flex items-center justify-between gap-3"><h4 className="m-0!"><Icon name="lock" size={20} />Segredos<InfoTip text="Chaves e senhas de serviços externos que o projeto usa, como a URL de um banco de dados. Ficam salvas neste computador e o valor nunca volta a ser exibido." /></h4><button type="button" className="secondary h-10 px-[0.7rem] text-[0.78rem]" onClick={() => setNewSecrets((rows) => [...rows, { id: Date.now(), name: '', value: '' }])}>Adicionar segredo<Icon name="plus" size={16} /></button></div>
       <ul className="m-0 grid list-none gap-3 p-0">
         {snap.secrets.map((s) => (
           <li key={s.name} className={`${secretRow} border-line bg-surface-sunken`}>

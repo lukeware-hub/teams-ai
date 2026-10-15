@@ -66,7 +66,7 @@ export function Onboarding({ compact = false }: { compact?: boolean }) {
           <p className="m-0 inline-flex items-center gap-1.5 rounded-full bg-good-soft px-[0.65rem] py-[0.2rem] text-[0.8125rem] font-semibold text-good before:size-[0.45rem] before:rounded-full before:bg-current before:content-['']">Configuração concluída</p>
           <h2 id="welcome-title" className="mx-0 mt-1 mb-0 text-[1.75rem] leading-[1.2] tracking-[-0.025em]">Tudo pronto para começar</h2>
           <p className="m-0 max-w-[60ch] text-[0.9375rem] leading-[1.55] text-ink-soft">O Teams AI está conectado às suas ferramentas e pronto para ajudar a organizar projetos, executar tarefas e acompanhar o trabalho da equipe. Para começar, abra Projetos e use Nova spec ou Novo projeto.</p>
-          <Link className="primary-button mt-3 min-h-11 border-transparent px-5 [background:var(--gradient-primary)] [box-shadow:var(--shadow-primary)] hover:border-transparent hover:[background:var(--gradient-primary-hover)] @max-2xl:w-full" to="/projects">Ir para projetos<Icon name="arrow-right" size={16} /></Link>
+          <Link className="primary-button mt-3 min-h-10 border-transparent px-5 [background:var(--gradient-primary)] [box-shadow:var(--shadow-primary)] hover:border-transparent hover:[background:var(--gradient-primary-hover)] @max-2xl:w-full" to="/projects">Ir para projetos<Icon name="arrow-right" size={16} /></Link>
           <div className="col-start-2 row-[1/span_5] w-full @max-2xl:hidden" aria-hidden="true"><img className="block max-h-72 w-full rounded-lg object-contain [background:var(--art-plate)] [mix-blend-mode:var(--art-blend)]" src="/onboarding-complete.png" alt="" /></div>
         </section>
       );
@@ -91,8 +91,8 @@ export function Onboarding({ compact = false }: { compact?: boolean }) {
       <div className="grid gap-[0.85rem]">{status ? stepContent() : <Loading />}</div>
       {/* On narrow frames the navigation sticks to the bottom over a glass band. */}
       <nav className="flex items-center justify-between gap-4 border-t border-line pt-5 @max-2xl:sticky @max-2xl:bottom-0 @max-2xl:-mx-[clamp(1rem,3vw,2rem)] @max-2xl:bg-surface @max-2xl:px-[clamp(1rem,3vw,2rem)] @max-2xl:py-3 @max-2xl:backdrop-blur-md" aria-label="Navegação da configuração">
-        <button type="button" className="secondary h-11 border-line-strong text-ink enabled:hover:bg-surface-sunken @max-2xl:flex-1" onClick={() => setStep((current) => current - 1)} disabled={step === 0}>Voltar<Icon name="arrow-left" size={16} /></button>
-        {step < totalSteps - 1 ? <button type="button" className="primary-button h-11 @max-2xl:flex-1" onClick={next} disabled={!canAdvance}>Próximo<Icon name="arrow-right" size={16} /></button> : null}
+        <button type="button" className="secondary h-10 border-line-strong text-ink enabled:hover:bg-surface-sunken @max-2xl:flex-1" onClick={() => setStep((current) => current - 1)} disabled={step === 0}>Voltar<Icon name="arrow-left" size={16} /></button>
+        {step < totalSteps - 1 ? <button type="button" className="primary-button h-10 @max-2xl:flex-1" onClick={next} disabled={!canAdvance}>Próximo<Icon name="arrow-right" size={16} /></button> : null}
       </nav>
     </main>
   );

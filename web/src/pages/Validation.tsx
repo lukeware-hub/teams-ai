@@ -159,7 +159,7 @@ const openLink = (href: string, testId: string, text: string, primary: boolean, 
   </a>
 );
 const recheckButton = (checking: boolean, onRecheck: () => void) => (
-  <ActionButton className="link-button min-h-8 px-[0.65rem] text-[0.8125rem]" data-testid="recheck-service" onClick={onRecheck} busy={checking} icon={<Icon name="refresh" size={14} />}>
+  <ActionButton className="link-button min-h-10 px-[0.65rem] text-[0.8125rem]" data-testid="recheck-service" onClick={onRecheck} busy={checking} icon={<Icon name="refresh" size={14} />}>
     Verificar de novo
   </ActionButton>
 );
