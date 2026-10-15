@@ -349,22 +349,22 @@ export function RefinementView(p: ViewProps) {
       <p data-testid="doc-impact" className="hint">{backlogOn && tab === 'brief.md' ? briefingImpact : docImpact[tab]}</p>
       <div className="grid gap-2">
         {/* The editor's actions sit above it, so they never cover the document's first lines. */}
-        <div className="flex justify-end gap-2 max-[720px]:flex-col">
+        <div className="ml-auto flex w-fit flex-col gap-2 max-[720px]:w-full">
           {tab !== 'flow.md' && p.onSuggestDoc && (
-            <ActionButton data-testid="suggest" className="h-9 px-[0.8rem] max-[720px]:w-full" busy={suggesting} disabled={locked} title="Gera este documento a partir do flow.md" onClick={() => suggest(tab)} icon={<Icon name="lightbulb" size={16} />}>
+            <ActionButton data-testid="suggest" className="h-9 px-[0.8rem]" busy={suggesting} disabled={locked} title="Gera este documento a partir do flow.md" onClick={() => suggest(tab)} icon={<Icon name="lightbulb" size={16} />}>
               {suggesting ? 'Sugerindo…' : 'Sugerir'}
             </ActionButton>
           )}
           {tab === 'design.md' && p.onDesignFromImages && (
             <>
-            <button type="button" className="h-9 px-[0.8rem] max-[720px]:w-full" disabled={locked || suggesting} title="Ajusta o design.md pelas cores, fontes e alinhamentos de imagens de exemplo; as imagens são apagadas depois" onClick={() => attachInput.current?.click()}>
+            <button type="button" className="h-9 px-[0.8rem]" disabled={locked || suggesting} title="Ajusta o design.md pelas cores, fontes e alinhamentos de imagens de exemplo; as imagens são apagadas depois" onClick={() => attachInput.current?.click()}>
               Anexar imagem
               <Icon name="file" size={16} />
             </button>
             <input ref={attachInput} data-testid="attach-images" type="file" accept="image/png,image/jpeg" multiple hidden onChange={(e) => { void attach(e.target.files); e.target.value = ''; }} />
             </>
           )}
-          <button type="button" className="h-9 px-[0.8rem] max-[720px]:w-full" aria-label="Copiar documento" onClick={() => copyDoc(docs[tab] ?? '')}>
+          <button type="button" className="h-9 px-[0.8rem]" aria-label="Copiar documento" onClick={() => copyDoc(docs[tab] ?? '')}>
             Copiar
             <Icon name="copy" size={16} />
           </button>
