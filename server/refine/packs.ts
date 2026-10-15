@@ -12,7 +12,7 @@ import type { JevValidationResult } from './jev-validation.js';
 
 /** A stack.md or flow.md that is still the blank template is filled by the SM in one patch each; nobody is asked about a placeholder. */
 /** From the second cycle on a review converges: only defects block the spec (live: Front polished design.md for 8 cycles). */
-const CONVERGENCE_RULE = 'CONVERGENCE (this is not the first cycle): propose a patch or question only for a defect that would make the implementation wrong or untestable - a contradiction, a rule an acceptance criterion needs but no document states, or a rule that would break the interface or its accessibility. Never propose wording, polish, or detail the implementation may choose on its own; when the documents are already implementable, return no patches and no questions.';
+const CONVERGENCE_RULE = 'CONVERGENCE (this is not the first cycle): propose a patch or question only for a defect that would make the implementation wrong or untestable - a contradiction, a rule an acceptance criterion needs but no document states, or a rule that would break the interface or its accessibility. Never propose wording, polish, or detail the implementation may choose on its own; when the documents are already implementable, return no patches and no questions. An answer the owner gave is final: never ask again or ask to confirm it, and when it is short or delegates the choice, take the most conservative reading instead of asking.';
 
 function blankDocsRule(input: { role: 'po' | 'sm' | 'front'; stackMd?: string; flowMd?: string }, brief: string): string[] {
   if (input.role === 'front') return [];
@@ -94,6 +94,7 @@ export function refinePack(input: {
   const recorded = (input.derived.spec?.decisions ?? []).map((d) => `- ${d.question}\n  answer: ${d.answer}`);
   const answered = [...recorded, ...input.history.filter((q) => q.status === 'answered').map((q) => `- [${q.role}] ${q.text}\n  answer: ${q.answer}`)];
   const skipped = input.history.filter((q) => q.status === 'skipped').map((q) => `- [${q.role}] ${q.text}`);
+  const openQuestions = input.history.filter((q) => q.status === 'pending').map((q) => `- [${q.role}] ${q.text}`);
   const rejected = input.rejected.map((p) => `- ${rel(p.file)}: "${p.find.slice(0, 80)}" → rejected${p.decision ? `: ${p.decision}` : ''}`);
   const pending = (input.pending ?? []).map((p) => `- ${rel(p.file)}: "${p.find.slice(0, 80)}" → ${clip(p.reason, 120)}`);
   const ids = input.role === 'po' ? PO_ITEMS : input.role === 'sm' ? SM_ITEMS : [];
@@ -136,6 +137,8 @@ export function refinePack(input: {
     answered.join('\n') || '(none)',
     '### Skipped questions',
     skipped.join('\n') || '(none)',
+    '### Open questions (waiting for the owner: do not ask again, not even reworded)',
+    openQuestions.join('\n') || '(none)',
     '### Rejected patches (do not propose again)',
     rejected.join('\n') || '(none)',
     '### Pending suggestions (already proposed, waiting for the owner: do not propose them again, not even reworded)',

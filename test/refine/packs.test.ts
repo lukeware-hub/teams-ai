@@ -47,6 +47,13 @@ describe('refinePack', () => {
     expect(refinePack({ ...base, role: 'sm', stackMd: '# Stack\n\n- Node 22\n', flowMd: '# Fluxo\n' }).feedback).not.toContain('only the blank template');
   });
 
+  it('lists the open questions, and from the second cycle says an answer is final', () => {
+    const history = [{ questionId: 'po-c1-0', role: 'po', text: 'Qual porta?', blocking: true, relatedAcIds: [], cycle: 1, status: 'pending', answer: null }];
+    const po = refinePack({ ...base, role: 'po', cycle: 2, history } as never).feedback ?? '';
+    expect(po).toContain('### Open questions (waiting for the owner: do not ask again, not even reworded)\n\n- [po] Qual porta?');
+    expect(po).toContain('An answer the owner gave is final');
+  });
+
   it('asks only the PO for the contradictions it can prove with quotes', () => {
     const po = refinePack({ ...base, role: 'po' }).feedback ?? '';
     expect(po).toContain('add one entry to `contradictions`');
