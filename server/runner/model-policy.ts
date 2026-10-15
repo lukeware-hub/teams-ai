@@ -1,8 +1,8 @@
 import type { Effort } from '../decide/decisions/model-tier.js';
 
 /**
- * Model rules (human, 2026-10-13): Haiku only for terminal commands and small simple code; Sonnet for text and ordinary
- * code, with effort up to high; Opus only for architecture decisions, always at low effort.
+ * Model rules (human, 2026-10-13): Haiku only for terminal commands and small simple code, always at low effort; Sonnet for
+ * text and ordinary code, with effort up to high; Opus only for architecture decisions, always at low effort.
  */
 const family = (model: string): 'opus' | 'sonnet' | 'haiku' | null => /opus/i.test(model) ? 'opus' : /sonnet/i.test(model) ? 'sonnet' : /haiku/i.test(model) ? 'haiku' : null;
 
@@ -14,7 +14,7 @@ export function effortFor(model: string, effort: Effort | undefined): Effort | u
     case 'sonnet':
       return effort === undefined || effort === 'max' ? 'high' : effort;
     case 'haiku':
-      return undefined;
+      return 'low';
     default:
       return effort;
   }

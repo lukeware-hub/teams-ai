@@ -13,13 +13,13 @@ describe('effortFor', () => {
     expect(effortFor('sonnet', 'max')).toBe('high');
   });
 
-  it('gives Haiku no effort', () => {
-    expect(effortFor('haiku', 'high')).toBeUndefined();
+  it('holds Haiku at low whatever was asked', () => {
+    for (const e of [undefined, 'low', 'high', 'max'] as const) expect(effortFor('haiku', e)).toBe('low');
   });
 
   it('recognises a pinned model id and leaves an unknown model alone', () => {
     expect(effortFor('claude-opus-5-5', 'high')).toBe('low');
-    expect(effortFor('claude-haiku-5-5', 'low')).toBeUndefined();
+    expect(effortFor('claude-haiku-5-5', 'high')).toBe('low');
     expect(effortFor('other-model', 'max')).toBe('max');
   });
 });
