@@ -5,7 +5,7 @@
  * file locks in the runs themselves. The ledger (`Program`) is the only state: `tick` reads it, settles what is in flight, starts the next item and
  * writes it back before it launches anything, so a restart finds the claim and adopts the run instead of starting another.
  * A failed spec is isolated: its dependents wait while it is repaired (R11.14, bounded by MAX_REPAIRS) and are blocked once it stays failed; everything independent of it keeps going.
- * A failure of the environment never fails a spec: it waits, longer each time up to an hour, and starts again.
+ * A failure of the environment waits, longer each time up to an hour, and starts again; after MAX_ENV_RETRIES finished runs it fails.
  */
 
 export type ItemStatus = 'pending' | 'running' | 'completing' | 'waiting' | 'done' | 'failed' | 'blocked';
@@ -96,6 +96,8 @@ const SAME_FAILURE_CHARS = 400;
 const sameFailure = (a: string, b: string): boolean => a.trim().slice(0, SAME_FAILURE_CHARS) === b.trim().slice(0, SAME_FAILURE_CHARS);
 /** Automatic repairs of one failed spec; after them the owner decides. */
 export const MAX_REPAIRS = 2;
+/** Runs of one spec that may fail on the environment and start again, before the owner decides. */
+export const MAX_ENV_RETRIES = 3;
 /** Specs running at once: each run already uses several Claude processes, so two keep the quota and merges calm. */
 export const MAX_PARALLEL = 2;
 /** The longest wait after an environment failure; the first is one minute and each next one doubles. */
@@ -184,7 +186,12 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
     const repairs = item.repairs ?? 0;
     const failures = [...(item.failures ?? []), reason];
     const verdict = fx.repair ? await fx.repair(item.specId, failures).catch((): RepairVerdict => 'wait') : 'give-up';
-    if (verdict === 'wait') return wait(item, reason, costUsd);
+    if (verdict === 'wait') {
+      // A finished run is paid for: after a few of them, "the environment" is no longer an excuse (live: a spec ran six times, $38).
+      if (failures.length > MAX_ENV_RETRIES) return fail(item, `${reason}; ${failures.length} runs in a row failed and were put down to the environment, so the owner has to act`, costUsd);
+      item.failures = failures;
+      return wait(item, reason, costUsd);
+    }
     // The same failure after a repair needs a person, not a third identical run (live: a credential only the owner can provide, three runs of 3 deploys each).
     if (verdict === 'retry-now' && (item.failures ?? []).some((f) => sameFailure(f, reason))) return fail(item, `${reason}; the same failure came back after a repair, so the owner has to act`, costUsd);
     if (verdict === 'retry-now' && repairs < MAX_REPAIRS) {

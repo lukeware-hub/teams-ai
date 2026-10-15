@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_REPAIRS, newProgram, prioritizeItem, retryItem, tick, type Program, type ProgramEffects, type RunOutcome } from '../../server/program/controller.js';
+import { MAX_ENV_RETRIES, MAX_REPAIRS, newProgram, prioritizeItem, retryItem, tick, type Program, type ProgramEffects, type RunOutcome } from '../../server/program/controller.js';
 
 const entry = (key: string, rank: number, dependsOn: string[] = []) => ({ specId: `d-${key}`, key, rank, dependsOn: dependsOn.map((k) => `d-${k}`) });
 const NOW = new Date('2026-10-07T12:00:00Z');
@@ -329,8 +329,8 @@ describe('program controller', () => {
     expect(q.items[0]).toMatchObject({ status: 'waiting', reason: 'x', waits: 1 });
   });
 
-  // 24/7: an environment failure, or one nobody classified, never ends the item; it waits longer each time, up to an hour.
-  it('puts an environment failure to wait with a growing backoff, never spends a repair on it and never fails it', async () => {
+  // An environment failure, or one nobody classified, waits longer each time up to an hour, but only a few finished runs' worth.
+  it('puts an environment failure to wait with a growing backoff, never spends a repair on it, and fails it after the bound', async () => {
     const failed = Object.fromEntries(Array.from({ length: 8 }, (_, n) => [`d-a-r${n + 1}`, { kind: 'failed', reason: 'docker daemon down', costUsd: 1 } as RunOutcome]));
     const { fx, calls } = world(failed, async () => 'wait');
     let clock = NOW.getTime();
@@ -344,7 +344,7 @@ describe('program controller', () => {
     expect(p.items[0]!.repairs).toBeUndefined();
     p = await tick(p, fx, save); // not yet time
     expect(calls).toEqual(['start d-a']);
-    for (let n = 2; n <= 6; n++) {
+    for (let n = 2; n <= MAX_ENV_RETRIES; n++) {
       clock = Date.parse(p.items[0]!.retryAt!);
       p = await tick(p, fx, save); // time has come: back to pending and started again
       expect(p.items[0]).toMatchObject({ status: 'running', runId: `d-a-r${n}` });
@@ -352,13 +352,21 @@ describe('program controller', () => {
       p = await tick(p, fx, save); // fails again, the same way
       expect(p.items[0]).toMatchObject({ status: 'waiting', waits: n, retryAt: new Date(clock + 60_000 * 2 ** (n - 1)).toISOString() });
     }
-    expect(calls).toHaveLength(6);
-    p.items[0]!.waits = 10;
     clock = Date.parse(p.items[0]!.retryAt!);
     p = await tick(p, fx, save);
+    p = await tick(p, fx, save); // the next finished run fails too: the owner has to act
+    expect(calls).toHaveLength(MAX_ENV_RETRIES + 1);
+    expect(p.items[0]).toMatchObject({ status: 'failed', costUsd: MAX_ENV_RETRIES + 1 });
+    expect(p.items[0]!.reason).toMatch(/owner has to act/);
+    expect(status(p).b).toBe('blocked');
+  });
+
+  it('caps the wait at an hour', async () => {
+    const { fx } = world({ 'd-a-r1': { kind: 'failed', reason: 'down' } }, async () => 'wait');
+    let p = await tick(newProgram('d', [entry('a', 1)], NOW), fx, save);
+    p.items[0]!.waits = 10;
     p = await tick(p, fx, save);
-    expect(p.items[0]).toMatchObject({ status: 'waiting', waits: 11, retryAt: new Date(clock + 3_600_000).toISOString() });
-    expect(status(p).b).toBe('pending');
+    expect(p.items[0]).toMatchObject({ status: 'waiting', waits: 11, retryAt: new Date(NOW.getTime() + 3_600_000).toISOString() });
   });
 
   it('holds no slot while waiting, yet keeps the program live and its dependents pending', async () => {
