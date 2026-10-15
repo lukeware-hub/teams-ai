@@ -98,17 +98,19 @@ describe('RefinementView secrets', () => {
     expect(screen.getByTestId('secret-DB_URL').getAttribute('autocomplete')).toBe('new-password');
   });
 
-  it('says why Salvar is off while an evaluation runs, and saves once it ends', () => {
+  it('saves a secret while an evaluation runs', () => {
     const h = on();
-    const { rerender } = render(<MemoryRouter><RefinementView snap={base({ status: 'evaluating' })} busy {...h} /></MemoryRouter>);
+    render(<MemoryRouter><RefinementView snap={base({ status: 'evaluating' })} busy {...h} /></MemoryRouter>);
     fireEvent.change(screen.getByTestId('secret-DB_URL'), { target: { value: 'x' } });
-    expect((screen.getByTestId('save-secret-DB_URL') as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId('secret-wait-DB_URL').textContent).toMatch(/Aguarde o fim da avaliação/);
-    rerender(<MemoryRouter><RefinementView snap={base({ status: 'answering' })} busy={false} {...h} /></MemoryRouter>);
-    expect(screen.queryByTestId('secret-wait-DB_URL')).toBeNull();
     expect((screen.getByTestId('save-secret-DB_URL') as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(screen.getByTestId('save-secret-DB_URL'));
     expect(h.onSecret).toHaveBeenCalledWith('DB_URL', 'x');
+  });
+
+  it('keeps secrets locked once the run has started', () => {
+    render(<MemoryRouter><RefinementView snap={base({ status: 'started' })} busy={false} {...on()} /></MemoryRouter>);
+    fireEvent.change(screen.getByTestId('secret-DB_URL'), { target: { value: 'x' } });
+    expect((screen.getByTestId('save-secret-DB_URL') as HTMLButtonElement).disabled).toBe(true);
   });
 });
 

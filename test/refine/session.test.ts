@@ -355,7 +355,7 @@ describe('RefineSession', () => {
     await expect(s.freeze()).rejects.toBeInstanceOf(ConflictError);
   });
 
-  it('writes custom secret names and marks the checklist stale', async () => {
+  it('writes custom secret names without marking the spec stale', async () => {
     const s = await RefineSession.create(deps(), 'new-project');
     await s.writeSecret('CUSTOM_KEY', 'x');
     expect(await fs.readFile(path.join(secretsDir, 'CUSTOM_KEY'), 'utf8')).toBe('x');
@@ -365,11 +365,24 @@ describe('RefineSession', () => {
     await s.evaluate();
     await s.writeSecret('DB_URL', 'postgres://x');
     expect(await fs.readFile(path.join(secretsDir, 'DB_URL'), 'utf8')).toBe('postgres://x');
-    expect(s.state.stale).toBe(true);
+    expect(s.state.stale).toBe(false);
     expect((await s.snapshot()).secrets).toEqual([
       { name: 'CUSTOM_KEY', present: true, hint: '****' },
       { name: 'DB_URL', present: true, hint: '****' },
     ]);
+  });
+
+  it('writes a secret while an evaluation runs', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    script['derive/po'] = [derived];
+    script['refine/po'] = [refineOut(green(PO))];
+    script['refine/sm'] = [refineOut(green(SM))];
+    const running = s.evaluate();
+    expect(s.busy).toBe(true);
+    await s.writeSecret('DB_URL', 'postgres://x');
+    await running;
+    expect(await fs.readFile(path.join(secretsDir, 'DB_URL'), 'utf8')).toBe('postgres://x');
+    expect(s.state.stale).toBe(false);
   });
 });
 

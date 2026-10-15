@@ -48,8 +48,8 @@ const docImpact: Record<DocFile, string> = {
 /** Backlog mode: the briefing is the target project's docs/briefing.md, one file for the whole backlog. */
 const briefingImpact = 'Briefing do projeto (docs/briefing.md): objetivos, prioridades, cortes e decisões que valem para todo o backlog. Os agentes seguem o que estiver escrito aqui.';
 const docName = (file: string) => docLabel[file.split('/').pop() as DocFile] ?? file;
-/** Journal events that change a document, a decision or a secret: after one of them a new evaluation is not a repeat. */
-const CHANGE_EVENTS = new Set(['DOC_EDITED', 'PATCH_ACCEPTED', 'PATCH_REJECTED', 'QUESTION_ANSWERED', 'QUESTION_SKIPPED', 'SECRET_WRITTEN', 'BACKLOG_DETAIL_ENABLED']);
+/** Journal events that change a document or a decision: after one of them a new evaluation is not a repeat. */
+const CHANGE_EVENTS = new Set(['DOC_EDITED', 'PATCH_ACCEPTED', 'PATCH_REJECTED', 'QUESTION_ANSWERED', 'QUESTION_SKIPPED', 'BACKLOG_DETAIL_ENABLED']);
 const roleInfo: Record<'po' | 'sm', string> = {
   po: 'Pergunta do PO (Product Owner), o agente que revisa objetivos, critérios de aceite e o fluxo de negócio.',
   sm: 'Pergunta do SM (Scrum Master), o agente que revisa stack, tarefas, validação e viabilidade técnica.',
@@ -241,6 +241,8 @@ export function RefinementView(p: ViewProps) {
   };
   const evaluating = busy || st.status === 'evaluating';
   const locked = evaluating || st.status === 'started';
+  // Only a started run locks secrets: no evaluation reads the project vault.
+  const secretsLocked = st.status === 'started';
   const jevAdvisory = st.error?.startsWith('Jev bloqueou') ?? false;
   const pending = [...st.questions.filter((q) => q.status === 'pending')].sort((a, b) => Number(b.blocking) - Number(a.blocking));
   const current = pending[0];
@@ -651,11 +653,10 @@ export function RefinementView(p: ViewProps) {
           <li key={s.name} className={`${secretRow} border-line bg-surface-sunken`}>
             {/* A hint made only of asterisks is a mask, not a hint: it tells the user nothing. */}
             <div className="flex min-w-0 items-center gap-[0.45rem]"><code className="mr-auto text-[0.78rem] font-bold text-ink wrap-anywhere">{s.name}</code>{s.hint && /[^*]/.test(s.hint) && <small className="text-[0.7rem] text-ink-soft">termina em {s.hint}</small>}<span className={`status-dot ${s.present ? 'ok' : 'warn'}`}>{s.present ? 'Salvo' : 'Não salvo'}</span></div>
-            <div className={`${secretEntry} grid-cols-[minmax(0,1fr)_7rem]`}><input type="password" autoComplete="new-password" className={secretInput} data-testid={`secret-${s.name}`} aria-label={`Novo valor de ${s.name}`} placeholder={s.present ? 'Digite um novo valor para substituir' : 'Cole o valor da chave'} value={secretValues[s.name] ?? ''} onChange={(e) => setSecretValues({ ...secretValues, [s.name]: e.target.value })} /><button className={secretSave} data-testid={`save-secret-${s.name}`} disabled={locked || !(secretValues[s.name] ?? '')} onClick={() => { p.onSecret(s.name, secretValues[s.name]!); setSecretValues({ ...secretValues, [s.name]: '' }); }}>Salvar<Icon name="check" size={14} /></button></div>
-            {evaluating && <small className="text-[0.75rem] leading-snug text-ink-soft" data-testid={`secret-wait-${s.name}`}>Aguarde o fim da avaliação para salvar: o servidor não grava segredos enquanto ela roda.</small>}
+            <div className={`${secretEntry} grid-cols-[minmax(0,1fr)_7rem]`}><input type="password" autoComplete="new-password" className={secretInput} data-testid={`secret-${s.name}`} aria-label={`Novo valor de ${s.name}`} placeholder={s.present ? 'Digite um novo valor para substituir' : 'Cole o valor da chave'} value={secretValues[s.name] ?? ''} onChange={(e) => setSecretValues({ ...secretValues, [s.name]: e.target.value })} /><button className={secretSave} data-testid={`save-secret-${s.name}`} disabled={secretsLocked || !(secretValues[s.name] ?? '')} onClick={() => { p.onSecret(s.name, secretValues[s.name]!); setSecretValues({ ...secretValues, [s.name]: '' }); }}>Salvar<Icon name="check" size={14} /></button></div>
           </li>
         ))}
-        {newSecrets.map((s) => <li key={s.id} className={`${secretRow} border-accent-line bg-accent-soft`}><div className={`${secretEntry} grid-cols-[minmax(8rem,0.7fr)_minmax(0,1fr)_auto] max-[720px]:grid-cols-1`}><input className={secretInput} aria-label="Nome da chave" placeholder="NOME_DA_CHAVE" value={s.name} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, name: e.target.value.toUpperCase() } : row))} /><input type="password" autoComplete="new-password" className={secretInput} aria-label="Valor da chave" placeholder="Cole o valor da chave" value={s.value} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, value: e.target.value } : row))} /><button className={secretSave} disabled={locked || !/^[A-Z][A-Z0-9_]*$/.test(s.name) || !s.value} onClick={() => { p.onSecret(s.name, s.value); setNewSecrets((rows) => rows.filter((row) => row.id !== s.id)); }}>Salvar<Icon name="check" size={16} /></button></div></li>)}
+        {newSecrets.map((s) => <li key={s.id} className={`${secretRow} border-accent-line bg-accent-soft`}><div className={`${secretEntry} grid-cols-[minmax(8rem,0.7fr)_minmax(0,1fr)_auto] max-[720px]:grid-cols-1`}><input className={secretInput} aria-label="Nome da chave" placeholder="NOME_DA_CHAVE" value={s.name} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, name: e.target.value.toUpperCase() } : row))} /><input type="password" autoComplete="new-password" className={secretInput} aria-label="Valor da chave" placeholder="Cole o valor da chave" value={s.value} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, value: e.target.value } : row))} /><button className={secretSave} disabled={secretsLocked || !/^[A-Z][A-Z0-9_]*$/.test(s.name) || !s.value} onClick={() => { p.onSecret(s.name, s.value); setNewSecrets((rows) => rows.filter((row) => row.id !== s.id)); }}>Salvar<Icon name="check" size={16} /></button></div></li>)}
       </ul>
     </section>
   );

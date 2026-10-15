@@ -190,9 +190,6 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
       if (s.status === 'evaluating') s.editedInCycle = true;
       if (hasDerivation(s)) s.stale = true;
       break;
-    case RefineEvent.SecretWritten:
-      if (hasDerivation(s)) s.stale = true;
-      break;
     case RefineEvent.BacklogEnabled: {
       // `acFloor`: the highest criterion id in the draft before the briefing move removed this draft's own spec.json.
       const floor = Number(d.acFloor ?? 0);
