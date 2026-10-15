@@ -832,11 +832,11 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                         {ids.map((id) => {
                           const tk = state.tasks.get(id)!;
                           return (
-                            <li key={id} className="flex items-baseline gap-[0.85rem] px-[0.9rem] py-[0.65rem] hover:bg-surface-sunken max-md:flex-wrap">
+                            <li key={id} className="flex flex-wrap items-baseline gap-[0.85rem] px-[0.9rem] py-[0.65rem] hover:bg-surface-sunken">
                               <button className={`min-w-[5.75rem] ${TASK_ID_BUTTON}`} data-testid={`task-${id}`} onClick={() => setSelected(id)}>
                                 {id}
                               </button>
-                              <span className={`${ROW_TITLE} leading-[1.45]`}>{tk.def.title}</span>
+                              <span className="min-w-0 flex-[1_1_16rem] leading-[1.45] text-ink">{tk.def.title}</span>
                               {tk.def.service ? <Tipped text={SERVICE_HELP}><span className="tag" title="Serviço">{tk.def.service}</span></Tipped> : null}
                               <span className="ml-auto inline-flex items-center gap-[0.4rem] text-[0.8125rem] whitespace-nowrap text-ink-soft max-md:ml-0 max-md:whitespace-normal [&_.tag]:m-0">
                                 {tk.attempts > 0 ? `${tk.attempts} ${tk.attempts === 1 ? 'tentativa' : 'tentativas'}` : null}
