@@ -24,6 +24,12 @@ describe('LoginControls', () => {
     expect(screen.getByText('O login demorou demais. Tente novamente.')).toBeTruthy();
   });
 
+  it('shows Copiado! beside the code once it is copied', () => {
+    render(<LoginControls state={{ name: 'awaiting-browser', url: 'https://github.com/login/device', code: 'A1EB-D4E0' }} code="" onCode={noop} onStart={noop} onSend={noop} onCancel={noop} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Copiar código' }));
+    expect(screen.getByText('Copiado!')).toBeTruthy();
+  });
+
   it('offers Reconectar to the Claude login once it is connected, and starts a new login from it', async () => {
     const login = vi.spyOn(api, 'login').mockResolvedValue({ state: { name: 'starting' } });
     class FakeEventSource { addEventListener() {} close() {} onerror = null; }
