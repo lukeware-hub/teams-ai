@@ -73,4 +73,37 @@ describe('Onboarding GitHub flow', () => {
     await screen.findByTestId('card-Chave do OpenRouter (Jev)');
     await waitFor(() => expect(screen.queryByText('Tudo pronto para começar')).toBeNull());
   });
+
+  it('plays the completion marks once when setup finishes during the visit', async () => {
+    let loggedIn = false;
+    vi.spyOn(api, 'status').mockImplementation(() => Promise.resolve({
+      items: {
+        ghLogin: item(loggedIn, loggedIn ? 'diego' : 'gh is not logged in'),
+        githubOwner: item(true, 'acme (Organization)'),
+        githubToken: item(true, 'ok'),
+        claude: item(true, 'ok'),
+        openrouterKey: item(true, 'ok'),
+      },
+      allOk: loggedIn,
+    }));
+    vi.spyOn(api, 'login').mockImplementation(async () => {
+      loggedIn = true;
+      return { state: { name: 'done', detail: 'diego' } };
+    });
+    vi.spyOn(api, 'organizations').mockResolvedValue({ organizations: [], owner: 'acme' });
+    const { container } = render(<MemoryRouter><Onboarding /></MemoryRouter>);
+    const githubCard = await screen.findByTestId('card-Login do GitHub CLI');
+    fireEvent.click(within(githubCard).getByRole('button', { name: 'Entrar' }));
+    await screen.findByText('Tudo pronto para começar');
+    expect(container.querySelectorAll('.confetti i')).toHaveLength(5);
+  });
+
+  it('plays no completion marks when setup is already complete on load', async () => {
+    const ready: Status = { items: { ...status(true, true).items, githubToken: item(true, 'ok'), claude: item(true, 'ok'), openrouterKey: item(true, 'ok') }, allOk: true };
+    vi.spyOn(api, 'status').mockResolvedValue(ready);
+    vi.spyOn(api, 'organizations').mockResolvedValue({ organizations: [], owner: 'acme' });
+    const { container } = render(<MemoryRouter><Onboarding /></MemoryRouter>);
+    await screen.findByText('Tudo pronto para começar');
+    expect(container.querySelector('.confetti')).toBeNull();
+  });
 });

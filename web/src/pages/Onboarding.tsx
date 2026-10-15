@@ -14,12 +14,17 @@ export function Onboarding({ compact = false }: { compact?: boolean }) {
   const focusOpenrouter = useSearchParams()[0].get('item') === 'openrouter'; // deep link from the refine page
   const [step, setStep] = useState(focusOpenrouter ? STEP_ITEMS.indexOf('openrouterKey') : 0);
   const [status, setStatus] = useState<Status | null>(null);
+  const [sawIncomplete, setSawIncomplete] = useState(false);
   const [organizations, setOrganizations] = useState<string[]>([]);
   const [organizationOwner, setOrganizationOwner] = useState<string | null>(null);
   const [organizationsLoading, setOrganizationsLoading] = useState(false);
   const [organizationsError, setOrganizationsError] = useState<string | null>(null);
   const refresh = useCallback(() => void api.status().then(setStatus), []);
   useEffect(refresh, [refresh]);
+  // The celebration plays only when this visit saw the setup unfinished.
+  useEffect(() => {
+    if (status && !status.allOk) setSawIncomplete(true);
+  }, [status]);
   const item = (n: ItemName): Item | null => status?.items[n] ?? null;
   const patch = (n: ItemName) => (it: Item) => setStatus((s) => (s ? { ...s, items: { ...s.items, [n]: it }, allOk: Object.values({ ...s.items, [n]: it }).every((v) => v.ok) } : s));
   const githubLoggedIn = status?.items.ghLogin.ok === true;
@@ -62,7 +67,7 @@ export function Onboarding({ compact = false }: { compact?: boolean }) {
       default: return (
         // Completion screen: the flow's one gradient object.
         <section className="edge-lit grid grid-cols-[minmax(0,1fr)_minmax(16rem,0.8fr)] items-center justify-items-start gap-x-10 gap-y-3 rounded-2xl border border-good-line bg-surface p-10 shadow-card @max-2xl:grid-cols-[minmax(0,1fr)] @max-2xl:rounded-xl @max-2xl:p-6" aria-labelledby="welcome-title">
-          <span className="relative grid size-14 place-items-center rounded-tile bg-good-soft text-good" aria-hidden="true"><Icon name="check" size={28} /><span className="confetti"><i /><i /><i /><i /><i /></span></span>
+          <span className="relative grid size-14 place-items-center rounded-tile bg-good-soft text-good" aria-hidden="true"><Icon name="check" size={28} />{sawIncomplete ? <span className="confetti"><i /><i /><i /><i /><i /></span> : null}</span>
           <p className="m-0 inline-flex items-center gap-1.5 rounded-full bg-good-soft px-[0.65rem] py-[0.2rem] text-[0.8125rem] font-semibold text-good before:size-[0.45rem] before:rounded-full before:bg-current before:content-['']">Configuração concluída</p>
           <h2 id="welcome-title" className="mx-0 mt-1 mb-0 text-[1.75rem] leading-[1.2] tracking-[-0.025em]">Tudo pronto para começar</h2>
           <p className="m-0 max-w-[60ch] text-[0.9375rem] leading-[1.55] text-ink-soft">O Teams AI está conectado às suas ferramentas e pronto para ajudar a organizar projetos, executar tarefas e acompanhar o trabalho da equipe. Para começar, abra Projetos e use Nova spec ou Novo projeto.</p>
