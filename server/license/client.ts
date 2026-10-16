@@ -1,5 +1,18 @@
-import { createHash } from 'node:crypto';
+import { constants, createHash, createPublicKey, publicEncrypt, type KeyObject } from 'node:crypto';
 import type { Machine } from './machine.js';
+
+const TEAMS_AI_KEY = 'db637c07c007dabb74e2b92b412cc8b0177a16175edf5bb331011a7c4bfd41f1';
+
+export const LICENSE_CLIENT_PUBLIC_KEY = createPublicKey({
+  key: Buffer.from('MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAkWctfoz2Ix3RqgPru/GK8zCjsLiO/3n8eXnaNmv58o6LXHrLswSnsu8Pwh6nz8UFfsOKElkRVEbfgprXeyDmx0GKI7QmUlGjHwebFsTUZbwiEn6spNusxnHAIhJbzWbHEswqmGqeV4xj7jyn1OXq6iILhnZqmNRuyDsSLg4zcWMCPYmPFyFePUYv48eeApYy8OB2aAf8BCVWgOsjdDfi8pT85uB9uQDOvaih18gVxM7+a9X3LpVCOP5TawkTqAClyCShQcSw5cj/eBx+QUloLf+bzuRAUB+sELJ6tWuWks6dASDwF0lYFytNn6y6aowsV1IwHaOkhURSpWBZ5BlJlwIDAQAB', 'base64'),
+  format: 'der',
+  type: 'spki',
+});
+
+export function clientHeader(now = Date.now(), key: KeyObject = LICENSE_CLIENT_PUBLIC_KEY): string {
+  const plain = Buffer.from(JSON.stringify({ k: TEAMS_AI_KEY, t: Math.floor(now / 1000) }));
+  return publicEncrypt({ key, padding: constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' }, plain).toString('base64');
+}
 
 export function hashLicenseKey(key: string): string {
   return createHash('sha256').update(key.trim()).digest('hex');
@@ -25,7 +38,7 @@ function endpoint(base: string, path: string): string {
 async function post(fetchImpl: typeof fetch, url: string, body: unknown): Promise<Response> {
   return fetchImpl(url, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-teams-ai-key': clientHeader() },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(8_000),
   });

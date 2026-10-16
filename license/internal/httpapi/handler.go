@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"crypto/rsa"
 	"encoding/json"
 	"io"
 	"net"
@@ -16,11 +17,13 @@ import (
 )
 
 type Deps struct {
-	Licenses *license.Service
-	Secret   []byte
-	Login    func(ctx context.Context, email, password string) (string, error)
-	Static   http.Handler
-	Now      func() time.Time
+	Licenses      *license.Service
+	Secret        []byte
+	Login         func(ctx context.Context, email, password string) (string, error)
+	Static        http.Handler
+	Now           func() time.Time
+	ClientKey     *rsa.PrivateKey
+	ClientKeyHash string
 }
 
 type limiter struct {
@@ -104,13 +107,25 @@ func Handler(deps Deps) http.Handler {
 	if deps.Now == nil {
 		deps.Now = time.Now
 	}
+	if deps.ClientKeyHash == "" {
+		deps.ClientKeyHash = TeamsAIKeyHash
+	}
 	limit := newLimiter(deps.Now)
+	client := func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if !clientOK(deps.ClientKey, deps.ClientKeyHash, r.Header.Get("X-Teams-AI-Key"), deps.Now()) {
+				writeError(w, http.StatusUnauthorized, "unauthorized client")
+				return
+			}
+			next(w, r)
+		}
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
-	mux.HandleFunc("POST /api/v1/activate", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/v1/activate", client(func(w http.ResponseWriter, r *http.Request) {
 		if !limit.allow(remote(r)) {
 			writeError(w, http.StatusTooManyRequests, "too many requests")
 			return
@@ -128,8 +143,8 @@ func Handler(deps Deps) http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"codeHash": code, "token": token})
-	})
-	mux.HandleFunc("POST /api/v1/authorize", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("POST /api/v1/authorize", client(func(w http.ResponseWriter, r *http.Request) {
 		if !limit.allow(remote(r)) {
 			writeError(w, http.StatusTooManyRequests, "too many requests")
 			return
@@ -154,7 +169,7 @@ func Handler(deps Deps) http.Handler {
 			"authorized": false, "reason": decision.Reason,
 			"contactEmail": decision.ContactEmail, "contactPhone": decision.ContactPhone,
 		})
-	})
+	}))
 	mux.HandleFunc("POST /api/admin/login", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Email    string `json:"email"`

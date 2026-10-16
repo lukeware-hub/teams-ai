@@ -47,6 +47,10 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	clientKey, err := box.ParseClientKey(os.Getenv("LICENSE_CLIENT_PRIVATE_KEY"))
+	if err != nil {
+		return err
+	}
 	secret := []byte(os.Getenv("JWT_SECRET"))
 	if len(secret) < 16 {
 		return errors.New("JWT_SECRET must be at least 16 characters")
@@ -71,7 +75,7 @@ func run(ctx context.Context) error {
 	}
 	server := &http.Server{
 		Addr:              ":" + env("PORT", "8080"),
-		Handler:           httpapi.Handler(httpapi.Deps{Licenses: svc, Secret: secret, Login: login(db, secret), Static: http.FileServer(http.FS(sub))}),
+		Handler:           httpapi.Handler(httpapi.Deps{Licenses: svc, Secret: secret, Login: login(db, secret), Static: http.FileServer(http.FS(sub)), ClientKey: clientKey}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	errc := make(chan error, 1)

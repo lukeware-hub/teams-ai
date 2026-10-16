@@ -30,12 +30,14 @@ let foreign = false;
 let boundElsewhere = false;
 let changes = 0;
 const seen: unknown[] = [];
+const headers: string[] = [];
 
 beforeEach(async () => {
   home = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-license-'));
   await fs.mkdir(path.join(home, '.teams-ai', 'secrets'), { recursive: true });
   await fs.writeFile(path.join(home, '.teams-ai', 'config.json'), '{}\n');
   seen.length = 0;
+  headers.length = 0;
   changes = 0;
   foreign = false;
   boundElsewhere = false;
@@ -46,6 +48,7 @@ beforeEach(async () => {
     req.on('end', () => {
       const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') as { fingerprint?: string; machine?: { fingerprint?: string } };
       seen.push(parsed);
+      headers.push(String(req.headers['x-teams-ai-key'] ?? ''));
       const fingerprint = foreign ? 'f'.repeat(64) : parsed.machine?.fingerprint ?? parsed.fingerprint ?? '';
       if (req.url === '/api/v1/activate' && boundElsewhere) {
         res.writeHead(409, { 'content-type': 'application/json' });
@@ -83,6 +86,7 @@ describe('license routes', () => {
     expect(await activated.json()).toEqual({ state: 'authorized' });
     expect(seen[0]).toMatchObject({ keyHash: createHash('sha256').update(KEY).digest('hex'), machine: { fingerprint: expect.stringMatching(/^[0-9a-f]{64}$/), hostname: expect.any(String) } });
     expect(JSON.stringify(seen)).not.toContain(KEY);
+    expect(Buffer.from(headers[0]!, 'base64')).toHaveLength(256);
     const codeFile = licenseCodeFile(home);
     expect((await fs.readFile(codeFile, 'utf8')).trim()).toBe(CODE);
     expect(verifyLicenseToken((await fs.readFile(licenseTokenFile(home), 'utf8')).trim(), (await readMachine(home)).fingerprint, Date.now(), publicKey)).toBe(true);

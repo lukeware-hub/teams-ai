@@ -5,7 +5,9 @@ import (
 	"crypto/cipher"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -39,6 +41,19 @@ func ParseSigningKey(encoded string) (ed25519.PrivateKey, error) {
 		return nil, errors.New("LICENSE_SIGNING_KEY must be a 32-byte Ed25519 seed encoded as hex")
 	}
 	return ed25519.NewKeyFromSeed(seed), nil
+}
+
+func ParseClientKey(encoded string) (*rsa.PrivateKey, error) {
+	der, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, errors.New("LICENSE_CLIENT_PRIVATE_KEY must be a PKCS#8 RSA key encoded as base64")
+	}
+	key, err := x509.ParsePKCS8PrivateKey(der)
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	if err != nil || !ok {
+		return nil, errors.New("LICENSE_CLIENT_PRIVATE_KEY must be a PKCS#8 RSA key encoded as base64")
+	}
+	return rsaKey, nil
 }
 
 func Encrypt(key []byte, plain string) (string, error) {
