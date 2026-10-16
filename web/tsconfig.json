@@ -9,7 +9,6 @@
     "noEmit": true,
     "skipLibCheck": true,
     "types": ["vite/client"],
-    "baseUrl": ".",
     "paths": { "@server/*": ["../server/*"] },
     "allowImportingTsExtensions": false
   },

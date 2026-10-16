@@ -975,8 +975,8 @@ That is a structural change from the current build, which renders all five items
 | # | Screen | Item | Gate |
 |---|---|---|---|
 | 1 | GitHub CLI | `ghLogin` | — |
-| 2 | Organização do GitHub | `githubOwner` | step 1 done |
-| 3 | Token do GitHub | `githubToken` | step 2 done |
+| 2 | Token do GitHub | `githubToken` | step 1 done |
+| 3 | Organização do GitHub | `githubOwner` | step 2 done |
 | 4 | Claude | `claude` | — |
 | 5 | Chave do OpenRouter | `openrouterKey` | — |
 | 6 | Tudo pronto | — | steps 1–5 done |

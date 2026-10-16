@@ -7,7 +7,7 @@ import { LoginCard } from '../components/LoginCard.js';
 import { OwnerCard } from '../components/OwnerCard.js';
 import { SecretCard } from '../components/SecretCard.js';
 
-const STEP_ITEMS: readonly ItemName[] = ['ghLogin', 'githubOwner', 'githubToken', 'claude', 'openrouterKey'];
+const STEP_ITEMS: readonly ItemName[] = ['ghLogin', 'githubToken', 'githubOwner', 'claude', 'openrouterKey'];
 
 export function Onboarding({ compact = false }: { compact?: boolean }) {
   const totalSteps = 6;
@@ -60,8 +60,8 @@ export function Onboarding({ compact = false }: { compact?: boolean }) {
   const stepContent = () => {
     switch (step) {
       case 0: return <LoginCard cli="gh" title="Login do GitHub CLI" item={item('ghLogin')} onDone={refresh} />;
-      case 1: return <OwnerCard organizations={organizations} initialOwner={organizationOwner} loading={organizationsLoading} loadError={organizationsError} item={item('githubOwner')} onSaved={patch('githubOwner')} />;
-      case 2: return <SecretCard name="GITHUB_TOKEN" title="Token do GitHub" item={item('githubToken')} onSaved={patch('githubToken')} />;
+      case 1: return <SecretCard name="GITHUB_TOKEN" title="Token do GitHub" item={item('githubToken')} onSaved={patch('githubToken')} />;
+      case 2: return <OwnerCard organizations={organizations} initialOwner={organizationOwner} loading={organizationsLoading} loadError={organizationsError} item={item('githubOwner')} onSaved={patch('githubOwner')} />;
       case 3: return <LoginCard cli="claude" title="Login do Claude" item={item('claude')} onDone={refresh} />;
       case 4: return <SecretCard name="OPENROUTER_API_KEY" title="Chave do OpenRouter (Jev)" item={item('openrouterKey')} onSaved={patch('openrouterKey')} />;
       default: return (

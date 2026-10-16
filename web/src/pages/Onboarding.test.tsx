@@ -17,13 +17,24 @@ const status = (ghLogin: boolean, owner: boolean): Status => ({
 });
 
 describe('Onboarding GitHub flow', () => {
-  it('logs in first, loads organizations, validates the selection, then reveals the token', async () => {
+  it('logs in first, saves the token, then validates the organization', async () => {
     let loggedIn = false;
+    let tokenSaved = false;
     let ownerSaved = false;
-    vi.spyOn(api, 'status').mockImplementation(() => Promise.resolve(status(loggedIn, ownerSaved)));
+    vi.spyOn(api, 'status').mockImplementation(() => Promise.resolve({
+      items: {
+        ...status(loggedIn, ownerSaved).items,
+        githubToken: item(tokenSaved, tokenSaved ? 'diego · scopes: repo, workflow' : 'GITHUB_TOKEN not set'),
+      },
+      allOk: false,
+    }));
     vi.spyOn(api, 'login').mockImplementation(async () => {
       loggedIn = true;
       return { state: { name: 'done', detail: 'diego' } };
+    });
+    vi.spyOn(api, 'secret').mockImplementation(async () => {
+      tokenSaved = true;
+      return { item: item(true, 'diego · scopes: repo, workflow') };
     });
     vi.spyOn(api, 'organizations').mockResolvedValue({ organizations: ['acme', 'platform'], owner: null });
     vi.spyOn(api, 'owner').mockImplementation(async (owner) => {
@@ -37,6 +48,15 @@ describe('Onboarding GitHub flow', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Próximo' }).hasAttribute('disabled')).toBe(false));
     fireEvent.click(screen.getByRole('button', { name: 'Próximo' }));
 
+    const tokenCard = await screen.findByTestId('card-Token do GitHub');
+    const tokenLink = within(tokenCard).getByRole('link', { name: /Criar o token/ });
+    expect(tokenLink.getAttribute('href')).toContain('scopes=repo,workflow');
+    fireEvent.change(within(tokenCard).getByLabelText('Cole o token de acesso'), { target: { value: 'ghp_test' } });
+    fireEvent.click(within(tokenCard).getByRole('button', { name: 'Salvar e verificar' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Próximo' }).hasAttribute('disabled')).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'Próximo' }));
+
     const ownerCard = await screen.findByTestId('card-Organização do GitHub');
     const select = within(ownerCard).getByRole('combobox', { name: 'Organização do GitHub' });
     await waitFor(() => expect(within(select).getByRole('option', { name: 'acme' })).toBeTruthy());
@@ -44,10 +64,6 @@ describe('Onboarding GitHub flow', () => {
     fireEvent.click(within(ownerCard).getByRole('button', { name: 'Salvar e verificar' }));
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Próximo' }).hasAttribute('disabled')).toBe(false));
-    fireEvent.click(screen.getByRole('button', { name: 'Próximo' }));
-    await waitFor(() => expect(screen.getByTestId('card-Token do GitHub')).toBeTruthy());
-    const tokenLink = screen.getByRole('link', { name: /Criar o token/ });
-    expect(tokenLink.getAttribute('href')).toContain('scopes=repo,workflow');
     expect(api.owner).toHaveBeenCalledWith('acme');
   });
 
