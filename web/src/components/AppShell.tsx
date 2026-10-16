@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef } from 'react';
+import { createContext, type ReactNode, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { AppFooter } from './AppFooter.js';
 import { Icon, type IconName } from './Icons.js';
@@ -46,11 +46,22 @@ function Rail({ active }: { active: (typeof NAV)[number] | undefined }) {
   );
 }
 
+const SetRail = createContext<(shown: boolean) => void>(() => {});
+
+export function useHideRail() {
+  const setShown = useContext(SetRail);
+  useLayoutEffect(() => {
+    setShown(false);
+    return () => setShown(true);
+  }, [setShown]);
+}
+
 // The app fills the window height; an empty column as wide as the rail mirrors it, so the content is always exactly centered and scrolls inside.
 export function AppShell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const active = NAV.find((item) => item.paths.some((p) => pathname.startsWith(p)));
   const content = useRef<HTMLDivElement>(null);
+  const [rail, setRail] = useState(true);
   useEffect(() => {
     document.title = active ? `${active.label} · Teams AI` : 'Teams AI';
   }, [active]);
@@ -60,22 +71,22 @@ export function AppShell({ children }: { children: ReactNode }) {
     content.current?.focus({ preventScroll: true });
   }, [pathname]);
   return (
-    <>
+    <SetRail.Provider value={setRail}>
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-tile focus:bg-surface focus:px-4 focus:py-2 focus:text-ink focus:shadow-pop"
       >
         Pular para o conteúdo
       </a>
-      <div className="grid h-dvh grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto] mx-auto max-w-[110rem] md:grid-cols-[4.5rem_minmax(0,1fr)_4.5rem] md:grid-rows-1 md:gap-4 md:p-4">
-        <Rail active={active} />
-        <div className="flex min-h-0 min-w-0 flex-col">
-          <div id="main" ref={content} tabIndex={-1} className="min-h-0 flex-1 overflow-y-auto focus:outline-none">
+      <div className="flex h-dvh flex-col">
+        <div className={`mx-auto flex min-h-0 w-full max-w-[110rem] flex-1 flex-col max-md:contents ${rail ? 'md:grid md:grid-cols-[4.5rem_minmax(0,1fr)_4.5rem] md:gap-4 md:px-4 md:pt-4' : 'md:px-4 md:pt-4'}`}>
+          {rail ? <Rail active={active} /> : null}
+          <div id="main" ref={content} tabIndex={-1} className="min-h-0 w-full flex-1 overflow-y-auto focus:outline-none max-md:order-1">
             {children}
           </div>
-          <AppFooter />
         </div>
+        <AppFooter />
       </div>
-    </>
+    </SetRail.Provider>
   );
 }

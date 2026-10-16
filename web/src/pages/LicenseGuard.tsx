@@ -1,8 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { api, type LicenseView } from '../api.js';
+import { useHideRail } from '../components/AppShell.js';
+import { Icon } from '../components/Icons.js';
 import { LicenseCard } from '../components/LicenseCard.js';
 import { Loading } from '../components/Loading.js';
 import { Onboarding } from './Onboarding.js';
+
+const contactLink = 'rounded-sm text-ink-soft no-underline underline-offset-2 transition-colors hover:text-accent-text hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent';
 
 export function LicenseGuard({ children }: { children: ReactNode }) {
   const [view, setView] = useState<LicenseView | null>(null);
@@ -33,13 +37,21 @@ export function LicenseGuard({ children }: { children: ReactNode }) {
 }
 
 export function LicenseRevoked({ email, phone }: { email: string; phone: string }) {
+  useHideRail();
   return (
-    <main className="mx-auto w-full max-w-xl">
-      <section className="card grid gap-3">
-        <h1>Acesso desativado</h1>
-        <p className="m-0 text-ink-soft">Seu acesso foi desativado. Entre em contato com a administração da Lukeware por e-mail ou telefone para solicitar a reativação.</p>
-        {email ? <a href={`mailto:${email}`}>{email}</a> : null}
-        {phone ? <a href={`tel:${phone.replace(/\s/g, '')}`}>{phone}</a> : null}
+    <main className="min-h-full place-content-center">
+      <section className="card grid w-full max-w-md justify-items-center gap-3 justify-self-center text-center">
+        <span className="confirm-icon mb-0" aria-hidden="true">
+          <Icon name="lock" size={22} />
+        </span>
+        <h1 className="m-0 text-[1.125rem] leading-[1.3] font-[650] tracking-[-0.01em] text-balance text-ink">Acesso desativado</h1>
+        <p className="m-0 max-w-[42ch] text-[0.875rem] leading-[1.55] text-balance text-ink-soft">Seu acesso foi desativado. Entre em contato com a administração da Lukeware por e-mail ou telefone para solicitar a reativação.</p>
+        {email || phone ? (
+          <div className="grid gap-1">
+            {email ? <a className={contactLink} href={`mailto:${email}`}>{email}</a> : null}
+            {phone ? <a className={contactLink} href={`tel:${phone.replace(/\s/g, '')}`}>{phone}</a> : null}
+          </div>
+        ) : null}
       </section>
     </main>
   );
@@ -51,9 +63,9 @@ export function LicenseUnavailable({ onRetry, onRegister }: { onRetry: () => voi
       <section className="card grid gap-3">
         <h1>Licença indisponível</h1>
         <p className="m-0 text-ink-soft">Não foi possível confirmar sua licença. O Teams AI volta a funcionar quando o serviço de licenças responder.</p>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" className="primary-button w-fit" onClick={onRetry}>Tentar de novo</button>
-          <button type="button" className="primary-button w-fit" onClick={onRegister}>Registrar licença</button>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <button type="button" className="primary-button w-full" onClick={onRetry}>Tentar de novo</button>
+          <button type="button" className="secondary w-full" onClick={onRegister}>Registrar licença</button>
         </div>
       </section>
     </main>

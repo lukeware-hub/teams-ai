@@ -43,6 +43,7 @@ describe('AppShell', () => {
     expect(within(footer).getByRole('link', { name: '(19) 99714-3026' }).getAttribute('href')).toBe('tel:+5519997143026');
     expect(within(footer).getByText(/Todos os direitos autorais reservados/)).toBeTruthy();
     expect(within(footer).getByText(/licença privada/)).toBeTruthy();
+    expect(document.getElementById('main')?.contains(footer)).toBe(false);
   });
 
   it('keeps the footer on every shell route', () => {

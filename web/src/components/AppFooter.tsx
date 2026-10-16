@@ -1,7 +1,7 @@
 export function AppFooter() {
   const year = new Date().getFullYear();
   return (
-    <footer className="shrink-0 border-t border-line bg-surface/80 px-[clamp(1rem,3vw,2rem)] py-4 backdrop-blur-sm">
+    <footer className="w-full shrink-0 border-t border-line bg-surface/80 px-[clamp(1rem,3vw,2rem)] py-4 backdrop-blur-sm max-md:order-2">
       <div className="mx-auto flex max-w-[28rem] flex-col items-center gap-2 text-center">
         <img className="app-footer-logo app-footer-logo--light h-7 w-auto" src="/lukeware-lockup-light.png" alt="Lukeware" height={28} />
         <img className="app-footer-logo app-footer-logo--dark h-7 w-auto" src="/lukeware-lockup-dark.png" alt="" height={28} aria-hidden="true" />

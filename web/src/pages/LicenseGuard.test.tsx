@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, type Item, type Status } from '../api.js';
+import { AppShell } from '../components/AppShell.js';
 import { LicenseGuard } from './LicenseGuard.js';
 
 const item = (ok: boolean, detail: string): Item => ({ ok, detail });
@@ -51,6 +52,22 @@ describe('license gate', () => {
     expect(screen.getByRole('link', { name: 'admin@lukeware.com' }).getAttribute('href')).toBe('mailto:admin@lukeware.com');
     expect(screen.getByRole('link', { name: '+55 11 0000-0000' }).getAttribute('href')).toBe('tel:+55110000-0000');
     expect(screen.queryByText('app aberto')).toBeNull();
+  });
+
+  it('hides the rail when access is turned off and keeps the footer outside the content', async () => {
+    vi.spyOn(api, 'license').mockResolvedValue({ state: 'revoked', contactEmail: 'admin@lukeware.com', contactPhone: '+55 11 0000-0000' });
+    render(
+      <MemoryRouter>
+        <AppShell>
+          <LicenseGuard>
+            <p>app aberto</p>
+          </LicenseGuard>
+        </AppShell>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole('heading', { name: 'Acesso desativado' })).toBeTruthy();
+    expect(screen.queryByRole('navigation', { name: 'Navegação principal' })).toBeNull();
+    expect(document.getElementById('main')?.contains(screen.getByRole('contentinfo'))).toBe(false);
   });
 
   it('blocks the app while the license service does not answer and retries', async () => {
