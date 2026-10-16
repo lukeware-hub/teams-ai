@@ -51,8 +51,9 @@ export async function authorizeLicense(serviceUrl: string, code: string, fetchIm
   try {
     const res = await post(fetchImpl, endpoint(serviceUrl, '/api/v1/authorize'), { codeHash: code });
     if (!res.ok) return { state: 'unavailable' };
-    const body = (await res.json().catch(() => ({}))) as { authorized?: boolean; contactEmail?: string; contactPhone?: string };
+    const body = (await res.json().catch(() => ({}))) as { authorized?: boolean; reason?: string; contactEmail?: string; contactPhone?: string };
     if (body.authorized) return { state: 'authorized' };
+    if (body.reason === 'unknown') return { state: 'missing' };
     return { state: 'revoked', contactEmail: body.contactEmail ?? '', contactPhone: body.contactPhone ?? '' };
   } catch {
     return { state: 'unavailable' };

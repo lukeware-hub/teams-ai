@@ -19,6 +19,14 @@ export async function readLicenseCode(home?: string): Promise<string | null> {
   }
 }
 
+export async function clearLicenseCode(home?: string): Promise<void> {
+  try {
+    await fs.unlink(licenseCodeFile(home));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  }
+}
+
 export async function writeLicenseCode(code: string, home?: string): Promise<void> {
   const trimmed = code.trim();
   if (!CODE.test(trimmed)) throw new RangeError('license code must be 64 hex characters');

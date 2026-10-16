@@ -1,6 +1,6 @@
 import { HttpError, type Route } from './server.js';
 import { activateLicense, authorizeLicense, LicenseError } from '../license/client.js';
-import { readLicenseCode, writeLicenseCode } from '../license/vault.js';
+import { clearLicenseCode, readLicenseCode, writeLicenseCode } from '../license/vault.js';
 
 export interface LicenseDeps {
   home?: string;
@@ -20,7 +20,9 @@ export function licenseRoutes(deps: LicenseDeps): Route[] {
           json(200, { state: 'missing' });
           return;
         }
-        json(200, await authorizeLicense(deps.serviceUrl, code, fetchImpl));
+        const view = await authorizeLicense(deps.serviceUrl, code, fetchImpl);
+        if (view.state === 'missing') await clearLicenseCode(deps.home);
+        json(200, view);
       },
     },
     {

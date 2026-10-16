@@ -74,6 +74,8 @@ a { color: var(--accent-text); text-underline-offset: 3px; }
 .btn-primary:hover:enabled { background: var(--gradient-primary-hover); }
 .btn-secondary { color: var(--ink); background: transparent; border-color: var(--line-strong); }
 .btn-secondary:hover:enabled { background: var(--surface-sunken); }
+.btn-danger { color: var(--bad); background: transparent; border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
+.btn-danger:hover:enabled { background: var(--bad-soft); }
 .chip { display: inline-flex; align-items: center; border-radius: 999px; padding: 0.15rem 0.6rem; font-size: 0.75rem; font-weight: 650; background: var(--surface-muted); color: var(--ink-soft); }
 .chip-active { background: var(--good-soft); color: var(--good); }
 .chip-pending { background: var(--warn-soft); color: var(--warn); }

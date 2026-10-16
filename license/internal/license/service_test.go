@@ -112,6 +112,32 @@ func TestSchedulerExpiresAndEnableNeedsAFutureDate(t *testing.T) {
 	}
 }
 
+func TestDeleteRemovesTheLicense(t *testing.T) {
+	svc, _ := testService(t)
+	ctx := context.Background()
+	created, key, err := svc.Create(ctx, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, err := svc.Activate(ctx, box.Hash(key))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Delete(ctx, created.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := svc.Reveal(ctx, created.ID); err != ErrNotFound {
+		t.Fatalf("reveal = %v", err)
+	}
+	decision, err := svc.Authorize(ctx, code)
+	if err != nil || decision.Authorized || decision.Reason != "unknown" {
+		t.Fatalf("authorize = %+v %v", decision, err)
+	}
+	if err := svc.Delete(ctx, created.ID); err != ErrNotFound {
+		t.Fatalf("second delete = %v", err)
+	}
+}
+
 func TestDeniedAuthorizationIncludesContact(t *testing.T) {
 	svc, _ := testService(t)
 	ctx := context.Background()

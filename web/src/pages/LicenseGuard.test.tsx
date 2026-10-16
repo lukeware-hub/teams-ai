@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, type Item, type Status } from '../api.js';
@@ -17,7 +17,10 @@ const status = (): Status => ({
   allOk: false,
 });
 
-beforeEach(() => vi.restoreAllMocks());
+beforeEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 function renderGuard() {
   return render(
@@ -102,9 +105,50 @@ describe('license gate', () => {
     expect(screen.queryByText(message)).toBeNull();
   });
 
+  it('asks the license service again while a screen stays open', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const license = vi.spyOn(api, 'license')
+      .mockResolvedValueOnce({ state: 'authorized' })
+      .mockResolvedValueOnce({ state: 'revoked', contactEmail: 'admin@lukeware.com', contactPhone: '+55 11 0000-0000' });
+    renderGuard();
+    expect(await screen.findByText('app aberto')).toBeTruthy();
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+    expect(await screen.findByRole('heading', { name: 'Acesso desativado' })).toBeTruthy();
+    expect(license).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
   it('opens the app when the license is authorized', async () => {
     vi.spyOn(api, 'license').mockResolvedValue({ state: 'authorized' });
     renderGuard();
     expect(await screen.findByText('app aberto')).toBeTruthy();
+  });
+
+  it('asks for a new key on the open screen when the license no longer exists', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const license = vi.spyOn(api, 'license')
+      .mockResolvedValueOnce({ state: 'authorized' })
+      .mockResolvedValue({ state: 'missing' });
+    vi.spyOn(api, 'status').mockResolvedValue(status());
+    renderGuard();
+    expect(await screen.findByText('app aberto')).toBeTruthy();
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(license).toHaveBeenCalledTimes(2);
+    expect(await screen.findByLabelText('Cole a chave de licença')).toBeTruthy();
+    expect(screen.queryByText('app aberto')).toBeNull();
+    vi.useRealTimers();
+  });
+
+  it('asks again when the open screen becomes visible', async () => {
+    const license = vi.spyOn(api, 'license')
+      .mockResolvedValueOnce({ state: 'authorized' })
+      .mockResolvedValue({ state: 'missing' });
+    vi.spyOn(api, 'status').mockResolvedValue(status());
+    renderGuard();
+    expect(await screen.findByText('app aberto')).toBeTruthy();
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(await screen.findByLabelText('Cole a chave de licença')).toBeTruthy();
+    expect(license.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText('app aberto')).toBeNull();
   });
 });

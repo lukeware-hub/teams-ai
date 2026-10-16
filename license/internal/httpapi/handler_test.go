@@ -71,6 +71,25 @@ func TestAdminRoutesRequireJWT(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("list status = %d", rec.Code)
 	}
+
+	created, _, err := svc.Create(context.Background(), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleted := httptest.NewRequest(http.MethodDelete, "/api/admin/licenses/"+created.ID, nil)
+	deleted.Header.Set("Authorization", "Bearer "+token.Token)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, deleted)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	missing := httptest.NewRequest(http.MethodGet, "/api/admin/licenses/"+created.ID, nil)
+	missing.Header.Set("Authorization", "Bearer "+token.Token)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, missing)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("get status = %d", rec.Code)
+	}
 }
 
 func errOr(err error) error {

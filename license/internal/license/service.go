@@ -254,6 +254,14 @@ func (s *Service) Update(ctx context.Context, id string, in Update) (store.Licen
 	return lic, nil
 }
 
+func (s *Service) Delete(ctx context.Context, id string) error {
+	err := s.store.DeleteLicense(ctx, id)
+	if errors.Is(err, store.ErrNotFound) {
+		return ErrNotFound
+	}
+	return err
+}
+
 func (s *Service) ExpireDue(ctx context.Context) error {
 	return s.store.ExpireDue(ctx, s.now())
 }

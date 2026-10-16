@@ -46,6 +46,7 @@ type Store interface {
 	FindLicenseByCodeHash(ctx context.Context, hash string) (License, error)
 	ListLicenses(ctx context.Context) ([]License, error)
 	UpdateLicense(ctx context.Context, lic License) error
+	DeleteLicense(ctx context.Context, id string) error
 	ActivatePending(ctx context.Context, keyHash, codeHash string, activatedAt time.Time, expiresAt *time.Time) (License, error)
 	ExpireDue(ctx context.Context, now time.Time) error
 	GetSettings(ctx context.Context) (Settings, error)

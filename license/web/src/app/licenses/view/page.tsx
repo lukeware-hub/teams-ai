@@ -1,18 +1,21 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Frame, ValidityChoice } from '@/components/Frame';
 import { api, statusClass, STATUS_LABEL, toRFC3339, when, type License } from '@/lib/api';
 
 function Detail() {
   const id = useSearchParams().get('id') ?? '';
+  const router = useRouter();
   const [license, setLicense] = useState<License | null>(null);
   const [mode, setMode] = useState<'none' | 'date' | 'days'>('none');
   const [date, setDate] = useState('');
   const [days, setDays] = useState('30');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const load = () => {
     if (!id) return;
     api<License>(`/api/admin/licenses/${id}`)
@@ -53,11 +56,23 @@ function Detail() {
     if (mode === 'date') return patch({ expiresAt: toRFC3339(date) }, 'Validade atualizada.');
     return patch({ validForDays: Number(days) }, 'Período atualizado.');
   };
+  const remove = async () => {
+    setError(null);
+    setNotice(null);
+    setDeleting(true);
+    try {
+      await api(`/api/admin/licenses/${id}`, { method: 'DELETE' });
+      router.replace('/licenses/');
+    } catch (err) {
+      setDeleting(false);
+      setError((err as Error).message);
+    }
+  };
   return (
     <Frame title="Licença">
       {!id ? <p className="error">Licença não informada.</p> : null}
       {license ? (
-        <section className="card grid max-w-3xl gap-4">
+        <section className="card mx-auto grid w-full max-w-xl gap-5">
           <div className="flex flex-wrap items-center gap-3">
             <span className={statusClass(license.status)}>{STATUS_LABEL[license.status]}</span>
             <span className="text-sm text-[var(--ink-soft)]">Criada em {when(license.createdAt)}</span>
@@ -72,6 +87,19 @@ function Detail() {
           </div>
           {notice ? <p className="m-0 text-[var(--good)]">{notice}</p> : null}
           {error ? <p className="error">{error}</p> : null}
+          <div className="grid gap-3 border-t border-[var(--line)] pt-4">
+            {confirmDelete ? (
+              <>
+                <p className="m-0 text-sm text-[var(--ink-soft)]">Excluir esta licença? Ela deixa de existir e o Teams AI pede uma chave nova.</p>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="btn btn-danger" onClick={() => void remove()} disabled={deleting}>Excluir</button>
+                  <button type="button" className="btn btn-secondary" onClick={() => setConfirmDelete(false)} disabled={deleting}>Cancelar</button>
+                </div>
+              </>
+            ) : (
+              <button type="button" className="btn btn-danger w-fit" onClick={() => setConfirmDelete(true)}>Excluir licença</button>
+            )}
+          </div>
         </section>
       ) : null}
     </Frame>

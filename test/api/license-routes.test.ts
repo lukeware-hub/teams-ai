@@ -15,7 +15,7 @@ let home = '';
 let api: { port: number; close(): Promise<void> };
 let service: http.Server;
 let serviceUrl = '';
-let authorize: { authorized: boolean } | { authorized: false; contactEmail: string; contactPhone: string } = { authorized: true };
+let authorize: { authorized: boolean; reason?: string; contactEmail?: string; contactPhone?: string } = { authorized: true };
 const seen: unknown[] = [];
 
 beforeEach(async () => {
@@ -70,6 +70,14 @@ describe('license routes', () => {
     expect(await fs.readdir(path.join(home, '.teams-ai', 'secrets'))).toEqual([]);
     expect((await post(`${base()}/api/license/activate`, { key: KEY })).status).toBe(409);
     expect((await (await fetch(`${base()}/api/license`)).json())).toEqual({ state: 'authorized' });
+  });
+
+  it('asks for a new key when the license no longer exists', async () => {
+    authorize = { authorized: false, reason: 'unknown', contactEmail: 'admin@lukeware.com', contactPhone: '+55 11 0000-0000' };
+    await writeLicenseCode(CODE, home);
+    expect(await (await fetch(`${base()}/api/license`)).json()).toEqual({ state: 'missing' });
+    await expect(fs.readFile(licenseCodeFile(home), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    expect((await post(`${base()}/api/license/activate`, { key: 'replacement-key' })).status).toBe(200);
   });
 
   it('reports a revoked license with the Lukeware contacts', async () => {

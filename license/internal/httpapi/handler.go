@@ -234,6 +234,13 @@ func Handler(deps Deps) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, viewOf(lic, ""))
 	}))
+	mux.HandleFunc("DELETE /api/admin/licenses/{id}", admin(func(w http.ResponseWriter, r *http.Request) {
+		if err := deps.Licenses.Delete(r.Context(), r.PathValue("id")); err != nil {
+			writeAPIError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
 	mux.HandleFunc("GET /api/admin/settings", admin(func(w http.ResponseWriter, r *http.Request) {
 		settings, err := deps.Licenses.Settings(r.Context())
 		if err != nil {

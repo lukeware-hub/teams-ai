@@ -7,6 +7,7 @@ import { Loading } from '../components/Loading.js';
 import { Onboarding } from './Onboarding.js';
 
 const contactLink = 'rounded-sm text-ink-soft no-underline underline-offset-2 transition-colors hover:text-accent-text hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent';
+const LICENSE_CHECK_MS = 20_000;
 
 export function LicenseGuard({ children }: { children: ReactNode }) {
   const [view, setView] = useState<LicenseView | null>(null);
@@ -19,6 +20,23 @@ export function LicenseGuard({ children }: { children: ReactNode }) {
     void api.license().then((next) => { if (live) setView(next); }).catch(() => { if (live) setView({ state: 'unavailable' }); });
     return () => { live = false; };
   }, [attempt]);
+  useEffect(() => {
+    if (view?.state !== 'authorized') return;
+    let live = true;
+    const refresh = () => {
+      void api.license().then((next) => { if (live) setView(next); }).catch(() => { if (live) setView({ state: 'unavailable' }); });
+    };
+    const timer = window.setInterval(refresh, LICENSE_CHECK_MS);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      live = false;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [view?.state]);
   if (view === null) return <main><Loading /></main>;
   if (view.state === 'unavailable' && register) {
     return (

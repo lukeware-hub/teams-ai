@@ -128,6 +128,17 @@ func (p *Postgres) UpdateLicense(ctx context.Context, lic License) error {
 	return nil
 }
 
+func (p *Postgres) DeleteLicense(ctx context.Context, id string) error {
+	tag, err := p.pool.Exec(ctx, `DELETE FROM licenses WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (p *Postgres) ActivatePending(ctx context.Context, keyHash, codeHash string, activatedAt time.Time, expiresAt *time.Time) (License, error) {
 	row := p.pool.QueryRow(ctx, `
 		UPDATE licenses

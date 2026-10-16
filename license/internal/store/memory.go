@@ -147,6 +147,21 @@ func (m *Memory) UpdateLicense(_ context.Context, lic License) error {
 	return nil
 }
 
+func (m *Memory) DeleteLicense(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	lic, ok := m.byID[id]
+	if !ok {
+		return ErrNotFound
+	}
+	delete(m.byID, id)
+	delete(m.byKey, lic.KeyHash)
+	if lic.CodeHash != nil {
+		delete(m.byCode, *lic.CodeHash)
+	}
+	return nil
+}
+
 func (m *Memory) ActivatePending(_ context.Context, keyHash, codeHash string, activatedAt time.Time, expiresAt *time.Time) (License, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
