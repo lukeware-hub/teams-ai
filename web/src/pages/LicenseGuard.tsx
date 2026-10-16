@@ -58,9 +58,10 @@ export function LicenseRevoked({ email, phone }: { email: string; phone: string 
 }
 
 export function LicenseUnavailable({ onRetry, onRegister }: { onRetry: () => void; onRegister: () => void }) {
+  useHideRail();
   return (
-    <main className="mx-auto w-full max-w-xl">
-      <section className="card grid gap-3">
+    <main className="min-h-full place-content-center">
+      <section className="card grid w-full max-w-md justify-self-center gap-3">
         <h1>Licença indisponível</h1>
         <p className="m-0 text-ink-soft">Não foi possível confirmar sua licença. O Teams AI volta a funcionar quando o serviço de licenças responder.</p>
         <div className="grid gap-2 sm:grid-cols-2">

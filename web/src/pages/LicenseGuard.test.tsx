@@ -70,6 +70,21 @@ describe('license gate', () => {
     expect(document.getElementById('main')?.contains(screen.getByRole('contentinfo'))).toBe(false);
   });
 
+  it('hides the rail when the license service does not answer', async () => {
+    vi.spyOn(api, 'license').mockResolvedValue({ state: 'unavailable' });
+    render(
+      <MemoryRouter>
+        <AppShell>
+          <LicenseGuard>
+            <p>app aberto</p>
+          </LicenseGuard>
+        </AppShell>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole('heading', { name: 'Licença indisponível' })).toBeTruthy();
+    expect(screen.queryByRole('navigation', { name: 'Navegação principal' })).toBeNull();
+  });
+
   it('blocks the app while the license service does not answer and retries', async () => {
     const license = vi.spyOn(api, 'license').mockResolvedValue({ state: 'unavailable' });
     const activate = vi.spyOn(api, 'activateLicense').mockResolvedValue({ state: 'authorized' });
