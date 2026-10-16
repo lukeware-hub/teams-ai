@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { AppShell } from './AppShell.js';
@@ -32,5 +32,15 @@ describe('AppShell', () => {
     shell('/settings');
     expect(screen.getByRole('link', { name: 'Pular para o conteúdo' }).getAttribute('href')).toBe('#main');
     expect(document.getElementById('main')?.textContent).toContain('Conteúdo');
+  });
+
+  it('shows the Lukeware footer with contact and copyright', () => {
+    shell('/projects');
+    const footer = screen.getByRole('contentinfo');
+    expect(within(footer).getByText('Lukeware', { exact: true })).toBeTruthy();
+    expect(within(footer).getByRole('link', { name: 'lukewaresoftwarehouse@gmail.com' }).getAttribute('href')).toBe('mailto:lukewaresoftwarehouse@gmail.com');
+    expect(within(footer).getByRole('link', { name: '(19) 99714-3026' }).getAttribute('href')).toBe('tel:+5519997143026');
+    expect(within(footer).getByText(/Todos os direitos autorais reservados/)).toBeTruthy();
+    expect(within(footer).getByText(/licença privada/)).toBeTruthy();
   });
 });
