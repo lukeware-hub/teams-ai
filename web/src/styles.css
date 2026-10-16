@@ -353,6 +353,18 @@ button[aria-busy='true']:disabled { cursor: progress; opacity: 0.75; }
 @keyframes loading-in { from { opacity: 0; } }
 @keyframes loading-spin { to { transform: rotate(360deg); } }
 
+/* Settings: one disclosure per global environment item. */
+.settings-collapse { border: 1px solid var(--line); border-radius: var(--radius-xl); background: var(--surface); box-shadow: var(--shadow-card); overflow: hidden; }
+.settings-collapse + .settings-collapse { margin-top: 0.75rem; }
+.settings-collapse-summary { display: flex; align-items: center; gap: 0.65rem; padding: 1rem 1.15rem; color: var(--ink); font-size: 1rem; font-weight: 650; cursor: pointer; list-style: none; }
+.settings-collapse-summary::-webkit-details-marker { display: none; }
+.settings-collapse-summary > svg:first-child { flex: none; color: var(--ink-soft); transition: transform var(--duration-fast) var(--ease-out); }
+.settings-collapse[open] > .settings-collapse-summary > svg:first-child { transform: rotate(90deg); color: var(--accent-text); }
+.settings-collapse-title { flex: 1; min-width: 0; }
+.settings-collapse-summary .status-chip { margin-left: auto; }
+.settings-collapse-body { padding: 0 1.15rem 1.25rem; border-top: 1px solid var(--line); }
+.settings-collapse.card-ok { border-color: var(--good-line); }
+
 /* Onboarding: shell, stepper, benefits, panel; each step rises in once; completion marks pop once. */
 .onboarding-shell { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
 .onboarding-step { min-width: 0; }

@@ -1,8 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
-import { AGENT_EFFORTS, AGENT_MODELS, runApi, settingsApi, type AgentChoice, type AgentEffort, type AgentModel, type AgentRow, type AgentSetting, type ProjectRow } from '../api.js';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AGENT_EFFORTS, AGENT_MODELS, api, runApi, settingsApi, type AgentChoice, type AgentEffort, type AgentModel, type AgentRow, type AgentSetting, type Item, type ItemName, type ProjectRow, type Status } from '../api.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
+import { LoginCard } from '../components/LoginCard.js';
+import { OwnerCard } from '../components/OwnerCard.js';
+import { SecretCard } from '../components/SecretCard.js';
 import { Select } from '../components/Select.js';
+import { SettingsCollapse } from '../components/SettingsCollapse.js';
 import { emptyState, panel, row, rowActions, rowId, rows, sectionTitle } from './project-shared.js';
 
 const ROLE_LABELS: Record<string, string> = { sm: 'Scrum Master', po: 'Product Owner', front: 'Front-end', dev: 'Desenvolvedor', test: 'Testes', sec: 'Segurança', devops: 'DevOps', env: 'Ambiente' };
@@ -11,12 +15,12 @@ const EFFORT_LABELS: Record<AgentEffort, string> = { low: 'Baixo', medium: 'Méd
 const DEFAULT_PICK: AgentSetting = { model: 'claude-sonnet-5-5', effort: 'medium' };
 const SAVE_ERROR = 'Não foi possível salvar. Tente novamente.';
 const HELP_AGENTS = 'Automático deixa o orquestrador escolher o modelo e o esforço de cada tarefa. Manual fixa os dois para o agente em todos os seus passos, inclusive os de arquitetura. Manual ignora o limite de esforço por modelo e pode gastar mais cota.';
+const HELP_ENV = 'Estas conexões valem para todo o Teams AI neste computador. Elas são as mesmas do status do ambiente.';
 
 function AgentLine({ projectId, row: agent, onFailed }: { projectId: string; row: AgentRow; onFailed: () => void }) {
   const label = ROLE_LABELS[agent.role] ?? agent.role;
   const [manual, setManual] = useState(agent.setting !== null);
   const [pick, setPick] = useState<AgentSetting>(agent.setting ?? DEFAULT_PICK);
-  // One save after another, so the last choice on screen is the last one the server receives.
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const save = (choice: AgentChoice) => {
     queue.current = queue.current.then(() => settingsApi.setAgent(projectId, agent.role, choice)).catch(onFailed);
@@ -45,7 +49,6 @@ function AgentLine({ projectId, row: agent, onFailed }: { projectId: string; row
             </Select>
           </>
         ) : null}
-        {/* The mode stays last so it keeps its place when the model and effort appear beside it. */}
         <Select wrapperClassName="w-[10rem]" aria-label={`Modo de ${label}`} value={manual ? 'manual' : 'auto'} onChange={(e) => changeMode(e.target.value)}>
           <option value="auto">Automático</option>
           <option value="manual">Manual</option>
@@ -55,14 +58,82 @@ function AgentLine({ projectId, row: agent, onFailed }: { projectId: string; row
   );
 }
 
+function EnvironmentSettings() {
+  const [status, setStatus] = useState<Status | null>(null);
+  const [organizations, setOrganizations] = useState<string[]>([]);
+  const [organizationOwner, setOrganizationOwner] = useState<string | null>(null);
+  const [organizationsLoading, setOrganizationsLoading] = useState(false);
+  const [organizationsError, setOrganizationsError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const refresh = useCallback(() => {
+    void api.status().then(setStatus).catch(() => setError('Não foi possível carregar o ambiente.'));
+  }, []);
+  useEffect(refresh, [refresh]);
+  const item = (n: ItemName): Item | null => status?.items[n] ?? null;
+  const patch = (n: ItemName) => (it: Item) => {
+    setStatus((s) => (s ? { ...s, items: { ...s.items, [n]: it }, allOk: Object.values({ ...s.items, [n]: it }).every((v) => v.ok) } : s));
+  };
+  const githubLoggedIn = status?.items.ghLogin.ok === true;
+  useEffect(() => {
+    if (!githubLoggedIn) {
+      setOrganizations([]);
+      setOrganizationOwner(null);
+      setOrganizationsError(null);
+      return;
+    }
+    let active = true;
+    setOrganizationsLoading(true);
+    setOrganizationsError(null);
+    void api.organizations().then((result) => {
+      if (!active) return;
+      setOrganizations(result.organizations);
+      setOrganizationOwner(result.owner);
+    }).catch(() => {
+      if (active) setOrganizationsError('Não foi possível carregar suas organizações do GitHub.');
+    }).finally(() => {
+      if (active) setOrganizationsLoading(false);
+    });
+    return () => { active = false; };
+  }, [githubLoggedIn]);
+
+  return (
+    <section className={`${panel} gap-3`} aria-labelledby="env-title">
+      <div className={sectionTitle}>
+        <h2 className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="env-title">Ambiente</h2>
+        <InfoTip label="Ambiente" text={HELP_ENV} />
+      </div>
+      <p className="m-0 text-[0.875rem] text-ink-soft">Conexões globais deste computador. Separadas das opções de cada projeto.</p>
+      {error ? <p className="error">{error}</p> : null}
+      {status === null && !error ? <Loading /> : null}
+      {status ? (
+        <div>
+          <SettingsCollapse title="Login do GitHub CLI" item={item('ghLogin')}>
+            <LoginCard cli="gh" title="Login do GitHub CLI" item={item('ghLogin')} onDone={refresh} />
+          </SettingsCollapse>
+          <SettingsCollapse title="Token do GitHub" item={item('githubToken')}>
+            <SecretCard name="GITHUB_TOKEN" title="Token do GitHub" item={item('githubToken')} onSaved={patch('githubToken')} />
+          </SettingsCollapse>
+          <SettingsCollapse title="Organização do GitHub" item={item('githubOwner')}>
+            <OwnerCard organizations={organizations} initialOwner={organizationOwner} loading={organizationsLoading} loadError={organizationsError} item={item('githubOwner')} onSaved={patch('githubOwner')} />
+          </SettingsCollapse>
+          <SettingsCollapse title="Login do Claude" item={item('claude')}>
+            <LoginCard cli="claude" title="Login do Claude" item={item('claude')} onDone={refresh} />
+          </SettingsCollapse>
+          <SettingsCollapse title="Chave do OpenRouter (Jev)" item={item('openrouterKey')}>
+            <SecretCard name="OPENROUTER_API_KEY" title="Chave do OpenRouter (Jev)" item={item('openrouterKey')} onSaved={patch('openrouterKey')} />
+          </SettingsCollapse>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function SettingsPage() {
   const [projects, setProjects] = useState<ProjectRow[] | null>(null);
   const [projectId, setProjectId] = useState('');
   const [agents, setAgents] = useState<AgentRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Bumped when a save fails, so the agents are read again from the server instead of showing the unsaved choice.
   const [version, setVersion] = useState(0);
-  // The error sits on the page, not the row: reloading the agents unmounts the rows.
   const saveFailed = () => {
     setError(SAVE_ERROR);
     setVersion((v) => v + 1);
@@ -90,17 +161,21 @@ export function SettingsPage() {
   }, [projectId, version]);
 
   return (
-    <main>
+    <main className="grid gap-8">
       <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
         <div className="min-w-0 flex-[1_1_20rem]">
           <h1 className="m-0 text-ink">Configurações</h1>
-          <p className="mt-1 mb-0 text-[0.9375rem] text-ink-soft">Escolha o modelo e o esforço de cada agente, em cada projeto.</p>
+          <p className="mt-1 mb-0 text-[0.9375rem] text-ink-soft">Ajuste o ambiente global e o modelo de cada agente por projeto.</p>
         </div>
       </header>
+      <EnvironmentSettings />
       {error ? <p className="error">{error}</p> : null}
       {projects === null && !error ? <Loading /> : null}
       {projects?.length === 0 ? (
-        <section className={panel}>
+        <section className={panel} aria-labelledby="agents-title">
+          <div className={sectionTitle}>
+            <h2 className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="agents-title">Projeto</h2>
+          </div>
           <div className={emptyState}>
             <p>Nenhum projeto cadastrado.</p>
             <p>Cadastre um projeto para escolher os agentes.</p>
@@ -109,6 +184,10 @@ export function SettingsPage() {
       ) : null}
       {projects && projects.length > 0 ? (
         <section className={`${panel} gap-3`} aria-labelledby="agents-title">
+          <div className={sectionTitle}>
+            <h2 className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="agents-title">Projeto</h2>
+            <InfoTip label="Agentes" text={HELP_AGENTS} />
+          </div>
           <label className="grid max-w-[24rem] gap-1.5">
             <span className="text-[0.8125rem] font-semibold text-ink-soft">Projeto</span>
             <Select value={projectId} onChange={(e) => {
@@ -119,8 +198,7 @@ export function SettingsPage() {
             </Select>
           </label>
           <div className={sectionTitle}>
-            <h2 className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="agents-title">Agentes</h2>
-            <InfoTip label="Agentes" text={HELP_AGENTS} />
+            <h3 className="m-0 flex-[0_1_auto] text-[1rem] font-semibold leading-[1.3]">Agentes</h3>
           </div>
           {agents ? <ul className={`${rows} [&>li]:border-accent-line`}>{agents.map((agent) => <AgentLine key={`${projectId}/${agent.role}`} projectId={projectId} row={agent} onFailed={saveFailed} />)}</ul> : <Loading />}
         </section>
