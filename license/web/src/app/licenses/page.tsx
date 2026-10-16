@@ -1,11 +1,12 @@
 'use client';
 
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Frame } from '@/components/Frame';
 import { api, statusClass, STATUS_LABEL, when, type License } from '@/lib/api';
 
 export default function LicensesPage() {
+  const router = useRouter();
   const [licenses, setLicenses] = useState<License[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -31,14 +32,30 @@ export default function LicensesPage() {
                 </tr>
               </thead>
               <tbody>
-                {licenses.map((license) => (
-                  <tr key={license.id} className="border-t border-[var(--line)]">
-                    <td className="px-2 py-3"><Link href={`/licenses/view/?id=${license.id}`} className={statusClass(license.status)}>{STATUS_LABEL[license.status]}</Link></td>
-                    <td className="px-2 py-3">{when(license.createdAt)}</td>
-                    <td className="px-2 py-3">{license.expiresAt ? when(license.expiresAt) : license.validForDays ? `${license.validForDays} dias após a ativação` : '—'}</td>
-                    <td className="px-2 py-3">{when(license.activatedAt)}</td>
-                  </tr>
-                ))}
+                {licenses.map((license) => {
+                  const open = () => router.push(`/licenses/view/?id=${license.id}`);
+                  return (
+                    <tr
+                      key={license.id}
+                      role="link"
+                      tabIndex={0}
+                      aria-label={STATUS_LABEL[license.status]}
+                      className="cursor-pointer border-t border-[var(--line)] transition-colors duration-150 ease-out hover:bg-[var(--surface-sunken)]"
+                      onClick={open}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          open();
+                        }
+                      }}
+                    >
+                      <td className="px-2 py-3"><span className={statusClass(license.status)}>{STATUS_LABEL[license.status]}</span></td>
+                      <td className="px-2 py-3">{when(license.createdAt)}</td>
+                      <td className="px-2 py-3">{license.expiresAt ? when(license.expiresAt) : license.validForDays ? `${license.validForDays} dias após a ativação` : '—'}</td>
+                      <td className="px-2 py-3">{when(license.activatedAt)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

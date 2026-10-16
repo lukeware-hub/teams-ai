@@ -1,12 +1,19 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { clearToken, readToken } from '@/lib/api';
 
+const LINKS = [
+  { href: '/licenses/', label: 'Licenças', active: (path: string) => path.startsWith('/licenses') && !path.startsWith('/licenses/new') },
+  { href: '/licenses/new/', label: 'Nova licença', active: (path: string) => path.startsWith('/licenses/new') },
+  { href: '/settings/', label: 'Contatos', active: (path: string) => path.startsWith('/settings') },
+];
+
 export function Frame({ title, children }: { title: string; children: ReactNode }) {
   const router = useRouter();
+  const path = usePathname();
   const [ready, setReady] = useState(false);
   useEffect(() => {
     if (!readToken()) router.replace('/login/');
@@ -14,29 +21,37 @@ export function Frame({ title, children }: { title: string; children: ReactNode 
   }, [router]);
   if (!ready) return null;
   return (
-    <div className="mx-auto grid min-h-dvh w-full max-w-5xl content-start gap-6 px-4 py-8">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <p className="m-0 text-xs font-semibold tracking-[0.08em] text-[var(--ink-soft)] uppercase">Lukeware</p>
-          <h1 className="m-0 text-[1.75rem] tracking-[-0.03em]">{title}</h1>
+    <div className="min-h-dvh">
+      <header className="topbar">
+        <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-x-6 gap-y-3 px-4 py-3">
+          <Link href="/licenses/" className="flex items-center gap-3 no-underline">
+            <img src="/lukeware-lockup-dark.png" alt="Lukeware" width={103} height={28} className="h-7 w-auto" />
+            <span className="border-l border-[var(--line-strong)] pl-3 text-sm font-semibold text-[var(--ink-soft)]">Licenças</span>
+          </Link>
+          <nav aria-label="Navegação principal" className="flex flex-wrap items-center gap-1">
+            {LINKS.map((link) => (
+              <Link key={link.href} href={link.href} className="nav-link" aria-current={link.active(path) ? 'page' : undefined}>
+                {link.label}
+              </Link>
+            ))}
+            <span className="mx-2 h-5 w-px bg-[var(--line-strong)]" aria-hidden="true" />
+            <button
+              type="button"
+              className="nav-link"
+              onClick={() => {
+                clearToken();
+                router.replace('/login/');
+              }}
+            >
+              Sair
+            </button>
+          </nav>
         </div>
-        <nav className="flex flex-wrap items-center gap-3 text-sm">
-          <Link href="/licenses/">Licenças</Link>
-          <Link href="/licenses/new/">Nova licença</Link>
-          <Link href="/settings/">Contatos</Link>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => {
-              clearToken();
-              router.replace('/login/');
-            }}
-          >
-            Sair
-          </button>
-        </nav>
       </header>
-      {children}
+      <main className="mx-auto grid w-full max-w-5xl content-start gap-6 px-4 py-8">
+        <h1 className="m-0 text-[1.75rem] tracking-[-0.03em]">{title}</h1>
+        {children}
+      </main>
     </div>
   );
 }
