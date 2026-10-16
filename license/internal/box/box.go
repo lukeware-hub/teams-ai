@@ -3,6 +3,7 @@ package box
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -30,6 +31,14 @@ func ParseMasterKey(encoded string) ([]byte, error) {
 		return nil, errors.New("LICENSE_MASTER_KEY must be 32 bytes encoded as base64")
 	}
 	return key, nil
+}
+
+func ParseSigningKey(encoded string) (ed25519.PrivateKey, error) {
+	seed, err := hex.DecodeString(encoded)
+	if err != nil || len(seed) != ed25519.SeedSize {
+		return nil, errors.New("LICENSE_SIGNING_KEY must be a 32-byte Ed25519 seed encoded as hex")
+	}
+	return ed25519.NewKeyFromSeed(seed), nil
 }
 
 func Encrypt(key []byte, plain string) (string, error) {

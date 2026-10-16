@@ -18,6 +18,7 @@ import { Run, type ExecuteResult, type RunDeps } from './orchestrator/run.js';
 import { expandHome, firstSpecForRun, firstSpecForSpec, nextRunId, specForRun, stateFile, workspacePaths } from './orchestrator/workspace.js';
 import { runStep } from './runner/step.js';
 import { startApi } from './api/server.js';
+import { licenseGuard } from './api/license-guard.js';
 import { licenseRoutes } from './api/license-routes.js';
 import { onboardingRoutes } from './api/onboarding-routes.js';
 import { settingsRoutes } from './api/settings-routes.js';
@@ -146,10 +147,12 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
       await mergeProjectGraph(graphify, workspacePaths((await readUserConfig()).cfg, projectId), read.project, read.project.services ?? []);
     },
   });
+  const guard = await licenseGuard();
   const api = await startApi(
     {
+      guard,
       routes: [
-        ...licenseRoutes({ serviceUrl: process.env.LICENSE_SERVICE_URL ?? '' }),
+        ...licenseRoutes({ serviceUrl: process.env.LICENSE_SERVICE_URL ?? '', onChange: guard.reload }),
         ...onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr, onClaudeLogin: () => runAgent.resetQuota() }),
         ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr, queueInProgram: (p, s) => registry.queueInProgram(p, s), importBacklog: (projectId) => registry.startImportedBacklog(projectId), graphify, clearChat: (projectId) => chat.clear(projectId) }),
         ...opsRoutes({ index: async () => ({ cfg: (await readUserConfig()).cfg, isAlive: (pid) => isAlive(defaultRunControl(repoRoot), pid) }) }),

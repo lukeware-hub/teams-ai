@@ -3,9 +3,12 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,7 +33,8 @@ func TestAdminRoutesRequireJWT(t *testing.T) {
 	}
 	secret := []byte("jwt-secret")
 	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
-	svc := license.New(memory, master, func() time.Time { return now })
+	signer := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+	svc := license.New(memory, master, signer, func() time.Time { return now })
 	handler := Handler(Deps{
 		Licenses: svc,
 		Secret:   secret,
@@ -83,6 +87,17 @@ func TestAdminRoutesRequireJWT(t *testing.T) {
 	handler.ServeHTTP(rec, activate)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("activate status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	var activated struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &activated); err != nil {
+		t.Fatal(err)
+	}
+	body, sig, _ := strings.Cut(activated.Token, ".")
+	raw, _ := base64.RawURLEncoding.DecodeString(sig)
+	if !ed25519.Verify(signer.Public().(ed25519.PublicKey), []byte(body), raw) {
+		t.Fatalf("token = %q", activated.Token)
 	}
 	shown := httptest.NewRequest(http.MethodGet, "/api/admin/licenses/"+created.ID, nil)
 	shown.Header.Set("Authorization", "Bearer "+token.Token)

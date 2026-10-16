@@ -34,7 +34,7 @@ export const api = {
   owner: (owner: string) => authFetch(`${P}/github-owner`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ owner }) }).then((r) => json<{ item: Item }>(r)),
   secret: (name: 'GITHUB_TOKEN' | 'OPENROUTER_API_KEY', value: string) => authFetch(`${P}/secrets/${name}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value }) }).then((r) => json<{ item: Item }>(r)),
   events: (cli: Cli) => `${P}/${cli}/events`,
-  license: () => authFetch('/api/license').then((r) => json<LicenseView>(r)),
+  license: (sync = false) => authFetch(sync ? '/api/license/sync' : '/api/license', sync ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' } : undefined).then((r) => json<LicenseView>(r)),
   activateLicense: (key: string) => authFetch('/api/license/activate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key }) }).then((r) => json<{ state: 'authorized' }>(r)),
 };
 

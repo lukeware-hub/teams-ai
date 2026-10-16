@@ -17,7 +17,7 @@ export function LicenseGuard({ children }: { children: ReactNode }) {
   useEffect(() => {
     let live = true;
     setView(null);
-    void api.license().then((next) => { if (live) setView(next); }).catch(() => { if (live) setView({ state: 'unavailable' }); });
+    void api.license(true).then((next) => { if (live) setView(next); }).catch(() => { if (live) setView({ state: 'unavailable' }); });
     return () => { live = false; };
   }, [attempt]);
   useEffect(() => {
@@ -41,7 +41,7 @@ export function LicenseGuard({ children }: { children: ReactNode }) {
   if (view.state === 'unavailable' && register) {
     return (
       <main className="mx-auto grid w-full max-w-xl gap-3">
-        <LicenseCard onSaved={() => { setView({ state: 'authorized' }); setRegister(false); }} />
+        <LicenseCard onSaved={() => { setRegister(false); void api.license().then(setView).catch(() => setView({ state: 'unavailable' })); }} />
         <button type="button" className="primary-button w-fit" onClick={() => setRegister(false)}>Voltar</button>
       </main>
     );
@@ -50,7 +50,7 @@ export function LicenseGuard({ children }: { children: ReactNode }) {
   if (view.state === 'revoked') return <LicenseRevoked email={view.contactEmail} phone={view.contactPhone} />;
   if (view.state === 'other-machine') return <LicenseOtherMachine />;
   if (view.state === 'missing' || session) {
-    return <Onboarding includeLicense onLicensed={() => { setView({ state: 'authorized' }); setSession(true); }} onLeave={() => setSession(false)} />;
+    return <Onboarding includeLicense onLicensed={() => { setSession(true); void api.license().then(setView).catch(() => setView({ state: 'unavailable' })); }} onLeave={() => setSession(false)} />;
   }
   return children;
 }

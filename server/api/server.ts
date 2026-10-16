@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import path from 'node:path';
 import { bearerOk, requestAuthorized, resolveAuth, SESSION_PATH, sessionCookie, TOKEN_ENV } from './auth.js';
+import type { LicenseGuard } from './license-guard.js';
 import { ALLOWED_HOSTS_ENV, applySecurityHeaders, crossSite, isJsonContentType, parseAllowedHosts } from './security.js';
 
 export interface SseWriter {
@@ -72,6 +73,7 @@ export interface ApiDeps {
   maxSse?: { total: number; perAddress: number };
   /** Audit M5: an event stream is closed after `lifetimeMs` in total or `idleMs` without an event (defaults 30 min / 10 min). */
   sseTimeouts?: { lifetimeMs: number; idleMs: number };
+  guard?: LicenseGuard;
 }
 
 export class HttpError extends Error {
@@ -165,6 +167,10 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
     if (token !== null && routedPath.startsWith('/api/') && !requestAuthorized(req, token)) {
       res.setHeader('www-authenticate', 'Bearer');
       return json(401, { error: 'unauthorized' });
+    }
+    if (deps.guard && !deps.guard.allowed(routedPath)) {
+      log(`license denied ${req.method} ${url.pathname}`);
+      return json(403, { error: 'license required' });
     }
     const match = matchRoute(deps.routes, req.method ?? 'GET', routedPath);
     if (!match) {

@@ -122,12 +122,12 @@ func Handler(deps Deps) http.Handler {
 		if !readJSON(w, r, &body) {
 			return
 		}
-		code, err := deps.Licenses.Activate(r.Context(), body.KeyHash, cleanMachine(body.Machine, remote(r)))
+		code, token, err := deps.Licenses.Activate(r.Context(), body.KeyHash, cleanMachine(body.Machine, remote(r)))
 		if err != nil {
 			writeAPIError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"codeHash": code})
+		writeJSON(w, http.StatusOK, map[string]string{"codeHash": code, "token": token})
 	})
 	mux.HandleFunc("POST /api/v1/authorize", func(w http.ResponseWriter, r *http.Request) {
 		if !limit.allow(remote(r)) {
@@ -147,7 +147,7 @@ func Handler(deps Deps) http.Handler {
 			return
 		}
 		if decision.Authorized {
-			writeJSON(w, http.StatusOK, map[string]bool{"authorized": true})
+			writeJSON(w, http.StatusOK, map[string]any{"authorized": true, "token": decision.Token})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{

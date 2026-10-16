@@ -2,6 +2,10 @@ package license
 
 import (
 	"context"
+	"crypto/ed25519"
+	"encoding/base64"
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,7 +26,27 @@ func testService(t *testing.T) (*Service, *time.Time) {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
-	return New(store.NewMemory(), master, func() time.Time { return now }), &now
+	return New(store.NewMemory(), master, testSigner, func() time.Time { return now }), &now
+}
+
+var testSigner = ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+
+func tokenPayload(t *testing.T, token string) map[string]any {
+	t.Helper()
+	body, sig, ok := strings.Cut(token, ".")
+	raw, err := base64.RawURLEncoding.DecodeString(sig)
+	if !ok || err != nil || !ed25519.Verify(testSigner.Public().(ed25519.PublicKey), []byte(body), raw) {
+		t.Fatalf("token signature is invalid: %q", token)
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(payload, &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
 }
 
 func TestActivateOnceAndReveal(t *testing.T) {
@@ -39,19 +63,40 @@ func TestActivateOnceAndReveal(t *testing.T) {
 	if revealed != key {
 		t.Fatalf("revealed key = %q", revealed)
 	}
-	code, err := svc.Activate(ctx, box.Hash(key), boundMachine())
+	code, token, err := svc.Activate(ctx, box.Hash(key), boundMachine())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(code) != 64 {
 		t.Fatalf("code length = %d", len(code))
 	}
-	if _, err := svc.Activate(ctx, box.Hash(key), boundMachine()); err != ErrAlreadyUsed {
+	if payload := tokenPayload(t, token); payload["lid"] != created.ID || payload["fp"] != machineFingerprint || payload["exp"] != nil {
+		t.Fatalf("payload = %+v", payload)
+	}
+	if _, _, err := svc.Activate(ctx, box.Hash(key), boundMachine()); err != ErrAlreadyUsed {
 		t.Fatalf("second activate = %v", err)
 	}
 	decision, err := svc.Authorize(ctx, code, machineFingerprint)
 	if err != nil || !decision.Authorized {
 		t.Fatalf("authorize = %+v %v", decision, err)
+	}
+	tokenPayload(t, decision.Token)
+}
+
+func TestTokenCarriesTheExpiry(t *testing.T) {
+	svc, now := testService(t)
+	ctx := context.Background()
+	days := 2
+	_, key, err := svc.Create(ctx, nil, &days)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, token, err := svc.Activate(ctx, box.Hash(key), boundMachine())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exp := tokenPayload(t, token)["exp"]; exp != float64(now.Add(48*time.Hour).Unix()) {
+		t.Fatalf("exp = %v", exp)
 	}
 }
 
@@ -62,7 +107,7 @@ func TestDisableAndEnable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, err := svc.Activate(ctx, box.Hash(key), boundMachine())
+	code, _, err := svc.Activate(ctx, box.Hash(key), boundMachine())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +137,7 @@ func TestSchedulerExpiresAndEnableNeedsAFutureDate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, err := svc.Activate(ctx, box.Hash(key), boundMachine())
+	code, _, err := svc.Activate(ctx, box.Hash(key), boundMachine())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +170,7 @@ func TestDeleteRemovesTheLicense(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, err := svc.Activate(ctx, box.Hash(key), boundMachine())
+	code, _, err := svc.Activate(ctx, box.Hash(key), boundMachine())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,12 +196,12 @@ func TestKeyStaysBoundToTheMachine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, err := svc.Activate(ctx, box.Hash(key), boundMachine())
+	code, _, err := svc.Activate(ctx, box.Hash(key), boundMachine())
 	if err != nil {
 		t.Fatal(err)
 	}
 	other := "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
-	if _, err := svc.Activate(ctx, box.Hash(key), &store.Machine{Fingerprint: other}); err != ErrAlreadyUsed {
+	if _, _, err := svc.Activate(ctx, box.Hash(key), &store.Machine{Fingerprint: other}); err != ErrOtherMachine {
 		t.Fatalf("second machine = %v", err)
 	}
 	decision, err := svc.Authorize(ctx, code, other)
@@ -171,7 +216,7 @@ func TestKeyStaysBoundToTheMachine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Activate(ctx, box.Hash(freshKey), nil); err != ErrMachine {
+	if _, _, err := svc.Activate(ctx, box.Hash(freshKey), nil); err != ErrMachine {
 		t.Fatalf("activate without a machine = %v", err)
 	}
 	if fresh.Status != store.StatusPending {

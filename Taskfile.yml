@@ -119,7 +119,7 @@ tasks:
     desc: Build and start the license service and its PostgreSQL database
     preconditions:
       - sh: test -f license/.env
-        msg: 'Create license/.env with LICENSE_MASTER_KEY, JWT_SECRET, ADMIN_EMAIL and ADMIN_PASSWORD first.'
+        msg: 'Create license/.env with LICENSE_MASTER_KEY, LICENSE_SIGNING_KEY, JWT_SECRET, ADMIN_EMAIL and ADMIN_PASSWORD first.'
     cmds:
       - docker compose up -d --build --wait postgres license
       - echo "Serviço de licenças no ar em http://localhost:8790"

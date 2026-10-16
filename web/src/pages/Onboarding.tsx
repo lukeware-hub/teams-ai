@@ -77,7 +77,7 @@ export function Onboarding({ includeLicense = false, onLicensed, onLeave }: { in
     if (step < total - 1 && canAdvance) advance();
   };
   const stepContent = () => {
-    if (onLicenseStep) return <LicenseCard onSaved={() => { setLicensed(true); onLicensed?.(); advance(); }} />;
+    if (onLicenseStep) return <LicenseCard onSaved={() => { setLicensed(true); onLicensed?.(); refresh(); advance(); }} />;
     switch (step - offset) {
       case 0: return <LoginCard cli="gh" title="Login do GitHub CLI" item={item('ghLogin')} onDone={onLoginDone} />;
       case 1: return <SecretCard name="GITHUB_TOKEN" title="Token do GitHub" item={item('githubToken')} onSaved={patch('githubToken')} />;
@@ -109,7 +109,7 @@ export function Onboarding({ includeLicense = false, onLicensed, onLeave }: { in
       onNext={next}
       showNext={step < total - 1}
     >
-      {status ? stepContent() : <Loading />}
+      {status || onLicenseStep ? stepContent() : <Loading />}
     </OnboardingShell>
   );
 }

@@ -12,6 +12,7 @@ export default function NewLicensePage() {
   const [created, setCreated] = useState<License | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
   const submit = async () => {
     setBusy(true);
     setError(null);
@@ -32,7 +33,29 @@ export default function NewLicensePage() {
         <section className="card grid gap-3">
           <h2 className="m-0 text-lg">Licença criada</h2>
           <p className="m-0 text-[var(--ink-soft)]">A chave pode ser consultada de novo na página da licença.</p>
-          <p className="key m-0 rounded-[var(--control-radius)] bg-[var(--surface-sunken)] p-3">{created.key}</p>
+          <div className="flex items-center gap-3">
+            <p className="key m-0 min-w-0 flex-1 rounded-[var(--control-radius)] bg-[var(--surface-sunken)] p-3">{created.key}</p>
+            <button
+              type="button"
+              className="btn btn-secondary shrink-0"
+              onClick={() => {
+                const key = created.key;
+                if (!key) return;
+                const write = navigator.clipboard.writeText(key).catch(() => {
+                  const field = document.createElement('textarea');
+                  field.value = key;
+                  document.body.append(field);
+                  field.select();
+                  const ok = document.execCommand('copy');
+                  field.remove();
+                  if (!ok) throw new Error('copy failed');
+                });
+                void write.then(() => setCopied(true));
+              }}
+            >
+              {copied ? 'Copiada' : 'Copiar'}
+            </button>
+          </div>
           <Link className="btn btn-primary w-fit" href={`/licenses/view/?id=${created.id}`}>Abrir licença</Link>
         </section>
       ) : (

@@ -2,7 +2,10 @@ package license
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -22,6 +25,7 @@ var (
 	ErrNotFound     = &Error{404, "license not found"}
 	ErrInvalidKey   = &Error{404, "invalid license key"}
 	ErrAlreadyUsed  = &Error{409, "license already registered"}
+	ErrOtherMachine = &Error{409, "license is bound to another machine"}
 	ErrInactive     = &Error{403, "license is not active"}
 	ErrExclusive    = &Error{400, "set a date or a period, not both"}
 	ErrFuture       = &Error{400, "expiry must be in the future"}
@@ -37,6 +41,7 @@ type Decision struct {
 	Reason       string
 	ContactEmail string
 	ContactPhone string
+	Token        string
 }
 
 type Update struct {
@@ -51,14 +56,15 @@ type Update struct {
 type Service struct {
 	store  store.Store
 	master []byte
+	signer ed25519.PrivateKey
 	now    func() time.Time
 }
 
-func New(st store.Store, master []byte, now func() time.Time) *Service {
+func New(st store.Store, master []byte, signer ed25519.PrivateKey, now func() time.Time) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{store: st, master: master, now: now}
+	return &Service{store: st, master: master, signer: signer, now: now}
 }
 
 func (s *Service) Create(ctx context.Context, expiresAt *time.Time, days *int) (store.License, string, error) {
@@ -114,25 +120,28 @@ func (s *Service) List(ctx context.Context) ([]store.License, error) {
 	return s.store.ListLicenses(ctx)
 }
 
-func (s *Service) Activate(ctx context.Context, keyHash string, machine *store.Machine) (string, error) {
+func (s *Service) Activate(ctx context.Context, keyHash string, machine *store.Machine) (string, string, error) {
 	if !hex64(keyHash) {
-		return "", ErrInvalidKey
+		return "", "", ErrInvalidKey
 	}
 	if machine == nil || !hex64(machine.Fingerprint) {
-		return "", ErrMachine
+		return "", "", ErrMachine
 	}
 	lic, err := s.store.FindLicenseByKeyHash(ctx, keyHash)
 	if errors.Is(err, store.ErrNotFound) {
-		return "", ErrInvalidKey
+		return "", "", ErrInvalidKey
 	}
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if lic.CodeHash != nil || lic.Status == store.StatusActive {
-		return "", ErrAlreadyUsed
+		if lic.Machine != nil && lic.Machine.Fingerprint != "" && lic.Machine.Fingerprint != machine.Fingerprint {
+			return "", "", ErrOtherMachine
+		}
+		return "", "", ErrAlreadyUsed
 	}
 	if lic.Status != store.StatusPending {
-		return "", ErrInactive
+		return "", "", ErrInactive
 	}
 	now := s.now()
 	if lic.ExpiresAt != nil && !lic.ExpiresAt.After(now) {
@@ -140,26 +149,27 @@ func (s *Service) Activate(ctx context.Context, keyHash string, machine *store.M
 		lic.Status = store.StatusExpired
 		lic.DisabledAt = &at
 		if err := s.store.UpdateLicense(ctx, lic); err != nil {
-			return "", err
+			return "", "", err
 		}
-		return "", ErrInactive
+		return "", "", ErrInactive
 	}
 	code, err := box.RandomHex(32)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	var expiresAt *time.Time
 	if lic.ValidForDays != nil {
 		exp := now.Add(time.Duration(*lic.ValidForDays) * 24 * time.Hour)
 		expiresAt = &exp
 	}
-	if _, err := s.store.ActivatePending(ctx, keyHash, box.Hash(code), now, expiresAt, machine); err != nil {
+	activated, err := s.store.ActivatePending(ctx, keyHash, box.Hash(code), now, expiresAt, machine)
+	if err != nil {
 		if errors.Is(err, store.ErrNotPending) || errors.Is(err, store.ErrNotFound) {
-			return "", ErrAlreadyUsed
+			return "", "", ErrAlreadyUsed
 		}
-		return "", err
+		return "", "", err
 	}
-	return code, nil
+	return code, s.sign(activated, machine.Fingerprint), nil
 }
 
 func (s *Service) Authorize(ctx context.Context, code, fingerprint string) (Decision, error) {
@@ -192,7 +202,22 @@ func (s *Service) Authorize(ctx context.Context, code, fingerprint string) (Deci
 	if lic.Machine != nil && lic.Machine.Fingerprint != "" && lic.Machine.Fingerprint != fingerprint {
 		return s.deny(ctx, "machine")
 	}
-	return Decision{Authorized: true}, nil
+	return Decision{Authorized: true, Token: s.sign(lic, fingerprint)}, nil
+}
+
+func (s *Service) sign(lic store.License, fingerprint string) string {
+	var exp *int64
+	if lic.ExpiresAt != nil {
+		at := lic.ExpiresAt.Unix()
+		exp = &at
+	}
+	payload, _ := json.Marshal(struct {
+		LID string `json:"lid"`
+		FP  string `json:"fp"`
+		Exp *int64 `json:"exp"`
+	}{lic.ID, fingerprint, exp})
+	body := base64.RawURLEncoding.EncodeToString(payload)
+	return body + "." + base64.RawURLEncoding.EncodeToString(ed25519.Sign(s.signer, []byte(body)))
 }
 
 func (s *Service) Update(ctx context.Context, id string, in Update) (store.License, error) {

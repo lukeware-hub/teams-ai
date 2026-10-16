@@ -89,7 +89,7 @@ describe('license gate', () => {
   });
 
   it('blocks the app while the license service does not answer and retries', async () => {
-    const license = vi.spyOn(api, 'license').mockResolvedValue({ state: 'unavailable' });
+    const license = vi.spyOn(api, 'license').mockResolvedValueOnce({ state: 'unavailable' }).mockResolvedValueOnce({ state: 'unavailable' }).mockResolvedValue({ state: 'authorized' });
     const activate = vi.spyOn(api, 'activateLicense').mockResolvedValue({ state: 'authorized' });
     renderGuard();
     const message = 'Não foi possível confirmar sua licença. O Teams AI volta a funcionar quando o serviço de licenças responder.';
@@ -127,9 +127,10 @@ describe('license gate', () => {
   });
 
   it('opens the app when the license is authorized', async () => {
-    vi.spyOn(api, 'license').mockResolvedValue({ state: 'authorized' });
+    const license = vi.spyOn(api, 'license').mockResolvedValue({ state: 'authorized' });
     renderGuard();
     expect(await screen.findByText('app aberto')).toBeTruthy();
+    expect(license).toHaveBeenCalledWith(true);
   });
 
   it('asks for a new key on the open screen when the license no longer exists', async () => {

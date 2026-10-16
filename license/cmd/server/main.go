@@ -43,6 +43,10 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	signer, err := box.ParseSigningKey(os.Getenv("LICENSE_SIGNING_KEY"))
+	if err != nil {
+		return err
+	}
 	secret := []byte(os.Getenv("JWT_SECRET"))
 	if len(secret) < 16 {
 		return errors.New("JWT_SECRET must be at least 16 characters")
@@ -55,7 +59,7 @@ func run(ctx context.Context) error {
 	if err := ensureAdmin(ctx, db); err != nil {
 		return err
 	}
-	svc := license.New(db, master, time.Now)
+	svc := license.New(db, master, signer, time.Now)
 	go scheduler.Start(ctx, time.Minute, func(ctx context.Context) {
 		if err := svc.ExpireDue(ctx); err != nil {
 			log.Printf("expire licenses: %v", err)
