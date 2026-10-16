@@ -44,6 +44,17 @@ export const CLAUDE_LOGIN = {
   } satisfies StepPanel,
 };
 
+export const LICENSE = {
+  benefits: [
+    { icon: 'lock', title: 'Registro único', text: 'A chave ativa este computador uma única vez.' },
+    { icon: 'shield', title: 'Não fica salva', text: 'Depois da conferência, a chave não permanece neste computador.' },
+  ] as const satisfies readonly Benefit[],
+  panel: {
+    headline: 'Ative o Teams AI',
+    support: 'Informe a chave fornecida pela Lukeware. Ela é conferida agora e não fica salva aqui.',
+  } satisfies StepPanel,
+};
+
 export const OPENROUTER = {
   benefits: [
     { icon: 'lightbulb', title: 'Jev no refinamento', text: 'Confere se os documentos do projeto são consistentes.' },

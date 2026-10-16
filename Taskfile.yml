@@ -114,6 +114,66 @@ tasks:
     cmds:
       - docker compose logs -f dind
 
+  # ---- License service (admin UI on http://localhost:8790) ----
+  license:up:
+    desc: Build and start the license service and its PostgreSQL database
+    preconditions:
+      - sh: test -f license/.env
+        msg: 'Create license/.env with LICENSE_MASTER_KEY, JWT_SECRET, ADMIN_EMAIL and ADMIN_PASSWORD first.'
+    cmds:
+      - docker compose up -d --build --wait postgres license
+      - echo "Serviço de licenças no ar em http://localhost:8790"
+
+  license:down:
+    desc: Stop the license service and its database (keeps the licenses)
+    cmds:
+      - docker compose stop license postgres
+
+  license:restart:
+    desc: Restart the license service
+    cmds:
+      - docker compose restart license
+
+  license:logs:
+    desc: Follow the license service logs
+    cmds:
+      - docker compose logs -f license
+
+  license:psql:
+    desc: Open a PostgreSQL shell on the license database
+    interactive: true
+    cmds:
+      - docker compose exec postgres psql -U license -d license
+
+  license:test:
+    desc: License service Go tests
+    dir: license
+    cmds:
+      - go test ./...
+
+  license:web:install:
+    desc: Install the license admin UI dependencies
+    dir: license/web
+    cmds:
+      - npm ci
+
+  license:web:build:
+    desc: Type-check and build the license admin UI
+    dir: license/web
+    cmds:
+      - npm run build
+
+  license:web:dev:
+    desc: Next.js dev server for the license admin UI
+    dir: license/web
+    cmds:
+      - npm run dev
+
+  license:rebuild:
+    desc: Rebuild the license service and Teams AI so both pick up the latest code and .env
+    cmds:
+      - docker compose up -d --build --wait postgres license teams-ai
+
   shell:
     desc: Open a shell inside the orchestrator container
     interactive: true
@@ -151,7 +211,7 @@ tasks:
       - umask 077 && mkdir -p backups/{{.STAMP}} && chmod 700 backups backups/{{.STAMP}}
       - |
         set -e
-        for pair in teams-ai-data:teams-ai-data teams-ai-claude:{{.PROJECT}}_teams-ai-claude teams-ai-gh:{{.PROJECT}}_teams-ai-gh; do
+        for pair in teams-ai-data:teams-ai-data teams-ai-claude:{{.PROJECT}}_teams-ai-claude teams-ai-gh:{{.PROJECT}}_teams-ai-gh teams-ai-license:teams-ai-license; do
           docker run --rm -v "${pair#*:}":/data:ro -v "$PWD/backups/{{.STAMP}}":/backup alpine tar czf "/backup/${pair%%:*}.tar.gz" -C /data .
         done
       - echo "Backup saved in backups/{{.STAMP}}"
@@ -171,7 +231,7 @@ tasks:
     cmds:
       - |
         set -e
-        for pair in teams-ai-data:teams-ai-data teams-ai-claude:{{.PROJECT}}_teams-ai-claude teams-ai-gh:{{.PROJECT}}_teams-ai-gh; do
+        for pair in teams-ai-data:teams-ai-data teams-ai-claude:{{.PROJECT}}_teams-ai-claude teams-ai-gh:{{.PROJECT}}_teams-ai-gh teams-ai-license:teams-ai-license; do
           docker run --rm -v "${pair#*:}":/data -v "$PWD/{{.DIR}}":/backup:ro alpine sh -c "find /data -mindepth 1 -delete && tar xzf /backup/${pair%%:*}.tar.gz -C /data"
         done
       - echo "Restored from {{.DIR}}. Run 'task start' to bring the platform back."

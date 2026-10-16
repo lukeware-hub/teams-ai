@@ -21,8 +21,8 @@ describe('backup and restore tasks (R7.6)', () => {
   });
 
   it('covers the volumes of the compose file that hold state', () => {
-    expect(Object.keys(compose.volumes)).toEqual(['teams-ai-data', 'teams-ai-claude', 'teams-ai-gh', 'dind-data']);
-    for (const volume of ['teams-ai-data', 'teams-ai-claude', 'teams-ai-gh']) {
+    expect(Object.keys(compose.volumes)).toEqual(['teams-ai-data', 'teams-ai-claude', 'teams-ai-gh', 'dind-data', 'teams-ai-license']);
+    for (const volume of ['teams-ai-data', 'teams-ai-claude', 'teams-ai-gh', 'teams-ai-license']) {
       expect(text('backup'), volume).toContain(volume);
       expect(text('restore'), volume).toContain(volume);
     }

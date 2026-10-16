@@ -1,6 +1,7 @@
 # teams-ai — Plans Index
 
 Audited against the codebase (`server/`, `web/`, `test/`) on 2026-09-24, re-audited for plans 14-48 on 2026-10-06.
+The license service is documented in the repository `README.md`. It is not one of the plans in this index.
 Specs live in `docs/superpowers/specs/`:
 `2026-09-23-teams-ai-poc-design.md` (POC design), `2026-09-24-orchestrator-phases-1-3-design.md`, and
 `2026-09-24-web-ui-onboarding-design.md` — all three are design companions to the plans below and match what

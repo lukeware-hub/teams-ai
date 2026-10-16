@@ -1,6 +1,11 @@
 import { authFetch } from './auth.js';
 import type { Divergence } from '@server/refine/checklist';
 export type ItemName = 'claude' | 'githubOwner' | 'ghLogin' | 'githubToken' | 'openrouterKey';
+export type LicenseView =
+  | { state: 'missing' }
+  | { state: 'authorized' }
+  | { state: 'revoked'; contactEmail: string; contactPhone: string }
+  | { state: 'unavailable' };
 export interface Item { ok: boolean; detail: string; secret?: { set: boolean; hint: string } }
 export interface Status { items: Record<ItemName, Item>; allOk: boolean }
 export type SessionState =
@@ -28,6 +33,8 @@ export const api = {
   owner: (owner: string) => authFetch(`${P}/github-owner`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ owner }) }).then((r) => json<{ item: Item }>(r)),
   secret: (name: 'GITHUB_TOKEN' | 'OPENROUTER_API_KEY', value: string) => authFetch(`${P}/secrets/${name}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value }) }).then((r) => json<{ item: Item }>(r)),
   events: (cli: Cli) => `${P}/${cli}/events`,
+  license: () => authFetch('/api/license').then((r) => json<LicenseView>(r)),
+  activateLicense: (key: string) => authFetch('/api/license/activate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key }) }).then((r) => json<{ state: 'authorized' }>(r)),
 };
 
 export const AGENT_MODELS = ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5'] as const;

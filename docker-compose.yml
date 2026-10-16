@@ -14,6 +14,8 @@ services:
         condition: service_healthy
       goproxy:
         condition: service_healthy
+      license:
+        condition: service_healthy
     ports:
       # Loopback by default; the LAN needs TEAMS_AI_UI_BIND=0.0.0.0 and a TEAMS_AI_UI_TOKEN (both in .env, which git ignores).
       - '${TEAMS_AI_UI_BIND:-127.0.0.1}:8787:8787'
@@ -26,6 +28,7 @@ services:
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       DOCKER_HOST: tcp://dind:2375
       TEAMS_AI_GO_PROXY: http://goproxy:8080
+      LICENSE_SERVICE_URL: ${LICENSE_SERVICE_URL:-http://license:8080}
     # The bwrap sandbox of each agent step needs user namespaces and a fresh /proc mount, which Docker's default profiles and masked paths block.
     security_opt:
       - seccomp:unconfined
@@ -84,9 +87,46 @@ services:
       timeout: 5s
       retries: 20
 
+  postgres:
+    image: postgres:16-alpine@sha256:1a66d744c1b459e13b05a8fca341da84cb63383e99ce262210efee5a319d4551
+    environment:
+      POSTGRES_USER: license
+      POSTGRES_PASSWORD: license
+      POSTGRES_DB: license
+    volumes:
+      - teams-ai-license:/var/lib/postgresql/data
+      - ./license/migrations/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U license -d license']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  license:
+    build:
+      context: ./license
+    init: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1:8790:8080'
+    env_file:
+      - ./license/.env
+    environment:
+      DATABASE_URL: postgres://license:license@postgres:5432/license?sslmode=disable
+      PORT: '8080'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/healthz']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
 volumes:
   teams-ai-data:
     name: teams-ai-data
   teams-ai-claude:
   teams-ai-gh:
   dind-data:
+  teams-ai-license:
+    name: teams-ai-license

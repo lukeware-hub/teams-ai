@@ -18,6 +18,7 @@ import { Run, type ExecuteResult, type RunDeps } from './orchestrator/run.js';
 import { expandHome, firstSpecForRun, firstSpecForSpec, nextRunId, specForRun, stateFile, workspacePaths } from './orchestrator/workspace.js';
 import { runStep } from './runner/step.js';
 import { startApi } from './api/server.js';
+import { licenseRoutes } from './api/license-routes.js';
 import { onboardingRoutes } from './api/onboarding-routes.js';
 import { settingsRoutes } from './api/settings-routes.js';
 import { defaultRunControl, isAlive, type RunControlDeps } from './api/run-control.js';
@@ -148,6 +149,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
   const api = await startApi(
     {
       routes: [
+        ...licenseRoutes({ serviceUrl: process.env.LICENSE_SERVICE_URL ?? '' }),
         ...onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr, onClaudeLogin: () => runAgent.resetQuota() }),
         ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr, queueInProgram: (p, s) => registry.queueInProgram(p, s), importBacklog: (projectId) => registry.startImportedBacklog(projectId), graphify, clearChat: (projectId) => chat.clear(projectId) }),
         ...opsRoutes({ index: async () => ({ cfg: (await readUserConfig()).cfg, isAlive: (pid) => isAlive(defaultRunControl(repoRoot), pid) }) }),

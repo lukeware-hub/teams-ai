@@ -4,6 +4,7 @@ import { api } from './api.js';
 import { Loading } from './components/Loading.js';
 import { AppShell } from './components/AppShell.js';
 import { ChatPage } from './pages/Chat.js';
+import { LicenseGuard } from './pages/LicenseGuard.js';
 import { Onboarding } from './pages/Onboarding.js';
 import { OnboardingGate, StatusRedirect } from './pages/OnboardingGate.js';
 import { ProjectHub } from './pages/ProjectHub.js';
@@ -28,19 +29,21 @@ export function App() {
   return (
     <BrowserRouter>
       <AppShell>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/onboarding" element={<OnboardingGate><Onboarding /></OnboardingGate>} />
-          <Route path="/chat" element={<ChatPage />} />
-          <Route path="/status" element={<StatusRedirect />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/projects" element={<Projects />} />
-          <Route path="/projects/:projectId" element={<ProjectHub />} />
-          <Route path="/runs/:runId" element={<RunPage />} />
-          <Route path="/refine/:projectId/:specId" element={<RefinementPage />} />
-          <Route path="/refine/:projectId/:specId/program" element={<ProgramPage />} />
-          <Route path="/runs/:runId/validation" element={<ValidationPage />} />
-        </Routes>
+        <LicenseGuard>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/onboarding" element={<OnboardingGate><Onboarding /></OnboardingGate>} />
+            <Route path="/chat" element={<ChatPage />} />
+            <Route path="/status" element={<StatusRedirect />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/projects" element={<Projects />} />
+            <Route path="/projects/:projectId" element={<ProjectHub />} />
+            <Route path="/runs/:runId" element={<RunPage />} />
+            <Route path="/refine/:projectId/:specId" element={<RefinementPage />} />
+            <Route path="/refine/:projectId/:specId/program" element={<ProgramPage />} />
+            <Route path="/runs/:runId/validation" element={<ValidationPage />} />
+          </Routes>
+        </LicenseGuard>
       </AppShell>
     </BrowserRouter>
   );
