@@ -5,7 +5,8 @@ export type LicenseView =
   | { state: 'missing' }
   | { state: 'authorized' }
   | { state: 'revoked'; contactEmail: string; contactPhone: string }
-  | { state: 'unavailable' };
+  | { state: 'unavailable' }
+  | { state: 'other-machine' };
 export interface Item { ok: boolean; detail: string; secret?: { set: boolean; hint: string } }
 export interface Status { items: Record<ItemName, Item>; allOk: boolean }
 export type SessionState =

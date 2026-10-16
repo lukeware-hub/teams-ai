@@ -3,7 +3,34 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Frame, ValidityChoice } from '@/components/Frame';
-import { api, statusClass, STATUS_LABEL, toRFC3339, when, type License } from '@/lib/api';
+import { api, statusClass, STATUS_LABEL, toRFC3339, when, type License, type Machine } from '@/lib/api';
+
+function MachineInfo({ machine }: { machine: Machine }) {
+  const rows: [string, string][] = [
+    ['Computador', machine.hostname],
+    ['Usuário', machine.user],
+    ['Sistema', machine.os],
+    ['Processador', machine.cpus ? `${machine.cpu} (${machine.cpus} núcleos)` : machine.cpu],
+    ['Memória', machine.memoryBytes ? `${(machine.memoryBytes / 1024 ** 3).toFixed(1)} GB` : ''],
+    ['IP de origem', machine.remoteIp],
+    ['IPs da rede', (machine.addresses ?? []).join(', ')],
+    ['Endereços MAC', (machine.macs ?? []).join(', ')],
+  ];
+  return (
+    <div className="grid gap-3 border-t border-[var(--line)] pt-4">
+      <h2 className="m-0 text-sm font-semibold text-[var(--ink-soft)]">Máquina registrada</h2>
+      <label className="field">Identificador da máquina<input className="key" readOnly value={machine.fingerprint || '—'} /></label>
+      <dl className="m-0 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
+        {rows.map(([label, value]) => (
+          <div key={label} className="contents">
+            <dt className="text-[var(--ink-soft)]">{label}</dt>
+            <dd className="m-0 break-words">{value || '—'}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
 
 function Detail() {
   const id = useSearchParams().get('id') ?? '';
@@ -87,6 +114,7 @@ function Detail() {
           </div>
           {notice ? <p className="m-0 text-[var(--good)]">{notice}</p> : null}
           {error ? <p className="error">{error}</p> : null}
+          {license.machine ? <MachineInfo machine={license.machine} /> : null}
           <div className="grid gap-3 border-t border-[var(--line)] pt-4">
             {confirmDelete ? (
               <>

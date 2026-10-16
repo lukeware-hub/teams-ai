@@ -29,6 +29,7 @@ var (
 	ErrNotActivated = &Error{400, "license is not activated"}
 	ErrStatus       = &Error{400, "status must be active or disabled"}
 	ErrPeriod       = &Error{400, "period must be at least 1 day"}
+	ErrMachine      = &Error{400, "machine fingerprint is required"}
 )
 
 type Decision struct {
@@ -113,9 +114,12 @@ func (s *Service) List(ctx context.Context) ([]store.License, error) {
 	return s.store.ListLicenses(ctx)
 }
 
-func (s *Service) Activate(ctx context.Context, keyHash string) (string, error) {
+func (s *Service) Activate(ctx context.Context, keyHash string, machine *store.Machine) (string, error) {
 	if !hex64(keyHash) {
 		return "", ErrInvalidKey
+	}
+	if machine == nil || !hex64(machine.Fingerprint) {
+		return "", ErrMachine
 	}
 	lic, err := s.store.FindLicenseByKeyHash(ctx, keyHash)
 	if errors.Is(err, store.ErrNotFound) {
@@ -149,7 +153,7 @@ func (s *Service) Activate(ctx context.Context, keyHash string) (string, error) 
 		exp := now.Add(time.Duration(*lic.ValidForDays) * 24 * time.Hour)
 		expiresAt = &exp
 	}
-	if _, err := s.store.ActivatePending(ctx, keyHash, box.Hash(code), now, expiresAt); err != nil {
+	if _, err := s.store.ActivatePending(ctx, keyHash, box.Hash(code), now, expiresAt, machine); err != nil {
 		if errors.Is(err, store.ErrNotPending) || errors.Is(err, store.ErrNotFound) {
 			return "", ErrAlreadyUsed
 		}
@@ -158,7 +162,7 @@ func (s *Service) Activate(ctx context.Context, keyHash string) (string, error) 
 	return code, nil
 }
 
-func (s *Service) Authorize(ctx context.Context, code string) (Decision, error) {
+func (s *Service) Authorize(ctx context.Context, code, fingerprint string) (Decision, error) {
 	if !hex64(code) {
 		return s.deny(ctx, "unknown")
 	}
@@ -184,6 +188,9 @@ func (s *Service) Authorize(ctx context.Context, code string) (Decision, error) 
 	}
 	if lic.Status != store.StatusActive {
 		return s.deny(ctx, "disabled")
+	}
+	if lic.Machine != nil && lic.Machine.Fingerprint != "" && lic.Machine.Fingerprint != fingerprint {
+		return s.deny(ctx, "machine")
 	}
 	return Decision{Authorized: true}, nil
 }

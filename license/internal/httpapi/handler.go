@@ -54,20 +54,49 @@ func (l *limiter) allow(key string) bool {
 }
 
 type licenseView struct {
-	ID           string     `json:"id"`
-	Status       string     `json:"status"`
-	ExpiresAt    *time.Time `json:"expiresAt,omitempty"`
-	ValidForDays *int       `json:"validForDays,omitempty"`
-	ActivatedAt  *time.Time `json:"activatedAt,omitempty"`
-	DisabledAt   *time.Time `json:"disabledAt,omitempty"`
-	CreatedAt    time.Time  `json:"createdAt"`
-	Key          string     `json:"key,omitempty"`
+	ID           string         `json:"id"`
+	Status       string         `json:"status"`
+	ExpiresAt    *time.Time     `json:"expiresAt,omitempty"`
+	ValidForDays *int           `json:"validForDays,omitempty"`
+	ActivatedAt  *time.Time     `json:"activatedAt,omitempty"`
+	DisabledAt   *time.Time     `json:"disabledAt,omitempty"`
+	CreatedAt    time.Time      `json:"createdAt"`
+	Key          string         `json:"key,omitempty"`
+	Machine      *store.Machine `json:"machine,omitempty"`
 }
 
 func viewOf(lic store.License, key string) licenseView {
 	return licenseView{
 		ID: lic.ID, Status: string(lic.Status), ExpiresAt: lic.ExpiresAt, ValidForDays: lic.ValidForDays,
-		ActivatedAt: lic.ActivatedAt, DisabledAt: lic.DisabledAt, CreatedAt: lic.CreatedAt, Key: key,
+		ActivatedAt: lic.ActivatedAt, DisabledAt: lic.DisabledAt, CreatedAt: lic.CreatedAt, Key: key, Machine: lic.Machine,
+	}
+}
+
+func cleanMachine(machine *store.Machine, remoteIP string) *store.Machine {
+	if machine == nil {
+		return &store.Machine{RemoteIP: remoteIP}
+	}
+	text := func(value string) string {
+		value = strings.TrimSpace(value)
+		if len(value) > 200 {
+			return value[:200]
+		}
+		return value
+	}
+	list := func(values []string) []string {
+		if len(values) > 32 {
+			values = values[:32]
+		}
+		out := make([]string, 0, len(values))
+		for _, value := range values {
+			out = append(out, text(value))
+		}
+		return out
+	}
+	return &store.Machine{
+		Fingerprint: text(machine.Fingerprint), Hostname: text(machine.Hostname), User: text(machine.User), OS: text(machine.OS),
+		CPU: text(machine.CPU), CPUs: machine.CPUs, MemoryBytes: machine.MemoryBytes,
+		Addresses: list(machine.Addresses), MACs: list(machine.MACs), RemoteIP: remoteIP,
 	}
 }
 
@@ -87,12 +116,13 @@ func Handler(deps Deps) http.Handler {
 			return
 		}
 		var body struct {
-			KeyHash string `json:"keyHash"`
+			KeyHash string         `json:"keyHash"`
+			Machine *store.Machine `json:"machine"`
 		}
 		if !readJSON(w, r, &body) {
 			return
 		}
-		code, err := deps.Licenses.Activate(r.Context(), body.KeyHash)
+		code, err := deps.Licenses.Activate(r.Context(), body.KeyHash, cleanMachine(body.Machine, remote(r)))
 		if err != nil {
 			writeAPIError(w, err)
 			return
@@ -105,12 +135,13 @@ func Handler(deps Deps) http.Handler {
 			return
 		}
 		var body struct {
-			CodeHash string `json:"codeHash"`
+			CodeHash    string `json:"codeHash"`
+			Fingerprint string `json:"fingerprint"`
 		}
 		if !readJSON(w, r, &body) {
 			return
 		}
-		decision, err := deps.Licenses.Authorize(r.Context(), body.CodeHash)
+		decision, err := deps.Licenses.Authorize(r.Context(), body.CodeHash, body.Fingerprint)
 		if err != nil {
 			writeAPIError(w, err)
 			return

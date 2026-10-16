@@ -51,6 +51,12 @@ func cloneLicense(lic License) License {
 		value := *lic.DisabledAt
 		lic.DisabledAt = &value
 	}
+	if lic.Machine != nil {
+		value := *lic.Machine
+		value.Addresses = append([]string(nil), value.Addresses...)
+		value.MACs = append([]string(nil), value.MACs...)
+		lic.Machine = &value
+	}
 	return lic
 }
 
@@ -162,7 +168,7 @@ func (m *Memory) DeleteLicense(_ context.Context, id string) error {
 	return nil
 }
 
-func (m *Memory) ActivatePending(_ context.Context, keyHash, codeHash string, activatedAt time.Time, expiresAt *time.Time) (License, error) {
+func (m *Memory) ActivatePending(_ context.Context, keyHash, codeHash string, activatedAt time.Time, expiresAt *time.Time, machine *Machine) (License, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	id, ok := m.byKey[keyHash]
@@ -182,6 +188,7 @@ func (m *Memory) ActivatePending(_ context.Context, keyHash, codeHash string, ac
 		exp := *expiresAt
 		lic.ExpiresAt = &exp
 	}
+	lic.Machine = machine
 	m.byID[id] = cloneLicense(lic)
 	m.byCode[codeHash] = id
 	return cloneLicense(lic), nil

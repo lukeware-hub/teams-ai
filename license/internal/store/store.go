@@ -29,6 +29,20 @@ type License struct {
 	ActivatedAt   *time.Time
 	DisabledAt    *time.Time
 	CreatedAt     time.Time
+	Machine       *Machine
+}
+
+type Machine struct {
+	Fingerprint string   `json:"fingerprint"`
+	Hostname    string   `json:"hostname"`
+	User        string   `json:"user"`
+	OS          string   `json:"os"`
+	CPU         string   `json:"cpu"`
+	CPUs        int      `json:"cpus"`
+	MemoryBytes int64    `json:"memoryBytes"`
+	Addresses   []string `json:"addresses"`
+	MACs        []string `json:"macs"`
+	RemoteIP    string   `json:"remoteIp"`
 }
 
 type Settings struct {
@@ -47,7 +61,7 @@ type Store interface {
 	ListLicenses(ctx context.Context) ([]License, error)
 	UpdateLicense(ctx context.Context, lic License) error
 	DeleteLicense(ctx context.Context, id string) error
-	ActivatePending(ctx context.Context, keyHash, codeHash string, activatedAt time.Time, expiresAt *time.Time) (License, error)
+	ActivatePending(ctx context.Context, keyHash, codeHash string, activatedAt time.Time, expiresAt *time.Time, machine *Machine) (License, error)
 	ExpireDue(ctx context.Context, now time.Time) error
 	GetSettings(ctx context.Context) (Settings, error)
 	PutSettings(ctx context.Context, settings Settings) error

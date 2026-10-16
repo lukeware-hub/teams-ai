@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { Machine } from './machine.js';
 
 export function hashLicenseKey(key: string): string {
   return createHash('sha256').update(key.trim()).digest('hex');
@@ -8,7 +9,8 @@ export type LicenseView =
   | { state: 'missing' }
   | { state: 'authorized' }
   | { state: 'revoked'; contactEmail: string; contactPhone: string }
-  | { state: 'unavailable' };
+  | { state: 'unavailable' }
+  | { state: 'other-machine' };
 
 export class LicenseError extends Error {
   constructor(readonly status: number, message: string) {
@@ -29,11 +31,11 @@ async function post(fetchImpl: typeof fetch, url: string, body: unknown): Promis
   });
 }
 
-export async function activateLicense(serviceUrl: string, key: string, fetchImpl: typeof fetch): Promise<string> {
+export async function activateLicense(serviceUrl: string, key: string, machine: Machine, fetchImpl: typeof fetch): Promise<string> {
   if (!serviceUrl.trim()) throw new LicenseError(503, 'Não foi possível contatar o serviço de licenças.');
   let res: Response;
   try {
-    res = await post(fetchImpl, endpoint(serviceUrl, '/api/v1/activate'), { keyHash: hashLicenseKey(key) });
+    res = await post(fetchImpl, endpoint(serviceUrl, '/api/v1/activate'), { keyHash: hashLicenseKey(key), machine });
   } catch {
     throw new LicenseError(503, 'Não foi possível contatar o serviço de licenças.');
   }
@@ -46,14 +48,15 @@ export async function activateLicense(serviceUrl: string, key: string, fetchImpl
   return body.codeHash;
 }
 
-export async function authorizeLicense(serviceUrl: string, code: string, fetchImpl: typeof fetch): Promise<LicenseView> {
+export async function authorizeLicense(serviceUrl: string, code: string, fingerprint: string, fetchImpl: typeof fetch): Promise<LicenseView> {
   if (!serviceUrl.trim()) return { state: 'unavailable' };
   try {
-    const res = await post(fetchImpl, endpoint(serviceUrl, '/api/v1/authorize'), { codeHash: code });
+    const res = await post(fetchImpl, endpoint(serviceUrl, '/api/v1/authorize'), { codeHash: code, fingerprint });
     if (!res.ok) return { state: 'unavailable' };
     const body = (await res.json().catch(() => ({}))) as { authorized?: boolean; reason?: string; contactEmail?: string; contactPhone?: string };
     if (body.authorized) return { state: 'authorized' };
     if (body.reason === 'unknown') return { state: 'missing' };
+    if (body.reason === 'machine') return { state: 'other-machine' };
     return { state: 'revoked', contactEmail: body.contactEmail ?? '', contactPhone: body.contactPhone ?? '' };
   } catch {
     return { state: 'unavailable' };

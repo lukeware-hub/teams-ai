@@ -7,6 +7,20 @@ export type License = {
   disabledAt?: string;
   createdAt: string;
   key?: string;
+  machine?: Machine;
+};
+
+export type Machine = {
+  fingerprint: string;
+  hostname: string;
+  user: string;
+  os: string;
+  cpu: string;
+  cpus: number;
+  memoryBytes: number;
+  addresses: string[] | null;
+  macs: string[] | null;
+  remoteIp: string;
 };
 
 export type Settings = { contactEmail: string; contactPhone: string };

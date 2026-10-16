@@ -58,7 +58,7 @@ describe('license routes', () => {
     const activated = await post(`${base()}/api/license/activate`, { key: KEY });
     expect(activated.status).toBe(200);
     expect(await activated.json()).toEqual({ state: 'authorized' });
-    expect(seen[0]).toEqual({ keyHash: createHash('sha256').update(KEY).digest('hex') });
+    expect(seen[0]).toMatchObject({ keyHash: createHash('sha256').update(KEY).digest('hex'), machine: { fingerprint: expect.stringMatching(/^[0-9a-f]{64}$/), hostname: expect.any(String) } });
     expect(JSON.stringify(seen)).not.toContain(KEY);
     const codeFile = licenseCodeFile(home);
     expect((await fs.readFile(codeFile, 'utf8')).trim()).toBe(CODE);
@@ -78,6 +78,13 @@ describe('license routes', () => {
     expect(await (await fetch(`${base()}/api/license`)).json()).toEqual({ state: 'missing' });
     await expect(fs.readFile(licenseCodeFile(home), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
     expect((await post(`${base()}/api/license/activate`, { key: 'replacement-key' })).status).toBe(200);
+  });
+
+  it('refuses a license bound to another computer and keeps the local code', async () => {
+    authorize = { authorized: false, reason: 'machine' };
+    await writeLicenseCode(CODE, home);
+    expect(await (await fetch(`${base()}/api/license`)).json()).toEqual({ state: 'other-machine' });
+    expect((await fs.readFile(licenseCodeFile(home), 'utf8')).trim()).toBe(CODE);
   });
 
   it('reports a revoked license with the Lukeware contacts', async () => {

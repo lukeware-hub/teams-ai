@@ -118,6 +118,14 @@ describe('license gate', () => {
     vi.useRealTimers();
   });
 
+  it('blocks a license bound to another computer', async () => {
+    vi.spyOn(api, 'license').mockResolvedValue({ state: 'other-machine' });
+    renderGuard();
+    expect(await screen.findByRole('heading', { name: 'Licença de outro computador' })).toBeTruthy();
+    expect(screen.queryByText('app aberto')).toBeNull();
+    expect(screen.queryByLabelText('Cole a chave de licença')).toBeNull();
+  });
+
   it('opens the app when the license is authorized', async () => {
     vi.spyOn(api, 'license').mockResolvedValue({ state: 'authorized' });
     renderGuard();

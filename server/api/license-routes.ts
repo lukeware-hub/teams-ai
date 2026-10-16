@@ -1,5 +1,6 @@
 import { HttpError, type Route } from './server.js';
 import { activateLicense, authorizeLicense, LicenseError } from '../license/client.js';
+import { readMachine } from '../license/machine.js';
 import { clearLicenseCode, readLicenseCode, writeLicenseCode } from '../license/vault.js';
 
 export interface LicenseDeps {
@@ -20,7 +21,7 @@ export function licenseRoutes(deps: LicenseDeps): Route[] {
           json(200, { state: 'missing' });
           return;
         }
-        const view = await authorizeLicense(deps.serviceUrl, code, fetchImpl);
+        const view = await authorizeLicense(deps.serviceUrl, code, (await readMachine(deps.home)).fingerprint, fetchImpl);
         if (view.state === 'missing') await clearLicenseCode(deps.home);
         json(200, view);
       },
@@ -34,7 +35,7 @@ export function licenseRoutes(deps: LicenseDeps): Route[] {
         if (!key) throw new HttpError(400, 'Informe a chave de licença.');
         if (await readLicenseCode(deps.home)) throw new HttpError(409, 'Este computador já tem uma licença.');
         try {
-          const code = await activateLicense(deps.serviceUrl, key, fetchImpl);
+          const code = await activateLicense(deps.serviceUrl, key, await readMachine(deps.home), fetchImpl);
           await writeLicenseCode(code, deps.home);
         } catch (err) {
           if (err instanceof LicenseError) throw new HttpError(err.status, err.message);

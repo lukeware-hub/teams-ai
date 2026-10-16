@@ -29,6 +29,9 @@ services:
       DOCKER_HOST: tcp://dind:2375
       TEAMS_AI_GO_PROXY: http://goproxy:8080
       LICENSE_SERVICE_URL: ${LICENSE_SERVICE_URL:-http://license:8080}
+      TEAMS_AI_HOST_NAME: ${COMPUTERNAME:-${HOSTNAME:-}}
+      TEAMS_AI_HOST_USER: ${USERNAME:-${USER:-}}
+      TEAMS_AI_HOST_OS: ${OS:-}
     # The bwrap sandbox of each agent step needs user namespaces and a fresh /proc mount, which Docker's default profiles and masked paths block.
     security_opt:
       - seccomp:unconfined

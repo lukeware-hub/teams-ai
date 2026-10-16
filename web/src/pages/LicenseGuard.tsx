@@ -48,6 +48,7 @@ export function LicenseGuard({ children }: { children: ReactNode }) {
   }
   if (view.state === 'unavailable') return <LicenseUnavailable onRetry={() => setAttempt((current) => current + 1)} onRegister={() => setRegister(true)} />;
   if (view.state === 'revoked') return <LicenseRevoked email={view.contactEmail} phone={view.contactPhone} />;
+  if (view.state === 'other-machine') return <LicenseOtherMachine />;
   if (view.state === 'missing' || session) {
     return <Onboarding includeLicense onLicensed={() => { setView({ state: 'authorized' }); setSession(true); }} onLeave={() => setSession(false)} />;
   }
@@ -70,6 +71,21 @@ export function LicenseRevoked({ email, phone }: { email: string; phone: string 
             {phone ? <a className={contactLink} href={`tel:${phone.replace(/\s/g, '')}`}>{phone}</a> : null}
           </div>
         ) : null}
+      </section>
+    </main>
+  );
+}
+
+export function LicenseOtherMachine() {
+  useHideRail();
+  return (
+    <main className="min-h-full place-content-center">
+      <section className="card grid w-full max-w-md justify-items-center gap-3 justify-self-center text-center">
+        <span className="confirm-icon mb-0" aria-hidden="true">
+          <Icon name="lock" size={22} />
+        </span>
+        <h1 className="m-0 text-[1.125rem] leading-[1.3] font-[650] tracking-[-0.01em] text-balance text-ink">Licença de outro computador</h1>
+        <p className="m-0 max-w-[42ch] text-[0.875rem] leading-[1.55] text-balance text-ink-soft">Esta chave está vinculada ao computador que a registrou. Outro computador não pode usá-la.</p>
       </section>
     </main>
   );

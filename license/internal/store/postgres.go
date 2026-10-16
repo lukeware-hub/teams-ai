@@ -12,7 +12,7 @@ import (
 	"teams-ai/license/migrations"
 )
 
-const licenseCols = `id, key_hash, key_ciphertext, code_hash, status, expires_at, valid_for_days, activated_at, disabled_at, created_at`
+const licenseCols = `id, key_hash, key_ciphertext, code_hash, status, expires_at, valid_for_days, activated_at, disabled_at, created_at, machine`
 
 type Postgres struct {
 	pool *pgxpool.Pool
@@ -70,14 +70,14 @@ func (p *Postgres) PasswordHash(ctx context.Context, email string) (string, bool
 func (p *Postgres) InsertLicense(ctx context.Context, lic License) error {
 	_, err := p.pool.Exec(ctx, `
 		INSERT INTO licenses (`+licenseCols+`)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		lic.ID, lic.KeyHash, lic.KeyCiphertext, lic.CodeHash, lic.Status, lic.ExpiresAt, lic.ValidForDays, lic.ActivatedAt, lic.DisabledAt, lic.CreatedAt)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		lic.ID, lic.KeyHash, lic.KeyCiphertext, lic.CodeHash, lic.Status, lic.ExpiresAt, lic.ValidForDays, lic.ActivatedAt, lic.DisabledAt, lic.CreatedAt, lic.Machine)
 	return err
 }
 
 func scanLicense(row pgx.Row) (License, error) {
 	var lic License
-	err := row.Scan(&lic.ID, &lic.KeyHash, &lic.KeyCiphertext, &lic.CodeHash, &lic.Status, &lic.ExpiresAt, &lic.ValidForDays, &lic.ActivatedAt, &lic.DisabledAt, &lic.CreatedAt)
+	err := row.Scan(&lic.ID, &lic.KeyHash, &lic.KeyCiphertext, &lic.CodeHash, &lic.Status, &lic.ExpiresAt, &lic.ValidForDays, &lic.ActivatedAt, &lic.DisabledAt, &lic.CreatedAt, &lic.Machine)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return License{}, ErrNotFound
 	}
@@ -139,13 +139,13 @@ func (p *Postgres) DeleteLicense(ctx context.Context, id string) error {
 	return nil
 }
 
-func (p *Postgres) ActivatePending(ctx context.Context, keyHash, codeHash string, activatedAt time.Time, expiresAt *time.Time) (License, error) {
+func (p *Postgres) ActivatePending(ctx context.Context, keyHash, codeHash string, activatedAt time.Time, expiresAt *time.Time, machine *Machine) (License, error) {
 	row := p.pool.QueryRow(ctx, `
 		UPDATE licenses
-		SET code_hash = $2, status = 'active', activated_at = $3, expires_at = CASE WHEN $4::timestamptz IS NULL THEN expires_at ELSE $4 END
+		SET code_hash = $2, status = 'active', activated_at = $3, expires_at = CASE WHEN $4::timestamptz IS NULL THEN expires_at ELSE $4 END, machine = $5
 		WHERE key_hash = $1 AND status = 'pending' AND code_hash IS NULL
 		RETURNING `+licenseCols,
-		keyHash, codeHash, activatedAt, expiresAt)
+		keyHash, codeHash, activatedAt, expiresAt, machine)
 	lic, err := scanLicense(row)
 	if errors.Is(err, ErrNotFound) {
 		return License{}, ErrNotPending

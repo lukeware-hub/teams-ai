@@ -72,9 +72,30 @@ func TestAdminRoutesRequireJWT(t *testing.T) {
 		t.Fatalf("list status = %d", rec.Code)
 	}
 
-	created, _, err := svc.Create(context.Background(), nil, nil)
+	created, key, err := svc.Create(context.Background(), nil, nil)
 	if err != nil {
 		t.Fatal(err)
+	}
+	fingerprint := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	activateBody := bytes.NewBufferString(`{"keyHash":"` + box.Hash(key) + `","machine":{"fingerprint":"` + fingerprint + `","hostname":"DESKTOP-1","user":"diego","os":"Windows_NT","cpus":8,"addresses":["172.18.0.5"],"macs":["02:42:ac:12:00:05"]}}`)
+	activate := httptest.NewRequest(http.MethodPost, "/api/v1/activate", activateBody)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, activate)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("activate status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	shown := httptest.NewRequest(http.MethodGet, "/api/admin/licenses/"+created.ID, nil)
+	shown.Header.Set("Authorization", "Bearer "+token.Token)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, shown)
+	var view struct {
+		Machine store.Machine `json:"machine"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil {
+		t.Fatal(err)
+	}
+	if view.Machine.Hostname != "DESKTOP-1" || view.Machine.Fingerprint != fingerprint || view.Machine.RemoteIP != "192.0.2.1" || view.Machine.MACs[0] != "02:42:ac:12:00:05" {
+		t.Fatalf("machine = %+v", view.Machine)
 	}
 	deleted := httptest.NewRequest(http.MethodDelete, "/api/admin/licenses/"+created.ID, nil)
 	deleted.Header.Set("Authorization", "Bearer "+token.Token)
