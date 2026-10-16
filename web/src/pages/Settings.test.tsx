@@ -29,6 +29,13 @@ function mockEnv() {
   vi.spyOn(api, 'organizations').mockResolvedValue({ organizations: ['acme'], owner: 'acme' });
 }
 
+async function openModelsCollapse() {
+  expect(await screen.findByText('Modelos e esforço', { selector: '.settings-collapse-title' })).toBeTruthy();
+  expect(screen.queryByLabelText('Modo de Desenvolvedor')).toBeNull();
+  fireEvent.click(screen.getByText('Modelos e esforço', { selector: '.settings-collapse-title' }));
+  return screen.findByLabelText('Modo de Desenvolvedor');
+}
+
 describe('SettingsPage', () => {
   it('shows the global environment collapses separate from project agents', async () => {
     mockEnv();
@@ -47,7 +54,8 @@ describe('SettingsPage', () => {
     expect(within(screen.getByTestId('card-Token do GitHub')).getByRole('button', { name: 'Salvar e continuar' })).toBeTruthy();
 
     expect(await screen.findByRole('heading', { name: 'Projeto' })).toBeTruthy();
-    expect(await screen.findByLabelText('Modo de Desenvolvedor')).toBeTruthy();
+    expect(screen.getByText('8 agentes')).toBeTruthy();
+    await openModelsCollapse();
   });
 
   it('shows every agent on automatic and saves a manual pick with the default model and effort', async () => {
@@ -57,7 +65,7 @@ describe('SettingsPage', () => {
     const setAgent = vi.spyOn(settingsApi, 'setAgent').mockResolvedValue({ setting: null });
     render(<MemoryRouter><SettingsPage /></MemoryRouter>);
 
-    const mode = await screen.findByLabelText('Modo de Desenvolvedor');
+    const mode = await openModelsCollapse();
     expect((mode as HTMLSelectElement).value).toBe('auto');
     expect(screen.queryByLabelText('Modelo de Desenvolvedor')).toBeNull();
 
@@ -73,6 +81,7 @@ describe('SettingsPage', () => {
     const setAgent = vi.spyOn(settingsApi, 'setAgent').mockResolvedValue({ setting: null });
     render(<MemoryRouter><SettingsPage /></MemoryRouter>);
 
+    await openModelsCollapse();
     expect(await screen.findByLabelText('Modelo de Segurança')).toBeTruthy();
     expect((screen.getByLabelText('Modelo de Segurança') as HTMLSelectElement).value).toBe('claude-opus-5-5');
     fireEvent.change(screen.getByLabelText('Esforço de Segurança'), { target: { value: 'high' } });
@@ -86,7 +95,7 @@ describe('SettingsPage', () => {
     vi.spyOn(settingsApi, 'setAgent').mockRejectedValue(new Error('offline'));
     render(<MemoryRouter><SettingsPage /></MemoryRouter>);
 
-    fireEvent.change(await screen.findByLabelText('Modo de Desenvolvedor'), { target: { value: 'manual' } });
+    fireEvent.change(await openModelsCollapse(), { target: { value: 'manual' } });
     expect(await screen.findByText('Não foi possível salvar. Tente novamente.')).toBeTruthy();
     await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
   });

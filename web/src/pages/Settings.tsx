@@ -183,10 +183,9 @@ export function SettingsPage() {
         </section>
       ) : null}
       {projects && projects.length > 0 ? (
-        <section className={`${panel} gap-3`} aria-labelledby="agents-title">
+        <section className={`${panel} gap-3`} aria-labelledby="project-title">
           <div className={sectionTitle}>
-            <h2 className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="agents-title">Projeto</h2>
-            <InfoTip label="Agentes" text={HELP_AGENTS} />
+            <h2 className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="project-title">Projeto</h2>
           </div>
           <label className="grid max-w-[24rem] gap-1.5">
             <span className="text-[0.8125rem] font-semibold text-ink-soft">Projeto</span>
@@ -197,10 +196,21 @@ export function SettingsPage() {
               {projects.map((p) => <option key={p.projectId} value={p.projectId}>{p.name || p.projectId}</option>)}
             </Select>
           </label>
-          <div className={sectionTitle}>
-            <h3 className="m-0 flex-[0_1_auto] text-[1rem] font-semibold leading-[1.3]">Agentes</h3>
-          </div>
-          {agents ? <ul className={`${rows} [&>li]:border-accent-line`}>{agents.map((agent) => <AgentLine key={`${projectId}/${agent.role}`} projectId={projectId} row={agent} onFailed={saveFailed} />)}</ul> : <Loading />}
+          {agents === null ? <Loading /> : (
+            <SettingsCollapse
+              title="Modelos e esforço"
+              meta={(() => {
+                const manual = agents.filter((a) => a.setting !== null).length;
+                return manual === 0 ? `${agents.length} agentes` : `${manual} ${manual === 1 ? 'manual' : 'manuais'} · ${agents.length} agentes`;
+              })()}
+            >
+              <div className={`${sectionTitle} mb-3`}>
+                <h3 className="m-0 flex-[0_1_auto] text-[1rem] font-semibold leading-[1.3]">Agentes</h3>
+                <InfoTip label="Agentes" text={HELP_AGENTS} />
+              </div>
+              <ul className={`${rows} [&>li]:border-accent-line`}>{agents.map((agent) => <AgentLine key={`${projectId}/${agent.role}`} projectId={projectId} row={agent} onFailed={saveFailed} />)}</ul>
+            </SettingsCollapse>
+          )}
         </section>
       ) : null}
     </main>

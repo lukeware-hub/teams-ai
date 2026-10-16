@@ -361,7 +361,9 @@ button[aria-busy='true']:disabled { cursor: progress; opacity: 0.75; }
 .settings-collapse-summary > svg:first-child { flex: none; color: var(--ink-soft); transition: transform var(--duration-fast) var(--ease-out); }
 .settings-collapse[open] > .settings-collapse-summary > svg:first-child { transform: rotate(90deg); color: var(--accent-text); }
 .settings-collapse-title { flex: 1; min-width: 0; }
-.settings-collapse-summary .status-chip { margin-left: auto; }
+.settings-collapse-summary .status-chip,
+.settings-collapse-meta { margin-left: auto; }
+.settings-collapse-meta { color: var(--ink-soft); font-size: 0.8125rem; font-weight: 600; white-space: nowrap; }
 .settings-collapse-body { padding: 0 1.15rem 1.25rem; border-top: 1px solid var(--line); }
 .settings-collapse.card-ok { border-color: var(--good-line); }
 
