@@ -7,7 +7,6 @@ import { ThemeSwitch } from './ThemeSwitch.js';
 const NAV: ReadonlyArray<{ to: string; label: string; icon: IconName; paths: string[] }> = [
   { to: '/projects', label: 'Projetos', icon: 'folder', paths: ['/projects', '/refine', '/runs'] },
   { to: '/chat', label: 'Chat de dúvidas', icon: 'chat', paths: ['/chat'] },
-  { to: '/status', label: 'Status do ambiente', icon: 'activity', paths: ['/status', '/onboarding'] },
   { to: '/settings', label: 'Configurações', icon: 'settings', paths: ['/settings'] },
 ];
 

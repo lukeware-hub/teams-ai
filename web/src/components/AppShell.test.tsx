@@ -8,7 +8,8 @@ const shell = (path: string) => render(<MemoryRouter initialEntries={[path]}><Ap
 describe('AppShell', () => {
   it('names each destination in full for assistive tech, since the rail shows icons only', () => {
     shell('/projects');
-    for (const name of ['Projetos', 'Chat de dúvidas', 'Status do ambiente', 'Configurações']) expect(screen.getByRole('link', { name })).toBeTruthy();
+    for (const name of ['Projetos', 'Chat de dúvidas', 'Configurações']) expect(screen.getByRole('link', { name })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Status do ambiente' })).toBeNull();
   });
 
   it('marks the destination that holds the current screen', () => {
@@ -18,8 +19,13 @@ describe('AppShell', () => {
   });
 
   it('puts the screen name in the document title', () => {
-    shell('/status');
-    expect(document.title).toBe('Status do ambiente · Teams AI');
+    shell('/settings');
+    expect(document.title).toBe('Configurações · Teams AI');
+  });
+
+  it('uses the brand title when no rail item is active', () => {
+    shell('/onboarding');
+    expect(document.title).toBe('Teams AI');
   });
 
   it('offers a skip link to the content', () => {

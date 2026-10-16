@@ -11,7 +11,7 @@ import { SecretCard } from '../components/SecretCard.js';
 const STEP_ITEMS: readonly ItemName[] = ['ghLogin', 'githubToken', 'githubOwner', 'claude', 'openrouterKey'];
 const TOTAL_STEPS = 6;
 
-export function Onboarding({ compact = false }: { compact?: boolean }) {
+export function Onboarding() {
   const focusOpenrouter = useSearchParams()[0].get('item') === 'openrouter';
   const [step, setStep] = useState(focusOpenrouter ? STEP_ITEMS.indexOf('openrouterKey') : 0);
   const [status, setStatus] = useState<Status | null>(null);
@@ -93,7 +93,7 @@ export function Onboarding({ compact = false }: { compact?: boolean }) {
   };
   return (
     <OnboardingShell
-      title={compact ? 'Status do ambiente' : 'Configure este ambiente'}
+      title="Configure este ambiente"
       subtitle="Conecte as ferramentas que o Teams AI precisa para trabalhar neste computador."
       step={step}
       total={TOTAL_STEPS}

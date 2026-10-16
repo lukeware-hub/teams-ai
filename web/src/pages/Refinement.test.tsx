@@ -497,7 +497,7 @@ describe('JevActions', () => {
   it('links to the OpenRouter onboarding step and reports a failed connection check', async () => {
     vi.spyOn(api, 'status').mockResolvedValue(status({ ok: false, detail: 'OPENROUTER_API_KEY not set' }));
     render(<MemoryRouter><JevActions /></MemoryRouter>);
-    expect(screen.getByText('Informar nova chave').getAttribute('href')).toBe('/onboarding?item=openrouter');
+    expect(screen.getByText('Informar nova chave').getAttribute('href')).toBe('/settings');
     fireEvent.click(screen.getByTestId('jev-validate'));
     expect((await screen.findByTestId('jev-validate-result')).textContent).toContain('Falha na conexão: OPENROUTER_API_KEY not set');
   });
