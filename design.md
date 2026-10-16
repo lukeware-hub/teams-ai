@@ -968,70 +968,62 @@ PT-BR only, LTR. Logical properties are **not required**, and adopting them half
 
 ## 17. Structure
 
-The first reference is a **stepped wizard**: one screen per step, a persistent header with a progress card, a single content card, a footer with `Voltar`. `6/6` and `Configuração concluída` say the completion screen counts as a step.
+A **stepped wizard**: one screen per step inside a single shell. The page title sits above the shell. Inside the shell: a labeled horizontal stepper (6 nodes), the step body, and a footer with `Voltar` and `Continuar`. The completion screen counts as step 6 (`Pronto`).
 
-That is a structural change from the current build, which renders all five items as a scrolling pile of cards and mounts or unmounts them as their gates open.
+| # | Screen | Item | Stepper label | Gate |
+|---|---|---|---|---|
+| 1 | GitHub CLI | `ghLogin` | Conectar GitHub | — |
+| 2 | Token do GitHub | `githubToken` | Token | step 1 done |
+| 3 | Organização do GitHub | `githubOwner` | Organização | step 2 done |
+| 4 | Claude | `claude` | Claude | — |
+| 5 | Chave do OpenRouter | `openrouterKey` | OpenRouter | — |
+| 6 | Tudo pronto | — | Pronto | steps 1–5 done |
 
-| # | Screen | Item | Gate |
-|---|---|---|---|
-| 1 | GitHub CLI | `ghLogin` | — |
-| 2 | Token do GitHub | `githubToken` | step 1 done |
-| 3 | Organização do GitHub | `githubOwner` | step 2 done |
-| 4 | Claude | `claude` | — |
-| 5 | Chave do OpenRouter | `openrouterKey` | — |
-| 6 | Tudo pronto | — | steps 1–5 done |
-
-**Open decision.** The code computes `total` from `Object.keys(status.items).length` = 5, so today the counter would read `5/5`. The reference reads `6/6`. Either the completion screen counts as a step — the reading this spec assumes — or a sixth item exists that the status payload does not carry. Confirm before implementing; nothing else here depends on the answer.
+Order is fixed; advancing requires the current item `ok`. A successful save or login advances automatically; `Continuar` remains for already-complete steps.
 
 ## 18. Screen shell
 
 ```text
-  Configure este ambiente                       ┌─────────────────────────┐
-  Conecte as ferramentas que o Teams AI         │ ▣  Progresso       2/6  │
-  precisa para trabalhar neste computador.      │    ▓▓▓▓░░░░░░░░░░░░░░░  │
-                                                │    Complete os itens    │
-  ──────────────────────────────────────────────└─────────────────────────┘
+  Configure este ambiente
+  Conecte as ferramentas que o Teams AI precisa para trabalhar neste computador.
   ┌─────────────────────────────────────────────────────────────────────┐
-  │   ▣                                                  ╭────────────╮ │
-  │   [ chip ]                                           │illustration│ │
-  │   Headline em hero                                   ╰────────────╯ │
-  │   Uma ou duas linhas de apoio em body-soft.                         │
-  │   [ ▣  Ação principal  → ]                                          │
+  │  (1) Conectar GitHub — (2) Token — (3) Organização — … — (6) Pronto │
+  ├─────────────────────────────────────────────────────────────────────┤
+  │  ▣  Título                          [chip]   │  Painel ilustrado     │
+  │  apoio                                       │  headline + suporte   │
+  │  [benefício] [benefício]                     │  illustration PNG     │
+  │  detalhe + controles                         │                       │
+  ├─────────────────────────────────────────────────────────────────────┤
+  │  [ ← Voltar ]                                      [ Continuar → ]  │
   └─────────────────────────────────────────────────────────────────────┘
-  ───────────────────────────────────────────────────────────────────────
-  [ ← Voltar ]
 ```
 
 | Region | Spec |
 |---|---|
-| Shell | `min(100%, 1120px)`, centered, 40px gutter (24px < 720px) |
-| Header | `display` title; `body-soft` intro capped at 60ch; progress card right, vertically centered on the title block |
-| Progress card | `panel`, 48px tile, `Progresso` + count on one baseline, track below, status line under |
-| Content card | `content-card`, `radius-2xl`, 40px padding, **constant minimum height** so the page does not jump between steps |
-| Footer | `Voltar` at the left guide, `default` variant with a leading left-arrow. Nothing else. |
-
-**The advance action lives in the card**, not the footer — the eye is already there reading the headline. The footer carries only the reverse.
+| Page header | `display` title; `body-soft` intro capped at 60ch |
+| Shell | one `edge-lit` panel, `radius-2xl`, max width 1120px |
+| Stepper | six numbered nodes with short labels; active uses gradient node; done uses accent soft + check |
+| Body | two columns ≥720px: task left, illustration panel right |
+| Footer | `Voltar` left; `Continuar` right (hidden on step 6), enabled only when the current item is `ok` |
 
 ## 19. A task step (screens 1–5)
 
 | Element | Role |
 |---|---|
-| Tile | 56px, `accent-soft` pending, `good-soft` + check once done |
-| Chip | Only when state adds something: `Pendente`, `Verificando…`, `Concluído`, `Bloqueado` |
-| Headline | `hero` — the thing being connected, not the action: `Conecte o GitHub CLI` |
-| Support | `body-soft`, ≤2 lines, ≤60ch — what happens when they act |
-| Control | one `primary-flow`, plus whatever the step's flow needs |
-| Illustration | Optional, but **consistently present or consistently absent across all five** — not three with and two without |
+| Tile | 56px domain icon (GitHub or Claude) |
+| Chip | `Pendente` (warn + clock), `Verificando`, or `Concluído` |
+| Headline | the connection name |
+| Support | `body-soft`, ≤2 lines |
+| Benefits | two micro-cards (icon + title + one line) |
+| Control | login or `Salvar e continuar` |
+| Panel | headline + support + the step PNG — consistent on all five setup steps |
 
-| State | Tile | Chip | Card | Control |
-|---|---|---|---|---|
-| `pending` | `accent-soft` | `Pendente` neutral | `surface` | primary enabled |
-| `active` | `accent-soft` | `Verificando…` accent | `surface` | primary loading |
-| `done` | `good-soft` + check | `Concluído` good | `tint-good` | `Avançar` primary + quiet `Refazer` |
-| `failed` | `bad-soft` | — | `surface` | error callout + `Tentar novamente` |
-| `locked` | `surface-muted` + lock | `Bloqueado` neutral | `surface-sunken` | none; the reason in `body-soft` |
-
-A locked screen is **reachable and explains itself** — `Disponível após conectar o GitHub` — rather than being skipped. The current build unmounts gated items, so the user never learns the order exists.
+| State | Chip | Control |
+|---|---|---|
+| `pending` | `Pendente` warn | primary enabled |
+| `active` | `Verificando` | primary loading |
+| `done` | `Concluído` good | auto-advance or `Continuar` |
+| `failed` | — | error callout + retry |
 
 ## 20. The CLI login (screens 1 and 4)
 
@@ -1049,7 +1041,7 @@ A locked screen is **reachable and explains itself** — `Disponível após cone
 
 **Organização.** A `select` at 44px, full content width, label above. Loading renders it disabled with `Carregando organizações…`; an empty result renders a **guidance** callout, not an error — no organizations is a state, not a failure.
 
-**Token and Chave.** A password field, label above, `Salvar e verificar` on the same baseline, right. A stored value shows its masked hint as a `meta` receipt beside the label, and the placeholder becomes `Substituir valor salvo`. The field never shows the stored value.
+**Token and Chave.** A password field, label above, `Salvar e continuar` on the same baseline, right. A stored value shows its masked hint as a `meta` receipt beside the label, and the placeholder becomes `Substituir valor salvo`. The field never shows the stored value. On a successful probe, the wizard advances to the next step.
 
 ## 22. Tudo pronto (screen 6)
 
@@ -1064,27 +1056,21 @@ A locked screen is **reachable and explains itself** — `Disponível após cone
 | Support | Two `body-soft` lines, ≤60ch |
 | Primary | `Ir para projetos`, `primary-flow`, leading folder icon, trailing right-arrow |
 | Illustration | The app window with checked items and the sparkle cluster, right, `aria-hidden` |
-| Progress | `6/6`, track full, `Configuração concluída` |
+| Stepper | node 6 active (`Pronto`); no `Continuar` in the footer |
 
 **This is the one screen where the copy may speak about the product** rather than the next action — it is the only screen with nothing left to do.
 
 ## 23. Motion in the flow
 
-**One authored moment: the step advance.**
+**One authored moment: the step advance.** Incoming body rises 8px and fades in — `step-in`, `ease-out`. The stepper node state updates with the step index. No page-load choreography.
 
-1. Outgoing card fades and drops 8px — 160ms `ease-out`.
-2. Progress fill scales to its new value — 350ms `ease-out`, `scaleX`.
-3. Incoming card rises 8px and fades in — 220ms `ease-out`, starting 60ms in.
-
-Under 450ms, transitions rather than keyframes so a fast double-advance retargets instead of restarting. No page-load choreography.
-
-**Celebration on screen 6 only:** confetti scales from `0.96`, 40ms stagger, once, under 500ms, never looping. Removed under `prefers-reduced-motion`, which keeps the fades and the progress fill.
+**Celebration on screen 6 only:** confetti scales from `0.96`, 40ms stagger, once, under 500ms, never looping. Removed under `prefers-reduced-motion`, which keeps the fade.
 
 ## 24. Responsive
 
-**≥1100px** — the layout above.
-**720–1100px** — progress card drops below the title, full width; illustration below the copy, ≤280px tall; card padding 32px.
-**<720px** — 24px gutter; card padding 24px, `radius-xl`; `display` at 1.875rem; progress card becomes one line with no tile; **illustration removed, not shrunk** — a decorative asset at 120px is noise; controls stack with order preserved and DOM order unchanged; primary full width; `Voltar` inline at the left.
+**≥1100px** — two-column body inside the shell.
+**720–1100px** — shell full width; panel stays when space allows.
+**<720px** — stepper labels hidden (nodes remain); benefits stack to one column; **illustration panel removed, not shrunk**; controls stack; `Voltar` and `Continuar` share the footer width.
 
 ---
 

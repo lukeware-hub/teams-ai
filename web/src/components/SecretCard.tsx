@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, type Item } from '../api.js';
+import { GH_TOKEN, OPENROUTER } from '../onboarding/stepCopy.js';
 import { ActionButton } from './ActionButton.js';
 import { Icon } from './Icons.js';
 import { ItemCard } from './ItemCard.js';
@@ -12,12 +13,14 @@ const COPY = {
     info: 'Crie o token no GitHub, em Settings › Developer settings. Ele fica guardado só neste computador e nunca é repassado aos agentes.',
     field: 'Cole o token de acesso',
     replace: 'Substituir token salvo',
+    ...GH_TOKEN,
   },
   OPENROUTER_API_KEY: {
     subtitle: 'Obrigatória: o Jev revisa a consistência dos documentos e decide pontos do refinamento.',
     info: 'O Jev é um assistente de IA acessado pelo OpenRouter. No refinamento ele confere se os documentos são consistentes e classifica e decide pontos da avaliação, como critérios ainda não prontos e perguntas repetidas. Sem a chave, o refinamento não inicia.',
     field: 'Cole a chave de API',
     replace: 'Substituir chave salva',
+    ...OPENROUTER,
   },
 };
 
@@ -40,7 +43,7 @@ export function SecretCard({ name, title, item, onSaved }: { name: 'GITHUB_TOKEN
   };
   const copy = COPY[name];
   return (
-    <ItemCard title={title} item={item} variant="login" subtitle={copy.subtitle} info={copy.info} icon={name === 'GITHUB_TOKEN' ? 'github' : 'user'} illustration={name === 'GITHUB_TOKEN' ? '/onboarding-github-token.png' : '/onboarding-openrouter.png'}>
+    <ItemCard title={title} item={item} variant="login" subtitle={copy.subtitle} info={copy.info} icon={name === 'GITHUB_TOKEN' ? 'github' : 'user'} illustration={name === 'GITHUB_TOKEN' ? '/onboarding-github-token.png' : '/onboarding-openrouter.png'} benefits={copy.benefits} panel={copy.panel}>
       <form
         className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-end gap-[0.7rem] @max-[40rem]:grid-cols-[minmax(0,1fr)]"
         onSubmit={(e) => {
@@ -53,7 +56,7 @@ export function SecretCard({ name, title, item, onSaved }: { name: 'GITHUB_TOKEN
           <input className="w-full min-w-0" type="password" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Cole o valor aqui…" autoComplete="off" />
         </label>
         <ActionButton type="submit" className="primary-button @max-[40rem]:w-full" busy={busy} disabled={value.trim() === ''} icon={<Icon name="check" size={16} />}>
-          {busy ? 'Verificando…' : 'Salvar e verificar'}
+          {busy ? 'Verificando…' : 'Salvar e continuar'}
         </ActionButton>
       </form>
       {name === 'GITHUB_TOKEN' ? (

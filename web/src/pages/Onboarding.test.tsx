@@ -45,26 +45,21 @@ describe('Onboarding GitHub flow', () => {
     render(<MemoryRouter><Onboarding /></MemoryRouter>);
     const githubCard = await screen.findByTestId('card-Login do GitHub CLI');
     fireEvent.click(within(githubCard).getByRole('button', { name: 'Entrar' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Próximo' }).hasAttribute('disabled')).toBe(false));
-    fireEvent.click(screen.getByRole('button', { name: 'Próximo' }));
 
     const tokenCard = await screen.findByTestId('card-Token do GitHub');
     const tokenLink = within(tokenCard).getByRole('link', { name: /Criar o token/ });
     expect(tokenLink.getAttribute('href')).toContain('scopes=repo,workflow');
     fireEvent.change(within(tokenCard).getByLabelText('Cole o token de acesso'), { target: { value: 'ghp_test' } });
-    fireEvent.click(within(tokenCard).getByRole('button', { name: 'Salvar e verificar' }));
-
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Próximo' }).hasAttribute('disabled')).toBe(false));
-    fireEvent.click(screen.getByRole('button', { name: 'Próximo' }));
+    fireEvent.click(within(tokenCard).getByRole('button', { name: 'Salvar e continuar' }));
 
     const ownerCard = await screen.findByTestId('card-Organização do GitHub');
     const select = within(ownerCard).getByRole('combobox', { name: 'Organização do GitHub' });
     await waitFor(() => expect(within(select).getByRole('option', { name: 'acme' })).toBeTruthy());
     fireEvent.change(select, { target: { value: 'acme' } });
-    fireEvent.click(within(ownerCard).getByRole('button', { name: 'Salvar e verificar' }));
+    fireEvent.click(within(ownerCard).getByRole('button', { name: 'Salvar e continuar' }));
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Próximo' }).hasAttribute('disabled')).toBe(false));
-    expect(api.owner).toHaveBeenCalledWith('acme');
+    await waitFor(() => expect(api.owner).toHaveBeenCalledWith('acme'));
+    await screen.findByTestId('card-Login do Claude');
   });
 
   it('does not let the OpenRouter (Jev) step be skipped until the key is valid', async () => {
@@ -74,11 +69,11 @@ describe('Onboarding GitHub flow', () => {
     render(<MemoryRouter><Onboarding /></MemoryRouter>);
     await screen.findByTestId('card-Login do GitHub CLI');
     for (let i = 0; i < 4; i++) {
-      await waitFor(() => expect(screen.getByRole('button', { name: 'Próximo' }).hasAttribute('disabled')).toBe(false));
-      fireEvent.click(screen.getByRole('button', { name: 'Próximo' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Continuar' }).hasAttribute('disabled')).toBe(false));
+      fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
     }
     await screen.findByTestId('card-Chave do OpenRouter (Jev)');
-    expect(screen.getByRole('button', { name: 'Próximo' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Continuar' }).hasAttribute('disabled')).toBe(true);
   });
 
   it('opens straight on the OpenRouter step from the refine page link, even when everything else is ready', async () => {

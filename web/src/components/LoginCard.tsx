@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type Cli, type Item, type SessionState } from '../api.js';
+import { CLAUDE_LOGIN, GH_LOGIN } from '../onboarding/stepCopy.js';
 import { ItemCard } from './ItemCard.js';
 import { ActionButton } from './ActionButton.js';
 import { Icon } from './Icons.js';
@@ -24,6 +25,7 @@ export function LoginCard({ cli, title, item, onDone }: { cli: Cli; title: strin
   const [code, setCode] = useState('');
   const [showOutput, setShowOutput] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const copy = cli === 'claude' ? CLAUDE_LOGIN : GH_LOGIN;
   const start = async () => {
     setError(null);
     try {
@@ -55,7 +57,7 @@ export function LoginCard({ cli, title, item, onDone }: { cli: Cli; title: strin
     onDone();
   }, [onDone, state.name, url]);
   return (
-    <ItemCard title={title} item={item} variant="login" subtitle={cli === 'claude' ? 'Conecte sua conta do Claude para os agentes de IA trabalharem.' : 'Conecte sua conta do GitHub para usar seus repositórios.'} info={LOGIN_INFO[cli]} icon={cli === 'claude' ? 'claude' : 'github'} illustration={cli === 'claude' ? '/onboarding-claude.png' : '/onboarding-github-login.png'}>
+    <ItemCard title={title} item={item} variant="login" subtitle={cli === 'claude' ? 'Conecte sua conta do Claude para os agentes de IA trabalharem.' : 'Conecte sua conta do GitHub para usar seus repositórios.'} info={LOGIN_INFO[cli]} icon={cli === 'claude' ? 'claude' : 'github'} illustration={cli === 'claude' ? '/onboarding-claude.png' : '/onboarding-github-login.png'} benefits={copy.benefits} panel={copy.panel}>
       {/* Already logged in and no login running: only the Claude login can be redone, with the same or another account. */}
       {item?.ok && !url ? (
         cli === 'claude' ? (
