@@ -37,10 +37,19 @@ describe('AppShell', () => {
   it('shows the Lukeware footer with contact and copyright', () => {
     shell('/projects');
     const footer = screen.getByRole('contentinfo');
-    expect(within(footer).getByText('Lukeware', { exact: true })).toBeTruthy();
+    expect(within(footer).getByRole('img', { name: 'Lukeware' }).getAttribute('src')).toContain('lukeware-lockup-light.png');
+    expect(footer.querySelector('.app-footer-logo--dark')?.getAttribute('src')).toContain('lukeware-lockup-dark.png');
     expect(within(footer).getByRole('link', { name: 'lukewaresoftwarehouse@gmail.com' }).getAttribute('href')).toBe('mailto:lukewaresoftwarehouse@gmail.com');
     expect(within(footer).getByRole('link', { name: '(19) 99714-3026' }).getAttribute('href')).toBe('tel:+5519997143026');
     expect(within(footer).getByText(/Todos os direitos autorais reservados/)).toBeTruthy();
     expect(within(footer).getByText(/licença privada/)).toBeTruthy();
+  });
+
+  it('keeps the footer on every shell route', () => {
+    for (const path of ['/projects', '/chat', '/settings', '/onboarding', '/refine/p/s', '/runs/r1']) {
+      const view = shell(path);
+      expect(within(screen.getByRole('contentinfo')).getByRole('img', { name: 'Lukeware' })).toBeTruthy();
+      view.unmount();
+    }
   });
 });

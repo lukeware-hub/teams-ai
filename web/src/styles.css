@@ -431,4 +431,8 @@ button[aria-busy='true']:disabled { cursor: progress; opacity: 0.75; }
   .loading-spinner, .button-spinner { animation: none; }
   .confetti { display: none; }
 }
+
+.app-footer-logo--dark { display: none; }
+:root[data-theme='dark'] .app-footer-logo--light { display: none; }
+:root[data-theme='dark'] .app-footer-logo--dark { display: block; }
 }

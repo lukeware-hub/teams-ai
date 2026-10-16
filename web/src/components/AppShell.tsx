@@ -69,8 +69,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       </a>
       <div className="grid h-dvh grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto] mx-auto max-w-[110rem] md:grid-cols-[4.5rem_minmax(0,1fr)_4.5rem] md:grid-rows-1 md:gap-4 md:p-4">
         <Rail active={active} />
-        <div id="main" ref={content} tabIndex={-1} className="flex min-h-0 min-w-0 flex-col overflow-y-auto focus:outline-none">
-          <div className="min-h-0 flex-1">{children}</div>
+        <div className="flex min-h-0 min-w-0 flex-col">
+          <div id="main" ref={content} tabIndex={-1} className="min-h-0 flex-1 overflow-y-auto focus:outline-none">
+            {children}
+          </div>
           <AppFooter />
         </div>
       </div>

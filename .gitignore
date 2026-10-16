@@ -15,3 +15,5 @@ AGENTS.md
 reports/
 .env
 backups/
+.codex/agents/env.toml
+.codex/agents/sec.toml
