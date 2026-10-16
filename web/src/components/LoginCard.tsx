@@ -58,14 +58,16 @@ export function LoginCard({ cli, title, item, onDone }: { cli: Cli; title: strin
   }, [onDone, state.name, url]);
   return (
     <ItemCard title={title} item={item} variant="login" subtitle={cli === 'claude' ? 'Conecte sua conta do Claude para os agentes de IA trabalharem.' : 'Conecte sua conta do GitHub para usar seus repositórios.'} info={LOGIN_INFO[cli]} icon={cli === 'claude' ? 'claude' : 'github'} illustration={cli === 'claude' ? '/onboarding-claude.png' : '/onboarding-github-login.png'} benefits={copy.benefits} panel={copy.panel}>
-      {/* Already logged in and no login running: only the Claude login can be redone, with the same or another account. */}
+      {/* Already logged in and no login running: reconnect with the same or another account. */}
       {item?.ok && !url ? (
-        cli === 'claude' ? (
-          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2" data-testid="reconnect">
-            <p className="m-0 text-[0.875rem] text-ink-soft">Quer usar outra conta do Claude? Entre de novo: a nova conta passa a ser a usada pelos agentes.</p>
-            <ActionButton className="secondary" onClick={start} icon={<Icon name="refresh" size={16} />}>Reconectar</ActionButton>
-          </div>
-        ) : null
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2" data-testid="reconnect">
+          <p className="m-0 text-[0.875rem] text-ink-soft">
+            {cli === 'claude'
+              ? 'Quer usar outra conta do Claude? Entre de novo: a nova conta passa a ser a usada pelos agentes.'
+              : 'Quer usar outra conta do GitHub? Entre de novo: a nova conta passa a ser a usada neste computador.'}
+          </p>
+          <ActionButton className="secondary" onClick={start} icon={<Icon name="refresh" size={16} />}>Reconectar</ActionButton>
+        </div>
       ) : <LoginControls state={state} code={code} onCode={setCode} onStart={start} onSend={send} onCancel={() => api.cancel(cli)} />}
       {error ? <p className="error">{error}</p> : null}
       {url ? (

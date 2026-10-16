@@ -95,10 +95,6 @@ export function onboardingRoutes(deps: OnboardingDeps): Route[] {
     const s = ob.sessions[cli];
     routes.push(
       { method: 'POST', path: `${P}/${cli}/login`, handler: async ({ json }) => {
-          if (cli === 'gh') {
-            const current = await ghStatus(deps);
-            if (current.ok) return json(200, { state: { name: 'done', detail: current.detail } });
-          }
           s.start();
           json(202, { state: s.state });
         } },
