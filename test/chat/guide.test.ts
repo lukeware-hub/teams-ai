@@ -60,7 +60,7 @@ describe('the user guide the chat searches', () => {
       ['como criar um projeto novo', 'criar-projeto.md'],
       ['o que é o Jev', 'refinamento.md'],
       ['o chat pode dar ordens', 'chat.md'],
-      ['o que é uma tarefa bloqueada', 'estados-e-papeis.md'],
+      ['o que é uma tarefa bloqueada', 'execucao.md'],
     ];
     for (const [question, file] of cases) {
       const out = spawnSync('graphify', ['query', question, '--budget', '400'], { cwd, encoding: 'utf8' }).stdout;
