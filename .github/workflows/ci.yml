@@ -83,7 +83,7 @@ jobs:
       - name: Scan for critical vulnerabilities
         run: |
           docker pull "$IMAGE:$GITHUB_SHA"
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY_IMAGE" image --severity CRITICAL --ignore-unfixed --exit-code 1 "$IMAGE:$GITHUB_SHA"
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/src:ro" "$TRIVY_IMAGE" image --severity CRITICAL --ignore-unfixed --secret-config /src/trivy-secret.yaml --exit-code 1 "$IMAGE:$GITHUB_SHA"
 
       - name: Publish latest, or the version on a v* tag
         run: |
