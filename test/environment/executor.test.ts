@@ -17,7 +17,7 @@ describe('applyRecipes', () => {
     expect(r.values.PLATFORM_ADMIN_TOKEN).toHaveLength(40);
     expect(r.applied).toEqual([{ name: 'PLATFORM_ADMIN_TOKEN', scope: 'both', strategy: 'random', outcome: 'created' }]);
     expect((await readFile(path.join(secretsDir, 'PLATFORM_ADMIN_TOKEN'), 'utf8')).trim()).toBe(r.values.PLATFORM_ADMIN_TOKEN);
-    expect((await stat(path.join(secretsDir, 'PLATFORM_ADMIN_TOKEN'))).mode & 0o777).toBe(0o600);
+    if (process.platform !== 'win32') expect((await stat(path.join(secretsDir, 'PLATFORM_ADMIN_TOKEN'))).mode & 0o777).toBe(0o600);
   });
 
   it('keeps a value that already exists, whatever the recipe says', async () => {

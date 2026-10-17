@@ -14,7 +14,7 @@ import { createDecider } from '../decide/create-decider.js';
 import type { Decider } from '../decide/decider.js';
 import { classifyCliError } from '../decide/decisions/cli-error.js';
 import { sandboxPolicyViolation } from '../runner/sandbox-policy.js';
-import type { Exec } from '../exec/command.js';
+import { execCommand, type Exec } from '../exec/command.js';
 import { TOOLS_GATE } from '../validators/security-tooling.js';
 import { writeToolsInstaller } from './tools-install.js';
 import { prepareGateImage, runGate, runGates, TAIL_CHARS, type GateExecutor, type GateResult } from '../exec/gate-runner.js';
@@ -43,6 +43,7 @@ import { portKey, registeredPorts } from '../deploy/port-registry.js';
 import { deliveredByPriorRuns, eventsFile, expandHome, graphDir, mergedByPriorRuns, nextRunId, runDir, serviceWorkspace, sessionDir, stateFile, stepDir, worktreeDir, type Workspace } from './workspace.js';
 import type { DeployTarget } from '../deploy/target.js';
 import { E2E_GATE, runE2e } from '../exec/e2e.js';
+import { agentPluginsRoot } from '../skills/plugins.js';
 import { gateReachableUrl, runSmoke } from '../exec/smoke.js';
 import { withRepairNotes } from '../program/repair-notes.js';
 import { copyCargoRoot, stackDomains, stackEnv, stackKind } from '../runner/stacks.js';
@@ -311,6 +312,9 @@ export class Run {
       claudeJsonPath: this.deps.claudeJsonPath ?? expandHome('~/.claude.json'),
       settingsDir: path.posix.join(runDir(ws, this.runId), 'settings'),
       workspacesRoot: ws.root,
+      agentPluginsRoot: agentPluginsRoot(),
+      skillsRoot: expandHome('~/.teams-ai/skills'),
+      skillScope: this.deps.project.projectId,
       // The stack's registries let a step install dependencies; cfg.docker.serviceHost is where the orchestrator and the
       // gates already reach a deployed service (server/deploy/docker-local.ts), so a step's own sandbox needs the same
       // route to test against SERVICE_URL itself — never a wider one (no internet host, no datastore port).
@@ -553,6 +557,8 @@ export class Run {
       policy: { ...DEFAULT_POLICY, ...cfg.retry },
       packBase: view.service ? () => ({ ...this.packBase(), service: { name: view.service!, plan: view.plan, addresses: Object.fromEntries(Object.entries(this.addresses).filter(([s]) => s !== view.service)), design: this.design } }) : this.packBase,
       deliveredBefore: this.deliveredBefore,
+      skillsRoot: expandHome('~/.teams-ai/skills'),
+      skillExec: execCommand,
       handoffs: () => this.handoffs,
       boundaries: async () => {
         const g = this.deps.graphify;
@@ -946,6 +952,10 @@ export class Run {
   }
 
   async close(): Promise<void> {
-    await this.journal.close();
+    try {
+      await this.journal.close();
+    } finally {
+      this.deps.knowledge?.close();
+    }
   }
 }

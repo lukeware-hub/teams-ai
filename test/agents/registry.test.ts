@@ -38,7 +38,7 @@ describe('loadAgents', () => {
     expect(Object.keys(agents).sort()).toEqual(['dev', 'devops', 'env', 'front', 'po', 'sec', 'sm', 'test']);
     expect(agents.dev.tools).toContain('Bash');
     expect(agents.devops.tools).not.toContain('Bash');
-    expect(agents.sec.tools).toEqual(['Read', 'Grep', 'Glob']);
+    expect(agents.sec.tools).toEqual(['Read', 'Grep', 'Glob', 'Skill']);
     // The environment agent only reads: it never edits, runs a command or sees a secret.
     expect(agents.env.tools).toEqual(['Read', 'Grep', 'Glob']);
     // sm's frontmatter now states its real default model (server/config/config.ts CLAUDE_DEFAULTS); this

@@ -19,7 +19,7 @@ RUN ln -s /usr/local/go/bin/* /usr/local/cargo/bin/* /usr/local/bin/
 
 WORKDIR /app
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends util-linux bubblewrap socat pipx python3-venv python-is-python3 \
+  && apt-get install -y --no-install-recommends util-linux bubblewrap socat pipx python3-venv python-is-python3 git \
   && rm -rf /var/lib/apt/lists/*
 # gh is the pinned official release (a static, current Go build); the Debian package is built with an old Go that trivy flags.
 ARG TARGETARCH
@@ -46,6 +46,13 @@ RUN npm install --global @anthropic-ai/claude-code@2.1.295 --no-audit --no-fund
 RUN npm install --global npm@12.2.0 --no-audit --no-fund
 COPY web/package*.json web/
 RUN cd web && npm ci --no-audit --no-fund
+# Pinned agent skills after Claude Code is on PATH and copied before the rest of the code, so a code change keeps this layer cached; the volume hides $HOME, so the image copy lives here.
+COPY scripts/install-pinned-skills.ts scripts/
+COPY server/exec server/exec
+COPY server/skills server/skills
+COPY server/config/roles.ts server/config/roles.ts
+RUN npx tsx --no-warnings=ExperimentalWarning scripts/install-pinned-skills.ts /opt/teams-ai/skills /opt/teams-ai/agent-plugins \
+  && chown -R node:node /opt/teams-ai/skills
 COPY . .
 RUN npm run --prefix web build
 
@@ -55,8 +62,10 @@ RUN mkdir -p /home/node/.teams-ai /home/node/.claude /home/node/.config/gh && ch
 USER node
 ENV HOME=/home/node
 ENV HOST=0.0.0.0
+ENV TEAMS_AI_SKILLS_IMAGE=/opt/teams-ai/skills
+ENV TEAMS_AI_AGENT_PLUGINS_IMAGE=/opt/teams-ai/agent-plugins
 EXPOSE 8787
-# Any HTTP answer below 500 means the server is up (the API may answer 401 once authentication is on).
+# Any HTTP answer below 500 means the server is up.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:8787/').then((r)=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
 # The graphify skill for Claude Code is written at each start, not at build: ~/.claude is a volume that keeps only what it had when first created.

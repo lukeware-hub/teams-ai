@@ -11,6 +11,7 @@ import { Spec } from '../contracts/spec.js';
 import { ID_PATTERNS } from '../core/ids.js';
 import type { Exec } from '../exec/command.js';
 import { fetch as gitFetch, git } from '../git/git.js';
+import { openProjectKnowledge } from '../knowledge/project-docs.js';
 import { KnowledgeIndex } from '../knowledge/retrieval.js';
 import { expandHome, nextRunId, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
 import { loadEvents } from '../store/event-store.js';
@@ -52,6 +53,15 @@ const slug = (v: string, what: string) => {
   return v;
 };
 const exists = (p: string) => fs.access(p).then(() => true, () => false);
+/** Opens the index for one query only, so no file handle stays open between turns. */
+const searchKnowledge = (file: string, query: string) => {
+  const knowledge = KnowledgeIndex.open(file);
+  try {
+    return knowledge.search(query, { k: 5 });
+  } finally {
+    knowledge.close();
+  }
+};
 
 /** Every step of one refinement session belongs to its project, so its agent settings apply. */
 const inProject =
@@ -84,7 +94,11 @@ export class SessionRegistry {
   private session(draft: Draft, ws: Workspace, create?: 'new-project' | 'new-spec' | 'continue' | 'backlog'): Promise<RefineSession> {
     const key = `${draft.projectId}/${draft.specId}`;
     const p = (async () => {
-      const retrieval = (await exists(ws.knowledgeDb)) ? (q: string) => KnowledgeIndex.open(ws.knowledgeDb).search(q, { k: 5 }) : () => [];
+      // The clone of main holds the merged specs and ADRs; before the first clone there is no history to check against.
+      // Its own file: the run indexes another folder, and each index drops the documents it does not find.
+      const file = path.posix.join(ws.root, 'refine-knowledge.sqlite');
+      if (await exists(ws.repo)) (await openProjectKnowledge(file, ws.repo)).close();
+      const retrieval = (await exists(file)) ? (q: string) => searchKnowledge(file, q) : () => [];
       const runAgent = inProject(this.deps.runAgent, draft.projectId);
       const deps = { ws, draft, runAgent, frontAgent: runAgent, secretsDir: ws.secrets, retrieval, validateDocs: this.deps.validateDocs, decider: this.deps.decider, autoAnswerFloor: async () => answerFloor(await this.deps.cfg(), refineRoot(ws)) };
       return create ? RefineSession.create(deps, create) : RefineSession.open(deps);

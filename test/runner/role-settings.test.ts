@@ -43,8 +43,14 @@ describe('buildRoleSettings', () => {
     // `mkdir -p reports && npm test` is denied unless every segment matches a rule (todo-api-r10: T3 blocked on it).
     expect(buildRoleSettings('dev', { allowedDomains: [] }).permissions.allow).toContain('Bash(mkdir:*)');
     expect(buildRoleSettings('devops', { allowedDomains: [] }).permissions.allow).not.toContain('Bash(npm:*)');
-    expect(buildRoleSettings('sm', { allowedDomains: [] }).permissions.allow).toEqual([]);
+    expect(buildRoleSettings('sm', { allowedDomains: [] }).permissions.allow).toEqual(['Skill']);
     expect(buildRoleSettings('env', { allowedDomains: [] }).permissions.allow).toEqual([]);
+  });
+
+  it('forbids every write to the installed skill plugins, by the Edit tool and by any command of the sandbox', () => {
+    const s = buildRoleSettings('dev', { allowedDomains: [], protectedDirs: ['/opt/teams-ai/agent-plugins/'] });
+    expect(s.permissions.deny).toContain('Edit(//opt/teams-ai/agent-plugins/**)');
+    expect(s.sandbox.filesystem?.denyWrite).toEqual(['/opt/teams-ai/agent-plugins']);
   });
 
   it('denies every read of the secrets directory of every project, by the Read tool and by any command of the sandbox', () => {
@@ -52,6 +58,11 @@ describe('buildRoleSettings', () => {
     expect(s.permissions.deny).toEqual(expect.arrayContaining(['Read(//ws/kayron-hub/secrets/**)', 'Read(//ws/other/secrets/**)']));
     expect(s.sandbox.filesystem?.denyRead).toEqual(expect.arrayContaining(['/ws/kayron-hub/secrets', '/ws/other/secrets']));
     expect(buildRoleSettings('dev', { allowedDomains: [] }).sandbox.filesystem).toBeUndefined();
+  });
+
+  it('writes a Windows drive path behind the absolute prefix, with forward slashes', () => {
+    const s = buildRoleSettings('dev', { allowedDomains: [], projectSecretsDirs: ['C:\\ws\\secrets\\'] });
+    expect(s.permissions.deny).toContain('Read(//C:/ws/secrets/**)');
   });
 
   it('denies the extra directories to every command of the sandbox and to the Read tools, with a bare path rule that does not make the CLI walk the tree', () => {

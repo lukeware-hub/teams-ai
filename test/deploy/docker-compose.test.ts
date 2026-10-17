@@ -201,7 +201,7 @@ describe('a service of a system of services', () => {
     });
     // A private directory of its own, gone once compose read it: another user could swap a fixed name in a shared /tmp.
     expect(path.dirname(seen.file!)).not.toBe(os.tmpdir());
-    expect(seen.mode).toBe(0o700);
+    if (process.platform !== 'win32') expect(seen.mode).toBe(0o700);
     await expect(fs.access(seen.file!)).rejects.toThrow();
     expect(target.gateNetwork(intent)).toBe('teams-ai-shop_net');
     expect(await target.gateServiceUrl(intent)).toBe('http://orders:20001');
@@ -222,7 +222,7 @@ describe('a service of a system of services', () => {
     expect(lines[1]).toBe('network create teams-ai-shop_net');
     expect(lines[2]).toMatch(/^compose -p teams-ai-shop_platform -f \S+ up -d --wait --remove-orphans$/);
     expect(path.dirname(seen.file!)).not.toBe(os.tmpdir());
-    expect(seen.mode).toBe(0o700);
+    if (process.platform !== 'win32') expect(seen.mode).toBe(0o700);
     await expect(fs.access(seen.file!)).rejects.toThrow();
   });
 

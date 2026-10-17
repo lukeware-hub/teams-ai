@@ -113,7 +113,7 @@ await import(${JSON.stringify(FAKE.replace(/\\/g, '/'))});`,
 });
 
 describe('H3 gh and docker are off the agent PATH', () => {
-  const host = { HOME: '/home/node', PATH: '/opt/teams-ai-bin:/usr/local/go/bin:/usr/local/bin:/usr/bin' };
+  const host = { HOME: '/home/node', PATH: ['/opt/teams-ai-bin', '/usr/local/go/bin', '/usr/local/bin', '/usr/bin'].join(path.delimiter) };
   const input = { role: 'dev', model: 'opus', profile: { model: 'opus' }, cwd: '/w', prompt: 'p', jsonSchema: {}, tools: ['Bash'], disallowedTools: [], settingsPath: '/s.json' } as const;
 
   it('an agent step PATH drops the orchestrator-only directory and keeps the others', () => {
@@ -123,7 +123,7 @@ describe('H3 gh and docker are off the agent PATH', () => {
   });
 
   it('also drops it when the PATH entry is written with a trailing slash or a dot segment', () => {
-    const dirs = buildInvocation(input, { ...host, PATH: '/opt/teams-ai-bin/:/usr/bin:/opt/./teams-ai-bin' }).env.PATH.split(path.delimiter);
+    const dirs = buildInvocation(input, { ...host, PATH: ['/opt/teams-ai-bin/', '/usr/bin', '/opt/./teams-ai-bin'].join(path.delimiter) }).env.PATH.split(path.delimiter);
     expect(dirs).toEqual(['/usr/bin']);
   });
 

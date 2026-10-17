@@ -54,7 +54,7 @@ describe('SettingsPage', () => {
     expect(within(screen.getByTestId('card-Token do GitHub')).getByRole('button', { name: 'Salvar e continuar' })).toBeTruthy();
 
     expect(await screen.findByRole('heading', { name: 'Projeto' })).toBeTruthy();
-    expect(screen.getByText('8 agentes')).toBeTruthy();
+    expect(screen.getByText('9 agentes')).toBeTruthy();
     await openModelsCollapse();
   });
 

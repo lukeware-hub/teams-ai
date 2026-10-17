@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { z } from 'zod';
 import { blockingFindings } from '../agents/outputs.js';
-import type { DevOutput as DevOutputSchema, OutputOf, ReplanOutput, ReviewOutput as ReviewOutputSchema, SecurityOutput as SecurityOutputSchema, SpecGapOutput, StepKind } from '../agents/outputs.js';
+import type { DevOutput as DevOutputSchema, OutputOf, ReplanOutput, ReviewOutput as ReviewOutputSchema, SecurityOutput as SecurityOutputSchema, SkillSelectionOutput, SpecGapOutput, StepKind } from '../agents/outputs.js';
 
 type DevOutput = z.infer<typeof DevOutputSchema>;
 type ReviewOutput = z.infer<typeof ReviewOutputSchema>;
@@ -35,8 +35,9 @@ import { devopsOwnerErrors } from '../validators/plan.js';
 import type { RefContext } from '../validators/references.js';
 import { Intent, OrchEvent, type Journal } from './events.js';
 import { withMainSnapshot } from './phases/shared.js';
-import { devPack, devResumePrompt, replanPack, reviewPack, securityPack, specGapPack, type AgentStepRequest, type PackBase } from './steps.js';
+import { devPack, devResumePrompt, replanPack, reviewPack, securityPack, skillSelectPack, specGapPack, type AgentStepRequest, type PackBase } from './steps.js';
 import { olderLiveRun, worktreeDir, type Workspace } from './workspace.js';
+import { acceptReuseSkill, assignSkill, capabilityKey, createDraftSkill, syncSkill } from '../skills/store.js';
 
 /** The diff is inlined into the sec prompt (the role has no Bash); the rest of a huge diff is read from the worktree. */
 const SECURITY_DIFF_CHARS = 80_000;
@@ -83,6 +84,9 @@ export interface TaskRunnerDeps {
   testDatabaseUrl?: string | null;
   /** Ids of the plan tasks an earlier run of this spec delivered: an empty diff on one of them means its work is on main. */
   deliveredBefore: ReadonlySet<string>;
+  skillsRoot: string;
+  /** Runs the skill fetches: a public skill needs no token, so the orchestrator's git exec is not used for it. */
+  skillExec?: Exec;
 }
 
 const TAIL = 2000;
@@ -108,6 +112,7 @@ export class TaskRunner {
   readonly worktree: string;
   private schemaRetries = 0;
   private specGapRounds = 0;
+  private skillRounds = 0;
   private junit: TestResult[] = [];
   private mergeRefusals = 0;
   private tierAttempt = 0;
@@ -173,6 +178,10 @@ export class TaskRunner {
 
   private get ctx(): DecideContext {
     return { confidential: this.deps.project.confidential };
+  }
+
+  private get skillsRoot(): string {
+    return this.deps.skillsRoot;
   }
 
   async advance(): Promise<void> {
@@ -328,6 +337,8 @@ export class TaskRunner {
     });
     if (!outcome.ok) return this.fail(outcome.failure, outcome.errors.join('\n'));
     const value = outcome.value as DevOutput;
+    if (value.skillDraft) await this.reviewDraft(owner, task.def, value.skillDraft);
+    if (value.skillRequest) return this.selectSkill(owner, task.def, value.skillRequest);
     if (value.status === 'spec-gap') return this.specGap(task.def, value.question);
     if (value.status === 'blocked') {
       if (SANDBOX_INIT_FAILURE.test(value.reason) || outcome.summary.profile?.sandboxInitFailed) return this.fail('environment', value.reason, 'dev-sandbox-init');
@@ -361,6 +372,117 @@ export class TaskRunner {
     if (markers) return this.fail('code', markers);
     await this.deps.journal.fact(OrchEvent.DevCommitted, { taskId: this.taskId, sha, changedFiles: changed, summary: value.summary });
     await this.transition('validating');
+  }
+
+  private cachedSkill(capability: string, role: Role): { action: 'reuse' | 'create' | 'reject'; skill?: Extract<SkillSelectionOutput, { action: 'reuse' }>['skill']; draftId?: string; reason: string } | null {
+    const key = capabilityKey(capability);
+    if (!this.deps.journal.events.some((e) => e.type === OrchEvent.SkillRequested && e.data.role === role && capabilityKey(String(e.data.capability ?? '')) === key)) return null;
+    for (let i = this.deps.journal.events.length - 1; i >= 0; i--) {
+      const e = this.deps.journal.events[i]!;
+      if (e.data.role !== role) continue;
+      if (e.data.capability && capabilityKey(String(e.data.capability)) !== key) continue;
+      if (e.type === OrchEvent.SkillSelected) return { action: e.data.action as 'reuse' | 'create' | 'reject', skill: e.data.skill as Extract<SkillSelectionOutput, { action: 'reuse' }>['skill'] | undefined, reason: String(e.data.reason ?? '') };
+      if (e.type === OrchEvent.SkillCreated) return { action: 'create', draftId: String(e.data.id), reason: String(e.data.reason ?? '') };
+    }
+    return null;
+  }
+
+  private async applySelection(role: Role, request: { capability: string; reason: string }, selection: SkillSelectionOutput): Promise<string> {
+    if (selection.action === 'reuse') {
+      const skill = { ...selection.skill, roles: [role] as const, purpose: request.capability };
+      const errors = acceptReuseSkill(skill);
+      if (errors.length > 0) {
+        await this.deps.journal.fact(OrchEvent.SkillSelected, { taskId: this.taskId, role, action: 'reject', capability: request.capability, reason: errors.join('; ') });
+        return `Skill request rejected: ${errors.join('; ')}. Continue with the capabilities already available.`;
+      }
+      try {
+        await syncSkill(this.skillsRoot, skill, this.deps.skillExec ?? this.deps.exec);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        await this.deps.journal.fact(OrchEvent.SkillSelected, { taskId: this.taskId, role, action: 'reject', capability: request.capability, reason });
+        return `Skill request rejected: ${reason}. Continue with the capabilities already available.`;
+      }
+      await assignSkill(this.skillsRoot, this.deps.project.projectId, role, skill);
+      await this.deps.journal.fact(OrchEvent.SkillSelected, { taskId: this.taskId, role, action: selection.action, capability: request.capability, skill: selection.skill, reason: selection.reason });
+      return `Skill selected by SM: ${selection.skill.id}. Retry the task and use it for ${request.capability}.`;
+    }
+    if (selection.action === 'create') {
+      try {
+        await createDraftSkill(this.skillsRoot, this.deps.project.projectId, role, selection.draft);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        await this.deps.journal.fact(OrchEvent.SkillSelected, { taskId: this.taskId, role, action: 'reject', capability: request.capability, reason });
+        return `Skill request rejected: ${reason}. Continue with the capabilities already available.`;
+      }
+      await this.deps.journal.fact(OrchEvent.SkillCreated, { taskId: this.taskId, role, id: selection.draft.id, source: 'sm', capability: request.capability, reason: selection.reason });
+      return `Skill created by SM: ${selection.draft.id}. Retry the task and use it for ${request.capability}.`;
+    }
+    await this.deps.journal.fact(OrchEvent.SkillSelected, { taskId: this.taskId, role, action: selection.action, capability: request.capability, reason: selection.reason });
+    return `Skill request rejected by SM: ${selection.reason}. Continue with the capabilities already available.`;
+  }
+
+  private async askSkillSelect(role: Role, task: PlanTask, request: { capability: string; reason: string }, draft?: { id: string; whenToUse: string; rules: readonly string[] }): Promise<SkillSelectionOutput | null> {
+    if (this.deps.project.confidential) {
+      await this.deps.journal.fact(OrchEvent.SkillSelected, { taskId: this.taskId, role, action: 'reject', capability: request.capability, reason: 'confidential project' });
+      return { specHash: this.deps.specHash, action: 'reject', reason: 'confidential project' };
+    }
+    const cached = this.cachedSkill(request.capability, role);
+    if (cached?.action === 'reject') return { specHash: this.deps.specHash, action: 'reject', reason: cached.reason || 'cached rejection' };
+    const outcome = await withMainSnapshot(this.deps.ws, this.deps.exec, (cwd) => this.deps.runAgent<'skill-select'>({
+      kind: 'skill-select',
+      role: 'sm',
+      pack: skillSelectPack(this.deps.packBase(), task, { role, ...request, ...(draft ? { draft } : {}) }),
+      cwd,
+      phase: 'phase3',
+      taskId: this.taskId,
+      attempt: this.task.attempts + 1,
+    }));
+    if (!outcome.ok) return null;
+    return outcome.value as SkillSelectionOutput;
+  }
+
+  private async selectSkill(role: Role, task: PlanTask, request: { capability: string; reason: string }): Promise<void> {
+    this.skillRounds += 1;
+    if (this.skillRounds > 1) return this.fail('code', `skill request repeated after selection: ${request.capability}`);
+    await this.deps.journal.fact(OrchEvent.SkillRequested, { taskId: this.taskId, role, ...request });
+    const cached = this.cachedSkill(request.capability, role);
+    if (cached?.action === 'reuse' && cached.skill) {
+      await this.feedback(await this.applySelection(role, request, { specHash: this.deps.specHash, action: 'reuse', skill: cached.skill, reason: cached.reason || 'cached' }));
+      return this.implement();
+    }
+    if (cached?.action === 'create') {
+      await this.feedback(`Skill already created by SM: ${cached.draftId ?? request.capability}. Retry the task and use it for ${request.capability}.`);
+      return this.implement();
+    }
+    if (cached?.action === 'reject') {
+      await this.feedback(`Skill request rejected by SM: ${cached.reason || 'cached rejection'}. Continue with the capabilities already available.`);
+      return this.implement();
+    }
+    const selection = await this.askSkillSelect(role, task, request);
+    if (!selection) return this.fail('code', `skill-select failed for ${request.capability}`);
+    await this.feedback(await this.applySelection(role, request, selection));
+    return this.implement();
+  }
+
+  private async reviewDraft(role: Role, task: PlanTask, draft: { id: string; whenToUse: string; rules: readonly string[] }): Promise<void> {
+    const request = { capability: draft.whenToUse, reason: `private draft ${draft.id}` };
+    await this.deps.journal.fact(OrchEvent.SkillRequested, { taskId: this.taskId, role, ...request, draft: draft.id });
+    const selection = await this.askSkillSelect(role, task, request, draft);
+    if (!selection) return;
+    if (selection.action === 'create') {
+      await this.applySelection(role, request, selection);
+      return;
+    }
+    if (selection.action === 'reuse') {
+      await this.applySelection(role, request, selection);
+      return;
+    }
+    await this.deps.journal.fact(OrchEvent.SkillSelected, { taskId: this.taskId, role, action: 'reject', capability: request.capability, reason: selection.reason });
+  }
+
+  /** A skill request from a review is journaled only: no step routes it to the SM. */
+  private async journalSkillRequest(role: Role, request: { capability: string; reason: string } | undefined): Promise<void> {
+    if (request) await this.deps.journal.fact(OrchEvent.SkillRequested, { taskId: this.taskId, role, ...request });
   }
 
   /** A task with criteria whose every concrete path already exists on origin/main (glob paths are not checked, so they never qualify). */
@@ -476,6 +598,7 @@ export class TaskRunner {
     });
     if (!outcome.ok) return this.fail(outcome.failure, outcome.errors.join('\n'));
     const value = outcome.value as ReviewOutput;
+    await this.journalSkillRequest('test', value.skillRequest);
     const evidenceErrors = verifyClaimedEvidence(value.criteria, this.junit);
     if (evidenceErrors.length > 0) return this.fail('schema', `Review evidence rejected:\n${evidenceErrors.join('\n')}`);
     if (value.decision === 'changes') {
@@ -490,7 +613,7 @@ export class TaskRunner {
 
   private startSecurity(changed: readonly string[], diffStat: string, diff: string, code: CodeContext): Promise<StepOutcome<OutputOf<'security'>>> {
     const attempt = this.task.attempts + 1;
-    return this.deps.runAgent<'security'>({
+    const run = this.deps.runAgent<'security'>({
       kind: 'security',
       role: 'sec',
       pack: securityPack(this.deps.packBase(), this.task.def, { diffStat, changedFiles: changed, diff, code }),
@@ -501,6 +624,10 @@ export class TaskRunner {
       refContext: () => this.refContext(),
       refs: ((v: SecurityOutputSchema) => ({ files: v.findings.map((f) => f.file) })) as never,
     });
+    return run.then(async (outcome) => {
+      if (outcome.ok) await this.journalSkillRequest('sec', (outcome.value as SecurityOutputSchema).skillRequest);
+      return outcome;
+    });
   }
 
   /** Counted only after Test approves: critical/high findings go back to Dev like review changes; medium/low are journaled only. */
@@ -510,6 +637,10 @@ export class TaskRunner {
       return false;
     }
     const value = outcome.value as SecurityOutputSchema;
+    if (value.skillRequest) {
+      await this.fail('review-changes', `Security review incomplete: a skill is needed for ${value.skillRequest.capability} (${value.skillRequest.reason})`);
+      return false;
+    }
     // One rule: the severities decide. `decision` is the reviewer's own label and neither adds to this nor lifts it.
     const blocking = blockingFindings(value);
     if (blocking.length > 0) {

@@ -6,6 +6,7 @@ import { loadConfig } from '../../server/config/config.js';
 import { execCommand } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
 import { CrashInjected, Run, type RunDeps } from '../../server/orchestrator/run.js';
+import { KnowledgeIndex } from '../../server/knowledge/retrieval.js';
 import { runStep } from '../../server/runner/step.js';
 import { makeFrozenSpec, makePlan, makePlanTask, makeProject } from '../fixtures/contracts.js';
 import { Scenario } from '../fixtures/fake-claude/scenario.js';
@@ -94,7 +95,26 @@ describe('orchestrator loop with the fake claude', () => {
     expect(paired(scenario.seen)).toEqual(paired(steps));
   });
 
-  it('survives a crash after every intent and never duplicates a commit, PR or merge', { timeout: 900_000 }, async () => {
+  it('gives the agents the earlier docs that match the spec objectives', { timeout: 300_000 }, async () => {
+    const scenario = happyScenario(path.join(remote.root, 'scn-knowledge'));
+    const knowledge = KnowledgeIndex.open(':memory:');
+    knowledge.index({ id: 'docs/specs/old-001/spec.md', kind: 'spec', title: 'Old spec', text: '# Old spec\nUsers keep todo items per account, marker zebracorn-7741.\n' });
+    const wrapped = scenario.wrap(runStep);
+    const prompts: string[] = [];
+    const captured: RunDeps['runStep'] = (req, ...rest) => {
+      prompts.push(req.prompt);
+      return wrapped(req, ...rest);
+    };
+    const d = { ...deps(scenario, { knowledge, runStep: captured }), agents: await loadAgents(path.resolve('.claude/agents')) };
+    const run = await Run.create(d);
+    expect(await run.execute()).toBe('complete');
+    await run.close();
+    expect(prompts.length).toBeGreaterThan(0);
+    expect(prompts.some((p) => p.includes('zebracorn-7741'))).toBe(true);
+    expect(() => knowledge.search('todo')).toThrow();
+  });
+
+  it('survives a crash after every intent and never duplicates a commit, PR or merge', { timeout: 3_600_000 }, async () => {
     // First, a clean run to learn the intent ids in order.
     const probe = happyScenario(path.join(remote.root, 'scn-probe'));
     const d0 = { ...deps(probe), agents: await loadAgents(path.resolve('.claude/agents')) };

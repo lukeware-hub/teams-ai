@@ -31,6 +31,7 @@ describe('writeSecret', () => {
     const target = path.join(dir, 'nested');
     await writeSecret(target, 'GITHUB_TOKEN', ' ghp_' + 'x'.repeat(36) + '\n');
     expect(await loadSecrets(target)).toEqual({ GITHUB_TOKEN: 'ghp_' + 'x'.repeat(36) });
+    // Windows has no POSIX mode bits: there the file is protected by the user profile instead.
     if (process.platform !== 'win32') {
       expect((await fs.stat(path.join(target, 'GITHUB_TOKEN'))).mode & 0o777).toBe(0o600);
       expect((await fs.stat(target)).mode & 0o777).toBe(0o700);
@@ -67,7 +68,7 @@ describe('ensureGeneratedSecrets', () => {
     const first = await loadSecrets(dir);
     expect(first.PLATFORM_ADMIN_TOKEN).toMatch(/^[0-9a-f]{64}$/);
     expect(first.KEPT).toBe('mine');
-    expect(((await fs.stat(path.join(dir, 'PLATFORM_ADMIN_TOKEN'))).mode & 0o777).toString(8)).toBe('600');
+    if (process.platform !== 'win32') expect(((await fs.stat(path.join(dir, 'PLATFORM_ADMIN_TOKEN'))).mode & 0o777).toString(8)).toBe('600');
     await ensureGeneratedSecrets(dir, ['PLATFORM_ADMIN_TOKEN'], {});
     expect((await loadSecrets(dir)).PLATFORM_ADMIN_TOKEN).toBe(first.PLATFORM_ADMIN_TOKEN);
   });

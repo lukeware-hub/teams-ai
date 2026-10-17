@@ -63,6 +63,8 @@ export interface InvocationInput {
   jsonSchema: object;
   tools: readonly string[];
   disallowedTools: readonly string[];
+  /** Plugin folders whose skills the agent loads natively (`--plugin-dir`). */
+  pluginDirs?: readonly string[];
   /** Role settings file written by the orchestrator (sandbox + permissions), passed with --settings. */
   settingsPath: string;
   sessionId?: string;
@@ -124,6 +126,7 @@ export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessE
   args.push('--json-schema', JSON.stringify(input.jsonSchema));
   args.push('--tools', input.tools.join(','));
   if (input.disallowedTools.length > 0) args.push('--disallowed-tools', ...input.disallowedTools);
+  for (const dir of input.pluginDirs ?? []) args.push('--plugin-dir', dir);
   if (input.sessionId) {
     if (input.resume) args.push('--resume', input.sessionId);
     else args.push('--session-id', input.sessionId);
@@ -136,7 +139,7 @@ export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessE
   if (env.PATH) env.PATH = env.PATH.split(path.delimiter).filter((dir) => path.posix.resolve('/', dir) !== ORCHESTRATOR_BIN_DIR).join(path.delimiter);
   if (input.home) {
     env.HOME = input.home;
-    env.TMPDIR = path.join(input.home, 'tmp');
+    env.TMPDIR = path.posix.join(input.home, 'tmp');
     Object.assign(env, stackEnv(input.cwd));
     const goProxy = goProxyUrl(hostEnv);
     if (goProxy) env.GOPROXY = goProxy;

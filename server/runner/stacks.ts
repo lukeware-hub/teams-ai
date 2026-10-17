@@ -44,21 +44,21 @@ export const STACK_BASH: readonly string[] = [
  * Python packages go to `.tools/py` (`pip install --target`), which `PYTHONPATH` exposes. The step env drops the host's Go and Rust variables, so they are set here.
  */
 export function stackEnv(cwd: string): Record<string, string> {
-  const tools = path.join(cwd, '.tools');
+  const tools = path.posix.join(cwd, '.tools');
   return {
-    GOPATH: path.join(tools, 'go'),
-    GOCACHE: path.join(tools, 'go-build'),
+    GOPATH: path.posix.join(tools, 'go'),
+    GOCACHE: path.posix.join(tools, 'go-build'),
     GOTOOLCHAIN: 'local',
     GOFLAGS: '-modcacherw', // the module cache stays writable, or the worktree cannot be deleted
-    CARGO_HOME: path.join(tools, 'cargo'),
+    CARGO_HOME: path.posix.join(tools, 'cargo'),
     RUSTUP_HOME: '/usr/local/rustup',
-    PIP_CACHE_DIR: path.join(tools, 'pip-cache'),
+    PIP_CACHE_DIR: path.posix.join(tools, 'pip-cache'),
     // The step HOME is read-only in the sandbox: buf, and any tool that writes `~/.cache`, would stop on it.
-    BUF_CACHE_DIR: path.join(tools, 'buf-cache'),
-    XDG_CACHE_HOME: path.join(tools, 'cache'),
-    PYTHONPATH: path.join(tools, 'py'),
+    BUF_CACHE_DIR: path.posix.join(tools, 'buf-cache'),
+    XDG_CACHE_HOME: path.posix.join(tools, 'cache'),
+    PYTHONPATH: path.posix.join(tools, 'py'),
     PIP_DISABLE_PIP_VERSION_CHECK: '1',
-    PYTHONPYCACHEPREFIX: path.join(tools, 'pycache'),
+    PYTHONPYCACHEPREFIX: path.posix.join(tools, 'pycache'),
     PYTEST_ADDOPTS: '-p no:cacheprovider',
   };
 }

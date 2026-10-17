@@ -19,7 +19,10 @@ export const lockFile = (repo: string, kind: 'repo' | 'checkout') =>
 async function ensureDir(dir: string): Promise<void> {
   await fs.mkdir(dir, { recursive: true, mode: 0o700 });
   const st = await fs.lstat(dir);
-  if (!st.isDirectory() || st.uid !== os.userInfo().uid || (st.mode & 0o077) !== 0) throw new Error(`unsafe lock dir ${dir}: it must be a directory only this user can access`);
+  const uid = os.userInfo().uid;
+  if (!st.isDirectory()) throw new Error(`unsafe lock dir ${dir}: it must be a directory only this user can access`);
+  // Windows has no uid, so only the directory check above applies there.
+  if (uid >= 0 && (st.uid !== uid || (st.mode & 0o077) !== 0)) throw new Error(`unsafe lock dir ${dir}: it must be a directory only this user can access`);
 }
 
 export async function withFileLock<T>(file: string, fn: () => Promise<T>, staleMs = 120_000): Promise<T> {

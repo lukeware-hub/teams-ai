@@ -20,3 +20,4 @@ reports/
 backups/
 .codex/agents/env.toml
 .codex/agents/sec.toml
+docs/guia/graphify-out/cache/

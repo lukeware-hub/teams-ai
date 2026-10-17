@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadAgents } from './agents/registry.js';
 import { loadConfig, type Config } from './config/config.js';
 import { Project } from './contracts/project.js';
@@ -12,7 +13,7 @@ import { execCommand, type Exec } from './exec/command.js';
 import { gitAuthEnv, withGitAuth } from './git/auth.js';
 import { Graphify } from './knowledge/graphify.js';
 import { mergeProjectGraph } from './knowledge/project-graph.js';
-import { KnowledgeIndex } from './knowledge/retrieval.js';
+import { openProjectKnowledge } from './knowledge/project-docs.js';
 import { isFirstSpec } from './orchestrator/first-spec.js';
 import { Run, type ExecuteResult, type RunDeps } from './orchestrator/run.js';
 import { expandHome, firstSpecForRun, firstSpecForSpec, nextRunId, specForRun, stateFile, workspacePaths } from './orchestrator/workspace.js';
@@ -44,6 +45,8 @@ import { DATASTORE_CREDENTIALS, datastoreCredentialsOf } from './deploy/datastor
 import { DockerLocalTarget } from './deploy/docker-local.js';
 import { httpGet } from './deploy/target.js';
 import { readRepairNotes } from './program/repair-notes.js';
+import { ensureAgentPlugins } from './skills/plugins.js';
+import { clearPrivateSkills, ensurePinnedSkills } from './skills/store.js';
 
 export interface CliIo {
   argv: string[];
@@ -85,13 +88,21 @@ function realSignals(onStop: () => void): () => void {
   };
 }
 
+/** Fetches the pinned skills and builds the role plugins; a failure is reported and the run goes on without them. */
+async function prepareSkills(exec: Exec, env: NodeJS.ProcessEnv, stderr: (line: string) => void): Promise<void> {
+  const root = expandHome('~/.teams-ai/skills');
+  await ensurePinnedSkills(root, exec, env).catch((error: Error) => stderr(`pinned skills unavailable, continuing without them: ${error.message}`));
+  await ensureAgentPlugins(root, env).catch((error: Error) => stderr(`agent plugins unavailable, continuing without them: ${error.message}`));
+}
+
 async function startUiReal(port: number, io: CliIo): Promise<{ port: number; close(): Promise<void> }> {
   if (!(await hasScript(io.env))) throw new Error('the web UI needs util-linux `script` on PATH (apt install bsdutils)');
   const cfg = loadConfig(await fs.readFile(path.join(expandHome('~/.teams-ai'), 'config.json'), 'utf8').then(JSON.parse).catch(() => ({})));
-  const staticDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'web', 'dist');
+  const staticDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web', 'dist');
   const hasDist = await fs.access(path.join(staticDir, 'index.html')).then(() => true, () => false);
   if (!hasDist) io.stderr('web/dist not found: run `npm run web:build` (or `npm run web:dev` for the Vite dev server with /api proxied)');
-  const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  await prepareSkills(execCommand, io.env, (line) => io.stderr(line));
   // Decisions asked by the UI server (report routing, Gate 1) chain jev → local only: there is no claude step to escalate to.
   const uiDecider = async () => createDecider({
     cfg: (await readUserConfig()).cfg,
@@ -251,15 +262,16 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   const gitAuth = gitAuthEnv(platformSecrets.GITHUB_TOKEN);
   const exec: Exec = (s) => execCommand(s.bin === 'git' ? { ...s, env: { ...(s.env ?? {}), ...gitAuth } } : s);
   const ghExec: Exec = (s) => execCommand({ ...s, env: { ...(s.env ?? {}), ...gitAuth } });
+  if (!opts.dryRun) await prepareSkills(exec, io.env, (line) => io.stderr(line));
   const draft = opts.draft === true || (!opts.complete && !opts.readme && !opts.deploy && (await startsAsDraft(exec, projectDir, ws, specId)));
   const errors = await preconditions(exec, ws.repo, specId, draft, opts.complete === true, opts.readme === true, opts.deploy === true);
   if (errors.length > 0) throw new Error(`preconditions failed:\n- ${errors.join('\n- ')}`);
-  const agents = await loadAgents(path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '.claude', 'agents'));
+  const agents = await loadAgents(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.claude', 'agents'));
   const graphify = new Graphify({ exec, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null) });
   // A `--draft` first run's workspace root (ws.root, parent of knowledgeDb) doesn't exist yet — Phase 0
   // creates ws.repo underneath it — so ensure it exists before SQLite tries to open a file inside it.
   await fs.mkdir(ws.root, { recursive: true });
-  const knowledge = KnowledgeIndex.open(ws.knowledgeDb);
+  const knowledge = await openProjectKnowledge(ws.knowledgeDb, projectDir);
   // A retry (a fresh run-id, not --run) has no resume answer of its own, but an earlier run of this exact spec in
   // this project may have one; `specId` is never a valid run-id suffix, so it excludes nothing from that scan.
   const recordedFirst = opts.resumeRun ? await firstSpecForRun(ws, opts.resumeRun) : await firstSpecForSpec(ws, specId, specId);
@@ -279,7 +291,12 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
 }
 
 type Factory = (deps: RunDeps, runId?: string, explicitId?: string) => Promise<Run>;
-const defaultFactory: Factory = (deps, runId, explicitId) => (runId ? Run.resume(deps, runId) : Run.create(deps, explicitId));
+const defaultFactory: Factory = async (deps, runId, explicitId) => {
+  if (runId) return Run.resume(deps, runId);
+  // A new implementation run starts without the private drafts of earlier runs; deploy, complete and readme runs keep them.
+  await clearPrivateSkills(expandHome('~/.teams-ai/skills'), deps.project.projectId);
+  return Run.create(deps, explicitId);
+};
 
 /**
  * `factory` is the seam tests use to substitute the Run; with a custom factory the dependency
@@ -314,7 +331,7 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
     }
     if (!projectDir) return 2; // unreachable: the guard above admits a missing --project only for `ui`
     if (command === 'supervise') {
-      const control = hooks.supervision?.control ?? defaultRunControl(path.resolve(path.dirname(new URL(import.meta.url).pathname), '..'));
+      const control = hooks.supervision?.control ?? defaultRunControl(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
       const idx = hooks.supervision?.idx ?? { cfg: (await readUserConfig()).cfg, isAlive: (pid: number) => control.kill(pid, 0) };
       const seconds = typeof f.interval === 'string' ? Number(f.interval) : 60;
       if (!(seconds > 0)) throw new Error('--interval must be a positive number of seconds');

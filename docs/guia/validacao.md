@@ -1,6 +1,6 @@
 # Validação: aceitar a entrega ou relatar um problema
 
-Perguntas que este texto responde: como validar, o que é aguardando validação, como concluir uma spec, como relatar um problema, como corrigir algo que já foi entregue, o que é Continuar spec, o que é Reiniciar.
+Perguntas que este texto responde: como validar a entrega, como validar, o que é aguardando validação, como concluir uma spec, como relatar um problema, como corrigir algo que já foi entregue, o que é Continuar spec, o que é Reiniciar.
 
 Quando a execução termina, a spec fica **Aguardando validação**. O serviço já está no ar no seu computador. Na página do projeto, clique em **Validar** na linha da spec.
 

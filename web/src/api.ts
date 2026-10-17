@@ -1,4 +1,3 @@
-import { authFetch } from './auth.js';
 import type { Divergence } from '@server/refine/checklist';
 export type ItemName = 'claude' | 'githubOwner' | 'ghLogin' | 'githubToken' | 'openrouterKey';
 export type LicenseView =
@@ -26,16 +25,16 @@ async function json<T>(res: Response): Promise<T> {
   return body;
 }
 export const api = {
-  status: () => authFetch(`${P}/status`).then((r) => json<Status>(r)),
-  organizations: () => authFetch(`${P}/github-organizations`).then((r) => json<{ organizations: string[]; owner: string | null }>(r)),
-  login: (cli: Cli) => authFetch(`${P}/${cli}/login`, { method: 'POST', headers: { 'content-type': 'application/json' } }).then((r) => json<{ state: SessionState }>(r)),
-  cancel: (cli: Cli) => authFetch(`${P}/${cli}/cancel`, { method: 'POST', headers: { 'content-type': 'application/json' } }).then((r) => json<{ state: SessionState }>(r)),
-  code: (cli: Cli, code: string) => authFetch(`${P}/${cli}/code`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code }) }).then((r) => json<{ state: SessionState }>(r)),
-  owner: (owner: string) => authFetch(`${P}/github-owner`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ owner }) }).then((r) => json<{ item: Item }>(r)),
-  secret: (name: 'GITHUB_TOKEN' | 'OPENROUTER_API_KEY', value: string) => authFetch(`${P}/secrets/${name}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value }) }).then((r) => json<{ item: Item }>(r)),
+  status: () => fetch(`${P}/status`).then((r) => json<Status>(r)),
+  organizations: () => fetch(`${P}/github-organizations`).then((r) => json<{ organizations: string[]; owner: string | null }>(r)),
+  login: (cli: Cli) => fetch(`${P}/${cli}/login`, { method: 'POST', headers: { 'content-type': 'application/json' } }).then((r) => json<{ state: SessionState }>(r)),
+  cancel: (cli: Cli) => fetch(`${P}/${cli}/cancel`, { method: 'POST', headers: { 'content-type': 'application/json' } }).then((r) => json<{ state: SessionState }>(r)),
+  code: (cli: Cli, code: string) => fetch(`${P}/${cli}/code`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code }) }).then((r) => json<{ state: SessionState }>(r)),
+  owner: (owner: string) => fetch(`${P}/github-owner`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ owner }) }).then((r) => json<{ item: Item }>(r)),
+  secret: (name: 'GITHUB_TOKEN' | 'OPENROUTER_API_KEY', value: string) => fetch(`${P}/secrets/${name}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value }) }).then((r) => json<{ item: Item }>(r)),
   events: (cli: Cli) => `${P}/${cli}/events`,
-  license: (sync = false) => authFetch(sync ? '/api/license/sync' : '/api/license', sync ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' } : undefined).then((r) => json<LicenseView>(r)),
-  activateLicense: (key: string) => authFetch('/api/license/activate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key }) }).then((r) => json<{ state: 'authorized' }>(r)),
+  license: (sync = false) => fetch(sync ? '/api/license/sync' : '/api/license', sync ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' } : undefined).then((r) => json<LicenseView>(r)),
+  activateLicense: (key: string) => fetch('/api/license/activate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key }) }).then((r) => json<{ state: 'authorized' }>(r)),
 };
 
 export const AGENT_MODELS = ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5'] as const;
@@ -48,9 +47,9 @@ export type AgentChoice = { mode: 'auto' } | ({ mode: 'manual' } & AgentSetting)
 
 const S = '/api/settings';
 export const settingsApi = {
-  agents: (projectId: string) => authFetch(`${S}/agents/${projectId}`).then((r) => json<{ agents: AgentRow[] }>(r)),
+  agents: (projectId: string) => fetch(`${S}/agents/${projectId}`).then((r) => json<{ agents: AgentRow[] }>(r)),
   setAgent: (projectId: string, role: string, choice: AgentChoice) =>
-    authFetch(`${S}/agents/${projectId}/${role}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(choice) }).then((r) => json<{ setting: AgentSetting | null }>(r)),
+    fetch(`${S}/agents/${projectId}/${role}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(choice) }).then((r) => json<{ setting: AgentSetting | null }>(r)),
 };
 
 export interface SpecRow {
@@ -198,23 +197,23 @@ const R = '/api';
 export type StartedRun = { runId: string; queued?: undefined } | { queued: true; draftId: string };
 /** Where a started spec is followed: its run, or the execution screen of the program that queued it. */
 export const startedPath = (projectId: string, r: StartedRun) => (r.queued ? `/refine/${projectId}/${r.draftId}/program` : `/runs/${r.runId}`);
-const jsonPost = (p: string, body?: unknown) => authFetch(`${R}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+const jsonPost = (p: string, body?: unknown) => fetch(`${R}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
 export const runApi = {
-  projects: () => authFetch(`${R}/projects`).then((r) => json<ProjectRow[]>(r)),
+  projects: () => fetch(`${R}/projects`).then((r) => json<ProjectRow[]>(r)),
   addProject: (url: string) => jsonPost('/projects', { url }).then((r) => json<ProjectRow>(r)),
-  deleteProject: (projectId: string) => authFetch(`${R}/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE', headers: { 'content-type': 'application/json' } }).then((r) => json<{ deleted: true }>(r)),
-  runs: (projectId: string) => authFetch(`${R}/projects/${encodeURIComponent(projectId)}/runs`).then((r) => json<RunRow[]>(r)),
+  deleteProject: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE', headers: { 'content-type': 'application/json' } }).then((r) => json<{ deleted: true }>(r)),
+  runs: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/runs`).then((r) => json<RunRow[]>(r)),
   /** A spec a running backlog program owns is queued there instead: the answer names that program's draft. */
   startRun: (projectId: string, specId: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/runs`).then((r) => json<StartedRun>(r)),
   resumeRun: (runId: string) => jsonPost(`/runs/${encodeURIComponent(runId)}/resume`).then((r) => json<{ runId: string }>(r)),
-  serviceStatus: (runId: string) => authFetch(`${R}/runs/${encodeURIComponent(runId)}/service`).then((r) => json<ServiceStatus>(r)),
+  serviceStatus: (runId: string) => fetch(`${R}/runs/${encodeURIComponent(runId)}/service`).then((r) => json<ServiceStatus>(r)),
   deployAgain: (projectId: string, specId: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/deploy`).then((r) => json<{ runId: string }>(r)),
   complete: (projectId: string, specId: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/complete`).then((r) => json<{ runId: string }>(r)),
   reportProblem: (projectId: string, specId: string, report: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/continue`, { report }).then((r) => json<{ sessionId: string }>(r)),
   writeReadme: (runId: string) => jsonPost(`/runs/${encodeURIComponent(runId)}/readme`).then((r) => json<{ runId: string }>(r)),
   stopRun: (runId: string) => jsonPost(`/runs/${encodeURIComponent(runId)}/stop`).then((r) => json<{ stopped: boolean }>(r)),
-  run: (runId: string) => authFetch(`${R}/runs/${encodeURIComponent(runId)}`).then((r) => json<RunDetail>(r)),
-  step: (runId: string, stepId: string) => authFetch(`${R}/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}`).then((r) => json<{ prompt: string; output: unknown }>(r)),
+  run: (runId: string) => fetch(`${R}/runs/${encodeURIComponent(runId)}`).then((r) => json<RunDetail>(r)),
+  step: (runId: string, stepId: string) => fetch(`${R}/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}`).then((r) => json<{ prompt: string; output: unknown }>(r)),
   runEvents: (runId: string) => `${R}/runs/${encodeURIComponent(runId)}/events`,
 };
 
@@ -389,9 +388,9 @@ export interface NameSuggestion {
   firstSpecId?: string;
 }
 
-const send = (method: string, p: string, body?: unknown) => authFetch(`${R}${p}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+const send = (method: string, p: string, body?: unknown) => fetch(`${R}${p}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
 export const refineApi = {
-  list: () => authFetch(`${R}/refine`).then((r) => json<DraftRow[]>(r)),
+  list: () => fetch(`${R}/refine`).then((r) => json<DraftRow[]>(r)),
   newProject: (projectId: string, name: string, description = '', firstSpecId = '') => send('POST', '/projects/new', { projectId, name, description, firstSpecId }).then((r) => json<{ sessionId: string }>(r)),
   suggestName: (input: NameRequest) => send('POST', '/names/suggest', input).then((r) => json<NameSuggestion>(r)),
   newSpec: (projectId: string, specId: string, description = '') => send('POST', `/projects/${encodeURIComponent(projectId)}/specs`, { specId, description }).then((r) => json<{ sessionId: string }>(r)),
@@ -399,7 +398,7 @@ export const refineApi = {
     send('POST', `/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/continue`, { report }).then((r) => json<{ sessionId: string }>(r)),
   restartSpec: (projectId: string, specId: string) =>
     send('POST', `/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/restart`).then((r) => json<{ sessionId: string }>(r)),
-  snapshot: (p: string, s: string) => authFetch(`${R}/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}`).then((r) => json<Snapshot>(r)),
+  snapshot: (p: string, s: string) => fetch(`${R}/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}`).then((r) => json<Snapshot>(r)),
   delete: (p: string, s: string) => send('DELETE', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}`).then((r) => json<{ ok: true }>(r)),
   saveDoc: (p: string, s: string, file: 'project.md' | 'brief.md' | 'stack.md' | 'flow.md' | 'design.md', text: string) => send('PUT', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${file}`, { text }).then((r) => json<{ ok: true }>(r)),
   suggestDoc: (p: string, s: string, file: 'project.md' | 'brief.md' | 'stack.md' | 'design.md') => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${file}/suggest`).then((r) => json<{ text: string }>(r)),
@@ -414,8 +413,8 @@ export const refineApi = {
     send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/patches/${encodeURIComponent(patchId)}/reject`, { reason: reason ?? undefined }).then((r) => json<{ ok: true }>(r)),
   secret: (p: string, s: string, name: string, value: string) => send('PUT', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/secrets/${encodeURIComponent(name)}`, { value }).then((r) => json<{ present: boolean; hint: string }>(r)),
   start: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/start`).then((r) => json<{ runId: string; program?: ProgramView }>(r)),
-  program: (p: string, s: string) => authFetch(`${R}/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/program`).then((r) => json<{ program: ProgramView | null }>(r)),
-  programDecisions: (p: string, s: string) => authFetch(`${R}/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/program/decisions`).then((r) => json<{ decisions: ProgramDecision[]; unanswered: number }>(r)),
+  program: (p: string, s: string) => fetch(`${R}/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/program`).then((r) => json<{ program: ProgramView | null }>(r)),
+  programDecisions: (p: string, s: string) => fetch(`${R}/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/program/decisions`).then((r) => json<{ decisions: ProgramDecision[]; unanswered: number }>(r)),
   prioritize: (p: string, s: string, item: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/program/${encodeURIComponent(item)}/prioritize`).then((r) => json<{ program: ProgramView }>(r)),
   events: (p: string, s: string) => `${R}/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/events`,
 };
@@ -443,7 +442,7 @@ export interface ChatMessage {
 }
 const chatUrl = (projectId: string) => `${R}/chat/${encodeURIComponent(projectId)}`;
 export const chatApi = {
-  messages: (projectId: string) => authFetch(chatUrl(projectId)).then((r) => json<{ messages: ChatMessage[] }>(r)),
+  messages: (projectId: string) => fetch(chatUrl(projectId)).then((r) => json<{ messages: ChatMessage[] }>(r)),
   ask: (projectId: string, text: string) => jsonPost(`/chat/${encodeURIComponent(projectId)}/messages`, { text }).then((r) => json<{ message: ChatMessage }>(r)),
-  clear: (projectId: string) => authFetch(chatUrl(projectId), { method: 'DELETE', headers: { 'content-type': 'application/json' } }).then((r) => json<{ ok: true }>(r)),
+  clear: (projectId: string) => fetch(chatUrl(projectId), { method: 'DELETE', headers: { 'content-type': 'application/json' } }).then((r) => json<{ ok: true }>(r)),
 };

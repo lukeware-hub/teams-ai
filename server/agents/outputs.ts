@@ -8,12 +8,17 @@ import { ID_PATTERNS } from '../core/ids.js';
 import { Project, ServiceName } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 
-export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'deployment', 'environment', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
 const acId = z.string().regex(AC_ID);
 const taskId = z.string().regex(ID_PATTERNS.TASK_ID);
+const skillId = z.string().regex(/^[a-z0-9][a-z0-9-]{1,63}$/);
+
+export const SkillRequest = z.object({ capability: z.string().min(3).max(200), reason: z.string().min(3).max(500) });
+export const SkillDraft = z.object({ id: skillId, whenToUse: z.string().min(3).max(500), rules: z.array(z.string().min(1)).min(1).max(30) });
+const skillFields = { skillRequest: SkillRequest.optional(), skillDraft: SkillDraft.optional() };
 
 export const DocPatch = z.object({
   file: z.string().min(1),
@@ -112,6 +117,7 @@ const devCommon = {
   summary: z.string().min(1),
   changedFiles: z.array(z.string().min(1)),
   scopeJustification: z.string().optional(),
+  ...skillFields,
 };
 
 /** A discriminated union so the generated JSON Schema tells the model which fields each status requires. */
@@ -125,6 +131,7 @@ export const DevOutput = z.discriminatedUnion('status', [
 
 export const ReviewOutput = z.object({
   specHash,
+  ...skillFields,
   decision: z.enum(['approve', 'changes']),
   /** Empty for tasks without acceptance criteria (scaffold, infrastructure): the review judges the diff alone. */
   criteria: z.array(z.object({ id: acId, status: z.enum(['passed', 'failed', 'not-covered']), evidence: z.array(z.string()) })),
@@ -139,9 +146,12 @@ export const ReviewOutput = z.object({
   ),
 });
 
+export type ReviewOutput = z.infer<typeof ReviewOutput>;
+
 /** Security review of one task diff. The severities decide: critical/high findings block the merge, medium/low are recorded only. */
 export const SecurityOutput = z.object({
   specHash,
+  ...skillFields,
   /** The reviewer's own summary of its findings: `changes` exactly when one is critical or high. The orchestrator blocks on `blockingFindings`, never on this label. */
   decision: z.enum(['approve', 'changes']),
   findings: z.array(
@@ -266,6 +276,13 @@ export type SuggestOutput = z.infer<typeof SuggestOutput>;
 export const AnswerOutput = z.object({ specHash, answer: z.string().min(1).nullable() });
 export type AnswerOutput = z.infer<typeof AnswerOutput>;
 
+export const SkillSelectionOutput = z.discriminatedUnion('action', [
+  z.object({ specHash, action: z.literal('reuse'), skill: z.object({ id: skillId, repository: z.string().url(), commit: z.string().regex(/^[a-f0-9]{40}$/), license: z.string().min(1), sourcePath: z.string().optional() }), reason: z.string().min(1) }),
+  z.object({ specHash, action: z.literal('create'), draft: SkillDraft, reason: z.string().min(1) }),
+  z.object({ specHash, action: z.literal('reject'), reason: z.string().min(1) }),
+]);
+export type SkillSelectionOutput = z.infer<typeof SkillSelectionOutput>;
+
 /** Chat screen: a plain answer, plus a correction when what is being built goes against its spec. */
 export const ChatOutput = z.object({
   specHash,
@@ -284,6 +301,7 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   dev: DevOutput,
   review: ReviewOutput,
   security: SecurityOutput,
+  'ui-check': ReviewOutput,
   deployment: DeploymentOutput,
   environment: EnvironmentOutput,
   report: ReportOutput,
@@ -300,6 +318,7 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   suggest: SuggestOutput,
   answer: AnswerOutput,
   chat: ChatOutput,
+  'skill-select': SkillSelectionOutput,
 };
 
 export type OutputOf<K extends StepKind> = z.infer<(typeof OUTPUT_SCHEMAS)[K]>;

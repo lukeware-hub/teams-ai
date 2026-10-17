@@ -20,7 +20,7 @@ afterEach(async () => {
 });
 
 describe('settings routes', () => {
-  it('lists the eight agents on automatic by default, then shows a manual pick', async () => {
+  it('lists the nine agents on automatic by default, then shows a manual pick', async () => {
     const first = (await (await fetch(`${base()}/demo`)).json()) as { agents: Array<{ role: string; setting: unknown }> };
     expect(first.agents.map((a) => a.role)).toEqual(['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops', 'env']);
     expect(first.agents.every((a) => a.setting === null)).toBe(true);

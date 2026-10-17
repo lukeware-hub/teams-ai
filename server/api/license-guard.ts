@@ -1,10 +1,9 @@
 import type { KeyObject } from 'node:crypto';
-import { SESSION_PATH } from './auth.js';
 import { readMachine } from '../license/machine.js';
 import { verifyLicenseToken } from '../license/token.js';
 import { readLicenseToken } from '../license/vault.js';
 
-const OPEN = new Set(['/api/license', '/api/license/activate', '/api/license/sync', SESSION_PATH]);
+const OPEN = new Set(['/api/license', '/api/license/activate', '/api/license/sync']);
 
 export interface LicenseGuard {
   allowed(path: string): boolean;

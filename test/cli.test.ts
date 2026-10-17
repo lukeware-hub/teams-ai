@@ -2,9 +2,10 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { chooseSpecId, failedDecision, main, markAwaitingValidation, startsAsDraft } from '../server/cli.js';
+import { chooseSpecId, failedDecision, loadRunDeps, main, markAwaitingValidation, startsAsDraft } from '../server/cli.js';
 import { loadConfig } from '../server/config/config.js';
 import type { RunControlDeps, SpawnArgs } from '../server/api/run-control.js';
+import { makeRemote } from './fixtures/git-remote.js';
 import { writeRun } from './fixtures/runs/write-run.js';
 
 const io = (argv: string[]) => {
@@ -214,5 +215,40 @@ describe('markAwaitingValidation', () => {
 describe('ui decider failure', () => {
   it('reports a thrown decider as an error with the redacted message, never as exhausted', () => {
     expect(failedDecision(new Error('openrouter down for sk-or-v1-abcdefghijklmnopqrstuv'))).toEqual({ answered: false, reason: 'error', message: 'openrouter down for [REDACTED]' });
+  });
+});
+
+describe('loadRunDeps', () => {
+  it('indexes the docs of the project folder, so the run can retrieve them', async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-cli-deps-home-'));
+    const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-cli-deps-project-'));
+    const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    const project = await fs.readFile('test/fixtures/hello-app/docs/project.json', 'utf8');
+    const fixture = JSON.parse(await fs.readFile('test/fixtures/hello-app/docs/specs/hello-001/spec.json', 'utf8'));
+    const spec = JSON.stringify({ ...fixture, status: 'awaiting-validation', specHash: `sha256:${'a'.repeat(64)}` });
+    const remote = await makeRemote({ 'docs/project.json': project, 'docs/specs/hello-001/spec.json': spec });
+    try {
+      await fs.mkdir(path.join(home, '.teams-ai'), { recursive: true });
+      await fs.writeFile(path.join(home, '.teams-ai', 'config.json'), JSON.stringify({ paths: { workspaces: `${home}/ws`, runs: `${home}/runs`, secrets: `${home}/secrets` }, projects: [] }));
+      await fs.mkdir(path.join(projectDir, 'docs', 'specs', 'hello-001'), { recursive: true });
+      await fs.writeFile(path.join(projectDir, 'docs', 'project.json'), project);
+      await fs.writeFile(path.join(projectDir, 'docs', 'specs', 'hello-001', 'spec.json'), spec);
+      await fs.writeFile(path.join(projectDir, 'docs', 'specs', 'hello-001', 'spec.md'), '# Spec 1\nThe quota uses marker zebracorn-7741.\n');
+      await fs.mkdir(path.join(home, 'ws', 'hello-app'), { recursive: true });
+      await fs.cp(remote.repo, path.join(home, 'ws', 'hello-app', 'repo'), { recursive: true });
+
+      const deps = await loadRunDeps({ argv: [], env: {}, stdout: () => {}, stderr: () => {} }, projectDir, 'hello-001', { dryRun: true, complete: true });
+      const hits = deps.knowledge!.search('zebracorn');
+      deps.knowledge!.close();
+
+      expect(hits.map((h) => h.docId)).toEqual(['docs/specs/hello-001/spec.md']);
+    } finally {
+      for (const [key, value] of Object.entries(saved)) if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      await remote.cleanup();
+      await fs.rm(home, { recursive: true, force: true });
+      await fs.rm(projectDir, { recursive: true, force: true });
+    }
   });
 });

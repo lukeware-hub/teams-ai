@@ -179,7 +179,6 @@ Sobe a plataforma inteira (orquestrador, API, UI web e um Docker aninhado sem ro
    ```dotenv
    # GITHUB_TOKEN=ghp_xxx                 # token que cria repositórios e PRs na sua conta/organização
    # CLAUDE_CODE_OAUTH_TOKEN=             # token longo gerado por `claude setup-token` (dispensa o login no navegador)
-   # TEAMS_AI_UI_TOKEN=                   # necessário só se você publicar a UI na sua rede local
    ```
 
 3. Crie `license/.env` como em [Serviço de licenças](#serviço-de-licenças). Sem esse arquivo o Compose não sobe.
@@ -222,8 +221,8 @@ Onde ficam seus dados (volumes Docker nomeados): `teams-ai-data` (configuração
 `teams-ai-claude` (login do Claude), `teams-ai-gh` (login do GitHub CLI), `dind-data` (imagens do Docker aninhado) e
 `teams-ai-license` (banco das licenças).
 
-Para compartilhar a UI na rede local (opcional): defina `TEAMS_AI_UI_BIND=0.0.0.0` **e** um `TEAMS_AI_UI_TOKEN` forte no `.env`,
-e adicione o hostname que você usa em `TEAMS_AI_ALLOWED_HOSTS` (a API rejeita `Host` desconhecido). Nunca exponha sem token.
+Para compartilhar a UI na rede local (opcional): defina `TEAMS_AI_UI_BIND=0.0.0.0` no `.env`,
+e adicione o hostname que você usa em `TEAMS_AI_ALLOWED_HOSTS` (a API rejeita `Host` desconhecido). Atenção: a UI não tem senha. Com `0.0.0.0`, qualquer computador da rede tem acesso total à API (ver runs, iniciar runs e gravar segredos). Use só em rede de confiança.
 
 > Observação: o `dind` sem root precisa de `/dev/net/tun` e de seccomp/AppArmor mais flexíveis. Ele está implementado e
 > coberto por testes unitários. Se o `dind` não ficar saudável no seu computador, veja [Solução de problemas](#solução-de-problemas).
@@ -328,7 +327,6 @@ LICENSE_MASTER_KEY=        # 32 bytes em base64; cifra a chave para o administra
 JWT_SECRET=                # segredo do login da administração, com pelo menos 16 caracteres
 ADMIN_EMAIL=
 ADMIN_PASSWORD=
-LICENSE_DB_PASSWORD=license
 DATABASE_URL=postgres://license:license@127.0.0.1:5432/license?sslmode=disable
 PORT=8080
 ```
@@ -397,11 +395,8 @@ Variáveis de ambiente (`.env`, lido pelo `docker-compose.yml`):
 | --- | --- |
 | `GITHUB_TOKEN` | Token do GitHub usado pelo orquestrador. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Token longo do Claude, gerado por `claude setup-token`. |
-| `TEAMS_AI_UI_TOKEN` | Token Bearer exigido pela UI/API. Necessário sempre que a UI não for só loopback. |
-| `TEAMS_AI_UI_BIND` | Interface do host para a porta 8787. Padrão `127.0.0.1`. Use `0.0.0.0` para a rede local (com token). |
+| `TEAMS_AI_UI_BIND` | Interface do host para a porta 8787. Padrão `127.0.0.1`. Use `0.0.0.0` só em rede de confiança: qualquer um na rede tem acesso total à API. |
 | `TEAMS_AI_ALLOWED_HOSTS` | Valores extras de `Host` que a API aceita. |
-| `TEAMS_AI_UI_LOOPBACK_PUBLISHED` | `1` (padrão) publica a porta só no loopback, então nenhum token é exigido. |
-| `DOCKER_GID` | ID do grupo Docker, só se você montar um socket do host (não é usado por padrão). |
 | `LICENSE_SERVICE_URL` | Endereço do serviço de licenças. No Compose o padrão é `http://license:8080`. |
 
 ## Referência da CLI
@@ -475,7 +470,7 @@ scripts/   Setup do WSL, smoke tests, scripts de integração e avaliação
 | A UI diz `the web UI needs util-linux script` | `sudo apt install bsdutils` (Caminho B). |
 | `web/dist not found` | `npm run web:build`. |
 | `paused:auth` ou "OAuth session expired" | Entre de novo no Claude em Onboarding (ou atualize `CLAUDE_CODE_OAUTH_TOKEN`) e retome a execução. |
-| `403` da API em outro hostname | Adicione o hostname em `TEAMS_AI_ALLOWED_HOSTS` e defina `TEAMS_AI_UI_TOKEN` se não for loopback. |
+| `403` da API em outro hostname | Adicione o hostname em `TEAMS_AI_ALLOWED_HOSTS`. |
 | O contêiner reiniciou e uma execução travou | No boot, o contêiner remove arquivos `*.ndjson.lock` órfãos; depois é só retomar a execução. |
 | Instalação lenta ou erros estranhos de arquivo no Caminho B | Confirme que o repositório está em `~`, não em `/mnt/c`. |
 | Erro de versão do Node | É preciso Node `>=22.13` (`nvm install 22`). |

@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { ensureSession } from './auth.js';
 import type { SessionState, StoredEvent } from './api.js';
 
 export function useSse(url: string | null, initial: SessionState = { name: 'idle' }) {
@@ -7,18 +6,10 @@ export function useSse(url: string | null, initial: SessionState = { name: 'idle
   const [output, setOutput] = useState('');
   useEffect(() => {
     if (!url) return;
-    let es: EventSource | null = null;
-    let stopped = false;
-    void ensureSession().then(() => {
-      if (stopped) return;
-      es = new EventSource(url);
-      es.addEventListener('state', (e) => setState(JSON.parse((e as MessageEvent).data) as SessionState));
-      es.addEventListener('output', (e) => setOutput((o) => (o + (JSON.parse((e as MessageEvent).data) as string)).slice(-4096)));
-    });
-    return () => {
-      stopped = true;
-      es?.close();
-    };
+    const es = new EventSource(url);
+    es.addEventListener('state', (e) => setState(JSON.parse((e as MessageEvent).data) as SessionState));
+    es.addEventListener('output', (e) => setOutput((o) => (o + (JSON.parse((e as MessageEvent).data) as string)).slice(-4096)));
+    return () => es.close();
   }, [url]);
   return { state, output, setState };
 }
@@ -32,8 +23,6 @@ export function useJournal(url: string | null) {
     if (!url) return;
     setEvents([]);
     setEnded(false);
-    let es: EventSource | null = null;
-    let stopped = false;
     // A replay sends hundreds of events at once: they are applied in one render per batch, not one per event.
     let pending: StoredEvent[] = [];
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -48,26 +37,21 @@ export function useJournal(url: string | null) {
         return fresh.length === 0 ? list : [...list, ...fresh];
       });
     };
-    void ensureSession().then(() => {
-      if (stopped) return;
-      const source = new EventSource(url);
-      es = source;
-      source.addEventListener('journal', (e) => {
-        pending.push(JSON.parse((e as MessageEvent).data) as StoredEvent);
-        timer ??= setTimeout(flush, 50);
-      });
-      source.addEventListener('end', () => {
-        flush();
-        setEnded(true);
-        source.close();
-      });
-      source.onerror = () => setError('connection lost; retrying');
-      source.onopen = () => setError(null);
+    const source = new EventSource(url);
+    source.addEventListener('journal', (e) => {
+      pending.push(JSON.parse((e as MessageEvent).data) as StoredEvent);
+      timer ??= setTimeout(flush, 50);
     });
+    source.addEventListener('end', () => {
+      flush();
+      setEnded(true);
+      source.close();
+    });
+    source.onerror = () => setError('connection lost; retrying');
+    source.onopen = () => setError(null);
     return () => {
-      stopped = true;
       clearTimeout(timer);
-      es?.close();
+      source.close();
     };
   }, [url]);
   return { events, ended, error };
