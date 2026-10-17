@@ -799,6 +799,22 @@ describe('refine api', () => {
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/start')).status).toBe(200);
   });
 
+  it('a refinement retrieves the earlier specs of the project clone that match its objectives', async () => {
+    const spec = { ...makeSpec({ specId: 'hello-001' }), status: 'awaiting-validation', specHash: `sha256:${'a'.repeat(64)}` };
+    remote = await makeRemote({ 'docs/project.json': JSON.stringify(HELLO_PROJECT), 'docs/specs/hello-001/spec.json': JSON.stringify(spec), 'docs/specs/hello-001/spec.md': '# Spec 1\nThe quota checker uses marker zebracorn-7741.\n' });
+    await fs.mkdir(`${home}/ws/hello-app`, { recursive: true });
+    await fs.cp(remote.repo, `${home}/ws/hello-app/repo`, { recursive: true });
+    expect((await call('POST', '/api/projects/hello-app/specs', { specId: 'hello-002' })).status).toBe(200);
+    script['derive/po'] = [{ ...derived, spec: { ...derived.spec, objectives: ['Track the quota per tenant'] } }];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    calls.length = 0;
+    expect((await call('POST', '/api/refine/hello-app/hello-002/evaluate')).status).toBe(202);
+    const isPo = (c: { kind: string; role: string }) => c.kind === 'refine' && c.role === 'po';
+    for (let i = 0; i < 100 && !calls.some(isPo); i++) await new Promise((r) => setTimeout(r, 20));
+    expect(calls.find(isPo)?.prompt).toContain('zebracorn-7741');
+  });
+
   it('a broken config.json never rejects the program tick, which would kill the UI server', async () => {
     await fs.writeFile(`${home}/.teams-ai/config.json`, '{');
     await expect(registry.tickPrograms()).resolves.toBeUndefined();
