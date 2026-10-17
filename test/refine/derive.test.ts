@@ -40,6 +40,11 @@ describe('postProcessDerived', () => {
     if (!out.ok) return;
     expect(out.value.spec.acceptanceCriteria.map((c) => c.id)).toEqual(['AC-006', 'AC-007']);
   });
+  it('renumbers a malformed criterion id instead of failing the whole derive', () => {
+    const out = postProcessDerived({ project: PROJECT, spec: { ...prev, acceptanceCriteria: [ac('AC-001', 'one'), ac('AC-13', 'three'), ac('AC-0014', 'four')] } }, prev, 'hello-001');
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.value.spec.acceptanceCriteria.map((c) => c.id)).toEqual(['AC-001', 'AC-003', 'AC-004']);
+  });
   it('drops a provenance the agent invents: only backlog detailing writes derivedFrom', () => {
     const derivedFrom = { backlogKey: 'x', inputHash: `sha256:${'d'.repeat(64)}`, docsHash: `sha256:${'e'.repeat(64)}`, sources: [{ doc: 'flow.md', heading: 'h', hash: null }] };
     const out = postProcessDerived({ project: PROJECT, spec: { ...prev, derivedFrom } }, prev, 'hello-001');

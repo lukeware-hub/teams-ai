@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Project } from '../contracts/project.js';
-import { AcceptanceCriterion, Spec, type SpecDecision } from '../contracts/spec.js';
+import { AC_ID, AcceptanceCriterion, Spec, type SpecDecision } from '../contracts/spec.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
 import { buildWithDocs, DIGEST_NOTE } from './docs-view.js';
@@ -68,19 +68,21 @@ export function postProcessDerived(out: { project: unknown; spec: unknown }, pre
   const p = Project.safeParse(out.project);
   const raw = typeof out.spec === 'object' && out.spec !== null ? (out.spec as Record<string, unknown>) : {};
   // Ids are renumbered before the Spec schema runs, since the schema rejects duplicates the agent may produce.
-  const acs = z.array(AcceptanceCriterion).safeParse(raw.acceptanceCriteria ?? []);
+  // Any string id passes here: a malformed id from the agent is renumbered below instead of failing the whole derive.
+  const acs = z.array(AcceptanceCriterion.extend({ id: z.string() })).safeParse(raw.acceptanceCriteria ?? []);
   const prevAcs = previous?.acceptanceCriteria ?? [];
   let criteria: AcceptanceCriterion[] = [];
   if (acs.success) {
     const used = new Set<string>();
-    let max = Math.max(0, floor, ...prevAcs.map((c) => acNum(c.id)), ...acs.data.map((c) => acNum(c.id)));
+    const wellFormed = (c: { id: string }) => AC_ID.test(c.id);
+    let max = Math.max(0, floor, ...prevAcs.map((c) => acNum(c.id)), ...acs.data.filter(wellFormed).map((c) => acNum(c.id)));
     criteria = acs.data.map((c) => {
       const kept = prevAcs.find((pc) => sameText(pc, c) && !used.has(pc.id));
       let id = kept ? kept.id : c.id;
       const takenByOther = !kept && prevAcs.some((pc) => pc.id === id && !sameText(pc, c));
       // Below the floor and not this spec's own retained id: a sibling spec already owns that number (R11.8).
-      const belowFloor = !kept && acNum(id) <= floor;
-      if (used.has(id) || takenByOther || belowFloor) id = acId(++max);
+      const belowFloor = !kept && wellFormed({ id }) && acNum(id) <= floor;
+      if (used.has(id) || takenByOther || belowFloor || !wellFormed({ id })) id = acId(++max);
       used.add(id);
       return { ...c, id };
     });
