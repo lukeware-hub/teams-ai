@@ -63,6 +63,16 @@ describe('role plugins', () => {
     await expect(fs.access(path.join(out, 'front'))).rejects.toThrow();
   });
 
+  it('installs the claude-automation-recommender skill that the Dev prompt names, from its pinned catalog path', async () => {
+    const pinned = PINNED_SKILLS.find((skill) => skill.id === 'claude-code-setup')!;
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-plugins-'));
+    const root = path.join(dir, 'cache');
+    await put(path.join(root, pinned.id, pinned.commit, pinned.sourcePath!, 'claude-automation-recommender', 'SKILL.md'), '---\nname: claude-automation-recommender\ndescription: Recommend automation.\n---\nRead the repo.\n');
+    const out = path.join(dir, 'plugins');
+    await buildRolePlugins(root, out, [pinned]);
+    await expect(fs.access(path.join(out, 'dev', 'skills', 'claude-automation-recommender', 'SKILL.md'))).resolves.toBeUndefined();
+  });
+
   it('builds the same plugin again without changes', async () => {
     const { root, out } = await syncedCache();
     await buildRolePlugins(root, out, [alpha, beta, catalog]);
