@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execCommand } from '../../server/exec/command.js';
 import { Intent, Journal, OrchEvent } from '../../server/orchestrator/events.js';
 import { runPhase5, type PhaseDeps } from '../../server/orchestrator/phases/index.js';
-import { deployStartAttempt } from '../../server/orchestrator/phases/deploy.js';
+import { deployStartAttempt, uiAlreadyChecked } from '../../server/orchestrator/phases/deploy.js';
+import type { StoredEvent } from '../../server/store/event-store.js';
 import { RunEvent } from '../../server/pipeline/run-state.js';
 import { makeFrozenSpec, makePlan, makePlanTask, makeProject } from '../fixtures/contracts.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';
@@ -228,5 +229,28 @@ describe('Phase 5 environment step', () => {
     await runPhase5({ ...deps('AC-001: smoke test failed') }, 1, { envRerun: 1 });
     expect(journal.events.some((e) => e.intentId === `${Intent.DeployApply}:deploy-1-e1`)).toBe(true);
     expect(journal.events.some((e) => e.intentId === `${Intent.DeployApply}:deploy-1`)).toBe(false);
+  });
+});
+
+describe('UI check reuse', () => {
+  const ui = (decision: string, service?: string) => ({ type: OrchEvent.UiChecked, data: { taskId: 'T1', decision, ...(service ? { service } : {}) } }) as unknown as StoredEvent;
+  const merged = (taskId: string) => ({ type: RunEvent.TaskStateChanged, data: { taskId, to: 'merged' } }) as unknown as StoredEvent;
+  const front = ['T1'];
+
+  it('runs the check when none passed yet', () => {
+    expect(uiAlreadyChecked([], front, null)).toBe(false);
+  });
+  it('reuses a passed check when no front task merged after it', () => {
+    expect(uiAlreadyChecked([ui('ok'), merged('T9')], front, null)).toBe(true);
+  });
+  it('runs the check again once a front task merged after it', () => {
+    expect(uiAlreadyChecked([ui('ok'), merged('T1')], front, null)).toBe(false);
+  });
+  it('runs the check again when the last one asked for changes', () => {
+    expect(uiAlreadyChecked([ui('ok'), ui('changes')], front, null)).toBe(false);
+  });
+  it('keeps the checks of each service apart', () => {
+    expect(uiAlreadyChecked([ui('ok', 'web')], front, null)).toBe(false);
+    expect(uiAlreadyChecked([ui('ok', 'web')], front, 'web')).toBe(true);
   });
 });

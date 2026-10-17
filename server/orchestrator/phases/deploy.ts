@@ -15,6 +15,7 @@ import { serviceWorkspace, type Workspace } from '../workspace.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { ReviewOutput } from '../../agents/outputs.js';
+import type { StoredEvent } from '../../store/event-store.js';
 
 /** `retryEnvironment`: a missing variable was created, so the same attempt runs again without a fix task. */
 export type Phase5Result = { ok: true; url: string; smoke: SmokeRow[]; healthcheck: string; e2e?: E2eRow[] } | { ok: false; reason: string; fixTask?: PlanTask; retryEnvironment?: true };
@@ -145,10 +146,24 @@ Contract: ${E2E_CONTRACT}${history}`, affectedPaths: [...(suite ? [suite] : []),
   return { ...base, description: `Deploy attempt ${attempt} failed at ${stage}: ${detail}${portHint}${history}`, affectedPaths: [...deps.plan!.deploy.manifests, 'Dockerfile'], owner: 'devops' };
 };
 
+/**
+ * True when the screen of this service was already checked and passed, and no front task merged after that check:
+ * a deploy that only failed for infrastructure reasons does not change the screen, so the check is not repeated.
+ */
+export function uiAlreadyChecked(events: readonly StoredEvent[], frontIds: readonly string[], service: string | null): boolean {
+  let last = -1;
+  events.forEach((e, i) => { if (e.type === OrchEvent.UiChecked && (e.data.service ?? null) === service) last = i; });
+  if (last < 0 || events[last]!.data.decision === 'changes') return false;
+  return !events.slice(last + 1).some((e) => e.type === RunEvent.TaskStateChanged && e.data.to === 'merged' && frontIds.includes(String(e.data.taskId)));
+}
+
 /** `defect` is a UI finding for the front Dev; `error` means the check never ran, so nothing is rolled back. */
 async function runUiCheck(deps: PhaseDeps, opts: { url: string; plan: Plan; ws: Workspace; attempt: number; service?: string | null }): Promise<{ defect: string | null; error: string | null }> {
   const front = opts.plan.tasks.find((t) => t.owner === 'front');
   if (!front) return { defect: null, error: null };
+  // Front tasks include the deploy-fix tasks of a failed UI check, which are not in the plan.
+  const frontIds = [...deps.journal.state.tasks].filter(([, t]) => t.def.owner === 'front').map(([id]) => id);
+  if (uiAlreadyChecked(deps.journal.events, frontIds, opts.service ?? null)) return { defect: null, error: null };
   // A check that fails (timeout, rate limit, sandbox) runs once more; the snapshot keeps its edits out of the checkout.
   const check = (cwd: string) => deps.runAgent<'ui-check'>({
     kind: 'ui-check',
