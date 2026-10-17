@@ -9,14 +9,14 @@ permissions:
 
 jobs:
   quality:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22.13.0
           cache: npm
@@ -41,7 +41,7 @@ jobs:
 
   publish:
     needs: quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     permissions:
       contents: read
@@ -50,7 +50,7 @@ jobs:
       TRIVY_IMAGE: aquasec/trivy:0.75.0
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Free disk space
         run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
@@ -86,3 +86,22 @@ jobs:
           docker push "$IMAGE:$GITHUB_REF_NAME"
           docker tag "$IMAGE:$GITHUB_REF_NAME" "$IMAGE:latest"
           docker push "$IMAGE:latest"
+
+  report:
+    needs: [quality, publish]
+    if: always()
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Write the status of every job and step
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          {
+            echo "## CI report: $GITHUB_REF_NAME ($GITHUB_SHA)"
+            echo ""
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs" --paginate --jq '.jobs[] | select(.name != "report") | "### \(.name): \(.conclusion // .status)\n" + ([.steps[]? | "- \(.name): \(.conclusion // .status)"] | join("\n")) + "\n"'
+          } >> "$GITHUB_STEP_SUMMARY"

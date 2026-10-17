@@ -52,6 +52,27 @@ describe('.github/workflows/ci.yml publish job (R9.4)', () => {
   it('pins every action by major tag', () => {
     for (const s of publish.steps.filter((x: { uses?: string }) => x.uses)) expect(s.uses, s.name).toMatch(/@v\d+$/);
   });
+
+  it('pins every job to a fixed Ubuntu runner, so the label migration cannot change it', () => {
+    for (const job of Object.values(ci.jobs)) expect(job['runs-on']).toBe('ubuntu-24.04');
+  });
+});
+
+describe('.github/workflows/ci.yml report job', () => {
+  const report = ci.jobs.report;
+
+  it('runs after every other job even when one fails, and can read the run status', () => {
+    expect(report.needs).toEqual(['quality', 'publish']);
+    expect(report.if).toBe('always()');
+    expect(report.permissions).toEqual({ contents: 'read', actions: 'read' });
+  });
+
+  it('writes the status of each job and step to the run summary', () => {
+    const run = report.steps[0].run as string;
+    expect(run).toContain('$GITHUB_STEP_SUMMARY');
+    expect(run).toContain('actions/runs/$RUN_ID/jobs');
+    expect(run).toContain('.steps[]');
+  });
 });
 
 describe('the image carries no secret (R9.4)', () => {
