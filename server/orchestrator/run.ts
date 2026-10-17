@@ -311,6 +311,8 @@ export class Run {
       claudeJsonPath: this.deps.claudeJsonPath ?? expandHome('~/.claude.json'),
       settingsDir: path.posix.join(runDir(ws, this.runId), 'settings'),
       workspacesRoot: ws.root,
+      skillsRoot: expandHome('~/.teams-ai/skills'),
+      skillScope: this.deps.project.projectId,
       // The stack's registries let a step install dependencies; cfg.docker.serviceHost is where the orchestrator and the
       // gates already reach a deployed service (server/deploy/docker-local.ts), so a step's own sandbox needs the same
       // route to test against SERVICE_URL itself — never a wider one (no internet host, no datastore port).
@@ -553,6 +555,7 @@ export class Run {
       policy: { ...DEFAULT_POLICY, ...cfg.retry },
       packBase: view.service ? () => ({ ...this.packBase(), service: { name: view.service!, plan: view.plan, addresses: Object.fromEntries(Object.entries(this.addresses).filter(([s]) => s !== view.service)), design: this.design } }) : this.packBase,
       deliveredBefore: this.deliveredBefore,
+      skillsRoot: expandHome('~/.teams-ai/skills'),
       handoffs: () => this.handoffs,
       boundaries: async () => {
         const g = this.deps.graphify;

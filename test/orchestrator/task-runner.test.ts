@@ -39,6 +39,7 @@ type Agent = (req: AgentStepRequest<any>) => Promise<StepOutcome<any>>;
 const secApprove = () => ok({ specHash: HASH, decision: 'approve', findings: [] });
 const devDone = (message = 'feat: T1'): Agent => async (req) => {
   if (req.kind === 'security') return secApprove();
+  if (req.kind === 'code-review' || req.kind === 'ui-check' || req.kind === 'review') return approve();
   await fs.mkdir(path.join(req.cwd, 'src'), { recursive: true });
   await fs.writeFile(path.join(req.cwd, 'src', 'a.ts'), `// ${Date.now()}\n`);
   return ok({ specHash: HASH, status: 'done', summary: 'did T1', changedFiles: ['src/a.ts'], commitMessage: message });
@@ -428,7 +429,25 @@ describe('TaskRunner: reviewing', () => {
     await r.advance();
     expect(state().state).toBe('rebasing');
     expect(types()).toContain(`fact:${OrchEvent.ReviewApproved}`);
+    expect(types()).toContain(`fact:${OrchEvent.CodeReviewApproved}`);
     expect(agentCalls.find((c) => c.kind === 'review')!.pack.changeSet).toContain('src/a.ts');
+    expect(agentCalls.find((c) => c.kind === 'code-review')).toMatchObject({ role: 'reviewer', effort: 'medium' });
+  });
+
+  it('returns code-review findings to Dev before Test and Security run', async () => {
+    const r = new TaskRunner('T1', deps({
+      agent: async (req) => {
+        if (req.kind === 'code-review') return ok({ specHash: HASH, decision: 'changes', criteria: [], findings: [{ file: 'src/a.ts', line: 2, severity: 'important', problem: 'missing null check', fix: 'guard the input' }] });
+        return devDone()(req);
+      },
+    }));
+    await r.advance();
+    await r.advance();
+    await r.advance();
+    expect(state()).toMatchObject({ state: 'implementing', attempts: 1 });
+    expect(journal.lastFeedback('T1')).toContain('missing null check');
+    expect(types()).toContain(`fact:${OrchEvent.CodeReviewChanges}`);
+    expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'code-review']);
   });
 
   it('returns findings to Dev on changes', async () => {
@@ -475,13 +494,21 @@ describe('TaskRunner: security review', () => {
     expect(call.pack.changeSet).toContain('Diff against origin/main');
     expect(call.pack.changeSet).toContain('src/a.ts');
     expect(call.pack.changeSet).not.toContain('diff truncated');
-    expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'security', 'review']);
+    expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'code-review', 'security', 'review']);
     expect(types()).toContain(`fact:${OrchEvent.SecurityApproved}`);
+  });
+
+  it('journals a skill request from the sec role without routing it to the SM', async () => {
+    await secured(async () => ok({ specHash: HASH, decision: 'approve', findings: [], skillRequest: { capability: 'scan dependencies', reason: 'no scanner mounted' } }));
+    expect(state().state).toBe('rebasing');
+    expect(journal.events.some((e) => e.type === OrchEvent.SkillRequested && e.data.role === 'sec' && e.data.capability === 'scan dependencies')).toBe(true);
+    expect(agentCalls.some((c) => c.kind === 'skill-select')).toBe(false);
   });
 
   it('tells sec the diff was cut at the inline limit and where to look for the rest', async () => {
     const bigDev: Agent = async (req) => {
       if (req.kind === 'security') return secApprove();
+      if (req.kind === 'code-review' || req.kind === 'review') return approve();
       await fs.mkdir(path.join(req.cwd, 'src'), { recursive: true });
       await fs.writeFile(path.join(req.cwd, 'src', 'big.ts'), '// padding that makes the diff larger than the inline limit\n'.repeat(2000));
       return ok({ specHash: HASH, status: 'done', summary: 'did T1', changedFiles: ['src/big.ts'], commitMessage: 'feat: T1' });
@@ -502,7 +529,7 @@ describe('TaskRunner: security review', () => {
     async function secPrompt(diffChars: number) {
       const padding = `// ${'p'.repeat(76)}\n`.repeat(Math.ceil(diffChars / 80)); // 80 chars a line, 81 once the diff prefixes it
       const dev: Agent = async (req) => {
-        if (req.kind === 'review') return approve();
+        if (req.kind === 'review' || req.kind === 'code-review') return approve();
         if (req.kind === 'security') return secApprove();
         await fs.mkdir(path.join(req.cwd, 'src'), { recursive: true });
         await fs.writeFile(path.join(req.cwd, 'src', 'big.ts'), `${padding}// END-OF-FILE\n`);
@@ -1083,5 +1110,134 @@ describe('TaskRunner: worktree left by an earlier run', () => {
     // No intent either: on resume an unconfirmed WORKTREE_CREATE over an existing worktree counts as this run's own.
     expect(types()).not.toContain(`intent:${Intent.WorktreeCreate}`);
     await older.close();
+  });
+});
+
+describe('TaskRunner: skill request', () => {
+  const skill = { id: 'json-schema-guard', repository: 'https://github.com/example/json-schema-guard', commit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', license: 'MIT' };
+  const exec: TaskRunnerDeps['exec'] = async (req) => {
+    if (req.bin === 'git' && (req.cwd ?? '').includes(`${path.sep}skills${path.sep}`)) {
+      if (req.args[0] === 'init') await fs.mkdir(path.join(req.cwd!, '.git'), { recursive: true });
+      return { exitCode: 0, signal: null, stdout: '', stderr: '', timedOut: false, durationMs: 1, truncated: false };
+    }
+    return execCommand(req);
+  };
+
+  it('asks the SM, installs a reused skill and retries the owner', async () => {
+    let first = true;
+    const agent: Agent = async (req) => {
+      if (req.kind === 'skill-select') return ok({ specHash: HASH, action: 'reuse', skill, reason: 'smallest match' });
+      if (req.kind === 'dev' && first) {
+        first = false;
+        return ok({ specHash: HASH, status: 'done', summary: 'need skill', changedFiles: [], commitMessage: 'feat: T1', skillRequest: { capability: 'validate JSON Schema', reason: 'the task must reject invalid payloads' } });
+      }
+      return devDone()(req);
+    };
+    const r = new TaskRunner('T1', deps({ agent, exec }));
+    await r.advance();
+    expect(state().state).toBe('validating');
+    expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'skill-select', 'dev']);
+    expect(journal.events.some((e) => e.type === OrchEvent.SkillRequested && e.data.capability === 'validate JSON Schema')).toBe(true);
+    expect(journal.events.some((e) => e.type === OrchEvent.SkillSelected && e.data.action === 'reuse')).toBe(true);
+    expect(JSON.parse(await fs.readFile(path.join(remote.root, 'skills', 'assignments', project.projectId, 'dev.json'), 'utf8'))[0]).toMatchObject({ id: skill.id, commit: skill.commit });
+  });
+
+  it('rejects a skill request on a confidential project without calling the SM', async () => {
+    let first = true;
+    const agent: Agent = async (req) => {
+      if (req.kind === 'skill-select') throw new Error('SM must not run');
+      if (req.kind === 'dev' && first) {
+        first = false;
+        return ok({ specHash: HASH, status: 'done', summary: 'need skill', changedFiles: [], commitMessage: 'feat: T1', skillRequest: { capability: 'scan containers', reason: 'need a scanner' } });
+      }
+      return devDone()(req);
+    };
+    const r = new TaskRunner('T1', deps({ agent, project: { ...project, confidential: true } }));
+    await r.advance();
+    expect(state().state).toBe('validating');
+    expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'dev']);
+    expect(journal.events.find((e) => e.type === OrchEvent.SkillSelected)?.data).toMatchObject({ action: 'reject', reason: 'confidential project' });
+  });
+
+  it('sends a skill draft through the SM and does not reopen the task', async () => {
+    const agent: Agent = async (req) => {
+      if (req.kind === 'skill-select') return ok({ specHash: HASH, action: 'create', draft: { id: 'form-tokens', whenToUse: 'tokenized forms', rules: ['Use the design tokens'] }, reason: 'no public skill' });
+      if (req.kind === 'dev') {
+        await fs.mkdir(path.join(req.cwd, 'src'), { recursive: true });
+        await fs.writeFile(path.join(req.cwd, 'src', 'a.ts'), 'export const a = 1;\n');
+        return ok({ specHash: HASH, status: 'done', summary: 'did T1', changedFiles: ['src/a.ts'], commitMessage: 'feat: T1', skillDraft: { id: 'form-tokens', whenToUse: 'tokenized forms', rules: ['Use the design tokens'] } });
+      }
+      return devDone()(req);
+    };
+    const r = new TaskRunner('T1', deps({ agent }));
+    await r.advance();
+    expect(state().state).toBe('validating');
+    expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'skill-select']);
+    expect(journal.events.find((e) => e.type === OrchEvent.SkillCreated)?.data).toMatchObject({ id: 'form-tokens', source: 'sm' });
+    expect(await fs.readFile(path.join(remote.root, 'skills', 'private', project.projectId, 'form-tokens', 'SKILL.md'), 'utf8')).toContain('Use the design tokens');
+  });
+
+  it('reuses a cached rejection without calling the SM again', async () => {
+    await journal.fact(OrchEvent.SkillRequested, { taskId: 'T0', role: 'dev', capability: 'scan containers', reason: 'need a scanner' });
+    await journal.fact(OrchEvent.SkillSelected, { taskId: 'T0', role: 'dev', action: 'reject', capability: 'scan containers', reason: 'already covered' });
+    let first = true;
+    const agent: Agent = async (req) => {
+      if (req.kind === 'skill-select') throw new Error('SM must not run');
+      if (req.kind === 'dev' && first) {
+        first = false;
+        return ok({ specHash: HASH, status: 'done', summary: 'need skill', changedFiles: [], commitMessage: 'feat: T1', skillRequest: { capability: 'scan containers', reason: 'need a scanner' } });
+      }
+      return devDone()(req);
+    };
+    const r = new TaskRunner('T1', deps({ agent }));
+    await r.advance();
+    expect(state().state).toBe('validating');
+    expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'dev']);
+    expect(journal.lastFeedback('T1')).toContain('already covered');
+  });
+
+  it('rejects a reused skill that cannot be fetched and keeps the task going', async () => {
+    let first = true;
+    const agent: Agent = async (req) => {
+      if (req.kind === 'skill-select') return ok({ specHash: HASH, action: 'reuse', skill, reason: 'smallest match' });
+      if (req.kind === 'dev' && first) {
+        first = false;
+        return ok({ specHash: HASH, status: 'done', summary: 'need skill', changedFiles: [], commitMessage: 'feat: T1', skillRequest: { capability: 'validate JSON Schema', reason: 'the task must reject invalid payloads' } });
+      }
+      return devDone()(req);
+    };
+    const offline: TaskRunnerDeps['exec'] = async (req) => {
+      if (req.bin === 'git' && req.args[0] === 'fetch' && (req.cwd ?? '').includes(`${path.sep}skills${path.sep}`)) return { exitCode: 1, signal: null, stdout: '', stderr: 'could not resolve host', timedOut: false, durationMs: 1, truncated: false };
+      return exec(req);
+    };
+    const r = new TaskRunner('T1', deps({ agent, exec: offline }));
+    await r.advance();
+    expect(state().state).toBe('validating');
+    expect(journal.events.find((e) => e.type === OrchEvent.SkillSelected)?.data).toMatchObject({ action: 'reject' });
+    expect(journal.lastFeedback('T1')).toContain('could not resolve host');
+  });
+
+  it('reviews a skill draft before it acts on a skill request in the same reply', async () => {
+    let selections = 0;
+    let first = true;
+    const agent: Agent = async (req) => {
+      if (req.kind === 'skill-select') {
+        selections += 1;
+        return selections === 1
+          ? ok({ specHash: HASH, action: 'create', draft: { id: 'form-tokens', whenToUse: 'tokenized forms', rules: ['Use the design tokens'] }, reason: 'no public skill' })
+          : ok({ specHash: HASH, action: 'reuse', skill, reason: 'smallest match' });
+      }
+      if (req.kind === 'dev' && first) {
+        first = false;
+        return ok({ specHash: HASH, status: 'done', summary: 'need skill', changedFiles: [], commitMessage: 'feat: T1', skillRequest: { capability: 'validate JSON Schema', reason: 'the task must reject invalid payloads' }, skillDraft: { id: 'form-tokens', whenToUse: 'tokenized forms', rules: ['Use the design tokens'] } });
+      }
+      return devDone()(req);
+    };
+    const r = new TaskRunner('T1', deps({ agent, exec }));
+    await r.advance();
+    expect(state().state).toBe('validating');
+    expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'skill-select', 'skill-select', 'dev']);
+    expect(journal.events.some((e) => e.type === OrchEvent.SkillCreated && e.data.id === 'form-tokens')).toBe(true);
+    expect(journal.events.some((e) => e.type === OrchEvent.SkillSelected && e.data.action === 'reuse')).toBe(true);
   });
 });

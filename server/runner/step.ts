@@ -19,6 +19,7 @@ import { preflightSandbox, runProcess, type ProcessCaps, type RawStepResult, typ
 import { writeRoleSettings, type RoleSettingsInput } from './role-settings.js';
 import { isRateLimitRejected, type ResultSummary, type Usage } from './stream-events.js';
 import { redactSecrets } from '../core/redact.js';
+import { materializeRoleSkills } from '../skills/store.js';
 
 export interface StepRequest {
   kind: StepKind;
@@ -65,6 +66,10 @@ export interface StepDeps {
   settingsDir: string;
   /** Every step cwd must live under this directory; anything else is never trusted or run. */
   workspacesRoot: string;
+  /** Read-only cache of pinned skills; only the current role's skills are copied into the ephemeral HOME. */
+  skillsRoot?: string;
+  /** Project id used to include project-private and dynamically selected skills. */
+  skillScope?: string;
   network: Pick<RoleSettingsInput, 'allowedDomains'>;
   /** Config `sandbox`; when disabled the bubblewrap/socat tool check is skipped as well. */
   sandbox?: { enabled: boolean; unsafeNoSandbox?: boolean };
@@ -174,6 +179,7 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
     try {
       // A short path: the sandbox socket in $HOME/tmp must fit the 108 characters of a Unix socket path.
       home = await createStepHome(path.join(os.tmpdir(), `th-${process.getuid?.() ?? 0}`), hostEnv);
+      await materializeRoleSkills(home, deps.skillsRoot, req.role, deps.skillScope);
       return await runStepIn(req, deps, hostEnv, home);
     } catch (err) {
       // A throw outside the agent process (trust, settings, session restore) still ends the step with an outcome.

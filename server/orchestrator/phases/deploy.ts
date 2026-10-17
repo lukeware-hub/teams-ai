@@ -1,4 +1,4 @@
-import { parseAnyPlan, servicePlans, type PlanTask, type ServiceView } from '../../contracts/plan.js';
+import { parseAnyPlan, servicePlans, type Plan, type PlanTask, type ServiceView } from '../../contracts/plan.js';
 import { specShare } from '../../contracts/spec.js';
 import { assignDeployPort, portHeldByOthers, portKey, registeredPorts } from '../../deploy/port-registry.js';
 import { composeProject, serviceComposeProject, sharedNetwork } from '../../deploy/docker-local.js';
@@ -8,12 +8,13 @@ import { serviceUrlEnv, type SmokeRow } from '../../exec/smoke.js';
 import { RunEvent } from '../../pipeline/run-state.js';
 import { TERMINAL_STATES } from '../../pipeline/task-state.js';
 import { Intent, OrchEvent } from '../events.js';
-import { E2E_CONTRACT, SMOKE_CONTRACT } from '../steps.js';
+import { E2E_CONTRACT, SMOKE_CONTRACT, uiCheckPack } from '../steps.js';
 import { MISSING_VARIABLE } from '../../environment/service.js';
 import { checkoutMain, type GateScope, type PhaseDeps, type ServiceRepo } from './shared.js';
 import { serviceWorkspace } from '../workspace.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import type { ReviewOutput } from '../../agents/outputs.js';
 
 /** `retryEnvironment`: a missing variable was created, so the same attempt runs again without a fix task. */
 export type Phase5Result = { ok: true; url: string; smoke: SmokeRow[]; healthcheck: string; e2e?: E2eRow[] } | { ok: false; reason: string; fixTask?: PlanTask; retryEnvironment?: true };
@@ -136,6 +137,10 @@ Contract: ${SMOKE_CONTRACT}${history}`, affectedPaths: ['tests/smoke/**', 'tests
 
 Contract: ${E2E_CONTRACT}${history}`, affectedPaths: [...(suite ? [suite] : []), 'e2e/**', 'tests/e2e/**', ...MANIFESTS], owner: 'dev' };
   }
+  if (stage === 'ui') {
+    const screens = deps.plan!.tasks.filter((t) => t.owner === 'front').flatMap((t) => t.affectedPaths);
+    return { ...base, title: `Fix UI check`, description: `Deploy attempt ${attempt} succeeded and the HTTP e2e suite passed but the browser check of a front-owned screen failed: ${detail}${history}`, affectedPaths: screens.length > 0 ? screens : ['web/**', 'src/**'], owner: 'front' };
+  }
   const portHint = newPort === null ? '' : `\n\nThe host port is taken. Move the service to port ${newPort}: PORT=${newPort}, docker-compose publishes "${newPort}:${newPort}", and the Dockerfile, healthcheck and tests use ${newPort} too.`;
   return { ...base, description: `Deploy attempt ${attempt} failed at ${stage}: ${detail}${portHint}${history}`, affectedPaths: [...deps.plan!.deploy.manifests, 'Dockerfile'], owner: 'devops' };
 };
@@ -144,6 +149,28 @@ Contract: ${E2E_CONTRACT}${history}`, affectedPaths: [...(suite ? [suite] : []),
  * already-resolved failure on every resume (new fix task, wasted tokens, never reaching later attempts -
  * 1387253335-001-r13). Each root deploy-fix task (not its `-rN` replan children) that reached a terminal
  * state stands for one attempt cycle that is done; the next attempt starts after all of them. */
+/** `defect` is a UI finding for the front Dev; `error` means the check never ran, so nothing is rolled back. */
+async function runUiCheck(deps: PhaseDeps, opts: { url: string; plan: Plan; cwd: string; attempt: number; service?: string | null }): Promise<{ defect: string | null; error: string | null }> {
+  const front = opts.plan.tasks.find((t) => t.owner === 'front');
+  if (!front) return { defect: null, error: null };
+  const outcome = await deps.runAgent<'ui-check'>({
+    kind: 'ui-check',
+    role: 'test',
+    pack: uiCheckPack(deps.packBase(), front, { serviceUrl: opts.url }),
+    cwd: opts.cwd,
+    phase: 'phase5',
+    taskId: front.id,
+    attempt: opts.attempt,
+    extraEnv: { SERVICE_URL: opts.url },
+  });
+  if (!outcome.ok) return { defect: null, error: outcome.errors.join('\n') };
+  const value = outcome.value as ReviewOutput;
+  await deps.journal.fact(OrchEvent.UiChecked, { taskId: front.id, decision: value.decision, findings: value.findings, ...(opts.service ? { service: opts.service } : {}) });
+  if (value.skillRequest) await deps.journal.fact(OrchEvent.SkillRequested, { taskId: front.id, role: 'test', ...value.skillRequest });
+  if (value.decision !== 'changes') return { defect: null, error: null };
+  return { defect: value.findings.map((f) => `- ${f.file}${f.line === null ? '' : `:${f.line}`} [${f.severity}] ${f.problem}`).join('\n') || 'UI check requested changes', error: null };
+}
+
 export function deployStartAttempt(deps: PhaseDeps): 1 | 2 | 3 {
   const tasks = deps.journal.state.tasks;
   // A replanned fix finishes its attempt once every replacement ended; until then the attempt is still open.
@@ -199,6 +226,9 @@ export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fix
     if (!e.ok) { let rb = false; let rh: boolean | null = null; if (previous) { await deps.target.rollback(intent, previous); rb = true; rh = (await deps.target.verify(intent)).healthy; } else await deps.target.destroy(intent).catch(() => undefined); return failed('e2e', e.detail, rb, rh, previous); }
     e2eRows = e.rows;
   }
+  const ui = await runUiCheck(deps, { url, plan: deps.plan!, cwd: deps.ws.repo, attempt });
+  if (ui.error !== null) return { ok: false, reason: `UI check did not run; the deploy stays up: ${ui.error}` };
+  if (ui.defect !== null) { let rb = false; let rh: boolean | null = null; if (previous) { await deps.target.rollback(intent, previous); rb = true; rh = (await deps.target.verify(intent)).healthy; } else await deps.target.destroy(intent).catch(() => undefined); return failed('ui', ui.defect, rb, rh, previous); }
   await deps.journal.fact(OrchEvent.DeployVerified, { attempt, url, smoke: s.rows, healthcheck, tag, port: intent.port, healthcheckPath: intent.healthcheckPath, ...(deps.plan!.deploy.kind ? { kind: deps.plan!.deploy.kind } : {}), ...(deps.plan!.deploy.docsPath ? { docsPath: deps.plan!.deploy.docsPath } : {}), ...(e2eRows ? { e2e: e2eRows } : {}) }); return { ok: true, url, smoke: s.rows, healthcheck, ...(e2eRows ? { e2e: e2eRows } : {}) };
 }
 
@@ -328,6 +358,9 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
       if (!e.ok) return suiteFailed('e2e', e.detail, a.repo);
       e2e.push(...e.rows);
     }
+    const ui = await runUiCheck(deps, { url: a.url, plan: a.repo.plan, cwd: a.repo.ws.repo, attempt, service: a.repo.service });
+    if (ui.error !== null) return { ok: false as const, reason: `UI check did not run (${a.repo.service}); the deploy stays up: ${ui.error}` };
+    if (ui.defect !== null) return failed('ui', ui.defect, a.repo);
   }
   // The first service stands in the fields Phase 6 and the validation page read; R12.5 shows every service.
   const [first] = addresses;

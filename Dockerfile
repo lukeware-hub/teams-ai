@@ -19,7 +19,7 @@ RUN ln -s /usr/local/go/bin/* /usr/local/cargo/bin/* /usr/local/bin/
 
 WORKDIR /app
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends util-linux bubblewrap socat pipx python3-venv python-is-python3 \
+  && apt-get install -y --no-install-recommends util-linux bubblewrap socat pipx python3-venv python-is-python3 git \
   && rm -rf /var/lib/apt/lists/*
 # gh is the pinned official release (a static, current Go build); the Debian package is built with an old Go that trivy flags.
 ARG TARGETARCH
@@ -46,6 +46,13 @@ RUN npm install --global @anthropic-ai/claude-code@2.1.295 --no-audit --no-fund
 RUN npm install --global npm@12.2.0 --no-audit --no-fund
 COPY web/package*.json web/
 RUN cd web && npm ci --no-audit --no-fund
+# Pinned agent skills after Claude Code is on PATH; the volume hides $HOME, so the image copy lives here.
+# Copied before the rest of the code: a code change then keeps this layer cached.
+COPY scripts/install-pinned-skills.ts scripts/
+COPY server/exec server/exec
+COPY server/skills server/skills
+RUN npx tsx --no-warnings=ExperimentalWarning scripts/install-pinned-skills.ts /opt/teams-ai/skills \
+  && chown -R node:node /opt/teams-ai/skills
 COPY . .
 RUN npm run --prefix web build
 
@@ -55,6 +62,7 @@ RUN mkdir -p /home/node/.teams-ai /home/node/.claude /home/node/.config/gh && ch
 USER node
 ENV HOME=/home/node
 ENV HOST=0.0.0.0
+ENV TEAMS_AI_SKILLS_IMAGE=/opt/teams-ai/skills
 EXPOSE 8787
 # Any HTTP answer below 500 means the server is up (the API may answer 401 once authentication is on).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

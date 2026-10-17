@@ -41,7 +41,7 @@ export interface DeployTarget {
   serviceEnv?(projectId: string, service: string, variable: string): Promise<string | null>;
 }
 
-export type DeployStage = 'validate' | 'build' | 'apply' | 'verify' | 'smoke' | 'e2e';
+export type DeployStage = 'validate' | 'build' | 'apply' | 'verify' | 'smoke' | 'e2e' | 'ui';
 
 export type DeployResult =
   | { ok: true; previous: string | null }

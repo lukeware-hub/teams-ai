@@ -26,6 +26,12 @@ export const OrchEvent = {
   /** R11.4: the real plan's acceptance-criterion coverage differs from the backlog pre-plan it was shown, even if the plan is still valid. */
   PreplanDeviation: 'PREPLAN_DEVIATION',
   SpecGapAnswered: 'SPEC_GAP_ANSWERED',
+  SkillRequested: 'SKILL_REQUESTED',
+  SkillSelected: 'SKILL_SELECTED',
+  SkillCreated: 'SKILL_CREATED',
+  CodeReviewApproved: 'CODE_REVIEW_APPROVED',
+  CodeReviewChanges: 'CODE_REVIEW_CHANGES',
+  UiChecked: 'UI_CHECKED',
   DecisionMade: 'DECISION_MADE',
   MergeLockAcquired: 'MERGE_LOCK_ACQUIRED',
   PrCreated: 'PR_CREATED',

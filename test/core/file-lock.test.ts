@@ -40,6 +40,7 @@ describe('withFileLock', () => {
   });
 
   it('refuses a lock dir other users can open', async () => {
+    if (os.userInfo().uid < 0) return;
     const open = path.join(dir, 'open');
     await fs.mkdir(open, { mode: 0o777 });
     await fs.chmod(open, 0o777);

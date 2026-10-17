@@ -34,6 +34,18 @@ describe('agent prompts for a project of services (R12.6)', () => {
     expect(agent('dev')).toContain("main's side sits between `<<<<<<< ours` and `=======`");
   });
 
+  it('tell each implementer which mounted skills to use and how to request a missing one', () => {
+    expect(agent('front')).toContain('impeccable');
+    expect(agent('front')).toContain('no live browser unless SERVICE_URL is set');
+    expect(agent('dev')).toContain('superpowers');
+    expect(agent('sec')).toContain('cybersecurity-skills');
+    expect(agent('test')).toContain('playwright');
+    expect(agent('devops')).toContain('hashicorp-agent-skills');
+    expect(agent('sm')).toContain('find-skills');
+    expect(agent('reviewer')).toContain('/code-review medium');
+    for (const role of ['front', 'dev', 'devops']) expect(agent(role)).toContain('skillRequest');
+  });
+
   it('tell devops and the reviewer that a digest no one can look up is no blocker: the docs tag pins the image', () => {
     // Live: kayron-hub design-tokens-shell run-1 and run-2 blocked the Dockerfile tasks on "faltam os digests reais".
     expect(agent('devops')).toContain('A step has no network and no docker, so it can never look up an image digest');

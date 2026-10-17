@@ -23,6 +23,7 @@ import type { DocsInput } from '../validators/docs.js';
 import type { RefContext } from '../validators/references.js';
 import { REQUIRED_BLOCKING_GATES } from '../validators/plan.js';
 import { securityToolingRules } from '../validators/security-tooling.js';
+import { skillsForRole } from '../skills/catalog.js';
 import { OrchEvent, type Journal } from './events.js';
 
 export interface PackBase {
@@ -309,6 +310,35 @@ export function planPack(
 
 export function specGapPack(base: PackBase, task: PlanTask, opts: { question: string }): ContextPackInput {
   return { ...common(base, 'spec-gap', 'sm'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), decisions: base.spec.decisions, feedback: `Dev question (spec gap):\n${opts.question}` };
+}
+
+export function skillSelectPack(base: PackBase, task: PlanTask, opts: { role: Role; capability: string; reason: string; draft?: { id: string; whenToUse: string; rules: readonly string[] } }): ContextPackInput {
+  const pinned = skillsForRole(opts.role).map((s) => `- ${s.id} (${s.repository}@${s.commit}): ${s.purpose}`).join('\n');
+  const draft = opts.draft ? `\nA draft was proposed (do not install it yourself):\nid: ${opts.draft.id}\nwhen: ${opts.draft.whenToUse}\nrules:\n${opts.draft.rules.map((r) => `- ${r}`).join('\n')}` : '';
+  return {
+    ...common(base, 'skill-select', 'sm'),
+    task,
+    criteria: criteriaOf(base.spec, task.criteriaRefs),
+    feedback: `The ${opts.role} agent needs a capability before it can continue.\nCapability: ${opts.capability}\nReason: ${opts.reason}${draft}\nPinned skills already available for this role:\n${pinned || '- none'}\nUse the mounted find-skills skill. Prefer a pinned, reputable existing skill with a compatible license and no forbidden tools. Create the smallest private skill only when no suitable skill exists. Reject requests already covered by the role or task.`,
+  };
+}
+
+export function codeReviewPack(
+  base: PackBase,
+  task: PlanTask,
+  opts: { diffStat: string; changedFiles: readonly string[]; diff: string; code: CodeContext },
+): ContextPackInput {
+  const changeSet = `Changed files:\n${opts.changedFiles.join('\n')}\n\nDiff stat:\n${opts.diffStat}\n\nDiff against origin/main:\n${opts.diff}`;
+  return { ...common(base, 'code-review', 'reviewer'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), decisions: base.spec.decisions, code: opts.code, changeSet, feedback: 'Code review at medium effort. Judge front and back code in this diff. Return criteria: [] unless a listed criterion is broken by the change.' };
+}
+
+export function uiCheckPack(base: PackBase, task: PlanTask, opts: { serviceUrl: string }): ContextPackInput {
+  return {
+    ...common(base, 'ui-check', 'test'),
+    task,
+    criteria: criteriaOf(base.spec, task.criteriaRefs),
+    feedback: `The service is already deployed at ${opts.serviceUrl}. Set SERVICE_URL to that address. This is a browser check of front-owned screens, not the HTTP e2e suite. Use Playwright when the binary is available; otherwise fetch the HTML at SERVICE_URL and judge layout, contrast, focus and touch targets. Never start, build or restart containers. Return decision "changes" only for a defect you observed.`,
+  };
 }
 
 /** The scaffold task is what makes the plan's gates runnable; split up, none of its pieces can pass them. */

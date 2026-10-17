@@ -50,6 +50,8 @@ export async function makeRunAgent(w: AgentWiring): Promise<RunAgent & { resetQu
         claudeJsonPath: w.claudeJsonPath ?? expandHome('~/.claude.json'),
         settingsDir: path.posix.join(req.cwd, 'settings'),
         workspacesRoot: w.workspacesRoot,
+        skillsRoot: expandHome('~/.teams-ai/skills'),
+        skillScope: ctx.projectId,
         network: { allowedDomains: [] },
         hostEnv: w.hostEnv,
         ...(w.cfg.claude.auth === 'api-key' && apiKey ? { apiKey } : {}),

@@ -61,6 +61,7 @@ const ROLE_ALLOW: Record<Role, readonly string[]> = {
   sec: [],
   devops: [...EDIT_TOOLS],
   env: [],
+  reviewer: [],
 };
 
 export interface RoleSettingsInput {

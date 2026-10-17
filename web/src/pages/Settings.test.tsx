@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 const project = { projectId: 'demo', name: 'Demo' } as ProjectRow;
-const agents = ['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops', 'env'].map((role) => ({ role, setting: null }));
+const agents = ['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops', 'env', 'reviewer'].map((role) => ({ role, setting: null }));
 const item = (ok: boolean, detail: string): Item => ({ ok, detail });
 const envStatus = (over: Partial<Status['items']> = {}): Status => ({
   items: {
@@ -54,7 +54,7 @@ describe('SettingsPage', () => {
     expect(within(screen.getByTestId('card-Token do GitHub')).getByRole('button', { name: 'Salvar e continuar' })).toBeTruthy();
 
     expect(await screen.findByRole('heading', { name: 'Projeto' })).toBeTruthy();
-    expect(screen.getByText('8 agentes')).toBeTruthy();
+    expect(screen.getByText('9 agentes')).toBeTruthy();
     await openModelsCollapse();
   });
 
