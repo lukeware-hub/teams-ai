@@ -28,26 +28,25 @@ describe('Taskfile.yml (R9.4)', () => {
 describe('.github/workflows/ci.yml publish job (R9.4)', () => {
   it('frees disk space before the build, since the image and its scan fill the runner', () => {
     expect(stepNames.indexOf('Free disk space')).toBeGreaterThan(-1);
-    expect(stepNames.indexOf('Free disk space')).toBeLessThan(stepNames.indexOf('Build and push the commit tag'));
+    expect(stepNames.indexOf('Free disk space')).toBeLessThan(stepNames.indexOf('Build the image under the git tag'));
     expect(step('Free disk space').run).toContain('/usr/local/lib/android');
   });
 
-  it('runs only on a push, after quality, and is the only job that can write packages', () => {
-    expect(ci.on.push.tags).toEqual(['v*']);
+  it('runs only when a semver tag is pushed, after quality, and is the only job that can write packages', () => {
+    expect(ci.on).toEqual({ push: { tags: ['v*.*.*'] } });
     expect(ci.permissions).toEqual({ contents: 'read' });
     expect(publish.needs).toBe('quality');
-    expect(publish.if).toBe("github.event_name == 'push'");
     expect(publish.permissions).toEqual({ contents: 'read', packages: 'write' });
     expect(ci.jobs.quality.permissions).toBeUndefined();
   });
 
-  it('builds the amd64 image, scans, and only then moves latest or the version', () => {
-    expect(step('Build and push the commit tag').with.platforms).toBe('linux/amd64');
-    expect(step('Build and push the commit tag').with.tags).toBe('${{ env.IMAGE }}:${{ github.sha }}');
-    expect(step('Scan for critical vulnerabilities').run).toContain('--severity CRITICAL --ignore-unfixed --secret-config /src/trivy-secret.yaml --exit-code 1');
-    expect(stepNames.indexOf('Build and push the commit tag')).toBeLessThan(stepNames.indexOf('Scan for critical vulnerabilities'));
-    expect(stepNames.indexOf('Scan for critical vulnerabilities')).toBeLessThan(stepNames.indexOf('Publish latest, or the version on a v* tag'));
-    expect(step('Publish latest, or the version on a v* tag').run).toContain('docker buildx imagetools create');
+  it('builds the image under the git tag name, scans it, and only then pushes that tag and latest', () => {
+    expect(step('Build the image under the git tag').with.platforms).toBe('linux/amd64');
+    expect(step('Build the image under the git tag').with.tags).toBe('${{ env.IMAGE }}:${{ github.ref_name }}');
+    expect(step('Scan for critical vulnerabilities').run).toContain('--severity CRITICAL --ignore-unfixed --secret-config /src/trivy-secret.yaml --exit-code 1 "$IMAGE:$GITHUB_REF_NAME"');
+    expect(stepNames.indexOf('Build the image under the git tag')).toBeLessThan(stepNames.indexOf('Scan for critical vulnerabilities'));
+    expect(stepNames.indexOf('Scan for critical vulnerabilities')).toBeLessThan(stepNames.indexOf('Publish the git tag and latest'));
+    expect(step('Publish the git tag and latest').run).toContain('docker push "$IMAGE:$GITHUB_REF_NAME"');
   });
 
   it('pins every action by major tag', () => {

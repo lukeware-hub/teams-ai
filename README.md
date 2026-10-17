@@ -192,7 +192,7 @@ Starts the whole platform (orchestrator, API, web UI and a rootless nested Docke
    ```
 
    Without this login, the pull fails and Docker builds the image on your computer, which takes a few minutes.
-   To pin a version, set `TEAMS_AI_IMAGE=ghcr.io/lukeware-hub/teams-ai:1.2.3` in `.env`.
+   To pin a version, set `TEAMS_AI_IMAGE=ghcr.io/lukeware-hub/teams-ai:v1.2.3` in `.env`. The image tag is always the git tag that published it.
    To develop Teams AI itself, use `task up:source`, which builds the image from this folder.
    The published image is for amd64 processors. On Apple Silicon Macs, use `task up:source`.
 
@@ -425,7 +425,7 @@ Run `task --list` for the current list. Docker tasks work in any terminal; devel
 
 The npm scripts also work: `npm test`, `npm run typecheck`, `npm run teams-ai`, `npm run ui`, `npm run web:build`.
 
-CI (GitHub Actions) runs typecheck, backend tests, web tests and the web build on every push and pull request.
+CI (GitHub Actions) runs only when a semver tag such as `v1.2.3` is pushed. It runs typecheck, backend tests, web tests and the web build, then builds the image under that tag, scans it, and publishes the tag and `latest`.
 
 ## Project structure
 

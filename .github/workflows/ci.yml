@@ -2,9 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
-    tags: ['v*']
-  pull_request:
+    tags: ['v*.*.*']
 
 permissions:
   contents: read
@@ -43,7 +41,6 @@ jobs:
 
   publish:
     needs: quality
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
@@ -71,22 +68,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push the commit tag
+      - name: Build the image under the git tag
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64
-          push: true
-          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          load: true
+          tags: ${{ env.IMAGE }}:${{ github.ref_name }}
           labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
 
       - name: Scan for critical vulnerabilities
         run: |
-          docker pull "$IMAGE:$GITHUB_SHA"
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/src:ro" "$TRIVY_IMAGE" image --severity CRITICAL --ignore-unfixed --secret-config /src/trivy-secret.yaml --exit-code 1 "$IMAGE:$GITHUB_SHA"
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/src:ro" "$TRIVY_IMAGE" image --severity CRITICAL --ignore-unfixed --secret-config /src/trivy-secret.yaml --exit-code 1 "$IMAGE:$GITHUB_REF_NAME"
 
-      - name: Publish latest, or the version on a v* tag
+      - name: Publish the git tag and latest
         run: |
-          tag=latest
-          [ "$GITHUB_REF_TYPE" = tag ] && tag="${GITHUB_REF_NAME#v}"
-          docker buildx imagetools create -t "$IMAGE:$tag" "$IMAGE:$GITHUB_SHA"
+          docker push "$IMAGE:$GITHUB_REF_NAME"
+          docker tag "$IMAGE:$GITHUB_REF_NAME" "$IMAGE:latest"
+          docker push "$IMAGE:latest"
