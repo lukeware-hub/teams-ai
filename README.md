@@ -94,7 +94,7 @@ Principais peças:
 | Camada de decisão (`server/decide`) | Opcional. Responde decisões simples localmente antes de chamar o Claude. |
 | Conhecimento (`server/knowledge`) | Busca de contexto no projeto, com apoio opcional do `graphify`. |
 | API + UI web (`server/api`, `web`) | Onboarding, projetos, chat de refinamento, acompanhamento ao vivo e validação. Servida na porta `8787`. A primeira tela pede a chave de licença. |
-| Serviço de licenças (`license/`) | Um processo Go com a interface de administração. PostgreSQL guarda as licenças. A administração fica em `http://localhost:8790`. |
+| Serviço de licenças (repositório `lukeware-hub/teams-ai-license`) | Serviço separado, com a administração e o PostgreSQL das licenças. Fica na rede `teams-ai-net`. |
 | Supervisor (`server/supervisor`) | Retoma execuções interrompidas até terminarem. |
 
 ## O que você precisa
@@ -181,7 +181,7 @@ Sobe a plataforma inteira (orquestrador, API, UI web e um Docker aninhado sem ro
    # CLAUDE_CODE_OAUTH_TOKEN=             # token longo gerado por `claude setup-token` (dispensa o login no navegador)
    ```
 
-3. Crie `license/.env` como em [Serviço de licenças](#serviço-de-licenças). Sem esse arquivo o Compose não sobe.
+3. Suba antes o serviço de licenças, como em [Serviço de licenças](#serviço-de-licenças). O Teams AI espera o serviço responder.
 
 4. Construa e inicie:
 
@@ -218,8 +218,7 @@ task reset      # para e APAGA todos os dados, logins e workspaces (pede confirm
 ```
 
 Onde ficam seus dados (volumes Docker nomeados): `teams-ai-data` (configuração, workspaces, execuções e segredos),
-`teams-ai-claude` (login do Claude), `teams-ai-gh` (login do GitHub CLI), `dind-data` (imagens do Docker aninhado) e
-`teams-ai-license` (banco das licenças).
+`teams-ai-claude` (login do Claude), `teams-ai-gh` (login do GitHub CLI), `dind-data` (imagens do Docker aninhado). O banco das licenças fica no serviço de licenças, em outro repositório.
 
 Para compartilhar a UI na rede local (opcional): defina `TEAMS_AI_UI_BIND=0.0.0.0` no `.env`,
 e adicione o hostname que você usa em `TEAMS_AI_ALLOWED_HOSTS` (a API rejeita `Host` desconhecido). Atenção: a UI não tem senha. Com `0.0.0.0`, qualquer computador da rede tem acesso total à API (ver runs, iniciar runs e gravar segredos). Use só em rede de confiança.
@@ -316,22 +315,9 @@ Quando todos os itens estiverem verdes, está tudo pronto.
 
 ## Serviço de licenças
 
-O Teams AI só abre depois que o serviço de licenças autoriza este computador. O serviço sobe no mesmo `docker compose`, com o PostgreSQL.
+O Teams AI só abre depois que o serviço de licenças autoriza este computador. O serviço é um repositório separado, [lukeware-hub/teams-ai-license](https://github.com/lukeware-hub/teams-ai-license), com a própria administração e o próprio PostgreSQL. Ele roda em outro `docker compose`, na rede `teams-ai-net`.
 
-A administração fica em <http://localhost:8790>, só neste computador. O primeiro administrador é criado com `ADMIN_EMAIL` e `ADMIN_PASSWORD` de `license/.env` quando a tabela de administradores está vazia.
-
-Antes de `task up` ou `task license:up`, crie `license/.env` (o arquivo não entra no Git):
-
-```dotenv
-LICENSE_MASTER_KEY=        # 32 bytes em base64; cifra a chave para o administrador poder vê-la de novo
-JWT_SECRET=                # segredo do login da administração, com pelo menos 16 caracteres
-ADMIN_EMAIL=
-ADMIN_PASSWORD=
-DATABASE_URL=postgres://license:license@127.0.0.1:5432/license?sslmode=disable
-PORT=8080
-```
-
-No Compose, o contêiner usa o banco `license` no serviço `postgres` (usuário e senha `license`). A migração `license/migrations/001_schema.sql` cria as tabelas quando o volume `teams-ai-license` é criado vazio. O mesmo SQL roda de novo quando o processo da licença inicia.
+A administração fica em <http://localhost:8790>, só neste computador. Para subir, parar ou ver os logs do serviço, use as tarefas desse repositório.
 
 No `.env` da raiz, `LICENSE_SERVICE_URL` aponta o Teams AI para o serviço. No Compose o padrão é `http://license:8080`.
 
@@ -342,14 +328,6 @@ Para registrar um computador:
 3. Cada início pergunta ao serviço se esse código ainda vale.
 
 Uma licença pode valer até uma data, por um número de dias contados da ativação, ou não vencer sozinha. O administrador pode desligar ou ligar uma licença a qualquer momento. Desligada ou vencida, o Teams AI mostra o e-mail e o telefone cadastrados nas configurações do serviço e pede contato com a administração da Lukeware. Se o serviço não responder, o Teams AI fica parado nessa tela até ele voltar.
-
-```bash
-task license:up        # sobe o banco e o serviço de licenças
-task license:logs      # acompanha os logs
-task license:psql      # abre o psql do banco license
-task license:down      # para o serviço e o banco, e mantém as licenças
-task license:rebuild   # reconstrói o serviço de licenças e o Teams AI
-```
 
 ## Usando o Teams AI
 
@@ -439,12 +417,6 @@ Rode `task --list` para ver a lista atual. As tarefas de Docker funcionam em qua
 | `task typecheck` / `task test` / `task test:web` / `task web:build` | Verificações individuais |
 | `task check` | Tudo o que a CI executa |
 | `task wsl:setup` / `task wsl:check` | Instala e verifica as ferramentas do WSL |
-| `task license:up` / `task license:down` | Sobe ou para o serviço de licenças e o PostgreSQL |
-| `task license:restart` / `task license:logs` | Reinicia o serviço ou acompanha os logs |
-| `task license:psql` | Abre o `psql` do banco `license` |
-| `task license:test` | Testes Go do serviço de licenças |
-| `task license:web:install` / `task license:web:build` / `task license:web:dev` | Dependências, build e servidor de desenvolvimento da administração |
-| `task license:rebuild` | Reconstrói o serviço de licenças e o Teams AI |
 
 Os scripts `npm run` continuam existindo (`npm test`, `npm run typecheck`, `npm run teams-ai`, `npm run ui`, ...).
 
@@ -455,7 +427,6 @@ A CI (GitHub Actions) roda typecheck, testes do backend, testes da web e o build
 ```text
 server/    CLI, API, agentes, orquestrador, plano de execução, deploy, orçamento, decisões
 web/       Interface web em React (Vite)
-license/   Serviço de licenças em Go, administração Next.js e migração do PostgreSQL
 test/      Testes do backend e fixtures (especificação de referência: test/fixtures/todo-api)
 docs/      Especificações, planos, roadmap, runbook, auditoria de segurança (docs/superpowers)
 docker/    Configuração padrão usada pelo contêiner
@@ -474,9 +445,8 @@ scripts/   Setup do WSL, smoke tests, scripts de integração e avaliação
 | O contêiner reiniciou e uma execução travou | No boot, o contêiner remove arquivos `*.ndjson.lock` órfãos; depois é só retomar a execução. |
 | Instalação lenta ou erros estranhos de arquivo no Caminho B | Confirme que o repositório está em `~`, não em `/mnt/c`. |
 | Erro de versão do Node | É preciso Node `>=22.13` (`nvm install 22`). |
-| O Compose não acha `license/.env` | Crie o arquivo como em [Serviço de licenças](#serviço-de-licenças) e rode `task license:up`. |
 | A UI pede contato com a Lukeware | A licença está desligada ou vencida. O e-mail e o telefone dessa tela vêm das configurações do serviço. |
-| A UI diz que o serviço de licenças não responde | Confira `task license:logs` e `LICENSE_SERVICE_URL`. O Teams AI espera o serviço voltar. |
+| A UI diz que o serviço de licenças não responde | Confira os logs do serviço de licenças (no repositório dele) e `LICENSE_SERVICE_URL`. O Teams AI espera o serviço voltar. |
 
 ## Segurança
 

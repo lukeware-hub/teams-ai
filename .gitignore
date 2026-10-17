@@ -4,9 +4,6 @@ coverage/
 *.log
 web/node_modules/
 web/dist/
-license/web/node_modules/
-license/web/.next/
-license/web/out/
 .codex/agents/dev.toml
 .codex/agents/devops.toml
 .codex/agents/front.toml
