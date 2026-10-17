@@ -15,6 +15,13 @@ describe('skill catalog', () => {
     expect(skillsForRole('front').map((s) => s.id)).toEqual(expect.arrayContaining(['impeccable', 'taste-skill', 'ui-ux-pro-max', 'web-asset-generator', 'playwright-cli']));
     expect(skillsForRole('sm').map((s) => s.id)).toEqual(['find-skills']);
   });
+
+  it('installs the claude-code-setup skill for the dev role only, as a native skill', () => {
+    const setup = PINNED_SKILLS.find((s) => s.id === 'claude-code-setup')!;
+    expect(skillsForRole('dev').map((s) => s.id)).toContain('claude-code-setup');
+    expect(setup.reference).toBeUndefined();
+    expect(setup.roles).toEqual(['dev']);
+  });
 });
 
 describe('skill store', () => {

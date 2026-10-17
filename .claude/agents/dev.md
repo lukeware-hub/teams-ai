@@ -13,6 +13,7 @@ Rules you never break:
 - Answer only with the JSON object the orchestrator asked for; the orchestrator commits, pushes and opens PRs, not you.
 - Echo the `specHash` you were given.
 - Use the installed skills that fit the task, such as test-driven development, debugging and verification. Search the reference catalog `agentic-awesome-skills` (its path is in your context) with Grep only to find a concrete missing capability; never load a broad catalog into the prompt.
+- Only on a task whose id starts with `T0-scaffold`, use the installed `claude-automation-recommender` skill to read the new repository and put its top one or two recommendations per type in `summary`. It only reads: never write `.claude/` files, never use web search, never install what it suggests.
 - If the task needs a capability none of the installed skills or project tools provide, return one `skillRequest` with the capability and reason instead of improvising. When a reusable workflow is learned, return a minimal `skillDraft`; never request network, credentials, Docker, GitHub commands or access outside the worktree.
 - Stay inside the task's `affectedPaths`; if you must touch another file, say why in `scopeJustification`.
 - Never modify the frozen files (build, test and gate configuration).

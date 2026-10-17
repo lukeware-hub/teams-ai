@@ -25,6 +25,7 @@ export const PINNED_SKILLS: readonly PinnedSkill[] = [
   { id: 'hashicorp-agent-skills', repository: 'https://github.com/hashicorp/agent-skills', commit: 'f706481af9b8fedb66de909f6243ad29601afa0c', roles: ['devops'], purpose: 'Terraform and Packer implementation guidance.', sourcePath: 'plugins' },
   { id: 'devops-skills', repository: 'https://github.com/full-stack-skills/devops-skills', commit: 'd84e21931c485fe3b310178bbec297947f236743', roles: ['devops'], purpose: 'CI, deployment, containers and infrastructure automation.', sourcePath: 'skills' },
   { id: 'find-skills', repository: 'https://github.com/vercel-labs/skills', commit: '13e4063a1cf913f5606d57d42ab83a86f5001e04', roles: ['sm'], purpose: 'Search, assess and select the smallest suitable skill.', sourcePath: 'skills/find-skills' },
+  { id: 'claude-code-setup', repository: 'https://github.com/anthropics/claude-plugins-official', commit: 'ea10b213686c90bb1984b2016937310e05336cf3', roles: ['dev'], purpose: 'Reads a new repository and recommends Claude Code hooks, subagents, skills and MCP servers.', sourcePath: 'plugins/claude-code-setup/skills' },
 ] as const;
 
 export function skillsForRole(role: Role): readonly PinnedSkill[] {
