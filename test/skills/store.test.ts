@@ -12,7 +12,7 @@ describe('skill catalog', () => {
       expect(skill.commit).toMatch(/^[a-f0-9]{40}$/);
       expect(skill.repository).not.toMatch(/latest/i);
     }
-    expect(skillsForRole('front').map((s) => s.id)).toEqual(expect.arrayContaining(['impeccable', 'taste-skill', 'ui-ux-pro-max', 'web-asset-generator', 'playwright-cli', 'playwright']));
+    expect(skillsForRole('front').map((s) => s.id)).toEqual(expect.arrayContaining(['impeccable', 'taste-skill', 'ui-ux-pro-max', 'web-asset-generator', 'playwright-cli']));
     expect(skillsForRole('sm').map((s) => s.id)).toEqual(['find-skills']);
   });
 });
