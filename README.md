@@ -1,133 +1,129 @@
 # Teams AI
 
-[![CI](https://github.com/diego-dm-morais/teams-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/diego-dm-morais/teams-ai/actions/workflows/ci.yml)
+[![CI](https://github.com/lukeware-hub/teams-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/lukeware-hub/teams-ai/actions/workflows/ci.yml)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22.13-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
-O Teams AI transforma a descrição de um produto em um serviço testado e publicado. Quem faz o trabalho é um time de agentes
-de IA (Scrum Master, Product Owner, Desenvolvedor, Teste, Segurança e DevOps), executados pela CLI do
-[Claude Code](https://docs.claude.com/en/docs/claude-code).
+Teams AI turns a product description into a tested and published service. A team of AI agents does the work
+(Scrum Master, Product Owner, Developer, Tester, Security and DevOps), run by the
+[Claude Code](https://docs.claude.com/en/docs/claude-code) CLI.
 
-Você faz só duas coisas:
+You do two things:
 
-1. **Descrever o projeto** na interface web. Os agentes perguntam até a descrição ficar sem ambiguidade.
-2. **Validar o resultado** depois do deploy e, se achar problemas, reportá-los na mesma especificação.
+1. **Describe the project** in the web UI. The agents ask questions until the description is clear.
+2. **Validate the result** after deploy. If you find problems, report them in the same specification.
 
-O resto (especificação técnica, plano de tarefas, código, testes, revisão, commits, pull requests, merge e deploy) é feito
-pelos agentes, sob controle de um orquestrador determinístico.
+Everything else (technical spec, task plan, code, tests, review, commits, pull requests, merge and deploy) is done by
+the agents, under the control of a deterministic orchestrator.
 
-> **Regra central:** os agentes decidem, propõem e geram. O orquestrador valida, executa e muda o estado.
-> Um agente nunca roda `git push`, `gh`, `docker` ou `kubectl`; quem roda é o orquestrador.
+> **Core rule:** agents decide, propose and generate. The orchestrator validates, executes and changes state.
+> An agent never runs `git push`, `gh`, `docker` or `kubectl`. The orchestrator does.
 
-## Comece em 5 minutos (Windows)
+## Quick start (Windows)
 
-1. Em um PowerShell **como Administrador**, na pasta do projeto, instale os pré-requisitos (WSL2, Git, Docker Desktop e Task).
-   O script pula o que já estiver instalado:
+1. In PowerShell **as Administrator**, in the project folder, install the prerequisites (WSL2, Git, Docker Desktop and Task).
+   The script skips what is already installed:
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File scripts\windows\install.ps1
    ```
 
-2. Reinicie se o script pedir, abra o Docker Desktop (espere "Engine running") e, em um terminal novo, na pasta do projeto:
+2. Restart if asked. Open Docker Desktop and wait for "Engine running". Then, in a new terminal in the project folder:
 
    ```bash
    task start
    ```
 
-   O comando confere os pré-requisitos (se algo faltar, diz como corrigir), sobe a plataforma, espera ficar saudável e abre
-   <http://localhost:8787>. Na primeira vez ele baixa a imagem pronta (alguns minutos, conforme a sua internet); se não conseguir baixar, constrói a partir do código, o que leva mais tempo.
+   The command checks the prerequisites (if something is missing, it tells you how to fix it), starts the platform,
+   waits until it is healthy and opens <http://localhost:8787>. The first run downloads the ready-made image, which
+   takes a few minutes. If the download fails, the image is built from the source, which takes longer.
 
-3. Na UI, a primeira tela pede a chave de licença. Depois, siga o **Onboarding** para conectar GitHub e Claude. Detalhes em [Primeiro acesso](#primeiro-acesso-conectar-suas-contas) e [Serviço de licenças](#serviço-de-licenças).
+3. The first screen asks for a license key. Then follow the **Onboarding** page to connect GitHub and Claude.
+   See [First access](#first-access-connect-your-accounts) and [License service](#license-service).
 
-Algo não subiu? Rode `task doctor`. Os passos manuais completos estão em [Instalação no Windows](#instalação-no-windows).
+If something does not start, run `task doctor`.
 
-## Sumário
+## Contents
 
-- [Comece em 5 minutos (Windows)](#comece-em-5-minutos-windows)
-- [Como funciona](#como-funciona)
-- [O que você precisa](#o-que-você-precisa)
-- [Instalação no Windows](#instalação-no-windows)
-  - [Caminho A: Docker Desktop (recomendado)](#caminho-a-docker-desktop-recomendado)
-  - [Caminho B: WSL2 a partir do código (desenvolvimento)](#caminho-b-wsl2-a-partir-do-código-desenvolvimento)
-- [Primeiro acesso: conectar suas contas](#primeiro-acesso-conectar-suas-contas)
-- [Serviço de licenças](#serviço-de-licenças)
-- [Usando o Teams AI](#usando-o-teams-ai)
-- [Configuração](#configuração)
-- [Referência da CLI](#referência-da-cli)
-- [Comandos do Task](#comandos-do-task)
-- [Estrutura do projeto](#estrutura-do-projeto)
-- [Solução de problemas](#solução-de-problemas)
-- [Segurança](#segurança)
-- [Mais documentação](#mais-documentação)
-- [Licença](#licença)
+- [How it works](#how-it-works)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [First access](#first-access-connect-your-accounts)
+- [License service](#license-service)
+- [Using Teams AI](#using-teams-ai)
+- [Configuration](#configuration)
+- [CLI reference](#cli-reference)
+- [Task commands](#task-commands)
+- [Project structure](#project-structure)
+- [Troubleshooting](#troubleshooting)
+- [Security](#security)
+- [More documentation](#more-documentation)
+- [License](#license)
 
-## Como funciona
+## How it works
 
 ```text
-Você: descreve o projeto (UI)
+You: describe the project (UI)
         |
         v
- Gate 1 - Refinamento    Agentes SM e PO fazem perguntas até a documentação ficar clara
+ Gate 1 - Refinement    SM and PO agents ask questions until the documentation is clear
         |
         v
- Plano                   O SM monta o grafo de tarefas; o Dev escreve a especificação técnica
+ Plan                   SM builds the task graph; Dev writes the technical spec
         |
         v
- Execução (paralela)     Agentes Dev / Test / Security / DevOps trabalham em git worktrees;
-                         o orquestrador roda lint, testes e gates, abre PRs e faz o merge
+ Execution (parallel)   Dev / Test / Security / DevOps agents work in git worktrees;
+                        the orchestrator runs lint, tests and gates, opens PRs and merges
         |
         v
- Deploy                  Alvo `docker-local` + testes de smoke e e2e
+ Deploy                 `docker-local` target, plus smoke and e2e tests
         |
         v
-Você: valida (UI)        Problemas voltam ao Gate 1 como continuação da mesma especificação
+You: validate (UI)      Problems return to Gate 1 as a continuation of the same specification
 ```
 
-Principais peças:
+Main parts:
 
-| Peça | O que faz |
+| Part | What it does |
 | --- | --- |
-| Orquestrador (`server/orchestrator`) | Máquina de estados baseada em eventos. Um processo `claude -p` por etapa de agente. O journal só acrescenta registros, então nada se perde se o processo cair. |
-| Agentes (`server/agents`) | Papéis `sm`, `po`, `dev`, `front`, `test`, `sec`, `devops` e `env` (cria o ambiente do teste local), cada um com permissões restritas. |
-| Plano de execução (`server/exec`, `server/deploy`) | Roda gates (testes, scans) e deploys dentro de um Docker aninhado e sem root, nunca no Docker do seu computador. |
-| Orçamento e cota (`server/budget`) | Controla tokens e custo; pausa a execução quando a janela da assinatura do Claude está quase no fim e retoma sozinho. |
-| Camada de decisão (`server/decide`) | Opcional. Responde decisões simples localmente antes de chamar o Claude. |
-| Conhecimento (`server/knowledge`) | Busca de contexto no projeto, com apoio opcional do `graphify`. |
-| API + UI web (`server/api`, `web`) | Onboarding, projetos, chat de refinamento, acompanhamento ao vivo e validação. Servida na porta `8787`. A primeira tela pede a chave de licença. |
-| Serviço de licenças (repositório `lukeware-hub/teams-ai-license`) | Serviço separado, com a administração e o PostgreSQL das licenças. Fica na rede `teams-ai-net`. |
-| Supervisor (`server/supervisor`) | Retoma execuções interrompidas até terminarem. |
+| Orchestrator (`server/orchestrator`) | Event-driven state machine. One `claude -p` process per agent step. The journal is append-only, so nothing is lost if the process stops. |
+| Agents (`server/agents`) | Roles `sm`, `po`, `dev`, `front`, `test`, `sec`, `devops` and `env`, each with restricted permissions. |
+| Execution (`server/exec`, `server/deploy`) | Runs gates (tests, scans) and deploys in a rootless nested Docker, never in your computer's Docker. |
+| Budget (`server/budget`) | Tracks tokens and cost. Pauses when the Claude subscription window is nearly full and resumes on its own. |
+| Decision layer (`server/decide`) | Optional. Answers simple decisions locally before calling Claude. |
+| Knowledge (`server/knowledge`) | Searches project context, optionally with `graphify`. |
+| API and web UI (`server/api`, `web`) | Onboarding, projects, refinement chat, live run tracking and validation. Served on port `8787`. |
+| License service (repository `lukeware-hub/teams-ai-license`) | Separate service with its own administration and PostgreSQL. Runs on the `teams-ai-net` network. |
+| Supervisor (`server/supervisor`) | Resumes interrupted runs until they finish. |
 
-## O que você precisa
+## Requirements
 
-- Um PC com Windows 10 (22H2) ou Windows 11, com virtualização ativada na BIOS/UEFI. Recomendado: 16 GB de RAM e 30 GB livres em disco.
-- Uma **assinatura do Claude** que funcione com o Claude Code (Pro, Max ou Team). O projeto não usa `ANTHROPIC_API_KEY`.
-- Uma **conta no GitHub** (usuário ou organização) onde os projetos gerados serão criados, e um token de acesso pessoal dela.
-- Uma **chave da OpenRouter**: o Jev, que confere a consistência dos documentos e decide pontos do refinamento, depende dela. Sem a chave, o refinamento não inicia.
+- Windows 10 (22H2) or Windows 11, with virtualization enabled in BIOS/UEFI. Recommended: 16 GB RAM and 30 GB free disk.
+- A **Claude subscription** that works with Claude Code (Pro, Max or Team). The project does not use `ANTHROPIC_API_KEY`.
+- A **GitHub account** (user or organization) where the generated projects are created, and a personal access token for it.
+- An **OpenRouter key**. The Jev agent, which checks document consistency and decides refinement points, needs it. Without it, refinement does not start.
 
-Por que não rodar direto no Windows? O orquestrador é um programa Linux: a UI usa o `script` do util-linux, as etapas dos
-agentes usam sandboxes `bubblewrap` e os gates rodam em contêineres Linux. No Windows, ele roda dentro do Docker Desktop
-(Caminho A) ou do WSL2 (Caminho B).
+Why not run directly on Windows? The orchestrator is a Linux program: the UI uses util-linux `script`, agent steps use
+`bubblewrap` sandboxes, and gates run in Linux containers. On Windows it runs inside Docker Desktop (Path A) or WSL2 (Path B).
 
-## Instalação no Windows
+## Installation
 
-### Passo 0: ativar o WSL2 (vale para os dois caminhos)
+### Step 0: enable WSL2
 
-Abra o **PowerShell como Administrador**:
+In PowerShell as Administrator:
 
 ```powershell
 wsl --install -d Ubuntu
 ```
 
-Reinicie quando for pedido, abra o "Ubuntu" no menu Iniciar uma vez e crie seu usuário e senha Linux.
-Confirme que a versão é WSL 2:
+Restart if asked. Open "Ubuntu" from the Start menu once and create your Linux user and password.
+Check that the version is WSL 2:
 
 ```powershell
-wsl -l -v      # o Ubuntu deve mostrar VERSION 2
+wsl -l -v      # Ubuntu must show VERSION 2
 ```
 
-### Passo 1: instalar Git e Docker Desktop
-
-Com o `winget` (PowerShell):
+### Step 1: install Git, Docker Desktop and Task
 
 ```powershell
 winget install --id Git.Git -e
@@ -135,224 +131,232 @@ winget install --id Docker.DockerDesktop -e
 winget install --id Task.Task -e
 ```
 
-O [Task](https://taskfile.dev) é o executor de comandos do projeto (`Taskfile.yml`). Depois, abra um novo terminal e rode
-`task --list` dentro do repositório para ver todos os comandos. No Ubuntu (Caminho B), instale-o também:
-`sudo snap install task --classic` (ou veja <https://taskfile.dev/installation>).
+[Task](https://taskfile.dev) runs the project commands defined in `Taskfile.yml`. Open a new terminal and run `task --list`
+to see them all.
 
-Abra o Docker Desktop e espere aparecer "Engine running". Em **Settings**:
+Open Docker Desktop and wait for "Engine running". In **Settings**:
 
-- **General**: ative "Use the WSL 2 based engine".
-- **Resources > WSL Integration**: ative a sua distribuição Ubuntu (necessário só no Caminho B).
+- **General**: enable "Use the WSL 2 based engine".
+- **Resources > WSL Integration**: enable your Ubuntu distribution (only needed for Path B).
 
-Confirme:
+Check:
 
 ```powershell
 docker --version
 docker compose version
 ```
 
-### Caminho A: Docker Desktop (recomendado)
+### Path A: Docker Desktop (recommended)
 
-Sobe a plataforma inteira (orquestrador, API, UI web e um Docker aninhado sem root) com um comando.
+Starts the whole platform (orchestrator, API, web UI and a rootless nested Docker) with one command.
 
-1. Clone o repositório. Para ter mais desempenho de arquivos e menos problemas de fim de linha, faça isso de dentro do Ubuntu:
+1. Clone the repository. For better file performance and fewer line-ending problems, clone from inside Ubuntu:
 
    ```powershell
    wsl -d Ubuntu
    ```
 
    ```bash
-   git clone https://github.com/diego-dm-morais/teams-ai.git
+   git clone https://github.com/lukeware-hub/teams-ai.git
    cd teams-ai
    ```
 
-   (Clonar pelo Windows também funciona; o repositório tem um `.gitattributes`.)
+   Cloning from Windows also works; the repository has a `.gitattributes` file.
 
-2. Crie o arquivo de ambiente (o `task up` também faz isso sozinho se o `.env` não existir):
+2. Create the environment file (`task up` also creates it if it is missing):
 
    ```bash
    task setup
    ```
 
-   Edite o `.env` com o que já tiver. Todas as chaves são opcionais agora; dá para configurá-las depois na UI:
+   All keys are optional. You can set them later in the UI:
 
    ```dotenv
-   # GITHUB_TOKEN=ghp_xxx                 # token que cria repositórios e PRs na sua conta/organização
-   # CLAUDE_CODE_OAUTH_TOKEN=             # token longo gerado por `claude setup-token` (dispensa o login no navegador)
+   # GITHUB_TOKEN=ghp_xxx          # token that creates repositories and PRs in your account or organization
+   # CLAUDE_CODE_OAUTH_TOKEN=      # long token from `claude setup-token` (skips the browser login)
    ```
 
-3. Suba antes o serviço de licenças, como em [Serviço de licenças](#serviço-de-licenças). O Teams AI espera o serviço responder.
+3. Start the license service first, as in [License service](#license-service). Teams AI expects it to respond.
 
-4. Construa e inicie:
+4. Build and start:
 
    ```bash
-   task up        # baixa a imagem pronta e sobe; constrói a partir do código se não conseguir baixar
+   task up        # pulls the ready-made image and starts; builds from source if the pull fails
    ```
 
-   A imagem fica no GitHub Container Registry, em um pacote privado. Antes do primeiro `task up`, entre uma vez com um token clássico do GitHub que tenha a permissão `read:packages`:
+   The image is a private package on GitHub Container Registry. Before the first `task up`, log in once with a classic
+   GitHub token that has the `read:packages` scope:
 
    ```bash
-   echo SEU_TOKEN | docker login ghcr.io -u SEU_USUARIO --password-stdin
+   echo YOUR_TOKEN | docker login ghcr.io -u YOUR_USER --password-stdin
    ```
 
-   Sem esse login o download falha e o Docker constrói a imagem no seu computador, o que leva alguns minutos. Para fixar uma versão, coloque `TEAMS_AI_IMAGE=ghcr.io/diego-dm-morais/teams-ai:1.2.3` no `.env`. Para desenvolver o próprio Teams AI, use `task up:source`, que constrói a imagem a partir do código desta pasta. A imagem publicada é para processadores amd64 (Windows e Linux comuns); em um Mac com Apple Silicon, use `task up:source`.
+   Without this login, the pull fails and Docker builds the image on your computer, which takes a few minutes.
+   To pin a version, set `TEAMS_AI_IMAGE=ghcr.io/lukeware-hub/teams-ai:1.2.3` in `.env`.
+   To develop Teams AI itself, use `task up:source`, which builds the image from this folder.
+   The published image is for amd64 processors. On Apple Silicon Macs, use `task up:source`.
 
-5. Espere os serviços ficarem saudáveis e abra a UI:
+5. Wait for the services to become healthy, then open the UI:
 
    ```bash
    task ps
    ```
 
-   Acesse <http://localhost:8787> no navegador.
+   Go to <http://localhost:8787>.
 
-6. Siga para [Primeiro acesso](#primeiro-acesso-conectar-suas-contas).
+6. Continue with [First access](#first-access-connect-your-accounts).
 
-Comandos úteis:
+Useful commands:
 
 ```bash
-task logs       # acompanha os logs do orquestrador
-task restart    # reinicia o orquestrador
-task down       # para tudo (mantém seus dados)
-task shell      # abre um shell dentro do contêiner
-task reset      # para e APAGA todos os dados, logins e workspaces (pede confirmação)
+task logs       # follow orchestrator logs
+task restart    # restart the orchestrator
+task down       # stop everything (keeps your data)
+task shell      # open a shell inside the container
+task reset      # stop and DELETE all data, logins and workspaces (asks for confirmation)
 ```
 
-Onde ficam seus dados (volumes Docker nomeados): `teams-ai-data` (configuração, workspaces, execuções e segredos),
-`teams-ai-claude` (login do Claude), `teams-ai-gh` (login do GitHub CLI), `dind-data` (imagens do Docker aninhado). O banco das licenças fica no serviço de licenças, em outro repositório.
+Your data lives in named Docker volumes: `teams-ai-data` (configuration, workspaces, runs and secrets),
+`teams-ai-claude` (Claude login), `teams-ai-gh` (GitHub CLI login) and `dind-data` (nested Docker images).
+The license database lives in the license service, in its own repository.
 
-Para compartilhar a UI na rede local (opcional): defina `TEAMS_AI_UI_BIND=0.0.0.0` no `.env`,
-e adicione o hostname que você usa em `TEAMS_AI_ALLOWED_HOSTS` (a API rejeita `Host` desconhecido). Atenção: a UI não tem senha. Com `0.0.0.0`, qualquer computador da rede tem acesso total à API (ver runs, iniciar runs e gravar segredos). Use só em rede de confiança.
+To share the UI on your local network, set `TEAMS_AI_UI_BIND=0.0.0.0` in `.env` and add the hostname you use to
+`TEAMS_AI_ALLOWED_HOSTS`. The UI has no password. With `0.0.0.0`, any computer on the network has full API access.
+Use this only on a trusted network.
 
-> Observação: o `dind` sem root precisa de `/dev/net/tun` e de seccomp/AppArmor mais flexíveis. Ele está implementado e
-> coberto por testes unitários. Se o `dind` não ficar saudável no seu computador, veja [Solução de problemas](#solução-de-problemas).
+### Path B: WSL2 from source (development)
 
-### Caminho B: WSL2 a partir do código (desenvolvimento)
-
-Use se quiser alterar o código, rodar os testes ou usar a CLI diretamente. Tudo abaixo roda **dentro do Ubuntu**
-(`wsl -d Ubuntu`). Mantenha o repositório no sistema de arquivos Linux (`~/teams-ai`), não em `/mnt/c`.
+Use this to change the code, run the tests or use the CLI directly. Run everything **inside Ubuntu** (`wsl -d Ubuntu`).
+Keep the repository in the Linux file system (`~/teams-ai`), not in `/mnt/c`.
 
 1. Clone:
 
    ```bash
-   git clone https://github.com/diego-dm-morais/teams-ai.git ~/teams-ai
+   git clone https://github.com/lukeware-hub/teams-ai.git ~/teams-ai
    cd ~/teams-ai
    ```
 
-2. Instale as ferramentas com o script fornecido (pode ser rodado várias vezes):
+2. Install the tools. The script can run more than once:
 
    ```bash
-   task wsl:setup     # equivale a: bash scripts/wsl/setup-ubuntu.sh
+   task wsl:setup     # runs scripts/wsl/setup-ubuntu.sh
    ```
 
-   Ele instala, nesta ordem:
+   It installs, in this order:
 
-   | Ferramenta | Para quê | Como o script instala |
+   | Tool | Purpose | How the script installs it |
    | --- | --- | --- |
-   | Pacotes apt: `curl git unzip build-essential cmake python3 pipx bubblewrap socat` | ferramentas básicas de build; `bubblewrap` e `socat` são dependências do sandbox do Claude Code | `apt-get` |
-   | Node.js 22 | ambiente de execução (`>=22.13`) | `nvm` (também registrado em `~/.profile`) |
-   | CLI do Claude Code | executa os agentes | `npm install -g @anthropic-ai/claude-code` |
-   | GitHub CLI `gh` | PRs, merges e criação de repositórios (rodado pelo orquestrador) | repositório apt do GitHub |
-   | `gitleaks`, `osv-scanner` | scans de segredos e dependências usados como gates | binários das releases do GitHub |
-   | `graphify` | grafo de conhecimento opcional | `pipx install graphifyy` |
-   | Docker | gates e deploys | **não é instalado**: vem da integração WSL do Docker Desktop (Passo 1) |
+   | apt packages: `curl git unzip build-essential cmake python3 pipx bubblewrap socat` | build basics; `bubblewrap` and `socat` are needed by the Claude Code sandbox | `apt-get` |
+   | Node.js 22 | runtime (`>=22.13`) | `nvm` (also added to `~/.profile`) |
+   | Claude Code CLI | runs the agents | `npm install -g @anthropic-ai/claude-code` |
+   | GitHub CLI `gh` | PRs, merges and repository creation (run by the orchestrator) | GitHub apt repository |
+   | `gitleaks`, `osv-scanner` | secret and dependency scans used as gates | GitHub release binaries |
+   | `graphify` | optional knowledge graph | `pipx install graphifyy` |
+   | Docker | gates and deploys | **not installed here**: comes from Docker Desktop WSL integration (Step 1) |
 
-   Instale também o `script` do `util-linux` se faltar (`sudo apt install bsdutils`); a UI precisa dele para o terminal de login.
+   If `script` (util-linux) is missing, install it with `sudo apt install bsdutils`. The UI needs it for the login terminal.
 
-3. Verifique as ferramentas (imprime um relatório JSON; todas as que você precisa devem ter `"present":true`):
+3. Check the tools. It prints a JSON report; every tool you need must show `"present":true`:
 
    ```bash
    task wsl:check
    ```
 
-4. Instale as dependências do projeto e compile a UI web:
+4. Install the project dependencies and build the web UI:
 
    ```bash
    task install
    task web:build
    ```
 
-5. Rode as verificações (opcional, mas recomendado; é o que a CI executa):
+5. Run the checks (optional but recommended; CI runs the same):
 
    ```bash
    task check
    ```
 
-6. Inicie a UI:
+6. Start the UI:
 
    ```bash
    task ui
    ```
 
-   Acesse <http://localhost:8787> pelo Windows (o WSL2 encaminha o localhost). Para desenvolver a UI com recarga ao vivo, use
-   `task web:dev` (servidor Vite com `/api` redirecionada).
+   Open <http://localhost:8787> in Windows (WSL2 forwards localhost). For live reload while developing the UI, use
+   `task web:dev` (Vite server with `/api` proxied).
 
-7. Crie sua configuração (opcional; os valores padrão funcionam):
+7. Create your configuration (optional; the defaults work):
 
    ```bash
    mkdir -p ~/.teams-ai
    cp config.example.json ~/.teams-ai/config.json
    ```
 
-   Edite `github.owner`. Na instalação local (sem compose), **remova o bloco `docker.bindRewrite`** do arquivo copiado; ele
-   serve só para a implantação em contêiner. Veja [Configuração](#configuração).
+   Set `github.owner`. For a local install (without Compose), **remove the `docker.bindRewrite` block** from the copied file.
+   It is only for the container deployment. See [Configuration](#configuration).
 
-## Primeiro acesso: conectar suas contas
+## First access: connect your accounts
 
-Acesse <http://localhost:8787>. Na primeira vez, a primeira tela pede a chave de licença e o onboarding fica com 7 passos.
-Um computador já ativado pula essa tela e mantém os 6 passos seguintes. A página **Onboarding** lista o que precisa ficar verde antes de você rodar qualquer coisa.
-Cada item é recalculado ao vivo.
+Open <http://localhost:8787>. The first time, the license key screen comes first, then onboarding has 7 steps.
+A computer that is already activated skips the license screen and gets the 6 remaining steps.
+The **Onboarding** page lists what must be green before you run anything. Each item updates live.
 
-| Item | O que fazer |
+| Item | What to do |
 | --- | --- |
-| **Licença** | Cole a chave gerada no serviço de licenças. Ela é conferida uma vez e não fica salva no Teams AI. Veja [Serviço de licenças](#serviço-de-licenças). |
-| **Claude** | Clique no botão de login e siga o fluxo no navegador, no terminal embutido (`claude auth login`). Ou, por terminal: `task login:claude`. Alternativa: rode `claude setup-token` em qualquer lugar, coloque o resultado em `CLAUDE_CODE_OAUTH_TOKEN` no `.env` e rode `docker compose up -d`. |
-| **GitHub owner** | Informe o usuário ou a organização do GitHub que será dono dos repositórios gerados. |
-| **Login do GitHub (`gh`)** | Faça login do `gh` pelo terminal embutido (`gh auth login`) ou rode `task login:gh`. |
-| **Token do GitHub** | Cole um token de acesso pessoal (clássico: `repo` e `workflow`; ou fine-grained com permissão para criar repositórios e acessar conteúdo, pull requests e workflows). Fica guardado em `~/.teams-ai/secrets` e nunca é exibido de novo. |
-| **Chave da OpenRouter** | Cole a chave de API do OpenRouter. O Jev confere os documentos, classifica critérios e perguntas em cada avaliação, e o refinamento não inicia sem ele. |
+| **License** | Paste the key generated in the license service. It is checked once and is not stored in Teams AI. See [License service](#license-service). |
+| **Claude** | Click the login button and follow the browser flow in the embedded terminal (`claude auth login`). Or run `task login:claude`. Alternative: run `claude setup-token` anywhere, put the result in `CLAUDE_CODE_OAUTH_TOKEN` in `.env`, then run `docker compose up -d`. |
+| **GitHub owner** | Enter the GitHub user or organization that owns the generated repositories. |
+| **GitHub login (`gh`)** | Log in with `gh auth login` in the embedded terminal, or run `task login:gh`. |
+| **GitHub token** | Paste a personal access token. Classic: `repo` and `workflow` scopes. Fine-grained: permission to create repositories and access contents, pull requests and workflows. It is stored in `~/.teams-ai/secrets` and never shown again. |
+| **OpenRouter key** | Paste the OpenRouter API key. Jev uses it to check documents and classify criteria and questions. Refinement does not start without it. |
 
-Quando todos os itens estiverem verdes, está tudo pronto.
+When all items are green, you are ready.
 
-## Serviço de licenças
+## License service
 
-O Teams AI só abre depois que o serviço de licenças autoriza este computador. O serviço é um repositório separado, [lukeware-hub/teams-ai-license](https://github.com/lukeware-hub/teams-ai-license), com a própria administração e o próprio PostgreSQL. Ele roda em outro `docker compose`, na rede `teams-ai-net`.
+Teams AI opens only after the license service authorizes this computer. The service is a separate repository,
+[lukeware-hub/teams-ai-license](https://github.com/lukeware-hub/teams-ai-license), with its own administration and PostgreSQL.
+It runs in its own `docker compose`, on the `teams-ai-net` network.
 
-A administração fica em <http://localhost:8790>, só neste computador. Para subir, parar ou ver os logs do serviço, use as tarefas desse repositório.
+Its administration page is at <http://localhost:8790>, reachable only from this computer. Use that repository's tasks to start,
+stop or view the logs of the service.
 
-No `.env` da raiz, `LICENSE_SERVICE_URL` aponta o Teams AI para o serviço. No Compose o padrão é `http://license:8080`.
+In the root `.env`, `LICENSE_SERVICE_URL` points Teams AI to the service. In Compose the default is `http://license:8080`.
 
-Para registrar um computador:
+To register a computer:
 
-1. Entre em <http://localhost:8790> e crie uma licença. A tela mostra a chave uma vez; o administrador pode vê-la de novo depois.
-2. Na primeira tela do Teams AI, cole essa chave. O Teams AI envia só o hash e guarda um código em `~/.teams-ai/license/code`. A chave não fica no Teams AI.
-3. Cada início pergunta ao serviço se esse código ainda vale.
+1. Open <http://localhost:8790> and create a license. The screen shows the key once; the administrator can view it again later.
+2. On the first Teams AI screen, paste that key. Teams AI sends only a hash and stores a code in `~/.teams-ai/license/code`.
+   The key itself is not kept in Teams AI.
+3. On each start, Teams AI asks the service whether that code is still valid.
 
-Uma licença pode valer até uma data, por um número de dias contados da ativação, ou não vencer sozinha. O administrador pode desligar ou ligar uma licença a qualquer momento. Desligada ou vencida, o Teams AI mostra o e-mail e o telefone cadastrados nas configurações do serviço e pede contato com a administração da Lukeware. Se o serviço não responder, o Teams AI fica parado nessa tela até ele voltar.
+A license can expire on a date, after a number of days counted from activation, or never. The administrator can turn a license on or off at any time.
+If it is off or expired, Teams AI shows the contact e-mail and phone configured in the service settings and asks the user to contact Lukeware.
+If the service does not respond, Teams AI stays on that screen until the service is back.
 
-## Usando o Teams AI
+## Using Teams AI
 
-1. **Adicione um projeto** na página Projetos (nome, repositório no GitHub e workspace local).
-2. **Refine** (Gate 1): escreva o que o projeto é, o que faz, quem o usa e quais são os objetivos. Tarefas e stack são opcionais.
-   Responda às perguntas dos agentes SM e PO até eles aceitarem a documentação.
-3. **Inicie a execução.** Acompanhe ao vivo na página Run (eventos, tarefas, tokens e custo). Você pode **Parar** (a etapa atual
-   termina antes) e **Retomar** depois. Se a janela da assinatura do Claude estiver quase cheia, a execução mostra
-   `paused:quota` e continua sozinha quando a janela reinicia.
-4. **Valide.** Quando a execução chega a `awaiting-validation`, o serviço já foi publicado (`docker-local`) e os testes de
-   smoke e e2e passaram. Experimente e então aceite ou reporte problemas; eles voltam ao Gate 1 como continuação da mesma especificação.
+1. **Add a project** on the Projects page (name, GitHub repository and local workspace).
+2. **Refine** (Gate 1): describe what the project is, what it does, who uses it and its goals. Tasks and stack are optional.
+   Answer the questions from the SM and PO agents until they accept the documentation.
+3. **Start the run.** Follow it live on the Run page (events, tasks, tokens and cost). You can **Stop** (the current step
+   finishes first) and **Resume** later. If the Claude subscription window is nearly full, the run shows
+   `paused:quota` and continues by itself when the window resets.
+4. **Validate.** When a run reaches `awaiting-validation`, the service is already deployed (`docker-local`) and the smoke and e2e
+   tests passed. Try it, then accept it or report problems. Problems return to Gate 1 as a continuation of the same specification.
 
-O **Chat de dúvidas** responde sobre o projeto e sobre como usar o Teams AI. O guia de uso que ele pesquisa fica em `docs/guia/`:
-quando mudar uma tela ou um botão, atualize o guia e rode `task guia:grafo` para refazer o grafo de busca dele (um teste falha se o guia mudou e o grafo não).
+The **Help chat** answers questions about the project and about using Teams AI. It searches the user guide in `docs/guia/`.
+When you change a screen or button, update the guide and run `task guia:grafo` to rebuild its search graph.
 
-Status de execução que você verá: `running`, `paused:quota`, `paused:auth`, `draining`, `interrupted`, `blocked`, `deadlocked`,
-`phase-failed`, `done`. `paused:auth` significa que o login do Claude expirou: entre de novo e depois clique em Retomar.
+Run statuses you will see: `running`, `paused:quota`, `paused:auth`, `draining`, `interrupted`, `blocked`, `deadlocked`,
+`phase-failed` and `done`. `paused:auth` means the Claude login expired. Log in again, then click Resume.
 
-Todo projeto gerado deve entregar o contrato completo: código, documentação, testes unitários e e2e, scans de segurança,
-GitHub Actions, build de imagem e uma infraestrutura Docker local que sobe.
+Every generated project must deliver the full contract: code, documentation, unit and e2e tests, security scans,
+GitHub Actions, image build, and a local Docker infrastructure that starts.
 
-## Configuração
+## Configuration
 
-A configuração de execução fica em `~/.teams-ai/config.json` (no contêiner: volume `teams-ai-data`). Se o arquivo não existir,
-o contêiner copia `docker/config.json`. Exemplo para instalação local (sem contêiner), a partir de `config.example.json`:
+The run configuration is in `~/.teams-ai/config.json` (in the container: volume `teams-ai-data`). If the file does not exist,
+the container copies `docker/config.json`. Example for a local install, based on `config.example.json`:
 
 ```json
 {
@@ -367,104 +371,105 @@ o contêiner copia `docker/config.json`. Exemplo para instalação local (sem co
 }
 ```
 
-Variáveis de ambiente (`.env`, lido pelo `docker-compose.yml`):
+Environment variables (`.env`, read by `docker-compose.yml`):
 
-| Variável | Para quê |
+| Variable | Purpose |
 | --- | --- |
-| `GITHUB_TOKEN` | Token do GitHub usado pelo orquestrador. |
-| `CLAUDE_CODE_OAUTH_TOKEN` | Token longo do Claude, gerado por `claude setup-token`. |
-| `TEAMS_AI_UI_BIND` | Interface do host para a porta 8787. Padrão `127.0.0.1`. Use `0.0.0.0` só em rede de confiança: qualquer um na rede tem acesso total à API. |
-| `TEAMS_AI_ALLOWED_HOSTS` | Valores extras de `Host` que a API aceita. |
-| `LICENSE_SERVICE_URL` | Endereço do serviço de licenças. No Compose o padrão é `http://license:8080`. |
+| `GITHUB_TOKEN` | GitHub token used by the orchestrator. |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Long-lived Claude token from `claude setup-token`. |
+| `TEAMS_AI_UI_BIND` | Host interface for port 8787. Default `127.0.0.1`. Use `0.0.0.0` only on a trusted network. |
+| `TEAMS_AI_ALLOWED_HOSTS` | Extra `Host` header values the API accepts. |
+| `TEAMS_AI_IMAGE` | Image to run instead of the default registry image. |
+| `LICENSE_SERVICE_URL` | Address of the license service. In Compose the default is `http://license:8080`. |
 
-## Referência da CLI
+## CLI reference
 
 ```bash
-npm run teams-ai -- <comando>
+npm run teams-ai -- <command>
 ```
 
-| Comando | Descrição |
+| Command | Description |
 | --- | --- |
-| `run --project <dir> [--spec <id>] [--run-id <id>] [--max-parallel N] [--dry-run] [--draft]` | Inicia uma execução. |
-| `resume --project <dir> --run <runId>` | Continua uma execução interrompida. |
-| `status --project <dir> --run <runId> [--json]` | Mostra o estado da execução. |
-| `spec readme --project <dir> --spec <id>` | O SM escreve o `docs/README.md` (abre um PR de documentação). |
-| `spec deploy --project <dir> --spec <id> [--target docker-local]` | Publica a `main` de novo, sem agente. |
-| `supervise --project <dir> [--interval s]` | Retoma execuções interrompidas até terminarem. |
-| `ui [--port N]` | Inicia a UI web e a API. |
+| `run --project <dir> [--spec <id>] [--run-id <id>] [--max-parallel N] [--dry-run] [--draft]` | Starts a run. |
+| `resume --project <dir> --run <runId>` | Continues an interrupted run. |
+| `status --project <dir> --run <runId> [--json]` | Shows the run state. |
+| `spec readme --project <dir> --spec <id>` | The SM writes `docs/README.md` (opens a documentation PR). |
+| `spec deploy --project <dir> --spec <id> [--target docker-local]` | Deploys `main` again, without an agent. |
+| `supervise --project <dir> [--interval s]` | Resumes interrupted runs until they finish. |
+| `ui [--port N]` | Starts the web UI and API. |
 
-Dentro do contêiner: `task cli -- <comando>` (equivale a `docker compose exec teams-ai npm run teams-ai -- <comando>`).
+Inside the container: `task cli -- <command>` (same as `docker compose exec teams-ai npm run teams-ai -- <command>`).
 
-## Comandos do Task
+## Task commands
 
-Rode `task --list` para ver a lista atual. As tarefas de Docker funcionam em qualquer terminal; as de desenvolvimento rodam em Linux (WSL2 Ubuntu).
+Run `task --list` for the current list. Docker tasks work in any terminal; development tasks run on Linux (WSL2 Ubuntu).
 
-| Tarefa | Descrição |
+| Task | Description |
 | --- | --- |
-| `task start` | Confere os pré-requisitos, sobe a plataforma, espera ficar saudável e abre a UI |
-| `task doctor` | Confere Docker, daemon e `docker compose`; diz como corrigir o que faltar |
-| `task up` | Baixa a imagem pronta (constrói se não conseguir baixar) e inicia a plataforma (cria o `.env` se faltar) |
-| `task up:source` | Constrói a imagem a partir do código desta pasta e inicia a plataforma (para desenvolver o Teams AI) |
-| `task down` | Para a plataforma, mantém os dados |
-| `task restart` | Reinicia o orquestrador |
-| `task ps` / `task logs` / `task logs:dind` | Status e logs |
-| `task shell` | Shell dentro do contêiner |
-| `task login:claude` / `task login:gh` | Login dentro do contêiner |
-| `task cli -- <args>` | Roda a CLI do teams-ai no contêiner |
-| `task reset` | Apaga contêineres, volumes e logins (pede confirmação) |
-| `task install` | Instala as dependências do backend e da web |
-| `task ui` / `task web:dev` | UI a partir do código / servidor Vite |
-| `task typecheck` / `task test` / `task test:web` / `task web:build` | Verificações individuais |
-| `task check` | Tudo o que a CI executa |
-| `task wsl:setup` / `task wsl:check` | Instala e verifica as ferramentas do WSL |
+| `task start` | Checks prerequisites, starts the platform, waits until healthy and opens the UI |
+| `task doctor` | Checks Docker, the daemon and `docker compose`; tells you how to fix what is missing |
+| `task up` | Pulls the ready-made image (builds if the pull fails) and starts the platform (creates `.env` if missing) |
+| `task up:source` | Builds the image from this folder and starts the platform (for developing Teams AI) |
+| `task down` | Stops the platform, keeps data |
+| `task restart` | Restarts the orchestrator |
+| `task ps` / `task logs` / `task logs:dind` | Status and logs |
+| `task shell` | Shell inside the container |
+| `task login:claude` / `task login:gh` | Login inside the container |
+| `task cli -- <args>` | Runs the teams-ai CLI in the container |
+| `task reset` | Deletes containers, volumes and logins (asks for confirmation) |
+| `task install` | Installs backend and web dependencies |
+| `task ui` / `task web:dev` | UI from source / Vite dev server |
+| `task typecheck` / `task test` / `task test:web` / `task web:build` | Individual checks |
+| `task check` | Everything CI runs |
+| `task wsl:setup` / `task wsl:check` | Installs and checks the WSL tools |
 
-Os scripts `npm run` continuam existindo (`npm test`, `npm run typecheck`, `npm run teams-ai`, `npm run ui`, ...).
+The npm scripts also work: `npm test`, `npm run typecheck`, `npm run teams-ai`, `npm run ui`, `npm run web:build`.
 
-A CI (GitHub Actions) roda typecheck, testes do backend, testes da web e o build da web a cada push e pull request.
+CI (GitHub Actions) runs typecheck, backend tests, web tests and the web build on every push and pull request.
 
-## Estrutura do projeto
+## Project structure
 
 ```text
-server/    CLI, API, agentes, orquestrador, plano de execução, deploy, orçamento, decisões
-web/       Interface web em React (Vite)
-test/      Testes do backend e fixtures (especificação de referência: test/fixtures/todo-api)
-docs/      Especificações, planos, roadmap, runbook, auditoria de segurança (docs/superpowers)
-docker/    Configuração padrão usada pelo contêiner
-scripts/   Setup do WSL, smoke tests, scripts de integração e avaliação
+server/    CLI, API, agents, orchestrator, execution, deploy, budget, decisions
+web/       React web UI (Vite)
+test/      Backend tests and fixtures (reference spec: test/fixtures/todo-api)
+docs/      Specs, plans, roadmap, runbook, security audit (docs/superpowers) and user guide (docs/guia)
+docker/    Default configuration used by the container
+scripts/   WSL setup, smoke tests, integration and evaluation scripts
 ```
 
-## Solução de problemas
+## Troubleshooting
 
-| Sintoma | Solução |
+| Symptom | Fix |
 | --- | --- |
-| `docker compose up` falha no `dind` (`/dev/net/tun`, user namespaces) | Atualize o Docker Desktop e o WSL (`wsl --update`), mantenha o motor WSL2 ativo, depois rode `docker compose down` e `up -d --build` de novo. Veja `docker compose logs dind`. |
-| A UI diz `the web UI needs util-linux script` | `sudo apt install bsdutils` (Caminho B). |
-| `web/dist not found` | `npm run web:build`. |
-| `paused:auth` ou "OAuth session expired" | Entre de novo no Claude em Onboarding (ou atualize `CLAUDE_CODE_OAUTH_TOKEN`) e retome a execução. |
-| `403` da API em outro hostname | Adicione o hostname em `TEAMS_AI_ALLOWED_HOSTS`. |
-| O contêiner reiniciou e uma execução travou | No boot, o contêiner remove arquivos `*.ndjson.lock` órfãos; depois é só retomar a execução. |
-| Instalação lenta ou erros estranhos de arquivo no Caminho B | Confirme que o repositório está em `~`, não em `/mnt/c`. |
-| Erro de versão do Node | É preciso Node `>=22.13` (`nvm install 22`). |
-| A UI pede contato com a Lukeware | A licença está desligada ou vencida. O e-mail e o telefone dessa tela vêm das configurações do serviço. |
-| A UI diz que o serviço de licenças não responde | Confira os logs do serviço de licenças (no repositório dele) e `LICENSE_SERVICE_URL`. O Teams AI espera o serviço voltar. |
+| `docker compose up` fails in `dind` (`/dev/net/tun`, user namespaces) | Update Docker Desktop and WSL (`wsl --update`), keep the WSL2 engine on, then run `docker compose down` and `docker compose up -d --build`. See `docker compose logs dind`. |
+| The UI says `the web UI needs util-linux script` | `sudo apt install bsdutils` (Path B). |
+| `web/dist not found` | `task web:build`. |
+| `paused:auth` or "OAuth session expired" | Log in to Claude again in Onboarding (or update `CLAUDE_CODE_OAUTH_TOKEN`), then resume the run. |
+| `403` from the API on another hostname | Add the hostname to `TEAMS_AI_ALLOWED_HOSTS`. |
+| The container restarted and a run is stuck | On boot, the container removes orphan `*.ndjson.lock` files. Then resume the run. |
+| Slow install or odd file errors in Path B | Make sure the repository is in `~`, not `/mnt/c`. |
+| Node version error | Node `>=22.13` is required (`nvm install 22`). |
+| The UI asks you to contact Lukeware | The license is off or expired. The contact details on that screen come from the service settings. |
+| The UI says the license service does not respond | Check the license service logs (in its repository) and `LICENSE_SERVICE_URL`. Teams AI waits for the service to come back. |
 
-## Segurança
+## Security
 
-- Agentes só editam arquivos e devolvem JSON; o Bash é liberado apenas para papéis que precisam rodar testes. `gh`, `git push`,
-  `docker` e `kubectl` são sempre negados aos agentes.
-- Cada etapa de agente roda em um sandbox `bubblewrap` com um `HOME` vazio por etapa (sem credenciais de GitHub ou Docker para roubar).
-- Gates e deploys rodam em um Docker aninhado sem root, sem acesso ao socket Docker do host.
-- A rede de cada etapa de agente só alcança os registros de pacotes da stack do serviço: o npm sempre; o PyPI para Python; o crates.io para Rust; para Go, o `goproxy` da plataforma e o `sum.golang.org`.
-- O `goproxy` é um serviço do compose que busca os módulos Go no `proxy.golang.org` e segue ele mesmo o redirecionamento ao `storage.googleapis.com`; assim nenhuma etapa alcança esse armazenamento, onde qualquer bucket serviria para vazar dados.
-- Fora do compose não há `goproxy`: uma etapa Go baixa direto do `proxy.golang.org`, e um módulo cujo zip ele redireciona ao `storage.googleapis.com` não baixa dentro da etapa. Por isso rode a plataforma pelo compose.
-- A UI só aceita conexões do próprio computador (loopback) por padrão. Leia `docs/superpowers/security/2026-10-04-system-audit.md` antes de expô-la.
+- Agents only edit files and return JSON. Bash is allowed only for roles that run tests. `gh`, `git push`,
+  `docker` and `kubectl` are always denied to agents.
+- Each agent step runs in a `bubblewrap` sandbox with an empty `HOME` per step, so there are no GitHub or Docker credentials to steal.
+- Gates and deploys run in a rootless nested Docker, with no access to the host Docker socket.
+- Agent steps can reach only the package registries of their stack: npm always; PyPI for Python; crates.io for Rust; for Go, the
+  platform `goproxy` and `sum.golang.org`.
+- Run the platform with Compose. Outside Compose there is no `goproxy`, and Go modules that redirect to `storage.googleapis.com` fail inside a step.
+- The UI accepts connections from this computer only (loopback) by default. Read `docs/superpowers/security/2026-10-04-system-audit.md` before exposing it.
 
-## Mais documentação
+## More documentation
 
-- `docs/superpowers/BACKLOG.md`: os bugs conhecidos do sistema, com a evidência de cada um.
-- `docs/superpowers/specs/`: especificações de design. `docs/superpowers/plans/`: planos de implementação.
-- `docs/superpowers/ops/runbook.md`: runbook do operador para o Docker Compose: runs, quota, diário, saúde, backup e restauração dos volumes.
+- `docs/superpowers/BACKLOG.md`: known system bugs, with evidence for each.
+- `docs/superpowers/specs/`: design specifications. `docs/superpowers/plans/`: implementation plans.
+- `docs/superpowers/ops/runbook.md`: operator runbook for Docker Compose: runs, quota, journal, health, volume backup and restore.
 
-## Licença
+## License
 
-Nenhuma licença foi declarada ainda.
+No license has been declared yet.

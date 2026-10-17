@@ -6,7 +6,7 @@ services:
   teams-ai:
     # The registry image; when it cannot be pulled, `docker compose up` builds this tag from source.
     build: .
-    image: ${TEAMS_AI_IMAGE:-ghcr.io/diego-dm-morais/teams-ai:latest}
+    image: ${TEAMS_AI_IMAGE:-ghcr.io/lukeware-hub/teams-ai:latest}
     # Reaps killed runs: a zombie still looks alive to the run lock and blocks the next run of the spec.
     init: true
     depends_on:
@@ -46,7 +46,7 @@ services:
   # sandbox must never reach, so this service follows the redirect and a Go step reaches only it (server/runner/go-proxy.ts).
   goproxy:
     build: .
-    image: ${TEAMS_AI_IMAGE:-ghcr.io/diego-dm-morais/teams-ai:latest}
+    image: ${TEAMS_AI_IMAGE:-ghcr.io/lukeware-hub/teams-ai:latest}
     init: true
     command: ['npx', 'tsx', '--no-warnings=ExperimentalWarning', 'server/runner/go-proxy.ts']
     cap_drop:

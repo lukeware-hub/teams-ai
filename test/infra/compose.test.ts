@@ -55,7 +55,7 @@ describe('docker-compose.yml (audit H4)', () => {
 
   it('runs the registry image, and builds the same tag from source when it cannot be pulled', () => {
     for (const svc of [platform, compose.services.goproxy]) {
-      expect(svc.image).toBe('${TEAMS_AI_IMAGE:-ghcr.io/diego-dm-morais/teams-ai:latest}');
+      expect(svc.image).toBe('${TEAMS_AI_IMAGE:-ghcr.io/lukeware-hub/teams-ai:latest}');
       expect(svc.build).toBe('.');
     }
   });
