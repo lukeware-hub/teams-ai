@@ -801,6 +801,12 @@ describe('refine api', () => {
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/start')).status).toBe(200);
   });
 
+  it('saves a document up to 5 MB and refuses more', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    expect((await call('PUT', '/api/refine/hello-app/hello-app-001/docs/flow.md', { text: `# Fluxo\n${'x'.repeat(100_000)}` })).status).toBe(200);
+    expect((await call('PUT', '/api/refine/hello-app/hello-app-001/docs/flow.md', { text: 'x'.repeat(5 * 1024 * 1024) })).status).toBe(413);
+  });
+
   it('a refinement retrieves the earlier specs of the project clone that match its objectives', async () => {
     const spec = { ...makeSpec({ specId: 'hello-001' }), status: 'awaiting-validation', specHash: `sha256:${'a'.repeat(64)}` };
     remote = await makeRemote({ 'docs/project.json': JSON.stringify(HELLO_PROJECT), 'docs/specs/hello-001/spec.json': JSON.stringify(spec), 'docs/specs/hello-001/spec.md': '# Spec 1\nThe quota checker uses marker zebracorn-7741.\n' });

@@ -10,6 +10,8 @@ import { HttpError, type Route, type RouteContext } from './server.js';
 const P = '/api';
 /** Up to four 5 MB images as base64 (a third larger) plus the JSON around them. */
 const IMAGES_BODY_MAX = 28 * 1024 * 1024;
+/** A document may hold a long spec, so it saves up to 5 MB. */
+const DOC_BODY_MAX = 5 * 1024 * 1024;
 
 const str = (v: unknown, field: string, optional = false): string => {
   const x = (v as Record<string, unknown> | null)?.[field];
@@ -95,7 +97,7 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       handler: wrap(async ({ params, body, json }) => {
         const file = params.file!;
         if (!['project.md', 'brief.md', 'stack.md', 'flow.md', 'design.md'].includes(file)) throw new HttpError(400, `unknown doc ${file}`);
-        await (await get(params)).saveDoc(file as DocFile, str(await body(), 'text'));
+        await (await get(params)).saveDoc(file as DocFile, str(await body(DOC_BODY_MAX), 'text'));
         json(200, { ok: true });
       }),
     },
