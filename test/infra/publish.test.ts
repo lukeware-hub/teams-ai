@@ -32,8 +32,8 @@ describe('.github/workflows/ci.yml publish job (R9.4)', () => {
     expect(step('Free disk space').run).toContain('/usr/local/lib/android');
   });
 
-  it('runs only when a semver tag is pushed, after quality, and is the only job that can write packages', () => {
-    expect(ci.on).toEqual({ push: { tags: ['v*.*.*'] } });
+  it('runs only when a release is published, after quality, and is the only job that can write packages', () => {
+    expect(ci.on).toEqual({ release: { types: ['published'] } });
     expect(ci.permissions).toEqual({ contents: 'read' });
     expect(publish.needs).toBe('quality');
     expect(publish.permissions).toEqual({ contents: 'read', packages: 'write' });

@@ -425,7 +425,7 @@ Run `task --list` for the current list. Docker tasks work in any terminal; devel
 
 The npm scripts also work: `npm test`, `npm run typecheck`, `npm run teams-ai`, `npm run ui`, `npm run web:build`.
 
-CI (GitHub Actions) runs only when a semver tag such as `v1.2.3` is pushed. It runs typecheck, backend tests, web tests and the web build, then builds the image under that tag, scans it, and publishes the tag and `latest`.
+CI (GitHub Actions) runs only when a release is published. It runs typecheck, backend tests, web tests and the web build, then builds the image under the release tag such as `v1.2.3`, scans it for critical vulnerabilities, and publishes the tag and `latest` only if the scan passes.
 
 ## Project structure
 
