@@ -28,6 +28,9 @@ export function sanitizeQuery(query: string): string {
   return terms.filter((t) => t !== '-' && t !== '_').map((t) => t.replace(/^-+|-+$/g, '')).filter(Boolean).join(' ');
 }
 
+/** Splits text into lowercase words the way FTS5 unicode61 does: any mark or symbol, dash included, is a separator. */
+const wordsOf = (text: string): string[] => text.toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+
 /**
  * BM25 retrieval over documentation and refinement history (spec §9 layer 3). Requirements and
  * criteria are never looked up here — they are addressed by ID from the contract.
@@ -116,7 +119,7 @@ export class KnowledgeIndex {
   }
 
   private searchWithoutFts5(bag: string, opts: { k?: number; kinds?: DocKind[]; specId?: string }): Hit[] {
-    const terms = bag.toLocaleLowerCase().split(' ');
+    const terms = wordsOf(bag);
     const allowedKinds = opts.kinds && opts.kinds.length > 0 ? new Set(opts.kinds) : undefined;
     const rows = this.db
       .prepare(
@@ -129,7 +132,7 @@ export class KnowledgeIndex {
       if (allowedKinds && !allowedKinds.has(row.kind)) return [];
       if (opts.specId && row.spec_id !== null && row.spec_id !== opts.specId) return [];
       const haystack = `${row.heading ?? ''} ${row.text}`;
-      const tokens = new Set(haystack.toLocaleLowerCase().match(/[\p{L}\p{N}_-]+/gu) ?? []);
+      const tokens = new Set(wordsOf(haystack));
       const matched = terms.filter((term) => tokens.has(term));
       if (matched.length === 0) return [];
       const first = matched[0];

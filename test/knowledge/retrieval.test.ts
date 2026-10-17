@@ -85,4 +85,10 @@ describe('KnowledgeIndex', () => {
     for (let i = 0; i < 5; i++) idx.index({ id: `qa-${i}`, kind: 'qa', title: `Q${i}`, text: `Question ${i}: what discount applies? Answer: discount ${i}.` });
     expect(idx.search('discount', { k: 3 })).toHaveLength(3);
   });
+
+  it('finds a word inside a hyphenated token when FTS5 is missing, as FTS5 does', () => {
+    (idx as unknown as { fts5: boolean }).fts5 = false;
+    idx.index({ id: 'marker', kind: 'other', title: 'Marker', text: 'The quota uses marker zebracorn-7741.' });
+    expect(idx.search('zebracorn').map((h) => h.docId)).toEqual(['marker']);
+  });
 });
