@@ -38,6 +38,19 @@ describe('openProjectKnowledge', () => {
     expect(index.search('JWT')).toEqual([expect.objectContaining({ docId: 'docs/adr/ADR-002.md', kind: 'adr' })]);
   });
 
+  it('drops a document from the index once its file is gone from the repository', async () => {
+    const file = path.join(repo, 'knowledge.sqlite');
+    await write('docs/specs/spec-1/spec.md', SPEC);
+    (await openProjectKnowledge(file, repo)).close();
+    await fs.rm(path.join(repo, 'docs/specs/spec-1/spec.md'));
+
+    const index = await openProjectKnowledge(file, repo);
+
+    expect(index.search('discount')).toEqual([]);
+    expect(index.count()).toBe(0);
+    index.close();
+  });
+
   it('returns an empty index when the repository has no docs folder', async () => {
     const index = await openProjectKnowledge(':memory:', repo);
 

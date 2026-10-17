@@ -80,6 +80,10 @@ export class KnowledgeIndex {
     this.db.prepare('DELETE FROM docs WHERE id = ?').run(id);
   }
 
+  documentIds(): string[] {
+    return (this.db.prepare('SELECT id FROM docs').all() as Array<{ id: string }>).map((row) => row.id);
+  }
+
   search(query: string, opts: { k?: number; kinds?: DocKind[]; specId?: string } = {}): Hit[] {
     const bag = sanitizeQuery(query);
     if (bag === '') return [];

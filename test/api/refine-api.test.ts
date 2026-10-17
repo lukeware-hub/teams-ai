@@ -8,6 +8,8 @@ import { startApi } from '../../server/api/server.js';
 import { execCommand } from '../../server/exec/command.js';
 import { readUserConfig } from '../../server/onboarding/config-store.js';
 import type { RunAgent } from '../../server/refine/cycle.js';
+import { openProjectKnowledge } from '../../server/knowledge/project-docs.js';
+import { KnowledgeIndex } from '../../server/knowledge/retrieval.js';
 import { SessionRegistry } from '../../server/refine/registry.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 import { calls, makeFakeRunAgent, type Script } from '../fixtures/fake-run-agent.js';
@@ -813,6 +815,22 @@ describe('refine api', () => {
     const isPo = (c: { kind: string; role: string }) => c.kind === 'refine' && c.role === 'po';
     for (let i = 0; i < 100 && !calls.some(isPo); i++) await new Promise((r) => setTimeout(r, 20));
     expect(calls.find(isPo)?.prompt).toContain('zebracorn-7741');
+  });
+
+  it('refinement leaves the run index of the project folder untouched', async () => {
+    const runDir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-run-docs-'));
+    await fs.mkdir(`${runDir}/docs/specs/run-001`, { recursive: true });
+    await fs.writeFile(`${runDir}/docs/specs/run-001/spec.md`, '# Run spec\nOnly the run folder has this.\n');
+    await fs.mkdir(`${home}/ws/hello-app`, { recursive: true });
+    (await openProjectKnowledge(`${home}/ws/hello-app/knowledge.sqlite`, runDir)).close();
+    const spec = { ...makeSpec({ specId: 'hello-001' }), status: 'awaiting-validation', specHash: `sha256:${'a'.repeat(64)}` };
+    remote = await makeRemote({ 'docs/project.json': JSON.stringify(HELLO_PROJECT), 'docs/specs/hello-001/spec.json': JSON.stringify(spec) });
+    await fs.cp(remote.repo, `${home}/ws/hello-app/repo`, { recursive: true });
+    expect((await call('POST', '/api/projects/hello-app/specs', { specId: 'hello-002' })).status).toBe(200);
+    const run = KnowledgeIndex.open(`${home}/ws/hello-app/knowledge.sqlite`);
+    expect(run.documentIds()).toEqual(['docs/specs/run-001/spec.md']);
+    run.close();
+    await fs.rm(runDir, { recursive: true, force: true });
   });
 
   it('a broken config.json never rejects the program tick, which would kill the UI server', async () => {

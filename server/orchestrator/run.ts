@@ -952,6 +952,10 @@ export class Run {
   }
 
   async close(): Promise<void> {
-    await this.journal.close();
+    try {
+      await this.journal.close();
+    } finally {
+      this.deps.knowledge?.close();
+    }
   }
 }

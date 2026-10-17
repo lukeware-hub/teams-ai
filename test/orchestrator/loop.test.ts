@@ -111,6 +111,7 @@ describe('orchestrator loop with the fake claude', () => {
     await run.close();
     expect(prompts.length).toBeGreaterThan(0);
     expect(prompts.some((p) => p.includes('zebracorn-7741'))).toBe(true);
+    expect(() => knowledge.search('todo')).toThrow();
   });
 
   it('survives a crash after every intent and never duplicates a commit, PR or merge', { timeout: 3_600_000 }, async () => {

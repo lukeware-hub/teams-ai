@@ -95,8 +95,10 @@ export class SessionRegistry {
     const key = `${draft.projectId}/${draft.specId}`;
     const p = (async () => {
       // The clone of main holds the merged specs and ADRs; before the first clone there is no history to check against.
-      if (await exists(ws.repo)) (await openProjectKnowledge(ws.knowledgeDb, ws.repo)).close();
-      const retrieval = (await exists(ws.knowledgeDb)) ? (q: string) => searchKnowledge(ws.knowledgeDb, q) : () => [];
+      // Its own file: the run indexes another folder, and each index drops the documents it does not find.
+      const file = path.posix.join(ws.root, 'refine-knowledge.sqlite');
+      if (await exists(ws.repo)) (await openProjectKnowledge(file, ws.repo)).close();
+      const retrieval = (await exists(file)) ? (q: string) => searchKnowledge(file, q) : () => [];
       const runAgent = inProject(this.deps.runAgent, draft.projectId);
       const deps = { ws, draft, runAgent, frontAgent: runAgent, secretsDir: ws.secrets, retrieval, validateDocs: this.deps.validateDocs, decider: this.deps.decider, autoAnswerFloor: async () => answerFloor(await this.deps.cfg(), refineRoot(ws)) };
       return create ? RefineSession.create(deps, create) : RefineSession.open(deps);
