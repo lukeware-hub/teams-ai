@@ -1,6 +1,5 @@
 // Live check driver for backlog refinement (R11.2): drives a throwaway target project through the local teams-ai API.
-// The token comes from the repo .env (TEAMS_AI_UI_TOKEN) and is never printed. Every step costs Claude quota and a
-// few Jev calls: run it only with the human's ok. Usage: node scripts/live-check/refine.mjs <step> <projectId> [args]
+// Every step costs Claude quota and a few Jev calls: run it only with the human's ok. Usage: node scripts/live-check/refine.mjs <step> <projectId> [args]
 //   create <projectId> <docsDir> <name>   new project, the five docs, backlog mode on
 //   evaluate <projectId>                  one evaluation, waits for it, prints a summary
 //   summary | events | files <projectId>  state, steps and cost per cycle, generated files in the draft
@@ -8,18 +7,13 @@
 //   accept <projectId> <patchId> | reject <projectId> <patchId> <reason> | patch <projectId> <patchId>
 //   question <projectId> <questionId> | getdoc <projectId> <file> | put <projectId> <file> <path>
 //   detail <projectId> (Detalhar specs) | start <projectId> (must answer 409 in backlog mode)
-import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 
-const REPO = fileURLToPath(new URL('../../', import.meta.url));
 const BASE = process.env.TEAMS_AI_URL ?? 'http://localhost:8787/api';
 const CONTAINER = process.env.TEAMS_AI_CONTAINER ?? 'teams-ai-teams-ai-1';
-const token = readFileSync(`${REPO}.env`, 'utf8').split(/\r?\n/).find((l) => l.startsWith('TEAMS_AI_UI_TOKEN='))?.slice('TEAMS_AI_UI_TOKEN='.length).replace(/^"|"$/g, '').trim();
-if (!token) throw new Error('no TEAMS_AI_UI_TOKEN in .env');
 
 const api = async (method, path, body) => {
-  const r = await fetch(`${BASE}${path}`, { method, headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const r = await fetch(`${BASE}${path}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
   const text = await r.text();
   let json = null;
   try { json = JSON.parse(text); } catch { /* not json */ }

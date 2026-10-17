@@ -55,7 +55,7 @@ describe('CSRF and framing (audit H2)', () => {
     expect((await fetch(url('/api/ping'))).status).toBe(200);
   });
 
-  it('refuses a cross-site browser request without a bearer, by Sec-Fetch-Site or by Origin', async () => {
+  it('refuses a cross-site browser request, by Sec-Fetch-Site or by Origin', async () => {
     api = await startApi({ routes, host: '127.0.0.1' }, 0);
     const host = `127.0.0.1:${api.port}`;
     const post = (extra: Record<string, string>) => raw(api!.port, { host, ...JSON_CT, ...extra }, 'POST', '/api/ping', '{}');
@@ -67,13 +67,6 @@ describe('CSRF and framing (audit H2)', () => {
     expect((await post({ origin: `http://${host}` })).status).toBe(200);
     expect((await post({})).status).toBe(200);
     expect((await raw(api.port, { host, 'sec-fetch-site': 'cross-site' })).status).toBe(403);
-  });
-
-  it('lets a bearer-authenticated request through regardless of Origin (a page cannot attach the bearer)', async () => {
-    api = await startApi({ routes, token: 's3cret', host: '127.0.0.1' }, 0);
-    const host = `127.0.0.1:${api.port}`;
-    const r = await raw(api.port, { host, authorization: 'Bearer s3cret', origin: 'https://other.example', ...JSON_CT }, 'POST', '/api/ping', '{}');
-    expect(r.status).toBe(200);
   });
 
   it('sends frame, nosniff, referrer and CSP headers on API, 404 and static responses (audit L3)', async () => {
@@ -139,10 +132,12 @@ describe('allowed hosts (plan 15)', () => {
     }
   });
 
-  it('keeps token protection for a non-loopback Host', async () => {
-    api = await startApi({ routes, token: 's3cret', host: '127.0.0.1', allowedHosts: ['teams-ai.ns.svc'] }, 0);
-    expect((await raw(api.port, { host: 'teams-ai.ns.svc' })).status).toBe(401);
-    expect((await raw(api.port, { host: 'teams-ai.ns.svc', authorization: 'Bearer s3cret' })).status).toBe(200);
+  it('has no bearer gate or session endpoint: the license guard is the only API gate', async () => {
+    api = await startApi({ routes, host: '127.0.0.1', allowedHosts: ['teams-ai.ns.svc'] }, 0);
+    const r = await raw(api.port, { host: 'teams-ai.ns.svc', ...JSON_CT }, 'POST', '/api/auth/session', '{}');
+    expect(r.status).toBe(404);
+    expect(r.headers['www-authenticate']).toBeUndefined();
+    expect((await raw(api.port, { host: 'teams-ai.ns.svc' }, 'GET', '/api/ping')).status).toBe(200);
   });
 });
 

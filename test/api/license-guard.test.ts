@@ -48,7 +48,7 @@ describe('license guard', () => {
 
   it('keeps the license routes, the session and static files open', async () => {
     const guard = await guardWith(null);
-    for (const open of ['/api/license', '/api/license/activate', '/api/license/sync', '/api/auth/session', '/', '/assets/app.js']) expect(guard.allowed(open)).toBe(true);
+    for (const open of ['/api/license', '/api/license/activate', '/api/license/sync', '/','/assets/app.js']) expect(guard.allowed(open)).toBe(true);
   });
 
   it('picks up a new token on reload', async () => {

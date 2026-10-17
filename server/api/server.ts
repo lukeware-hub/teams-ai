@@ -1,7 +1,6 @@
 import { promises as fs } from 'node:fs';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import path from 'node:path';
-import { bearerOk, requestAuthorized, resolveAuth, SESSION_PATH, sessionCookie, TOKEN_ENV } from './auth.js';
 import type { LicenseGuard } from './license-guard.js';
 import { ALLOWED_HOSTS_ENV, applySecurityHeaders, crossSite, isJsonContentType, parseAllowedHosts } from './security.js';
 
@@ -63,8 +62,6 @@ export interface ApiDeps {
   routes: Route[];
   staticDir?: string | null;
   log?: (line: string) => void;
-  /** Bearer token; defaults to TEAMS_AI_UI_TOKEN. */
-  token?: string;
   /** Listen address; defaults to HOST or 127.0.0.1. */
   host?: string;
   /** Host header values accepted besides loopback (Service or Ingress names); defaults to TEAMS_AI_ALLOWED_HOSTS. */
@@ -136,7 +133,6 @@ async function serveStatic(dir: string, urlPath: string, res: ServerResponse): P
 export async function startApi(deps: ApiDeps, port: number): Promise<{ port: number; close(): Promise<void> }> {
   const log = deps.log ?? (() => undefined);
   const host = deps.host ?? process.env.HOST ?? '127.0.0.1';
-  const token = resolveAuth(deps.token ?? process.env[TOKEN_ENV], host, log);
   const allowedHosts = (deps.allowedHosts ?? parseAllowedHosts(process.env[ALLOWED_HOSTS_ENV])).map((h) => h.toLowerCase());
   const maxSse = deps.maxSse ?? { total: 200, perAddress: 50 };
   const sseTimeouts = deps.sseTimeouts ?? { lifetimeMs: 30 * 60_000, idleMs: 10 * 60_000 };
@@ -154,20 +150,8 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
     };
     if (!isAllowedHost(req.headers.host, allowedHosts)) return json(403, { error: 'forbidden host' });
     const routedPath = apiPath(url.pathname);
-    const bearer = token !== null && bearerOk(req, token);
     if (req.method !== 'GET' && req.method !== 'HEAD' && !isJsonContentType(req.headers['content-type'])) return json(415, { error: 'content-type must be application/json' });
-    if (routedPath.startsWith('/api/') && !bearer && crossSite(req)) return json(403, { error: 'cross-site request refused' });
-    if (routedPath === SESSION_PATH && req.method === 'POST') {
-      // Lets the web client turn its bearer token into an HttpOnly cookie that EventSource can send.
-      if (token !== null && !bearer) return json(401, { error: 'unauthorized' });
-      res.writeHead(204, token === null ? {} : { 'set-cookie': sessionCookie(token) });
-      res.end();
-      return done(204);
-    }
-    if (token !== null && routedPath.startsWith('/api/') && !requestAuthorized(req, token)) {
-      res.setHeader('www-authenticate', 'Bearer');
-      return json(401, { error: 'unauthorized' });
-    }
+    if (routedPath.startsWith('/api/') && crossSite(req)) return json(403, { error: 'cross-site request refused' });
     if (deps.guard && !deps.guard.allowed(routedPath)) {
       log(`license denied ${req.method} ${url.pathname}`);
       return json(403, { error: 'license required' });

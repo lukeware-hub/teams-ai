@@ -3,13 +3,7 @@
 // topic bank below, written for the `agenda` docs), every pending patch is accepted, then the draft is evaluated again.
 // Each evaluation costs Claude quota: run it only with the human's ok.
 //   node scripts/live-check/converge.mjs <projectId> [maxCycles=8]
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-
-const REPO = fileURLToPath(new URL('../../', import.meta.url));
 const BASE = process.env.TEAMS_AI_URL ?? 'http://localhost:8787/api';
-const token = readFileSync(`${REPO}.env`, 'utf8').split(/\r?\n/).find((l) => l.startsWith('TEAMS_AI_UI_TOKEN='))?.slice('TEAMS_AI_UI_TOKEN='.length).replace(/^"|"$/g, '').trim();
-if (!token) throw new Error('no TEAMS_AI_UI_TOKEN in .env');
 const projectId = process.argv[2];
 const maxCycles = Number(process.argv[3] ?? 8);
 if (!projectId) throw new Error('usage: converge.mjs <projectId> [maxCycles]');
@@ -17,7 +11,7 @@ if (!projectId) throw new Error('usage: converge.mjs <projectId> [maxCycles]');
 const S = `/refine/${projectId}/${projectId}-001`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const api = async (method, path, body) => {
-  const r = await fetch(`${BASE}${path}`, { method, headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const r = await fetch(`${BASE}${path}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
   const text = await r.text();
   try { return { status: r.status, json: JSON.parse(text) }; } catch { return { status: r.status, json: null }; }
 };
