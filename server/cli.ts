@@ -12,7 +12,7 @@ import { execCommand, type Exec } from './exec/command.js';
 import { gitAuthEnv, withGitAuth } from './git/auth.js';
 import { Graphify } from './knowledge/graphify.js';
 import { mergeProjectGraph } from './knowledge/project-graph.js';
-import { KnowledgeIndex } from './knowledge/retrieval.js';
+import { openProjectKnowledge } from './knowledge/project-docs.js';
 import { isFirstSpec } from './orchestrator/first-spec.js';
 import { Run, type ExecuteResult, type RunDeps } from './orchestrator/run.js';
 import { expandHome, firstSpecForRun, firstSpecForSpec, nextRunId, specForRun, stateFile, workspacePaths } from './orchestrator/workspace.js';
@@ -270,7 +270,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   // A `--draft` first run's workspace root (ws.root, parent of knowledgeDb) doesn't exist yet — Phase 0
   // creates ws.repo underneath it — so ensure it exists before SQLite tries to open a file inside it.
   await fs.mkdir(ws.root, { recursive: true });
-  const knowledge = KnowledgeIndex.open(ws.knowledgeDb);
+  const knowledge = await openProjectKnowledge(ws.knowledgeDb, projectDir);
   // A retry (a fresh run-id, not --run) has no resume answer of its own, but an earlier run of this exact spec in
   // this project may have one; `specId` is never a valid run-id suffix, so it excludes nothing from that scan.
   const recordedFirst = opts.resumeRun ? await firstSpecForRun(ws, opts.resumeRun) : await firstSpecForSpec(ws, specId, specId);
