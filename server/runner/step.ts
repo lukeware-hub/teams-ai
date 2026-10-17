@@ -286,9 +286,9 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
   await ensureTrusted(req.cwd, path.join(home, '.claude.json'));
   const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: req.extraAllow, extraDenyRead: req.denyRead, sandboxEnabled: deps.sandbox?.enabled, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });
   if (req.resume && req.sessionStore) await restoreSession(req.sessionStore, home);
-  // A review judges a diff the gates already tested: it never edits the code under review (R11.13 slice 2).
+  // A review and a UI check never edit the code they judge (R11.13 slice 2).
   // The chat searches its own guide and history with the tools of CHAT_TOOLS only; its Bash rules allow graphify queries and nothing else.
-  const agent = req.kind === 'review' ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : req.kind === 'chat' ? { ...req.agent, tools: [...CHAT_TOOLS] } : req.agent;
+  const agent = req.kind === 'review' || req.kind === 'ui-check' ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : req.kind === 'chat' ? { ...req.agent, tools: [...CHAT_TOOLS] } : req.agent;
   const agentWithExtra = req.systemExtra ? { ...agent, body: `${agent.body}\n\n${req.systemExtra}` } : agent;
   const invocation = buildInvocation(
     {

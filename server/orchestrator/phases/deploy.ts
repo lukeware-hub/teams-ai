@@ -10,8 +10,8 @@ import { TERMINAL_STATES } from '../../pipeline/task-state.js';
 import { Intent, OrchEvent } from '../events.js';
 import { E2E_CONTRACT, SMOKE_CONTRACT, uiCheckPack } from '../steps.js';
 import { MISSING_VARIABLE } from '../../environment/service.js';
-import { checkoutMain, type GateScope, type PhaseDeps, type ServiceRepo } from './shared.js';
-import { serviceWorkspace } from '../workspace.js';
+import { checkoutMain, withMainSnapshot, type GateScope, type PhaseDeps, type ServiceRepo } from './shared.js';
+import { serviceWorkspace, type Workspace } from '../workspace.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { ReviewOutput } from '../../agents/outputs.js';
@@ -145,23 +145,24 @@ Contract: ${E2E_CONTRACT}${history}`, affectedPaths: [...(suite ? [suite] : []),
   return { ...base, description: `Deploy attempt ${attempt} failed at ${stage}: ${detail}${portHint}${history}`, affectedPaths: [...deps.plan!.deploy.manifests, 'Dockerfile'], owner: 'devops' };
 };
 
-/** Resuming a new process restarts postPhases()'s attempt loop at 1; without this it replayed attempt 1's
- * already-resolved failure on every resume (new fix task, wasted tokens, never reaching later attempts -
- * 1387253335-001-r13). Each root deploy-fix task (not its `-rN` replan children) that reached a terminal
- * state stands for one attempt cycle that is done; the next attempt starts after all of them. */
 /** `defect` is a UI finding for the front Dev; `error` means the check never ran, so nothing is rolled back. */
-async function runUiCheck(deps: PhaseDeps, opts: { url: string; plan: Plan; cwd: string; attempt: number; service?: string | null }): Promise<{ defect: string | null; error: string | null }> {
+async function runUiCheck(deps: PhaseDeps, opts: { url: string; plan: Plan; ws: Workspace; attempt: number; service?: string | null }): Promise<{ defect: string | null; error: string | null }> {
   const front = opts.plan.tasks.find((t) => t.owner === 'front');
   if (!front) return { defect: null, error: null };
-  const outcome = await deps.runAgent<'ui-check'>({
+  // A check that fails (timeout, rate limit, sandbox) runs once more; the snapshot keeps its edits out of the checkout.
+  const check = (cwd: string) => deps.runAgent<'ui-check'>({
     kind: 'ui-check',
     role: 'test',
     pack: uiCheckPack(deps.packBase(), front, { serviceUrl: opts.url }),
-    cwd: opts.cwd,
+    cwd,
     phase: 'phase5',
     taskId: front.id,
     attempt: opts.attempt,
     extraEnv: { SERVICE_URL: opts.url },
+  });
+  const outcome = await withMainSnapshot(opts.ws, deps.exec, async (cwd) => {
+    const first = await check(cwd);
+    return first.ok ? first : check(cwd);
   });
   if (!outcome.ok) return { defect: null, error: outcome.errors.join('\n') };
   const value = outcome.value as ReviewOutput;
@@ -171,6 +172,10 @@ async function runUiCheck(deps: PhaseDeps, opts: { url: string; plan: Plan; cwd:
   return { defect: value.findings.map((f) => `- ${f.file}${f.line === null ? '' : `:${f.line}`} [${f.severity}] ${f.problem}`).join('\n') || 'UI check requested changes', error: null };
 }
 
+/** Resuming a new process restarts postPhases()'s attempt loop at 1; without this it replayed attempt 1's
+ * already-resolved failure on every resume (new fix task, wasted tokens, never reaching later attempts -
+ * 1387253335-001-r13). Each root deploy-fix task (not its `-rN` replan children) that reached a terminal
+ * state stands for one attempt cycle that is done; the next attempt starts after all of them. */
 export function deployStartAttempt(deps: PhaseDeps): 1 | 2 | 3 {
   const tasks = deps.journal.state.tasks;
   // A replanned fix finishes its attempt once every replacement ended; until then the attempt is still open.
@@ -226,7 +231,7 @@ export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fix
     if (!e.ok) { let rb = false; let rh: boolean | null = null; if (previous) { await deps.target.rollback(intent, previous); rb = true; rh = (await deps.target.verify(intent)).healthy; } else await deps.target.destroy(intent).catch(() => undefined); return failed('e2e', e.detail, rb, rh, previous); }
     e2eRows = e.rows;
   }
-  const ui = await runUiCheck(deps, { url, plan: deps.plan!, cwd: deps.ws.repo, attempt });
+  const ui = await runUiCheck(deps, { url, plan: deps.plan!, ws: deps.ws, attempt });
   if (ui.error !== null) return { ok: false, reason: `UI check did not run; the deploy stays up: ${ui.error}` };
   if (ui.defect !== null) { let rb = false; let rh: boolean | null = null; if (previous) { await deps.target.rollback(intent, previous); rb = true; rh = (await deps.target.verify(intent)).healthy; } else await deps.target.destroy(intent).catch(() => undefined); return failed('ui', ui.defect, rb, rh, previous); }
   await deps.journal.fact(OrchEvent.DeployVerified, { attempt, url, smoke: s.rows, healthcheck, tag, port: intent.port, healthcheckPath: intent.healthcheckPath, ...(deps.plan!.deploy.kind ? { kind: deps.plan!.deploy.kind } : {}), ...(deps.plan!.deploy.docsPath ? { docsPath: deps.plan!.deploy.docsPath } : {}), ...(e2eRows ? { e2e: e2eRows } : {}) }); return { ok: true, url, smoke: s.rows, healthcheck, ...(e2eRows ? { e2e: e2eRows } : {}) };
@@ -358,7 +363,7 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
       if (!e.ok) return suiteFailed('e2e', e.detail, a.repo);
       e2e.push(...e.rows);
     }
-    const ui = await runUiCheck(deps, { url: a.url, plan: a.repo.plan, cwd: a.repo.ws.repo, attempt, service: a.repo.service });
+    const ui = await runUiCheck(deps, { url: a.url, plan: a.repo.plan, ws: a.repo.ws, attempt, service: a.repo.service });
     if (ui.error !== null) return { ok: false as const, reason: `UI check did not run (${a.repo.service}); the deploy stays up: ${ui.error}` };
     if (ui.defect !== null) return failed('ui', ui.defect, a.repo);
   }

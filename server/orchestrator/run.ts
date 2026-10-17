@@ -14,7 +14,7 @@ import { createDecider } from '../decide/create-decider.js';
 import type { Decider } from '../decide/decider.js';
 import { classifyCliError } from '../decide/decisions/cli-error.js';
 import { sandboxPolicyViolation } from '../runner/sandbox-policy.js';
-import type { Exec } from '../exec/command.js';
+import { execCommand, type Exec } from '../exec/command.js';
 import { TOOLS_GATE } from '../validators/security-tooling.js';
 import { writeToolsInstaller } from './tools-install.js';
 import { prepareGateImage, runGate, runGates, TAIL_CHARS, type GateExecutor, type GateResult } from '../exec/gate-runner.js';
@@ -43,6 +43,7 @@ import { portKey, registeredPorts } from '../deploy/port-registry.js';
 import { deliveredByPriorRuns, eventsFile, expandHome, graphDir, mergedByPriorRuns, nextRunId, runDir, serviceWorkspace, sessionDir, stateFile, stepDir, worktreeDir, type Workspace } from './workspace.js';
 import type { DeployTarget } from '../deploy/target.js';
 import { E2E_GATE, runE2e } from '../exec/e2e.js';
+import { clearPrivateSkills } from '../skills/store.js';
 import { gateReachableUrl, runSmoke } from '../exec/smoke.js';
 import { withRepairNotes } from '../program/repair-notes.js';
 import { copyCargoRoot, stackDomains, stackEnv, stackKind } from '../runner/stacks.js';
@@ -216,6 +217,7 @@ export class Run {
     assertApiKey(deps);
     const id = runId ?? (await nextRunId(deps.ws, deps.spec.specId));
     await fs.mkdir(runDir(deps.ws, id), { recursive: true });
+    await clearPrivateSkills(expandHome('~/.teams-ai/skills'), deps.project.projectId);
     const journal = await Run.openJournal(deps, id);
     await journal.fact(OrchEvent.RunStarted, { runId: id, specId: deps.spec.specId, projectId: deps.project.projectId, firstSpec: deps.firstSpec });
     return new Run(id, journal, deps);
@@ -556,6 +558,7 @@ export class Run {
       packBase: view.service ? () => ({ ...this.packBase(), service: { name: view.service!, plan: view.plan, addresses: Object.fromEntries(Object.entries(this.addresses).filter(([s]) => s !== view.service)), design: this.design } }) : this.packBase,
       deliveredBefore: this.deliveredBefore,
       skillsRoot: expandHome('~/.teams-ai/skills'),
+      skillExec: execCommand,
       handoffs: () => this.handoffs,
       boundaries: async () => {
         const g = this.deps.graphify;

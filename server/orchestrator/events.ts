@@ -29,8 +29,6 @@ export const OrchEvent = {
   SkillRequested: 'SKILL_REQUESTED',
   SkillSelected: 'SKILL_SELECTED',
   SkillCreated: 'SKILL_CREATED',
-  CodeReviewApproved: 'CODE_REVIEW_APPROVED',
-  CodeReviewChanges: 'CODE_REVIEW_CHANGES',
   UiChecked: 'UI_CHECKED',
   DecisionMade: 'DECISION_MADE',
   MergeLockAcquired: 'MERGE_LOCK_ACQUIRED',

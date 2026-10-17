@@ -8,6 +8,8 @@ const SAFE_ID = /^[a-z0-9][a-z0-9-]{1,63}$/;
 const SHA = /^[a-f0-9]{40}$/;
 const isPinnedId = (id: string): boolean => PINNED_SKILLS.some((skill) => skill.id === id);
 const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim();
+/** A reuse names a pinned skill with its own repository and commit, never one the SM chose. */
+const matchesCatalog = (skill: PinnedSkill): boolean => PINNED_SKILLS.some((pinned) => pinned.id === skill.id && pinned.repository === skill.repository && pinned.commit === skill.commit);
 
 export function validateSkill(skill: PinnedSkill): string[] {
   const errors: string[] = [];
@@ -29,7 +31,7 @@ const assignmentFile = (root: string, scope: string, role: Role) => path.join(ro
 async function assignedSkills(root: string, scope: string | undefined, role: Role): Promise<PinnedSkill[]> {
   if (!scope) return [];
   const parsed = await fs.readFile(assignmentFile(root, scope, role), 'utf8').then((text) => JSON.parse(text) as unknown).catch(() => []);
-  return Array.isArray(parsed) ? parsed.filter((item): item is PinnedSkill => typeof item === 'object' && item !== null && validateSkill(item as PinnedSkill).length === 0 && !isPinnedId((item as PinnedSkill).id)) : [];
+  return Array.isArray(parsed) ? parsed.filter((item): item is PinnedSkill => typeof item === 'object' && item !== null && validateSkill(item as PinnedSkill).length === 0 && (!isPinnedId((item as PinnedSkill).id) || matchesCatalog(item as PinnedSkill))) : [];
 }
 
 export function capabilityKey(capability: string): string {
@@ -41,7 +43,7 @@ export function acceptReuseSkill(skill: PinnedSkill): string[] {
   if (skill.repository.endsWith('/private-skill') || skill.commit === '0000000000000000000000000000000000000000') {
     errors.push('reused skill must come from a public GitHub repository');
   }
-  if (isPinnedId(skill.id)) errors.push('reused skill id belongs to a pinned skill');
+  if (!matchesCatalog(skill)) errors.push('reused skill must be a pinned catalog skill');
   return errors;
 }
 
@@ -68,6 +70,16 @@ export async function createDraftSkill(root: string, scope: string, role: Role, 
   const privateSkill: PinnedSkill = { id: draft.id, repository: 'https://github.com/teams-ai/private-skill', commit: '0000000000000000000000000000000000000000', roles: [role], purpose: draft.whenToUse, sourcePath: path.relative(root, dir).replace(/\\/g, '/') };
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, `${JSON.stringify([...current.filter((item) => item.id !== draft.id), privateSkill], null, 2)}\n`);
+}
+
+/** A private draft lives only in the run that created it, so a new run drops its project's drafts. */
+export async function clearPrivateSkills(root: string, scope: string): Promise<void> {
+  await fs.rm(path.join(root, 'private', scope), { recursive: true, force: true });
+  const dir = path.join(root, 'assignments', scope);
+  for (const file of await fs.readdir(dir).catch(() => [] as string[])) {
+    const current = await fs.readFile(path.join(dir, file), 'utf8').then((text) => JSON.parse(text) as PinnedSkill[]).catch(() => [] as PinnedSkill[]);
+    await fs.writeFile(path.join(dir, file), `${JSON.stringify(current.filter((item) => !item.repository.endsWith('/private-skill')), null, 2)}\n`);
+  }
 }
 
 async function run(exec: Exec, cwd: string, args: readonly string[]): Promise<void> {
@@ -106,7 +118,12 @@ export async function syncSkill(root: string, skill: PinnedSkill, exec: Exec): P
 }
 
 export async function syncPinnedSkills(root: string, exec: Exec): Promise<void> {
-  for (const skill of PINNED_SKILLS) if (skill.fetch !== false) await syncSkill(root, skill, exec);
+  const failed: string[] = [];
+  for (const skill of PINNED_SKILLS) {
+    if (skill.fetch === false) continue;
+    await syncSkill(root, skill, exec).catch((error: Error) => failed.push(`${skill.id}: ${error.message}`));
+  }
+  if (failed.length > 0) throw new Error(failed.join('; '));
 }
 
 const hasGit = (dir: string) => fs.access(path.join(dir, '.git')).then(() => true, () => false);

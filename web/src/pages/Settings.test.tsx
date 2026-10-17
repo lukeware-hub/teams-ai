@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 const project = { projectId: 'demo', name: 'Demo' } as ProjectRow;
-const agents = ['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops', 'env', 'reviewer'].map((role) => ({ role, setting: null }));
+const agents = ['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops', 'env'].map((role) => ({ role, setting: null }));
 const item = (ok: boolean, detail: string): Item => ({ ok, detail });
 const envStatus = (over: Partial<Status['items']> = {}): Status => ({
   items: {

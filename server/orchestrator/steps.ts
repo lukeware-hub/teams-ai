@@ -323,15 +323,6 @@ export function skillSelectPack(base: PackBase, task: PlanTask, opts: { role: Ro
   };
 }
 
-export function codeReviewPack(
-  base: PackBase,
-  task: PlanTask,
-  opts: { diffStat: string; changedFiles: readonly string[]; diff: string; code: CodeContext },
-): ContextPackInput {
-  const changeSet = `Changed files:\n${opts.changedFiles.join('\n')}\n\nDiff stat:\n${opts.diffStat}\n\nDiff against origin/main:\n${opts.diff}`;
-  return { ...common(base, 'code-review', 'reviewer'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), decisions: base.spec.decisions, code: opts.code, changeSet, feedback: 'Code review at medium effort. Judge front and back code in this diff. Return criteria: [] unless a listed criterion is broken by the change.' };
-}
-
 export function uiCheckPack(base: PackBase, task: PlanTask, opts: { serviceUrl: string }): ContextPackInput {
   return {
     ...common(base, 'ui-check', 'test'),

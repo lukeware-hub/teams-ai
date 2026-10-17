@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { PINNED_SKILLS, skillsForRole } from '../../server/skills/catalog.js';
 import type { Exec } from '../../server/exec/command.js';
-import { acceptReuseSkill, capabilityKey, createDraftSkill, materializeRoleSkills, pinnedSkillsReady, seedPinnedSkills, skillCacheDir, syncSkill, validateSkill } from '../../server/skills/store.js';
+import { acceptReuseSkill, assignSkill, capabilityKey, clearPrivateSkills, createDraftSkill, materializeRoleSkills, pinnedSkillsReady, seedPinnedSkills, skillCacheDir, syncPinnedSkills, syncSkill, validateSkill } from '../../server/skills/store.js';
 
 describe('skill catalog', () => {
   it('pins a commit for every fetched skill and never uses latest', () => {
@@ -14,7 +14,6 @@ describe('skill catalog', () => {
     }
     expect(skillsForRole('front').map((s) => s.id)).toEqual(expect.arrayContaining(['impeccable', 'taste-skill', 'ui-ux-pro-max', 'web-asset-generator', 'playwright-cli', 'playwright']));
     expect(skillsForRole('sm').map((s) => s.id)).toEqual(['find-skills']);
-    expect(skillsForRole('reviewer')).toEqual([]);
   });
 });
 
@@ -66,7 +65,7 @@ describe('skill store', () => {
 
   it('refuses a reused or drafted skill that takes a pinned id', async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-skills-'));
-    expect(acceptReuseSkill({ id: 'superpowers', repository: 'https://github.com/acme/ok', commit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', roles: ['dev'], purpose: 'x' })).toContain('reused skill id belongs to a pinned skill');
+    expect(acceptReuseSkill({ id: 'superpowers', repository: 'https://github.com/acme/ok', commit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', roles: ['dev'], purpose: 'x' })).toContain('reused skill must be a pinned catalog skill');
     await expect(createDraftSkill(dir, 'shop', 'dev', { id: 'superpowers', whenToUse: 'tokenized forms', rules: ['Use the design tokens'] })).rejects.toThrow('skill id belongs to a pinned skill');
   });
 
@@ -92,5 +91,35 @@ describe('skill store', () => {
     const offline: Exec = async (req) => ({ exitCode: req.args[0] === 'fetch' ? 1 : 0, signal: null, stdout: '', stderr: 'could not resolve host', timedOut: false, durationMs: 1, truncated: false });
     await expect(syncSkill(dir, find, offline)).rejects.toThrow('could not resolve host');
     expect(await fs.readdir(path.join(dir, find.id))).toEqual([]);
+  });
+
+  it('reuses only the pinned catalog entry, with its own repository and commit', () => {
+    const find = PINNED_SKILLS.find((s) => s.id === 'find-skills')!;
+    expect(acceptReuseSkill({ ...find, roles: ['dev'] })).toEqual([]);
+    expect(acceptReuseSkill({ ...find, roles: ['dev'], repository: 'https://github.com/acme/find-skills' })).toContain('reused skill must be a pinned catalog skill');
+  });
+
+  it('syncs the other pinned skills when one fetch fails', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-skills-'));
+    const broken = PINNED_SKILLS.find((s) => s.id === 'impeccable')!;
+    const other = PINNED_SKILLS.find((s) => s.id === 'taste-skill')!;
+    const exec: Exec = async (req) => {
+      if (req.args[0] === 'init') await fs.mkdir(path.join(req.cwd!, '.git'), { recursive: true });
+      const fails = req.args[0] === 'fetch' && req.args.includes(broken.commit);
+      return { exitCode: fails ? 1 : 0, signal: null, stdout: '', stderr: 'could not resolve host', timedOut: false, durationMs: 1, truncated: false };
+    };
+    await expect(syncPinnedSkills(dir, exec)).rejects.toThrow('impeccable: git fetch failed: could not resolve host');
+    await expect(fs.access(path.join(skillCacheDir(dir, other), '.git'))).resolves.toBeUndefined();
+  });
+
+  it('drops the private drafts of a project and keeps its pinned assignments', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-skills-'));
+    const find = PINNED_SKILLS.find((s) => s.id === 'find-skills')!;
+    await createDraftSkill(dir, 'shop', 'dev', { id: 'form-tokens', whenToUse: 'tokenized forms', rules: ['Use the design tokens'] });
+    await assignSkill(dir, 'shop', 'dev', find);
+    await clearPrivateSkills(dir, 'shop');
+    await expect(fs.access(path.join(dir, 'private', 'shop'))).rejects.toThrow();
+    const assigned = JSON.parse(await fs.readFile(path.join(dir, 'assignments', 'shop', 'dev.json'), 'utf8')) as Array<{ id: string }>;
+    expect(assigned.map((s) => s.id)).toEqual(['find-skills']);
   });
 });

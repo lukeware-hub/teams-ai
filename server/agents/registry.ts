@@ -23,7 +23,6 @@ export const ROLE_TOOL_POLICY: Record<Role, { allowed: readonly string[] }> = {
   sec: { allowed: READ_ONLY },
   devops: { allowed: EDITING },
   env: { allowed: READ_ONLY },
-  reviewer: { allowed: READ_ONLY },
 };
 
 /** Never granted to any agent; the orchestrator owns these (spec §3.2, §14). */

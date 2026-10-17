@@ -21,6 +21,7 @@ async function ensureDir(dir: string): Promise<void> {
   const st = await fs.lstat(dir);
   const uid = os.userInfo().uid;
   if (!st.isDirectory()) throw new Error(`unsafe lock dir ${dir}: it must be a directory only this user can access`);
+  // Windows has no uid, so only the directory check above applies there.
   if (uid >= 0 && (st.uid !== uid || (st.mode & 0o077) !== 0)) throw new Error(`unsafe lock dir ${dir}: it must be a directory only this user can access`);
 }
 

@@ -8,7 +8,7 @@ import { EFFORT_LEVELS } from '../decide/decisions/model-tier.js';
 /** Pinned model ids: an alias like `sonnet` resolves to whichever version the CLI ships, so a run would not be reproducible. */
 export const MODELS = { haiku: 'claude-haiku-5-5', sonnet: 'claude-sonnet-5-5', opus: 'claude-opus-5-5' } as const;
 
-export const ROLES = ['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops', 'env', 'reviewer'] as const;
+export const ROLES = ['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops', 'env'] as const;
 export type Role = (typeof ROLES)[number];
 
 /** Every role runs the Claude Code CLI; strict, so a leftover `provider` key is refused instead of ignored. */
@@ -29,7 +29,6 @@ const CLAUDE_DEFAULTS: Record<Role, RoleProfile> = {
   sec: { model: MODELS.sonnet },
   devops: { model: MODELS.sonnet },
   env: { model: MODELS.sonnet },
-  reviewer: { model: MODELS.sonnet },
 };
 
 /** The steps that decide architecture: the only ones that run on Opus (always at low effort, see `effortFor`). */

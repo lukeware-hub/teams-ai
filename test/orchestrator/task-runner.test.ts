@@ -14,6 +14,7 @@ import { RunEvent } from '../../server/pipeline/run-state.js';
 import type { StepOutcome } from '../../server/runner/step.js';
 import type { ResultSummary } from '../../server/runner/stream-events.js';
 import { DEFAULT_POLICY, type FailureKind } from '../../server/scheduler/retry-policy.js';
+import { PINNED_SKILLS } from '../../server/skills/catalog.js';
 import { makeFrozenSpec, makePlan, makePlanTask, makeProject } from '../fixtures/contracts.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 
@@ -39,7 +40,7 @@ type Agent = (req: AgentStepRequest<any>) => Promise<StepOutcome<any>>;
 const secApprove = () => ok({ specHash: HASH, decision: 'approve', findings: [] });
 const devDone = (message = 'feat: T1'): Agent => async (req) => {
   if (req.kind === 'security') return secApprove();
-  if (req.kind === 'code-review' || req.kind === 'ui-check' || req.kind === 'review') return approve();
+  if (req.kind === 'ui-check' || req.kind === 'review') return approve();
   await fs.mkdir(path.join(req.cwd, 'src'), { recursive: true });
   await fs.writeFile(path.join(req.cwd, 'src', 'a.ts'), `// ${Date.now()}\n`);
   return ok({ specHash: HASH, status: 'done', summary: 'did T1', changedFiles: ['src/a.ts'], commitMessage: message });
@@ -429,25 +430,7 @@ describe('TaskRunner: reviewing', () => {
     await r.advance();
     expect(state().state).toBe('rebasing');
     expect(types()).toContain(`fact:${OrchEvent.ReviewApproved}`);
-    expect(types()).toContain(`fact:${OrchEvent.CodeReviewApproved}`);
     expect(agentCalls.find((c) => c.kind === 'review')!.pack.changeSet).toContain('src/a.ts');
-    expect(agentCalls.find((c) => c.kind === 'code-review')).toMatchObject({ role: 'reviewer', effort: 'medium' });
-  });
-
-  it('returns code-review findings to Dev before Test and Security run', async () => {
-    const r = new TaskRunner('T1', deps({
-      agent: async (req) => {
-        if (req.kind === 'code-review') return ok({ specHash: HASH, decision: 'changes', criteria: [], findings: [{ file: 'src/a.ts', line: 2, severity: 'important', problem: 'missing null check', fix: 'guard the input' }] });
-        return devDone()(req);
-      },
-    }));
-    await r.advance();
-    await r.advance();
-    await r.advance();
-    expect(state()).toMatchObject({ state: 'implementing', attempts: 1 });
-    expect(journal.lastFeedback('T1')).toContain('missing null check');
-    expect(types()).toContain(`fact:${OrchEvent.CodeReviewChanges}`);
-    expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'code-review']);
   });
 
   it('returns findings to Dev on changes', async () => {
@@ -494,21 +477,22 @@ describe('TaskRunner: security review', () => {
     expect(call.pack.changeSet).toContain('Diff against origin/main');
     expect(call.pack.changeSet).toContain('src/a.ts');
     expect(call.pack.changeSet).not.toContain('diff truncated');
-    expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'code-review', 'security', 'review']);
+    expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'security', 'review']);
     expect(types()).toContain(`fact:${OrchEvent.SecurityApproved}`);
   });
 
-  it('journals a skill request from the sec role without routing it to the SM', async () => {
+  it('blocks the task when the sec role asks for a skill it lacks', async () => {
     await secured(async () => ok({ specHash: HASH, decision: 'approve', findings: [], skillRequest: { capability: 'scan dependencies', reason: 'no scanner mounted' } }));
-    expect(state().state).toBe('rebasing');
+    expect(state().state).not.toBe('rebasing');
     expect(journal.events.some((e) => e.type === OrchEvent.SkillRequested && e.data.role === 'sec' && e.data.capability === 'scan dependencies')).toBe(true);
+    expect(journal.lastFeedback('T1')).toContain('Security review incomplete: a skill is needed for scan dependencies');
     expect(agentCalls.some((c) => c.kind === 'skill-select')).toBe(false);
   });
 
   it('tells sec the diff was cut at the inline limit and where to look for the rest', async () => {
     const bigDev: Agent = async (req) => {
       if (req.kind === 'security') return secApprove();
-      if (req.kind === 'code-review' || req.kind === 'review') return approve();
+      if (req.kind === 'review') return approve();
       await fs.mkdir(path.join(req.cwd, 'src'), { recursive: true });
       await fs.writeFile(path.join(req.cwd, 'src', 'big.ts'), '// padding that makes the diff larger than the inline limit\n'.repeat(2000));
       return ok({ specHash: HASH, status: 'done', summary: 'did T1', changedFiles: ['src/big.ts'], commitMessage: 'feat: T1' });
@@ -529,7 +513,7 @@ describe('TaskRunner: security review', () => {
     async function secPrompt(diffChars: number) {
       const padding = `// ${'p'.repeat(76)}\n`.repeat(Math.ceil(diffChars / 80)); // 80 chars a line, 81 once the diff prefixes it
       const dev: Agent = async (req) => {
-        if (req.kind === 'review' || req.kind === 'code-review') return approve();
+        if (req.kind === 'review') return approve();
         if (req.kind === 'security') return secApprove();
         await fs.mkdir(path.join(req.cwd, 'src'), { recursive: true });
         await fs.writeFile(path.join(req.cwd, 'src', 'big.ts'), `${padding}// END-OF-FILE\n`);
@@ -1114,7 +1098,8 @@ describe('TaskRunner: worktree left by an earlier run', () => {
 });
 
 describe('TaskRunner: skill request', () => {
-  const skill = { id: 'json-schema-guard', repository: 'https://github.com/example/json-schema-guard', commit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', license: 'MIT' };
+  const unpinned = { id: 'json-schema-guard', repository: 'https://github.com/example/json-schema-guard', commit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', license: 'MIT' };
+  const skill = { ...PINNED_SKILLS.find((s) => s.id === 'taste-skill')! };
   const exec: TaskRunnerDeps['exec'] = async (req) => {
     if (req.bin === 'git' && (req.cwd ?? '').includes(`${path.sep}skills${path.sep}`)) {
       if (req.args[0] === 'init') await fs.mkdir(path.join(req.cwd!, '.git'), { recursive: true });
@@ -1239,5 +1224,22 @@ describe('TaskRunner: skill request', () => {
     expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'skill-select', 'skill-select', 'dev']);
     expect(journal.events.some((e) => e.type === OrchEvent.SkillCreated && e.data.id === 'form-tokens')).toBe(true);
     expect(journal.events.some((e) => e.type === OrchEvent.SkillSelected && e.data.action === 'reuse')).toBe(true);
+  });
+
+  it('rejects a reuse that is not in the pinned catalog', async () => {
+    let first = true;
+    const agent: Agent = async (req) => {
+      if (req.kind === 'skill-select') return ok({ specHash: HASH, action: 'reuse', skill: unpinned, reason: 'looks right' });
+      if (req.kind === 'dev' && first) {
+        first = false;
+        return ok({ specHash: HASH, status: 'done', summary: 'need skill', changedFiles: [], commitMessage: 'feat: T1', skillRequest: { capability: 'validate JSON Schema', reason: 'the task must reject invalid payloads' } });
+      }
+      return devDone()(req);
+    };
+    const r = new TaskRunner('T1', deps({ agent, exec }));
+    await r.advance();
+    expect(state().state).toBe('validating');
+    expect(journal.events.find((e) => e.type === OrchEvent.SkillSelected)?.data).toMatchObject({ action: 'reject' });
+    expect(journal.lastFeedback('T1')).toContain('must be a pinned catalog skill');
   });
 });

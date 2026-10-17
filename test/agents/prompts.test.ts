@@ -42,7 +42,6 @@ describe('agent prompts for a project of services (R12.6)', () => {
     expect(agent('test')).toContain('playwright');
     expect(agent('devops')).toContain('hashicorp-agent-skills');
     expect(agent('sm')).toContain('find-skills');
-    expect(agent('reviewer')).toContain('/code-review medium');
     for (const role of ['front', 'dev', 'devops']) expect(agent(role)).toContain('skillRequest');
   });
 

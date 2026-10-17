@@ -48,7 +48,7 @@ export function runPrs(events: readonly { type: string; data: Record<string, unk
   }
   return [...prs.values()];
 }
-const ROLES = ['po', 'sm', 'dev', 'front', 'test', 'sec', 'devops', 'env', 'reviewer', 'system1'] as const;
+const ROLES = ['po', 'sm', 'dev', 'front', 'test', 'sec', 'devops', 'env', 'system1'] as const;
 /** Read after the report step so its own cost counts. */
 function tokensOf(accounting: Accounting): Report['tokens'] {
   const pick = (u: { inputTokens: number; outputTokens: number; costUsd: number }) => ({ inputTokens: u.inputTokens, outputTokens: u.outputTokens, costUsd: u.costUsd });

@@ -173,4 +173,23 @@ describe('Phase 5 e2e gate', () => {
     await runPhase5(deps, 1);
     expect(journal.events.some((e) => e.type === OrchEvent.SkillRequested && e.data.role === 'test' && e.data.capability === 'check contrast')).toBe(true);
   });
+
+  it('retries a UI check that errors once before it counts as not run', async () => {
+    const frontPlan = makePlan(spec, {
+      commands: plan.commands,
+      delivery: plan.delivery,
+      tasks: [makePlanTask({ id: 'T2-screen', owner: 'front', affectedPaths: ['web/src/**'] })],
+    });
+    const { deps } = setup({ smokeOk: true, e2eOk: true, plan: frontPlan });
+    deps.packBase = () => ({ spec, project, specHash: HASH, assumptions: [], budgetTokens: 8000 });
+    const calls: boolean[] = [];
+    deps.runAgent = (async () => {
+      calls.push(true);
+      if (calls.length === 1) return { ok: false, failure: 'environment', errors: ['ui-check timed out'], sandboxDisabled: false, summary: { found: true, isError: true, subtype: 'success', numTurns: 1, durationMs: 1, costUsd: 0, usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 }, sessionId: null, resultText: null, structuredOutput: null, structuredSource: null, terminalReason: null, apiErrorStatus: null, rateLimit: null, compactions: 0 } };
+      return { ok: true, value: { specHash: HASH, decision: 'approve', criteria: [], findings: [] }, summary: { found: true, isError: false, subtype: 'success', numTurns: 1, durationMs: 1, costUsd: 0, usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 }, sessionId: null, resultText: null, structuredOutput: null, structuredSource: null, terminalReason: null, apiErrorStatus: null, rateLimit: null, compactions: 0 } };
+    }) as PhaseDeps['runAgent'];
+    const r = await runPhase5(deps, 1);
+    expect(r.ok).toBe(true);
+    expect(calls).toHaveLength(2);
+  });
 });

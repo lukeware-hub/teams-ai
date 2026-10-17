@@ -46,8 +46,7 @@ RUN npm install --global @anthropic-ai/claude-code@2.1.295 --no-audit --no-fund
 RUN npm install --global npm@12.2.0 --no-audit --no-fund
 COPY web/package*.json web/
 RUN cd web && npm ci --no-audit --no-fund
-# Pinned agent skills after Claude Code is on PATH; the volume hides $HOME, so the image copy lives here.
-# Copied before the rest of the code: a code change then keeps this layer cached.
+# Pinned agent skills after Claude Code is on PATH and copied before the rest of the code, so a code change keeps this layer cached; the volume hides $HOME, so the image copy lives here.
 COPY scripts/install-pinned-skills.ts scripts/
 COPY server/exec server/exec
 COPY server/skills server/skills

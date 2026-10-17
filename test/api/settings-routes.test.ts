@@ -22,7 +22,7 @@ afterEach(async () => {
 describe('settings routes', () => {
   it('lists the nine agents on automatic by default, then shows a manual pick', async () => {
     const first = (await (await fetch(`${base()}/demo`)).json()) as { agents: Array<{ role: string; setting: unknown }> };
-    expect(first.agents.map((a) => a.role)).toEqual(['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops', 'env', 'reviewer']);
+    expect(first.agents.map((a) => a.role)).toEqual(['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops', 'env']);
     expect(first.agents.every((a) => a.setting === null)).toBe(true);
 
     expect((await put(`${base()}/demo/dev`, { mode: 'manual', model: 'claude-opus-5-5', effort: 'max' })).status).toBe(200);

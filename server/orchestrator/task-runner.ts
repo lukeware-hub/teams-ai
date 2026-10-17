@@ -35,7 +35,7 @@ import { devopsOwnerErrors } from '../validators/plan.js';
 import type { RefContext } from '../validators/references.js';
 import { Intent, OrchEvent, type Journal } from './events.js';
 import { withMainSnapshot } from './phases/shared.js';
-import { codeReviewPack, devPack, devResumePrompt, replanPack, reviewPack, securityPack, skillSelectPack, specGapPack, type AgentStepRequest, type PackBase } from './steps.js';
+import { devPack, devResumePrompt, replanPack, reviewPack, securityPack, skillSelectPack, specGapPack, type AgentStepRequest, type PackBase } from './steps.js';
 import { olderLiveRun, worktreeDir, type Workspace } from './workspace.js';
 import { acceptReuseSkill, assignSkill, capabilityKey, createDraftSkill, syncSkill } from '../skills/store.js';
 
@@ -85,6 +85,8 @@ export interface TaskRunnerDeps {
   /** Ids of the plan tasks an earlier run of this spec delivered: an empty diff on one of them means its work is on main. */
   deliveredBefore: ReadonlySet<string>;
   skillsRoot?: string;
+  /** Runs the skill fetches: a public skill needs no token, so the orchestrator's git exec is not used for it. */
+  skillExec?: Exec;
 }
 
 const TAIL = 2000;
@@ -394,7 +396,7 @@ export class TaskRunner {
         return `Skill request rejected: ${errors.join('; ')}. Continue with the capabilities already available.`;
       }
       try {
-        await syncSkill(this.skillsRoot, skill, this.deps.exec);
+        await syncSkill(this.skillsRoot, skill, this.deps.skillExec ?? this.deps.exec);
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         await this.deps.journal.fact(OrchEvent.SkillSelected, { taskId: this.taskId, role, action: 'reject', capability: request.capability, reason });
@@ -569,26 +571,6 @@ export class TaskRunner {
     const depth = REVIEW_PROFILE_DEPTH[profile];
     const code: CodeContext = depth === 0 ? { source: 'none' } : await this.deps.impact(this.worktree, this.branch, changed, depth);
     const diff = await this.boundedDiff();
-    const codeReview = await this.deps.runAgent<'code-review'>({
-      kind: 'code-review',
-      role: 'reviewer',
-      pack: codeReviewPack(this.deps.packBase(), this.task.def, { diffStat, changedFiles: changed, diff, code }),
-      cwd: this.worktree,
-      effort: 'medium',
-      phase: 'phase3',
-      taskId: this.taskId,
-      attempt: this.task.attempts + 1,
-    });
-    if (!codeReview.ok) return this.fail(codeReview.failure, codeReview.errors.join('\n'));
-    const reviewed = codeReview.value as ReviewOutput;
-    await this.journalSkillRequest('reviewer', reviewed.skillRequest);
-    const blocking = reviewed.findings.filter((f) => f.severity === 'critical' || f.severity === 'important');
-    if (reviewed.decision === 'changes' || blocking.length > 0) {
-      await this.deps.journal.fact(OrchEvent.CodeReviewChanges, { taskId: this.taskId, findings: reviewed.findings });
-      const text = reviewed.findings.map((f) => `- ${f.file}${f.line === null ? '' : `:${f.line}`} [${f.severity}] ${f.problem} (fix: ${f.fix})`).join('\n');
-      return this.fail('review-changes', `Code review requested changes:\n${text}`);
-    }
-    await this.deps.journal.fact(OrchEvent.CodeReviewApproved, { taskId: this.taskId });
     const pack = reviewPack(this.deps.packBase(), this.task.def, { diffStat, changedFiles: changed, diff, junit: this.junit, code, profile });
     // R11.13 slice 5: both reviews read the same diff and edit nothing, so they run together (about 40 s per task). The
     // security step must settle before this method returns, or a Dev retry could edit the worktree while it still reads it.
@@ -655,6 +637,10 @@ export class TaskRunner {
       return false;
     }
     const value = outcome.value as SecurityOutputSchema;
+    if (value.skillRequest) {
+      await this.fail('review-changes', `Security review incomplete: a skill is needed for ${value.skillRequest.capability} (${value.skillRequest.reason})`);
+      return false;
+    }
     // One rule: the severities decide. `decision` is the reviewer's own label and neither adds to this nor lifts it.
     const blocking = blockingFindings(value);
     if (blocking.length > 0) {
