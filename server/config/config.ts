@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { ROLES, type Role } from './roles.js';
+export { ROLES, type Role };
 import { STEP_KINDS, type StepKind } from '../agents/outputs.js';
 import { DEFAULT_MAX_PARALLEL } from '../scheduler/scheduler.js';
 import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
@@ -8,8 +10,6 @@ import { EFFORT_LEVELS } from '../decide/decisions/model-tier.js';
 /** Pinned model ids: an alias like `sonnet` resolves to whichever version the CLI ships, so a run would not be reproducible. */
 export const MODELS = { haiku: 'claude-haiku-5-5', sonnet: 'claude-sonnet-5-5', opus: 'claude-opus-5-5' } as const;
 
-export const ROLES = ['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops', 'env'] as const;
-export type Role = (typeof ROLES)[number];
 
 /** Every role runs the Claude Code CLI; strict, so a leftover `provider` key is refused instead of ignored. */
 export const RoleProfile = z

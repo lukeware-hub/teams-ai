@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ROLES, type Role } from '../config/config.js';
+import { ROLES, type Role } from '../config/roles.js';
 import { PINNED_SKILLS, type PinnedSkill } from './catalog.js';
 import { assignedSkills, skillCacheDir } from './store.js';
 
