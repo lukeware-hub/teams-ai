@@ -44,7 +44,7 @@ describe('.github/workflows/ci.yml publish job (R9.4)', () => {
   it('builds the amd64 image, scans, and only then moves latest or the version', () => {
     expect(step('Build and push the commit tag').with.platforms).toBe('linux/amd64');
     expect(step('Build and push the commit tag').with.tags).toBe('${{ env.IMAGE }}:${{ github.sha }}');
-    expect(step('Scan for critical vulnerabilities').run).toContain('--severity CRITICAL --ignore-unfixed --exit-code 1');
+    expect(step('Scan for critical vulnerabilities').run).toContain('--severity CRITICAL --ignore-unfixed --secret-config /src/trivy-secret.yaml --exit-code 1');
     expect(stepNames.indexOf('Build and push the commit tag')).toBeLessThan(stepNames.indexOf('Scan for critical vulnerabilities'));
     expect(stepNames.indexOf('Scan for critical vulnerabilities')).toBeLessThan(stepNames.indexOf('Publish latest, or the version on a v* tag'));
     expect(step('Publish latest, or the version on a v* tag').run).toContain('docker buildx imagetools create');
