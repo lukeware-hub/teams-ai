@@ -65,7 +65,7 @@ ENV HOST=0.0.0.0
 ENV TEAMS_AI_SKILLS_IMAGE=/opt/teams-ai/skills
 ENV TEAMS_AI_AGENT_PLUGINS_IMAGE=/opt/teams-ai/agent-plugins
 EXPOSE 8787
-# Any HTTP answer below 500 means the server is up (the API may answer 401 once authentication is on).
+# Any HTTP answer below 500 means the server is up.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:8787/').then((r)=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
 # The graphify skill for Claude Code is written at each start, not at build: ~/.claude is a volume that keeps only what it had when first created.

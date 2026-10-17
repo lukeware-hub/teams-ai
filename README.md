@@ -327,7 +327,6 @@ LICENSE_MASTER_KEY=        # 32 bytes em base64; cifra a chave para o administra
 JWT_SECRET=                # segredo do login da administração, com pelo menos 16 caracteres
 ADMIN_EMAIL=
 ADMIN_PASSWORD=
-LICENSE_DB_PASSWORD=license
 DATABASE_URL=postgres://license:license@127.0.0.1:5432/license?sslmode=disable
 PORT=8080
 ```
@@ -398,7 +397,6 @@ Variáveis de ambiente (`.env`, lido pelo `docker-compose.yml`):
 | `CLAUDE_CODE_OAUTH_TOKEN` | Token longo do Claude, gerado por `claude setup-token`. |
 | `TEAMS_AI_UI_BIND` | Interface do host para a porta 8787. Padrão `127.0.0.1`. Use `0.0.0.0` para a rede local (sem senha: só em rede de confiança). |
 | `TEAMS_AI_ALLOWED_HOSTS` | Valores extras de `Host` que a API aceita. |
-| `DOCKER_GID` | ID do grupo Docker, só se você montar um socket do host (não é usado por padrão). |
 | `LICENSE_SERVICE_URL` | Endereço do serviço de licenças. No Compose o padrão é `http://license:8080`. |
 
 ## Referência da CLI
