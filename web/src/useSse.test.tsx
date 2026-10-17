@@ -74,7 +74,7 @@ describe('useJournal reconnection (audit M5)', () => {
     for (let seq = 1; seq <= 300; seq += 1) {
       es.listeners.journal!({ data: JSON.stringify({ seq, type: 'X' }) } as MessageEvent);
       await Promise.resolve();
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setImmediate(r));
     }
     es.listeners.end!({} as MessageEvent);
     await waitFor(() => expect(result.current.ended).toBe(true));
