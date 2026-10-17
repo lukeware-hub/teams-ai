@@ -43,8 +43,14 @@ describe('buildRoleSettings', () => {
     // `mkdir -p reports && npm test` is denied unless every segment matches a rule (todo-api-r10: T3 blocked on it).
     expect(buildRoleSettings('dev', { allowedDomains: [] }).permissions.allow).toContain('Bash(mkdir:*)');
     expect(buildRoleSettings('devops', { allowedDomains: [] }).permissions.allow).not.toContain('Bash(npm:*)');
-    expect(buildRoleSettings('sm', { allowedDomains: [] }).permissions.allow).toEqual([]);
+    expect(buildRoleSettings('sm', { allowedDomains: [] }).permissions.allow).toEqual(['Skill']);
     expect(buildRoleSettings('env', { allowedDomains: [] }).permissions.allow).toEqual([]);
+  });
+
+  it('forbids every write to the installed skill plugins, by the Edit tool and by any command of the sandbox', () => {
+    const s = buildRoleSettings('dev', { allowedDomains: [], protectedDirs: ['/opt/teams-ai/agent-plugins/'] });
+    expect(s.permissions.deny).toContain('Edit(//opt/teams-ai/agent-plugins/**)');
+    expect(s.sandbox.filesystem?.denyWrite).toEqual(['/opt/teams-ai/agent-plugins']);
   });
 
   it('denies every read of the secrets directory of every project, by the Read tool and by any command of the sandbox', () => {

@@ -34,13 +34,13 @@ describe('agent prompts for a project of services (R12.6)', () => {
     expect(agent('dev')).toContain("main's side sits between `<<<<<<< ours` and `=======`");
   });
 
-  it('tell each implementer which mounted skills to use and how to request a missing one', () => {
-    expect(agent('front')).toContain('impeccable');
+  it('tell each implementer which installed skills to use and how to request a missing one', () => {
+    expect(agent('front')).toContain('Use the installed design skills');
     expect(agent('front')).toContain('no live browser unless SERVICE_URL is set');
-    expect(agent('dev')).toContain('superpowers');
-    expect(agent('sec')).toContain('cybersecurity-skills');
-    expect(agent('test')).toContain('playwright');
-    expect(agent('devops')).toContain('hashicorp-agent-skills');
+    expect(agent('dev')).toContain('Use the installed skills');
+    expect(agent('sec')).toContain('Use the installed security skills');
+    expect(agent('test')).toContain('Use the installed browser skill');
+    expect(agent('devops')).toContain('Use the installed DevOps skills');
     expect(agent('sm')).toContain('find-skills');
     for (const role of ['front', 'dev', 'devops']) expect(agent(role)).toContain('skillRequest');
   });

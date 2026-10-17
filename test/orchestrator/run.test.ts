@@ -123,7 +123,7 @@ describe('withInflightClaimed', () => {
 
 describe('gateCacheDir', () => {
   it('gives every project its own gate cache', () => {
-    expect(gateCacheDir('/c', 'shop')).toBe('/c/gates/shop');
+    expect(gateCacheDir('/c', 'shop')).toBe(path.join('/c', 'gates', 'shop'));
     expect(gateCacheDir('/c', 'shop')).not.toBe(gateCacheDir('/c', 'blog'));
   });
 });

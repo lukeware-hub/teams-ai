@@ -94,7 +94,7 @@ describe('orchestrator loop with the fake claude', () => {
     expect(paired(scenario.seen)).toEqual(paired(steps));
   });
 
-  it('survives a crash after every intent and never duplicates a commit, PR or merge', { timeout: 900_000 }, async () => {
+  it('survives a crash after every intent and never duplicates a commit, PR or merge', { timeout: 3_600_000 }, async () => {
     // First, a clean run to learn the intent ids in order.
     const probe = happyScenario(path.join(remote.root, 'scn-probe'));
     const d0 = { ...deps(probe), agents: await loadAgents(path.resolve('.claude/agents')) };

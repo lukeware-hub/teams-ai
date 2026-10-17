@@ -50,7 +50,7 @@ RUN cd web && npm ci --no-audit --no-fund
 COPY scripts/install-pinned-skills.ts scripts/
 COPY server/exec server/exec
 COPY server/skills server/skills
-RUN npx tsx --no-warnings=ExperimentalWarning scripts/install-pinned-skills.ts /opt/teams-ai/skills \
+RUN npx tsx --no-warnings=ExperimentalWarning scripts/install-pinned-skills.ts /opt/teams-ai/skills /opt/teams-ai/agent-plugins \
   && chown -R node:node /opt/teams-ai/skills
 COPY . .
 RUN npm run --prefix web build
@@ -62,6 +62,7 @@ USER node
 ENV HOME=/home/node
 ENV HOST=0.0.0.0
 ENV TEAMS_AI_SKILLS_IMAGE=/opt/teams-ai/skills
+ENV TEAMS_AI_AGENT_PLUGINS_IMAGE=/opt/teams-ai/agent-plugins
 EXPOSE 8787
 # Any HTTP answer below 500 means the server is up (the API may answer 401 once authentication is on).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

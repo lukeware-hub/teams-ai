@@ -16,10 +16,10 @@ import { sandboxPolicyViolation } from './sandbox-policy.js';
 import { readTotals, restoreSession, saveSession, writeTotals } from './session-store.js';
 import { API_KEY_ENV, createStepHome, hasStaticCredential, hostTokenExpiresAt, removeStepHome, syncBackCredentials } from './step-home.js';
 import { preflightSandbox, runProcess, type ProcessCaps, type RawStepResult, type RunnerBinary } from './process-runner.js';
-import { writeRoleSettings, type RoleSettingsInput } from './role-settings.js';
+import { absoluteRule, writeRoleSettings, type RoleSettingsInput } from './role-settings.js';
+import { buildDynamicPlugin, referenceDirs } from '../skills/plugins.js';
 import { isRateLimitRejected, type ResultSummary, type Usage } from './stream-events.js';
 import { redactSecrets } from '../core/redact.js';
-import { materializeRoleSkills } from '../skills/store.js';
 
 export interface StepRequest {
   kind: StepKind;
@@ -66,9 +66,10 @@ export interface StepDeps {
   settingsDir: string;
   /** Every step cwd must live under this directory; anything else is never trusted or run. */
   workspacesRoot: string;
-  /** Read-only cache of pinned skills; only the current role's skills are copied into the ephemeral HOME. */
+  /** Root of the installed skill plugins, one folder per role; the agent loads its role's folder natively. */
+  agentPluginsRoot?: string;
+  /** Cache of pinned skills and the project scope: the SM's reuses and drafts of this project become this step's plugin. */
   skillsRoot?: string;
-  /** Project id used to include project-private and dynamically selected skills. */
   skillScope?: string;
   network: Pick<RoleSettingsInput, 'allowedDomains'>;
   /** Config `sandbox`; when disabled the bubblewrap/socat tool check is skipped as well. */
@@ -179,7 +180,7 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
     try {
       // A short path: the sandbox socket in $HOME/tmp must fit the 108 characters of a Unix socket path.
       home = await createStepHome(path.join(os.tmpdir(), `th-${process.getuid?.() ?? 0}`), hostEnv);
-      await materializeRoleSkills(home, deps.skillsRoot, req.role, deps.skillScope);
+      if (deps.skillsRoot && deps.skillScope) await buildDynamicPlugin(deps.skillsRoot, deps.skillScope, req.role, dynamicPluginDir(home));
       return await runStepIn(req, deps, hostEnv, home);
     } catch (err) {
       // A throw outside the agent process (trust, settings, session restore) still ends the step with an outcome.
@@ -189,6 +190,7 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
         await syncBackCredentials(home, hostEnv);
         if (req.sessionStore) await saveSession(home, req.sessionStore, req.cwd);
         await removeStepHome(home);
+        await fs.rm(dynamicPluginDir(home), { recursive: true, force: true });
       }
     }
   });
@@ -282,14 +284,29 @@ async function bookSessionShare(s: ResultSummary, store: string, resume: boolean
   if (s.profile) s.profile = { ...s.profile, durationApiMs: apiMs - before.durationApiMs };
 }
 
+/** This step's own plugin folder for the SM's reuses and drafts; a sibling of the step HOME, never inside it. */
+const dynamicPluginDir = (home: string): string => `${home}-plugins`;
+
+/** The plugin folders the step loads: the role's installed skills and, when the SM gave any, this step's own. */
+async function stepPluginDirs(deps: StepDeps, role: Role, home: string): Promise<string[]> {
+  const candidates = [deps.agentPluginsRoot ? path.join(deps.agentPluginsRoot, role) : undefined, dynamicPluginDir(home)];
+  const present: string[] = [];
+  for (const dir of candidates) if (dir && (await fs.access(dir).then(() => true, () => false))) present.push(dir);
+  return present;
+}
+
 async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, hostEnv: NodeJS.ProcessEnv, home: string): Promise<StepOutcome<OutputOf<K>>> {
+  // The reference catalogs of the role are searched with Grep, never installed: the agent is told where they are.
+  const refs = deps.skillsRoot ? referenceDirs(deps.skillsRoot, req.role) : [];
   await ensureTrusted(req.cwd, path.join(home, '.claude.json'));
-  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: req.extraAllow, extraDenyRead: req.denyRead, sandboxEnabled: deps.sandbox?.enabled, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });
+  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: [...(req.extraAllow ?? []), ...refs.map((dir) => `Read(${absoluteRule(dir)}/**)`)], extraDenyRead: req.denyRead, protectedDirs: [deps.agentPluginsRoot, dynamicPluginDir(home)].filter((dir): dir is string => dir !== undefined), sandboxEnabled: deps.sandbox?.enabled, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });
   if (req.resume && req.sessionStore) await restoreSession(req.sessionStore, home);
   // A review and a UI check never edit the code they judge (R11.13 slice 2).
   // The chat searches its own guide and history with the tools of CHAT_TOOLS only; its Bash rules allow graphify queries and nothing else.
   const agent = req.kind === 'review' || req.kind === 'ui-check' ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : req.kind === 'chat' ? { ...req.agent, tools: [...CHAT_TOOLS] } : req.agent;
-  const agentWithExtra = req.systemExtra ? { ...agent, body: `${agent.body}\n\n${req.systemExtra}` } : agent;
+  const catalogNote = refs.length > 0 ? `Reference catalog (search it with Grep; never load it whole): ${refs.join(', ')}` : '';
+  const systemExtra = [req.systemExtra, catalogNote].filter(Boolean).join('\n\n');
+  const agentWithExtra = systemExtra ? { ...agent, body: `${agent.body}\n\n${systemExtra}` } : agent;
   const invocation = buildInvocation(
     {
       role: req.role,
@@ -299,6 +316,7 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
       prompt: req.prompt,
       jsonSchema: toJsonSchema(req.kind),
       tools: agent.tools,
+      pluginDirs: await stepPluginDirs(deps, req.role, home),
       disallowedTools: [...ALWAYS_DENIED, ...NESTED_DENIED],
       settingsPath,
       home,

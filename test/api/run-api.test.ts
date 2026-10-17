@@ -198,7 +198,7 @@ describe('projects', () => {
     expect(cloned[0]!.destination).toContain(`${path.sep}imports${path.sep}demo-`);
     expect(cloned[1]!.destination).toContain(`${path.sep}imports${path.sep}another-`);
     // The download moves to the project's own clone, where refinement and runs look for it.
-    const repo = path.join(home, '.teams-ai', 'workspaces', 'hello-app', 'repo');
+    const repo = path.posix.join(home, '.teams-ai', 'workspaces', 'hello-app', 'repo');
     expect((await first.json()).dir).toBe(repo);
     expect((await fs.stat(path.join(repo, 'docs', 'project.json'))).isFile()).toBe(true);
     await expect(fs.access(cloned[0]!.destination)).rejects.toThrow();
@@ -228,7 +228,7 @@ describe('projects', () => {
   });
 
   it('refuses an import whose project id already belongs to a clone of another repository', async () => {
-    const repo = path.join(home, '.teams-ai', 'workspaces', 'hello-app', 'repo');
+    const repo = path.posix.join(home, '.teams-ai', 'workspaces', 'hello-app', 'repo');
     await fs.mkdir(repo, { recursive: true });
     for (const args of [['init', '-q'], ['remote', 'add', 'origin', 'https://github.com/acme/owner.git']]) await execCommand({ bin: 'git', args, cwd: repo, timeoutMs: 10_000 });
     const res = await post('/api/projects', { url: 'https://github.com/acme/intruder.git' });

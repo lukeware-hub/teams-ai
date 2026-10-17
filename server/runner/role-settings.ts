@@ -53,13 +53,13 @@ const SUITE_BASH = [
 ] as const;
 // `find` is deliberately absent (audit H3): `-exec` runs any command; use ls/grep.
 const ROLE_ALLOW: Record<Role, readonly string[]> = {
-  sm: [],
+  sm: ['Skill'],
   po: [],
-  front: [...EDIT_TOOLS, ...SUITE_BASH],
-  dev: [...EDIT_TOOLS, ...SUITE_BASH],
-  test: [...EDIT_TOOLS, ...SUITE_BASH],
-  sec: [],
-  devops: [...EDIT_TOOLS],
+  front: ['Skill', ...EDIT_TOOLS, ...SUITE_BASH],
+  dev: ['Skill', ...EDIT_TOOLS, ...SUITE_BASH],
+  test: ['Skill', ...EDIT_TOOLS, ...SUITE_BASH],
+  sec: ['Skill'],
+  devops: ['Skill', ...EDIT_TOOLS],
   env: [],
 };
 
@@ -81,21 +81,24 @@ export interface RoleSettingsInput {
    * that form over a workspace with millions of files made the CLI take gigabytes of memory for every command.
    */
   extraDenyRead?: readonly string[];
+  /** Directories no tool of the step may write: the installed skill plugins, shared by every step. */
+  protectedDirs?: readonly string[];
 }
 
 export interface RoleSettings {
-  sandbox: { enabled: boolean; network: { allowedDomains: string[] }; filesystem?: { denyRead: string[] } };
+  sandbox: { enabled: boolean; network: { allowedDomains: string[] }; filesystem?: { denyRead?: string[]; denyWrite?: string[] } };
   permissions: { allow: string[]; deny: string[] };
 }
 
 // A permission rule with one leading slash is relative to the working directory: only `//path` is the absolute path.
-const absoluteRule = (dir: string) => `/${dir.replace(/\/+$/, '')}`;
+export const absoluteRule = (dir: string) => `/${dir.replace(/\/+$/, '')}`;
 
 export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSettings {
   const deny = [
     ...PROTECTED_READ_PATHS.map((p) => `Read(${p})`),
     ...(input.hostHome ? PROTECTED_READ_PATHS.map((p) => `Read(${absoluteRule(input.hostHome!)}/${p.slice(2)})`) : []),
     ...(input.projectSecretsDirs ?? []).map((d) => `Read(${absoluteRule(d)}/**)`),
+    ...(input.protectedDirs ?? []).map((d) => `Edit(${absoluteRule(d)}/**)`),
     // No `/**` here: that form over a workspace with millions of files made the CLI take gigabytes per command. The bare path still blocks the Read, Grep and Glob tools there.
     ...(input.extraDenyRead ?? []).map((d) => `Read(${absoluteRule(d)})`),
     // Edit(path) rules cover every file-editing tool; a Write(path) rule is not matched by the file permission checks.
@@ -110,8 +113,9 @@ export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSet
     ...(input.projectSecretsDirs ?? []).map((d) => d.replace(/\/+$/, '')),
     ...(input.extraDenyRead ?? []).map((d) => d.replace(/\/+$/, '')),
   ];
+  const denyWrite = (input.protectedDirs ?? []).map((d) => d.replace(/\/+$/, ''));
   return {
-    sandbox: { enabled: input.sandboxEnabled ?? true, network: { allowedDomains: [...input.allowedDomains] }, ...(denyRead.length > 0 ? { filesystem: { denyRead } } : {}) },
+    sandbox: { enabled: input.sandboxEnabled ?? true, network: { allowedDomains: [...input.allowedDomains] }, ...(denyRead.length + denyWrite.length > 0 ? { filesystem: { denyRead, denyWrite } } : {}) },
     permissions: { allow: [...ROLE_ALLOW[role], ...(input.extraAllow ?? [])], deny: [...new Set(deny)] },
   };
 }

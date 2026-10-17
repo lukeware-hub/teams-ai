@@ -44,6 +44,7 @@ import { deliveredByPriorRuns, eventsFile, expandHome, graphDir, mergedByPriorRu
 import type { DeployTarget } from '../deploy/target.js';
 import { E2E_GATE, runE2e } from '../exec/e2e.js';
 import { clearPrivateSkills } from '../skills/store.js';
+import { agentPluginsRoot } from '../skills/plugins.js';
 import { gateReachableUrl, runSmoke } from '../exec/smoke.js';
 import { withRepairNotes } from '../program/repair-notes.js';
 import { copyCargoRoot, stackDomains, stackEnv, stackKind } from '../runner/stacks.js';
@@ -313,6 +314,7 @@ export class Run {
       claudeJsonPath: this.deps.claudeJsonPath ?? expandHome('~/.claude.json'),
       settingsDir: path.posix.join(runDir(ws, this.runId), 'settings'),
       workspacesRoot: ws.root,
+      agentPluginsRoot: agentPluginsRoot(),
       skillsRoot: expandHome('~/.teams-ai/skills'),
       skillScope: this.deps.project.projectId,
       // The stack's registries let a step install dependencies; cfg.docker.serviceHost is where the orchestrator and the

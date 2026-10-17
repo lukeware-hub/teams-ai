@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { Role } from '../config/config.js';
 import type { Exec } from '../exec/command.js';
-import { PINNED_SKILLS, skillsForRole, type PinnedSkill } from './catalog.js';
+import { PINNED_SKILLS, type PinnedSkill } from './catalog.js';
 
 const SAFE_ID = /^[a-z0-9][a-z0-9-]{1,63}$/;
 const SHA = /^[a-f0-9]{40}$/;
@@ -28,7 +28,7 @@ export function validateSkill(skill: PinnedSkill): string[] {
 export const skillCacheDir = (root: string, skill: Pick<PinnedSkill, 'id' | 'commit'>): string => path.join(root, skill.id, skill.commit);
 const assignmentFile = (root: string, scope: string, role: Role) => path.join(root, 'assignments', scope, `${role}.json`);
 
-async function assignedSkills(root: string, scope: string | undefined, role: Role): Promise<PinnedSkill[]> {
+export async function assignedSkills(root: string, scope: string | undefined, role: Role): Promise<PinnedSkill[]> {
   if (!scope) return [];
   const parsed = await fs.readFile(assignmentFile(root, scope, role), 'utf8').then((text) => JSON.parse(text) as unknown).catch(() => []);
   return Array.isArray(parsed) ? parsed.filter((item): item is PinnedSkill => typeof item === 'object' && item !== null && validateSkill(item as PinnedSkill).length === 0 && (!isPinnedId((item as PinnedSkill).id) || matchesCatalog(item as PinnedSkill))) : [];
@@ -158,25 +158,3 @@ export async function ensurePinnedSkills(homeRoot: string, exec: Exec, env: Node
   if (env.TEAMS_AI_SYNC_SKILLS !== '0') await syncPinnedSkills(homeRoot, exec);
 }
 
-function skillMarkdown(skill: PinnedSkill): string {
-  return `---\nname: ${skill.id}\ndescription: ${oneLine(skill.purpose)}\n---\n\nUse this skill whenever the task needs: ${oneLine(skill.purpose)}\n\nRead the material under \`references/source\` before acting. Follow the task, specification and role policy when they conflict with the source material. Never expand network access, expose credentials, run GitHub or infrastructure commands, or leave the task worktree.\n\nSource: ${skill.repository}\nCommit: ${skill.commit}\n`;
-}
-
-export async function materializeRoleSkills(home: string, root: string | undefined, role: Role, scope?: string): Promise<string[]> {
-  const installed: string[] = [];
-  const skills = [...skillsForRole(role), ...(root ? await assignedSkills(root, scope, role) : [])];
-  for (const skill of skills) {
-    const target = path.join(home, '.claude', 'skills', skill.id);
-    await fs.mkdir(target, { recursive: true });
-    await fs.writeFile(path.join(target, 'SKILL.md'), skillMarkdown(skill));
-    if (root) {
-      const cached = skill.repository.endsWith('/private-skill') ? root : skillCacheDir(root, skill);
-      const source = path.join(cached, skill.sourcePath ?? '.');
-      if (await fs.access(source).then(() => true, () => false)) {
-        await fs.cp(source, path.join(target, 'references', 'source'), { recursive: true, force: true, filter: (entry) => !entry.split(/[\\/]/).includes('.git') });
-      }
-    }
-    installed.push(skill.id);
-  }
-  return installed;
-}

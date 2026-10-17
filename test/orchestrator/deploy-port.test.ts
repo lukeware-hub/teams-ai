@@ -28,7 +28,7 @@ function setup(ps: string, apply: (intent: { port: number }) => Promise<{ previo
     ws: { repo: '/r' },
     project: { projectId: 'rust' },
     spec: { externalDependencies: [] },
-    plan: { deploy: { image: 'i', port: 3001, healthcheckPath: '/', manifests: ['docker-compose.yml'] }, gates: [], delivery: { compose: 'docker-compose.yml' } },
+    plan: { tasks: [], deploy: { image: 'i', port: 3001, healthcheckPath: '/', manifests: ['docker-compose.yml'] }, gates: [], delivery: { compose: 'docker-compose.yml' } },
     target,
     smoke: async () => ({ ok: true, rows: [], detail: '' }),
   };

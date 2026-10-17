@@ -2,8 +2,9 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { PinnedSkill } from '../../server/skills/catalog.js';
-import { buildRolePlugins, cleanSkillText, skillFolders } from '../../server/skills/plugins.js';
+import { PINNED_SKILLS, type PinnedSkill } from '../../server/skills/catalog.js';
+import { buildDynamicPlugin, buildRolePlugins, cleanSkillText, ensureAgentPlugins, referenceDirs, skillFolders } from '../../server/skills/plugins.js';
+import { assignSkill, createDraftSkill } from '../../server/skills/store.js';
 
 const alpha: PinnedSkill = { id: 'alpha', repository: 'https://github.com/acme/alpha', commit: 'a'.repeat(40), roles: ['dev'], purpose: 'Alpha.', sourcePath: 'skills' };
 const beta: PinnedSkill = { id: 'beta', repository: 'https://github.com/acme/beta', commit: 'b'.repeat(40), roles: ['dev'], purpose: 'Beta.', sourcePath: '.claude/skills' };
@@ -86,5 +87,39 @@ describe('role plugins', () => {
     await put(path.join(root, 'alpha', 'a'.repeat(40), 'skills', 'tdd', 'examples', 'SKILL.md'), '---\nname: example\ndescription: Nested.\n---\n');
     const folders = await skillFolders(path.join(root, 'alpha', 'a'.repeat(40), 'skills'));
     expect(folders.map((f) => path.basename(f))).toEqual(['brainstorming', 'tdd']);
+  });
+});
+
+describe('per-step plugins', () => {
+  it('gives the step the SM reuses and drafts of its role as a plugin of their own', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-plugins-'));
+    const root = path.join(dir, 'cache');
+    const out = path.join(dir, 'step-plugins');
+    const superpowers = PINNED_SKILLS.find((s) => s.id === 'superpowers')!;
+    await put(path.join(root, 'superpowers', superpowers.commit, 'skills', 'brainstorming', 'SKILL.md'), SKILL_TEXT);
+    await assignSkill(root, 'shop', 'dev', superpowers);
+    await createDraftSkill(root, 'shop', 'dev', { id: 'form-tokens', whenToUse: 'tokenized forms', rules: ['Use the design tokens'] });
+    expect(await buildDynamicPlugin(root, 'shop', 'dev', out)).toBe(true);
+    expect((await fs.readdir(path.join(out, 'skills'))).sort()).toEqual(['brainstorming', 'form-tokens']);
+    expect(await fs.readFile(path.join(out, 'skills', 'brainstorming', 'SKILL.md'), 'utf8')).not.toContain('allowed-tools');
+    expect(JSON.parse(await fs.readFile(path.join(out, '.claude-plugin', 'plugin.json'), 'utf8')).name).toBe('teams-ai-dev-dynamic');
+  });
+
+  it('writes nothing for a role the SM gave no skill', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-plugins-'));
+    const out = path.join(dir, 'step-plugins');
+    expect(await buildDynamicPlugin(path.join(dir, 'cache'), 'shop', 'dev', out)).toBe(false);
+    await expect(fs.access(out)).rejects.toThrow();
+  });
+
+  it('points the dev role at the reference catalog and nothing else', () => {
+    expect(referenceDirs('/cache', 'dev')).toEqual([path.join('/cache', 'agentic-awesome-skills', 'c564f9f4aee8a143c48218805b65f0f6956c6264', 'skills')]);
+    expect(referenceDirs('/cache', 'front')).toEqual([]);
+  });
+
+  it('builds the role plugins at start only on a machine without the image copy', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-plugins-'));
+    await expect(ensureAgentPlugins(path.join(dir, 'cache'), { TEAMS_AI_AGENT_PLUGINS_IMAGE: '/opt/teams-ai/agent-plugins' })).resolves.toBeUndefined();
+    await expect(fs.access(path.join(dir, 'plugins'))).rejects.toThrow();
   });
 });

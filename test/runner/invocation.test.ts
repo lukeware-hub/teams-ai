@@ -60,6 +60,14 @@ describe('buildInvocation', () => {
     expect(inv.args.slice(i + 1, i + 5)).toEqual(base.disallowedTools);
   });
 
+  it('loads each plugin folder with --plugin-dir and nothing else from the host', () => {
+    const inv = buildInvocation({ ...base, pluginDirs: ['/opt/teams-ai/agent-plugins/dev'] }, hostEnv);
+    const at = inv.args.indexOf('--plugin-dir');
+    expect(at).toBeGreaterThan(-1);
+    expect(inv.args[at + 1]).toBe('/opt/teams-ai/agent-plugins/dev');
+    expect(inv.args).not.toContain('--add-dir');
+  });
+
   it('passes "" for an empty tool list', () => {
     expect(buildInvocation({ ...base, tools: [] }, hostEnv).args[buildInvocation({ ...base, tools: [] }, hostEnv).args.indexOf('--tools') + 1]).toBe('');
   });

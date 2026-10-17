@@ -80,7 +80,7 @@ async function suiteFiles(root: string, rel: string, out: ScannedFile[]): Promis
   for (const e of entries) {
     if (out.length >= MAX_FILES) return;
     if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
-    const next = path.join(rel, e.name);
+    const next = path.posix.join(rel, e.name);
     if (e.isDirectory()) await suiteFiles(root, next, out);
     else if (SOURCE_EXT.has(path.extname(e.name))) {
       const text = await readText(path.join(root, next));

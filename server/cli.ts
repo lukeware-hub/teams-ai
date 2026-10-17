@@ -44,6 +44,7 @@ import { DATASTORE_CREDENTIALS, datastoreCredentialsOf } from './deploy/datastor
 import { DockerLocalTarget } from './deploy/docker-local.js';
 import { httpGet } from './deploy/target.js';
 import { readRepairNotes } from './program/repair-notes.js';
+import { ensureAgentPlugins } from './skills/plugins.js';
 import { ensurePinnedSkills } from './skills/store.js';
 
 export interface CliIo {
@@ -93,7 +94,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
   const hasDist = await fs.access(path.join(staticDir, 'index.html')).then(() => true, () => false);
   if (!hasDist) io.stderr('web/dist not found: run `npm run web:build` (or `npm run web:dev` for the Vite dev server with /api proxied)');
   const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
-  await ensurePinnedSkills(expandHome('~/.teams-ai/skills'), execCommand, io.env).catch((error: Error) => io.stderr(`pinned skills unavailable, continuing without them: ${error.message}`));
+  await ensurePinnedSkills(expandHome('~/.teams-ai/skills'), execCommand, io.env).then(() => ensureAgentPlugins(expandHome('~/.teams-ai/skills'), io.env)).catch((error: Error) => io.stderr(`pinned skills unavailable, continuing without them: ${error.message}`));
   // Decisions asked by the UI server (report routing, Gate 1) chain jev → local only: there is no claude step to escalate to.
   const uiDecider = async () => createDecider({
     cfg: (await readUserConfig()).cfg,
@@ -253,7 +254,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   const gitAuth = gitAuthEnv(platformSecrets.GITHUB_TOKEN);
   const exec: Exec = (s) => execCommand(s.bin === 'git' ? { ...s, env: { ...(s.env ?? {}), ...gitAuth } } : s);
   const ghExec: Exec = (s) => execCommand({ ...s, env: { ...(s.env ?? {}), ...gitAuth } });
-  if (!opts.dryRun) await ensurePinnedSkills(expandHome('~/.teams-ai/skills'), exec, io.env).catch((error: Error) => io.stderr(`pinned skills unavailable, continuing without them: ${error.message}`));
+  if (!opts.dryRun) await ensurePinnedSkills(expandHome('~/.teams-ai/skills'), exec, io.env).then(() => ensureAgentPlugins(expandHome('~/.teams-ai/skills'), io.env)).catch((error: Error) => io.stderr(`pinned skills unavailable, continuing without them: ${error.message}`));
   const draft = opts.draft === true || (!opts.complete && !opts.readme && !opts.deploy && (await startsAsDraft(exec, projectDir, ws, specId)));
   const errors = await preconditions(exec, ws.repo, specId, draft, opts.complete === true, opts.readme === true, opts.deploy === true);
   if (errors.length > 0) throw new Error(`preconditions failed:\n- ${errors.join('\n- ')}`);

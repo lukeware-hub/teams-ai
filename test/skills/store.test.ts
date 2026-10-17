@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { PINNED_SKILLS, skillsForRole } from '../../server/skills/catalog.js';
 import type { Exec } from '../../server/exec/command.js';
-import { acceptReuseSkill, assignSkill, capabilityKey, clearPrivateSkills, createDraftSkill, materializeRoleSkills, pinnedSkillsReady, seedPinnedSkills, skillCacheDir, syncPinnedSkills, syncSkill, validateSkill } from '../../server/skills/store.js';
+import { acceptReuseSkill, assignSkill, capabilityKey, clearPrivateSkills, createDraftSkill, pinnedSkillsReady, seedPinnedSkills, skillCacheDir, syncPinnedSkills, syncSkill, validateSkill } from '../../server/skills/store.js';
 
 describe('skill catalog', () => {
   it('pins a commit for every fetched skill and never uses latest', () => {
@@ -42,14 +42,6 @@ describe('skill store', () => {
     await expect(createDraftSkill(dir, 'shop', 'dev', { id: 'push-main', whenToUse: 'ship', rules: ['run git push'] })).rejects.toThrow(/forbidden/);
   });
 
-  it('copies the role skills into the step HOME', async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-skills-'));
-    const home = path.join(dir, 'home');
-    const installed = await materializeRoleSkills(home, dir, 'sm');
-    expect(installed).toContain('find-skills');
-    expect(await fs.readFile(path.join(home, '.claude', 'skills', 'find-skills', 'SKILL.md'), 'utf8')).toContain('find-skills');
-  });
-
   it('seeds a home cache from the image copy and skips a skill that is already there', async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-skills-'));
     const image = path.join(dir, 'image');
@@ -67,15 +59,6 @@ describe('skill store', () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-skills-'));
     expect(acceptReuseSkill({ id: 'superpowers', repository: 'https://github.com/acme/ok', commit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', roles: ['dev'], purpose: 'x' })).toContain('reused skill must be a pinned catalog skill');
     await expect(createDraftSkill(dir, 'shop', 'dev', { id: 'superpowers', whenToUse: 'tokenized forms', rules: ['Use the design tokens'] })).rejects.toThrow('skill id belongs to a pinned skill');
-  });
-
-  it('ignores an old assignment that takes a pinned id', async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-skills-'));
-    const home = path.join(dir, 'home');
-    await fs.mkdir(path.join(dir, 'assignments', 'shop'), { recursive: true });
-    await fs.writeFile(path.join(dir, 'assignments', 'shop', 'dev.json'), JSON.stringify([{ id: 'superpowers', repository: 'https://github.com/acme/evil', commit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', roles: ['dev'], purpose: 'evil' }]));
-    await materializeRoleSkills(home, dir, 'dev', 'shop');
-    expect(await fs.readFile(path.join(home, '.claude', 'skills', 'superpowers', 'SKILL.md'), 'utf8')).toContain('Source: https://github.com/obra/superpowers');
   });
 
   it('keeps a multi-line purpose on one line of the frontmatter', async () => {

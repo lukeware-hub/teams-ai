@@ -29,7 +29,7 @@ function make(runAgent: (req: Req) => Promise<unknown>, extra: { newSpec?: () =>
   const service = new ChatService({
     guideDir: path.resolve('docs/guia'),
     store: new ChatStore(path.join(home, 'chats')),
-    index: async () => ({ cfg: loadConfig({ paths: { runs: path.join(home, 'runs').replace(/\\/g, '/') }, projects: [{ dir: HELLO }] }), home, isAlive: () => false }),
+    index: async () => ({ cfg: loadConfig({ paths: { runs: path.posix.join(home, 'runs').replace(/\\/g, '/') }, projects: [{ dir: HELLO }] }), home, isAlive: () => false }),
     runAgent: runAgent as never,
     workspacesRoot: async () => path.join(home, 'ws'),
     suggestSpecId,
@@ -73,7 +73,7 @@ describe('ChatService.ask', () => {
     expect(CHAT_ALLOW).toEqual(['Bash(graphify query:*)', 'Bash(graphify explain:*)', 'Bash(graphify path:*)']);
     const ws = path.join(home, 'ws');
     // the whole workspace of each project (drafts, services, environment, code), the folders next to it, and nothing of the chat's own directory
-    expect(call.denyRead).toEqual(expect.arrayContaining([path.join(ws, '*', 'repo'), path.join(ws, '*', 'refine'), path.join(ws, '*', 'services'), path.join(ws, 'imports'), path.join(home, 'runs'), path.join(home, 'chats'), path.join(home, 'config.json')]));
+    expect(call.denyRead).toEqual(expect.arrayContaining([path.join(ws, '*', 'repo'), path.join(ws, '*', 'refine'), path.join(ws, '*', 'services'), path.join(ws, 'imports'), path.posix.join(home, 'runs').replace(/\\/g, '/'), path.join(home, 'chats'), path.join(home, 'config.json')]));
     expect(call.denyRead).not.toContain(ws);
     expect(call.denyRead).toContain(path.join(ws, '_naming'));
     // an earlier chat's directory is fenced off; this question's own directory is not

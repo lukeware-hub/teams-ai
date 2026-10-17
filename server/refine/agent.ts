@@ -8,6 +8,7 @@ import type { AgentSetting, Config, Role } from '../config/config.js';
 import { loadSecrets } from '../core/secrets.js';
 import { runAgentStep } from '../orchestrator/steps.js';
 import { expandHome } from '../orchestrator/workspace.js';
+import { agentPluginsRoot } from '../skills/plugins.js';
 import { runStep as runStepFn } from '../runner/step.js';
 import type { RunAgent } from './cycle.js';
 import { abortableSleep, withQuotaWait } from './quota-wait.js';
@@ -50,6 +51,7 @@ export async function makeRunAgent(w: AgentWiring): Promise<RunAgent & { resetQu
         claudeJsonPath: w.claudeJsonPath ?? expandHome('~/.claude.json'),
         settingsDir: path.posix.join(req.cwd, 'settings'),
         workspacesRoot: w.workspacesRoot,
+        agentPluginsRoot: agentPluginsRoot(),
         skillsRoot: expandHome('~/.teams-ai/skills'),
         skillScope: ctx.projectId,
         network: { allowedDomains: [] },
