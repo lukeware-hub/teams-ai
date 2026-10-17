@@ -222,7 +222,7 @@ Onde ficam seus dados (volumes Docker nomeados): `teams-ai-data` (configuração
 `teams-ai-license` (banco das licenças).
 
 Para compartilhar a UI na rede local (opcional): defina `TEAMS_AI_UI_BIND=0.0.0.0` no `.env`,
-e adicione o hostname que você usa em `TEAMS_AI_ALLOWED_HOSTS` (a API rejeita `Host` desconhecido). A UI não pede senha: qualquer um que alcance a porta a usa, então exponha só em rede de confiança.
+e adicione o hostname que você usa em `TEAMS_AI_ALLOWED_HOSTS` (a API rejeita `Host` desconhecido). Atenção: a UI não tem senha. Com `0.0.0.0`, qualquer computador da rede tem acesso total à API (ver runs, iniciar runs e gravar segredos). Use só em rede de confiança.
 
 > Observação: o `dind` sem root precisa de `/dev/net/tun` e de seccomp/AppArmor mais flexíveis. Ele está implementado e
 > coberto por testes unitários. Se o `dind` não ficar saudável no seu computador, veja [Solução de problemas](#solução-de-problemas).
@@ -395,7 +395,7 @@ Variáveis de ambiente (`.env`, lido pelo `docker-compose.yml`):
 | --- | --- |
 | `GITHUB_TOKEN` | Token do GitHub usado pelo orquestrador. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Token longo do Claude, gerado por `claude setup-token`. |
-| `TEAMS_AI_UI_BIND` | Interface do host para a porta 8787. Padrão `127.0.0.1`. Use `0.0.0.0` para a rede local (sem senha: só em rede de confiança). |
+| `TEAMS_AI_UI_BIND` | Interface do host para a porta 8787. Padrão `127.0.0.1`. Use `0.0.0.0` só em rede de confiança: qualquer um na rede tem acesso total à API. |
 | `TEAMS_AI_ALLOWED_HOSTS` | Valores extras de `Host` que a API aceita. |
 | `LICENSE_SERVICE_URL` | Endereço do serviço de licenças. No Compose o padrão é `http://license:8080`. |
 

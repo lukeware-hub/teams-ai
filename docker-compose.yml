@@ -17,7 +17,7 @@ services:
       license:
         condition: service_healthy
     ports:
-      # Loopback by default; set TEAMS_AI_UI_BIND=0.0.0.0 in .env (which git ignores) to reach the UI from the LAN.
+      # Loopback by default; set TEAMS_AI_UI_BIND=0.0.0.0 in .env (which git ignores) to reach the UI from the LAN. Then anyone on the LAN has full API access.
       - '${TEAMS_AI_UI_BIND:-127.0.0.1}:8787:8787'
     environment:
       TEAMS_AI_ALLOWED_HOSTS: ${TEAMS_AI_ALLOWED_HOSTS:-}
