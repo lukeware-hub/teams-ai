@@ -84,7 +84,7 @@ export interface TaskRunnerDeps {
   testDatabaseUrl?: string | null;
   /** Ids of the plan tasks an earlier run of this spec delivered: an empty diff on one of them means its work is on main. */
   deliveredBefore: ReadonlySet<string>;
-  skillsRoot?: string;
+  skillsRoot: string;
   /** Runs the skill fetches: a public skill needs no token, so the orchestrator's git exec is not used for it. */
   skillExec?: Exec;
 }
@@ -181,7 +181,7 @@ export class TaskRunner {
   }
 
   private get skillsRoot(): string {
-    return this.deps.skillsRoot ?? path.join(this.deps.ws.root, 'skills');
+    return this.deps.skillsRoot;
   }
 
   async advance(): Promise<void> {

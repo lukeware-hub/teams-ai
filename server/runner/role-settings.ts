@@ -90,8 +90,8 @@ export interface RoleSettings {
   permissions: { allow: string[]; deny: string[] };
 }
 
-// A permission rule with one leading slash is relative to the working directory: only `//path` is the absolute path.
-export const absoluteRule = (dir: string) => `/${dir.replace(/\/+$/, '')}`;
+// A permission rule with one leading slash is relative to the working directory: `//path` is the absolute path, and a Windows drive path uses forward slashes.
+export const absoluteRule = (dir: string) => `//${dir.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')}`;
 
 export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSettings {
   const deny = [

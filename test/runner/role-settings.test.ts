@@ -60,6 +60,11 @@ describe('buildRoleSettings', () => {
     expect(buildRoleSettings('dev', { allowedDomains: [] }).sandbox.filesystem).toBeUndefined();
   });
 
+  it('writes a Windows drive path behind the absolute prefix, with forward slashes', () => {
+    const s = buildRoleSettings('dev', { allowedDomains: [], projectSecretsDirs: ['C:\\ws\\secrets\\'] });
+    expect(s.permissions.deny).toContain('Read(//C:/ws/secrets/**)');
+  });
+
   it('denies the extra directories to every command of the sandbox and to the Read tools, with a bare path rule that does not make the CLI walk the tree', () => {
     const s = buildRoleSettings('po', { allowedDomains: [], extraDenyRead: ['/ws/*/repo/', '/home/node/.teams-ai/runs'] });
     expect(s.sandbox.filesystem?.denyRead).toEqual(['/ws/*/repo', '/home/node/.teams-ai/runs']);

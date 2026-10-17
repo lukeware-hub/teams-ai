@@ -43,7 +43,6 @@ import { portKey, registeredPorts } from '../deploy/port-registry.js';
 import { deliveredByPriorRuns, eventsFile, expandHome, graphDir, mergedByPriorRuns, nextRunId, runDir, serviceWorkspace, sessionDir, stateFile, stepDir, worktreeDir, type Workspace } from './workspace.js';
 import type { DeployTarget } from '../deploy/target.js';
 import { E2E_GATE, runE2e } from '../exec/e2e.js';
-import { clearPrivateSkills } from '../skills/store.js';
 import { agentPluginsRoot } from '../skills/plugins.js';
 import { gateReachableUrl, runSmoke } from '../exec/smoke.js';
 import { withRepairNotes } from '../program/repair-notes.js';
@@ -218,7 +217,6 @@ export class Run {
     assertApiKey(deps);
     const id = runId ?? (await nextRunId(deps.ws, deps.spec.specId));
     await fs.mkdir(runDir(deps.ws, id), { recursive: true });
-    await clearPrivateSkills(expandHome('~/.teams-ai/skills'), deps.project.projectId);
     const journal = await Run.openJournal(deps, id);
     await journal.fact(OrchEvent.RunStarted, { runId: id, specId: deps.spec.specId, projectId: deps.project.projectId, firstSpec: deps.firstSpec });
     return new Run(id, journal, deps);

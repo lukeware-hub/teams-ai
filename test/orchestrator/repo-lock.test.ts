@@ -204,7 +204,7 @@ describe('SM steps of a task', () => {
 
   function taskDeps(agent: Agent, exec: Exec): TaskRunnerDeps {
     return {
-      journal, ws: wsOf(), spec, project, plan, specHash: HASH, firstSpec: false, exec,
+      journal, ws: wsOf(), spec, project, plan, specHash: HASH, firstSpec: false, exec, skillsRoot: path.join(remote.root, 'skills'),
       runAgent: (async (req) => agent(req)) as TaskRunnerDeps['runAgent'],
       gates: async () => ({ results: [], blockingFailure: null }),
       installDeps: async () => null,

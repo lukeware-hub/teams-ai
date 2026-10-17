@@ -72,9 +72,18 @@ describe('role plugins', () => {
     expect(await fs.readFile(path.join(out, 'dev', 'skills', 'brainstorming', 'SKILL.md'), 'utf8')).toBe(first);
   });
 
-  it('refuses to build a role whose repository was never synced', async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-plugins-'));
-    await expect(buildRolePlugins(path.join(dir, 'cache'), path.join(dir, 'plugins'), [alpha])).rejects.toThrow('run the sync first');
+  it('leaves out a skill whose repository was never synced and builds the rest of the role', async () => {
+    const { root, out } = await syncedCache();
+    const missing = { ...alpha, id: 'gamma', repository: 'https://example.com/gamma', commit: 'd'.repeat(40) };
+    await buildRolePlugins(root, out, [missing, beta, catalog]);
+    expect((await fs.readdir(path.join(out, 'dev', 'skills'))).sort()).toEqual(['tdd']);
+  });
+
+  it('does not copy a link out of a pinned repository', async () => {
+    const { root, out } = await syncedCache();
+    await fs.symlink(os.tmpdir(), path.join(root, 'alpha', 'a'.repeat(40), 'skills', 'brainstorming', 'escape'), 'junction');
+    await buildRolePlugins(root, out, [alpha, beta, catalog]);
+    await expect(fs.access(path.join(out, 'dev', 'skills', 'brainstorming', 'escape'))).rejects.toThrow();
   });
 
   it('removes the permission keys of a skill even when they span several lines', () => {

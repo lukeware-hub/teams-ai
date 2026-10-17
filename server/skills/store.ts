@@ -120,7 +120,6 @@ export async function syncSkill(root: string, skill: PinnedSkill, exec: Exec): P
 export async function syncPinnedSkills(root: string, exec: Exec): Promise<void> {
   const failed: string[] = [];
   for (const skill of PINNED_SKILLS) {
-    if (skill.fetch === false) continue;
     await syncSkill(root, skill, exec).catch((error: Error) => failed.push(`${skill.id}: ${error.message}`));
   }
   if (failed.length > 0) throw new Error(failed.join('; '));
@@ -130,7 +129,6 @@ const hasGit = (dir: string) => fs.access(path.join(dir, '.git')).then(() => tru
 
 export async function pinnedSkillsReady(root: string): Promise<boolean> {
   for (const skill of PINNED_SKILLS) {
-    if (skill.fetch === false) continue;
     if (!(await hasGit(skillCacheDir(root, skill)))) return false;
   }
   return true;
@@ -139,7 +137,6 @@ export async function pinnedSkillsReady(root: string): Promise<boolean> {
 export async function seedPinnedSkills(from: string, to: string): Promise<number> {
   let copied = 0;
   for (const skill of PINNED_SKILLS) {
-    if (skill.fetch === false) continue;
     const src = skillCacheDir(from, skill);
     const dest = skillCacheDir(to, skill);
     if (!(await hasGit(src)) || (await hasGit(dest))) continue;

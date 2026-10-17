@@ -78,7 +78,7 @@ function deps(over: Partial<TaskRunnerDeps> & { agent?: Agent; merge?: Partial<M
   };
   const { agent: _a, merge: _m, ...rest } = over;
   return {
-    journal, ws, spec, project, plan, specHash: HASH, firstSpec: false,
+    journal, ws, spec, project, plan, specHash: HASH, firstSpec: false, skillsRoot: path.join(remote.root, 'skills'),
     exec: execCommand,
     runAgent: (async (req) => { agentCalls.push(req); return agent(req); }) as TaskRunnerDeps['runAgent'],
     gates: async () => ({ results: [gate('unit-test')], blockingFailure: null }),

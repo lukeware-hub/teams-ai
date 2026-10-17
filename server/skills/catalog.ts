@@ -10,7 +10,6 @@ export interface PinnedSkill {
   sourcePath?: string;
   /** A catalog the agent searches itself: its skills are never installed as native skills. */
   reference?: true;
-  fetch?: false;
 }
 
 export const PINNED_SKILLS: readonly PinnedSkill[] = [

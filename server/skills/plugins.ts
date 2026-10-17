@@ -41,8 +41,19 @@ export async function skillFolders(source: string): Promise<string[]> {
   return found.sort();
 }
 
+/** The folder of a pinned skill in the cache. */
+const sourceOf = (cacheRoot: string, skill: PinnedSkill) => path.join(skillCacheDir(cacheRoot, skill), catalogSource(skill));
+
+/** The skills whose repository the sync fetched: one it failed on is left out, so the others still install. */
+async function syncedOnly(cacheRoot: string, list: readonly PinnedSkill[]): Promise<PinnedSkill[]> {
+  const found: PinnedSkill[] = [];
+  for (const skill of list) if (await exists(sourceOf(cacheRoot, skill))) found.push(skill);
+  return found;
+}
+
 async function copySkill(from: string, to: string, name: string): Promise<void> {
-  await fs.cp(from, to, { recursive: true, filter: (entry) => !entry.split(/[\\/]/).includes('.git') });
+  // A link inside a pinned repository could point at a host path, so links are never copied.
+  await fs.cp(from, to, { recursive: true, filter: async (entry) => !entry.split(/[\\/]/).includes('.git') && !(await fs.lstat(entry)).isSymbolicLink() });
   const file = path.join(to, 'SKILL.md');
   await fs.writeFile(file, cleanSkillText(await fs.readFile(file, 'utf8'), name));
 }
@@ -79,12 +90,12 @@ async function writePlugin(dir: string, name: string, role: Role): Promise<void>
 export async function buildRolePlugins(cacheRoot: string, outRoot: string, catalog: readonly PinnedSkill[] = PINNED_SKILLS): Promise<void> {
   for (const role of ROLES) {
     const target = path.join(outRoot, role);
-    const skills = catalog.filter((skill) => !skill.reference && skill.roles.includes(role));
+    const skills = await syncedOnly(cacheRoot, catalog.filter((skill) => !skill.reference && skill.roles.includes(role)));
     await fs.rm(target, { recursive: true, force: true });
     if (skills.length === 0) continue;
     const staged = `${target}.tmp-${process.pid}`;
     await fs.rm(staged, { recursive: true, force: true });
-    await installSkills(staged, skills.map((skill) => ({ id: skill.id, source: path.join(skillCacheDir(cacheRoot, skill), catalogSource(skill)) })), `role ${role}`);
+    await installSkills(staged, skills.map((skill) => ({ id: skill.id, source: sourceOf(cacheRoot, skill) })), `role ${role}`);
     await writePlugin(staged, `teams-ai-${role}`, role);
     await fs.rename(staged, target);
   }
