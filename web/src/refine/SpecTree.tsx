@@ -36,11 +36,17 @@ export function SpecTree({ backlog, evaluating = false }: { backlog: BacklogView
       {matrix.sections.length > 0 && (
         <ol className="m-0 grid list-none gap-2 p-0 text-[0.8125rem]">
           {matrix.sections.map((s, n) => (
-            <li key={n} data-testid={`tree-section-${n}`} className={`grid gap-[0.45rem] rounded-md border border-line bg-surface-sunken px-3 py-[0.6rem] ${s.items.length > 0 ? '' : 'text-bad'}`}>
-              <b className="text-[0.8125rem] leading-snug normal-case tracking-normal wrap-anywhere">{s.heading}</b>
-              <span className="flex flex-wrap gap-[0.35rem]">
-                {s.items.length > 0 ? s.items.map((k) => <span key={k} className="rounded-full bg-surface-muted px-[0.6rem] py-[0.15rem] leading-snug text-ink-soft">{titles.get(k) ?? k}</span>) : <span>sem item</span>}
-              </span>
+            <li key={n} data-testid={`tree-section-${n}`} className={`rounded-md border border-line bg-surface-sunken ${s.items.length > 0 ? '' : 'text-bad'}`}>
+              <details className="group">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-3 py-[0.6rem] [&::-webkit-details-marker]:hidden">
+                  <span className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span>
+                  <b className="min-w-0 flex-1 text-[0.8125rem] leading-snug normal-case tracking-normal wrap-anywhere">{s.heading}</b>
+                  <span className="count-pill">{s.items.length}</span>
+                </summary>
+                <span className="flex flex-wrap gap-[0.35rem] px-3 pb-[0.6rem]">
+                  {s.items.length > 0 ? s.items.map((k) => <span key={k} className="rounded-full bg-surface-muted px-[0.6rem] py-[0.15rem] leading-snug text-ink-soft">{titles.get(k) ?? k}</span>) : <span>sem item</span>}
+                </span>
+              </details>
             </li>
           ))}
         </ol>
