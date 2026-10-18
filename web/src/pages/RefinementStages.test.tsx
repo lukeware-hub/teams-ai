@@ -90,9 +90,10 @@ describe('a new project refines in two mandatory stages', () => {
     expect(screen.queryByTestId('evaluate')).toBeNull();
   });
 
-  it('keeps the history folded, with the number of entries it holds', () => {
+  it('shows the history open, with the number of entries it holds', () => {
     renderView(project({ questions: [{ ...question(false, 'answered'), answer: '8080' } as never] }));
-    expect(screen.getByText('Histórico · 1')).toBeTruthy();
+    const history = screen.getByText('Histórico · 1').closest('details') as HTMLDetailsElement;
+    expect(history.open).toBe(true);
   });
 
   it('keeps a new spec on the single-stage screen: no stage bar and no stage 2 button', () => {
