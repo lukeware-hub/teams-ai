@@ -109,6 +109,18 @@ export function failedGapQuestions(backlog: BacklogState | null, cycle: number, 
   return out;
 }
 
+/** The rules a backlog outline breaks, each as a blocking question for the owner; a pending question that already names a rule is not asked again. */
+export function outlineQuestions(issues: readonly string[], cycle: number, asked: readonly string[]): Question[] {
+  return issues.filter((issue) => !asked.some((text) => text.includes(issue))).map((issue, n) => ({
+    questionId: `outline-c${cycle}-${n}`,
+    role: 'po' as const,
+    text: `O backlog ainda não fecha: ${issue}. Como o backlog deve tratar isso?`,
+    blocking: true,
+    relatedAcIds: [],
+    cycle,
+  }));
+}
+
 export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
   try {
     await runCycleSteps(deps, cycle);
@@ -197,7 +209,9 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         else rejection = checked.issues;
       }
       if (!accepted) {
-        await fail(`backlog: ${rejection!.join('; ')}`);
+        // Each rule the outline breaks is a question for the owner: the refinement answers it, and the next evaluation derives again.
+        const asked = journal.state.questions.filter((q) => q.status === 'pending').map((q) => q.text);
+        await journal.fact(RefineEvent.Evaluated, { cycle, checklist: journal.state.checklist, questions: outlineQuestions(rejection!, cycle, asked), discardedPatches: [], questionRouting: {}, autoAnswerFloor: null, unverifiedContradictions: [] });
         return;
       }
       const { backlog: ranked } = accepted.value;

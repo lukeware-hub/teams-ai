@@ -797,14 +797,16 @@ describe('refinement cycle in backlog mode', () => {
     expect(events.some((e) => e.type === 'BACKLOG_DERIVED')).toBe(true);
   });
 
-  it('fails the cycle when the second backlog still breaks a rule, and runs no review', async () => {
+  it('asks the owner each rule the second backlog still breaks, runs no review, and does not fail the cycle', async () => {
     const { draft, journal, events, root } = await setup('# Briefing');
     on(journal);
     const { fn, packs } = agent([raw([item('a', { dependsOn: ['zzz'] })]), raw([item('a', { dependsOn: ['zzz'] })])]);
     await runCycle({ draft, journal, runAgent: fn as never, principles: () => [], retrieval: () => [] }, 1);
     expect(packs.map((p) => p.kind)).toEqual(['backlog', 'backlog']);
-    expect(String(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason)).toMatch(/^backlog: .*zzz/);
+    expect(events.some((e) => e.type === 'REFINE_CYCLE_FAILED')).toBe(false);
     expect(events.some((e) => e.type === 'BACKLOG_DERIVED')).toBe(false);
+    const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
+    expect(evaluated.data.questions).toEqual([expect.objectContaining({ role: 'po', blocking: true, text: expect.stringContaining('zzz') })]);
   });
 });
 
