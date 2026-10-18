@@ -68,6 +68,35 @@ describe('refinePack', () => {
     expect(refinePack({ ...base, role: 'sm' }).feedback).not.toContain('`contradictions`');
   });
 
+  it('tells each role what it owns and what the other two own', () => {
+    for (const role of ['po', 'sm', 'front'] as const) {
+      const feedback = refinePack({ ...base, role }).feedback ?? '';
+      expect(feedback).toContain('ROLES IN THIS REVIEW');
+      expect(feedback).toContain(`You are the ${role.toUpperCase()}`);
+      expect(feedback).toContain('PO owns what and why');
+      expect(feedback).toContain('SM owns how and in what order');
+      expect(feedback).toContain('Front owns design.md only');
+    }
+  });
+
+  it('keeps design.md with Front: PO and SM never review or patch it', () => {
+    expect(refinePack({ ...base, role: 'front' }).feedback).toContain('Treat design.md as the frontend source of truth');
+    for (const role of ['po', 'sm'] as const) {
+      const feedback = refinePack({ ...base, role }).feedback ?? '';
+      expect(feedback).not.toContain('Treat design.md as the frontend source of truth');
+      expect(feedback).toContain("design.md is Front's");
+    }
+  });
+
+  it('gives the PO the business flow review, the SM the build review, and Front neither', () => {
+    expect(refinePack({ ...base, role: 'po' }).feedback).toContain('business and application flow contract');
+    expect(refinePack({ ...base, role: 'sm' }).feedback).toContain('Review flow.md as something to build');
+    const front = refinePack({ ...base, role: 'front' }).feedback ?? '';
+    expect(front).not.toContain('business and application flow contract');
+    expect(front).not.toContain('Review flow.md as something to build');
+    expect(front).toContain('flow.md is context for you: do not review it.');
+  });
+
   it('does not add the review-only rule for po', () => {
     expect(refinePack({ ...base, role: 'po' }).feedback).not.toContain('not an implementation task');
   });

@@ -33,6 +33,15 @@ const BACKLOG_REVIEW_RULE = 'Backlog mode: the docs were broken into a prioritiz
 /** R11.10: one heading per decision, so each item cites only the decisions it needs and a new one re-derives only those items. */
 const DECISION_RULE = 'Record each decision as its own `### <subject>` heading under the `## Decisões` section of docs/briefing.md (add the section at the end when it is missing), with a subject no other heading of the docs uses and the decision below it; never add a decision as one more line of a shared list, since every item that cites a section is derived again whenever that section changes. Give every question a `subject`: 3 to 8 words in Brazilian Portuguese naming its topic, never a fact the documents may change. The orchestrator writes each answer the owner gives under that subject as its own heading there, so never propose a patch that records an answer again. When that section still holds lines of decisions, propose one patch that turns each of its lines into its own heading.';
 
+/** Who owns what: PO, SM and Front read the same documents at the same time, so each stays inside its own area. */
+const ROLE_OWNERSHIP = {
+  po: 'PO owns what and why: objectives, personas, scope, acceptance criteria a test can verify, business rules, the owner\'s decisions, and contradictions between the documents (po.* checklist ids).',
+  sm: 'SM owns how and in what order: stack and architecture limits, the split into services, whether flow.md can be built (states, events, order, dependencies), task feasibility, and filling a blank stack.md or flow.md (sm.* checklist ids).',
+  front: 'Front owns design.md only: visual direction, tokens, responsiveness, accessibility and states. Front asks no questions.',
+} as const;
+
+const rolesRule = (role: 'po' | 'sm' | 'front') => `ROLES IN THIS REVIEW: PO, SM and Front read the same documents at the same time, and none sees what the others propose in this cycle. ${ROLE_OWNERSHIP.po} ${ROLE_OWNERSHIP.sm} ${ROLE_OWNERSHIP.front} You are the ${role.toUpperCase()}: ask or patch only inside what you own. A problem in another area belongs to the role that owns it. A fact that differs between two documents is the PO's; something that cannot be built is the SM's.`;
+
 /** R11.10: before the detailing, PO and SM leave what a spec decides to the detailing; nothing else waits. */
 const OUTLINE_REVIEW_RULE = 'Outline review (no spec yet): never ask about or patch a detail a spec decides, such as a status code, a message, a field, a validation or the content of an e-mail; the detailing settles it, so a missing detail fails no checklist id now, and this narrows the flow.md review and the Jev preflight notes. It never holds back a contradiction between the docs, a split into services the docs leave open, filling a blank stack.md or flow.md, or turning an older list of decisions into headings.';
 
@@ -100,9 +109,16 @@ export function refinePack(input: {
   const ids = input.role === 'po' ? PO_ITEMS : input.role === 'sm' ? SM_ITEMS : [];
   const parts = (d: Record<'project' | 'brief' | 'stack' | 'flow' | 'design', string | undefined>, digested: boolean) => [
     `LANGUAGE (mandatory): write every question, checklist detail, patch reason, summary, and explanation 100% in Brazilian Portuguese, even when project.md, ${brief}, the acceptance criteria, or this prompt are in English. Never copy English sentences into a question; translate the idea. Keep only technical identifiers, JSON keys, file names, HTTP status codes, and checklist ids unchanged.`,
-    `Review flow.md as the business and application flow contract. Check that create, validate, persist, list, search, detail, update, delete, error, health, and persistence flows agree with project.md and ${brief}. Ask a question or propose a patch when a flow is missing, ambiguous, or contradictory.`,
+    input.role === 'po'
+      ? `Review flow.md as the business and application flow contract. Check that create, validate, persist, list, search, detail, update, delete, error, health, and persistence flows agree with project.md and ${brief}. Ask a question or propose a patch when a flow is missing, ambiguous, or contradictory.`
+      : input.role === 'sm'
+        ? `Review flow.md as something to build: its states, events, order and dependencies must be implementable as written. Ask a question or propose a patch when a step is missing or cannot be built.`
+        : 'flow.md is context for you: do not review it.',
     ...(input.role === 'po' ? [NO_CONTRADICTIONS_RULE] : []),
-    `Treat design.md as the frontend source of truth. Validate distinctive web and mobile direction, responsive states, accessibility, keyboard focus, reduced motion, touch targets, and consistency with project.md, ${brief}, stack.md, and flow.md. Reject generic AI-looking UI choices and propose a precise patch when design.md is incomplete or contradictory. Write every new design.md heading, description, label, and patch reason in Brazilian Portuguese; preserve only technical identifiers, file names, code, and color tokens.`,
+    input.role === 'front'
+      ? `Treat design.md as the frontend source of truth. Validate distinctive web and mobile direction, responsive states, accessibility, keyboard focus, reduced motion, touch targets, and consistency with project.md, ${brief}, stack.md, and flow.md. Reject generic AI-looking UI choices and propose a precise patch when design.md is incomplete or contradictory. Write every new design.md heading, description, label, and patch reason in Brazilian Portuguese; preserve only technical identifiers, file names, code, and color tokens.`
+      : `design.md is Front's: read it as context, never ask about it or patch it. Report it only as a contradiction with another document.`,
+    rolesRule(input.role),
     ...(input.derived.spec ? [] : [BACKLOG_REVIEW_RULE, ...(input.role === 'front' ? [] : [DECISION_RULE])]),
     ...(detail ? [DETAIL_REVIEW_RULE] : []),
     ...(input.derived.spec || detail || input.role === 'front' ? [] : [OUTLINE_REVIEW_RULE]),
