@@ -82,6 +82,6 @@ describe('servicePlans', () => {
     expect(orders!.plan.tasks.map((t) => t.id)).toEqual(['T1-publish-order']);
     expect(inventory!.plan.deploy.port).toBe(3001);
     expect(inventory!.plan.specHash).toBe(plan.specHash);
-    expect(inventory!.plan.tasks.find((t) => t.id === 'T2-reserve-stock')!.dependsOn).toEqual(['T0-scaffold-inventory']);
+    expect(inventory!.plan.tasks.find((t) => t.id === 'T2-reserve-stock')!.dependsOn).toEqual(['T0-scaffold-inventory-api']);
   });
 });

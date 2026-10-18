@@ -135,9 +135,9 @@ export function makeServicesPlan(spec: Spec, overrides: Partial<ServicesPlan> = 
     adrRefs: ['ADR-001'],
     tasks: [
       makePlanTask({ id: 'T1-publish-order', service: 'orders-api', criteriaRefs: ['AC-001'], affectedPaths: ['src/orders/**'] }),
-      makePlanTask({ id: 'T0-scaffold-inventory', service: 'inventory-api', affectedPaths: ['package.json', 'package-lock.json', 'tsconfig.json', 'vitest.config.ts', 'src/index.ts'] }),
-      makePlanTask({ id: 'T2-reserve-stock', service: 'inventory-api', criteriaRefs: ['AC-002'], dependsOn: ['T0-scaffold-inventory', 'T1-publish-order'], affectedPaths: ['src/stock/**'] }),
-      makePlanTask({ id: 'T3-inventory-deploy', service: 'inventory-api', dependsOn: ['T0-scaffold-inventory'], affectedPaths: ['Dockerfile', 'deploy/**'], owner: 'devops' }),
+      makePlanTask({ id: 'T0-scaffold-inventory-api', service: 'inventory-api', affectedPaths: ['package.json', 'package-lock.json', 'tsconfig.json', 'vitest.config.ts', 'src/index.ts'] }),
+      makePlanTask({ id: 'T2-reserve-stock', service: 'inventory-api', criteriaRefs: ['AC-002'], dependsOn: ['T0-scaffold-inventory-api', 'T1-publish-order'], affectedPaths: ['src/stock/**'] }),
+      makePlanTask({ id: 'T3-inventory-deploy', service: 'inventory-api', dependsOn: ['T0-scaffold-inventory-api'], affectedPaths: ['Dockerfile', 'deploy/**'], owner: 'devops' }),
     ],
     services: { 'orders-api': service('orders-api', 3000), 'inventory-api': service('inventory-api', 3001) },
     ...overrides,
