@@ -43,11 +43,11 @@ describe('draft', () => {
     remote = await makeRemote({ 'docs/project.json': compact, 'docs/stack.md': '# Stack\n' });
     const d = draftPaths(ws, 'hello-023');
     await createFromRepo(d, remote.repo, execCommand, { kind: 'new-spec' });
-    const derived = makeProject({ name: 'Drifted name', stack: 'go', services: ['orders'], platform: [{ name: 'nats', image: 'nats:2.10.22-alpine' }] });
+    const derived = makeProject({ name: 'Drifted name', stack: 'go', services: ['orders-api'], platform: [{ name: 'nats', image: 'nats:2.10.22-alpine' }] });
     expect((await keepBaseProject(d, derived)).platform).toBeUndefined();
     await fs.writeFile(d.stackMd, '# Stack\n\nNATS 2.10 for every service.\n');
     const kept = await keepBaseProject(d, derived);
-    expect([kept.stack, kept.services, kept.platform]).toEqual(['go', ['orders'], derived.platform]);
+    expect([kept.stack, kept.services, kept.platform]).toEqual(['go', ['orders-api'], derived.platform]);
     // The rest is main's: a model's drift in other fields, or a flag set by hand, never rides along.
     expect([kept.name, kept.confidential]).toEqual([makeProject().name, true]);
   });

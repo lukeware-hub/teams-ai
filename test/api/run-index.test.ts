@@ -91,11 +91,11 @@ describe('run index', () => {
     const dir = path.join(home, 'shop');
     await fs.cp(HELLO, dir, { recursive: true });
     const file = path.join(dir, 'docs', 'project.json');
-    await fs.writeFile(file, JSON.stringify({ ...JSON.parse(await fs.readFile(file, 'utf8')), services: ['orders', 'inventory'], platform: [{ name: 'nats', image: 'nats:2.10.22-alpine', command: ['-js'] }] }));
+    await fs.writeFile(file, JSON.stringify({ ...JSON.parse(await fs.readFile(file, 'utf8')), services: ['orders-api', 'inventory-api'], platform: [{ name: 'nats', image: 'nats:2.10.22-alpine', command: ['-js'] }] }));
     const d = deps();
     d.cfg = loadConfig({ ...JSON.parse(JSON.stringify(d.cfg)), projects: [{ dir }] });
     const [row] = await listProjects(d);
-    expect(row!.services).toEqual(['orders', 'inventory']);
+    expect(row!.services).toEqual(['orders-api', 'inventory-api']);
     expect(row!.platform).toEqual([{ name: 'nats', image: 'nats:2.10.22-alpine' }]);
   });
 

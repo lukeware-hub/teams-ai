@@ -27,9 +27,9 @@ describe('nextRunnable', () => {
 
   it('runs tasks of different services side by side even when their paths match, since each has its own repository', () => {
     const state = runState(
-      runtime({ id: 'T1-a', service: 'orders', affectedPaths: ['src/**'] }, 'implementing'),
-      runtime({ id: 'T2-b', service: 'inventory', affectedPaths: ['src/**'] }),
-      runtime({ id: 'T3-c', service: 'orders', affectedPaths: ['src/index.ts'] }),
+      runtime({ id: 'T1-a', service: 'orders-api', affectedPaths: ['src/**'] }, 'implementing'),
+      runtime({ id: 'T2-b', service: 'inventory-api', affectedPaths: ['src/**'] }),
+      runtime({ id: 'T3-c', service: 'orders-api', affectedPaths: ['src/index.ts'] }),
     );
     expect(nextRunnable(state, 3)).toEqual(['T2-b']);
   });

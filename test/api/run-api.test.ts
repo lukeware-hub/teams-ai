@@ -152,13 +152,13 @@ describe('projects', () => {
     const project = path.join(home, '.teams-ai', 'workspaces', 'shop-docs');
     await fs.cp(HELLO, project, { recursive: true });
     const json = path.join(project, 'docs', 'project.json');
-    await fs.writeFile(json, JSON.stringify({ ...JSON.parse(await fs.readFile(json, 'utf8')), services: ['orders', 'inventory'] }));
-    const clone = path.join(home, '.teams-ai', 'workspaces', 'hello-app', 'services', 'orders', 'repo');
+    await fs.writeFile(json, JSON.stringify({ ...JSON.parse(await fs.readFile(json, 'utf8')), services: ['orders-api', 'inventory-api'] }));
+    const clone = path.join(home, '.teams-ai', 'workspaces', 'hello-app', 'services', 'orders-api', 'repo');
     await fs.mkdir(clone, { recursive: true });
     await execCommand({ bin: 'git', args: ['init', '-q'], cwd: clone, timeoutMs: 10_000 });
-    await execCommand({ bin: 'git', args: ['remote', 'add', 'origin', 'https://github.com/acme/hello-app-orders.git'], cwd: clone, timeoutMs: 10_000 });
+    await execCommand({ bin: 'git', args: ['remote', 'add', 'origin', 'https://github.com/acme/orders-api.git'], cwd: clone, timeoutMs: 10_000 });
     const registered = await (await post('/api/projects', { dir: project })).json();
-    expect(registered.services).toEqual([{ name: 'orders', repoUrl: 'https://github.com/acme/hello-app-orders' }, { name: 'inventory', repoUrl: null }]);
+    expect(registered.services).toEqual([{ name: 'orders-api', repoUrl: 'https://github.com/acme/orders-api' }, { name: 'inventory-api', repoUrl: null }]);
     const listed = (await (await fetch(`${base()}/api/projects`)).json()) as Array<{ services?: unknown }>;
     expect(listed.find((p) => p.services)!.services).toEqual(registered.services);
   });
@@ -260,7 +260,7 @@ describe('projects', () => {
     const project = path.join(home, 'project');
     await fs.cp(HELLO, project, { recursive: true });
     const json = path.join(project, 'docs', 'project.json');
-    await fs.writeFile(json, JSON.stringify({ ...JSON.parse(await fs.readFile(json, 'utf8')), services: ['orders'] }));
+    await fs.writeFile(json, JSON.stringify({ ...JSON.parse(await fs.readFile(json, 'utf8')), services: ['orders-api'] }));
     await fs.writeFile(path.join(home, '.teams-ai', 'config.json'), JSON.stringify({ paths: { runs: runs.replace(/\\/g, '/') }, projects: [{ dir: project }] }));
     const ws = path.join(home, '.teams-ai', 'workspaces', 'hello-app');
     await fs.mkdir(ws, { recursive: true });
@@ -282,7 +282,7 @@ describe('projects', () => {
     expect(await exists(path.join(runs, 'hello-001-r1'))).toBe(false);
     expect(await exists(path.join(runs, 'other-app--hello-001--run-1'))).toBe(true);
     expect((await readUserConfig(home)).cfg.projects).toEqual([]);
-    expect(docker).toEqual(expect.arrayContaining(['compose -p teams-ai-hello-app down -v', 'compose -p teams-ai-hello-app--orders down -v', 'network rm teams-ai-hello-app_net']));
+    expect(docker).toEqual(expect.arrayContaining(['compose -p teams-ai-hello-app down -v', 'compose -p teams-ai-hello-app--orders-api down -v', 'network rm teams-ai-hello-app_net']));
   });
 
   it('gives a run the services plan of its spec', async () => {
@@ -292,7 +292,7 @@ describe('projects', () => {
     await fs.writeFile(path.join(project, 'docs', 'specs', 'hello-001', 'plan.json'), JSON.stringify(makeServicesPlan(makeFrozenSpec({ specId: 'hello-001' }))));
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 1);
     const detail = await (await fetch(`${base()}/api/runs/hello-001-r1`)).json();
-    expect(Object.keys(detail.plan.services)).toEqual(['orders', 'inventory']);
+    expect(Object.keys(detail.plan.services)).toEqual(['orders-api', 'inventory-api']);
   });
 
   it('stops an active run, then deletes the project', async () => {

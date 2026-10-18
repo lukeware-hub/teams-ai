@@ -21,7 +21,7 @@ describe('heuristicTier', () => {
   const ac = (n: number) => Array.from({ length: n }, (_, i) => `AC-${String(i + 1).padStart(3, '0')}`);
 
   it("sizes a service's scaffold like the project's: large", () => {
-    expect(heuristicTier(t({ id: 'T0-scaffold-inventory', service: 'inventory', title: 'Scaffold', description: 'x' }), 1).tier).toBe('large');
+    expect(heuristicTier(t({ id: 'T0-scaffold-inventory-api', service: 'inventory-api', title: 'Scaffold', description: 'x' }), 1).tier).toBe('large');
   });
 
   it('sizes a task from what the plan says about it', () => {

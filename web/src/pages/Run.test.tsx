@@ -235,9 +235,9 @@ describe('RunView', () => {
     });
 
     it("names each task's service in the tasks card", () => {
-      const planned = ev(1, 'TASK_PLANNED', { task: { id: 'T1', title: 'T1', description: 'd', criteriaRefs: ['AC-001'], dependsOn: [], affectedPaths: ['src'], owner: 'dev', origin: 'plan', service: 'orders' }, replan: false });
+      const planned = ev(1, 'TASK_PLANNED', { task: { id: 'T1', title: 'T1', description: 'd', criteriaRefs: ['AC-001'], dependsOn: [], affectedPaths: ['src'], owner: 'dev', origin: 'plan', service: 'orders-api' }, replan: false });
       render(view({ events: [planned], ended: false, detail: { ...detail, status: 'running' } }));
-      expect(screen.getByTestId('task-T1').closest('li')!.textContent).toContain('orders');
+      expect(screen.getByTestId('task-T1').closest('li')!.textContent).toContain('orders-api');
     });
 
     it('shows no banner for a healthy run', () => {
