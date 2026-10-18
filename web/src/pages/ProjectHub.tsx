@@ -103,7 +103,7 @@ export function appLinks(report: Report | null, status: ServiceStatus, hostname:
 const PROCESS_PHASES = [1, 2, 3, 4, 5, 6];
 
 /** The whole process of the execution that is going or was stopped: each phase in order, with the state its journal gives. */
-function RunProcessSection({ run, events }: { run: RunRow; events: StoredEvent[] }) {
+function RunProcessSection({ run, events, title }: { run: RunRow; events: StoredEvent[]; title?: string }) {
   const unique = events.filter((e, i) => events.findIndex((x) => x.seq === e.seq) === i);
   const journal = phases(unique);
   const blocked = [...runState(unique).tasks.values()].filter((t) => t.state === 'blocked').length;
@@ -118,6 +118,7 @@ function RunProcessSection({ run, events }: { run: RunRow; events: StoredEvent[]
           </div>
           <Link className={action.primary} to={`/runs/${run.runId}`}>Abrir execução</Link>
         </div>
+        <p className="m-0 text-[0.875rem] text-ink-soft">Spec em execução: <b className="font-semibold text-ink">{title ?? run.specId}</b></p>
         <ol className="m-0 grid list-none gap-2 p-0">
           {order.map((phase) => {
             const row = journal.find((j) => j.phase === phase);
@@ -148,6 +149,8 @@ export function ProjectHubView(p: {
   /** The execution that is going or was stopped, and its journal: the project shows its whole process. */
   processRun?: RunRow | null;
   processEvents?: StoredEvent[];
+  /** The backlog title of the spec the execution processes; its id stands in when unknown. */
+  processTitle?: string;
   error: string | null;
   deleteError: string | null;
   onStart: (specId: string) => void | Promise<void>;
@@ -285,7 +288,7 @@ export function ProjectHubView(p: {
           <span className={statLabel}>custo total</span>
         </div>
       </div>
-      {p.processRun ? <RunProcessSection run={p.processRun} events={p.processEvents ?? []} /> : null}
+      {p.processRun ? <RunProcessSection run={p.processRun} events={p.processEvents ?? []} title={p.processTitle} /> : null}
       {allConcluded && p.apps ? (
         <section className={panel} data-testid="project-apps">
           <div className={section}>
@@ -612,6 +615,11 @@ export function ProjectHub() {
   const [apps, setApps] = useState<AppLinks | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [specTitles, setSpecTitles] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!projectId || backlogs.length === 0) return;
+    void Promise.all(backlogs.map((d) => refineApi.snapshot(projectId, d).then((s) => s.state.backlog?.items ?? [], () => []))).then((lists) => setSpecTitles(Object.fromEntries(lists.flat().map((i) => [i.key, i.title]))));
+  }, [projectId, backlogs]);
   const navigate = useNavigate();
   const refresh = useCallback(async () => {
     if (!projectId) return;
@@ -683,6 +691,7 @@ export function ProjectHub() {
       apps={apps}
       processRun={processRun}
       processEvents={processEvents}
+      processTitle={processRun ? specTitles[processRun.specId] : undefined}
       error={error}
       deleteError={deleteError}
       onStart={(specId) => act(async () => {

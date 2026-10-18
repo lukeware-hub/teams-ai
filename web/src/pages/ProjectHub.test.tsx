@@ -401,6 +401,13 @@ describe('the process of the running execution on the project page', () => {
     expect(items[2]!.textContent).toContain('em execução');
     expect(items[3]!.textContent).toContain('aguardando');
   });
+  it('names the spec being processed by its backlog title, or by its id when the title is unknown', () => {
+    const { unmount } = render(view({ processRun: runs[0], processEvents: [], processTitle: 'Governança de regras e versões' }));
+    expect(within(screen.getByTestId('run-process')).getByText('Governança de regras e versões')).toBeTruthy();
+    unmount();
+    render(view({ processRun: runs[0], processEvents: [] }));
+    expect(within(screen.getByTestId('run-process')).getByText(runs[0]!.specId)).toBeTruthy();
+  });
   it('shows nothing when no execution is running or stopped', () => {
     render(view({ processRun: null, processEvents: [] }));
     expect(screen.queryByTestId('run-process')).toBeNull();
