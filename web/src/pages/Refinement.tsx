@@ -715,8 +715,8 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
       if (e.seq <= applied.current) continue;
       applied.current = e.seq;
       next = applyToSnapshot(next, e);
-      // A started backlog stays here: its program panel follows every spec, each with its own run link.
-      if (e.type === 'REFINE_STARTED_RUN' && !next.state.backlog?.enabled) navigate(`/runs/${String(e.data.runId)}`);
+      // A started backlog opens its execution screen, which follows every spec with its own run link.
+      if (e.type === 'REFINE_STARTED_RUN') navigate(next.state.backlog?.enabled ? programPath : `/runs/${String(e.data.runId)}`);
     }
     if (next !== snap) {
       if (next.docsDirty) void load();

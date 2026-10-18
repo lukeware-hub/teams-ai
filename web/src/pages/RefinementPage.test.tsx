@@ -28,4 +28,20 @@ describe('RefinementPage journal replay', () => {
     await new Promise((r) => setTimeout(r, 20));
     await waitFor(() => expect(screen.getAllByTestId('accept-sm-c1-0')).toHaveLength(1));
   });
+
+  it('opens the execution screen when a detailed backlog starts by itself', async () => {
+    const backlog = { enabled: true, detail: true, epics: [], items: [], specs: {}, preplans: {}, flowHeadings: [] };
+    const ready = snapshot(1);
+    journal.events = [event(2, 'REFINE_STARTED_RUN', { runId: 'hello-app--base--run-1' })];
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...ready, state: { ...ready.state, status: 'ready', error: null, patches: [], backlog } as never });
+    render(
+      <MemoryRouter initialEntries={['/refine/hello-app/hello-001']}>
+        <Routes>
+          <Route path="/refine/:projectId/:specId" element={<RefinementPage />} />
+          <Route path="/refine/:projectId/:specId/program" element={<p>tela da execução</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText('tela da execução')).toBeTruthy();
+  });
 });
