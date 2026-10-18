@@ -15,6 +15,8 @@ import type { Divergence, DivergenceSide } from '@server/refine/checklist';
 import { BacklogPanel, DetailSpecsButton } from '../refine/BacklogPanel.js';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { ProcessingBanner } from '../refine/ProcessingBanner.js';
+import { StageBar } from '../refine/StageBar.js';
+import { stageOf } from '../refine/stages.js';
 import { SpecTree } from '../refine/SpecTree.js';
 import { Workspace } from '../components/Workspace.js';
 
@@ -176,6 +178,8 @@ export interface ViewProps {
   onEvaluate(): void | Promise<unknown>;
   onEnableBacklog?(): void | Promise<unknown>;
   onEnableDetail?(): void | Promise<unknown>;
+  /** Stage 2 of a new project: the whole backlog in one run, stopped by a question or an error and resumed by the next call. */
+  onPlanBacklog?(): void | Promise<unknown>;
   onAnswer(id: string, text: string, docsAnswered: boolean): void | Promise<unknown>;
   onSkip(id: string): void | Promise<unknown>;
   onAccept(id: string): void | Promise<unknown>;
@@ -270,6 +274,19 @@ export function RefinementView(p: ViewProps) {
   }, [current?.questionId]);
   const canStart = canStartRun(st, busy);
   const backlogOn = st.backlog?.enabled === true;
+  // A new project's refinement has two mandatory stages: the documents, then the backlog the program runs from.
+  const newProject = st.mode === 'new-project';
+  const planReady = newProject && !backlogOn && st.status === 'ready' && !st.stale;
+  const stageTwoOpen = newProject && backlogOn && !(st.backlog?.detail && st.status === 'ready' && !st.stale);
+  const stageTwoBlocked = pending.some((q) => q.blocking);
+  // In stage 2 the backlog is what the person checks, so it leads the quality column.
+  const backlogFirst = newProject && backlogOn;
+  const backlogBlock = (
+    <>
+      <BacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} onEnable={newProject ? undefined : p.onEnableBacklog} mandatory={newProject} />
+      {st.backlog?.detail && <SpecTree backlog={st.backlog} evaluating={evaluating} />}
+    </>
+  );
   // Backlog mode lists specs, not one spec: the generated index replaces spec.json and the tasks of a single spec.
   const specsIndex = backlogOn && (st.backlog?.items.length ?? 0) > 0 ? buildSpecsIndex(snap.specId, st.backlog as never) : null;
   const projectJson = backlogOn ? st.backlog?.project ?? null : st.derived?.project ?? null;
@@ -301,6 +318,12 @@ export function RefinementView(p: ViewProps) {
     ? 'O Jev apontou pontos nos documentos. Ajuste o que fizer sentido e clique em Reavaliar.'
     : pending.length > 0
     ? 'Responda às perguntas em aberto para continuar.'
+    : planReady
+    ? 'Revisão concluída. Clique em Quebrar o backlog para começar a etapa 2: ela é obrigatória e gasta chamadas dos agentes.'
+    : stageTwoOpen && st.stale
+    ? 'Os documentos mudaram depois do backlog: clique em Continuar etapa 2 para atualizá-lo.'
+    : stageTwoOpen
+    ? 'Clique em Continuar etapa 2 para seguir o backlog.'
     : st.stale
       ? 'Clique em Reavaliar para atualizar a lista de verificação com as últimas mudanças.'
       : st.status === 'answering' && green && st.patches.some((x) => x.status === 'pending' && isApproval(x))
@@ -447,8 +470,13 @@ export function RefinementView(p: ViewProps) {
         </Tipped>
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <DetailSpecsButton backlog={st.backlog} locked={locked} ready={st.status === 'ready' && !st.stale} onDetail={p.onEnableDetail} />
-        <ActionButton data-testid="evaluate" className="primary min-w-40 flex-auto" busy={evaluating} disabled={locked} onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
+        {!newProject && <DetailSpecsButton backlog={st.backlog} locked={locked} ready={st.status === 'ready' && !st.stale} onDetail={p.onEnableDetail} />}
+        {(planReady || stageTwoOpen) && (
+          <ActionButton data-testid="plan-backlog" className="primary min-w-40 flex-auto" busy={evaluating} disabled={locked || stageTwoBlocked} onClick={() => p.onPlanBacklog?.()} icon={<Icon name="file" size={16} />}>
+            {planReady ? 'Quebrar o backlog (etapa 2)' : 'Continuar etapa 2'}
+          </ActionButton>
+        )}
+        <ActionButton data-testid="evaluate" className={`${planReady || stageTwoOpen ? 'secondary' : 'primary'} min-w-40 flex-auto`} busy={evaluating} disabled={locked} onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
           {st.cycle === 0 ? 'Avaliar' : 'Reavaliar'}
         </ActionButton>
         {askRe && (
@@ -600,9 +628,9 @@ export function RefinementView(p: ViewProps) {
           </div>
         </dl>
       </div>
+      {backlogFirst && backlogBlock}
       <div className="grid gap-[0.3rem]"><h5>Produto (PO)</h5><Checklist items={st.checklist} role="po" /><h5>Técnico (SM)</h5><Checklist items={st.checklist} role="sm" /></div>
-      <BacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} onEnable={p.onEnableBacklog} />
-      {st.backlog?.detail && <SpecTree backlog={st.backlog} evaluating={evaluating} />}
+      {!backlogFirst && backlogBlock}
       <h4><Icon name="file" size={20} />Arquivos gerados<InfoTip text="Versão estruturada dos documentos, gerada pelo Claude a cada avaliação. O project.json descreve o projeto; o spec.json, esta demanda, com tarefas e critérios de aceite." /></h4>
       {!backlogOn && (
         <>
@@ -739,6 +767,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   return (
     <main className="flex flex-col gap-4 lg:h-full lg:min-h-0">
       <header className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></Link><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span></header>
+      {snap.state.mode === 'new-project' && <StageBar stages={stageOf(snap.state, snap.state.status === 'evaluating')} />}
       {snap.state.status === 'evaluating' && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} />}
       {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phases={phases} link={programPath} />}
       {(error || snap.state.status === 'error') && (
@@ -762,6 +791,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}
         onEnableDetail={act(() => refineApi.enableDetail(projectId, specId))}
+        onPlanBacklog={act(() => refineApi.planBacklog(projectId, specId))}
         onAnswer={(id, t, d) => act(() => refineApi.answer(projectId, specId, id, t, d))()}
         onSkip={(id) => act(() => refineApi.skip(projectId, specId, id))()}
         onAccept={(id) => act(() => refineApi.accept(projectId, specId, id))()}

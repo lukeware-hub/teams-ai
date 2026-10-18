@@ -54,8 +54,10 @@ export function ItemReason({ status, reason }: { status: ProgramViewItem['status
   );
 }
 
-export function canStartRun(st: Pick<RefineState, 'status' | 'stale' | 'backlog'>, busy: boolean): boolean {
+export function canStartRun(st: Pick<RefineState, 'status' | 'stale' | 'backlog' | 'mode'>, busy: boolean): boolean {
   if (st.status !== 'ready' || st.stale || busy) return false;
+  // A new project starts only after its stage 2, the backlog it runs from.
+  if (st.mode === 'new-project' && !st.backlog?.enabled) return false;
   return st.backlog?.enabled ? st.backlog.detail === true : true;
 }
 

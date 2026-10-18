@@ -56,8 +56,9 @@ export function DetailSpecsButton({ backlog, locked, ready, onDetail }: { backlo
 }
 
 /** The documents broken into prioritized specs, the way the agents organized them; the human reads and steers through the docs. */
-export function BacklogPanel({ backlog, evaluating, locked, onEnable }: { backlog: BacklogView | null | undefined; evaluating: boolean; locked: boolean; onEnable?: () => unknown }) {
+export function BacklogPanel({ backlog, evaluating, locked, onEnable, mandatory = false }: { backlog: BacklogView | null | undefined; evaluating: boolean; locked: boolean; onEnable?: () => unknown; mandatory?: boolean }) {
   if (!backlog?.enabled) {
+    if (mandatory) return <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid="backlog-mandatory">O backlog nasce na etapa 2: quando os documentos estiverem prontos, clique em Quebrar o backlog.</p>;
     if (!onEnable) return null;
     return (
       <div className="my-4 grid gap-3 rounded-lg border border-line bg-surface-sunken p-4" data-testid="backlog-off">
