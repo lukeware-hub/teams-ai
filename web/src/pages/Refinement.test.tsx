@@ -188,6 +188,7 @@ describe('RefinementView backlog mode', () => {
     expect(screen.getByTestId('item-base')).toBeTruthy();
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/backlog está pronto para revisão/i)).toBeTruthy();
+    expect(screen.getByLabelText(/só fica disponível depois de clicar em Detalhar specs/)).toBeTruthy();
     expect(screen.queryByTestId('enable-backlog')).toBeNull();
   });
 

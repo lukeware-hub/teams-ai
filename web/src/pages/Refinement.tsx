@@ -83,7 +83,7 @@ const checkDetail = (detail: string) => {
   return detail;
 };
 const criterionText = (c: AcceptanceCriterion) => `${c.id}: dado ${c.given}, quando ${c.when}, então ${c.then}`;
-const startInfo = 'Os agentes passam a planejar, implementar, testar e publicar o projeto com base nestes documentos. Fica disponível com a lista atualizada e atendida, sem perguntas obrigatórias nem aprovação de ajuste pendentes; as sugestões pendentes são opcionais.';
+const startInfo = 'Os agentes passam a planejar, implementar, testar e publicar o projeto com base nestes documentos. Fica disponível com a lista atualizada e atendida, sem perguntas obrigatórias nem aprovação de ajuste pendentes; as sugestões pendentes são opcionais. Com backlog, só fica disponível depois de clicar em Detalhar specs.';
 const jevInfo = 'O Jev é obrigatório no refinamento. Ele confere se os cinco documentos estão consistentes entre si e classifica e decide pontos da avaliação: critérios de aceite ainda não prontos, perguntas repetidas e contradições com o histórico do projeto. Sem ele, a avaliação não inicia. Ajuste o que fizer sentido e reavalie.';
 const evaluationInfo = 'Cada clique em Avaliar abre uma rodada: o Jev confere a consistência dos documentos, o Claude gera o spec.json e o project.json, os agentes PO, SM e Front revisam e sugerem ajustes, e o Jev também aponta critérios ainda não prontos, descarta perguntas repetidas e sinaliza contradições com o histórico.';
 const patchInfo = 'Mudança proposta por um agente: linhas com - saem e linhas com + entram. Aceitar aplica a mudança no documento; Rejeitar a descarta, e o motivo opcional fica no histórico.';
