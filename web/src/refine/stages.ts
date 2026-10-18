@@ -1,7 +1,7 @@
 /** The three steps of a new project's refinement, in order. */
 export const STAGE_LABELS = {
   documents: 'Refinar documentos',
-  backlog: 'Quebrar o backlog',
+  backlog: 'Backlog',
   execution: 'Executar',
 } as const;
 
@@ -15,7 +15,7 @@ export interface Stage {
 }
 
 /** The one step the screen offers a new project now; `started` means the program runs and nothing is offered. */
-export type StageAction = 'evaluate' | 'plan' | 'continue' | 'answer' | 'start' | 'started';
+export type StageAction = 'evaluate' | 'answer' | 'start' | 'started';
 
 /** The part of the refinement state the stages read. */
 export interface StageInput {
@@ -43,15 +43,13 @@ export function stageOf(st: StageInput): Stage[] {
 /** The one step to offer now, so the buttons and the bar cannot disagree. */
 export function stageAction(st: StageInput): StageAction {
   if (st.status === 'started') return 'started';
-  const backlogOn = st.backlog?.enabled === true;
   const ready = st.status === 'ready' && !st.stale;
-  if (!backlogOn) return ready ? 'plan' : 'evaluate';
-  if (ready && st.backlog?.detail === true) return 'start';
+  if (ready && st.backlog?.enabled === true && st.backlog.detail === true) return 'start';
   if (st.questions?.some((q) => q.status === 'pending' && q.blocking)) return 'answer';
-  return 'continue';
+  return 'evaluate';
 }
 
 /** The name of the stage a running evaluation belongs to, for a new project. */
 export function stageTitle(st: StageInput): string {
-  return st.backlog?.enabled === true ? 'Etapa 2 · Quebrando o backlog' : 'Etapa 1 · Avaliando os documentos';
+  return st.backlog?.enabled === true ? 'Avaliando o backlog' : 'Avaliando os documentos';
 }

@@ -26,6 +26,7 @@ const base = (over: Partial<Snapshot['state']>): Snapshot => ({
     ],
     patches: [{ patchId: 'sm-c1-0', role: 'sm', file: 'brief.md', find: 'a', replace: 'b', reason: 'clearer', diff: '--- brief.md\n-a\n+b\n', cycle: 1, status: 'pending', decision: null }],
     discarded: [{ cycle: 1, role: 'po', file: 'docs/project.md', reason: 'find not found in project.md' }],
+    moves: [],
     error: null,
     runId: null,
     ...over,
@@ -121,14 +122,14 @@ describe('RefinementView backlog mode', () => {
   const backlog = { enabled: true, project: null, epics: [{ key: 'core', title: 'Núcleo' }], cycle: 1, items: [{ key: 'base', title: 'Fundação', epic: 'core', scope: 'Esqueleto', priority: 'P0' as const, rationale: 'tudo depende', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' as const, rank: 1 }] };
   const ready = { status: 'ready' as const, questions: [], patches: [], discarded: [], derived: null };
 
-  // Plan 89 review: once ready a suggestion is optional, the detailing step shows after Detalhar specs, and an approval stands apart.
+  // Plan 89 review: once ready a suggestion is optional, the detailing step follows the outline, and an approval stands apart.
   const suggestion = { patchId: 'po-c1-0', role: 'po' as const, file: 'brief.md' as const, find: 'a', replace: 'b', reason: 'mais claro', diff: '--- briefing.md\n-a\n+b\n', cycle: 1, status: 'pending' as const, decision: null };
-  it('calls a suggestion optional once the outline is ready, and shows the detailing step after Detalhar specs', () => {
+  it('calls a suggestion optional once the outline is ready, and shows the detailing step as still running', () => {
     const { rerender } = render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog, patches: [suggestion] })} busy={false} {...on()} /></MemoryRouter>);
     expect(screen.getByText(/As sugestões abaixo são opcionais/)).toBeTruthy();
     expect(screen.queryByText(/aceite ou rejeite cada uma/)).toBeNull();
     rerender(<MemoryRouter><RefinementView snap={base({ ...ready, status: 'drafting', backlog: { ...backlog, detail: true }, patches: [suggestion] })} busy={false} {...on()} /></MemoryRouter>);
-    expect(screen.getByText(/Detalhamento pedido/)).toBeTruthy();
+    expect(screen.getByText(/O detalhamento ainda não cobre todos os itens/)).toBeTruthy();
     expect(screen.queryByText(/aceite ou rejeite cada uma/)).toBeNull();
   });
 
@@ -199,30 +200,22 @@ describe('RefinementView backlog mode', () => {
     expect(start.querySelector('.info-tip, [data-testid="info-tip"]')).toBeNull();
   });
 
-  it('asks the page to detail a ready outline, and describes the briefing as the project briefing', () => {
-    const h = { ...on(), onEnableDetail: vi.fn() };
-    render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog })} busy={false} {...h} /></MemoryRouter>);
-    expect(screen.getByText(/clique em Detalhar specs/)).toBeTruthy();
-    fireEvent.click(screen.getByTestId('detail-specs'));
-    expect(h.onEnableDetail).toHaveBeenCalledOnce();
+  it('describes the briefing as the project briefing', () => {
+    render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog })} busy={false} {...on()} /></MemoryRouter>);
     fireEvent.click(screen.getByRole('button', { name: 'briefing.md' }));
     expect(screen.getByTestId('doc-impact').textContent).toMatch(/Briefing do projeto/);
   });
 
-  // Usability: the buttons that move the refinement sit in the review panel, above the next step, not under the editor.
-  it('puts Detalhar specs and Reavaliar in the review panel, above the next step', () => {
-    const h = { ...on(), onEnableDetail: vi.fn() };
-    const { rerender } = render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog })} busy={false} {...h} /></MemoryRouter>);
+  // Usability: the evaluation sits in the review panel, above the next step, not under the editor.
+  it('puts Reavaliar in the review panel, above the next step', () => {
+    render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog })} busy={false} {...on()} /></MemoryRouter>);
     const review = screen.getByRole('heading', { name: 'Área de revisão' }).closest('section') as HTMLElement;
     fireEvent.click(screen.getByRole('button', { name: 'briefing.md' }));
     const documents = screen.getByTestId('doc-brief.md').closest('section') as HTMLElement;
     const next = within(review).getByText('Próximo passo:');
-    expect(review.contains(screen.getByTestId('detail-specs'))).toBe(true);
     expect(review.contains(screen.getByTestId('evaluate'))).toBe(true);
     expect(documents.contains(screen.getByTestId('evaluate'))).toBe(false);
-    expect(screen.getByTestId('detail-specs').compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    rerender(<MemoryRouter><RefinementView snap={base({ ...ready, backlog: { ...backlog, detail: true } })} busy={false} {...h} /></MemoryRouter>);
-    expect(screen.queryByTestId('detail-specs')).toBeNull();
+    expect(screen.getByTestId('evaluate').compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('in detail mode draws the coverage tree, finds question criteria in the item specs, and keeps Start disabled', () => {
@@ -254,7 +247,7 @@ describe('RefinementView backlog mode', () => {
 
   it('keeps asking for a new evaluation while a requested detail has no specs yet', () => {
     render(<MemoryRouter><RefinementView snap={base({ ...ready, status: 'drafting', backlog: { ...backlog, detail: true } as never })} busy={false} {...on()} /></MemoryRouter>);
-    expect(screen.getByText(/Detalhamento pedido: clique em Reavaliar/)).toBeTruthy();
+    expect(screen.getByText(/O detalhamento ainda não cobre todos os itens: clique em Reavaliar/)).toBeTruthy();
   });
 
   it('a started backlog says the agents are executing it', () => {
@@ -279,7 +272,7 @@ describe('RefinementView backlog mode', () => {
   it('in detail mode with coverage gaps tells the human to reevaluate and read the gaps', () => {
     const detailed = { ...backlog, detail: true, flowHeadings: [], specs: {}, preplans: {} };
     render(<MemoryRouter><RefinementView snap={base({ ...ready, status: 'drafting', backlog: detailed as never })} busy={false} {...on()} /></MemoryRouter>);
-    expect(screen.getByText(/clique em Reavaliar para gerar a spec e o pré-plano de cada item/)).toBeTruthy();
+    expect(screen.getByText(/clique em Reavaliar para gerar a spec e o pré-plano do que falta/)).toBeTruthy();
   });
 
   it('tells which agent details the specs and which pre-plans them', () => {

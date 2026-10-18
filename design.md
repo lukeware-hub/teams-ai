@@ -1139,7 +1139,7 @@ The save explanation is a **statement of system behavior**, so it is `meta` with
 | Overline | `Refinamento` |
 | Title | `Área de revisão` |
 | Chip | `N em aberto` — `warn` tone with a `clock` icon when N > 0, `good` tone with a dot when N = 0 |
-| Actions | One row above the guidance callout: `Detalhar specs` as `secondary` (only while the outline is ready and not yet detailed, disabled until status is `ready` and not stale, hidden once requested), then `Avaliar`/`Reavaliar` as `primary` with a leading check icon (disabled while evaluating or started; asks for confirmation when nothing changed) |
+| Actions | One row above the guidance callout: `Avaliar`/`Reavaliar` as `primary` with a leading check icon (disabled while evaluating or started; asks for confirmation when nothing changed) |
 | Guidance | §11.5 guidance callout, `lightbulb` icon, bold `Próximo passo:` lead-in |
 | Questions | `body-soft` when empty: `Nenhuma pergunta em aberto.` Otherwise a list of question cards. |
 | History | §11.9 section header `HISTÓRICO` with a `clock` icon, then the inline empty state or the entries |
@@ -1255,7 +1255,7 @@ The user-provided reference images 2 and 3 are the approved visual target for `/
 ### 30.3 Review panel
 
 - Use the purple clipboard tile, `Refinamento` eyebrow, `Área de revisão` title, and `0 em aberto` state chip.
-- Show the actions row (`Detalhar specs` when it applies, then `Avaliar`/`Reavaliar`) immediately below the header, then the next-step callout with a lightbulb icon and short, actionable Portuguese copy.
+- Show the actions row (`Avaliar`/`Reavaliar`) immediately below the header, then the next-step callout with a lightbulb icon and short, actionable Portuguese copy.
 - Empty review state copy is `Nenhuma pergunta em aberto.`. The history section uses a clock icon and an explicit empty state rather than a blank box.
 - Questions, answers, patches, and rejection controls remain functional; the reference styling must not hide or remove them.
 

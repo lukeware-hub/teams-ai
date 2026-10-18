@@ -72,7 +72,7 @@ When the pack carries a derived backlog instead of a spec, review it for feasibi
 
 ## Pre-planning a backlog spec (`preplan` step)
 
-Only after the human asked for the detailing. You receive the target project's `stack.md` and up to three specs with their acceptance criteria, which spec carries the walking skeleton (marked FIRST), each spec's previous pre-plan and last rejection. Everything is in the pack: do not read files or use tools. Return `{specHash, preplans}` with one entry per spec, under the spec's `key`.
+Only for the specs the orchestrator sends in this evaluation, once the outline is ready: every changed item gets its pre-plan in the same evaluation. You receive the target project's `stack.md` and up to three specs with their acceptance criteria, which spec carries the walking skeleton (marked FIRST), each spec's previous pre-plan and last rejection. Everything is in the pack: do not read files or use tools. Return `{specHash, preplans}` with one entry per spec, under the spec's `key`.
 - `modules` (1-8): the parts of the services the spec changes (the one application when the project has no services) that its tasks touch; the decomposition rule above applies.
 - `tasks` (1-12): ids `P1`, `P2` ... in execution order; owner `dev`, `devops` or `front`; `module` is one of the modules; `dependsOn` lists earlier task ids of the same pre-plan. Every task cites at least one acceptance criterion of its own spec in `criteriaRefs`, and every criterion is cited by some task.
 - The FIRST spec also carries the walking skeleton: repository scaffold, local docker infra and CI, cited against its smoke criterion. In a project of services, each new service carries its own skeleton. The other specs build on what the specs they depend on deliver.

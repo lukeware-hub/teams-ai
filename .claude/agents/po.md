@@ -38,7 +38,7 @@ Only when the human turned backlog mode on. You receive the target project's fiv
 
 ## Detailing a backlog item (`spec` step)
 
-Only after the human asked for the detailing ("Detalhar specs"). You receive the target project's `project.md`, up to three backlog items (scope, rationale, sources and the scope of what each depends on), each item's previous spec and last rejection, and every doc section they cite. Everything is in the pack: do not read files or use tools. Return `{specHash, specs}` with one entry per item, under the item's `key`.
+Only for the items the orchestrator sends in this evaluation, once the outline is ready: every changed item is detailed in the same evaluation. You receive the target project's `project.md`, up to three backlog items (scope, rationale, sources and the scope of what each depends on), each item's previous spec and last rejection, and every doc section they cite. Everything is in the pack: do not read files or use tools. Return `{specHash, specs}` with one entry per item, under the item's `key`.
 - Derive the spec from the item and its cited sections only; leave to the other items what their scope covers, and name it in `outOfScope`.
 - Each criterion is checked only through what the item and the items it depends on, directly or through others, deliver; a rule that needs what a later item delivers goes to `outOfScope`, naming what it needs.
 - An item that adjusts specs already started or delivered (listed under it) changes software that already exists: cover only what its cited sections add or change against them, restate a criterion that changes in full as a new one, and never repeat what they already deliver.

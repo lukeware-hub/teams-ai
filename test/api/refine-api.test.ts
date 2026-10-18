@@ -386,13 +386,12 @@ describe('refine api', () => {
     const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
     script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
     const asked = [{ id: 'q1', text: 'O health responde em JSON?', blocking: false, relatedAcIds: ['AC-001'] }, { id: 'q2', text: 'Qual o nome do produto?', blocking: false, relatedAcIds: [] }];
-    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }, { checklist: PO, questions: asked, docPatch: [] }];
-    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }, { checklist: SM, questions: [], docPatch: [] }];
-    await call('POST', `${url}/evaluate`);
-    await settle();
+    script['refine/po'] = [{ checklist: PO, questions: asked, docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
     script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
     script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
-    await call('POST', `${url}/backlog/detail`);
+    // One evaluation derives the outline, details every item and asks the two questions about the criteria.
+    await call('POST', `${url}/evaluate`);
     await settle();
     for (const q of (await snapshot()).state.questions) {
       await call('POST', `${url}/answers`, { questionId: q.questionId, text: q.text.includes('JSON') ? 'Sim, application/json.' : 'Hello.' });
@@ -586,31 +585,29 @@ describe('refine api', () => {
     expect(spawns).toHaveLength(0);
   });
 
-  it('stage 2 stops on a rule the outline breaks, asks the owner, and resumes after the answer', async () => {
+  it('a new project stops on a rule the outline breaks, asks the owner, and resumes after the answer', async () => {
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     const url = '/api/refine/hello-app/hello-app-001';
     script['derive/po'] = [derived];
-    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
-    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
-    await call('POST', `${url}/evaluate`);
-    await settle();
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }, { checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }, { checklist: SM, questions: [], docPatch: [] }];
     const broken = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: ['zzz'], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
     script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items: broken } }, { project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items: broken } }];
-    expect((await call('POST', `${url}/backlog/plan`)).status).toBe(202);
+    // The docs are ready, so the evaluation goes on into the backlog: the outline breaks a rule and asks the owner.
+    await call('POST', `${url}/evaluate`);
     await settle();
     const asked = (await snapshot()).state;
     expect(asked.status).toBe('answering');
     const pending = asked.questions.filter((q: { status: string }) => q.status === 'pending');
     expect(pending).toEqual([expect.objectContaining({ role: 'po', blocking: true, text: expect.stringContaining('zzz') })]);
-    expect((await call('POST', `${url}/backlog/plan`)).status).toBe(409); // a pending question blocks the next call
     expect((await call('POST', `${url}/answers`, { questionId: pending[0].questionId, text: 'O item base não depende de outro.' })).status).toBe(200);
     const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
     script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
-    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }, { checklist: PO, questions: [], docPatch: [] }];
-    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }, { checklist: SM, questions: [], docPatch: [] }];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
     script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
     script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-003'], dependsOn: [] }], risks: [] }] }];
-    expect((await call('POST', `${url}/backlog/plan`)).status).toBe(202);
+    await call('POST', `${url}/evaluate`);
     await settle();
     expect((await snapshot()).state).toMatchObject({ status: 'ready', error: null, backlog: { detail: true } });
   });

@@ -12,7 +12,7 @@ O refinamento prepara a spec. Os agentes conferem se a descrição está complet
 
 ## Passo a passo
 
-Um projeto novo passa por duas etapas obrigatórias, na barra no topo da tela: **Refinar documentos** e **Quebrar o backlog**. Depois delas vem **Executar**.
+Um projeto novo passa por um processo só, mostrado na barra no topo da tela: **Refinar documentos** e **Backlog**. Depois dele vem **Executar**.
 
 Etapa 1, Refinar documentos:
 
@@ -20,11 +20,15 @@ Etapa 1, Refinar documentos:
 2. Responda as **perguntas em aberto**. As marcadas como obrigatórias bloqueiam o avanço. Você pode escrever a resposta e clicar em **Responder**, ou **Ignorar** as que não são obrigatórias.
 3. Revise as **sugestões de alteração**: aceite ou rejeite cada uma. Aceitar uma sugestão pede nova avaliação.
 4. Se mudou algum documento, clique em **Reavaliar**.
-5. Quando a lista de verificação estiver toda atendida, aparece o botão **Quebrar o backlog (etapa 2)**.
+5. Quando a lista de verificação estiver toda atendida, o backlog é montado e detalhado na mesma avaliação. Não há um segundo clique.
 
-Etapa 2, Quebrar o backlog: um clique em **Quebrar o backlog (etapa 2)** roda tudo em sequência: o esboço das specs, o detalhe de cada uma e a conferência de cobertura. Ele gasta chamadas dos agentes e não pode ser desfeito. Se o processo parar numa pergunta ou num erro, responda a pergunta e clique em **Continuar etapa 2**.
+Backlog: a avaliação que vem depois dos documentos prontos monta o esboço das specs e gera a spec e o pré-plano de cada item que mudou. Cada avaliação gasta chamadas dos agentes. Uma avaliação roda no máximo quatro rodadas seguidas: para quando precisa de você (uma pergunta ou um erro) ou quando o backlog está pronto. Ao começar o backlog, o briefing passa a ser o `docs/briefing.md` do projeto.
 
-Etapa 3, Executar: quando a etapa 2 terminar, clique em **Iniciar análise** para os agentes desenvolverem. A análise nunca começa sozinha.
+Executar: quando o backlog estiver pronto, clique em **Iniciar análise** para os agentes desenvolverem. A análise nunca começa sozinha.
+
+## Movimentos de conteúdo
+
+Quando um agente encontra um trecho no documento errado (por exemplo, a ordem de passos dentro do design.md), ele move o trecho para o documento certo e avisa no topo da tela. **Desfazer** devolve os dois documentos ao texto anterior, enquanto nenhum deles mudou depois do movimento. **Fechar** só esconde o aviso; o movimento continua valendo.
 
 ## Segredos
 
@@ -36,4 +40,4 @@ O Jev é uma verificação extra dos documentos, feita por outro serviço. Os po
 
 ## Backlog
 
-Todo projeto novo tem um backlog: o briefing vira várias specs, ordenadas por prioridade. A etapa 2 monta esse backlog; depois dela, o programa executa as specs em ordem. Uma nova spec ou a continuação de uma spec não passam pela etapa 2.
+Todo projeto novo tem um backlog: o briefing vira várias specs, ordenadas por prioridade. A avaliação dos documentos prontos monta esse backlog; depois dele, o programa executa as specs em ordem. Uma nova spec ou a continuação de uma spec não passam pelo backlog.

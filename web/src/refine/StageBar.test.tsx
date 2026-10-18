@@ -8,7 +8,7 @@ describe('StageBar', () => {
     render(<StageBar stages={stageOf({ status: 'ready', stale: false, backlog: { enabled: true, detail: false, items: [{}] } })} />);
     const list = screen.getByRole('list', { name: 'Etapas do refinamento' });
     const items = within(list).getAllByRole('listitem');
-    expect(items.map((li) => li.querySelector('b')?.textContent)).toEqual(['Refinar documentos', 'Quebrar o backlog', 'Executar']);
+    expect(items.map((li) => li.querySelector('b')?.textContent)).toEqual(['Refinar documentos', 'Backlog', 'Executar']);
     expect(items[0]!.getAttribute('aria-current')).toBeNull();
     expect(items[1]!.getAttribute('aria-current')).toBe('step');
     expect(items[2]!.getAttribute('aria-current')).toBeNull();

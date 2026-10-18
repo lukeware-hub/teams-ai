@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { BacklogView } from '../api.js';
-import { BacklogPanel, DetailSpecsButton } from './BacklogPanel.js';
+import { BacklogPanel } from './BacklogPanel.js';
 
 const item = (key: string, over: Partial<BacklogView['items'][number]> = {}) => ({
   key, title: `Spec ${key}`, epic: 'core', scope: `Escopo de ${key}`, priority: 'P1' as const, rationale: `Por que ${key}`, dependsOn: [], sources: [{ doc: 'flow.md', heading: '7. OPME' }], size: 'M' as const, rank: 1, ...over,
@@ -30,9 +30,9 @@ describe('BacklogPanel', () => {
     expect(screen.queryByText(/depois da próxima avaliação/)).toBeNull();
   });
 
-  it('says the outline comes from stage 2, not from a button, in a new project', () => {
+  it('says the outline comes with the documents being ready, not from a button, in a new project', () => {
     render(<BacklogPanel backlog={view([])} evaluating={false} locked={false} mandatory />);
-    expect(screen.getByText(/aparece aqui quando a etapa 2 rodar/)).toBeTruthy();
+    expect(screen.getByText(/aparece aqui quando os documentos ficarem prontos/)).toBeTruthy();
     expect(screen.queryByText(/Clique em Avaliar/)).toBeNull();
   });
 
@@ -70,20 +70,7 @@ describe('BacklogPanel detailing', () => {
   const REV = `sha256:${'2'.repeat(64)}`;
   const items = [item('base', { rank: 1 }), item('casos', { rank: 2 }), item('cobranca', { epic: 'fin', rank: 3 })];
 
-  it('offers Detalhar specs once the outline is ready, with the expected number of agent calls', () => {
-    const onDetail = vi.fn();
-    const { rerender } = render(<DetailSpecsButton backlog={view(items)} locked={false} ready={false} onDetail={onDetail} />);
-    expect((screen.getByTestId('detail-specs') as HTMLButtonElement).disabled).toBe(true);
-    rerender(<DetailSpecsButton backlog={view(items)} locked={false} ready onDetail={onDetail} />);
-    const button = screen.getByTestId('detail-specs') as HTMLButtonElement;
-    expect(button.disabled).toBe(false);
-    // Two epics: one call each for the specs and for the pre-plans, then the Front, PO and SM reviews.
-    expect(button.textContent).toMatch(/~7 chamadas/);
-    fireEvent.click(button);
-    expect(onDetail).toHaveBeenCalledOnce();
-  });
-
-  it('marks each item planned, in refinement or failed once detailed, and no longer offers the button', () => {
+  it('marks each item planned, in refinement or failed once detailed', () => {
     const spec = { specId: 'p-base', type: 'feature', objectives: ['o'], features: [], acceptanceCriteria: [{ id: 'AC-001', given: 'g', when: 'w', then: 't', smoke: true }], outOfScope: [], externalDependencies: [] };
     const preplan = { specId: 'p-base', specRev: REV, inputHash: 'h', modules: [{ name: 'm', purpose: 'p' }], tasks: [{ id: 'P1', title: 't', module: 'm', owner: 'dev', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] };
     const detailed = {
@@ -92,7 +79,6 @@ describe('BacklogPanel detailing', () => {
       preplans: { base: { inputHash: 'h', specRev: REV, preplan, issues: [], cycle: 2 } },
     } as BacklogView;
     render(<BacklogPanel backlog={detailed} evaluating={false} locked={false} />);
-    expect(screen.queryByTestId('detail-specs')).toBeNull();
     expect(within(screen.getByTestId('item-base')).getByText('planejada')).toBeTruthy();
     expect(within(screen.getByTestId('item-casos')).getByText('erro')).toBeTruthy();
     expect(within(screen.getByTestId('item-cobranca')).getByText('em refinamento')).toBeTruthy();
@@ -110,13 +96,4 @@ describe('BacklogPanel detailing', () => {
     expect(within(screen.getByTestId('item-casos')).getByText('em execução')).toBeTruthy();
   });
 
-  it('renders no Detalhar specs once the specs are detailed', () => {
-    render(<DetailSpecsButton backlog={{ ...view(items), detail: true }} locked={false} ready onDetail={vi.fn()} />);
-    expect(screen.queryByTestId('detail-specs')).toBeNull();
-  });
-
-  it('leaves Detalhar specs to the review panel, so the backlog list never renders it', () => {
-    render(<BacklogPanel backlog={view(items)} evaluating={false} locked={false} />);
-    expect(screen.queryByTestId('detail-specs')).toBeNull();
-  });
 });

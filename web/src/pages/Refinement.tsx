@@ -12,7 +12,8 @@ import { Loading } from '../components/Loading.js';
 import { buildSpecsIndex } from '@server/refine/specs-index';
 import { allGreen, isApproval } from '@server/refine/state';
 import type { Divergence, DivergenceSide } from '@server/refine/checklist';
-import { BacklogPanel, DetailSpecsButton } from '../refine/BacklogPanel.js';
+import { BacklogPanel } from '../refine/BacklogPanel.js';
+import { MoveNotice } from '../refine/MoveNotice.js';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { ProcessingBanner } from '../refine/ProcessingBanner.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
@@ -173,9 +174,7 @@ export interface ViewProps {
   onDesignFromImages?(images: { data: string }[]): Promise<string | null>;
   onEvaluate(): void | Promise<unknown>;
   onEnableBacklog?(): void | Promise<unknown>;
-  onEnableDetail?(): void | Promise<unknown>;
   /** Stage 2 of a new project: the whole backlog in one run, stopped by a question or an error and resumed by the next call. */
-  onPlanBacklog?(): void | Promise<unknown>;
   onAnswer(id: string, text: string, docsAnswered: boolean): void | Promise<unknown>;
   onSkip(id: string): void | Promise<unknown>;
   onAccept(id: string): void | Promise<unknown>;
@@ -311,15 +310,9 @@ export function RefinementView(p: ViewProps) {
     : jevAdvisory
     ? 'O Jev apontou pontos nos documentos. Ajuste o que fizer sentido e clique em Reavaliar.'
     : stageStep === 'answer'
-    ? 'O backlog depende desta resposta: responda para a etapa 2 continuar.'
+    ? 'O backlog depende desta resposta: responda para a avaliação continuar.'
     : pending.length > 0
     ? 'Responda às perguntas em aberto para continuar.'
-    : stageStep === 'plan'
-    ? 'Revisão concluída. Clique em Quebrar o backlog para começar a etapa 2: ela é obrigatória e gasta chamadas dos agentes.'
-    : stageStep === 'continue' && st.stale
-    ? 'Os documentos mudaram depois do backlog: clique em Continuar etapa 2 para atualizá-lo.'
-    : stageStep === 'continue'
-    ? 'Clique em Continuar etapa 2 para seguir o backlog.'
     : st.stale
       ? 'Clique em Reavaliar para atualizar a lista de verificação com as últimas mudanças.'
       : st.status === 'answering' && green && st.patches.some((x) => x.status === 'pending' && isApproval(x))
@@ -331,9 +324,9 @@ export function RefinementView(p: ViewProps) {
             ? pendingSuggestion
               ? 'O backlog detalhado está pronto. Aceite ou rejeite cada sugestão pendente, ou clique em Iniciar análise para começar sem elas, que vão para o histórico.'
               : 'O backlog detalhado está pronto: cada item tem spec e pré-plano. Clique em Iniciar análise para os agentes executarem o backlog. Para mudar algo antes, escreva nos documentos e reavalie.'
-            : 'O backlog está pronto para revisão. Para mudar prioridades ou cortes, escreva no briefing.md e reavalie; quando o esboço estiver certo, clique em Detalhar specs para gerar a spec e o pré-plano de cada item.'
+            : 'O backlog está pronto para revisão. Para mudar prioridades ou cortes, escreva no briefing.md e reavalie.'
         : st.backlog?.detail && !backlogDetailed
-          ? 'Detalhamento pedido: clique em Reavaliar para gerar a spec e o pré-plano de cada item; o que faltar aparece em vermelho na cobertura.'
+          ? 'O detalhamento ainda não cobre todos os itens: clique em Reavaliar para gerar a spec e o pré-plano do que falta; o que faltar aparece em vermelho na cobertura.'
         : canStart
           ? 'Tudo pronto. Clique em Iniciar análise para os agentes desenvolverem o projeto.'
           : st.cycle === 0
@@ -452,13 +445,8 @@ export function RefinementView(p: ViewProps) {
       </div>
     </section>
   );
-  // A new project offers one step at a time: a stage button, the start, or the evaluation, never two primary actions.
-  const stageButton = stageStep === 'plan' || stageStep === 'continue' ? (
-    <ActionButton data-testid="plan-backlog" className="primary min-w-40 flex-auto" busy={evaluating} disabled={locked} onClick={() => p.onPlanBacklog?.()} icon={<Icon name="file" size={16} />}>
-      {stageStep === 'plan' ? 'Quebrar o backlog (etapa 2)' : evaluating ? 'Etapa 2 em andamento' : 'Continuar etapa 2'}
-    </ActionButton>
-  ) : null;
-  const showEvaluate = !newProject || stageStep === 'evaluate' || (!evaluating && (stageStep === 'plan' || stageStep === 'continue' || stageStep === 'start'));
+  // A new project offers one step at a time: the start, or the evaluation, never two primary actions.
+  const showEvaluate = !newProject || stageStep === 'evaluate' || (stageStep === 'start' && !evaluating);
   const startButton = (
     <ActionButton data-testid="start" className={newProject ? 'primary min-w-40 flex-auto' : 'primary mb-4 w-full'} busy={p.startState?.busy ?? false} disabled={!canStart} onClick={p.onStart} icon={<Icon name="play" size={16} />}>
       {p.startState?.label ?? 'Iniciar análise'}
@@ -478,8 +466,6 @@ export function RefinementView(p: ViewProps) {
         </Tipped>
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        {!newProject && <DetailSpecsButton backlog={st.backlog} locked={locked} ready={st.status === 'ready' && !st.stale} onDetail={p.onEnableDetail} />}
-        {stageButton}
         {newProject && (stageStep === 'start' || stageStep === 'started') && startButton}
         {showEvaluate && (
         <ActionButton data-testid="evaluate" className={`${newProject && stageStep !== 'evaluate' ? 'secondary' : 'primary'} min-w-40 flex-auto`} busy={evaluating} disabled={locked} onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
@@ -803,6 +789,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   return (
     <main className="flex flex-col gap-4 lg:h-full lg:min-h-0">
       <header className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></Link><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span></header>
+      <MoveNotice moves={snap.state.moves ?? []} onUndo={(moveId) => act(() => refineApi.undoMove(projectId, specId, moveId))()} docName={docName} />
       {snap.state.mode === 'new-project' && <StageBar stages={stageOf(snap.state)} />}
       {snap.state.status === 'evaluating' && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}
       {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phases={phases} link={programPath} />}
@@ -826,8 +813,6 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         }}
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}
-        onEnableDetail={act(() => refineApi.enableDetail(projectId, specId))}
-        onPlanBacklog={act(() => refineApi.planBacklog(projectId, specId))}
         onAnswer={(id, t, d) => act(() => refineApi.answer(projectId, specId, id, t, d))()}
         onSkip={(id) => act(() => refineApi.skip(projectId, specId, id))()}
         onAccept={(id) => act(() => refineApi.accept(projectId, specId, id))()}

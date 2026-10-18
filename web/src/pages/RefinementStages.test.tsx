@@ -35,29 +35,29 @@ const backlogOutline = { enabled: true, detail: false, epics: [], items: [], spe
 const backlogDetailed = { enabled: true, detail: true, epics: [], items: [], specs: {}, preplans: {}, flowHeadings: [] };
 const question = (blocking: boolean, status = 'pending') => ({ questionId: 'outline-c2-0', role: 'po', text: 'O backlog ainda não fecha: x. Como deve ser tratado?', blocking, relatedAcIds: [], cycle: 2, status, answer: null });
 
-const handlers = () => ({ onSaveDoc: vi.fn(), onEvaluate: vi.fn(), onPlanBacklog: vi.fn(), onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn() });
+const handlers = () => ({ onSaveDoc: vi.fn(), onEvaluate: vi.fn(), onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn() });
 const renderView = (snap: Snapshot, h = handlers()) => {
   render(<MemoryRouter><RefinementView snap={snap} busy={false} events={[]} {...h} /></MemoryRouter>);
   return h;
 };
 
 describe('a new project refines in two mandatory stages', () => {
-  it('asks for the backlog once the documents are ready, and shows no start until it exists', () => {
+  it('offers one evaluation once the documents are ready, and no start until the backlog is detailed', () => {
     const h = renderView(project({}));
-    expect(screen.getByTestId('plan-backlog').textContent).toBe('Quebrar o backlog (etapa 2)');
+    expect(screen.queryByTestId('plan-backlog')).toBeNull();
     expect(screen.getByTestId('evaluate').textContent).toBe('Reavaliar');
-    fireEvent.click(screen.getByTestId('plan-backlog'));
-    expect(h.onPlanBacklog).toHaveBeenCalledTimes(1);
+    // Nothing changed since the last round, so the button asks first instead of spending a round.
+    fireEvent.click(screen.getByTestId('evaluate'));
+    expect(screen.getByText('Reavaliar sem mudanças')).toBeTruthy();
+    expect(h.onEvaluate).not.toHaveBeenCalled();
     expect(screen.queryByTestId('enable-backlog')).toBeNull();
     expect(screen.queryByTestId('start')).toBeNull();
   });
 
-  it('shows one locked stage button while stage 2 runs, with no tip and no second action', () => {
+  it('shows no second action while the evaluation runs, the backlog included', () => {
     renderView(project({ status: 'evaluating', backlog: backlogOutline as never }));
-    const button = screen.getByTestId('plan-backlog') as HTMLButtonElement;
-    expect(button.textContent).toBe('Etapa 2 em andamento');
-    expect(button.disabled).toBe(true);
-    expect(screen.queryByTestId('evaluate')).toBeNull();
+    expect(screen.queryByTestId('plan-backlog')).toBeNull();
+    expect(screen.queryByTestId('start')).toBeNull();
     expect(screen.queryByText(/Próximo passo/)).toBeNull();
   });
 
@@ -68,11 +68,10 @@ describe('a new project refines in two mandatory stages', () => {
     expect(screen.getByText(/O backlog depende desta resposta/)).toBeTruthy();
   });
 
-  it('continues the stopped stage 2 once no blocking question is pending', () => {
+  it('evaluates again once no blocking question is pending', () => {
     renderView(project({ status: 'answering', backlog: backlogOutline as never, questions: [question(false) as never] }));
-    const button = screen.getByTestId('plan-backlog') as HTMLButtonElement;
-    expect(button.textContent).toBe('Continuar etapa 2');
-    expect(button.disabled).toBe(false);
+    expect(screen.queryByTestId('plan-backlog')).toBeNull();
+    expect((screen.getByTestId('evaluate') as HTMLButtonElement).disabled).toBe(false);
     expect(screen.getByTestId('evaluate').textContent).toBe('Reavaliar');
   });
 

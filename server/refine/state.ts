@@ -78,7 +78,7 @@ export interface BacklogState {
   epics: Backlog['epics'];
   items: Array<BacklogItem & { rank: number }>;
   cycle: number;
-  /** Detailing asked for ("Detalhar specs"): each cycle derives the spec and pre-plan of every changed item. */
+  /** Detailing is part of each evaluation: every changed item gets its spec and pre-plan. Kept on journals from before it was always on. */
   detail?: boolean;
   /** The flow.md sections the outline had to cover, as of its last derivation. */
   flowHeadings?: string[];

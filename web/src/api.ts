@@ -261,6 +261,18 @@ export interface DerivedDoc {
   project: unknown;
 }
 export type Priority = 'P0' | 'P1' | 'P2' | 'P3';
+/** A move the agents applied to two documents at once; the owner can undo it while neither document changed since. */
+export interface MoveRow {
+  moveId: string;
+  role: 'po' | 'sm' | 'front';
+  cycle: number;
+  from: string;
+  to: string;
+  reason: string;
+  quote: string;
+  text: string;
+  status: 'applied' | 'undone';
+}
 export interface BacklogViewItem {
   key: string;
   title: string;
@@ -300,7 +312,7 @@ export interface BacklogView {
   epics: Array<{ key: string; title: string }>;
   items: BacklogViewItem[];
   cycle: number;
-  /** "Detalhar specs" was asked: every item gets a spec and a pre-plan. */
+  /** The detailing is part of every evaluation: every item gets a spec and a pre-plan. */
   detail?: boolean;
   flowHeadings?: string[];
   specs?: Record<string, { inputHash: string; specId: string; rev: string | null; spec: ItemSpecView | null; issues: string[]; cycle: number }>;
@@ -354,6 +366,7 @@ export interface RefineState {
   checklist: ChecklistItem[];
   questions: QuestionRow[];
   patches: PatchRow[];
+  moves: MoveRow[];
   discarded: Array<{ cycle: number; role: string; file: string; reason: string }>;
   error: string | null;
   runId: string | null;
@@ -404,8 +417,7 @@ export const refineApi = {
   suggestDoc: (p: string, s: string, file: 'project.md' | 'brief.md' | 'stack.md' | 'design.md') => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${file}/suggest`).then((r) => json<{ text: string }>(r)),
   suggestDesignFromImages: (p: string, s: string, images: { data: string }[]) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/design.md/images`, { images }).then((r) => json<{ text: string }>(r)),
   enableBacklog: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/backlog`).then((r) => json<{ ok: true }>(r)),
-  enableDetail: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/backlog/detail`).then((r) => json<{ ok: true }>(r)),
-  planBacklog: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/backlog/plan`).then((r) => json<{ ok: true }>(r)),
+  undoMove: (p: string, s: string, moveId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/moves/${encodeURIComponent(moveId)}/undo`).then((r) => json<{ ok: true }>(r)),
   evaluate: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/evaluate`).then((r) => json<{ state: string }>(r)),
   answer: (p: string, s: string, questionId: string, text: string, docsAnswered = false) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/answers`, { questionId, text, docsAnswered }).then((r) => json<{ ok: true }>(r)),
   skip: (p: string, s: string, questionId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/questions/${encodeURIComponent(questionId)}/skip`).then((r) => json<{ ok: true }>(r)),

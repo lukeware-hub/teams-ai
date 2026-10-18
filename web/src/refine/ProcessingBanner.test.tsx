@@ -17,9 +17,9 @@ describe('ProcessingBanner', () => {
   });
 
   it('names the stage of a new project in its title, in place of the default', () => {
-    render(<ProcessingBanner backlog={view()} cycle={2} stage="x" jevDown={false} title="Etapa 2 · Quebrando o backlog" />);
+    render(<ProcessingBanner backlog={view()} cycle={2} stage="x" jevDown={false} title="Avaliando o backlog" />);
     const banner = screen.getByTestId('processing-banner');
-    expect(banner.textContent).toContain('Etapa 2 · Quebrando o backlog');
+    expect(banner.textContent).toContain('Avaliando o backlog');
     expect(banner.textContent).not.toContain('Avaliação em andamento');
   });
 

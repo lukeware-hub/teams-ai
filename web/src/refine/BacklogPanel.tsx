@@ -5,16 +5,7 @@ import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 
 const SIZE = { S: 'pequena', M: 'média', L: 'grande' } as const;
-const HELP = 'Os agentes quebram os cinco documentos em specs organizadas em épicos e priorizadas de P0 (base de tudo) a P3 (depois). Gasta uma avaliação. Para mudar prioridade ou cortes, escreva no briefing.md e reavalie. Com o esboço certo, Detalhar specs gera a spec (PO) e o pré-plano com tarefas (SM) de cada item; depois, cada avaliação refaz só o que os documentos mudaram. O início da execução a partir do backlog chega no próximo passo.';
-const DETAIL_HELP = 'Gera a spec (objetivos, critérios de aceite) e o pré-plano (módulos, tarefas, riscos) de cada item, três itens por chamada de agente dentro de cada épico. A estimativa conta essas chamadas e as revisões do Front, do PO e do SM.';
-
-/** Spec and pre-plan calls (three items of one epic per call) plus the Front, PO and SM reviews. */
-function estimatedCalls(backlog: BacklogView): number {
-  const perEpic = new Map<string, number>();
-  for (const i of backlog.items) perEpic.set(i.epic, (perEpic.get(i.epic) ?? 0) + 1);
-  const batches = [...perEpic.values()].reduce((n, count) => n + Math.ceil(count / 3), 0);
-  return batches * 2 + 3;
-}
+const HELP = 'Os agentes quebram os cinco documentos em specs organizadas em épicos e priorizadas de P0 (base de tudo) a P3 (depois). Cada avaliação gera a spec (PO) e o pré-plano com tarefas (SM) de cada item e refaz só o que os documentos mudaram. Para mudar prioridade ou cortes, escreva no briefing.md e avalie de novo.';
 
 /** Where a detailed item stands: delivered or running as main has it, spec and current pre-plan, a failed attempt, or still being derived. */
 function itemStatus(backlog: BacklogView, key: string): 'entregue' | 'em execução' | 'planejada' | 'em refinamento' | 'erro' {
@@ -47,18 +38,10 @@ export const bkTone = {
 export const bkMeta = 'flex-none text-[0.75rem] text-ink-faint';
 const STATUS_TONE = { entregue: bkTone.planned, 'em execução': bkTone.planned, planejada: bkTone.planned, 'em refinamento': bkTone.refining, erro: bkTone.error } as const;
 
-/** Asks the page to detail a ready outline; hidden once the specs are detailed. */
-export function DetailSpecsButton({ backlog, locked, ready, onDetail }: { backlog: BacklogView | null | undefined; locked: boolean; ready: boolean; onDetail?: () => unknown }) {
-  if (!backlog?.enabled || backlog.items.length === 0 || backlog.detail || !onDetail) return null;
-  return (
-    <ActionButton className="secondary min-w-40 flex-auto" title={DETAIL_HELP} data-testid="detail-specs" disabled={!ready || locked} onClick={onDetail} icon={<Icon name="file" size={16} />}>Detalhar specs (~{estimatedCalls(backlog)} chamadas)</ActionButton>
-  );
-}
-
 /** The documents broken into prioritized specs, the way the agents organized them; the human reads and steers through the docs. */
 export function BacklogPanel({ backlog, evaluating, locked, onEnable, mandatory = false }: { backlog: BacklogView | null | undefined; evaluating: boolean; locked: boolean; onEnable?: () => unknown; mandatory?: boolean }) {
   if (!backlog?.enabled) {
-    if (mandatory) return <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid="backlog-mandatory">O backlog nasce na etapa 2: quando os documentos estiverem prontos, clique em Quebrar o backlog.</p>;
+    if (mandatory) return <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid="backlog-mandatory">O backlog aparece aqui quando os documentos estiverem prontos: a mesma avaliação o monta e detalha.</p>;
     if (!onEnable) return null;
     return (
       <div className="my-4 grid gap-3 rounded-lg border border-line bg-surface-sunken p-4" data-testid="backlog-off">
@@ -73,7 +56,7 @@ export function BacklogPanel({ backlog, evaluating, locked, onEnable, mandatory 
   return (
     <div className="my-4 grid gap-3" data-testid="backlog-on">
       <h4 className="m-0 flex items-center gap-2"><Icon name="list" size={20} />Backlog{backlog.items.length > 0 ? ` · ${backlog.items.length} specs em ${epics.length} épicos` : ''}<InfoTip text={HELP} /></h4>
-      {backlog.items.length === 0 && !evaluating && <p className="text-[0.8125rem] text-ink-soft">{mandatory ? 'O esboço do backlog aparece aqui quando a etapa 2 rodar.' : 'O backlog aparece depois da próxima avaliação. Clique em Avaliar.'}</p>}
+      {backlog.items.length === 0 && !evaluating && <p className="text-[0.8125rem] text-ink-soft">{mandatory ? 'O esboço do backlog aparece aqui quando os documentos ficarem prontos.' :'O backlog aparece depois da próxima avaliação. Clique em Avaliar.'}</p>}
       {epics.map((epic) => (
         <details key={epic.key} className="group grid gap-[0.4rem]" data-testid={`epic-${epic.key}`}>
           <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] text-ink-soft [&::-webkit-details-marker]:hidden">

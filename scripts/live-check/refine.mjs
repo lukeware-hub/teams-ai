@@ -6,7 +6,7 @@
 //   answer <projectId> <questionId> <text> | skip <projectId> <questionId>
 //   accept <projectId> <patchId> | reject <projectId> <patchId> <reason> | patch <projectId> <patchId>
 //   question <projectId> <questionId> | getdoc <projectId> <file> | put <projectId> <file> <path>
-//   detail <projectId> (Detalhar specs) | start <projectId> (must answer 409 in backlog mode)
+//   start <projectId>                    must answer 409 until the backlog is ready (the evaluation details every item)
 import { execFileSync } from 'node:child_process';
 
 const BASE = process.env.TEAMS_AI_URL ?? 'http://localhost:8787/api';
@@ -97,7 +97,6 @@ const steps = {
   async question() { const st = (await api('GET', S(p))).json.state; const q = st.questions.find((y) => y.questionId === rest[0]); console.log(q ? JSON.stringify(q, null, 1) : 'no question'); },
   async getdoc() { const s = await api('GET', S(p)); process.stdout.write(s.json.docs[rest[0]]); },
   async put() { const [file, path] = rest; console.log('put', file, (await api('PUT', `${S(p)}/docs/${file}`, { text: readFileSync(path, 'utf8') })).status); },
-  async detail() { const r = await api('POST', `${S(p)}/backlog/detail`); console.log('detail', r.status, r.status === 200 ? '' : clip(r.text, 300)); },
   async start() { const r = await api('POST', `${S(p)}/start`); console.log('start', r.status, clip(r.text, 200)); },
   events: () => events(p),
   files: () => files(p),

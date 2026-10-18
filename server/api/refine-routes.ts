@@ -141,27 +141,6 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     },
     {
       method: 'POST',
-      path: `${S}/backlog/detail`,
-      handler: wrap(async ({ params, json }) => {
-        const s = await get(params);
-        s.ensureCanEvaluate();
-        s.evaluate().catch((err: Error) => deps.log?.(`refine ${params.projectId}/${params.specId}: ${err.message}`));
-        json(202, { ok: true });
-      }),
-    },
-    {
-      method: 'POST',
-      path: `${S}/backlog/plan`,
-      handler: wrap(async ({ params, json }) => {
-        const s = await get(params);
-        if (s.state.questions.some((q) => q.status === 'pending' && q.blocking)) throw new ConflictError('Responda às perguntas em aberto antes de quebrar o backlog.');
-        s.ensureCanEvaluate();
-        s.evaluate().catch((err: Error) => deps.log?.(`refine ${params.projectId}/${params.specId}: ${err.message}`));
-        json(202, { ok: true });
-      }),
-    },
-    {
-      method: 'POST',
       path: `${S}/answers`,
       handler: wrap(async ({ params, body, json }) => {
         const b = await body();

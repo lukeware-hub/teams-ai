@@ -44,17 +44,17 @@ describe('stageAction', () => {
     expect(stageAction({ ...base, status: 'ready', stale: true })).toBe('evaluate');
   });
 
-  it('plans the backlog once the documents are ready', () => {
-    expect(stageAction({ ...base, status: 'ready' })).toBe('plan');
+  it('evaluates again while the documents are ready but the backlog is not detailed yet', () => {
+    expect(stageAction({ ...base, status: 'ready' })).toBe('evaluate');
+    expect(stageAction({ status: 'ready', stale: false, backlog: outline })).toBe('evaluate');
   });
 
-  it('continues the backlog while it is outlined or detailed, and after it stopped', () => {
-    expect(stageAction({ status: 'ready', stale: false, backlog: outline })).toBe('continue');
-    expect(stageAction({ status: 'evaluating', stale: false, backlog: detailed })).toBe('continue');
-    expect(stageAction({ status: 'ready', stale: true, backlog: detailed })).toBe('continue');
-    expect(stageAction({ status: 'error', stale: false, backlog: outline })).toBe('continue');
-    expect(stageAction({ status: 'answering', stale: false, backlog: outline, questions: [optional] })).toBe('continue');
-    expect(stageAction({ status: 'answering', stale: false, backlog: outline, questions: [{ status: 'answered', blocking: true }] })).toBe('continue');
+  it('evaluates again while the backlog is outlined or detailed, and after it stopped', () => {
+    expect(stageAction({ status: 'evaluating', stale: false, backlog: detailed })).toBe('evaluate');
+    expect(stageAction({ status: 'ready', stale: true, backlog: detailed })).toBe('evaluate');
+    expect(stageAction({ status: 'error', stale: false, backlog: outline })).toBe('evaluate');
+    expect(stageAction({ status: 'answering', stale: false, backlog: outline, questions: [optional] })).toBe('evaluate');
+    expect(stageAction({ status: 'answering', stale: false, backlog: outline, questions: [{ status: 'answered', blocking: true }] })).toBe('evaluate');
   });
 
   it('waits for the owner while a blocking question is pending', () => {
@@ -71,8 +71,8 @@ describe('stageAction', () => {
 });
 
 describe('stageTitle', () => {
-  it('names the stage that a running evaluation belongs to', () => {
-    expect(stageTitle({ ...base, status: 'evaluating' })).toBe('Etapa 1 · Avaliando os documentos');
-    expect(stageTitle({ status: 'evaluating', stale: false, backlog: outline })).toBe('Etapa 2 · Quebrando o backlog');
+  it('names what a running evaluation is doing', () => {
+    expect(stageTitle({ ...base, status: 'evaluating' })).toBe('Avaliando os documentos');
+    expect(stageTitle({ status: 'evaluating', stale: false, backlog: outline })).toBe('Avaliando o backlog');
   });
 });
