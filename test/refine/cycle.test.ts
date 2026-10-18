@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { Decider } from '../../server/decide/decider.js';
 import { heldForOwner } from '../../server/refine/auto-floor.js';
 import { buildContextPack } from '../../server/knowledge/context-pack.js';
-import { runCycle } from '../../server/refine/cycle.js';
+import { failedGapQuestions, runCycle } from '../../server/refine/cycle.js';
 import { PACK_TOKEN_CAP } from '../../server/refine/fit-pack.js';
 import { draftPaths, createNewProject } from '../../server/refine/draft.js';
 import { emptyRefineState } from '../../server/refine/state.js';
@@ -559,6 +559,37 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
     await r.run();
     expect(r.runAgent.mock.calls.some(([req]) => req.kind === 'answer')).toBe(false);
     expect(r.events.some((e) => e.type === 'QUESTION_ANSWERED')).toBe(false);
+  });
+});
+
+describe('refinement cycle questions for failed gaps', () => {
+  const item = (key: string) => ({ key, title: `Item ${key}`, epic: 'core', scope: 's', priority: 'P2', rationale: 'r', dependsOn: [], sources: [], size: 'M', rank: 1 });
+  const backlog = (specs: Record<string, unknown>, preplans: Record<string, unknown> = {}, detail = true) =>
+    ({ enabled: true, project: null, epics: [], items: [item('caso'), item('opme')], cycle: 2, detail, flowHeadings: [], specs, preplans }) as never;
+
+  it('asks the human, as a blocking question, about a spec that failed to generate', () => {
+    const questions = failedGapQuestions(backlog({ caso: { spec: null, issues: ['falta a regra do prazo'] } }), 3, []);
+    expect(questions).toEqual([expect.objectContaining({ role: 'po', blocking: true, relatedAcIds: [], cycle: 3 })]);
+    expect(questions[0]!.text).toContain('O item caso (Item caso) não gerou spec: "falta a regra do prazo".');
+  });
+
+  it('asks about a pre-plan that failed when its spec is fine', () => {
+    const questions = failedGapQuestions(backlog({}, { opme: { issues: ['tarefa sem módulo'] } }), 3, []);
+    expect(questions).toEqual([expect.objectContaining({ role: 'sm', text: expect.stringContaining('não gerou pré-plano') })]);
+  });
+
+  it('adds nothing for a gap that only waits for generation, with no issue', () => {
+    expect(failedGapQuestions(backlog({}), 3, [])).toEqual([]);
+  });
+
+  it('adds nothing when a question already names the item, so a gap is asked once', () => {
+    const b = backlog({ caso: { spec: null, issues: ['falta a regra'] } });
+    expect(failedGapQuestions(b, 3, ['Qual o prazo do caso?'])).toEqual([]);
+    expect(failedGapQuestions(b, 3, ['O item caso precisa de regra'])).toEqual([]);
+  });
+
+  it('adds nothing outside detailed mode', () => {
+    expect(failedGapQuestions(backlog({ caso: { spec: null, issues: ['x'] } }, {}, false), 3, [])).toEqual([]);
   });
 });
 

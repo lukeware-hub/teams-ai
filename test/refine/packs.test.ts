@@ -165,6 +165,15 @@ describe('refinePack in detail mode', () => {
     expect(pack.feedback).toContain('### Coverage gaps');
     expect(pack.feedback).toContain('item item-1: sem pré-plano válido');
   });
+
+  it('asks a blocking question for a gap whose spec failed to generate', () => {
+    const b = detailed(2, 2);
+    const failed = { ...b.specs!['item-1']!, spec: null, rev: null, issues: ['falta a regra do prazo'] };
+    const pack = refinePack({ ...base, role: 'po', derived: { project: {}, spec: null }, backlog: { ...b, specs: { ...b.specs, 'item-1': failed } }, projectBriefing: true, cycle: 3 } as never);
+    expect(pack.feedback).toContain('problema: falta a regra do prazo');
+    expect(pack.feedback).toContain('blocking question for the human');
+    expect(pack.feedback).toContain('ask it.');
+  });
 });
 
 describe('refinePack digest provenance', () => {

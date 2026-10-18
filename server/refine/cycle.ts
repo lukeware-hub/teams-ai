@@ -94,6 +94,21 @@ const BLANK_FILES = ['stack.md', 'flow.md'] as const;
 const BLANK_TEMPLATE: Record<(typeof BLANK_FILES)[number], () => string> = { 'stack.md': stackTemplate, 'flow.md': flowTemplate };
 
 /** Spec (refinement) §3.2: derive → Front → PO ∥ SM → merge questions → check patches → checklist. */
+/** A spec or pre-plan that failed to generate is a gap only the human closes: one blocking question per item, unless one already asks about it. */
+export function failedGapQuestions(backlog: BacklogState | null, cycle: number, asked: readonly string[]): Question[] {
+  const detailed = backlog?.detail === true ? backlog : null;
+  const out: Question[] = [];
+  for (const item of detailed?.items ?? []) {
+    if (asked.some((text) => text.includes(item.key)) || out.some((q) => q.text.includes(item.key))) continue;
+    const failed = [['po', detailed?.specs?.[item.key]], ['sm', detailed?.preplans?.[item.key]]] as const;
+    const [role, row] = failed.find(([, r]) => r?.issues?.length) ?? [];
+    const issue = row?.issues?.[0];
+    if (!role || !issue) continue;
+    out.push({ questionId: `gap-c${cycle}-${out.length}`, role, text: `O item ${item.key} (${item.title}) não gerou ${role === 'po' ? 'spec' : 'pré-plano'}: "${issue}". Qual decisão os documentos precisam registrar?`, blocking: true, relatedAcIds: [], cycle });
+  }
+  return out;
+}
+
 export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
   try {
     await runCycleSteps(deps, cycle);
@@ -356,6 +371,11 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   }
   // The questions only the human can decide, which no role answers from the docs.
   const forHuman = new Set<string>();
+  // A spec or pre-plan that failed to generate is a gap only the human can close: asked once, never auto-answered.
+  for (const q of failedGapQuestions(backlog, cycle, [...state.questions, ...merged].map((x) => x.text))) {
+    forHuman.add(q.questionId);
+    merged.push(q);
+  }
   if (deps.decider) {
     // Decision 3: a new question that asks what an earlier one (new, pending or decided) already asks, on a shared AC.
     const shares = (x: readonly string[], y: readonly string[]) => x.some((id) => y.includes(id));
