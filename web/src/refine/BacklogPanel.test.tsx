@@ -52,6 +52,14 @@ describe('BacklogPanel', () => {
     expect(within(screen.getByTestId('epic-fin')).getByText('Spec cobranca')).toBeTruthy();
   });
 
+  it('shows each epic as a collapsed disclosure, closed by default', () => {
+    render(<BacklogPanel backlog={view([item('base')])} evaluating={false} locked={false} />);
+    const epic = screen.getByTestId('epic-core') as HTMLDetailsElement;
+    expect(epic.tagName).toBe('DETAILS');
+    expect(epic.open).toBe(false);
+    expect(within(epic).getByText('Núcleo')).toBeTruthy();
+  });
+
   it('skips an epic that has no item', () => {
     render(<BacklogPanel backlog={view([item('base')])} evaluating={false} locked={false} />);
     expect(screen.queryByTestId('epic-fin')).toBeNull();
