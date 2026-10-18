@@ -92,8 +92,9 @@ const patchInfo = 'Mudança proposta por um agente: linhas com - saem e linhas c
 const jsonDownload = (value: unknown) => `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(value, null, 2))}`;
 
 const panelCard = 'edge-lit min-w-0 rounded-xl border border-line bg-surface p-5 shadow-card';
-// The checklist panel styles the headings, lists and file disclosures inside it, the backlog and coverage tree included.
-const qualityCard = `${panelCard} [&_details]:my-2 [&_details]:rounded-lg [&_details]:border [&_details]:border-line [&_details]:bg-surface [&_details]:p-[0.85rem] [&_details]:text-[0.8rem] [&_details_pre]:max-h-48 [&_details_pre]:overflow-auto [&_details_pre]:text-[0.7rem] [&_details_pre]:text-ink-soft [&_details_summary]:flex [&_details_summary]:cursor-pointer [&_details_summary]:items-center [&_details_summary]:justify-between [&_details_summary_svg]:text-accent-text [&_h4]:mx-0 [&_h4]:mt-5 [&_h4]:mb-[0.7rem] [&_h4]:flex [&_h4]:items-center [&_h4]:gap-[0.55rem] [&_h4]:text-[0.8rem] [&_h4]:tracking-[0.06em] [&_h4]:text-ink [&_h4]:uppercase [&_h4>svg]:text-ink-soft [&_h5]:mx-0 [&_h5]:mt-4 [&_h5]:mb-[0.45rem] [&_h5]:text-[0.72rem] [&_h5]:tracking-[0.08em] [&_h5]:text-ink-soft [&_h5]:uppercase [&_ul]:pl-[1.1rem] [&_ul]:text-[0.8rem] [&_ul]:leading-[1.45]`;
+// The checklist panel styles the headings and lists inside it; disclosures bring their own box.
+const qualityCard = `${panelCard} [&_details_pre]:max-h-48 [&_details_pre]:overflow-auto [&_details_pre]:text-[0.7rem] [&_details_pre]:text-ink-soft [&_details_summary]:flex [&_details_summary]:cursor-pointer [&_details_summary]:items-center [&_details_summary]:justify-between [&_details_summary_svg]:text-accent-text [&_h4]:mx-0 [&_h4]:mt-5 [&_h4]:mb-[0.7rem] [&_h4]:flex [&_h4]:items-center [&_h4]:gap-[0.55rem] [&_h4]:text-[0.8rem] [&_h4]:tracking-[0.06em] [&_h4]:text-ink [&_h4]:uppercase [&_h4>svg]:text-ink-soft [&_h5]:mx-0 [&_h5]:mt-4 [&_h5]:mb-[0.45rem] [&_h5]:text-[0.72rem] [&_h5]:tracking-[0.08em] [&_h5]:text-ink-soft [&_h5]:uppercase [&_ul]:pl-[1.1rem] [&_ul]:text-[0.8rem] [&_ul]:leading-[1.45]`;
+const fileBox = 'my-2 rounded-lg border border-line bg-surface p-[0.85rem] text-[0.8rem]';
 // The status chip drops under the title when the panel is too narrow for both.
 const panelHeading = 'mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2';
 const headingTile = 'grid size-12 flex-[0_0_3rem] place-items-center rounded-tile shadow-tile';
@@ -678,24 +679,24 @@ export function RefinementView(p: ViewProps) {
           <span>Como reproduzir: {st.derived.spec.bug.reproduction}</span>
         </div>
       )}
-      <details>
+      <details className={fileBox}>
         <summary><span>spec.json</span>{st.derived ? <a data-testid="download-spec-json" href={jsonDownload(st.derived.spec)} download="spec.json" aria-label="Baixar spec.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</summary>
         {st.derived ? <pre className="whitespace-pre-wrap break-words">{JSON.stringify(st.derived.spec, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>}
       </details>
         </>
       )}
       {backlogOn && (
-        <details>
+        <details className={fileBox}>
           <summary><span>specs.json</span>{specsIndex ? <a data-testid="download-specs-json" href={jsonDownload(specsIndex)} download="specs.json" aria-label="Baixar specs.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</summary>
           {specsIndex ? <pre className="whitespace-pre-wrap break-words">{JSON.stringify(specsIndex, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>}
         </details>
       )}
-      <details>
+      <details className={fileBox}>
         <summary><span>project.json</span>{projectJson ? <a data-testid="download-project-json" href={jsonDownload(projectJson)} download="project.json" aria-label="Baixar project.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</summary>
         {projectJson ? <pre className="whitespace-pre-wrap break-words">{JSON.stringify(projectJson, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>}
       </details>
       {docFiles.map(({ doc, name, text }) => (
-        <details key={name}>
+        <details key={name} className={fileBox}>
           <summary><span>{name}</span><a data-testid={`download-${name.replace('.', '-')}`} href={jsonDownload(docToJson(doc, text))} download={name} aria-label={`Baixar ${name}`} onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a></summary>
           <pre className="whitespace-pre-wrap break-words">{JSON.stringify(docToJson(doc, text), null, 2)}</pre>
         </details>
