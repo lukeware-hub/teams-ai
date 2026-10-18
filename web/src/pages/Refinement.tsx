@@ -658,11 +658,11 @@ export function RefinementView(p: ViewProps) {
       {backlogFirst && backlogBlock}
       <div className={`grid gap-[0.3rem] ${evaluating ? 'opacity-60' : ''}`} aria-busy={evaluating || undefined}>
         <details className="group">
-          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span>Produto (PO)</summary>
+          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span className="flex-1">Produto (PO)</span></summary>
           <Checklist items={st.checklist} role="po" />
         </details>
         <details className="group">
-          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span>Técnico (SM)</summary>
+          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span className="flex-1">Técnico (SM)</span></summary>
           <Checklist items={st.checklist} role="sm" />
         </details>
       </div>
