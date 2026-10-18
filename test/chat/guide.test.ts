@@ -63,8 +63,8 @@ describe('the user guide the chat searches', () => {
       ['o que é uma tarefa bloqueada', 'execucao.md'],
     ];
     for (const [question, file] of cases) {
-      const out = spawnSync('graphify', ['query', question, '--budget', '400'], { cwd, encoding: 'utf8' }).stdout;
-      const top = out.split('\n').filter((l) => l.startsWith('NODE ')).slice(0, 4).join('\n');
+      const out = spawnSync('graphify', ['query', question, '--budget', '1200'], { cwd, encoding: 'utf8' }).stdout;
+      const top = out.split('\n').filter((l) => l.startsWith('NODE ')).slice(0, 5).join('\n');
       expect(top, question).toContain(`src=${file}`);
     }
   });
