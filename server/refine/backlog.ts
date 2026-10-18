@@ -1,5 +1,5 @@
 import { Backlog, type BacklogItem } from '../contracts/backlog.js';
-import { Project } from '../contracts/project.js';
+import { Project, SERVICE_NAMING } from '../contracts/project.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
 import { branchOwner, flowHeadings, MAX_ITEMS, rankItems, validateBacklog } from '../validators/backlog.js';
@@ -14,7 +14,7 @@ const RULES = [
   'Break the project described by the five docs below into a BACKLOG of specs, grouped into epics and prioritized. The docs are the only source of truth: invent nothing they do not say, and leave out nothing they do.',
   '- A spec is the smallest deliverable one run can ship and test end to end: a vertical slice of one capability (one application with bounded contexts as internal modules, or the services the docs name, each in its own repository; a spec may change several of them). Not a single task, not a whole product area.',
   '- Every item cites where it comes from in `sources`: `doc` is one of project.md, briefing.md, stack.md, flow.md, design.md and `heading` is the exact heading text (for flow.md its headings or numbered sections, such as "2. Checkout"). Every numbered or headed section of flow.md must be cited by at least one item; a section may feed several items.',
-  '- Cite the narrowest sections: a section that holds only sub-sections (such as `## Decisões`, one `###` heading per decision) is cited through the sub-sections the item needs, never whole; an item cites every decision that changes what it delivers.',
+  '- Cite the narrowest sections: a section that holds only sub-sections (such as `## Decisões`, one `###` heading per decision) is cited through the sub-sections the item needs, never whole; an item cites every decision that changes what it delivers. A section with text of its own is cited by its own heading too, since that text holds the rules its sub-sections follow.',
   '- An item marked `started` keeps its sources exactly as they are, broad ones included: only re-point a heading that was renamed or renumbered.',
   '- When a rule in one section needs what a later item delivers (such as a deletion an active loan blocks), that later item cites the section too, so its spec, which can check the rule, carries it.',
   '- priority: P0 = walking skeleton and the foundations everything else needs; P1 = the core value flow; P2 = important, can follow; P3 = later or optional. `rationale` says why in one sentence (value, risk, dependency).',
@@ -23,7 +23,7 @@ const RULES = [
   '- key: a short slug. Keep the key of every item that still exists in the previous backlog so the ids derived from them stay stable.',
   '- Never write an item whose key ends in -ajuste-<n>: the orchestrator adds one, after its original, for each "## Ajuste aprovado:" section of briefing.md.',
   '- When the sections an item cites did not change, keep its title, scope and sources verbatim from the previous backlog, adding only the citation of each new decision that changes what it delivers: a reworded item has its spec and pre-plan derived again.',
-  'Also return `project`: the project.json derived from project.md and stack.md, exactly as in a normal derivation (with `services` and `platform` when the docs give them).',
+  'Also return `project`: the project.json derived from project.md and stack.md, exactly as in a normal derivation (with `services` and `platform` when the docs give them). ' + SERVICE_NAMING,
 ].join('\n');
 
 export function backlogPack(input: {
