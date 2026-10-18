@@ -35,7 +35,8 @@ const snapshot = async () => (await fetch(`${base()}/api/refine/hello-app/hello-
 const settle = async () => {
   for (let i = 0; i < 100; i++) {
     const snap = await snapshot();
-    if (!snap.busy && snap.state.status !== 'evaluating') break;
+    // Under load a read can answer with an error while the session is starting: read again instead of failing.
+    if (snap.state && !snap.busy && snap.state.status !== 'evaluating') break;
     await new Promise((r) => setTimeout(r, 20));
   }
   await new Promise((r) => setTimeout(r, 30)); // the session clears `busy` a tick after the last event lands
