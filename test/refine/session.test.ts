@@ -19,7 +19,7 @@ const derived = { project: makeProject(), spec: { ...makeSpec(), status: 'refini
 const green = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
 const PO = ['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions'];
 const SM = ['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions'];
-const refineOut = (checklist: unknown[], questions: unknown[] = [], docPatch: unknown[] = []) => ({ checklist, questions, docPatch });
+const refineOut = (checklist: unknown[], questions: unknown[] = [], docPatch: unknown[] = [], moves?: unknown[]) => ({ checklist, questions, docPatch, ...(moves ? { moves } : {}) });
 const draft = () => draftPaths(ws, 'hello-001');
 const deps = () => ({ ws, draft: draft(), runAgent: makeFakeRunAgent(script), secretsDir, retrieval: () => [] });
 
@@ -293,6 +293,27 @@ describe('RefineSession', () => {
     expect(byId).toEqual({ 'po-c1-0': 'accepted', 'sm-c1-0': 'dropped', 'sm-c1-1': 'pending' });
     expect(s.state.patches.find((x) => x.patchId === 'sm-c1-0')?.decision).toMatch(/outra alteração/);
     await expect(s.accept('sm-c1-0')).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it('a move changes both documents at once, and undo puts both back byte for byte', async () => {
+    await writeDoc(draft(), 'project.md', '# Hello\n\n## Visão\n\nApp de teste.\n\nO usuário valida o código antes do login.\n');
+    await writeDoc(draft(), 'flow.md', '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n');
+    const before = { project: await readDoc(draft(), 'project.md'), flow: await readDoc(draft(), 'flow.md') };
+    const s = await RefineSession.create(deps(), 'new-project');
+    script['derive/po'] = [derived];
+    const move = { from: 'docs/project.md', to: 'docs/flow.md', quote: 'O usuário valida o código antes do login.', text: 'O usuário valida o código antes do login.', reason: 'ordem de passos' };
+    script['refine/po'] = [refineOut(green(PO), [], [], [move])];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await s.evaluate();
+    expect(s.state.moves).toMatchObject([{ moveId: 'move-po-c1-0', status: 'applied', from: 'project.md', to: 'flow.md' }]);
+    expect(await readDoc(draft(), 'project.md')).not.toContain('O usuário valida');
+    expect(await readDoc(draft(), 'flow.md')).toContain('O usuário valida o código antes do login.');
+    expect(s.state.stale).toBe(true);
+    await s.undoMove('move-po-c1-0');
+    expect(s.state.moves[0]!.status).toBe('undone');
+    expect(await readDoc(draft(), 'project.md')).toBe(before.project);
+    expect(await readDoc(draft(), 'flow.md')).toBe(before.flow);
+    await expect(s.undoMove('move-po-c1-0')).rejects.toBeInstanceOf(ConflictError);
   });
 
   it('fills a stack.md or flow.md that is still the blank template, straight from the SM patch; an edited one is left to the usual patch flow', async () => {

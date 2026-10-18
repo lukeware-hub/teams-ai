@@ -80,6 +80,14 @@ describe('output contracts', () => {
     expect(schema.required).not.toContain('findings');
   });
 
+  it('refine moves are optional, and a malformed one is dropped on its own', () => {
+    const base = { specHash: HASH, checklist: [], questions: [], docPatch: [] };
+    const good = { from: 'docs/design.md', to: 'docs/flow.md', quote: 'Valide o certificado.', text: 'O certificado é validado.', reason: 'ordem de passos' };
+    expect(RefineOutput.parse(base).moves).toBeUndefined();
+    expect(RefineOutput.parse({ ...base, moves: [good, { ...good, quote: '' }, 'texto'] }).moves).toEqual([good]);
+    expect(RefineOutput.parse({ ...base, moves: 'nope' }).moves).toEqual([]);
+  });
+
   it('refine questions carry their choices: a malformed choice is dropped alone, and an open question has none', () => {
     const base = { specHash: HASH, checklist: [], docPatch: [] };
     const choice = { label: 'Citar as subseções', detail: 'O item cita 2.1, 2.2 e 2.3.' };

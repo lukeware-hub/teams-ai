@@ -1,4 +1,4 @@
-import type { AnswerOutput, BacklogOutput, DeriveOutput, OutputOf, RefineOutput, StepKind } from '../agents/outputs.js';
+import type { AnswerOutput, BacklogOutput, DeriveOutput, DocMoveProposal, OutputOf, RefineOutput, StepKind } from '../agents/outputs.js';
 import type { z } from 'zod';
 import { Project } from '../contracts/project.js';
 import type { AcceptanceCriterion, Spec } from '../contracts/spec.js';
@@ -32,7 +32,8 @@ import { plainOutlineQuestion } from './question-choices.js';
 import { buildSpecsIndex, outlineOfIndex, specIdOf, type SpecsIndex } from './specs-index.js';
 import type { JevValidationResult, ValidationDocs } from './jev-validation.js';
 import { refinePack } from './packs.js';
-import { applyPatch, checkPatch, patchId, unifiedDiff } from './patches.js';
+import { applyPatch, checkPatch, COVERED_REASON, patchId, unifiedDiff } from './patches.js';
+import { planMove } from './moves.js';
 import { applyRefineEvent, type BacklogState, type RefineState } from './state.js';
 
 export type RunAgent = <K extends StepKind>(
@@ -93,6 +94,62 @@ function recorded(decider: Pick<Decider, 'decide'>, journal: Pick<Journal, 'fact
 
 const BLANK_FILES = ['stack.md', 'flow.md'] as const;
 const BLANK_TEMPLATE: Record<(typeof BLANK_FILES)[number], () => string> = { 'stack.md': stackTemplate, 'flow.md': flowTemplate };
+
+/** A role may move at most this many pieces of content in one cycle; the rest are discarded with the reason. */
+const MAX_MOVES_PER_ROLE = 3;
+
+/** Applies the moves role by role (Front, PO, SM), each against the documents as the earlier ones left them; a refused move is discarded with its reason. */
+async function applyMoves(
+  journal: CycleJournal,
+  draft: Draft,
+  cycle: number,
+  docs: Record<DocFile, string>,
+  scope: { specId: string; projectBriefing: boolean },
+  proposals: ReadonlyArray<{ role: 'front' | 'po' | 'sm'; moves: readonly DocMoveProposal[] }>,
+  discarded: Array<{ role: string; file: string; reason: string }>,
+): Promise<void> {
+  const blank = new Set(BLANK_FILES.filter((f) => docs[f] === BLANK_TEMPLATE[f]()));
+  for (const { role, moves } of proposals) {
+    let index = 0;
+    for (const [n, move] of moves.entries()) {
+      if (n >= MAX_MOVES_PER_ROLE) {
+        discarded.push({ role, file: move.from, reason: `more than ${MAX_MOVES_PER_ROLE} moves in one cycle` });
+        continue;
+      }
+      const plan = planMove(move, {
+        ...scope,
+        docs,
+        blank,
+        applied: journal.state.moves.filter((m) => m.status === 'applied'),
+        undone: journal.state.moves.filter((m) => m.status === 'undone'),
+      });
+      if (!plan.ok) {
+        discarded.push({ role, file: move.from, reason: plan.reason });
+        continue;
+      }
+      const { from, to, cut, put } = plan;
+      await writeDoc(draft, from, cut.next);
+      await writeDoc(draft, to, put.next);
+      // The texts as they are on disk: writeDoc adds a final line break, and undo compares hashes of these texts.
+      docs[from] = await readDoc(draft, from);
+      docs[to] = await readDoc(draft, to);
+      const fromHash = sha256(docs[from]);
+      const toHash = sha256(docs[to]);
+      await journal.fact(RefineEvent.DocEdited, { file: from, hash: fromHash, source: 'move' });
+      await journal.fact(RefineEvent.DocEdited, { file: to, hash: toHash, source: 'move' });
+      await journal.fact(RefineEvent.DocMoved, {
+        moveId: `move-${role}-c${cycle}-${index++}`, role, cycle, from, to, reason: move.reason, quote: move.quote, text: move.text.trim(),
+        removedAt: cut.removedAt, removed: cut.removed, insertAt: put.insertAt, inserted: put.inserted, fromHash, toHash,
+      });
+      // A pending suggestion that quoted the moved text no longer applies: it leaves the list now, as after an accepted patch.
+      for (const p of journal.state.patches) {
+        if (p.status === 'pending' && (p.file === from || p.file === to) && applyPatch(docs[p.file], p) === null) {
+          await journal.fact(RefineEvent.PatchDropped, { patchId: p.patchId, reason: COVERED_REASON });
+        }
+      }
+    }
+  }
+}
 
 /** Spec (refinement) §3.2: derive → Front → PO ∥ SM → merge questions → check patches → checklist. */
 /** A spec or pre-plan that failed to generate is a gap only the human closes: one blocking question per item, unless one already asks about it. */
@@ -292,6 +349,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const notReady = !backlogMode && deps.decider ? await notReadyCriteria(criteria, decider!, dctx) : null;
 
   const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];
+  // Front's review waits for the moves: its patches are checked after them.
+  let frontReview: z.infer<typeof RefineOutput> | null = null;
   if (deps.frontAgent) {
     const askFront = () => deps.frontAgent!({ kind: 'refine', role: 'front',
       pack: fitPackBudget(refinePack({ role: 'front', specHash: hash, principles: deps.principles(), specId: draft.specId,
@@ -304,33 +363,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     if (!review.ok && review.failure === 'schema') review = await askFront();
     if (!review.ok && review.failure !== 'schema') { await fail(`front validation failed: ${review.failure}: ${review.errors.join('; ')}`); return; }
     if (!review.ok) discardedPatches.push({ role: 'front', file: 'design.md', reason: 'O agente Front respondeu fora do formato duas vezes, então as sugestões visuais deste ciclo foram puladas. Use Reavaliar para tentar de novo.' });
-    let i = 0;
-    for (const p of review.ok ? (review.value as z.infer<typeof RefineOutput>).docPatch : []) {
-      const c = checkPatch(p, draft.specId, docs, backlogMode);
-      if (!c.ok) {
-        discardedPatches.push({ role: 'front', file: p.file, reason: c.reason });
-        continue;
-      }
-      if (c.file !== 'design.md') {
-        discardedPatches.push({ role: 'front', file: p.file, reason: 'Front só pode alterar design.md' });
-        continue;
-      }
-      const after = applyPatch(docs[c.file], p)!;
-      await journal.fact(RefineEvent.PatchProposed, {
-        patchId: patchId('front', cycle, i++), role: 'front', file: c.file, find: p.find, replace: p.replace,
-        reason: p.reason, diff: unifiedDiff(c.file, docs[c.file], after), cycle,
-      });
-    }
-  }
-
-  // A repeated design.md heading makes a backlog item cite an ambiguous section: the human gets unique headings to accept, none one already pending or rejected.
-  let fixIndex = journal.state.patches.filter((p) => p.cycle === cycle && p.role === 'front').length;
-  for (const fix of uniqueHeadingFixes(docs['design.md'])) {
-    if (journal.state.patches.some((p) => p.file === 'design.md' && p.find === fix.find && p.replace === fix.replace && (p.status === 'pending' || p.status === 'rejected'))) continue;
-    await journal.fact(RefineEvent.PatchProposed, {
-      patchId: patchId('front', cycle, fixIndex++), role: 'front', file: 'design.md', ...fix,
-      diff: unifiedDiff('design.md', docs['design.md'], applyPatch(docs['design.md'], fix)!), cycle,
-    });
+    frontReview = review.ok ? (review.value as z.infer<typeof RefineOutput>) : null;
   }
 
   const state = journal.state;
@@ -376,6 +409,39 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   if (!sm.ok) {
     await fail(`sm refine failed: ${sm.failure}: ${sm.errors.join('; ')}`);
     return;
+  }
+  // Content in the wrong document moves first: every patch is checked against the documents as the moves leave them.
+  await applyMoves(journal, draft, cycle, docs, { specId: draft.specId, projectBriefing: backlogMode }, [
+    { role: 'front', moves: frontReview?.moves ?? [] },
+    { role: 'po', moves: po.value.moves ?? [] },
+    { role: 'sm', moves: sm.value.moves ?? [] },
+  ], discardedPatches);
+  let frontIndex = 0;
+  for (const p of frontReview?.docPatch ?? []) {
+    const c = checkPatch(p, draft.specId, docs, backlogMode);
+    if (!c.ok) {
+      discardedPatches.push({ role: 'front', file: p.file, reason: c.reason });
+      continue;
+    }
+    if (c.file !== 'design.md') {
+      discardedPatches.push({ role: 'front', file: p.file, reason: 'Front só pode alterar design.md' });
+      continue;
+    }
+    const after = applyPatch(docs[c.file], p)!;
+    await journal.fact(RefineEvent.PatchProposed, {
+      patchId: patchId('front', cycle, frontIndex++), role: 'front', file: c.file, find: p.find, replace: p.replace,
+      reason: p.reason, diff: unifiedDiff(c.file, docs[c.file], after), cycle,
+    });
+  }
+
+  // A repeated design.md heading makes a backlog item cite an ambiguous section: the human gets unique headings to accept, none one already pending or rejected.
+  let fixIndex = journal.state.patches.filter((p) => p.cycle === cycle && p.role === 'front').length;
+  for (const fix of uniqueHeadingFixes(docs['design.md'])) {
+    if (journal.state.patches.some((p) => p.file === 'design.md' && p.find === fix.find && p.replace === fix.replace && (p.status === 'pending' || p.status === 'rejected'))) continue;
+    await journal.fact(RefineEvent.PatchProposed, {
+      patchId: patchId('front', cycle, fixIndex++), role: 'front', file: 'design.md', ...fix,
+      diff: unifiedDiff('design.md', docs['design.md'], applyPatch(docs['design.md'], fix)!), cycle,
+    });
   }
 
   // Spec §3.2 step 3: dedup by normalized text, blocking first, PO before SM within a class; a decision counts as decided (R11.7.1).

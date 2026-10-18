@@ -543,6 +543,26 @@ describe('refine api', () => {
     expect((await snapshot()).state.status).toBe('ready');
   });
 
+  it('undo of a move puts both documents back and answers 200; a second undo is refused with 409', async () => {
+    await specDraft();
+    const MOVED = 'O cliente confirma o pedido antes do pagamento.';
+    await call('PUT', '/api/refine/hello-app/hello-app-001/docs/project.md', { text: `# Hello\n\n## Visão\n\nLoja.\n\n${MOVED}\n` });
+    await call('PUT', '/api/refine/hello-app/hello-app-001/docs/flow.md', { text: '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n' });
+    const move = { from: 'docs/project.md', to: 'docs/flow.md', quote: MOVED, text: MOVED, reason: 'ordem de passos' };
+    script['derive/po'] = [derived];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [], moves: [move] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
+    await settle();
+    expect((await snapshot()).state.moves).toMatchObject([{ moveId: 'move-po-c1-0', status: 'applied' }]);
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/moves/move-po-c1-0/undo')).status).toBe(200);
+    const after = await snapshot();
+    expect(after.state.moves[0].status).toBe('undone');
+    expect(after.docs['project.md']).toContain(MOVED);
+    expect(after.docs['flow.md']).not.toContain(MOVED);
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/moves/move-po-c1-0/undo')).status).toBe(409);
+  });
+
   it('stage 2 of a new project runs in one call, outline then detail, and the start still waits for Iniciar', async () => {
     // The stage-1 spec numbered AC-001 and AC-002, so the item's criterion continues from there as AC-003.
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });

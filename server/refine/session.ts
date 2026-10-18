@@ -19,6 +19,7 @@ import { maxCriterionInDraft } from './detail-cycle.js';
 import { designTemplate, flowTemplate, moveBriefingToProject, readDerived, readDoc, readMainSpec, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
 import { DRAFT_HASH, RefineEvent } from './events.js';
 import { applyPatch, COVERED_REASON } from './patches.js';
+import { restoreMove } from './moves.js';
 import { buildSpecsIndex } from './specs-index.js';
 import { fitPackBudget } from './fit-pack.js';
 import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
@@ -470,6 +471,21 @@ export class RefineSession {
     this.guard();
     this.patch(patchId);
     await this.journal.fact(RefineEvent.PatchRejected, { patchId, reason });
+  }
+
+  /** Puts back the two documents a move changed, when neither has changed since the move. */
+  async undoMove(moveId: string): Promise<void> {
+    this.guard();
+    const row = this.state.moves.find((m) => m.moveId === moveId);
+    if (!row) throw new NotFoundError(`unknown move ${moveId}`);
+    if (row.status !== 'applied') throw new ConflictError(`move ${moveId} already undone`);
+    const restored = restoreMove(row, await readDoc(this.deps.draft, row.from), await readDoc(this.deps.draft, row.to));
+    if (!restored) throw new ConflictError('Esta movimentação não pode ser desfeita: um dos documentos mudou depois dela.');
+    await writeDoc(this.deps.draft, row.from, restored.from);
+    await writeDoc(this.deps.draft, row.to, restored.to);
+    await this.journal.fact(RefineEvent.DocEdited, { file: row.from, hash: sha256(restored.from), source: 'undo' });
+    await this.journal.fact(RefineEvent.DocEdited, { file: row.to, hash: sha256(restored.to), source: 'undo' });
+    await this.journal.fact(RefineEvent.DocMoveUndone, { moveId });
   }
 
   async writeSecret(name: string, value: string): Promise<void> {

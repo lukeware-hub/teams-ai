@@ -46,6 +46,17 @@ export const DocFinding = z.object({
 });
 export type DocFinding = z.infer<typeof DocFinding>;
 
+/** Content in the wrong document: the whole lines `quote` cut from `from`, and `text` written into `to` below the line `after` (or at the end). The orchestrator checks it and applies it at once. */
+export const DocMove = z.object({
+  from: z.string().min(1),
+  to: z.string().min(1),
+  quote: z.string().min(1),
+  text: z.string().min(1),
+  after: z.string().optional().catch(undefined),
+  reason: z.string().min(1),
+});
+export type DocMoveProposal = z.infer<typeof DocMove>;
+
 /** Keeps the valid items of a list: a malformed one is dropped on its own, so it never fails the whole output. */
 const keepValid = <T extends z.ZodType>(item: T) => z.preprocess((v) => (Array.isArray(v) ? v.filter((x) => item.safeParse(x).success) : []), z.array(item));
 
@@ -70,6 +81,7 @@ export const RefineOutput = z.object({
   docPatch: keepValid(DocPatch),
   contradictions: keepValid(Contradiction).optional(),
   findings: keepValid(DocFinding).optional(),
+  moves: keepValid(DocMove).optional(),
 });
 
 /** Spec (refinement) §3.2 step 1: Markdown → project.json + spec.json; the orchestrator re-validates and forces status/hash/version. */

@@ -65,6 +65,49 @@ describe('refinement cycle Jev advisory', () => {
   });
 });
 
+describe('refinement cycle content moves', () => {
+  const MOVED = 'O cliente confirma o pedido antes do pagamento.';
+  /** Runs one cycle of a new project whose project.md holds MOVED and whose flow.md is a diagram; `po` and `sm` answer with the given moves and patches. */
+  async function run(poMoves: unknown[], smOutput: { moves?: unknown[]; docPatch?: unknown[] }) {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
+    const ws = { projectId: 'shop', root, repo: `${root}/repo`, worktrees: `${root}/wt`, graph: `${root}/g`, knowledgeDb: `${root}/k.sqlite`, secrets: `${root}/secrets`, runs: `${root}/runs` } as Workspace;
+    const draft = draftPaths(ws, 'shop-002');
+    await createNewProject(draft, 'Shop');
+    await writeFile(draft.projectMd, `# Shop\n\n## Visão\n\nLoja online.\n\n${MOVED}\n`);
+    await writeFile(draft.flowMd, '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n');
+    const events: Array<{ type: string; data: Record<string, unknown> }> = [];
+    const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'shop/shop-002', specHash: 'draft', type, kind: 'fact' as const, data }; } };
+    const ok = (value: unknown) => ({ ok: true, value, summary: {} });
+    const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
+    const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
+      if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...makeSpec(), specId: 'shop-002', acceptanceCriteria: [{ id: 'AC-001', given: 'g', when: 'w', then: 't2', smoke: false }] } });
+      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [], moves: poMoves });
+      return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [], ...smOutput });
+    });
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [] }, 1);
+    return { events, draft };
+  }
+  const move = { from: 'docs/project.md', to: 'docs/flow.md', quote: MOVED, text: MOVED, reason: 'ordem de passos' };
+
+  it('applies a move before the patches are checked, so a suggestion quoting the moved text is discarded', async () => {
+    const { events, draft } = await run([move], { docPatch: [{ file: 'docs/project.md', find: 'O cliente confirma o pedido', replace: 'O cliente paga', reason: 'r' }] });
+    expect(events.find((e) => e.type === 'DOC_MOVED')?.data).toMatchObject({ moveId: 'move-po-c1-0', from: 'project.md', to: 'flow.md' });
+    expect(await readFile(draft.projectMd, 'utf8')).not.toContain(MOVED);
+    expect(await readFile(draft.flowMd, 'utf8')).toContain(MOVED);
+    expect(events.some((e) => e.type === 'PATCH_PROPOSED' && e.data.role === 'sm')).toBe(false);
+    const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
+    expect(evaluated.data.discardedPatches).toContainEqual({ role: 'sm', file: 'docs/project.md', reason: 'find not found in project.md' });
+  });
+
+  it('refuses a move a second role repeats, since its quote is already gone, so the text moves once', async () => {
+    const { events, draft } = await run([move], { moves: [move] });
+    expect(events.filter((e) => e.type === 'DOC_MOVED').map((e) => e.data.moveId)).toEqual(['move-po-c1-0']);
+    const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
+    expect(evaluated.data.discardedPatches).toContainEqual({ role: 'sm', file: 'docs/project.md', reason: 'quote must be whole lines found once in project.md' });
+    expect((await readFile(draft.flowMd, 'utf8')).split(MOVED).length - 1).toBe(1);
+  });
+});
+
 describe('refinement cycle acceptance criterion ids (R11.8)', () => {
   it('numbers a new spec above a sibling spec already copied into the draft, instead of restarting at AC-001', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
