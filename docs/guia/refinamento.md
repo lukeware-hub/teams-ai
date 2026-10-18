@@ -12,11 +12,19 @@ O refinamento prepara a spec. Os agentes conferem se a descrição está complet
 
 ## Passo a passo
 
+Um projeto novo passa por duas etapas obrigatórias, na barra no topo da tela: **Refinar documentos** e **Quebrar o backlog**. Depois delas vem **Executar**.
+
+Etapa 1, Refinar documentos:
+
 1. Revise os documentos e clique em **Avaliar**. Dois agentes revisam: **Produto** (objetivos, critérios de aceite e fluxo de negócio) e **Técnico** (tecnologias, tarefas e viabilidade).
 2. Responda as **perguntas em aberto**. As marcadas como obrigatórias bloqueiam o avanço. Você pode escrever a resposta e clicar em **Responder**, ou **Ignorar** as que não são obrigatórias.
 3. Revise as **sugestões de alteração**: aceite ou rejeite cada uma. Aceitar uma sugestão pede nova avaliação.
 4. Se mudou algum documento, clique em **Reavaliar**.
-5. Quando a lista de verificação estiver toda atendida, aparece "Tudo pronto". Clique em **Iniciar análise** para os agentes desenvolverem.
+5. Quando a lista de verificação estiver toda atendida, aparece o botão **Quebrar o backlog (etapa 2)**.
+
+Etapa 2, Quebrar o backlog: um clique em **Quebrar o backlog (etapa 2)** roda tudo em sequência: o esboço das specs, o detalhe de cada uma e a conferência de cobertura. Ele gasta chamadas dos agentes e não pode ser desfeito. Se o processo parar numa pergunta ou num erro, responda a pergunta e clique em **Continuar etapa 2**.
+
+Etapa 3, Executar: quando a etapa 2 terminar, clique em **Iniciar análise** para os agentes desenvolverem. A análise nunca começa sozinha.
 
 ## Segredos
 
@@ -28,4 +36,4 @@ O Jev é uma verificação extra dos documentos, feita por outro serviço. Os po
 
 ## Backlog
 
-Em projetos grandes, o briefing pode virar um backlog com várias specs. O refinamento mostra o backlog para revisão; depois de detalhar, o programa executa as specs em ordem.
+Todo projeto novo tem um backlog: o briefing vira várias specs, ordenadas por prioridade. A etapa 2 monta esse backlog; depois dela, o programa executa as specs em ordem. Uma nova spec ou a continuação de uma spec não passam pela etapa 2.
