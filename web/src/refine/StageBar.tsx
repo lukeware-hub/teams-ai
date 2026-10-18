@@ -13,23 +13,23 @@ const NODE: Record<StageState, string> = {
   todo: 'border-line text-ink-faint',
 };
 
-/** The steps of a new project's refinement above the columns: where the work stands and what comes next. */
+/** The steps of a new project's refinement above the columns: where the work stands. Under 720px only the current step shows. */
 export function StageBar({ stages }: { stages: Stage[] }) {
   return (
     <ol className="m-0 flex min-w-0 list-none flex-wrap gap-2 p-0" aria-label="Etapas do refinamento">
       {stages.map((stage, index) => (
         <li
           key={stage.key}
-          className={`flex min-w-0 flex-1 basis-56 items-center gap-3 rounded-lg border px-3 py-2.5 ${ITEM[stage.state]}`}
+          className={`flex min-w-0 flex-1 basis-56 items-center gap-3 rounded-lg border px-3 py-2.5 ${ITEM[stage.state]} ${stage.state === 'active' ? '' : 'max-[720px]:hidden'}`}
           aria-current={stage.state === 'active' ? 'step' : undefined}
           data-testid={`stage-${stage.key}`}
         >
           <span className={`grid size-7 flex-none place-items-center rounded-full border text-[0.75rem] font-bold tabular-nums ${NODE[stage.state]}`} aria-hidden="true">
             {stage.state === 'done' ? <Icon name="check" size={14} /> : index + 1}
           </span>
-          <span className="grid min-w-0 gap-0.5">
+          <span className="min-w-0">
+            <span className="hidden text-[0.875rem] text-ink-soft max-[720px]:inline">Etapa {index + 1} de {stages.length} · </span>
             <b className="text-[0.875rem] font-semibold text-ink">{stage.label}</b>
-            <small className="text-[0.8125rem] text-ink-soft">{stage.note}</small>
           </span>
         </li>
       ))}

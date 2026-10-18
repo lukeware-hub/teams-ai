@@ -1,47 +1,78 @@
 import { describe, expect, it } from 'vitest';
-import { stageOf, type StageInput } from './stages.js';
+import { stageAction, stageOf, stageTitle, type StageInput } from './stages.js';
 
 const base: StageInput = { status: 'drafting', stale: false, backlog: null };
-const states = (input: StageInput, busy = false) => stageOf(input, busy).map((s) => s.state);
-const notes = (input: StageInput, busy = false) => stageOf(input, busy).map((s) => s.note);
+const outline = { enabled: true, detail: false, items: [{}] };
+const detailed = { enabled: true, detail: true, items: [{}] };
+const blocking = { status: 'pending', blocking: true };
+const optional = { status: 'pending', blocking: false };
+const states = (input: StageInput) => stageOf(input).map((s) => s.state);
 
 describe('stageOf', () => {
   it('starts on the documents while they are not ready', () => {
     expect(states(base)).toEqual(['active', 'todo', 'todo']);
-    expect(notes(base)[0]).toBe('Revise os documentos e avalie até ficar pronto.');
   });
 
   it('asks for the backlog once the documents are ready and nothing is stale', () => {
-    const ready: StageInput = { ...base, status: 'ready' };
-    expect(states(ready)).toEqual(['done', 'active', 'todo']);
-    expect(notes(ready)[1]).toBe('Clique em Quebrar o backlog para começar.');
+    expect(states({ ...base, status: 'ready' })).toEqual(['done', 'active', 'todo']);
   });
 
-  it('keeps the backlog active while the outline is drafted and while it is detailed', () => {
-    const outline: StageInput = { status: 'ready', stale: false, backlog: { enabled: true, detail: false, items: [{}] } };
-    expect(states(outline)).toEqual(['done', 'active', 'todo']);
-    expect(notes(outline)[1]).toBe('Esboçando o backlog.');
-    const detailing: StageInput = { status: 'drafting', stale: false, backlog: { enabled: true, detail: true, items: [{}] } };
-    expect(notes(detailing)[1]).toBe('Detalhando as specs.');
-    expect(notes(detailing, true)[1]).toBe('Em andamento.');
+  it('keeps the backlog active while it is outlined, detailed or waits for an answer', () => {
+    expect(states({ status: 'ready', stale: false, backlog: outline })).toEqual(['done', 'active', 'todo']);
+    expect(states({ status: 'drafting', stale: false, backlog: detailed })).toEqual(['done', 'active', 'todo']);
+    expect(states({ status: 'answering', stale: false, backlog: outline })).toEqual(['done', 'active', 'todo']);
   });
 
-  it('asks for an answer while the stage stops on a question, and to continue after the documents changed', () => {
-    const asked: StageInput = { status: 'answering', stale: false, backlog: { enabled: true, detail: false, items: [{}] } };
-    expect(notes(asked)[1]).toBe('Responda às perguntas em aberto para continuar.');
-    const changed: StageInput = { status: 'ready', stale: true, backlog: { enabled: true, detail: true, items: [{}] } };
-    expect(states(changed)).toEqual(['done', 'active', 'todo']);
-    expect(notes(changed)[1]).toBe('Os documentos mudaram: clique em Continuar etapa 2.');
+  it('keeps the backlog active after the documents changed under it', () => {
+    expect(states({ status: 'ready', stale: true, backlog: detailed })).toEqual(['done', 'active', 'todo']);
   });
 
   it('completes the backlog when every item is detailed and covered, and then execution is next', () => {
-    const done: StageInput = { status: 'ready', stale: false, backlog: { enabled: true, detail: true, items: [{}] } };
-    expect(states(done)).toEqual(['done', 'done', 'active']);
-    expect(notes(done)[2]).toBe('Clique em Iniciar análise para começar.');
+    expect(states({ status: 'ready', stale: false, backlog: detailed })).toEqual(['done', 'done', 'active']);
   });
 
   it('marks execution done once the program has started', () => {
-    const started: StageInput = { status: 'started', stale: false, backlog: { enabled: true, detail: true, items: [{}] } };
-    expect(states(started)).toEqual(['done', 'done', 'done']);
+    expect(states({ status: 'started', stale: false, backlog: detailed })).toEqual(['done', 'done', 'done']);
+  });
+});
+
+describe('stageAction', () => {
+  it('evaluates the documents until they are ready and fresh', () => {
+    expect(stageAction(base)).toBe('evaluate');
+    expect(stageAction({ ...base, status: 'error' })).toBe('evaluate');
+    expect(stageAction({ ...base, status: 'evaluating' })).toBe('evaluate');
+    expect(stageAction({ ...base, status: 'ready', stale: true })).toBe('evaluate');
+  });
+
+  it('plans the backlog once the documents are ready', () => {
+    expect(stageAction({ ...base, status: 'ready' })).toBe('plan');
+  });
+
+  it('continues the backlog while it is outlined or detailed, and after it stopped', () => {
+    expect(stageAction({ status: 'ready', stale: false, backlog: outline })).toBe('continue');
+    expect(stageAction({ status: 'evaluating', stale: false, backlog: detailed })).toBe('continue');
+    expect(stageAction({ status: 'ready', stale: true, backlog: detailed })).toBe('continue');
+    expect(stageAction({ status: 'error', stale: false, backlog: outline })).toBe('continue');
+    expect(stageAction({ status: 'answering', stale: false, backlog: outline, questions: [optional] })).toBe('continue');
+    expect(stageAction({ status: 'answering', stale: false, backlog: outline, questions: [{ status: 'answered', blocking: true }] })).toBe('continue');
+  });
+
+  it('waits for the owner while a blocking question is pending', () => {
+    expect(stageAction({ status: 'answering', stale: false, backlog: outline, questions: [blocking] })).toBe('answer');
+  });
+
+  it('starts the program once the backlog is detailed and covered', () => {
+    expect(stageAction({ status: 'ready', stale: false, backlog: detailed })).toBe('start');
+  });
+
+  it('shows only the locked start once the program has started', () => {
+    expect(stageAction({ status: 'started', stale: false, backlog: detailed })).toBe('started');
+  });
+});
+
+describe('stageTitle', () => {
+  it('names the stage that a running evaluation belongs to', () => {
+    expect(stageTitle({ ...base, status: 'evaluating' })).toBe('Etapa 1 · Avaliando os documentos');
+    expect(stageTitle({ status: 'evaluating', stale: false, backlog: outline })).toBe('Etapa 2 · Quebrando o backlog');
   });
 });

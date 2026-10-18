@@ -11,8 +11,16 @@ describe('ProcessingBanner', () => {
     render(<ProcessingBanner backlog={view()} cycle={2} stage="PO e SM revisam os documentos." jevDown={false} />);
     const banner = screen.getByTestId('processing-banner');
     expect(banner.textContent).toContain('Rodada 2 · PO e SM revisam os documentos.');
-    expect(banner.textContent).toContain('Processando o backlog. Atualizando a lista de specs');
+    expect(banner.textContent).toContain('Avaliação em andamento');
+    expect(banner.textContent).toContain('Atualizando a lista de specs');
     expect(screen.queryByTestId('detail-progress')).toBeNull();
+  });
+
+  it('names the stage of a new project in its title, in place of the default', () => {
+    render(<ProcessingBanner backlog={view()} cycle={2} stage="x" jevDown={false} title="Etapa 2 · Quebrando o backlog" />);
+    const banner = screen.getByTestId('processing-banner');
+    expect(banner.textContent).toContain('Etapa 2 · Quebrando o backlog');
+    expect(banner.textContent).not.toContain('Avaliação em andamento');
   });
 
   it('shows how far the detailing is, counting specs and pre-plans', () => {

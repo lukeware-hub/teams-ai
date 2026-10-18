@@ -73,7 +73,7 @@ export function BacklogPanel({ backlog, evaluating, locked, onEnable, mandatory 
   return (
     <div className="my-4 grid gap-3" data-testid="backlog-on">
       <h4 className="m-0 flex items-center gap-2"><Icon name="list" size={20} />Backlog{backlog.items.length > 0 ? ` · ${backlog.items.length} specs em ${epics.length} épicos` : ''}<InfoTip text={HELP} /></h4>
-      {backlog.items.length === 0 && !evaluating && <p className="text-[0.8125rem] text-ink-soft">O backlog aparece depois da próxima avaliação. Clique em Avaliar.</p>}
+      {backlog.items.length === 0 && !evaluating && <p className="text-[0.8125rem] text-ink-soft">{mandatory ? 'O esboço do backlog aparece aqui quando a etapa 2 rodar.' : 'O backlog aparece depois da próxima avaliação. Clique em Avaliar.'}</p>}
       {epics.map((epic) => (
         <section key={epic.key} className="grid gap-[0.4rem]" data-testid={`epic-${epic.key}`}>
           <h5 className="m-0 flex items-center justify-between gap-2 text-[0.8125rem] text-ink-soft"><span>{epic.title}</span><span className="count-pill">{epic.items.length}</span></h5>

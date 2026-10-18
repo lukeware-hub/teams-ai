@@ -414,7 +414,7 @@ describe('RefinementView', () => {
     expect(screen.queryByTestId('answer')).toBeNull();
     expect(screen.queryByTestId('accept-sm-c1-0')).toBeNull();
     expect(screen.queryByTestId('reject-sm-c1-0')).toBeNull();
-    expect(screen.getByText(/aparecem aqui quando a avaliação terminar/)).toBeTruthy();
+    expect(screen.queryByText(/Nenhuma pergunta em aberto/)).toBeNull();
     rerender(
       <MemoryRouter>
         <RefinementView snap={base({ status: 'answering' })} busy={false} {...on()} />

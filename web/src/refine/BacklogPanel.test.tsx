@@ -30,6 +30,12 @@ describe('BacklogPanel', () => {
     expect(screen.queryByText(/depois da próxima avaliação/)).toBeNull();
   });
 
+  it('says the outline comes from stage 2, not from a button, in a new project', () => {
+    render(<BacklogPanel backlog={view([])} evaluating={false} locked={false} mandatory />);
+    expect(screen.getByText(/aparece aqui quando a etapa 2 rodar/)).toBeTruthy();
+    expect(screen.queryByText(/Clique em Avaliar/)).toBeNull();
+  });
+
   it('groups the items by epic in rank order with priority, size, dependencies and sources', () => {
     const items = [
       item('casos', { rank: 2, dependsOn: ['base'], priority: 'P1', size: 'L' }),
