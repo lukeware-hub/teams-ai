@@ -42,6 +42,9 @@ const ROLE_OWNERSHIP = {
 
 const rolesRule = (role: 'po' | 'sm' | 'front') => `ROLES IN THIS REVIEW: PO, SM and Front read the same documents at the same time, and none sees what the others propose in this cycle. ${ROLE_OWNERSHIP.po} ${ROLE_OWNERSHIP.sm} ${ROLE_OWNERSHIP.front} You are the ${role.toUpperCase()}: ask or patch only inside what you own. A problem in another area belongs to the role that owns it. A fact that differs between two documents is the PO's; something that cannot be built is the SM's.`;
 
+/** Every role reads all five documents from its own point of view and reports what it sees outside its area as a finding. */
+const FINDINGS_RULE = 'FINDINGS: read all five documents through your own lens, and report a defect in a document you do not own as an entry in `findings` (doc, severity blocking or advice, the exact quote copied character for character, the problem in text, and the fix). Report at most 3 findings per document, and only a defect that would make the implementation wrong or untestable. A finding never replaces the checklist ids of your own role.';
+
 /** R11.10: before the detailing, PO and SM leave what a spec decides to the detailing; nothing else waits. */
 const OUTLINE_REVIEW_RULE = 'Outline review (no spec yet): never ask about or patch a detail a spec decides, such as a status code, a message, a field, a validation or the content of an e-mail; the detailing settles it, so a missing detail fails no checklist id now, and this narrows the flow.md review and the Jev preflight notes. It never holds back a contradiction between the docs, a split into services the docs leave open, filling a blank stack.md or flow.md, or turning an older list of decisions into headings.';
 
@@ -119,6 +122,7 @@ export function refinePack(input: {
       ? `Treat design.md as the frontend source of truth. Validate distinctive web and mobile direction, responsive states, accessibility, keyboard focus, reduced motion, touch targets, and consistency with project.md, ${brief}, stack.md, and flow.md. Reject generic AI-looking UI choices and propose a precise patch when design.md is incomplete or contradictory. Write every new design.md heading, description, label, and patch reason in Brazilian Portuguese; preserve only technical identifiers, file names, code, and color tokens.`
       : `design.md is Front's: read it as context, never ask about it or patch it. Report it only as a contradiction with another document.`,
     rolesRule(input.role),
+    FINDINGS_RULE,
     ...(input.derived.spec ? [] : [BACKLOG_REVIEW_RULE, ...(input.role === 'front' ? [] : [DECISION_RULE])]),
     ...(detail ? [DETAIL_REVIEW_RULE] : []),
     ...(input.derived.spec || detail || input.role === 'front' ? [] : [OUTLINE_REVIEW_RULE]),

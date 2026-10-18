@@ -36,6 +36,16 @@ export const Contradiction = z.object({
 });
 export type Contradiction = z.infer<typeof Contradiction>;
 
+/** A finding on one shared doc, reported by any role: the orchestrator routes it to the doc's owner. */
+export const DocFinding = z.object({
+  doc: z.enum(['project.md', 'brief.md', 'stack.md', 'flow.md', 'design.md']),
+  severity: z.enum(['blocking', 'advice']),
+  quote: z.string().min(1),
+  text: z.string().min(1),
+  fix: z.string(),
+});
+export type DocFinding = z.infer<typeof DocFinding>;
+
 /** Keeps the valid items of a list: a malformed one is dropped on its own, so it never fails the whole output. */
 const keepValid = <T extends z.ZodType>(item: T) => z.preprocess((v) => (Array.isArray(v) ? v.filter((x) => item.safeParse(x).success) : []), z.array(item));
 
@@ -59,6 +69,7 @@ export const RefineOutput = z.object({
   ),
   docPatch: keepValid(DocPatch),
   contradictions: keepValid(Contradiction).optional(),
+  findings: keepValid(DocFinding).optional(),
 });
 
 /** Spec (refinement) §3.2 step 1: Markdown → project.json + spec.json; the orchestrator re-validates and forces status/hash/version. */

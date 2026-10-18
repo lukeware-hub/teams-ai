@@ -18,6 +18,14 @@ const base = {
 } as unknown as Parameters<typeof refinePack>[0];
 
 describe('refinePack', () => {
+  it('asks every role to report defects in the documents it does not own as findings, at most 3 each', () => {
+    for (const role of ['po', 'sm', 'front'] as const) {
+      const { feedback } = refinePack({ ...base, role });
+      expect(feedback).toContain('FINDINGS:');
+      expect(feedback).toContain('at most 3 findings per document');
+    }
+  });
+
   it('tells the front agent to review only and answer with the JSON object', () => {
     const { feedback } = refinePack({ ...base, role: 'front' });
     expect(feedback).toContain('This is a review, not an implementation task');

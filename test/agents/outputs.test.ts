@@ -69,6 +69,17 @@ describe('output contracts', () => {
     expect(ok.success).toBe(true);
   });
 
+  it('refine findings are optional, and a malformed one is dropped on its own', () => {
+    const base = { specHash: HASH, checklist: [], questions: [], docPatch: [] };
+    const good = { doc: 'stack.md', severity: 'blocking', quote: 'Node 20', text: 'Versão diferente do flow.', fix: 'Alinhe.' };
+    expect(RefineOutput.parse(base).findings).toBeUndefined();
+    expect(RefineOutput.parse({ ...base, findings: [good, { doc: 'outro.md', severity: 'blocking', quote: 'x', text: 'x', fix: '' }, 'texto'] }).findings).toEqual([good]);
+    expect(RefineOutput.parse({ ...base, findings: 'nope' }).findings).toEqual([]);
+    const schema = toJsonSchema('refine') as { required?: string[]; properties?: Record<string, unknown> };
+    expect(schema.properties).toHaveProperty('findings');
+    expect(schema.required).not.toContain('findings');
+  });
+
   it('refine questions carry their choices: a malformed choice is dropped alone, and an open question has none', () => {
     const base = { specHash: HASH, checklist: [], docPatch: [] };
     const choice = { label: 'Citar as subseções', detail: 'O item cita 2.1, 2.2 e 2.3.' };
