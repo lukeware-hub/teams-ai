@@ -500,8 +500,8 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
   const profile = deps.profile(req.role);
   const manual = await deps.agentSetting?.(req.role);
   const planned = manual?.model ?? req.model ?? deps.stepModel?.(req.kind, req.attempt) ?? profile.model;
-  // A step with a kept session belongs to its model; only a fresh one may move to the lower model when the quota is out.
-  const lower = sessionStore ? undefined : fallbackModel(planned);
+  // A step with a kept session belongs to its model; a manual setting is kept whatever the quota; only a fresh automatic step may move to the lower model.
+  const lower = sessionStore || manual ? undefined : fallbackModel(planned);
   let model = lower && deps.breaker.modelPaused(planned) ? lower : planned;
   // The effort the CLI runs at, for the model the step actually runs on; journaled so the run page can show it.
   const effortOf = (m: string): Effort => (manual ? manual.effort : effortFor(m, req.effort));

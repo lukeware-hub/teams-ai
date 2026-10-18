@@ -525,6 +525,15 @@ describe('runAgentStep', () => {
     expect(finished.data).toMatchObject({ model: 'claude-sonnet-5-5', fellBackFrom: 'opus' });
   });
 
+  it('keeps a manual Opus setting on Opus when its quota is out, never falling back to Sonnet', async () => {
+    const d = await deps(async () => ({ ok: false, failure: 'quota', errors: ['rate limited'], summary: summary({ isError: true }), sandboxDisabled: false }));
+    const seen: Array<{ model: string }> = [];
+    d.runStep = (async (req: { model: string }) => { seen.push(req); return { ok: false, failure: 'quota', errors: ['rate limited'], summary: summary({ isError: true }), sandboxDisabled: false }; }) as unknown as AgentStepDeps['runStep'];
+    d.agentSetting = () => ({ model: 'claude-opus-5-5', effort: 'max' });
+    await runAgentStep({ kind: 'dev', role: 'dev', pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1, model: 'claude-opus-5-5', effort: 'low' }, d);
+    expect(seen.map((s) => s.model)).toEqual(['claude-opus-5-5']);
+  });
+
   it('starts the next Opus step on Sonnet while Opus is paused', async () => {
     const first = await seeing('opus', undefined, async (m) => (m === 'opus' ? quota() : { ok: true, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() }));
     const ok = { ok: true as const, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() };
