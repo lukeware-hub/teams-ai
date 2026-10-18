@@ -4,11 +4,9 @@ import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
 import { branchOwner, flowHeadings, MAX_ITEMS, rankItems, validateBacklog } from '../validators/backlog.js';
 import { adjustmentItems, isAdjustment } from './adjustments.js';
-import { itemCites } from './coverage.js';
 import { buildWithDocs, DIGEST_NOTE } from './docs-view.js';
 import type { BacklogDocs } from './details.js';
 import { jevHint, type JevValidationResult } from './jev-validation.js';
-import { docSections, resolveHeading, sectionText } from './sections.js';
 import type { BacklogState } from './state.js';
 
 const RULES = [
@@ -95,9 +93,8 @@ export function postProcessBacklog(out: { project: unknown; backlog: unknown }, 
     ...(backlog.success ? [] : backlog.error.issues.map((i) => `backlog.${i.path.join('.')}: ${i.message}`)),
   ];
   if (!project.success || !backlog.success) return { ok: false, issues };
-  const frozen = new Set(started.map((s) => s.key));
-  const items = completeCitations(keepPreviousKeys(backlog.data.items.filter((i) => !isAdjustment(i.key)), previous), docs, frozen);
-  const rules = validateBacklog({ epics: backlog.data.epics, items }, { flowHeadings: flowHeadings(docs['flow.md'] ?? ''), docs, frozen });
+  const items = keepPreviousKeys(backlog.data.items.filter((i) => !isAdjustment(i.key)), previous);
+  const rules = validateBacklog({ epics: backlog.data.epics, items }, { flowHeadings: flowHeadings(docs['flow.md'] ?? ''), docs, frozen: new Set(started.map((s) => s.key)) });
   if (rules.length > 0) return { ok: false, issues: rules };
   // A started item the agent dropped stays as it was, with only the dependencies still in the outline.
   const keys = new Set([...items, ...started].map((i) => i.key));
@@ -107,23 +104,6 @@ export function postProcessBacklog(out: { project: unknown; backlog: unknown }, 
   // Adjustments first: rank breaks ties by position, so each runs right after its original, before what waits on it.
   const adjustments = adjustmentItems(all, approved).filter((a) => !all.some((i) => i.key === a.key));
   return { ok: true, value: { project: project.data, backlog: { epics, items: rankItems([...adjustments, ...all]) } } };
-}
-
-/**
- * A flow section with text of its own is cited by the item that cites one of its sub-sections, so the agent's miss on the
- * section's own text does not refuse the whole outline. A started item keeps its sources.
- */
-export function completeCitations(items: BacklogItem[], docs: Partial<BacklogDocs>, frozen: ReadonlySet<string>): BacklogItem[] {
-  const flow = docs['flow.md'] ?? '';
-  const headings = flowHeadings(flow);
-  let out = items;
-  for (const parent of headings) {
-    if (out.some((i) => itemCites(i, parent, headings))) continue;
-    const children = docSections(sectionText(flow, parent) ?? '').slice(1).map((s) => resolveHeading(s.heading, headings)).filter((h): h is string => h !== null);
-    const owner = out.find((i) => !frozen.has(i.key) && children.some((c) => itemCites(i, c, headings)));
-    if (owner) out = out.map((i) => (i === owner ? { ...i, sources: [...i.sources, { doc: 'flow.md' as const, heading: parent }] } : i));
-  }
-  return out;
 }
 
 /** The backlog as a Markdown view for people (and later agents); generated, never edited by hand. */
