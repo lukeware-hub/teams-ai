@@ -39,6 +39,15 @@ export function parseDecisions(md: string): SpecDecision[] | undefined {
   return decisions.length > 0 ? decisions : undefined;
 }
 
+/** Character span of the decisions section (`## Decisões` or `## Decisions`, heading included); null when there is none. */
+export function decisionsSpan(doc: string): { start: number; end: number } | null {
+  const section = docSections(doc).find((s) => s.text.startsWith('## ') && ['decisoes', 'decisions'].includes(normHeading(s.heading)));
+  if (!section) return null;
+  const lines = doc.split('\n');
+  const offset = (line: number) => lines.slice(0, line).reduce((sum, text) => sum + text.length + 1, 0);
+  return { start: offset(section.line), end: Math.min(offset(section.line + section.text.split('\n').length), doc.length) };
+}
+
 /** The spec with each answered question recorded as a decision; a later answer to the same question replaces the earlier one. */
 export function withDecisions(spec: Spec, rows: readonly QuestionRow[]): Spec {
   const answered: SpecDecision[] = rows.flatMap((q) => (q.status === 'answered' && q.answer ? [{ question: q.text, answer: q.answer, ...(q.answeredBy ? { by: q.answeredBy } : {}) }] : []));

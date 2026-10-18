@@ -18,7 +18,7 @@ import { recordDecision, withDecisions } from './decisions.js';
 import { maxCriterionInDraft } from './detail-cycle.js';
 import { designTemplate, flowTemplate, moveBriefingToProject, readDerived, readDoc, readMainSpec, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
 import { DRAFT_HASH, RefineEvent } from './events.js';
-import { applyPatch } from './patches.js';
+import { applyPatch, COVERED_REASON } from './patches.js';
 import { buildSpecsIndex } from './specs-index.js';
 import { fitPackBudget } from './fit-pack.js';
 import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
@@ -133,8 +133,6 @@ export interface Snapshot {
   /** The seq of the last event the state holds; the page applies only the events after it. */
   seq: number;
 }
-
-const COVERED = 'Este ajuste já foi coberto por outra alteração e foi descartado.';
 
 /**
  * R11.7.2: the program's entries from each item's status on main (`onMain`, by spec id). A done item starts done; a running
@@ -454,7 +452,7 @@ export class RefineSession {
     const before = await readDoc(this.deps.draft, p.file);
     const after = applyPatch(before, p);
     if (after === null) {
-      await this.journal.fact(RefineEvent.PatchDropped, { patchId, reason: COVERED });
+      await this.journal.fact(RefineEvent.PatchDropped, { patchId, reason: COVERED_REASON });
       throw new ConflictError(`Este ajuste (${patchId}) já foi coberto por outra alteração e foi descartado.`);
     }
     await writeDoc(this.deps.draft, p.file, after);
@@ -463,7 +461,7 @@ export class RefineSession {
     // PO and SM often propose overlapping edits: the ones this change made stale leave the list now, instead of failing on click.
     for (const other of this.state.patches) {
       if (other.status === 'pending' && other.file === p.file && applyPatch(after, other) === null) {
-        await this.journal.fact(RefineEvent.PatchDropped, { patchId: other.patchId, reason: COVERED });
+        await this.journal.fact(RefineEvent.PatchDropped, { patchId: other.patchId, reason: COVERED_REASON });
       }
     }
   }

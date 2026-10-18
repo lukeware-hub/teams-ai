@@ -6,6 +6,7 @@ import type { ChecklistItem } from './checklist.js';
 import { coverageGaps } from './coverage.js';
 import { RefineEvent, type Question } from './events.js';
 import { approvalKey } from './sections.js';
+import type { DocFile } from './draft.js';
 import type { PendingPatch } from './patches.js';
 
 export type RefineStatus = 'drafting' | 'evaluating' | 'answering' | 'ready' | 'error' | 'started';
@@ -19,6 +20,27 @@ export interface PatchRow extends PendingPatch {
   cycle: number;
   status: 'pending' | 'accepted' | 'rejected' | 'dropped';
   decision: string | null;
+}
+/** A move applied at once: the text cut from one document and added to another, with what undo needs to put both back. */
+export interface MoveRow {
+  moveId: string;
+  role: 'po' | 'sm' | 'front';
+  cycle: number;
+  from: DocFile;
+  to: DocFile;
+  reason: string;
+  /** The whole lines cut from `from`. */
+  quote: string;
+  /** The text added to `to`. */
+  text: string;
+  removedAt: number;
+  removed: string;
+  insertAt: number;
+  inserted: string;
+  /** Hashes of both documents as the move left them: undo runs only while both still match. */
+  fromHash: string;
+  toHash: string;
+  status: 'applied' | 'undone';
 }
 /** One backlog item's derived spec; `spec` is null when the last attempt failed (`issues` says why). */
 export interface SpecRow {
@@ -77,6 +99,7 @@ export interface RefineState {
   checklist: ChecklistItem[];
   questions: QuestionRow[];
   patches: PatchRow[];
+  moves: MoveRow[];
   discarded: Array<{ cycle: number; role: string; file: string; reason: string }>;
   error: string | null;
   runId: string | null;
@@ -93,6 +116,7 @@ export const emptyRefineState = (): RefineState => ({
   checklist: [],
   questions: [],
   patches: [],
+  moves: [],
   discarded: [],
   error: null,
   runId: null,
@@ -168,6 +192,14 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
       }
       if (e.type === RefineEvent.PatchAccepted && hasDerivation(s)) s.stale = true;
       s.status = computeStatus(s);
+      break;
+    }
+    case RefineEvent.DocMoved:
+      s.moves.push({ ...(d as unknown as Omit<MoveRow, 'status'>), status: 'applied' });
+      break;
+    case RefineEvent.DocMoveUndone: {
+      const m = s.moves.find((x) => x.moveId === String(d.moveId));
+      if (m) m.status = 'undone';
       break;
     }
     case RefineEvent.QuestionAnswered:

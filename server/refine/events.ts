@@ -10,6 +10,10 @@ export const RefineEvent = {
   PatchAccepted: 'PATCH_ACCEPTED',
   PatchRejected: 'PATCH_REJECTED',
   PatchDropped: 'PATCH_DROPPED',
+  /** A move applied at once: text cut from one document and added to another. */
+  DocMoved: 'DOC_MOVED',
+  /** The owner undid a move, so both documents went back to their earlier text. */
+  DocMoveUndone: 'DOC_MOVE_UNDONE',
   QuestionAnswered: 'QUESTION_ANSWERED',
   QuestionSkipped: 'QUESTION_SKIPPED',
   SecretWritten: 'SECRET_WRITTEN',

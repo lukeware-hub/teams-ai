@@ -18,11 +18,19 @@ export interface PendingPatch {
 }
 export type PatchCheck = { ok: true; file: DocFile } | { ok: false; reason: string };
 
-const count = (text: string, find: string): number => (find === '' ? 0 : text.split(find).length - 1);
+export const count = (text: string, find: string): number => (find === '' ? 0 : text.split(find).length - 1);
+
+/** The document a path names, as the packs show it; undefined when the path is none of the five. */
+export function docOf(file: string, specId: string, projectBriefing = false): DocFile | undefined {
+  return (Object.keys(DOC_REL) as DocFile[]).find((f) => DOC_REL[f](specId, projectBriefing) === file);
+}
+
+/** Shown as the reason when another change covered a pending suggestion, so it no longer applies. */
+export const COVERED_REASON = 'Este ajuste já foi coberto por outra alteração e foi descartado.';
 
 /** Spec (refinement) §3.4: only known Markdown files, and `find` must occur exactly once. */
 export function checkPatch(p: DocPatchIn, specId: string, docs: Partial<Record<DocFile, string>>, projectBriefing = false): PatchCheck {
-  const file = (Object.keys(DOC_REL) as DocFile[]).find((f) => DOC_REL[f](specId, projectBriefing) === p.file);
+  const file = docOf(p.file, specId, projectBriefing);
   if (!file) return { ok: false, reason: `unknown file ${p.file}` };
   const text = docs[file];
   if (text === undefined) return { ok: false, reason: `document not loaded: ${file}` };
