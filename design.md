@@ -752,7 +752,7 @@ Middot-separated facts in `meta`, tabular figures, no labels: `0 etapas · 0 tok
 
 ### 11.13 Panel footer
 
-A `line` top rule, 16px padding, then: an `info` icon plus `meta` explanation at the left guide, the primary action at the right guide, on one baseline. The reference's `As alterações são salvas automaticamente ao sair do editor.` + `Avaliar` is the pattern. The explanation says what the system does; the button says what the user does.
+A `line` top rule, 16px padding, then: an `info` icon plus `meta` explanation at the left guide, a primary action at the right guide when the panel has one, on one baseline. The reference's `As alterações são salvas automaticamente ao sair do editor.` is the pattern for a panel with no action; the documents panel has none, since `Avaliar` moved to the review panel (§26.2). The explanation says what the system does; the button says what the user does.
 
 ### 11.14 Breadcrumb
 
@@ -1125,7 +1125,7 @@ The document panel is widest because it holds the editor; the other two are near
 | Chip | `Editável` — accent tone, `pencil` icon. When the spec is locked: `Somente leitura`, neutral tone, `lock` icon. |
 | Tabs | §11.7 — `project.md` `briefing.md` `stack.md` `flow.md`, filenames in `ui`, no truncation (they are short and fixed) |
 | Editor | §11.8, capped at ~60vh with its own scroll |
-| Footer | §11.13 — `info` + `As alterações são salvas automaticamente ao sair do editor.` left, `Avaliar` primary with a leading check icon, right |
+| Footer | §11.13 — `info` + `As alterações são salvas automaticamente ao sair do editor.` only; no action, since `Avaliar` moved to §26.2 |
 
 **The editor is a textarea, not a code editor**, and must not pretend otherwise: no syntax highlighting, no autocomplete, no bracket matching. The gutter and the mono face are there so a spec's structure is scannable, not to imply an IDE the product does not have.
 
@@ -1139,6 +1139,7 @@ The save explanation is a **statement of system behavior**, so it is `meta` with
 | Overline | `Refinamento` |
 | Title | `Área de revisão` |
 | Chip | `N em aberto` — `warn` tone with a `clock` icon when N > 0, `good` tone with a dot when N = 0 |
+| Actions | One row above the guidance callout: `Detalhar specs` as `secondary` (only while the outline is ready and not yet detailed, disabled until status is `ready` and not stale, hidden once requested), then `Avaliar`/`Reavaliar` as `primary` with a leading check icon (disabled while evaluating or started; asks for confirmation when nothing changed) |
 | Guidance | §11.5 guidance callout, `lightbulb` icon, bold `Próximo passo:` lead-in |
 | Questions | `body-soft` when empty: `Nenhuma pergunta em aberto.` Otherwise a list of question cards. |
 | History | §11.9 section header `HISTÓRICO` with a `clock` icon, then the inline empty state or the entries |
@@ -1249,12 +1250,12 @@ The user-provided reference images 2 and 3 are the approved visual target for `/
 - Use the blue document tile, `Área de trabalho` eyebrow, `Documentos do projeto` title, and `Editável` state chip.
 - Keep the five document tabs visible with horizontal scrolling when necessary: `project.md`, `briefing.md`, `stack.md`, `flow.md`, and `design.md`.
 - The editor is a quiet bordered surface with readable monospace text, line-number treatment when available, and a copy affordance in the upper-right corner.
-- Keep the automatic-save hint below the editor. The `Avaliar`/`Reavaliar` action is the panel's primary action and uses the approved blue-violet action treatment.
+- Keep the automatic-save hint below the editor. The `Avaliar`/`Reavaliar` action moved to the review panel's actions row (§30.3) and keeps the approved blue-violet action treatment.
 
 ### 30.3 Review panel
 
 - Use the purple clipboard tile, `Refinamento` eyebrow, `Área de revisão` title, and `0 em aberto` state chip.
-- Show the next-step callout immediately below the header with a lightbulb icon and short, actionable Portuguese copy.
+- Show the actions row (`Detalhar specs` when it applies, then `Avaliar`/`Reavaliar`) immediately below the header, then the next-step callout with a lightbulb icon and short, actionable Portuguese copy.
 - Empty review state copy is `Nenhuma pergunta em aberto.`. The history section uses a clock icon and an explicit empty state rather than a blank box.
 - Questions, answers, patches, and rejection controls remain functional; the reference styling must not hide or remove them.
 

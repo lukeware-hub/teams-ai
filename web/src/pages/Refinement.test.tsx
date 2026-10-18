@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { api, type Item, type Snapshot, type Status } from '../api.js';
@@ -199,6 +199,21 @@ describe('RefinementView backlog mode', () => {
     fireEvent.click(screen.getByTestId('detail-specs'));
     expect(h.onEnableDetail).toHaveBeenCalledOnce();
     expect(screen.getByTestId('doc-impact').textContent).toMatch(/Briefing do projeto/);
+  });
+
+  // Usability: the buttons that move the refinement sit in the review panel, above the next step, not under the editor.
+  it('puts Detalhar specs and Reavaliar in the review panel, above the next step', () => {
+    const h = { ...on(), onEnableDetail: vi.fn() };
+    const { rerender } = render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog })} busy={false} {...h} /></MemoryRouter>);
+    const review = screen.getByRole('heading', { name: 'Área de revisão' }).closest('section') as HTMLElement;
+    const documents = screen.getByTestId('doc-brief.md').closest('section') as HTMLElement;
+    const next = within(review).getByText('Próximo passo:');
+    expect(review.contains(screen.getByTestId('detail-specs'))).toBe(true);
+    expect(review.contains(screen.getByTestId('evaluate'))).toBe(true);
+    expect(documents.contains(screen.getByTestId('evaluate'))).toBe(false);
+    expect(screen.getByTestId('detail-specs').compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    rerender(<MemoryRouter><RefinementView snap={base({ ...ready, backlog: { ...backlog, detail: true } })} busy={false} {...h} /></MemoryRouter>);
+    expect(screen.queryByTestId('detail-specs')).toBeNull();
   });
 
   it('in detail mode draws the coverage tree, finds question criteria in the item specs, and keeps Start disabled', () => {

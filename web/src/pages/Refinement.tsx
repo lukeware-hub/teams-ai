@@ -12,7 +12,7 @@ import { Loading } from '../components/Loading.js';
 import { buildSpecsIndex } from '@server/refine/specs-index';
 import { allGreen, isApproval } from '@server/refine/state';
 import type { Divergence, DivergenceSide } from '@server/refine/checklist';
-import { BacklogPanel } from '../refine/BacklogPanel.js';
+import { BacklogPanel, DetailSpecsButton } from '../refine/BacklogPanel.js';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { SpecTree } from '../refine/SpecTree.js';
 import { Workspace } from '../components/Workspace.js';
@@ -425,15 +425,6 @@ export function RefinementView(p: ViewProps) {
       {jevAdvisory && <p className={notice}>O Jev é obrigatório no refinamento: ele valida os documentos e decide pontos da avaliação, e seus apontamentos são considerados por Claude, PO e SM. <InfoTip text={jevInfo} /></p>}
       <div className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-3">
         <span className="inline-flex items-start gap-[0.45rem] text-[0.8125rem] leading-[1.35] text-ink-soft"><Icon name="info" size={18} />As alterações são salvas automaticamente ao sair do editor.</span>
-        <ActionButton data-testid="evaluate" className="primary min-w-40 justify-self-stretch" busy={evaluating} disabled={locked} onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
-        {st.cycle === 0 ? 'Avaliar' : 'Reavaliar'}
-        </ActionButton>
-        {askRe && (
-          <ConfirmDialog title="Reavaliar sem mudanças" confirmLabel="Reavaliar mesmo assim" onConfirm={() => { setAskRe(false); void p.onEvaluate(); }} onCancel={() => setAskRe(false)}>
-            <p>Nada mudou desde a última avaliação. Reavaliar gasta de novo as chamadas dos agentes (cerca de US$ 0,7) e pode dar um veredito diferente sobre os mesmos documentos.</p>
-          </ConfirmDialog>
-        )}
-        {st.status === 'evaluating' && <span className="justify-self-center text-[0.8125rem] text-ink-soft">Avaliando…</span>}
       </div>
     </section>
   );
@@ -449,6 +440,18 @@ export function RefinementView(p: ViewProps) {
         <Tipped text="Quantas perguntas dos agentes ainda esperam a sua resposta.">
           <span className={`count-pill ${pending.length > 0 ? 'tone-warn' : 'tone-good'}`}>{pending.length === 1 ? '1 pergunta em aberto' : `${pending.length} perguntas em aberto`}</span>
         </Tipped>
+      </div>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <DetailSpecsButton backlog={st.backlog} locked={locked} ready={st.status === 'ready' && !st.stale} onDetail={p.onEnableDetail} />
+        <ActionButton data-testid="evaluate" className="primary min-w-40 flex-auto" busy={evaluating} disabled={locked} onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
+          {st.cycle === 0 ? 'Avaliar' : 'Reavaliar'}
+        </ActionButton>
+        {askRe && (
+          <ConfirmDialog title="Reavaliar sem mudanças" confirmLabel="Reavaliar mesmo assim" onConfirm={() => { setAskRe(false); void p.onEvaluate(); }} onCancel={() => setAskRe(false)}>
+            <p>Nada mudou desde a última avaliação. Reavaliar gasta de novo as chamadas dos agentes (cerca de US$ 0,7) e pode dar um veredito diferente sobre os mesmos documentos.</p>
+          </ConfirmDialog>
+        )}
+        {st.status === 'evaluating' && <span className="text-[0.8125rem] text-ink-soft">Avaliando…</span>}
       </div>
       <p className="m-0 mb-4 flex items-start gap-[0.6rem] rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-[0.8125rem] leading-[1.45] text-ink [&_svg]:flex-none [&_svg]:text-accent-text"><Icon name="lightbulb" size={20} /><span><b>Próximo passo:</b> {nextStep}{optional}</span></p>
       {busy && (
@@ -607,7 +610,7 @@ export function RefinementView(p: ViewProps) {
         </dl>
       </div>
       <div className="grid gap-[0.3rem]"><h5>Produto (PO)</h5><Checklist items={st.checklist} role="po" /><h5>Técnico (SM)</h5><Checklist items={st.checklist} role="sm" /></div>
-      <BacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} ready={st.status === 'ready' && !st.stale} onEnable={p.onEnableBacklog} onDetail={p.onEnableDetail} />
+      <BacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} onEnable={p.onEnableBacklog} />
       {st.backlog?.detail && <SpecTree backlog={st.backlog} evaluating={evaluating} />}
       <h4><Icon name="file" size={20} />Arquivos gerados<InfoTip text="Versão estruturada dos documentos, gerada pelo Claude a cada avaliação. O project.json descreve o projeto; o spec.json, esta demanda, com tarefas e critérios de aceite." /></h4>
       {!backlogOn && (

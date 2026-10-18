@@ -47,8 +47,19 @@ export const bkTone = {
 export const bkMeta = 'flex-none text-[0.75rem] text-ink-faint';
 const STATUS_TONE = { entregue: bkTone.planned, 'em execução': bkTone.planned, planejada: bkTone.planned, 'em refinamento': bkTone.refining, erro: bkTone.error } as const;
 
+/** Asks the page to detail a ready outline; hidden once the specs are detailed. */
+export function DetailSpecsButton({ backlog, locked, ready, onDetail }: { backlog: BacklogView | null | undefined; locked: boolean; ready: boolean; onDetail?: () => unknown }) {
+  if (!backlog?.enabled || backlog.items.length === 0 || backlog.detail || !onDetail) return null;
+  return (
+    <p className="m-0 flex items-center gap-2">
+      <ActionButton className="secondary" data-testid="detail-specs" disabled={!ready || locked} onClick={onDetail} icon={<Icon name="file" size={16} />}>Detalhar specs (~{estimatedCalls(backlog)} chamadas)</ActionButton>
+      <InfoTip text={DETAIL_HELP} />
+    </p>
+  );
+}
+
 /** The documents broken into prioritized specs, the way the agents organized them; the human reads and steers through the docs. */
-export function BacklogPanel({ backlog, evaluating, locked, ready = false, onEnable, onDetail }: { backlog: BacklogView | null | undefined; evaluating: boolean; locked: boolean; ready?: boolean; onEnable?: () => unknown; onDetail?: () => unknown }) {
+export function BacklogPanel({ backlog, evaluating, locked, onEnable }: { backlog: BacklogView | null | undefined; evaluating: boolean; locked: boolean; onEnable?: () => unknown }) {
   if (!backlog?.enabled) {
     if (!onEnable) return null;
     return (
@@ -71,12 +82,6 @@ export function BacklogPanel({ backlog, evaluating, locked, ready = false, onEna
         </p>
       )}
       {backlog.items.length === 0 && !evaluating && <p className="text-[0.8125rem] text-ink-soft">O backlog aparece depois da próxima avaliação. Clique em Avaliar.</p>}
-      {backlog.items.length > 0 && !backlog.detail && onDetail && (
-        <p className="m-0 flex items-center gap-2">
-          <ActionButton className="secondary" data-testid="detail-specs" disabled={!ready || locked} onClick={onDetail} icon={<Icon name="file" size={16} />}>Detalhar specs (~{estimatedCalls(backlog)} chamadas)</ActionButton>
-          <InfoTip text={DETAIL_HELP} />
-        </p>
-      )}
       {epics.map((epic) => (
         <section key={epic.key} className="grid gap-[0.4rem]" data-testid={`epic-${epic.key}`}>
           <h5 className="m-0 flex items-center justify-between gap-2 text-[0.8125rem] text-ink-soft"><span>{epic.title}</span><span className="count-pill">{epic.items.length}</span></h5>

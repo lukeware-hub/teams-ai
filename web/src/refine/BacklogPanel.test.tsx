@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { BacklogView } from '../api.js';
-import { BacklogPanel } from './BacklogPanel.js';
+import { BacklogPanel, DetailSpecsButton } from './BacklogPanel.js';
 
 const item = (key: string, over: Partial<BacklogView['items'][number]> = {}) => ({
   key, title: `Spec ${key}`, epic: 'core', scope: `Escopo de ${key}`, priority: 'P1' as const, rationale: `Por que ${key}`, dependsOn: [], sources: [{ doc: 'flow.md', heading: '7. OPME' }], size: 'M' as const, rank: 1, ...over,
@@ -69,9 +69,9 @@ describe('BacklogPanel detailing', () => {
 
   it('offers Detalhar specs once the outline is ready, with the expected number of agent calls', () => {
     const onDetail = vi.fn();
-    const { rerender } = render(<BacklogPanel backlog={view(items)} evaluating={false} locked={false} ready={false} onDetail={onDetail} />);
+    const { rerender } = render(<DetailSpecsButton backlog={view(items)} locked={false} ready={false} onDetail={onDetail} />);
     expect((screen.getByTestId('detail-specs') as HTMLButtonElement).disabled).toBe(true);
-    rerender(<BacklogPanel backlog={view(items)} evaluating={false} locked={false} ready onDetail={onDetail} />);
+    rerender(<DetailSpecsButton backlog={view(items)} locked={false} ready onDetail={onDetail} />);
     const button = screen.getByTestId('detail-specs') as HTMLButtonElement;
     expect(button.disabled).toBe(false);
     // Two epics: one call each for the specs and for the pre-plans, then the Front, PO and SM reviews.
@@ -88,7 +88,7 @@ describe('BacklogPanel detailing', () => {
       specs: { base: { inputHash: 'h', specId: 'p-base', rev: REV, spec, issues: [], cycle: 2 }, casos: { inputHash: 'h', specId: 'p-casos', rev: null, spec: null, issues: ['schema'], cycle: 2 } },
       preplans: { base: { inputHash: 'h', specRev: REV, preplan, issues: [], cycle: 2 } },
     } as BacklogView;
-    render(<BacklogPanel backlog={detailed} evaluating={false} locked={false} ready onDetail={vi.fn()} />);
+    render(<BacklogPanel backlog={detailed} evaluating={false} locked={false} />);
     expect(screen.queryByTestId('detail-specs')).toBeNull();
     expect(within(screen.getByTestId('item-base')).getByText('planejada')).toBeTruthy();
     expect(within(screen.getByTestId('item-casos')).getByText('erro')).toBeTruthy();
@@ -105,5 +105,15 @@ describe('BacklogPanel detailing', () => {
     render(<BacklogPanel backlog={detailed} evaluating={false} locked={false} />);
     expect(within(screen.getByTestId('item-base')).getByText('entregue')).toBeTruthy();
     expect(within(screen.getByTestId('item-casos')).getByText('em execução')).toBeTruthy();
+  });
+
+  it('renders no Detalhar specs once the specs are detailed', () => {
+    render(<DetailSpecsButton backlog={{ ...view(items), detail: true }} locked={false} ready onDetail={vi.fn()} />);
+    expect(screen.queryByTestId('detail-specs')).toBeNull();
+  });
+
+  it('leaves Detalhar specs to the review panel, so the backlog list never renders it', () => {
+    render(<BacklogPanel backlog={view(items)} evaluating={false} locked={false} />);
+    expect(screen.queryByTestId('detail-specs')).toBeNull();
   });
 });
