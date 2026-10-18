@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     include: ['test/**/*.test.ts'],
     environment: 'node',
+    setupFiles: ['test/setup-home.ts'],
     // Several suites run real git against temp repos; on Windows under load they pass 5 s without being broken.
     testTimeout: 30_000,
   },
