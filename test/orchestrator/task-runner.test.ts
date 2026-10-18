@@ -734,16 +734,16 @@ describe('TaskRunner: attempts, replan, block', () => {
   it('keeps a replacement in the service of the task it replaces', async () => {
     await journal.close();
     journal = await Journal.open({ file: path.join(remote.root, 'events-service.ndjson'), runId: 'spec-001-r1', specHash: HASH });
-    await journal.fact(RunEvent.TaskPlanned, { task: { ...T1, service: 'orders' } });
+    await journal.fact(RunEvent.TaskPlanned, { task: { ...T1, service: 'orders-api' } });
     await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T1', to: 'ready' });
     const agent: Agent = async (req) => (req.kind === 'replan' ? ok({ specHash: HASH, replacements: [replacement] }) : devDone()(req));
     const r = new TaskRunner('T1', deps({ agent, gates: alwaysFailGates }));
     for (let i = 0; i < 6; i++) await r.advance();
-    expect(journal.state.tasks.get('T1-r1')!.def.service).toBe('orders');
+    expect(journal.state.tasks.get('T1-r1')!.def.service).toBe('orders-api');
   });
 
   it('drops a service the agent puts on a replacement when the plan has one repository', async () => {
-    const agent: Agent = async (req) => (req.kind === 'replan' ? ok({ specHash: HASH, replacements: [{ ...replacement, service: 'api' }] }) : devDone()(req));
+    const agent: Agent = async (req) => (req.kind === 'replan' ? ok({ specHash: HASH, replacements: [{ ...replacement, service: 'billing-api' }] }) : devDone()(req));
     const r = new TaskRunner('T1', deps({ agent, gates: alwaysFailGates }));
     for (let i = 0; i < 6; i++) await r.advance();
     expect(journal.state.tasks.get('T1-r1')!.def.service).toBeUndefined();

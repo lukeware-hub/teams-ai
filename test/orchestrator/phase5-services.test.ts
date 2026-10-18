@@ -83,7 +83,7 @@ async function setup(log: string[], opts: TargetOpts & { e2eFails?: string; deta
   };
   const deps = {
     journal, ws: { repo: remotes[0]!.repo, projectId: 'shop' }, spec, workspacesRoot: root,
-    project: makeProject({ projectId: 'shop', services: opts.services ?? ['orders', 'inventory'], platform: [{ name: 'nats', image: 'nats:2.10.22-alpine' }] }),
+    project: makeProject({ projectId: 'shop', services: opts.services ?? ['orders-api', 'inventory-api'], platform: [{ name: 'nats', image: 'nats:2.10.22-alpine' }] }),
     exec: new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s)).exec,
     target: target(log, opts), smoke: gate('smoke'), e2e: gate('e2e'), requireE2e: true,
     services: { plan: opts.plan ?? plan, repos },
@@ -96,21 +96,21 @@ const failure = () => journal.events.find((e) => e.type === OrchEvent.DeployFail
 describe('Phase 5 with several services', () => {
   it('a services deploy fix lists earlier failures with their service and compares a repeat within the same service', async () => {
     const log: string[] = [];
-    const { deps } = await setup(log, { e2eFails: 'e2e:inventory', detail: 'AC-002: failed' });
-    await journal.fact(OrchEvent.DeployFailed, { attempt: 1, stage: 'e2e', detail: 'AC-002: failed', rolledBack: false, rollbackHealthy: null, service: 'inventory' });
-    await journal.fact(RunEvent.FixTasksPlanned, { tasks: [makePlanTask({ id: 'T950-deploy-fix-1', origin: 'deploy-fix', service: 'inventory' })] });
+    const { deps } = await setup(log, { e2eFails: 'e2e:inventory-api', detail: 'AC-002: failed' });
+    await journal.fact(OrchEvent.DeployFailed, { attempt: 1, stage: 'e2e', detail: 'AC-002: failed', rolledBack: false, rollbackHealthy: null, service: 'inventory-api' });
+    await journal.fact(RunEvent.FixTasksPlanned, { tasks: [makePlanTask({ id: 'T950-deploy-fix-1', origin: 'deploy-fix', service: 'inventory-api' })] });
     for (const to of ['ready', 'implementing', 'validating', 'reviewing', 'rebasing', 'merging', 'merged']) await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T950-deploy-fix-1', to });
     const res = await runServicesPhase5(deps, 2);
     const description = res.ok ? '' : res.fixTask?.description ?? '';
-    expect(description).toContain('- attempt 1 failed at e2e (service inventory): AC-002: failed');
+    expect(description).toContain('- attempt 1 failed at e2e (service inventory-api): AC-002: failed');
     expect(description).toContain('The fix of attempt 1 (T950-deploy-fix-1) did not change this failure');
   });
 
   it('calls a failure repeated even when the earlier one also reported a failed rollback', async () => {
     const log: string[] = [];
-    const { deps } = await setup(log, { e2eFails: 'e2e:inventory', detail: 'AC-002: failed' });
-    await journal.fact(OrchEvent.DeployFailed, { attempt: 1, stage: 'e2e', detail: 'AC-002: failed; rollback failed for orders: compose up failed', rolledBack: false, rollbackHealthy: false, service: 'inventory' });
-    await journal.fact(RunEvent.FixTasksPlanned, { tasks: [makePlanTask({ id: 'T950-deploy-fix-1', origin: 'deploy-fix', service: 'inventory' })] });
+    const { deps } = await setup(log, { e2eFails: 'e2e:inventory-api', detail: 'AC-002: failed' });
+    await journal.fact(OrchEvent.DeployFailed, { attempt: 1, stage: 'e2e', detail: 'AC-002: failed; rollback failed for orders-api: compose up failed', rolledBack: false, rollbackHealthy: false, service: 'inventory-api' });
+    await journal.fact(RunEvent.FixTasksPlanned, { tasks: [makePlanTask({ id: 'T950-deploy-fix-1', origin: 'deploy-fix', service: 'inventory-api' })] });
     for (const to of ['ready', 'implementing', 'validating', 'reviewing', 'rebasing', 'merging', 'merged']) await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T950-deploy-fix-1', to });
     const res = await runServicesPhase5(deps, 2);
     expect(res.ok ? '' : res.fixTask?.description ?? '').toContain('did not change this failure');
@@ -118,13 +118,13 @@ describe('Phase 5 with several services', () => {
 
   it('never calls a failure repeated when the earlier one was in another service', async () => {
     const log: string[] = [];
-    const { deps } = await setup(log, { e2eFails: 'e2e:inventory', detail: 'AC-002: failed' });
-    await journal.fact(OrchEvent.DeployFailed, { attempt: 1, stage: 'e2e', detail: 'AC-002: failed', rolledBack: false, rollbackHealthy: null, service: 'orders' });
-    await journal.fact(RunEvent.FixTasksPlanned, { tasks: [makePlanTask({ id: 'T950-deploy-fix-1', origin: 'deploy-fix', service: 'orders' })] });
+    const { deps } = await setup(log, { e2eFails: 'e2e:inventory-api', detail: 'AC-002: failed' });
+    await journal.fact(OrchEvent.DeployFailed, { attempt: 1, stage: 'e2e', detail: 'AC-002: failed', rolledBack: false, rollbackHealthy: null, service: 'orders-api' });
+    await journal.fact(RunEvent.FixTasksPlanned, { tasks: [makePlanTask({ id: 'T950-deploy-fix-1', origin: 'deploy-fix', service: 'orders-api' })] });
     for (const to of ['ready', 'implementing', 'validating', 'reviewing', 'rebasing', 'merging', 'merged']) await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T950-deploy-fix-1', to });
     const res = await runServicesPhase5(deps, 2);
     const description = res.ok ? '' : res.fixTask?.description ?? '';
-    expect(description).toContain('- attempt 1 failed at e2e (service orders): AC-002: failed');
+    expect(description).toContain('- attempt 1 failed at e2e (service orders-api): AC-002: failed');
     expect(description).not.toContain('did not change this failure');
   });
 
@@ -132,30 +132,30 @@ describe('Phase 5 with several services', () => {
     const log: string[] = [];
     const { deps, scopes } = await setup(log);
     expect(await runServicesPhase5(deps, 1)).toEqual({ ok: true });
-    expect(log).toEqual(['platform', 'apply:orders', 'apply:inventory', 'smoke:orders', 'e2e:orders', 'smoke:inventory', 'e2e:inventory']);
-    expect(scopes.find((s) => s.service === 'inventory')!.urls).toEqual({ SERVICE_URL_ORDERS: 'http://orders:3000' });
-    expect(scopes.find((s) => s.service === 'orders')!.spec.acceptanceCriteria.map((ac) => ac.id)).toEqual(['AC-001']);
+    expect(log).toEqual(['platform', 'apply:orders-api', 'apply:inventory-api', 'smoke:orders-api', 'e2e:orders-api', 'smoke:inventory-api', 'e2e:inventory-api']);
+    expect(scopes.find((s) => s.service === 'inventory-api')!.urls).toEqual({ SERVICE_URL_ORDERS_API: 'http://orders-api:3000' });
+    expect(scopes.find((s) => s.service === 'orders-api')!.spec.acceptanceCriteria.map((ac) => ac.id)).toEqual(['AC-001']);
     const verified = journal.events.find((e) => e.type === OrchEvent.DeployVerified)!.data;
     expect(verified).toMatchObject({ attempt: 1, url: 'http://127.0.0.1:3000', port: 3000, smoke: [] });
-    expect((verified.services as Array<{ service: string }>).map((s) => s.service)).toEqual(['orders', 'inventory']);
+    expect((verified.services as Array<{ service: string }>).map((s) => s.service)).toEqual(['orders-api', 'inventory-api']);
   });
 
   it('tags each smoke row with its service', async () => {
     const { deps } = await setup([], { rows: true });
     await runServicesPhase5(deps, 1);
     const verified = journal.events.find((e) => e.type === OrchEvent.DeployVerified)!.data;
-    expect((verified.smoke as Array<{ service: string }>).map((r) => r.service)).toEqual(['orders', 'inventory']);
+    expect((verified.smoke as Array<{ service: string }>).map((r) => r.service)).toEqual(['orders-api', 'inventory-api']);
   });
 
   it('rolls back every applied service when one fails, and plans the fix in the failing service', async () => {
     const log: string[] = [];
-    const { deps } = await setup(log, { e2eFails: 'e2e:inventory' });
+    const { deps } = await setup(log, { e2eFails: 'e2e:inventory-api' });
     const res = await runServicesPhase5(deps, 1);
     expect(res.ok).toBe(false);
     if (res.ok) return;
-    expect(log.slice(-2)).toEqual(['destroy:inventory', 'destroy:orders']);
-    expect(res.fixTask).toMatchObject({ service: 'inventory', owner: 'dev', origin: 'deploy-fix' });
-    expect(failure()).toMatchObject({ attempt: 1, stage: 'e2e', service: 'inventory' });
+    expect(log.slice(-2)).toEqual(['destroy:inventory-api', 'destroy:orders-api']);
+    expect(res.fixTask).toMatchObject({ service: 'inventory-api', owner: 'dev', origin: 'deploy-fix' });
+    expect(failure()).toMatchObject({ attempt: 1, stage: 'e2e', service: 'inventory-api' });
   });
 
   it('ends without a fix task when the platform does not start', async () => {
@@ -167,104 +167,104 @@ describe('Phase 5 with several services', () => {
   });
 
   it('ends without a fix task when a service plan lacks the suite command, which no Dev may add', async () => {
-    const { deps } = await setup([], { e2eFails: 'e2e:inventory', detail: 'plan.commands.e2e missing' });
-    expect(await runServicesPhase5(deps, 1)).toEqual({ ok: false, reason: 'deploy failed at e2e (inventory): plan.commands.e2e missing' });
+    const { deps } = await setup([], { e2eFails: 'e2e:inventory-api', detail: 'plan.commands.e2e missing' });
+    expect(await runServicesPhase5(deps, 1)).toEqual({ ok: false, reason: 'deploy failed at e2e (inventory-api): plan.commands.e2e missing' });
   });
 
   it('checks a resumed service still answers before its suites run', async () => {
     const log: string[] = [];
-    const { deps } = await setup(log, { unhealthy: 'orders' });
-    for (const s of ['orders', 'inventory']) {
+    const { deps } = await setup(log, { unhealthy: 'orders-api' });
+    for (const s of ['orders-api', 'inventory-api']) {
       await journal.intent(Intent.DeployApply, `deploy-${s}-1`, { attempt: 1, service: s });
       await journal.confirm(Intent.DeployApply, `deploy-${s}-1`, { previous: null });
     }
     expect((await runServicesPhase5(deps, 1)).ok).toBe(false);
     expect(log.filter((l) => /^(apply|smoke|e2e):/.test(l))).toEqual([]);
-    expect(failure()).toMatchObject({ stage: 'verify', service: 'orders' });
+    expect(failure()).toMatchObject({ stage: 'verify', service: 'orders-api' });
   });
 
   it('says when a rollback failed instead of reporting the service restored', async () => {
     const log: string[] = [];
-    const { deps } = await setup(log, { e2eFails: 'e2e:inventory', previous: { orders: 'orders:old' }, fail: 'rollback:orders' });
+    const { deps } = await setup(log, { e2eFails: 'e2e:inventory-api', previous: { 'orders-api': 'orders:old' }, fail: 'rollback:orders-api' });
     expect((await runServicesPhase5(deps, 1)).ok).toBe(false);
-    expect(log.slice(-2)).toEqual(['destroy:inventory', 'rollback:orders']);
+    expect(log.slice(-2)).toEqual(['destroy:inventory-api', 'rollback:orders-api']);
     expect(failure()).toMatchObject({ rolledBack: false, rollbackHealthy: false });
-    expect(String(failure().detail)).toContain('rollback failed for orders: rollback up failed');
+    expect(String(failure().detail)).toContain('rollback failed for orders-api: rollback up failed');
     expect(journal.events.some((e) => e.type === OrchEvent.RollbackDone)).toBe(false);
   });
 
   it('journals the services that went back to their previous image', async () => {
-    const { deps } = await setup([], { e2eFails: 'e2e:inventory', previous: { orders: 'orders:old' } });
+    const { deps } = await setup([], { e2eFails: 'e2e:inventory-api', previous: { 'orders-api': 'orders:old' } });
     await runServicesPhase5(deps, 1);
     expect(failure()).toMatchObject({ rolledBack: true });
-    expect(journal.events.find((e) => e.type === OrchEvent.RollbackDone)!.data).toEqual({ attempt: 1, services: ['orders'] });
+    expect(journal.events.find((e) => e.type === OrchEvent.RollbackDone)!.data).toEqual({ attempt: 1, services: ['orders-api'] });
   });
 
   it('moves a taken port to one no sibling service plans, only when a fix task follows, and deploys there next', async () => {
-    const ported = { ...plan, services: { orders: { ...plan.services.orders!, deploy: { ...plan.services.orders!.deploy, port: 20051 } }, inventory: { ...plan.services.inventory!, deploy: { ...plan.services.inventory!.deploy, port: 20050 } } } };
-    // Every port of the range is another project's but 20050 (inventory's), 20051 (orders', held by a stranger) and 20052.
+    const ported = { ...plan, services: { 'orders-api': { ...plan.services['orders-api']!, deploy: { ...plan.services['orders-api']!.deploy, port: 20051 } }, 'inventory-api': { ...plan.services['inventory-api']!, deploy: { ...plan.services['inventory-api']!.deploy, port: 20050 } } } };
+    // Every port of the range is another project's but 20050 (inventory-api's), 20051 (orders-api's, held by a stranger) and 20052.
     const ports = Object.fromEntries(Array.from({ length: 100 }, (_, i) => 20000 + i).filter((p) => p < 20050 || p > 20052).map((p) => [`other-${p}`, p]));
     const log: string[] = [];
-    const quiet = await setup(log, { plan: ported, ports, fail: 'apply:orders', applyError: 'Bind for 0.0.0.0:20051 failed: port is already allocated' });
+    const quiet = await setup(log, { plan: ported, ports, fail: 'apply:orders-api', applyError: 'Bind for 0.0.0.0:20051 failed: port is already allocated' });
     await runServicesPhase5(quiet.deps, 3);
     expect(journal.events.some((e) => e.type === OrchEvent.DeployPortReassigned)).toBe(false);
     await journal.close();
-    const { deps } = await setup(log, { plan: ported, ports, fail: 'apply:orders', applyError: 'Bind for 0.0.0.0:20051 failed: port is already allocated' });
+    const { deps } = await setup(log, { plan: ported, ports, fail: 'apply:orders-api', applyError: 'Bind for 0.0.0.0:20051 failed: port is already allocated' });
     const res = await runServicesPhase5(deps, 1);
-    expect(res.ok ? null : res.fixTask).toMatchObject({ service: 'orders', owner: 'devops' });
-    expect(journal.events.find((e) => e.type === OrchEvent.DeployPortReassigned)!.data).toEqual({ from: 20051, to: 20052, service: 'orders' });
+    expect(res.ok ? null : res.fixTask).toMatchObject({ service: 'orders-api', owner: 'devops' });
+    expect(journal.events.find((e) => e.type === OrchEvent.DeployPortReassigned)!.data).toEqual({ from: 20051, to: 20052, service: 'orders-api' });
     (deps as { target: unknown }).target = target(log);
     expect(await runServicesPhase5(deps, 2)).toEqual({ ok: true });
     const verified = [...journal.events].reverse().find((e) => e.type === OrchEvent.DeployVerified)!.data;
-    expect((verified.services as Array<{ service: string; port: number }>).map((s) => [s.service, s.port])).toEqual([['orders', 20052], ['inventory', 20050]]);
+    expect((verified.services as Array<{ service: string; port: number }>).map((s) => [s.service, s.port])).toEqual([['orders-api', 20052], ['inventory-api', 20050]]);
   });
 
   it('gives the suites the address of a service this spec does not change, from its registered port', async () => {
-    const { deps, scopes } = await setup([], { services: ['orders', 'inventory', 'ledger'], ports: { 'shop/ledger': 20009 } });
+    const { deps, scopes } = await setup([], { services: ['orders-api', 'inventory-api', 'ledger-api'], ports: { 'shop/ledger-api': 20009 } });
     await runServicesPhase5(deps, 1);
-    expect(scopes.find((s) => s.service === 'orders')!.urls).toEqual({ SERVICE_URL_INVENTORY: 'http://inventory:3001', SERVICE_URL_LEDGER: 'http://ledger:20009' });
+    expect(scopes.find((s) => s.service === 'orders-api')!.urls).toEqual({ SERVICE_URL_INVENTORY_API: 'http://inventory-api:3001', SERVICE_URL_LEDGER_API: 'http://ledger-api:20009' });
   });
 
   it('starts again the services of earlier specs before proving anything', async () => {
     const log: string[] = [];
-    const { deps } = await setup(log, { services: ['orders', 'inventory', 'ledger'], ports: { 'shop/ledger': 20009 } });
+    const { deps } = await setup(log, { services: ['orders-api', 'inventory-api', 'ledger-api'], ports: { 'shop/ledger-api': 20009 } });
     expect(await runServicesPhase5(deps, 1)).toEqual({ ok: true });
-    expect(log.filter((l) => l.startsWith('ensure'))).toEqual(['ensure:ledger']);
-    expect(log.indexOf('ensure:ledger')).toBeLessThan(log.indexOf('smoke:orders'));
+    expect(log.filter((l) => l.startsWith('ensure'))).toEqual(['ensure:ledger-api']);
+    expect(log.indexOf('ensure:ledger-api')).toBeLessThan(log.indexOf('smoke:orders-api'));
   });
 
   it('says a failed proof may be the environment\'s when a service of an earlier spec cannot be started', async () => {
-    const { deps } = await setup([], { services: ['orders', 'inventory', 'ledger'], ports: { 'shop/ledger': 20009 }, cannotStart: 'ledger', e2eFails: 'e2e:orders', detail: 'AC-001: failed' });
+    const { deps } = await setup([], { services: ['orders-api', 'inventory-api', 'ledger-api'], ports: { 'shop/ledger-api': 20009 }, cannotStart: 'ledger-api', e2eFails: 'e2e:orders-api', detail: 'AC-001: failed' });
     expect((await runServicesPhase5(deps, 1)).ok).toBe(false);
     expect(String(failure().detail)).toContain('AC-001: failed');
-    expect(String(failure().detail)).toContain('environment: a service of an earlier spec is not running (ledger: no container found)');
+    expect(String(failure().detail)).toContain('environment: a service of an earlier spec is not running (ledger-api: no container found)');
   });
 
   it('fails as the environment, with no fix task, when a suite cannot reach a service of another spec that was never published', async () => {
-    const { deps } = await setup([], { services: ['orders', 'inventory', 'audit-service'], e2eFails: 'e2e:orders', detail: 'getaddrinfo ENOTFOUND audit-service' });
+    const { deps } = await setup([], { services: ['orders-api', 'inventory-api', 'audit-api'], e2eFails: 'e2e:orders-api', detail: 'getaddrinfo ENOTFOUND audit-api' });
     const res = await runServicesPhase5(deps, 1);
     expect(res.ok ? null : res.fixTask).toBeUndefined();
-    expect(res.ok ? '' : res.reason).toContain('environment: audit-service of another spec was never published');
+    expect(res.ok ? '' : res.reason).toContain('environment: audit-api of another spec was never published');
     expect(journal.state.tasks.size).toBe(0);
   });
 
-  it('names an unpublished service with a short name only where it is an address, never in a /api/ path', async () => {
-    const { deps } = await setup([], { services: ['orders', 'inventory', 'api'], e2eFails: 'e2e:orders', detail: 'AC-001: GET /api/orders expected 200, got 500' });
+  it('names an unpublished service only where it is an address, never in a path', async () => {
+    const { deps } = await setup([], { services: ['orders-api', 'inventory-api', 'billing-api'], e2eFails: 'e2e:orders-api', detail: 'AC-001: GET /billing-api/orders expected 200, got 500' });
     const res = await runServicesPhase5(deps, 1);
-    expect(res.ok ? null : res.fixTask).toMatchObject({ service: 'orders' });
+    expect(res.ok ? null : res.fixTask).toMatchObject({ service: 'orders-api' });
   });
 
-  it('recognizes a failed DNS lookup of an unpublished service with a short name', async () => {
-    const { deps } = await setup([], { services: ['orders', 'inventory', 'api'], e2eFails: 'e2e:orders', detail: 'dial tcp: lookup api on 127.0.0.11:53: no such host' });
+  it('recognizes a failed DNS lookup of an unpublished service', async () => {
+    const { deps } = await setup([], { services: ['orders-api', 'inventory-api', 'billing-api'], e2eFails: 'e2e:orders-api', detail: 'dial tcp: lookup billing-api on 127.0.0.11:53: no such host' });
     const res = await runServicesPhase5(deps, 1);
     expect(res.ok ? null : res.fixTask).toBeUndefined();
-    expect(res.ok ? '' : res.reason).toContain('environment: api of another spec was never published');
+    expect(res.ok ? '' : res.reason).toContain('environment: billing-api of another spec was never published');
   });
 
   it('still plans a fix task when a suite fails for its own reason beside an unpublished service', async () => {
-    const { deps } = await setup([], { services: ['orders', 'inventory', 'audit-service'], e2eFails: 'e2e:orders', detail: 'AC-001: expected 201, got 500' });
+    const { deps } = await setup([], { services: ['orders-api', 'inventory-api', 'audit-api'], e2eFails: 'e2e:orders-api', detail: 'AC-001: expected 201, got 500' });
     const res = await runServicesPhase5(deps, 1);
-    expect(res.ok ? null : res.fixTask).toMatchObject({ service: 'orders' });
+    expect(res.ok ? null : res.fixTask).toMatchObject({ service: 'orders-api' });
   });
 
   it("refuses a service without a compose file, which would replace the project's single container", async () => {
@@ -273,15 +273,15 @@ describe('Phase 5 with several services', () => {
     const res = await runServicesPhase5(deps, 1);
     expect(res.ok ? null : res.fixTask).toBeUndefined();
     expect(log).toEqual([]);
-    expect(failure()).toMatchObject({ stage: 'validate', service: 'orders' });
+    expect(failure()).toMatchObject({ stage: 'validate', service: 'orders-api' });
   });
 
   it('rolls back what it applied when a service address cannot be read', async () => {
     const log: string[] = [];
-    const { deps } = await setup(log, { urlThrows: 'inventory' });
+    const { deps } = await setup(log, { urlThrows: 'inventory-api' });
     expect((await runServicesPhase5(deps, 1)).ok).toBe(false);
-    expect(log.slice(-2)).toEqual(['destroy:inventory', 'destroy:orders']);
-    expect(failure()).toMatchObject({ stage: 'verify', service: 'inventory', detail: 'no container port' });
+    expect(log.slice(-2)).toEqual(['destroy:inventory-api', 'destroy:orders-api']);
+    expect(failure()).toMatchObject({ stage: 'verify', service: 'inventory-api', detail: 'no container port' });
   });
 });
 
@@ -291,31 +291,31 @@ async function earlierService(deps: PhaseDeps, root: string, plan: ServicesPlan)
   await fs.writeFile(path.join(remotes[0]!.repo, 'docs', 'specs', 'earlier', 'plan.json'), JSON.stringify(plan));
   const dep = await makeRemote({ 'README.md': '#\n' });
   remotes.push(dep);
-  await fs.mkdir(path.join(root, 'services', 'ledger'), { recursive: true });
-  await fs.rename(dep.repo, path.join(root, 'services', 'ledger', 'repo'));
+  await fs.mkdir(path.join(root, 'services', 'ledger-api'), { recursive: true });
+  await fs.rename(dep.repo, path.join(root, 'services', 'ledger-api', 'repo'));
   Object.assign(deps, { ws: { ...deps.ws, root } });
 }
 
 describe('Phase 5 rebuilds a service of an earlier spec whose container is gone', () => {
-  const ledgerPlan = { ...plan, services: { ...plan.services, ledger: plan.services.inventory! } };
+  const ledgerPlan = { ...plan, services: { ...plan.services, 'ledger-api': plan.services['inventory-api']! } };
 
   it('builds it from its plan before the suites reach it', async () => {
     const log: string[] = [];
-    const { deps, root } = await setup(log, { services: ['orders', 'inventory', 'ledger'], ports: { 'shop/ledger': 20009 }, cannotStart: 'ledger' });
+    const { deps, root } = await setup(log, { services: ['orders-api', 'inventory-api', 'ledger-api'], ports: { 'shop/ledger-api': 20009 }, cannotStart: 'ledger-api' });
     await earlierService(deps, root, ledgerPlan);
     const res = await runServicesPhase5(deps, 1);
-    expect(log).toContain('apply:ledger');
+    expect(log).toContain('apply:ledger-api');
     expect(res.ok).toBe(true);
     expect(journal.events.some((e) => e.type === OrchEvent.DeployFailed)).toBe(false);
   });
 
   it('says which service could not be built when the suites then fail on it', async () => {
     const log: string[] = [];
-    const { deps, root } = await setup(log, { services: ['orders', 'inventory', 'ledger'], ports: { 'shop/ledger': 20009 }, cannotStart: 'ledger', fail: 'apply:ledger', applyError: 'image build failed', e2eFails: 'e2e:inventory', detail: 'AC-002: failed' });
+    const { deps, root } = await setup(log, { services: ['orders-api', 'inventory-api', 'ledger-api'], ports: { 'shop/ledger-api': 20009 }, cannotStart: 'ledger-api', fail: 'apply:ledger-api', applyError: 'image build failed', e2eFails: 'e2e:inventory-api', detail: 'AC-002: failed' });
     await earlierService(deps, root, ledgerPlan);
     const res = await runServicesPhase5(deps, 1);
     expect(res.ok).toBe(false);
-    expect(String(failure().detail)).toContain('environment: a service of an earlier spec is not running (ledger: image build failed)');
+    expect(String(failure().detail)).toContain('environment: a service of an earlier spec is not running (ledger-api: image build failed)');
   });
 });
 

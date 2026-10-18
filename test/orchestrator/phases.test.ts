@@ -47,10 +47,10 @@ const writeTechSpec: Agent = async (req) => {
 };
 const coverage = (covered: boolean) => ok({ specHash: HASH, coverage: spec.acceptanceCriteria.map((c) => ({ acId: c.id, section: covered ? 'AC-001' : null, covered, note: '' })) });
 
-/** orders already has code on main; inventory holds only its workflows, as Phase 0 and the workflow bootstrap leave it. */
+/** orders-api already has code on main; inventory-api holds only its workflows, as Phase 0 and the workflow bootstrap leave it. */
 async function cloneServices(ws: PhaseDeps['ws']): Promise<Remote[]> {
   const origins: Remote[] = [];
-  for (const [service, files] of [['orders', { 'src/index.ts': 'x' }], ['inventory', { '.github/workflows/ci.yml': 'name: ci\n' }]] as const) {
+  for (const [service, files] of [['orders-api', { 'src/index.ts': 'x' }], ['inventory-api', { '.github/workflows/ci.yml': 'name: ci\n' }]] as const) {
     const origin = await makeRemote(files);
     origins.push(origin);
     const repo = serviceWorkspace(ws, service).repo;
@@ -210,7 +210,7 @@ describe('Phase 2', () => {
   });
 
   it('asks a project of services for a services plan with a scaffold per new service and a port per service', async () => {
-    const services = ['orders', 'inventory'];
+    const services = ['orders-api', 'inventory-api'];
     const shop = makeProject({ projectId: 'shop', services, platform: [{ name: 'nats', image: 'nats:2.10.22-alpine' }] });
     const origins = await cloneServices(deps(async () => ok(null)).ws);
     const plan = makeServicesPlan(spec);
@@ -219,26 +219,26 @@ describe('Phase 2', () => {
     for (const o of origins) await o.cleanup();
     expect(r.ok).toBe(true);
     expect(calls[0]!.kind).toBe('services-plan');
-    expect(calls[0]!.pack.feedback).toContain('new services (their main holds no code yet): inventory');
-    expect(calls[0]!.pack.feedback).toContain('- files on main of orders: src/index.ts');
+    expect(calls[0]!.pack.feedback).toContain('new services (their main holds no code yet): inventory-api');
+    expect(calls[0]!.pack.feedback).toContain('- files on main of orders-api: src/index.ts');
     const ports = JSON.parse(await fs.readFile(path.join(root, '.ports.json'), 'utf8')) as Record<string, number>;
-    expect(Object.keys(ports).sort()).toEqual(['shop/inventory', 'shop/orders']);
-    expect(ports['shop/orders']).not.toBe(ports['shop/inventory']);
+    expect(Object.keys(ports).sort()).toEqual(['shop/inventory-api', 'shop/orders-api']);
+    expect(ports['shop/orders-api']).not.toBe(ports['shop/inventory-api']);
     await git(remote.repo, ['fetch', '-q', 'origin']);
-    expect(Object.keys(JSON.parse(await git(remote.repo, ['show', 'origin/main:docs/specs/spec-001/plan.json'])).services).sort()).toEqual(['inventory', 'orders']);
+    expect(Object.keys(JSON.parse(await git(remote.repo, ['show', 'origin/main:docs/specs/spec-001/plan.json'])).services).sort()).toEqual(['inventory-api', 'orders-api']);
   });
 
   it('holds each service of a services plan to its assigned port, with the semantic checks on', async () => {
-    const shop = makeProject({ projectId: 'shop', services: ['orders', 'inventory'] });
+    const shop = makeProject({ projectId: 'shop', services: ['orders-api', 'inventory-api'] });
     const origins = await cloneServices(deps(async () => ok(null)).ws);
     const root = path.join(remote.root, 'workspaces');
     const plan = makeServicesPlan(spec);
     // The fake agent applies the step's semantic checks: it swaps the assigned ports first, then uses them.
     const agent: Agent = async (req) => {
       const ports = JSON.parse(await fs.readFile(path.join(root, '.ports.json'), 'utf8')) as Record<string, number>;
-      const [orders, inventory] = calls.length === 1 ? [ports['shop/inventory']!, ports['shop/orders']!] : [ports['shop/orders']!, ports['shop/inventory']!];
-      const at = (name: 'orders' | 'inventory', port: number) => ({ ...plan.services[name]!, deploy: { ...plan.services[name]!.deploy, port } });
-      const value = { ...plan, services: { orders: at('orders', orders), inventory: at('inventory', inventory) } };
+      const [orders, inventory] = calls.length === 1 ? [ports['shop/inventory-api']!, ports['shop/orders-api']!] : [ports['shop/orders-api']!, ports['shop/inventory-api']!];
+      const at = (name: 'orders-api' | 'inventory-api', port: number) => ({ ...plan.services[name]!, deploy: { ...plan.services[name]!.deploy, port } });
+      const value = { ...plan, services: { 'orders-api': at('orders-api', orders), 'inventory-api': at('inventory-api', inventory) } };
       const errors = (req.semantic ?? []).flatMap((check) => (check as (v: unknown) => string[])(value));
       return errors.length > 0 ? { ok: false, failure: 'schema', errors, summary, sandboxDisabled: false } : ok(value);
     };
@@ -249,10 +249,10 @@ describe('Phase 2', () => {
   });
 
   it('feeds a services plan error back: a new service without its scaffold', async () => {
-    const shop = makeProject({ projectId: 'shop', services: ['orders', 'inventory'] });
+    const shop = makeProject({ projectId: 'shop', services: ['orders-api', 'inventory-api'] });
     const origins = await cloneServices(deps(async () => ok(null)).ws);
     const plan = makeServicesPlan(spec);
-    const noScaffold = { ...plan, tasks: plan.tasks.filter((t) => t.id !== 'T0-scaffold-inventory').map((t) => ({ ...t, dependsOn: t.dependsOn.filter((d) => d !== 'T0-scaffold-inventory') })) };
+    const noScaffold = { ...plan, tasks: plan.tasks.filter((t) => t.id !== 'T0-scaffold-inventory-api').map((t) => ({ ...t, dependsOn: t.dependsOn.filter((d) => d !== 'T0-scaffold-inventory-api') })) };
     // The fake agent applies the step's semantic checks, as runAgentStep does after the schema.
     const agent: Agent = async (req) => {
       const errors = (req.semantic ?? []).flatMap((check) => (check as (v: unknown) => string[])(noScaffold));
@@ -261,8 +261,8 @@ describe('Phase 2', () => {
     const r = await runPhase2({ ...deps(agent), project: shop }, '# Tech spec');
     for (const o of origins) await o.cleanup();
     expect(r.ok).toBe(false);
-    expect(calls[1]!.pack.feedback).toContain('service inventory');
-    expect(calls[1]!.pack.feedback).not.toContain('service orders');
+    expect(calls[1]!.pack.feedback).toContain('service inventory-api');
+    expect(calls[1]!.pack.feedback).not.toContain('service orders-api');
   });
 
   it('feeds back the errors of every rejected attempt, so a later plan does not bring back an error an earlier one fixed', async () => {

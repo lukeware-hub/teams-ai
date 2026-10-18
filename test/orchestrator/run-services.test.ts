@@ -19,17 +19,17 @@ import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 
 const spec = makeFrozenSpec();
 const HASH = spec.specHash!;
-const project = makeProject({ projectId: 'shop', services: ['orders', 'inventory'] });
+const project = makeProject({ projectId: 'shop', services: ['orders-api', 'inventory-api'] });
 const base = makeServicesPlan(spec);
-// orders is a Node service and inventory a Go one; the inventory task waits on the orders task across repositories.
+// orders-api is a Node service and inventory-api a Go one; the inventory-api task waits on the orders-api task across repositories.
 const plan = {
   ...base,
   tasks: [
-    makePlanTask({ id: 'T1-publish-order', service: 'orders', criteriaRefs: ['AC-001'], affectedPaths: ['src/orders/**'] }),
-    makePlanTask({ id: 'T2-reserve-stock', service: 'inventory', criteriaRefs: ['AC-002'], dependsOn: ['T1-publish-order'], affectedPaths: ['src/stock/**'] }),
+    makePlanTask({ id: 'T1-publish-order', service: 'orders-api', criteriaRefs: ['AC-001'], affectedPaths: ['src/orders/**'] }),
+    makePlanTask({ id: 'T2-reserve-stock', service: 'inventory-api', criteriaRefs: ['AC-002'], dependsOn: ['T1-publish-order'], affectedPaths: ['src/stock/**'] }),
   ],
   // Each service deploys with its own compose file.
-  services: { orders: { ...base.services.orders!, delivery: { compose: 'docker-compose.yml' } }, inventory: { ...base.services.inventory!, stack: 'go', gateImage: 'golang:1.26-bookworm', delivery: { compose: 'docker-compose.yml' } } },
+  services: { 'orders-api': { ...base.services['orders-api']!, delivery: { compose: 'docker-compose.yml' } }, 'inventory-api': { ...base.services['inventory-api']!, stack: 'go', gateImage: 'golang:1.26-bookworm', delivery: { compose: 'docker-compose.yml' } } },
 };
 const FILE: Record<string, string> = { 'T1-publish-order': 'src/orders/index.ts', 'T2-reserve-stock': 'src/stock/index.ts' };
 const TEST: Record<string, [string, string]> = { 'T1-publish-order': ['AC-001', 'sum::[AC-001] publishes'], 'T2-reserve-stock': ['AC-002', 'sum::[AC-002] reserves'] };
@@ -53,7 +53,7 @@ async function script(req: StepRequest): Promise<StepOutcome<any>> {
 }
 
 let projectRemote: Remote;
-let services: Record<'orders' | 'inventory', Remote>;
+let services: Record<'orders-api' | 'inventory-api', Remote>;
 let ws: Workspace;
 let fake: FakeExec;
 const ghs = new Map<string, FakeGh>();
@@ -68,7 +68,7 @@ beforeEach(async () => {
     'docs/specs/spec-001/tech-spec.md': '# Tech spec\n',
     'docs/specs/spec-001/plan.json': JSON.stringify(plan),
   });
-  services = { orders: await makeRemote({ 'README.md': '# orders\n' }), inventory: await makeRemote({ 'README.md': '# inventory\n' }) };
+  services = { 'orders-api': await makeRemote({ 'README.md': '# orders\n' }), 'inventory-api': await makeRemote({ 'README.md': '# inventory\n' }) };
   const root = path.join(projectRemote.root, 'ws');
   ws = { projectId: 'shop', root, repo: projectRemote.repo, worktrees: path.join(root, 'wt'), graph: path.join(root, 'graph'), knowledgeDb: '', secrets: path.join(root, 'secrets'), runs: path.join(projectRemote.root, 'runs') };
   for (const [service, remote] of Object.entries(services)) {
@@ -127,7 +127,7 @@ describe('Run with a services plan', () => {
     const run = await Run.create(await deps());
     expect(await run.execute()).toBe('complete');
     expect([...run.journal.state.tasks.values()].map((t) => [t.def.id, t.state])).toEqual([['T1-publish-order', 'merged'], ['T2-reserve-stock', 'merged']]);
-    for (const [service, file] of [['orders', 'src/orders/index.ts'], ['inventory', 'src/stock/index.ts']] as const) {
+    for (const [service, file] of [['orders-api', 'src/orders/index.ts'], ['inventory-api', 'src/stock/index.ts']] as const) {
       const remote = services[service];
       await git(remote.repo, ['fetch', '-q', 'origin']);
       expect(await git(remote.repo, ['ls-tree', '-r', '--name-only', 'origin/main'])).toContain(file);
@@ -136,9 +136,9 @@ describe('Run with a services plan', () => {
     await git(projectRemote.repo, ['fetch', '-q', 'origin']);
     expect(await git(projectRemote.repo, ['ls-tree', '-r', '--name-only', 'origin/main'])).not.toContain('src/');
     // A service's repository holds no docs: each task is told where the other services answer.
-    expect(prompts.get('dev:dev:T1-publish-order')).toContain(`inventory at http://inventory:${plan.services.inventory!.deploy.port}`);
-    expect(prompts.get('dev:dev:T2-reserve-stock')).toContain(`orders at http://orders:${plan.services.orders!.deploy.port}`);
-    expect(prompts.get('test:review:T2-reserve-stock')).toContain('This task changes the service inventory');
+    expect(prompts.get('dev:dev:T1-publish-order')).toContain(`inventory-api at http://inventory-api:${plan.services['inventory-api']!.deploy.port}`);
+    expect(prompts.get('dev:dev:T2-reserve-stock')).toContain(`orders-api at http://orders-api:${plan.services['orders-api']!.deploy.port}`);
+    expect(prompts.get('test:review:T2-reserve-stock')).toContain('This task changes the service inventory-api');
     // Each task's sandbox reaches its own stack's registries only, and each stack gets its own gate image.
     expect(domains.get('dev:T2-reserve-stock')).toContain('proxy.golang.org');
     expect(domains.get('dev:T1-publish-order')).not.toContain('proxy.golang.org');
@@ -149,7 +149,7 @@ describe('Run with a services plan', () => {
   }, 60_000);
 
   const scaffold = (service: string) => makePlanTask({ id: `T0-scaffold-${service}`, service, affectedPaths: ['package.json'] });
-  const filesOnMain = async (service: 'orders' | 'inventory') => {
+  const filesOnMain = async (service: 'orders-api' | 'inventory-api') => {
     await git(services[service].repo, ['fetch', '-q', 'origin']);
     return git(services[service].repo, ['ls-tree', '-r', '--name-only', 'origin/main']);
   };
@@ -182,21 +182,21 @@ describe('Run with a services plan', () => {
 
   it('commits the workflows to the repository of each new service, each under its own journal key', async () => {
     const run = await Run.create(await deps());
-    expect(await run.executeWorkflows({ ...plan, tasks: [...plan.tasks, scaffold('orders'), scaffold('inventory')] })).toEqual({ ok: true });
-    for (const service of ['orders', 'inventory'] as const) {
+    expect(await run.executeWorkflows({ ...plan, tasks: [...plan.tasks, scaffold('orders-api'), scaffold('inventory-api')] })).toEqual({ ok: true });
+    for (const service of ['orders-api', 'inventory-api'] as const) {
       expect(await filesOnMain(service)).toContain(CI_PATH);
       expect(await filesOnMain(service)).toContain(RELEASE_PATH);
     }
-    expect(run.journal.events.filter((e) => e.kind === 'confirm' && e.type === 'DOCS_COMMIT').map((e) => e.intentId)).toEqual(['DOCS_COMMIT:spec-001-7-orders', 'DOCS_COMMIT:spec-001-7-inventory']);
+    expect(run.journal.events.filter((e) => e.kind === 'confirm' && e.type === 'DOCS_COMMIT').map((e) => e.intentId)).toEqual(['DOCS_COMMIT:spec-001-7-orders-api', 'DOCS_COMMIT:spec-001-7-inventory-api']);
     await run.close();
   });
 
   it('moves on when a resumed run finds its service workflows merged, even from a branch main does not contain', async () => {
     const run = await Run.create(await deps());
-    const withScaffolds = { ...plan, tasks: [...plan.tasks, scaffold('orders'), scaffold('inventory')] };
+    const withScaffolds = { ...plan, tasks: [...plan.tasks, scaffold('orders-api'), scaffold('inventory-api')] };
     expect(await run.executeWorkflows(withScaffolds)).toEqual({ ok: true });
     // Live: a squash merge leaves the branch's own commit outside main, and the resumed process has no worktree for it.
-    for (const service of ['orders', 'inventory']) {
+    for (const service of ['orders-api', 'inventory-api']) {
       const repo = serviceWorkspace(ws, service).repo;
       const worktree = (await git(repo, ['worktree', 'list', '--porcelain'])).split('\n').find((l) => l.startsWith('worktree ') && l.includes('workflows'));
       if (worktree) await git(repo, ['worktree', 'remove', '--force', worktree.slice('worktree '.length)]);
@@ -204,26 +204,26 @@ describe('Run with a services plan', () => {
       await git(repo, ['branch', '-f', `docs/spec-001-${service}-workflows`, squashed]);
     }
     expect(await run.executeWorkflows(withScaffolds)).toEqual({ ok: true });
-    for (const service of ['orders', 'inventory']) expect(ghs.get(service)!.prs).toHaveLength(1);
+    for (const service of ['orders-api', 'inventory-api']) expect(ghs.get(service)!.prs).toHaveLength(1);
     await run.close();
   });
 
   it("names the service whose workflows did not land", async () => {
-    const inventory = serviceWorkspace(ws, 'inventory').repo;
+    const inventory = serviceWorkspace(ws, 'inventory-api').repo;
     const refusing = new FakeExec().onArgs('gh', ['pr', 'merge'], () => ({ exitCode: 1, stderr: 'merge blocked by a branch rule' }));
-    ghs.get('inventory')!.install(refusing);
+    ghs.get('inventory-api')!.install(refusing);
     ghExecs.set(inventory, refusing);
     const run = await Run.create(await deps());
-    const r = await run.executeWorkflows({ ...plan, tasks: [...plan.tasks, scaffold('orders'), scaffold('inventory')] });
-    expect(r.ok ? '' : r.reason).toMatch(/^service inventory: /);
+    const r = await run.executeWorkflows({ ...plan, tasks: [...plan.tasks, scaffold('orders-api'), scaffold('inventory-api')] });
+    expect(r.ok ? '' : r.reason).toMatch(/^service inventory-api: /);
     await run.close();
   });
 
   it('leaves a service that is not new without workflows', async () => {
     const run = await Run.create(await deps());
-    expect(await run.executeWorkflows({ ...plan, tasks: [...plan.tasks, scaffold('inventory')] })).toEqual({ ok: true });
-    expect(await filesOnMain('inventory')).toContain(CI_PATH);
-    expect(await filesOnMain('orders')).not.toContain(CI_PATH);
+    expect(await run.executeWorkflows({ ...plan, tasks: [...plan.tasks, scaffold('inventory-api')] })).toEqual({ ok: true });
+    expect(await filesOnMain('inventory-api')).toContain(CI_PATH);
+    expect(await filesOnMain('orders-api')).not.toContain(CI_PATH);
     await run.close();
   });
 
@@ -238,7 +238,7 @@ describe('Run with a services plan', () => {
     };
     const run = await Run.create(await deps({ target: recording as unknown as RunDeps['target'] }));
     expect(await run.deployOnly()).toBe('done');
-    expect(applied).toEqual(['orders', 'inventory']);
+    expect(applied).toEqual(['orders-api', 'inventory-api']);
     await run.close();
   });
 });

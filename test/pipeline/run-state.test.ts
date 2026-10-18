@@ -121,11 +121,11 @@ describe('replan', () => {
 
   it("a service's scaffold is recognized by its own id, and only in its own service", () => {
     const state = reduceEvents([
-      { type: RunEvent.TaskPlanned, data: { task: makePlanTask({ id: 'T0-scaffold-inventory', service: 'inventory' }) } },
-      { type: RunEvent.TaskPlanned, data: { task: makePlanTask({ id: 'T0-scaffold-orders', service: 'inventory' }) } },
+      { type: RunEvent.TaskPlanned, data: { task: makePlanTask({ id: 'T0-scaffold-inventory-api', service: 'inventory-api' }) } },
+      { type: RunEvent.TaskPlanned, data: { task: makePlanTask({ id: 'T0-scaffold-orders-api', service: 'inventory-api' }) } },
     ]);
-    expect(state.tasks.get('T0-scaffold-inventory')!.bootstrapsFrozenPaths).toBe(true);
-    expect(state.tasks.get('T0-scaffold-orders')!.bootstrapsFrozenPaths).toBe(false);
+    expect(state.tasks.get('T0-scaffold-inventory-api')!.bootstrapsFrozenPaths).toBe(true);
+    expect(state.tasks.get('T0-scaffold-orders-api')!.bootstrapsFrozenPaths).toBe(false);
   });
 
   it('an ordinary task never gets the frozen-path permission, replanned or not', () => {

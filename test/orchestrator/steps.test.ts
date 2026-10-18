@@ -96,16 +96,16 @@ describe('packs', () => {
   });
 
   it("gives every pack of a service task its settings, the other services' addresses and the start rule, since its repository holds no docs", () => {
-    const view = servicePlans(makeServicesPlan(spec)).find((v) => v.service === 'inventory')!;
+    const view = servicePlans(makeServicesPlan(spec)).find((v) => v.service === 'inventory-api')!;
     const own = view.plan.tasks[0]!;
-    const withService: PackBase = { ...base, service: { name: 'inventory', plan: view.plan, addresses: { orders: 'http://orders:20011' }, design: '# Design tokens' } };
+    const withService: PackBase = { ...base, service: { name: 'inventory-api', plan: view.plan, addresses: { 'orders-api': 'http://orders-api:20011' }, design: '# Design tokens' } };
     const opts = { code: { source: 'none' as const }, handoffs: [], feedback: null };
-    const ruleOf = (p: { principles: readonly string[] }) => p.principles.find((x) => x.startsWith('This task changes the service inventory'));
+    const ruleOf = (p: { principles: readonly string[] }) => p.principles.find((x) => x.startsWith('This task changes the service inventory-api'));
     const rule = ruleOf(devPack(withService, own, opts))!;
     expect(rule).toContain(`"port":${view.plan.deploy.port}`);
     expect(rule).toContain('"junitPath"');
     expect(rule).not.toContain('"tasks"');
-    expect(rule).toContain('orders at http://orders:20011');
+    expect(rule).toContain('orders-api at http://orders-api:20011');
     expect(rule).toContain('starts and passes its healthcheck without them');
     expect(rule).not.toContain('# Design tokens');
     // Review, security, spec-gap and replan run in the same repository, so they carry the same rule.
@@ -118,19 +118,19 @@ describe('packs', () => {
   });
 
   it('gives a front task of a service the project design doc its repository lacks', () => {
-    const view = servicePlans(makeServicesPlan(spec)).find((v) => v.service === 'inventory')!;
-    const withService: PackBase = { ...base, service: { name: 'inventory', plan: view.plan, addresses: {}, design: '# Design tokens' } };
+    const view = servicePlans(makeServicesPlan(spec)).find((v) => v.service === 'inventory-api')!;
+    const withService: PackBase = { ...base, service: { name: 'inventory-api', plan: view.plan, addresses: {}, design: '# Design tokens' } };
     const front = devPack(withService, view.plan.tasks[0]!, { code: { source: 'none' }, handoffs: [], feedback: null }, 'front');
-    expect(front.principles.find((x) => x.startsWith('This task changes the service inventory'))).toContain("The project's docs/design.md is not in this repository");
+    expect(front.principles.find((x) => x.startsWith('This task changes the service inventory-api'))).toContain("The project's docs/design.md is not in this repository");
     expect(front.principles.join('\n')).toContain('# Design tokens');
   });
 
   it('fix-tasks pack names the service of each existing task', () => {
     const plan = makeServicesPlan(spec);
-    const p = fixTasksPack(base, { failedTests: [], tails: '', uncoveredAcs: [], blocked: [], plan: { tasks: plan.tasks, gates: [] }, services: ['orders', 'inventory'], boundaries: [], feedback: null });
-    expect(p.feedback).toContain('- T1-publish-order (orders):');
-    const blocked = fixTasksPack(base, { failedTests: [], tails: '', uncoveredAcs: [], blocked: [{ taskId: 'T2', reason: 'stuck', service: 'inventory' }], plan: { tasks: plan.tasks, gates: [] }, services: ['orders', 'inventory'], boundaries: [], feedback: null });
-    expect(blocked.feedback).toContain('- T2 (inventory): stuck');
+    const p = fixTasksPack(base, { failedTests: [], tails: '', uncoveredAcs: [], blocked: [], plan: { tasks: plan.tasks, gates: [] }, services: ['orders-api', 'inventory-api'], boundaries: [], feedback: null });
+    expect(p.feedback).toContain('- T1-publish-order (orders-api):');
+    const blocked = fixTasksPack(base, { failedTests: [], tails: '', uncoveredAcs: [], blocked: [{ taskId: 'T2', reason: 'stuck', service: 'inventory-api' }], plan: { tasks: plan.tasks, gates: [] }, services: ['orders-api', 'inventory-api'], boundaries: [], feedback: null });
+    expect(blocked.feedback).toContain('- T2 (inventory-api): stuck');
   });
 
   it('a task that writes the e2e suite gets its rules, whatever role owns it; other tasks do not', () => {
@@ -223,9 +223,9 @@ describe('packs', () => {
   });
 
   it("readme pack of a project of services points at the docs, since the code lives in each service's repository", () => {
-    const shop: PackBase = { ...base, project: { ...base.project, projectId: 'shop', services: ['orders', 'inventory'] } };
+    const shop: PackBase = { ...base, project: { ...base.project, projectId: 'shop', services: ['orders-api', 'inventory-api'] } };
     const text = readmePack(shop, { tasks: [] }).feedback!;
-    expect(text).toContain("keeps each service's code in its own repository (shop-orders, shop-inventory)");
+    expect(text).toContain("keeps each service's code in its own repository (orders-api, inventory-api)");
     expect(text).not.toContain('package.json, go.mod');
     expect(readmePack(base, { tasks: [] }).feedback).toContain('package.json, go.mod');
   });
@@ -549,12 +549,12 @@ describe('runAgentStep', () => {
 
 describe('servicesPlanRules', () => {
   it('states the services plan shape, a scaffold per new service, a port per service and the platform', () => {
-    const text = servicesPlanRules({ names: ['orders', 'inventory'], newServices: new Set(['inventory']), ports: { orders: 20011, inventory: 20012 }, platform: [{ name: 'nats', image: 'nats:2.10.22-alpine' }] });
-    expect(text).toContain('one repository each: orders, inventory');
-    expect(text).toContain('new services (their main holds no code yet): inventory');
+    const text = servicesPlanRules({ names: ['orders-api', 'inventory-api'], newServices: new Set(['inventory-api']), ports: { 'orders-api': 20011, 'inventory-api': 20012 }, platform: [{ name: 'nats', image: 'nats:2.10.22-alpine' }] });
+    expect(text).toContain('one repository each: orders-api, inventory-api');
+    expect(text).toContain('new services (their main holds no code yet): inventory-api');
     expect(text).toContain('T0-scaffold-<service>');
-    expect(text).toContain('existing services: orders');
-    expect(text).toContain('services.inventory.deploy.port is exactly 20012');
+    expect(text).toContain('existing services: orders-api');
+    expect(text).toContain('services.inventory-api.deploy.port is exactly 20012');
     expect(text).toContain('SERVICE_URL_<SERVICE>');
     expect(text).toContain('nats (nats:2.10.22-alpine)');
     // The deploy follows the plan's own order, so the rule promises none: each service starts without the others.
@@ -565,12 +565,12 @@ describe('servicesPlanRules', () => {
 
   it("shows the SM each existing service's files on main and where its earlier settings are, capped for a large repository", () => {
     const many = Array.from({ length: 250 }, (_, i) => `src/m${String(i).padStart(3, '0')}.ts`);
-    const text = servicesPlanRules({ names: ['orders', 'inventory'], newServices: new Set(['inventory']), ports: {}, platform: [], files: { orders: ['package.json', 'src/index.ts'] } });
-    expect(text).toContain('- files on main of orders: package.json, src/index.ts');
+    const text = servicesPlanRules({ names: ['orders-api', 'inventory-api'], newServices: new Set(['inventory-api']), ports: {}, platform: [], files: { 'orders-api': ['package.json', 'src/index.ts'] } });
+    expect(text).toContain('- files on main of orders-api: package.json, src/index.ts');
     expect(text).toContain('services.<service> of an earlier docs/specs/*/plan.json');
-    expect(text).not.toContain('files on main of inventory');
-    const capped = servicesPlanRules({ names: ['orders'], newServices: new Set(), ports: {}, platform: [], files: { orders: many } });
-    expect(capped).toContain('- files on main of orders (first 200 of 250): src/m000.ts');
+    expect(text).not.toContain('files on main of inventory-api');
+    const capped = servicesPlanRules({ names: ['orders-api'], newServices: new Set(), ports: {}, platform: [], files: { 'orders-api': many } });
+    expect(capped).toContain('- files on main of orders-api (first 200 of 250): src/m000.ts');
     expect(capped).not.toContain('src/m200.ts');
   });
 });

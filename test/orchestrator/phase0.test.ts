@@ -52,12 +52,12 @@ describe('phase 0', () => {
     const orders = await makeRemote({ 'src/index.ts': 'x' });
     try {
       const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
-      exec.onArgs('gh', ['repo', 'view'], (s) => ({ stdout: JSON.stringify(s.args[2] === 'o/hello-app-orders' ? { nameWithOwner: 'o/hello-app-orders', url: orders.origin } : { nameWithOwner: 'o/hello-app', url: remote.origin }) }));
+      exec.onArgs('gh', ['repo', 'view'], (s) => ({ stdout: JSON.stringify(s.args[2] === 'o/orders-api' ? { nameWithOwner: 'o/orders-api', url: orders.origin } : { nameWithOwner: 'o/hello-app', url: remote.origin }) }));
       new FakeGh().install(exec);
-      const d = deps(exec, remote.repo, { project: makeProject({ projectId: 'hello-app', services: ['orders'] }) });
+      const d = deps(exec, remote.repo, { project: makeProject({ projectId: 'hello-app', services: ['orders-api'] }) });
       const run = await Run.create(d, 'hello-001-r1');
       expect(await run.executePhase0()).toEqual({ ok: true });
-      expect(await git(serviceWorkspace(d.ws, 'orders').repo, ['ls-tree', '--name-only', 'origin/main'], execCommand)).toBe('src');
+      expect(await git(serviceWorkspace(d.ws, 'orders-api').repo, ['ls-tree', '--name-only', 'origin/main'], execCommand)).toBe('src');
       await run.close();
     } finally {
       await orders.cleanup();
