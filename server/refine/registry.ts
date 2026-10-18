@@ -273,7 +273,7 @@ export class SessionRegistry {
     const draft = draftPaths(ws, specId);
     await session.syncWithMain(() => syncWithMain(draft, ws.repo, this.deps.exec));
     if (session.state.backlog?.enabled) return this.startProgram(projectId, specId, session);
-    if (session.state.mode === 'new-project') throw new ConflictError('Etapa 2 obrigatória: quebre o backlog antes de iniciar a análise.');
+    if (session.state.mode === 'new-project') throw new ConflictError('O backlog ainda não está pronto: avalie o projeto até ele ficar pronto antes de iniciar a análise.');
     await session.freeze();
     const runs = await this.deps.runsDir();
     const runId = await nextRunId({ runs, projectId }, specId);
@@ -305,8 +305,7 @@ export class SessionRegistry {
     const session = await this.session(draft, ws, 'backlog');
     await session.enableBacklog();
     // Many agent calls: the import does not wait for them.
-    const { done } = await session.startPlan();
-    done.catch((err: Error) => console.error(`backlog import ${projectId}: ${err.message}`));
+    session.evaluate().catch((err: Error) => console.error(`backlog import ${projectId}: ${err.message}`));
   }
 
   /** Discards a draft that never started a run, so the user can begin that spec's refinement again from scratch. */

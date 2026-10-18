@@ -117,7 +117,7 @@ describe('RefineSession', () => {
   };
 
   it('asks the Front again when it answers outside the format once, and keeps its suggestions', async () => {
-    const s = await RefineSession.create({ ...deps(), frontAgent: frontSchemaFailures(1) }, 'new-project');
+    const s = await RefineSession.create({ ...deps(), frontAgent: frontSchemaFailures(1) }, 'new-spec');
     script['derive/po'] = [derived];
     script['refine/front'] = [refineOut([], [], [{ file: 'docs/design.md', find: '# Design', replace: '# Product design', reason: 'define the visual contract' }])];
     script['refine/po'] = [refineOut(green(PO))];
@@ -128,7 +128,7 @@ describe('RefineSession', () => {
   });
 
   it('goes on without the Front suggestions, and says so, when it answers outside the format twice, instead of failing the evaluation', async () => {
-    const s = await RefineSession.create({ ...deps(), frontAgent: frontSchemaFailures(2) }, 'new-project');
+    const s = await RefineSession.create({ ...deps(), frontAgent: frontSchemaFailures(2) }, 'new-spec');
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO))];
     script['refine/sm'] = [refineOut(green(SM))];
@@ -145,7 +145,7 @@ describe('RefineSession', () => {
       validateDocs: async () => validations++ === 0
         ? { available: true, decision: 'blocked' as const, consistent: false, confidence: 0.2, model: 'jev', checks: { flow_covers_scope: 0.2 }, stateTruncated: false }
         : { available: true, decision: 'approved' as const, consistent: true, confidence: 0.95, model: 'jev', checks: { flow_covers_scope: 0.95 }, stateTruncated: false },
-    }, 'new-project');
+    }, 'new-spec');
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO))];
     script['refine/sm'] = [refineOut(green(SM))];
@@ -222,7 +222,7 @@ describe('RefineSession', () => {
   });
 
   it('routes answers and rejections into the next cycle, refuses skipping a blocking question, and reaches ready', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-spec');
     script['derive/po'] = [derived, derived];
     script['refine/po'] = [refineOut(green(PO), [{ id: 'q', text: 'Port?', blocking: true, relatedAcIds: [] }], [{ file: 'docs/project.md', find: '## Vision', replace: '## V', reason: 'r' }]), refineOut(green(PO))];
     script['refine/sm'] = [refineOut(green(SM)), refineOut(green(SM))];
@@ -242,7 +242,7 @@ describe('RefineSession', () => {
 
   // R11.7.1: ready allows a pending question that does not block, so an answer may come after the last evaluation.
   it('freezes the spec with every answer as a decision, also one given after the last evaluation', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-spec');
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO), [{ id: 'q', text: 'Port?', blocking: false, relatedAcIds: [] }])];
     script['refine/sm'] = [refineOut(green(SM))];
@@ -316,6 +316,21 @@ describe('RefineSession', () => {
     await expect(s.undoMove('move-po-c1-0')).rejects.toBeInstanceOf(ConflictError);
   });
 
+  it('a failing check ends the click at once: no backlog cycle runs on documents the owner still has to fix', async () => {
+    // A flow without a diagram fails sm.flow-is-mermaid, so the documents are not ready.
+    await writeDoc(draft(), 'flow.md', '# Fluxo\n\nSem diagrama.\n');
+    const s = await RefineSession.create(deps(), 'new-project');
+    script['derive/po'] = [derived];
+    script['refine/po'] = [refineOut(green(PO))];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await s.evaluate();
+    expect(s.state.error).toBeNull();
+    expect(s.state.status).toBe('drafting');
+    expect(s.state.backlog?.enabled ?? false).toBe(false);
+    expect(calls.filter((c) => c.kind === 'refine')).toHaveLength(2);
+    expect(calls.some((c) => c.kind === 'backlog')).toBe(false);
+  });
+
   it('refuses to undo a move once one of its two documents changed after it', async () => {
     await writeDoc(draft(), 'project.md', '# Hello\n\n## Visão\n\nApp de teste.\n\nO usuário valida o código antes do login.\n');
     await writeDoc(draft(), 'flow.md', '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n');
@@ -353,7 +368,7 @@ describe('RefineSession', () => {
   });
 
   it('replays after a restart and turns an open cycle into an interrupted error', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-spec');
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO), [{ id: 'q', text: 'A?', blocking: false, relatedAcIds: [] }])];
     script['refine/sm'] = [refineOut(green(SM))];
@@ -376,7 +391,7 @@ describe('RefineSession', () => {
   });
 
   it('a start first brings in what main changed: a changed project doc makes the ready session stale and asks for a new evaluation', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-spec');
     script['derive/po'] = [{ ...derived, spec: { ...derived.spec, externalDependencies: [] } }];
     script['refine/po'] = [refineOut(green(PO))];
     script['refine/sm'] = [refineOut(green(SM))];
@@ -390,7 +405,7 @@ describe('RefineSession', () => {
   });
 
   it('writes custom secret names without marking the spec stale', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-spec');
     await s.writeSecret('CUSTOM_KEY', 'x');
     expect(await fs.readFile(path.join(secretsDir, 'CUSTOM_KEY'), 'utf8')).toBe('x');
     script['derive/po'] = [derived];
@@ -407,7 +422,7 @@ describe('RefineSession', () => {
   });
 
   it('writes a secret while an evaluation runs', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-spec');
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO))];
     script['refine/sm'] = [refineOut(green(SM))];

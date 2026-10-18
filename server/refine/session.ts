@@ -23,7 +23,7 @@ import { restoreMove } from './moves.js';
 import { buildSpecsIndex } from './specs-index.js';
 import { fitPackBudget } from './fit-pack.js';
 import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
-import { applyRefineEvent, emptyRefineState, type BacklogState, type RefineState } from './state.js';
+import { allGreen, applyRefineEvent, emptyRefineState, type BacklogState, type RefineState } from './state.js';
 import { isStarted } from './coverage.js';
 
 export type { RunAgent } from './cycle.js';
@@ -154,8 +154,8 @@ export function programEntries(draftId: string, backlog: BacklogState, onMain: R
   return entries;
 }
 
-/** Cycles one stage-2 run may spend: the outline, the detail, and one more for what the detail left open. */
-const MAX_PLAN_CYCLES = 3;
+/** Cycles one click may spend: the documents, the backlog outline, the detail, and one more for what the detail left open. */
+const MAX_CHAIN_CYCLES = 4;
 
 export class RefineSession {
   private running: Promise<void> | null = null;
@@ -320,31 +320,16 @@ export class RefineSession {
     }
     // The move removes this draft's own spec.json (a continued spec's, on main): its criterion ids stay the numbering floor.
     await this.journal.fact(RefineEvent.BacklogEnabled, { acFloor: await maxCriterionInDraft(this.deps.draft), keyIds: true });
-    await moveBriefingToProject(this.deps.draft);
-  }
-
-  /** Backlog detailing ("Detalhar specs"): from the next evaluation on, every item gets its spec and pre-plan. The human
-   *  reviews the outline first, so only a ready outline can be detailed. */
-  async enableDetail(): Promise<void> {
-    this.guard();
-    await this.enableDetailStep();
-  }
-
-  private async enableDetailStep(): Promise<void> {
-    const backlog = this.state.backlog;
-    if (backlog?.detail) return;
-    // A stale outline is one the human has not seen yet: the next evaluation would re-derive and detail it in one go.
-    if (!backlog?.enabled || backlog.items.length === 0 || this.state.status !== 'ready' || this.state.stale) {
-      throw new ConflictError(`Detalhar specs pede um backlog avaliado e pronto: avalie até o esboço ficar pronto.${this.state.stale ? ' Os documentos mudaram depois da última avaliação.' : ''}`);
-    }
+    // The detailing is part of the one process: every evaluation of the backlog details its changed items.
     await this.journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    await moveBriefingToProject(this.deps.draft);
   }
 
   async evaluate(): Promise<void> {
     this.ensureCanEvaluate();
     const ctl = (this.abortCtl = new AbortController());
     // Set at once, so no other action slips in while the floor is read.
-    this.running = this.cycleOnce(ctl).finally(() => {
+    this.running = this.evaluateChain(ctl).finally(() => {
       this.running = null;
       this.abortCtl = null;
     });
@@ -375,36 +360,28 @@ export class RefineSession {
   }
 
   /**
-   * Stage 2 of a new project, in one go: the outline, then the detail of every item, then one more cycle for what the detail left
-   * open. The lock is taken before the first await. The chain stops at a question or an error; the next call resumes from the journal.
+   * One click: cycles until the owner has to act, or the documents and the backlog are complete, or the cap is reached. A new
+   * project carries on from ready documents into its backlog; a spec on main or a continuation runs one cycle, as before.
    */
-  async startPlan(): Promise<{ done: Promise<void> }> {
-    this.guard();
-    const { backlog, status, stale } = this.state;
-    if (!backlog?.enabled && (status !== 'ready' || stale)) {
-      throw new ConflictError('A etapa 2 começa quando o refinamento dos documentos estiver pronto e sem mudanças pendentes.');
-    }
-    if (this.state.questions.some((q) => q.status === 'pending' && q.blocking)) {
-      throw new ConflictError('Responda às perguntas em aberto antes de quebrar o backlog.');
-    }
-    const ctl = (this.abortCtl = new AbortController());
-    const chain = this.planSteps(ctl).finally(() => {
-      this.running = null;
-      this.abortCtl = null;
-    });
-    this.running = chain;
-    return { done: chain };
-  }
-
-  private async planSteps(ctl: AbortController): Promise<void> {
-    if (!this.state.backlog?.enabled) await this.enableBacklogStep();
-    for (let n = 0; n < MAX_PLAN_CYCLES && !ctl.signal.aborted; n++) {
-      const { backlog, status, stale } = this.state;
-      if (backlog?.detail && status === 'ready' && !stale) return;
-      if (backlog && !backlog.detail && backlog.items.length > 0 && status === 'ready' && !stale) await this.enableDetailStep();
+  private async evaluateChain(ctl: AbortController): Promise<void> {
+    // A draft from before the detailing was part of every evaluation: its backlog is detailed from this one on.
+    if (this.state.backlog?.enabled && !this.state.backlog.detail) await this.journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    for (let n = 0; n < MAX_CHAIN_CYCLES && !ctl.signal.aborted; n++) {
       await this.cycleOnce(ctl);
-      // A question or an error ends the run: the person answers, and the next call resumes from the journal.
-      if (this.state.status === 'error' || this.state.status === 'answering') return;
+      const { status, stale, backlog, mode } = this.state;
+      // A question or an error needs the owner; the next click resumes from the journal.
+      if (status === 'error' || status === 'answering') return;
+      if (mode !== 'new-project' && mode !== 'backlog') return;
+      // The documents changed during the cycle, so they are evaluated again.
+      if (stale) continue;
+      if (status === 'ready') {
+        if (backlog?.enabled) return;
+        await this.enableBacklogStep();
+        continue;
+      }
+      // Drafting: a failing check or an open item is the owner's to act on; only a green documents set with an unfinished backlog goes on.
+      const open = this.state.patches.some((p) => p.status === 'pending') || this.state.questions.some((q) => q.status === 'pending');
+      if (!backlog?.enabled || open || !allGreen(this.state.checklist)) return;
     }
   }
 
