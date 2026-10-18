@@ -51,10 +51,7 @@ const STATUS_TONE = { entregue: bkTone.planned, 'em execução': bkTone.planned,
 export function DetailSpecsButton({ backlog, locked, ready, onDetail }: { backlog: BacklogView | null | undefined; locked: boolean; ready: boolean; onDetail?: () => unknown }) {
   if (!backlog?.enabled || backlog.items.length === 0 || backlog.detail || !onDetail) return null;
   return (
-    <p className="m-0 flex items-center gap-2">
-      <ActionButton className="secondary" data-testid="detail-specs" disabled={!ready || locked} onClick={onDetail} icon={<Icon name="file" size={16} />}>Detalhar specs (~{estimatedCalls(backlog)} chamadas)</ActionButton>
-      <InfoTip text={DETAIL_HELP} />
-    </p>
+    <ActionButton className="secondary min-w-40 flex-auto" title={DETAIL_HELP} data-testid="detail-specs" disabled={!ready || locked} onClick={onDetail} icon={<Icon name="file" size={16} />}>Detalhar specs (~{estimatedCalls(backlog)} chamadas)</ActionButton>
   );
 }
 
