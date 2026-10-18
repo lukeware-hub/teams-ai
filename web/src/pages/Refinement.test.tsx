@@ -132,12 +132,12 @@ describe('RefinementView backlog mode', () => {
     expect(screen.queryByText(/aceite ou rejeite cada uma/)).toBeNull();
   });
 
-  // Plan 90 review: the program waits for pending suggestions, so the screen never promises an auto-start that cannot come.
+  // A person starts the program: the screen never promises that it starts by itself.
   it('says a detailed backlog with a pending suggestion starts with Iniciar or once the suggestions are decided', () => {
     const detailed = { ...backlog, detail: true };
     const { rerender } = render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog: detailed, patches: [suggestion] })} busy={false} {...on()} /></MemoryRouter>);
-    expect(screen.getByText(/só começa sozinho sem sugestões pendentes/)).toBeTruthy();
-    expect(screen.queryByText(/começa sozinho em instantes/)).toBeNull();
+    expect(screen.getByText(/Aceite ou rejeite cada sugestão pendente, ou clique em Iniciar análise/)).toBeTruthy();
+    expect(screen.queryByText(/começa sozinho/)).toBeNull();
     expect(screen.queryByText(/As sugestões abaixo são opcionais/)).toBeNull();
     // Plan 90 review: an evaluation in progress says nothing about the suggestions, and an open question keeps the note.
     rerender(<MemoryRouter><RefinementView snap={base({ ...ready, status: 'evaluating', backlog: detailed, patches: [suggestion] })} busy={false} {...on()} /></MemoryRouter>);
@@ -247,18 +247,12 @@ describe('RefinementView backlog mode', () => {
     expect(start.disabled).toBe(false);
     fireEvent.click(start);
     expect(h.onStart).toHaveBeenCalledOnce();
-    expect(screen.getByText(/o programa começa sozinho em instantes/)).toBeTruthy();
+    expect(screen.getByText(/Clique em Iniciar análise para os agentes executarem o backlog/)).toBeTruthy();
   });
 
   it('keeps asking for a new evaluation while a requested detail has no specs yet', () => {
     render(<MemoryRouter><RefinementView snap={base({ ...ready, status: 'drafting', backlog: { ...backlog, detail: true } as never })} busy={false} {...on()} /></MemoryRouter>);
     expect(screen.getByText(/Detalhamento pedido: clique em Reavaliar/)).toBeTruthy();
-  });
-
-  it('says why a ready backlog did not start by itself in this cycle', () => {
-    const detailed = { ...backlog, detail: true, flowHeadings: [], specs: {}, preplans: {} };
-    render(<MemoryRouter><RefinementView snap={base({ ...ready, cycle: 2, autoStartFailure: { cycle: 2, reason: 'docker is not reachable' }, backlog: detailed as never })} busy={false} {...on()} /></MemoryRouter>);
-    expect(screen.getByText(/O programa não começou sozinho: docker is not reachable/)).toBeTruthy();
   });
 
   it('a started backlog says the agents are executing it', () => {

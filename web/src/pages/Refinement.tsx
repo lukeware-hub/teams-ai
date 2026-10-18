@@ -309,11 +309,9 @@ export function RefinementView(p: ViewProps) {
         ? 'Revise as sugestões de alteração abaixo e aceite ou rejeite cada uma.'
         : st.backlog?.enabled && st.status === 'ready'
           ? st.backlog.detail
-            ? st.autoStartFailure?.cycle === st.cycle
-              ? `O programa não começou sozinho: ${st.autoStartFailure.reason}. Corrija o motivo e clique em Iniciar análise, ou reavalie para ele tentar de novo.`
-              : pendingSuggestion
-                ? 'O backlog detalhado está pronto, mas só começa sozinho sem sugestões pendentes: aceite ou rejeite cada uma, ou clique em Iniciar análise para começar sem elas, que vão para o histórico.'
-                : 'O backlog detalhado está pronto: cada item tem spec e pré-plano, e o programa começa sozinho em instantes. Para mudar algo antes, escreva nos documentos e reavalie.'
+            ? pendingSuggestion
+              ? 'O backlog detalhado está pronto. Aceite ou rejeite cada sugestão pendente, ou clique em Iniciar análise para começar sem elas, que vão para o histórico.'
+              : 'O backlog detalhado está pronto: cada item tem spec e pré-plano. Clique em Iniciar análise para os agentes executarem o backlog. Para mudar algo antes, escreva nos documentos e reavalie.'
             : 'O backlog está pronto para revisão. Para mudar prioridades ou cortes, escreva no briefing.md e reavalie; quando o esboço estiver certo, clique em Detalhar specs para gerar a spec e o pré-plano de cada item.'
         : st.backlog?.detail && !backlogDetailed
           ? 'Detalhamento pedido: clique em Reavaliar para gerar a spec e o pré-plano de cada item; o que faltar aparece em vermelho na cobertura.'

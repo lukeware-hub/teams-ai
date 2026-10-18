@@ -253,17 +253,7 @@ export class SessionRegistry {
     return null;
   }
 
-  /** A detailed backlog that is ready and current starts its program by itself; a failure is journaled and retried only after a new cycle. */
-  private async autoStart(projectId: string, specId: string): Promise<void> {
-    const session = await this.get(projectId, specId);
-    const st = session.state;
-    if (!st.backlog?.enabled || !st.backlog.detail || st.stale || st.status !== 'ready' || st.autoStartFailure?.cycle === st.cycle) return;
-    // R11.10: a pending suggestion waits for the owner, who starts with Iniciar or decides it first.
-    if (st.patches.some((p) => p.status === 'pending')) return;
-    await this.start(projectId, specId).catch((err) => session.failAutoStart(err instanceof Error ? err.message : String(err)));
-  }
-
-  /** One reconciliation of every backlog program, started or ready to start: the UI server calls it on a timer and once at boot. */
+  /** One reconciliation of every started backlog program: the UI server calls it on a timer and once at boot. */
   async tickPrograms(): Promise<void> {
     // A broken config.json must not reject the timer's tick: it is logged and read again on the next one.
     const rows = await this.list().catch((err) => {
@@ -271,7 +261,6 @@ export class SessionRegistry {
       return [];
     });
     for (const row of rows) {
-      if (row.state === 'ready') await this.autoStart(row.projectId, row.specId).catch(() => undefined);
       if (row.state !== 'started') continue;
       await this.programs.tick(row.projectId, row.specId).catch((err) => console.error(`program ${row.projectId}/${row.specId}: ${err instanceof Error ? err.message : String(err)}`));
     }
@@ -304,8 +293,8 @@ export class SessionRegistry {
   }
 
   /**
-   * A git import with a planned backlog starts it by itself: its docs become a backlog draft, enabled here, and the outline
-   * and detail run in the background. Once that session is ready, tickPrograms starts the program. One session per project.
+   * A git import with a planned backlog prepares it: its docs become a backlog draft, enabled here, and the outline and detail
+   * run in the background. The session then waits for a person to start the program with Iniciar análise. One session per project.
    */
   async startImportedBacklog(projectId: string): Promise<void> {
     if ((await this.list()).some((row) => row.projectId === projectId)) return;

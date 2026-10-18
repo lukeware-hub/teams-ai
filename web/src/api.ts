@@ -358,7 +358,6 @@ export interface RefineState {
   runId: string | null;
   backlog?: BacklogView | null;
   mode?: 'new-project' | 'new-spec' | 'continue' | null;
-  autoStartFailure?: { cycle: number; reason: string };
 }
 export interface Snapshot {
   projectId: string;

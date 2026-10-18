@@ -437,7 +437,7 @@ describe('refine api', () => {
     expect(frozen).toMatchObject({ status: 'running', specVersion: 1, decisions: [{ question: 'O health responde em JSON?', answer: 'Sim, application/json.' }] });
   });
 
-  it('starts a detailed backlog by itself once it is ready, and tries a failed start again only after a new cycle', async () => {
+  it('waits for a person to start a detailed backlog, even once it is ready', async () => {
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     const url = '/api/refine/hello-app/hello-app-001';
     await call('POST', `${url}/backlog`);
@@ -455,25 +455,14 @@ describe('refine api', () => {
     await call('POST', `${url}/backlog/detail`);
     await settle();
     expect((await snapshot()).state.status).toBe('ready');
-    spawnShouldFail = true;
+    // Neither the timer nor a new cycle starts the program: the person's Iniciar does.
     await registry.tickPrograms();
     await registry.tickPrograms();
-    expect(spawns).toHaveLength(1);
-    const failed = (await snapshot()).state;
-    expect(failed.status).toBe('ready');
-    // The reason is on the journal, so the screen shows it and a restarted server does not try again in this cycle either.
-    expect(failed.autoStartFailure).toMatchObject({ cycle: failed.cycle, reason: expect.stringMatching(/nenhuma run/) });
-    spawnShouldFail = false;
-    await registry.tickPrograms();
-    expect(spawns).toHaveLength(1);
-    // A new cycle clears the failed mark: the next tick starts the program.
-    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
-    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
-    await call('POST', `${url}/evaluate`);
-    await settle();
-    await registry.tickPrograms();
+    expect(spawns).toHaveLength(0);
+    expect((await snapshot()).state.status).toBe('ready');
+    expect((await call('POST', `${url}/start`)).status).toBe(200);
     expect((await snapshot()).state.status).toBe('started');
-    expect(spawns).toHaveLength(2);
+    expect(spawns).toHaveLength(1);
   });
 
   // R11.10 (plan 90): in backlog mode the owner's answer is written into the briefing, so it reaches the specs through the docs.
@@ -521,8 +510,8 @@ describe('refine api', () => {
     expect(started.patches[0]).toMatchObject({ status: 'dropped', decision: 'não aplicada: a execução começou sem ela' });
   });
 
-  // Plan 90 review: once the owner decides the last suggestion, the program starts by itself again.
-  it('starts a ready backlog by itself once its last pending suggestion is rejected', async () => {
+  // Plan 90 review: once the owner decides the last suggestion, the program still waits for a person to start it.
+  it('leaves a ready backlog to a person once its last pending suggestion is rejected', async () => {
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     const url = '/api/refine/hello-app/hello-app-001';
     await call('POST', `${url}/backlog`);
@@ -542,8 +531,8 @@ describe('refine api', () => {
     const [p] = (await snapshot()).state.patches;
     expect((await call('POST', `${url}/patches/${p.patchId}/reject`, {})).status).toBe(200);
     await registry.tickPrograms();
-    expect(spawns).toHaveLength(1);
-    expect((await snapshot()).state.status).toBe('started');
+    expect(spawns).toHaveLength(0);
+    expect((await snapshot()).state.status).toBe('ready');
   });
 
   it('refuses to detail an outline the docs changed after it was reviewed', async () => {

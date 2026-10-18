@@ -83,8 +83,6 @@ export interface RefineState {
   backlog: BacklogState | null;
   /** How the session was created; null on drafts from before it was kept. */
   mode: 'new-project' | 'new-spec' | 'continue' | 'backlog' | null;
-  /** Why the program did not start by itself, and in which cycle; a new cycle tries again. */
-  autoStartFailure?: { cycle: number; reason: string };
 }
 
 export const emptyRefineState = (): RefineState => ({
@@ -232,9 +230,6 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
         const row: PreplanRow = { inputHash: String(d.inputHash), specRev: String(d.specRev), preplan: (d.preplan as Preplan | null) ?? null, issues: (d.issues as string[]) ?? [], cycle: Number(d.cycle) };
         s.backlog = { ...s.backlog, preplans: { ...s.backlog.preplans, [String(d.key)]: row } };
       }
-      break;
-    case RefineEvent.AutoStartFailed:
-      s.autoStartFailure = { cycle: Number(d.cycle), reason: String(d.reason) };
       break;
     case RefineEvent.ConflictsDerived:
       if (s.backlog) s.backlog = { ...s.backlog, conflicts: { inputHash: String(d.inputHash), pairs: d.pairs as ConflictMap['pairs'] } };

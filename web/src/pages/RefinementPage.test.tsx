@@ -29,7 +29,7 @@ describe('RefinementPage journal replay', () => {
     await waitFor(() => expect(screen.getAllByTestId('accept-sm-c1-0')).toHaveLength(1));
   });
 
-  it('opens the execution screen when a detailed backlog starts by itself', async () => {
+  it('opens the execution screen when the backlog starts', async () => {
     const backlog = { enabled: true, detail: true, epics: [], items: [], specs: {}, preplans: {}, flowHeadings: [] };
     const ready = snapshot(1);
     journal.events = [event(2, 'REFINE_STARTED_RUN', { runId: 'hello-app--base--run-1' })];
