@@ -6,7 +6,7 @@ import type { OutputOf, StepKind } from '../agents/outputs.js';
 import { Accounting } from '../budget/accounting.js';
 import { Governor } from '../budget/governor.js';
 import { DEFAULT_BREAKER, QuotaBreaker } from '../budget/quota-breaker.js';
-import { stepModelFor, type Config, type Role } from '../config/config.js';
+import { stepModelFor, type AgentSetting, type Config, type Role } from '../config/config.js';
 import { parseAnyPlan, scaffoldId, servicePlans, type AnyPlan, type Plan, type PlanTask, type ServiceView } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
@@ -50,6 +50,8 @@ import { copyCargoRoot, stackDomains, stackEnv, stackKind } from '../runner/stac
 
 export interface RunDeps {
   cfg: Config;
+  /** The project's manual model and effort per agent, read at each step; without it the run uses `cfg`. */
+  agentSettings?: (projectId: string) => Promise<Partial<Record<Role, AgentSetting>>>;
   ws: Workspace;
   project: Project;
   spec: Spec;
@@ -303,6 +305,12 @@ export class Run {
     return (await readDocs(this.deps.ws.repo, this.deps.spec.specId, this.deps.exec)).plan;
   }
 
+  /** The manual settings as they are now, so a model or effort changed during the run applies to the next step. */
+  private async manualSettings(): Promise<Partial<Record<Role, AgentSetting>>> {
+    const projectId = this.deps.project.projectId;
+    return this.deps.agentSettings ? this.deps.agentSettings(projectId) : (this.deps.cfg.agentSettings[projectId] ?? {});
+  }
+
   private stepDeps(view?: ServiceView): StepDeps {
     const { cfg, ws } = this.deps;
     return {
@@ -344,7 +352,7 @@ export class Run {
       stepDir: (seq) => stepDir(this.deps.ws, this.runId, seq),
       sessionDir: (taskId) => sessionDir(this.deps.ws, this.runId, taskId),
       stepModel: (kind) => stepModelFor(cfg.routing, kind),
-      agentSetting: (role) => cfg.agentSettings[this.deps.project.projectId]?.[role],
+      agentSetting: async (role) => (await this.manualSettings())[role],
       secretValues: () => this.secretValues(),
       specHash: this.deps.spec.specHash!,
     };

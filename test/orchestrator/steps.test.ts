@@ -490,6 +490,22 @@ describe('runAgentStep', () => {
     expect(seen[1]).toMatchObject({ model: 'haiku', effort: 'low' });
   });
 
+  it('reads the manual setting when each step starts, so a change made during the run applies to the next step', async () => {
+    const d = await deps(async () => ({ ok: true, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() }));
+    const seen: Array<{ model: string; effort?: string }> = [];
+    d.runStep = (async (req: { model: string; effort?: string }) => { seen.push(req); return { ok: true, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() }; }) as unknown as AgentStepDeps['runStep'];
+    const opus = { model: 'claude-opus-5-5', effort: 'max' } as const;
+    const haiku = { model: 'claude-haiku-5-5', effort: 'medium' } as const;
+    let current: typeof opus | typeof haiku = opus;
+    d.agentSetting = async () => current;
+    const dev = { kind: 'dev' as const, role: 'dev' as const, pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1, model: 'haiku', effort: 'low' as const };
+    await runAgentStep(dev, d);
+    current = haiku;
+    await runAgentStep({ ...dev, taskId: 'T2' }, d);
+    expect(seen.map((s) => s.model)).toEqual(['claude-opus-5-5', 'claude-haiku-5-5']);
+    expect(seen[1]).toMatchObject({ effort: 'medium' });
+  });
+
   it('journals the effort each step ran on, and the model and effort it ended on after a fallback', async () => {
     const ok = { ok: true as const, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() };
     const { d } = await seeing('opus', 'max', async (m) => (m === 'opus' ? quota() : ok));

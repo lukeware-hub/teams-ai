@@ -480,7 +480,7 @@ export interface AgentStepDeps {
   /** A model for every step of one kind, ahead of the role profile (config `routing.stepModels`); `attempt` is the refinement cycle there. */
   stepModel?: (kind: StepKind, attempt: number) => string | undefined;
   /** A model and effort the user fixed for this role in this project; they win over the request and the routing, and skip `effortFor`. */
-  agentSetting?: (role: Role) => AgentSetting | undefined;
+  agentSetting?: (role: Role) => AgentSetting | undefined | Promise<AgentSetting | undefined>;
   secretValues: () => readonly string[];
   specHash: string;
 }
@@ -498,7 +498,7 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
   const dir = deps.stepDir(seq);
   await fs.mkdir(dir, { recursive: true });
   const profile = deps.profile(req.role);
-  const manual = deps.agentSetting?.(req.role);
+  const manual = await deps.agentSetting?.(req.role);
   const planned = manual?.model ?? req.model ?? deps.stepModel?.(req.kind, req.attempt) ?? profile.model;
   // A step with a kept session belongs to its model; only a fresh one may move to the lower model when the quota is out.
   const lower = sessionStore ? undefined : fallbackModel(planned);
