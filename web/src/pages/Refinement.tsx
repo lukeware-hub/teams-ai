@@ -15,6 +15,7 @@ import type { Divergence, DivergenceSide } from '@server/refine/checklist';
 import { BacklogPanel, DetailSpecsButton } from '../refine/BacklogPanel.js';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { ProcessingBanner } from '../refine/ProcessingBanner.js';
+import { runningSteps, type RunningStep } from '../refine/running-steps.js';
 import { StageBar } from '../refine/StageBar.js';
 import { stageAction, stageOf, stageTitle } from '../refine/stages.js';
 import { SpecTree } from '../refine/SpecTree.js';
@@ -135,10 +136,10 @@ export function JevActions() {
 }
 
 /** The stage the evaluation is in now, and whether Jev is down, from the journal of the current round. */
-export function stageNow(events: StoredEvent[], cycle: number): { stage: string; jevDown: boolean } {
+export function stageNow(events: StoredEvent[], cycle: number): { stage: string; jevDown: boolean; running: RunningStep[] } {
   const derived = events.some((e) => e.type === 'DERIVED' && Number(e.data.cycle) === cycle);
   const jevEvent = events.find((e) => e.type === 'REFINE_DOCS_VALIDATED' && Number(e.data.cycle) === cycle);
-  return { stage: currentClaudeStage(events, cycle, jevEvent, derived), jevDown: jevEvent?.data.available === false };
+  return { stage: currentClaudeStage(events, cycle, jevEvent, derived), jevDown: jevEvent?.data.available === false, running: runningSteps(events, cycle) };
 }
 
 function currentClaudeStage(events: StoredEvent[], cycle: number, jevEvent: StoredEvent | undefined, derived: boolean): string {
@@ -147,13 +148,7 @@ function currentClaudeStage(events: StoredEvent[], cycle: number, jevEvent: Stor
   if (jevEvent.data.decision === 'blocked') return 'Jev encontrou pontos importantes para revisão; PO e SM vão avaliá-los.';
   if (jevEvent.data.decision === 'review') return 'Jev encontrou pontos para revisão; Claude está analisando os documentos.';
 
-  const cycleEvents = events.filter((e) => Number(e.data.attempt) === cycle || Number(e.data.cycle) === cycle);
-  const started = new Map<string, { kind: string; role: string }>();
-  for (const event of cycleEvents) {
-    if (event.type === 'STEP_STARTED') started.set(String(event.data.stepId), { kind: String(event.data.kind), role: String(event.data.role) });
-    if (event.type === 'STEP_FINISHED') started.delete(String(event.data.stepId));
-  }
-  const active = [...started.values()];
+  const active = runningSteps(events, cycle);
   if (active.some((step) => step.kind === 'backlog')) return 'PO está quebrando os documentos em backlog, com épicos e prioridades.';
   if (active.some((step) => step.kind === 'spec')) return 'PO está detalhando a spec de cada item do backlog.';
   if (active.some((step) => step.kind === 'preplan')) return 'SM está fazendo o pré-plano de cada spec.';
@@ -799,7 +794,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
     <main className="flex flex-col gap-4 lg:h-full lg:min-h-0">
       <header className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></Link><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span></header>
       {snap.state.mode === 'new-project' && <StageBar stages={stageOf(snap.state)} />}
-      {snap.state.status === 'evaluating' && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}
+      {snap.state.status === 'evaluating' && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}
       {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phases={phases} link={programPath} />}
       {(error || snap.state.status === 'error') && (
         <div className="error mx-auto w-[min(100%,48rem)] text-center" role="alert">

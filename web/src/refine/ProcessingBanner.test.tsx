@@ -33,6 +33,20 @@ describe('ProcessingBanner', () => {
     expect(screen.getByTestId('detail-progress').textContent).toBe('Detalhando… 1/2 specs · 1/2 pré-planos');
   });
 
+  it('shows the model and effort of each step running in parallel', () => {
+    const running = [
+      { stepId: 's1', kind: 'refine', role: 'po', model: 'claude-haiku-5-5', effort: 'medium' },
+      { stepId: 's2', kind: 'refine', role: 'sm', model: 'claude-haiku-5-5', effort: 'medium' },
+    ];
+    render(<ProcessingBanner backlog={view()} cycle={2} stage="x" jevDown={false} running={running} />);
+    expect(screen.getByTestId('running-models').textContent).toBe('Em uso agora: PO · Haiku 5.5 · esforço médio; SM · Haiku 5.5 · esforço médio');
+  });
+
+  it('shows no model line when no step is running', () => {
+    render(<ProcessingBanner backlog={view()} cycle={2} stage="x" jevDown={false} running={[]} />);
+    expect(screen.queryByTestId('running-models')).toBeNull();
+  });
+
   it('turns red when Jev is down', () => {
     render(<ProcessingBanner backlog={null} cycle={1} stage="Jev indisponível" jevDown />);
     expect(screen.getByTestId('processing-banner').className).toContain('border-bad-line');

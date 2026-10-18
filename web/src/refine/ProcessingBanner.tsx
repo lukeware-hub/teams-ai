@@ -1,11 +1,12 @@
 import type { BacklogView } from '../api.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { processingText } from './BacklogPanel.js';
+import { runningStepLabel, type RunningStep } from './running-steps.js';
 
 const evaluationInfo = 'Cada clique em Avaliar abre uma rodada: o Jev confere a consistência dos documentos, o Claude gera o spec.json e o project.json, os agentes PO, SM e Front revisam e sugerem ajustes, e o Jev também aponta critérios ainda não prontos, descarta perguntas repetidas e sinaliza contradições com o histórico.';
 
 /** The evaluation in progress, shown at the top of the refinement page on every tab. */
-export function ProcessingBanner({ backlog, cycle, stage, jevDown, title = 'Avaliação em andamento' }: { backlog: BacklogView | null | undefined; cycle: number; stage: string; jevDown: boolean; title?: string }) {
+export function ProcessingBanner({ backlog, cycle, stage, jevDown, running = [], title = 'Avaliação em andamento' }: { backlog: BacklogView | null | undefined; cycle: number; stage: string; jevDown: boolean; running?: RunningStep[]; title?: string }) {
   const items = backlog?.items ?? [];
   const specs = items.filter((i) => backlog?.specs?.[i.key]?.spec).length;
   const preplans = Object.values(backlog?.preplans ?? {}).filter((row) => row.preplan).length;
@@ -15,6 +16,7 @@ export function ProcessingBanner({ backlog, cycle, stage, jevDown, title = 'Aval
       <div className="grid flex-1 gap-[0.15rem]">
         <b className="text-[0.8125rem]">{title} <InfoTip text={evaluationInfo} /></b>
         <span className="text-[0.75rem] leading-[1.35]">Rodada {cycle} · {stage}</span>
+        {running.length > 0 && <span className="text-[0.75rem] leading-[1.35]" data-testid="running-models">Em uso agora: {running.map(runningStepLabel).join('; ')}</span>}
         {backlog?.enabled && <span className="text-[0.75rem] leading-[1.35]">{processingText(backlog)}</span>}
         {backlog?.detail && (
           <span className="flex items-center gap-2 text-[0.75rem] leading-[1.35]" data-testid="detail-progress">
