@@ -173,6 +173,13 @@ describe('refinePack moves and findings', () => {
     expect(refinePack({ ...base, role: 'po', findings: [finding] } as never).feedback).not.toContain('A versão difere do flow.');
   });
 
+  it('lists the moves the owner undid, so no role proposes them again', () => {
+    const undone = [{ from: 'design.md' as const, to: 'flow.md' as const, quote: '- Feedback: ao criar uma tarefa, primeiro salve.' }];
+    const feedback = refinePack({ ...base, role: 'front', undoneMoves: undone } as never).feedback ?? '';
+    expect(feedback).toContain('### Moves the owner undid (do not propose them again)\n\n- docs/design.md → docs/flow.md: "- Feedback: ao criar uma tarefa, primeiro salve."');
+    expect(refinePack({ ...base, role: 'front' }).feedback).toContain('### Moves the owner undid (do not propose them again)\n\n(none)');
+  });
+
   it('lets each role patch the documents it owns: the SM its stack.md, the PO not', () => {
     expect(refinePack({ ...base, role: 'sm' }).feedback).toContain('Patch files: docs/project.md, docs/specs/spec-1/brief.md, docs/stack.md, docs/flow.md.');
     expect(refinePack({ ...base, role: 'po' }).feedback).toContain('Patch files: docs/project.md, docs/specs/spec-1/brief.md, docs/flow.md.');

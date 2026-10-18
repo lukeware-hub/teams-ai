@@ -364,7 +364,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       pack: fitPackBudget(refinePack({ role: 'front', specHash: hash, principles: deps.principles(), specId: draft.specId,
         projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'],
         derived, backlog, retrieval: [], history: journal.state.questions,
-        rejected: journal.state.patches.filter((p) => p.status === 'rejected'), pending: journal.state.patches.filter((p) => p.status === 'pending'), findings: journal.state.findings, jevValidation, projectBriefing: backlogMode, cycle })),
+        rejected: journal.state.patches.filter((p) => p.status === 'rejected'), pending: journal.state.patches.filter((p) => p.status === 'pending'), findings: journal.state.findings, undoneMoves: journal.state.moves.filter((m) => m.status === 'undone'), jevValidation, projectBriefing: backlogMode, cycle })),
       cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, ctx);
     let review = await askFront();
     // The model now and then drops a required field of one suggestion. The suggestions are advice, so one more try, and then the cycle goes on without them instead of failing.
@@ -398,6 +398,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           rejected: state.patches.filter((p) => p.status === 'rejected'),
           pending: state.patches.filter((p) => p.status === 'pending'),
           findings: state.findings,
+          undoneMoves: state.moves.filter((m) => m.status === 'undone'),
           jevValidation,
           notReady,
           projectBriefing: backlogMode,

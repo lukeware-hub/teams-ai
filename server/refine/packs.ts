@@ -7,7 +7,7 @@ import { PO_ITEMS, SM_ITEMS } from './checklist.js';
 import { coverageGaps, isStarted } from './coverage.js';
 import { buildWithDocs, DIGEST_NOTE } from './docs-view.js';
 import { DOC_REL, type DocFile, flowTemplate, stackTemplate } from './draft.js';
-import type { BacklogState, FindingRow, PatchRow, QuestionRow } from './state.js';
+import type { BacklogState, FindingRow, MoveRow, PatchRow, QuestionRow } from './state.js';
 import { jevHint, type JevValidationResult } from './jev-validation.js';
 
 /** A stack.md or flow.md that is still the blank template is filled by the SM in one patch each; nobody is asked about a placeholder. */
@@ -102,6 +102,8 @@ export function refinePack(input: {
   pending?: readonly PatchRow[];
   /** The findings the last cycle verified, from the state; each role sees the ones about its own documents. */
   findings?: readonly FindingRow[];
+  /** Moves the owner undid: no role proposes them again. */
+  undoneMoves?: ReadonlyArray<Pick<MoveRow, 'from' | 'to' | 'quote'>>;
   jevValidation?: JevValidationResult;
   /** Decision 2: criteria System 1 judged not ready; null or absent means no hint. */
   notReady?: readonly string[] | null;
@@ -120,6 +122,7 @@ export function refinePack(input: {
   const openQuestions = input.history.filter((q) => q.status === 'pending').map((q) => `- [${q.role}] ${q.text}`);
   const rejected = input.rejected.map((p) => `- ${rel(p.file)}: "${p.find.slice(0, 80)}" → rejected${p.decision ? `: ${p.decision}` : ''}`);
   const pending = (input.pending ?? []).map((p) => `- ${rel(p.file)}: "${p.find.slice(0, 80)}" → ${clip(p.reason, 120)}`);
+  const undone = (input.undoneMoves ?? []).map((m) => `- ${rel(m.from)} → ${rel(m.to)}: "${m.quote.slice(0, 80)}"`);
   const findingLines = (input.findings ?? []).filter((f) => DOC_OWNERS[f.doc].includes(input.role)).map((f) => `- [${f.role}] ${f.doc} (${f.severity}): "${clip(f.quote, 120)}" → ${clip(f.text, 200)} Fix: ${clip(f.fix, 200)}`).join('\n');
   const ids = input.role === 'po' ? PO_ITEMS : input.role === 'sm' ? SM_ITEMS : [];
   const parts = (d: Record<'project' | 'brief' | 'stack' | 'flow' | 'design', string | undefined>, digested: boolean) => [
@@ -174,6 +177,8 @@ export function refinePack(input: {
     openQuestions.join('\n') || '(none)',
     '### Rejected patches (do not propose again)',
     rejected.join('\n') || '(none)',
+    '### Moves the owner undid (do not propose them again)',
+    undone.join('\n') || '(none)',
     '### Pending suggestions (already proposed, waiting for the owner: do not propose them again, not even reworded)',
     pending.join('\n') || '(none)',
     '### Findings about your documents from the other roles (each quote was checked against the document it names: fix it with a patch or a move, or say why not)',
