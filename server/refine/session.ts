@@ -89,11 +89,11 @@ export interface SessionDeps {
   /** Read at each evaluation, so a floor set in the config reaches drafts already open. */
   autoAnswerFloor?: () => Promise<number | undefined>;
 }
-/** The external dependencies the specs declare: one spec, or every spec of the backlog. */
-function declaredDependencies(state: RefineState): ExternalDependency[] {
-  return state.backlog?.enabled
-    ? Object.values(state.backlog.specs ?? {}).flatMap((row) => row.spec?.externalDependencies ?? [])
-    : state.derived?.spec.externalDependencies ?? [];
+/** The external dependencies the specs declare: every backlog spec, or the single derived spec while the backlog has none yet. */
+export function declaredDependencies(state: RefineState): ExternalDependency[] {
+  const backlogDependencies = Object.values(state.backlog?.specs ?? {}).flatMap((row) => row.spec?.externalDependencies ?? []);
+  if (state.backlog?.enabled && backlogDependencies.length > 0) return backlogDependencies;
+  return state.derived?.spec.externalDependencies ?? [];
 }
 /** The secrets the specs list as external dependencies, so the screen offers a field for each one that is missing. */
 function requiredSecretNames(state: RefineState): string[] {

@@ -1,5 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { sectionsMentioning } from '../../server/refine/session.js';
+import { declaredDependencies, sectionsMentioning } from '../../server/refine/session.js';
+import type { RefineState } from '../../server/refine/state.js';
+
+const dep = { name: 'db', purpose: 'p', secretNames: ['DB_URL'] };
+const state = (over: Partial<RefineState>) => ({ derived: { spec: { externalDependencies: [dep] } }, ...over }) as unknown as RefineState;
+
+describe('declaredDependencies', () => {
+  it('uses the derived spec while the backlog has no specs yet', () => {
+    expect(declaredDependencies(state({ backlog: { enabled: true, specs: {} } as RefineState['backlog'] }))).toEqual([dep]);
+  });
+
+  it('uses only the backlog specs once the backlog has them', () => {
+    const other = { name: 'mq', purpose: 'q', secretNames: ['NATS_URL'] };
+    const backlog = { enabled: true, specs: { a: { spec: { externalDependencies: [other] } } } } as unknown as RefineState['backlog'];
+    expect(declaredDependencies(state({ backlog }))).toEqual([other]);
+  });
+
+  it('uses the derived spec when the backlog is off', () => {
+    expect(declaredDependencies(state({ backlog: undefined }))).toEqual([dep]);
+  });
+});
 
 describe('sectionsMentioning', () => {
   it('lists each heading section that names the secret, in document order', () => {
