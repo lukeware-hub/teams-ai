@@ -428,7 +428,7 @@ button[aria-busy='true']:disabled { cursor: progress; opacity: 0.75; }
 }
 @media (prefers-reduced-motion: reduce) {
   .dialog, .confirm, .step-in { animation-name: fade-in; }
-  .loading-spinner, .button-spinner { animation: none; }
+  .loading-spinner { animation: none; }
   .confetti { display: none; }
 }
 

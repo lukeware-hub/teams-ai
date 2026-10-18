@@ -21,11 +21,10 @@ describe('SpecTree', () => {
     expect(gaps.getByText(/AC-002 sem tarefa/)).toBeTruthy();
   });
 
-  it('shows progress instead of gaps while the detailing runs', () => {
+  it('hides the gaps while the detailing runs', () => {
     const pending = { ...backlog, items: [...backlog.items, { ...backlog.items[0], key: 'fatura', title: 'Faturamento', rank: 2 }] } as BacklogView;
     render(<SpecTree backlog={pending} evaluating />);
     expect(screen.queryByTestId('tree-gaps')).toBeNull();
-    expect(screen.getByTestId('tree-progress').textContent).toBe('Detalhando… 1/2 specs · 1/2 pré-planos');
     expect(within(screen.getByTestId('tree-fatura')).getByText('pendente').className).not.toContain('text-bad');
   });
 

@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { api, type Item, type Snapshot, type Status } from '../api.js';
 import type { StoredEvent } from '../api.js';
-import { JevActions, RefinementView } from './Refinement.js';
+import { JevActions, RefinementView, stageNow } from './Refinement.js';
 
 const green = (ids: string[]) => ids.map((id) => ({ id, role: (id.startsWith('po') ? 'po' : 'sm') as 'po' | 'sm', passed: true, detail: 'ok' }));
 const ALL = ['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions'];
@@ -279,16 +279,7 @@ describe('RefinementView backlog mode', () => {
   });
 
   it('tells which agent details the specs and which pre-plans them', () => {
-    const stage = (kind: string, role: string) => {
-      const { unmount } = render(
-        <MemoryRouter>
-          <RefinementView snap={base({ status: 'evaluating', questions: [], patches: [], backlog: { ...backlog, detail: true } as never })} busy events={[event(1, 'REFINE_CYCLE_STARTED', { cycle: 1 }), event(2, 'REFINE_DOCS_VALIDATED', { cycle: 1, available: true }), event(3, 'STEP_STARTED', { stepId: 's1', kind, role, attempt: 1 })]} {...on()} />
-        </MemoryRouter>,
-      );
-      const text = document.body.textContent ?? '';
-      unmount();
-      return text;
-    };
+    const stage = (kind: string, role: string) => stageNow([event(1, 'REFINE_CYCLE_STARTED', { cycle: 1 }), event(2, 'REFINE_DOCS_VALIDATED', { cycle: 1, available: true }), event(3, 'STEP_STARTED', { stepId: 's1', kind, role, attempt: 1 })], 1).stage;
     expect(stage('spec', 'po')).toMatch(/PO está detalhando a spec de cada item do backlog/);
     expect(stage('preplan', 'sm')).toMatch(/SM está fazendo o pré-plano de cada spec/);
     expect(stage('backlog', 'po')).toMatch(/PO está quebrando os documentos em backlog/);
@@ -445,35 +436,16 @@ describe('RefinementView', () => {
   });
 
   it('shows the active Claude step from the refinement journal', () => {
-    render(
-      <MemoryRouter>
-        <RefinementView
-          snap={base({ status: 'evaluating', questions: [], patches: [] })}
-          busy={true}
-          events={[
-            event(1, 'REFINE_CYCLE_STARTED', { cycle: 1 }),
-            event(2, 'REFINE_DOCS_VALIDATED', { cycle: 1, available: true }),
-            event(3, 'STEP_STARTED', { stepId: 'step-1', kind: 'derive', role: 'po', attempt: 1 }),
-          ]}
-          {...on()}
-        />
-      </MemoryRouter>,
-    );
-    expect(screen.getByText(/derivando project\.json e spec\.json/)).toBeTruthy();
+    const events = [
+      event(1, 'REFINE_CYCLE_STARTED', { cycle: 1 }),
+      event(2, 'REFINE_DOCS_VALIDATED', { cycle: 1, available: true }),
+      event(3, 'STEP_STARTED', { stepId: 'step-1', kind: 'derive', role: 'po', attempt: 1 }),
+    ];
+    expect(stageNow(events, 1).stage).toMatch(/derivando project\.json e spec\.json/);
   });
 
-  it('turns the evaluation card red when Jev is unavailable', () => {
-    render(
-      <MemoryRouter>
-        <RefinementView
-          snap={base({ status: 'evaluating', questions: [], patches: [] })}
-          busy={true}
-          events={[event(1, 'REFINE_DOCS_VALIDATED', { cycle: 1, available: false })]}
-          {...on()}
-        />
-      </MemoryRouter>,
-    );
-    expect(screen.getByRole('status').className).toContain('bg-bad-soft');
+  it('flags Jev as down when it is unavailable', () => {
+    expect(stageNow([event(1, 'REFINE_DOCS_VALIDATED', { cycle: 1, available: false })], 1).jevDown).toBe(true);
   });
 
   it('shows the demand type, bug details, and downloadable derived JSON', () => {

@@ -14,6 +14,7 @@ import { allGreen, isApproval } from '@server/refine/state';
 import type { Divergence, DivergenceSide } from '@server/refine/checklist';
 import { BacklogPanel, DetailSpecsButton } from '../refine/BacklogPanel.js';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
+import { ProcessingBanner } from '../refine/ProcessingBanner.js';
 import { SpecTree } from '../refine/SpecTree.js';
 import { Workspace } from '../components/Workspace.js';
 
@@ -85,7 +86,6 @@ const checkDetail = (detail: string) => {
 const criterionText = (c: AcceptanceCriterion) => `${c.id}: dado ${c.given}, quando ${c.when}, então ${c.then}`;
 const startInfo = 'Os agentes passam a planejar, implementar, testar e publicar o projeto com base nestes documentos. Fica disponível com a lista atualizada e atendida, sem perguntas obrigatórias nem aprovação de ajuste pendentes; as sugestões pendentes são opcionais. Com backlog, só fica disponível depois de clicar em Detalhar specs.';
 const jevInfo = 'O Jev é obrigatório no refinamento. Ele confere se os cinco documentos estão consistentes entre si e classifica e decide pontos da avaliação: critérios de aceite ainda não prontos, perguntas repetidas e contradições com o histórico do projeto. Sem ele, a avaliação não inicia. Ajuste o que fizer sentido e reavalie.';
-const evaluationInfo = 'Cada clique em Avaliar abre uma rodada: o Jev confere a consistência dos documentos, o Claude gera o spec.json e o project.json, os agentes PO, SM e Front revisam e sugerem ajustes, e o Jev também aponta critérios ainda não prontos, descarta perguntas repetidas e sinaliza contradições com o histórico.';
 const patchInfo = 'Mudança proposta por um agente: linhas com - saem e linhas com + entram. Aceitar aplica a mudança no documento; Rejeitar a descarta, e o motivo opcional fica no histórico.';
 const jsonDownload = (value: unknown) => `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(value, null, 2))}`;
 
@@ -126,6 +126,13 @@ export function JevActions() {
       {check.ok !== undefined && <span data-testid="jev-validate-result">{check.ok ? 'Conexão com o OpenRouter funcionando. Clique em Reavaliar.' : `Falha na conexão: ${check.detail ?? 'chave inválida.'}`}</span>}
     </span>
   );
+}
+
+/** The stage the evaluation is in now, and whether Jev is down, from the journal of the current round. */
+export function stageNow(events: StoredEvent[], cycle: number): { stage: string; jevDown: boolean } {
+  const derived = events.some((e) => e.type === 'DERIVED' && Number(e.data.cycle) === cycle);
+  const jevEvent = events.find((e) => e.type === 'REFINE_DOCS_VALIDATED' && Number(e.data.cycle) === cycle);
+  return { stage: currentClaudeStage(events, cycle, jevEvent, derived), jevDown: jevEvent?.data.available === false };
 }
 
 function currentClaudeStage(events: StoredEvent[], cycle: number, jevEvent: StoredEvent | undefined, derived: boolean): string {
@@ -269,10 +276,6 @@ export function RefinementView(p: ViewProps) {
     { doc: 'stack.md', name: 'stack.json', text: snap.docs['stack.md'] },
     { doc: 'design.md', name: 'design.json', text: snap.docs['design.md'] },
   ];
-  const derivedThisCycle = (p.events ?? []).some((e) => e.type === 'DERIVED' && Number(e.data.cycle) === st.cycle);
-  const jevEvent = (p.events ?? []).find((e) => e.type === 'REFINE_DOCS_VALIDATED' && Number(e.data.cycle) === st.cycle);
-  const jevDown = jevEvent?.data.available === false;
-  const claudeStage = currentClaudeStage(p.events ?? [], st.cycle, jevEvent, derivedThisCycle);
   // A detailed backlog numbers criteria across its item specs, so a question may cite any of them; a single-spec
   // derivation left in the journal from before backlog mode no longer counts.
   const criteria = backlogOn ? Object.values(st.backlog?.specs ?? {}).flatMap((row) => row.spec?.acceptanceCriteria ?? []) : st.derived?.spec.acceptanceCriteria ?? [];
@@ -289,7 +292,7 @@ export function RefinementView(p: ViewProps) {
   const nextStep = st.status === 'started' && st.backlog?.enabled
     ? 'Os agentes estão executando o backlog, até duas specs ao mesmo tempo quando não mexem no mesmo código. Acompanhe cada uma na tela de execução do backlog.'
     : st.status === 'evaluating'
-    ? 'Aguarde o fim da avaliação; o andamento aparece logo abaixo.'
+    ? 'Aguarde o fim da avaliação; o andamento aparece no topo da tela.'
     : jevAdvisory
     ? 'O Jev apontou pontos nos documentos. Ajuste o que fizer sentido e clique em Reavaliar.'
     : pending.length > 0
@@ -454,16 +457,6 @@ export function RefinementView(p: ViewProps) {
         {st.status === 'evaluating' && <span className="text-[0.8125rem] text-ink-soft">Avaliando…</span>}
       </div>
       <p className="m-0 mb-4 flex items-start gap-[0.6rem] rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-[0.8125rem] leading-[1.45] text-ink [&_svg]:flex-none [&_svg]:text-accent-text"><Icon name="lightbulb" size={20} /><span><b>Próximo passo:</b> {nextStep}{optional}</span></p>
-      {busy && (
-        <div className={`mb-4 flex items-center gap-[0.7rem] rounded-lg border px-[0.8rem] py-[0.7rem] [&_.info-tip]:text-current ${jevDown ? 'border-bad-line bg-bad-soft text-bad' : 'border-good-line bg-good-soft text-good'}`} role="status" aria-live="polite">
-          <span className={`size-[0.55rem] rounded-full motion-safe:animate-pulse ${jevDown ? 'bg-bad shadow-[0_0_0_4px_var(--bad-line)]' : 'bg-good-live shadow-[0_0_0_4px_var(--good-line)]'}`} aria-hidden="true" />
-          <div className="grid flex-1 gap-[0.15rem]">
-            <b className="text-[0.8125rem]">Avaliação em andamento <InfoTip text={evaluationInfo} /></b>
-            <span className="text-[0.75rem] leading-[1.35]">Rodada {st.cycle} · {claudeStage}</span>
-          </div>
-          <span className="tracking-[0.15em] motion-safe:animate-pulse" aria-hidden="true">•••</span>
-        </div>
-      )}
       {evaluating ? (
         <p className={muted}>Avaliando… As perguntas e as sugestões aparecem aqui quando a avaliação terminar.</p>
       ) : current ? (
@@ -668,7 +661,7 @@ export function RefinementView(p: ViewProps) {
             <div className={`${secretEntry} grid-cols-[minmax(0,1fr)_7rem]`}><input type="password" autoComplete="new-password" className={secretInput} data-testid={`secret-${s.name}`} aria-label={`Novo valor de ${s.name}`} placeholder={s.present ? 'Digite um novo valor para substituir' : 'Cole o valor da chave'} value={secretValues[s.name] ?? ''} onChange={(e) => setSecretValues({ ...secretValues, [s.name]: e.target.value })} /><button className={secretSave} data-testid={`save-secret-${s.name}`} disabled={!(secretValues[s.name] ?? '')} onClick={() => { p.onSecret(s.name, secretValues[s.name]!); setSecretValues({ ...secretValues, [s.name]: '' }); }}>Salvar<Icon name="check" size={14} /></button></div>
           </li>
         ))}
-        {newSecrets.map((s) => <li key={s.id} className={`${secretRow} border-accent-line bg-accent-soft`}><div className={`${secretEntry} grid-cols-[minmax(8rem,0.7fr)_minmax(0,1fr)_auto] max-[720px]:grid-cols-1`}><input className={secretInput} aria-label="Nome da chave" placeholder="NOME_DA_CHAVE" value={s.name} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, name: e.target.value.toUpperCase() } : row))} /><input type="password" autoComplete="new-password" className={secretInput} aria-label="Valor da chave" placeholder="Cole o valor da chave" value={s.value} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, value: e.target.value } : row))} /><button className={secretSave} disabled={!/^[A-Z][A-Z0-9_]*$/.test(s.name) || !s.value} onClick={() => { p.onSecret(s.name, s.value); setNewSecrets((rows) => rows.filter((row) => row.id !== s.id)); }}>Salvar<Icon name="check" size={16} /></button></div></li>)}
+        {newSecrets.map((s) => <li key={s.id} className={`${secretRow} border-accent-line bg-accent-soft`}><div className="flex items-center gap-[0.45rem] text-[0.78rem] font-bold text-ink">Nova variável<InfoTip text="Valor sigiloso que o projeto lê para acessar um serviço externo, como NATS_URL com o endereço do servidor de mensagens. Fica salvo neste computador e o valor nunca volta a ser exibido." /></div><div className={`${secretEntry} grid-cols-[minmax(8rem,0.7fr)_minmax(0,1fr)_auto] max-[720px]:grid-cols-1`}><input className={secretInput} aria-label="Nome da chave" placeholder="NOME_DA_CHAVE" value={s.name} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, name: e.target.value.toUpperCase() } : row))} /><input type="password" autoComplete="new-password" className={secretInput} aria-label="Valor da chave" placeholder="Cole o valor da chave" value={s.value} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, value: e.target.value } : row))} /><button className={secretSave} disabled={!/^[A-Z][A-Z0-9_]*$/.test(s.name) || !s.value} onClick={() => { p.onSecret(s.name, s.value); setNewSecrets((rows) => rows.filter((row) => row.id !== s.id)); }}>Salvar<Icon name="check" size={16} /></button></div></li>)}
       </ul>
     </section>
   );
@@ -744,6 +737,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
     return refineApi.start(projectId, specId).then(({ runId, program: started }) => navigate(started ? programPath : `/runs/${runId}`)).finally(() => setStarting(false));
   });
   const executing = starting || (following && program?.status !== 'finished');
+  const now = stageNow(events, snap.state.cycle);
   return (
     <main className="flex flex-col gap-4 lg:h-full lg:min-h-0">
       <header className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></Link><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span>
@@ -754,6 +748,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
           <InfoTip text={startInfo} />
         </span>
       </header>
+      {snap.state.status === 'evaluating' && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} />}
       {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phases={phases} link={programPath} />}
       {(error || snap.state.status === 'error') && (
         <div className="error mx-auto w-[min(100%,48rem)] text-center" role="alert">

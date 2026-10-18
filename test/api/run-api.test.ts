@@ -295,15 +295,16 @@ describe('projects', () => {
     expect(Object.keys(detail.plan.services)).toEqual(['orders', 'inventory']);
   });
 
-  it('refuses to delete a project with an active run', async () => {
+  it('stops an active run, then deletes the project', async () => {
     const project = path.join(home, 'project');
     await fs.cp(HELLO, project, { recursive: true });
     await fs.writeFile(path.join(home, '.teams-ai', 'config.json'), JSON.stringify({ paths: { runs: runs.replace(/\\/g, '/') }, projects: [{ dir: project }] }));
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 1);
     alive.add(1);
     const res = await del('/api/projects/hello-app');
-    expect(res.status).toBe(409);
-    expect(await fs.access(project).then(() => true, () => false)).toBe(true);
+    expect(res.status).toBe(200);
+    expect(alive.has(1)).toBe(false);
+    expect(await fs.access(project).then(() => true, () => false)).toBe(false);
   });
 
   it('404s deleting an unknown project', async () => {

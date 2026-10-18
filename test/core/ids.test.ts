@@ -19,10 +19,11 @@ describe('ids', () => {
     expect(() => assertSlug('Todo API', 'projectId')).toThrow(InvalidIdError);
   });
 
-  it('derives the repository name from the project id', () => {
+  it('names the repository of a project by its id, and of a service by the service name', () => {
     expect(repoName('todo-api')).toBe('todo-api');
-    expect(repoName('shop', 'orders')).toBe('shop-orders');
-    expect(() => repoName('shop', 'Orders')).toThrow(InvalidIdError);
+    expect(repoName('shop', 'orders-api')).toBe('orders-api');
+    expect(() => repoName('shop', 'orders')).toThrow('service must end with one of api, jobs, web, mobile, workflow');
+    expect(() => repoName('shop', 'Orders-api')).toThrow(InvalidIdError);
   });
 
   it('builds a deterministic task branch that keeps the task id verbatim', () => {

@@ -8,12 +8,17 @@ const spec = makeFrozenSpec();
 describe('Project.services', () => {
   it('is optional and holds unique lowercase names', () => {
     expect(makeProject().services).toBeUndefined();
-    expect(makeProject({ services: ['orders', 'inventory'] }).services).toEqual(['orders', 'inventory']);
-    expect(() => makeProject({ services: ['orders', 'orders'] })).toThrow('service names must be unique');
-    expect(() => makeProject({ services: ['Orders'] })).toThrow();
+    expect(makeProject({ services: ['orders-api', 'inventory-api'] }).services).toEqual(['orders-api', 'inventory-api']);
+    expect(() => makeProject({ services: ['orders-api', 'orders-api'] })).toThrow('service names must be unique');
+    expect(() => makeProject({ services: ['Orders-api'] })).toThrow();
   });
 
-  const withPlatform = (platform: PlatformService[]) => makeProject({ services: ['orders'], platform });
+  it('refuses a service name without a type suffix', () => {
+    expect(() => makeProject({ services: ['orders'] })).toThrow('a service name ends with one of api, jobs, web, mobile, workflow');
+    expect(() => makeProject({ services: ['orders-service'] })).toThrow('a service name ends with one of');
+  });
+
+  const withPlatform = (platform: PlatformService[]) => makeProject({ services: ['orders-api'], platform });
 
   it('declares platform containers with a pinned image and unique names', () => {
     const nats = { name: 'nats', image: 'nats:2.10.22-alpine', command: ['-js', '-m', '8222'] };
@@ -35,7 +40,7 @@ describe('Project.services', () => {
   });
 
   it('refuses a platform container named like a service: both would answer to that name on the shared network', () => {
-    expect(() => makeProject({ services: ['orders'], platform: [{ name: 'orders', image: 'nats:2.10.22' }] })).toThrow('cannot share a name');
+    expect(() => makeProject({ services: ['orders-api'], platform: [{ name: 'orders-api', image: 'nats:2.10.22' }] })).toThrow('cannot share a name');
   });
 });
 
@@ -47,7 +52,7 @@ describe('ServicesPlan', () => {
   it('is told apart from a single-repository plan by AnyPlan', () => {
     expect('services' in AnyPlan.parse(makePlan(spec))).toBe(false);
     const parsed = AnyPlan.parse(makeServicesPlan(spec));
-    expect('services' in parsed && Object.keys(parsed.services)).toEqual(['orders', 'inventory']);
+    expect('services' in parsed && Object.keys(parsed.services)).toEqual(['orders-api', 'inventory-api']);
   });
 });
 
@@ -72,8 +77,8 @@ describe('servicePlans', () => {
   it('gives each service its settings, its tasks and only the dependencies inside it', () => {
     const plan = makeServicesPlan(spec);
     const [orders, inventory] = servicePlans(plan);
-    expect(orders!.service).toBe('orders');
-    expect(orders!.plan.deploy.image).toBe('orders');
+    expect(orders!.service).toBe('orders-api');
+    expect(orders!.plan.deploy.image).toBe('orders-api');
     expect(orders!.plan.tasks.map((t) => t.id)).toEqual(['T1-publish-order']);
     expect(inventory!.plan.deploy.port).toBe(3001);
     expect(inventory!.plan.specHash).toBe(plan.specHash);

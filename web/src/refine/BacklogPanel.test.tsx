@@ -27,19 +27,8 @@ describe('BacklogPanel', () => {
     const { rerender } = render(<BacklogPanel backlog={view([])} evaluating={false} locked={false} />);
     expect(screen.getByText(/depois da próxima avaliação/)).toBeTruthy();
     rerender(<BacklogPanel backlog={view([])} evaluating locked />);
-    expect(screen.getByTestId('backlog-processing').textContent).toContain('Processando o backlog. Montando a lista de specs');
+    expect(screen.queryByText(/depois da próxima avaliação/)).toBeNull();
   });
-
-  it('says it is the backlog that is processing, and how far the detail is', () => {
-    const items = [item('base'), item('casos', { rank: 2 })];
-    const { rerender } = render(<BacklogPanel backlog={view(items)} evaluating={false} locked={false} />);
-    expect(screen.queryByTestId('backlog-processing')).toBeNull();
-    rerender(<BacklogPanel backlog={view(items)} evaluating locked />);
-    expect(screen.getByTestId('backlog-processing').textContent).toContain('Atualizando a lista de specs');
-    rerender(<BacklogPanel backlog={{ ...view(items), detail: true }} evaluating locked />);
-    expect(screen.getByTestId('backlog-processing').textContent).toContain('0 de 2 prontos');
-  });
-
 
   it('groups the items by epic in rank order with priority, size, dependencies and sources', () => {
     const items = [

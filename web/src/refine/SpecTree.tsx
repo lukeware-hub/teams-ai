@@ -16,7 +16,6 @@ export function SpecTree({ backlog, evaluating = false }: { backlog: BacklogView
   const specs = matrix.items.filter((i) => i.specId !== null).length;
   const criteria = matrix.items.reduce((n, i) => n + i.criteria.length, 0);
   const tasks = Object.values(backlog.preplans ?? {}).reduce((n, row) => n + (row.preplan?.tasks.length ?? 0), 0);
-  const preplans = Object.values(backlog.preplans ?? {}).filter((row) => row.preplan).length;
   return (
     <div className="my-4 grid gap-[0.6rem]" data-testid="spec-tree">
       <h4 className="m-0 flex items-center gap-2"><Icon name="list" size={20} />Cobertura<InfoTip text={HELP} /></h4>
@@ -29,11 +28,6 @@ export function SpecTree({ backlog, evaluating = false }: { backlog: BacklogView
         ].map((text) => <li key={text} className={`${stat} border-line bg-surface text-ink-soft`}>{text}</li>)}
         <li className={`${stat} ${gaps.length === 0 ? 'border-good-line bg-good-soft text-good' : 'border-bad bg-bad-soft text-bad'}`}>{count(gaps.length, 'lacuna', 'lacunas')}</li>
       </ul>
-      {evaluating && (
-        <p className="m-0 flex items-center gap-2 rounded-lg border border-accent-line bg-accent-soft px-3 py-2 text-[0.8125rem] text-ink" role="status" aria-live="polite" data-testid="tree-progress">
-          <span className="button-spinner" aria-hidden="true" />Detalhando… {specs}/{matrix.items.length} specs · {preplans}/{matrix.items.length} pré-planos
-        </p>
-      )}
       {!evaluating && gaps.length > 0 && (
         <ul className="m-0 grid gap-1 rounded-md border border-bad bg-bad-soft py-[0.6rem] pr-[0.8rem] pl-[1.6rem] text-[0.8125rem] text-bad" data-testid="tree-gaps">
           {gaps.map((g, n) => <li key={n}>{g}</li>)}

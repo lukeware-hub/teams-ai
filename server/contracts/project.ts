@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ID_PATTERNS } from '../core/ids.js';
+import { ID_PATTERNS, SERVICE_SUFFIXES } from '../core/ids.js';
 
 export const DeployTarget = z.enum(['docker-local']);
 export type DeployTarget = z.infer<typeof DeployTarget>;
@@ -9,12 +9,12 @@ export const Persona = z.object({
   description: z.string().min(1),
 });
 
-/** A service of a system split into services; its repository is `<projectId>-<name>`. */
-export const ServiceName = z.string().regex(ID_PATTERNS.SLUG).max(40);
+/** A service of a system split into services; its name is its repository and ends with a type suffix, e.g. `notification-api`. */
+export const ServiceName = z.string().regex(ID_PATTERNS.SERVICE, { message: `a service name ends with one of ${SERVICE_SUFFIXES.join(', ')}` }).max(40);
 
 /** A shared container the docs declare for every service (a message broker, a shared database), reached on the project's network by its name; every value is literal. */
 export const PlatformService = z.object({
-  name: ServiceName,
+  name: z.string().regex(ID_PATTERNS.SLUG).max(40),
   image: z.string().min(1).refine((image) => /[:@]/.test(image.split('/').at(-1) ?? '') && !/:latest$/.test(image), { message: 'pin the image to a version: a tag other than latest, or a digest' }),
   command: z.array(z.string()).optional(),
   environment: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_.]*$/), z.string()).optional(),

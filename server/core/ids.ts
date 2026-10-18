@@ -1,7 +1,10 @@
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const TASK_ID = /^T\d+(?:-[a-z0-9]+)*$/;
+/** The type a service repository ends with: notification-api, messagem-jobs, hospital-web. */
+export const SERVICE_SUFFIXES = ['api', 'jobs', 'web', 'mobile', 'workflow'] as const;
+const SERVICE = new RegExp(`^[a-z0-9]+(?:-[a-z0-9]+)*-(?:${SERVICE_SUFFIXES.join('|')})$`);
 
-export const ID_PATTERNS = { SLUG, TASK_ID } as const;
+export const ID_PATTERNS = { SLUG, TASK_ID, SERVICE } as const;
 
 export class InvalidIdError extends Error {}
 
@@ -26,10 +29,18 @@ function assertPositiveInteger(value: number, label: string): number {
   return value;
 }
 
-/** The GitHub repository of a project, or of one of its services: `<projectId>-<service>`. */
+/** A service name is a slug ending with one of SERVICE_SUFFIXES. */
+export function assertService(value: string): string {
+  if (!SERVICE.test(value)) {
+    throw new InvalidIdError(`service must end with one of ${SERVICE_SUFFIXES.join(', ')}, got "${value}"`);
+  }
+  return value;
+}
+
+/** The GitHub repository of a project, or of one of its services: the service name alone. */
 export function repoName(projectId: string, service: string | null = null): string {
   assertSlug(projectId, 'projectId');
-  return service === null ? projectId : `${projectId}-${assertSlug(service, 'service')}`;
+  return service === null ? projectId : assertService(service);
 }
 
 /** Branch name keeps the task id verbatim so it can be mapped back without a lookup. */

@@ -340,13 +340,18 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           services.push(...(read.project.services ?? []));
         }
         if (dirs.length === 0) throw new HttpError(404, `unknown project ${projectId}`);
-        const active = (await listRuns(idx, projectId)).find(claimsSpec);
-        if (active) throw new HttpError(409, `project ${projectId} has an active run (${active.runId}); stop it before deleting`);
+        const runs = runsDir(idx);
+        for (const run of (await listRuns(idx, projectId)).filter(claimsSpec)) {
+          const pid = await readPid(runs, run.runId);
+          if (pid === null || !isAlive(deps.control, pid)) throw new HttpError(409, `project ${projectId} has an active run (${run.runId}) this server cannot stop; stop it before deleting`);
+          await markStopRequested(runs, run.runId);
+          await stop(deps.control, pid);
+          await clearPid(runs, run.runId);
+        }
         const ws = workspacePaths(idx.cfg, projectId, deps.home);
         await fs.rm(ws.root, { recursive: true, force: true });
         for (const dir of dirs) await fs.rm(dir, { recursive: true, force: true });
-        const runs = runsDir(idx);
-        const runNames = (await fs.readdir(runs).catch(() => [] as string[])).filter((n) => SAFE_ID.test(n));
+        const runNames =(await fs.readdir(runs).catch(() => [] as string[])).filter((n) => SAFE_ID.test(n));
         for (const runId of runNames) {
           const row = await runRow(idx, runId).catch(() => null);
           // A crashed legacy run names no project; only then does its spec id decide (another project may share it).

@@ -27,7 +27,7 @@ function itemStatus(backlog: BacklogView, key: string): 'entregue' | 'em execuç
   return 'em refinamento';
 }
 /** What the agents are doing to the backlog while an evaluation runs. */
-function processingText(backlog: BacklogView): string {
+export function processingText(backlog: BacklogView): string {
   if (backlog.items.length === 0) return 'Montando a lista de specs a partir dos documentos.';
   if (!backlog.detail) return 'Atualizando a lista de specs.';
   const planned = backlog.items.filter((i) => itemStatus(backlog, i.key) !== 'em refinamento').length;
@@ -75,12 +75,6 @@ export function BacklogPanel({ backlog, evaluating, locked, onEnable }: { backlo
   return (
     <div className="my-4 grid gap-3" data-testid="backlog-on">
       <h4 className="m-0 flex items-center gap-2"><Icon name="list" size={20} />Backlog{backlog.items.length > 0 ? ` · ${backlog.items.length} specs em ${epics.length} épicos` : ''}<InfoTip text={HELP} /></h4>
-      {evaluating && (
-        <p className="m-0 flex items-center gap-2 rounded-lg border border-accent-line bg-accent-soft px-3 py-2 text-[0.8125rem] text-ink" role="status" aria-live="polite" data-testid="backlog-processing">
-          <span className="button-spinner" aria-hidden="true" />
-          <span><b>Processando o backlog.</b> {processingText(backlog)}</span>
-        </p>
-      )}
       {backlog.items.length === 0 && !evaluating && <p className="text-[0.8125rem] text-ink-soft">O backlog aparece depois da próxima avaliação. Clique em Avaliar.</p>}
       {epics.map((epic) => (
         <section key={epic.key} className="grid gap-[0.4rem]" data-testid={`epic-${epic.key}`}>
