@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { DOCUMENT_CHARTER } from '../../server/agents/document-charter.js';
 import { ALWAYS_DENIED, AgentFileError, QUALITY_RULES, ROLE_TOOL_POLICY, loadAgents, parseAgentFile } from '../../server/agents/registry.js';
 
 const AGENTS_DIR = path.resolve('.claude/agents');
@@ -79,6 +80,14 @@ describe('settings directory protection', () => {
       expect(def.body).toMatch(/KISS/);
       expect(def.body).toMatch(/YAGNI/);
       expect(def.body).toMatch(/DRY/);
+    }
+  });
+
+  it('every agent prompt carries the document charter, so each role knows what every document is for', async () => {
+    const agents = await loadAgents(AGENTS_DIR);
+    for (const def of Object.values(agents)) {
+      expect(def.body).toContain(DOCUMENT_CHARTER);
+      for (const doc of ['docs/project.md', 'docs/stack.md', 'docs/flow.md', 'docs/design.md']) expect(def.body).toContain(doc);
     }
   });
 

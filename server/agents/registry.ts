@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { ROLES, type Role } from '../config/config.js';
+import { DOCUMENT_CHARTER } from './document-charter.js';
 
 export interface AgentDefinition {
   role: Role;
@@ -131,7 +132,7 @@ export async function loadAgents(dir: string): Promise<Record<Role, AgentDefinit
       throw new AgentFileError(`missing agent file ${file}`);
     }
     const def = parseAgentFile(text, role);
-    out[role] = { ...def, body: `${def.body}\n\n${QUALITY_RULES}` };
+    out[role] = { ...def, body: `${def.body}\n\n${DOCUMENT_CHARTER}\n\n${QUALITY_RULES}` };
   }
   return out;
 }
