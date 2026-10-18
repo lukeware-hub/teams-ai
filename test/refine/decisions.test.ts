@@ -103,5 +103,7 @@ describe('parseDecisions', () => {
   it('is undefined when the brief has no decisions section or no item in it', () => {
     expect(parseDecisions(renderBriefMd(makeSpec()))).toBeUndefined();
     expect(parseDecisions('## Decisions\n\n')).toBeUndefined();
+    // A brief written before the heading became Decisões still gives its decisions back.
+    expect(parseDecisions('## Decisions\n\n- Porta?\n  Answer: 8080\n')).toEqual([{ question: 'Porta?', answer: '8080' }]);
   });
 });

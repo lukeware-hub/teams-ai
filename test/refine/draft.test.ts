@@ -197,8 +197,9 @@ describe('draft', () => {
 
   it('renderBriefMd lists the decisions the spec carries, and leaves a brief without them as it was', () => {
     expect(renderBriefMd(makeSpec())).not.toContain('## Decisions');
+    expect(renderBriefMd(makeSpec())).not.toContain('## Decisions\n');
     const md = renderBriefMd({ ...makeSpec(), decisions: [{ question: 'Port?', answer: '8080' }, { question: 'Region?', answer: 'eu', by: 'sm' }] });
-    expect(md).toContain('## Decisions\n\n- Port?\n  Answer: 8080\n- Region?\n  Answer (SM, from the docs): eu\n');
+    expect(md).toContain('## Decisões\n\n- Port?\n  Answer: 8080\n- Region?\n  Answer (SM, from the docs): eu\n');
   });
 
   it('notes the System 1 routing under the validation report, and the human ask when unclear', () => {

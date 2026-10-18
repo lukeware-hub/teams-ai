@@ -12,15 +12,15 @@ const indent = (t: string) => t.replace(/\n/g, '\n  ');
 /** One decision as a list item, its answer on an `Answer:` line; every continuation line stays indented inside it. */
 export const renderDecision = (d: SpecDecision): string => `- ${indent(d.question)}\n  Answer${d.by ? ` (${d.by.toUpperCase()}, from the docs)` : ''}: ${indent(d.answer)}`;
 
-/** The brief's `## Decisions` section: one item per decision, so the owner can edit it. */
+/** The brief's `## Decisões` section: one item per decision, so the owner can edit it. */
 export function renderDecisions(decisions: readonly SpecDecision[]): string[] {
-  return ['## Decisions', '', ...decisions.map(renderDecision), ''];
+  return ['## Decisões', '', ...decisions.map(renderDecision), ''];
 }
 
-/** The decisions in the brief's `## Decisions` section as the owner left them; undefined when it holds none. */
+/** The decisions in the brief's `## Decisões` section as the owner left them (briefs written with `## Decisions` still count); undefined when it holds none. */
 export function parseDecisions(md: string): SpecDecision[] | undefined {
   const lines = md.split('\n');
-  const start = lines.findIndex((l) => /^## Decisions\s*$/.test(l));
+  const start = lines.findIndex((l) => /^## (Decisões|Decisions)\s*$/.test(l));
   if (start < 0) return undefined;
   const items: string[][] = [];
   for (const line of lines.slice(start + 1)) {
