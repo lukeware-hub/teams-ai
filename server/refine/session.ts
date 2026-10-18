@@ -6,7 +6,7 @@ import type { SuggestOutput } from '../agents/outputs.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import type { StepOutcome } from '../runner/step.js';
 import type { Project } from '../contracts/project.js';
-import { freezeSpec, providedSecretNames, Spec } from '../contracts/spec.js';
+import { freezeSpec, providedSecretNames, Spec, type ExternalDependency } from '../contracts/spec.js';
 import { writeFileAtomic } from '../core/atomic-write.js';
 import { loadSecrets, SECRET_NAME, writeSecret } from '../core/secrets.js';
 import type { ProgramEntry } from '../program/controller.js';
@@ -89,17 +89,37 @@ export interface SessionDeps {
   /** Read at each evaluation, so a floor set in the config reaches drafts already open. */
   autoAnswerFloor?: () => Promise<number | undefined>;
 }
-/** The secrets the specs list as external dependencies, so the screen offers a field for each one that is missing. */
-function requiredSecretNames(state: RefineState): string[] {
-  const dependencies = state.backlog?.enabled
+/** The external dependencies the specs declare: one spec, or every spec of the backlog. */
+function declaredDependencies(state: RefineState): ExternalDependency[] {
+  return state.backlog?.enabled
     ? Object.values(state.backlog.specs ?? {}).flatMap((row) => row.spec?.externalDependencies ?? [])
     : state.derived?.spec.externalDependencies ?? [];
-  return providedSecretNames(dependencies);
+}
+/** The secrets the specs list as external dependencies, so the screen offers a field for each one that is missing. */
+function requiredSecretNames(state: RefineState): string[] {
+  return providedSecretNames(declaredDependencies(state));
+}
+/** The document sections (heading level) where a secret name appears, in document order. */
+export function sectionsMentioning(docs: Readonly<Record<string, string>>, name: string): Array<{ doc: string; heading: string }> {
+  const found: Array<{ doc: string; heading: string }> = [];
+  for (const [doc, text] of Object.entries(docs)) {
+    let heading = doc;
+    for (const line of text.split('\n')) {
+      const title = /^#{1,6}\s+(.*)$/.exec(line);
+      if (title) heading = title[1]!.trim();
+      else if (line.includes(name) && !found.some((f) => f.doc === doc && f.heading === heading)) found.push({ doc, heading });
+    }
+  }
+  return found;
 }
 export interface SecretRow {
   name: string;
   present: boolean;
   hint: string | null;
+  /** The dependencies that need this secret, with what each one is for. */
+  uses: Array<{ dependency: string; purpose: string }>;
+  /** The document sections that name this secret. */
+  mentions: Array<{ doc: string; heading: string }>;
 }
 export interface Snapshot {
   projectId: string;
@@ -212,7 +232,14 @@ export class RefineSession {
     } as Record<DocFile, string>;
     const present = await loadSecrets(this.deps.secretsDir);
     const names = [...new Set([...Object.keys(present), ...requiredSecretNames(this.state)])].sort();
-    const secrets = names.map((name) => ({ name, present: name in present, hint: name in present ? '****' : null }));
+    const dependencies = declaredDependencies(this.state);
+    const secrets = names.map((name) => ({
+      name,
+      present: name in present,
+      hint: name in present ? '****' : null,
+      uses: dependencies.filter((d) => d.secretNames.includes(name)).map((d) => ({ dependency: d.name, purpose: d.purpose })),
+      mentions: sectionsMentioning(docs, name),
+    }));
     const tokens = { inputTokens: 0, outputTokens: 0, costUsd: 0, steps: 0 };
     for (const e of this.journal.events) {
       if (e.type !== 'STEP_FINISHED') continue;

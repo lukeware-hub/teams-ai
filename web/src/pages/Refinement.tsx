@@ -84,7 +84,6 @@ const checkDetail = (detail: string) => {
   return detail;
 };
 const criterionText = (c: AcceptanceCriterion) => `${c.id}: dado ${c.given}, quando ${c.when}, então ${c.then}`;
-const startInfo = 'Os agentes passam a planejar, implementar, testar e publicar o projeto com base nestes documentos. Fica disponível com a lista atualizada e atendida, sem perguntas obrigatórias nem aprovação de ajuste pendentes; as sugestões pendentes são opcionais. Com backlog, só fica disponível depois de clicar em Detalhar specs.';
 const jevInfo = 'O Jev é obrigatório no refinamento. Ele confere se os cinco documentos estão consistentes entre si e classifica e decide pontos da avaliação: critérios de aceite ainda não prontos, perguntas repetidas e contradições com o histórico do projeto. Sem ele, a avaliação não inicia. Ajuste o que fizer sentido e reavalie.';
 const patchInfo = 'Mudança proposta por um agente: linhas com - saem e linhas com + entram. Aceitar aplica a mudança no documento; Rejeitar a descarta, e o motivo opcional fica no histórico.';
 const jsonDownload = (value: unknown) => `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(value, null, 2))}`;
@@ -103,8 +102,13 @@ const muted = 'text-[0.8125rem] text-ink-soft';
 const notice = 'rounded-md bg-warn-soft px-3 py-[0.65rem] text-[0.8rem] text-warn [&_.info-tip]:text-current';
 const fileStatus = 'text-[0.75rem] font-semibold text-ink-soft';
 const fileEmpty = 'mx-0 mt-[0.65rem] mb-0 text-[0.78rem] text-ink-soft';
-const startGroup = 'ml-auto flex items-center gap-2 max-[720px]:ml-0 max-[720px]:w-full';
 const secretRow = 'grid gap-[0.45rem] rounded-lg border p-3';
+/** What a secret is for, which dependency needs it, and which document sections name it. */
+const secretTip = (s: Snapshot['secrets'][number]): string => {
+  const uses = s.uses.map((u) => `Usado por ${u.dependency}: ${u.purpose}.`);
+  const mentions = s.mentions.length > 0 ? [`Citado em: ${s.mentions.map((m) => `${m.doc} › ${m.heading}`).join('; ')}.`] : [];
+  return [...uses, ...mentions].join(' ') || 'Nenhuma spec declara este segredo ainda.';
+};
 const secretEntry = 'grid items-center gap-2';
 const secretInput = 'm-0 w-full min-w-0';
 const secretSave = 'm-0 min-w-[5.4rem] max-[720px]:w-full';
@@ -178,7 +182,7 @@ export interface ViewProps {
   onReject(id: string, reason: string | null): void | Promise<unknown>;
   onSecret(name: string, value: string): void | Promise<unknown>;
   onStart(): void | Promise<unknown>;
-  startInHeader?: boolean;
+  startState?: { label: string; busy: boolean };
   events?: StoredEvent[];
 }
 
@@ -454,8 +458,10 @@ export function RefinementView(p: ViewProps) {
             <p>Nada mudou desde a última avaliação. Reavaliar gasta de novo as chamadas dos agentes (cerca de US$ 0,7) e pode dar um veredito diferente sobre os mesmos documentos.</p>
           </ConfirmDialog>
         )}
-        {st.status === 'evaluating' && <span className="text-[0.8125rem] text-ink-soft">Avaliando…</span>}
       </div>
+      <ActionButton data-testid="start" className="primary mb-4 w-full" busy={p.startState?.busy ?? false} disabled={!canStart} onClick={p.onStart} icon={<Icon name="play" size={16} />}>
+        {p.startState?.label ?? 'Iniciar análise'}
+      </ActionButton>
       <p className="m-0 mb-4 flex items-start gap-[0.6rem] rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-[0.8125rem] leading-[1.45] text-ink [&_svg]:flex-none [&_svg]:text-accent-text"><Icon name="lightbulb" size={20} /><span><b>Próximo passo:</b> {nextStep}{optional}</span></p>
       {evaluating ? (
         <p className={muted}>Avaliando… As perguntas e as sugestões aparecem aqui quando a avaliação terminar.</p>
@@ -566,12 +572,6 @@ export function RefinementView(p: ViewProps) {
             </li>
           ))}
       </ul>
-      {!p.startInHeader && <div className={`mt-5 ${startGroup}`}>
-        <ActionButton data-testid="start" className="primary w-full flex-auto px-4" disabled={!canStart} onClick={p.onStart} icon={<Icon name="play" size={16} />}>
-          Iniciar análise
-        </ActionButton>
-        <InfoTip text={startInfo} />
-      </div>}
     </section>
   );
   const qualityPanel = (
@@ -657,8 +657,8 @@ export function RefinementView(p: ViewProps) {
         {snap.secrets.map((s) => (
           <li key={s.name} className={`${secretRow} border-line bg-surface-sunken`}>
             {/* A hint made only of asterisks is a mask, not a hint: it tells the user nothing. */}
-            <div className="flex min-w-0 items-center gap-[0.45rem]"><code className="mr-auto text-[0.78rem] font-bold text-ink wrap-anywhere">{s.name}</code>{s.hint && /[^*]/.test(s.hint) && <small className="text-[0.7rem] text-ink-soft">termina em {s.hint}</small>}<span className={`status-dot ${s.present ? 'ok' : 'warn'}`}>{s.present ? 'Salvo' : 'Não salvo'}</span></div>
-            <div className={`${secretEntry} grid-cols-[minmax(0,1fr)_7rem]`}><input type="password" autoComplete="new-password" className={secretInput} data-testid={`secret-${s.name}`} aria-label={`Novo valor de ${s.name}`} placeholder={s.present ? 'Digite um novo valor para substituir' : 'Cole o valor da chave'} value={secretValues[s.name] ?? ''} onChange={(e) => setSecretValues({ ...secretValues, [s.name]: e.target.value })} /><button className={secretSave} data-testid={`save-secret-${s.name}`} disabled={!(secretValues[s.name] ?? '')} onClick={() => { p.onSecret(s.name, secretValues[s.name]!); setSecretValues({ ...secretValues, [s.name]: '' }); }}>Salvar<Icon name="check" size={14} /></button></div>
+            <div className="flex min-w-0 items-center gap-[0.45rem]"><code className="mr-auto text-[0.78rem] font-bold text-ink wrap-anywhere">{s.name}</code><InfoTip label={s.name} text={secretTip(s)} />{s.hint && /[^*]/.test(s.hint) && <small className="text-[0.7rem] text-ink-soft">termina em {s.hint}</small>}<span className={`status-dot ${s.present ? 'ok' : 'warn'}`}>{s.present ? 'Salvo' : 'Não salvo'}</span></div>
+            <div className={`${secretEntry} grid-cols-[minmax(0,1fr)_7rem]`}><input type="password" autoComplete="new-password" className={secretInput} data-testid={`secret-${s.name}`} aria-label={`Novo valor de ${s.name}`} placeholder={s.present ? 'Digite um novo valor para substituir' : 'Cole o valor da chave'} value={secretValues[s.name] ?? ''} onChange={(e) => setSecretValues({ ...secretValues, [s.name]: e.target.value })} /><ActionButton className={secretSave} data-testid={`save-secret-${s.name}`} disabled={!(secretValues[s.name] ?? '')} onClick={() => { const value = secretValues[s.name]!; setSecretValues({ ...secretValues, [s.name]: '' }); return p.onSecret(s.name, value); }} icon={<Icon name="check" size={14} />}>Salvar</ActionButton></div>
           </li>
         ))}
         {newSecrets.map((s) => <li key={s.id} className={`${secretRow} border-accent-line bg-accent-soft`}><div className="flex items-center gap-[0.45rem] text-[0.78rem] font-bold text-ink">Nova variável<InfoTip text="Valor sigiloso que o projeto lê para acessar um serviço externo, como NATS_URL com o endereço do servidor de mensagens. Fica salvo neste computador e o valor nunca volta a ser exibido." /></div><div className={`${secretEntry} grid-cols-[minmax(8rem,0.7fr)_minmax(0,1fr)_auto] max-[720px]:grid-cols-1`}><input className={secretInput} aria-label="Nome da chave" placeholder="NOME_DA_CHAVE" value={s.name} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, name: e.target.value.toUpperCase() } : row))} /><input type="password" autoComplete="new-password" className={secretInput} aria-label="Valor da chave" placeholder="Cole o valor da chave" value={s.value} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, value: e.target.value } : row))} /><button className={secretSave} disabled={!/^[A-Z][A-Z0-9_]*$/.test(s.name) || !s.value} onClick={() => { p.onSecret(s.name, s.value); setNewSecrets((rows) => rows.filter((row) => row.id !== s.id)); }}>Salvar<Icon name="check" size={16} /></button></div></li>)}
@@ -740,14 +740,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   const now = stageNow(events, snap.state.cycle);
   return (
     <main className="flex flex-col gap-4 lg:h-full lg:min-h-0">
-      <header className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></Link><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span>
-        <span className={startGroup}>
-          <ActionButton data-testid="start" className="primary flex-auto whitespace-nowrap max-[720px]:w-full" busy={executing} disabled={!canStartRun(snap.state, snap.state.status === 'evaluating')} onClick={startRun} icon={<Icon name="play" size={16} />}>
-            {starting ? 'Iniciando…' : executing ? 'Em execução' : 'Iniciar análise'}
-          </ActionButton>
-          <InfoTip text={startInfo} />
-        </span>
-      </header>
+      <header className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></Link><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span></header>
       {snap.state.status === 'evaluating' && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} />}
       {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phases={phases} link={programPath} />}
       {(error || snap.state.status === 'error') && (
@@ -777,7 +770,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onReject={(id, r) => act(() => refineApi.reject(projectId, specId, id, r))()}
         onSecret={(n, v) => act(() => refineApi.secret(projectId, specId, n, v).then(load))()}
         onStart={startRun}
-        startInHeader
+        startState={{ label: starting ? 'Iniciando…' : executing ? 'Em execução' : 'Iniciar análise', busy: executing }}
         events={events}
       />
     </main>

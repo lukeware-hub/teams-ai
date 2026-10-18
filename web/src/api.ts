@@ -365,7 +365,7 @@ export interface Snapshot {
   specId: string;
   state: RefineState;
   docs: { 'project.md': string; 'brief.md': string; 'stack.md': string; 'flow.md': string; 'design.md': string };
-  secrets: Array<{ name: string; present: boolean; hint: string | null }>;
+  secrets: Array<{ name: string; present: boolean; hint: string | null; uses: Array<{ dependency: string; purpose: string }>; mentions: Array<{ doc: string; heading: string }> }>;
   tokens: { inputTokens: number; outputTokens: number; costUsd: number; steps: number };
   /** The seq of the last journal event the state holds. */
   seq?: number;

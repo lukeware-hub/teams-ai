@@ -367,8 +367,8 @@ describe('RefineSession', () => {
     expect(await fs.readFile(path.join(secretsDir, 'DB_URL'), 'utf8')).toBe('postgres://x');
     expect(s.state.stale).toBe(false);
     expect((await s.snapshot()).secrets).toEqual([
-      { name: 'CUSTOM_KEY', present: true, hint: '****' },
-      { name: 'DB_URL', present: true, hint: '****' },
+      { name: 'CUSTOM_KEY', present: true, hint: '****', uses: [], mentions: [] },
+      { name: 'DB_URL', present: true, hint: '****', uses: [{ dependency: 'db', purpose: 'p' }], mentions: [] },
     ]);
   });
 

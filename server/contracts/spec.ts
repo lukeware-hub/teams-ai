@@ -23,7 +23,7 @@ export const ExternalDependency = z.object({
   /** An internal credential of this project (one service accepts it, another sends it): the platform creates it, a person never types it. */
   generated: z.boolean().optional(),
 });
-type ExternalDependency = z.infer<typeof ExternalDependency>;
+export type ExternalDependency = z.infer<typeof ExternalDependency>;
 
 /** The secrets a person must provide; the generated ones are the platform's to create. */
 export const providedSecretNames = (deps: readonly ExternalDependency[]): string[] => deps.filter((d) => !d.generated).flatMap((d) => d.secretNames);

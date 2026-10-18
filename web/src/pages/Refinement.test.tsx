@@ -12,7 +12,7 @@ const base = (over: Partial<Snapshot['state']>): Snapshot => ({
   projectId: 'hello-app',
   specId: 'hello-001',
   docs: { 'project.md': '# Hello', 'brief.md': '## Objectives', 'stack.md': '# Stack', 'flow.md': '# Flow', 'design.md': '# Design' },
-  secrets: [{ name: 'DB_URL', present: false, hint: null }],
+  secrets: [{ name: 'DB_URL', present: false, hint: null, uses: [], mentions: [] }],
   tokens: { inputTokens: 10, outputTokens: 5, costUsd: 0.02, steps: 3 },
   state: {
     status: 'answering',
@@ -188,8 +188,15 @@ describe('RefinementView backlog mode', () => {
     expect(screen.getByTestId('item-base')).toBeTruthy();
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/backlog está pronto para revisão/i)).toBeTruthy();
-    expect(screen.getByLabelText(/só fica disponível depois de clicar em Detalhar specs/)).toBeTruthy();
     expect(screen.queryByTestId('enable-backlog')).toBeNull();
+  });
+
+  it('puts Iniciar análise right below Reavaliar, with no info icon', () => {
+    render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog })} busy={false} {...on()} /></MemoryRouter>);
+    const evaluate = screen.getByTestId('evaluate');
+    const start = screen.getByTestId('start');
+    expect(evaluate.compareDocumentPosition(start) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(start.querySelector('.info-tip, [data-testid="info-tip"]')).toBeNull();
   });
 
   it('asks the page to detail a ready outline, and describes the briefing as the project briefing', () => {
@@ -357,7 +364,7 @@ describe('RefinementView', () => {
     const snap = base({ status: 'ready', questions: [] });
     render(
       <MemoryRouter>
-        <RefinementView snap={{ ...snap, secrets: [{ name: 'DB_URL', present: true, hint: null }] }} busy={false} {...on()} />
+        <RefinementView snap={{ ...snap, secrets: [{ name: 'DB_URL', present: true, hint: null, uses: [], mentions: [] }] }} busy={false} {...on()} />
       </MemoryRouter>,
     );
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(false);
