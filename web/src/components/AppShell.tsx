@@ -15,7 +15,7 @@ function Rail({ active }: { active: (typeof NAV)[number] | undefined }) {
   return (
     <nav
       aria-label="Navegação principal"
-      className="edge-lit z-10 flex items-center after:hidden gap-2 border-line bg-surface shadow-card max-md:order-last max-md:justify-around max-md:overflow-x-clip max-md:border-t max-md:px-3 max-md:py-2 md:flex-col md:justify-self-center md:self-center md:rounded-[2rem] md:border md:px-2.5 md:py-4"
+      className="edge-lit z-10 flex items-center after:hidden gap-2 border-line bg-surface shadow-card max-md:order-last max-md:justify-around max-md:overflow-x-clip max-md:border-t max-md:px-3 max-md:py-2 md:sticky md:top-4 md:flex-col md:justify-self-center md:self-start md:rounded-[2rem] md:border md:px-2.5 md:py-4"
     >
       <Link
         to="/"
@@ -67,7 +67,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [active]);
   // Each route starts at the top of the content, and the content takes focus for keyboard and screen reader users.
   useEffect(() => {
-    if (content.current) content.current.scrollTop = 0;
+    window.scrollTo(0, 0);
     content.current?.focus({ preventScroll: true });
   }, [pathname]);
   return (
@@ -78,14 +78,14 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         Pular para o conteúdo
       </a>
-      <div className="flex h-dvh flex-col">
+      <div className="flex min-h-dvh flex-col">
         <div className={`mx-auto flex min-h-0 w-full max-w-[110rem] flex-1 flex-col max-md:contents ${rail ? 'md:grid md:grid-cols-[4.5rem_minmax(0,1fr)_4.5rem] md:gap-4 md:px-4 md:pt-4' : 'md:px-4 md:pt-4'}`}>
           {rail ? <Rail active={active} /> : null}
-          <div id="main" ref={content} tabIndex={-1} className="min-h-0 w-full flex-1 overflow-y-auto focus:outline-none max-md:order-1">
+          <div id="main" ref={content} tabIndex={-1} className="min-h-0 w-full flex-1 focus:outline-none max-md:order-1">
             {children}
-            <AppFooter />
           </div>
         </div>
+        <AppFooter />
       </div>
     </SetRail.Provider>
   );

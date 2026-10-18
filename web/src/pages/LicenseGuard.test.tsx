@@ -70,7 +70,7 @@ describe('license gate', () => {
     );
     expect(await screen.findByRole('heading', { name: 'Acesso desativado' })).toBeTruthy();
     expect(screen.queryByRole('navigation', { name: 'Navegação principal' })).toBeNull();
-    expect(document.getElementById('main')?.contains(screen.getByRole('contentinfo'))).toBe(true);
+    expect(document.getElementById('main')?.contains(screen.getByRole('contentinfo'))).toBe(false);
   });
 
   it('hides the rail when the license service does not answer', async () => {
