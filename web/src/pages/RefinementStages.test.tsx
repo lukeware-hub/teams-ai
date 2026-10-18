@@ -102,3 +102,24 @@ describe('a new project refines in two mandatory stages', () => {
     expect(screen.queryByTestId('plan-backlog')).toBeNull();
   });
 });
+
+describe('a question offers its choices as buttons', () => {
+  const options = [
+    { label: 'Citar as subseções', detail: 'O item cita 2.1, 2.2 e 2.3.' },
+    { label: 'Citar a seção inteira', detail: 'O item cita 2 por inteiro.', recommended: true },
+  ];
+
+  it('fills the answer with the chosen option, and marks the recommended one', () => {
+    renderView(project({ status: 'answering', questions: [{ ...question(false), options } as never] }));
+    const second = screen.getByRole('radio', { name: /Citar a seção inteira/ });
+    fireEvent.click(second);
+    expect((screen.getByTestId('answer') as HTMLTextAreaElement).value).toBe('Citar a seção inteira');
+    expect(second.getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByText('Recomendada')).toBeTruthy();
+  });
+
+  it('shows no choices for an open question', () => {
+    renderView(project({ status: 'answering', questions: [question(false) as never] }));
+    expect(screen.queryByRole('radiogroup')).toBeNull();
+  });
+});

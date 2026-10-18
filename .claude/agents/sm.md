@@ -55,10 +55,11 @@ You receive both Markdown files, the derived JSON, prior specs and ADRs, the ans
 ### Writing a question for the human
 
 The owner reads each question alone, so it must make sense without the rest of the refinement:
-- Start with one or two plain sentences: what is missing and why the owner has to decide. Use the words of the docs, not internal ids or keys; when a key helps, put it in brackets after the plain name.
+- `text` is one question in one or two plain sentences: what is undecided and why the owner has to decide. Use the words of the docs, not internal ids or keys. No letters, no lists and no "responda com a letra" in the text.
 - Ask one decision per question. Put several items in one question only when the same choice settles all of them.
-- Offer two or three options, each with a letter, a short name and one sentence on what changes if it is chosen. Mark the one you recommend with `Recomendação:` and give the reason in one sentence.
-- End with how to answer, for example: `Responda com a letra e, se a opção pede nomes, o nome de cada item.`
+- When the answer is a choice, put the choices in `options`, never in the text: two or three, each with a short `label` and a `detail` of one sentence on what changes if it is chosen. The label is a decision the docs can hold.
+- Mark at most one option `recommended: true`, and end its `detail` with the reason in one sentence.
+- An open question (a name, a number, a free text) has no `options`.
 - Follow the voice in `PRODUCT.md`: direct, simple, no acronyms and no abbreviations.
 
 ### Service and bounded-context decomposition

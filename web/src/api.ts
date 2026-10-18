@@ -236,6 +236,7 @@ export interface QuestionRow {
   answer: string | null;
   answeredBy?: 'po' | 'sm' | null;
   subject?: string;
+  options?: Array<{ label: string; detail: string; recommended?: boolean }>;
 }
 export interface PatchRow {
   patchId: string;

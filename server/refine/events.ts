@@ -28,6 +28,12 @@ export const RefineEvent = {
   /** One System 1 decision of Gate 1; same type and record shape as the run journal, so the eval harness reads both. */
   DecisionMade: 'DECISION_MADE',
 } as const;
+/** A choice the owner can pick as the answer; `recommended` marks the one the agent suggests. */
+export interface QuestionChoice {
+  label: string;
+  detail: string;
+  recommended?: boolean;
+}
 export interface Question {
   questionId: string;
   role: 'po' | 'sm';
@@ -37,6 +43,10 @@ export interface Question {
   cycle: number;
   /** A short topic that names the decision heading in the briefing; the question text is the heading when absent. */
   subject?: string;
+  /** The choices the owner can pick from; none for an open question. */
+  options?: QuestionChoice[];
+  /** The validator message a system question answers; its text is plain, so a repeat is recognized on this. */
+  rule?: string;
 }
 /** The journal's specHash field before a spec is frozen. */
 export const DRAFT_HASH = 'draft';

@@ -28,6 +28,7 @@ import { detailBacklog, maxCriterionInDraft, retireDropped } from './detail-cycl
 import { isStarted } from './coverage.js';
 import { DOC_REL, draftHash, flowTemplate, keepBaseProject, readBase, readDerived, readDoc, readMainSpec, stackTemplate, writeBacklogMd, writeDerived, writeDoc, writeProject, writeSpecsIndex, type DocFile, type Draft } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
+import { plainOutlineQuestion } from './question-choices.js';
 import { buildSpecsIndex, outlineOfIndex, specIdOf, type SpecsIndex } from './specs-index.js';
 import type { JevValidationResult, ValidationDocs } from './jev-validation.js';
 import { refinePack } from './packs.js';
@@ -104,7 +105,20 @@ export function failedGapQuestions(backlog: BacklogState | null, cycle: number, 
     const [role, row] = failed.find(([, r]) => r?.issues?.length) ?? [];
     const issue = row?.issues?.[0];
     if (!role || !issue) continue;
-    out.push({ questionId: `gap-c${cycle}-${out.length}`, role, text: `O item ${item.key} (${item.title}) não gerou ${role === 'po' ? 'spec' : 'pré-plano'}: "${issue}". Qual decisão os documentos precisam registrar?`, blocking: true, relatedAcIds: [], cycle });
+    const what = role === 'po' ? 'a spec' : 'o pré-plano';
+    out.push({
+      questionId: `gap-c${cycle}-${out.length}`,
+      role,
+      text: `O item ${item.key} (${item.title}) não conseguiu gerar ${what}: "${issue}". Como o backlog deve tratar isso?`,
+      blocking: true,
+      relatedAcIds: [],
+      cycle,
+      options: [
+        { label: 'Dividir o item em menores', detail: 'O item vira dois ou mais itens, cada um com escopo menor.', recommended: true },
+        { label: 'Reduzir o escopo do item', detail: 'Escreva na resposta o que o item deixa de fazer.' },
+        { label: 'Manter e detalhar nos documentos', detail: 'Escreva na resposta a decisão que falta nos documentos.' },
+      ],
+    });
   }
   return out;
 }
@@ -114,10 +128,11 @@ export function outlineQuestions(issues: readonly string[], cycle: number, asked
   return issues.filter((issue) => !asked.some((text) => text.includes(issue))).map((issue, n) => ({
     questionId: `outline-c${cycle}-${n}`,
     role: 'po' as const,
-    text: `O backlog ainda não fecha: ${issue}. Como o backlog deve tratar isso?`,
+    ...plainOutlineQuestion(issue),
     blocking: true,
     relatedAcIds: [],
     cycle,
+    rule: issue,
   }));
 }
 
@@ -210,7 +225,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       }
       if (!accepted) {
         // Each rule the outline breaks is a question for the owner: the refinement answers it, and the next evaluation derives again.
-        const asked = journal.state.questions.filter((q) => q.status === 'pending').map((q) => q.text);
+        const asked = journal.state.questions.filter((q) => q.status === 'pending').map((q) => q.rule ?? q.text);
         await journal.fact(RefineEvent.Evaluated, { cycle, checklist: journal.state.checklist, questions: outlineQuestions(rejection!, cycle, asked), discardedPatches: [], questionRouting: {}, autoAnswerFloor: null, unverifiedContradictions: [] });
         return;
       }
@@ -379,7 +394,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         seen.add(key);
         const subject = q.subject && q.subject.length <= 80 && !taken.has(norm(q.subject)) ? q.subject : undefined;
         taken.add(norm(subject ?? q.text));
-        merged.push({ questionId: `${role}-c${cycle}-${counters[role]++}`, role, text: q.text, blocking: q.blocking, relatedAcIds: q.relatedAcIds, cycle, ...(subject ? { subject } : {}) });
+        merged.push({ questionId: `${role}-c${cycle}-${counters[role]++}`, role, text: q.text, blocking: q.blocking, relatedAcIds: q.relatedAcIds, cycle, ...(subject ? { subject } : {}), ...(q.options?.length ? { options: q.options } : {}) });
       }
     }
   }
@@ -411,7 +426,18 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       const h = hits[i]!;
       const id = `po-c${cycle}-${counters.po++}`;
       forHuman.add(id);
-      merged.push({ questionId: id, role: 'po', text: `The new spec seems to contradict earlier project history (${h.title}${h.heading ? ` › ${h.heading}` : ''}): "${h.snippet}". Which one holds?`, blocking: true, relatedAcIds: [], cycle });
+      merged.push({
+        questionId: id,
+        role: 'po',
+        text: `A spec nova parece contradizer o histórico do projeto (${h.title}${h.heading ? ` › ${h.heading}` : ''}): "${h.snippet}". Qual dos dois vale?`,
+        blocking: true,
+        relatedAcIds: [],
+        cycle,
+        options: [
+          { label: 'Vale o histórico', detail: 'A spec nova segue o que o histórico registra.' },
+          { label: 'Vale a spec nova', detail: 'O histórico fica como registro antigo e a spec nova segue.' },
+        ],
+      });
     }
   }
   // R11.5.7: the route of each blocking question, journaled for the eval; it answers only at the floor the config fixes or the labels prove.

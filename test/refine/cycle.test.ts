@@ -510,7 +510,7 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
     const r = await autoRouted({ 'Which port?': 0.5 }, undefined, { contradiction: true });
     await r.run(0.9);
     const evaluated = r.events.find((e) => e.type === 'REFINE_EVALUATED')!.data;
-    const contradiction = (evaluated.questions as Array<{ questionId: string; text: string }>).find((q) => q.text.startsWith('The new spec seems to contradict earlier project history'))!;
+    const contradiction = (evaluated.questions as Array<{ questionId: string; text: string }>).find((q) => q.text.startsWith('A spec nova parece contradizer o histórico do projeto'))!;
     expect(r.answered).toEqual([]);
     // Never answered on its own, so never routed either: no Jev call, and no sample the floor could count.
     expect(Object.keys(evaluated.questionRouting as object)).not.toContain(contradiction.questionId);
@@ -570,12 +570,13 @@ describe('refinement cycle questions for failed gaps', () => {
   it('asks the human, as a blocking question, about a spec that failed to generate', () => {
     const questions = failedGapQuestions(backlog({ caso: { spec: null, issues: ['falta a regra do prazo'] } }), 3, []);
     expect(questions).toEqual([expect.objectContaining({ role: 'po', blocking: true, relatedAcIds: [], cycle: 3 })]);
-    expect(questions[0]!.text).toContain('O item caso (Item caso) não gerou spec: "falta a regra do prazo".');
+    expect(questions[0]!.text).toContain('O item caso (Item caso) não conseguiu gerar a spec: "falta a regra do prazo".');
+    expect(questions[0]!.options!.filter((o) => o.recommended)).toHaveLength(1);
   });
 
   it('asks about a pre-plan that failed when its spec is fine', () => {
     const questions = failedGapQuestions(backlog({}, { opme: { issues: ['tarefa sem módulo'] } }), 3, []);
-    expect(questions).toEqual([expect.objectContaining({ role: 'sm', text: expect.stringContaining('não gerou pré-plano') })]);
+    expect(questions).toEqual([expect.objectContaining({ role: 'sm', text: expect.stringContaining('não conseguiu gerar o pré-plano') })]);
   });
 
   it('adds nothing for a gap that only waits for generation, with no issue', () => {
@@ -642,7 +643,7 @@ describe('refinement cycle System 1 filters (decisions 2-4)', () => {
     const texts = (evaluated.data.questions as Array<{ text: string; blocking: boolean }>).map((q) => q.text);
     expect(texts).toContain('Which port?');
     expect(texts).not.toContain('What port does it listen on?');
-    expect(texts.some((t) => t.includes('contradict earlier project history (spec-000 › Ports)'))).toBe(true);
+    expect(texts.some((t) => t.includes('contradizer o histórico do projeto (spec-000 › Ports)'))).toBe(true);
   });
 });
 

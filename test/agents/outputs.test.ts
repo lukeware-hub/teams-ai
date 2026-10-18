@@ -69,6 +69,15 @@ describe('output contracts', () => {
     expect(ok.success).toBe(true);
   });
 
+  it('refine questions carry their choices: a malformed choice is dropped alone, and an open question has none', () => {
+    const base = { specHash: HASH, checklist: [], docPatch: [] };
+    const choice = { label: 'Citar as subseções', detail: 'O item cita 2.1, 2.2 e 2.3.' };
+    const recommended = { label: 'Citar a seção inteira', detail: 'O item cita 2 por inteiro.', recommended: true };
+    const parsed = RefineOutput.parse({ ...base, questions: [{ id: 'q1', text: 'Como citar?', blocking: true, relatedAcIds: [], options: [choice, { label: 'sem detalhe' }, 'texto', recommended] }] });
+    expect(parsed.questions[0]!.options).toEqual([choice, recommended]);
+    expect(RefineOutput.parse({ ...base, questions: [{ id: 'q2', text: 'Qual o nome?', blocking: false, relatedAcIds: [] }] }).questions[0]!.options).toEqual([]);
+  });
+
   it('refine contradictions are optional, and a malformed one is dropped on its own', () => {
     const base = { specHash: HASH, checklist: [], questions: [], docPatch: [] };
     const good = { fact: 'porta', a: { file: 'brief.md', quote: 'porta 8080' }, b: { file: 'flow.md', quote: 'porta 18080' }, fix: 'Alinhe.' };

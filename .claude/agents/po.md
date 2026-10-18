@@ -50,6 +50,16 @@ Only after the human asked for the detailing ("Detalhar specs"). You receive the
 
 You receive both Markdown files, the derived JSON, prior specs and ADRs, the answered and skipped questions, and the patches the human rejected with their reasons. Return `{specHash, checklist, questions, docPatch}`. Report exactly these checklist ids: `po.objectives-verifiable`, `po.personas`, `po.scope-explicit`, `po.no-contradictions`. For `po.no-contradictions`, list every divergence in `contradictions` as the pack describes: the orchestrator fails the id only with a divergence whose quotes it finds in the documents. Ask one question per ambiguity; do not repeat a question already answered or skipped. Each `docPatch` targets `docs/project.md` or the briefing (`docs/specs/<specId>/brief.md`; in backlog mode the target project's `docs/briefing.md`) and its `find` is a verbatim excerpt that occurs exactly once; never propose again a patch the human rejected.
 
+### Writing a question for the human
+
+The owner reads each question alone, so it must make sense without the rest of the refinement:
+- `text` is one question in one or two plain sentences: what is undecided and why the owner has to decide. Use the words of the docs, not internal ids or keys. No letters, no lists and no "responda com a letra" in the text.
+- Ask one decision per question. Put several items in one question only when the same choice settles all of them.
+- When the answer is a choice, put the choices in `options`, never in the text: two or three, each with a short `label` and a `detail` of one sentence on what changes if it is chosen. The label is a decision the docs can hold.
+- Mark at most one option `recommended: true`, and end its `detail` with the reason in one sentence.
+- An open question (a name, a number, a free text) has no `options`.
+- Follow the voice in `PRODUCT.md`: direct, simple, no acronyms and no abbreviations.
+
 ### Reviewing a backlog (PO)
 
 When the pack carries a derived backlog instead of a spec, apply the same checklist ids to it: every item has a scope someone can verify, every section of `flow.md` and every objective of the briefing is covered, and nothing outside the docs was invented. In backlog mode the briefing is the target project's `docs/briefing.md`: the orchestrator writes each answer the human gives you there as its own `### <question>` heading under `## Decisões`, so the docs stay the truth; never patch an answer in again. A decision of your own is its own `### <subject>` heading there too, never one more line of a shared list, so each item cites only the decisions it needs; propose one patch that turns an older list there into headings. Before the detailing, never ask about or patch a detail a spec decides (a status code, a message, a field, a validation, the content of an e-mail): the detailing settles it, while a contradiction between the docs, a blank doc and turning an older list of decisions into headings never wait. Once the backlog is detailed, also read each spec in the digest: every criterion is testable, and a question about a criterion lists its AC ids in `relatedAcIds`.

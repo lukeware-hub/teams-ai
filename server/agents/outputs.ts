@@ -39,6 +39,9 @@ export type Contradiction = z.infer<typeof Contradiction>;
 /** Keeps the valid items of a list: a malformed one is dropped on its own, so it never fails the whole output. */
 const keepValid = <T extends z.ZodType>(item: T) => z.preprocess((v) => (Array.isArray(v) ? v.filter((x) => item.safeParse(x).success) : []), z.array(item));
 
+/** A choice the owner can pick as the answer; `recommended` marks the one the agent suggests. A bad choice is dropped alone. */
+const QuestionChoice = z.object({ label: z.string().min(1), detail: z.string().min(1), recommended: z.boolean().optional().catch(undefined) });
+
 export const RefineOutput = z.object({
   specHash,
   checklist: z.array(z.object({ id: z.string().min(1), passed: z.boolean(), detail: z.string() })),
@@ -48,6 +51,8 @@ export const RefineOutput = z.object({
       text: z.string().min(1),
       blocking: z.boolean(),
       relatedAcIds: z.array(acId).default([]),
+      // The choices the owner picks from; an open question has none.
+      options: keepValid(QuestionChoice),
       // A bad subject is dropped alone; the question still reaches the owner.
       subject: z.string().optional().catch(undefined),
     }),

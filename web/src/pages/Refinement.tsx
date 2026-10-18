@@ -515,6 +515,28 @@ export function RefinementView(p: ViewProps) {
               })}
             </small>
           )}
+          {current.options && current.options.length > 0 && (
+            <div role="radiogroup" aria-label="Opções de resposta" className="mt-4 grid gap-2">
+              <p className="m-0 text-[0.8125rem] text-ink-soft">Escolha uma opção ou escreva a sua resposta abaixo.</p>
+              {current.options.map((o) => (
+                <button
+                  key={o.label}
+                  type="button"
+                  role="radio"
+                  aria-checked={answer === o.label}
+                  disabled={locked}
+                  onClick={() => setAnswer(o.label)}
+                  className={`grid gap-[0.15rem] rounded-lg border px-3 py-2 text-left ${answer === o.label ? 'border-accent-line bg-accent-soft' : 'border-line bg-surface'}`}
+                >
+                  <b className="text-[0.875rem]">
+                    {o.label}
+                    {o.recommended && <span className="ml-2 text-[0.75rem] font-semibold text-accent-text">Recomendada</span>}
+                  </b>
+                  <span className="text-[0.8125rem] text-ink-soft">{o.detail}</span>
+                </button>
+              ))}
+            </div>
+          )}
           <label className="mt-4 mb-[0.4rem] block text-[0.8125rem] font-semibold text-ink-soft" htmlFor="refinement-answer">Sua resposta</label>
           <textarea id="refinement-answer" data-testid="answer" className="min-h-28 w-full resize-y p-4 text-[0.9rem] leading-normal" value={answer} onChange={(e) => setAnswer(e.target.value)} />
           {/* A long label wraps under its text, so the checkbox and the tip sit on the first line. */}
