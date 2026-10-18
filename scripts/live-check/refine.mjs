@@ -8,6 +8,7 @@
 //   question <projectId> <questionId> | getdoc <projectId> <file> | put <projectId> <file> <path>
 //   start <projectId>                    must answer 409 until the backlog is ready (the evaluation details every item)
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 
 const BASE = process.env.TEAMS_AI_URL ?? 'http://localhost:8787/api';
 const CONTAINER = process.env.TEAMS_AI_CONTAINER ?? 'teams-ai-teams-ai-1';
