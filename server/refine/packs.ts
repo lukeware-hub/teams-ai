@@ -40,6 +40,9 @@ const ROLE_OWNERSHIP = {
   front: 'Front owns design.md only: visual direction, tokens, responsiveness, accessibility and states. Front asks no questions.',
 } as const;
 
+/** The documents each role may patch: what it owns, and the shared ones it reviews (see DOC_OWNERS). */
+const PATCH_FILES: Record<'po' | 'sm', readonly DocFile[]> = { po: ['project.md', 'brief.md', 'flow.md'], sm: ['project.md', 'brief.md', 'stack.md', 'flow.md'] };
+
 /** The roles that own each document: the ones whose review carries that document's findings. */
 const DOC_OWNERS: Record<DocFile, ReadonlyArray<'po' | 'sm' | 'front'>> = { 'project.md': ['po'], 'brief.md': ['po'], 'stack.md': ['sm'], 'flow.md': ['po', 'sm'], 'design.md': ['front'] };
 
@@ -141,7 +144,7 @@ export function refinePack(input: {
     `Report exactly these checklist ids: ${ids.join(', ') || '(none; Front reports only design.md patches)'}.`,
     input.role === 'front'
       ? `Patch files: ${rel('design.md')} only. Do not ask questions; return an empty questions array. This is a review, not an implementation task: do not edit or create files, do not run skills, a browser or shell commands, and do not follow your implementation workflow. Read what you need, then reply with the single JSON object and nothing else.`
-      : `Patch files: ${rel('project.md')}, ${rel('brief.md')}.`,
+      : `Patch files: ${PATCH_FILES[input.role].map((file) => rel(file)).join(', ')}.`,
     ...(digested ? [DIGEST_NOTE] : []),
     `### ${rel('project.md')}`,
     d.project,

@@ -113,7 +113,7 @@ describe('refinePack', () => {
     const backlog = { enabled: true, project: null, epics: [{ key: 'core', title: 'Núcleo' }], items: [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'x' }], size: 'S', rank: 1 }], cycle: 1 };
     const pack = refinePack({ ...base, role: 'po', derived: { project: {}, spec: null }, backlog, projectBriefing: true, rejected: [{ file: 'brief.md', find: 'old', decision: 'no' }] } as never);
     expect(pack.feedback).toContain('### docs/briefing.md');
-    expect(pack.feedback).toContain('Patch files: docs/project.md, docs/briefing.md.');
+    expect(pack.feedback).toContain('Patch files: docs/project.md, docs/briefing.md, docs/flow.md.');
     expect(pack.feedback).toContain('- docs/briefing.md: "old" → rejected: no');
     expect(pack.feedback).not.toContain('brief.md');
     expect(pack.feedback).toContain('### derived backlog');
@@ -171,6 +171,12 @@ describe('refinePack moves and findings', () => {
     const finding = { cycle: 1, role: 'po', doc: 'stack.md', severity: 'blocking', quote: '- Node 22', text: 'A versão difere do flow.', fix: 'Alinhe a versão.' };
     expect(refinePack({ ...base, role: 'sm', findings: [finding] } as never).feedback).toContain('- [po] stack.md (blocking): "- Node 22" → A versão difere do flow. Fix: Alinhe a versão.');
     expect(refinePack({ ...base, role: 'po', findings: [finding] } as never).feedback).not.toContain('A versão difere do flow.');
+  });
+
+  it('lets each role patch the documents it owns: the SM its stack.md, the PO not', () => {
+    expect(refinePack({ ...base, role: 'sm' }).feedback).toContain('Patch files: docs/project.md, docs/specs/spec-1/brief.md, docs/stack.md, docs/flow.md.');
+    expect(refinePack({ ...base, role: 'po' }).feedback).toContain('Patch files: docs/project.md, docs/specs/spec-1/brief.md, docs/flow.md.');
+    expect(refinePack({ ...base, role: 'po' }).feedback).not.toContain('docs/stack.md');
   });
 
   it('asks for the spec-scope move only in the detailed review', () => {
