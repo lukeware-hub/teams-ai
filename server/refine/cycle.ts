@@ -150,7 +150,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const fail = (reason: string) => journal.fact(RefineEvent.CycleFailed, { cycle, reason });
   let jevValidation: JevValidationResult | undefined;
   // A confidential project never sends its docs to the OpenRouter: Jev is skipped and the agents run without its findings.
-  const confidential = previous?.project.confidential ?? Project.safeParse(JSON.parse((await readBase(draft, 'project.json')) ?? 'null')).data?.confidential ?? false;
+  const confidential = journal.state.backlog?.project?.confidential ?? previous?.project.confidential ?? Project.safeParse(JSON.parse((await readBase(draft, 'project.json')) ?? 'null')).data?.confidential ?? false;
   if (deps.validateDocs && confidential) {
     jevValidation = { available: true, decision: 'review', consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false };
     await journal.fact(RefineEvent.DocsValidated, { cycle, backend: 'jev', ...jevValidation, skipped: 'confidential' });

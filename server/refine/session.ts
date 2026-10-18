@@ -155,6 +155,9 @@ export function programEntries(draftId: string, backlog: BacklogState, onMain: R
   return entries;
 }
 
+/** Cycles one stage-2 run may spend: the outline, the detail, and one more for what the detail left open. */
+const MAX_PLAN_CYCLES = 3;
+
 export class RefineSession {
   private running: Promise<void> | null = null;
   private abortCtl: AbortController | null = null;
@@ -304,6 +307,10 @@ export class RefineSession {
    *  briefing becomes the target project's docs/briefing.md. */
   async enableBacklog(): Promise<void> {
     this.guard();
+    await this.enableBacklogStep();
+  }
+
+  private async enableBacklogStep(): Promise<void> {
     if (this.state.backlog?.enabled) return;
     // Plan 90: the owner's earlier answers go into the brief before the move, which carries them, so a crash loses none.
     const answered = this.state.questions.filter((q) => q.status === 'answered' && q.answer && !q.answeredBy);
@@ -321,6 +328,10 @@ export class RefineSession {
    *  reviews the outline first, so only a ready outline can be detailed. */
   async enableDetail(): Promise<void> {
     this.guard();
+    await this.enableDetailStep();
+  }
+
+  private async enableDetailStep(): Promise<void> {
     const backlog = this.state.backlog;
     if (backlog?.detail) return;
     // A stale outline is one the human has not seen yet: the next evaluation would re-derive and detail it in one go.
@@ -332,33 +343,70 @@ export class RefineSession {
 
   async evaluate(): Promise<void> {
     this.ensureCanEvaluate();
-    const cycle = this.state.cycle + 1;
     const ctl = (this.abortCtl = new AbortController());
     // Set at once, so no other action slips in while the floor is read.
-    this.running = (async () => {
-      const autoAnswerFloor = await this.deps.autoAnswerFloor?.();
-      // Aborted while the floor was read: no cycle starts at all.
-      if (ctl.signal.aborted) return;
-      await runCycle(
-        {
-          signal: ctl.signal,
-          draft: this.deps.draft,
-          journal: this.journal,
-          runAgent: this.deps.runAgent,
-          frontAgent: this.deps.frontAgent,
-          principles: () => this.state.derived?.project.principles ?? this.state.backlog?.project?.principles ?? [],
-          retrieval: this.deps.retrieval,
-          validateDocs: this.deps.validateDocs,
-          decider: this.deps.decider,
-          autoAnswerFloor,
-        },
-        cycle,
-      );
-    })().finally(() => {
+    this.running = this.cycleOnce(ctl).finally(() => {
       this.running = null;
       this.abortCtl = null;
     });
     await this.running;
+  }
+
+  /** One evaluation cycle; the caller holds the lock, since `running` is set before this runs. */
+  private async cycleOnce(ctl: AbortController): Promise<void> {
+    const cycle = this.state.cycle + 1;
+    const autoAnswerFloor = await this.deps.autoAnswerFloor?.();
+    // Aborted while the floor was read: no cycle starts at all.
+    if (ctl.signal.aborted) return;
+    await runCycle(
+      {
+        signal: ctl.signal,
+        draft: this.deps.draft,
+        journal: this.journal,
+        runAgent: this.deps.runAgent,
+        frontAgent: this.deps.frontAgent,
+        principles: () => this.state.derived?.project.principles ?? this.state.backlog?.project?.principles ?? [],
+        retrieval: this.deps.retrieval,
+        validateDocs: this.deps.validateDocs,
+        decider: this.deps.decider,
+        autoAnswerFloor,
+      },
+      cycle,
+    );
+  }
+
+  /**
+   * Stage 2 of a new project, in one go: the outline, then the detail of every item, then one more cycle for what the detail left
+   * open. The lock is taken before the first await. The chain stops at a question or an error; the next call resumes from the journal.
+   */
+  async startPlan(): Promise<{ done: Promise<void> }> {
+    this.guard();
+    const { backlog, status, stale } = this.state;
+    if (!backlog?.enabled && (status !== 'ready' || stale)) {
+      throw new ConflictError('A etapa 2 começa quando o refinamento dos documentos estiver pronto e sem mudanças pendentes.');
+    }
+    if (this.state.questions.some((q) => q.status === 'pending' && q.blocking)) {
+      throw new ConflictError('Responda às perguntas em aberto antes de quebrar o backlog.');
+    }
+    const ctl = (this.abortCtl = new AbortController());
+    const chain = this.planSteps(ctl).finally(() => {
+      this.running = null;
+      this.abortCtl = null;
+    });
+    this.running = chain;
+    return { done: chain };
+  }
+
+  private async planSteps(ctl: AbortController): Promise<void> {
+    if (!this.state.backlog?.enabled) await this.enableBacklogStep();
+    for (let n = 0; n < MAX_PLAN_CYCLES && !ctl.signal.aborted; n++) {
+      const { backlog, status, stale } = this.state;
+      if (backlog?.detail && status === 'ready' && !stale) return;
+      if (backlog && !backlog.detail && backlog.items.length > 0 && status === 'ready' && !stale) await this.enableDetailStep();
+      await this.cycleOnce(ctl);
+      // A question or an error ends the run: the person answers, and the next call resumes from the journal.
+      if (this.state.status === 'error' || this.state.status === 'answering') return;
+    }
   }
 
   /** Kills the agent processes of a running evaluation and waits for the cycle to wind down. */

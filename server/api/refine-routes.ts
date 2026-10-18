@@ -151,6 +151,15 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     },
     {
       method: 'POST',
+      path: `${S}/backlog/plan`,
+      handler: wrap(async ({ params, json }) => {
+        const { done } = await (await get(params)).startPlan();
+        done.catch((err: Error) => deps.log?.(`refine ${params.projectId}/${params.specId}: ${err.message}`));
+        json(202, { ok: true });
+      }),
+    },
+    {
+      method: 'POST',
       path: `${S}/answers`,
       handler: wrap(async ({ params, body, json }) => {
         const b = await body();
