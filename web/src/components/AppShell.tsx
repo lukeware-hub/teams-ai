@@ -83,9 +83,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           {rail ? <Rail active={active} /> : null}
           <div id="main" ref={content} tabIndex={-1} className="min-h-0 w-full flex-1 overflow-y-auto focus:outline-none max-md:order-1">
             {children}
+            <AppFooter />
           </div>
         </div>
-        <AppFooter />
       </div>
     </SetRail.Provider>
   );

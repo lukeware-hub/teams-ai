@@ -57,7 +57,7 @@ describe('license gate', () => {
     expect(screen.queryByText('app aberto')).toBeNull();
   });
 
-  it('hides the rail when access is turned off and keeps the footer outside the content', async () => {
+  it('hides the rail when access is turned off and keeps the footer inside the scrolling content', async () => {
     vi.spyOn(api, 'license').mockResolvedValue({ state: 'revoked', contactEmail: 'admin@lukeware.com', contactPhone: '+55 11 0000-0000' });
     render(
       <MemoryRouter>
@@ -70,7 +70,7 @@ describe('license gate', () => {
     );
     expect(await screen.findByRole('heading', { name: 'Acesso desativado' })).toBeTruthy();
     expect(screen.queryByRole('navigation', { name: 'Navegação principal' })).toBeNull();
-    expect(document.getElementById('main')?.contains(screen.getByRole('contentinfo'))).toBe(false);
+    expect(document.getElementById('main')?.contains(screen.getByRole('contentinfo'))).toBe(true);
   });
 
   it('hides the rail when the license service does not answer', async () => {
