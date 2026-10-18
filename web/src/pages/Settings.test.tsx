@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, runApi, settingsApi, type Item, type ProjectRow, type Status } from '../api.js';
+import { api, refineApi, runApi, settingsApi, type Item, type ProjectRow, type Status } from '../api.js';
 import { SettingsPage } from './Settings.js';
 
 afterEach(() => {
@@ -37,6 +37,16 @@ async function openModelsCollapse() {
 }
 
 describe('SettingsPage', () => {
+  it('lists a project in refinement, so its agents can be configured before it is registered', async () => {
+    mockEnv();
+    vi.spyOn(runApi, 'projects').mockResolvedValue([]);
+    vi.spyOn(refineApi, 'list').mockResolvedValue([{ projectId: 'kayron-hub', specId: 'kayron-hub-001', state: 'drafting' }] as never);
+    vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents });
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
+    expect(await screen.findByRole('option', { name: 'kayron-hub' })).toBeTruthy();
+    await waitFor(() => expect(settingsApi.agents).toHaveBeenCalledWith('kayron-hub'));
+  });
+
   it('shows the global environment collapses separate from project agents', async () => {
     mockEnv();
     vi.spyOn(runApi, 'projects').mockResolvedValue([project]);

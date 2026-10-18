@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AGENT_EFFORTS, AGENT_MODELS, api, runApi, settingsApi, type AgentChoice, type AgentEffort, type AgentModel, type AgentRow, type AgentSetting, type Item, type ItemName, type ProjectRow, type Status } from '../api.js';
+import { AGENT_EFFORTS, AGENT_MODELS, api, refineApi, runApi, settingsApi, type AgentChoice, type AgentEffort, type AgentModel, type AgentRow, type AgentSetting, type Item, type ItemName, type ProjectRow, type Status } from '../api.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { LoginCard } from '../components/LoginCard.js';
@@ -129,7 +129,7 @@ function EnvironmentSettings() {
 }
 
 export function SettingsPage() {
-  const [projects, setProjects] = useState<ProjectRow[] | null>(null);
+  const [projects, setProjects] = useState<Array<Pick<ProjectRow, 'projectId' | 'name'>> | null>(null);
   const [projectId, setProjectId] = useState('');
   const [agents, setAgents] = useState<AgentRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -140,9 +140,13 @@ export function SettingsPage() {
   };
 
   useEffect(() => {
-    runApi.projects().then((list) => {
-      setProjects(list);
-      setProjectId(list[0]?.projectId ?? '');
+    // A project in refinement is listed too, so its agents can be set before it is registered.
+    Promise.all([runApi.projects(), refineApi.list().catch(() => [])]).then(([list, drafts]) => {
+      const registered = new Set(list.map((p) => p.projectId));
+      const inRefinement = [...new Set(drafts.map((d) => d.projectId))].filter((id) => !registered.has(id)).map((projectId) => ({ projectId, name: projectId }));
+      const all = [...list, ...inRefinement];
+      setProjects(all);
+      setProjectId(all[0]?.projectId ?? '');
     }).catch(() => setError('Não foi possível carregar os projetos.'));
   }, []);
 
