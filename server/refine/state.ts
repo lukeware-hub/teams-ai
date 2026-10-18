@@ -21,6 +21,16 @@ export interface PatchRow extends PendingPatch {
   status: 'pending' | 'accepted' | 'rejected' | 'dropped';
   decision: string | null;
 }
+/** A finding one role reported on a document it does not own; kept only when its quote is in that document. */
+export interface FindingRow {
+  cycle: number;
+  role: 'po' | 'sm' | 'front';
+  doc: DocFile;
+  severity: 'blocking' | 'advice';
+  quote: string;
+  text: string;
+  fix: string;
+}
 /** A move applied at once: the text cut from one document and added to another, with what undo needs to put both back. */
 export interface MoveRow {
   moveId: string;
@@ -100,6 +110,8 @@ export interface RefineState {
   questions: QuestionRow[];
   patches: PatchRow[];
   moves: MoveRow[];
+  /** The findings of the last cycle whose quotes the documents show, replaced every cycle. */
+  findings: FindingRow[];
   discarded: Array<{ cycle: number; role: string; file: string; reason: string }>;
   error: string | null;
   runId: string | null;
@@ -117,6 +129,7 @@ export const emptyRefineState = (): RefineState => ({
   questions: [],
   patches: [],
   moves: [],
+  findings: [],
   discarded: [],
   error: null,
   runId: null,
@@ -196,6 +209,9 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
     }
     case RefineEvent.DocMoved:
       s.moves.push({ ...(d as unknown as Omit<MoveRow, 'status'>), status: 'applied' });
+      break;
+    case RefineEvent.FindingsReported:
+      s.findings = (d.findings as FindingRow[] | undefined) ?? [];
       break;
     case RefineEvent.DocMoveUndone: {
       const m = s.moves.find((x) => x.moveId === String(d.moveId));

@@ -14,6 +14,8 @@ export const RefineEvent = {
   DocMoved: 'DOC_MOVED',
   /** The owner undid a move, so both documents went back to their earlier text. */
   DocMoveUndone: 'DOC_MOVE_UNDONE',
+  /** The findings of one cycle whose quotes the documents show; they replace the earlier list. */
+  FindingsReported: 'FINDINGS_REPORTED',
   QuestionAnswered: 'QUESTION_ANSWERED',
   QuestionSkipped: 'QUESTION_SKIPPED',
   SecretWritten: 'SECRET_WRITTEN',

@@ -6,8 +6,8 @@ import { outputContract } from '../orchestrator/steps.js';
 import { PO_ITEMS, SM_ITEMS } from './checklist.js';
 import { coverageGaps, isStarted } from './coverage.js';
 import { buildWithDocs, DIGEST_NOTE } from './docs-view.js';
-import { DOC_REL, flowTemplate, stackTemplate } from './draft.js';
-import type { BacklogState, PatchRow, QuestionRow } from './state.js';
+import { DOC_REL, type DocFile, flowTemplate, stackTemplate } from './draft.js';
+import type { BacklogState, FindingRow, PatchRow, QuestionRow } from './state.js';
 import { jevHint, type JevValidationResult } from './jev-validation.js';
 
 /** A stack.md or flow.md that is still the blank template is filled by the SM in one patch each; nobody is asked about a placeholder. */
@@ -40,7 +40,13 @@ const ROLE_OWNERSHIP = {
   front: 'Front owns design.md only: visual direction, tokens, responsiveness, accessibility and states. Front asks no questions.',
 } as const;
 
-const rolesRule = (role: 'po' | 'sm' | 'front') => `ROLES IN THIS REVIEW: PO, SM and Front read the same documents at the same time, and none sees what the others propose in this cycle. ${ROLE_OWNERSHIP.po} ${ROLE_OWNERSHIP.sm} ${ROLE_OWNERSHIP.front} You are the ${role.toUpperCase()}: ask or patch only inside what you own. A problem in another area belongs to the role that owns it. A fact that differs between two documents is the PO's; something that cannot be built is the SM's.`;
+/** The roles that own each document: the ones whose review carries that document's findings. */
+const DOC_OWNERS: Record<DocFile, ReadonlyArray<'po' | 'sm' | 'front'>> = { 'project.md': ['po'], 'brief.md': ['po'], 'stack.md': ['sm'], 'flow.md': ['po', 'sm'], 'design.md': ['front'] };
+
+/** Any role may move content that sits in the wrong document; the move is applied at once and the owner can undo it. */
+const MOVE_RULE = 'MOVES: content that sits in the wrong document, judged by the document charter in your instructions, is moved, not patched. Return one entry in `moves` per piece: `from` and `to` are document paths as listed above; `quote` is the whole lines to take out of `from`, copied character for character and found once in it; `text` is the same content written for `to` in that document style, keeping every fact, number and name; `after` is an exact existing line of `to` to place the text below, or absent to append at the end; `reason` says why it belongs in `to`. Any role may move content between any two documents. Move only a clear misplacement, never wording or polish, and never touch a decision under the decisions heading of the briefing. Moves are not held back by the convergence rule: a misplaced piece moves in every cycle. Each move is applied at once and the owner can undo it, so keep moves small and at most 3 per review.';
+
+const rolesRule = (role: 'po' | 'sm' | 'front') => `ROLES IN THIS REVIEW: PO, SM and Front read the same documents at the same time, and none sees what the others propose in this cycle. ${ROLE_OWNERSHIP.po} ${ROLE_OWNERSHIP.sm} ${ROLE_OWNERSHIP.front} You are the ${role.toUpperCase()}: ask or patch only inside what you own. A problem in another area belongs to the role that owns it, except content in the wrong document: any role may move that (MOVES below). A fact that differs between two documents is the PO's; something that cannot be built is the SM's.`;
 
 /** Every role reads all five documents from its own point of view and reports what it sees outside its area as a finding. */
 const FINDINGS_RULE = 'FINDINGS: read all five documents through your own lens, and report a defect in a document you do not own as an entry in `findings` (doc, severity blocking or advice, the exact quote copied character for character, the problem in text, and the fix). Report at most 3 findings per document, and only a defect that would make the implementation wrong or untestable. A finding never replaces the checklist ids of your own role.';
@@ -49,7 +55,7 @@ const FINDINGS_RULE = 'FINDINGS: read all five documents through your own lens, 
 const OUTLINE_REVIEW_RULE = 'Outline review (no spec yet): never ask about or patch a detail a spec decides, such as a status code, a message, a field, a validation or the content of an e-mail; the detailing settles it, so a missing detail fails no checklist id now, and this narrows the flow.md review and the Jev preflight notes. It never holds back a contradiction between the docs, a split into services the docs leave open, filling a blank stack.md or flow.md, or turning an older list of decisions into headings.';
 
 /** Detailed backlog: the review reads a digest of every spec and pre-plan, the gaps, and full JSON only for what changed. */
-const DETAIL_REVIEW_RULE = 'Detailed backlog: every item has a spec (PO) and a pre-plan (SM), summarized below with the coverage gaps the orchestrator found; full JSON follows only for the items that changed this cycle. Read the checklist ids against them too: po.objectives-verifiable = every acceptance criterion is testable, and checkable with what its own item and the items it depends on, directly or through others, deliver; sm.tasks-feasible = every pre-plan is deliverable and covers its criteria. Specs change only through the docs: to change one, record the decision in docs/briefing.md (or docs/project.md) through a docPatch, or ask the human; never patch a generated file. Put the AC ids a question is about in relatedAcIds. Each gap with a problema line is a blocking question for the human, naming the item key. An item marked entregue or em execução is frozen: its spec already started or was delivered, it has no pre-plan here, and it is never reviewed, questioned or patched.';
+const DETAIL_REVIEW_RULE = 'Detailed backlog: every item has a spec (PO) and a pre-plan (SM), summarized below with the coverage gaps the orchestrator found; full JSON follows only for the items that changed this cycle. Read the checklist ids against them too: po.objectives-verifiable = every acceptance criterion is testable, and checkable with what its own item and the items it depends on, directly or through others, deliver; sm.tasks-feasible = every pre-plan is deliverable and covers its criteria. Specs change only through the docs: to change one, record the decision in docs/briefing.md (or docs/project.md) through a docPatch, or ask the human; never patch a generated file. Put the AC ids a question is about in relatedAcIds. A criterion or task carrying content of another document (a visual rule, a technology, an order of steps) points to misplaced source text: move that text in the documents, never edit a generated spec. Each gap with a problema line is a blocking question for the human, naming the item key. An item marked entregue or em execução is frozen: its spec already started or was delivered, it has no pre-plan here, and it is never reviewed, questioned or patched.';
 
 /** Up to this many tokens the review also carries the full JSON of the items that changed this cycle. */
 const REVIEW_TOKENS = 100_000;
@@ -91,6 +97,8 @@ export function refinePack(input: {
   rejected: readonly PatchRow[];
   /** Suggestions an earlier cycle made that still wait for the owner. */
   pending?: readonly PatchRow[];
+  /** The findings the last cycle verified, from the state; each role sees the ones about its own documents. */
+  findings?: readonly FindingRow[];
   jevValidation?: JevValidationResult;
   /** Decision 2: criteria System 1 judged not ready; null or absent means no hint. */
   notReady?: readonly string[] | null;
@@ -109,6 +117,7 @@ export function refinePack(input: {
   const openQuestions = input.history.filter((q) => q.status === 'pending').map((q) => `- [${q.role}] ${q.text}`);
   const rejected = input.rejected.map((p) => `- ${rel(p.file)}: "${p.find.slice(0, 80)}" → rejected${p.decision ? `: ${p.decision}` : ''}`);
   const pending = (input.pending ?? []).map((p) => `- ${rel(p.file)}: "${p.find.slice(0, 80)}" → ${clip(p.reason, 120)}`);
+  const findingLines = (input.findings ?? []).filter((f) => DOC_OWNERS[f.doc].includes(input.role)).map((f) => `- [${f.role}] ${f.doc} (${f.severity}): "${clip(f.quote, 120)}" → ${clip(f.text, 200)} Fix: ${clip(f.fix, 200)}`).join('\n');
   const ids = input.role === 'po' ? PO_ITEMS : input.role === 'sm' ? SM_ITEMS : [];
   const parts = (d: Record<'project' | 'brief' | 'stack' | 'flow' | 'design', string | undefined>, digested: boolean) => [
     `LANGUAGE (mandatory): write every question, checklist detail, patch reason, summary, and explanation 100% in Brazilian Portuguese, even when project.md, ${brief}, the acceptance criteria, or this prompt are in English. Never copy English sentences into a question; translate the idea. Keep only technical identifiers, JSON keys, file names, HTTP status codes, and checklist ids unchanged.`,
@@ -119,10 +128,11 @@ export function refinePack(input: {
         : 'flow.md is context for you: do not review it.',
     ...(input.role === 'po' ? [NO_CONTRADICTIONS_RULE] : []),
     input.role === 'front'
-      ? `Treat design.md as the frontend source of truth. Validate distinctive web and mobile direction, responsive states, accessibility, keyboard focus, reduced motion, touch targets, and consistency with project.md, ${brief}, stack.md, and flow.md. Reject generic AI-looking UI choices and propose a precise patch when design.md is incomplete or contradictory. Write every new design.md heading, description, label, and patch reason in Brazilian Portuguese; preserve only technical identifiers, file names, code, and color tokens.`
+      ? `Treat design.md as the frontend source of truth. Validate distinctive web and mobile direction, responsive states, accessibility, keyboard focus, reduced motion, touch targets, and consistency with project.md, ${brief}, stack.md, and flow.md. Reject generic AI-looking UI choices and propose a precise patch when design.md is incomplete or contradictory. A process order, business rule, endpoint or technology written in design.md is a move to the document that holds it, not a patch. Write every new design.md heading, description, label, and patch reason in Brazilian Portuguese; preserve only technical identifiers, file names, code, and color tokens.`
       : `design.md is Front's: read it as context, never ask about it or patch it. Report it only as a contradiction with another document.`,
     rolesRule(input.role),
     FINDINGS_RULE,
+    MOVE_RULE,
     ...(input.derived.spec ? [] : [BACKLOG_REVIEW_RULE, ...(input.role === 'front' ? [] : [DECISION_RULE])]),
     ...(detail ? [DETAIL_REVIEW_RULE] : []),
     ...(input.derived.spec || detail || input.role === 'front' ? [] : [OUTLINE_REVIEW_RULE]),
@@ -163,6 +173,8 @@ export function refinePack(input: {
     rejected.join('\n') || '(none)',
     '### Pending suggestions (already proposed, waiting for the owner: do not propose them again, not even reworded)',
     pending.join('\n') || '(none)',
+    '### Findings about your documents from the other roles (each quote was checked against the document it names: fix it with a patch or a move, or say why not)',
+    findingLines || '(none)',
   ];
   // A detailed backlog keeps room under REVIEW_TOKENS for the full JSON of the items that changed.
   let feedback = buildWithDocs({ project: input.projectMd, brief: input.briefMd, stack: input.stackMd, flow: input.flowMd, design: input.designMd }, (d, digested) => parts(d, digested).join('\n\n'), detail ? REVIEW_TOKENS - 20_000 : undefined);

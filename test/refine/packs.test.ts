@@ -157,6 +157,29 @@ describe('refinePack', () => {
   });
 });
 
+describe('refinePack moves and findings', () => {
+  it('every role may move misplaced content, and the move rule reaches every review', () => {
+    for (const role of ['po', 'sm', 'front'] as const) {
+      const feedback = refinePack({ ...base, role }).feedback ?? '';
+      expect(feedback).toContain('MOVES: content that sits in the wrong document');
+      expect(feedback).toContain('except content in the wrong document: any role may move that');
+    }
+    expect(refinePack({ ...base, role: 'front' }).feedback).toContain('is a move to the document that holds it, not a patch');
+  });
+
+  it('shows each role only the findings about the documents it owns', () => {
+    const finding = { cycle: 1, role: 'po', doc: 'stack.md', severity: 'blocking', quote: '- Node 22', text: 'A versão difere do flow.', fix: 'Alinhe a versão.' };
+    expect(refinePack({ ...base, role: 'sm', findings: [finding] } as never).feedback).toContain('- [po] stack.md (blocking): "- Node 22" → A versão difere do flow. Fix: Alinhe a versão.');
+    expect(refinePack({ ...base, role: 'po', findings: [finding] } as never).feedback).not.toContain('A versão difere do flow.');
+  });
+
+  it('asks for the spec-scope move only in the detailed review', () => {
+    const backlog = { enabled: true, project: null, epics: [{ key: 'core', title: 'Núcleo' }], items: [], cycle: 1, detail: true, flowHeadings: [] };
+    expect(refinePack({ ...base, role: 'po', derived: { project: {}, spec: null }, backlog, projectBriefing: true, cycle: 3 } as never).feedback).toContain('never edit a generated spec');
+    expect(refinePack({ ...base, role: 'po' }).feedback).not.toContain('never edit a generated spec');
+  });
+});
+
 describe('refinePack in detail mode', () => {
   const H = `sha256:${'1'.repeat(64)}`;
   const REV = `sha256:${'2'.repeat(64)}`;

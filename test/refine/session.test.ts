@@ -316,16 +316,29 @@ describe('RefineSession', () => {
     await expect(s.undoMove('move-po-c1-0')).rejects.toBeInstanceOf(ConflictError);
   });
 
+  it('refuses to undo a move once one of its two documents changed after it', async () => {
+    await writeDoc(draft(), 'project.md', '# Hello\n\n## Visão\n\nApp de teste.\n\nO usuário valida o código antes do login.\n');
+    await writeDoc(draft(), 'flow.md', '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n');
+    const s = await RefineSession.create(deps(), 'new-project');
+    script['derive/po'] = [derived];
+    script['refine/po'] = [refineOut(green(PO), [], [], [{ from: 'docs/project.md', to: 'docs/flow.md', quote: 'O usuário valida o código antes do login.', text: 'O usuário valida o código antes do login.', reason: 'ordem de passos' }])];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await s.evaluate();
+    await s.saveDoc('flow.md', `${await readDoc(draft(), 'flow.md')}\nEditado pelo dono.\n`);
+    await expect(s.undoMove('move-po-c1-0')).rejects.toThrow(/mudou depois dela/);
+    expect(s.state.moves[0]!.status).toBe('applied');
+  });
+
   it('fills a stack.md or flow.md that is still the blank template, straight from the SM patch; an edited one is left to the usual patch flow', async () => {
     const s = await RefineSession.create(deps(), 'new-project');
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO))];
     script['refine/sm'] = [refineOut(green(SM), [], [
-      { file: 'docs/stack.md', find: '# Stack', replace: '# Stack\n\n- Runtime: Node 22\n', reason: 'preencher' },
+      { file: 'docs/stack.md', find: '# Stack', replace: '# Stack\n\n## Runtime\n\n- Node 22\n\n## Frameworks\n\n- Express\n\n## Storage\n\n- SQLite\n\n## Tooling\n\n- Vitest\n', reason: 'preencher' },
       { file: 'docs/flow.md', find: '# Application flow', replace: '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n', reason: 'preencher' },
     ])];
     await s.evaluate();
-    expect(await readDoc(draft(), 'stack.md')).toBe('# Stack\n\n- Runtime: Node 22\n');
+    expect(await readDoc(draft(), 'stack.md')).toBe('# Stack\n\n## Runtime\n\n- Node 22\n\n## Frameworks\n\n- Express\n\n## Storage\n\n- SQLite\n\n## Tooling\n\n- Vitest\n');
     expect(await readDoc(draft(), 'flow.md')).toContain('flowchart TD');
     expect(s.state.patches.filter((x) => x.status === 'pending')).toHaveLength(0);
     expect(s.state.discarded).toHaveLength(0);

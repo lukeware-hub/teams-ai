@@ -95,6 +95,14 @@ function recorded(decider: Pick<Decider, 'decide'>, journal: Pick<Journal, 'fact
 const BLANK_FILES = ['stack.md', 'flow.md'] as const;
 const BLANK_TEMPLATE: Record<(typeof BLANK_FILES)[number], () => string> = { 'stack.md': stackTemplate, 'flow.md': flowTemplate };
 
+/** The SM fills a blank template only with text that keeps its shape: a Mermaid diagram for flow.md, the template's headings for stack.md. */
+function fillsTemplate(file: (typeof BLANK_FILES)[number], text: string): boolean {
+  const template = BLANK_TEMPLATE[file]();
+  if (text.trim() === '' || text.trim() === template.trim()) return false;
+  if (file === 'flow.md') return flowIsMermaid(text);
+  return template.split('\n').filter((line) => line.startsWith('## ')).every((heading) => text.includes(heading));
+}
+
 /** A role may move at most this many pieces of content in one cycle; the rest are discarded with the reason. */
 const MAX_MOVES_PER_ROLE = 3;
 
@@ -356,7 +364,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       pack: fitPackBudget(refinePack({ role: 'front', specHash: hash, principles: deps.principles(), specId: draft.specId,
         projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'],
         derived, backlog, retrieval: [], history: journal.state.questions,
-        rejected: journal.state.patches.filter((p) => p.status === 'rejected'), pending: journal.state.patches.filter((p) => p.status === 'pending'), jevValidation, projectBriefing: backlogMode, cycle })),
+        rejected: journal.state.patches.filter((p) => p.status === 'rejected'), pending: journal.state.patches.filter((p) => p.status === 'pending'), findings: journal.state.findings, jevValidation, projectBriefing: backlogMode, cycle })),
       cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, ctx);
     let review = await askFront();
     // The model now and then drops a required field of one suggestion. The suggestions are advice, so one more try, and then the cycle goes on without them instead of failing.
@@ -389,6 +397,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           history: state.questions,
           rejected: state.patches.filter((p) => p.status === 'rejected'),
           pending: state.patches.filter((p) => p.status === 'pending'),
+          findings: state.findings,
           jevValidation,
           notReady,
           projectBriefing: backlogMode,
@@ -416,6 +425,14 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     { role: 'po', moves: po.value.moves ?? [] },
     { role: 'sm', moves: sm.value.moves ?? [] },
   ], discardedPatches);
+  // A finding stands only when its quote is in the document it names: a claim the documents do not show is not routed to the owner.
+  const reported = [
+    ...(frontReview?.findings ?? []).map((f) => ({ ...f, role: 'front' as const })),
+    ...(po.value.findings ?? []).map((f) => ({ ...f, role: 'po' as const })),
+    ...(sm.value.findings ?? []).map((f) => ({ ...f, role: 'sm' as const })),
+  ];
+  const kept = reported.filter((f) => docs[f.doc].includes(f.quote)).map(({ role, doc, severity, quote, text, fix }) => ({ cycle, role, doc, severity, quote, text, fix }));
+  await journal.fact(RefineEvent.FindingsReported, { cycle, findings: kept });
   let frontIndex = 0;
   for (const p of frontReview?.docPatch ?? []) {
     const c = checkPatch(p, draft.specId, docs, backlogMode);
@@ -530,7 +547,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       // A stack.md or flow.md that is still the blank template is filled by the SM straight away: nobody has anything
       // to review in a placeholder, and asking the human what to put there is the friction this avoids.
       const blank = role === 'sm' ? BLANK_FILES.find((f) => DOC_REL[f](draft.specId) === p.file && docs[f] === BLANK_TEMPLATE[f]()) : undefined;
-      if (blank && p.replace.trim() !== '' && p.replace.trim() !== BLANK_TEMPLATE[blank]().trim()) {
+      if (blank && fillsTemplate(blank, p.replace)) {
         await writeDoc(draft, blank, p.replace);
         docs[blank] = await readDoc(draft, blank);
         await journal.fact(RefineEvent.DocEdited, { file: blank, hash: sha256(docs[blank]), source: 'autofill' });

@@ -65,23 +65,23 @@ describe('refinement cycle Jev advisory', () => {
   });
 });
 
-describe('refinement cycle content moves', () => {
+describe('refinement cycle: moves, findings and template fills', () => {
   const MOVED = 'O cliente confirma o pedido antes do pagamento.';
-  /** Runs one cycle of a new project whose project.md holds MOVED and whose flow.md is a diagram; `po` and `sm` answer with the given moves and patches. */
-  async function run(poMoves: unknown[], smOutput: { moves?: unknown[]; docPatch?: unknown[] }) {
+  /** Runs one cycle of a new project whose project.md holds MOVED; flow.md is a diagram unless `blankFlow` keeps the blank template. */
+  async function run(poOutput: { moves?: unknown[]; findings?: unknown[] }, smOutput: { moves?: unknown[]; docPatch?: unknown[] }, { blankFlow = false, projectMd = `# Shop\n\n## Visão\n\nLoja online.\n\n${MOVED}\n` } = {}) {
     const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
     const ws = { projectId: 'shop', root, repo: `${root}/repo`, worktrees: `${root}/wt`, graph: `${root}/g`, knowledgeDb: `${root}/k.sqlite`, secrets: `${root}/secrets`, runs: `${root}/runs` } as Workspace;
     const draft = draftPaths(ws, 'shop-002');
     await createNewProject(draft, 'Shop');
-    await writeFile(draft.projectMd, `# Shop\n\n## Visão\n\nLoja online.\n\n${MOVED}\n`);
-    await writeFile(draft.flowMd, '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n');
+    await writeFile(draft.projectMd, projectMd);
+    if (!blankFlow) await writeFile(draft.flowMd, '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n');
     const events: Array<{ type: string; data: Record<string, unknown> }> = [];
     const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'shop/shop-002', specHash: 'draft', type, kind: 'fact' as const, data }; } };
     const ok = (value: unknown) => ({ ok: true, value, summary: {} });
     const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
     const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...makeSpec(), specId: 'shop-002', acceptanceCriteria: [{ id: 'AC-001', given: 'g', when: 'w', then: 't2', smoke: false }] } });
-      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [], moves: poMoves });
+      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [], ...poOutput });
       return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [], ...smOutput });
     });
     await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [] }, 1);
@@ -90,7 +90,7 @@ describe('refinement cycle content moves', () => {
   const move = { from: 'docs/project.md', to: 'docs/flow.md', quote: MOVED, text: MOVED, reason: 'ordem de passos' };
 
   it('applies a move before the patches are checked, so a suggestion quoting the moved text is discarded', async () => {
-    const { events, draft } = await run([move], { docPatch: [{ file: 'docs/project.md', find: 'O cliente confirma o pedido', replace: 'O cliente paga', reason: 'r' }] });
+    const { events, draft } = await run({ moves: [move] }, { docPatch: [{ file: 'docs/project.md', find: 'O cliente confirma o pedido', replace: 'O cliente paga', reason: 'r' }] });
     expect(events.find((e) => e.type === 'DOC_MOVED')?.data).toMatchObject({ moveId: 'move-po-c1-0', from: 'project.md', to: 'flow.md' });
     expect(await readFile(draft.projectMd, 'utf8')).not.toContain(MOVED);
     expect(await readFile(draft.flowMd, 'utf8')).toContain(MOVED);
@@ -100,11 +100,42 @@ describe('refinement cycle content moves', () => {
   });
 
   it('refuses a move a second role repeats, since its quote is already gone, so the text moves once', async () => {
-    const { events, draft } = await run([move], { moves: [move] });
+    const { events, draft } = await run({ moves: [move] }, { moves: [move] });
     expect(events.filter((e) => e.type === 'DOC_MOVED').map((e) => e.data.moveId)).toEqual(['move-po-c1-0']);
     const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
     expect(evaluated.data.discardedPatches).toContainEqual({ role: 'sm', file: 'docs/project.md', reason: 'quote must be whole lines found once in project.md' });
     expect((await readFile(draft.flowMd, 'utf8')).split(MOVED).length - 1).toBe(1);
+  });
+
+  it('discards the fourth move of one role in a cycle, and the first three still apply', async () => {
+    const quotes = ['Linha A.', 'Linha B.', 'Linha C.', 'Linha D.'];
+    const moves = quotes.map((quote) => ({ from: 'docs/project.md', to: 'docs/flow.md', quote, text: quote, reason: 'r' }));
+    const { events } = await run({ moves }, {}, { projectMd: `# Shop\n\n${quotes.join('\n\n')}\n` });
+    expect(events.filter((e) => e.type === 'DOC_MOVED').map((e) => e.data.moveId)).toEqual(['move-po-c1-0', 'move-po-c1-1', 'move-po-c1-2']);
+    const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
+    expect(evaluated.data.discardedPatches).toContainEqual({ role: 'po', file: 'docs/project.md', reason: 'more than 3 moves in one cycle' });
+  });
+
+  it('keeps a finding only when its quote is in the document it names', async () => {
+    const shown = { doc: 'design.md', severity: 'advice', quote: '## Brand and direction', text: 'Falta a paleta.', fix: 'Defina as cores.' };
+    const { events } = await run({ findings: [shown, { ...shown, quote: 'um trecho que não existe' }] }, {});
+    expect(events.find((e) => e.type === 'FINDINGS_REPORTED')?.data.findings).toEqual([{ cycle: 1, role: 'po', doc: 'design.md', severity: 'advice', quote: '## Brand and direction', text: 'Falta a paleta.', fix: 'Defina as cores.' }]);
+  });
+
+  it('fills a blank stack.md only when it keeps the template headings; otherwise it is a patch for the human', async () => {
+    const { events, draft } = await run({}, { docPatch: [{ file: 'docs/stack.md', find: '# Stack', replace: '# Stack\n\n- Node 22\n', reason: 'r' }] }, { blankFlow: true });
+    expect(await readFile(draft.stackMd, 'utf8')).not.toContain('Node 22');
+    expect(events.find((e) => e.type === 'PATCH_PROPOSED')?.data).toMatchObject({ role: 'sm', file: 'stack.md' });
+  });
+
+  it('fills a blank flow.md only with a diagram; any other text stays a patch for the human', async () => {
+    const fill = (replace: string) => ({ file: 'docs/flow.md', find: '# Application flow', replace, reason: 'r' });
+    const prose = await run({}, { docPatch: [fill('# Fluxo\n\nTexto sem diagrama.\n')] }, { blankFlow: true });
+    expect(await readFile(prose.draft.flowMd, 'utf8')).not.toContain('Texto sem diagrama');
+    expect(prose.events.find((e) => e.type === 'PATCH_PROPOSED')?.data).toMatchObject({ role: 'sm', file: 'flow.md' });
+    const diagram = await run({}, { docPatch: [fill('# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n')] }, { blankFlow: true });
+    expect(await readFile(diagram.draft.flowMd, 'utf8')).toContain('flowchart TD');
+    expect(diagram.events.some((e) => e.type === 'PATCH_PROPOSED')).toBe(false);
   });
 });
 

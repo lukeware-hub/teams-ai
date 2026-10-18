@@ -11,6 +11,21 @@ const patch = (patchId: string) => ({ patchId, role: 'sm', file: 'brief.md', fin
 const derived = { project: makeProject(), spec: { ...makeSpec(), status: 'refining', specHash: null } };
 const cycle = (n: number) => [{ type: RefineEvent.CycleStarted, data: { cycle: n, draftHash: 'h' } }, { type: RefineEvent.Derived, data: { cycle: n, ...derived } }];
 
+describe('reduceRefineEvents moves and findings', () => {
+  it('folds a move into the list with its status, and an undo marks it undone', () => {
+    const row = { moveId: 'move-po-c1-0', role: 'po', cycle: 1, from: 'project.md', to: 'flow.md', reason: 'r', quote: 'q', text: 't', removedAt: 0, removed: 'q\n', insertAt: 3, inserted: '\nt\n', fromHash: 'a', toHash: 'b' };
+    const s = reduceRefineEvents([{ type: RefineEvent.DocMoved, data: row }, { type: RefineEvent.DocMoveUndone, data: { moveId: 'move-po-c1-0' } }]);
+    expect(s.moves).toEqual([{ ...row, status: 'undone' }]);
+  });
+
+  it('replaces the findings with those of each cycle, so a cycle without findings clears the list', () => {
+    const finding = { cycle: 1, role: 'sm', doc: 'flow.md', severity: 'advice', quote: 'q', text: 't', fix: 'f' };
+    const kept = reduceRefineEvents([{ type: RefineEvent.FindingsReported, data: { cycle: 1, findings: [finding] } }]);
+    expect(kept.findings).toEqual([finding]);
+    expect(reduceRefineEvents([{ type: RefineEvent.FindingsReported, data: { cycle: 1, findings: [finding] } }, { type: RefineEvent.FindingsReported, data: { cycle: 2, findings: [] } }]).findings).toEqual([]);
+  });
+});
+
 describe('reduceRefineEvents', () => {
   it('evaluates into answering when questions or patches are pending', () => {
     const s = reduceRefineEvents([
