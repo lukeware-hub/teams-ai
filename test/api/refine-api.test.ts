@@ -256,12 +256,10 @@ describe('refine api', () => {
     await call('POST', `${url}/evaluate`);
     await settle();
     expect((await snapshot()).state.status).toBe('ready');
-    expect((await call('POST', `${url}/backlog/detail`)).status).toBe(200);
-    expect((await call('POST', `${url}/backlog/detail`)).status).toBe(200);
     script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
     script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
     // The docs did not change, so the outline is not asked again: there is no second backlog answer scripted.
-    expect((await call('POST', `${url}/evaluate`)).status).toBe(202);
+    expect((await call('POST', `${url}/backlog/detail`)).status).toBe(202);
     await settle();
     const snap = await snapshot();
     expect(snap.state.error).toBeNull();
@@ -340,10 +338,9 @@ describe('refine api', () => {
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }, { checklist: SM, questions: [], docPatch: [] }];
     await call('POST', `${url}/evaluate`);
     await settle();
-    await call('POST', `${url}/backlog/detail`);
     script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
     script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
-    await call('POST', `${url}/evaluate`);
+    await call('POST', `${url}/backlog/detail`);
     await settle();
     spawnShouldFail = true;
     const failed = await call('POST', `${url}/start`);
@@ -367,10 +364,9 @@ describe('refine api', () => {
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }, { checklist: SM, questions: [], docPatch: [] }];
     await call('POST', `${url}/evaluate`);
     await settle();
-    await call('POST', `${url}/backlog/detail`);
     script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
     script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
-    await call('POST', `${url}/evaluate`);
+    await call('POST', `${url}/backlog/detail`);
     await settle();
     const file = `${home}/ws/hello-app/refine/hello-app-001/docs/specs/base/spec.json`;
     await fs.writeFile(file, JSON.stringify({ ...JSON.parse(await fs.readFile(file, 'utf8')), status: 'retired' }));
@@ -390,10 +386,9 @@ describe('refine api', () => {
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }, { checklist: SM, questions: [], docPatch: [] }];
     await call('POST', `${url}/evaluate`);
     await settle();
-    await call('POST', `${url}/backlog/detail`);
     script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
     script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
-    await call('POST', `${url}/evaluate`);
+    await call('POST', `${url}/backlog/detail`);
     await settle();
     for (const q of (await snapshot()).state.questions) {
       await call('POST', `${url}/answers`, { questionId: q.questionId, text: q.text.includes('JSON') ? 'Sim, application/json.' : 'Hello.' });
@@ -421,10 +416,9 @@ describe('refine api', () => {
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }, { checklist: SM, questions: [], docPatch: [] }];
     await call('POST', `${url}/evaluate`);
     await settle();
-    await call('POST', `${url}/backlog/detail`);
     script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
     script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
-    await call('POST', `${url}/evaluate`);
+    await call('POST', `${url}/backlog/detail`);
     await settle();
     spawnShouldFail = true;
     expect((await call('POST', `${url}/start`)).status).toBe(500);
@@ -456,10 +450,9 @@ describe('refine api', () => {
     // An outline that is ready but not detailed never starts by itself.
     await registry.tickPrograms();
     expect(spawns).toHaveLength(0);
-    await call('POST', `${url}/backlog/detail`);
     script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
     script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
-    await call('POST', `${url}/evaluate`);
+    await call('POST', `${url}/backlog/detail`);
     await settle();
     expect((await snapshot()).state.status).toBe('ready');
     spawnShouldFail = true;
@@ -513,10 +506,9 @@ describe('refine api', () => {
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }, { checklist: SM, questions: [], docPatch: [] }];
     await call('POST', `${url}/evaluate`);
     await settle();
-    await call('POST', `${url}/backlog/detail`);
     script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
     script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
-    await call('POST', `${url}/evaluate`);
+    await call('POST', `${url}/backlog/detail`);
     await settle();
     const ready = (await snapshot()).state;
     expect(ready.status).toBe('ready');
@@ -541,10 +533,9 @@ describe('refine api', () => {
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }, { checklist: SM, questions: [], docPatch: [] }];
     await call('POST', `${url}/evaluate`);
     await settle();
-    await call('POST', `${url}/backlog/detail`);
     script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
     script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
-    await call('POST', `${url}/evaluate`);
+    await call('POST', `${url}/backlog/detail`);
     await settle();
     await registry.tickPrograms();
     expect(spawns).toHaveLength(0);
@@ -614,8 +605,8 @@ describe('refine api', () => {
     expect((await call('PUT', '/api/refine/hello-app/hello-app-001/secrets/DB_URL', { value: '' })).status).toBe(400);
     expect(await fs.readFile(`${home}/ws/hello-app/secrets/DB_URL`, 'utf8')).toBe('postgres://secret');
     expect((await (await fetch(`${base()}/api/refine/hello-app/hello-app-001`)).json()).secrets).toEqual([
-      { name: 'CUSTOM_KEY', present: true, hint: '****' },
-      { name: 'DB_URL', present: true, hint: '****' },
+      { name: 'CUSTOM_KEY', present: true, hint: '****', uses: [], mentions: [] },
+      { name: 'DB_URL', present: true, hint: '****', uses: [{ dependency: 'db', purpose: 'p' }], mentions: [] },
     ]);
   });
 
@@ -626,7 +617,7 @@ describe('refine api', () => {
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
     await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
     await settle();
-    expect((await (await fetch(`${base()}/api/refine/hello-app/hello-app-001`)).json()).secrets).toEqual([{ name: 'DB_URL', present: false, hint: null }]);
+    expect((await (await fetch(`${base()}/api/refine/hello-app/hello-app-001`)).json()).secrets).toEqual([{ name: 'DB_URL', present: false, hint: null, uses: [{ dependency: 'db', purpose: 'p' }], mentions: [] }]);
   });
 
   it('start freezes the spec, spawns run --draft with the draft root, registers it, and refuses when stale', async () => {

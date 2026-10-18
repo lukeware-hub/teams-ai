@@ -143,8 +143,10 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       method: 'POST',
       path: `${S}/backlog/detail`,
       handler: wrap(async ({ params, json }) => {
-        await (await get(params)).enableDetail();
-        json(200, { ok: true });
+        const s = await get(params);
+        await s.enableDetail();
+        s.evaluate().catch((err: Error) => deps.log?.(`refine ${params.projectId}/${params.specId}: ${err.message}`));
+        json(202, { ok: true });
       }),
     },
     {
