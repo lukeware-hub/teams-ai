@@ -51,6 +51,10 @@ describe('backlogPack', () => {
     expect(pack.feedback).toContain('chave reservada: primary');
   });
 
+  it('states the 40-character limit of keys and dependsOn', () => {
+    expect(backlogPack(input()).feedback).toContain('at most 40 characters');
+  });
+
   it('keeps every doc in the pack once fitted, even for a 50 KB flow', () => {
     const built = buildContextPack(fitPackBudget(backlogPack(input({ flowMd: `%% 1. A\n${'x'.repeat(50_000)}` }))));
     expect(built.dropped).toEqual([]);
@@ -76,6 +80,13 @@ describe('postProcessBacklog', () => {
     const out = postProcessBacklog({ project: makeProject(), backlog: { epics: [{ key: 'core', title: 'Core' }], items: [{ ...item('a'), priority: 'P9' }] } }, null, {});
     expect(out).toMatchObject({ ok: false });
     if (!out.ok) expect(out.issues.join('\n')).toMatch(/backlog\.items\.0\.priority/);
+  });
+
+  it('reports a too long dependsOn entry with its value, so the retry can fix it', () => {
+    const long = 'a'.repeat(41);
+    const out = postProcessBacklog(raw([item('a', { dependsOn: [long] })]), null, {});
+    expect(out).toMatchObject({ ok: false });
+    if (!out.ok) expect(out.issues).toEqual([`backlog.items.0.dependsOn.0: Too big: expected string to have <=40 characters (got "${long}")`]);
   });
 
   it('reports rule violations, including flow sections no item cites', () => {

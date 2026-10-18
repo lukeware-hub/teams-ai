@@ -20,7 +20,7 @@ const RULES = [
   '- priority: P0 = walking skeleton and the foundations everything else needs; P1 = the core value flow; P2 = important, can follow; P3 = later or optional. `rationale` says why in one sentence (value, risk, dependency).',
   `- dependsOn lists the keys an item cannot ship without. A dependency is never lower priority than its dependent, there are no cycles, and there are at most ${MAX_ITEMS} items.`,
   '- Treat any explicit priority, cut, merge or split instruction written in the docs (above all briefing.md) as binding.',
-  '- key: a short slug. Keep the key of every item that still exists in the previous backlog so the ids derived from them stay stable.',
+  '- key: a short lowercase slug of at most 40 characters, the same limit for every epic key and every dependsOn entry. dependsOn repeats the exact key of another item, never its title. Keep the key of every item that still exists in the previous backlog so the ids derived from them stay stable.',
   '- Never write an item whose key ends in -ajuste-<n>: the orchestrator adds one, after its original, for each "## Ajuste aprovado:" section of briefing.md.',
   '- When the sections an item cites did not change, keep its title, scope and sources verbatim from the previous backlog, adding only the citation of each new decision that changes what it delivers: a reworded item has its spec and pre-plan derived again.',
   'Also return `project`: the project.json derived from project.md and stack.md, exactly as in a normal derivation (with `services` and `platform` when the docs give them). ' + SERVICE_NAMING,
@@ -84,13 +84,15 @@ function keepPreviousKeys(items: readonly BacklogItem[], previous: BacklogState 
   return items.map((i) => ({ ...i, key: rename.get(i.key) ?? i.key, dependsOn: i.dependsOn.map((d) => rename.get(d) ?? d) }));
 }
 
+const valueAt = (root: unknown, path: readonly PropertyKey[]): unknown => path.reduce<unknown>((v, k) => (v as Record<PropertyKey, unknown> | undefined)?.[k], root);
+
 /** The orchestrator, not the agent, owns key stability, validity and rank, keeps every started item (R11.7.5) and adds the adjustments the owner approved (R11.7.4). */
 export function postProcessBacklog(out: { project: unknown; backlog: unknown }, previous: BacklogState | null, docs: Partial<BacklogDocs>, approved: readonly string[] = [], started: readonly BacklogItem[] = []): BacklogCheck {
   const project = Project.safeParse(out.project);
   const backlog = Backlog.safeParse(out.backlog);
   const issues = [
     ...(project.success ? [] : project.error.issues.map((i) => `project.${i.path.join('.')}: ${i.message}`)),
-    ...(backlog.success ? [] : backlog.error.issues.map((i) => `backlog.${i.path.join('.')}: ${i.message}`)),
+    ...(backlog.success ? [] : backlog.error.issues.map((i) => `backlog.${i.path.join('.')}: ${i.message}${i.code === 'too_big' ? ` (got "${String(valueAt(out.backlog, i.path))}")` : ''}`)),
   ];
   if (!project.success || !backlog.success) return { ok: false, issues };
   const items = keepPreviousKeys(backlog.data.items.filter((i) => !isAdjustment(i.key)), previous);
