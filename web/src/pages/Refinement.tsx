@@ -224,7 +224,7 @@ function Checklist({ items, role }: { items: ChecklistItem[]; role: 'po' | 'sm' 
 export function RefinementView(p: ViewProps) {
   const { snap, busy } = p;
   const st = snap.state;
-  const [tab, setTab] = useState<DocFile>('brief.md');
+  const [tab, setTab] = useState<DocFile>('flow.md');
   const [docs, setDocs] = useState(snap.docs);
   const [suggesting, setSuggesting] = useState(false);
   const [askRe, setAskRe] = useState(false);

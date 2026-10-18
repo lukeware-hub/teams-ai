@@ -205,6 +205,7 @@ describe('RefinementView backlog mode', () => {
     expect(screen.getByText(/clique em Detalhar specs/)).toBeTruthy();
     fireEvent.click(screen.getByTestId('detail-specs'));
     expect(h.onEnableDetail).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: 'briefing.md' }));
     expect(screen.getByTestId('doc-impact').textContent).toMatch(/Briefing do projeto/);
   });
 
@@ -213,6 +214,7 @@ describe('RefinementView backlog mode', () => {
     const h = { ...on(), onEnableDetail: vi.fn() };
     const { rerender } = render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog })} busy={false} {...h} /></MemoryRouter>);
     const review = screen.getByRole('heading', { name: 'Área de revisão' }).closest('section') as HTMLElement;
+    fireEvent.click(screen.getByRole('button', { name: 'briefing.md' }));
     const documents = screen.getByTestId('doc-brief.md').closest('section') as HTMLElement;
     const next = within(review).getByText('Próximo passo:');
     expect(review.contains(screen.getByTestId('detail-specs'))).toBe(true);
@@ -270,6 +272,7 @@ describe('RefinementView backlog mode', () => {
     const oldSingleSpec = { spec: { type: 'feature' as const, acceptanceCriteria: [{ id: 'AC-001', given: 'g', when: 'w', then: 't', smoke: false }], externalDependencies: [] }, project: {} };
     const { container } = render(<MemoryRouter><RefinementView snap={base({ ...ready, status: 'answering', questions: [question], derived: oldSingleSpec, backlog: detailed as never })} busy={false} {...on()} /></MemoryRouter>);
     expect((container.querySelector('.question-criteria') as HTMLElement).querySelector('[aria-label^="AC-007: dado o serviço no ar"]')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'briefing.md' }));
     expect(screen.getByLabelText('briefing.md editor')).toBeTruthy();
   });
 
@@ -373,6 +376,7 @@ describe('RefinementView', () => {
         <RefinementView snap={base({ status: 'ready', questions: [], patches: [] })} busy={false} {...h} />
       </MemoryRouter>,
     );
+    fireEvent.click(screen.getByRole('button', { name: 'briefing.md' }));
     fireEvent.change(screen.getByTestId('doc-brief.md'), { target: { value: '## Objectives\n- ship' } });
     fireEvent.blur(screen.getByTestId('doc-brief.md'));
     expect(h.onSaveDoc).toHaveBeenCalledWith('brief.md', '## Objectives\n- ship');
@@ -395,6 +399,7 @@ describe('RefinementView', () => {
         <RefinementView snap={base({ status: 'evaluating', questions: [], patches: [] })} busy={true} {...on()} />
       </MemoryRouter>,
     );
+    fireEvent.click(screen.getByRole('button', { name: 'briefing.md' }));
     expect((screen.getByTestId('doc-brief.md') as HTMLTextAreaElement).readOnly).toBe(true);
     expect((screen.getByTestId('evaluate') as HTMLButtonElement).disabled).toBe(true);
     render(
@@ -472,6 +477,7 @@ describe('RefinementView', () => {
         />
       </MemoryRouter>,
     );
+    fireEvent.click(screen.getByRole('button', { name: 'briefing.md' }));
     expect(screen.getByTestId('doc-impact').textContent).toContain('spec.json');
     expect(screen.getByTestId('spec-type').textContent).toContain('Bug');
     expect(screen.getByTestId('bug-details').textContent).toContain('GET /todos');
@@ -505,6 +511,7 @@ describe('RefinementView: a new spec in an existing project', () => {
     expect(screen.getByTestId('docs-group-spec').textContent).toContain('Spec');
     expect(screen.getByTestId('docs-group-project').textContent).toContain('Contexto do projeto');
     expect(screen.getByTestId('docs-group-project').textContent).toContain('muda só com sua aprovação');
+    fireEvent.click(screen.getByRole('button', { name: 'briefing.md' }));
     expect(screen.getByTestId('doc-brief.md')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: /\.md$/ }).map((b) => b.textContent)).toEqual(['briefing.md', 'flow.md', 'project.md', 'stack.md', 'design.md']);
     unmount();
