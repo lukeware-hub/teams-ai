@@ -190,7 +190,18 @@ export interface RefineLimits {
 }
 
 /** Past the release round, a spec with no pending human decision may start even while a check still fails. */
-export function released(s: RefineState, limits: RefineLimits): boolean {
+/** The part of the state the release reads; the page's state shape carries the same fields. */
+export interface ReleaseInput {
+  status: RefineStatus;
+  stale: boolean;
+  cycle: number;
+  derived: unknown;
+  questions: ReadonlyArray<{ status: string; blocking: boolean }>;
+  patches: ReadonlyArray<{ status: string; replace: string }>;
+  backlog?: { enabled: boolean; detail?: boolean | null } | null;
+}
+
+export function released(s: ReleaseInput, limits: RefineLimits): boolean {
   if (s.cycle < limits.release) return false;
   if (s.status === 'evaluating' || s.status === 'started' || s.status === 'error') return false;
   if (s.stale || !s.derived) return false;

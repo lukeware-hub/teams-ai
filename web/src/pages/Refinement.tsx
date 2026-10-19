@@ -14,6 +14,7 @@ import { allGreen, isApproval } from '@server/refine/state';
 import type { Divergence, DivergenceSide } from '@server/refine/checklist';
 import { BacklogPanel } from '../refine/BacklogPanel.js';
 import { MoveNotice } from '../refine/MoveNotice.js';
+import { released } from '@server/refine/state';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { ProcessingBanner } from '../refine/ProcessingBanner.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
@@ -291,11 +292,13 @@ export function RefinementView(p: ViewProps) {
     setAnswer('');
     setDocsAnswered(false);
   }, [current?.questionId]);
-  const canStart = canStartRun(st, busy);
+  const canStart = canStartRun(st, busy, snap.limits);
+  // Past the lock round, another evaluation is refused by the server: the button says so instead of failing.
+  const atMax = snap.limits !== undefined && st.cycle >= snap.limits.max;
   const backlogOn = st.backlog?.enabled === true;
   // A new project's refinement has two mandatory stages: the documents, then the backlog the program runs from.
   const newProject = st.mode === 'new-project';
-  const stageStep = newProject ? stageAction(st) : null;
+  const stageStep = newProject ? stageAction({ ...st, released: snap.limits !== undefined && released(st, snap.limits) }) : null;
   // In stage 2 the backlog is what the person checks, so it leads the quality column.
   const backlogFirst = newProject && backlogOn;
   const backlogBlock = (
@@ -332,6 +335,8 @@ export function RefinementView(p: ViewProps) {
     ? 'Os agentes estão executando o backlog, até duas specs ao mesmo tempo quando não mexem no mesmo código. Acompanhe cada uma na tela de execução do backlog.'
     : st.status === 'evaluating'
     ? null
+    : atMax
+    ? `Limite de ${snap.limits?.max} rodadas atingido. Revise os documentos e inicie a análise, ou ajuste TEAMS_AI_REFINE_MAX_ROUNDS no .env.`
     : jevAdvisory
     ? 'O Jev apontou pontos nos documentos. Ajuste o que fizer sentido e clique em Reavaliar.'
     : stageStep === 'answer'
@@ -352,6 +357,8 @@ export function RefinementView(p: ViewProps) {
             : 'O backlog está pronto para revisão. Para mudar prioridades ou cortes, escreva no briefing.md e reavalie.'
         : st.backlog?.detail && !backlogDetailed
           ? 'O detalhamento ainda não cobre todos os itens: clique em Reavaliar para gerar a spec e o pré-plano do que falta; o que faltar aparece em vermelho na cobertura.'
+        : canStart && !green
+          ? `Executar liberado após ${snap.limits?.release} rodadas, com critérios ainda reprovados: ${st.checklist.filter((c) => !c.passed).map((c) => c.id).join(', ')}. Você decide: inicie agora ou corrija os documentos e reavalie.`
         : canStart
           ? 'Tudo pronto. Clique em Iniciar análise para os agentes desenvolverem o projeto.'
           : st.cycle === 0
@@ -493,7 +500,7 @@ export function RefinementView(p: ViewProps) {
       <div className="mb-4 flex flex-wrap items-center gap-3">
         {newProject && (stageStep === 'start' || stageStep === 'started') && startButton}
         {showEvaluate && (
-        <ActionButton data-testid="evaluate" className={`${newProject && stageStep !== 'evaluate' ? 'secondary' : 'primary'} min-w-40 flex-auto`} busy={evaluating} disabled={locked} onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
+        <ActionButton data-testid="evaluate" className={`${newProject && stageStep !== 'evaluate' ? 'secondary' : 'primary'} min-w-40 flex-auto`} busy={evaluating} disabled={locked || atMax} onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
           {st.cycle === 0 ? 'Avaliar' : 'Reavaliar'}
         </ActionButton>
         )}
@@ -800,7 +807,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
     <main className="flex flex-col gap-4 lg:h-full lg:min-h-0">
       <header className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></Link><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span></header>
       <MoveNotice moves={snap.state.moves ?? []} onUndo={(moveId) => act(() => refineApi.undoMove(projectId, specId, moveId))()} docName={docName} />
-      {snap.state.mode === 'new-project' && <StageBar stages={stageOf(snap.state)} />}
+      {snap.state.mode === 'new-project' && <StageBar stages={stageOf({ ...snap.state, released: snap.limits !== undefined && released(snap.state, snap.limits) })} />}
       {snap.state.status === 'evaluating' && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}
       {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phases={phases} link={programPath} />}
       {(error || snap.state.status === 'error') && (

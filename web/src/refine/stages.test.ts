@@ -76,3 +76,11 @@ describe('stageTitle', () => {
     expect(stageTitle({ status: 'evaluating', stale: false, backlog: outline })).toBe('Avaliando o backlog');
   });
 });
+
+describe('released stages', () => {
+  it('a released spec with checks failing offers the start and marks documents done', () => {
+    const st: StageInput = { status: 'answering', stale: false, released: true, backlog: { enabled: true, detail: true, items: [] } };
+    expect(stageAction(st)).toBe('start');
+    expect(stageOf(st).map((s) => s.state)).toEqual(['done', 'done', 'active']);
+  });
+});

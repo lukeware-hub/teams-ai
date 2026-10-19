@@ -4,6 +4,7 @@ import { refineApi, runApi, type ProgramView, type ProgramViewItem, type RefineS
 import { ActionButton } from '../components/ActionButton.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
+import { released, type RefineLimits } from '@server/refine/state';
 import { explainStop, phaseTitle } from '../run/selectors.js';
 import { action, panel, sectionHeading, sectionTitle } from '../pages/project-shared.js';
 
@@ -54,8 +55,9 @@ export function ItemReason({ status, reason }: { status: ProgramViewItem['status
   );
 }
 
-export function canStartRun(st: Pick<RefineState, 'status' | 'stale' | 'backlog' | 'mode'>, busy: boolean): boolean {
-  if (st.status !== 'ready' || st.stale || busy) return false;
+export function canStartRun(st: Pick<RefineState, 'status' | 'stale' | 'backlog' | 'mode'>, busy: boolean, limits?: RefineLimits): boolean {
+  const open = st.status === 'ready' || (limits !== undefined && released(st as RefineState, limits));
+  if (!open || st.stale || busy) return false;
   // A new project starts only after its stage 2, the backlog it runs from.
   if (st.mode === 'new-project' && !st.backlog?.enabled) return false;
   return st.backlog?.enabled ? st.backlog.detail === true : true;
