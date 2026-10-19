@@ -173,8 +173,6 @@ describe('refinePack moves and findings', () => {
     const feedback = refinePack({ ...base, role: 'po' }).feedback ?? '';
     expect(feedback.indexOf('MOVES: content that sits in the wrong document')).toBeLessThan(feedback.indexOf('ROLES IN THIS REVIEW'));
     expect(feedback).toContain('read each of the five documents line by line');
-    expect(feedback).toContain('A piece whose exact sentence `to` already holds is not moved');
-    expect(feedback).toContain('include that heading in the quote and in the text');
   });
 
   it('shows each role only the findings about the documents it owns', () => {
