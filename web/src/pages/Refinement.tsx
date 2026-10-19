@@ -508,7 +508,7 @@ export function RefinementView(p: ViewProps) {
                   aria-checked={answer === o.label}
                   disabled={locked}
                   onClick={() => setAnswer(o.label)}
-                  className={`grid gap-[0.15rem] rounded-lg border px-3 py-2 text-left ${answer === o.label ? 'border-accent-line bg-accent-soft' : 'border-line bg-surface'}`}
+                  className={`h-auto grid gap-[0.15rem] rounded-lg border px-3 py-2 text-left ${answer === o.label ? 'border-accent-line bg-accent-soft' : 'border-line bg-surface'}`}
                 >
                   <b className="text-[0.875rem]">
                     {o.label}
