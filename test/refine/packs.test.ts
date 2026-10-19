@@ -166,6 +166,7 @@ describe('refinePack moves and findings', () => {
     }
     expect(refinePack({ ...base, role: 'front' }).feedback).toContain('is a move to the document that holds it, not a patch');
     expect(refinePack({ ...base, role: 'front' }).feedback).toContain('A visual value written in the briefing (a color, size or contrast) is a move to design.md too');
+    expect(refinePack({ ...base, role: 'front' }).feedback).toContain('A patch never replaces or deletes such a line');
   });
 
   it('reads the move rule before the roles, and asks for a line-by-line check', () => {
