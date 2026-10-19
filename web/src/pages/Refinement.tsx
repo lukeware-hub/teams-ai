@@ -2,7 +2,7 @@ import { Fragment, memo, useEffect, useMemo, useRef, useState, type ReactNode } 
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, refineApi, type AcceptanceCriterion, type ChecklistItem, type Snapshot, type StoredEvent } from '../api.js';
 import { docToJson } from '../refine/docJson.js';
-import { applyToSnapshot, type LiveSnapshot } from '../refine/reducer.js';
+import { applyBatch, type LiveSnapshot } from '../refine/reducer.js';
 import { useJournal } from '../useSse.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
@@ -762,18 +762,15 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   const programPath = `/refine/${projectId}/${specId}/program`;
   useEffect(() => {
     if (!snap) return;
-    let next: LiveSnapshot = snap;
-    for (const e of events) {
-      if (e.seq <= applied.current) continue;
-      applied.current = e.seq;
-      next = applyToSnapshot(next, e);
-      // A started backlog opens its execution screen, which follows every spec with its own run link.
-      if (e.type === 'REFINE_STARTED_RUN') navigate(next.state.backlog?.enabled ? programPath : `/runs/${String(e.data.runId)}`);
-    }
-    if (next !== snap) {
-      if (next.docsDirty) void load();
-      else setSnap(next);
-    }
+    const fresh = events.filter((e) => e.seq > applied.current);
+    if (fresh.length === 0) return;
+    applied.current = fresh[fresh.length - 1].seq;
+    const next = applyBatch(snap, fresh);
+    // A started backlog opens its execution screen, which follows every spec with its own run link.
+    const started = fresh.filter((e) => e.type === 'REFINE_STARTED_RUN').pop();
+    if (started) navigate(next.state.backlog?.enabled ? programPath : `/runs/${String(started.data.runId)}`);
+    if (next.docsDirty) void load();
+    else setSnap(next);
   }, [events, snap]);
   if (!snap) return (
     <main>

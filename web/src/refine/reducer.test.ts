@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Snapshot } from '../api.js';
-import { applyToSnapshot } from './reducer.js';
+import { applyBatch, applyToSnapshot } from './reducer.js';
 
 const snap: Snapshot = {
   projectId: 'p',
@@ -31,6 +31,15 @@ describe('applyToSnapshot', () => {
     expect(on.state.backlog).toMatchObject({ enabled: true, items: [] });
     const derived = applyToSnapshot(on, ev(2, 'BACKLOG_DERIVED', { cycle: 1, project: {}, epics: [{ key: 'core', title: 'Core' }], items: [{ key: 'base', rank: 1 }] }));
     expect(derived.state.backlog?.items).toHaveLength(1);
+    expect(snap.state.backlog).toBeUndefined();
+  });
+
+  it('applies a batch the same as one event at a time, without touching the original', () => {
+    const batch = [ev(1, 'BACKLOG_ENABLED', {}), ev(2, 'DOC_EDITED', { file: 'brief.md', hash: 'x', source: 'patch' })];
+    const one = batch.reduce((acc, e) => applyToSnapshot(acc, e), snap);
+    const together = applyBatch(snap, batch);
+    expect(together).toEqual(one);
+    expect(together.docsDirty).toBe(true);
     expect(snap.state.backlog).toBeUndefined();
   });
 });
