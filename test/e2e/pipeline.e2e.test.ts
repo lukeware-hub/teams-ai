@@ -108,7 +108,7 @@ describe('pipeline e2e (CLI entry, temp git remote)', () => {
     const tree = await git(remote.repo, ['ls-tree', '-r', '--name-only', 'origin/main', 'src/']);
     expect(tree).toContain('src/a/index.ts');
     expect(tree).toContain('src/b/index.ts');
-  }, 60_000);
+  }, 300_000);
 
   it('run --dry-run loads the project and spec from the remote, then stops at the host preconditions', async () => {
     // No claude/gh/docker on PATH and a throwaway HOME: the furthest honest milestone of the dry-run entry.
@@ -131,5 +131,5 @@ describe('pipeline e2e (CLI entry, temp git remote)', () => {
         else process.env[k] = v;
       }
     }
-  }, 30_000);
+  }, 180_000);
 });

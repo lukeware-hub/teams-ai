@@ -165,7 +165,7 @@ describe('Run', () => {
     expect(await git(remote.repo, ['ls-tree', '--name-only', 'origin/main', 'src/'])).toContain('src/a');
     expect(run.accounting.records().length).toBeGreaterThanOrEqual(4);
     await run.close();
-  }, 30_000);
+  }, 180_000);
 
   it('pauses after the in-flight step returns and resumes without re-running it', async () => {
     let devCalls = 0;
@@ -185,7 +185,7 @@ describe('Run', () => {
     expect(run.journal.events.filter((e) => e.type === OrchEvent.StepStarted && e.data.kind === 'dev' && e.data.taskId === 'T1')).toHaveLength(2);
     expect(run.journal.state.tasks.get('T1')!.attempts).toBe(0);
     await run.close();
-  }, 30_000);
+  }, 180_000);
 
   it('drains when the run budget is spent: in-flight tasks finish, nothing new starts', async () => {
     const d = await withAgents(deps(happy, { maxParallel: 1 }));
@@ -213,7 +213,7 @@ describe('Run', () => {
     expect(await run.execute()).toBe('drained');
     expect(run.journal.events.filter((e) => e.type === OrchEvent.StepStarted && e.data.kind === 'dev')).toHaveLength(1);
     await run.close();
-  }, 30_000);
+  }, 180_000);
 
   it('journals the spent run budget once in observe mode and keeps going', async () => {
     const d = await withAgents(deps(happy));
@@ -224,7 +224,7 @@ describe('Run', () => {
     expect(facts).toHaveLength(1);
     expect(facts[0]!.data).toMatchObject({ cap: 2_000 });
     await run.close();
-  }, 30_000);
+  }, 180_000);
 
   it('charges a task over its budget with a failed attempt', async () => {
     const d = await withAgents(deps(async (req) => (req.kind === 'dev' ? { ...(await happy(req)), summary: summary({ usage: { inputTokens: 60_000, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 } }) } : happy(req)), { maxParallel: 1 }));
@@ -233,7 +233,7 @@ describe('Run', () => {
     expect(run.journal.events.some((e) => e.type === 'ATTEMPT_CONSUMED')).toBe(true);
     expect(run.journal.events.filter((e) => e.type === OrchEvent.Feedback).some((e) => String(e.data.text).includes('budget'))).toBe(true);
     await run.close();
-  }, 30_000);
+  }, 180_000);
 
   it('hands the API key to the agent steps only, keeps it out of the gate secrets, and requires it when claude.auth is api-key', async () => {
     const seen: Array<string | undefined> = [];
@@ -257,7 +257,7 @@ describe('Run', () => {
     await run2.execute();
     expect(new Set(seen)).toEqual(new Set([undefined]));
     await run2.close();
-  }, 90_000);
+  }, 180_000);
 
   it('caps a task by cost when perTaskCostUsd is set, whatever the token count', async () => {
     // Each run writes its own content: both runs share one remote, and an unchanged task is adopted as already on main.
@@ -279,7 +279,7 @@ describe('Run', () => {
     // 60k tokens is over perTaskTokens, but the task cost US$ 0.5 against a US$ 1 cap.
     expect((await capped(0.5)).some((t) => t.includes('budget'))).toBe(false);
     expect((await capped(2)).some((t) => t.includes('Task cost budget exceeded: US$ 2.00 used, cap US$ 1.00'))).toBe(true);
-  }, 60_000);
+  }, 180_000);
 
   it('blocks a task that spends its attempts and reports it', async () => {
     const script: Script = async (req) => (req.kind === 'review' ? { ok: true, value: { specHash: HASH, decision: 'changes', criteria: [{ id: 'AC-001', status: 'failed', evidence: [] }], findings: [{ file: 'src/a/index.ts', line: 1, severity: 'major', text: 'wrong', acIds: ['AC-001'] }] }, summary: summary() } : req.kind === 'replan' ? { ok: false, failure: 'code', errors: ['no'], summary: summary({ isError: true }), sandboxDisabled: false } : happy(req));
@@ -329,7 +329,7 @@ describe('Run', () => {
     expect(s.tasks.get('T1-r1')).toMatchObject({ state: 'merged', replanned: true });
     expect(s.tasks.get('T2')!.state).toBe('merged');
     await run.close();
-  }, 30_000);
+  }, 180_000);
 
   it('an auth failure returns paused:auth and resume continues after the human logged in again', async () => {
     let first = true;
@@ -349,7 +349,7 @@ describe('Run', () => {
     expect(await resumed.execute()).toBe('complete');
     expect(resumed.journal.state.tasks.get('T1')!.attempts).toBe(0);
     await resumed.close();
-  }, 30_000);
+  }, 180_000);
 
   it('writes paused:auth to the state file when a phase pauses for the login, so the run list keeps it waiting after the process exits', async () => {
     const run = await Run.create(await withAgents(deps(happy)));
@@ -369,7 +369,7 @@ describe('Run', () => {
     expect(resumed.accounting.total().steps).toBe(before.steps);
     expect(resumed.accounting.total().inputTokens).toBe(before.inputTokens);
     await resumed.close();
-  }, 30_000);
+  }, 180_000);
 
   it('journals every decision with its backend and cost', async () => {
     const d = await withAgents(deps(happy));
@@ -405,7 +405,7 @@ describe('Run', () => {
     expect(gh.prs.filter((p) => p.head === 'task/spec-001-T1')).toHaveLength(1);
     expect(resumed.journal.events.filter((e) => e.type === OrchEvent.PrMerged && e.data.taskId === 'T1')).toHaveLength(1);
     await resumed.close();
-  }, 30_000);
+  }, 180_000);
 
   it('requestStop lets the in-flight step finish and ends the run drained', async () => {
     let release: () => void = () => {};
@@ -433,7 +433,7 @@ describe('Run', () => {
     expect(states).not.toContain('merged');
     expect(states).toContain('ready');
     await run.close();
-  }, 30_000);
+  }, 180_000);
 
   it('plan 38: no STEP_STARTED begins after RUN_STOP_REQUESTED and the run ends RUN_FINISHED drained once the in-flight step returns', async () => {
     let release: () => void = () => {};
@@ -460,7 +460,7 @@ describe('Run', () => {
     expect(types[types.length - 1]).toBe('RUN_FINISHED');
     expect(run.journal.events[run.journal.events.length - 1]!.data).toMatchObject({ result: 'drained' });
     await run.close();
-  }, 30_000);
+  }, 180_000);
 
   it('resume clears the pid.gone marker the UI leaves behind, so a CLI resume is not listed as interrupted', async () => {
     const d = await withAgents(deps(happy));

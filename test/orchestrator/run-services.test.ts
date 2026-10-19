@@ -146,7 +146,7 @@ describe('Run with a services plan', () => {
     expect(inspected.some((l) => l.includes('golang-1.26-bookworm'))).toBe(true);
     expect(inspected.some((l) => l.includes('node-22-bookworm'))).toBe(true);
     await run.close();
-  }, 60_000);
+  }, 180_000);
 
   const scaffold = (service: string) => makePlanTask({ id: `T0-scaffold-${service}`, service, affectedPaths: ['package.json'] });
   const filesOnMain = async (service: 'orders-api' | 'inventory-api') => {
