@@ -183,6 +183,22 @@ export function computeStatus(s: RefineState): RefineStatus {
   return pendingAny ? 'answering' : 'drafting';
 }
 
+/** Rounds after which Executar opens with checks still failing, and the rounds after which Reavaliar stops (TEAMS_AI_REFINE_*). */
+export interface RefineLimits {
+  release: number;
+  max: number;
+}
+
+/** Past the release round, a spec with no pending human decision may start even while a check still fails. */
+export function released(s: RefineState, limits: RefineLimits): boolean {
+  if (s.cycle < limits.release) return false;
+  if (s.status === 'evaluating' || s.status === 'started' || s.status === 'error') return false;
+  if (s.stale || !s.derived) return false;
+  if (s.questions.some((q) => q.status === 'pending' && q.blocking)) return false;
+  if (s.patches.some((p) => p.status === 'pending' && isApproval(p))) return false;
+  return !s.backlog?.enabled || s.backlog.detail === true;
+}
+
 /** Something was derived from the docs (one spec or a backlog), so editing the docs makes it stale. */
 const hasDerivation = (s: RefineState): boolean => s.derived !== null || (s.backlog?.items.length ?? 0) > 0;
 
