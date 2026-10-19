@@ -231,13 +231,23 @@ describe('refinement cycle flow.md must be mermaid (R11.11)', () => {
     expect(data.unverifiedContradictions).toEqual([]);
   });
 
-  it('passes po.no-contradictions when the PO fails it on quotes the documents do not hold, and journals them', async () => {
+  it('keeps po.no-contradictions failed when the PO fails it on quotes the documents do not hold, and journals them', async () => {
     const data = await evaluate('# Flow', undefined, {
       checklist: [{ id: 'po.no-contradictions', passed: false, detail: 'Porta divergente.' }],
       contradictions: [{ fact: 'porta', a: { file: 'flow.md', quote: 'porta 9999 do serviço' }, b: { file: 'stack.md', quote: 'porta 1111 do serviço' }, fix: 'Alinhe.' }],
     });
-    expect(contradictionOf(data)).toMatchObject({ passed: true });
-    expect(contradictionOf(data).detail).toMatch(/Sem trecho comprovado nos documentos, por isso não bloqueia\./);
+    expect(contradictionOf(data)).toMatchObject({ passed: false });
+    expect(contradictionOf(data).detail).toMatch(/Afirmação sem trecho comprovado nos documentos: cite os dois trechos ou retire a afirmação\./);
+    expect(data.unverifiedContradictions).toHaveLength(1);
+  });
+
+  it('fails po.no-contradictions when the PO passes it but lists a divergence the documents do not hold', async () => {
+    const data = await evaluate('# Flow', undefined, {
+      checklist: [{ id: 'po.no-contradictions', passed: true, detail: 'ok' }],
+      contradictions: [{ fact: 'porta', a: { file: 'flow.md', quote: 'porta 9999 do serviço' }, b: { file: 'stack.md', quote: 'porta 1111 do serviço' }, fix: 'Alinhe.' }],
+    });
+    expect(contradictionOf(data)).toMatchObject({ passed: false });
+    expect(contradictionOf(data).detail).toMatch(/Afirmação sem trecho comprovado nos documentos: cite os dois trechos ou retire a afirmação\./);
     expect(data.unverifiedContradictions).toHaveLength(1);
   });
 
@@ -276,7 +286,7 @@ describe('refinement cycle patch dedup (R11.10)', () => {
     const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'x', specHash: 'draft', type, kind: 'fact' as const, data }; } };
     const ok = (value: unknown) => ({ ok: true, value, summary: {} });
     const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
-    const samePatch = { file: `docs/specs/${spec.specId}/brief.md`, find: 'TODO: port.', replace: 'Port: 8080.', reason: 'fill it in' };
+    const samePatch = { file: 'docs/flow.md', find: '# doc', replace: 'Port: 8080.', reason: 'fill it in' };
     const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [samePatch] });
@@ -391,8 +401,8 @@ describe('refinement cycle patch dedup (R11.5a item 2)', () => {
     const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'x', specHash: 'draft', type, kind: 'fact' as const, data }; } };
     const ok = (value: unknown) => ({ ok: true, value, summary: {} });
     const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
-    const poPatch = { file: `docs/specs/${spec.specId}/brief.md`, find: 'TODO: port.', replace: 'Port: 8080.', reason: 'fill it in' };
-    const smPatch = { file: `docs/specs/${spec.specId}/brief.md`, find: 'TODO: port.', replace: 'The service listens on port 8080.', reason: 'state the port' };
+    const poPatch = { file: 'docs/flow.md', find: '# doc', replace: 'Port: 8080.', reason: 'fill it in' };
+    const smPatch = { file: 'docs/flow.md', find: '# doc', replace: 'The service listens on port 8080.', reason: 'state the port' };
     const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [poPatch] });
@@ -430,8 +440,8 @@ describe('refinement cycle patch dedup (R11.5a item 2)', () => {
     const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'x', specHash: 'draft', type, kind: 'fact' as const, data }; } };
     const ok = (value: unknown) => ({ ok: true, value, summary: {} });
     const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
-    const poPatch = { file: `docs/specs/${spec.specId}/brief.md`, find: 'TODO: port.', replace: 'Port: 8080.', reason: 'fill it in' };
-    const smPatch = { file: `docs/specs/${spec.specId}/brief.md`, find: 'TODO: auth.', replace: 'No authentication required.', reason: 'state the auth' };
+    const poPatch = { file: 'docs/flow.md', find: '# doc', replace: 'Port: 8080.', reason: 'fill it in' };
+    const smPatch = { file: 'docs/flow.md', find: '# doc', replace: 'No authentication required.', reason: 'state the auth' };
     const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [poPatch] });

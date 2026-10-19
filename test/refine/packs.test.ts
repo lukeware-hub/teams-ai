@@ -180,8 +180,8 @@ describe('refinePack moves and findings', () => {
     expect(refinePack({ ...base, role: 'front' }).feedback).toContain('### Moves the owner undid (do not propose them again)\n\n(none)');
   });
 
-  it('lets each role patch the documents it owns: the SM its stack.md, the PO not', () => {
-    expect(refinePack({ ...base, role: 'sm' }).feedback).toContain('Patch files: docs/project.md, docs/specs/spec-1/brief.md, docs/stack.md, docs/flow.md.');
+  it('lets each role patch the documents it owns: the SM stack.md and flow.md, the PO project.md, brief.md and flow.md', () => {
+    expect(refinePack({ ...base, role: 'sm' }).feedback).toContain('Patch files: docs/stack.md, docs/flow.md.');
     expect(refinePack({ ...base, role: 'po' }).feedback).toContain('Patch files: docs/project.md, docs/specs/spec-1/brief.md, docs/flow.md.');
     expect(refinePack({ ...base, role: 'po' }).feedback).not.toContain('docs/stack.md');
   });

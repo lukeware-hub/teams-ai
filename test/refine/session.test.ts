@@ -285,8 +285,10 @@ describe('RefineSession', () => {
   it('accepting a patch drops the pending patches it made stale, with a message in Portuguese', async () => {
     const s = await RefineSession.create(deps(), 'new-project');
     script['derive/po'] = [derived];
-    script['refine/po'] = [refineOut(green(PO), [], [{ file: 'docs/project.md', find: '## Vision', replace: '## Visão', reason: 'r' }])];
-    script['refine/sm'] = [refineOut(green(SM), [], [{ file: 'docs/project.md', find: '## Vision', replace: '## Objetivo', reason: 'r' }, { file: 'docs/project.md', find: '## Personas', replace: '## Pessoas', reason: 'r' }])];
+    // flow.md is the one document both PO and SM may patch, so the overlap happens there.
+    await writeDoc(draft(), 'flow.md', '# Fluxo\n\n## Visão\n\nTexto.\n\n## Pessoas\n\nTexto.\n');
+    script['refine/po'] = [refineOut(green(PO), [], [{ file: 'docs/flow.md', find: '## Visão', replace: '## Resumo', reason: 'r' }])];
+    script['refine/sm'] = [refineOut(green(SM), [], [{ file: 'docs/flow.md', find: '## Visão', replace: '## Objetivo', reason: 'r' }, { file: 'docs/flow.md', find: '## Pessoas', replace: '## Gente', reason: 'r' }])];
     await s.evaluate();
     await s.accept('po-c1-0');
     const byId = Object.fromEntries(s.state.patches.map((x) => [x.patchId, x.status]));

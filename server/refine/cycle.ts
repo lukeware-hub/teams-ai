@@ -31,7 +31,7 @@ import { RefineEvent, type Question } from './events.js';
 import { plainOutlineQuestion } from './question-choices.js';
 import { buildSpecsIndex, outlineOfIndex, specIdOf, type SpecsIndex } from './specs-index.js';
 import type { JevValidationResult, ValidationDocs } from './jev-validation.js';
-import { refinePack } from './packs.js';
+import { PATCH_FILES, patchOwners, refinePack } from './packs.js';
 import { applyPatch, checkPatch, COVERED_REASON, patchId, unifiedDiff } from './patches.js';
 import { planMove } from './moves.js';
 import { applyRefineEvent, type BacklogState, type RefineState } from './state.js';
@@ -559,6 +559,10 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         discardedPatches.push({ role, file: p.file, reason: 'design.md is reviewable only by front' });
         continue;
       }
+      if (c.ok && !PATCH_FILES[role].includes(c.file)) {
+        discardedPatches.push({ role, file: p.file, reason: `${c.file} is patched only by ${patchOwners(c.file)}` });
+        continue;
+      }
       if (!c.ok) {
         discardedPatches.push({ role, file: p.file, reason: c.reason });
         continue;
@@ -612,7 +616,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const flowItem = checklist.find((i) => i.id === 'sm.flow-is-mermaid')!;
   flowItem.passed = flowIsMermaid(docs['flow.md']);
   flowItem.detail = flowItem.passed ? 'flow.md has a mermaid diagram' : 'flow.md has no ```mermaid block; it must be a diagram, not markdown headings';
-  // The PO's divergences count only when the documents hold both quotes; an unverified verdict is noted, not enforced.
+  // A divergence counts only when the documents hold both quotes; one the PO describes without them fails the id.
   const contradictionItem = checklist.find((i) => i.id === 'po.no-contradictions')!;
   const { verified, dropped } = verifyContradictions(docs, po.value.contradictions ?? []);
   const poReported = po.value.checklist.some((r) => r.id === 'po.no-contradictions');
@@ -620,9 +624,9 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     contradictionItem.passed = false;
     contradictionItem.detail = `${verified.length} divergência(s) comprovada(s) nos documentos.`;
     contradictionItem.divergences = verified;
-  } else if (poReported && !contradictionItem.passed) {
-    contradictionItem.passed = true;
-    contradictionItem.detail = `${contradictionItem.detail} Sem trecho comprovado nos documentos, por isso não bloqueia.`;
+  } else if (dropped.length > 0 || (poReported && !contradictionItem.passed)) {
+    contradictionItem.passed = false;
+    contradictionItem.detail = `${contradictionItem.detail} Afirmação sem trecho comprovado nos documentos: cite os dois trechos ou retire a afirmação.`;
   }
   // The Jev only warns: its doubt goes into the item's detail, and the PO's verdict stands.
   const consistent = jevValidation?.checks.documents_consistent;
