@@ -420,6 +420,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     await fail(`sm refine failed: ${sm.failure}: ${sm.errors.join('; ')}`);
     return;
   }
+  // The reviewers read these documents, so the quotes they copy are checked against them, even when a move below takes that text away.
+  const reviewed = { ...docs };
   // Content in the wrong document moves first: every patch is checked against the documents as the moves leave them.
   await applyMoves(journal, draft, cycle, docs, { specId: draft.specId, projectBriefing: backlogMode }, [
     { role: 'front', moves: frontReview?.moves ?? [] },
@@ -618,7 +620,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   flowItem.detail = flowItem.passed ? 'flow.md has a mermaid diagram' : 'flow.md has no ```mermaid block; it must be a diagram, not markdown headings';
   // A divergence counts only when the documents hold both quotes; one the PO describes without them fails the id.
   const contradictionItem = checklist.find((i) => i.id === 'po.no-contradictions')!;
-  const { verified, dropped } = verifyContradictions(docs, po.value.contradictions ?? []);
+  const { verified, dropped } = verifyContradictions(reviewed, po.value.contradictions ?? []);
   const poReported = po.value.checklist.some((r) => r.id === 'po.no-contradictions');
   if (verified.length > 0) {
     contradictionItem.passed = false;

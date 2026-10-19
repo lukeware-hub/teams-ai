@@ -251,6 +251,17 @@ describe('refinement cycle flow.md must be mermaid (R11.11)', () => {
     expect(data.unverifiedContradictions).toHaveLength(1);
   });
 
+  it('checks a quote against the documents the PO read, so a move of the same cycle does not drop it', async () => {
+    const flow = '# Flow\n\n## 1. Checkout\n\nUser pays by card.\n\n## 2. Payment\n\nUser pays by cash.\n';
+    const data = await evaluate(flow, undefined, {
+      checklist: [{ id: 'po.no-contradictions', passed: true, detail: 'ok' }],
+      contradictions: [{ fact: 'pagamento', a: { file: 'flow.md', quote: 'User pays by card' }, b: { file: 'flow.md', quote: 'User pays by cash' }, fix: 'Mantenha um meio de pagamento.' }],
+      moves: [{ from: 'docs/flow.md', to: 'docs/design.md', quote: 'User pays by cash.', text: 'User pays by cash.', reason: 'teste' }],
+    });
+    expect(contradictionOf(data)).toMatchObject({ passed: false, detail: '1 divergência(s) comprovada(s) nos documentos.' });
+    expect(data.unverifiedContradictions).toEqual([]);
+  });
+
   it('keeps a question subject only once, so two questions never share a decision heading', async () => {
     const data = await evaluate('# Flow', undefined, {
       questions: [
