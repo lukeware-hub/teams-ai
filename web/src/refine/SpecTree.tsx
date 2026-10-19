@@ -61,7 +61,7 @@ export function SpecTree({ backlog, evaluating = false }: { backlog: BacklogView
             <details key={item.key} className="settings-collapse" data-testid={`tree-${item.key}`}>
               <summary className="settings-collapse-summary flex-wrap">
                 <Icon name="chevron-right" size={16} />
-                <span className="settings-collapse-title wrap-anywhere">{titles.get(item.key) ?? item.key}</span>
+                <span className="settings-collapse-title flex-[1_1_12rem] wrap-anywhere">{titles.get(item.key) ?? item.key}</span>
                 {item.specId ? <code className="settings-collapse-meta">{item.specId}</code> : evaluating ? <span className="settings-collapse-meta">pendente</span> : <span className="status-chip tone-bad">sem spec</span>}
               </summary>
               <div className="settings-collapse-body">
