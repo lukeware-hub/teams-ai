@@ -18,6 +18,10 @@ describe('patches', () => {
     expect(checkPatch({ file: 'docs/specs/hello-001/brief.md', find: '## Objectives', replace: '## Goals', reason: 'r' }, 'hello-001', docs, true)).toEqual({ ok: false, reason: 'unknown file docs/specs/hello-001/brief.md' });
     expect(checkPatch({ file: 'docs/briefing.md', find: '## Objectives', replace: '## Goals', reason: 'r' }, 'hello-001', docs)).toEqual({ ok: false, reason: 'unknown file docs/briefing.md' });
   });
+  it('accepts a root document cited by its bare name, and nothing nested under another folder', () => {
+    expect(checkPatch({ file: 'project.md', find: 'fast', replace: 'fast and small', reason: 'r' }, 'hello-001', docs)).toEqual({ ok: true, file: 'project.md' });
+    expect(checkPatch({ file: 'docs/specs/hello-001/project.md', find: 'fast', replace: 'y', reason: 'r' }, 'hello-001', docs)).toEqual({ ok: false, reason: 'unknown file docs/specs/hello-001/project.md' });
+  });
   it('applies exactly once and yields a unified diff naming the file', () => {
     expect(applyPatch('a fast b', { find: 'fast', replace: 'slow' })).toBe('a slow b');
     expect(applyPatch('a b', { find: 'fast', replace: 'slow' })).toBeNull();
