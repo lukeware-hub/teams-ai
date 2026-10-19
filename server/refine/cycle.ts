@@ -34,7 +34,7 @@ import type { JevValidationResult, ValidationDocs } from './jev-validation.js';
 import { PATCH_FILES, patchOwners, reorganizeGroups, reorganizePack, refinePack } from './packs.js';
 import { applyPatch, checkPatch, COVERED_REASON, patchId, unifiedDiff } from './patches.js';
 import { planMove } from './moves.js';
-import { applyRefineEvent, type BacklogState, type RefineState } from './state.js';
+import { applyRefineEvent, nextStuck, STUCK_ROUNDS, type BacklogState, type RefineState } from './state.js';
 
 export type RunAgent = <K extends StepKind>(
   req: AgentStepRequest<K>,
@@ -202,6 +202,21 @@ export function failedGapQuestions(backlog: BacklogState | null, cycle: number, 
     });
   }
   return out;
+}
+
+/** The checks that failed the same rounds in a row, as one blocking question for the human: fix the named document, then evaluate again. */
+export function stuckQuestion(failing: readonly ChecklistItem[], cycle: number): Question {
+  const ids = failing.map((i) => i.id).join(', ');
+  const details = failing.map((i) => `${i.id}: ${i.detail}`).join(' ');
+  return {
+    questionId: `stuck-c${cycle}`,
+    role: failing[0]!.role,
+    text: `Os critérios ${ids} continuam reprovados após ${STUCK_ROUNDS} rodadas seguidas. ${details} Corrija o documento indicado e reavalie.`,
+    blocking: true,
+    relatedAcIds: [],
+    cycle,
+    rule: `stuck:${failing.map((i) => i.id).sort().join(',')}`,
+  };
 }
 
 /** The rules a backlog outline breaks, each as a blocking question for the owner; a pending question that already names a rule is not asked again. */
@@ -694,6 +709,10 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     const out = (await deps.runAgent<'answer'>({ kind: 'answer', role: q.role, pack, cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, ctx)) as StepOutcome<AnswerOutput>;
     return out.ok && out.value.answer ? { questionId: q.questionId, text: out.value.answer, by: q.role } : null;
   }));
+  // The same checks failing for several rounds in a row: the human decides, instead of another round spending the same calls.
+  const stuck = nextStuck(journal.state.stuck, checklist);
+  const ask = stuck.ask ? stuckQuestion(stuck.failing, cycle) : null;
+  if (ask && !journal.state.questions.some((q) => q.status === 'pending' && q.rule === ask.rule)) merged.push(ask);
   await journal.fact(RefineEvent.Evaluated, { cycle, checklist, questions: merged, discardedPatches, questionRouting, autoAnswerFloor: floor ?? null, unverifiedContradictions: dropped });
   for (const a of answers) if (a) await journal.fact(RefineEvent.QuestionAnswered, a);
 }
