@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { api, type Item, type Snapshot, type Status } from '../api.js';
@@ -428,6 +428,23 @@ describe('RefinementView', () => {
     expect((screen.getByTestId('accept-sm-c1-0') as HTMLButtonElement).disabled).toBe(false);
     expect((screen.getByTestId('reject-sm-c1-0') as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByText(/aparecem aqui quando a avaliação terminar/)).toBeNull();
+  });
+
+  it('locks both patch decisions with a spinner on the clicked one until the action ends', async () => {
+    const h = on();
+    let finish!: () => void;
+    h.onAccept.mockReturnValueOnce(new Promise<void>((resolve) => { finish = resolve; }));
+    render(
+      <MemoryRouter>
+        <RefinementView snap={base({ status: 'answering' })} busy={false} {...h} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByTestId('accept-sm-c1-0'));
+    expect((screen.getByTestId('accept-sm-c1-0') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('reject-sm-c1-0') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('accept-sm-c1-0').querySelector('.button-spinner')).not.toBeNull();
+    finish();
+    await waitFor(() => expect((screen.getByTestId('reject-sm-c1-0') as HTMLButtonElement).disabled).toBe(false));
   });
 
   it('explains that Jev is required in refinement and keeps re-evaluation available', () => {

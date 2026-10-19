@@ -249,6 +249,12 @@ export function RefinementView(p: ViewProps) {
   const [answer, setAnswer] = useState('');
   const [docsAnswered, setDocsAnswered] = useState(false);
   const [reasons, setReasons] = useState<Record<string, string>>({});
+  // The patch being accepted or rejected: both of its buttons stay locked until the action ends.
+  const [deciding, setDeciding] = useState<string | null>(null);
+  const decide = (patchId: string, action: () => unknown) => {
+    setDeciding(patchId);
+    return Promise.resolve(action()).finally(() => setDeciding(null));
+  };
   const [secretValues, setSecretValues] = useState<Record<string, string>>({});
   const [newSecrets, setNewSecrets] = useState<Array<{ id: number; name: string; value: string }>>([]);
   const saved = useRef(snap.docs);
@@ -586,7 +592,7 @@ export function RefinementView(p: ViewProps) {
             </div>
             <pre className="mx-0 my-3 overflow-auto rounded-md bg-term-bg p-[0.8rem] text-[0.75rem] leading-normal text-term-ink">{x.diff}</pre>
             <div className="grid grid-cols-2 items-center gap-2">
-            <ActionButton className="min-w-[5.5rem] border-good-line bg-good-soft text-good hover:enabled:border-good" data-testid={`accept-${x.patchId}`} disabled={locked} onClick={() => p.onAccept(x.patchId)} icon={<Icon name="check" size={16} />}>
+            <ActionButton className="min-w-[5.5rem] border-good-line bg-good-soft text-good hover:enabled:border-good" data-testid={`accept-${x.patchId}`} disabled={locked || deciding !== null} onClick={() => decide(x.patchId, () => p.onAccept(x.patchId))} icon={<Icon name="check" size={16} />}>
               Aceitar
             </ActionButton>
             <input
@@ -597,7 +603,7 @@ export function RefinementView(p: ViewProps) {
               value={reasons[x.patchId] ?? ''}
               onChange={(e) => setReasons({ ...reasons, [x.patchId]: e.target.value })}
             />
-            <ActionButton className="min-w-[5.5rem] border-bad-line bg-bad-soft text-bad hover:enabled:border-bad" data-testid={`reject-${x.patchId}`} disabled={locked} onClick={() => p.onReject(x.patchId, reasons[x.patchId] || null)} icon={<Icon name="close" size={16} />}>
+            <ActionButton className="min-w-[5.5rem] border-bad-line bg-bad-soft text-bad hover:enabled:border-bad" data-testid={`reject-${x.patchId}`} disabled={locked || deciding !== null} onClick={() => decide(x.patchId, () => p.onReject(x.patchId, reasons[x.patchId] || null))} icon={<Icon name="close" size={16} />}>
               Rejeitar
             </ActionButton>
             </div>
