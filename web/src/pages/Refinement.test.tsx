@@ -124,6 +124,12 @@ describe('RefinementView backlog mode', () => {
 
   // Plan 89 review: once ready a suggestion is optional, the detailing step follows the outline, and an approval stands apart.
   const suggestion = { patchId: 'po-c1-0', role: 'po' as const, file: 'brief.md' as const, find: 'a', replace: 'b', reason: 'mais claro', diff: '--- briefing.md\n-a\n+b\n', cycle: 1, status: 'pending' as const, decision: null };
+  it('counts a pending suggestion with the open questions', () => {
+    const open = { questionId: 'po-c1-1', role: 'po' as const, text: 'Cor?', blocking: false, relatedAcIds: [], cycle: 1, status: 'pending' as const, answer: null };
+    render(<MemoryRouter><RefinementView snap={base({ ...ready, questions: [open], patches: [suggestion] })} busy={false} {...on()} /></MemoryRouter>);
+    expect(screen.getByText('2 pendências em aberto')).toBeTruthy();
+  });
+
   it('calls a suggestion optional once the outline is ready, and shows the detailing step as still running', () => {
     const { rerender } = render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog, patches: [suggestion] })} busy={false} {...on()} /></MemoryRouter>);
     expect(screen.getByText(/As sugestões abaixo são opcionais/)).toBeTruthy();

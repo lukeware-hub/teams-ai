@@ -302,6 +302,7 @@ export function RefinementView(p: ViewProps) {
         : { label: 'Atual', tone: 'ok' };
   const green = allGreen(st.checklist);
   const pendingSuggestion = st.patches.some((x) => x.status === 'pending');
+  const openCount = pending.length + st.patches.filter((x) => x.status === 'pending').length;
   const backlogDetailed = st.backlog?.items.every((i) => st.backlog?.specs?.[i.key]?.spec && st.backlog.preplans?.[i.key]?.preplan) ?? false;
   const nextStep = st.status === 'started' && st.backlog?.enabled
     ? 'Os agentes estão executando o backlog, até duas specs ao mesmo tempo quando não mexem no mesmo código. Acompanhe cada uma na tela de execução do backlog.'
@@ -461,8 +462,8 @@ export function RefinementView(p: ViewProps) {
           <h2 className={panelTitle}>Área de revisão</h2>
           </div>
         </div>
-        <Tipped text="Quantas perguntas dos agentes ainda esperam a sua resposta.">
-          <span className={`count-pill ${pending.length > 0 ? 'tone-warn' : 'tone-good'}`}>{pending.length === 1 ? '1 pergunta em aberto' : `${pending.length} perguntas em aberto`}</span>
+        <Tipped text="Quantas perguntas dos agentes e sugestões de documento ainda esperam a sua decisão.">
+          <span className={`count-pill ${openCount > 0 ? 'tone-warn' : 'tone-good'}`}>{openCount === 1 ? '1 pendência em aberto' : `${openCount} pendências em aberto`}</span>
         </Tipped>
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
