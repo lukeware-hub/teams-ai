@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { coverageGaps, coverageMatrix } from '@server/refine/coverage';
 import type { AcceptanceCriterion, BacklogView } from '../api.js';
 import { Icon } from '../components/Icons.js';
@@ -10,8 +11,8 @@ const criterionText = (c: AcceptanceCriterion) => `${c.id}: dado ${c.given}, qua
 
 /** The detailed backlog as a coverage tree: doc section -> spec -> acceptance criterion -> pre-plan tasks, gaps in red. */
 export function SpecTree({ backlog, evaluating = false }: { backlog: BacklogView; evaluating?: boolean }) {
-  const matrix = coverageMatrix(backlog as never);
-  const gaps = coverageGaps(backlog as never);
+  const matrix = useMemo(() => coverageMatrix(backlog as never), [backlog]);
+  const gaps = useMemo(() => coverageGaps(backlog as never), [backlog]);
   const titles = new Map(backlog.items.map((i) => [i.key, i.title]));
   const specs = matrix.items.filter((i) => i.specId !== null).length;
   const criteria = matrix.items.reduce((n, i) => n + i.criteria.length, 0);

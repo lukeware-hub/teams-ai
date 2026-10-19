@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, refineApi, type AcceptanceCriterion, type ChecklistItem, type Snapshot, type StoredEvent } from '../api.js';
 import { docToJson } from '../refine/docJson.js';
@@ -91,6 +91,17 @@ const criterionText = (c: AcceptanceCriterion) => `${c.id}: dado ${c.given}, qua
 const jevInfo = 'O Jev é obrigatório no refinamento. Ele confere se os cinco documentos estão consistentes entre si e classifica e decide pontos da avaliação: critérios de aceite ainda não prontos, perguntas repetidas e contradições com o histórico do projeto. Sem ele, a avaliação não inicia. Ajuste o que fizer sentido e reavalie.';
 const patchInfo = 'Mudança proposta por um agente: linhas com - saem e linhas com + entram. Aceitar aplica a mudança no documento; Rejeitar a descarta, e o motivo opcional fica no histórico.';
 const jsonDownload = (value: unknown) => `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(value, null, 2))}`;
+
+// Builds the body only after the file is opened: a closed details still mounts its children.
+function LazyDetails({ className, summary, body }: { className: string; summary: ReactNode; body: () => ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details className={className} onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary>{summary}</summary>
+      {open && body()}
+    </details>
+  );
+}
 
 const panelCard = 'edge-lit min-w-0 rounded-xl border border-line bg-surface p-5 shadow-card';
 // The checklist panel styles the headings and lists inside it; disclosures bring their own box.
@@ -281,7 +292,7 @@ export function RefinementView(p: ViewProps) {
     </>
   );
   // Backlog mode lists specs, not one spec: the generated index replaces spec.json and the tasks of a single spec.
-  const specsIndex = backlogOn && (st.backlog?.items.length ?? 0) > 0 ? buildSpecsIndex(snap.specId, st.backlog as never) : null;
+  const specsIndex = useMemo(() => (backlogOn && (st.backlog?.items.length ?? 0) > 0 ? buildSpecsIndex(snap.specId, st.backlog as never) : null), [backlogOn, snap.specId, st.backlog]);
   const projectJson = backlogOn ? st.backlog?.project ?? null : st.derived?.project ?? null;
   // The base docs as JSON, by the names the generated files use; briefing.md is the brief in backlog mode.
   const docFiles = [
@@ -666,27 +677,15 @@ export function RefinementView(p: ViewProps) {
           <span>Como reproduzir: {st.derived.spec.bug.reproduction}</span>
         </div>
       )}
-      <details className={fileBox}>
-        <summary><span>spec.json</span>{st.derived ? <a data-testid="download-spec-json" href={jsonDownload(st.derived.spec)} download="spec.json" aria-label="Baixar spec.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</summary>
-        {st.derived ? <pre className="whitespace-pre-wrap break-words">{JSON.stringify(st.derived.spec, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>}
-      </details>
+      <LazyDetails className={fileBox} summary={<><span>spec.json</span>{st.derived ? <a data-testid="download-spec-json" href={jsonDownload(st.derived.spec)} download="spec.json" aria-label="Baixar spec.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</>} body={() => st.derived ? <pre className="whitespace-pre-wrap break-words">{JSON.stringify(st.derived.spec, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>} />
         </>
       )}
       {backlogOn && (
-        <details className={fileBox}>
-          <summary><span>specs.json</span>{specsIndex ? <a data-testid="download-specs-json" href={jsonDownload(specsIndex)} download="specs.json" aria-label="Baixar specs.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</summary>
-          {specsIndex ? <pre className="whitespace-pre-wrap break-words">{JSON.stringify(specsIndex, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>}
-        </details>
+        <LazyDetails key="specs" className={fileBox} summary={<><span>specs.json</span>{specsIndex ? <a data-testid="download-specs-json" href={jsonDownload(specsIndex)} download="specs.json" aria-label="Baixar specs.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</>} body={() => specsIndex ? <pre className="whitespace-pre-wrap break-words">{JSON.stringify(specsIndex, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>} />
       )}
-      <details className={fileBox}>
-        <summary><span>project.json</span>{projectJson ? <a data-testid="download-project-json" href={jsonDownload(projectJson)} download="project.json" aria-label="Baixar project.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</summary>
-        {projectJson ? <pre className="whitespace-pre-wrap break-words">{JSON.stringify(projectJson, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>}
-      </details>
+      <LazyDetails className={fileBox} summary={<><span>project.json</span>{projectJson ? <a data-testid="download-project-json" href={jsonDownload(projectJson)} download="project.json" aria-label="Baixar project.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</>} body={() => projectJson ? <pre className="whitespace-pre-wrap break-words">{JSON.stringify(projectJson, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>} />
       {docFiles.map(({ doc, name, text }) => (
-        <details key={name} className={fileBox}>
-          <summary><span>{name}</span><a data-testid={`download-${name.replace('.', '-')}`} href={jsonDownload(docToJson(doc, text))} download={name} aria-label={`Baixar ${name}`} onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a></summary>
-          <pre className="whitespace-pre-wrap break-words">{JSON.stringify(docToJson(doc, text), null, 2)}</pre>
-        </details>
+        <LazyDetails key={name} className={fileBox} summary={<><span>{name}</span><a data-testid={`download-${name.replace('.', '-')}`} href={jsonDownload(docToJson(doc, text))} download={name} aria-label={`Baixar ${name}`} onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a></>} body={() => <pre className="whitespace-pre-wrap break-words">{JSON.stringify(docToJson(doc, text), null, 2)}</pre>} />
       ))}
       {!backlogOn && (
         <>
