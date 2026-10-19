@@ -34,42 +34,52 @@ export function SpecTree({ backlog, evaluating = false }: { backlog: BacklogView
         </ul>
       )}
       {matrix.sections.length > 0 && (
-        <ol className="m-0 grid list-none gap-2 p-0 text-[0.8125rem]">
+        <ol className="m-0 grid list-none gap-3 p-0 text-[0.8125rem]">
           {matrix.sections.map((s, n) => (
-            <li key={n} data-testid={`tree-section-${n}`} className={`rounded-md border border-line bg-surface-sunken ${s.items.length > 0 ? '' : 'text-bad'}`}>
-              <details className="group">
-                <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-3 py-[0.6rem] [&::-webkit-details-marker]:hidden">
-                  <span className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span>
-                  <b className="min-w-0 flex-1 text-[0.8125rem] leading-snug normal-case tracking-normal wrap-anywhere">{s.heading}</b>
-                  <span className="count-pill">{s.items.length}</span>
+            <li key={n} data-testid={`tree-section-${n}`} className={s.items.length > 0 ? '' : 'text-bad'}>
+              <details className="settings-collapse">
+                <summary className="settings-collapse-summary">
+                  <Icon name="chevron-right" size={16} />
+                  <span className="settings-collapse-title wrap-anywhere">{s.heading}</span>
+                  <span className="settings-collapse-meta">{count(s.items.length, 'item', 'itens')}</span>
                 </summary>
-                <span className="flex flex-wrap gap-[0.35rem] px-3 pb-[0.6rem]">
-                  {s.items.length > 0 ? s.items.map((k) => <span key={k} className="rounded-full bg-surface-muted px-[0.6rem] py-[0.15rem] leading-snug text-ink-soft">{titles.get(k) ?? k}</span>) : <span>sem item</span>}
-                </span>
+                <div className="settings-collapse-body">
+                  <span className="flex flex-wrap gap-[0.35rem] pt-[0.85rem]">
+                    {s.items.length > 0 ? s.items.map((k) => <span key={k} className="rounded-full bg-surface-muted px-[0.6rem] py-[0.15rem] leading-snug text-ink-soft">{titles.get(k) ?? k}</span>) : <span>sem item</span>}
+                  </span>
+                </div>
               </details>
             </li>
           ))}
         </ol>
       )}
-      {matrix.items.map((item) => {
-        const spec = backlog.specs?.[item.key]?.spec ?? null;
-        const planned = backlog.preplans?.[item.key]?.preplan?.tasks ?? [];
-        return (
-          <details key={item.key} className="rounded-md border border-line bg-surface" data-testid={`tree-${item.key}`}>
-            <summary className="flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 px-[0.65rem] py-2"><b className="min-w-[10rem] flex-[1_1_10rem] normal-case tracking-normal wrap-anywhere">{titles.get(item.key) ?? item.key}</b>{item.specId ? <code className="text-[0.75rem] text-ink-faint">{item.specId}</code> : evaluating ? <span>pendente</span> : <span className="text-bad">sem spec</span>}</summary>
-            <ul className="m-0 grid list-none gap-[0.4rem] border-t border-line px-[0.65rem] py-[0.6rem] text-[0.8125rem] leading-snug text-ink-soft">
-              {item.criteria.map((c) => {
-                const full = spec?.acceptanceCriteria.find((a) => a.id === c.id);
-                return (
-                  <li key={c.id} data-testid={`tree-ac-${c.id}`} className={c.tasks.length > 0 ? '' : 'text-bad'}>
-                    {c.id}{full && <InfoTip text={criterionText(full)} />} → {c.tasks.length > 0 ? c.tasks.map((t) => `${t} ${planned.find((x) => x.id === t)?.title ?? ''}`.trim()).join(', ') : 'sem tarefa'}
-                  </li>
-                );
-              })}
-            </ul>
-          </details>
-        );
-      })}
+      <div className="grid">
+        {matrix.items.map((item) => {
+          const spec = backlog.specs?.[item.key]?.spec ?? null;
+          const planned = backlog.preplans?.[item.key]?.preplan?.tasks ?? [];
+          return (
+            <details key={item.key} className="settings-collapse" data-testid={`tree-${item.key}`}>
+              <summary className="settings-collapse-summary flex-wrap">
+                <Icon name="chevron-right" size={16} />
+                <span className="settings-collapse-title wrap-anywhere">{titles.get(item.key) ?? item.key}</span>
+                {item.specId ? <code className="settings-collapse-meta">{item.specId}</code> : evaluating ? <span className="settings-collapse-meta">pendente</span> : <span className="status-chip tone-bad">sem spec</span>}
+              </summary>
+              <div className="settings-collapse-body">
+                <ul className="m-0 grid list-none gap-[0.4rem] pt-[0.85rem] text-[0.8125rem] leading-snug text-ink-soft">
+                  {item.criteria.map((c) => {
+                    const full = spec?.acceptanceCriteria.find((a) => a.id === c.id);
+                    return (
+                      <li key={c.id} data-testid={`tree-ac-${c.id}`} className={c.tasks.length > 0 ? '' : 'text-bad'}>
+                        {c.id}{full && <InfoTip text={criterionText(full)} />} → {c.tasks.length > 0 ? c.tasks.map((t) => `${t} ${planned.find((x) => x.id === t)?.title ?? ''}`.trim()).join(', ') : 'sem tarefa'}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            </details>
+          );
+        })}
+      </div>
     </div>
   );
 }
