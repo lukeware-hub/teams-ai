@@ -382,6 +382,8 @@ export interface Snapshot {
   tokens: { inputTokens: number; outputTokens: number; costUsd: number; steps: number };
   /** The seq of the last journal event the state holds. */
   seq?: number;
+  /** Rounds after which Executar opens with checks failing, and the rounds after which Reavaliar stops. */
+  limits?: { release: number; max: number };
 }
 export interface DraftRow {
   projectId: string;

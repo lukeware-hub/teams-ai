@@ -22,6 +22,7 @@ import { cleanDescription, createFromRepo, createNewProject, draftExists, draftP
 import { suggestName, type NameKind, type NameSuggestion } from './naming.js';
 import { ConflictError, NotFoundError, RefineSession } from './session.js';
 import { reduceRefineEvents, type RefineStatus } from './state.js';
+import { refineLimits } from './limits.js';
 
 export interface RegistryDeps {
   cfg: () => Promise<Config>;
@@ -100,7 +101,7 @@ export class SessionRegistry {
       if (await exists(ws.repo)) (await openProjectKnowledge(file, ws.repo)).close();
       const retrieval = (await exists(file)) ? (q: string) => searchKnowledge(file, q) : () => [];
       const runAgent = inProject(this.deps.runAgent, draft.projectId);
-      const deps = { ws, draft, runAgent, frontAgent: runAgent, secretsDir: ws.secrets, retrieval, validateDocs: this.deps.validateDocs, decider: this.deps.decider, autoAnswerFloor: async () => answerFloor(await this.deps.cfg(), refineRoot(ws)) };
+      const deps = { ws, draft, runAgent, frontAgent: runAgent, secretsDir: ws.secrets, retrieval, validateDocs: this.deps.validateDocs, decider: this.deps.decider, autoAnswerFloor: async () => answerFloor(await this.deps.cfg(), refineRoot(ws)), limits: refineLimits() };
       return create ? RefineSession.create(deps, create) : RefineSession.open(deps);
     })();
     this.sessions.set(key, p);
