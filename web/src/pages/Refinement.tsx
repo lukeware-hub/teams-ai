@@ -239,8 +239,11 @@ export function RefinementView(p: ViewProps) {
   const [suggesting, setSuggesting] = useState(false);
   const [askRe, setAskRe] = useState(false);
   // Nothing changed since the last evaluation: a new one would spend the same calls on the same documents.
-  const lastEvaluated = (p.events ?? []).filter((e) => e.type === 'REFINE_EVALUATED').at(-1)?.seq ?? 0;
-  const changedSince = (p.events ?? []).some((e) => e.seq > lastEvaluated && CHANGE_EVENTS.has(e.type));
+  const changedSince = useMemo(() => {
+    const events = p.events ?? [];
+    const lastEvaluated = events.filter((e) => e.type === 'REFINE_EVALUATED').at(-1)?.seq ?? 0;
+    return events.some((e) => e.seq > lastEvaluated && CHANGE_EVENTS.has(e.type));
+  }, [p.events]);
   const unchanged = st.cycle > 0 && !st.stale && !changedSince;
   const attachInput = useRef<HTMLInputElement>(null);
   const [answer, setAnswer] = useState('');
@@ -772,6 +775,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
     if (next.docsDirty) void load();
     else setSnap(next);
   }, [events, snap]);
+  const now = useMemo(() => stageNow(events, snap?.state.cycle ?? 0), [events, snap?.state.cycle]);
   if (!snap) return (
     <main>
       {error ? <p className="error">{error}</p> : <Loading />}
@@ -786,7 +790,6 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
     return refineApi.start(projectId, specId).then(({ runId, program: started }) => navigate(started ? programPath : `/runs/${runId}`)).finally(() => setStarting(false));
   });
   const executing = starting || (following && program?.status !== 'finished');
-  const now = stageNow(events, snap.state.cycle);
   return (
     <main className="flex flex-col gap-4 lg:h-full lg:min-h-0">
       <header className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></Link><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span></header>
