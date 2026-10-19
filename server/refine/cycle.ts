@@ -109,13 +109,19 @@ const MAX_MOVES_PER_ROLE = 3;
 const REORGANIZE_MAX_MOVES = 20;
 const REORGANIZED_FILES: readonly DocFile[] = ['project.md', 'brief.md', 'stack.md', 'flow.md', 'design.md'];
 
+/** The titles a question quotes in double quotes, normalized: the section a pending question is about. */
+const titlesOf = (texts: readonly string[]) => texts.flatMap((t) => [...t.matchAll(/"([^"]{4,})"/g)].map((m) => norm(m[1]!)));
+
+/** Texts of the questions waiting for the owner, the ones of this cycle's reorganization included. */
+const askedTexts = (s: RefineState, pending: ReadonlyArray<{ text: string }>) => [...s.questions.filter((q) => q.status === 'pending').map((q) => q.text), ...pending.map((q) => q.text)];
+
 /** Applies the moves role by role (Front, PO, SM), each against the documents as the earlier ones left them; a refused move is discarded with its reason. */
 async function applyMoves(
   journal: CycleJournal,
   draft: Draft,
   cycle: number,
   docs: Record<DocFile, string>,
-  scope: { specId: string; projectBriefing: boolean },
+  scope: { specId: string; projectBriefing: boolean; asked: readonly string[] },
   proposals: ReadonlyArray<{ role: 'front' | 'po' | 'sm'; moves: readonly DocMoveProposal[]; limit: number }>,
   discarded: Array<{ role: string; file: string; reason: string }>,
 ): Promise<void> {
@@ -126,6 +132,12 @@ async function applyMoves(
     for (const [n, move] of moves.entries()) {
       if (n >= limit) {
         discarded.push({ role, file: move.from, reason: `more than ${limit} moves in one cycle` });
+        continue;
+      }
+      // A section a question still waits on is the owner's to decide: no role moves it before the answer.
+      const cited = scope.asked.find((title) => norm(move.quote).includes(title));
+      if (cited) {
+        discarded.push({ role, file: move.from, reason: `a pergunta pendente cita este trecho: "${cited}"` });
         continue;
       }
       const plan = planMove(move, {
@@ -383,7 +395,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         await fail(`reorganize failed: ${out.failure}: ${out.errors.join('; ')}`);
         return;
       }
-      await applyMoves(journal, draft, cycle, docs, { specId: draft.specId, projectBriefing: backlogMode }, [{ role: 'po', moves: out.value.moves ?? [], limit: REORGANIZE_MAX_MOVES }], discardedPatches);
+      await applyMoves(journal, draft, cycle, docs, { specId: draft.specId, projectBriefing: backlogMode, asked: titlesOf(askedTexts(journal.state, reorgQuestions)) }, [{ role: 'po', moves: out.value.moves ?? [], limit: REORGANIZE_MAX_MOVES }], discardedPatches);
       reorgQuestions.push(...out.value.questions);
     }
     await journal.fact(RefineEvent.DocsReorganized, { cycle, hashes: Object.fromEntries(REORGANIZED_FILES.map((f) => [f, sha256(docs[f])])) });
@@ -454,7 +466,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   // The reviewers read these documents, so the quotes they copy are checked against them, even when a move below takes that text away.
   const reviewed = { ...docs };
   // Content in the wrong document moves first: every patch is checked against the documents as the moves leave them.
-  await applyMoves(journal, draft, cycle, docs, { specId: draft.specId, projectBriefing: backlogMode }, [
+  await applyMoves(journal, draft, cycle, docs, { specId: draft.specId, projectBriefing: backlogMode, asked: titlesOf(askedTexts(journal.state, reorgQuestions)) }, [
     { role: 'front', moves: frontReview?.moves ?? [], limit: MAX_MOVES_PER_ROLE },
     { role: 'po', moves: po.value.moves ?? [], limit: MAX_MOVES_PER_ROLE },
     { role: 'sm', moves: sm.value.moves ?? [], limit: MAX_MOVES_PER_ROLE },
@@ -501,13 +513,15 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   // A subject is a decision heading, so it is used once: a repeat, or one that equals a heading already taken, falls back to the question text.
   const taken = new Set([...decided, ...state.questions.flatMap((q) => (q.subject ? [norm(q.subject)] : []))]);
   const seen = new Set<string>();
+  const pendingTitles = new Set(titlesOf(state.questions.filter((q) => q.status === 'pending').map((q) => q.text)));
   const merged: Question[] = [];
   const counters = { po: 0, sm: 0 };
   for (const blocking of [true, false]) {
     for (const [role, out] of [['po', { questions: [...reorgQuestions, ...po.value.questions] }], ['sm', sm.value]] as const) {
       for (const q of out.questions.filter((x) => x.blocking === blocking)) {
         const key = norm(q.text);
-        if (seen.has(key) || decided.has(key)) continue;
+        // A reworded question about a section a pending one already asks is the same question.
+        if (seen.has(key) || decided.has(key) || titlesOf([q.text]).some((t) => pendingTitles.has(t))) continue;
         seen.add(key);
         const subject = q.subject && q.subject.length <= 80 && !taken.has(norm(q.subject)) ? q.subject : undefined;
         taken.add(norm(subject ?? q.text));
