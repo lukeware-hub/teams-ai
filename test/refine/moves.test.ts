@@ -29,6 +29,10 @@ describe('cutLines', () => {
     expect(cutLines('A\n\nQ\n\nB', 'Q')).toEqual({ next: 'A\n\nB', removedAt: 3, removed: 'Q\n\n' });
   });
 
+  it('keeps the blank line before a heading when the list item above it goes', () => {
+    expect(cutLines('## S\n\n- P\n- Q\n\n## T\n', '- Q')).toEqual({ next: '## S\n\n- P\n\n## T\n', removedAt: 10, removed: '- Q\n' });
+  });
+
   it('refuses a quote that is part of a line, a quote found twice, and a quote not found', () => {
     expect(cutLines('Alpha beta', 'beta')).toBeNull();
     expect(cutLines('Q\nx\nQ', 'Q')).toBeNull();
@@ -43,6 +47,10 @@ describe('insertBlock', () => {
 
   it('places the block below the anchor line, keeping the blank line that follows', () => {
     expect(insertBlock('## A\n\nx\n', 'Novo', '## A')).toEqual({ next: '## A\n\nNovo\n\nx\n', insertAt: 4, inserted: '\n\nNovo' });
+  });
+
+  it('keeps a list item among its neighbours, with no blank line between them', () => {
+    expect(insertBlock('## F\n\n- A\n- B\n\n## G\n', '- Novo', '- A')).toEqual({ next: '## F\n\n- A\n- Novo\n- B\n\n## G\n', insertAt: 9, inserted: '\n- Novo' });
   });
 
   it('adds a blank line when the anchor is directly followed by text', () => {

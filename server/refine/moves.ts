@@ -7,6 +7,7 @@ import type { MoveRow } from './state.js';
 /** A move quotes at most this many characters: a longer one rewrites a section, it does not move it. */
 export const MAX_MOVE_QUOTE = 2000;
 const DECISIONS_HEADING = /^##\s+(Decisões|Decisions)\s*$/m;
+const LIST_ITEM = /^\s*([-*+]|\d+[.)])\s/;
 
 /** The text with `quote` cut out, and where it was, so undo can put it back. */
 export interface Cut {
@@ -32,7 +33,7 @@ export function cutLines(text: string, quote: string): Cut | null {
   const from = end < text.length ? start : Math.max(start - 1, 0);
   let to = end < text.length ? end + 1 : end;
   // Between two blank lines one blank line goes too, so the gap does not double.
-  if (from > 0 && text[from - 1] === '\n' && text[to] === '\n') to += 1;
+  if (text[from - 2] === '\n' && text[from - 1] === '\n' && text[to] === '\n') to += 1;
   return { next: text.slice(0, from) + text.slice(to), removedAt: from, removed: text.slice(from, to) };
 }
 
@@ -50,6 +51,8 @@ export function insertBlock(text: string, block: string, after?: string): Put | 
   const at = start + after.length;
   if ((start > 0 && text[start - 1] !== '\n') || (at < text.length && text[at] !== '\n')) return null;
   const rest = text.slice(at);
+  // Items of one list stay together; any other block is set apart by blank lines.
+  if (LIST_ITEM.test(after) && LIST_ITEM.test(block)) return { next: text.slice(0, at) + `\n${block}` + rest, insertAt: at, inserted: `\n${block}` };
   // A blank line already follows the anchor; otherwise the block gets one before the next line.
   const inserted = at === text.length || rest.startsWith('\n\n') ? `\n\n${block}` : `\n\n${block}\n`;
   return { next: text.slice(0, at) + inserted + rest, insertAt: at, inserted };

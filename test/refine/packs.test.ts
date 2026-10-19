@@ -165,6 +165,7 @@ describe('refinePack moves and findings', () => {
       expect(feedback).toContain('except content in the wrong document: any role may move that');
     }
     expect(refinePack({ ...base, role: 'front' }).feedback).toContain('is a move to the document that holds it, not a patch');
+    expect(refinePack({ ...base, role: 'front' }).feedback).toContain('A visual value written in the briefing (a color, size or contrast) is a move to design.md too');
   });
 
   it('shows each role only the findings about the documents it owns', () => {
