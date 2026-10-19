@@ -31,7 +31,7 @@ import { RefineEvent, type Question } from './events.js';
 import { plainOutlineQuestion } from './question-choices.js';
 import { buildSpecsIndex, outlineOfIndex, specIdOf, type SpecsIndex } from './specs-index.js';
 import type { JevValidationResult, ValidationDocs } from './jev-validation.js';
-import { PATCH_FILES, patchOwners, refinePack } from './packs.js';
+import { PATCH_FILES, patchOwners, reorganizeGroups, reorganizePack, refinePack } from './packs.js';
 import { applyPatch, checkPatch, COVERED_REASON, patchId, unifiedDiff } from './patches.js';
 import { planMove } from './moves.js';
 import { applyRefineEvent, type BacklogState, type RefineState } from './state.js';
@@ -105,6 +105,9 @@ function fillsTemplate(file: (typeof BLANK_FILES)[number], text: string): boolea
 
 /** A role may move at most this many pieces of content in one cycle; the rest are discarded with the reason. */
 const MAX_MOVES_PER_ROLE = 3;
+/** The reorganization pass is the whole job of its call, so it may move more than a review. */
+const REORGANIZE_MAX_MOVES = 20;
+const REORGANIZED_FILES: readonly DocFile[] = ['project.md', 'brief.md', 'stack.md', 'flow.md', 'design.md'];
 
 /** Applies the moves role by role (Front, PO, SM), each against the documents as the earlier ones left them; a refused move is discarded with its reason. */
 async function applyMoves(
@@ -113,15 +116,16 @@ async function applyMoves(
   cycle: number,
   docs: Record<DocFile, string>,
   scope: { specId: string; projectBriefing: boolean },
-  proposals: ReadonlyArray<{ role: 'front' | 'po' | 'sm'; moves: readonly DocMoveProposal[] }>,
+  proposals: ReadonlyArray<{ role: 'front' | 'po' | 'sm'; moves: readonly DocMoveProposal[]; limit: number }>,
   discarded: Array<{ role: string; file: string; reason: string }>,
 ): Promise<void> {
   const blank = new Set(BLANK_FILES.filter((f) => docs[f] === BLANK_TEMPLATE[f]()));
-  for (const { role, moves } of proposals) {
-    let index = 0;
+  for (const { role, moves, limit } of proposals) {
+    // Counted from the journal, so a move id of this cycle never repeats one an earlier pass gave the same role.
+    let index = journal.state.moves.filter((m) => m.cycle === cycle && m.role === role).length;
     for (const [n, move] of moves.entries()) {
-      if (n >= MAX_MOVES_PER_ROLE) {
-        discarded.push({ role, file: move.from, reason: `more than ${MAX_MOVES_PER_ROLE} moves in one cycle` });
+      if (n >= limit) {
+        discarded.push({ role, file: move.from, reason: `more than ${limit} moves in one cycle` });
         continue;
       }
       const plan = planMove(move, {
@@ -357,6 +361,33 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const notReady = !backlogMode && deps.decider ? await notReadyCriteria(criteria, decider!, dctx) : null;
 
   const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];
+  // The reorganization pass reads every changed document in full against the charter and moves what is misplaced, before any review reads them.
+  // A document whose hash is the one the last pass left is skipped; the first pass reads all five.
+  const changed = REORGANIZED_FILES.filter((f) => sha256(docs[f]) !== journal.state.reorganized[f]);
+  const reorgQuestions: z.infer<typeof RefineOutput>['questions'] = [];
+  if (changed.length > 0) {
+    for (const group of reorganizeGroups(changed, docs)) {
+      const out = (await deps.runAgent<'refine'>(
+        {
+          kind: 'refine',
+          role: 'po',
+          pack: fitPackBudget(reorganizePack({ specHash: hash, principles: deps.principles(), specId: draft.specId, projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], changed: group, projectBriefing: backlogMode })),
+          cwd: draft.root,
+          phase: 'refine',
+          taskId: null,
+          attempt: cycle,
+        },
+        ctx,
+      )) as StepOutcome<z.infer<typeof RefineOutput>>;
+      if (!out.ok) {
+        await fail(`reorganize failed: ${out.failure}: ${out.errors.join('; ')}`);
+        return;
+      }
+      await applyMoves(journal, draft, cycle, docs, { specId: draft.specId, projectBriefing: backlogMode }, [{ role: 'po', moves: out.value.moves ?? [], limit: REORGANIZE_MAX_MOVES }], discardedPatches);
+      reorgQuestions.push(...out.value.questions);
+    }
+    await journal.fact(RefineEvent.DocsReorganized, { cycle, hashes: Object.fromEntries(REORGANIZED_FILES.map((f) => [f, sha256(docs[f])])) });
+  }
   // Front's review waits for the moves: its patches are checked after them.
   let frontReview: z.infer<typeof RefineOutput> | null = null;
   if (deps.frontAgent) {
@@ -424,9 +455,9 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const reviewed = { ...docs };
   // Content in the wrong document moves first: every patch is checked against the documents as the moves leave them.
   await applyMoves(journal, draft, cycle, docs, { specId: draft.specId, projectBriefing: backlogMode }, [
-    { role: 'front', moves: frontReview?.moves ?? [] },
-    { role: 'po', moves: po.value.moves ?? [] },
-    { role: 'sm', moves: sm.value.moves ?? [] },
+    { role: 'front', moves: frontReview?.moves ?? [], limit: MAX_MOVES_PER_ROLE },
+    { role: 'po', moves: po.value.moves ?? [], limit: MAX_MOVES_PER_ROLE },
+    { role: 'sm', moves: sm.value.moves ?? [], limit: MAX_MOVES_PER_ROLE },
   ], discardedPatches);
   // A finding stands only when its quote is in the document it names: a claim the documents do not show is not routed to the owner.
   const reported = [
@@ -473,7 +504,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const merged: Question[] = [];
   const counters = { po: 0, sm: 0 };
   for (const blocking of [true, false]) {
-    for (const [role, out] of [['po', po.value], ['sm', sm.value]] as const) {
+    for (const [role, out] of [['po', { questions: [...reorgQuestions, ...po.value.questions] }], ['sm', sm.value]] as const) {
       for (const q of out.questions.filter((x) => x.blocking === blocking)) {
         const key = norm(q.text);
         if (seen.has(key) || decided.has(key)) continue;

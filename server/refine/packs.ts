@@ -5,7 +5,7 @@ import type { Hit } from '../knowledge/retrieval.js';
 import { outputContract } from '../orchestrator/steps.js';
 import { PO_ITEMS, SM_ITEMS } from './checklist.js';
 import { coverageGaps, isStarted } from './coverage.js';
-import { buildWithDocs, DIGEST_NOTE } from './docs-view.js';
+import { buildWithDocs, DIGEST_NOTE, docDigest, MAX_DOCS_TOKENS } from './docs-view.js';
 import { DOC_REL, type DocFile, flowTemplate, stackTemplate } from './draft.js';
 import type { BacklogState, FindingRow, MoveRow, PatchRow, QuestionRow } from './state.js';
 import { jevHint, type JevValidationResult } from './jev-validation.js';
@@ -82,6 +82,52 @@ function backlogDigest(b: BacklogState): string {
     for (const issue of [...(spec?.issues ?? []), ...(pre?.issues ?? [])]) lines.push(`  problema: ${clip(issue, 160)}`);
     return lines.join('\n');
   }).join('\n');
+}
+
+/** The reorganization pass: every line of a changed document is checked against the charter; the other documents are context only. */
+const REORGANIZE_RULE = 'REORGANIZE: a full pass of the documents against the charter in your instructions. Read every line of each document marked "reorganize in full" and check it against the charter. A line in the wrong document is a move: `from` and `to` are document paths as listed below, `quote` is the whole lines to take out of `from`, copied character for character and found once in it, `text` is the same content for `to` keeping every fact, number and name, `after` is an exact existing line of `to` to place it below (or absent to append), and `reason` says why it belongs in `to`. A piece that fits two documents, or whose right place the charter leaves open, is never moved: ask it as a question with two or three `options` (the recommended one marked) and a `subject`. Never guess a move. A document marked as context is for reference only: take nothing out of it. Write every question, option, reason and subject in Brazilian Portuguese. Set every question\'s `blocking` to false, and return empty `checklist`, `docPatch`, `findings` and `contradictions`: this pass only moves and asks. An empty `moves` list is correct only when every line of every document marked "reorganize in full" belongs where it is.';
+
+/** Groups the changed documents into calls: one call for all of them when they fit, else one call per document. */
+export function reorganizeGroups(changed: readonly DocFile[], texts: Record<DocFile, string>): DocFile[][] {
+  const tokens = changed.reduce((sum, file) => sum + estimateTokens(texts[file]), 0);
+  return tokens <= MAX_DOCS_TOKENS ? [[...changed]] : changed.map((file) => [file]);
+}
+
+/** One reorganization call: `changed` in full, the other documents as a digest for context. */
+export function reorganizePack(input: {
+  specHash: string;
+  principles: readonly string[];
+  specId: string;
+  projectMd: string;
+  briefMd: string;
+  stackMd?: string;
+  flowMd?: string;
+  designMd?: string;
+  changed: readonly DocFile[];
+  projectBriefing?: boolean;
+}): ContextPackInput {
+  const docs: Record<DocFile, string | undefined> = { 'project.md': input.projectMd, 'brief.md': input.briefMd, 'stack.md': input.stackMd, 'flow.md': input.flowMd, 'design.md': input.designMd };
+  const sections = (Object.keys(docs) as DocFile[]).flatMap((file) => {
+    const text = docs[file];
+    if (text === undefined) return [];
+    const path = DOC_REL[file](input.specId, input.projectBriefing);
+    return input.changed.includes(file)
+      ? [`### ${path} (reorganize in full)`, text]
+      : [`### ${path} (context only, a digest)`, docDigest(text, 600)];
+  });
+  const feedback = [REORGANIZE_RULE, ...sections].join('\n\n');
+  return {
+    kind: 'refine',
+    role: 'po',
+    specHash: input.specHash,
+    principles: input.principles,
+    outputContract: outputContract('refine'),
+    criteria: [],
+    objectives: [],
+    retrieval: [],
+    feedback,
+    budgetTokens: MAX_DOCS_TOKENS + 10_000,
+  };
 }
 
 /** Spec (refinement) §3.2 step 2: what PO and SM see on every cycle. */

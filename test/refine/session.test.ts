@@ -84,8 +84,8 @@ describe('RefineSession', () => {
     expect(st.discarded[0]).toMatchObject({ reason: 'find not found in project.md' });
     expect(st.checklist.map((i) => i.id)).not.toContain('sm.dependencies-and-secrets');
     expect(st.checklist.find((i) => i.id === 'sm.no-open-questions')).toMatchObject({ passed: false });
-    expect(calls.map((c) => c.kind)).toEqual(['derive', 'refine', 'refine']);
-    expect((await s.snapshot()).tokens.steps).toBe(3);
+    expect(calls.map((c) => c.kind)).toEqual(['derive', 'refine', 'refine', 'refine']);
+    expect((await s.snapshot()).tokens.steps).toBe(4);
   });
 
   it('routes Front patches to design.md and keeps them reviewable', async () => {
@@ -151,7 +151,7 @@ describe('RefineSession', () => {
     script['refine/sm'] = [refineOut(green(SM))];
     await s.evaluate();
     expect(s.state.cycle).toBe(1);
-    expect(calls.map((call) => call.kind)).toEqual(['derive', 'refine', 'refine']);
+    expect(calls.map((call) => call.kind)).toEqual(['derive', 'refine', 'refine', 'refine']);
   });
 
   it("journals the owner's mark that the documents already answered a question, the label the routing eval reads", async () => {
@@ -329,7 +329,7 @@ describe('RefineSession', () => {
     expect(s.state.error).toBeNull();
     expect(s.state.status).toBe('drafting');
     expect(s.state.backlog?.enabled ?? false).toBe(false);
-    expect(calls.filter((c) => c.kind === 'refine')).toHaveLength(2);
+    expect(calls.filter((c) => c.kind === 'refine')).toHaveLength(3);
     expect(calls.some((c) => c.kind === 'backlog')).toBe(false);
   });
 

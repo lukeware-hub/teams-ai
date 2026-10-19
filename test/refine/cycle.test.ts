@@ -8,7 +8,7 @@ import { buildContextPack } from '../../server/knowledge/context-pack.js';
 import { failedGapQuestions, runCycle } from '../../server/refine/cycle.js';
 import { PACK_TOKEN_CAP } from '../../server/refine/fit-pack.js';
 import { draftPaths, createNewProject } from '../../server/refine/draft.js';
-import { emptyRefineState } from '../../server/refine/state.js';
+import { applyRefineEvent, emptyRefineState } from '../../server/refine/state.js';
 import { summarizeJevChecks, type JevValidationResult, type ValidationDocs } from '../../server/refine/jev-validation.js';
 import type { BacklogItem } from '../../server/contracts/backlog.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
@@ -79,8 +79,10 @@ describe('refinement cycle: moves, findings and template fills', () => {
     const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'shop/shop-002', specHash: 'draft', type, kind: 'fact' as const, data }; } };
     const ok = (value: unknown) => ({ ok: true, value, summary: {} });
     const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
-    const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
+    const runAgent = vi.fn(async (req: { kind: string; role: string; pack?: { feedback?: string } }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...makeSpec(), specId: 'shop-002', acceptanceCriteria: [{ id: 'AC-001', given: 'g', when: 'w', then: 't2', smoke: false }] } });
+      if (String(req.pack?.feedback).startsWith('REORGANIZE:')) return ok({ checklist: [], questions: [], docPatch: [], moves: [] });
+      if (String((req as { pack?: { feedback?: string } }).pack?.feedback).startsWith('REORGANIZE:')) return ok({ checklist: [], questions: [], docPatch: [], moves: [] });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [], ...poOutput });
       return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [], ...smOutput });
     });
@@ -153,8 +155,10 @@ describe('refinement cycle acceptance criterion ids (R11.8)', () => {
     const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'shop/shop-002', specHash: 'draft', type, kind: 'fact' as const, data }; } };
     const ok = (value: unknown) => ({ ok: true, value, summary: {} });
     const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
-    const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
+    const runAgent = vi.fn(async (req: { kind: string; role: string; pack?: { feedback?: string } }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...makeSpec(), specId: 'shop-002', acceptanceCriteria: [{ id: 'AC-001', given: 'g', when: 'w', then: 't2', smoke: false }] } });
+      if (String(req.pack?.feedback).startsWith('REORGANIZE:')) return ok({ checklist: [], questions: [], docPatch: [], moves: [] });
+      if (String((req as { pack?: { feedback?: string } }).pack?.feedback).startsWith('REORGANIZE:')) return ok({ checklist: [], questions: [], docPatch: [], moves: [] });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [] });
       return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
     });
@@ -185,6 +189,7 @@ describe('refinement cycle flow.md must be mermaid (R11.11)', () => {
     const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
     const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
+      if (String((req as { pack?: { feedback?: string } }).pack?.feedback).startsWith('REORGANIZE:')) return ok({ checklist: [], questions: [], docPatch: [], moves: [] });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [], ...po });
       return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions', 'sm.flow-is-mermaid']), questions: [], docPatch: [] });
     });
@@ -300,6 +305,7 @@ describe('refinement cycle patch dedup (R11.10)', () => {
     const samePatch = { file: 'docs/flow.md', find: '# doc', replace: 'Port: 8080.', reason: 'fill it in' };
     const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
+      if (String((req as { pack?: { feedback?: string } }).pack?.feedback).startsWith('REORGANIZE:')) return ok({ checklist: [], questions: [], docPatch: [], moves: [] });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [samePatch] });
       return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [samePatch] });
     });
@@ -338,6 +344,7 @@ describe('refinement cycle suggestions that still wait for the owner', () => {
     const other = { file, find: 'TODO: logs.', replace: 'Logs: stdout.', reason: 'fill in the logs' };
     const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
+      if (String((req as { pack?: { feedback?: string } }).pack?.feedback).startsWith('REORGANIZE:')) return ok({ checklist: [], questions: [], docPatch: [], moves: [] });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [again, other] });
       return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
     });
@@ -345,7 +352,7 @@ describe('refinement cycle suggestions that still wait for the owner', () => {
     expect(events.filter((e) => e.type === 'PATCH_PROPOSED').map((e) => e.data.find)).toEqual(['TODO: logs.']);
     const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
     expect(evaluated.data.discardedPatches as unknown[]).toContainEqual({ role: 'po', file, reason: 'the same change is already waiting for the owner' });
-    const review = runAgent.mock.calls.find((c) => c[0].kind === 'refine')![0] as unknown as { pack: { feedback: string } };
+    const review = runAgent.mock.calls.find((c) => c[0].kind === 'refine' && !String((c[0] as { pack?: { feedback?: string } }).pack?.feedback).startsWith('REORGANIZE:'))![0] as unknown as { pack: { feedback: string } };
     expect(review.pack.feedback).toContain('### Pending suggestions');
     expect(review.pack.feedback).toContain('"TODO: port." → fill in the port');
   });
@@ -373,6 +380,7 @@ describe('refinement cycle repeated design.md headings', () => {
     const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
     const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
+      if (String((req as { pack?: { feedback?: string } }).pack?.feedback).startsWith('REORGANIZE:')) return ok({ checklist: [], questions: [], docPatch: [], moves: [] });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [] });
       return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
     });
@@ -416,6 +424,7 @@ describe('refinement cycle patch dedup (R11.5a item 2)', () => {
     const smPatch = { file: 'docs/flow.md', find: '# doc', replace: 'The service listens on port 8080.', reason: 'state the port' };
     const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
+      if (String((req as { pack?: { feedback?: string } }).pack?.feedback).startsWith('REORGANIZE:')) return ok({ checklist: [], questions: [], docPatch: [], moves: [] });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [poPatch] });
       return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [smPatch] });
     });
@@ -455,6 +464,7 @@ describe('refinement cycle patch dedup (R11.5a item 2)', () => {
     const smPatch = { file: 'docs/flow.md', find: '# doc', replace: 'No authentication required.', reason: 'state the auth' };
     const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
+      if (String((req as { pack?: { feedback?: string } }).pack?.feedback).startsWith('REORGANIZE:')) return ok({ checklist: [], questions: [], docPatch: [], moves: [] });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [poPatch] });
       return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [smPatch] });
     });
@@ -489,6 +499,7 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
     const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
     const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
+      if (String((req as { pack?: { feedback?: string } }).pack?.feedback).startsWith('REORGANIZE:')) return ok({ checklist: [], questions: [], docPatch: [], moves: [] });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [{ text: 'How does the e2e suite reach MailHog?', blocking: true, relatedAcIds: ['AC-001'] }], docPatch: [] });
       return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
     });
@@ -524,6 +535,7 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
     const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
     const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
+      if (String((req as { pack?: { feedback?: string } }).pack?.feedback).startsWith('REORGANIZE:')) return ok({ checklist: [], questions: [], docPatch: [], moves: [] });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [{ text: 'Which port?', blocking: true, relatedAcIds: ['AC-001'] }], docPatch: [] });
       return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
     });
@@ -561,6 +573,7 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
         if (over.ok === false) return { ok: false, failure: 'schema', errors: ['bad'], summary: {} };
         return ok({ specHash: 'draft', answer: over.answer === undefined ? 'project.md diz 8080.' : over.answer });
       }
+      if (String((req as { pack?: { feedback?: string } }).pack?.feedback).startsWith('REORGANIZE:')) return ok({ checklist: [], questions: [], docPatch: [], moves: [] });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: Object.keys(questions).map((text) => ({ text, blocking: true, relatedAcIds: [] })), docPatch: [] });
       return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
     });
@@ -710,6 +723,7 @@ describe('refinement cycle System 1 filters (decisions 2-4)', () => {
     const runAgent = vi.fn(async (req: { kind: string; role: string; pack: { feedback?: string } }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
       packs[req.role] = String(req.pack.feedback);
+      if (String((req as { pack?: { feedback?: string } }).pack?.feedback).startsWith('REORGANIZE:')) return ok({ checklist: [], questions: [], docPatch: [], moves: [] });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [{ text: 'Which port?', blocking: true, relatedAcIds: ['AC-001'] }, { text: 'What port does it listen on?', blocking: true, relatedAcIds: ['AC-001'] }], docPatch: [] });
       return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
     });
@@ -846,6 +860,7 @@ describe('refinement cycle in backlog mode', () => {
     const fn = vi.fn(async (req: { kind: string; role: string; pack: { feedback?: string } }) => {
       packs.push({ kind: req.kind, role: req.role, feedback: String(req.pack.feedback) });
       if (req.kind === 'backlog') return ok(answers.shift());
+      if (String((req as { pack?: { feedback?: string } }).pack?.feedback).startsWith('REORGANIZE:')) return ok({ checklist: [], questions: [], docPatch: [], moves: [] });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [] });
       return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
     });
@@ -858,7 +873,7 @@ describe('refinement cycle in backlog mode', () => {
     on(journal);
     const { fn, packs } = agent([raw([item('casos', { dependsOn: ['base'] }), item('base', { priority: 'P0' })])]);
     await runCycle({ draft, journal, runAgent: fn as never, principles: () => [], retrieval: () => [] }, 1);
-    expect(packs.map((p) => p.kind)).toEqual(['backlog', 'refine', 'refine']);
+    expect(packs.map((p) => p.kind)).toEqual(['backlog', 'refine', 'refine', 'refine']);
     const derived = events.find((e) => e.type === 'BACKLOG_DERIVED')!.data as { items: Array<{ key: string; rank: number }> };
     expect(derived.items.map((i) => [i.key, i.rank])).toEqual([['base', 1], ['casos', 2]]);
     expect(events.some((e) => e.type === 'DERIVED')).toBe(false);
@@ -867,7 +882,7 @@ describe('refinement cycle in backlog mode', () => {
     expect(await readFile(path.join(draft.docs, 'backlog.md'), 'utf8')).toContain('Item base');
     const index = JSON.parse(await readFile(path.join(draft.docs, 'specs.json'), 'utf8')) as { specs: Array<{ specId: string; rank: number; dependsOn: string[] }> };
     expect(index.specs.map((x) => [x.rank, x.specId, x.dependsOn])).toEqual([[1, 'big-001-base', []], [2, 'big-001-casos', ['big-001-base']]]);
-    const po = packs.find((p) => p.role === 'po' && p.kind === 'refine')!;
+    const po = packs.find((p) => p.role === 'po' && p.kind === 'refine' && !p.feedback.startsWith('REORGANIZE:'))!;
     expect(po.feedback).toContain('### derived backlog');
     expect(po.feedback).not.toContain('### derived spec.json');
   });
@@ -923,6 +938,7 @@ describe('refinement cycle pending questions', () => {
     const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
     runAgent.mockImplementation(async (req: { kind: string; role: string }) => {
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...makeSpec(), specId: draft.specId, status: 'refining', specHash: null } });
+      if (String((req as { pack?: { feedback?: string } }).pack?.feedback).startsWith('REORGANIZE:')) return ok({ checklist: [], questions: [], docPatch: [], moves: [] });
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [{ text: 'Which port?', blocking: true, relatedAcIds: [] }], docPatch: [] });
       return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
     });
@@ -931,5 +947,73 @@ describe('refinement cycle pending questions', () => {
     expect(evaluated.data.questions).toEqual([]);
     const open = (evaluated.data.checklist as Array<{ id: string; detail: string }>).find((i) => i.id === 'sm.no-open-questions')!;
     expect(open.detail).toBe('1 blocking question(s) open');
+  });
+});
+
+describe('refinement cycle reorganization pass', () => {
+  const TECH = 'Usamos React no front.';
+  const ok = (value: unknown) => ({ ok: true, value, summary: {} });
+  const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
+  const REORG_EMPTY = { checklist: [], questions: [], docPatch: [], moves: [] };
+
+  /** A new project whose project.md holds TECH; the journal applies its events to the state, as the real one does. */
+  async function setup(reorg: Record<string, unknown> = REORG_EMPTY) {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
+    const ws = { projectId: 'shop', root, repo: `${root}/repo`, worktrees: `${root}/wt`, graph: `${root}/g`, knowledgeDb: `${root}/k.sqlite`, secrets: `${root}/secrets`, runs: `${root}/runs` } as Workspace;
+    const draft = draftPaths(ws, 'shop-003');
+    await createNewProject(draft, 'Shop');
+    await writeFile(draft.projectMd, `# Shop\n\n## Visão\n\nLoja online.\n\n${TECH}\n`);
+    await writeFile(draft.flowMd, '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n');
+    // A filled stack.md: a blank template is never a move's destination.
+    await writeFile(draft.stackMd, '# Stack\n\n## Tecnologias\n\nNode 22.\n');
+    const state = emptyRefineState();
+    const events: Array<{ type: string; data: Record<string, unknown> }> = [];
+    const journal = {
+      state,
+      allocStepSeq: () => 1,
+      fact: async (type: string, data: Record<string, unknown>) => {
+        events.push({ type, data });
+        applyRefineEvent(state, { type, data });
+        return { seq: events.length, at: '', runId: 'shop/shop-003', specHash: 'draft', type, kind: 'fact' as const, data };
+      },
+    };
+    const packs: Array<{ role: string; kind: string; feedback: string }> = [];
+    const runAgent = vi.fn(async (req: { kind: string; role: string; pack: { feedback?: string } }) => {
+      const feedback = String(req.pack.feedback);
+      packs.push({ kind: req.kind, role: req.role, feedback });
+      if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...makeSpec(), specId: 'shop-003', acceptanceCriteria: [{ id: 'AC-001', given: 'g', when: 'w', then: 't2', smoke: false }] } });
+      if (feedback.startsWith('REORGANIZE:')) return ok(reorg);
+      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [], moves: [] });
+      return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
+    });
+    const cycle = (n: number) => runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [] }, n);
+    return { draft, events, packs, cycle };
+  }
+
+  it('reads every document in full on the first pass, and moves the misplaced line to the document that holds it', async () => {
+    const { draft, events, packs, cycle } = await setup({ ...REORG_EMPTY, moves: [{ from: 'docs/project.md', to: 'docs/stack.md', quote: TECH, text: TECH, reason: 'tecnologia' }] });
+    await cycle(1);
+    const pass = packs.find((p) => p.feedback.startsWith('REORGANIZE:'))!;
+    expect(pass.feedback).toContain('### docs/project.md (reorganize in full)');
+    expect(events.some((e) => e.type === 'DOCS_REORGANIZED')).toBe(true);
+    expect(events.find((e) => e.type === 'DOC_MOVED')?.data).toMatchObject({ moveId: 'move-po-c1-0', from: 'project.md', to: 'stack.md' });
+    expect(await readFile(draft.projectMd, 'utf8')).not.toContain(TECH);
+  });
+
+  it('skips the pass when no document changed since the last one', async () => {
+    const { packs, cycle } = await setup();
+    await cycle(1);
+    packs.length = 0;
+    await cycle(2);
+    expect(packs.some((p) => p.feedback.startsWith('REORGANIZE:'))).toBe(false);
+  });
+
+  it('asks an ambiguous piece as a question with its choices, and never moves it', async () => {
+    const question = { id: 'q1', text: 'Onde fica o prazo de entrega?', blocking: false, relatedAcIds: [], subject: 'Prazo de entrega', options: [{ label: 'Briefing', detail: 'Regra de negócio.', recommended: true }, { label: 'Fluxo', detail: 'Ordem de passos.' }] };
+    const { events, cycle } = await setup({ ...REORG_EMPTY, questions: [question] });
+    await cycle(1);
+    const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
+    expect(evaluated.data.questions).toEqual(expect.arrayContaining([expect.objectContaining({ text: 'Onde fica o prazo de entrega?', subject: 'Prazo de entrega' })]));
+    expect(events.some((e) => e.type === 'DOC_MOVED')).toBe(false);
   });
 });

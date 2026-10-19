@@ -9,7 +9,7 @@ const MARGIN_TOKENS = 10_000;
 /** A pack with a huge rest still shows the docs this much. */
 const MIN_DOCS_TOKENS = 20_000;
 /** Past this the docs become a digest even when they would fit the cap, since every step of every cycle pays for them. */
-const MAX_DOCS_TOKENS = 70_000;
+export const MAX_DOCS_TOKENS = 70_000;
 
 export const DIGEST_NOTE = 'The documents below are a digest, because the whole text does not fit one evaluation: every heading as written, each followed by the start of its section and "[…]" where it was cut. Cite headings exactly as they appear; never assume what an excerpt does not show.';
 

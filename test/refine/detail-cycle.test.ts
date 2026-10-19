@@ -66,6 +66,7 @@ function fakeAgent(outline: () => BacklogItem[], hook: (req: Req, n: number) => 
     if (req.kind === 'spec') return ok({ specHash: H, specs: [...feedback.matchAll(/^## Item ([a-z0-9-]+):/gm)].map((m) => itemSpec(m[1]!)) });
     if (req.kind === 'preplan') return ok({ specHash: H, preplans: feedback.split(/^## Spec /m).slice(1).map(preplanFor) });
     if (req.kind === 'conflicts') return ok({ specHash: H, pairs: [{ a: 'triagem', b: 'opme', reason: 'mesmo módulo m' }, { a: 'opme', b: 'triagem', reason: 'eco' }, { a: 'opme', b: 'zzz', reason: 'chave inexistente' }] });
+    if (String((req as { pack?: { feedback?: string } }).pack?.feedback).startsWith('REORGANIZE:')) return ok({ checklist: [], questions: [], docPatch: [], moves: [] });
     if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [] });
     return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
   });
@@ -113,7 +114,7 @@ describe('backlog detailing in the refinement cycle', () => {
     const { journal, events, run, itemDir, draft } = await setup();
     const agent = fakeAgent(() => OUTLINE);
     await run(agent, 1);
-    expect(agent.kinds()).toEqual(['backlog', 'refine', 'refine']);
+    expect(agent.kinds()).toEqual(['backlog', 'refine', 'refine', 'refine']);
     await journal.fact(RefineEvent.BacklogDetailEnabled, {});
 
     let from = agent.calls.length;
@@ -143,8 +144,8 @@ describe('backlog detailing in the refinement cycle', () => {
     from = agent.calls.length;
     await writeFile(draft.flowMd, FLOW.replace('C --> D', 'C --> D2[Cotação]'));
     await run(agent, 4);
-    expect(agent.kinds(from)).toEqual(['backlog', 'spec', 'refine', 'refine']);
-    expect(agent.calls.at(-3)!.feedback).toContain('## Item opme:');
+    expect(agent.kinds(from)).toEqual(['backlog', 'spec', 'refine', 'refine', 'refine']);
+    expect(agent.calls.at(-4)!.feedback).toContain('## Item opme:');
     const opme = JSON.parse(await readFile(`${itemDir('opme')}/spec.json`, 'utf8'));
     expect(opme.acceptanceCriteria.map((c: { id: string }) => c.id)).toEqual(ids.slice(4, 6));
     // Same content, same revision: its pre-plan is still current and the spec stays planned.
@@ -179,7 +180,7 @@ describe('backlog detailing in the refinement cycle', () => {
     await writeFile(draft.designMd, '# Design\n\n- Cores da clínica');
     const from = agent.calls.length;
     await run(agent, 3);
-    expect(agent.kinds(from)).toEqual(['backlog', 'preplan', 'conflicts', 'refine', 'refine']);
+    expect(agent.kinds(from)).toEqual(['backlog', 'preplan', 'conflicts', 'refine', 'refine', 'refine']);
     expect(agent.calls.slice(from).find((c) => c.kind === 'preplan')!.feedback).toContain('## Spec fat:');
     expect(journal.state.status).toBe('ready');
   });

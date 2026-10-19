@@ -30,6 +30,8 @@ Executar: quando o backlog estiver pronto, clique em **Iniciar análise** para o
 
 Quando um agente encontra um trecho no documento errado (por exemplo, a ordem de passos dentro do design.md), ele move o trecho para o documento certo e avisa no topo da tela. **Desfazer** devolve os dois documentos ao texto anterior, enquanto nenhum deles mudou depois do movimento. **Fechar** só esconde o aviso; o movimento continua valendo.
 
+A cada avaliação, cada documento alterado desde a última avaliação é lido por inteiro e conferido contra as regras de cada documento. Um trecho que claramente pertence a outro documento é movido. Um trecho que pode ficar em mais de um lugar não é movido: vira uma pergunta, com as opções para você escolher. Documentos que não mudaram não são lidos de novo.
+
 ## Segredos
 
 Se a spec depende de uma chave de outro serviço, a seção **Segredos** guarda o valor. Ela não bloqueia a spec: sem a chave salva, a spec fica pronta, mas o serviço que depende dela pode não funcionar até a chave ser salva. Os agentes nunca veem o valor.

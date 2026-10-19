@@ -110,6 +110,8 @@ export interface RefineState {
   questions: QuestionRow[];
   patches: PatchRow[];
   moves: MoveRow[];
+  /** The hash of each document as the last reorganization pass left it; a document whose hash differs is read again. */
+  reorganized: Partial<Record<DocFile, string>>;
   /** The findings of the last cycle whose quotes the documents show, replaced every cycle. */
   findings: FindingRow[];
   discarded: Array<{ cycle: number; role: string; file: string; reason: string }>;
@@ -129,6 +131,7 @@ export const emptyRefineState = (): RefineState => ({
   questions: [],
   patches: [],
   moves: [],
+  reorganized: {},
   findings: [],
   discarded: [],
   error: null,
@@ -209,6 +212,9 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
     }
     case RefineEvent.DocMoved:
       s.moves.push({ ...(d as unknown as Omit<MoveRow, 'status'>), status: 'applied' });
+      break;
+    case RefineEvent.DocsReorganized:
+      s.reorganized = d.hashes as RefineState['reorganized'];
       break;
     case RefineEvent.FindingsReported:
       s.findings = (d.findings as FindingRow[] | undefined) ?? [];

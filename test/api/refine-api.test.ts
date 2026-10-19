@@ -889,7 +889,7 @@ describe('refine api', () => {
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
     calls.length = 0;
     expect((await call('POST', '/api/refine/hello-app/hello-002/evaluate')).status).toBe(202);
-    const isPo = (c: { kind: string; role: string }) => c.kind === 'refine' && c.role === 'po';
+    const isPo = (c: { kind: string; role: string; prompt?: string }) => c.kind === 'refine' && c.role === 'po' && !String(c.prompt).includes('REORGANIZE:');
     for (let i = 0; i < 100 && !calls.some(isPo); i++) await new Promise((r) => setTimeout(r, 20));
     expect(calls.find(isPo)?.prompt).toContain('zebracorn-7741');
   });

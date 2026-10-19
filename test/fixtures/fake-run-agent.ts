@@ -10,9 +10,13 @@ export function makeFakeRunAgent(script: Script): RunAgent {
     const seq = ctx.journal.allocStepSeq();
     const usage = { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 };
     await ctx.journal.fact('STEP_STARTED', { stepId: `s${seq}`, kind: req.kind, role: req.role, taskId: null, attempt: req.attempt });
-    const next = req.role === 'front' && req.kind === 'refine'
-      ? (script[`${req.kind}/${req.role}`]?.shift() ?? { checklist: [], questions: [], docPatch: [] })
-      : script[`${req.kind}/${req.role}`]?.shift();
+    // The reorganization pass is a refine call of the PO that reads nothing scripted: it answers empty and leaves the queue to the reviews.
+    const reorganize = req.kind === 'refine' && String((req.pack as { feedback?: string }).feedback).startsWith('REORGANIZE:');
+    const next = reorganize
+      ? { checklist: [], questions: [], docPatch: [], moves: [] }
+      : req.role === 'front' && req.kind === 'refine'
+        ? (script[`${req.kind}/${req.role}`]?.shift() ?? { checklist: [], questions: [], docPatch: [] })
+        : script[`${req.kind}/${req.role}`]?.shift();
     await ctx.journal.fact('STEP_FINISHED', { stepId: `s${seq}`, kind: req.kind, taskId: null, attempt: req.attempt, ok: next !== undefined, failure: next === undefined ? 'schema' : null, usage, costUsd: 0.01, durationMs: 1, numTurns: 1 });
     const summary = { usage, costUsd: 0.01, durationMs: 1, numTurns: 1, rateLimit: null };
     if (next === undefined) return { ok: false, failure: 'schema', errors: ['no scripted output'], summary, sandboxDisabled: false } as never;
