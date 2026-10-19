@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, refineApi, type AcceptanceCriterion, type ChecklistItem, type Snapshot, type StoredEvent } from '../api.js';
 import { docToJson } from '../refine/docJson.js';
@@ -91,6 +91,10 @@ const criterionText = (c: AcceptanceCriterion) => `${c.id}: dado ${c.given}, qua
 const jevInfo = 'O Jev é obrigatório no refinamento. Ele confere se os cinco documentos estão consistentes entre si e classifica e decide pontos da avaliação: critérios de aceite ainda não prontos, perguntas repetidas e contradições com o histórico do projeto. Sem ele, a avaliação não inicia. Ajuste o que fizer sentido e reavalie.';
 const patchInfo = 'Mudança proposta por um agente: linhas com - saem e linhas com + entram. Aceitar aplica a mudança no documento; Rejeitar a descarta, e o motivo opcional fica no histórico.';
 const jsonDownload = (value: unknown) => `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(value, null, 2))}`;
+
+// Skip re-rendering the 59-spec backlog on each tab click: its props stay the same.
+const MemoBacklogPanel = memo(BacklogPanel);
+const MemoSpecTree = memo(SpecTree);
 
 // Builds the body only after the file is opened: a closed details still mounts its children.
 function LazyDetails({ className, summary, body }: { className: string; summary: ReactNode; body: () => ReactNode }) {
@@ -287,8 +291,8 @@ export function RefinementView(p: ViewProps) {
   const backlogFirst = newProject && backlogOn;
   const backlogBlock = (
     <>
-      <BacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} onEnable={newProject ? undefined : p.onEnableBacklog} mandatory={newProject} />
-      {st.backlog?.detail && <SpecTree backlog={st.backlog} evaluating={evaluating} />}
+      <MemoBacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} onEnable={newProject ? undefined : p.onEnableBacklog} mandatory={newProject} />
+      {st.backlog?.detail && <MemoSpecTree backlog={st.backlog} evaluating={evaluating} />}
     </>
   );
   // Backlog mode lists specs, not one spec: the generated index replaces spec.json and the tasks of a single spec.

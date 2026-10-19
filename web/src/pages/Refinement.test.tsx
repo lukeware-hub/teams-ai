@@ -558,3 +558,14 @@ describe('RefinementView: Sugerir', () => {
     expect((screen.getByTestId('doc-stack.md') as HTMLTextAreaElement).value).toBe('# Stack do servidor');
   });
 });
+
+describe('RefinementView file previews', () => {
+  it('builds a JSON preview only after its file is opened', () => {
+    const { container } = render(<MemoryRouter><RefinementView snap={base({ status: 'answering' })} busy={false} {...on()} /></MemoryRouter>);
+    expect(container.querySelectorAll('details pre')).toHaveLength(0);
+    const details = screen.getByText('flow.json').closest('details')!;
+    details.open = true;
+    fireEvent(details, new Event('toggle'));
+    expect(container.querySelectorAll('details pre').length).toBeGreaterThan(0);
+  });
+});
