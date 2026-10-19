@@ -379,6 +379,8 @@ Environment variables (`.env`, read by `docker-compose.yml`):
 | `CLAUDE_CODE_OAUTH_TOKEN` | Long-lived Claude token from `claude setup-token`. |
 | `TEAMS_AI_UI_BIND` | Host interface for port 8787. Default `127.0.0.1`. Use `0.0.0.0` only on a trusted network. |
 | `TEAMS_AI_ALLOWED_HOSTS` | Extra `Host` header values the API accepts. |
+| `TEAMS_AI_REFINE_RELEASE_ROUNDS` | Refinement rounds after which Executar opens with checks still failing. Default `5`. |
+| `TEAMS_AI_REFINE_MAX_ROUNDS` | Refinement rounds after which Reavaliar stops and asks for a decision. Default `10`. |
 | `TEAMS_AI_IMAGE` | Image to run instead of the default registry image. |
 | `LICENSE_SERVICE_URL` | Address of the license service. In Compose the default is `http://license:8080`. |
 
