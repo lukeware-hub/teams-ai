@@ -169,3 +169,27 @@ describe('staleness of an evaluation', () => {
     expect(reduceRefineEvents([...cycle(1), edit('stack.md', 'autofill'), evaluated(1), ...cycle(2), evaluated(2)]).stale).toBe(false);
   });
 });
+
+describe('reduceRefineEvents document score', () => {
+  const score = (cycle: number, average: number) => ({ type: RefineEvent.DocsScored, data: { cycle, available: true, model: 'jev-1.13.0', average, docs: null, usage: null } });
+  const docEdit = { type: RefineEvent.DocEdited, data: { file: 'flow.md', hash: 'x', source: 'human' } };
+
+  it('has no score until one is journaled, and a document change before any score leaves none', () => {
+    expect(reduceRefineEvents([]).readiness).toBeUndefined();
+    expect(reduceRefineEvents([docEdit]).readiness).toBeUndefined();
+  });
+
+  it('keeps the latest score with the cycle that journaled it, current until a document changes', () => {
+    expect(reduceRefineEvents([score(1, 0.7), score(2, 0.85)]).readiness).toMatchObject({ cycle: 2, available: true, average: 0.85, outdated: false });
+  });
+
+  it('marks the score outdated when a document changes, and the next score clears the mark', () => {
+    expect(reduceRefineEvents([score(1, 0.85), docEdit]).readiness).toMatchObject({ average: 0.85, outdated: true });
+    expect(reduceRefineEvents([score(1, 0.85), docEdit, score(2, 0.9)]).readiness).toMatchObject({ average: 0.9, outdated: false });
+  });
+
+  it('keeps a confidential project as skipped, with no average', () => {
+    const skipped = { type: RefineEvent.DocsScored, data: { cycle: 1, available: false, model: null, average: null, docs: null, usage: null, skipped: 'confidential' } };
+    expect(reduceRefineEvents([skipped]).readiness).toMatchObject({ skipped: 'confidential', available: false, average: null });
+  });
+});

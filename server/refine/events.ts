@@ -3,6 +3,8 @@ export const RefineEvent = {
   DocEdited: 'DOC_EDITED',
   CycleStarted: 'REFINE_CYCLE_STARTED',
   DocsValidated: 'REFINE_DOCS_VALIDATED',
+  /** The Jev's score of the five documents: `{cycle, available, skipped?, model, average, docs, usage}`. */
+  DocsScored: 'REFINE_DOCS_SCORED',
   Derived: 'DERIVED',
   Evaluated: 'REFINE_EVALUATED',
   CycleFailed: 'REFINE_CYCLE_FAILED',

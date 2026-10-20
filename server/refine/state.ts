@@ -8,6 +8,7 @@ import { RefineEvent, type Question } from './events.js';
 import { approvalKey } from './sections.js';
 import type { DocFile } from './draft.js';
 import type { PendingPatch } from './patches.js';
+import type { Readiness } from './readiness.js';
 
 export type RefineStatus = 'drafting' | 'evaluating' | 'answering' | 'ready' | 'error' | 'started';
 export interface QuestionRow extends Question {
@@ -122,6 +123,8 @@ export interface RefineState {
   mode: 'new-project' | 'new-spec' | 'continue' | 'backlog' | null;
   /** The checks failing in the last rounds in a row, and how many rounds they have failed together. */
   stuck?: StuckRun;
+  /** The Jev's latest score of the documents; a document change marks it outdated until the next score. */
+  readiness?: Readiness;
 }
 
 export interface StuckRun {
@@ -289,6 +292,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
     case RefineEvent.DocEdited:
       if (s.status === 'evaluating') s.editedInCycle = true;
       if (hasDerivation(s)) s.stale = true;
+      if (s.readiness) s.readiness.outdated = true;
       break;
     case RefineEvent.BacklogEnabled: {
       // `acFloor`: the highest criterion id in the draft before the briefing move removed this draft's own spec.json.
@@ -335,6 +339,9 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
       break;
     case RefineEvent.ConflictsDerived:
       if (s.backlog) s.backlog = { ...s.backlog, conflicts: { inputHash: String(d.inputHash), pairs: d.pairs as ConflictMap['pairs'] } };
+      break;
+    case RefineEvent.DocsScored:
+      s.readiness = { ...(d as unknown as Omit<Readiness, 'outdated'>), outdated: false };
       break;
     case RefineEvent.StartedRun:
       s.status = 'started';
