@@ -100,6 +100,9 @@ async function placement(p) {
   for (const e of lines.filter((x) => x.type === 'DOC_MOVED')) moves[e.data.role] = (moves[e.data.role] ?? 0) + 1;
   const models = [...new Set(lines.filter((e) => e.type === 'STEP_STARTED' && e.data.kind === 'refine').map((e) => `${e.data.role}:${e.data.model}`))];
   const usd = lines.filter((e) => e.type === 'STEP_FINISHED').reduce((n, e) => n + Number(e.data.costUsd ?? 0), 0);
+  for (const e of lines.filter((x) => x.type === 'DOC_MOVED')) {
+    console.log(`MOVE ${e.data.role} ${e.data.from} -> ${e.data.to}: quote ${clip(String(e.data.quote).replace(/\s+/g, ' '), 160)} | text ${clip(String(e.data.text).replace(/\s+/g, ' '), 160)}`);
+  }
   console.log(JSON.stringify({
     status: json.state.status, cycle: json.state.cycle, moves,
     undone: lines.filter((e) => e.type === 'DOC_MOVE_UNDONE').length,
