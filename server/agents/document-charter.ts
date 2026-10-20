@@ -1,3 +1,5 @@
+import type { DocFile } from '../refine/draft.js';
+
 /** What each project document is for and what does not belong in it; every agent reads it. */
 export const DOCUMENT_CHARTER = `Project documents (paths as the agents see them) and what each one holds:
 - docs/project.md: the product itself: its vision, personas, constraints, principles, who may perform each act and under what authority, legal and compliance rules, where the product runs (deploy target) and GitHub owner. Does not hold the tools that build or run it (docs/stack.md), features or acceptance criteria (the briefing), the order or conditions of steps (docs/flow.md) or visual rules (docs/design.md).
@@ -6,3 +8,12 @@ export const DOCUMENT_CHARTER = `Project documents (paths as the agents see them
 - docs/flow.md: how the application behaves, as one Mermaid diagram: states, events, branches, error paths, the order of steps and who acts. Does not hold visual tokens or layout (docs/design.md), technologies (docs/stack.md) or acceptance criteria text (the briefing).
 - docs/design.md: how the interface looks, feels and responds: brand, color and type tokens, spacing, breakpoints, component anatomy, visual states, motion, accessibility, and the list of screens or portals with what each one shows. Does not hold business rules, the order or conditions of a step (docs/flow.md), endpoints, data or technologies.
 When one piece of content fits two documents: a rule that decides who may act belongs to docs/project.md; a business rule (a deadline, a limit, what is allowed) belongs to the briefing as its testable form, and docs/flow.md keeps only the branch that applies it; docs/design.md keeps only how the screen shows it. Where the product runs belongs to docs/project.md; the tool that builds or runs it belongs to docs/stack.md.`;
+
+/** What each document must hold, in one line each; the Jev's scoring questions quote it. */
+export const DOCUMENT_PURPOSE: Record<DocFile, string> = {
+  'project.md': 'the product itself: its vision, personas, constraints, principles, who may act and under what authority, legal rules, deploy target and GitHub owner',
+  'brief.md': 'what this scope delivers and how each part is verified: objectives, features, acceptance criteria, out of scope, external dependencies, bug details and decisions',
+  'stack.md': 'the technologies the software is built with: runtime, frameworks, storage, tooling, versions, ports, services, data models, API contracts and security mechanisms',
+  'flow.md': 'how the application behaves, as one Mermaid diagram: states, events, branches, error paths, the order of steps and who acts',
+  'design.md': 'how the interface looks, feels and responds: tokens, spacing, breakpoints, component anatomy, visual states, motion, accessibility and the screens',
+};
