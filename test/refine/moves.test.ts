@@ -91,35 +91,35 @@ describe('planMove', () => {
   });
 
   it('refuses a move between the same document, an unknown path and a document not loaded', () => {
-    expect(planMove(move({ to: 'docs/design.md' }), context())).toEqual({ ok: false, reason: 'a move needs two different documents' });
-    expect(planMove(move({ from: 'docs/outro.md' }), context())).toEqual({ ok: false, reason: 'unknown file docs/outro.md' });
-    expect(planMove(move(), context({ docs: { 'design.md': design } }))).toEqual({ ok: false, reason: 'document not loaded' });
+    expect(planMove(move({ to: 'docs/design.md' }), context())).toEqual({ ok: false, reason: 'o movimento precisa de dois documentos diferentes' });
+    expect(planMove(move({ from: 'docs/outro.md' }), context())).toEqual({ ok: false, reason: 'arquivo desconhecido docs/outro.md' });
+    expect(planMove(move(), context({ docs: { 'design.md': design } }))).toEqual({ ok: false, reason: 'documento não carregado' });
   });
 
   it('refuses to touch a blank template, the decisions section, and a heading that would open one', () => {
-    expect(planMove(move(), context({ blank: new Set(['flow.md']) }))).toEqual({ ok: false, reason: 'a blank template takes no moves; the SM fills it first' });
-    expect(planMove(move({ from: 'docs/specs/hello-001/brief.md', to: 'docs/project.md', quote: '> 15 dias.', text: 'Prazo: 15 dias.' }), context())).toEqual({ ok: false, reason: 'quote is inside the decisions section' });
-    expect(planMove(move({ to: 'docs/specs/hello-001/brief.md', after: '### Prazo' }), context())).toEqual({ ok: false, reason: 'text would go into the decisions section' });
-    expect(planMove(move({ text: '## Decisões\n\n- nova' }), context())).toEqual({ ok: false, reason: 'text would open a decisions section' });
+    expect(planMove(move(), context({ blank: new Set(['flow.md']) }))).toEqual({ ok: false, reason: 'modelo em branco não recebe movimentos; o SM preenche antes' });
+    expect(planMove(move({ from: 'docs/specs/hello-001/brief.md', to: 'docs/project.md', quote: '> 15 dias.', text: 'Prazo: 15 dias.' }), context())).toEqual({ ok: false, reason: 'o trecho está na seção de decisões' });
+    expect(planMove(move({ to: 'docs/specs/hello-001/brief.md', after: '### Prazo' }), context())).toEqual({ ok: false, reason: 'o texto iria para a seção de decisões' });
+    expect(planMove(move({ text: '## Decisões\n\n- nova' }), context())).toEqual({ ok: false, reason: 'o texto abriria uma seção de decisões' });
   });
 
   it('refuses a move the owner undid, and content an earlier move already moved', () => {
-    expect(planMove(move(), context({ undone: [{ from: 'design.md', to: 'flow.md', quote: 'Valide o certificado antes do código.' }] }))).toEqual({ ok: false, reason: 'the owner already undid this move' });
-    expect(planMove(move(), context({ applied: [{ text: 'Valide o certificado antes do código.' }] }))).toEqual({ ok: false, reason: 'this content was already moved' });
+    expect(planMove(move(), context({ undone: [{ from: 'design.md', to: 'flow.md', quote: 'Valide o certificado antes do código.' }] }))).toEqual({ ok: false, reason: 'o dono já desfez este movimento' });
+    expect(planMove(move(), context({ applied: [{ text: 'Valide o certificado antes do código.' }] }))).toEqual({ ok: false, reason: 'este conteúdo já foi movido' });
   });
 
   it('refuses a quote that is not whole lines, a move that would empty a document, an unknown anchor, and a quote over the limit', () => {
-    expect(planMove(move({ quote: 'certificado antes' }), context())).toEqual({ ok: false, reason: 'quote must be whole lines found once in design.md' });
-    expect(planMove(move(), context({ docs: { ...docs, 'design.md': 'Valide o certificado antes do código.' } }))).toEqual({ ok: false, reason: 'the move would empty design.md' });
-    expect(planMove(move({ after: '## Inexistente' }), context())).toEqual({ ok: false, reason: 'after must be one whole line found once in flow.md' });
-    expect(planMove(move({ quote: 'x'.repeat(MAX_MOVE_QUOTE + 1) }), context())).toEqual({ ok: false, reason: `quote longer than ${MAX_MOVE_QUOTE} characters` });
+    expect(planMove(move({ quote: 'certificado antes' }), context())).toEqual({ ok: false, reason: 'o trecho deve ser linhas inteiras encontradas uma vez em design.md' });
+    expect(planMove(move(), context({ docs: { ...docs, 'design.md': 'Valide o certificado antes do código.' } }))).toEqual({ ok: false, reason: 'o movimento esvaziaria design.md' });
+    expect(planMove(move({ after: '## Inexistente' }), context())).toEqual({ ok: false, reason: 'a âncora deve ser uma linha inteira encontrada uma vez em flow.md' });
+    expect(planMove(move({ quote: 'x'.repeat(MAX_MOVE_QUOTE + 1) }), context())).toEqual({ ok: false, reason: `trecho com mais de ${MAX_MOVE_QUOTE} caracteres` });
   });
 
   it('refuses text that drops a number or a backticked name of the quote, and keeps both when only the sentence changes', () => {
     const withFacts = { ...docs, 'design.md': '# Design\n\n## Assinatura\n\nValide o certificado em 15 dias com `TOTP`.\n\n## Cores\n\n- fundo: branco\n' };
     const quote = 'Valide o certificado em 15 dias com `TOTP`.';
-    expect(planMove(move({ quote, text: 'O certificado é validado com código.' }), context({ docs: withFacts }))).toEqual({ ok: false, reason: 'text drops "15" from the quote' });
-    expect(planMove(move({ quote, text: 'O certificado vale por 15 dias.' }), context({ docs: withFacts }))).toEqual({ ok: false, reason: 'text drops "TOTP" from the quote' });
+    expect(planMove(move({ quote, text: 'O certificado é validado com código.' }), context({ docs: withFacts }))).toEqual({ ok: false, reason: 'o texto perde "15" do trecho' });
+    expect(planMove(move({ quote, text: 'O certificado vale por 15 dias.' }), context({ docs: withFacts }))).toEqual({ ok: false, reason: 'o texto perde "TOTP" do trecho' });
     expect(planMove(move({ quote, text: 'O certificado é validado em 15 dias com `TOTP`.' }), context({ docs: withFacts }))).toMatchObject({ ok: true });
   });
 
@@ -131,8 +131,8 @@ describe('planMove', () => {
   it('refuses text that would land inside a code block, and a quote taken from inside one', () => {
     const diagram = '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n\nDepois.\n';
     const flowContext = context({ docs: { ...docs, 'flow.md': diagram } });
-    expect(planMove(move({ after: '  A --> B', text: 'Prosa solta.' }), flowContext)).toEqual({ ok: false, reason: 'text would go into a code block' });
-    expect(planMove(move({ from: 'docs/flow.md', to: 'docs/design.md', quote: '  A --> B', text: 'A --> B.' }), flowContext)).toEqual({ ok: false, reason: 'quote is inside a code block' });
+    expect(planMove(move({ after: '  A --> B', text: 'Prosa solta.' }), flowContext)).toEqual({ ok: false, reason: 'o texto iria para um bloco de código' });
+    expect(planMove(move({ from: 'docs/flow.md', to: 'docs/design.md', quote: '  A --> B', text: 'A --> B.' }), flowContext)).toEqual({ ok: false, reason: 'o trecho está em bloco de código' });
   });
 
   it('places text after a code block, outside it', () => {

@@ -105,7 +105,7 @@ describe('refinement cycle: moves, findings and template fills', () => {
     const { events, draft } = await run({ moves: [move] }, { moves: [move] });
     expect(events.filter((e) => e.type === 'DOC_MOVED').map((e) => e.data.moveId)).toEqual(['move-po-c1-0']);
     const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
-    expect(evaluated.data.discardedPatches).toContainEqual({ role: 'sm', file: 'docs/project.md', reason: 'quote must be whole lines found once in project.md' });
+    expect(evaluated.data.discardedPatches).toContainEqual({ role: 'sm', file: 'docs/project.md', reason: 'o trecho deve ser linhas inteiras encontradas uma vez em project.md' });
     expect((await readFile(draft.flowMd, 'utf8')).split(MOVED).length - 1).toBe(1);
   });
 
@@ -115,7 +115,7 @@ describe('refinement cycle: moves, findings and template fills', () => {
     const { events } = await run({ moves }, {}, { projectMd: `# Shop\n\n${quotes.join('\n\n')}\n` });
     expect(events.filter((e) => e.type === 'DOC_MOVED').map((e) => e.data.moveId)).toEqual(['move-po-c1-0', 'move-po-c1-1', 'move-po-c1-2']);
     const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
-    expect(evaluated.data.discardedPatches).toContainEqual({ role: 'po', file: 'docs/project.md', reason: 'more than 3 moves in one cycle' });
+    expect(evaluated.data.discardedPatches).toContainEqual({ role: 'po', file: 'docs/project.md', reason: 'mais de 3 movimentos em um ciclo' });
   });
 
   it('keeps a finding only when its quote is in the document it names', async () => {
