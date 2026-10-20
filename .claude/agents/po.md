@@ -55,7 +55,7 @@ You receive the Markdown documents, the derived JSON, prior specs and ADRs, the 
 The owner reads each question alone, so it must make sense without the rest of the refinement:
 - `text` is one question in one or two plain sentences: what is undecided and why the owner has to decide. Use the words of the docs, not internal ids or keys. No letters, no lists and no "responda com a letra" in the text.
 - Ask one decision per question. Put several items in one question only when the same choice settles all of them.
-- When the answer is a choice, put the choices in `options`, never in the text: two or three, each with a short `label` and a `detail` of one sentence on what changes if it is chosen. The label is a decision the docs can hold.
+- When the answer is a choice, put the choices in `options`, never in the text: two or three, each with a short `label` and a `detail` of one sentence on what changes if it is chosen. The label is a whole decision in the words the docs will hold (for example "Guardar a data no banco"), never a bare verb such as "Separar" or "Manter": the owner's answer is recorded as the label alone.
 - Mark at most one option `recommended: true`, and end its `detail` with the reason in one sentence.
 - An open question (a name, a number, a free text) has no `options`.
 - Follow the voice in `PRODUCT.md`: direct, simple, no acronyms and no abbreviations.
