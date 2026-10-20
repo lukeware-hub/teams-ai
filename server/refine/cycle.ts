@@ -131,7 +131,7 @@ async function applyMoves(
     let index = journal.state.moves.filter((m) => m.cycle === cycle && m.role === role).length;
     for (const [n, move] of moves.entries()) {
       if (n >= limit) {
-        discarded.push({ role, file: move.from, reason: `more than ${limit} moves in one cycle` });
+        discarded.push({ role, file: move.from, reason: `mais de ${limit} movimentos em um ciclo` });
         continue;
       }
       // A section a question still waits on is the owner's to decide: no role moves it before the answer.

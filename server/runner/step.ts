@@ -87,6 +87,8 @@ export interface StepDeps {
 
 /** Tools a review step does not get, whatever its role may use elsewhere. */
 const REVIEW_DENIED_TOOLS: readonly string[] = ['Edit', 'Write', 'MultiEdit'];
+/** Steps that answer with JSON and edit no file: refinement changes reach the docs only as patches the owner accepts. */
+const READ_ONLY_KINDS: readonly string[] = ['review', 'ui-check', 'refine', 'suggest'];
 /** What the chat step may use: read files in its working directory and run the graphify queries its settings allow. */
 export const CHAT_TOOLS: readonly string[] = ['Read', 'Grep', 'Glob', 'Bash'];
 /** A search or two and the answer: a chat that loops is cut short instead of spending the step budget. */
@@ -201,16 +203,32 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
  * Phase 6 report). The JSON still goes through the same schema, specHash and reference validation, so taking it is safe;
  * text with no single JSON object stays a schema failure.
  */
-export function jsonFromResultText(text: string | null): unknown {
-  if (!text) return null;
+/** The candidate JSON of an answer given in prose: its fenced block, else the text from its first brace to its last one. */
+function resultJsonCandidate(text: string | null): string {
+  if (!text) return '';
   const fenced = /```(?:json)?\s*\n([\s\S]*?)\n```/.exec(text);
-  const candidate = (fenced ? fenced[1]! : text).trim();
-  if (!candidate.startsWith('{') || !candidate.endsWith('}')) return null;
+  // Prose before or after the object is tolerated: the candidate is the text from its first brace to its last one.
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  return fenced ? fenced[1]!.trim() : start === -1 || end < start ? '' : text.slice(start, end + 1);
+}
+
+export function jsonFromResultText(text: string | null): unknown {
   try {
-    const value: unknown = JSON.parse(candidate);
+    const value: unknown = JSON.parse(resultJsonCandidate(text));
     return typeof value === 'object' && value !== null && !Array.isArray(value) ? value : null;
   } catch {
     return null;
+  }
+}
+
+/** Why the JSON of an answer given in prose does not parse; null when it parses. */
+export function jsonParseError(text: string | null): string | null {
+  try {
+    JSON.parse(resultJsonCandidate(text));
+    return null;
+  } catch (error) {
+    return (error as Error).message;
   }
 }
 
@@ -301,9 +319,9 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
   await ensureTrusted(req.cwd, path.join(home, '.claude.json'));
   const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: [...(req.extraAllow ?? []), ...refs.map((dir) => `Read(${absoluteRule(dir)}/**)`)], extraDenyRead: req.denyRead, protectedDirs: [deps.agentPluginsRoot, dynamicPluginDir(home)].filter((dir): dir is string => dir !== undefined), sandboxEnabled: deps.sandbox?.enabled, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });
   if (req.resume && req.sessionStore) await restoreSession(req.sessionStore, home);
-  // A review and a UI check never edit the code they judge (R11.13 slice 2).
+  // A review, a UI check and a refinement never edit the files they judge (R11.13 slice 2).
   // The chat searches its own guide and history with the tools of CHAT_TOOLS only; its Bash rules allow graphify queries and nothing else.
-  const agent = req.kind === 'review' || req.kind === 'ui-check' ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : req.kind === 'chat' ? { ...req.agent, tools: [...CHAT_TOOLS] } : req.agent;
+  const agent = READ_ONLY_KINDS.includes(req.kind) ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : req.kind === 'chat' ? { ...req.agent, tools: [...CHAT_TOOLS] } : req.agent;
   const catalogNote = refs.length > 0 ? `Reference catalog (search it with Grep; never load it whole): ${refs.join(', ')}` : '';
   const systemExtra = [req.systemExtra, catalogNote].filter(Boolean).join('\n\n');
   const agentWithExtra = systemExtra ? { ...agent, body: `${agent.body}\n\n${systemExtra}` } : agent;
@@ -383,8 +401,10 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
     const errors = [...validation.errors];
     if (raw.summary.structuredOutput === null) {
       // Without this the only trace of a prose-only answer is "expected object, received null".
-        const text = redactSecrets((raw.summary.resultText ?? '').slice(0, 500));
-      errors.push(`no JSON object in the agent result (subtype=${raw.summary.subtype ?? 'none'}, terminal=${raw.summary.terminalReason ?? 'none'}, turns=${raw.summary.numTurns}): ${text || '(empty)'}`);
+      const text = redactSecrets((raw.summary.resultText ?? '').slice(0, 4000));
+      // The parse error can quote part of the answer, so it is redacted like the answer.
+      const parse = jsonParseError(raw.summary.resultText);
+      errors.push(`no JSON object in the agent result (subtype=${raw.summary.subtype ?? 'none'}, terminal=${raw.summary.terminalReason ?? 'none'}, turns=${raw.summary.numTurns}${parse ? `, JSON.parse: ${redactSecrets(parse)}` : ''}): ${text || '(empty)'}`);
     }
     return { ok: false, failure: 'schema', errors, summary: raw.summary, sandboxDisabled: false };
   }

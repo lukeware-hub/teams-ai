@@ -354,18 +354,18 @@ describe('TaskRunner: installing dependencies before the Dev starts', () => {
     expect(state().state).toBe('validating');
   });
 
-  it('a failing install fails the task like a blocking gate, without ever calling the Dev agent', async () => {
-    let devCalled = false;
+  it('a failing install is handed to the Dev as its feedback, so the Dev runs and fixes the lock file', async () => {
+    let devFeedback = '';
     const agent: Agent = async (req) => {
-      if (req.kind === 'dev') devCalled = true;
+      if (req.kind === 'dev') devFeedback = String((req as { pack?: { feedback?: string } }).pack?.feedback);
       return devDone()(req);
     };
     const installDeps: TaskRunnerDeps['installDeps'] = async () => gate('install', { passed: false, exitCode: 1, failure: 'code', junit: null, stderrTail: 'npm ERR! network timeout' });
     const r = new TaskRunner('T1', deps({ agent, installDeps }));
     await r.advance();
-    expect(devCalled).toBe(false);
-    expect(state()).toMatchObject({ state: 'implementing', attempts: 1 });
-    expect(journal.lastFeedback('T1')).toContain('npm ERR! network timeout');
+    expect(devFeedback).toContain('Fix the dependencies with the package manager');
+    expect(devFeedback).toContain('npm ERR! network timeout');
+    expect(state().state).toBe('validating');
   });
 });
 

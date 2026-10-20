@@ -137,6 +137,12 @@ describe('refinePack', () => {
     expect(refinePack({ ...base, role: 'po' }).feedback).not.toContain('Backlog mode');
     expect(refinePack({ ...base, role: 'po' }).feedback).not.toContain('## Decisões');
   });
+  it('sends a deadline or a limit to the briefing, so flow.md gets only a branch or a step order', () => {
+    expect(refinePack({ ...base, role: 'po' }).feedback).toContain('a deadline, a limit or what is allowed is a business rule even when a step checks it');
+  });
+  it('keeps a line with two kinds of content whole and reports its other part with the exact words', () => {
+    expect(refinePack({ ...base, role: 'po' }).feedback).toContain('not moved and not cut');
+  });
   // R11.10 (plan 88): before the detailing, the review leaves what a spec decides to the detailing, and nothing else waits.
   it('tells the PO and the SM reviewing an outline to leave spec details to the detailing, and nobody else', () => {
     const backlog = { enabled: true, project: null, epics: [{ key: 'core', title: 'Núcleo' }], items: [], cycle: 1 };
@@ -173,6 +179,27 @@ describe('refinePack moves and findings', () => {
     const feedback = refinePack({ ...base, role: 'po' }).feedback ?? '';
     expect(feedback.indexOf('MOVES: content that sits in the wrong document')).toBeLessThan(feedback.indexOf('ROLES IN THIS REVIEW'));
     expect(feedback).toContain('read each of the five documents line by line');
+  });
+
+  it('holds a move of a piece a pending question names until the owner answers, as the code does', () => {
+    const feedback = refinePack({ ...base, role: 'po' }).feedback ?? '';
+    expect(feedback).toContain('a piece that a pending question names in double quotes is not moved until the owner answers it');
+    expect(feedback).not.toContain('moves even when a question about it is open');
+  });
+
+  it('does not move or cut a line that holds two kinds of content: its owner leaves it, and the other part goes as a finding', () => {
+    const feedback = refinePack({ ...base, role: 'po' }).feedback ?? '';
+    expect(feedback).toContain('A line that holds two kinds of content is not moved and not cut: its owner leaves the line as it is');
+  });
+
+  it('tells Front to replace a rule already written in design.md, never to write it a second time', () => {
+    const feedback = refinePack({ ...base, role: 'front' }).feedback ?? '';
+    expect(feedback).toContain('a rule already written there, including a line moved into it in this cycle, is replaced, never written a second time');
+  });
+
+  it('names the screens and portals as a visual kind that moves to design.md', () => {
+    const feedback = refinePack({ ...base, role: 'front' }).feedback ?? '';
+    expect(feedback).toContain('list of screens or portals outside design.md moves to design.md');
   });
 
   it('shows each role only the findings about the documents it owns', () => {

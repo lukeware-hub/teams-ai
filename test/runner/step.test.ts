@@ -114,6 +114,7 @@ describe('runStep', () => {
       expect(text).toContain('no JSON object in the agent result');
       expect(text).toContain('I edited design.md directly');
       expect(text).toContain('subtype=success');
+      expect(text).toContain('JSON.parse: Unexpected end of JSON input');
       expect(text).not.toContain('sk-secret-123');
     }
   });
@@ -364,6 +365,15 @@ describe('runStep', () => {
     expect(JSON.parse(await fs.readFile(capture, 'utf8')).argv).toContain('Read,Edit,Write,Grep,Glob,Bash');
   });
 
+  it('gives a refinement step no file-editing tools either, since its changes reach the docs only as patches', async () => {
+    const capture = path.join(dir, 'capture.json');
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
+    const agent = { ...devAgent, tools: ['Read', 'Edit', 'Write', 'Grep', 'Glob', 'Bash'] };
+    await runStep(request({ kind: 'refine', agent }), deps);
+    const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
+    expect(captured.argv[captured.argv.indexOf('--tools') + 1]).toBe('Read,Grep,Glob,Bash');
+  });
+
   it('gives a chat step Read, Grep, Glob and Bash with only its graphify rules allowed and its fenced directories denied, and a short turn cap', async () => {
     const capture = path.join(dir, 'capture.json');
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
@@ -464,5 +474,16 @@ describe('jsonFromResultText', () => {
     expect(jsonFromResultText('```json\n[1,2]\n```')).toBeNull();
     expect(jsonFromResultText('```json\n{broken\n```')).toBeNull();
     expect(jsonFromResultText(null)).toBeNull();
+    expect(jsonFromResultText('{"a":1}\n\nPronto.')).toEqual({ a: 1 });
+    expect(jsonFromResultText('Segue o resultado: {"a":1} fim')).toEqual({ a: 1 });
+    expect(jsonFromResultText('{"a":1}\n```')).toEqual({ a: 1 });
+    expect(jsonFromResultText('{"a":1} e {"b":2}')).toBeNull();
+  });
+
+  it('names the JSON.parse error of an answer that holds a broken object', async () => {
+    const { jsonParseError } = await import('../../server/runner/step.js');
+    expect(jsonParseError('Pronto: {"a":1}')).toBeNull();
+    expect(jsonParseError('{"a":"linha\nquebrada"}')).toMatch(/JSON/);
+    expect(jsonParseError('I edited the file directly.')).toMatch(/JSON/);
   });
 });

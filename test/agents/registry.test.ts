@@ -2,6 +2,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DOCUMENT_CHARTER } from '../../server/agents/document-charter.js';
 import { ALWAYS_DENIED, AgentFileError, QUALITY_RULES, ROLE_TOOL_POLICY, loadAgents, parseAgentFile } from '../../server/agents/registry.js';
+import { PO_ITEMS, SM_ITEMS } from '../../server/refine/checklist.js';
 
 const AGENTS_DIR = path.resolve('.claude/agents');
 
@@ -89,6 +90,54 @@ describe('settings directory protection', () => {
       expect(def.body).toContain(DOCUMENT_CHARTER);
       for (const doc of ['docs/project.md', 'docs/stack.md', 'docs/flow.md', 'docs/design.md']) expect(def.body).toContain(doc);
     }
+  });
+
+  it('the charter gives each kind of content one home: authority in project.md, data and API contracts in stack.md, screens in design.md', () => {
+    expect(DOCUMENT_CHARTER).toMatch(/project\.md: .*who may perform each act/);
+    expect(DOCUMENT_CHARTER).toMatch(/stack\.md: .*data models, API contracts/);
+    expect(DOCUMENT_CHARTER).toMatch(/design\.md: .*list of screens or portals/);
+  });
+
+  it('the Dev writes a service-dependent check for smoke or e2e, never a block, and adds dependencies with the package manager', async () => {
+    const { dev } = await loadAgents(AGENTS_DIR);
+    expect(dev.body).toContain('A check that needs a service this sandbox lacks, such as a database or a deployed URL, is not a block');
+    expect(dev.body).toContain('never by editing `package.json` by hand');
+    expect(dev.body).toContain('Code that talks to a database receives its client as a parameter');
+    expect(dev.body).toContain('If the task forbids something the work needs');
+  });
+
+  it('the SM keeps a task\'s unit tests free of live services, and the database check goes to smoke or e2e', async () => {
+    const { sm } = await loadAgents(AGENTS_DIR);
+    expect(sm.body).toContain('a check that needs a database or a network service is an acceptance test for the smoke or e2e suite');
+    expect(sm.body).toContain('names only the folders that exist when the first task that runs it executes');
+    expect(sm.body).toContain('never a directory: Node 22 runs a directory argument as a module');
+  });
+
+  it('the test reviewer proves a live-service criterion through the e2e suite, not a unit test', async () => {
+    const { test } = await loadAgents(AGENTS_DIR);
+    expect(test.body).toContain('A criterion that needs a live service (a database, a deployed URL) is not judged by a unit test');
+  });
+
+  it('the DevOps Dockerfile carries the migrations folder into the image, so a database that already exists gets them', async () => {
+    const { devops } = await loadAgents(AGENTS_DIR);
+    expect(devops.body).toContain('the database migrations folder (`db/migrations`)');
+    expect(devops.body).toContain('never applied to a database that already exists');
+  });
+
+  it('the SM plan keeps the platform documents out of the format and lint gates', async () => {
+    const { sm } = await loadAgents(AGENTS_DIR);
+    expect(sm.body).toContain('`format` or `lint` command checks the product code only: it excludes `docs/`');
+  });
+
+  it('the PO and SM write option labels as whole decisions, never a bare verb, since the answer is recorded as the label', async () => {
+    const agents = await loadAgents(AGENTS_DIR);
+    for (const role of ['po', 'sm'] as const) expect(agents[role].body).toContain('never a bare verb such as "Separar"');
+  });
+
+  it('every checklist id a role reports appears in that role\'s prompt file', async () => {
+    const agents = await loadAgents(AGENTS_DIR);
+    for (const id of PO_ITEMS) expect(agents.po.body).toContain(id);
+    for (const id of SM_ITEMS) expect(agents.sm.body).toContain(id);
   });
 
   it('the SM prompt tells the agent to decide spec gaps and log assumptions, never to ask the human mid-run', async () => {

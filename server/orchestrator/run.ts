@@ -18,7 +18,8 @@ import { execCommand, type Exec } from '../exec/command.js';
 import { TOOLS_GATE } from '../validators/security-tooling.js';
 import { writeToolsInstaller } from './tools-install.js';
 import { prepareGateImage, runGate, runGates, TAIL_CHARS, type GateExecutor, type GateResult } from '../exec/gate-runner.js';
-import { fetch as gitFetch, git, withCheckoutLock, withRepoLock } from '../git/git.js';
+import { fetch as gitFetch, git, headSha, withCheckoutLock, withRepoLock } from '../git/git.js';
+import { INSTALLED_AT, needsInstall } from './install-state.js';
 import { MergeQueue } from '../git/merge-queue.js';
 import type { CodeContext, HandoffSummary } from '../knowledge/context-pack.js';
 import { grepFallback, MIN_COVERAGE, type Graphify } from '../knowledge/graphify.js';
@@ -391,13 +392,17 @@ export class Run {
    * A task worktree starts from origin/main, which never carries installed dependencies, and gates run
    * offline in the gate image. Without this every task lost its first attempt to "tsc: not found" until
    * the Dev thought of running the install itself. Runs the plan's install command in the worktree when
-   * the dependency directory is missing; a failure is reported like a blocking gate so the Dev sees it.
+   * the dependency directory is missing or was installed for another commit (a rebase onto a main whose
+   * lock file changed); a failure is handed to the Dev as its feedback before it runs.
    */
   private async installDeps(view: ServiceView, worktree: string): Promise<GateResult | null> {
     const command = view.plan.commands.install;
     if (!command) return null;
     const present = await fs.access(path.join(worktree, 'node_modules')).then(() => true, () => false);
-    if (present) return null;
+    const marker = path.join(worktree, 'node_modules', INSTALLED_AT);
+    const installedAt = await fs.readFile(marker, 'utf8').then((s) => s.trim(), () => null);
+    const head = await headSha(worktree, this.deps.exec);
+    if (!needsInstall(present, installedAt, head)) return null;
     const started = Date.now();
     // Tools that `cargo install` put in .tools come from a cache, so they build once, not once per task worktree; the cache is
     // per project, since a project's install command is agent-written and must never plant a binary another project runs.
@@ -408,7 +413,10 @@ export class Run {
     const env = { ...stackEnv(worktree), CARGO_TARGET_DIR: path.join(expandHome(this.deps.cfg.paths.gateCache), 'cargo-install') };
     const r = await this.deps.exec({ bin: 'sh', args: ['-lc', command], cwd: worktree, env, timeoutMs: buildTimeoutMs(view.plan) });
     if (cargoInstall && r.exitCode === 0 && !r.timedOut) await copyCargoRoot(tools, cargoRoot).catch(() => undefined);
-    if (r.exitCode === 0 && !r.timedOut) return null;
+    if (r.exitCode === 0 && !r.timedOut) {
+      await fs.writeFile(marker, `${head}\n`).catch(() => undefined);
+      return null;
+    }
     return {
       name: 'install',
       blocking: true,

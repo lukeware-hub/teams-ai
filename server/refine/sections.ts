@@ -17,9 +17,10 @@ const FENCE = /^\s*```/;
 
 export const normHeading = (s: string): string => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
-/** R11.11: `flow.md` must be a mermaid diagram (the template already is); a plain-markdown flow has no diagram to read numbered sections from. */
+/** R11.11: `flow.md` must be a mermaid diagram (the template already is): a mermaid fence with a body, closed by its own fence. */
 export function flowIsMermaid(flow: string): boolean {
-  return /^\s*```\s*mermaid\b/im.test(flow);
+  const fenced = /^\s*```\s*mermaid\b[^\n]*\n([\s\S]*?)^\s*```\s*$/im.exec(flow);
+  return fenced !== null && fenced[1]!.trim() !== '';
 }
 
 /** A heading as its section number (when it starts with one) and its words. */

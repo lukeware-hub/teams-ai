@@ -8,6 +8,8 @@ import type { MoveRow } from './state.js';
 export const MAX_MOVE_QUOTE = 2000;
 const DECISIONS_HEADING = /^##\s+(Decisões|Decisions)\s*$/m;
 const LIST_ITEM = /^\s*([-*+]|\d+[.)])\s/;
+const FACT = /`[^`]+`|\d+(?:[.,]\d+)*/g;
+const CODE_BLOCK = /^```[^\n]*\n[\s\S]*?^```[ \t]*$/gm;
 
 /** The text with `quote` cut out, and where it was, so undo can put it back. */
 export interface Cut {
@@ -58,6 +60,17 @@ export function insertBlock(text: string, block: string, after?: string): Put | 
   return { next: text.slice(0, at) + inserted + rest, insertAt: at, inserted };
 }
 
+/** True when [from, to) touches a fenced code block, its fence lines included: a move never cuts from one or adds into one. */
+function inCodeBlock(text: string, from: number, to: number): boolean {
+  return [...text.matchAll(CODE_BLOCK)].some((m) => from < (m.index ?? 0) + m[0].length && to > (m.index ?? 0));
+}
+
+/** The first number or backticked name of `quote` that `text` does not keep; numbers and names are facts a move must not lose. */
+function droppedFact(quote: string, text: string): string | undefined {
+  const lines = quote.split('\n').map((line) => line.replace(LIST_ITEM, '')).join('\n');
+  return [...lines.matchAll(FACT)].map((m) => m[0].replace(/`/g, '')).find((fact) => !text.includes(fact));
+}
+
 /** A move as a role proposes it: a path, a quote copied from `from`, the text written for `to`, and an optional anchor line in `to`. */
 export interface MoveInput {
   from: string;
@@ -87,28 +100,32 @@ export function planMove(move: MoveInput, ctx: MoveContext): MovePlan {
   const refuse = (reason: string): MovePlan => ({ ok: false, reason });
   const from = docOf(move.from, ctx.specId, ctx.projectBriefing);
   const to = docOf(move.to, ctx.specId, ctx.projectBriefing);
-  if (!from) return refuse(`unknown file ${move.from}`);
-  if (!to) return refuse(`unknown file ${move.to}`);
-  if (from === to) return refuse('a move needs two different documents');
+  if (!from) return refuse(`arquivo desconhecido ${move.from}`);
+  if (!to) return refuse(`arquivo desconhecido ${move.to}`);
+  if (from === to) return refuse('o movimento precisa de dois documentos diferentes');
   const fromText = ctx.docs[from];
   const toText = ctx.docs[to];
-  if (fromText === undefined || toText === undefined) return refuse('document not loaded');
-  if (ctx.blank.has(from) || ctx.blank.has(to)) return refuse('a blank template takes no moves; the SM fills it first');
-  if (move.quote.length > MAX_MOVE_QUOTE) return refuse(`quote longer than ${MAX_MOVE_QUOTE} characters`);
+  if (fromText === undefined || toText === undefined) return refuse('documento não carregado');
+  if (ctx.blank.has(from) || ctx.blank.has(to)) return refuse('modelo em branco não recebe movimentos; o SM preenche antes');
+  if (move.quote.length > MAX_MOVE_QUOTE) return refuse(`trecho com mais de ${MAX_MOVE_QUOTE} caracteres`);
   const block = move.text.trim();
-  if (block === '') return refuse('text is empty');
-  if (DECISIONS_HEADING.test(block)) return refuse('text would open a decisions section');
-  if (ctx.undone.some((m) => m.from === from && m.to === to && m.quote === move.quote)) return refuse('the owner already undid this move');
-  if (ctx.applied.some((m) => m.text.includes(move.quote))) return refuse('this content was already moved');
+  if (block === '') return refuse('o texto está vazio');
+  if (DECISIONS_HEADING.test(block)) return refuse('o texto abriria uma seção de decisões');
+  const fact = droppedFact(move.quote, block);
+  if (fact !== undefined) return refuse(`o texto perde "${fact}" do trecho`);
+  if (ctx.undone.some((m) => m.from === from && m.to === to && m.quote === move.quote)) return refuse('o dono já desfez este movimento');
+  if (ctx.applied.some((m) => m.text.includes(move.quote))) return refuse('este conteúdo já foi movido');
   const cut = cutLines(fromText, move.quote);
-  if (!cut) return refuse(`quote must be whole lines found once in ${from}`);
-  if (cut.next.trim() === '') return refuse(`the move would empty ${from}`);
+  if (!cut) return refuse(`o trecho deve ser linhas inteiras encontradas uma vez em ${from}`);
+  if (cut.next.trim() === '') return refuse(`o movimento esvaziaria ${from}`);
   const span = decisionsSpan(fromText);
-  if (span && cut.removedAt < span.end && cut.removedAt + cut.removed.length > span.start) return refuse('quote is inside the decisions section');
+  if (span && cut.removedAt < span.end && cut.removedAt + cut.removed.length > span.start) return refuse('o trecho está na seção de decisões');
+  if (inCodeBlock(fromText, cut.removedAt, cut.removedAt + cut.removed.length)) return refuse('o trecho está em bloco de código');
   const put = insertBlock(toText, block, move.after || undefined);
-  if (!put) return refuse(`after must be one whole line found once in ${to}`);
+  if (!put) return refuse(`a âncora deve ser uma linha inteira encontrada uma vez em ${to}`);
   const target = decisionsSpan(toText);
-  if (target && put.insertAt >= target.start && put.insertAt <= target.end) return refuse('text would go into the decisions section');
+  if (target && put.insertAt >= target.start && put.insertAt <= target.end) return refuse('o texto iria para a seção de decisões');
+  if (inCodeBlock(toText, put.insertAt, put.insertAt)) return refuse('o texto iria para um bloco de código');
   return { ok: true, from, to, cut, put };
 }
 

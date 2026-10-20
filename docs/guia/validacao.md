@@ -1,4 +1,4 @@
-# Validação: aceitar a entrega ou relatar um problema
+# Validar a entrega: aceitar ou relatar um problema
 
 Perguntas que este texto responde: como validar a entrega, como validar, o que é aguardando validação, como concluir uma spec, como relatar um problema, como corrigir algo que já foi entregue, o que é Continuar spec, o que é Reiniciar.
 

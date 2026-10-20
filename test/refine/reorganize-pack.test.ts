@@ -17,7 +17,8 @@ describe('reorganization pack', () => {
 
   it('asks for questions in place of guessed moves, and empty fields the pass does not fill', () => {
     const { feedback } = reorganizePack({ ...base, changed: ['stack.md'] });
-    expect(feedback).toContain('ask it as a question');
+    expect(feedback).toContain('goes where the charter tie-break puts it');
+    expect(feedback).toContain('only when the charter leaves its right place open');
     expect(feedback).toContain('Never guess a move');
     expect(feedback).toContain('return empty `checklist`, `docPatch`, `findings` and `contradictions`');
   });
