@@ -203,19 +203,32 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
  * Phase 6 report). The JSON still goes through the same schema, specHash and reference validation, so taking it is safe;
  * text with no single JSON object stays a schema failure.
  */
-export function jsonFromResultText(text: string | null): unknown {
-  if (!text) return null;
+/** The candidate JSON of an answer given in prose: its fenced block, else the text from its first brace to its last one. */
+function resultJsonCandidate(text: string | null): string {
+  if (!text) return '';
   const fenced = /```(?:json)?\s*\n([\s\S]*?)\n```/.exec(text);
   // Prose before or after the object is tolerated: the candidate is the text from its first brace to its last one.
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
-  const candidate = fenced ? fenced[1]!.trim() : start === -1 || end < start ? '' : text.slice(start, end + 1);
-  if (candidate === '') return null;
+  return fenced ? fenced[1]!.trim() : start === -1 || end < start ? '' : text.slice(start, end + 1);
+}
+
+export function jsonFromResultText(text: string | null): unknown {
   try {
-    const value: unknown = JSON.parse(candidate);
+    const value: unknown = JSON.parse(resultJsonCandidate(text));
     return typeof value === 'object' && value !== null && !Array.isArray(value) ? value : null;
   } catch {
     return null;
+  }
+}
+
+/** Why the JSON of an answer given in prose does not parse; null when it parses. */
+export function jsonParseError(text: string | null): string | null {
+  try {
+    JSON.parse(resultJsonCandidate(text));
+    return null;
+  } catch (error) {
+    return (error as Error).message;
   }
 }
 
@@ -388,8 +401,10 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
     const errors = [...validation.errors];
     if (raw.summary.structuredOutput === null) {
       // Without this the only trace of a prose-only answer is "expected object, received null".
-        const text = redactSecrets((raw.summary.resultText ?? '').slice(0, 4000));
-      errors.push(`no JSON object in the agent result (subtype=${raw.summary.subtype ?? 'none'}, terminal=${raw.summary.terminalReason ?? 'none'}, turns=${raw.summary.numTurns}): ${text || '(empty)'}`);
+      const text = redactSecrets((raw.summary.resultText ?? '').slice(0, 4000));
+      // The parse error can quote part of the answer, so it is redacted like the answer.
+      const parse = jsonParseError(raw.summary.resultText);
+      errors.push(`no JSON object in the agent result (subtype=${raw.summary.subtype ?? 'none'}, terminal=${raw.summary.terminalReason ?? 'none'}, turns=${raw.summary.numTurns}${parse ? `, JSON.parse: ${redactSecrets(parse)}` : ''}): ${text || '(empty)'}`);
     }
     return { ok: false, failure: 'schema', errors, summary: raw.summary, sandboxDisabled: false };
   }

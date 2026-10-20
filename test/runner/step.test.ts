@@ -114,6 +114,7 @@ describe('runStep', () => {
       expect(text).toContain('no JSON object in the agent result');
       expect(text).toContain('I edited design.md directly');
       expect(text).toContain('subtype=success');
+      expect(text).toContain('JSON.parse: Unexpected end of JSON input');
       expect(text).not.toContain('sk-secret-123');
     }
   });
@@ -477,5 +478,12 @@ describe('jsonFromResultText', () => {
     expect(jsonFromResultText('Segue o resultado: {"a":1} fim')).toEqual({ a: 1 });
     expect(jsonFromResultText('{"a":1}\n```')).toEqual({ a: 1 });
     expect(jsonFromResultText('{"a":1} e {"b":2}')).toBeNull();
+  });
+
+  it('names the JSON.parse error of an answer that holds a broken object', async () => {
+    const { jsonParseError } = await import('../../server/runner/step.js');
+    expect(jsonParseError('Pronto: {"a":1}')).toBeNull();
+    expect(jsonParseError('{"a":"linha\nquebrada"}')).toMatch(/JSON/);
+    expect(jsonParseError('I edited the file directly.')).toMatch(/JSON/);
   });
 });
