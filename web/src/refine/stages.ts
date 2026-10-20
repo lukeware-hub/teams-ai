@@ -42,6 +42,11 @@ export function stageOf(st: StageInput): Stage[] {
   return (Object.keys(STAGE_LABELS) as StageKey[]).map((key) => ({ key, label: STAGE_LABELS[key], state: states[key] }));
 }
 
+/** A stale list blocks the start only below the round limit: at the limit the owner starts from the documents as they are. */
+export function staleBlocksStart(st: { stale: boolean; cycle: number }, limits?: { max: number }): boolean {
+  return st.stale && !(limits !== undefined && st.cycle >= limits.max);
+}
+
 /** The one step to offer now, so the buttons and the bar cannot disagree. */
 export function stageAction(st: StageInput): StageAction {
   if (st.status === 'started') return 'started';
