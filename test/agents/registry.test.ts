@@ -103,6 +103,7 @@ describe('settings directory protection', () => {
     expect(dev.body).toContain('A check that needs a service this sandbox lacks, such as a database or a deployed URL, is not a block');
     expect(dev.body).toContain('never by editing `package.json` by hand');
     expect(dev.body).toContain('Code that talks to a database receives its client as a parameter');
+    expect(dev.body).toContain('If the task forbids something the work needs');
   });
 
   it('the SM keeps a task\'s unit tests free of live services, and the database check goes to smoke or e2e', async () => {
