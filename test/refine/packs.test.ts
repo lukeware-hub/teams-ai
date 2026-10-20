@@ -137,6 +137,9 @@ describe('refinePack', () => {
     expect(refinePack({ ...base, role: 'po' }).feedback).not.toContain('Backlog mode');
     expect(refinePack({ ...base, role: 'po' }).feedback).not.toContain('## Decisões');
   });
+  it('sends a deadline or a limit to the briefing, so flow.md gets only a branch or a step order', () => {
+    expect(refinePack({ ...base, role: 'po' }).feedback).toContain('a deadline, a limit or what is allowed is a business rule even when a step checks it');
+  });
   // R11.10 (plan 88): before the detailing, the review leaves what a spec decides to the detailing, and nothing else waits.
   it('tells the PO and the SM reviewing an outline to leave spec details to the detailing, and nobody else', () => {
     const backlog = { enabled: true, project: null, epics: [{ key: 'core', title: 'Núcleo' }], items: [], cycle: 1 };
