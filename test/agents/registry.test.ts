@@ -109,6 +109,7 @@ describe('settings directory protection', () => {
   it('the SM keeps a task\'s unit tests free of live services, and the database check goes to smoke or e2e', async () => {
     const { sm } = await loadAgents(AGENTS_DIR);
     expect(sm.body).toContain('a check that needs a database or a network service is an acceptance test for the smoke or e2e suite');
+    expect(sm.body).toContain('names only the folders that exist when the first task that runs it executes');
   });
 
   it('the test reviewer proves a live-service criterion through the e2e suite, not a unit test', async () => {
