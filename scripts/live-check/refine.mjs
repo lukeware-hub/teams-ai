@@ -1,8 +1,9 @@
 // Live check driver for backlog refinement (R11.2): drives a throwaway target project through the local teams-ai API.
 // Every step costs Claude quota and a few Jev calls: run it only with the human's ok. Usage: node scripts/live-check/refine.mjs <step> <projectId> [args]
-//   create <projectId> <docsDir> <name>   new project, the five docs, backlog mode on
+//   create <projectId> <docsDir> <name> [--no-backlog]   new project, the five docs, backlog mode unless --no-backlog
 //   evaluate <projectId>                  one evaluation, waits for it, prints a summary
 //   summary | events | files <projectId>  state, steps and cost per cycle, generated files in the draft
+//   placement <projectId>                 each planted piece in its right document, exactly once; exits 1 on a FAIL
 //   answer <projectId> <questionId> <text> | skip <projectId> <questionId>
 //   accept <projectId> <patchId> | reject <projectId> <patchId> <reason> | patch <projectId> <patchId>
 //   question <projectId> <questionId> | getdoc <projectId> <file> | put <projectId> <file> <path>
@@ -75,13 +76,47 @@ function files(p) {
   console.log(sh(`cd ${draftRoot(p)}/docs && ls -1 && echo --- && find specs -type f | sort && echo --- && for f in specs/*/spec.json; do [ -f "$f" ] || continue; printf '%s ' "$f"; node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(s.status, (s.acceptanceCriteria||[]).map(c=>c.id).join(","), s.derivedFrom ? "derivedFrom:"+s.derivedFrom.sources.map(x=>x.heading+"="+(x.hash?"ok":"null")).join("|") : "")' "$f"; done`));
 }
 
+const EXPECTED = new URL('./misplaced/expect.json', import.meta.url);
+const count = (text, marker) => text.split(marker).length - 1;
+
+/** Each planted piece: one copy, in an expected document; then the moves by role, undone moves, pending questions, models and cost. */
+async function placement(p) {
+  const { json } = await api('GET', S(p));
+  const docs = json.docs;
+  const names = Object.keys(docs);
+  const { pieces } = JSON.parse(readFileSync(EXPECTED, 'utf8'));
+  let failed = 0;
+  for (const piece of pieces) {
+    const total = names.reduce((n, f) => n + count(docs[f], piece.marker), 0);
+    const home = names.find((f) => count(docs[f], piece.marker) > 0);
+    const ok = total === 1 && (piece.expected === 'any' || piece.expected.includes(home));
+    if (!ok) failed += 1;
+    const where = total === 0 ? 'lost' : total > 1 ? `duplicated x${total}` : `in ${home}`;
+    const want = piece.expected === 'any' ? 'any document' : piece.expected.join(' or ');
+    console.log(`${ok ? 'PASS' : 'FAIL'}  ${piece.name}: ${where}${ok ? '' : `, expected ${want}`}`);
+  }
+  const lines = sh(`cat ${draftRoot(p)}/events.ndjson`).trim().split('\n').map((l) => JSON.parse(l));
+  const moves = {};
+  for (const e of lines.filter((x) => x.type === 'DOC_MOVED')) moves[e.data.role] = (moves[e.data.role] ?? 0) + 1;
+  const models = [...new Set(lines.filter((e) => e.type === 'STEP_STARTED' && e.data.kind === 'refine').map((e) => `${e.data.role}:${e.data.model}`))];
+  const usd = lines.filter((e) => e.type === 'STEP_FINISHED').reduce((n, e) => n + Number(e.data.costUsd ?? 0), 0);
+  console.log(JSON.stringify({
+    status: json.state.status, cycle: json.state.cycle, moves,
+    undone: lines.filter((e) => e.type === 'DOC_MOVE_UNDONE').length,
+    questionsPending: json.state.questions.filter((q) => q.status === 'pending').length,
+    models, usd: Number(usd.toFixed(3)),
+  }, null, 1));
+  console.log(`${pieces.length - failed}/${pieces.length} pieces in place`);
+  if (failed > 0) process.exitCode = 1;
+}
+
 const [cmd, p, ...rest] = process.argv.slice(2);
 const steps = {
   async create() {
-    const [docsDir, name] = rest;
+    const [docsDir, name, flag] = rest;
     console.log('new', (await api('POST', '/projects/new', { projectId: p, name, description: '' })).status);
     for (const f of ['project.md', 'brief.md', 'stack.md', 'flow.md', 'design.md']) console.log('put', f, (await api('PUT', `${S(p)}/docs/${f}`, { text: readFileSync(`${docsDir}/${f}`, 'utf8') })).status);
-    console.log('backlog', (await api('POST', `${S(p)}/backlog`)).status);
+    if (flag !== '--no-backlog') console.log('backlog', (await api('POST', `${S(p)}/backlog`)).status);
   },
   async evaluate() {
     const r = await api('POST', `${S(p)}/evaluate`);
@@ -101,6 +136,7 @@ const steps = {
   async start() { const r = await api('POST', `${S(p)}/start`); console.log('start', r.status, clip(r.text, 200)); },
   events: () => events(p),
   files: () => files(p),
+  placement: () => placement(p),
 };
 if (!steps[cmd]) throw new Error(`unknown step ${cmd}`);
 await steps[cmd]();

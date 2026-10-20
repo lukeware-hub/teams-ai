@@ -1,0 +1,12 @@
+{
+  "pieces": [
+    { "name": "technology in project.md", "marker": "PostgreSQL 16", "expected": ["stack.md"] },
+    { "name": "color in the briefing", "marker": "#1d4ed8", "expected": ["design.md"] },
+    { "name": "business rule in stack.md", "marker": "24 horas antes do horário", "expected": ["project.md", "brief.md"] },
+    { "name": "step order in design.md", "marker": "confirma o e-mail", "expected": ["flow.md"] },
+    { "name": "Given/When/Then in flow.md", "marker": "Dado que a agenda está aberta", "expected": ["brief.md"] },
+    { "name": "mixed line: technology and color", "marker": "#0f766e", "expected": "any" },
+    { "name": "control line in project.md", "marker": "agenda consultas para pacientes de clínicas pequenas", "expected": ["project.md"] },
+    { "name": "technology under Decisões stays", "marker": "Usar Redis para a fila de lembretes", "expected": ["brief.md"] }
+  ]
+}
