@@ -98,6 +98,11 @@ describe('settings directory protection', () => {
     expect(DOCUMENT_CHARTER).toMatch(/design\.md: .*list of screens or portals/);
   });
 
+  it('the SM plan keeps the platform documents out of the format and lint gates', async () => {
+    const { sm } = await loadAgents(AGENTS_DIR);
+    expect(sm.body).toContain('`format` or `lint` command checks the product code only: it excludes `docs/`');
+  });
+
   it('the PO and SM write option labels as whole decisions, never a bare verb, since the answer is recorded as the label', async () => {
     const agents = await loadAgents(AGENTS_DIR);
     for (const role of ['po', 'sm'] as const) expect(agents[role].body).toContain('never a bare verb such as "Separar"');
