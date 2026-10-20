@@ -181,6 +181,11 @@ describe('refinePack moves and findings', () => {
     expect(feedback).not.toContain('moves even when a question about it is open');
   });
 
+  it('does not move a line that holds two kinds of content: its owner splits it, and the other part goes as a finding', () => {
+    const feedback = refinePack({ ...base, role: 'po' }).feedback ?? '';
+    expect(feedback).toContain('A line that holds two kinds of content is not moved: its owner keeps the part that belongs to its document in a docPatch');
+  });
+
   it('names the screens and portals as a visual kind that moves to design.md', () => {
     const feedback = refinePack({ ...base, role: 'front' }).feedback ?? '';
     expect(feedback).toContain('list of screens or portals outside design.md moves to design.md');
