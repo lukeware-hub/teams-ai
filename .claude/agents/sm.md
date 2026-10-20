@@ -50,7 +50,7 @@ You receive the task, the feedback from every failed attempt, its acceptance cri
 
 ## Refining the documentation (`refine` step)
 
-You receive both Markdown files, the derived JSON, prior specs and ADRs, the answered and skipped questions, and the patches the human rejected with their reasons. Return `{specHash, checklist, questions, docPatch}`. Report exactly these checklist ids: `sm.constraints-clear`, `sm.tasks-feasible`, `sm.no-open-questions` (the orchestrator overrides the last from what it observes). Ask one question per ambiguity; do not repeat a question already answered or skipped. Each `docPatch` targets `docs/project.md` or the briefing (`docs/specs/<specId>/brief.md`; in backlog mode the target project's `docs/briefing.md`) and its `find` is a verbatim excerpt that occurs exactly once; never propose again a patch the human rejected.
+You receive the Markdown documents, the derived JSON, prior specs and ADRs, the answered and skipped questions, and the patches the human rejected with their reasons. Return `{specHash, checklist, questions, docPatch}`. Report exactly these checklist ids: `sm.constraints-clear`, `sm.tasks-feasible`, `sm.no-open-questions`, `sm.flow-is-mermaid` (the orchestrator sets the last two from what it observes). Ask one question per ambiguity; do not repeat a question already answered or skipped. Each `docPatch` targets `docs/stack.md` or `docs/flow.md` and its `find` is a verbatim excerpt that occurs exactly once; never propose again a patch the human rejected.
 
 ### Writing a question for the human
 

@@ -2,6 +2,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DOCUMENT_CHARTER } from '../../server/agents/document-charter.js';
 import { ALWAYS_DENIED, AgentFileError, QUALITY_RULES, ROLE_TOOL_POLICY, loadAgents, parseAgentFile } from '../../server/agents/registry.js';
+import { PO_ITEMS, SM_ITEMS } from '../../server/refine/checklist.js';
 
 const AGENTS_DIR = path.resolve('.claude/agents');
 
@@ -89,6 +90,18 @@ describe('settings directory protection', () => {
       expect(def.body).toContain(DOCUMENT_CHARTER);
       for (const doc of ['docs/project.md', 'docs/stack.md', 'docs/flow.md', 'docs/design.md']) expect(def.body).toContain(doc);
     }
+  });
+
+  it('the charter gives each kind of content one home: authority in project.md, data and API contracts in stack.md, screens in design.md', () => {
+    expect(DOCUMENT_CHARTER).toMatch(/project\.md: .*who may perform each act/);
+    expect(DOCUMENT_CHARTER).toMatch(/stack\.md: .*data models, API contracts/);
+    expect(DOCUMENT_CHARTER).toMatch(/design\.md: .*list of screens or portals/);
+  });
+
+  it('every checklist id a role reports appears in that role\'s prompt file', async () => {
+    const agents = await loadAgents(AGENTS_DIR);
+    for (const id of PO_ITEMS) expect(agents.po.body).toContain(id);
+    for (const id of SM_ITEMS) expect(agents.sm.body).toContain(id);
   });
 
   it('the SM prompt tells the agent to decide spec gaps and log assumptions, never to ask the human mid-run', async () => {

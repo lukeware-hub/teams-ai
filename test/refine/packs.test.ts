@@ -175,6 +175,17 @@ describe('refinePack moves and findings', () => {
     expect(feedback).toContain('read each of the five documents line by line');
   });
 
+  it('holds a move of a piece a pending question names until the owner answers, as the code does', () => {
+    const feedback = refinePack({ ...base, role: 'po' }).feedback ?? '';
+    expect(feedback).toContain('a piece that a pending question names in double quotes is not moved until the owner answers it');
+    expect(feedback).not.toContain('moves even when a question about it is open');
+  });
+
+  it('names the screens and portals as a visual kind that moves to design.md', () => {
+    const feedback = refinePack({ ...base, role: 'front' }).feedback ?? '';
+    expect(feedback).toContain('list of screens or portals outside design.md moves to design.md');
+  });
+
   it('shows each role only the findings about the documents it owns', () => {
     const finding = { cycle: 1, role: 'po', doc: 'stack.md', severity: 'blocking', quote: '- Node 22', text: 'A versão difere do flow.', fix: 'Alinhe a versão.' };
     expect(refinePack({ ...base, role: 'sm', findings: [finding] } as never).feedback).toContain('- [po] stack.md (blocking): "- Node 22" → A versão difere do flow. Fix: Alinhe a versão.');
