@@ -110,6 +110,7 @@ describe('settings directory protection', () => {
     const { sm } = await loadAgents(AGENTS_DIR);
     expect(sm.body).toContain('a check that needs a database or a network service is an acceptance test for the smoke or e2e suite');
     expect(sm.body).toContain('names only the folders that exist when the first task that runs it executes');
+    expect(sm.body).toContain('never a directory: Node 22 runs a directory argument as a module');
   });
 
   it('the test reviewer proves a live-service criterion through the e2e suite, not a unit test', async () => {
