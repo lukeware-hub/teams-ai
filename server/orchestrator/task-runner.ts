@@ -300,17 +300,18 @@ export class TaskRunner {
     // across every attempt and its one replan). Skip the pre-Dev call for it; `gates()` still installs for real
     // once the Dev has committed the manifest it wrote.
     const install = this.task.bootstrapsFrozenPaths ? null : await this.deps.installDeps(this.worktree);
-    if (install) {
-      const triage = await triageGateFailure({ name: install.name, command: this.deps.plan.commands.install, blocking: true, network: 'none', secrets: [] }, install, this.deps.decider, this.ctx);
-      const delta = [
-        `Gate ${install.name} failed (${triage.kind}, exit ${install.exitCode})`,
-        install.stderrTail ? `stderr (tail):\n${this.clean(tail(install.stderrTail))}` : '',
-        install.stdoutTail ? `stdout (tail):\n${this.clean(tail(install.stdoutTail))}` : '',
-      ]
-        .filter((s) => s !== '')
-        .join('\n\n');
-      return this.fail(triage.kind, delta, install.name);
-    }
+    // The Dev is the one who can fix a failing install (a lock file out of step with the manifest), so it runs with the
+    // install output as its feedback, and the attempt is not spent on a failure the Dev has not seen yet (live: T1 was
+    // blocked after three attempts that never let the Dev run).
+    const installNote = install
+      ? [
+          `Gate ${install.name} failed (exit ${install.exitCode}) before you ran. Fix the dependencies with the package manager so the lock file matches the manifest, then commit.`,
+          install.stderrTail ? `stderr (tail):\n${this.clean(tail(install.stderrTail))}` : '',
+          install.stdoutTail ? `stdout (tail):\n${this.clean(tail(install.stdoutTail))}` : '',
+        ]
+          .filter((s) => s !== '')
+          .join('\n\n')
+      : null;
     const task = this.task;
     const attempt = task.attempts + 1;
     const commitKey = `${this.taskId}:a${attempt}`;
@@ -319,7 +320,8 @@ export class TaskRunner {
       return this.transition('validating');
     }
     const owner = task.def.owner;
-    const feedback = this.deps.journal.lastFeedback(this.taskId);
+    const priorFeedback = this.deps.journal.lastFeedback(this.taskId);
+    const feedback = installNote ? [installNote, priorFeedback].filter((s) => s).join('\n\n') : priorFeedback;
     const pack = devPack(this.deps.packBase(), task.def, { code: await this.deps.code(this.worktree, task.def), handoffs: this.deps.handoffs(), feedback, e2eSuite: this.deps.plan.delivery?.e2eSuite }, owner);
     const overrides = await this.stepOverrides(owner, attempt);
     const outcome = await this.deps.runAgent<'dev'>({

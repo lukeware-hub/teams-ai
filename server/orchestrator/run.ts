@@ -393,7 +393,7 @@ export class Run {
    * offline in the gate image. Without this every task lost its first attempt to "tsc: not found" until
    * the Dev thought of running the install itself. Runs the plan's install command in the worktree when
    * the dependency directory is missing or was installed for another commit (a rebase onto a main whose
-   * lock file changed); a failure is reported like a blocking gate so the Dev sees it.
+   * lock file changed); a failure is handed to the Dev as its feedback before it runs.
    */
   private async installDeps(view: ServiceView, worktree: string): Promise<GateResult | null> {
     const command = view.plan.commands.install;
