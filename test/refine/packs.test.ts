@@ -140,6 +140,9 @@ describe('refinePack', () => {
   it('sends a deadline or a limit to the briefing, so flow.md gets only a branch or a step order', () => {
     expect(refinePack({ ...base, role: 'po' }).feedback).toContain('a deadline, a limit or what is allowed is a business rule even when a step checks it');
   });
+  it('keeps a line with two kinds of content whole and reports its other part with the exact words', () => {
+    expect(refinePack({ ...base, role: 'po' }).feedback).toContain('not moved and not cut');
+  });
   // R11.10 (plan 88): before the detailing, the review leaves what a spec decides to the detailing, and nothing else waits.
   it('tells the PO and the SM reviewing an outline to leave spec details to the detailing, and nobody else', () => {
     const backlog = { enabled: true, project: null, epics: [{ key: 'core', title: 'Núcleo' }], items: [], cycle: 1 };
@@ -184,9 +187,9 @@ describe('refinePack moves and findings', () => {
     expect(feedback).not.toContain('moves even when a question about it is open');
   });
 
-  it('does not move a line that holds two kinds of content: its owner splits it, and the other part goes as a finding', () => {
+  it('does not move or cut a line that holds two kinds of content: its owner leaves it, and the other part goes as a finding', () => {
     const feedback = refinePack({ ...base, role: 'po' }).feedback ?? '';
-    expect(feedback).toContain('A line that holds two kinds of content is not moved: its owner keeps the part that belongs to its document in a docPatch');
+    expect(feedback).toContain('A line that holds two kinds of content is not moved and not cut: its owner leaves the line as it is');
   });
 
   it('tells Front to replace a rule already written in design.md, never to write it a second time', () => {
