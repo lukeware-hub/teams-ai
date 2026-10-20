@@ -186,6 +186,11 @@ describe('refinePack moves and findings', () => {
     expect(feedback).toContain('A line that holds two kinds of content is not moved: its owner keeps the part that belongs to its document in a docPatch');
   });
 
+  it('tells Front to replace a rule already written in design.md, never to write it a second time', () => {
+    const feedback = refinePack({ ...base, role: 'front' }).feedback ?? '';
+    expect(feedback).toContain('a rule already written there, including a line moved into it in this cycle, is replaced, never written a second time');
+  });
+
   it('names the screens and portals as a visual kind that moves to design.md', () => {
     const feedback = refinePack({ ...base, role: 'front' }).feedback ?? '';
     expect(feedback).toContain('list of screens or portals outside design.md moves to design.md');
