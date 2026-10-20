@@ -11,6 +11,7 @@ import { findCycle, type Plan, type PlanTask } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
 import { taskBranch } from '../core/ids.js';
+import { devChangedFiles } from './sandbox-placeholders.js';
 import type { DecideContext, Decider } from '../decide/decider.js';
 import { assessAttemptProgress } from '../decide/decisions/attempt-progress.js';
 import { triageGateFailure } from '../decide/decisions/gate-triage.js';
@@ -347,7 +348,7 @@ export class TaskRunner {
     this.specGapRounds = 0;
     await this.deleteFiles(value.deletedFiles ?? []);
     // Gate artifacts (the JUnit report) are written by the orchestrator, not by the Dev, and are never committed.
-    const touched = (await porcelainNames(this.worktree, this.deps.exec)).filter((f) => f !== this.deps.plan.junitPath && f !== this.deps.plan.coveragePath);
+    const touched = devChangedFiles(await porcelainNames(this.worktree, this.deps.exec)).filter((f) => f !== this.deps.plan.junitPath && f !== this.deps.plan.coveragePath);
     const scope = checkScope({ changedFiles: touched, affectedPaths: task.def.affectedPaths, frozenPaths: this.deps.plan.frozenPaths, scopeJustification: value.scopeJustification, allowFrozen: this.deps.firstSpec && task.bootstrapsFrozenPaths });
     if (!scope.ok) return this.fail('review-changes', `Scope violation:\n${scope.errors.join('\n')}`);
     this.scopeJustification = value.scopeJustification;
