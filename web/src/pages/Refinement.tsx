@@ -19,7 +19,7 @@ import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.j
 import { ProcessingBanner } from '../refine/ProcessingBanner.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
 import { StageBar } from '../refine/StageBar.js';
-import { stageAction, stageOf, stageTitle } from '../refine/stages.js';
+import { stageAction, stageOf, stageTitle, staleBlocksStart } from '../refine/stages.js';
 import { SpecTree } from '../refine/SpecTree.js';
 import { Workspace } from '../components/Workspace.js';
 
@@ -298,7 +298,7 @@ export function RefinementView(p: ViewProps) {
   const backlogOn = st.backlog?.enabled === true;
   // A new project's refinement has two mandatory stages: the documents, then the backlog the program runs from.
   const newProject = st.mode === 'new-project';
-  const stageStep = newProject ? stageAction({ ...st, released: snap.limits !== undefined && released(st, snap.limits) }) : null;
+  const stageStep = newProject ? stageAction({ ...st, stale: staleBlocksStart(st, snap.limits), released: snap.limits !== undefined && released(st, snap.limits) }) : null;
   // In stage 2 the backlog is what the person checks, so it leads the quality column.
   const backlogFirst = newProject && backlogOn;
   const backlogBlock = (

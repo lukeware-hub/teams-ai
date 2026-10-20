@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { stageAction, stageOf, stageTitle, type StageInput } from './stages.js';
+import { stageAction, stageOf, stageTitle, staleBlocksStart, type StageInput } from './stages.js';
 
 const base: StageInput = { status: 'drafting', stale: false, backlog: null };
 const outline = { enabled: true, detail: false, items: [{}] };
@@ -37,6 +37,12 @@ describe('stageOf', () => {
 });
 
 describe('stageAction', () => {
+  it('offers the start at the round limit even when the list is stale, through staleBlocksStart', () => {
+    const limits = { max: 10 };
+    const ready = { ...base, status: 'ready' as const, stale: true, backlog: { enabled: true, detail: true } } as StageInput;
+    expect(stageAction({ ...ready, stale: staleBlocksStart({ stale: true, cycle: 10 }, limits) })).toBe('start');
+    expect(stageAction({ ...ready, stale: staleBlocksStart({ stale: true, cycle: 9 }, limits) })).toBe('evaluate');
+  });
   it('evaluates the documents until they are ready and fresh', () => {
     expect(stageAction(base)).toBe('evaluate');
     expect(stageAction({ ...base, status: 'error' })).toBe('evaluate');
