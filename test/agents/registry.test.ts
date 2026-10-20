@@ -118,6 +118,12 @@ describe('settings directory protection', () => {
     expect(test.body).toContain('A criterion that needs a live service (a database, a deployed URL) is not judged by a unit test');
   });
 
+  it('the DevOps Dockerfile carries the migrations folder into the image, so a database that already exists gets them', async () => {
+    const { devops } = await loadAgents(AGENTS_DIR);
+    expect(devops.body).toContain('the database migrations folder (`db/migrations`)');
+    expect(devops.body).toContain('never applied to a database that already exists');
+  });
+
   it('the SM plan keeps the platform documents out of the format and lint gates', async () => {
     const { sm } = await loadAgents(AGENTS_DIR);
     expect(sm.body).toContain('`format` or `lint` command checks the product code only: it excludes `docs/`');
