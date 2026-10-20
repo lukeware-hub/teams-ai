@@ -114,6 +114,19 @@ describe('planMove', () => {
     expect(planMove(move({ after: '## Inexistente' }), context())).toEqual({ ok: false, reason: 'after must be one whole line found once in flow.md' });
     expect(planMove(move({ quote: 'x'.repeat(MAX_MOVE_QUOTE + 1) }), context())).toEqual({ ok: false, reason: `quote longer than ${MAX_MOVE_QUOTE} characters` });
   });
+
+  it('refuses text that drops a number or a backticked name of the quote, and keeps both when only the sentence changes', () => {
+    const withFacts = { ...docs, 'design.md': '# Design\n\n## Assinatura\n\nValide o certificado em 15 dias com `TOTP`.\n\n## Cores\n\n- fundo: branco\n' };
+    const quote = 'Valide o certificado em 15 dias com `TOTP`.';
+    expect(planMove(move({ quote, text: 'O certificado é validado com código.' }), context({ docs: withFacts }))).toEqual({ ok: false, reason: 'text drops "15" from the quote' });
+    expect(planMove(move({ quote, text: 'O certificado vale por 15 dias.' }), context({ docs: withFacts }))).toEqual({ ok: false, reason: 'text drops "TOTP" from the quote' });
+    expect(planMove(move({ quote, text: 'O certificado é validado em 15 dias com `TOTP`.' }), context({ docs: withFacts }))).toMatchObject({ ok: true });
+  });
+
+  it('reads a numbered list item without its marker, so the marker is no fact to keep', () => {
+    const list = { ...docs, 'design.md': '# Design\n\n## Assinatura\n\n1. Valide o certificado.\n\n## Cores\n\n- fundo: branco\n' };
+    expect(planMove(move({ quote: '1. Valide o certificado.', text: 'Valide o certificado.' }), context({ docs: list }))).toMatchObject({ ok: true });
+  });
 });
 
 describe('restoreMove', () => {

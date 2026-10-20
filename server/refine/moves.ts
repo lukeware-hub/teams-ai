@@ -8,6 +8,7 @@ import type { MoveRow } from './state.js';
 export const MAX_MOVE_QUOTE = 2000;
 const DECISIONS_HEADING = /^##\s+(Decisões|Decisions)\s*$/m;
 const LIST_ITEM = /^\s*([-*+]|\d+[.)])\s/;
+const FACT = /`[^`]+`|\d+(?:[.,]\d+)*/g;
 
 /** The text with `quote` cut out, and where it was, so undo can put it back. */
 export interface Cut {
@@ -58,6 +59,12 @@ export function insertBlock(text: string, block: string, after?: string): Put | 
   return { next: text.slice(0, at) + inserted + rest, insertAt: at, inserted };
 }
 
+/** The first number or backticked name of `quote` that `text` does not keep; numbers and names are facts a move must not lose. */
+function droppedFact(quote: string, text: string): string | undefined {
+  const lines = quote.split('\n').map((line) => line.replace(LIST_ITEM, '')).join('\n');
+  return [...lines.matchAll(FACT)].map((m) => m[0].replace(/`/g, '')).find((fact) => !text.includes(fact));
+}
+
 /** A move as a role proposes it: a path, a quote copied from `from`, the text written for `to`, and an optional anchor line in `to`. */
 export interface MoveInput {
   from: string;
@@ -98,6 +105,8 @@ export function planMove(move: MoveInput, ctx: MoveContext): MovePlan {
   const block = move.text.trim();
   if (block === '') return refuse('text is empty');
   if (DECISIONS_HEADING.test(block)) return refuse('text would open a decisions section');
+  const fact = droppedFact(move.quote, block);
+  if (fact !== undefined) return refuse(`text drops "${fact}" from the quote`);
   if (ctx.undone.some((m) => m.from === from && m.to === to && m.quote === move.quote)) return refuse('the owner already undid this move');
   if (ctx.applied.some((m) => m.text.includes(move.quote))) return refuse('this content was already moved');
   const cut = cutLines(fromText, move.quote);

@@ -13,6 +13,13 @@ describe('flowIsMermaid (R11.11)', () => {
   it('is case-insensitive and tolerates leading indentation on the fence', () => {
     expect(flowIsMermaid('# Flow\n\n  ```MERMAID\nflowchart TD\n```\n')).toBe(true);
   });
+  it('rejects a mermaid fence with no body, or one that is never closed', () => {
+    expect(flowIsMermaid('# Flow\n\n```mermaid\n```\n')).toBe(false);
+    expect(flowIsMermaid('# Flow\n\n```mermaid\nflowchart TD\n  A --> B\n')).toBe(false);
+  });
+  it('accepts a diagram followed by prose', () => {
+    expect(flowIsMermaid('# Flow\n\n```mermaid\nflowchart TD\n```\n\nTexto solto.\n')).toBe(true);
+  });
 });
 
 describe('docSections', () => {

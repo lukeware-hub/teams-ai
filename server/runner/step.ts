@@ -87,6 +87,8 @@ export interface StepDeps {
 
 /** Tools a review step does not get, whatever its role may use elsewhere. */
 const REVIEW_DENIED_TOOLS: readonly string[] = ['Edit', 'Write', 'MultiEdit'];
+/** Steps that answer with JSON and edit no file: refinement changes reach the docs only as patches the owner accepts. */
+const READ_ONLY_KINDS: readonly string[] = ['review', 'ui-check', 'refine', 'suggest'];
 /** What the chat step may use: read files in its working directory and run the graphify queries its settings allow. */
 export const CHAT_TOOLS: readonly string[] = ['Read', 'Grep', 'Glob', 'Bash'];
 /** A search or two and the answer: a chat that loops is cut short instead of spending the step budget. */
@@ -301,9 +303,9 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
   await ensureTrusted(req.cwd, path.join(home, '.claude.json'));
   const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: [...(req.extraAllow ?? []), ...refs.map((dir) => `Read(${absoluteRule(dir)}/**)`)], extraDenyRead: req.denyRead, protectedDirs: [deps.agentPluginsRoot, dynamicPluginDir(home)].filter((dir): dir is string => dir !== undefined), sandboxEnabled: deps.sandbox?.enabled, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });
   if (req.resume && req.sessionStore) await restoreSession(req.sessionStore, home);
-  // A review and a UI check never edit the code they judge (R11.13 slice 2).
+  // A review, a UI check and a refinement never edit the files they judge (R11.13 slice 2).
   // The chat searches its own guide and history with the tools of CHAT_TOOLS only; its Bash rules allow graphify queries and nothing else.
-  const agent = req.kind === 'review' || req.kind === 'ui-check' ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : req.kind === 'chat' ? { ...req.agent, tools: [...CHAT_TOOLS] } : req.agent;
+  const agent = READ_ONLY_KINDS.includes(req.kind) ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : req.kind === 'chat' ? { ...req.agent, tools: [...CHAT_TOOLS] } : req.agent;
   const catalogNote = refs.length > 0 ? `Reference catalog (search it with Grep; never load it whole): ${refs.join(', ')}` : '';
   const systemExtra = [req.systemExtra, catalogNote].filter(Boolean).join('\n\n');
   const agentWithExtra = systemExtra ? { ...agent, body: `${agent.body}\n\n${systemExtra}` } : agent;

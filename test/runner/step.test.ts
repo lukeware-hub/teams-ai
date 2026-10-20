@@ -364,6 +364,15 @@ describe('runStep', () => {
     expect(JSON.parse(await fs.readFile(capture, 'utf8')).argv).toContain('Read,Edit,Write,Grep,Glob,Bash');
   });
 
+  it('gives a refinement step no file-editing tools either, since its changes reach the docs only as patches', async () => {
+    const capture = path.join(dir, 'capture.json');
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
+    const agent = { ...devAgent, tools: ['Read', 'Edit', 'Write', 'Grep', 'Glob', 'Bash'] };
+    await runStep(request({ kind: 'refine', agent }), deps);
+    const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
+    expect(captured.argv[captured.argv.indexOf('--tools') + 1]).toBe('Read,Grep,Glob,Bash');
+  });
+
   it('gives a chat step Read, Grep, Glob and Bash with only its graphify rules allowed and its fenced directories denied, and a short turn cap', async () => {
     const capture = path.join(dir, 'capture.json');
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
