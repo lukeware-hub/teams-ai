@@ -957,7 +957,7 @@ describe('refinement cycle reorganization pass', () => {
   const REORG_EMPTY = { checklist: [], questions: [], docPatch: [], moves: [] };
 
   /** A new project whose project.md holds TECH; the journal applies its events to the state, as the real one does. */
-  async function setup(reorg: Record<string, unknown> = REORG_EMPTY) {
+  async function setup(reorg: Record<string, unknown> = REORG_EMPTY, po: Record<string, unknown> = {}) {
     const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
     const ws = { projectId: 'shop', root, repo: `${root}/repo`, worktrees: `${root}/wt`, graph: `${root}/g`, knowledgeDb: `${root}/k.sqlite`, secrets: `${root}/secrets`, runs: `${root}/runs` } as Workspace;
     const draft = draftPaths(ws, 'shop-003');
@@ -966,6 +966,7 @@ describe('refinement cycle reorganization pass', () => {
     await writeFile(draft.flowMd, '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n');
     // A filled stack.md: a blank template is never a move's destination.
     await writeFile(draft.stackMd, '# Stack\n\n## Tecnologias\n\nNode 22.\n');
+    await writeFile(draft.designMd!, '# Design\n\n## Contrato da API para quem faz a tela\n\nFormato de datas.\n');
     const state = emptyRefineState();
     const events: Array<{ type: string; data: Record<string, unknown> }> = [];
     const journal = {
@@ -983,7 +984,7 @@ describe('refinement cycle reorganization pass', () => {
       packs.push({ kind: req.kind, role: req.role, feedback });
       if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...makeSpec(), specId: 'shop-003', acceptanceCriteria: [{ id: 'AC-001', given: 'g', when: 'w', then: 't2', smoke: false }] } });
       if (feedback.startsWith('REORGANIZE:')) return ok(reorg);
-      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [], moves: [] });
+      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [], moves: [], ...po });
       return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
     });
     const cycle = (n: number) => runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [] }, n);
@@ -1015,5 +1016,27 @@ describe('refinement cycle reorganization pass', () => {
     const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
     expect(evaluated.data.questions).toEqual(expect.arrayContaining([expect.objectContaining({ text: 'Onde fica o prazo de entrega?', subject: 'Prazo de entrega' })]));
     expect(events.some((e) => e.type === 'DOC_MOVED')).toBe(false);
+  });
+
+  it('refuses a move of a section a pending question is about, so the owner decides it first', async () => {
+    const question = { id: 'q1', text: 'Onde fica a seção "Contrato da API para quem faz a tela"?', blocking: false, relatedAcIds: [], options: [{ label: 'Briefing', detail: 'Regra.' }] };
+    const move = { from: 'docs/design.md', to: 'docs/stack.md', quote: '## Contrato da API para quem faz a tela', text: '## Contrato da API para quem faz a tela', reason: 'API' };
+    const { events, cycle } = await setup({ ...REORG_EMPTY, questions: [question] }, { moves: [move] });
+    await cycle(1);
+    expect(events.some((e) => e.type === 'DOC_MOVED')).toBe(false);
+    expect(events.find((e) => e.type === 'REFINE_EVALUATED')!.data.discardedPatches).toContainEqual(expect.objectContaining({ role: 'po', reason: 'a pergunta pendente cita este trecho: "contrato da api para quem faz a tela"' }));
+  });
+
+  it('drops a reworded question about a section a pending question already asks', async () => {
+    const question = { id: 'q1', text: 'Onde fica a seção "Contrato da API para quem faz a tela"?', blocking: false, relatedAcIds: [], options: [{ label: 'Briefing', detail: 'Regra.' }] };
+    const reworded = { id: 'q2', text: 'Qual documento deve ter a "Contrato da API para quem faz a tela"?', blocking: false, relatedAcIds: [], options: [{ label: 'Briefing', detail: 'Regra.' }] };
+    // The PO asks the reworded question in the second cycle, after the first cycle left the first one pending.
+    const po: Record<string, unknown> = {};
+    const { events, cycle } = await setup({ ...REORG_EMPTY, questions: [question] }, po);
+    await cycle(1);
+    po.questions = [reworded];
+    await cycle(2);
+    const evaluated = events.filter((e) => e.type === 'REFINE_EVALUATED').at(-1)!;
+    expect((evaluated.data.questions as Array<{ text: string }>).map((q) => q.text)).toEqual([]);
   });
 });

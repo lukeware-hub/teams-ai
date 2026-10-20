@@ -478,3 +478,10 @@ describe('programEntries', () => {
     expect(() => programEntries('shop', backlog('done', 'done'), { login: 'done', cart: 'done' })).toThrow(ConflictError);
   });
 });
+
+describe('RefineSession round limit', () => {
+  it('refuses a new evaluation once the lock round is reached', async () => {
+    const s = await RefineSession.create({ ...deps(), limits: { release: 0, max: 0 } }, 'new-spec');
+    await expect(s.evaluate()).rejects.toBeInstanceOf(ConflictError);
+  });
+});

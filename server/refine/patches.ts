@@ -22,7 +22,9 @@ export const count = (text: string, find: string): number => (find === '' ? 0 : 
 
 /** The document a path names, as the packs show it; undefined when the path is none of the five. */
 export function docOf(file: string, specId: string, projectBriefing = false): DocFile | undefined {
-  return (Object.keys(DOC_REL) as DocFile[]).find((f) => DOC_REL[f](specId, projectBriefing) === file);
+  const exact = (Object.keys(DOC_REL) as DocFile[]).find((f) => DOC_REL[f](specId, projectBriefing) === file);
+  // Agents often cite a root document by its bare name, which is the same document.
+  return exact ?? (Object.keys(DOC_REL) as DocFile[]).find((f) => f === file.replace(/^docs\//, ''));
 }
 
 /** Shown as the reason when another change covered a pending suggestion, so it no longer applies. */

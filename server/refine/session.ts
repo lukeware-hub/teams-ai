@@ -23,7 +23,8 @@ import { restoreMove } from './moves.js';
 import { buildSpecsIndex } from './specs-index.js';
 import { fitPackBudget } from './fit-pack.js';
 import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
-import { allGreen, applyRefineEvent, emptyRefineState, type BacklogState, type RefineState } from './state.js';
+import { allGreen, applyRefineEvent, emptyRefineState, released, type BacklogState, type RefineLimits, type RefineState } from './state.js';
+import { refineLimits } from './limits.js';
 import { isStarted } from './coverage.js';
 
 export type { RunAgent } from './cycle.js';
@@ -80,6 +81,7 @@ export class RefineJournal {
 
 export interface SessionDeps {
   ws: Workspace;
+  limits?: RefineLimits;
   draft: Draft;
   runAgent: RunAgent;
   frontAgent?: RunAgent;
@@ -133,6 +135,7 @@ export interface Snapshot {
   busy: boolean;
   /** The seq of the last event the state holds; the page applies only the events after it. */
   seq: number;
+  limits: RefineLimits;
 }
 
 /**
@@ -251,7 +254,7 @@ export class RefineSession {
       tokens.outputTokens += u?.outputTokens ?? 0;
       tokens.costUsd += Number(e.data.costUsd ?? 0);
     }
-    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, secrets, tokens, busy: this.busy, seq: this.journal.events.at(-1)?.seq ?? 0 };
+    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, secrets, tokens, busy: this.busy, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits() };
   }
 
   async saveDoc(file: DocFile, text: string): Promise<void> {
@@ -327,6 +330,7 @@ export class RefineSession {
 
   async evaluate(): Promise<void> {
     this.ensureCanEvaluate();
+    if (this.state.cycle >= this.limits().max) throw new ConflictError(`o refinamento já tem ${this.state.cycle} rodadas, o limite de ${this.limits().max}: revise os documentos e inicie a análise, ou ajuste TEAMS_AI_REFINE_MAX_ROUNDS`);
     const ctl = (this.abortCtl = new AbortController());
     // Set at once, so no other action slips in while the floor is read.
     this.running = this.evaluateChain(ctl).finally(() => {
@@ -487,6 +491,15 @@ export class RefineSession {
     }
   }
 
+  /** Ready, or past the release round with the checks still failing (TEAMS_AI_REFINE_RELEASE_ROUNDS). */
+  private canStart(): boolean {
+    return this.state.status === 'ready' || released(this.state, this.limits());
+  }
+
+  private limits(): RefineLimits {
+    return this.deps.limits ?? refineLimits();
+  }
+
   /** Spec (refinement) §3.6 steps 1–2. */
   async freeze(): Promise<{ spec: Spec; project: Project }> {
     if (this.state.backlog?.enabled) throw new ConflictError('O início a partir do backlog ainda não está disponível: por enquanto o backlog serve para organizar e priorizar.');
@@ -495,7 +508,7 @@ export class RefineSession {
     if (this.running) await this.running;
     // Another freeze may have passed the same checks while this one awaited the running cycle.
     if (this.starting) throw new ConflictError('a start is already in progress');
-    if (this.state.status !== 'ready' || this.state.stale) {
+    if (!this.canStart() || this.state.stale) {
       throw new ConflictError(`session is ${this.state.status}${this.state.stale ? ' (stale)' : ''}; evaluate until ready`);
     }
     this.starting = true;
@@ -526,7 +539,7 @@ export class RefineSession {
     const onMain = Object.fromEntries(await Promise.all(specs.map(async (s) => [s.specId, (await readMainSpec(this.deps.draft, s.specId))?.status] as const)));
     if (this.starting) throw new ConflictError('a start is already in progress');
     if (!backlog.detail) throw new ConflictError('Detalhe as specs do backlog antes de iniciar: o início a partir do backlog usa as specs planejadas.');
-    if (this.state.status !== 'ready' || this.state.stale) {
+    if (!this.canStart() || this.state.stale) {
       throw new ConflictError(`session is ${this.state.status}${this.state.stale ? ' (stale)' : ''}; evaluate until ready`);
     }
     // Built before the start lock, so a refused start leaves the session free to try again.

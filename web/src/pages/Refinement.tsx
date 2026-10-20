@@ -1,8 +1,8 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, refineApi, type AcceptanceCriterion, type ChecklistItem, type Snapshot, type StoredEvent } from '../api.js';
 import { docToJson } from '../refine/docJson.js';
-import { applyToSnapshot, type LiveSnapshot } from '../refine/reducer.js';
+import { applyBatch, type LiveSnapshot } from '../refine/reducer.js';
 import { useJournal } from '../useSse.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
@@ -14,6 +14,7 @@ import { allGreen, isApproval } from '@server/refine/state';
 import type { Divergence, DivergenceSide } from '@server/refine/checklist';
 import { BacklogPanel } from '../refine/BacklogPanel.js';
 import { MoveNotice } from '../refine/MoveNotice.js';
+import { released } from '@server/refine/state';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { ProcessingBanner } from '../refine/ProcessingBanner.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
@@ -91,6 +92,21 @@ const criterionText = (c: AcceptanceCriterion) => `${c.id}: dado ${c.given}, qua
 const jevInfo = 'O Jev é obrigatório no refinamento. Ele confere se os cinco documentos estão consistentes entre si e classifica e decide pontos da avaliação: critérios de aceite ainda não prontos, perguntas repetidas e contradições com o histórico do projeto. Sem ele, a avaliação não inicia. Ajuste o que fizer sentido e reavalie.';
 const patchInfo = 'Mudança proposta por um agente: linhas com - saem e linhas com + entram. Aceitar aplica a mudança no documento; Rejeitar a descarta, e o motivo opcional fica no histórico.';
 const jsonDownload = (value: unknown) => `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(value, null, 2))}`;
+
+// Skip re-rendering the 59-spec backlog on each tab click: its props stay the same.
+const MemoBacklogPanel = memo(BacklogPanel);
+const MemoSpecTree = memo(SpecTree);
+
+// Builds the body only after the file is opened: a closed details still mounts its children.
+function LazyDetails({ className, summary, body }: { className: string; summary: ReactNode; body: () => ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details className={className} onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary>{summary}</summary>
+      {open && body()}
+    </details>
+  );
+}
 
 const panelCard = 'edge-lit min-w-0 rounded-xl border border-line bg-surface p-5 shadow-card';
 // The checklist panel styles the headings and lists inside it; disclosures bring their own box.
@@ -224,13 +240,22 @@ export function RefinementView(p: ViewProps) {
   const [suggesting, setSuggesting] = useState(false);
   const [askRe, setAskRe] = useState(false);
   // Nothing changed since the last evaluation: a new one would spend the same calls on the same documents.
-  const lastEvaluated = (p.events ?? []).filter((e) => e.type === 'REFINE_EVALUATED').at(-1)?.seq ?? 0;
-  const changedSince = (p.events ?? []).some((e) => e.seq > lastEvaluated && CHANGE_EVENTS.has(e.type));
+  const changedSince = useMemo(() => {
+    const events = p.events ?? [];
+    const lastEvaluated = events.filter((e) => e.type === 'REFINE_EVALUATED').at(-1)?.seq ?? 0;
+    return events.some((e) => e.seq > lastEvaluated && CHANGE_EVENTS.has(e.type));
+  }, [p.events]);
   const unchanged = st.cycle > 0 && !st.stale && !changedSince;
   const attachInput = useRef<HTMLInputElement>(null);
   const [answer, setAnswer] = useState('');
   const [docsAnswered, setDocsAnswered] = useState(false);
   const [reasons, setReasons] = useState<Record<string, string>>({});
+  // The patch being accepted or rejected: both of its buttons stay locked until the action ends.
+  const [deciding, setDeciding] = useState<string | null>(null);
+  const decide = (patchId: string, action: () => unknown) => {
+    setDeciding(patchId);
+    return Promise.resolve(action()).finally(() => setDeciding(null));
+  };
   const [secretValues, setSecretValues] = useState<Record<string, string>>({});
   const [newSecrets, setNewSecrets] = useState<Array<{ id: number; name: string; value: string }>>([]);
   const saved = useRef(snap.docs);
@@ -267,21 +292,23 @@ export function RefinementView(p: ViewProps) {
     setAnswer('');
     setDocsAnswered(false);
   }, [current?.questionId]);
-  const canStart = canStartRun(st, busy);
+  const canStart = canStartRun(st, busy, snap.limits);
+  // Past the lock round, another evaluation is refused by the server: the button says so instead of failing.
+  const atMax = snap.limits !== undefined && st.cycle >= snap.limits.max;
   const backlogOn = st.backlog?.enabled === true;
   // A new project's refinement has two mandatory stages: the documents, then the backlog the program runs from.
   const newProject = st.mode === 'new-project';
-  const stageStep = newProject ? stageAction(st) : null;
+  const stageStep = newProject ? stageAction({ ...st, released: snap.limits !== undefined && released(st, snap.limits) }) : null;
   // In stage 2 the backlog is what the person checks, so it leads the quality column.
   const backlogFirst = newProject && backlogOn;
   const backlogBlock = (
     <>
-      <BacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} onEnable={newProject ? undefined : p.onEnableBacklog} mandatory={newProject} />
-      {st.backlog?.detail && <SpecTree backlog={st.backlog} evaluating={evaluating} />}
+      <MemoBacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} onEnable={newProject ? undefined : p.onEnableBacklog} mandatory={newProject} />
+      {st.backlog?.detail && <MemoSpecTree backlog={st.backlog} evaluating={evaluating} />}
     </>
   );
   // Backlog mode lists specs, not one spec: the generated index replaces spec.json and the tasks of a single spec.
-  const specsIndex = backlogOn && (st.backlog?.items.length ?? 0) > 0 ? buildSpecsIndex(snap.specId, st.backlog as never) : null;
+  const specsIndex = useMemo(() => (backlogOn && (st.backlog?.items.length ?? 0) > 0 ? buildSpecsIndex(snap.specId, st.backlog as never) : null), [backlogOn, snap.specId, st.backlog]);
   const projectJson = backlogOn ? st.backlog?.project ?? null : st.derived?.project ?? null;
   // The base docs as JSON, by the names the generated files use; briefing.md is the brief in backlog mode.
   const docFiles = [
@@ -308,6 +335,8 @@ export function RefinementView(p: ViewProps) {
     ? 'Os agentes estão executando o backlog, até duas specs ao mesmo tempo quando não mexem no mesmo código. Acompanhe cada uma na tela de execução do backlog.'
     : st.status === 'evaluating'
     ? null
+    : atMax
+    ? `Limite de ${snap.limits?.max} rodadas atingido. Revise os documentos e inicie a análise, ou ajuste TEAMS_AI_REFINE_MAX_ROUNDS no .env.`
     : jevAdvisory
     ? 'O Jev apontou pontos nos documentos. Ajuste o que fizer sentido e clique em Reavaliar.'
     : stageStep === 'answer'
@@ -328,6 +357,8 @@ export function RefinementView(p: ViewProps) {
             : 'O backlog está pronto para revisão. Para mudar prioridades ou cortes, escreva no briefing.md e reavalie.'
         : st.backlog?.detail && !backlogDetailed
           ? 'O detalhamento ainda não cobre todos os itens: clique em Reavaliar para gerar a spec e o pré-plano do que falta; o que faltar aparece em vermelho na cobertura.'
+        : canStart && !green
+          ? `Executar liberado após ${snap.limits?.release} rodadas, com critérios ainda reprovados: ${st.checklist.filter((c) => !c.passed).map((c) => c.id).join(', ')}. Você decide: inicie agora ou corrija os documentos e reavalie.`
         : canStart
           ? 'Tudo pronto. Clique em Iniciar análise para os agentes desenvolverem o projeto.'
           : st.cycle === 0
@@ -469,7 +500,7 @@ export function RefinementView(p: ViewProps) {
       <div className="mb-4 flex flex-wrap items-center gap-3">
         {newProject && (stageStep === 'start' || stageStep === 'started') && startButton}
         {showEvaluate && (
-        <ActionButton data-testid="evaluate" className={`${newProject && stageStep !== 'evaluate' ? 'secondary' : 'primary'} min-w-40 flex-auto`} busy={evaluating} disabled={locked} onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
+        <ActionButton data-testid="evaluate" className={`${newProject && stageStep !== 'evaluate' ? 'secondary' : 'primary'} min-w-40 flex-auto`} busy={evaluating} disabled={locked || atMax} onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
           {st.cycle === 0 ? 'Avaliar' : 'Reavaliar'}
         </ActionButton>
         )}
@@ -568,7 +599,7 @@ export function RefinementView(p: ViewProps) {
             </div>
             <pre className="mx-0 my-3 overflow-auto rounded-md bg-term-bg p-[0.8rem] text-[0.75rem] leading-normal text-term-ink">{x.diff}</pre>
             <div className="grid grid-cols-2 items-center gap-2">
-            <ActionButton className="min-w-[5.5rem] border-good-line bg-good-soft text-good hover:enabled:border-good" data-testid={`accept-${x.patchId}`} disabled={locked} onClick={() => p.onAccept(x.patchId)} icon={<Icon name="check" size={16} />}>
+            <ActionButton className="min-w-[5.5rem] border-good-line bg-good-soft text-good hover:enabled:border-good" data-testid={`accept-${x.patchId}`} disabled={locked || deciding !== null} onClick={() => decide(x.patchId, () => p.onAccept(x.patchId))} icon={<Icon name="check" size={16} />}>
               Aceitar
             </ActionButton>
             <input
@@ -579,7 +610,7 @@ export function RefinementView(p: ViewProps) {
               value={reasons[x.patchId] ?? ''}
               onChange={(e) => setReasons({ ...reasons, [x.patchId]: e.target.value })}
             />
-            <ActionButton className="min-w-[5.5rem] border-bad-line bg-bad-soft text-bad hover:enabled:border-bad" data-testid={`reject-${x.patchId}`} disabled={locked} onClick={() => p.onReject(x.patchId, reasons[x.patchId] || null)} icon={<Icon name="close" size={16} />}>
+            <ActionButton className="min-w-[5.5rem] border-bad-line bg-bad-soft text-bad hover:enabled:border-bad" data-testid={`reject-${x.patchId}`} disabled={locked || deciding !== null} onClick={() => decide(x.patchId, () => p.onReject(x.patchId, reasons[x.patchId] || null))} icon={<Icon name="close" size={16} />}>
               Rejeitar
             </ActionButton>
             </div>
@@ -666,27 +697,15 @@ export function RefinementView(p: ViewProps) {
           <span>Como reproduzir: {st.derived.spec.bug.reproduction}</span>
         </div>
       )}
-      <details className={fileBox}>
-        <summary><span>spec.json</span>{st.derived ? <a data-testid="download-spec-json" href={jsonDownload(st.derived.spec)} download="spec.json" aria-label="Baixar spec.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</summary>
-        {st.derived ? <pre className="whitespace-pre-wrap break-words">{JSON.stringify(st.derived.spec, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>}
-      </details>
+      <LazyDetails className={fileBox} summary={<><span>spec.json</span>{st.derived ? <a data-testid="download-spec-json" href={jsonDownload(st.derived.spec)} download="spec.json" aria-label="Baixar spec.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</>} body={() => st.derived ? <pre className="whitespace-pre-wrap break-words">{JSON.stringify(st.derived.spec, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>} />
         </>
       )}
       {backlogOn && (
-        <details className={fileBox}>
-          <summary><span>specs.json</span>{specsIndex ? <a data-testid="download-specs-json" href={jsonDownload(specsIndex)} download="specs.json" aria-label="Baixar specs.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</summary>
-          {specsIndex ? <pre className="whitespace-pre-wrap break-words">{JSON.stringify(specsIndex, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>}
-        </details>
+        <LazyDetails key="specs" className={fileBox} summary={<><span>specs.json</span>{specsIndex ? <a data-testid="download-specs-json" href={jsonDownload(specsIndex)} download="specs.json" aria-label="Baixar specs.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</>} body={() => specsIndex ? <pre className="whitespace-pre-wrap break-words">{JSON.stringify(specsIndex, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>} />
       )}
-      <details className={fileBox}>
-        <summary><span>project.json</span>{projectJson ? <a data-testid="download-project-json" href={jsonDownload(projectJson)} download="project.json" aria-label="Baixar project.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</summary>
-        {projectJson ? <pre className="whitespace-pre-wrap break-words">{JSON.stringify(projectJson, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>}
-      </details>
+      <LazyDetails className={fileBox} summary={<><span>project.json</span>{projectJson ? <a data-testid="download-project-json" href={jsonDownload(projectJson)} download="project.json" aria-label="Baixar project.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</>} body={() => projectJson ? <pre className="whitespace-pre-wrap break-words">{JSON.stringify(projectJson, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>} />
       {docFiles.map(({ doc, name, text }) => (
-        <details key={name} className={fileBox}>
-          <summary><span>{name}</span><a data-testid={`download-${name.replace('.', '-')}`} href={jsonDownload(docToJson(doc, text))} download={name} aria-label={`Baixar ${name}`} onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a></summary>
-          <pre className="whitespace-pre-wrap break-words">{JSON.stringify(docToJson(doc, text), null, 2)}</pre>
-        </details>
+        <LazyDetails key={name} className={fileBox} summary={<><span>{name}</span><a data-testid={`download-${name.replace('.', '-')}`} href={jsonDownload(docToJson(doc, text))} download={name} aria-label={`Baixar ${name}`} onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a></>} body={() => <pre className="whitespace-pre-wrap break-words">{JSON.stringify(docToJson(doc, text), null, 2)}</pre>} />
       ))}
       {!backlogOn && (
         <>
@@ -759,19 +778,17 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   const programPath = `/refine/${projectId}/${specId}/program`;
   useEffect(() => {
     if (!snap) return;
-    let next: LiveSnapshot = snap;
-    for (const e of events) {
-      if (e.seq <= applied.current) continue;
-      applied.current = e.seq;
-      next = applyToSnapshot(next, e);
-      // A started backlog opens its execution screen, which follows every spec with its own run link.
-      if (e.type === 'REFINE_STARTED_RUN') navigate(next.state.backlog?.enabled ? programPath : `/runs/${String(e.data.runId)}`);
-    }
-    if (next !== snap) {
-      if (next.docsDirty) void load();
-      else setSnap(next);
-    }
+    const fresh = events.filter((e) => e.seq > applied.current);
+    if (fresh.length === 0) return;
+    applied.current = fresh[fresh.length - 1].seq;
+    const next = applyBatch(snap, fresh);
+    // A started backlog opens its execution screen, which follows every spec with its own run link.
+    const started = fresh.filter((e) => e.type === 'REFINE_STARTED_RUN').pop();
+    if (started) navigate(next.state.backlog?.enabled ? programPath : `/runs/${String(started.data.runId)}`);
+    if (next.docsDirty) void load();
+    else setSnap(next);
   }, [events, snap]);
+  const now = useMemo(() => stageNow(events, snap?.state.cycle ?? 0), [events, snap?.state.cycle]);
   if (!snap) return (
     <main>
       {error ? <p className="error">{error}</p> : <Loading />}
@@ -786,12 +803,11 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
     return refineApi.start(projectId, specId).then(({ runId, program: started }) => navigate(started ? programPath : `/runs/${runId}`)).finally(() => setStarting(false));
   });
   const executing = starting || (following && program?.status !== 'finished');
-  const now = stageNow(events, snap.state.cycle);
   return (
     <main className="flex flex-col gap-4 lg:h-full lg:min-h-0">
       <header className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></Link><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span></header>
       <MoveNotice moves={snap.state.moves ?? []} onUndo={(moveId) => act(() => refineApi.undoMove(projectId, specId, moveId))()} docName={docName} />
-      {snap.state.mode === 'new-project' && <StageBar stages={stageOf(snap.state)} />}
+      {snap.state.mode === 'new-project' && <StageBar stages={stageOf({ ...snap.state, released: snap.limits !== undefined && released(snap.state, snap.limits) })} />}
       {snap.state.status === 'evaluating' && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}
       {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phases={phases} link={programPath} />}
       {(error || snap.state.status === 'error') && (

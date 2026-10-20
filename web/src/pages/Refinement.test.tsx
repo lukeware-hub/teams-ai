@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { api, type Item, type Snapshot, type Status } from '../api.js';
@@ -430,6 +430,23 @@ describe('RefinementView', () => {
     expect(screen.queryByText(/aparecem aqui quando a avaliação terminar/)).toBeNull();
   });
 
+  it('locks both patch decisions with a spinner on the clicked one until the action ends', async () => {
+    const h = on();
+    let finish!: () => void;
+    h.onAccept.mockReturnValueOnce(new Promise<void>((resolve) => { finish = resolve; }));
+    render(
+      <MemoryRouter>
+        <RefinementView snap={base({ status: 'answering' })} busy={false} {...h} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByTestId('accept-sm-c1-0'));
+    expect((screen.getByTestId('accept-sm-c1-0') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('reject-sm-c1-0') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('accept-sm-c1-0').querySelector('.button-spinner')).not.toBeNull();
+    finish();
+    await waitFor(() => expect((screen.getByTestId('reject-sm-c1-0') as HTMLButtonElement).disabled).toBe(false));
+  });
+
   it('explains that Jev is required in refinement and keeps re-evaluation available', () => {
     render(
       <MemoryRouter>
@@ -556,5 +573,16 @@ describe('RefinementView: Sugerir', () => {
     expect((screen.getByTestId('doc-stack.md') as HTMLTextAreaElement).value).toBe('# Stack local');
     rerender(view({ ...snap, docs: { ...snap.docs, 'design.md': '# Design aceito', 'stack.md': '# Stack do servidor' } }));
     expect((screen.getByTestId('doc-stack.md') as HTMLTextAreaElement).value).toBe('# Stack do servidor');
+  });
+});
+
+describe('RefinementView file previews', () => {
+  it('builds a JSON preview only after its file is opened', () => {
+    const { container } = render(<MemoryRouter><RefinementView snap={base({ status: 'answering' })} busy={false} {...on()} /></MemoryRouter>);
+    expect(container.querySelectorAll('details pre')).toHaveLength(0);
+    const details = screen.getByText('flow.json').closest('details')!;
+    details.open = true;
+    fireEvent(details, new Event('toggle'));
+    expect(container.querySelectorAll('details pre').length).toBeGreaterThan(0);
   });
 });

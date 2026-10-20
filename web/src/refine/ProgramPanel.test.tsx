@@ -134,4 +134,12 @@ describe('canStartRun', () => {
     expect(canStartRun(state({ backlog: { enabled: true, detail: true }, stale: true }), false)).toBe(false);
     expect(canStartRun(state({ backlog: { enabled: true, detail: true }, status: 'started' }), false)).toBe(false);
   });
+  it('opens past the release round with checks still failing, unless a person owes a decision', () => {
+    const limits = { release: 5, max: 10 };
+    const past = state({ status: 'answering', cycle: 5, derived: {}, questions: [], patches: [] });
+    expect(canStartRun(state({ status: 'answering', cycle: 4, derived: {}, questions: [], patches: [] }), false, limits)).toBe(false);
+    expect(canStartRun(past, false, limits)).toBe(true);
+    expect(canStartRun(state({ status: 'answering', cycle: 5, derived: {}, questions: [{ status: 'pending', blocking: true }], patches: [] }), false, limits)).toBe(false);
+    expect(canStartRun(state({ status: 'answering', cycle: 5, derived: {}, questions: [], patches: [], stale: true }), false, limits)).toBe(false);
+  });
 });

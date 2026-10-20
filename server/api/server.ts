@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import type { LicenseGuard } from './license-guard.js';
 import { ALLOWED_HOSTS_ENV, applySecurityHeaders, crossSite, isJsonContentType, parseAllowedHosts } from './security.js';
 
@@ -144,8 +145,10 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     const done = (status: number) => log(`${req.method} ${url.pathname} ${status} ${Date.now() - started}ms`);
     const json = (status: number, value: unknown) => {
-      res.writeHead(status, { 'content-type': 'application/json' });
-      res.end(JSON.stringify(value));
+      const body = JSON.stringify(value);
+      const gzip = body.length > 1024 && String(req.headers['accept-encoding'] ?? '').includes('gzip');
+      res.writeHead(status, { 'content-type': 'application/json', vary: 'accept-encoding', ...(gzip ? { 'content-encoding': 'gzip' } : {}) });
+      res.end(gzip ? zlib.gzipSync(body) : body);
       done(status);
     };
     if (!isAllowedHost(req.headers.host, allowedHosts)) return json(403, { error: 'forbidden host' });

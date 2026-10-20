@@ -120,6 +120,26 @@ export interface RefineState {
   backlog: BacklogState | null;
   /** How the session was created; null on drafts from before it was kept. */
   mode: 'new-project' | 'new-spec' | 'continue' | 'backlog' | null;
+  /** The checks failing in the last rounds in a row, and how many rounds they have failed together. */
+  stuck?: StuckRun;
+}
+
+export interface StuckRun {
+  key: string;
+  count: number;
+}
+
+/** Rounds in a row with the same checks failing before the human is asked about them. */
+export const STUCK_ROUNDS = 3;
+
+/** Counts the rounds the same checks fail; `ask` when they reach the limit, and the count then starts over. */
+export function nextStuck(prev: StuckRun | undefined, checklist: ChecklistItem[]): { run: StuckRun; ask: boolean; failing: ChecklistItem[] } {
+  const failing = checklist.filter((i) => !i.passed);
+  const key = failing.map((i) => i.id).sort().join(',');
+  if (key === '') return { run: { key: '', count: 0 }, ask: false, failing };
+  const count = prev?.key === key ? prev.count + 1 : 1;
+  const ask = count >= STUCK_ROUNDS;
+  return { run: { key, count: ask ? 0 : count }, ask, failing };
 }
 
 export const emptyRefineState = (): RefineState => ({
@@ -163,6 +183,33 @@ export function computeStatus(s: RefineState): RefineStatus {
   return pendingAny ? 'answering' : 'drafting';
 }
 
+/** Rounds after which Executar opens with checks still failing, and the rounds after which Reavaliar stops (TEAMS_AI_REFINE_*). */
+export interface RefineLimits {
+  release: number;
+  max: number;
+}
+
+/** Past the release round, a spec with no pending human decision may start even while a check still fails. */
+/** The part of the state the release reads; the page's state shape carries the same fields. */
+export interface ReleaseInput {
+  status: RefineStatus;
+  stale: boolean;
+  cycle: number;
+  derived: unknown;
+  questions: ReadonlyArray<{ status: string; blocking: boolean }>;
+  patches: ReadonlyArray<{ status: string; replace: string }>;
+  backlog?: { enabled: boolean; detail?: boolean | null } | null;
+}
+
+export function released(s: ReleaseInput, limits: RefineLimits): boolean {
+  if (s.cycle < limits.release) return false;
+  if (s.status === 'evaluating' || s.status === 'started' || s.status === 'error') return false;
+  if (s.stale || !s.derived) return false;
+  if (s.questions.some((q) => q.status === 'pending' && q.blocking)) return false;
+  if (s.patches.some((p) => p.status === 'pending' && isApproval(p))) return false;
+  return !s.backlog?.enabled || s.backlog.detail === true;
+}
+
 /** Something was derived from the docs (one spec or a backlog), so editing the docs makes it stale. */
 const hasDerivation = (s: RefineState): boolean => s.derived !== null || (s.backlog?.items.length ?? 0) > 0;
 
@@ -187,6 +234,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
     case RefineEvent.Evaluated: {
       const v = d as unknown as { cycle: number; checklist: ChecklistItem[]; questions: Question[]; discardedPatches: Array<{ role: string; file: string; reason: string }> };
       s.checklist = v.checklist;
+      s.stuck = nextStuck(s.stuck, v.checklist).run;
       s.questions.push(...v.questions.map((q) => ({ ...q, status: 'pending' as const, answer: null })));
       s.discarded.push(...v.discardedPatches.map((x) => ({ cycle: v.cycle, ...x })));
       s.stale = s.editedInCycle === true;
