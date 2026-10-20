@@ -473,5 +473,9 @@ describe('jsonFromResultText', () => {
     expect(jsonFromResultText('```json\n[1,2]\n```')).toBeNull();
     expect(jsonFromResultText('```json\n{broken\n```')).toBeNull();
     expect(jsonFromResultText(null)).toBeNull();
+    expect(jsonFromResultText('{"a":1}\n\nPronto.')).toEqual({ a: 1 });
+    expect(jsonFromResultText('Segue o resultado: {"a":1} fim')).toEqual({ a: 1 });
+    expect(jsonFromResultText('{"a":1}\n```')).toEqual({ a: 1 });
+    expect(jsonFromResultText('{"a":1} e {"b":2}')).toBeNull();
   });
 });

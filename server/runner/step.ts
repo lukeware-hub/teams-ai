@@ -206,8 +206,11 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
 export function jsonFromResultText(text: string | null): unknown {
   if (!text) return null;
   const fenced = /```(?:json)?\s*\n([\s\S]*?)\n```/.exec(text);
-  const candidate = (fenced ? fenced[1]! : text).trim();
-  if (!candidate.startsWith('{') || !candidate.endsWith('}')) return null;
+  // Prose before or after the object is tolerated: the candidate is the text from its first brace to its last one.
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  const candidate = fenced ? fenced[1]!.trim() : start === -1 || end < start ? '' : text.slice(start, end + 1);
+  if (candidate === '') return null;
   try {
     const value: unknown = JSON.parse(candidate);
     return typeof value === 'object' && value !== null && !Array.isArray(value) ? value : null;
@@ -385,7 +388,7 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
     const errors = [...validation.errors];
     if (raw.summary.structuredOutput === null) {
       // Without this the only trace of a prose-only answer is "expected object, received null".
-        const text = redactSecrets((raw.summary.resultText ?? '').slice(0, 500));
+        const text = redactSecrets((raw.summary.resultText ?? '').slice(0, 4000));
       errors.push(`no JSON object in the agent result (subtype=${raw.summary.subtype ?? 'none'}, terminal=${raw.summary.terminalReason ?? 'none'}, turns=${raw.summary.numTurns}): ${text || '(empty)'}`);
     }
     return { ok: false, failure: 'schema', errors, summary: raw.summary, sandboxDisabled: false };
