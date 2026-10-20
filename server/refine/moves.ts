@@ -9,6 +9,7 @@ export const MAX_MOVE_QUOTE = 2000;
 const DECISIONS_HEADING = /^##\s+(Decisões|Decisions)\s*$/m;
 const LIST_ITEM = /^\s*([-*+]|\d+[.)])\s/;
 const FACT = /`[^`]+`|\d+(?:[.,]\d+)*/g;
+const CODE_BLOCK = /^```[^\n]*\n[\s\S]*?^```[ \t]*$/gm;
 
 /** The text with `quote` cut out, and where it was, so undo can put it back. */
 export interface Cut {
@@ -57,6 +58,11 @@ export function insertBlock(text: string, block: string, after?: string): Put | 
   // A blank line already follows the anchor; otherwise the block gets one before the next line.
   const inserted = at === text.length || rest.startsWith('\n\n') ? `\n\n${block}` : `\n\n${block}\n`;
   return { next: text.slice(0, at) + inserted + rest, insertAt: at, inserted };
+}
+
+/** True when [from, to) touches a fenced code block, its fence lines included: a move never cuts from one or adds into one. */
+function inCodeBlock(text: string, from: number, to: number): boolean {
+  return [...text.matchAll(CODE_BLOCK)].some((m) => from < (m.index ?? 0) + m[0].length && to > (m.index ?? 0));
 }
 
 /** The first number or backticked name of `quote` that `text` does not keep; numbers and names are facts a move must not lose. */
@@ -114,10 +120,12 @@ export function planMove(move: MoveInput, ctx: MoveContext): MovePlan {
   if (cut.next.trim() === '') return refuse(`the move would empty ${from}`);
   const span = decisionsSpan(fromText);
   if (span && cut.removedAt < span.end && cut.removedAt + cut.removed.length > span.start) return refuse('quote is inside the decisions section');
+  if (inCodeBlock(fromText, cut.removedAt, cut.removedAt + cut.removed.length)) return refuse('quote is inside a code block');
   const put = insertBlock(toText, block, move.after || undefined);
   if (!put) return refuse(`after must be one whole line found once in ${to}`);
   const target = decisionsSpan(toText);
   if (target && put.insertAt >= target.start && put.insertAt <= target.end) return refuse('text would go into the decisions section');
+  if (inCodeBlock(toText, put.insertAt, put.insertAt)) return refuse('text would go into a code block');
   return { ok: true, from, to, cut, put };
 }
 

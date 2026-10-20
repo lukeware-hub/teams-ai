@@ -127,6 +127,18 @@ describe('planMove', () => {
     const list = { ...docs, 'design.md': '# Design\n\n## Assinatura\n\n1. Valide o certificado.\n\n## Cores\n\n- fundo: branco\n' };
     expect(planMove(move({ quote: '1. Valide o certificado.', text: 'Valide o certificado.' }), context({ docs: list }))).toMatchObject({ ok: true });
   });
+
+  it('refuses text that would land inside a code block, and a quote taken from inside one', () => {
+    const diagram = '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n\nDepois.\n';
+    const flowContext = context({ docs: { ...docs, 'flow.md': diagram } });
+    expect(planMove(move({ after: '  A --> B', text: 'Prosa solta.' }), flowContext)).toEqual({ ok: false, reason: 'text would go into a code block' });
+    expect(planMove(move({ from: 'docs/flow.md', to: 'docs/design.md', quote: '  A --> B', text: 'A --> B.' }), flowContext)).toEqual({ ok: false, reason: 'quote is inside a code block' });
+  });
+
+  it('places text after a code block, outside it', () => {
+    const diagram = '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n\nDepois.\n';
+    expect(planMove(move({ after: 'Depois.', text: 'Mais uma frase.' }), context({ docs: { ...docs, 'flow.md': diagram } }))).toMatchObject({ ok: true });
+  });
 });
 
 describe('restoreMove', () => {
