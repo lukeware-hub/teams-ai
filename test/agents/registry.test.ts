@@ -109,6 +109,11 @@ describe('settings directory protection', () => {
     expect(sm.body).toContain('a check that needs a database or a network service is an acceptance test for the smoke or e2e suite');
   });
 
+  it('the test reviewer proves a live-service criterion through the e2e suite, not a unit test', async () => {
+    const { test } = await loadAgents(AGENTS_DIR);
+    expect(test.body).toContain('A criterion that needs a live service (a database, a deployed URL) is not judged by a unit test');
+  });
+
   it('the SM plan keeps the platform documents out of the format and lint gates', async () => {
     const { sm } = await loadAgents(AGENTS_DIR);
     expect(sm.body).toContain('`format` or `lint` command checks the product code only: it excludes `docs/`');
