@@ -55,9 +55,11 @@ export function ItemReason({ status, reason }: { status: ProgramViewItem['status
   );
 }
 
-export function canStartRun(st: Pick<RefineState, 'status' | 'stale' | 'backlog' | 'mode'>, busy: boolean, limits?: RefineLimits): boolean {
+export function canStartRun(st: Pick<RefineState, 'status' | 'stale' | 'backlog' | 'mode' | 'cycle'>, busy: boolean, limits?: RefineLimits): boolean {
   const open = st.status === 'ready' || (limits !== undefined && released(st as RefineState, limits));
-  if (!open || st.stale || busy) return false;
+  // A stale list blocks the start only below the round limit: at the limit the owner starts from the documents as they are.
+  const staleBlocks = st.stale && !(limits !== undefined && st.cycle >= limits.max);
+  if (!open || staleBlocks || busy) return false;
   // A new project starts only after its stage 2, the backlog it runs from.
   if (st.mode === 'new-project' && !st.backlog?.enabled) return false;
   return st.backlog?.enabled ? st.backlog.detail === true : true;

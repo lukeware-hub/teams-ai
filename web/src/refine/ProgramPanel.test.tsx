@@ -128,6 +128,11 @@ describe('canStartRun', () => {
     expect(canStartRun(state({ status: 'answering' }), false)).toBe(false);
     expect(canStartRun(state(), true)).toBe(false);
   });
+  it('a stale list blocks the start only below the round limit', () => {
+    const limits = { release: 5, max: 10 };
+    expect(canStartRun(state({ stale: true, cycle: 9 }), false, limits)).toBe(false);
+    expect(canStartRun(state({ stale: true, cycle: 10 }), false, limits)).toBe(true);
+  });
   it('a backlog starts only once detailed, ready and current', () => {
     expect(canStartRun(state({ backlog: { enabled: true, detail: false } }), false)).toBe(false);
     expect(canStartRun(state({ backlog: { enabled: true, detail: true } }), false)).toBe(true);

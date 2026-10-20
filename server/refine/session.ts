@@ -496,6 +496,11 @@ export class RefineSession {
     return this.state.status === 'ready' || released(this.state, this.limits());
   }
 
+  /** A stale list blocks the start only below the round limit: at the limit the owner starts from the documents as they are. */
+  private staleBlocks(): boolean {
+    return this.state.stale && this.state.cycle < this.limits().max;
+  }
+
   private limits(): RefineLimits {
     return this.deps.limits ?? refineLimits();
   }
@@ -508,7 +513,7 @@ export class RefineSession {
     if (this.running) await this.running;
     // Another freeze may have passed the same checks while this one awaited the running cycle.
     if (this.starting) throw new ConflictError('a start is already in progress');
-    if (!this.canStart() || this.state.stale) {
+    if (!this.canStart() || this.staleBlocks()) {
       throw new ConflictError(`session is ${this.state.status}${this.state.stale ? ' (stale)' : ''}; evaluate until ready`);
     }
     this.starting = true;
@@ -539,7 +544,7 @@ export class RefineSession {
     const onMain = Object.fromEntries(await Promise.all(specs.map(async (s) => [s.specId, (await readMainSpec(this.deps.draft, s.specId))?.status] as const)));
     if (this.starting) throw new ConflictError('a start is already in progress');
     if (!backlog.detail) throw new ConflictError('Detalhe as specs do backlog antes de iniciar: o início a partir do backlog usa as specs planejadas.');
-    if (!this.canStart() || this.state.stale) {
+    if (!this.canStart() || this.staleBlocks()) {
       throw new ConflictError(`session is ${this.state.status}${this.state.stale ? ' (stale)' : ''}; evaluate until ready`);
     }
     // Built before the start lock, so a refused start leaves the session free to try again.
