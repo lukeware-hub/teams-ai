@@ -21,7 +21,7 @@ export interface JevValidationResult {
   stateTruncated: boolean;
 }
 
-const MAX_STATE_CHARS = 32_000;
+export const MAX_STATE_CHARS = 32_000;
 const CHECKS = {
   documents_consistent: {
     instructions: 'Do project.md, briefing.md, stack.md, flow.md, and design.md agree without a material contradiction?',
@@ -83,23 +83,28 @@ export function jevHint(validation?: JevValidationResult): string {
 
 const unavailable = (): JevValidationResult => ({ available: false, decision: 'review', consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false });
 
+/** The Jev over OpenRouter, configured as the decisions are. */
+export function openJev(cfg: Config, apiKey: string): JevOpenRouterBackend {
+  const o = cfg.decisions.openrouter;
+  return new JevOpenRouterBackend({
+    fetch: globalThis.fetch,
+    apiKey,
+    baseUrl: o.baseUrl,
+    model: o.model,
+    timeoutMs: o.timeoutMs,
+    maxTries: o.maxTries,
+    backoffMs: o.backoffMs,
+    sleep: async (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  });
+}
+
 /** Runs independent Jev consistency checks before Claude derives the specification. */
 export function createJevValidator(cfg: Config, secrets: () => Promise<Record<string, string>>): (docs: ValidationDocs) => Promise<JevValidationResult> {
   return async (docs) => {
     const values = await secrets();
     const key = values.OPENROUTER_API_KEY;
     if (!key) return unavailable();
-    const o = cfg.decisions.openrouter;
-    const jev = new JevOpenRouterBackend({
-      fetch: globalThis.fetch,
-      apiKey: key,
-      baseUrl: o.baseUrl,
-      model: o.model,
-      timeoutMs: o.timeoutMs,
-      maxTries: o.maxTries,
-      backoffMs: o.backoffMs,
-      sleep: async (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    });
+    const jev = openJev(cfg, key);
     const secretValues = Object.values(values);
     const clean = Object.fromEntries(Object.entries(docs).map(([name, text]) => [name, redactSecrets(text, secretValues)])) as unknown as ValidationDocs;
     const windows = splitWindows(clean, MAX_STATE_CHARS);
