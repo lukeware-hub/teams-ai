@@ -22,3 +22,7 @@ Um sistema simples para clínicas pequenas organizarem a agenda de consultas.
 ## Alvo de implantação
 
 docker-local
+
+## GitHub owner
+
+lukeware70X7
