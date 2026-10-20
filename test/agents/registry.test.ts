@@ -98,6 +98,17 @@ describe('settings directory protection', () => {
     expect(DOCUMENT_CHARTER).toMatch(/design\.md: .*list of screens or portals/);
   });
 
+  it('the Dev writes a service-dependent check for smoke or e2e, never a block, and adds dependencies with the package manager', async () => {
+    const { dev } = await loadAgents(AGENTS_DIR);
+    expect(dev.body).toContain('A check that needs a service this sandbox lacks, such as a database or a deployed URL, is not a block');
+    expect(dev.body).toContain('never by editing `package.json` by hand');
+  });
+
+  it('the SM keeps a task\'s unit tests free of live services, and the database check goes to smoke or e2e', async () => {
+    const { sm } = await loadAgents(AGENTS_DIR);
+    expect(sm.body).toContain('a check that needs a database or a network service is an acceptance test for the smoke or e2e suite');
+  });
+
   it('the SM plan keeps the platform documents out of the format and lint gates', async () => {
     const { sm } = await loadAgents(AGENTS_DIR);
     expect(sm.body).toContain('`format` or `lint` command checks the product code only: it excludes `docs/`');
