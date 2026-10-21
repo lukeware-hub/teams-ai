@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { runApi, type AcceptanceCriterion, type Report, type RunDetail, type ServiceStatus } from '../api.js';
+import { runApi, type AcceptanceCriterion, type GapCause, type GapDecision, type GapItem, type GapsReport, type Report, type RunDetail, type ServiceStatus } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { SortHeader, TableFilters, useTableView } from '../components/DataTable.js';
 import { Icon } from '../components/Icons.js';
@@ -267,7 +267,71 @@ interface ServiceProps {
   completing?: string | null;
 }
 
-export function ValidationView({ detail, specStatus, actionError = null, serviceStatus = null, startingService = false, onStartService = () => undefined, onRecheckService = () => undefined, completing = null, onReport, onComplete }: { detail: RunDetail; specStatus: string; actionError?: string | null; onReport: (text: string) => unknown; onComplete: () => unknown } & ServiceProps) {
+/** The cause the run recorded for an open doc section, in words the owner reads. */
+function gapCauseLabel(cause: GapCause | null): { title: string; hint: string } | null {
+  if (!cause) return null;
+  switch (cause.kind) {
+    case 'no-task':
+      return { title: 'Nenhuma tarefa cobre este trecho', hint: 'O plano não criou tarefa para ele. Relate o problema para que entre numa nova entrega.' };
+    case 'blocked':
+      return { title: `Tarefa bloqueada: ${cause.roots.map((r) => r.taskId).join(', ')}`, hint: cause.roots.map((r) => explainBlockReason(r.reason)).join(' ') };
+    case 'tests-failing':
+      return { title: `Teste falhou: ${cause.acIds.join(', ')}`, hint: 'O código existe, mas o teste do critério não passou. Use Reprocessar na execução.' };
+    case 'run-stopped':
+      return { title: `A execução terminou como “${statusLabel(cause.result)}”`, hint: 'O trecho não chegou a ser verificado. Use Reprocessar na execução.' };
+    case 'not-built':
+      return { title: 'O código não cobre este trecho', hint: 'As tarefas foram concluídas e os testes passaram, mas o código não faz tudo o que o documento pede. Relate o problema.' };
+  }
+}
+
+function GapRow({ gap, decision, locked, canReport, onPrefill, onAccept }: { gap: GapItem; decision: GapDecision | undefined; locked: boolean; canReport: boolean; onPrefill: (text: string) => void; onAccept: (gap: GapItem, note: string) => unknown }) {
+  const [note, setNote] = useState('');
+  const why = gapCauseLabel(gap.cause);
+  return (
+    <li data-testid="gap-row" className="flex flex-col gap-1.5">
+      <strong className="text-[0.875rem]">{gap.doc} › {gap.heading}</strong>
+      <span className="text-[0.875rem]"><Rich text={gap.missing} /></span>
+      {gap.evidence.length ? <span className="hint">Encontrado em {gap.evidence.join(', ')}</span> : null}
+      {why ? <span className="hint"><strong>{why.title}.</strong> {why.hint}</span> : null}
+      {decision ? <span data-testid="gap-accepted" className="hint">Aceito fora de escopo: {decision.note}</span> : null}
+      {!decision && !locked ? (
+        <form className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); if (note.trim()) void onAccept(gap, note.trim()); }}>
+          <input className="min-w-0 flex-1 px-[0.8rem] py-[0.5rem] text-[0.875rem]" aria-label="Motivo para aceitar o trecho" data-testid="gap-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Por que fica de fora?" />
+          <ActionButton type="submit" className="secondary" data-testid="gap-accept" disabled={note.trim() === ''} icon={<Icon name="check" size={16} />}>Aceitar como fora de escopo</ActionButton>
+        </form>
+      ) : null}
+      {canReport ? <ActionButton className="secondary self-start" data-testid="gap-prefill" onClick={() => onPrefill(`${gap.doc} › ${gap.heading}: ${gap.missing}`)} icon={<Icon name="alert" size={16} />}>Preencher o relato</ActionButton> : null}
+    </li>
+  );
+}
+
+function GapsCard({ gaps, decisions, locked, canReport, onPrefill, onAccept }: { gaps: GapsReport; decisions: GapDecision[]; locked: boolean; canReport: boolean; onPrefill: (text: string) => void; onAccept: (gap: GapItem, note: string) => unknown }) {
+  const open = 'items' in gaps ? gaps.items.filter((g) => g.status !== 'delivered') : [];
+  return (
+    <section className="card" data-testid="gaps">
+      <div className={RUN_UI.panelHead}>
+        <h2>Cobertura dos documentos</h2>
+        <InfoTip text="Cada trecho dos documentos desta spec, conferido contra o código na main. Aceitar um trecho só registra a decisão: a entrega não muda." />
+      </div>
+      {'unavailable' in gaps ? (
+        <p data-testid="gaps-unavailable" className="hint m-0">Não foi possível conferir: {gaps.unavailable}</p>
+      ) : (
+        <>
+          <p data-testid="gaps-count" className="hint m-0 mb-2">{gaps.items.length - open.length} de {gaps.items.length} trechos entregues</p>
+          {open.length ? (
+            <ul className={FINDINGS} data-testid="gaps-open">
+              {open.map((gap) => (
+                <GapRow key={`${gap.doc} › ${gap.heading}`} gap={gap} decision={decisions.find((d) => d.doc === gap.doc && d.heading === gap.heading)} locked={locked} canReport={canReport} onPrefill={onPrefill} onAccept={onAccept} />
+              ))}
+            </ul>
+          ) : <p className="hint m-0">Nenhum trecho em aberto.</p>}
+        </>
+      )}
+    </section>
+  );
+}
+
+export function ValidationView({ detail, specStatus, actionError = null, serviceStatus = null, startingService = false, onStartService = () => undefined, onRecheckService = () => undefined, completing = null, onReport, onComplete, onAcceptGap = () => undefined }: { detail: RunDetail; specStatus: string; actionError?: string | null; onReport: (text: string) => unknown; onComplete: () => unknown; onAcceptGap?: (gap: { doc: string; heading: string; note: string }) => unknown } & ServiceProps) {
   const [checks, setChecks] = useState<Record<string, boolean>>(() => readChecks(detail.runId));
   const [text, setText] = useState('');
   const report: Report | null = detail.report;
@@ -429,6 +493,9 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                       </div>
                       <EvidenceTable evidence={report.evidence} />
                     </section>
+                    {report.gaps ? (
+                      <GapsCard gaps={report.gaps} decisions={detail.gapDecisions ?? []} locked={detail.locked ?? false} canReport={enabled} onPrefill={setText} onAccept={(gap, note) => onAcceptGap({ doc: gap.doc, heading: gap.heading, note })} />
+                    ) : null}
                     {report.securityFindings?.length ? (
                       <section className="card">
                         <div className={RUN_UI.panelHead}>
@@ -603,6 +670,7 @@ function ValidationRun({ runId }: { runId: string }) {
         guarded(() => runApi.reportProblem(detail.projectId, detail.specId, text).then(() => navigate(`/refine/${detail.projectId}/${detail.specId}`)))
       }
       onComplete={() => guarded(() => runApi.complete(detail.projectId, detail.specId).then((started) => setCompletion(started.runId)))}
+      onAcceptGap={(gap) => guarded(() => runApi.acceptGap(detail.runId, gap).then(() => load()))}
     />
   );
 }
