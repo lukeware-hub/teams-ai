@@ -85,7 +85,8 @@ function backlogDigest(b: BacklogState): string {
 }
 
 /** The reorganization pass: every line of a changed document is checked against the charter; the other documents are context only. */
-const REORGANIZE_RULE = 'REORGANIZE: a full pass of the documents against the charter in your instructions. Read every line of each document marked "reorganize in full" and check it against the charter. A line in the wrong document is a move: `from` and `to` are document paths as listed below, `quote` is the whole lines to take out of `from`, copied character for character and found once in it, `text` is the same content for `to` keeping every fact, number and name, `after` is an exact existing line of `to` to place it below (or absent to append), and `reason` says why it belongs in `to`. A piece that fits two documents goes where the charter tie-break puts it. Ask a question with two or three `options` (the recommended one marked) and a `subject` only when the charter leaves its right place open. Never guess a move. A document marked as context is for reference only: take nothing out of it. Write every question, option, reason and subject in Brazilian Portuguese. Set every question\'s `blocking` to false, and return empty `checklist`, `docPatch`, `findings` and `contradictions`: this pass only moves and asks. An empty `moves` list is correct only when every line of every document marked "reorganize in full" belongs where it is.';
+const JEV_GOALS_RULE = 'JEV GOALS: the Jev scores each document on four checks (complete, concrete, consistent, scoped). Every check listed below must pass, so fix all of them in this round with patches and moves, not over several rounds. Make each goal true in the document it names. Do not invent a fact to pass a check: when the documents do not decide the content, ask the owner.';
+const REORGANIZE_RULE ='REORGANIZE: a full pass of the documents against the charter in your instructions. Read every line of each document marked "reorganize in full" and check it against the charter. A line in the wrong document is a move: `from` and `to` are document paths as listed below, `quote` is the whole lines to take out of `from`, copied character for character and found once in it, `text` is the same content for `to` keeping every fact, number and name, `after` is an exact existing line of `to` to place it below (or absent to append), and `reason` says why it belongs in `to`. A piece that fits two documents goes where the charter tie-break puts it. Ask a question with two or three `options` (the recommended one marked) and a `subject` only when the charter leaves its right place open. Never guess a move. A document marked as context is for reference only: take nothing out of it. Write every question, option, reason and subject in Brazilian Portuguese. Set every question\'s `blocking` to false, and return empty `checklist`, `docPatch`, `findings` and `contradictions`: this pass only moves and asks. An empty `moves` list is correct only when every line of every document marked "reorganize in full" belongs where it is.';
 
 /** Groups the changed documents into calls: one call for all of them when they fit, else one call per document. */
 export function reorganizeGroups(changed: readonly DocFile[], texts: Record<DocFile, string>): DocFile[][] {
@@ -105,6 +106,7 @@ export function reorganizePack(input: {
   designMd?: string;
   changed: readonly DocFile[];
   projectBriefing?: boolean;
+  jevGoals?: readonly string[];
 }): ContextPackInput {
   const docs: Record<DocFile, string | undefined> = { 'project.md': input.projectMd, 'briefing.md': input.briefMd, 'stack.md': input.stackMd, 'flow.md': input.flowMd, 'design.md': input.designMd };
   const sections = (Object.keys(docs) as DocFile[]).flatMap((file) => {
@@ -115,7 +117,8 @@ export function reorganizePack(input: {
       ? [`### ${path} (reorganize in full)`, text]
       : [`### ${path} (context only, a digest)`, docDigest(text, 600)];
   });
-  const feedback = [REORGANIZE_RULE, ...sections].join('\n\n');
+  const goals = input.jevGoals?.length ? [JEV_GOALS_RULE, '### Jev goals (checks below 80%)', input.jevGoals.join('\n')] : [];
+  const feedback = [REORGANIZE_RULE, ...goals, ...sections].join('\n\n');
   return {
     kind: 'refine',
     role: 'po',
@@ -160,6 +163,8 @@ export function refinePack(input: {
   projectBriefing?: boolean;
   /** The cycle under review: a detailed backlog carries the full JSON of the items derived in it. */
   cycle?: number;
+  /** The checks the Jev scored below the goal, one line per document. */
+  jevGoals?: readonly string[];
 }): ContextPackInput {
   const detail = input.backlog?.detail === true && !input.derived.spec;
   const rel = (file: keyof typeof DOC_REL) => DOC_REL[file](input.specId, input.projectBriefing);
@@ -177,6 +182,7 @@ export function refinePack(input: {
   const parts = (d: Record<'project' | 'brief' | 'stack' | 'flow' | 'design', string | undefined>, digested: boolean) => [
     `LANGUAGE (mandatory): write every question, checklist detail, patch reason, summary, and explanation 100% in Brazilian Portuguese, even when project.md, ${brief}, the acceptance criteria, or this prompt are in English. Never copy English sentences into a question; translate the idea. Keep only technical identifiers, JSON keys, file names, HTTP status codes, and checklist ids unchanged.`,
     MOVE_RULE,
+    ...(input.jevGoals?.length ? [JEV_GOALS_RULE, '### Jev goals (checks below 80%)', input.jevGoals.join('\n')] : []),
     input.role === 'po'
       ? `Review flow.md as the business and application flow contract. Check that create, validate, persist, list, search, detail, update, delete, error, health, and persistence flows agree with project.md and ${brief}. Ask a question or propose a patch when a flow is missing, ambiguous, or contradictory.`
       : input.role === 'sm'

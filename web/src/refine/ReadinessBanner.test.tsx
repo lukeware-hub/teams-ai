@@ -32,7 +32,13 @@ describe('ReadinessBanner', () => {
     expect(screen.getByText('Ainda não está pronto para desenvolver')).toBeTruthy();
     expect(screen.getByTestId('readiness-score').textContent).toBe('Nota do Jev 79%');
     expect(button('Avaliar com o Jev')!.disabled).toBe(true);
-    expect(screen.queryByTestId('readiness-start')).toBeNull();
+  });
+
+  it('starts below the minimum once the screen allows it, since the score never blocks by itself', () => {
+    const p = props(scored(0.79));
+    render(<ReadinessBanner {...p} />);
+    fireEvent.click(screen.getByTestId('readiness-start'));
+    expect(p.onStart).toHaveBeenCalledOnce();
   });
 
   it('asks for a first score when there is none', () => {
@@ -61,6 +67,6 @@ describe('ReadinessBanner', () => {
   it('says a confidential project has no score, and offers no button', () => {
     render(<ReadinessBanner {...props({ ...scored(0), available: false, average: null, docs: null, skipped: 'confidential' })} />);
     expect(screen.getByText('Projeto confidencial')).toBeTruthy();
-    expect(screen.queryByRole('button')).toBeNull();
+    expect(button('Avaliar com o Jev')).toBeNull();
   });
 });

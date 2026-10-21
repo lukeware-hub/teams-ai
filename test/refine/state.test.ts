@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { approvalPatch } from '../../server/refine/adjustments.js';
 import { RefineEvent } from '../../server/refine/events.js';
-import { reduceRefineEvents } from '../../server/refine/state.js';
+import { jevOpens, released, reduceRefineEvents } from '../../server/refine/state.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 
 const item = (id: string, passed: boolean) => ({ id, role: id.startsWith('po') ? 'po' : 'sm', passed, detail: '' });
@@ -205,5 +205,31 @@ describe('reduceRefineEvents legacy brief.md', () => {
     expect(Object.keys(s.readiness!.docs!)).toEqual(['briefing.md']);
     expect(s.patches[0]!.file).toBe('briefing.md');
     expect(s.moves[0]).toMatchObject({ from: 'briefing.md', to: 'stack.md' });
+  });
+
+  it('normalizes the reorganized hashes and the discarded patches of a legacy journal too', () => {
+    const s = reduceRefineEvents([
+      { type: RefineEvent.DocsReorganized, data: { hashes: { 'brief.md': 'h1' } } },
+      { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: [], questions: [], discardedPatches: [{ role: 'po', file: 'brief.md', reason: 'stale' }], unverifiedContradictions: [] } },
+    ]);
+    expect(s.reorganized).toEqual({ 'briefing.md': 'h1' });
+    expect(s.discarded[0]).toMatchObject({ file: 'briefing.md' });
+  });
+});
+
+describe('jevOpens', () => {
+  const limits = { release: 5, max: 50 };
+  type Input = Parameters<typeof jevOpens>[0];
+  const ready = { available: true, model: 'm', average: 0.85, docs: null, usage: null, cycle: 2, outdated: false } as NonNullable<Input['readiness']>;
+  const base: Input = { status: 'answering', stale: false, cycle: 2, derived: {}, questions: [], patches: [], backlog: null, readiness: ready };
+
+  it('opens the start at the Jev goal before the release round, and nothing else waits for the owner', () => {
+    expect(jevOpens(base)).toBe(true);
+  });
+
+  it('does not open for a score below the goal, and a blocking question still waits for the owner', () => {
+    expect(jevOpens({ ...base, readiness: { ...ready, average: 0.5 } })).toBe(false);
+    expect(jevOpens({ ...base, questions: [{ status: 'pending', blocking: true }] })).toBe(false);
+    expect(released(base, limits)).toBe(false);
   });
 });

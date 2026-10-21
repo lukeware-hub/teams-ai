@@ -297,3 +297,33 @@ describe('draft', () => {
     expect(md.indexOf('## Bug details')).toBeLessThan(md.indexOf('## Tasks'));
   });
 });
+
+describe('draft legacy brief.md', () => {
+  it('reads the spec legacy brief.md before the project briefing, so a backlog project does not shadow it', async () => {
+    const d = draftPaths(ws, 'hello-032');
+    await fs.mkdir(path.dirname(d.briefMd), { recursive: true });
+    await fs.writeFile(path.posix.join(path.dirname(d.briefMd), 'brief.md'), '## Objectives\n- legacy\n');
+    await fs.mkdir(d.docs, { recursive: true });
+    await fs.writeFile(d.briefingMd!, '## Projeto\n');
+    expect(await readDoc(d, 'briefing.md')).toBe('## Objectives\n- legacy\n');
+  });
+
+  it('moves a legacy-only spec briefing into the project briefing and removes the legacy file', async () => {
+    const d = draftPaths(ws, 'hello-033');
+    await fs.mkdir(path.dirname(d.briefMd), { recursive: true });
+    await fs.writeFile(path.posix.join(path.dirname(d.briefMd), 'brief.md'), '## Objectives\n- legacy\n');
+    await fs.writeFile(d.specJson, '{}');
+    await moveBriefingToProject(d);
+    expect(await fs.readFile(d.briefingMd!, 'utf8')).toContain('## Objectives');
+    await expect(fs.access(path.posix.join(path.dirname(d.briefMd), 'brief.md'))).rejects.toThrow();
+  });
+
+  it('removes the legacy brief.md when the first save writes briefing.md', async () => {
+    const d = draftPaths(ws, 'hello-034');
+    await fs.mkdir(path.dirname(d.briefMd), { recursive: true });
+    await fs.writeFile(path.posix.join(path.dirname(d.briefMd), 'brief.md'), '## Objectives\n- legacy\n');
+    await writeDoc(d, 'briefing.md', '## Objectives\n- new');
+    await expect(fs.access(path.posix.join(path.dirname(d.briefMd), 'brief.md'))).rejects.toThrow();
+    expect(await fs.readFile(d.briefMd, 'utf8')).toBe('## Objectives\n- new\n');
+  });
+});

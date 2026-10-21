@@ -4,7 +4,7 @@ import { refineApi, runApi, type ProgramView, type ProgramViewItem, type RefineS
 import { ActionButton } from '../components/ActionButton.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
-import { released, type RefineLimits } from '@server/refine/state';
+import { jevOpens, released, type RefineLimits } from '@server/refine/state';
 import { staleBlocksStart } from './stages.js';
 import { explainStop, phaseTitle } from '../run/selectors.js';
 import { action, panel, sectionHeading, sectionTitle } from '../pages/project-shared.js';
@@ -56,8 +56,8 @@ export function ItemReason({ status, reason }: { status: ProgramViewItem['status
   );
 }
 
-export function canStartRun(st: Pick<RefineState, 'status' | 'stale' | 'backlog' | 'mode' | 'cycle'>, busy: boolean, limits?: RefineLimits): boolean {
-  const open = st.status === 'ready' || (limits !== undefined && released(st as RefineState, limits));
+export function canStartRun(st: Pick<RefineState, 'status' | 'stale' | 'backlog' | 'mode' | 'cycle' | 'readiness' | 'derived' | 'questions' | 'patches'>, busy: boolean, limits?: RefineLimits): boolean {
+  const open = st.status === 'ready' || (limits !== undefined && released(st as RefineState, limits)) || jevOpens(st as RefineState);
   // A stale list blocks the start only below the round limit: at the limit the owner starts from the documents as they are.
   const staleBlocks = staleBlocksStart(st, limits);
   if (!open || staleBlocks || busy) return false;

@@ -3,7 +3,7 @@ import { refineLimits } from '../../server/refine/limits.js';
 import { emptyRefineState, released, type RefineState } from '../../server/refine/state.js';
 
 describe('refineLimits', () => {
-  it('defaults to release at 5 and lock at 10 rounds', () => {
+  it('defaults to release at 5 and lock at 50 rounds', () => {
     expect(refineLimits({})).toEqual({ release: 5, max: 50 });
   });
   it('reads both limits from the environment', () => {

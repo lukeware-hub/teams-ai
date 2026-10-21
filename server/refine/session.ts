@@ -24,7 +24,7 @@ import { restoreMove } from './moves.js';
 import { buildSpecsIndex } from './specs-index.js';
 import { fitPackBudget } from './fit-pack.js';
 import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
-import { allGreen, applyRefineEvent, emptyRefineState, released, type BacklogState, type RefineLimits, type RefineState } from './state.js';
+import { allGreen, applyRefineEvent, emptyRefineState, jevOpens, released, type BacklogState, type RefineLimits, type RefineState } from './state.js';
 import { refineLimits } from './limits.js';
 import { isStarted } from './coverage.js';
 
@@ -507,9 +507,9 @@ export class RefineSession {
     }
   }
 
-  /** Ready, or past the release round with the checks still failing (TEAMS_AI_REFINE_RELEASE_ROUNDS). */
+  /** Ready, the Jev at its goal, or past the release round (TEAMS_AI_REFINE_RELEASE_ROUNDS). */
   private canStart(): boolean {
-    return this.state.status === 'ready' || released(this.state, this.limits());
+    return this.state.status === 'ready' || released(this.state, this.limits()) || jevOpens(this.state);
   }
 
   /** A stale list blocks the start only below the round limit: at the limit the owner starts from the documents as they are. */

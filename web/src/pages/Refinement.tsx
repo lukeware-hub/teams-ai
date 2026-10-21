@@ -809,7 +809,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   const executing = starting || (following && program?.status !== 'finished');
   const startLabel = { label: starting ? 'Iniciando…' : executing ? 'Em execução' : 'Iniciar análise', busy: executing };
   // The banner offers the start once the score is ready, so the review panel does not repeat it.
-  const bannerStarts = scoresDocs(snap.state.mode ?? null) && !['evaluating', 'started'].includes(snap.state.status) && jevVerdict(snap.state.readiness) === 'ready';
+  const bannerStarts = scoresDocs(snap.state.mode ?? null) && !['evaluating', 'started'].includes(snap.state.status) && (jevVerdict(snap.state.readiness) === 'ready' || (jevVerdict(snap.state.readiness) === 'below' && canStartRun(snap.state, false, snap.limits)));
   return (
     <main className="flex flex-col gap-4 lg:h-full lg:min-h-0">
       <header className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></Link><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span></header>

@@ -41,6 +41,27 @@ export const UNSCORED: DocsScoreRecord = { available: false, model: null, averag
 /** A score in whole percent: 79.6% rounds to 80, the number the screen shows and the gate reads. */
 export const percentOf = (average: number): number => Math.round(average * 100);
 
+/** What a document must do for each check to pass, as the agents act on it. */
+export const CHECK_GOAL: Record<ScoreCheck, string> = {
+  complete: 'hold every part its purpose requires',
+  concrete: 'state most things as checkable facts: exact values, names, limits or observable behavior, with no placeholders or open questions',
+  consistent: 'contain no two statements that contradict each other',
+  scoped: 'hold only what belongs in it; content that belongs in another document is moved there',
+};
+
+/** A check at or above this share passes; a document is ready when all its checks pass. */
+export const GOAL_SHARE = 0.8;
+
+/** Each check below the goal, per document, as one line for the agents: the target they must reach in this round. */
+export function jevGoals(r: Readiness | undefined): string[] {
+  if (!r?.docs) return [];
+  return Object.entries(r.docs).flatMap(([file, doc]) => {
+    const weak = SCORE_CHECKS.filter((id) => doc.checks[id] < GOAL_SHARE);
+    if (weak.length === 0) return [];
+    return [`- ${file} (${percentOf(doc.score)}%): ${weak.map((id) => `${id} ${percentOf(doc.checks[id])}%, it must ${CHECK_GOAL[id]}`).join('; ')}.`];
+  });
+}
+
 export type JevVerdict = 'none' | 'skipped' | 'unavailable' | 'outdated' | 'below' | 'ready';
 
 /** The verdict of the latest score: none before any, skipped for a confidential project, outdated once a document changed. */

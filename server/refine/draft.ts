@@ -139,10 +139,10 @@ async function briefPath(d: Draft): Promise<string> {
   return (await exists(d.briefMd)) || !(await exists(briefingPath(d))) ? d.briefMd : briefingPath(d);
 }
 
-/** The briefing a draft reads: as briefPath, but a spec still holding only the legacy brief.md reads that file. */
+/** The briefing a draft reads: the spec's own file first, then its legacy brief.md, then the project briefing. */
 async function readBriefPath(d: Draft): Promise<string> {
-  const current = await briefPath(d);
-  return !(await exists(current)) && (await exists(legacyBriefPath(d))) ? legacyBriefPath(d) : current;
+  for (const file of [d.briefMd, legacyBriefPath(d)]) if (await exists(file)) return file;
+  return briefPath(d);
 }
 
 export const draftExists = async (d: Draft): Promise<boolean> =>
@@ -163,17 +163,19 @@ function demoteHeadings(text: string): string {
 }
 
 export async function moveBriefingToProject(d: Draft): Promise<void> {
-  const brief = await fs.readFile(d.briefMd, 'utf8').catch(() => null);
+  const source = (await exists(d.briefMd)) ? d.briefMd : legacyBriefPath(d);
+  const brief = await fs.readFile(source, 'utf8').catch(() => null);
   if (brief !== null) {
     const briefing = await fs.readFile(briefingPath(d), 'utf8').catch(() => null);
     const demoted = demoteHeadings(brief.trim());
-    if (briefing === null) await fs.rename(d.briefMd, briefingPath(d));
+    if (briefing === null) await fs.rename(source, briefingPath(d));
     else if (brief.trim() !== briefTemplate().trim() && !briefing.includes(demoted)) {
       await fs.writeFile(briefingPath(d), withNewline(`${briefing.trimEnd()}\n\n## Nova demanda (${d.specId})\n\n${demoted}`));
     }
   }
   // Only the single-spec files go; anything else in the spec directory stays, and the directory goes once empty.
   await fs.rm(d.briefMd, { force: true });
+  await fs.rm(legacyBriefPath(d), { force: true });
   await fs.rm(d.specJson, { force: true });
   await fs.rmdir(path.posix.dirname(d.briefMd)).catch(() => undefined);
 }
@@ -252,7 +254,13 @@ export async function readDoc(d: Draft, file: DocFile): Promise<string> {
 }
 /** Docs end with a newline: they are copied verbatim into the project repo, where a format gate will check them. */
 const withNewline = (text: string): string => (text.endsWith('\n') ? text : `${text}\n`);
-export const writeDoc = async (d: Draft, file: DocFile, text: string): Promise<void> => fs.writeFile(file === 'briefing.md' ? await briefPath(d) : docPath(d, file), withNewline(text));
+export async function writeDoc(d: Draft, file: DocFile, text: string): Promise<void> {
+  if (file !== 'briefing.md') return fs.writeFile(docPath(d, file), withNewline(text));
+  const target = await briefPath(d);
+  await fs.writeFile(target, withNewline(text));
+  // The first save of a spec moves its briefing from the legacy brief.md to briefing.md.
+  if (target === d.briefMd) await fs.rm(legacyBriefPath(d), { force: true });
+}
 
 /** A file of the base copy, or null when the draft has no base or the file was not in it. */
 export const readBase = (d: Draft, rel: string): Promise<string | null> =>

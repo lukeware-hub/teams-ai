@@ -1,10 +1,12 @@
 import type { DocFile } from '@server/refine/draft';
-import { jevVerdict, percentOf, READY_PERCENT, type JevVerdict, type Readiness } from '@server/refine/readiness';
+import { GOAL_SHARE, jevVerdict, percentOf, READY_PERCENT, SCORE_CHECKS, type JevVerdict, type Readiness, type ScoreCheck } from '@server/refine/readiness';
 import { ActionButton } from '../components/ActionButton.js';
 import { Icon } from '../components/Icons.js';
 import { DOC_LABEL } from './doc-labels.js';
 
 type Tone = 'good' | 'warn' | 'bad' | 'neutral';
+
+const CHECK_LABEL: Record<ScoreCheck, string> = { complete: 'completo', concrete: 'concreto', consistent: 'consistente', scoped: 'escopo' };
 
 const CHIP: Record<Tone, string> = {
   good: 'border-good-line bg-good-soft text-good',
@@ -60,6 +62,13 @@ export function ReadinessBanner({ readiness, canStart, startState, onScore, onSt
             <li key={file} className="flex flex-col gap-1 rounded-[var(--radius-lg)] bg-surface-sunken px-3 py-2.5">
               <span className="text-[0.8125rem] text-ink-soft">{DOC_LABEL[file]}</span>
               <b className="text-[0.9375rem] font-semibold tabular-nums text-ink">{percentOf(docs[file].score)}%</b>
+              <ul className="m-0 flex list-none flex-col gap-0.5 p-0 text-[0.75rem] tabular-nums" data-testid={`readiness-checks-${file}`}>
+                {SCORE_CHECKS.map((id: ScoreCheck) => (
+                  <li key={id} className={docs[file].checks[id] < GOAL_SHARE ? 'font-semibold text-warn' : 'text-ink-soft'}>
+                    {CHECK_LABEL[id]} {percentOf(docs[file].checks[id])}%
+                  </li>
+                ))}
+              </ul>
             </li>
           ))}
         </ul>
@@ -70,7 +79,7 @@ export function ReadinessBanner({ readiness, canStart, startState, onScore, onSt
             Avaliar com o Jev
           </ActionButton>
         )}
-        {verdict === 'ready' && (
+        {(verdict === 'ready' || (verdict === 'below' && canStart)) && (
           <ActionButton data-testid="readiness-start" className="primary" busy={startState.busy} disabled={!canStart} onClick={onStart} icon={<Icon name="play" size={16} />}>
             {startState.label}
           </ActionButton>
