@@ -18,7 +18,7 @@ What the investigation of the live data showed (container `teams-ai-teams-ai-1`,
 2. Document score = mean of four Jev checks on that document alone. Overall score = mean of the five documents. Ready = overall at or above 80% (rounded to a whole percent, so the number on screen is the number that decides).
 3. Below 80% the start stays closed, with no override. The way out is cheap: a new button, "Avaliar com o Jev", scores the current documents without running any agent and without spending a round, so it still works after the round limit. (Alternatives, decided at the checkpoint with real numbers: let the round limit open the start anyway; or an env knob for the percentage.)
 4. The score is shown from the first evaluation on, but only gates the start once the backlog exists. The documents-to-backlog step is not gated.
-5. Confidential projects never send documents to the Jev: no score, and the start follows today's rules. Sessions older than this feature have no score and keep today's rules until their first score.
+5. Confidential projects never send documents to the Jev: no score, and the start follows today's rules. A project is confidential when any record says so (the base `project.json`, the outline or the derived spec), so a default `false` in one record never hides a `true` in another. Sessions older than this feature have no score and keep today's rules until their first score.
 6. The existing "Iniciar análise" button stays where it is; the new banner adds its own copy of the button when the project is ready.
 
 ## Design
@@ -28,11 +28,11 @@ What the investigation of the live data showed (container `teams-ai-teams-ai-1`,
 | id | Question to the Jev | UI label |
 |----|---------------------|----------|
 | `complete` | Does the document hold everything its charter says it must hold for this product? A part declared "not applicable" counts as present. | Completo |
-| `concrete` | Is every statement concrete and verifiable (exact values, names, limits, observable behavior; no vague words, placeholders or open questions)? | Concreto e verificável |
+| `concrete` | Is most of the document concrete and verifiable (exact values, names, limits, observable behavior), rather than vague words, placeholders or open questions? | Concreto e verificável |
 | `consistent` | Is the document free of statements that contradict each other? | Sem contradições |
 | `scoped` | Does the document hold only what its charter assigns to it? | Só o que cabe no documento |
 
-Rules: split each document with `splitSections` (`server/decide/windows.ts`, 32,000 characters like the validator); a check's score is the mean over windows weighted by window length; a window prompt says it sees "part i of n" and must not penalize what lies outside it; an empty document scores 0 with no call; any failed window makes the whole result `available: false` (no partial numbers, same rule as `createJevValidator`); secrets are redacted before sending (`redactSecrets`); token usage is summed into the result.
+Rules: split each document with `splitSections` (`server/decide/windows.ts`, 32,000 characters like the validator); the windows combine as the validator does: `complete` takes the best window (a part held in any window counts), `consistent` and `scoped` take the worst (one contradiction or foreign part in any window counts), and `concrete` is the mean over windows weighted by window length. This rule replaces the first draft's weighted mean for every check, after the calibration runs in Phase C (see the commits `a8940a6` and the ledger); a window prompt says it sees "part i of n" and must not penalize what lies outside it; an empty document scores 0 with no call; any failed window makes the whole result `available: false` (no partial numbers, same rule as `createJevValidator`); secrets are redacted before sending (`redactSecrets`); token usage is summed into the result.
 
 **Event and state.** New event `RefineEvent.DocsScored = 'REFINE_DOCS_SCORED'` with `{ cycle, available, skipped?, model, average, docs: { [DocFile]: { score, checks } }, usage }`, all scores 0 to 1. The shared reducer (`applyRefineEvent`, used by the server and the page) keeps `state.readiness` (optional, so older journals and test literals still type-check) and sets `readiness.outdated = true` on every `DocEdited` (every document write emits it, including moves and autofill, `cycle.ts:162,616`), cleared by the next `DocsScored`. Old servers ignore the unknown event.
 

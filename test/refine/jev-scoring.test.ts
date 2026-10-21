@@ -83,6 +83,16 @@ describe('createJevScorer', () => {
     expect(await scorer()(TEXTS)).toEqual(UNSCORED);
   });
 
+  it('reports no score when one window fails and the others answer, with no partial numbers', async () => {
+    let call = 0;
+    globalThis.fetch = (async () => {
+      call += 1;
+      if (call === 2) return new Response('bad request', { status: 400 });
+      return new Response(JSON.stringify({ model: 'jev-1.13.0', answers: Object.fromEntries(SCORE_CHECKS.map((id) => [id, { type: 'noul', noul: 0.9 }])), usage: { input_tokens: 1, output_tokens: 1 } }), { status: 200 });
+    }) as typeof fetch;
+    expect(await scorer()(TEXTS)).toEqual(UNSCORED);
+  });
+
   it('reports no score without an OpenRouter key, and sends nothing', async () => {
     const sent = stubJev(() => 0.9);
     const result = await createJevScorer(loadConfig({}), async () => ({}))(TEXTS);

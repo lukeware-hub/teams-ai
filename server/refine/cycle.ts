@@ -104,7 +104,8 @@ export interface ScoreDeps {
 
 /** A confidential project's documents never leave for the OpenRouter; its record decides. */
 export async function isConfidential(draft: Draft, state: RefineState): Promise<boolean> {
-  return state.backlog?.project?.confidential ?? (await readDerived(draft))?.project.confidential ?? Project.safeParse(JSON.parse((await readBase(draft, 'project.json')) ?? 'null')).data?.confidential ?? false;
+  const base = Project.safeParse(JSON.parse((await readBase(draft, 'project.json')) ?? 'null')).data?.confidential === true;
+  return base || state.backlog?.project?.confidential === true || (await readDerived(draft))?.project.confidential === true;
 }
 
 /** Journals the Jev's score of the five documents as they stand now; a current score is kept, and a confidential project is never sent. */
@@ -741,7 +742,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const stuck = nextStuck(journal.state.stuck, checklist);
   const ask = stuck.ask ? stuckQuestion(stuck.failing, cycle) : null;
   if (ask && !journal.state.questions.some((q) => q.status === 'pending' && q.rule === ask.rule)) merged.push(ask);
-  if (deps.scoreDocs && scoresDocs(journal.state.mode)) await recordScore({ draft, journal, scoreDocs: deps.scoreDocs }, cycle, confidential);
+  if (deps.scoreDocs && scoresDocs(journal.state.mode)) await recordScore({ draft, journal, scoreDocs: deps.scoreDocs }, cycle, await isConfidential(draft, journal.state));
   await journal.fact(RefineEvent.Evaluated, { cycle, checklist, questions: merged, discardedPatches, questionRouting, autoAnswerFloor: floor ?? null, unverifiedContradictions: dropped });
   for (const a of answers) if (a) await journal.fact(RefineEvent.QuestionAnswered, a);
 }

@@ -3,10 +3,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
-import { recordScore } from '../../server/refine/cycle.js';
+import { isConfidential, recordScore } from '../../server/refine/cycle.js';
 import { createNewProject, draftPaths } from '../../server/refine/draft.js';
 import { RefineEvent } from '../../server/refine/events.js';
 import { applyRefineEvent, emptyRefineState } from '../../server/refine/state.js';
+import { makeProject } from '../fixtures/contracts.js';
 
 /** A journal that folds each fact into its state, as the session's journal does. */
 function foldingJournal() {
@@ -81,5 +82,27 @@ describe('recordScore', () => {
     const scoreDocs = vi.fn(async (_docs: Record<string, string>): Promise<never> => { throw new Error('jev down'); });
     await expect(recordScore({ draft, journal, scoreDocs }, 1, false)).resolves.toBeUndefined();
     expect(journal.state.readiness).toMatchObject({ available: false, average: null, outdated: false });
+  });
+});
+
+describe('isConfidential', () => {
+  const outline = (confidential: boolean) => ({ ...emptyRefineState(), backlog: { enabled: true, project: makeProject({ confidential }), epics: [], items: [], cycle: 1 } }) as never;
+  const withBase = async (confidential: boolean) => {
+    const draft = await newDraft();
+    const base = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-base-'));
+    await writeFile(path.join(base, 'project.json'), JSON.stringify(makeProject({ confidential })));
+    return { ...draft, base };
+  };
+
+  it('stays confidential when the base record says so, even when the outline carries the default false', async () => {
+    expect(await isConfidential(await withBase(true), outline(false))).toBe(true);
+  });
+
+  it('is confidential when only the outline says so', async () => {
+    expect(await isConfidential(await newDraft(), outline(true))).toBe(true);
+  });
+
+  it('is not confidential when no record says so', async () => {
+    expect(await isConfidential(await withBase(false), outline(false))).toBe(false);
   });
 });

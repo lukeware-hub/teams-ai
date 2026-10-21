@@ -522,4 +522,15 @@ describe('RefineSession document score', () => {
     const s = await RefineSession.create({ ...deps(), scoreDocs: vi.fn(async () => scored) }, 'new-spec');
     await expect(s.score()).rejects.toBeInstanceOf(ConflictError);
   });
+
+  it('an evaluation journals the score of the documents, not only the manual score', async () => {
+    const scoreDocs = vi.fn(async () => scored);
+    const s = await RefineSession.create({ ...deps(), scoreDocs }, 'new-project');
+    script['derive/po'] = [derived];
+    script['refine/po'] = [refineOut(green(PO))];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await s.evaluate();
+    expect(scoreDocs).toHaveBeenCalled();
+    expect(s.events.some((e) => e.type === 'REFINE_DOCS_SCORED')).toBe(true);
+  });
 });

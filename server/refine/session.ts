@@ -358,6 +358,7 @@ export class RefineSession {
         principles: () => this.state.derived?.project.principles ?? this.state.backlog?.project?.principles ?? [],
         retrieval: this.deps.retrieval,
         validateDocs: this.deps.validateDocs,
+        scoreDocs: this.deps.scoreDocs,
         decider: this.deps.decider,
         autoAnswerFloor,
       },
