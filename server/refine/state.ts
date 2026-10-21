@@ -8,7 +8,7 @@ import { RefineEvent, type Question } from './events.js';
 import { approvalKey } from './sections.js';
 import type { DocFile } from './draft.js';
 import type { PendingPatch } from './patches.js';
-import type { Readiness } from './readiness.js';
+import type { DocScore, Readiness } from './readiness.js';
 
 export type RefineStatus = 'drafting' | 'evaluating' | 'answering' | 'ready' | 'error' | 'started';
 export interface QuestionRow extends Question {
@@ -219,6 +219,10 @@ const hasDerivation = (s: RefineState): boolean => s.derived !== null || (s.back
 const keep = <T>(rows: Record<string, T> | undefined, keys: ReadonlySet<string>): Record<string, T> | undefined =>
   rows && Object.fromEntries(Object.entries(rows).filter(([k]) => keys.has(k)));
 
+/** Journals written before the rename name the briefing brief.md; replay reads that name as briefing.md. */
+const docName = (file: unknown): DocFile => (file === 'brief.md' ? 'briefing.md' : file) as DocFile;
+const docNames = <T>(rows: Record<string, T> | null | undefined): Record<DocFile, T> | null => (rows ? (Object.fromEntries(Object.entries(rows).map(([k, v]) => [docName(k), v])) as Record<DocFile, T>) : null);
+
 export function applyRefineEvent(s: RefineState, e: { type: string; data: Record<string, unknown> }): void {
   const d = e.data;
   switch (e.type) {
@@ -232,7 +236,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
       s.derived = { project: d.project as Project, spec: d.spec as Spec };
       break;
     case RefineEvent.PatchProposed:
-      s.patches.push({ ...(d as unknown as PendingPatch & { cycle: number }), status: 'pending', decision: null });
+      s.patches.push({ ...(d as unknown as PendingPatch & { cycle: number }), file: docName(d.file), status: 'pending', decision: null });
       break;
     case RefineEvent.Evaluated: {
       const v = d as unknown as { cycle: number; checklist: ChecklistItem[]; questions: Question[]; discardedPatches: Array<{ role: string; file: string; reason: string }> };
@@ -262,7 +266,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
       break;
     }
     case RefineEvent.DocMoved:
-      s.moves.push({ ...(d as unknown as Omit<MoveRow, 'status'>), status: 'applied' });
+      s.moves.push({ ...(d as unknown as Omit<MoveRow, 'status' | 'from' | 'to'>), from: docName(d.from), to: docName(d.to), status: 'applied' });
       break;
     case RefineEvent.DocsReorganized:
       s.reorganized = d.hashes as RefineState['reorganized'];
@@ -341,7 +345,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
       if (s.backlog) s.backlog = { ...s.backlog, conflicts: { inputHash: String(d.inputHash), pairs: d.pairs as ConflictMap['pairs'] } };
       break;
     case RefineEvent.DocsScored:
-      s.readiness = { ...(d as unknown as Omit<Readiness, 'outdated'>), outdated: false };
+      s.readiness = { ...(d as unknown as Omit<Readiness, 'outdated' | 'docs'>), docs: docNames(d.docs as Record<string, DocScore> | null), outdated: false };
       break;
     case RefineEvent.StartedRun:
       s.status = 'started';

@@ -193,3 +193,17 @@ describe('reduceRefineEvents document score', () => {
     expect(reduceRefineEvents([skipped]).readiness).toMatchObject({ skipped: 'confidential', available: false, average: null });
   });
 });
+
+describe('reduceRefineEvents legacy brief.md', () => {
+  it('reads a journal written before the rename: its score, patch and move name the briefing briefing.md', () => {
+    const score = { available: true, model: 'm', average: 0.5, docs: { 'brief.md': { score: 0.5, checks: { complete: 1, concrete: 0, consistent: 0, scoped: 0 } } }, usage: null, cycle: 1 };
+    const s = reduceRefineEvents([
+      { type: RefineEvent.DocsScored, data: score },
+      { type: RefineEvent.PatchProposed, data: { patchId: 'po-c1-0', role: 'po', file: 'brief.md', find: 'a', replace: 'b', reason: 'r', diff: '', cycle: 1 } },
+      { type: RefineEvent.DocMoved, data: { moveId: 'm1', role: 'po', cycle: 1, from: 'brief.md', to: 'stack.md', quote: 'q', text: 't', after: null, reason: 'r' } },
+    ]);
+    expect(Object.keys(s.readiness!.docs!)).toEqual(['briefing.md']);
+    expect(s.patches[0]!.file).toBe('briefing.md');
+    expect(s.moves[0]).toMatchObject({ from: 'briefing.md', to: 'stack.md' });
+  });
+});
