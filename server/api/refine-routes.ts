@@ -198,6 +198,14 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       handler: wrap(async ({ params, json }) => json(200, await registry.start(params.projectId!, params.specId!))),
     },
     {
+      method: 'POST',
+      path: `${S}/score`,
+      handler: wrap(async ({ params, json }) => {
+        await (await get(params)).score();
+        json(200, { ok: true });
+      }),
+    },
+    {
       method: 'GET',
       path: `${S}/program`,
       handler: wrap(async ({ params, json }) => json(200, { program: await registry.program(params.projectId!, params.specId!) })),

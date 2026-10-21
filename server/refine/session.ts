@@ -13,7 +13,8 @@ import type { ProgramEntry } from '../program/controller.js';
 import type { Hit } from '../knowledge/retrieval.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import { EventStore, type StoredEvent } from '../store/event-store.js';
-import { runCycle, type CycleDeps, type RunAgent } from './cycle.js';
+import { isConfidential, recordScore, runCycle, type CycleDeps, type RunAgent } from './cycle.js';
+import { scoresDocs } from './readiness.js';
 import { recordDecision, withDecisions } from './decisions.js';
 import { maxCriterionInDraft } from './detail-cycle.js';
 import { designTemplate, flowTemplate, moveBriefingToProject, readDerived, readDoc, readMainSpec, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
@@ -88,6 +89,7 @@ export interface SessionDeps {
   secretsDir: string;
   retrieval: (query: string) => readonly Hit[];
   validateDocs?: CycleDeps['validateDocs'];
+  scoreDocs?: CycleDeps['scoreDocs'];
   decider?: CycleDeps['decider'];
   /** Read at each evaluation, so a floor set in the config reaches drafts already open. */
   autoAnswerFloor?: () => Promise<number | undefined>;
@@ -387,6 +389,19 @@ export class RefineSession {
       const open = this.state.patches.some((p) => p.status === 'pending') || this.state.questions.some((q) => q.status === 'pending');
       if (!backlog?.enabled || open || !allGreen(this.state.checklist)) return;
     }
+  }
+
+  /** The Jev's score of the documents as they stand: no agent step and no round, so the screen can ask for it at any time. */
+  async score(): Promise<void> {
+    this.guard();
+    const scoreDocs = this.deps.scoreDocs;
+    if (!scoreDocs || !scoresDocs(this.state.mode)) throw new ConflictError('A nota do Jev vale só para o refinamento de um projeto novo ou de um backlog.');
+    const scored = { draft: this.deps.draft, journal: this.journal, scoreDocs };
+    const cycle = this.state.cycle;
+    this.running = (async () => recordScore(scored, cycle, await isConfidential(scored.draft, this.state)))().finally(() => {
+      this.running = null;
+    });
+    await this.running;
   }
 
   /** Kills the agent processes of a running evaluation and waits for the cycle to wind down. */

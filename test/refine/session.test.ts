@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeSecret } from '../../server/core/secrets.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
 import { createNewProject, draftPaths, readDoc, renderBriefMd, writeDoc } from '../../server/refine/draft.js';
@@ -503,5 +503,23 @@ describe('RefineSession round limit', () => {
   it('refuses a new evaluation once the lock round is reached', async () => {
     const s = await RefineSession.create({ ...deps(), limits: { release: 0, max: 0 } }, 'new-spec');
     await expect(s.evaluate()).rejects.toBeInstanceOf(ConflictError);
+  });
+});
+
+describe('RefineSession document score', () => {
+  const scored = { available: true, model: 'jev-1.13.0', average: 0.9, docs: null, usage: null };
+
+  it('scores the documents without spending a round, and keeps a current score', async () => {
+    const scoreDocs = vi.fn(async () => scored);
+    const s = await RefineSession.create({ ...deps(), scoreDocs }, 'new-project');
+    await s.score();
+    expect(s.state).toMatchObject({ cycle: 0, readiness: { available: true, average: 0.9, outdated: false } });
+    await s.score();
+    expect(scoreDocs).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a score for a single spec, which is not scored', async () => {
+    const s = await RefineSession.create({ ...deps(), scoreDocs: vi.fn(async () => scored) }, 'new-spec');
+    await expect(s.score()).rejects.toBeInstanceOf(ConflictError);
   });
 });

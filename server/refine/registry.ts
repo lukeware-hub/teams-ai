@@ -29,6 +29,8 @@ export interface RegistryDeps {
   home?: string;
   runAgent: RunAgent;
   validateDocs?: CycleDeps['validateDocs'];
+  /** The Jev's score of the documents, journaled once per cycle of a new project or a backlog. */
+  scoreDocs?: CycleDeps['scoreDocs'];
   /** Spec 10A.5 decisions 2–4 for every refinement cycle. */
   decider?: CycleDeps['decider'];
   secretsDir: string;
@@ -101,7 +103,7 @@ export class SessionRegistry {
       if (await exists(ws.repo)) (await openProjectKnowledge(file, ws.repo)).close();
       const retrieval = (await exists(file)) ? (q: string) => searchKnowledge(file, q) : () => [];
       const runAgent = inProject(this.deps.runAgent, draft.projectId);
-      const deps = { ws, draft, runAgent, frontAgent: runAgent, secretsDir: ws.secrets, retrieval, validateDocs: this.deps.validateDocs, decider: this.deps.decider, autoAnswerFloor: async () => answerFloor(await this.deps.cfg(), refineRoot(ws)), limits: refineLimits() };
+      const deps = { ws, draft, runAgent, frontAgent: runAgent, secretsDir: ws.secrets, retrieval, validateDocs: this.deps.validateDocs, scoreDocs: this.deps.scoreDocs, decider: this.deps.decider, autoAnswerFloor: async () => answerFloor(await this.deps.cfg(), refineRoot(ws)), limits: refineLimits() };
       return create ? RefineSession.create(deps, create) : RefineSession.open(deps);
     })();
     this.sessions.set(key, p);

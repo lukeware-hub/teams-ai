@@ -548,6 +548,12 @@ describe('refine api', () => {
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/moves/move-po-c1-0/undo')).status).toBe(409);
   });
 
+  it('a score for a single spec is refused with 409, and the spec is left as it was', async () => {
+    await specDraft();
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/score')).status).toBe(409);
+    expect((await snapshot()).state.readiness).toBeUndefined();
+  });
+
   it('a new project goes on into its backlog in the same evaluation, and the start still waits for Iniciar', async () => {
     // The stage-1 spec numbered AC-001 and AC-002, so the item's criterion continues from there as AC-003.
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });

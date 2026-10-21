@@ -35,6 +35,7 @@ import { supervise } from './supervisor/supervise.js';
 import { makeRunAgent } from './refine/agent.js';
 import { SessionRegistry } from './refine/registry.js';
 import { createJevValidator } from './refine/jev-validation.js';
+import { createJevScorer } from './refine/jev-scoring.js';
 import { createDecider } from './decide/create-decider.js';
 import type { DecisionOutcome } from './decide/types.js';
 import { routeReport } from './decide/decisions/report-routing.js';
@@ -124,6 +125,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     cfg: async () => (await readUserConfig()).cfg,
     runAgent,
     validateDocs: createJevValidator(cfg, async () => loadSecrets(expandHome(cfg.paths.secrets))),
+    scoreDocs: createJevScorer(cfg, async () => loadSecrets(expandHome(cfg.paths.secrets))),
     secretsDir: expandHome(cfg.paths.secrets),
     exec: withGitAuth(execCommand, expandHome(cfg.paths.secrets)),
     projectDir: projectDirOf,
