@@ -21,8 +21,8 @@ function questions(file: DocFile): Record<ScoreCheck, Question> {
       criteria: { true: `${file} holds every part its purpose requires.`, false: `${file} misses a part its purpose requires.` },
     },
     concrete: {
-      instructions: `${about} Is every statement in ${file} concrete and verifiable, with exact values, names, limits or observable behavior, and no vague words, placeholders or open questions?`,
-      criteria: { true: 'Every statement can be checked.', false: 'A statement is vague, a placeholder or an open question.' },
+      instructions: `${about} Is most of ${file} concrete and verifiable, with exact values, names, limits or observable behavior, rather than vague words, placeholders or open questions?`,
+      criteria: { true: 'Most statements can be checked.', false: 'Most statements are vague, placeholders or open questions.' },
     },
     consistent: {
       instructions: `${about} Is ${file} free of statements that contradict each other?`,
@@ -39,6 +39,14 @@ const NO_CHECKS: Record<ScoreCheck, number> = { complete: 0, concrete: 0, consis
 const mean = (values: number[]): number => values.reduce((sum, v) => sum + v, 0) / values.length;
 const weightedMean = (rows: Array<{ value: number; size: number }>): number =>
   rows.reduce((sum, r) => sum + r.value * r.size, 0) / rows.reduce((sum, r) => sum + r.size, 0);
+
+/** How the windows of one document combine into one check, as the validator does: a part held in any window counts, a contradiction or foreign part in any window counts, and concreteness is the share across the document. */
+const COMBINE: Record<ScoreCheck, (rows: Array<{ value: number; size: number }>) => number> = {
+  complete: (rows) => Math.max(...rows.map((r) => r.value)),
+  concrete: weightedMean,
+  consistent: (rows) => Math.min(...rows.map((r) => r.value)),
+  scoped: (rows) => Math.min(...rows.map((r) => r.value)),
+};
 
 /** The Jev's score of the five documents: one request per window of each document, four yes-or-no checks in each request. */
 export function createJevScorer(cfg: Config, secrets: () => Promise<Record<string, string>>): (docs: Record<DocFile, string>) => Promise<DocsScoreRecord> {
@@ -76,7 +84,7 @@ export function createJevScorer(cfg: Config, secrets: () => Promise<Record<strin
       for (const id of SCORE_CHECKS) {
         const answers = mine.map((m) => m.answers[id]);
         if (answers.some((a) => a?.type !== 'noul')) return UNSCORED;
-        checks[id] = weightedMean(answers.map((a, j) => ({ value: (a as { value: number }).value, size: mine[j]!.size })));
+        checks[id] = COMBINE[id](answers.map((a, j) => ({ value: (a as { value: number }).value, size: mine[j]!.size })));
       }
       docScores[file] = { score: mean(SCORE_CHECKS.map((id) => checks[id])), checks };
     }

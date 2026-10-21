@@ -53,12 +53,21 @@ describe('createJevScorer', () => {
     expect(result.average).toBeCloseTo(0.7);
   });
 
-  it('weights the windows of a long document by their length', async () => {
+  it('weights the windows of a long document by their length, for the share of concrete statements', async () => {
     const long = 'x'.repeat(40_000);
     const [first, second] = splitSections([{ title: 'flow.md', text: long }], 32_000).map((w) => w.length);
     stubJev((state) => (state.includes('(continued)') ? 0.2 : 0.9));
     const result = await scorer()({ ...TEXTS, 'flow.md': long });
-    expect(result.docs!['flow.md'].checks.complete).toBeCloseTo((0.9 * first! + 0.2 * second!) / (first! + second!));
+    expect(result.docs!['flow.md'].checks.concrete).toBeCloseTo((0.9 * first! + 0.2 * second!) / (first! + second!));
+  });
+
+  it('takes the best window for completeness, and the worst for contradictions and foreign content, since one window can show a gap or a fault', async () => {
+    const long = 'x'.repeat(40_000);
+    stubJev((state) => (state.includes('(continued)') ? 0.2 : 0.9));
+    const result = await scorer()({ ...TEXTS, 'flow.md': long });
+    expect(result.docs!['flow.md'].checks.complete).toBeCloseTo(0.9);
+    expect(result.docs!['flow.md'].checks.consistent).toBeCloseTo(0.2);
+    expect(result.docs!['flow.md'].checks.scoped).toBeCloseTo(0.2);
   });
 
   it('gives an empty document a zero score without asking the Jev about it', async () => {
