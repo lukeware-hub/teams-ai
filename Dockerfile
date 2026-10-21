@@ -35,6 +35,8 @@ RUN set -eu; \
   rm /tmp/gh.tar.gz
 # graphify builds the code graph the step packs read (R11.13 slice 3); pinned to the version the CLI spike recorded.
 RUN PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install graphifyy==0.9.67
+# agent-reach is the browser and search CLI the agents call (role settings allow it); pinned to a commit, installed from the repository, not PyPI.
+RUN PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install https://github.com/Panniantong/agent-reach/archive/94f06c1969dfc1834001269d79d3ad0972d9dee6.zip
 
 COPY package*.json ./
 RUN npm ci --omit=optional --no-audit --no-fund
@@ -69,5 +71,5 @@ EXPOSE 8787
 # Any HTTP answer below 500 means the server is up.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:8787/').then((r)=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
-# The graphify skill for Claude Code is written at each start, not at build: ~/.claude is a volume that keeps only what it had when first created.
-CMD ["sh", "-lc", "export PATH=/opt/teams-ai-bin:$PATH; [ -f \"$HOME/.teams-ai/config.json\" ] || { mkdir -p \"$HOME/.teams-ai\" && cp /app/docker/config.json \"$HOME/.teams-ai/config.json\"; }; find \"$HOME/.teams-ai/workspaces\" -name '*.ndjson.lock' -delete 2>/dev/null || true; graphify install --platform claude >/dev/null || echo 'graphify: skill not installed' >&2; exec npm run ui -- --port 8787"]
+# The graphify and Agent Reach skills are written at each start, not at build: ~/.claude is a volume that keeps only what it had when first created.
+CMD ["sh", "-lc", "export PATH=/opt/teams-ai-bin:$PATH; [ -f \"$HOME/.teams-ai/config.json\" ] || { mkdir -p \"$HOME/.teams-ai\" && cp /app/docker/config.json \"$HOME/.teams-ai/config.json\"; }; find \"$HOME/.teams-ai/workspaces\" -name '*.ndjson.lock' -delete 2>/dev/null || true; graphify install --platform claude >/dev/null || echo 'graphify: skill not installed' >&2; agent-reach skill --install >/dev/null || echo 'agent-reach: skill not installed' >&2; exec npm run ui -- --port 8787"]
