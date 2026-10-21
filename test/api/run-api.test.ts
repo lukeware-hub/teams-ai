@@ -778,6 +778,18 @@ describe('run detail, events and steps', () => {
     expect(d.plan.tasks.some((task: { id: string }) => task.id === 'T0-scaffold')).toBe(true);
   });
 
+  it('accepts an open section of the report as out of scope, and only an open one with a note', async () => {
+    const gap = (heading: string, status: string) => ({ doc: 'briefing.md', heading, status, evidence: [], missing: 'Falta a lista.', acIds: [], cause: null });
+    const report = { runId: 'hello-001-r1', gaps: { items: [gap('Create a todo', 'missing'), gap('Delivered', 'delivered')] } };
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), { type: 'REPORT_READY', data: { report, merged: true } }, { type: 'RUN_FINISHED', data: { result: 'awaiting-validation' } }], state('awaiting-validation'));
+    const accept = { doc: 'briefing.md', heading: 'Create a todo', note: 'Fica para a próxima spec.' };
+    expect((await post('/api/runs/hello-001-r1/gaps/accept', { ...accept, note: '  ' })).status).toBe(400);
+    expect((await post('/api/runs/hello-001-r1/gaps/accept', { doc: 'briefing.md', heading: 'Delivered', note: 'x' })).status).toBe(404);
+    expect((await post('/api/runs/hello-001-r1/gaps/accept', accept)).status).toBe(200);
+    const d = await (await fetch(`${base()}/api/runs/hello-001-r1`)).json();
+    expect(d.gapDecisions).toEqual([{ ...accept, at: expect.any(String) }]);
+  });
+
   it('events replays from Last-Event-ID, tails appended lines and ends after RUN_FINISHED', async () => {
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), { type: 'PHASE_STARTED', data: { phase: 1 } }, { type: 'PHASE_STARTED', data: { phase: 2 } }], state('running'));
     const first = await readSse(`${base()}/api/runs/hello-001-r1/events`, null, (ev) => ev.length >= 3);

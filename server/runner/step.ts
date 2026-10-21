@@ -45,6 +45,8 @@ export interface StepRequest {
   extraAllow?: readonly string[];
   /** Directories this step must not read (see `RoleSettingsInput.extraDenyRead`). */
   denyRead?: readonly string[];
+  /** Directories this step must not write, to its tools or to any command (see `RoleSettingsInput.protectedDirs`). */
+  protectedDirs?: readonly string[];
   /** Text added to the agent's own prompt for this step. The API caches that part, so what repeats from one step to the next is read from the cache instead of paid for again. */
   systemExtra?: string;
   effort?: Effort;
@@ -317,7 +319,7 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
   // The reference catalogs of the role are searched with Grep, never installed: the agent is told where they are.
   const refs = deps.skillsRoot ? referenceDirs(deps.skillsRoot, req.role) : [];
   await ensureTrusted(req.cwd, path.join(home, '.claude.json'));
-  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: [...(req.extraAllow ?? []), ...refs.map((dir) => `Read(${absoluteRule(dir)}/**)`)], extraDenyRead: req.denyRead, protectedDirs: [deps.agentPluginsRoot, dynamicPluginDir(home)].filter((dir): dir is string => dir !== undefined), sandboxEnabled: deps.sandbox?.enabled, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });
+  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: [...(req.extraAllow ?? []), ...refs.map((dir) => `Read(${absoluteRule(dir)}/**)`)], extraDenyRead: req.denyRead, protectedDirs: [deps.agentPluginsRoot, dynamicPluginDir(home), ...(req.protectedDirs ?? [])].filter((dir): dir is string => dir !== undefined), sandboxEnabled: deps.sandbox?.enabled, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });
   if (req.resume && req.sessionStore) await restoreSession(req.sessionStore, home);
   // A review, a UI check and a refinement never edit the files they judge (R11.13 slice 2).
   // The chat searches its own guide and history with the tools of CHAT_TOOLS only; its Bash rules allow graphify queries and nothing else.

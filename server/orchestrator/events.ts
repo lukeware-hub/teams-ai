@@ -56,6 +56,8 @@ export const OrchEvent = {
   EnvironmentPlanned: 'ENVIRONMENT_PLANNED',
   /** Values got from deployed services before the suites ran: the names that came and the ones that did not. */
   EnvironmentMinted: 'ENVIRONMENT_MINTED',
+  /** The docs-vs-code check of the run's cited doc sections, journaled once so a resume reuses it. */
+  GapsChecked: 'GAPS_CHECKED',
   ReportReady: 'REPORT_READY',
 } as const;
 
