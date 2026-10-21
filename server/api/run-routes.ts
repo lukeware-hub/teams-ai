@@ -26,6 +26,8 @@ import { abandonLaunch, isAlive, spawnRun, stop, type RunControlDeps } from './r
 import { claimLaunch, claimsSpec, concludedSpecs, clearPid, clearStopRequested, listProjects, listRuns, markStopRequested, readPid, readProject, runLiveness, runRow, runsDir, SAFE_ID, writePid, type IndexDeps, type ProjectRow, type RunRow } from './run-index.js';
 import type { Spec } from '../contracts/spec.js';
 import { HttpError, type Route } from './server.js';
+import type { Report } from '../orchestrator/phases/report.js';
+import { z } from 'zod';
 
 export interface RunRoutesDeps {
   cfg: () => Promise<Config>;
@@ -86,6 +88,14 @@ export function cloneFailure(stderr: string): string {
 }
 
 /** Puts the address this run deployed on into a report merged from main, whose own deploy may have used another port. */
+/** A doc section the user accepted as out of scope; kept beside the run, so the report stays as the agents wrote it. */
+export interface GapDecision { doc: string; heading: string; note: string; at: string }
+const AcceptGap = z.object({ doc: z.string().min(1), heading: z.string().min(1), note: z.string().trim().min(1).max(500) });
+/** The run's accepted sections; none when it accepted none. */
+export async function readGapDecisions(runs: string, runId: string): Promise<GapDecision[]> {
+  return fs.readFile(path.join(runs, runId, 'gap-decisions.json'), 'utf8').then((t) => JSON.parse(t) as GapDecision[]).catch(() => []);
+}
+
 export function withDeployedAddress(report: unknown, deployed: Record<string, unknown>): unknown {
   if (typeof report !== 'object' || report === null) return report;
   const r = report as { service?: object | null; services?: Array<{ service: string }> };
@@ -431,6 +441,26 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     },
     {
       method: 'POST',
+      path: `${P}/runs/:runId/gaps/accept`,
+      handler: async ({ params, body, json }) => {
+        const idx = await index();
+        const runId = safe(params.runId!);
+        const runs = runsDir(idx);
+        const { row } = await findRun(idx, runId);
+        if (row.locked) throw new HttpError(409, `run ${runId} belongs to concluded spec ${row.specId}; its gaps are read-only`);
+        const accept = AcceptGap.safeParse(await body());
+        if (!accept.success) throw new HttpError(400, 'a gap needs its doc, its heading and a note');
+        const { doc, heading, note } = accept.data;
+        const report = [...(await events(runs, runId))].reverse().find((e) => e.type === 'REPORT_READY')?.data.report as Report | undefined;
+        const open = report?.gaps && 'items' in report.gaps && report.gaps.items.some((i) => i.doc === doc && i.heading === heading && i.status !== 'delivered');
+        if (!open) throw new HttpError(404, `run ${runId} has no open section ${doc} › ${heading}`);
+        const kept = (await readGapDecisions(runs, runId)).filter((d) => d.doc !== doc || d.heading !== heading);
+        await fs.writeFile(path.join(runs, runId, 'gap-decisions.json'), `${JSON.stringify([...kept, { doc, heading, note, at: new Date().toISOString() }], null, 2)}\n`);
+        json(200, { accepted: true });
+      },
+    },
+    {
+      method: 'POST',
       path: `${P}/runs/:runId/stop`,
       handler: async ({ params, json }) => {
         const idx = await index();
@@ -595,6 +625,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           locked: row?.locked ?? false,
           state: { status: state.status, order: state.order, tasks: state.order.map((id) => state.tasks.get(id)) },
           finished: finished?.data ?? null,
+          gapDecisions: await readGapDecisions(runs, runId),
           tokens: tokensOf(evs),
           acceptanceCriteria: spec?.acceptanceCriteria ?? [],
           plan,

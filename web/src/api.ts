@@ -157,6 +157,17 @@ export interface ServiceStatus {
   /** A services run answers for each service. */
   services?: Array<{ service: string; online: boolean; status: number | null; ui?: boolean }>;
 }
+/** Why a doc section is open, as the run recorded it. */
+export type GapCause =
+  | { kind: 'no-task' }
+  | { kind: 'blocked'; roots: Array<{ taskId: string; reason: string }> }
+  | { kind: 'tests-failing'; acIds: string[] }
+  | { kind: 'run-stopped'; result: string }
+  | { kind: 'not-built' };
+export interface GapItem { doc: string; heading: string; status: 'delivered' | 'partial' | 'missing'; evidence: string[]; missing: string; acIds: string[]; cause: GapCause | null }
+export type GapsReport = { items: GapItem[] } | { unavailable: string };
+/** A doc section the user accepted as out of scope. */
+export interface GapDecision { doc: string; heading: string; note: string; at: string }
 export interface Report {
   runId: string;
   specId: string;
@@ -174,6 +185,7 @@ export interface Report {
   securityFindings?: SecurityFinding[];
   tokens: { byRole: Record<string, { inputTokens: number; outputTokens: number; costUsd: number }>; total: { inputTokens: number; outputTokens: number; costUsd: number } };
   summary: string;
+  gaps?: GapsReport;
 }
 export interface RunDetail {
   runId: string;
@@ -191,6 +203,7 @@ export interface RunDetail {
   tokens: Usage;
   acceptanceCriteria: AcceptanceCriterion[];
   plan: PlanArtifact | ServicesPlanArtifact | null;
+  gapDecisions?: GapDecision[];
 }
 
 const R = '/api';
@@ -212,6 +225,7 @@ export const runApi = {
   reportProblem: (projectId: string, specId: string, report: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/continue`, { report }).then((r) => json<{ sessionId: string }>(r)),
   writeReadme: (runId: string) => jsonPost(`/runs/${encodeURIComponent(runId)}/readme`).then((r) => json<{ runId: string }>(r)),
   stopRun: (runId: string) => jsonPost(`/runs/${encodeURIComponent(runId)}/stop`).then((r) => json<{ stopped: boolean }>(r)),
+  acceptGap: (runId: string, gap: { doc: string; heading: string; note: string }) => jsonPost(`/runs/${encodeURIComponent(runId)}/gaps/accept`, gap).then((r) => json<{ accepted: boolean }>(r)),
   run: (runId: string) => fetch(`${R}/runs/${encodeURIComponent(runId)}`).then((r) => json<RunDetail>(r)),
   step: (runId: string, stepId: string) => fetch(`${R}/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}`).then((r) => json<{ prompt: string; output: unknown }>(r)),
   runEvents: (runId: string) => `${R}/runs/${encodeURIComponent(runId)}/events`,

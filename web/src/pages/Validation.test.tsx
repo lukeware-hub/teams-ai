@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { PUBLISHED_PORTS } from '@server/deploy/service-links';
-import { runApi, type Report, type RunDetail } from '../api.js';
+import { runApi, type GapsReport, type Report, type RunDetail } from '../api.js';
 import { ValidationPage, ValidationView } from './Validation.js';
 
 // A report from before R11.5.6, when a criterion whose tasks all blocked could still reach validation; the page still reads such reports.
@@ -18,6 +18,53 @@ const report: Report = {
 const detail = (over: Partial<RunDetail> = {}): RunDetail => ({ runId: 'hello-001-r1', specId: 'hello-001', projectId: 'hello-app', status: 'awaiting-validation', phase: 6, report, state: { status: 'running', order: [], tasks: [] }, finished: null, tokens: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, steps: 0 }, acceptanceCriteria: [], plan: null, ...over });
 
 describe('ValidationView', () => {
+  it('lists the open doc sections with what is missing and the recorded cause, and counts the delivered ones', () => {
+    const gaps: GapsReport = { items: [
+      { doc: 'briefing.md', heading: 'Create a todo', status: 'delivered', evidence: ['server/todos.ts:1'], missing: '', acIds: ['AC-001'], cause: null },
+      { doc: 'stack.md', heading: 'Storage', status: 'missing', evidence: [], missing: 'Falta o banco de dados.', acIds: [], cause: { kind: 'no-task' } },
+    ] };
+    render(<MemoryRouter><ValidationView detail={detail({ report: { ...report, gaps } })} specStatus="awaiting-validation" onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
+    expect(screen.getByTestId('gaps-count').textContent).toBe('1 de 2 trechos entregues');
+    const row = screen.getByTestId('gap-row');
+    expect(row.textContent).toContain('stack.md › Storage');
+    expect(row.textContent).toContain('Falta o banco de dados.');
+    expect(row.textContent).toContain('Nenhuma tarefa cobre este trecho');
+  });
+
+  it('prefills the problem report from an open section', () => {
+    const gaps: GapsReport = { items: [{ doc: 'stack.md', heading: 'Storage', status: 'missing', evidence: [], missing: 'Falta o banco.', acIds: [], cause: { kind: 'not-built' } }] };
+    render(<MemoryRouter><ValidationView detail={detail({ report: { ...report, gaps } })} specStatus="awaiting-validation" onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('gap-prefill'));
+    expect((screen.getByTestId('problem-text') as HTMLTextAreaElement).value).toBe('stack.md › Storage: Falta o banco.');
+  });
+
+  it('accepts an open section with a note, and offers it only while the run is not locked', () => {
+    const onAccept = vi.fn();
+    const gaps: GapsReport = { items: [{ doc: 'stack.md', heading: 'Storage', status: 'missing', evidence: [], missing: 'Falta o banco.', acIds: [], cause: { kind: 'not-built' } }] };
+    const { unmount } = render(<MemoryRouter><ValidationView detail={detail({ report: { ...report, gaps } })} specStatus="awaiting-validation" onReport={vi.fn()} onComplete={vi.fn()} onAcceptGap={onAccept} /></MemoryRouter>);
+    expect((screen.getByTestId('gap-accept') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByTestId('gap-note'), { target: { value: 'Fica para a próxima spec.' } });
+    fireEvent.submit(screen.getByTestId('gap-accept').closest('form')!);
+    expect(onAccept).toHaveBeenCalledWith({ doc: 'stack.md', heading: 'Storage', note: 'Fica para a próxima spec.' });
+    unmount();
+    render(<MemoryRouter><ValidationView detail={detail({ report: { ...report, gaps }, locked: true })} specStatus="done" onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
+    expect(screen.queryByTestId('gap-accept')).toBeNull();
+  });
+
+  it('shows why the check did not run, the decision of an accepted section, and no card for an older report', () => {
+    const { unmount } = render(<MemoryRouter><ValidationView detail={detail({ report: { ...report, gaps: { unavailable: 'a services run keeps its code elsewhere' } } })} specStatus="awaiting-validation" onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
+    expect(screen.getByTestId('gaps-unavailable').textContent).toContain('a services run');
+    unmount();
+    const gaps: GapsReport = { items: [{ doc: 'stack.md', heading: 'Storage', status: 'missing', evidence: [], missing: 'Falta o banco.', acIds: [], cause: { kind: 'not-built' } }] };
+    const accepted = [{ doc: 'stack.md', heading: 'Storage', note: 'Fora desta entrega.', at: '2026-10-20T00:00:00.000Z' }];
+    const second = render(<MemoryRouter><ValidationView detail={detail({ report: { ...report, gaps }, gapDecisions: accepted })} specStatus="awaiting-validation" onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
+    expect(screen.getByTestId('gap-accepted').textContent).toContain('Fora desta entrega.');
+    expect(screen.queryByTestId('gap-accept')).toBeNull();
+    second.unmount();
+    render(<MemoryRouter><ValidationView detail={detail()} specStatus="awaiting-validation" onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
+    expect(screen.queryByTestId('gaps')).toBeNull();
+  });
+
   it('lists the security findings and hides the section when there are none', () => {
     const sec = { taskId: 'T1', file: 'src/a.ts', line: 3, severity: 'high' as const, category: 'injection', problem: 'user input reaches a shell', fix: 'use execFile' };
     const withSec = { ...detail(), report: { ...report, securityFindings: [sec] } };
