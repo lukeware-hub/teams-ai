@@ -1,21 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { applyPatch, checkPatch, patchId, unifiedDiff } from '../../server/refine/patches.js';
 
-const docs = { 'project.md': '# App\n\n## Vision\n\nfast\n', 'brief.md': '## Objectives\n\n- ship\n- ship\n' } as const;
+const docs = { 'project.md': '# App\n\n## Vision\n\nfast\n', 'briefing.md': '## Objectives\n\n- ship\n- ship\n' } as const;
 
 describe('patches', () => {
   it('accepts a patch whose find occurs once in a known file', () => {
     expect(checkPatch({ file: 'docs/project.md', find: 'fast', replace: 'fast and small', reason: 'r' }, 'hello-001', docs)).toEqual({ ok: true, file: 'project.md' });
-    expect(checkPatch({ file: 'docs/specs/hello-001/brief.md', find: '## Objectives', replace: '## Goals', reason: 'r' }, 'hello-001', docs)).toEqual({ ok: true, file: 'brief.md' });
+    expect(checkPatch({ file: 'docs/specs/hello-001/briefing.md', find: '## Objectives', replace: '## Goals', reason: 'r' }, 'hello-001', docs)).toEqual({ ok: true, file: 'briefing.md' });
   });
   it('rejects unknown files, absent finds and ambiguous finds with a reason', () => {
     expect(checkPatch({ file: 'docs/project.json', find: 'x', replace: 'y', reason: 'r' }, 'hello-001', docs)).toEqual({ ok: false, reason: 'unknown file docs/project.json' });
     expect(checkPatch({ file: 'docs/project.md', find: 'slow', replace: 'y', reason: 'r' }, 'hello-001', docs)).toEqual({ ok: false, reason: 'find not found in project.md' });
-    expect(checkPatch({ file: 'docs/specs/hello-001/brief.md', find: '- ship', replace: 'y', reason: 'r' }, 'hello-001', docs)).toEqual({ ok: false, reason: 'find occurs 2 times in brief.md' });
+    expect(checkPatch({ file: 'docs/specs/hello-001/briefing.md', find: '- ship', replace: 'y', reason: 'r' }, 'hello-001', docs)).toEqual({ ok: false, reason: 'find occurs 2 times in briefing.md' });
   });
   it('in backlog mode a briefing patch targets the target project docs/briefing.md', () => {
-    expect(checkPatch({ file: 'docs/briefing.md', find: '## Objectives', replace: '## Goals', reason: 'r' }, 'hello-001', docs, true)).toEqual({ ok: true, file: 'brief.md' });
-    expect(checkPatch({ file: 'docs/specs/hello-001/brief.md', find: '## Objectives', replace: '## Goals', reason: 'r' }, 'hello-001', docs, true)).toEqual({ ok: false, reason: 'unknown file docs/specs/hello-001/brief.md' });
+    expect(checkPatch({ file: 'docs/briefing.md', find: '## Objectives', replace: '## Goals', reason: 'r' }, 'hello-001', docs, true)).toEqual({ ok: true, file: 'briefing.md' });
+    expect(checkPatch({ file: 'docs/specs/hello-001/briefing.md', find: '## Objectives', replace: '## Goals', reason: 'r' }, 'hello-001', docs, true)).toEqual({ ok: false, reason: 'unknown file docs/specs/hello-001/briefing.md' });
     expect(checkPatch({ file: 'docs/briefing.md', find: '## Objectives', replace: '## Goals', reason: 'r' }, 'hello-001', docs)).toEqual({ ok: false, reason: 'unknown file docs/briefing.md' });
   });
   it('accepts a root document cited by its bare name, and nothing nested under another folder', () => {

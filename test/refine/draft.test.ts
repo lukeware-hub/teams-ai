@@ -29,6 +29,17 @@ describe('draft', () => {
     expect(draftPaths(ws, 'hello-024').root).toBe(path.posix.join(refineRoot(ws), 'hello-024'));
   });
 
+  it('reads a spec still holding the legacy brief.md, and the first save writes briefing.md', async () => {
+    const d = draftPaths(ws, 'hello-031');
+    await fs.mkdir(path.dirname(d.briefMd), { recursive: true });
+    await fs.writeFile(path.posix.join(path.dirname(d.briefMd), 'brief.md'), '## Objectives\n- legacy\n');
+    expect(await draftExists(d)).toBe(true);
+    expect(await readDoc(d, 'briefing.md')).toBe('## Objectives\n- legacy\n');
+    await writeDoc(d, 'briefing.md', '## Objectives\n- new');
+    expect(await fs.readFile(d.briefMd, 'utf8')).toBe('## Objectives\n- new\n');
+    expect(await readDoc(d, 'briefing.md')).toBe('## Objectives\n- new\n');
+  });
+
   it('keeps the base project.json bytes when the project is unchanged, so the start does not publish a reformatted copy', async () => {
     const compact = JSON.stringify(makeProject());
     remote = await makeRemote({ 'docs/project.json': compact });
@@ -119,7 +130,7 @@ describe('draft', () => {
     await createFromRepo(d, remote.repo, execCommand, { kind: 'new-spec', description: 'List users' });
     expect(await readBase(d, 'flow.md')).toBe('# Flow');
     expect(await readBase(d, 'project.md')).toBe(await readDoc(d, 'project.md'));
-    expect(await readBase(d, 'specs/hello-020/brief.md')).toBeNull();
+    expect(await readBase(d, 'specs/hello-020/briefing.md')).toBeNull();
     const fresh = draftPaths(ws, 'shop-020');
     await createNewProject(fresh, 'Shop');
     expect(await readBase(fresh, 'project.md')).toBeNull();
@@ -130,11 +141,11 @@ describe('draft', () => {
     await createNewProject(d, 'Hello App');
     expect(d.root).toBe(`${root}/refine/hello-001`);
     expect(await readDoc(d, 'project.md')).toContain('# Hello App');
-    expect(await readDoc(d, 'brief.md')).toContain('## Acceptance criteria');
+    expect(await readDoc(d, 'briefing.md')).toContain('## Acceptance criteria');
     expect(await readDoc(d, 'design.md')).toContain('executable visual contract');
     expect(await readDerived(d)).toBeNull();
     const h1 = await draftHash(d);
-    await writeDoc(d, 'brief.md', '## Objectives\n- ship');
+    await writeDoc(d, 'briefing.md', '## Objectives\n- ship');
     expect(await draftHash(d)).not.toBe(h1);
   });
 
@@ -145,26 +156,26 @@ describe('draft', () => {
     remote = await makeRemote({ 'docs/project.json': JSON.stringify(makeProject()), 'docs/specs/hello-001/spec.json': JSON.stringify(spec) });
     const d = draftPaths(ws, 'hello-001');
     await createFromRepo(d, remote.repo, execCommand, { kind: 'continue' });
-    expect(parseDecisions(await readDoc(d, 'brief.md'))).toEqual(decisions);
+    expect(parseDecisions(await readDoc(d, 'briefing.md'))).toEqual(decisions);
     expect((await readDerived(d))?.spec.decisions).toEqual(decisions);
   });
 
-  it('copies docs from origin/main, renders project.md when absent, and prefills brief.md on continue', async () => {
+  it('copies docs from origin/main, renders project.md when absent, and prefills briefing.md on continue', async () => {
     const project = makeProject();
     const spec = { ...makeSpec({ specId: 'hello-001' }), status: 'awaiting-validation', specHash: `sha256:${'a'.repeat(64)}`, validationReports: [{ at: '2026-09-24T10:00:00.000Z', text: 'GET /hello returned 500' }] };
     remote = await makeRemote({ 'docs/project.json': JSON.stringify(project), 'docs/specs/hello-001/spec.json': JSON.stringify(spec), 'docs/adr/ADR-001-stack.md': '# ADR-001 stack' });
     const d = draftPaths(ws, 'hello-001');
     await createFromRepo(d, remote.repo, execCommand, { kind: 'continue', report: 'GET /hello returned 500' });
     expect(await readDoc(d, 'project.md')).toContain('## Personas');
-    expect(await readDoc(d, 'brief.md')).toContain('## Validation report');
-    expect(await readDoc(d, 'brief.md')).toContain('GET /hello returned 500');
+    expect(await readDoc(d, 'briefing.md')).toContain('## Validation report');
+    expect(await readDoc(d, 'briefing.md')).toContain('GET /hello returned 500');
     expect(await fs.readFile(path.join(d.docs, 'adr/ADR-001-stack.md'), 'utf8')).toBe('# ADR-001 stack');
     const derived = await readDerived(d);
     expect(derived?.spec.status).toBe('refining');
     expect(derived?.spec.specHash).toBeNull();
     const d2 = draftPaths(ws, 'hello-002');
     await createFromRepo(d2, remote.repo, execCommand, { kind: 'new-spec' });
-    expect(await readDoc(d2, 'brief.md')).toContain('## Objectives');
+    expect(await readDoc(d2, 'briefing.md')).toContain('## Objectives');
     expect(await readDerived(d2)).toBeNull();
   });
 
@@ -172,20 +183,20 @@ describe('draft', () => {
     remote = await makeRemote({ 'docs/project.json': JSON.stringify(makeProject()) });
     const withText = draftPaths(ws, 'hello-010');
     await createFromRepo(withText, remote.repo, execCommand, { kind: 'new-spec', description: '  Let users reset a password by e-mail.  ' });
-    const brief = await readDoc(withText, 'brief.md');
+    const brief = await readDoc(withText, 'briefing.md');
     expect(brief.startsWith('## Description\n\nLet users reset a password by e-mail.\n\n## Type')).toBe(true);
     const blank = draftPaths(ws, 'hello-011');
     await createFromRepo(blank, remote.repo, execCommand, { kind: 'new-spec', description: '   ' });
-    expect(await readDoc(blank, 'brief.md')).toBe(briefTemplate());
+    expect(await readDoc(blank, 'briefing.md')).toBe(briefTemplate());
   });
 
   it('a new project brief starts with the description too', async () => {
     const d = draftPaths(ws, 'shop-001');
     await createNewProject(d, 'Shop', 'A small shop for handmade soap.');
-    expect((await readDoc(d, 'brief.md')).startsWith('## Description\n\nA small shop for handmade soap.\n\n## Type')).toBe(true);
+    expect((await readDoc(d, 'briefing.md')).startsWith('## Description\n\nA small shop for handmade soap.\n\n## Type')).toBe(true);
     const plain = draftPaths(ws, 'shop-002');
     await createNewProject(plain, 'Shop');
-    expect(await readDoc(plain, 'brief.md')).toBe(briefTemplate());
+    expect(await readDoc(plain, 'briefing.md')).toBe(briefTemplate());
   });
 
   it('renderBriefMd lists every acceptance criterion with its id', () => {
@@ -216,25 +227,25 @@ describe('draft', () => {
     const d = draftPaths(ws, 'hello-001');
     await createNewProject(d, 'Hello App', 'Ship a hello endpoint.');
     await fs.writeFile(d.specJson, '{}');
-    const before = await readDoc(d, 'brief.md');
+    const before = await readDoc(d, 'briefing.md');
     const hash = await draftHash(d);
     await moveBriefingToProject(d);
     expect(await fs.readFile(`${d.docs}/briefing.md`, 'utf8')).toBe(before);
     await expect(fs.access(`${d.docs}/specs/hello-001`)).rejects.toThrow();
-    expect(await readDoc(d, 'brief.md')).toBe(before);
+    expect(await readDoc(d, 'briefing.md')).toBe(before);
     expect(await draftHash(d)).toBe(hash);
     expect(await draftExists(d)).toBe(true);
-    await writeDoc(d, 'brief.md', '## Prioridades\n- P0 primeiro');
+    await writeDoc(d, 'briefing.md', '## Prioridades\n- P0 primeiro');
     expect(await fs.readFile(`${d.docs}/briefing.md`, 'utf8')).toBe('## Prioridades\n- P0 primeiro\n');
     await moveBriefingToProject(d);
-    expect(await readDoc(d, 'brief.md')).toBe('## Prioridades\n- P0 primeiro\n');
+    expect(await readDoc(d, 'briefing.md')).toBe('## Prioridades\n- P0 primeiro\n');
   });
 
   it('keeps an existing docs/briefing.md and appends the new demand under its own heading, once, with its own headings demoted a level', async () => {
     const d = draftPaths(ws, 'hello-002');
     await createNewProject(d, 'Hello App', 'Add a goodbye endpoint.');
     await fs.writeFile(`${d.docs}/briefing.md`, '# Briefing\n\n## Prioridades\n\n- P0 primeiro\n');
-    const brief = await readDoc(d, 'brief.md');
+    const brief = await readDoc(d, 'briefing.md');
     await moveBriefingToProject(d);
     const once = await fs.readFile(`${d.docs}/briefing.md`, 'utf8');
     expect(once.startsWith('# Briefing\n\n## Prioridades\n\n- P0 primeiro\n\n## Nova demanda (hello-002)\n\n')).toBe(true);
@@ -269,9 +280,9 @@ describe('draft', () => {
     const d = draftPaths(ws, 'hello-004');
     await createNewProject(d, 'Hello App');
     await fs.writeFile(`${d.docs}/briefing.md`, '# Briefing\n');
-    expect(await readDoc(d, 'brief.md')).toBe(briefTemplate());
-    expect(DOC_REL['brief.md']('hello-004')).toBe('docs/specs/hello-004/brief.md');
-    expect(DOC_REL['brief.md']('hello-004', true)).toBe('docs/briefing.md');
+    expect(await readDoc(d, 'briefing.md')).toBe(briefTemplate());
+    expect(DOC_REL['briefing.md']('hello-004')).toBe('docs/specs/hello-004/briefing.md');
+    expect(DOC_REL['briefing.md']('hello-004', true)).toBe('docs/briefing.md');
   });
 
   it('renders the work item type and bug details', () => {

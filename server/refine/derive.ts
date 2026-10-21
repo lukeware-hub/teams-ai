@@ -28,7 +28,7 @@ export function derivePack(input: {
     ...(digested ? [DIGEST_NOTE] : []),
     '### docs/project.md',
     d.project,
-    '### brief.md',
+    '### briefing.md',
     d.brief,
     ...(input.stackMd ? ['### stack.md', d.stack] : []),
     ...(input.flowMd ? ['### flow.md (Mermaid)', d.flow] : []),

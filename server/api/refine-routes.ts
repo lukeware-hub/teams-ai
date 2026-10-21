@@ -96,7 +96,7 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       path: `${S}/docs/:file`,
       handler: wrap(async ({ params, body, json }) => {
         const file = params.file!;
-        if (!['project.md', 'brief.md', 'stack.md', 'flow.md', 'design.md'].includes(file)) throw new HttpError(400, `unknown doc ${file}`);
+        if (!['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md'].includes(file)) throw new HttpError(400, `unknown doc ${file}`);
         await (await get(params)).saveDoc(file as DocFile, str(await body(DOC_BODY_MAX), 'text'));
         json(200, { ok: true });
       }),
@@ -115,7 +115,7 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       path: `${S}/docs/:file/suggest`,
       handler: wrap(async ({ params, json }) => {
         const file = params.file!;
-        if (!['project.md', 'brief.md', 'stack.md', 'design.md'].includes(file)) throw new HttpError(400, `no suggestion for ${file}`);
+        if (!['project.md', 'briefing.md', 'stack.md', 'design.md'].includes(file)) throw new HttpError(400, `no suggestion for ${file}`);
         json(200, { text: await (await get(params)).suggest(file as SuggestFile) });
       }),
     },

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { verifyContradictions, type DocTexts } from '../../server/refine/contradictions.js';
 
 const docs: DocTexts = {
-  'brief.md': '# Briefing\n\n## Decisões\n\n### Porta\n\nA API responde na porta 8080 em todo ambiente.\n',
+  'briefing.md': '# Briefing\n\n## Decisões\n\n### Porta\n\nA API responde na porta 8080 em todo ambiente.\n',
   'flow.md': '# Fluxo\n\n## 1. Entrada\n\nO cliente chama a API pela porta 18080.\n\n## 2. Saída\n\nO relatório fica pronto.\n',
   'stack.md': '# Stack\n\n- Porta de publicação: 3000.\n',
 };
@@ -18,7 +18,7 @@ describe('verifyContradictions', () => {
     expect(verified).toHaveLength(1);
     expect(verified[0]).toMatchObject({
       fact: 'porta da API',
-      a: { file: 'brief.md', quote: 'A API responde na porta 8080' },
+      a: { file: 'briefing.md', quote: 'A API responde na porta 8080' },
       b: { file: 'flow.md', quote: 'chama a API pela porta 18080' },
       fix: 'Alinhe a porta nos dois documentos.',
     });
@@ -28,14 +28,14 @@ describe('verifyContradictions', () => {
 
   it('matches through markdown marks, accents and curly quotes', () => {
     const { verified } = verifyContradictions(docs, [
-      pair('publicação', { file: 'stack.md', quote: '**Porta de publicação**: 3000' }, { file: 'brief.md', quote: '“A API responde na porta 8080”' }),
+      pair('publicação', { file: 'stack.md', quote: '**Porta de publicação**: 3000' }, { file: 'briefing.md', quote: '“A API responde na porta 8080”' }),
     ]);
     expect(verified).toHaveLength(1);
   });
 
   it('drops a quote that is paraphrased, not copied', () => {
     const { verified, dropped } = verifyContradictions(docs, [
-      pair('porta', { file: 'brief.md', quote: 'a API responde na porta oito mil' }, { file: 'flow.md', quote: 'chama a API pela porta 18080' }),
+      pair('porta', { file: 'briefing.md', quote: 'a API responde na porta oito mil' }, { file: 'flow.md', quote: 'chama a API pela porta 18080' }),
     ]);
     expect(verified).toEqual([]);
     expect(dropped).toHaveLength(1);
@@ -43,14 +43,14 @@ describe('verifyContradictions', () => {
 
   it('drops a quote that is a single word, because one word matches anywhere', () => {
     const { verified } = verifyContradictions(docs, [
-      pair('porta', { file: 'brief.md', quote: 'porta' }, { file: 'flow.md', quote: 'chama a API pela porta 18080' }),
+      pair('porta', { file: 'briefing.md', quote: 'porta' }, { file: 'flow.md', quote: 'chama a API pela porta 18080' }),
     ]);
     expect(verified).toEqual([]);
   });
 
   it('matches whole words only, so 8080 is not found inside 18080', () => {
     const { verified } = verifyContradictions(docs, [
-      pair('porta', { file: 'brief.md', quote: 'porta 8080' }, { file: 'flow.md', quote: 'porta 8080' }),
+      pair('porta', { file: 'briefing.md', quote: 'porta 8080' }, { file: 'flow.md', quote: 'porta 8080' }),
     ]);
     expect(verified).toEqual([]);
   });
@@ -71,7 +71,7 @@ describe('verifyContradictions', () => {
 
   it('drops a contradiction whose two sides are the same quote', () => {
     const { verified } = verifyContradictions(docs, [
-      pair('porta', { file: 'brief.md', quote: 'A API responde na porta 8080' }, { file: 'brief.md', quote: 'A API responde na porta 8080' }),
+      pair('porta', { file: 'briefing.md', quote: 'A API responde na porta 8080' }, { file: 'briefing.md', quote: 'A API responde na porta 8080' }),
     ]);
     expect(verified).toEqual([]);
   });

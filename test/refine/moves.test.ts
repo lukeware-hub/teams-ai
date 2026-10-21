@@ -6,7 +6,7 @@ import { cutLines, insertBlock, MAX_MOVE_QUOTE, planMove, restoreMove, type Move
 const briefing = '# Briefing\n\n## Objetivos\n\n- Agendar consultas.\n\n## Decisões\n\n### Prazo\n\n> 15 dias.\n';
 const flow = '# Fluxo\n\n## Pedido\n\nO paciente envia o pedido.\n';
 const design = '# Design\n\n## Assinatura\n\nValide o certificado antes do código.\n\n## Cores\n\n- fundo: branco\n';
-const docs = { 'brief.md': briefing, 'flow.md': flow, 'design.md': design, 'project.md': '# Projeto\n', 'stack.md': '# Stack\n\n- Node 22\n' };
+const docs = { 'briefing.md': briefing, 'flow.md': flow, 'design.md': design, 'project.md': '# Projeto\n', 'stack.md': '# Stack\n\n- Node 22\n' };
 
 const context = (over: Partial<MoveContext> = {}): MoveContext => ({ specId: 'hello-001', projectBriefing: false, docs, blank: new Set(), applied: [], undone: [], ...over });
 const move = (over: Partial<MoveInput> = {}): MoveInput => ({
@@ -98,8 +98,8 @@ describe('planMove', () => {
 
   it('refuses to touch a blank template, the decisions section, and a heading that would open one', () => {
     expect(planMove(move(), context({ blank: new Set(['flow.md']) }))).toEqual({ ok: false, reason: 'modelo em branco não recebe movimentos; o SM preenche antes' });
-    expect(planMove(move({ from: 'docs/specs/hello-001/brief.md', to: 'docs/project.md', quote: '> 15 dias.', text: 'Prazo: 15 dias.' }), context())).toEqual({ ok: false, reason: 'o trecho está na seção de decisões' });
-    expect(planMove(move({ to: 'docs/specs/hello-001/brief.md', after: '### Prazo' }), context())).toEqual({ ok: false, reason: 'o texto iria para a seção de decisões' });
+    expect(planMove(move({ from: 'docs/specs/hello-001/briefing.md', to: 'docs/project.md', quote: '> 15 dias.', text: 'Prazo: 15 dias.' }), context())).toEqual({ ok: false, reason: 'o trecho está na seção de decisões' });
+    expect(planMove(move({ to: 'docs/specs/hello-001/briefing.md', after: '### Prazo' }), context())).toEqual({ ok: false, reason: 'o texto iria para a seção de decisões' });
     expect(planMove(move({ text: '## Decisões\n\n- nova' }), context())).toEqual({ ok: false, reason: 'o texto abriria uma seção de decisões' });
   });
 

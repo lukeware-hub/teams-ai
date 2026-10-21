@@ -38,7 +38,7 @@ export type Contradiction = z.infer<typeof Contradiction>;
 
 /** A finding on one shared doc, reported by any role: the orchestrator routes it to the doc's owner. */
 export const DocFinding = z.object({
-  doc: z.enum(['project.md', 'brief.md', 'stack.md', 'flow.md', 'design.md']),
+  doc: z.enum(['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md']),
   severity: z.enum(['blocking', 'advice']),
   quote: z.string().min(1),
   text: z.string().min(1),

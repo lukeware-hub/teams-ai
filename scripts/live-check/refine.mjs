@@ -118,7 +118,7 @@ const steps = {
   async create() {
     const [docsDir, name, flag] = rest;
     console.log('new', (await api('POST', '/projects/new', { projectId: p, name, description: '' })).status);
-    for (const f of ['project.md', 'brief.md', 'stack.md', 'flow.md', 'design.md']) console.log('put', f, (await api('PUT', `${S(p)}/docs/${f}`, { text: readFileSync(`${docsDir}/${f}`, 'utf8') })).status);
+    for (const f of ['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md']) console.log('put', f, (await api('PUT', `${S(p)}/docs/${f}`, { text: readFileSync(`${docsDir}/${f}`, 'utf8') })).status);
     if (flag !== '--no-backlog') console.log('backlog', (await api('POST', `${S(p)}/backlog`)).status);
   },
   async evaluate() {

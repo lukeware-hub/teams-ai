@@ -7,7 +7,7 @@ import { makeProject, makeSpec } from '../fixtures/contracts.js';
 const item = (id: string, passed: boolean) => ({ id, role: id.startsWith('po') ? 'po' : 'sm', passed, detail: '' });
 const allGreen = ['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions'].map((id) => item(id, true));
 const q = (questionId: string, blocking: boolean) => ({ questionId, role: 'po', text: 't', blocking, relatedAcIds: [], cycle: 1 });
-const patch = (patchId: string) => ({ patchId, role: 'sm', file: 'brief.md', find: 'a', replace: 'b', reason: 'r', diff: '', cycle: 1 });
+const patch = (patchId: string) => ({ patchId, role: 'sm', file: 'briefing.md', find: 'a', replace: 'b', reason: 'r', diff: '', cycle: 1 });
 const derived = { project: makeProject(), spec: { ...makeSpec(), status: 'refining', specHash: null } };
 const cycle = (n: number) => [{ type: RefineEvent.CycleStarted, data: { cycle: n, draftHash: 'h' } }, { type: RefineEvent.Derived, data: { cycle: n, ...derived } }];
 
@@ -163,7 +163,7 @@ describe('staleness of an evaluation', () => {
     expect(reduceRefineEvents([...cycle(1), evaluated(1)]).stale).toBe(false);
     expect(reduceRefineEvents([...cycle(1), edit('stack.md', 'autofill'), evaluated(1)])).toMatchObject({ stale: true, status: 'ready' });
     // An edit before the first derivation of the session still makes it stale.
-    const early = [{ type: RefineEvent.CycleStarted, data: { cycle: 1, draftHash: 'h' } }, edit('brief.md', 'decision'), { type: RefineEvent.Derived, data: { cycle: 1, ...derived } }, evaluated(1)];
+    const early = [{ type: RefineEvent.CycleStarted, data: { cycle: 1, draftHash: 'h' } }, edit('briefing.md', 'decision'), { type: RefineEvent.Derived, data: { cycle: 1, ...derived } }, evaluated(1)];
     expect(reduceRefineEvents(early).stale).toBe(true);
     // The next cycle without edits clears it.
     expect(reduceRefineEvents([...cycle(1), edit('stack.md', 'autofill'), evaluated(1), ...cycle(2), evaluated(2)]).stale).toBe(false);

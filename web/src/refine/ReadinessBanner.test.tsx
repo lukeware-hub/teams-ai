@@ -4,7 +4,7 @@ import type { DocFile } from '@server/refine/draft';
 import type { DocScore, Readiness } from '@server/refine/readiness';
 import { ReadinessBanner } from './ReadinessBanner.js';
 
-const DOCS: DocFile[] = ['project.md', 'brief.md', 'stack.md', 'flow.md', 'design.md'];
+const DOCS: DocFile[] = ['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md'];
 const uniform = (value: number) => Object.fromEntries(DOCS.map((file) => [file, { score: value, checks: { complete: value, concrete: value, consistent: value, scoped: value } }])) as Record<DocFile, DocScore>;
 const scored = (average: number, over: Partial<Readiness> = {}): Readiness => ({ cycle: 1, available: true, model: 'jev-1.13.0', average, docs: uniform(average), usage: null, outdated: false, ...over });
 const props = (readiness: Readiness | undefined, over: Partial<{ canStart: boolean }> = {}) => ({ readiness, canStart: true, startState: { label: 'Iniciar análise', busy: false }, onScore: vi.fn(), onStart: vi.fn(), ...over });

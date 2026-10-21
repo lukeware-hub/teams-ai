@@ -111,11 +111,11 @@ describe('refinePack', () => {
 
   it('reviews the derived backlog instead of a spec in backlog mode, and keeps criteria empty', () => {
     const backlog = { enabled: true, project: null, epics: [{ key: 'core', title: 'Núcleo' }], items: [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'x' }], size: 'S', rank: 1 }], cycle: 1 };
-    const pack = refinePack({ ...base, role: 'po', derived: { project: {}, spec: null }, backlog, projectBriefing: true, rejected: [{ file: 'brief.md', find: 'old', decision: 'no' }] } as never);
+    const pack = refinePack({ ...base, role: 'po', derived: { project: {}, spec: null }, backlog, projectBriefing: true, rejected: [{ file: 'briefing.md', find: 'old', decision: 'no' }] } as never);
     expect(pack.feedback).toContain('### docs/briefing.md');
     expect(pack.feedback).toContain('Patch files: docs/project.md, docs/briefing.md, docs/flow.md.');
     expect(pack.feedback).toContain('- docs/briefing.md: "old" → rejected: no');
-    expect(pack.feedback).not.toContain('brief.md');
+    expect(pack.feedback).not.toContain('docs/specs/');
     expect(pack.feedback).toContain('### derived backlog');
     expect(pack.feedback).toContain('"key": "base"');
     expect(pack.feedback).not.toContain('### derived spec.json');
@@ -215,9 +215,9 @@ describe('refinePack moves and findings', () => {
     expect(refinePack({ ...base, role: 'front' }).feedback).toContain('### Moves the owner undid (do not propose them again)\n\n(none)');
   });
 
-  it('lets each role patch the documents it owns: the SM stack.md and flow.md, the PO project.md, brief.md and flow.md', () => {
+  it('lets each role patch the documents it owns: the SM stack.md and flow.md, the PO project.md, briefing.md and flow.md', () => {
     expect(refinePack({ ...base, role: 'sm' }).feedback).toContain('Patch files: docs/stack.md, docs/flow.md.');
-    expect(refinePack({ ...base, role: 'po' }).feedback).toContain('Patch files: docs/project.md, docs/specs/spec-1/brief.md, docs/flow.md.');
+    expect(refinePack({ ...base, role: 'po' }).feedback).toContain('Patch files: docs/project.md, docs/specs/spec-1/briefing.md, docs/flow.md.');
     expect(refinePack({ ...base, role: 'po' }).feedback).not.toContain('docs/stack.md');
   });
 

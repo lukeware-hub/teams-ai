@@ -24,13 +24,13 @@ describe('reorganization pack', () => {
   });
 
   it('keeps the briefing path of backlog mode', () => {
-    const pack = reorganizePack({ ...base, changed: ['brief.md'], projectBriefing: true });
+    const pack = reorganizePack({ ...base, changed: ['briefing.md'], projectBriefing: true });
     expect(pack.feedback).toContain('### docs/briefing.md (reorganize in full)');
   });
 });
 
 describe('reorganization groups', () => {
-  const texts = { 'project.md': 'a', 'brief.md': 'b', 'stack.md': 'c', 'flow.md': 'd', 'design.md': 'e' } as const;
+  const texts = { 'project.md': 'a', 'briefing.md': 'b', 'stack.md': 'c', 'flow.md': 'd', 'design.md': 'e' } as const;
 
   it('reads all the changed documents in one call when they fit', () => {
     expect(reorganizeGroups(['project.md', 'design.md'], texts)).toEqual([['project.md', 'design.md']]);

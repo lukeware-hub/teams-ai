@@ -29,7 +29,7 @@ describe('agent policy for the backlog', () => {
     for (const phrase of ['one entry per item', 'testable end to end', 'echo the previous id', 'do not read files', 'only through the docs']) expect(po, phrase).toContain(phrase);
     const review = po.slice(po.indexOf('### Reviewing a backlog (PO)'));
     expect(review).toContain('docs/briefing.md');
-    expect(review).not.toContain('docs/specs/<specId>/brief.md');
+    expect(review).not.toContain('docs/specs/<specId>/briefing.md');
   });
 
   it('tells the SM how to pre-plan a backlog spec', async () => {

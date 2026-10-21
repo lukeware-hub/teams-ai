@@ -36,11 +36,11 @@ afterEach(() => fs.rm(root, { recursive: true, force: true }));
 describe('RefineSession', () => {
   it('backlog mode moves the brief to the target project docs/briefing.md, and a reopen finishes an interrupted move', async () => {
     const s = await RefineSession.create(deps(), 'new-project');
-    const brief = await readDoc(draft(), 'brief.md');
+    const brief = await readDoc(draft(), 'briefing.md');
     await s.enableBacklog();
     expect(await fs.readFile(`${draft().docs}/briefing.md`, 'utf8')).toBe(brief);
     await expect(fs.access(draft().briefMd)).rejects.toThrow();
-    expect((await s.snapshot()).docs['brief.md']).toBe(brief);
+    expect((await s.snapshot()).docs['briefing.md']).toBe(brief);
     await s.close();
     // A crash between BACKLOG_ENABLED and the move leaves a brief behind; opening the session again finishes the move.
     await fs.mkdir(path.dirname(draft().briefMd), { recursive: true });
@@ -205,9 +205,9 @@ describe('RefineSession', () => {
     script['refine/po'] = [refineOut(green(PO), [{ id: 'q', text: 'Port?', blocking: true, relatedAcIds: [] }])];
     script['refine/sm'] = [refineOut(green(SM))];
     await s.evaluate();
-    const brief = await readDoc(draft(), 'brief.md');
+    const brief = await readDoc(draft(), 'briefing.md');
     await s.answer('po-c1-0', '8080');
-    expect(await readDoc(draft(), 'brief.md')).toBe(brief);
+    expect(await readDoc(draft(), 'briefing.md')).toBe(brief);
     await s.enableBacklog();
     expect(await fs.readFile(`${draft().docs}/briefing.md`, 'utf8')).toMatch(/\n## Decisões\n\n### Port\?\n\n> 8080\n$/);
     // Written before the backlog is journaled, in one edit, so a crash in between loses no answer and a second call adds nothing.
@@ -258,7 +258,7 @@ describe('RefineSession', () => {
   // R11.7.1: seen live, a continued spec asked again the questions its last version had answered.
   it('drops a question the continued spec already answered', async () => {
     const s = await RefineSession.create(deps(), 'continue');
-    await writeDoc(draft(), 'brief.md', renderBriefMd({ ...makeSpec({ specId: 'hello-001' }), decisions: [{ question: 'Port?', answer: '8080' }] }));
+    await writeDoc(draft(), 'briefing.md', renderBriefMd({ ...makeSpec({ specId: 'hello-001' }), decisions: [{ question: 'Port?', answer: '8080' }] }));
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO), [{ id: 'q', text: '  port?  ', blocking: true, relatedAcIds: [] }])];
     script['refine/sm'] = [refineOut(green(SM))];

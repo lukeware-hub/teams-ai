@@ -138,7 +138,7 @@ describe('refine api', () => {
     expect((await call('POST', '/api/projects/new', { projectId: 'other-app', name: 'Other', description: 'x'.repeat(20_001) })).status).toBe(400);
     expect(await (await fetch(`${base()}/api/refine`)).json()).toEqual([{ projectId: 'hello-app', specId: 'hello-app-001', state: 'drafting', registered: false }]);
     expect((await call('PUT', '/api/refine/hello-app/hello-app-001/docs/spec.json', { text: 'x' })).status).toBe(400);
-    expect((await call('PUT', '/api/refine/hello-app/hello-app-001/docs/brief.md', { text: '## Objectives\n- ship' })).status).toBe(200);
+    expect((await call('PUT', '/api/refine/hello-app/hello-app-001/docs/briefing.md', { text: '## Objectives\n- ship' })).status).toBe(200);
     script['derive/po'] = [derived];
     script['refine/po'] = [{ checklist: PO, questions: [{ id: 'q', text: 'Port?', blocking: true, relatedAcIds: [] }], docPatch: [] }];
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
@@ -152,7 +152,7 @@ describe('refine api', () => {
     expect(text).toContain('event: journal');
     const snap = await snapshot();
     expect(snap.state.status).toBe('answering');
-    expect(snap.docs['brief.md']).toBe('## Objectives\n- ship\n');
+    expect(snap.docs['briefing.md']).toBe('## Objectives\n- ship\n');
     expect(snap.state.questions[0]).toMatchObject({ questionId: 'po-c1-0', blocking: true });
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/questions/po-c1-0/skip')).status).toBe(409);
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/answers', { questionId: 'po-c1-0', text: '8080', docsAnswered: true })).status).toBe(200);
@@ -232,7 +232,7 @@ describe('refine api', () => {
     expect((await snapshot()).state.backlog).toMatchObject({ enabled: true, items: [] });
     // The brief became the target project's docs/briefing.md, and the session still opens from disk afterwards.
     const draftDocs = `${home}/ws/hello-app/refine/hello-app-001/docs`;
-    expect(await fs.readFile(`${draftDocs}/briefing.md`, 'utf8')).toBe((await snapshot()).docs['brief.md']);
+    expect(await fs.readFile(`${draftDocs}/briefing.md`, 'utf8')).toBe((await snapshot()).docs['briefing.md']);
     await expect(fs.access(`${draftDocs}/specs/hello-app-001`)).rejects.toThrow();
     await registry.close();
     expect((await fetch(`${base()}${url}`)).status).toBe(200);
@@ -476,7 +476,7 @@ describe('refine api', () => {
     const [q] = (await snapshot()).state.questions;
     expect((await call('POST', `${url}/answers`, { questionId: q.questionId, text: 'Sim, application/json.' })).status).toBe(200);
     const after = await snapshot();
-    expect(after.docs['brief.md']).toMatch(/\n## Decisões\n\n### O health responde em JSON\?\n\n> Sim, application\/json\.\n$/);
+    expect(after.docs['briefing.md']).toMatch(/\n## Decisões\n\n### O health responde em JSON\?\n\n> Sim, application\/json\.\n$/);
     expect(after.state.stale).toBe(true);
   });
 
@@ -666,14 +666,14 @@ describe('refine api', () => {
     const described = await call('POST', '/api/projects/hello-app/specs', { specId: 'hello-003', description: 'Greet in Portuguese too.' });
     expect(described.status).toBe(200);
     const snap3 = await (await fetch(`${base()}/api/refine/hello-app/hello-003`)).json();
-    expect(snap3.docs['brief.md']).toMatch(/^## Description\n\nGreet in Portuguese too\.\n\n## Type/);
+    expect(snap3.docs['briefing.md']).toMatch(/^## Description\n\nGreet in Portuguese too\.\n\n## Type/);
     expect((await call('POST', '/api/projects/hello-app/specs', { specId: 'hello-004', description: 'x'.repeat(20_001) })).status).toBe(400);
     expect((await call('POST', '/api/projects/hello-app/specs', { specId: 'hello-005', description: 42 })).status).toBe(400);
     const cont = await call('POST', '/api/projects/hello-app/specs/hello-001/continue', { report: 'broken /hello' });
     expect(cont.status).toBe(200);
     const snap2 = await (await fetch(`${base()}/api/refine/hello-app/hello-001`)).json();
-    expect(snap2.docs['brief.md']).toContain('broken /hello');
-    expect(snap2.docs['brief.md']).toContain('Routing (System 1, jev): bug-existing-ac (0.90)');
+    expect(snap2.docs['briefing.md']).toContain('broken /hello');
+    expect(snap2.docs['briefing.md']).toContain('Routing (System 1, jev): bug-existing-ac (0.90)');
     expect(snap2.state.derived.spec.status).toBe('refining');
   });
 
@@ -715,7 +715,7 @@ describe('refine api', () => {
     await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
     await settle();
     expect((await snapshot()).state.status).toBe('ready');
-    await call('PUT', '/api/refine/hello-app/hello-app-001/docs/brief.md', { text: '## Objectives\n- changed' });
+    await call('PUT', '/api/refine/hello-app/hello-app-001/docs/briefing.md', { text: '## Objectives\n- changed' });
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/start')).status).toBe(409); // stale
     expect(spawns).toHaveLength(0);
     script['derive/po'] = [derived];
@@ -762,7 +762,7 @@ describe('refine api', () => {
     await fs.writeFile(`${draftRoot}/stale.txt`, 'old');
     expect((await call('POST', '/api/projects/hello-app/specs/hello-001/restart')).status).toBe(200);
     expect(await fs.access(`${draftRoot}/stale.txt`).then(() => true, () => false)).toBe(false);
-    expect(await fs.access(`${draftRoot}/docs/specs/hello-001/brief.md`).then(() => true, () => false)).toBe(true);
+    expect(await fs.access(`${draftRoot}/docs/specs/hello-001/briefing.md`).then(() => true, () => false)).toBe(true);
     expect((await call('POST', '/api/projects/hello-app/specs/hello-002/restart')).status).toBe(409); // only awaiting-validation specs
   });
 
@@ -786,7 +786,7 @@ describe('refine api', () => {
     expect(await has(stale)).toBe(false);
     const snap = await (await fetch(`${base()}/api/refine/hello-app/hello-001`)).json();
     expect(snap.state.status).not.toBe('started');
-    expect(snap.docs['brief.md']).toContain('broken /hello');
+    expect(snap.docs['briefing.md']).toContain('broken /hello');
   });
 
   it('deletes a draft that never started, refuses a started one, and 404s a missing one', async () => {

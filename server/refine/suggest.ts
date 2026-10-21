@@ -7,12 +7,12 @@ import { buildWithDocs } from './docs-view.js';
 export type SuggestFile = Exclude<DocFile, 'flow.md'>;
 
 /** Read-only roles only: a suggestion returns text and must never touch the draft (Front may edit and run Bash). */
-export const SUGGEST_ROLE: Record<SuggestFile, 'po' | 'sm'> = { 'project.md': 'po', 'brief.md': 'po', 'stack.md': 'sm', 'design.md': 'po' };
+export const SUGGEST_ROLE: Record<SuggestFile, 'po' | 'sm'> = { 'project.md': 'po', 'briefing.md': 'po', 'stack.md': 'sm', 'design.md': 'po' };
 
-const TEMPLATE: Record<SuggestFile, (projectId: string) => string> = { 'project.md': projectTemplate, 'brief.md': briefTemplate, 'stack.md': stackTemplate, 'design.md': designTemplate };
+const TEMPLATE: Record<SuggestFile, (projectId: string) => string> = { 'project.md': projectTemplate, 'briefing.md': briefTemplate, 'stack.md': stackTemplate, 'design.md': designTemplate };
 
 /** Every document of the refinement draft. */
-export const DOC_FILES: DocFile[] = ['project.md', 'brief.md', 'stack.md', 'flow.md', 'design.md'];
+export const DOC_FILES: DocFile[] = ['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md'];
 
 /** Refinement "Sugerir": one step that writes `file` in full, coherent with the other four documents and their recorded decisions. */
 export function suggestPack(input: { file: SuggestFile; projectId: string; specHash: string; docs: Record<DocFile, string> }): ContextPackInput {

@@ -8,12 +8,12 @@ const journal = vi.hoisted(() => ({ events: [] as unknown[] }));
 vi.mock('../useSse.js', () => ({ useJournal: (url: string | null) => ({ events: url ? journal.events : [], ended: false, error: null }) }));
 
 const event = (seq: number, type: string, data: Record<string, unknown>): StoredEvent => ({ seq, at: '', runId: 'hello-app/hello-001', specHash: 'draft', type, kind: 'fact', data });
-const patch = { patchId: 'sm-c1-0', role: 'sm' as const, file: 'brief.md' as const, find: 'a', replace: 'b', reason: 'clearer', diff: '--- brief.md\n-a\n+b\n', cycle: 1 };
+const patch = { patchId: 'sm-c1-0', role: 'sm' as const, file: 'briefing.md' as const, find: 'a', replace: 'b', reason: 'clearer', diff: '--- briefing.md\n-a\n+b\n', cycle: 1 };
 const snapshot = (seq: number): Snapshot => ({
   projectId: 'hello-app',
   specId: 'hello-001',
   seq,
-  docs: { 'project.md': '# Hello', 'brief.md': 'a', 'stack.md': '# Stack', 'flow.md': '# Flow', 'design.md': '# Design' },
+  docs: { 'project.md': '# Hello', 'briefing.md': 'a', 'stack.md': '# Stack', 'flow.md': '# Flow', 'design.md': '# Design' },
   secrets: [],
   tokens: { inputTokens: 0, outputTokens: 0, costUsd: 0, steps: 0 },
   state: { status: 'error', stale: false, cycle: 1, derived: null, checklist: [], questions: [], patches: [{ ...patch, status: 'pending', decision: null }], discarded: [], moves: [], error: 'sm refine failed', runId: null },

@@ -11,7 +11,7 @@ const ALL = ['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po
 const base = (over: Partial<Snapshot['state']>): Snapshot => ({
   projectId: 'hello-app',
   specId: 'hello-001',
-  docs: { 'project.md': '# Hello', 'brief.md': '## Objectives', 'stack.md': '# Stack', 'flow.md': '# Flow', 'design.md': '# Design' },
+  docs: { 'project.md': '# Hello', 'briefing.md': '## Objectives', 'stack.md': '# Stack', 'flow.md': '# Flow', 'design.md': '# Design' },
   secrets: [{ name: 'DB_URL', present: false, hint: null, uses: [], mentions: [] }],
   tokens: { inputTokens: 10, outputTokens: 5, costUsd: 0.02, steps: 3 },
   state: {
@@ -24,7 +24,7 @@ const base = (over: Partial<Snapshot['state']>): Snapshot => ({
       { questionId: 'po-c1-0', role: 'po', text: 'Port?', blocking: true, relatedAcIds: ['AC-001'], cycle: 1, status: 'pending', answer: null },
       { questionId: 'sm-c1-0', role: 'sm', text: 'DB?', blocking: false, relatedAcIds: [], cycle: 1, status: 'pending', answer: null },
     ],
-    patches: [{ patchId: 'sm-c1-0', role: 'sm', file: 'brief.md', find: 'a', replace: 'b', reason: 'clearer', diff: '--- brief.md\n-a\n+b\n', cycle: 1, status: 'pending', decision: null }],
+    patches: [{ patchId: 'sm-c1-0', role: 'sm', file: 'briefing.md', find: 'a', replace: 'b', reason: 'clearer', diff: '--- briefing.md\n-a\n+b\n', cycle: 1, status: 'pending', decision: null }],
     discarded: [{ cycle: 1, role: 'po', file: 'docs/project.md', reason: 'find not found in project.md' }],
     moves: [],
     error: null,
@@ -65,7 +65,7 @@ describe('RefinementView re-evaluation', () => {
 
   it('re-evaluates at once when a document changed after the last evaluation', () => {
     const h = on();
-    const edited = event(4, 'DOC_EDITED', { file: 'brief.md' });
+    const edited = event(4, 'DOC_EDITED', { file: 'briefing.md' });
     render(<MemoryRouter><RefinementView snap={base({ cycle: 1, status: 'ready', stale: false })} busy={false} events={[evaluated, edited]} {...h} /></MemoryRouter>);
     fireEvent.click(screen.getByTestId('evaluate'));
     expect(h.onEvaluate).toHaveBeenCalledTimes(1);
@@ -83,7 +83,7 @@ describe('RefinementView re-evaluation', () => {
 describe('RefinementView divergences', () => {
   const divergence = {
     fact: 'porta da API',
-    a: { file: 'brief.md', heading: 'Porta', quote: 'A API responde na porta 8080' },
+    a: { file: 'briefing.md', heading: 'Porta', quote: 'A API responde na porta 8080' },
     b: { file: 'flow.md', heading: '1. Entrada', quote: 'chama a API pela porta 18080' },
     fix: 'Alinhe a porta nos dois documentos.',
   };
@@ -139,7 +139,7 @@ describe('RefinementView backlog mode', () => {
   const ready = { status: 'ready' as const, questions: [], patches: [], discarded: [], derived: null };
 
   // Plan 89 review: once ready a suggestion is optional, the detailing step follows the outline, and an approval stands apart.
-  const suggestion = { patchId: 'po-c1-0', role: 'po' as const, file: 'brief.md' as const, find: 'a', replace: 'b', reason: 'mais claro', diff: '--- briefing.md\n-a\n+b\n', cycle: 1, status: 'pending' as const, decision: null };
+  const suggestion = { patchId: 'po-c1-0', role: 'po' as const, file: 'briefing.md' as const, find: 'a', replace: 'b', reason: 'mais claro', diff: '--- briefing.md\n-a\n+b\n', cycle: 1, status: 'pending' as const, decision: null };
   it('counts a pending suggestion with the open questions', () => {
     const open = { questionId: 'po-c1-1', role: 'po' as const, text: 'Cor?', blocking: false, relatedAcIds: [], cycle: 1, status: 'pending' as const, answer: null };
     render(<MemoryRouter><RefinementView snap={base({ ...ready, questions: [open], patches: [suggestion] })} busy={false} {...on()} /></MemoryRouter>);
@@ -233,7 +233,7 @@ describe('RefinementView backlog mode', () => {
     render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog })} busy={false} {...on()} /></MemoryRouter>);
     const review = screen.getByRole('heading', { name: 'Área de revisão' }).closest('section') as HTMLElement;
     fireEvent.click(screen.getByRole('button', { name: 'briefing.md' }));
-    const documents = screen.getByTestId('doc-brief.md').closest('section') as HTMLElement;
+    const documents = screen.getByTestId('doc-briefing.md').closest('section') as HTMLElement;
     const next = within(review).getByText('Próximo passo:');
     expect(review.contains(screen.getByTestId('evaluate'))).toBe(true);
     expect(documents.contains(screen.getByTestId('evaluate'))).toBe(false);
@@ -392,9 +392,9 @@ describe('RefinementView', () => {
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByRole('button', { name: 'briefing.md' }));
-    fireEvent.change(screen.getByTestId('doc-brief.md'), { target: { value: '## Objectives\n- ship' } });
-    fireEvent.blur(screen.getByTestId('doc-brief.md'));
-    expect(h.onSaveDoc).toHaveBeenCalledWith('brief.md', '## Objectives\n- ship');
+    fireEvent.change(screen.getByTestId('doc-briefing.md'), { target: { value: '## Objectives\n- ship' } });
+    fireEvent.blur(screen.getByTestId('doc-briefing.md'));
+    expect(h.onSaveDoc).toHaveBeenCalledWith('briefing.md', '## Objectives\n- ship');
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(false);
     fireEvent.change(screen.getByTestId('secret-DB_URL'), { target: { value: 'x' } });
     fireEvent.click(screen.getByTestId('save-secret-DB_URL'));
@@ -415,7 +415,7 @@ describe('RefinementView', () => {
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByRole('button', { name: 'briefing.md' }));
-    expect((screen.getByTestId('doc-brief.md') as HTMLTextAreaElement).readOnly).toBe(true);
+    expect((screen.getByTestId('doc-briefing.md') as HTMLTextAreaElement).readOnly).toBe(true);
     expect((screen.getByTestId('evaluate') as HTMLButtonElement).disabled).toBe(true);
     render(
       <MemoryRouter>
@@ -544,7 +544,7 @@ describe('RefinementView: a new spec in an existing project', () => {
     expect(screen.getByTestId('docs-group-project').textContent).toContain('Contexto do projeto');
     expect(screen.getByTestId('docs-group-project').textContent).toContain('muda só com sua aprovação');
     fireEvent.click(screen.getByRole('button', { name: 'briefing.md' }));
-    expect(screen.getByTestId('doc-brief.md')).toBeTruthy();
+    expect(screen.getByTestId('doc-briefing.md')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: /\.md$/ }).map((b) => b.textContent)).toEqual(['briefing.md', 'flow.md', 'project.md', 'stack.md', 'design.md']);
     unmount();
     render(<MemoryRouter><RefinementView snap={base({ mode: 'new-project' })} busy={false} {...on()} /></MemoryRouter>);

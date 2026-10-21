@@ -24,7 +24,7 @@ beforeEach(async () => {
   await fs.mkdir(path.join(draftDocs, 'specs', 'hello-001'), { recursive: true });
   await fs.writeFile(path.join(draftDocs, 'project.md'), '# Hello');
   await fs.writeFile(path.join(draftDocs, 'project.json'), JSON.stringify(project));
-  await fs.writeFile(path.join(draftDocs, 'specs', 'hello-001', 'brief.md'), '## Objectives');
+  await fs.writeFile(path.join(draftDocs, 'specs', 'hello-001', 'briefing.md'), '## Objectives');
   await fs.writeFile(path.join(draftDocs, 'specs', 'hello-001', 'spec.json'), JSON.stringify(spec));
 });
 afterEach(() => remote.cleanup());
@@ -207,7 +207,7 @@ describe('phase 0', () => {
     await resumed.close();
   });
 
-  it('publishes a backlog item: its whole spec directory without brief.md, the docs main lacks, and nothing main already has', { timeout: 60_000 }, async () => {
+  it('publishes a backlog item: its whole spec directory without briefing.md, the docs main lacks, and nothing main already has', { timeout: 60_000 }, async () => {
     // Spec 1 already delivered and published; the draft still holds its stale planned copy and spec 2 planned on main.
     await remote.cleanup();
     remote = await makeRemote({

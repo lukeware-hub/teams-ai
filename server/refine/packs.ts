@@ -41,13 +41,13 @@ const ROLE_OWNERSHIP = {
 } as const;
 
 /** The documents each role may patch: its own, and flow.md, which both review. A patch elsewhere is discarded; any role may move content instead. */
-export const PATCH_FILES: Record<'po' | 'sm', readonly DocFile[]> = { po: ['project.md', 'brief.md', 'flow.md'], sm: ['stack.md', 'flow.md'] };
+export const PATCH_FILES: Record<'po' | 'sm', readonly DocFile[]> = { po: ['project.md', 'briefing.md', 'flow.md'], sm: ['stack.md', 'flow.md'] };
 
 /** The roles that may patch a document, by name: the owners the discarded patch's reason names. */
 export const patchOwners = (file: DocFile): string => (Object.keys(PATCH_FILES) as Array<'po' | 'sm'>).filter((role) => PATCH_FILES[role].includes(file)).join(' and ');
 
 /** The roles that own each document: the ones whose review carries that document's findings. */
-const DOC_OWNERS: Record<DocFile, ReadonlyArray<'po' | 'sm' | 'front'>> = { 'project.md': ['po'], 'brief.md': ['po'], 'stack.md': ['sm'], 'flow.md': ['po', 'sm'], 'design.md': ['front'] };
+const DOC_OWNERS: Record<DocFile, ReadonlyArray<'po' | 'sm' | 'front'>> = { 'project.md': ['po'], 'briefing.md': ['po'], 'stack.md': ['sm'], 'flow.md': ['po', 'sm'], 'design.md': ['front'] };
 
 /** Any role may move content that sits in the wrong document; the move is applied at once and the owner can undo it. */
 const MOVE_RULE = 'MOVES: content that sits in the wrong document is moved, not patched and not only reported. Do this first: read each of the five documents line by line against the document charter in your instructions, and move each piece that sits in the wrong one. An empty `moves` list is correct only when every line of every document belongs where it is. The four kinds to look for: a technology name or version outside stack.md (for example React, TypeScript, PostgreSQL or Node) moves to stack.md; a color, size, contrast value, spacing, font, or list of screens or portals outside design.md moves to design.md; a business rule or feature outside the briefing moves to the briefing, and a deadline, a limit or what is allowed is a business rule even when a step checks it; an order of steps, or a branch that picks the next step, outside flow.md moves to flow.md. Return one entry in `moves` per piece: `from` and `to` are document paths as listed above; `quote` is the whole lines to take out of `from`, copied character for character and found once in it; `text` is the same content for `to`, in that document style, keeping every fact, number and name: only the sentence form may change, and every word that names a place, a tool, a value or a name stays. A fact that conflicts with another document is never rewritten inside a move: the text moves as it is, and the conflict is reported on its own, so the text holds no remark about the move or about a conflict. `after` is an exact existing line of `to` to place the text below, or absent to append at the end; `reason` says why it belongs in `to`. Any role may move content between any two documents. A line that holds two kinds of content is not moved and not cut: its owner leaves the line as it is and reports the other part as a finding for the owner of that document, quoting its words exactly. A finding about a misplaced piece never replaces its move, and a piece that a pending question names in double quotes is not moved until the owner answers it. Move only a clear misplacement, never wording or polish, and never touch a decision under the decisions heading of the briefing. Moves are not held back by the convergence rule. Each move is applied at once and the owner can undo it, so keep moves small and at most 3 per review.';
@@ -106,7 +106,7 @@ export function reorganizePack(input: {
   changed: readonly DocFile[];
   projectBriefing?: boolean;
 }): ContextPackInput {
-  const docs: Record<DocFile, string | undefined> = { 'project.md': input.projectMd, 'brief.md': input.briefMd, 'stack.md': input.stackMd, 'flow.md': input.flowMd, 'design.md': input.designMd };
+  const docs: Record<DocFile, string | undefined> = { 'project.md': input.projectMd, 'briefing.md': input.briefMd, 'stack.md': input.stackMd, 'flow.md': input.flowMd, 'design.md': input.designMd };
   const sections = (Object.keys(docs) as DocFile[]).flatMap((file) => {
     const text = docs[file];
     if (text === undefined) return [];
@@ -163,7 +163,7 @@ export function refinePack(input: {
 }): ContextPackInput {
   const detail = input.backlog?.detail === true && !input.derived.spec;
   const rel = (file: keyof typeof DOC_REL) => DOC_REL[file](input.specId, input.projectBriefing);
-  const brief = input.projectBriefing ? 'briefing.md' : 'brief.md';
+  const brief = 'briefing.md';
   // A continued spec's decisions are answers too (R11.7.1).
   const recorded = (input.derived.spec?.decisions ?? []).map((d) => `- ${d.question}\n  answer: ${d.answer}`);
   const answered = [...recorded, ...input.history.filter((q) => q.status === 'answered').map((q) => `- [${q.role}] ${q.text}\n  answer: ${q.answer}`)];
@@ -200,7 +200,7 @@ export function refinePack(input: {
     ...(digested ? [DIGEST_NOTE] : []),
     `### ${rel('project.md')}`,
     d.project,
-    `### ${rel('brief.md')}`,
+    `### ${rel('briefing.md')}`,
     d.brief,
     ...(input.stackMd ? ['### stack.md', d.stack] : []),
     ...(input.flowMd ? ['### flow.md (Mermaid)', d.flow] : []),

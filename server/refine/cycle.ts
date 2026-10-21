@@ -136,7 +136,7 @@ function fillsTemplate(file: (typeof BLANK_FILES)[number], text: string): boolea
 const MAX_MOVES_PER_ROLE = 3;
 /** The reorganization pass is the whole job of its call, so it may move more than a review. */
 const REORGANIZE_MAX_MOVES = 20;
-const REORGANIZED_FILES: readonly DocFile[] = ['project.md', 'brief.md', 'stack.md', 'flow.md', 'design.md'];
+const REORGANIZED_FILES: readonly DocFile[] = ['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md'];
 
 /** The titles a question quotes in double quotes, normalized: the section a pending question is about. */
 const titlesOf = (texts: readonly string[]) => texts.flatMap((t) => [...t.matchAll(/"([^"]{4,})"/g)].map((m) => norm(m[1]!)));
@@ -279,13 +279,13 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const ctx = { journal, stepDir: draft.steps, specHash: hash, signal: deps.signal };
   const docs: Record<DocFile, string> = {
     'project.md': await readDoc(draft, 'project.md'),
-    'brief.md': await readDoc(draft, 'brief.md'),
+    'briefing.md': await readDoc(draft, 'briefing.md'),
     'stack.md': await readDoc(draft, 'stack.md'),
     'flow.md': await readDoc(draft, 'flow.md'),
     'design.md': await readDoc(draft, 'design.md'),
   };
   // The five docs by the names backlog items cite them with.
-  const backlogDocs = { 'project.md': docs['project.md'], 'briefing.md': docs['brief.md'], 'stack.md': docs['stack.md'], 'flow.md': docs['flow.md'], 'design.md': docs['design.md'] };
+  const backlogDocs = docs;
   const previous = await readDerived(draft);
   const fail = (reason: string) => journal.fact(RefineEvent.CycleFailed, { cycle, reason });
   let jevValidation: JevValidationResult | undefined;
@@ -295,7 +295,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     jevValidation = { available: true, decision: 'review', consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false };
     await journal.fact(RefineEvent.DocsValidated, { cycle, backend: 'jev', ...jevValidation, skipped: 'confidential' });
   } else if (deps.validateDocs) {
-    jevValidation = await deps.validateDocs({ project: docs['project.md'], briefing: docs['brief.md'], stack: docs['stack.md'], flow: docs['flow.md'], design: docs['design.md'] }).catch(() => ({ available: false, decision: 'review' as const, consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false }));
+    jevValidation = await deps.validateDocs({ project: docs['project.md'], briefing: docs['briefing.md'], stack: docs['stack.md'], flow: docs['flow.md'], design: docs['design.md'] }).catch(() => ({ available: false, decision: 'review' as const, consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false }));
     const validation = jevValidation;
     await journal.fact(RefineEvent.DocsValidated, { cycle, backend: 'jev', ...validation });
     // Jev findings are advisory (passed to Claude, PO, and SM), but Jev itself is required: no agent runs without it.
@@ -332,7 +332,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           {
             kind: 'backlog',
             role: 'po',
-            pack: fitPackBudget(backlogPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, jevValidation, rejection, started: started.map((i) => i.key) })),
+            pack: fitPackBudget(backlogPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, jevValidation, rejection, started: started.map((i) => i.key) })),
             cwd: draft.root,
             phase: 'refine',
             taskId: null,
@@ -344,7 +344,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           await fail(`backlog failed: ${out.failure}: ${out.errors.join('; ')}`);
           return;
         }
-        const checked = postProcessBacklog(out.value as BacklogOutput, previous, backlogDocs, approvedAdjustments(docs['brief.md']), started);
+        const checked = postProcessBacklog(out.value as BacklogOutput, previous, backlogDocs, approvedAdjustments(docs['briefing.md']), started);
         if (checked.ok) accepted = checked;
         else rejection = checked.issues;
       }
@@ -387,7 +387,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       {
         kind: 'derive',
         role: 'po',
-        pack: fitPackBudget(derivePack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, specId: draft.specId, jevValidation })),
+        pack: fitPackBudget(derivePack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, specId: draft.specId, jevValidation })),
         cwd: draft.root,
         phase: 'refine',
         taskId: null,
@@ -401,7 +401,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     }
     // A sibling spec of the same project (copied into the draft from main) may already use higher ids (R11.8).
     const floor = await maxCriterionInDraft(draft);
-    const checked = postProcessDerived(d.value as DeriveOutput, previous?.spec ?? null, draft.specId, floor, parseDecisions(docs['brief.md']));
+    const checked = postProcessDerived(d.value as DeriveOutput, previous?.spec ?? null, draft.specId, floor, parseDecisions(docs['briefing.md']));
     if (!checked.ok) {
       await fail(`derive: ${checked.issues.join('; ')}`);
       return;
@@ -427,7 +427,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         {
           kind: 'refine',
           role: 'po',
-          pack: fitPackBudget(reorganizePack({ specHash: hash, principles: deps.principles(), specId: draft.specId, projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], changed: group, projectBriefing: backlogMode })),
+          pack: fitPackBudget(reorganizePack({ specHash: hash, principles: deps.principles(), specId: draft.specId, projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], changed: group, projectBriefing: backlogMode })),
           cwd: draft.root,
           phase: 'refine',
           taskId: null,
@@ -449,7 +449,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   if (deps.frontAgent) {
     const askFront = () => deps.frontAgent!({ kind: 'refine', role: 'front',
       pack: fitPackBudget(refinePack({ role: 'front', specHash: hash, principles: deps.principles(), specId: draft.specId,
-        projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'],
+        projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'],
         derived, backlog, retrieval: [], history: journal.state.questions,
         rejected: journal.state.patches.filter((p) => p.status === 'rejected'), pending: journal.state.patches.filter((p) => p.status === 'pending'), findings: journal.state.findings, undoneMoves: journal.state.moves.filter((m) => m.status === 'undone'), jevValidation, projectBriefing: backlogMode, cycle })),
       cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, ctx);
@@ -474,7 +474,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           principles: deps.principles(),
           specId: draft.specId,
           projectMd: docs['project.md'],
-          briefMd: docs['brief.md'],
+          briefMd: docs['briefing.md'],
           stackMd: docs['stack.md'],
           flowMd: docs['flow.md'],
           designMd: docs['design.md'],
@@ -695,7 +695,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   let next = state.patches.filter((p) => p.cycle === cycle && p.role === 'po').length;
   for (const a of due) {
     const p = approvalPatch(a);
-    await journal.fact(RefineEvent.PatchProposed, { patchId: patchId('po', cycle, next++), role: 'po', file: 'brief.md', ...p, diff: unifiedDiff('brief.md', docs['brief.md'], applyPatch(docs['brief.md'], p)!), cycle });
+    await journal.fact(RefineEvent.PatchProposed, { patchId: patchId('po', cycle, next++), role: 'po', file: 'briefing.md', ...p, diff: unifiedDiff('briefing.md', docs['briefing.md'], applyPatch(docs['briefing.md'], p)!), cycle });
   }
 
   const checklist: ChecklistItem[] = mergeChecklist(po.value.checklist, sm.value.checklist);
@@ -733,7 +733,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   });
   const answers = await Promise.all(eligible.map(async (q) => {
     if (deps.signal?.aborted) return null;
-    const pack = fittedAnswerPack({ specHash: hash, role: q.role, question: q.text, docs: { projectMd: docs['project.md'], briefMd: docs['brief.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'] } });
+    const pack = fittedAnswerPack({ specHash: hash, role: q.role, question: q.text, docs: { projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'] } });
     if (!pack) return null;
     const out = (await deps.runAgent<'answer'>({ kind: 'answer', role: q.role, pack, cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, ctx)) as StepOutcome<AnswerOutput>;
     return out.ok && out.value.answer ? { questionId: q.questionId, text: out.value.answer, by: q.role } : null;

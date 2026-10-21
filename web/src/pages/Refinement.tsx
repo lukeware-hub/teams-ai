@@ -26,7 +26,7 @@ import { stageAction, stageOf, stageTitle, staleBlocksStart } from '../refine/st
 import { SpecTree } from '../refine/SpecTree.js';
 import { Workspace } from '../components/Workspace.js';
 
-type DocFile = 'project.md' | 'brief.md' | 'stack.md' | 'flow.md' | 'design.md';
+type DocFile = 'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md';
 const questionText = (text: string) => text.startsWith('What counts as valid client data?')
   ? 'Quais dados um cliente precisa ter? Nome, e-mail, telefone e observações são obrigatórios? Quais formatos e limites devemos aceitar? O e-mail pode se repetir? Se algum dado for inválido, devemos mostrar o erro de cada campo e retornar HTTP 400?'
   : text;
@@ -48,7 +48,7 @@ const errorText = (text: string | null) => text
 const typeLabel: Record<string, string> = { feature: 'Feature', bug: 'Bug', maintenance: 'Manutenção', refactor: 'Refatoração' };
 const docImpact: Record<DocFile, string> = {
   'project.md': 'Visão, público, princípios e restrições que valem para todas as demandas do projeto. Gera o project.json.',
-  'brief.md': 'O que esta demanda entrega: objetivos, escopo e critérios de aceite. Gera o spec.json.',
+  'briefing.md': 'O que esta demanda entrega: objetivos, escopo e critérios de aceite. Gera o spec.json.',
   'stack.md': 'Tecnologias, dependências e restrições técnicas. Orienta o plano técnico e a implementação.',
   'flow.md': 'Fluxos de uso e regras de negócio, passo a passo. Base dos critérios de aceite e dos testes.',
   'design.md': 'Contrato visual: cores, tipografia, componentes e acessibilidade. Seguido pelo agente Front, que cuida da interface.',
@@ -56,7 +56,7 @@ const docImpact: Record<DocFile, string> = {
 /** Short text for the info icon on each document tab. */
 const docTip: Record<DocFile, string> = {
   'project.md': 'Explica o que é o projeto, para quem ele serve e as regras que valem para todas as demandas.',
-  'brief.md': 'Diz o que esta demanda deve entregar: objetivos, o que entra, o que fica de fora e como saber que ficou pronto.',
+  'briefing.md': 'Diz o que esta demanda deve entregar: objetivos, o que entra, o que fica de fora e como saber que ficou pronto.',
   'stack.md': 'Lista as tecnologias, as dependências e os limites técnicos que os agentes precisam seguir.',
   'flow.md': 'Mostra, passo a passo, como o usuário usa o sistema e as regras do negócio. Serve de base para os critérios de aceite e os testes.',
   'design.md': 'Define o visual do projeto: cores, letras, componentes e acessibilidade. O agente Front segue este documento na interface.',
@@ -317,7 +317,7 @@ export function RefinementView(p: ViewProps) {
   // The base docs as JSON, by the names the generated files use; briefing.md is the brief in backlog mode.
   const docFiles = [
     { doc: 'flow.md', name: 'flow.json', text: snap.docs['flow.md'] },
-    { doc: 'briefing.md', name: 'briefing.json', text: snap.docs['brief.md'] },
+    { doc: 'briefing.md', name: 'briefing.json', text: snap.docs['briefing.md'] },
     { doc: 'stack.md', name: 'stack.json', text: snap.docs['stack.md'] },
     { doc: 'design.md', name: 'design.json', text: snap.docs['design.md'] },
   ];
@@ -405,7 +405,7 @@ export function RefinementView(p: ViewProps) {
         {docLabel[f]}
       </button>
       {/* The icon sits beside the tab: a button cannot hold another button. */}
-      <InfoTip text={backlogOn && f === 'brief.md' ? briefingImpact : docTip[f]} label={docLabel[f]} />
+      <InfoTip text={backlogOn && f === 'briefing.md' ? briefingImpact : docTip[f]} label={docLabel[f]} />
     </span>
   );
   const docsTitle = existing ? (st.mode === 'continue' ? 'Continuação da spec' : 'Spec nova') : 'Documentos do projeto';
@@ -423,7 +423,7 @@ export function RefinementView(p: ViewProps) {
         <div className="mb-4 flex flex-wrap gap-x-6 border-b border-line" role="tablist" aria-label="Documentos">
           <div className="flex flex-wrap items-center" data-testid="docs-group-spec">
             <span className={tabGroupLabel}>Spec</span>
-            {tabButton('brief.md')}
+            {tabButton('briefing.md')}
           </div>
           <div className="flex flex-wrap items-center" data-testid="docs-group-project">
             <span className={tabGroupLabel}>Contexto do projeto · muda só com sua aprovação</span>
@@ -432,10 +432,10 @@ export function RefinementView(p: ViewProps) {
         </div>
       ) : (
         <div className="mb-4 flex flex-wrap border-b border-line" role="tablist" aria-label="Documentos do projeto">
-          {(['flow.md', 'project.md', 'brief.md', 'stack.md', 'design.md'] as DocFile[]).map(tabButton)}
+          {(['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md'] as DocFile[]).map(tabButton)}
         </div>
       )}
-      <p data-testid="doc-impact" className="hint">{backlogOn && tab === 'brief.md' ? briefingImpact : docImpact[tab]}</p>
+      <p data-testid="doc-impact" className="hint">{backlogOn && tab === 'briefing.md' ? briefingImpact : docImpact[tab]}</p>
       <div className="grid gap-2">
         {/* The editor's actions sit above it, so they never cover the document's first lines. */}
         <div className="flex flex-col gap-2">

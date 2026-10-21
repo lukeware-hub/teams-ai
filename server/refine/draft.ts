@@ -33,14 +33,14 @@ export interface Draft {
   events: string;
   steps: (seq: number) => string;
 }
-export type DocFile = 'project.md' | 'brief.md' | 'stack.md' | 'flow.md' | 'design.md';
+export type DocFile = 'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md';
 
 export const BRIEFING_REL = 'docs/briefing.md';
 
-/** `brief.md` is the briefing: the draft's own file for one spec, or the target project's `docs/briefing.md` in backlog mode. */
+/** `briefing.md` is the briefing: the draft's own file for one spec, or the target project's `docs/briefing.md` in backlog mode. */
 export const DOC_REL: Record<DocFile, (specId: string, projectBriefing?: boolean) => string> = {
   'project.md': () => 'docs/project.md',
-  'brief.md': (specId, projectBriefing = false) => (projectBriefing ? BRIEFING_REL : `docs/specs/${specId}/brief.md`),
+  'briefing.md': (specId, projectBriefing = false) => (projectBriefing ? BRIEFING_REL : `docs/specs/${specId}/briefing.md`),
   'stack.md': () => 'docs/stack.md',
   'flow.md': () => 'docs/flow.md',
   'design.md': () => 'docs/design.md',
@@ -60,7 +60,7 @@ export function draftPaths(ws: Workspace, specId: string): Draft {
     docs,
     projectMd: path.posix.join(docs, 'project.md'),
     projectJson: path.posix.join(docs, 'project.json'),
-    briefMd: path.posix.join(docs, 'specs', specId, 'brief.md'),
+    briefMd: path.posix.join(docs, 'specs', specId, 'briefing.md'),
     briefingMd: path.posix.join(docs, 'briefing.md'),
     stackMd: path.posix.join(docs, 'stack.md'),
     flowMd: path.posix.join(docs, 'flow.md'),
@@ -72,7 +72,7 @@ export function draftPaths(ws: Workspace, specId: string): Draft {
   };
 }
 
-export const docPath = (d: Draft, file: DocFile): string => ({ 'project.md': d.projectMd, 'brief.md': d.briefMd, 'stack.md': d.stackMd, 'flow.md': d.flowMd, 'design.md': d.designMd ?? path.posix.join(d.docs, 'design.md') })[file];
+export const docPath = (d: Draft, file: DocFile): string => ({ 'project.md': d.projectMd, 'briefing.md': d.briefMd, 'stack.md': d.stackMd, 'flow.md': d.flowMd, 'design.md': d.designMd ?? path.posix.join(d.docs, 'design.md') })[file];
 
 export function projectTemplate(name: string): string {
   return `# ${name}\n\n## Vision\n\n<what the product is and why it exists>\n\n## Personas\n\n- <name>: <who they are and what they need>\n\n## Constraints\n\n- <free-text constraint>\n\n## Stack\n\n<optional; leave empty to let the Dev choose>\n\n## Principles\n\n- <non-negotiable rule every agent follows>\n\n## Deploy target\n\ndocker-local\n\n## GitHub owner\n\n<optional override of config.json github.owner>\n`;
@@ -131,13 +131,22 @@ export function renderBriefMd(s: Spec, validationReport?: string, routing?: Repo
 
 const exists = (file: string): Promise<boolean> => fs.access(file).then(() => true, () => false);
 const briefingPath = (d: Draft): string => d.briefingMd ?? path.posix.join(d.docs, 'briefing.md');
+/** The name a spec's briefing had before the rename to briefing.md; read until the first save writes briefing.md. */
+const legacyBriefPath = (d: Draft): string => path.posix.join(d.docs, 'specs', d.specId, 'brief.md');
 
-/** The briefing a draft edits: its own brief.md for one spec, else the target project's docs/briefing.md (backlog mode). */
+/** The briefing a draft writes: its own briefing.md for one spec, else the target project's docs/briefing.md (backlog mode). */
 async function briefPath(d: Draft): Promise<string> {
   return (await exists(d.briefMd)) || !(await exists(briefingPath(d))) ? d.briefMd : briefingPath(d);
 }
 
-export const draftExists = async (d: Draft): Promise<boolean> => (await exists(d.briefMd)) || exists(briefingPath(d));
+/** The briefing a draft reads: as briefPath, but a spec still holding only the legacy brief.md reads that file. */
+async function readBriefPath(d: Draft): Promise<string> {
+  const current = await briefPath(d);
+  return !(await exists(current)) && (await exists(legacyBriefPath(d))) ? legacyBriefPath(d) : current;
+}
+
+export const draftExists = async (d: Draft): Promise<boolean> =>
+  (await exists(d.briefMd)) || (await exists(legacyBriefPath(d))) || exists(briefingPath(d));
 
 /**
  * Backlog mode: the draft's brief becomes the target project's `docs/briefing.md`, so the five docs live together and a
@@ -234,7 +243,7 @@ export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: {
 
 export async function readDoc(d: Draft, file: DocFile): Promise<string> {
   try {
-    return await fs.readFile(file === 'brief.md' ? await briefPath(d) : docPath(d, file), 'utf8');
+    return await fs.readFile(file === 'briefing.md' ? await readBriefPath(d) : docPath(d, file), 'utf8');
   } catch (err) {
     // Older drafts predate design.md; treat the new contract as its migration default.
     if (file === 'design.md' && (err as NodeJS.ErrnoException).code === 'ENOENT') return designTemplate();
@@ -243,7 +252,7 @@ export async function readDoc(d: Draft, file: DocFile): Promise<string> {
 }
 /** Docs end with a newline: they are copied verbatim into the project repo, where a format gate will check them. */
 const withNewline = (text: string): string => (text.endsWith('\n') ? text : `${text}\n`);
-export const writeDoc = async (d: Draft, file: DocFile, text: string): Promise<void> => fs.writeFile(file === 'brief.md' ? await briefPath(d) : docPath(d, file), withNewline(text));
+export const writeDoc = async (d: Draft, file: DocFile, text: string): Promise<void> => fs.writeFile(file === 'briefing.md' ? await briefPath(d) : docPath(d, file), withNewline(text));
 
 /** A file of the base copy, or null when the draft has no base or the file was not in it. */
 export const readBase = (d: Draft, rel: string): Promise<string | null> =>
@@ -333,6 +342,6 @@ export const writeSpecsIndex = (d: Draft, index: unknown): Promise<void> => fs.w
 export const writeBacklogMd = (d: Draft, text: string): Promise<void> => fs.writeFile(path.posix.join(d.docs, 'backlog.md'), withNewline(text));
 
 export async function draftHash(d: Draft): Promise<string> {
-  const [project, brief, stack, flow, design] = await Promise.all([readDoc(d, 'project.md'), readDoc(d, 'brief.md'), readDoc(d, 'stack.md'), readDoc(d, 'flow.md'), readDoc(d, 'design.md')]);
-  return sha256(canonicalJson({ project, brief, stack, flow, design }));
+  const [project, briefing, stack, flow, design] = await Promise.all([readDoc(d, 'project.md'), readDoc(d, 'briefing.md'), readDoc(d, 'stack.md'), readDoc(d, 'flow.md'), readDoc(d, 'design.md')]);
+  return sha256(canonicalJson({ project, brief: briefing, stack, flow, design }));
 }

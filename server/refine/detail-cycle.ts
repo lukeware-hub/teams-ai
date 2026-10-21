@@ -51,7 +51,7 @@ function uniquePairs(pairs: ConflictsOutput['pairs'], keys: ReadonlySet<string>)
 /** A JSON file, or null when it is missing or unreadable: a broken generated file never blocks the refinement. */
 const readJson = (file: string): Promise<unknown> => fs.readFile(file, 'utf8').then((t) => JSON.parse(t) as unknown).catch(() => null);
 
-/** Generated files of a backlog item: spec.json and spec.md (never brief.md, the hand-edited briefing's name). */
+/** Generated files of a backlog item: spec.json and spec.md (never briefing.md, the hand-edited briefing's name). */
 async function writeItemSpec(draft: Draft, spec: Spec, status: 'refining' | 'planned'): Promise<void> {
   const dir = itemDir(draft, spec.specId);
   await fs.mkdir(dir, { recursive: true });

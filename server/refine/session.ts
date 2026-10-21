@@ -130,7 +130,7 @@ export interface Snapshot {
   projectId: string;
   specId: string;
   state: RefineState;
-  docs: { 'project.md': string; 'brief.md': string; 'stack.md': string; 'flow.md': string; 'design.md': string };
+  docs: { 'project.md': string; 'briefing.md': string; 'stack.md': string; 'flow.md': string; 'design.md': string };
   secrets: SecretRow[];
   tokens: { inputTokens: number; outputTokens: number; costUsd: number; steps: number };
   /** True from the evaluate call on, even before the cycle journals that it started. */
@@ -232,7 +232,7 @@ export class RefineSession {
   async snapshot(): Promise<Snapshot> {
     const docs = {
       'project.md': await readDoc(this.deps.draft, 'project.md'),
-      'brief.md': await readDoc(this.deps.draft, 'brief.md'),
+      'briefing.md': await readDoc(this.deps.draft, 'briefing.md'),
       'stack.md': await readDoc(this.deps.draft, 'stack.md'),
       'flow.md': await readDoc(this.deps.draft, 'flow.md'),
       'design.md': await readDoc(this.deps.draft, 'design.md'),
@@ -319,9 +319,9 @@ export class RefineSession {
     // Plan 90: the owner's earlier answers go into the brief before the move, which carries them, so a crash loses none.
     const answered = this.state.questions.filter((q) => q.status === 'answered' && q.answer && !q.answeredBy);
     if (answered.length > 0) {
-      const after = answered.reduce((doc, q) => recordDecision(doc, q.text, q.answer!, q.subject), await readDoc(this.deps.draft, 'brief.md'));
-      await writeDoc(this.deps.draft, 'brief.md', after);
-      await this.journal.fact(RefineEvent.DocEdited, { file: 'brief.md', hash: sha256(after), source: 'decision' });
+      const after = answered.reduce((doc, q) => recordDecision(doc, q.text, q.answer!, q.subject), await readDoc(this.deps.draft, 'briefing.md'));
+      await writeDoc(this.deps.draft, 'briefing.md', after);
+      await this.journal.fact(RefineEvent.DocEdited, { file: 'briefing.md', hash: sha256(after), source: 'decision' });
     }
     // The move removes this draft's own spec.json (a continued spec's, on main): its criterion ids stay the numbering floor.
     await this.journal.fact(RefineEvent.BacklogEnabled, { acFloor: await maxCriterionInDraft(this.deps.draft), keyIds: true });
@@ -424,9 +424,9 @@ export class RefineSession {
     const q = this.question(questionId);
     // R11.10 (plan 90): a backlog reads the owner's answer from the briefing; written first, a retry rewrites the same heading.
     if (this.state.backlog?.enabled) {
-      const after = recordDecision(await readDoc(this.deps.draft, 'brief.md'), q.text, text, q.subject);
-      await writeDoc(this.deps.draft, 'brief.md', after);
-      await this.journal.fact(RefineEvent.DocEdited, { file: 'brief.md', hash: sha256(after), source: 'decision' });
+      const after = recordDecision(await readDoc(this.deps.draft, 'briefing.md'), q.text, text, q.subject);
+      await writeDoc(this.deps.draft, 'briefing.md', after);
+      await this.journal.fact(RefineEvent.DocEdited, { file: 'briefing.md', hash: sha256(after), source: 'decision' });
     }
     await this.journal.fact(RefineEvent.QuestionAnswered, { questionId, text, ...(docsAnswered ? { docsAnswered: true } : {}) });
   }

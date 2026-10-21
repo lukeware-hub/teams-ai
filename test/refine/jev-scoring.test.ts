@@ -11,7 +11,7 @@ interface Sent {
   questions: Record<string, { instructions: string; criteria: { true: string; false: string } }>;
 }
 
-const TEXTS = { 'project.md': 'P', 'brief.md': 'B', 'stack.md': 'S', 'flow.md': 'F', 'design.md': 'D' } as Record<DocFile, string>;
+const TEXTS = { 'project.md': 'P', 'briefing.md': 'B', 'stack.md': 'S', 'flow.md': 'F', 'design.md': 'D' } as Record<DocFile, string>;
 const KEY = async () => ({ OPENROUTER_API_KEY: 'secret-key' });
 const scorer = () => createJevScorer(loadConfig({}), KEY);
 const originalFetch = globalThis.fetch;

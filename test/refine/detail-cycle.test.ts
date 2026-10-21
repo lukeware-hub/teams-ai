@@ -80,7 +80,7 @@ async function setup(existing?: string) {
   await mkdir(docs, { recursive: true });
   const draft = {
     projectId: 'big', specId: 'big-001', root, docs, base: `${root}/.base/docs`,
-    projectMd: `${docs}/project.md`, projectJson: `${docs}/project.json`, briefMd: `${docs}/specs/big-001/brief.md`, briefingMd: `${docs}/briefing.md`,
+    projectMd: `${docs}/project.md`, projectJson: `${docs}/project.json`, briefMd: `${docs}/specs/big-001/briefing.md`, briefingMd: `${docs}/briefing.md`,
     stackMd: `${docs}/stack.md`, flowMd: `${docs}/flow.md`, designMd: `${docs}/design.md`,
     specJson: `${docs}/specs/big-001/spec.json`, events: `${root}/events.ndjson`, steps: (seq: number) => `${root}/steps/${seq}`,
   };
@@ -309,7 +309,7 @@ describe('backlog detailing in the refinement cycle', () => {
   it('asks the owner once to approve an adjustment of a delivered item whose cited section changed', async () => {
     const { second, agent, detailing } = await secondDraft(deliveredThenChanged);
     expect(detailing).toEqual([]);
-    expect(approvals(second)).toEqual([expect.objectContaining({ role: 'po', file: 'brief.md', find: '', status: 'pending' })]);
+    expect(approvals(second)).toEqual([expect.objectContaining({ role: 'po', file: 'briefing.md', find: '', status: 'pending' })]);
     expect(approvals(second)[0]!.replace).toMatch(/^## Ajuste aprovado: opme-ajuste-1\n/);
     expect(approvals(second)[0]!.reason).toContain('flow.md › 3. OPME');
     expect(second.journal.state.status).toBe('answering');

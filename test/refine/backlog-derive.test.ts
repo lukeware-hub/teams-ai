@@ -32,7 +32,7 @@ describe('backlogPack', () => {
     expect(pack.outputContract).toContain('"backlog"');
     // The briefing is the target project's docs/briefing.md: the agents cite and read it by that name only.
     expect(pack.feedback).toContain('### briefing.md');
-    expect(pack.feedback).not.toContain('brief.md');
+    expect(pack.feedback).not.toContain('docs/specs/');
   });
 
   // Plan 87 review: narrowing a started item's citations reads as a change and asks the owner for an adjustment (R11.7.4).

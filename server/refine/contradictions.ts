@@ -2,7 +2,7 @@ import type { Contradiction } from '../agents/outputs.js';
 import type { Divergence, DivergenceSide } from './checklist.js';
 import { docSections, normHeading } from './sections.js';
 
-/** Document texts by file name, as the refinement cycle keeps them (`brief.md` is the briefing). */
+/** Document texts by file name, as the refinement cycle keeps them (`briefing.md` is the briefing). */
 export type DocTexts = Record<string, string>;
 
 const MIN_WORDS = 2;
@@ -10,8 +10,7 @@ const MIN_WORDS = 2;
 /** The file the agent meant: its base name, with the briefing under the name the cycle uses. */
 function fileOf(file: string, docs: DocTexts): string | null {
   const base = file.split(/[\\/]/).pop()!.toLowerCase();
-  const name = base === 'briefing.md' ? 'brief.md' : base;
-  return Object.hasOwn(docs, name) ? name : null;
+  return Object.hasOwn(docs, base) ? base : null;
 }
 
 /** Finds the quote in its document and names the innermost section holding it; null when the quote is not there. */

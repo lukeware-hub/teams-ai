@@ -11,7 +11,7 @@ const ALL = ['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po
 const project = (over: Partial<Snapshot['state']>): Snapshot => ({
   projectId: 'hello-app',
   specId: 'hello-app-001',
-  docs: { 'project.md': '# Hello', 'brief.md': '## Objectives', 'stack.md': '# Stack', 'flow.md': '# Flow', 'design.md': '# Design' },
+  docs: { 'project.md': '# Hello', 'briefing.md': '## Objectives', 'stack.md': '# Stack', 'flow.md': '# Flow', 'design.md': '# Design' },
   secrets: [],
   tokens: { inputTokens: 10, outputTokens: 5, costUsd: 0.02, steps: 3 },
   state: {

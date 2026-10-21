@@ -1,7 +1,7 @@
 /**
  * Calibration of the Jev document score (plan 91, phase C): scores each set of documents with the real scorer.
  *   OPENROUTER_API_KEY=... npx tsx scripts/evals/doc-readiness.ts <name>=<docs dir> ... [--out <file.json>]
- * A docs dir holds project.md, briefing.md (or brief.md), stack.md, flow.md and design.md.
+ * A docs dir holds project.md, briefing.md (or briefing.md), stack.md, flow.md and design.md.
  */
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -12,7 +12,7 @@ import { SCORE_CHECKS, type DocsScoreRecord } from '../../server/refine/readines
 
 const FILES: Array<{ file: DocFile; names: string[] }> = [
   { file: 'project.md', names: ['project.md'] },
-  { file: 'brief.md', names: ['briefing.md', 'brief.md'] },
+  { file: 'briefing.md', names: ['briefing.md', 'brief.md'] },
   { file: 'stack.md', names: ['stack.md'] },
   { file: 'flow.md', names: ['flow.md'] },
   { file: 'design.md', names: ['design.md'] },

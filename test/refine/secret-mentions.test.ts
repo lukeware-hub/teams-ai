@@ -38,6 +38,6 @@ describe('sectionsMentioning', () => {
   });
 
   it('counts a section once even when the name repeats in it', () => {
-    expect(sectionsMentioning({ 'brief.md': '## A\nDB_URL\nDB_URL' }, 'DB_URL')).toEqual([{ doc: 'brief.md', heading: 'A' }]);
+    expect(sectionsMentioning({ 'briefing.md': '## A\nDB_URL\nDB_URL' }, 'DB_URL')).toEqual([{ doc: 'briefing.md', heading: 'A' }]);
   });
 });

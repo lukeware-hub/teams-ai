@@ -26,7 +26,7 @@ describe('refinement cycle Jev advisory', () => {
       docs,
       projectMd: path.join(docs, 'project.md'),
       projectJson: path.join(docs, 'project.json'),
-      briefMd: path.join(docs, 'brief.md'),
+      briefMd: path.join(docs, 'briefing.md'),
       stackMd: path.join(docs, 'stack.md'),
       flowMd: path.join(docs, 'flow.md'),
       designMd: path.join(docs, 'design.md'),
@@ -201,7 +201,7 @@ describe('refinement cycle flow.md must be mermaid (R11.11)', () => {
     await mkdir(docs, { recursive: true });
     const draft = {
       projectId: 'shop', specId: spec.specId, root, docs,
-      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'briefing.md'),
       stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
       specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
     };
@@ -316,7 +316,7 @@ describe('refinement cycle patch dedup (R11.10)', () => {
     await mkdir(docs, { recursive: true });
     const draft = {
       projectId: 'shop', specId: spec.specId, root, docs,
-      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'briefing.md'),
       stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
       specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
     };
@@ -351,7 +351,7 @@ describe('refinement cycle suggestions that still wait for the owner', () => {
     await mkdir(docs, { recursive: true });
     const draft = {
       projectId: 'shop', specId: spec.specId, root, docs,
-      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'briefing.md'),
       stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
       specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
     };
@@ -359,8 +359,8 @@ describe('refinement cycle suggestions that still wait for the owner', () => {
     await Promise.all([draft.projectMd, draft.stackMd, draft.flowMd, draft.designMd].map((f) => writeFile(f, '# doc')));
     const events: Array<{ type: string; data: Record<string, unknown> }> = [];
     const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'r', specHash: 'h', type, kind: 'fact', data } as never; } } as never as Parameters<typeof runCycle>[0]['journal'];
-    const file = `docs/specs/${spec.specId}/brief.md`;
-    const waiting = { patchId: 'po-c1-0', role: 'po', file: 'brief.md', find: 'TODO: port.', replace: 'Port: 8080.', reason: 'fill in the port', diff: '', cycle: 1, status: 'pending', decision: null };
+    const file = `docs/specs/${spec.specId}/briefing.md`;
+    const waiting = { patchId: 'po-c1-0', role: 'po', file: 'briefing.md', find: 'TODO: port.', replace: 'Port: 8080.', reason: 'fill in the port', diff: '', cycle: 1, status: 'pending', decision: null };
     journal.state.patches.push(waiting as never);
     const ok = (value: unknown) => ({ ok: true, value, summary: {} });
     const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
@@ -391,7 +391,7 @@ describe('refinement cycle repeated design.md headings', () => {
     await mkdir(docs, { recursive: true });
     const draft = {
       projectId: 'shop', specId: spec.specId, root, docs,
-      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'briefing.md'),
       stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
       specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
     };
@@ -434,7 +434,7 @@ describe('refinement cycle patch dedup (R11.5a item 2)', () => {
     await mkdir(docs, { recursive: true });
     const draft = {
       projectId: 'shop', specId: spec.specId, root, docs,
-      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'briefing.md'),
       stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
       specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
     };
@@ -474,7 +474,7 @@ describe('refinement cycle patch dedup (R11.5a item 2)', () => {
     await mkdir(docs, { recursive: true });
     const draft = {
       projectId: 'shop', specId: spec.specId, root, docs,
-      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'briefing.md'),
       stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
       specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
     };
@@ -512,7 +512,7 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
     await mkdir(docs, { recursive: true });
     const draft = {
       projectId: 'shop', specId: spec.specId, root, docs,
-      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'briefing.md'),
       stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
       specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
     };
@@ -548,7 +548,7 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
     await mkdir(docs, { recursive: true });
     const draft = {
       projectId: 'shop', specId: spec.specId, root, docs,
-      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'briefing.md'),
       stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
       specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
     };
@@ -576,7 +576,7 @@ describe('refinement cycle question routing (plan 53, R11.5a slice 1)', () => {
     await mkdir(docs, { recursive: true });
     const draft = {
       projectId: 'shop', specId: spec.specId, root, docs,
-      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'briefing.md'),
       stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
       specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
     };
@@ -734,7 +734,7 @@ describe('refinement cycle System 1 filters (decisions 2-4)', () => {
     await mkdir(docs, { recursive: true });
     const draft = {
       projectId: 'shop', specId: spec.specId, root, docs,
-      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'briefing.md'),
       stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
       specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
     };
@@ -787,7 +787,7 @@ const setup = async (brief: string) => {
   await mkdir(docs, { recursive: true });
   const draft = {
     projectId: 'big', specId: 'big-001', root, docs,
-    projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+    projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'briefing.md'),
     stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
     specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
   };
@@ -826,7 +826,7 @@ describe('refinement cycle Jev requirement', () => {
     await mkdir(docs, { recursive: true });
     const draft = {
       projectId: 'demo', specId: 'demo-001', root, docs,
-      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'briefing.md'),
       stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
       specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
     };
@@ -854,7 +854,7 @@ describe('refinement cycle of a confidential project', () => {
     await mkdir(docs, { recursive: true });
     const draft = {
       projectId: 'demo', specId: 'demo-001', root, docs,
-      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'brief.md'),
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'briefing.md'),
       stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
       specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
     };
