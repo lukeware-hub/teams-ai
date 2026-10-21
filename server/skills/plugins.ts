@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ROLES, type Role } from '../config/roles.js';
 import { PINNED_SKILLS, type PinnedSkill } from './catalog.js';
 import { assignedSkills, skillCacheDir } from './store.js';
@@ -83,19 +84,29 @@ async function writePlugin(dir: string, name: string, role: Role): Promise<void>
   await fs.writeFile(path.join(dir, '.claude-plugin', 'plugin.json'), `${JSON.stringify({ name, version: '1.0.0', description: `Skills installed for the ${role} role` }, null, 2)}\n`);
 }
 
+/** The language skills of the repository (`skills/<language>`), installed for every role. */
+export const LANGUAGE_SKILLS_DIR = fileURLToPath(new URL('../../skills', import.meta.url));
+
+async function languageSources(languageDir: string): Promise<Array<{ id: string; source: string }>> {
+  const entries = await fs.readdir(languageDir, { withFileTypes: true }).catch(() => []);
+  return entries.filter((entry) => entry.isDirectory()).map((entry) => ({ id: 'language', source: path.join(languageDir, entry.name) }));
+}
+
 /**
  * Installs the native skills of every role as a plugin folder `<outRoot>/<role>`: the real skill folders of the
- * pinned repositories, as upstream ships them. Roles with no native skill get no folder. Built once, then read-only.
+ * pinned repositories, as upstream ships them, plus the language skills. Built once, then read-only.
  */
-export async function buildRolePlugins(cacheRoot: string, outRoot: string, catalog: readonly PinnedSkill[] = PINNED_SKILLS): Promise<void> {
+export async function buildRolePlugins(cacheRoot: string, outRoot: string, catalog: readonly PinnedSkill[] = PINNED_SKILLS, languageDir: string = LANGUAGE_SKILLS_DIR): Promise<void> {
+  const languages = await languageSources(languageDir);
   for (const role of ROLES) {
     const target = path.join(outRoot, role);
-    const skills = await syncedOnly(cacheRoot, catalog.filter((skill) => !skill.reference && skill.roles.includes(role)));
+    const pinned = await syncedOnly(cacheRoot, catalog.filter((skill) => !skill.reference && skill.roles.includes(role)));
+    const sources = [...pinned.map((skill) => ({ id: skill.id, source: sourceOf(cacheRoot, skill) })), ...languages];
     await fs.rm(target, { recursive: true, force: true });
-    if (skills.length === 0) continue;
+    if (sources.length === 0) continue;
     const staged = `${target}.tmp-${process.pid}`;
     await fs.rm(staged, { recursive: true, force: true });
-    await installSkills(staged, skills.map((skill) => ({ id: skill.id, source: sourceOf(cacheRoot, skill) })), `role ${role}`);
+    await installSkills(staged, sources, `role ${role}`);
     await writePlugin(staged, `teams-ai-${role}`, role);
     await fs.rename(staged, target);
   }

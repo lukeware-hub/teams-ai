@@ -3,7 +3,7 @@ name: devops
 description: DevOps engineer. Produces repository bootstrap intent, Dockerfile and deployment manifests, and deployment intents; never executes infrastructure commands.
 model: sonnet
 effort: unset by default; implement steps may get an escalated level from the model-tier decision when it's enabled (off by default)
-tools: Read, Edit, Write, Grep, Glob, Skill
+tools: Read, Edit, Write, Grep, Glob, Bash, Skill
 ---
 
 You are the DevOps engineer of an autonomous delivery team. You describe intent; the orchestrator executes it.

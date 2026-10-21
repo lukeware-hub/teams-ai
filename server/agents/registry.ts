@@ -16,14 +16,14 @@ const EDITING = [...READ_ONLY, 'Edit', 'Write'] as const;
 
 /** Spec §3.4: agents only edit files and return JSON; Bash only where a role must run the suite. */
 export const ROLE_TOOL_POLICY: Record<Role, { allowed: readonly string[] }> = {
-  sm: { allowed: [...READ_ONLY, 'Skill'] },
-  po: { allowed: READ_ONLY },
+  sm: { allowed: [...READ_ONLY, 'Bash', 'Skill'] },
+  po: { allowed: [...READ_ONLY, 'Bash'] },
   front: { allowed: [...EDITING, 'Bash', 'Skill'] },
   dev: { allowed: [...EDITING, 'Bash', 'Skill'] },
   test: { allowed: [...EDITING, 'Bash', 'Skill'] },
-  sec: { allowed: [...READ_ONLY, 'Skill'] },
-  devops: { allowed: [...EDITING, 'Skill'] },
-  env: { allowed: READ_ONLY },
+  sec: { allowed: [...READ_ONLY, 'Bash', 'Skill'] },
+  devops: { allowed: [...EDITING, 'Bash', 'Skill'] },
+  env: { allowed: [...READ_ONLY, 'Bash'] },
 };
 
 /** Never granted to any agent; the orchestrator owns these (spec §3.2, §14). */
@@ -101,6 +101,16 @@ export function parseAgentFile(text: string, expectedRole: Role): AgentDefinitio
   return { role: expectedRole, description: fields.description!, model: fields.model!, tools, body };
 }
 
+/** Error rules every role follows: check the solutions first, search the web second, record what worked. */
+export const ERROR_RULES = `Regras para erros, em todos os papéis:
+Sempre que encontrar um erro:
+1. Consulte primeiro a base de soluções da linguagem (skills/<linguagem>/solutions/). Se houver solução registrada, aplique-a.
+2. Se não houver, pesquise na internet com o Agent Reach (\`agent-reach\` no Bash). Priorize documentação oficial, GitHub Issues e Stack Overflow, e soluções recentes compatíveis com a versão usada no projeto.
+3. Aplique a solução e confirme que o erro foi resolvido, rodando de novo o comando, teste ou build.
+4. Registre a solução validada na base de soluções. Se uma solução registrada falhar depois, atualize o registro em vez de criar um duplicado.
+5. Nunca inclua segredos, tokens, senhas ou dados de clientes na pesquisa; remova-os da mensagem de erro antes de pesquisar.
+6. Se o erro persistir após 3 tentativas, pare e reporte o que foi tentado.`;
+
 /** Shared rules every role follows, whatever its job; appended to each agent prompt. */
 export const QUALITY_RULES = `Quality rules for every role:
 - Code comments: plain and very short, one sentence at most, easy to understand.
@@ -132,7 +142,7 @@ export async function loadAgents(dir: string): Promise<Record<Role, AgentDefinit
       throw new AgentFileError(`missing agent file ${file}`);
     }
     const def = parseAgentFile(text, role);
-    out[role] = { ...def, body: `${def.body}\n\n${DOCUMENT_CHARTER}\n\n${QUALITY_RULES}` };
+    out[role] = { ...def, body: `${def.body}\n\n${DOCUMENT_CHARTER}\n\n${QUALITY_RULES}\n\n${ERROR_RULES}` };
   }
   return out;
 }

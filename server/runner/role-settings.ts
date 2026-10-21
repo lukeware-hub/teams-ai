@@ -53,6 +53,8 @@ const SUITE_BASH = [
   'Bash(true:*)',
   ...STACK_BASH,
 ] as const;
+/** Every role may run the Agent Reach CLI for web research, and nothing else from Bash. */
+const AGENT_REACH_ALLOW = ['Bash(agent-reach:*)'] as const;
 // `find` is deliberately absent (audit H3): `-exec` runs any command; use ls/grep.
 const ROLE_ALLOW: Record<Role, readonly string[]> = {
   sm: ['Skill'],
@@ -118,7 +120,7 @@ export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSet
   const denyWrite = (input.protectedDirs ?? []).map((d) => d.replace(/\/+$/, ''));
   return {
     sandbox: { enabled: input.sandboxEnabled ?? true, network: { allowedDomains: [...input.allowedDomains] }, ...(denyRead.length + denyWrite.length > 0 ? { filesystem: { denyRead, denyWrite } } : {}) },
-    permissions: { allow: [...ROLE_ALLOW[role], ...(input.extraAllow ?? [])], deny: [...new Set(deny)] },
+    permissions: { allow: [...ROLE_ALLOW[role], ...AGENT_REACH_ALLOW, ...(input.extraAllow ?? [])], deny: [...new Set(deny)] },
   };
 }
 

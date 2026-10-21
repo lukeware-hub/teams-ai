@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DOCUMENT_CHARTER } from '../../server/agents/document-charter.js';
-import { ALWAYS_DENIED, AgentFileError, QUALITY_RULES, ROLE_TOOL_POLICY, loadAgents, parseAgentFile } from '../../server/agents/registry.js';
+import { ALWAYS_DENIED, AgentFileError, ERROR_RULES, QUALITY_RULES, ROLE_TOOL_POLICY, loadAgents, parseAgentFile } from '../../server/agents/registry.js';
 import { PO_ITEMS, SM_ITEMS } from '../../server/refine/checklist.js';
 
 const AGENTS_DIR = path.resolve('.claude/agents');
@@ -21,7 +21,7 @@ describe('parseAgentFile', () => {
   });
 
   it('rejects a tool outside the role policy', () => {
-    expect(() => parseAgentFile(`---\nname: devops\ndescription: x\nmodel: sonnet\ntools: Read, Bash\n---\nb`, 'devops')).toThrow(/Bash/);
+    expect(() => parseAgentFile(`---\nname: devops\ndescription: x\nmodel: sonnet\ntools: Read, WebFetch\n---\nb`, 'devops')).toThrow(/WebFetch/);
     expect(() => parseAgentFile(`---\nname: sm\ndescription: x\nmodel: opus\ntools: Read, Edit\n---\nb`, 'sm')).toThrow(/Edit/);
   });
 
@@ -39,10 +39,10 @@ describe('loadAgents', () => {
     const agents = await loadAgents(AGENTS_DIR);
     expect(Object.keys(agents).sort()).toEqual(['dev', 'devops', 'env', 'front', 'po', 'sec', 'sm', 'test']);
     expect(agents.dev.tools).toContain('Bash');
-    expect(agents.devops.tools).not.toContain('Bash');
-    expect(agents.sec.tools).toEqual(['Read', 'Grep', 'Glob', 'Skill']);
-    // The environment agent only reads: it never edits, runs a command or sees a secret.
-    expect(agents.env.tools).toEqual(['Read', 'Grep', 'Glob']);
+    expect(agents.devops.tools).toContain('Bash');
+    expect(agents.sec.tools).toEqual(['Read', 'Grep', 'Glob', 'Bash', 'Skill']);
+    // The environment agent only reads and may run Bash just for the Agent Reach CLI (see role-settings.ts).
+    expect(agents.env.tools).toEqual(['Read', 'Grep', 'Glob', 'Bash']);
     // sm's frontmatter now states its real default model (server/config/config.ts CLAUDE_DEFAULTS); this
     // AgentDefinition.model field itself is never read by buildInvocation (see server/agents/registry.ts).
     expect(agents.sm.model).toBe('opus');
@@ -81,6 +81,14 @@ describe('settings directory protection', () => {
       expect(def.body).toMatch(/KISS/);
       expect(def.body).toMatch(/YAGNI/);
       expect(def.body).toMatch(/DRY/);
+    }
+  });
+
+  it('every agent prompt carries the error rules and the Agent Reach command', async () => {
+    const agents = await loadAgents(AGENTS_DIR);
+    for (const def of Object.values(agents)) {
+      expect(def.body).toContain(ERROR_RULES);
+      expect(def.body).toContain('agent-reach');
     }
   });
 

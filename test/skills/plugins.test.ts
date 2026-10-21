@@ -48,7 +48,7 @@ async function syncedCache(): Promise<{ root: string; out: string }> {
 describe('role plugins', () => {
   it('installs the real skill folders of a role without permission keys, git data or catalog entries', async () => {
     const { root, out } = await syncedCache();
-    await buildRolePlugins(root, out, [alpha, beta, catalog]);
+    await buildRolePlugins(root, out, [alpha, beta, catalog], path.join(root, 'no-languages'));
     expect((await fs.readdir(path.join(out, 'dev', 'skills'))).sort()).toEqual(['beta-tdd', 'brainstorming', 'tdd']);
     const text = await fs.readFile(path.join(out, 'dev', 'skills', 'brainstorming', 'SKILL.md'), 'utf8');
     expect(text).toContain('name: brainstorming');
@@ -75,9 +75,10 @@ describe('role plugins', () => {
 
   it('builds the same plugin again without changes', async () => {
     const { root, out } = await syncedCache();
-    await buildRolePlugins(root, out, [alpha, beta, catalog]);
+    const languages = path.join(root, 'no-languages');
+    await buildRolePlugins(root, out, [alpha, beta, catalog], languages);
     const first = await fs.readFile(path.join(out, 'dev', 'skills', 'brainstorming', 'SKILL.md'), 'utf8');
-    await buildRolePlugins(root, out, [alpha, beta, catalog]);
+    await buildRolePlugins(root, out, [alpha, beta, catalog], languages);
     expect((await fs.readdir(path.join(out, 'dev', 'skills'))).sort()).toEqual(['beta-tdd', 'brainstorming', 'tdd']);
     expect(await fs.readFile(path.join(out, 'dev', 'skills', 'brainstorming', 'SKILL.md'), 'utf8')).toBe(first);
   });
@@ -85,8 +86,18 @@ describe('role plugins', () => {
   it('leaves out a skill whose repository was never synced and builds the rest of the role', async () => {
     const { root, out } = await syncedCache();
     const missing = { ...alpha, id: 'gamma', repository: 'https://example.com/gamma', commit: 'd'.repeat(40) };
-    await buildRolePlugins(root, out, [missing, beta, catalog]);
+    await buildRolePlugins(root, out, [missing, beta, catalog], path.join(root, 'no-languages'));
     expect((await fs.readdir(path.join(out, 'dev', 'skills'))).sort()).toEqual(['tdd']);
+  });
+
+  it('installs every language skill into the plugin of every role', async () => {
+    const { root, out } = await syncedCache();
+    const languages = path.join(root, 'languages');
+    await put(path.join(languages, 'go', 'SKILL.md'), '---\nname: go\ndescription: Go errors.\n---\nRead the first error.\n');
+    await buildRolePlugins(root, out, [], languages);
+    for (const role of ['dev', 'front', 'po', 'env']) {
+      await expect(fs.access(path.join(out, role, 'skills', 'go', 'SKILL.md'))).resolves.toBeUndefined();
+    }
   });
 
   it('does not copy a link out of a pinned repository', async () => {

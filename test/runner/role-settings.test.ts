@@ -43,8 +43,9 @@ describe('buildRoleSettings', () => {
     // `mkdir -p reports && npm test` is denied unless every segment matches a rule (todo-api-r10: T3 blocked on it).
     expect(buildRoleSettings('dev', { allowedDomains: [] }).permissions.allow).toContain('Bash(mkdir:*)');
     expect(buildRoleSettings('devops', { allowedDomains: [] }).permissions.allow).not.toContain('Bash(npm:*)');
-    expect(buildRoleSettings('sm', { allowedDomains: [] }).permissions.allow).toEqual(['Skill']);
-    expect(buildRoleSettings('env', { allowedDomains: [] }).permissions.allow).toEqual([]);
+    // Every role may run only the Agent Reach CLI from Bash, besides its own rules.
+    expect(buildRoleSettings('sm', { allowedDomains: [] }).permissions.allow).toEqual(['Skill', 'Bash(agent-reach:*)']);
+    expect(buildRoleSettings('env', { allowedDomains: [] }).permissions.allow).toEqual(['Bash(agent-reach:*)']);
   });
 
   it('forbids every write to the installed skill plugins, by the Edit tool and by any command of the sandbox', () => {
