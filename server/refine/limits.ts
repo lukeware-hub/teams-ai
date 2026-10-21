@@ -4,7 +4,7 @@ export const RELEASE_ROUNDS_ENV = 'TEAMS_AI_REFINE_RELEASE_ROUNDS';
 export const MAX_ROUNDS_ENV = 'TEAMS_AI_REFINE_MAX_ROUNDS';
 
 const DEFAULT_RELEASE = 5;
-const DEFAULT_MAX = 10;
+const DEFAULT_MAX = 50;
 
 /** A positive whole number from the environment, or the default when it is unset or not one. */
 const count = (raw: string | undefined, fallback: number): number => {

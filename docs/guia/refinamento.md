@@ -26,7 +26,7 @@ Backlog: a avaliação que vem depois dos documentos prontos monta o esboço das
 
 Executar: quando o backlog estiver pronto, clique em **Iniciar análise** para os agentes desenvolverem. A análise nunca começa sozinha.
 
-Limites de rodadas (variáveis no `.env`): depois de 5 rodadas (`TEAMS_AI_REFINE_RELEASE_ROUNDS`), **Iniciar análise** libera mesmo com critérios ainda reprovados, com um aviso que os lista. Ao chegar em 10 (`TEAMS_AI_REFINE_MAX_ROUNDS`), **Reavaliar** para e pede uma decisão sua. Se o mesmo critério falhar três rodadas seguidas, uma pergunta bloqueante aparece com a divergência.
+Limites de rodadas (variáveis no `.env`): depois de 5 rodadas (`TEAMS_AI_REFINE_RELEASE_ROUNDS`), **Iniciar análise** libera mesmo com critérios ainda reprovados, com um aviso que os lista. Ao chegar em 50 (`TEAMS_AI_REFINE_MAX_ROUNDS`), **Reavaliar** para e pede uma decisão sua. Se o mesmo critério falhar três rodadas seguidas, uma pergunta bloqueante aparece com a divergência.
 
 ## Movimentos de conteúdo
 

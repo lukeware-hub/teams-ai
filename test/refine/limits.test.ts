@@ -4,14 +4,14 @@ import { emptyRefineState, released, type RefineState } from '../../server/refin
 
 describe('refineLimits', () => {
   it('defaults to release at 5 and lock at 10 rounds', () => {
-    expect(refineLimits({})).toEqual({ release: 5, max: 10 });
+    expect(refineLimits({})).toEqual({ release: 5, max: 50 });
   });
   it('reads both limits from the environment', () => {
     expect(refineLimits({ TEAMS_AI_REFINE_RELEASE_ROUNDS: '3', TEAMS_AI_REFINE_MAX_ROUNDS: '8' })).toEqual({ release: 3, max: 8 });
   });
   it('falls back to the default for values that are not positive whole numbers', () => {
-    expect(refineLimits({ TEAMS_AI_REFINE_RELEASE_ROUNDS: 'abc', TEAMS_AI_REFINE_MAX_ROUNDS: '0' })).toEqual({ release: 5, max: 10 });
-    expect(refineLimits({ TEAMS_AI_REFINE_MAX_ROUNDS: '2.5' })).toEqual({ release: 5, max: 10 });
+    expect(refineLimits({ TEAMS_AI_REFINE_RELEASE_ROUNDS: 'abc', TEAMS_AI_REFINE_MAX_ROUNDS: '0' })).toEqual({ release: 5, max: 50 });
+    expect(refineLimits({ TEAMS_AI_REFINE_MAX_ROUNDS: '2.5' })).toEqual({ release: 5, max: 50 });
   });
   it('never releases after the lock round', () => {
     expect(refineLimits({ TEAMS_AI_REFINE_RELEASE_ROUNDS: '12', TEAMS_AI_REFINE_MAX_ROUNDS: '10' })).toEqual({ release: 10, max: 10 });
