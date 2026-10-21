@@ -35,6 +35,22 @@ const base = (over: Partial<Snapshot['state']>): Snapshot => ({
 const on = () => ({ onSaveDoc: vi.fn(), onEvaluate: vi.fn(), onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn() });
 const event = (seq: number, type: string, data: Record<string, unknown>): StoredEvent => ({ seq, at: '', runId: 'hello-app/hello-001', specHash: 'draft', type, kind: 'fact', data });
 
+describe('RefinementView start with the score banner', () => {
+  const readyBacklog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {}, flowHeadings: [] } as never;
+  const scoreReady = { cycle: 1, available: true, model: 'jev-1.13.0', average: 0.9, docs: null, usage: null, outdated: false } as never;
+  const readyNewProject = (over: Partial<Snapshot['state']>) => base({ status: 'ready', mode: 'new-project', stale: false, questions: [], patches: [], backlog: readyBacklog, ...over });
+
+  it('leaves the start to the banner when the banner offers it', () => {
+    render(<MemoryRouter><RefinementView snap={readyNewProject({ readiness: scoreReady })} busy={false} events={[]} {...on()} hideStart /></MemoryRouter>);
+    expect(screen.queryByTestId('start')).toBeNull();
+  });
+
+  it('keeps the review panel start when the banner has none', () => {
+    render(<MemoryRouter><RefinementView snap={readyNewProject({})} busy={false} events={[]} {...on()} /></MemoryRouter>);
+    expect(screen.getByTestId('start')).toBeTruthy();
+  });
+});
+
 describe('RefinementView re-evaluation', () => {
   const evaluated = event(3, 'REFINE_EVALUATED', { cycle: 1, checklist: [] });
 

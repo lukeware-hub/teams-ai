@@ -19,6 +19,31 @@ const snapshot = (seq: number): Snapshot => ({
   state: { status: 'error', stale: false, cycle: 1, derived: null, checklist: [], questions: [], patches: [{ ...patch, status: 'pending', decision: null }], discarded: [], moves: [], error: 'sm refine failed', runId: null },
 });
 
+describe('RefinementPage start with the score banner', () => {
+  const withScore = (readiness: unknown): Snapshot => {
+    const s = snapshot(1);
+    const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {}, flowHeadings: [] };
+    return { ...s, state: { ...s.state, status: 'ready', mode: 'new-project', error: null, patches: [], questions: [], backlog, readiness } as never };
+  };
+  const renderPage = () => render(<MemoryRouter initialEntries={['/refine/hello-app/hello-001']}><Routes><Route path="/refine/:projectId/:specId" element={<RefinementPage />} /></Routes></MemoryRouter>);
+
+  it('shows one start, in the banner, when the score is ready', async () => {
+    journal.events = [];
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue(withScore({ cycle: 1, available: true, model: 'jev-1.13.0', average: 0.9, docs: null, usage: null, outdated: false }));
+    renderPage();
+    await screen.findByTestId('readiness-start');
+    expect(screen.queryByTestId('start')).toBeNull();
+  });
+
+  it('keeps the review panel start while the score is missing', async () => {
+    journal.events = [];
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue(withScore(undefined));
+    renderPage();
+    await screen.findByTestId('start');
+    expect(screen.queryByTestId('readiness-start')).toBeNull();
+  });
+});
+
 describe('RefinementPage journal replay', () => {
   it('applies only the events after the snapshot, so a reload after a failed cycle shows each patch once', async () => {
     journal.events = [event(1, 'REFINE_CYCLE_STARTED', { cycle: 1, draftHash: 'h' }), event(2, 'PATCH_PROPOSED', patch), event(3, 'REFINE_CYCLE_FAILED', { cycle: 1, reason: 'sm refine failed' })];

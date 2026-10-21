@@ -15,7 +15,7 @@ import type { Divergence, DivergenceSide } from '@server/refine/checklist';
 import { BacklogPanel } from '../refine/BacklogPanel.js';
 import { MoveNotice } from '../refine/MoveNotice.js';
 import { released } from '@server/refine/state';
-import { scoresDocs } from '@server/refine/readiness';
+import { jevVerdict, scoresDocs } from '@server/refine/readiness';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { ProcessingBanner } from '../refine/ProcessingBanner.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
@@ -200,6 +200,8 @@ export interface ViewProps {
   onSecret(name: string, value: string): void | Promise<unknown>;
   onStart(): void | Promise<unknown>;
   startState?: { label: string; busy: boolean };
+  /** The score banner above offers the start, so the review panel does not repeat it. */
+  hideStart?: boolean;
   events?: StoredEvent[];
 }
 
@@ -500,7 +502,7 @@ export function RefinementView(p: ViewProps) {
         </Tipped>
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        {newProject && (stageStep === 'start' || stageStep === 'started') && startButton}
+        {newProject && !p.hideStart && (stageStep === 'start' || stageStep === 'started') && startButton}
         {showEvaluate && (
         <ActionButton data-testid="evaluate" className={`${newProject && stageStep !== 'evaluate' ? 'secondary' : 'primary'} min-w-40 flex-auto`} busy={evaluating} disabled={locked || atMax} onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
           {st.cycle === 0 ? 'Avaliar' : 'Reavaliar'}
@@ -512,7 +514,7 @@ export function RefinementView(p: ViewProps) {
           </ConfirmDialog>
         )}
       </div>
-      {!newProject && startButton}
+      {!newProject && !p.hideStart && startButton}
       {nextStep !== null && <p className="m-0 mb-4 flex items-start gap-[0.6rem] rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-[0.8125rem] leading-[1.45] text-ink [&_svg]:flex-none [&_svg]:text-accent-text"><Icon name="lightbulb" size={20} /><span><b>Próximo passo:</b> {nextStep}{optional}</span></p>}
       {evaluating ? null : current ? (
         <div className="rounded-lg border border-line bg-surface-sunken p-4">
@@ -806,6 +808,8 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   });
   const executing = starting || (following && program?.status !== 'finished');
   const startLabel = { label: starting ? 'Iniciando…' : executing ? 'Em execução' : 'Iniciar análise', busy: executing };
+  // The banner offers the start once the score is ready, so the review panel does not repeat it.
+  const bannerStarts = scoresDocs(snap.state.mode ?? null) && !['evaluating', 'started'].includes(snap.state.status) && jevVerdict(snap.state.readiness) === 'ready';
   return (
     <main className="flex flex-col gap-4 lg:h-full lg:min-h-0">
       <header className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></Link><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span></header>
@@ -843,6 +847,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onSecret={(n, v) => act(() => refineApi.secret(projectId, specId, n, v).then(load))()}
         onStart={startRun}
         startState={startLabel}
+        hideStart={bannerStarts}
         events={events}
       />
     </main>
