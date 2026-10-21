@@ -35,6 +35,7 @@ import { PATCH_FILES, patchOwners, reorganizeGroups, reorganizePack, refinePack 
 import { applyPatch, checkPatch, COVERED_REASON, patchId, unifiedDiff } from './patches.js';
 import { planMove } from './moves.js';
 import { applyRefineEvent, nextStuck, STUCK_ROUNDS, type BacklogState, type RefineState } from './state.js';
+import { scoresDocs, UNSCORED, type DocsScoreRecord } from './readiness.js';
 
 export type RunAgent = <K extends StepKind>(
   req: AgentStepRequest<K>,
@@ -59,6 +60,8 @@ export interface CycleDeps {
   signal?: AbortSignal;
   /** R11.5.7: the measured confidence floor for answering a question routed `auto` from the docs; unset leaves every question with the human. */
   autoAnswerFloor?: number;
+  /** The Jev's score of the five documents, journaled once per cycle of a new project or a backlog. */
+  scoreDocs?: (docs: Record<DocFile, string>) => Promise<DocsScoreRecord>;
 }
 
 /** Main's outline, from its specs.json in the base copy, for a new draft's first outline; the draft's own state when main has none. */
@@ -90,6 +93,31 @@ function recorded(decider: Pick<Decider, 'decide'>, journal: Pick<Journal, 'fact
       return outcome;
     },
   };
+}
+
+/** What `recordScore` needs: the draft to read, the journal to write, and the Jev's scorer. */
+export interface ScoreDeps {
+  draft: Draft;
+  journal: CycleJournal;
+  scoreDocs: NonNullable<CycleDeps['scoreDocs']>;
+}
+
+/** A confidential project's documents never leave for the OpenRouter; its record decides. */
+export async function isConfidential(draft: Draft, state: RefineState): Promise<boolean> {
+  return state.backlog?.project?.confidential ?? (await readDerived(draft))?.project.confidential ?? Project.safeParse(JSON.parse((await readBase(draft, 'project.json')) ?? 'null')).data?.confidential ?? false;
+}
+
+/** Journals the Jev's score of the five documents as they stand now; a current score is kept, and a confidential project is never sent. */
+export async function recordScore(deps: ScoreDeps, cycle: number, confidential: boolean): Promise<void> {
+  const current = deps.journal.state.readiness;
+  if (current && !current.outdated && (current.available || current.skipped)) return;
+  if (confidential) {
+    await deps.journal.fact(RefineEvent.DocsScored, { ...UNSCORED, cycle, skipped: 'confidential' });
+    return;
+  }
+  const docs = Object.fromEntries(await Promise.all(REORGANIZED_FILES.map(async (file) => [file, await readDoc(deps.draft, file)]))) as Record<DocFile, string>;
+  const scored = await deps.scoreDocs(docs).catch(() => UNSCORED);
+  await deps.journal.fact(RefineEvent.DocsScored, { cycle, ...scored });
 }
 
 const BLANK_FILES = ['stack.md', 'flow.md'] as const;
@@ -261,7 +289,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const fail = (reason: string) => journal.fact(RefineEvent.CycleFailed, { cycle, reason });
   let jevValidation: JevValidationResult | undefined;
   // A confidential project never sends its docs to the OpenRouter: Jev is skipped and the agents run without its findings.
-  const confidential = journal.state.backlog?.project?.confidential ?? previous?.project.confidential ?? Project.safeParse(JSON.parse((await readBase(draft, 'project.json')) ?? 'null')).data?.confidential ?? false;
+  const confidential = await isConfidential(draft, journal.state);
   if (deps.validateDocs && confidential) {
     jevValidation = { available: true, decision: 'review', consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false };
     await journal.fact(RefineEvent.DocsValidated, { cycle, backend: 'jev', ...jevValidation, skipped: 'confidential' });
@@ -713,6 +741,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const stuck = nextStuck(journal.state.stuck, checklist);
   const ask = stuck.ask ? stuckQuestion(stuck.failing, cycle) : null;
   if (ask && !journal.state.questions.some((q) => q.status === 'pending' && q.rule === ask.rule)) merged.push(ask);
+  if (deps.scoreDocs && scoresDocs(journal.state.mode)) await recordScore({ draft, journal, scoreDocs: deps.scoreDocs }, cycle, confidential);
   await journal.fact(RefineEvent.Evaluated, { cycle, checklist, questions: merged, discardedPatches, questionRouting, autoAnswerFloor: floor ?? null, unverifiedContradictions: dropped });
   for (const a of answers) if (a) await journal.fact(RefineEvent.QuestionAnswered, a);
 }

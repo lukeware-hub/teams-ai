@@ -5,10 +5,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { Decider } from '../../server/decide/decider.js';
 import { heldForOwner } from '../../server/refine/auto-floor.js';
 import { buildContextPack } from '../../server/knowledge/context-pack.js';
-import { failedGapQuestions, runCycle } from '../../server/refine/cycle.js';
+import { failedGapQuestions, runCycle, type CycleDeps } from '../../server/refine/cycle.js';
 import { PACK_TOKEN_CAP } from '../../server/refine/fit-pack.js';
 import { draftPaths, createNewProject } from '../../server/refine/draft.js';
-import { applyRefineEvent, emptyRefineState } from '../../server/refine/state.js';
+import { applyRefineEvent, emptyRefineState, type RefineState } from '../../server/refine/state.js';
 import { summarizeJevChecks, type JevValidationResult, type ValidationDocs } from '../../server/refine/jev-validation.js';
 import type { BacklogItem } from '../../server/contracts/backlog.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
@@ -68,7 +68,7 @@ describe('refinement cycle Jev advisory', () => {
 describe('refinement cycle: moves, findings and template fills', () => {
   const MOVED = 'O cliente confirma o pedido antes do pagamento.';
   /** Runs one cycle of a new project whose project.md holds MOVED; flow.md is a diagram unless `blankFlow` keeps the blank template. */
-  async function run(poOutput: { moves?: unknown[]; findings?: unknown[] }, smOutput: { moves?: unknown[]; docPatch?: unknown[] }, { blankFlow = false, projectMd = `# Shop\n\n## Visão\n\nLoja online.\n\n${MOVED}\n` } = {}) {
+  async function run(poOutput: { moves?: unknown[]; findings?: unknown[] }, smOutput: { moves?: unknown[]; docPatch?: unknown[] }, { blankFlow = false, projectMd = `# Shop\n\n## Visão\n\nLoja online.\n\n${MOVED}\n`, mode = null, scoreDocs }: { blankFlow?: boolean; projectMd?: string; mode?: RefineState['mode']; scoreDocs?: CycleDeps['scoreDocs'] } = {}) {
     const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
     const ws = { projectId: 'shop', root, repo: `${root}/repo`, worktrees: `${root}/wt`, graph: `${root}/g`, knowledgeDb: `${root}/k.sqlite`, secrets: `${root}/secrets`, runs: `${root}/runs` } as Workspace;
     const draft = draftPaths(ws, 'shop-002');
@@ -76,7 +76,7 @@ describe('refinement cycle: moves, findings and template fills', () => {
     await writeFile(draft.projectMd, projectMd);
     if (!blankFlow) await writeFile(draft.flowMd, '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n');
     const events: Array<{ type: string; data: Record<string, unknown> }> = [];
-    const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'shop/shop-002', specHash: 'draft', type, kind: 'fact' as const, data }; } };
+    const journal = { state: { ...emptyRefineState(), mode },allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'shop/shop-002', specHash: 'draft', type, kind: 'fact' as const, data }; } };
     const ok = (value: unknown) => ({ ok: true, value, summary: {} });
     const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
     const runAgent = vi.fn(async (req: { kind: string; role: string; pack?: { feedback?: string } }) => {
@@ -86,7 +86,7 @@ describe('refinement cycle: moves, findings and template fills', () => {
       if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [], ...poOutput });
       return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [], ...smOutput });
     });
-    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [] }, 1);
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], scoreDocs }, 1);
     return { events, draft };
   }
   const move = { from: 'docs/project.md', to: 'docs/flow.md', quote: MOVED, text: MOVED, reason: 'ordem de passos' };
@@ -138,6 +138,30 @@ describe('refinement cycle: moves, findings and template fills', () => {
     const diagram = await run({}, { docPatch: [fill('# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n')] }, { blankFlow: true });
     expect(await readFile(diagram.draft.flowMd, 'utf8')).toContain('flowchart TD');
     expect(diagram.events.some((e) => e.type === 'PATCH_PROPOSED')).toBe(false);
+  });
+
+  it('journals the score of the documents after the moves, and before the evaluation', async () => {
+    const scoreDocs = vi.fn(async (_docs: Record<string, string>) => ({ available: true, model: 'jev-1.13.0', average: 0.9, docs: null, usage: null }));
+    const { events } = await run({ moves: [move] }, {}, { mode: 'new-project', scoreDocs });
+    const types = events.map((e) => e.type);
+    expect(types.indexOf('REFINE_DOCS_SCORED')).toBeGreaterThan(-1);
+    expect(types.indexOf('REFINE_DOCS_SCORED')).toBeLessThan(types.indexOf('REFINE_EVALUATED'));
+    expect(scoreDocs.mock.calls[0]![0]['flow.md']).toContain(MOVED);
+  });
+
+  it('scores nothing for a single spec, which is neither a new project nor a backlog', async () => {
+    const scoreDocs = vi.fn(async (_docs: Record<string, string>) => ({ available: true, model: 'jev-1.13.0', average: 0.9, docs: null, usage: null }));
+    const { events } = await run({}, {}, { mode: 'new-spec', scoreDocs });
+    expect(scoreDocs).not.toHaveBeenCalled();
+    expect(events.some((e) => e.type === 'REFINE_DOCS_SCORED')).toBe(false);
+  });
+
+  it('a scorer that fails journals the score as unavailable and leaves the evaluation standing', async () => {
+    const scoreDocs = vi.fn(async (_docs: Record<string, string>): Promise<never> => { throw new Error('jev down'); });
+    const { events } = await run({}, {}, { mode: 'new-project', scoreDocs });
+    expect(events.find((e) => e.type === 'REFINE_DOCS_SCORED')?.data).toMatchObject({ available: false, average: null });
+    expect(events.some((e) => e.type === 'REFINE_EVALUATED')).toBe(true);
+    expect(events.some((e) => e.type === 'REFINE_CYCLE_FAILED')).toBe(false);
   });
 });
 
