@@ -15,16 +15,18 @@ import type { Divergence, DivergenceSide } from '@server/refine/checklist';
 import { BacklogPanel } from '../refine/BacklogPanel.js';
 import { MoveNotice } from '../refine/MoveNotice.js';
 import { released } from '@server/refine/state';
+import { scoresDocs } from '@server/refine/readiness';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { ProcessingBanner } from '../refine/ProcessingBanner.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
 import { StageBar } from '../refine/StageBar.js';
+import { ReadinessBanner } from '../refine/ReadinessBanner.js';
+import { DOC_LABEL as docLabel } from '../refine/doc-labels.js';
 import { stageAction, stageOf, stageTitle, staleBlocksStart } from '../refine/stages.js';
 import { SpecTree } from '../refine/SpecTree.js';
 import { Workspace } from '../components/Workspace.js';
 
 type DocFile = 'project.md' | 'brief.md' | 'stack.md' | 'flow.md' | 'design.md';
-const docLabel: Record<DocFile, string> = { 'project.md': 'project.md', 'brief.md': 'briefing.md', 'stack.md': 'stack.md', 'flow.md': 'flow.md', 'design.md': 'design.md' };
 const questionText = (text: string) => text.startsWith('What counts as valid client data?')
   ? 'Quais dados um cliente precisa ter? Nome, e-mail, telefone e observações são obrigatórios? Quais formatos e limites devemos aceitar? O e-mail pode se repetir? Se algum dado for inválido, devemos mostrar o erro de cada campo e retornar HTTP 400?'
   : text;
@@ -803,11 +805,15 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
     return refineApi.start(projectId, specId).then(({ runId, program: started }) => navigate(started ? programPath : `/runs/${runId}`)).finally(() => setStarting(false));
   });
   const executing = starting || (following && program?.status !== 'finished');
+  const startLabel = { label: starting ? 'Iniciando…' : executing ? 'Em execução' : 'Iniciar análise', busy: executing };
   return (
     <main className="flex flex-col gap-4 lg:h-full lg:min-h-0">
       <header className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></Link><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span></header>
       <MoveNotice moves={snap.state.moves ?? []} onUndo={(moveId) => act(() => refineApi.undoMove(projectId, specId, moveId))()} docName={docName} />
       {snap.state.mode === 'new-project' && <StageBar stages={stageOf({ ...snap.state, released: snap.limits !== undefined && released(snap.state, snap.limits) })} />}
+      {scoresDocs(snap.state.mode ?? null) && !['evaluating', 'started'].includes(snap.state.status) && (
+        <ReadinessBanner readiness={snap.state.readiness} canStart={canStartRun(snap.state, false, snap.limits)} startState={startLabel} onScore={act(() => refineApi.score(projectId, specId))} onStart={startRun} />
+      )}
       {snap.state.status === 'evaluating' && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}
       {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phases={phases} link={programPath} />}
       {(error || snap.state.status === 'error') && (
@@ -836,7 +842,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onReject={(id, r) => act(() => refineApi.reject(projectId, specId, id, r))()}
         onSecret={(n, v) => act(() => refineApi.secret(projectId, specId, n, v).then(load))()}
         onStart={startRun}
-        startState={{ label: starting ? 'Iniciando…' : executing ? 'Em execução' : 'Iniciar análise', busy: executing }}
+        startState={startLabel}
         events={events}
       />
     </main>
