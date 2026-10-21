@@ -190,3 +190,36 @@ describe('Phase 6 documentation gate', () => {
     expect(r.ok).toBe(true);
   });
 });
+
+describe('Phase 6 gap check', () => {
+  const cited = makeFrozenSpec({ derivedFrom: { backlogKey: 'todos', inputHash: HASH, docsHash: HASH, sources: [{ doc: 'briefing.md', heading: 'Create a todo', hash: HASH, bodyHash: HASH }] } });
+  const gapAnswer = (missing: string) => ok({ specHash: HASH, items: [{ doc: 'briefing.md', heading: 'Create a todo', status: 'missing', evidence: [], missing, acIds: [] }] });
+  const withGaps = (gaps: Agent, docs = GOOD): Agent => async (req) => (req.kind === 'gaps' ? gaps(req) : report(docs));
+  const run = (agent: Agent) => runPhase6({ ...deps(agent), spec: cited, runId: 'r1', accounting: new Accounting(), result: 'awaiting-validation' });
+
+  it('judges the cited sections once, read-only, and keeps the answer in the report and the journal', async () => {
+    const r = await run(withGaps(async () => gapAnswer('Falta a tela de lista.')));
+    expect(r.report.gaps).toEqual({ items: [{ doc: 'briefing.md', heading: 'Create a todo', status: 'missing', evidence: [], missing: 'Falta a tela de lista.', acIds: [], cause: { kind: 'no-task' } }] });
+    const gaps = calls.filter((c) => c.kind === 'gaps');
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]).toMatchObject({ role: 'test', phase: 'phase6', protectedDirs: [expect.any(String)] });
+    expect(journal.events.filter((e) => e.type === OrchEvent.GapsChecked)).toHaveLength(1);
+  });
+
+  it('reuses the journaled check when the report is written again after a failure', async () => {
+    const blocked = await run(withGaps(async () => gapAnswer('Falta a tela de lista.'), { readme: '# App', runbook: GOOD.runbook }));
+    expect(blocked.ok).toBe(false);
+    calls = [];
+    const r = await run(withGaps(async () => { throw new Error('the gap check must not run again'); }));
+    expect(r.ok).toBe(true);
+    expect(calls.some((c) => c.kind === 'gaps')).toBe(false);
+    expect(r.report.gaps).toMatchObject({ items: [{ heading: 'Create a todo' }] });
+  });
+
+  it('writes the report with the reason when the check fails twice', async () => {
+    const r = await run(withGaps(async () => ({ ok: false, failure: 'schema', errors: ['not an object'], summary, sandboxDisabled: false })));
+    expect(r.ok).toBe(true);
+    expect(r.report.gaps).toEqual({ unavailable: 'not an object' });
+    expect(calls.filter((c) => c.kind === 'gaps')).toHaveLength(2);
+  });
+});

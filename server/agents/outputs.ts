@@ -1,14 +1,14 @@
 import { z } from 'zod';
 import { HASH_PATTERN } from '../contracts/hash.js';
 import { ADR_ID, Plan, PlanTask, ServicesPlan } from '../contracts/plan.js';
-import { Backlog } from '../contracts/backlog.js';
+import { Backlog, BACKLOG_DOCS } from '../contracts/backlog.js';
 import { Preplan } from '../contracts/preplan.js';
 import { AC_ID, AcceptanceCriterion, BugDetails, ExternalDependency, SpecType } from '../contracts/spec.js';
 import { ID_PATTERNS } from '../core/ids.js';
 import { Project, ServiceName } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 
-export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'gaps', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -267,6 +267,22 @@ export const ReportOutput = z.object({
   ...docsFields,
 });
 
+/** One cited doc section, judged against the code on main: `acIds` are the criteria that cover it. */
+export const GapsOutput = z.object({
+  specHash,
+  items: z.array(
+    z.object({
+      doc: z.enum(BACKLOG_DOCS),
+      heading: z.string().min(1),
+      status: z.enum(['delivered', 'partial', 'missing']),
+      evidence: z.array(z.string().min(1)),
+      missing: z.string(),
+      acIds: z.array(acId),
+    }),
+  ),
+});
+export type GapsOutput = z.infer<typeof GapsOutput>;
+
 /** Spec 10A.3: a System 2 answer to typed questions; no probabilities, the value only. */
 export const DecideOutput = z.object({
   specHash,
@@ -335,6 +351,7 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   deployment: DeploymentOutput,
   environment: EnvironmentOutput,
   report: ReportOutput,
+  gaps: GapsOutput,
   readme: ReadmeOutput,
   decide: DecideOutput,
   'spec-gap': SpecGapOutput,
