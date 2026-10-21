@@ -109,12 +109,13 @@ describe('license gate', () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const license = vi.spyOn(api, 'license')
       .mockResolvedValueOnce({ state: 'authorized' })
+      .mockResolvedValueOnce({ state: 'authorized' })
       .mockResolvedValueOnce({ state: 'revoked', contactEmail: 'admin@lukeware.com', contactPhone: '+55 11 0000-0000' });
     renderGuard();
     expect(await screen.findByText('app aberto')).toBeTruthy();
     await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
     expect(await screen.findByRole('heading', { name: 'Acesso desativado' })).toBeTruthy();
-    expect(license).toHaveBeenCalledTimes(2);
+    expect(license).toHaveBeenCalledTimes(3);
     vi.useRealTimers();
   });
 
@@ -133,16 +134,27 @@ describe('license gate', () => {
     expect(license).toHaveBeenCalledWith(true);
   });
 
+  it('opens the app from the local license without waiting for the service', async () => {
+    const license = vi.spyOn(api, 'license')
+      .mockResolvedValueOnce({ state: 'authorized' })
+      .mockReturnValueOnce(new Promise(() => undefined));
+    renderGuard();
+    expect(await screen.findByText('app aberto')).toBeTruthy();
+    expect(license).toHaveBeenNthCalledWith(1);
+    expect(license).toHaveBeenNthCalledWith(2, true);
+  });
+
   it('asks for a new key on the open screen when the license no longer exists', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const license = vi.spyOn(api, 'license')
+      .mockResolvedValueOnce({ state: 'authorized' })
       .mockResolvedValueOnce({ state: 'authorized' })
       .mockResolvedValue({ state: 'missing' });
     vi.spyOn(api, 'status').mockResolvedValue(status());
     renderGuard();
     expect(await screen.findByText('app aberto')).toBeTruthy();
     await vi.advanceTimersByTimeAsync(20_000);
-    expect(license).toHaveBeenCalledTimes(2);
+    expect(license).toHaveBeenCalledTimes(3);
     expect(await screen.findByLabelText('Cole a chave de licença')).toBeTruthy();
     expect(screen.queryByText('app aberto')).toBeNull();
     vi.useRealTimers();
@@ -150,6 +162,7 @@ describe('license gate', () => {
 
   it('asks again when the open screen becomes visible', async () => {
     const license = vi.spyOn(api, 'license')
+      .mockResolvedValueOnce({ state: 'authorized' })
       .mockResolvedValueOnce({ state: 'authorized' })
       .mockResolvedValue({ state: 'missing' });
     vi.spyOn(api, 'status').mockResolvedValue(status());

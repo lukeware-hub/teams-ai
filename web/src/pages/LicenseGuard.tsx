@@ -17,7 +17,12 @@ export function LicenseGuard({ children }: { children: ReactNode }) {
   useEffect(() => {
     let live = true;
     setView(null);
-    void api.license(true).then((next) => { if (live) setView(next); }).catch(() => { if (live) setView({ state: 'unavailable' }); });
+    // A valid local license opens the app at once; the service confirms it in the background.
+    void api.license().then((local) => {
+      if (!live) return;
+      setView(local);
+      if (local.state === 'authorized') void api.license(true).then((next) => { if (live) setView(next); }).catch(() => undefined);
+    }).catch(() => { if (live) setView({ state: 'unavailable' }); });
     return () => { live = false; };
   }, [attempt]);
   useEffect(() => {
