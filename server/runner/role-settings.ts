@@ -34,6 +34,8 @@ const EDIT_TOOLS = ['Edit', 'Write', 'MultiEdit'] as const;
 const SUITE_BASH = [
   'Bash(npm:*)',
   'Bash(npx:*)',
+  'Bash(pnpm:*)',
+  'Bash(corepack:*)',
   'Bash(node:*)',
   'Bash(git status:*)',
   'Bash(git diff:*)',
