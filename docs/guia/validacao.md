@@ -13,6 +13,17 @@ Ela mostra o resumo da entrega, o custo, as evidências por critério (o que foi
 - **Concluir especificação**: aceita a entrega. A spec passa a **concluída** e fica somente leitura.
 - **Relatar problema**: escreva o que está errado em **Descrição do problema** e clique. O refinamento da mesma spec reabre com o seu relato e os agentes corrigem.
 
+## Cobertura dos documentos
+
+Depois da execução, a tela mostra os trechos dos documentos do projeto que ficaram de fora da entrega. Cada trecho aberto traz:
+
+- **O que falta**, em linguagem simples.
+- **O motivo** registrado pela execução, por exemplo uma tarefa bloqueada ou um teste que falhou.
+- **Preencher o relato**: copia o trecho para **Descrição do problema**. Depois clique em **Relatar problema**.
+- **Aceitar como fora de escopo**: registra a sua decisão com um motivo. A entrega não muda.
+
+Se o motivo for uma falha da execução, use **Reprocessar** na página da execução.
+
 ## Depois
 
 - Uma spec **aguardando validação** tem na página do projeto os botões **Continuar spec** (reabre para um novo refinamento) e **Reiniciar** (descarta a sessão de refinamento atual e recomeça do zero, com confirmação).
