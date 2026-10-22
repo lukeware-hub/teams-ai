@@ -49,6 +49,7 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     return { sessionId: `${x.projectId}/${x.specId}` };
   };
   const optionalBody = (ctx: RouteContext) => ctx.body().catch(() => ({}));
+  const logRunFailure = (params: Record<string, string>) => (err: Error) => deps.log?.(`refine ${params.projectId}/${params.specId}: ${err.message}`);
   const S = `${P}/refine/:projectId/:specId`;
   return [
     { method: 'GET', path: `${P}/refine`, handler: wrap(async ({ json }) => json(200, await registry.list())) },
@@ -136,7 +137,7 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
         if (s.busy) throw new ConflictError('evaluation in progress');
         if (s.state.status === 'started') throw new ConflictError('session already started a run');
         s.ensureCanEvaluate();
-        s.evaluate().catch((err: Error) => deps.log?.(`refine ${params.projectId}/${params.specId}: ${err.message}`));
+        s.evaluate().catch(logRunFailure(params));
         json(202, { state: 'evaluating' });
       }),
     },
@@ -230,6 +231,17 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
         if (!DOC_STAGES.includes(file as DocFile)) throw new HttpError(400, `unknown doc ${file}`);
         await (await get(params)).score(file as DocFile);
         json(200, { ok: true });
+      }),
+    },
+    {
+      method: 'POST',
+      path: `${S}/docs/:file/evaluate`,
+      handler: wrap(async ({ params, json }) => {
+        const file = params.file!;
+        if (!DOC_STAGES.includes(file as DocFile)) throw new HttpError(400, `unknown doc ${file}`);
+        const s = await get(params);
+        s.evaluateStage(file as DocFile).catch(logRunFailure(params));
+        json(202, { ok: true });
       }),
     },
     {

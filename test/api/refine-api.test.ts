@@ -550,6 +550,19 @@ describe('refine api', () => {
     expect((await snapshot()).state.confidential).toBe(true);
   });
 
+  it('a stage review answers at once for a document of the stages, and refuses a name that is not one', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/docs/spec.json/evaluate')).status).toBe(400);
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/docs/flow.md/evaluate')).status).toBe(202);
+    for (let i = 0; i < 200 && (await snapshot()).busy; i += 1) await new Promise((r) => setTimeout(r, 20));
+    expect((await snapshot()).busy).toBe(false);
+  });
+
+  it('a stage review is refused with 409 in a spec, which has no stages', async () => {
+    await specDraft();
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/docs/flow.md/evaluate')).status).toBe(409);
+  });
+
   it('the owner steps to the next stage of a new project, and the step is kept in the session', async () => {
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/stage/continue')).status).toBe(200);

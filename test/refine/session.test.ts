@@ -606,6 +606,34 @@ describe('RefineSession stages', () => {
   });
 });
 
+describe('RefineSession stage review', () => {
+  it('reviews one stage at a time, and the rounds of that stage count against its limit', async () => {
+    const s = await RefineSession.create({ ...deps(), limits: { max: 1 } }, 'new-project');
+    await s.evaluateStage('flow.md');
+    expect(s.state.cycle).toBe(1);
+    expect(() => s.evaluateStage('flow.md')).toThrow(ConflictError);
+    await s.continueStage();
+    await s.evaluateStage('project.md');
+    expect(s.state.cycle).toBe(2);
+    await s.close();
+  });
+
+  it('a stage review is refused at once in a session that has no stages', async () => {
+    const c = await RefineSession.create(deps(), 'continue');
+    expect(() => c.evaluateStage('flow.md')).toThrow(ConflictError);
+    await c.close();
+  });
+
+  it('a stage review cannot start while another evaluation runs, and the running one ends normally', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    const first = s.evaluateStage('flow.md');
+    expect(() => s.evaluateStage('project.md')).toThrow(ConflictError);
+    await first;
+    expect(s.busy).toBe(false);
+    await s.close();
+  });
+});
+
 describe('RefineSession document score', () => {
   const ALL_DOCS = ['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md'];
   const scored = { available: true, model: 'jev-1.13.0', average: 0.9, docs: Object.fromEntries(ALL_DOCS.map((file) => [file, { score: 0.9, checks: { complete: 0.9, concrete: 0.9, consistent: 0.9, scoped: 0.9 } }])), usage: null };
