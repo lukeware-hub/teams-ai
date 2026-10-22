@@ -1295,8 +1295,8 @@ The user-provided reference images 2 and 3 are the approved visual target for `/
 
 ### 30.6 Jev role in refinement
 
-Jev is an advisory assistant, never a hard gate for derivation. Its document consistency checks must be recorded in the refinement journal and passed to Claude, PO, and SM as review context. A low-confidence or negative Jev finding may create guidance, but it must not create `CycleFailed`, fail a checklist item, prevent derivation, disable `Reavaliar`, or require a document edit before the next cycle; it is only noted in the item's detail.
+Jev findings are advisory. Its document consistency checks must be recorded in the refinement journal and passed to Claude, PO, and SM as review context. A low-confidence or negative Jev finding may create guidance, but it must not create `CycleFailed`, fail a checklist item, prevent derivation, disable `Reavaliar`, or require a document edit before the next cycle; it is only noted in the item's detail.
 
 A stage review (§26.5) scores only its own document, and it scores nothing until the owner has answered the confidentiality question. A stage review that fails records its reason and changes nothing.
 
-**Divergence, not yet resolved:** the rule above says Jev never blocks, but a full round fails when Jev is unavailable and the project is not confidential (`server/refine/cycle.ts:306-309`). The owner decides whether the code or this section changes.
+**Decision on availability.** A full round needs the Jev when the project is not confidential. When the Jev does not answer, the round fails with `Jev indisponível: confira a chave do OpenRouter.` before any agent runs (`server/refine/cycle.ts:306-309`, tested in `test/refine/cycle.test.ts`), and the page says the evaluation does not continue without it. A stage review (§26.5) does not need the Jev: when the Jev does not answer, the review goes on, and the score line says the Jev did not answer.
