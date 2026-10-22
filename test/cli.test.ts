@@ -106,7 +106,10 @@ describe('teams-ai cli', () => {
   it('run passes --run-id to the factory and a SIGTERM requests a stop', async () => {
     const seen: Array<string | undefined> = [];
     let stops = 0;
+    let fireStop: () => void = () => {};
     let resolveRun: (r: 'drained') => void = () => {};
+    let onExecute: () => void = () => {};
+    const executing = new Promise<void>((r) => (onExecute = r));
     const a = io(['run', '--project', '/tmp/p', '--spec', 'spec-001', '--run-id', 'spec-001-r9']);
     const code = main(
       a.io,
@@ -114,20 +117,25 @@ describe('teams-ai cli', () => {
         seen.push(runId, explicitId);
         return {
           runId: explicitId ?? 'x',
-          execute: () => new Promise<'drained'>((r) => (resolveRun = r)),
+          execute: () => {
+            onExecute();
+            return new Promise<'drained'>((r) => (resolveRun = r));
+          },
           requestStop: async () => { stops += 1; },
           close: async () => {},
           journal: { state: { tasks: new Map() } },
           accounting: { total: () => ({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, steps: 0 }) },
         } as never;
       },
-      { signals: (cb) => { setTimeout(() => cb(), 5); return () => {}; } },
+      { signals: (cb) => { fireStop = cb; return () => {}; } },
     );
-    await new Promise((r) => setTimeout(r, 20));
+    // The stop handler is registered before execute starts, so the signal fires while the run executes.
+    await executing;
+    fireStop();
+    expect(stops).toBe(1);
     resolveRun('drained');
     expect(await code).toBe(3);
     expect(seen).toEqual([undefined, 'spec-001-r9']);
-    expect(stops).toBe(1);
   });
 
   it('resume --retry-blocked gives the blocked tasks a fresh start before the run goes on; a plain resume does not', async () => {
