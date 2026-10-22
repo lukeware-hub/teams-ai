@@ -84,6 +84,7 @@ was implemented. Web UI block A (`2026-09-24-run-api-execution-ui-design.md`) is
 | 83 | [`2026-10-12-teams-ai-83-security-audit-status.md`](2026-10-12-teams-ai-83-security-audit-status.md) | Report — the status of each finding of the 2026-10-04 audit against today's code, and the edits to bring the roadmap and spec section 14 up to date. |
 | 84 | [`2026-10-12-teams-ai-84-decisions-reach-delivery.md`](2026-10-12-teams-ai-84-decisions-reach-delivery.md) | Done — the Dev and Test agents read the owner's decisions, and a backlog item carries the answers about its criteria; ROADMAP R11.7.6. |
 | 91 | [`2026-10-20-teams-ai-91-jev-document-scores.md`](2026-10-20-teams-ai-91-jev-document-scores.md) | In progress — the Jev scores each document (four checks, the five documents averaged), the refinement shows a readiness banner, and the start gate at 80% waits for the calibration numbers. |
+| 92 | [`2026-10-22-teams-ai-92-document-stages.md`](2026-10-22-teams-ai-92-document-stages.md) | In progress — refinement in five document stages; Phase 0 (agent charter) first, then the stage view and the stage cycle. |
 
 Plans 17 and 19 never existed (not a gap in this audit - no file was ever created at those numbers).
 
