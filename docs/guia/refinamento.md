@@ -8,7 +8,7 @@ O refinamento prepara a spec. Os agentes conferem se a descrição está complet
 
 - **Documentos do projeto** (à esquerda): cinco documentos que você pode editar: project.md (o projeto), briefing.md (a descrição desta spec), stack.md (as tecnologias), flow.md (o fluxo, em diagrama) e design.md (o visual). As alterações são salvas automaticamente ao sair do editor.
 - **Área de revisão** (no meio): o próximo passo, as perguntas dos agentes e as sugestões de ajuste.
-- **Lista de verificação** (à direita): o que ainda falta para a spec ficar pronta, o consumo, os arquivos gerados, as tarefas e os segredos.
+- **Lista de verificação** (à direita): o que ainda falta para a spec ficar pronta, o consumo (com quanto tempo levou a última avaliação), os arquivos gerados, as tarefas e os segredos.
 
 ## Passo a passo
 
@@ -23,6 +23,8 @@ Etapa 1, Refinar documentos:
 5. Quando a lista de verificação estiver toda atendida, o backlog é montado e detalhado na mesma avaliação. Não há um segundo clique.
 
 Backlog: a avaliação que vem depois dos documentos prontos monta o esboço das specs e gera a spec e o pré-plano de cada item que mudou. Cada avaliação gasta chamadas dos agentes. Uma avaliação roda no máximo quatro rodadas seguidas: para quando precisa de você (uma pergunta ou um erro) ou quando o backlog está pronto. Ao começar o backlog, o briefing passa a ser o `docs/briefing.md` do projeto.
+
+Tempo: o relógio da avaliação começa no clique em **Avaliar** ou **Reavaliar** e conta enquanto os agentes trabalham, até a avaliação inteira terminar, mesmo que ela passe por várias rodadas. Depois, a linha **Última avaliação** guarda quanto ela levou.
 
 Executar: clique em **Iniciar análise** para os agentes desenvolverem. O botão fica livre a qualquer momento, exceto enquanto os agentes estão avaliando, e nenhuma nota ou lista de verificação o trava. A análise nunca começa sozinha.
 

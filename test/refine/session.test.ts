@@ -500,6 +500,66 @@ describe('programEntries', () => {
   });
 });
 
+describe('RefineSession evaluation clock', () => {
+  const evaluated = async () => {
+    const s = await RefineSession.create(deps(), 'new-spec');
+    script['derive/po'] = [derived];
+    script['refine/po'] = [refineOut(green(PO))];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await s.evaluate();
+    return s;
+  };
+
+  it('journals the start before the cycle and the end after it', async () => {
+    const s = await evaluated();
+    const types = s.events.map((e) => e.type);
+    expect(types.indexOf('REFINE_EVALUATION_STARTED')).toBeLessThan(types.indexOf('REFINE_CYCLE_STARTED'));
+    expect(types.indexOf('REFINE_CYCLE_STARTED')).toBeLessThan(types.indexOf('REFINE_EVALUATION_ENDED'));
+    const { evaluation } = s.state;
+    expect(evaluation).toEqual({ startedAt: expect.any(String), endedAt: expect.any(String) });
+    expect(Date.parse(evaluation!.endedAt!)).toBeGreaterThanOrEqual(Date.parse(evaluation!.startedAt));
+  });
+
+  it('keeps the end of an evaluation that failed', async () => {
+    const s = await RefineSession.create(deps(), 'new-spec');
+    await s.evaluate();
+    expect(s.state.status).toBe('error');
+    expect(s.state.evaluation?.endedAt).toEqual(expect.any(String));
+  });
+
+  it('journals no start for a click the guards refuse', async () => {
+    const s = await RefineSession.create({ ...deps(), limits: { max: 0 } }, 'new-spec');
+    await expect(s.evaluate()).rejects.toBeInstanceOf(ConflictError);
+    expect(s.events.some((e) => e.type === 'REFINE_EVALUATION_STARTED')).toBe(false);
+  });
+
+  it('a restart in a pause between two cycles voids the record of the click it cut', async () => {
+    const s = await evaluated();
+    await s.close();
+    await fs.appendFile(draft().events, `${JSON.stringify({ seq: s.events.length + 1, at: new Date().toISOString(), runId: 'hello-app/hello-001', specHash: 'draft', type: 'REFINE_EVALUATION_STARTED', kind: 'fact', data: {} })}\n`);
+    const again = await RefineSession.open(deps());
+    expect(again.state.evaluation).toBeUndefined();
+    expect(again.events.at(-1)).toMatchObject({ type: 'REFINE_EVALUATION_ENDED', data: { interrupted: true } });
+    await again.close();
+  });
+
+  it('a draft with no journal yet snapshots at seq zero', async () => {
+    const s = await RefineSession.open(deps());
+    expect((await s.snapshot()).seq).toBe(0);
+    await s.close();
+  });
+
+  it('a reopen after a finished evaluation adds no end to it', async () => {
+    const s = await evaluated();
+    const before = s.events.length;
+    await s.close();
+    const again = await RefineSession.open(deps());
+    expect(again.events).toHaveLength(before);
+    expect(again.state.evaluation?.endedAt).toEqual(expect.any(String));
+    await again.close();
+  });
+});
+
 describe('RefineSession round limit', () => {
   it('refuses a new evaluation once the lock round is reached', async () => {
     const s = await RefineSession.create({ ...deps(), limits: { max: 0 } }, 'new-spec');

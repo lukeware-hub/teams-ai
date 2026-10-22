@@ -42,4 +42,11 @@ describe('applyToSnapshot', () => {
     expect(together.docsDirty).toBe(true);
     expect(snap.state.backlog).toBeUndefined();
   });
+
+  it('keeps when the latest evaluation started and ended, from the times of the journal', () => {
+    const begun = applyBatch(snap, [{ ...ev(1, 'REFINE_EVALUATION_STARTED', {}), at: '2026-10-22T10:00:00.000Z' }]);
+    expect(begun.state.evaluation).toEqual({ startedAt: '2026-10-22T10:00:00.000Z', endedAt: null });
+    const finished = applyBatch(begun, [{ ...ev(2, 'REFINE_EVALUATION_ENDED', {}), at: '2026-10-22T10:02:05.000Z' }]);
+    expect(finished.state.evaluation).toEqual({ startedAt: '2026-10-22T10:00:00.000Z', endedAt: '2026-10-22T10:02:05.000Z' });
+  });
 });

@@ -125,6 +125,8 @@ export interface RefineState {
   stuck?: StuckRun;
   /** The Jev's latest score of the documents; a document change marks it outdated until the next score. */
   readiness?: Readiness;
+  /** When the latest evaluation started and ended (ISO times); `endedAt` stays null while it runs. */
+  evaluation?: { startedAt: string; endedAt: string | null };
 }
 
 export interface StuckRun {
@@ -217,7 +219,7 @@ const docName = (file: unknown): DocFile => (file === 'brief.md' ? 'briefing.md'
 const docNames = <T>(rows: Record<string, T> | null | undefined): Record<DocFile, T> | null =>
   rows ? (Object.fromEntries(Object.entries(rows).filter(([k]) => !(k === 'brief.md' && 'briefing.md' in rows)).map(([k, v]) => [docName(k), v])) as Record<DocFile, T>) : null;
 
-export function applyRefineEvent(s: RefineState, e: { type: string; data: Record<string, unknown> }): void {
+export function applyRefineEvent(s: RefineState, e: { type: string; at?: string; data: Record<string, unknown> }): void {
   const d = e.data;
   switch (e.type) {
     case RefineEvent.CycleStarted:
@@ -246,6 +248,13 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
     case RefineEvent.CycleFailed:
       s.error = String(d.reason);
       s.status = 'error';
+      break;
+    case RefineEvent.EvaluationStarted:
+      s.evaluation = { startedAt: e.at ?? '', endedAt: null };
+      break;
+    case RefineEvent.EvaluationEnded:
+      if (d.interrupted === true) delete s.evaluation;
+      else if (s.evaluation) s.evaluation.endedAt = e.at ?? '';
       break;
     case RefineEvent.PatchAccepted:
     case RefineEvent.PatchRejected:
@@ -350,7 +359,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; data: Record
   }
 }
 
-export function reduceRefineEvents(events: ReadonlyArray<{ type: string; data: Record<string, unknown> }>): RefineState {
+export function reduceRefineEvents(events: ReadonlyArray<{ type: string; at?: string; data: Record<string, unknown> }>): RefineState {
   const s = emptyRefineState();
   for (const e of events) applyRefineEvent(s, e);
   return s;

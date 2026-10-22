@@ -138,8 +138,6 @@ export interface Snapshot {
   /** The seq of the last event the state holds; the page applies only the events after it. */
   seq: number;
   limits: RefineLimits;
-  /** When the latest evaluation began (ISO time), or null before any. */
-  evaluatingSince: string | null;
 }
 
 /**
@@ -187,6 +185,8 @@ export class RefineSession {
     const journal = await RefineJournal.open(deps.draft.events, { projectId: deps.draft.projectId, specId: deps.draft.specId });
     // Spec §8: a cycle cut by a restart is failed, never resumed; nothing was charged as an attempt.
     if (journal.state.status === 'evaluating') await journal.fact(RefineEvent.CycleFailed, { cycle: journal.state.cycle, reason: 'interrupted' });
+    // A restart in a pause between two cycles of one click: its end would be the restart, so its record is void.
+    if (journal.state.evaluation?.endedAt === null) await journal.fact(RefineEvent.EvaluationEnded, { interrupted: true });
     // A crash between enabling backlog mode and moving the briefing: finish the move.
     if (journal.state.backlog?.enabled) await moveBriefingToProject(deps.draft);
     // A continued spec carries its JSON from main before any cycle has derived one.
@@ -258,12 +258,7 @@ export class RefineSession {
       tokens.outputTokens += u?.outputTokens ?? 0;
       tokens.costUsd += Number(e.data.costUsd ?? 0);
     }
-    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, secrets, tokens, busy: this.busy, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), evaluatingSince: this.evaluatingSince() };
-  }
-
-  /** When the latest evaluation began: its CycleStarted event, which the page counts from. */
-  private evaluatingSince(): string | null {
-    return [...this.journal.events].reverse().find((e) => e.type === RefineEvent.CycleStarted)?.at ?? null;
+    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, secrets, tokens, busy: this.busy, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits() };
   }
 
   async saveDoc(file: DocFile, text: string): Promise<void> {
@@ -342,11 +337,21 @@ export class RefineSession {
     if (this.state.cycle >= this.limits().max) throw new ConflictError(`o refinamento já tem ${this.state.cycle} rodadas, o limite de ${this.limits().max}: revise os documentos e inicie a análise, ou ajuste TEAMS_AI_REFINE_MAX_ROUNDS`);
     const ctl = (this.abortCtl = new AbortController());
     // Set at once, so no other action slips in while the floor is read.
-    this.running = this.evaluateChain(ctl).finally(() => {
+    this.running = this.timedChain(ctl).finally(() => {
       this.running = null;
       this.abortCtl = null;
     });
     await this.running;
+  }
+
+  /** One click from its start to its end: the journal keeps the time, and the page counts from the start. */
+  private async timedChain(ctl: AbortController): Promise<void> {
+    await this.journal.fact(RefineEvent.EvaluationStarted, {});
+    try {
+      await this.evaluateChain(ctl);
+    } finally {
+      await this.journal.fact(RefineEvent.EvaluationEnded, {});
+    }
   }
 
   /** One evaluation cycle; the caller holds the lock, since `running` is set before this runs. */

@@ -388,6 +388,8 @@ export interface RefineState {
   backlog?: BacklogView | null;
   mode?: 'new-project' | 'new-spec' | 'continue' | null;
   readiness?: Readiness;
+  /** When the latest evaluation started and ended (ISO times); `endedAt` stays null while it runs. */
+  evaluation?: { startedAt: string; endedAt: string | null };
 }
 export interface Snapshot {
   projectId: string;
@@ -398,8 +400,6 @@ export interface Snapshot {
   tokens: { inputTokens: number; outputTokens: number; costUsd: number; steps: number };
   /** The seq of the last journal event the state holds. */
   seq?: number;
-  /** When the latest evaluation began (ISO time), or null before any. */
-  evaluatingSince?: string | null;
   /** The round after which Reavaliar stops. */
   limits?: { max: number };
 }

@@ -1159,6 +1159,7 @@ The save explanation is a **statement of system behavior**, so it is `meta` with
 | Tasks | §11.9 header `TAREFAS` with a `list` icon, then the sectional empty state |
 | Secrets | §11.9 header `SEGREDOS` with a `lock` icon |
 | Meta | §11.12 — `N etapas · N tokens · US$ N.NN` |
+| Last evaluation | Last row of the Meta block, `Última avaliação`: the duration of the last evaluation as `45 s` or `2 min 5 s`; `—` before any, `em andamento` while it runs |
 | Action | `Iniciar análise`, primary, full width, leading `play` glyph with its +1px optical nudge |
 
 `Iniciar análise` is full width because it is the panel's whole purpose and nothing in that panel competes with it (§11.3).

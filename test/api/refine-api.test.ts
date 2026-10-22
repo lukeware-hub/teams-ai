@@ -684,6 +684,18 @@ describe('refine api', () => {
     ]);
   });
 
+  it('the snapshot keeps when the last evaluation started and ended', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    script['derive/po'] = [derived];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
+    await settle();
+    const { evaluation } = (await snapshot()).state;
+    expect(evaluation).toEqual({ startedAt: expect.any(String), endedAt: expect.any(String) });
+    expect(Date.parse(evaluation!.endedAt!)).toBeGreaterThanOrEqual(Date.parse(evaluation!.startedAt));
+  });
+
   it('lists a secret an external dependency needs even before it is saved', async () => {
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     script['derive/po'] = [{ ...derived, spec: { ...derived.spec, externalDependencies: [{ name: 'db', purpose: 'p', secretNames: ['DB_URL'] }] } }];

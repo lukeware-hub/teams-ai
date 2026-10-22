@@ -16,7 +16,7 @@ import { BacklogPanel } from '../refine/BacklogPanel.js';
 import { MoveNotice } from '../refine/MoveNotice.js';
 import { jevVerdict, scoresDocs } from '@server/refine/readiness';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
-import { ProcessingBanner } from '../refine/ProcessingBanner.js';
+import { lastEvaluationText, ProcessingBanner } from '../refine/ProcessingBanner.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
 import { StageBar } from '../refine/StageBar.js';
 import { ReadinessBanner } from '../refine/ReadinessBanner.js';
@@ -674,6 +674,10 @@ export function RefinementView(p: ViewProps) {
             <dt>Custo estimado<InfoTip text="Estimativa em dólares das chamadas aos modelos de IA neste refinamento, calculada pelos preços de API." /></dt>
             <dd>US$ {snap.tokens.costUsd.toFixed(2)}</dd>
           </div>
+          <div>
+            <dt>Última avaliação<InfoTip text="Quanto a última avaliação levou, do clique em Avaliar ou Reavaliar até ela terminar." /></dt>
+            <dd data-testid="last-evaluation">{lastEvaluationText(snap.state.evaluation)}</dd>
+          </div>
         </dl>
       </div>
       {backlogFirst && backlogBlock}
@@ -817,7 +821,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
       {scoresDocs(snap.state.mode ?? null) && !['evaluating', 'started'].includes(snap.state.status) && (
         <ReadinessBanner readiness={snap.state.readiness} canStart={canStartRun(snap.state, false)} startState={startLabel} onScore={act(() => refineApi.score(projectId, specId))} onStart={startRun} />
       )}
-      {snap.state.status === 'evaluating' && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} since={snap.evaluatingSince} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}
+      {snap.state.status === 'evaluating' && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} since={snap.state.evaluation?.startedAt} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}
       {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phases={phases} link={programPath} />}
       {(error || snap.state.status === 'error') && (
         <div className="error mx-auto w-[min(100%,48rem)] text-center" role="alert">

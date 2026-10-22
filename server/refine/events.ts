@@ -8,6 +8,10 @@ export const RefineEvent = {
   Derived: 'DERIVED',
   Evaluated: 'REFINE_EVALUATED',
   CycleFailed: 'REFINE_CYCLE_FAILED',
+  /** The owner clicked Avaliar or Reavaliar: the clock of one evaluation, which may run several cycles. */
+  EvaluationStarted: 'REFINE_EVALUATION_STARTED',
+  /** The evaluation ended; `{interrupted: true}` when a restart cut it off, which voids its record. */
+  EvaluationEnded: 'REFINE_EVALUATION_ENDED',
   PatchProposed: 'PATCH_PROPOSED',
   PatchAccepted: 'PATCH_ACCEPTED',
   PatchRejected: 'PATCH_REJECTED',

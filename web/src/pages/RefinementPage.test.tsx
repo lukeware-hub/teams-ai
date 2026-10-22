@@ -78,4 +78,22 @@ describe('RefinementPage journal replay', () => {
     );
     expect(await screen.findByText('tela da execução')).toBeTruthy();
   });
+
+  it('counts the running evaluation from the start the journal recorded', async () => {
+    journal.events = [];
+    const running = snapshot(1);
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...running, state: { ...running.state, mode: 'new-project', status: 'evaluating', error: null, patches: [], evaluation: { startedAt: new Date().toISOString(), endedAt: null } } as never });
+    render(<MemoryRouter initialEntries={['/refine/hello-app/hello-001']}><Routes><Route path="/refine/:projectId/:specId" element={<RefinementPage />} /></Routes></MemoryRouter>);
+    expect(await screen.findByTestId('evaluation-timer')).toBeTruthy();
+    expect(screen.getByText(/Avaliando os documentos/)).toBeTruthy();
+  });
+
+  it('counts a single spec evaluation too, with no stage title', async () => {
+    journal.events = [];
+    const running = snapshot(1);
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...running, state: { ...running.state, mode: 'new-spec', status: 'evaluating', error: null, patches: [], evaluation: { startedAt: new Date().toISOString(), endedAt: null } } as never });
+    render(<MemoryRouter initialEntries={['/refine/hello-app/hello-001']}><Routes><Route path="/refine/:projectId/:specId" element={<RefinementPage />} /></Routes></MemoryRouter>);
+    expect(await screen.findByTestId('evaluation-timer')).toBeTruthy();
+    expect(screen.queryByText(/Avaliando os documentos/)).toBeNull();
+  });
 });

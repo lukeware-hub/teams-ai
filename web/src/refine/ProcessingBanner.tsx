@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { BacklogView } from '../api.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { processingText } from './BacklogPanel.js';
+import { formatDuration } from '../run/selectors.js';
 import { runningStepLabel, type RunningStep } from './running-steps.js';
 
 const evaluationInfo = 'Cada clique em Avaliar abre uma rodada: o Jev confere a consistência dos documentos, o Claude gera o spec.json e o project.json, os agentes PO, SM e Front revisam e sugerem ajustes, e o Jev também aponta critérios ainda não prontos, descarta perguntas repetidas e sinaliza contradições com o histórico.';
@@ -13,6 +14,14 @@ export function elapsedText(since: string, now: number): string {
   const h = Math.floor(total / 3600);
   const clock = `${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`;
   return h > 0 ? `${h}:${clock}` : clock;
+}
+
+/** The record of the last evaluation: how long it took once it ended, or a dash when there is none or its times are missing. */
+export function lastEvaluationText(evaluation: { startedAt: string; endedAt: string | null } | undefined): string {
+  if (!evaluation?.startedAt) return '—';
+  if (evaluation.endedAt === null) return 'em andamento';
+  const ms = Date.parse(evaluation.endedAt) - Date.parse(evaluation.startedAt);
+  return Number.isNaN(ms) ? '—' : formatDuration(ms);
 }
 
 /** The evaluation in progress, shown at the top of the refinement page on every tab. */

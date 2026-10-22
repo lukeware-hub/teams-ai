@@ -206,6 +206,15 @@ describe('RefinementView backlog mode', () => {
     expect(decodeURIComponent((screen.getByTestId('download-briefing-json') as HTMLAnchorElement).href)).toContain('"doc": "briefing.md"');
   });
 
+  it.each([
+    [undefined, '—'],
+    [{ startedAt: '2026-10-22T10:00:00Z', endedAt: null }, 'em andamento'],
+    [{ startedAt: '2026-10-22T10:00:00Z', endedAt: '2026-10-22T10:02:05Z' }, '2 min 5 s'],
+  ])('shows the record of the last evaluation in the consumption card (%#)', (evaluation, text) => {
+    render(<MemoryRouter><RefinementView snap={base({ evaluation })} busy={false} {...on()} /></MemoryRouter>);
+    expect(screen.getByTestId('last-evaluation').textContent).toBe(text);
+  });
+
   it('lets the owner start with checks still failing, and names them in the next step', () => {
     const failing = green(ALL).map((c) => (c.id === 'sm.tasks-feasible' ? { ...c, passed: false } : c));
     render(<MemoryRouter><RefinementView snap={base({ status: 'ready', questions: [], patches: [], checklist: failing })} busy={false} {...on()} /></MemoryRouter>);
