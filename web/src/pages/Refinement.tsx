@@ -195,6 +195,8 @@ export interface ViewProps {
   onEnableBacklog?(): void | Promise<unknown>;
   /** The owner moves on from the current document's stage. */
   onContinueStage?(): void | Promise<unknown>;
+  /** The owner asks the agents to review the document of the current stage. */
+  onEvaluateStage?(file: DocFile): void | Promise<unknown>;
   /** The owner's answer on whether the project is confidential. */
   onConfidential?(value: boolean): void | Promise<unknown>;
   /** Stage 2 of a new project: the whole backlog in one run, stopped by a question or an error and resumed by the next call. */
@@ -524,7 +526,10 @@ export function RefinementView(p: ViewProps) {
         <div className="mt-4 flex flex-wrap items-center gap-2" data-testid="stage-nav">
           <button type="button" data-testid="stage-back" disabled={!previousStage(tab) || locked} onClick={() => setTab(previousStage(tab)!)}>Voltar</button>
           {onStage ? (
-            <ActionButton data-testid="stage-continue" className="primary" disabled={locked} onClick={() => p.onContinueStage?.()} icon={<Icon name="check" size={16} />}>Continuar</ActionButton>
+            <>
+              <ActionButton data-testid="stage-evaluate" disabled={locked || atMax} onClick={() => p.onEvaluateStage?.(onStage)} icon={<Icon name="check" size={16} />}>Avaliar esta etapa</ActionButton>
+              <ActionButton data-testid="stage-continue" className="primary" disabled={locked} onClick={() => p.onContinueStage?.()} icon={<Icon name="check" size={16} />}>Continuar</ActionButton>
+            </>
           ) : (
             <ActionButton data-testid="stage-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
           )}
@@ -914,6 +919,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}
         onContinueStage={act(() => refineApi.continueStage(projectId, specId))}
+        onEvaluateStage={(f) => act(() => refineApi.evaluateStage(projectId, specId, f))()}
         onConfidential={(v) => act(() => refineApi.confidential(projectId, specId, v))()}
         onAnswer={(id, t, d) => act(() => refineApi.answer(projectId, specId, id, t, d))()}
         onSkip={(id) => act(() => refineApi.skip(projectId, specId, id))()}

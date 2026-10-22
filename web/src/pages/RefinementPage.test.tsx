@@ -47,6 +47,15 @@ describe('RefinementPage start with the score banner', () => {
     await waitFor(() => expect(cont).toHaveBeenCalledWith('hello-app', 'hello-001'));
   });
 
+  it('sends the review of the current stage document to the API', async () => {
+    const page = snapshot(1);
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...page, state: { ...page.state, mode: 'new-project', stages: true, confidential: undefined } as never });
+    const review = vi.spyOn(refineApi, 'evaluateStage').mockResolvedValue({ ok: true });
+    renderPage();
+    fireEvent.click(await screen.findByTestId('stage-evaluate'));
+    await waitFor(() => expect(review).toHaveBeenCalledWith('hello-app', 'hello-001', 'flow.md'));
+  });
+
   it('keeps the review panel start while the score is missing', async () => {
     journal.events = [];
     vi.spyOn(refineApi, 'snapshot').mockResolvedValue(withScore(undefined));

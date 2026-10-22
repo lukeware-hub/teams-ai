@@ -32,7 +32,7 @@ const base = (over: Partial<Snapshot['state']>): Snapshot => ({
     ...over,
   },
 });
-const on = () => ({ onSaveDoc: vi.fn(), onEvaluate: vi.fn(), onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn(), onContinueStage: vi.fn(), onConfidential: vi.fn(), onEnableBacklog: vi.fn() });
+const on = () => ({ onSaveDoc: vi.fn(), onEvaluate: vi.fn(), onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn(), onContinueStage: vi.fn(), onEvaluateStage: vi.fn(), onConfidential: vi.fn(), onEnableBacklog: vi.fn() });
 const event = (seq: number, type: string, data: Record<string, unknown>): StoredEvent => ({ seq, at: '', runId: 'hello-app/hello-001', specHash: 'draft', type, kind: 'fact', data });
 
 describe('a new project refines its documents in five stages', () => {
@@ -68,6 +68,18 @@ describe('a new project refines its documents in five stages', () => {
     const done = renderView(stageSnap({ doneStages: all }));
     fireEvent.click(screen.getByTestId('stage-backlog'));
     expect(done.onEnableBacklog).toHaveBeenCalledTimes(1);
+  });
+
+  it('reviews the document of the current stage, and the review waits while a run is on or the stage rounds are used up', () => {
+    const handlers = renderView(stageSnap({ doneStages: ['flow.md'] }));
+    fireEvent.click(screen.getByTestId('stage-evaluate'));
+    expect(handlers.onEvaluateStage).toHaveBeenCalledWith('project.md');
+    cleanup();
+    const running = render(<MemoryRouter><RefinementView snap={stageSnap({ doneStages: ['flow.md'] })} busy {...on()} /></MemoryRouter>);
+    expect((screen.getByTestId('stage-evaluate') as HTMLButtonElement).disabled).toBe(true);
+    running.unmount();
+    render(<MemoryRouter><RefinementView snap={{ ...stageSnap({ doneStages: ['flow.md'], cycle: 2 }), limits: { max: 2 } }} busy={false} {...on()} /></MemoryRouter>);
+    expect((screen.getByTestId('stage-evaluate') as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('says when the document changed after its score', () => {
