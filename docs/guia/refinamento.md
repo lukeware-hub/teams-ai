@@ -1,12 +1,12 @@
 # Refinamento: preparar a spec antes de executar
 
-Perguntas que este texto responde: o que é refinamento, como avaliar a spec, o que são as perguntas dos agentes, como responder, o que é a lista de verificação, o que é Avaliar e Reavaliar, quando posso iniciar a execução, o que é Iniciar análise, o que são segredos, o que é o Jev.
+Perguntas que este texto responde: o que é refinamento, como avaliar a spec, o que são as perguntas dos agentes, como responder, o que é a lista de verificação, o que é Avaliar e Reavaliar, quando posso iniciar a execução, o que é Iniciar análise, o que são segredos, o que é o Jev, o que são as etapas de um projeto novo e o que fazem Continuar, Voltar e Avaliar esta etapa.
 
 O refinamento prepara a spec. Os agentes conferem se a descrição está completa e sem ambiguidade antes de gastar tempo desenvolvendo.
 
 ## A tela
 
-- **Documentos do projeto** (à esquerda): cinco documentos que você pode editar: project.md (o projeto), briefing.md (a descrição desta spec), stack.md (as tecnologias), flow.md (o fluxo, em diagrama) e design.md (o visual). As alterações são salvas automaticamente ao sair do editor.
+- **Documentos do projeto** (à esquerda): cinco documentos que você pode editar: project.md (o projeto), briefing.md (a descrição desta spec), stack.md (as tecnologias), flow.md (o fluxo, em diagrama) e design.md (o visual). As alterações são salvas automaticamente ao sair do editor. Em um projeto novo, os cinco documentos viram etapas, em ordem (veja "Etapas de um projeto novo").
 - **Área de revisão** (no meio): o próximo passo, as perguntas dos agentes e as sugestões de ajuste.
 - **Lista de verificação** (à direita): o que ainda falta para a spec ficar pronta, o consumo (com quanto tempo levou a última avaliação), os arquivos gerados, as tarefas e os segredos.
 
@@ -28,7 +28,29 @@ Tempo: o relógio da avaliação começa no clique em **Avaliar** ou **Reavaliar
 
 Executar: clique em **Iniciar análise** para os agentes desenvolverem. O botão fica livre a qualquer momento, exceto enquanto os agentes estão avaliando, e nenhuma nota ou lista de verificação o trava. A análise nunca começa sozinha.
 
-Limite de rodadas (variável no `.env`): ao chegar em 50 (`TEAMS_AI_REFINE_MAX_ROUNDS`), **Reavaliar** para e pede uma decisão sua; **Iniciar análise** continua livre. Se o mesmo critério falhar três rodadas seguidas, uma pergunta bloqueante aparece com a divergência.
+Limite de rodadas (variável no `.env`): ao chegar em 50 (`TEAMS_AI_REFINE_MAX_ROUNDS`), **Reavaliar** para e pede uma decisão sua; **Iniciar análise** continua livre. Em um projeto novo, o limite conta de novo em cada etapa. Se o mesmo critério falhar três rodadas seguidas, uma pergunta bloqueante aparece com a divergência.
+
+## Etapas de um projeto novo
+
+Em um projeto novo, os cinco documentos são revisados um por vez, nesta ordem: **flow.md** (o fluxo do negócio, em diagrama), **project.md** (o projeto, seus objetivos e quem responde por cada parte), **briefing.md** (como o sistema funciona em detalhe, com os critérios de aceite), **stack.md** (as tecnologias e as regras de uso) e **design.md** (o visual). A barra de etapas mostra cada uma como **Feito**, **Atual** ou **Pendente**, com a nota do Jev quando houver.
+
+Antes da primeira etapa, a tela pergunta se o projeto é confidencial. Enquanto você não responde, nenhum documento é enviado ao Jev e nenhuma nota é calculada. Escolha **Sim, é confidencial** ou **Não é confidencial**.
+
+Dentro de uma etapa:
+
+- **Avaliar esta etapa**: os agentes revisam só o documento da etapa atual. Os documentos anteriores servem de contexto, e nenhum outro documento muda. A revisão pode criar perguntas para você e sugestões de ajuste.
+- **Continuar**: passa para a próxima etapa. Não exige nota nem revisão. Na última etapa, o botão vira **Quebrar o backlog**.
+- **Voltar**: volta para a etapa anterior, para revisar o que já foi concluído.
+
+Enquanto um agente trabalha, os botões ficam indisponíveis. **Avaliar esta etapa** também fica indisponível quando a etapa já usou o limite de rodadas.
+
+A linha **Alinhado com os outros documentos** diz se o documento da etapa bate com os anteriores. Ela mostra o resultado da última revisão da etapa; antes de qualquer revisão, mostra o resultado da última avaliação completa. Quando não bate, a linha diz em que ponto diverge.
+
+**desatualizado** aparece em duas situações: o documento mudou depois da sua nota, ou um documento anterior mudou depois que a etapa foi concluída. Nada é reavaliado sozinho: você decide quando revisar de novo.
+
+**Não se aplica** aparece só em design.md, para projeto sem tela: o documento passa a dizer isso, e o Jev conta a parte como presente. **Anexar arquivo** lê um arquivo de texto e troca o conteúdo do documento; se o documento já tem texto, a tela pede confirmação antes. Em briefing.md, a seção **## Decisões** é mantida ao salvar ou anexar, para que as respostas já dadas não se percam.
+
+Na primeira etapa (flow.md), o Jev não compara documentos, porque ainda não há documento anterior. Em um projeto confidencial, o Jev não lê nenhum documento.
 
 ## Movimentos de conteúdo
 
