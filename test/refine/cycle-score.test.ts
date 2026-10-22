@@ -84,6 +84,17 @@ describe('recordScore', () => {
     expect(journal.state.readiness).toMatchObject({ skipped: 'confidential', available: false, average: null });
   });
 
+  it('scores a project the owner has since answered as not confidential, after a skip recorded while it was undecided', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    const scoreDocs = vi.fn(async (_docs: Record<string, string>) => scored(0.9));
+    await recordScore({ draft, journal, scoreDocs }, 1, true);
+    await recordScore({ draft, journal, scoreDocs }, 1, false);
+    expect(scoreDocs).toHaveBeenCalledTimes(1);
+    expect(journal.state.readiness).toMatchObject({ available: true, average: 0.9 });
+    expect(journal.state.readiness?.skipped).toBeUndefined();
+  });
+
   it('scores only the documents asked for, reads only those, and journals which they are', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();

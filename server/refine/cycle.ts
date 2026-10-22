@@ -115,7 +115,7 @@ export async function isConfidential(draft: Draft, state: RefineState): Promise<
 export async function recordScore(deps: ScoreDeps, cycle: number, confidential: boolean, files: readonly DocFile[] = REORGANIZED_FILES): Promise<void> {
   const { readiness: current, outdatedDocs = [] } = deps.journal.state;
   const covered = files.every((file) => current?.docs?.[file] !== undefined && !outdatedDocs.includes(file));
-  if (current && (current.skipped ? !current.outdated : covered)) return;
+  if (current && (current.skipped ? confidential && !current.outdated : covered)) return;
   if (confidential) {
     await deps.journal.fact(RefineEvent.DocsScored, { ...UNSCORED, cycle, skipped: 'confidential' });
     return;
@@ -417,7 +417,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     criteria = checked.value.spec.acceptanceCriteria;
     objectives = checked.value.spec.objectives;
   }
-  const dctx = { confidential: derived.project.confidential };
+  const dctx = { confidential: confidential || derived.project.confidential === true };
   const notReady = !backlogMode && deps.decider ? await notReadyCriteria(criteria, decider!, dctx) : null;
 
   const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];
