@@ -33,7 +33,7 @@ export interface StageCycleDeps {
   runAgent: RunAgent;
   frontAgent?: RunAgent;
   scoreDocs?: ScoreDeps['scoreDocs'];
-  validateDocs?: (docs: ValidationDocs) => Promise<JevValidationResult>;
+  validateDocs?: (docs: ValidationDocs, stage?: string) => Promise<JevValidationResult>;
   principles: () => readonly string[];
   signal?: AbortSignal;
 }
@@ -90,7 +90,7 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     let jev: JevValidationResult | undefined;
     if (deps.validateDocs && earlierDocs(file).length > 0 && !(await isConfidential(draft, journal.state))) {
       const partial = Object.fromEntries(DOC_STAGES.map((f) => [VALIDATION_KEY[f], scope.includes(f) ? docs[f] : ''])) as unknown as ValidationDocs;
-      jev = await deps.validateDocs(partial).catch(() => unavailable());
+      jev = await deps.validateDocs(partial, file).catch(() => unavailable());
       await journal.fact(RefineEvent.DocsValidated, { cycle, backend: 'jev', ...jev });
     }
     const reorganized = await call(fitPackBudget({ ...reorganizePack({ jevGoals: goals, specHash, principles: deps.principles(), specId: draft.specId, projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], changed: [file] }), role }));

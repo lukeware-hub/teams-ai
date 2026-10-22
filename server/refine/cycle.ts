@@ -53,7 +53,7 @@ export interface CycleDeps {
   frontAgent?: RunAgent;
   principles: () => readonly string[];
   retrieval: (query: string) => readonly Hit[];
-  validateDocs?: (docs: ValidationDocs) => Promise<JevValidationResult>;
+  validateDocs?: (docs: ValidationDocs, stage?: string) => Promise<JevValidationResult>;
   /** Spec 10A.5 decisions 2–4; absent (or the layer off) leaves the cycle as it was. */
   decider?: Pick<Decider, 'decide'>;
   /** Aborting kills the agent steps this cycle has running. */

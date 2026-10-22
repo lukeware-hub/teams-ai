@@ -21,6 +21,22 @@ describe('createJevValidator', () => {
     expect(result.available).toBe(true);
   });
 
+  it('a stage is checked for agreement and for what the documents before it require of it', async () => {
+    const validate = createJevValidator(cfg, async () => ({ OPENROUTER_API_KEY: 'test-key' }));
+    await validate({ project: '# Shop', briefing: '# Brief', stack: '', flow: '# Flow', design: '' }, 'briefing.md');
+    const request = evaluate.mock.calls.at(-1)![0] as { questions: Record<string, { instructions: string }> };
+    expect(Object.keys(request.questions)).toEqual(['documents_consistent', 'covers_earlier']);
+    expect(request.questions.covers_earlier!.instructions).toContain('Does briefing.md cover everything the documents before it require of it?');
+  });
+
+  it('a whole product is checked on all six points', async () => {
+    const validate = createJevValidator(cfg, async () => ({ OPENROUTER_API_KEY: 'test-key' }));
+    await validate({ project: '# Shop', briefing: '# Brief', stack: '# Stack', flow: '# Flow', design: '# Design' });
+    const request = evaluate.mock.calls.at(-1)![0] as { questions: Record<string, unknown> };
+    expect(Object.keys(request.questions)).toHaveLength(6);
+    expect(request.questions).toHaveProperty('flow_covers_scope');
+  });
+
   it('is unavailable without a key, and asks the Jev nothing', async () => {
     const calls = evaluate.mock.calls.length;
     const validate = createJevValidator(cfg, async () => ({}));

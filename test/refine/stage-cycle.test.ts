@@ -175,6 +175,7 @@ describe('runStageCycle', () => {
     await runStageCycle({ draft, journal, runAgent: runAgent as never, validateDocs: validate as never, principles: () => [] }, 1, 'briefing.md');
     expect(validate).toHaveBeenCalledTimes(1);
     const sent = validate.mock.calls[0]![0] as unknown as Record<string, string>;
+    expect(validate).toHaveBeenCalledWith(expect.anything(), 'briefing.md');
     expect(sent.project).toContain('# Shop');
     expect(sent).toMatchObject({ stack: '', design: '' });
     expect(journal.events.some((e) => e.type === RefineEvent.DocsValidated)).toBe(true);
