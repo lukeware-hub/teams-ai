@@ -1181,10 +1181,12 @@ A new project shows its five documents as stages, in this order: `flow.md`, `pro
 
 | Element | Spec |
 |---|---|
-| Stage steps | An ordered list above the editor, labelled `Etapas dos documentos`. Each step shows its number, its file name in `ui`, and its state as text: `Feito`, `Atual` or `Pendente`. The current step has `aria-current="step"`. A step whose document changed after its note also shows `desatualizado`. State is never colour alone (§30.5). |
+| Stage steps | An ordered list above the editor, labelled `Etapas dos documentos`. Each step shows its number, its file name in `ui`, and its state as text: `Feito`, `Atual` or `Pendente`. The current step has `aria-current="step"`. A step whose document changed after its note, or whose earlier document changed after the step was done, also shows `desatualizado`; the notice names the earlier document. State is never colour alone (§30.5). |
 | Confidentiality | A row above the editor until the owner answers: `Projeto confidencial?` with `Sim, é confidencial` and `Não é confidencial`. Until an answer, no document goes to the Jev and no score is taken. |
-| Attach | `Anexar arquivo` above the editor. The file is read as text and replaces the document. A file that cannot be read leaves the document as it was. |
-| Alignment | A line under the editor: `Alinhado com os outros documentos.`, or `Não alinhado com os outros documentos:` followed by the divergence. It appears when the checklist has the contradictions check. |
+| Attach | `Anexar arquivo` above the editor. The file is read as text and replaces the document, after the owner confirms when the document holds text. A file that cannot be read leaves the document as it was. |
+| Not applicable | `Não se aplica` above the editor of `design.md` only. It writes one sentence that says the project has no interface, after the same confirmation as Attach; the Jev counts a part marked not applicable as present. |
+| Decisions | The `## Decisões` section of the briefing stays when a save or an attach leaves it out, so an answered question is never lost by an edit. |
+| Alignment | A line under the editor: `Alinhado com os outros documentos.`, or `Não alinhado com os outros documentos:` followed by the divergences. It is the last stage review's result for this document against the documents before it; before any stage review, it is the last full round's contradictions check. |
 | Stage actions | One row below the editor: `Voltar` (secondary, disabled on the first stage or while a run is on), `Avaliar esta etapa` (secondary, disabled while a run is on or the stage has used its rounds), `Continuar` (primary). After the last stage, `Continuar` becomes `Quebrar o backlog`. |
 
 `Avaliar esta etapa` reviews only the current stage's document. The earlier documents are context only, and no other document changes. The stage's rounds count against `TEAMS_AI_REFINE_MAX_ROUNDS` from the stage's first round.
