@@ -138,6 +138,8 @@ export interface Snapshot {
   /** The seq of the last event the state holds; the page applies only the events after it. */
   seq: number;
   limits: RefineLimits;
+  /** When the latest evaluation began (ISO time), or null before any. */
+  evaluatingSince: string | null;
 }
 
 /**
@@ -256,7 +258,12 @@ export class RefineSession {
       tokens.outputTokens += u?.outputTokens ?? 0;
       tokens.costUsd += Number(e.data.costUsd ?? 0);
     }
-    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, secrets, tokens, busy: this.busy, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits() };
+    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, secrets, tokens, busy: this.busy, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), evaluatingSince: this.evaluatingSince() };
+  }
+
+  /** When the latest evaluation began: its CycleStarted event, which the page counts from. */
+  private evaluatingSince(): string | null {
+    return [...this.journal.events].reverse().find((e) => e.type === RefineEvent.CycleStarted)?.at ?? null;
   }
 
   async saveDoc(file: DocFile, text: string): Promise<void> {

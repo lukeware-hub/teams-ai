@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { BacklogView } from '../api.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { processingText } from './BacklogPanel.js';
@@ -5,17 +6,34 @@ import { runningStepLabel, type RunningStep } from './running-steps.js';
 
 const evaluationInfo = 'Cada clique em Avaliar abre uma rodada: o Jev confere a consistência dos documentos, o Claude gera o spec.json e o project.json, os agentes PO, SM e Front revisam e sugerem ajustes, e o Jev também aponta critérios ainda não prontos, descarta perguntas repetidas e sinaliza contradições com o histórico.';
 
+/** The time from `since` to `now` as mm:ss, or h:mm:ss from an hour on. */
+export function elapsedText(since: string, now: number): string {
+  const total = Math.max(0, Math.floor((now - Date.parse(since)) / 1000));
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const h = Math.floor(total / 3600);
+  const clock = `${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`;
+  return h > 0 ? `${h}:${clock}` : clock;
+}
+
 /** The evaluation in progress, shown at the top of the refinement page on every tab. */
-export function ProcessingBanner({ backlog, cycle, stage, jevDown, running = [], title = 'Avaliação em andamento' }: { backlog: BacklogView | null | undefined; cycle: number; stage: string; jevDown: boolean; running?: RunningStep[]; title?: string }) {
+export function ProcessingBanner({ backlog, cycle, stage, jevDown, running = [], title = 'Avaliação em andamento', since = null }: { backlog: BacklogView | null | undefined; cycle: number; stage: string; jevDown: boolean; running?: RunningStep[]; title?: string; since?: string | null }) {
   const items = backlog?.items ?? [];
   const specs = items.filter((i) => backlog?.specs?.[i.key]?.spec).length;
   const preplans = Object.values(backlog?.preplans ?? {}).filter((row) => row.preplan).length;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!since) return;
+    setNow(Date.now());
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(tick);
+  }, [since]);
   return (
     <div className={`flex items-center gap-[0.7rem] rounded-lg border px-[0.8rem] py-[0.7rem] [&_.info-tip]:text-current ${jevDown ? 'border-bad-line bg-bad-soft text-bad' : 'border-good-line bg-good-soft text-good'}`} role="status" aria-live="polite" data-testid="processing-banner">
       <span className="button-spinner" aria-hidden="true" />
       <div className="grid flex-1 gap-[0.15rem]">
         <b className="text-[0.8125rem]">{title} <InfoTip text={evaluationInfo} /></b>
         <span className="text-[0.75rem] leading-[1.35]">Rodada {cycle} · {stage}</span>
+        {since && <span className="text-[0.75rem] leading-[1.35] tabular-nums" data-testid="evaluation-timer">Tempo: {elapsedText(since, now)}</span>}
         {running.length > 0 && <span className="text-[0.75rem] leading-[1.35]" data-testid="running-models">Em uso agora: {running.map(runningStepLabel).join('; ')}</span>}
         {backlog?.enabled && <span className="text-[0.75rem] leading-[1.35]">{processingText(backlog)}</span>}
         {backlog?.detail && (

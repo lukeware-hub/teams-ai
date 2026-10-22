@@ -818,7 +818,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
       {scoresDocs(snap.state.mode ?? null) && !['evaluating', 'started'].includes(snap.state.status) && (
         <ReadinessBanner readiness={snap.state.readiness} canStart={canStartRun(snap.state, false, snap.limits)} startState={startLabel} onScore={act(() => refineApi.score(projectId, specId))} onStart={startRun} />
       )}
-      {snap.state.status === 'evaluating' && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}
+      {snap.state.status === 'evaluating' && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} since={snap.evaluatingSince} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}
       {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phases={phases} link={programPath} />}
       {(error || snap.state.status === 'error') && (
         <div className="error mx-auto w-[min(100%,48rem)] text-center" role="alert">
