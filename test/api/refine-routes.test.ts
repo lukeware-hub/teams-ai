@@ -1,0 +1,16 @@
+import { describe, expect, it, vi } from 'vitest';
+import { refineRoutes } from '../../server/api/refine-routes.js';
+
+describe('refine routes', () => {
+  it('a stage review that fails after its answer is logged, and the answer stays 202', async () => {
+    const log = vi.fn();
+    const session = { evaluateStage: vi.fn(() => Promise.reject(new Error('journal down'))) };
+    const routes = refineRoutes({ registry: { get: vi.fn(async () => session) } as never, log });
+    const route = routes.find((r) => r.method === 'POST' && r.path.endsWith('/docs/:file/evaluate'))!;
+    const json = vi.fn();
+    await route.handler({ params: { projectId: 'shop', specId: 'shop-002', file: 'flow.md' }, json } as never);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(json).toHaveBeenCalledWith(202, { ok: true });
+    expect(log).toHaveBeenCalledWith('refine shop/shop-002: journal down');
+  });
+});

@@ -110,6 +110,18 @@ async function setup(existing?: string) {
 const exists = (p: string) => access(p).then(() => true, () => false);
 
 describe('backlog detailing in the refinement cycle', () => {
+  it("the owner's confidential answer reaches the decider of the detailing, even when the backlog project says otherwise", async () => {
+    const { journal, run } = await setup();
+    const agent = fakeAgent(() => OUTLINE);
+    await run(agent, 1);
+    await journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    journal.state.confidential = true;
+    const decider = jev('x');
+    await run(agent, 2, decider);
+    expect(decider.confidential.length).toBeGreaterThan(0);
+    expect(decider.confidential.every(Boolean)).toBe(true);
+  });
+
   it('details every item once, writes its files, reaches ready, and later re-derives only what the docs changed', async () => {
     const { journal, events, run, itemDir, draft } = await setup();
     const agent = fakeAgent(() => OUTLINE);

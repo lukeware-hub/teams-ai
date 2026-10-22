@@ -48,15 +48,15 @@ const COMBINE: Record<ScoreCheck, (rows: Array<{ value: number; size: number }>)
   scoped: (rows) => Math.min(...rows.map((r) => r.value)),
 };
 
-/** The Jev's score of the five documents: one request per window of each document, four yes-or-no checks in each request. */
-export function createJevScorer(cfg: Config, secrets: () => Promise<Record<string, string>>): (docs: Record<DocFile, string>) => Promise<DocsScoreRecord> {
-  return async (docs) => {
+/** The Jev's score of the documents asked for (all five by default): one request per window of each document, four yes-or-no checks in each request. */
+export function createJevScorer(cfg: Config, secrets: () => Promise<Record<string, string>>): (docs: Record<DocFile, string>, files?: readonly DocFile[]) => Promise<DocsScoreRecord> {
+  return async (docs, files = DOC_FILES) => {
     const values = await secrets();
     const key = values.OPENROUTER_API_KEY;
     if (!key) return UNSCORED;
     const jev = openJev(cfg, key);
     const secretValues = Object.values(values);
-    const windows = DOC_FILES.flatMap((file) => {
+    const windows = files.flatMap((file) => {
       const text = redactSecrets(docs[file], secretValues);
       if (text.trim() === '') return [];
       const parts = splitSections([{ title: file, text }], MAX_STATE_CHARS);
@@ -73,8 +73,8 @@ export function createJevScorer(cfg: Config, secrets: () => Promise<Record<strin
     }));
     const answered = results.flatMap((r) => (r.ok ? [r] : []));
     if (answered.length < results.length) return UNSCORED;
-    const docScores = {} as Record<DocFile, DocScore>;
-    for (const file of DOC_FILES) {
+    const docScores = {} as Partial<Record<DocFile, DocScore>>;
+    for (const file of files) {
       const mine = windows.flatMap((w, i) => (w.file === file ? [{ size: w.state.length, answers: answered[i]!.answers }] : []));
       if (mine.length === 0) {
         docScores[file] = { score: 0, checks: { ...NO_CHECKS } };
@@ -96,6 +96,6 @@ export function createJevScorer(cfg: Config, secrets: () => Promise<Record<strin
       }),
       { inputTokens: 0, outputTokens: 0, costUsd: null },
     );
-    return { available: true, model: answered[0]?.model ?? null, average: mean(DOC_FILES.map((file) => docScores[file].score)), docs: docScores, usage };
+    return { available: true, model: answered[0]?.model ?? null, average: mean(files.map((file) => docScores[file]!.score)), docs: docScores, usage };
   };
 }

@@ -14,8 +14,10 @@ import type { Hit } from '../knowledge/retrieval.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import { EventStore, type StoredEvent } from '../store/event-store.js';
 import { isConfidential, recordScore, runCycle, type CycleDeps, type RunAgent } from './cycle.js';
+import { DOC_STAGES } from './doc-stages.js';
+import { runStageCycle } from './stage-cycle.js';
 import { scoresDocs } from './readiness.js';
-import { recordDecision, withDecisions } from './decisions.js';
+import { decisionsSpan, recordDecision, withDecisions } from './decisions.js';
 import { maxCriterionInDraft } from './detail-cycle.js';
 import { designTemplate, flowTemplate, moveBriefingToProject, readDerived, readDoc, readMainSpec, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
 import { DRAFT_HASH, RefineEvent } from './events.js';
@@ -196,7 +198,7 @@ export class RefineSession {
 
   static async create(deps: SessionDeps, mode: 'new-project' | 'new-spec' | 'continue' | 'backlog'): Promise<RefineSession> {
     const s = await RefineSession.open(deps);
-    await s.journal.fact(RefineEvent.Created, { projectId: deps.draft.projectId, specId: deps.draft.specId, mode });
+    await s.journal.fact(RefineEvent.Created, { projectId: deps.draft.projectId, specId: deps.draft.specId, mode, stages: mode === 'new-project' });
     return s;
   }
 
@@ -261,10 +263,71 @@ export class RefineSession {
     return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, secrets, tokens, busy: this.busy, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits() };
   }
 
+  /** The rounds the current stage has used count against its limit. */
+  private guardRounds(): void {
+    const rounds = this.state.cycle - (this.state.stageStartCycle ?? 0);
+    if (rounds >= this.limits().max) throw new ConflictError(`o refinamento já tem ${rounds} rodadas nesta etapa, o limite de ${this.limits().max}: revise os documentos e inicie a análise, ou ajuste TEAMS_AI_REFINE_MAX_ROUNDS`);
+  }
+
+  /** The first document whose stage the owner has not moved on from. */
+  private currentStage(): DocFile | undefined {
+    return DOC_STAGES.find((file) => !(this.state.doneStages ?? []).includes(file));
+  }
+
+  /** One review of the current stage's document: only that document changes and its score is taken. */
+  evaluateStage(file: DocFile): Promise<void> {
+    this.ensureCanEvaluate();
+    if (this.state.stages !== true) throw new ConflictError('só um refinamento de projeto novo tem etapas');
+    const current = this.currentStage();
+    if (file !== current) throw new ConflictError(current ? `a etapa atual é ${current}, não ${file}` : 'todas as etapas já foram concluídas');
+    this.guardRounds();
+    const ctl = (this.abortCtl = new AbortController());
+    const run = this.timedStage(ctl, file).finally(() => {
+      this.running = null;
+      this.abortCtl = null;
+    });
+    this.running = run;
+    return run;
+  }
+
+  private async timedStage(ctl: AbortController, file: DocFile): Promise<void> {
+    await this.journal.fact(RefineEvent.EvaluationStarted, {});
+    try {
+      const deps = { draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, frontAgent: this.deps.frontAgent, scoreDocs: this.deps.scoreDocs, validateDocs: this.deps.validateDocs, principles: () => this.state.derived?.project.principles ?? [], signal: ctl.signal };
+      await runStageCycle(deps, this.state.cycle + 1, file);
+    } finally {
+      await this.journal.fact(RefineEvent.EvaluationEnded, {});
+    }
+  }
+
+  /** The owner moves on from the current document's stage; the rounds of the next stage count from here. */
+  async continueStage(): Promise<void> {
+    this.guard();
+    if (this.state.stages !== true) throw new ConflictError('só um refinamento de projeto novo tem etapas');
+    const doc = this.currentStage();
+    if (!doc) throw new ConflictError('todas as etapas já foram concluídas');
+    await this.journal.fact(RefineEvent.StageAdvanced, { doc, cycle: this.state.cycle });
+  }
+
+  /** The owner's answer on confidentiality; a stage session sends no document to the Jev until it comes. */
+  async answerConfidentiality(confidential: boolean): Promise<void> {
+    this.guard();
+    await this.journal.fact(RefineEvent.ConfidentialityAnswered, { confidential });
+  }
+
   async saveDoc(file: DocFile, text: string): Promise<void> {
     this.guard();
-    await writeDoc(this.deps.draft, file, text);
-    await this.journal.fact(RefineEvent.DocEdited, { file, hash: sha256(text), source: 'human' });
+    const saved = file === 'briefing.md' ? await this.keepDecisions(text) : text;
+    await writeDoc(this.deps.draft, file, saved);
+    await this.journal.fact(RefineEvent.DocEdited, { file, hash: sha256(saved), source: 'human' });
+  }
+
+  /** The briefing's `## Decisões` section stays when a save leaves it out, so an answered question is never lost by an edit. */
+  private async keepDecisions(text: string): Promise<string> {
+    if (decisionsSpan(text)) return text;
+    const current = await readDoc(this.deps.draft, 'briefing.md');
+    const span = decisionsSpan(current);
+    return span ? `${text.trimEnd()}\n\n${current.slice(span.start, span.end).trim()}\n` : text;
   }
 
   /** "Sugerir": the agent's version of `file` written from flow.md; nothing is saved, the human reviews it in the editor. */
@@ -273,7 +336,7 @@ export class RefineSession {
     const docs = Object.fromEntries(await Promise.all(DOC_FILES.map(async (f) => [f, await readDoc(this.deps.draft, f)]))) as Record<DocFile, string>;
     if (docs['flow.md'].trim() === '' || docs['flow.md'] === flowTemplate()) throw new ConflictError('Preencha o flow.md antes de pedir uma sugestão.');
     const specHash = sha256(`${file}\n${DOC_FILES.map((f) => docs[f]).join('\n')}`);
-    return this.runSuggest(SUGGEST_ROLE[file], fitPackBudget(suggestPack({ file, projectId: this.deps.draft.projectId, specHash, docs })), specHash);
+    return this.runSuggest(SUGGEST_ROLE[file], fitPackBudget(suggestPack({ file, projectId: this.deps.draft.projectId, specHash, docs, earlierOnly: this.state.stages === true })), specHash);
   }
 
   /** "Anexar imagem": the agent's design.md adjusted from template images; nothing is saved and the images are deleted after the step. */
@@ -334,7 +397,7 @@ export class RefineSession {
 
   async evaluate(): Promise<void> {
     this.ensureCanEvaluate();
-    if (this.state.cycle >= this.limits().max) throw new ConflictError(`o refinamento já tem ${this.state.cycle} rodadas, o limite de ${this.limits().max}: revise os documentos e inicie a análise, ou ajuste TEAMS_AI_REFINE_MAX_ROUNDS`);
+    this.guardRounds();
     const ctl = (this.abortCtl = new AbortController());
     // Set at once, so no other action slips in while the floor is read.
     this.running = this.timedChain(ctl).finally(() => {
@@ -405,13 +468,13 @@ export class RefineSession {
   }
 
   /** The Jev's score of the documents as they stand: no agent step and no round, so the screen can ask for it at any time. */
-  async score(): Promise<void> {
+  async score(file?: DocFile): Promise<void> {
     this.guard();
     const scoreDocs = this.deps.scoreDocs;
     if (!scoreDocs || !scoresDocs(this.state.mode)) throw new ConflictError('A nota do Jev vale só para o refinamento de um projeto novo ou de um backlog.');
     const scored = { draft: this.deps.draft, journal: this.journal, scoreDocs };
     const cycle = this.state.cycle;
-    this.running = (async () => recordScore(scored, cycle, await isConfidential(scored.draft, this.state)))().finally(() => {
+    this.running = (async () => recordScore(scored, cycle, await isConfidential(scored.draft, this.state), file ? [file] : undefined))().finally(() => {
       this.running = null;
     });
     await this.running;

@@ -388,6 +388,14 @@ export interface RefineState {
   backlog?: BacklogView | null;
   mode?: 'new-project' | 'new-spec' | 'continue' | null;
   readiness?: Readiness;
+  /** The documents the owner moved on from, in order, and the round the current stage began at. */
+  doneStages?: string[];
+  stageStartCycle?: number;
+  stages?: boolean;
+  confidential?: boolean;
+  outdatedDocs?: string[];
+  stageAlignment?: Record<string, string[]>;
+  staleBy?: Record<string, string>;
   /** When the latest evaluation started and ended (ISO times); `endedAt` stays null while it runs. */
   evaluation?: { startedAt: string; endedAt: string | null };
 }
@@ -447,6 +455,10 @@ export const refineApi = {
   secret: (p: string, s: string, name: string, value: string) => send('PUT', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/secrets/${encodeURIComponent(name)}`, { value }).then((r) => json<{ present: boolean; hint: string }>(r)),
   start: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/start`).then((r) => json<{ runId: string; program?: ProgramView }>(r)),
   score: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/score`).then((r) => json<{ ok: true }>(r)),
+  scoreDoc: (p: string, s: string, file: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/score`).then((r) => json<{ ok: true }>(r)),
+  continueStage: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/stage/continue`).then((r) => json<{ ok: true }>(r)),
+  evaluateStage: (p: string, s: string, file: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/evaluate`).then((r) => json<{ ok: true }>(r)),
+  confidential: (p: string, s: string, confidential: boolean) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/confidential`, { confidential }).then((r) => json<{ ok: true }>(r)),
   program: (p: string, s: string) => fetch(`${R}/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/program`).then((r) => json<{ program: ProgramView | null }>(r)),
   programDecisions: (p: string, s: string) => fetch(`${R}/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/program/decisions`).then((r) => json<{ decisions: ProgramDecision[]; unanswered: number }>(r)),
   prioritize: (p: string, s: string, item: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/program/${encodeURIComponent(item)}/prioritize`).then((r) => json<{ program: ProgramView }>(r)),

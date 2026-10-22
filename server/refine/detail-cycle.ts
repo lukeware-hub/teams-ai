@@ -122,7 +122,7 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
   const { draft, journal, decider } = deps;
   const { cycle, hash, docs, ctx } = input;
   // A backlog with no project yet counts as confidential, so its text never reaches the Jev.
-  const dctx = { confidential: input.backlog.project?.confidential ?? true };
+  const dctx = { confidential: journal.state.confidential === true || (input.backlog.project?.confidential ?? true) };
   const items = [...input.backlog.items].sort((a, b) => a.rank - b.rank);
   const specs: Record<string, SpecRow> = { ...input.backlog.specs };
   const preplans: Record<string, PreplanRow> = { ...input.backlog.preplans };

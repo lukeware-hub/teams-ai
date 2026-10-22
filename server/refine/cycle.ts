@@ -53,7 +53,7 @@ export interface CycleDeps {
   frontAgent?: RunAgent;
   principles: () => readonly string[];
   retrieval: (query: string) => readonly Hit[];
-  validateDocs?: (docs: ValidationDocs) => Promise<JevValidationResult>;
+  validateDocs?: (docs: ValidationDocs, stage?: string) => Promise<JevValidationResult>;
   /** Spec 10A.5 decisions 2–4; absent (or the layer off) leaves the cycle as it was. */
   decider?: Pick<Decider, 'decide'>;
   /** Aborting kills the agent steps this cycle has running. */
@@ -61,7 +61,7 @@ export interface CycleDeps {
   /** R11.5.7: the measured confidence floor for answering a question routed `auto` from the docs; unset leaves every question with the human. */
   autoAnswerFloor?: number;
   /** The Jev's score of the five documents, journaled once per cycle of a new project or a backlog. */
-  scoreDocs?: (docs: Record<DocFile, string>) => Promise<DocsScoreRecord>;
+  scoreDocs?: (docs: Record<DocFile, string>, files?: readonly DocFile[]) => Promise<DocsScoreRecord>;
 }
 
 /** Main's outline, from its specs.json in the base copy, for a new draft's first outline; the draft's own state when main has none. */
@@ -102,23 +102,27 @@ export interface ScoreDeps {
   scoreDocs: NonNullable<CycleDeps['scoreDocs']>;
 }
 
-/** A confidential project's documents never leave for the OpenRouter; its record decides. */
+/** A confidential project's documents never leave for the OpenRouter; the owner's answer or its records decide. */
 export async function isConfidential(draft: Draft, state: RefineState): Promise<boolean> {
+  if (state.confidential === true) return true;
+  // A stage session stays confidential until the owner answers, so no document goes to the Jev unasked.
+  if (state.stages === true && state.confidential === undefined) return true;
   const base = Project.safeParse(JSON.parse((await readBase(draft, 'project.json')) ?? 'null')).data?.confidential === true;
   return base || state.backlog?.project?.confidential === true || (await readDerived(draft))?.project.confidential === true;
 }
 
-/** Journals the Jev's score of the five documents as they stand now; a current score is kept, and a confidential project is never sent. */
-export async function recordScore(deps: ScoreDeps, cycle: number, confidential: boolean): Promise<void> {
-  const current = deps.journal.state.readiness;
-  if (current && !current.outdated && (current.available || current.skipped)) return;
+/** Journals the Jev's score of the documents asked for (all five by default) as they stand now; a current score is kept, and a confidential project is never sent. */
+export async function recordScore(deps: ScoreDeps, cycle: number, confidential: boolean, files: readonly DocFile[] = REORGANIZED_FILES): Promise<void> {
+  const { readiness: current, outdatedDocs = [] } = deps.journal.state;
+  const covered = files.every((file) => current?.docs?.[file] !== undefined && !outdatedDocs.includes(file));
+  if (current && (current.skipped ? confidential && !current.outdated : covered)) return;
   if (confidential) {
     await deps.journal.fact(RefineEvent.DocsScored, { ...UNSCORED, cycle, skipped: 'confidential' });
     return;
   }
-  const docs = Object.fromEntries(await Promise.all(REORGANIZED_FILES.map(async (file) => [file, await readDoc(deps.draft, file)]))) as Record<DocFile, string>;
-  const scored = await deps.scoreDocs(docs).catch(() => UNSCORED);
-  await deps.journal.fact(RefineEvent.DocsScored, { cycle, ...scored });
+  const docs = Object.fromEntries(await Promise.all(files.map(async (file) => [file, await readDoc(deps.draft, file)]))) as Record<DocFile, string>;
+  const scored = await deps.scoreDocs(docs, files).catch(() => UNSCORED);
+  await deps.journal.fact(RefineEvent.DocsScored, { cycle, files, ...scored });
 }
 
 const BLANK_FILES = ['stack.md', 'flow.md'] as const;
@@ -139,13 +143,13 @@ const REORGANIZE_MAX_MOVES = 20;
 const REORGANIZED_FILES: readonly DocFile[] = ['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md'];
 
 /** The titles a question quotes in double quotes, normalized: the section a pending question is about. */
-const titlesOf = (texts: readonly string[]) => texts.flatMap((t) => [...t.matchAll(/"([^"]{4,})"/g)].map((m) => norm(m[1]!)));
+export const titlesOf = (texts: readonly string[]) => texts.flatMap((t) => [...t.matchAll(/"([^"]{4,})"/g)].map((m) => norm(m[1]!)));
 
 /** Texts of the questions waiting for the owner, the ones of this cycle's reorganization included. */
 const askedTexts = (s: RefineState, pending: ReadonlyArray<{ text: string }>) => [...s.questions.filter((q) => q.status === 'pending').map((q) => q.text), ...pending.map((q) => q.text)];
 
 /** Applies the moves role by role (Front, PO, SM), each against the documents as the earlier ones left them; a refused move is discarded with its reason. */
-async function applyMoves(
+export async function applyMoves(
   journal: CycleJournal,
   draft: Draft,
   cycle: number,
@@ -413,7 +417,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     criteria = checked.value.spec.acceptanceCriteria;
     objectives = checked.value.spec.objectives;
   }
-  const dctx = { confidential: derived.project.confidential };
+  const dctx = { confidential: confidential || derived.project.confidential === true };
   const notReady = !backlogMode && deps.decider ? await notReadyCriteria(criteria, decider!, dctx) : null;
 
   const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];

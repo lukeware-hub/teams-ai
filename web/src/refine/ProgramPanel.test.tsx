@@ -132,10 +132,11 @@ describe('canStartRun', () => {
     expect(canStartRun(state({ status: 'started' }), false)).toBe(false);
     expect(canStartRun(state({ derived: null }), false)).toBe(false);
   });
-  it('a new project starts only with its backlog, and a backlog only once detailed', () => {
+  it('a new project starts only with its backlog, and a backlog only once detailed and with items', () => {
+    const item = { key: 'base' };
     expect(canStartRun(state({ mode: 'new-project' }), false)).toBe(false);
-    expect(canStartRun(state({ mode: 'new-project', backlog: { enabled: true, detail: true } }), false)).toBe(true);
-    expect(canStartRun(state({ backlog: { enabled: true, detail: false } }), false)).toBe(false);
-    expect(canStartRun(state({ backlog: { enabled: true, detail: true } }), false)).toBe(true);
+    expect(canStartRun(state({ mode: 'new-project', backlog: { enabled: true, detail: true, items: [item] } }), false)).toBe(true);
+    expect(canStartRun(state({ backlog: { enabled: true, detail: false, items: [item] } }), false)).toBe(false);
+    expect(canStartRun(state({ backlog: { enabled: true, detail: true, items: [] } }), false)).toBe(false);
   });
 });

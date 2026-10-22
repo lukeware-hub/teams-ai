@@ -16,13 +16,13 @@ export interface ScoreUsage {
   costUsd: number | null;
 }
 
-/** What the Jev answered for the five documents, or why it did not answer. */
+/** What the Jev answered for the documents asked for, or why it did not answer. */
 export interface DocsScoreRecord {
   available: boolean;
   model: string | null;
-  /** The mean of the five document scores, from 0 to 1; null when the Jev did not answer. */
+  /** The mean of the document scores held, from 0 to 1; null when the Jev did not answer. */
   average: number | null;
-  docs: Record<DocFile, DocScore> | null;
+  docs: Partial<Record<DocFile, DocScore>> | null;
   usage: ScoreUsage | null;
 }
 
@@ -50,13 +50,14 @@ export const CHECK_GOAL: Record<ScoreCheck, string> = {
 };
 
 /** A check at or above this share passes; a document is ready when all its checks pass. */
-export const GOAL_SHARE = 0.8;
+/** A check passes when the percent shown for it reaches READY_PERCENT, so a check shown as 80% is never below the goal. */
+export const meetsGoal = (share: number): boolean => percentOf(share) >= READY_PERCENT;
 
 /** Each check below the goal, per document, as one line for the agents: the target they must reach in this round. */
 export function jevGoals(r: Readiness | undefined): string[] {
   if (!r?.docs) return [];
   return Object.entries(r.docs).flatMap(([file, doc]) => {
-    const weak = SCORE_CHECKS.filter((id) => doc.checks[id] < GOAL_SHARE);
+    const weak = SCORE_CHECKS.filter((id) => !meetsGoal(doc.checks[id]));
     if (weak.length === 0) return [];
     return [`- ${file} (${percentOf(doc.score)}%): ${weak.map((id) => `${id} ${percentOf(doc.checks[id])}%, it must ${CHECK_GOAL[id]}`).join('; ')}.`];
   });

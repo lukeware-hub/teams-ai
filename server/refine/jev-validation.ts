@@ -55,6 +55,16 @@ const CHECKS = {
   },
 } as const;
 
+/** The checks of a stage's preflight: the documents agree, and the stage document covers what the documents before it require of it. */
+export const stageChecks = (stage: string): Record<string, { instructions: string; yes: string; no: string }> => ({
+  documents_consistent: CHECKS.documents_consistent,
+  covers_earlier: {
+    instructions: `Does ${stage} cover everything the documents before it require of it?`,
+    yes: `${stage} holds every part the documents before it require of it.`,
+    no: `${stage} misses a part the documents before it require of it.`,
+  },
+});
+
 export function summarizeJevChecks(checks: Record<string, number>, model: string | null, stateTruncated = false): JevValidationResult {
   const values = Object.values(checks).filter((value) => Number.isFinite(value));
   if (values.length === 0) return { available: true, decision: 'review', consistent: null, confidence: null, model, checks, stateTruncated };
@@ -81,7 +91,7 @@ export function jevHint(validation?: JevValidationResult): string {
   return scores.length ? `Automatic and often wrong, never a verdict. Scores (probability of yes): ${scores.join(', ')}.` : '(not available)';
 }
 
-const unavailable = (): JevValidationResult => ({ available: false, decision: 'review', consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false });
+export const unavailable = (): JevValidationResult => ({ available: false, decision: 'review', consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false });
 
 /** The Jev over OpenRouter, configured as the decisions are. */
 export function openJev(cfg: Config, apiKey: string): JevOpenRouterBackend {
@@ -98,9 +108,22 @@ export function openJev(cfg: Config, apiKey: string): JevOpenRouterBackend {
   });
 }
 
+/** Tells the Jev which part of the documents it sees, when they come in more than one window; empty for a single window. */
+export function windowNote(part: number, parts: number): string {
+  return parts > 1 ? `You see part ${part} of ${parts} of the documents. Judge only what is in this part and do not penalize what lies outside it. ` : '';
+}
+
+/** Tells the Jev which documents exist yet when some are still empty; empty when all five are written. */
+export function absentDocsNote(docs: ValidationDocs): string {
+  const names = ['project', 'briefing', 'stack', 'flow', 'design'] as const;
+  const present = names.filter((n) => docs[n].trim() !== '');
+  if (present.length === names.length) return '';
+  return `Only these documents exist yet: ${present.map((n) => `${n}.md`).join(', ') || 'none'}. Judge only them and do not penalize a document that does not exist yet. `;
+}
+
 /** Runs independent Jev consistency checks before Claude derives the specification. */
-export function createJevValidator(cfg: Config, secrets: () => Promise<Record<string, string>>): (docs: ValidationDocs) => Promise<JevValidationResult> {
-  return async (docs) => {
+export function createJevValidator(cfg: Config, secrets: () => Promise<Record<string, string>>): (docs: ValidationDocs, stage?: string) => Promise<JevValidationResult> {
+  return async (docs, stage) => {
     const values = await secrets();
     const key = values.OPENROUTER_API_KEY;
     if (!key) return unavailable();
@@ -109,10 +132,11 @@ export function createJevValidator(cfg: Config, secrets: () => Promise<Record<st
     const clean = Object.fromEntries(Object.entries(docs).map(([name, text]) => [name, redactSecrets(text, secretValues)])) as unknown as ValidationDocs;
     const windows = splitWindows(clean, MAX_STATE_CHARS);
     // Each window sees only part of the documents, so a check must not fail for what lies outside it.
-    const scope = windows.length > 1 ? (part: number) => `You see part ${part} of ${windows.length} of the documents. Judge only what is in this part and do not penalize what lies outside it. ` : () => '';
+    const scope = (part: number) => `${windowNote(part, windows.length)}${absentDocsNote(clean)}`;
+    const definitions: Record<string, { instructions: string; yes: string; no: string }> = stage ? stageChecks(stage) : CHECKS;
     const results = await Promise.all(windows.map((state, i) => jev.evaluate({
       state,
-      questions: Object.fromEntries(Object.entries(CHECKS).map(([id, check]) => [id, {
+      questions: Object.fromEntries(Object.entries(definitions).map(([id, check]) => [id, {
         type: 'noul' as const,
         instructions: scope(i + 1) + check.instructions,
         criteria: { true: check.yes, false: check.no },
@@ -123,7 +147,7 @@ export function createJevValidator(cfg: Config, secrets: () => Promise<Record<st
     if (answered.length < results.length) return unavailable();
     const model = answered[0]!.model;
     const checks: Record<string, number> = {};
-    for (const id of Object.keys(CHECKS)) {
+    for (const id of Object.keys(definitions)) {
       const scores = answered.map((r) => r.answers[id]);
       if (scores.some((a) => a?.type !== 'noul')) return { ...unavailable(), model };
       // A contradiction in any window fails the consistency check; a topic check passes when some window covers it.

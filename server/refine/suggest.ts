@@ -1,6 +1,7 @@
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
 import { briefTemplate, designTemplate, projectTemplate, stackTemplate, type DocFile } from './draft.js';
+import { earlierDocs } from './doc-stages.js';
 import { buildWithDocs } from './docs-view.js';
 
 /** Every document but flow.md, which is the source the others are suggested from. */
@@ -15,8 +16,9 @@ const TEMPLATE: Record<SuggestFile, (projectId: string) => string> = { 'project.
 export const DOC_FILES: DocFile[] = ['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md'];
 
 /** Refinement "Sugerir": one step that writes `file` in full, coherent with the other four documents and their recorded decisions. */
-export function suggestPack(input: { file: SuggestFile; projectId: string; specHash: string; docs: Record<DocFile, string> }): ContextPackInput {
-  const others = DOC_FILES.filter((f) => f !== input.file);
+export function suggestPack(input: { file: SuggestFile; projectId: string; specHash: string; docs: Record<DocFile, string>; earlierOnly?: boolean }): ContextPackInput {
+  // A stage of a new project reads only the documents before it; the other sessions read all the others.
+  const others = input.earlierOnly ? earlierDocs(input.file) : DOC_FILES.filter((f) => f !== input.file);
   const viewed = buildWithDocs(Object.fromEntries(others.map((f) => [f, input.docs[f]])) as Record<DocFile, string>, (view) => others.map((f) => `### ${f}\n${view[f]}`).join('\n\n'));
   const feedback = [
     `Write the complete docs/${input.file} in \`text\`, coherent with the other documents below.`,

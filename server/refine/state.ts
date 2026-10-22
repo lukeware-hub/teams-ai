@@ -8,6 +8,7 @@ import { RefineEvent, type Question } from './events.js';
 import { approvalKey } from './sections.js';
 import type { DocFile } from './draft.js';
 import type { PendingPatch } from './patches.js';
+import { DOC_STAGES } from './doc-stages.js';
 import type { DocScore, Readiness } from './readiness.js';
 
 export type RefineStatus = 'drafting' | 'evaluating' | 'answering' | 'ready' | 'error' | 'started';
@@ -113,7 +114,7 @@ export interface RefineState {
   moves: MoveRow[];
   /** The hash of each document as the last reorganization pass left it; a document whose hash differs is read again. */
   reorganized: Partial<Record<DocFile, string>>;
-  /** The findings of the last cycle whose quotes the documents show, replaced every cycle. */
+  /** The findings whose quotes the documents show: a full round replaces them all, a stage review only those of the documents it covers. */
   findings: FindingRow[];
   discarded: Array<{ cycle: number; role: string; file: string; reason: string }>;
   error: string | null;
@@ -121,10 +122,24 @@ export interface RefineState {
   backlog: BacklogState | null;
   /** How the session was created; null on drafts from before it was kept. */
   mode: 'new-project' | 'new-spec' | 'continue' | 'backlog' | null;
+  /** Created with the document stages: its confidentiality is unknown, so no document goes to the Jev, until the owner answers. */
+  stages?: boolean;
+  /** The owner's answer on confidentiality; undefined until it comes. */
+  confidential?: boolean;
   /** The checks failing in the last rounds in a row, and how many rounds they have failed together. */
   stuck?: StuckRun;
   /** The Jev's latest score of the documents; a document change marks it outdated until the next score. */
   readiness?: Readiness;
+  /** The documents edited since their score was taken: each one's score is outdated until it is scored again. */
+  outdatedDocs?: DocFile[];
+  /** The documents the owner moved on from, in order. */
+  doneStages?: DocFile[];
+  /** The round the current stage began at; its rounds count from here. */
+  stageStartCycle?: number;
+  /** What the last stage review of each document found against the documents before it; an empty list is aligned. */
+  stageAlignment?: Partial<Record<DocFile, string[]>>;
+  /** A stage the owner moved on from, whose earlier document changed after it: that document's name, until the stage is reviewed again. */
+  staleBy?: Partial<Record<DocFile, DocFile>>;
   /** When the latest evaluation started and ended (ISO times); `endedAt` stays null while it runs. */
   evaluation?: { startedAt: string; endedAt: string | null };
 }
@@ -198,13 +213,13 @@ export interface StartInput {
   status: RefineStatus;
   mode?: string | null;
   derived: unknown;
-  backlog?: { enabled: boolean; detail?: boolean | null } | null;
+  backlog?: { enabled: boolean; detail?: boolean | null; items?: unknown[] } | null;
 }
 
 /** The start is open unless the agents evaluate or a run started: checks, questions and the Jev only advise. */
 export function canStart(s: StartInput): boolean {
   if (s.status === 'evaluating' || s.status === 'started') return false;
-  if (s.backlog?.enabled) return s.backlog.detail === true;
+  if (s.backlog?.enabled) return s.backlog.detail === true && (s.backlog.items?.length ?? 0) > 0;
   return s.mode !== 'new-project' && Boolean(s.derived);
 }
 
@@ -218,6 +233,14 @@ const keep = <T>(rows: Record<string, T> | undefined, keys: ReadonlySet<string>)
 const docName = (file: unknown): DocFile => (file === 'brief.md' ? 'briefing.md' : file) as DocFile;
 const docNames = <T>(rows: Record<string, T> | null | undefined): Record<DocFile, T> | null =>
   rows ? (Object.fromEntries(Object.entries(rows).filter(([k]) => !(k === 'brief.md' && 'briefing.md' in rows)).map(([k, v]) => [docName(k), v])) as Record<DocFile, T>) : null;
+
+/** Marks each stage the owner moved on from after an edited document, until that stage is reviewed again. */
+function markStaleStages(s: RefineState, edited: DocFile): void {
+  const index = DOC_STAGES.indexOf(edited);
+  if (index < 0) return;
+  const later = DOC_STAGES.slice(index + 1).filter((doc) => (s.doneStages ?? []).includes(doc));
+  if (later.length > 0) s.staleBy = { ...(s.staleBy ?? {}), ...Object.fromEntries(later.map((doc) => [doc, edited])) };
+}
 
 export function applyRefineEvent(s: RefineState, e: { type: string; at?: string; data: Record<string, unknown> }): void {
   const d = e.data;
@@ -241,6 +264,17 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       s.questions.push(...v.questions.map((q) => ({ ...q, status: 'pending' as const, answer: null })));
       s.discarded.push(...v.discardedPatches.map((x) => ({ cycle: v.cycle, ...x, file: docName(x.file) })));
       s.stale = s.editedInCycle === true;
+      s.status = 'drafting';
+      s.status = computeStatus(s);
+      break;
+    }
+    case RefineEvent.StageReviewed: {
+      // A stage review asks questions only; the checklist and the stuck count stay as the last full round left them.
+      const v = d as unknown as { cycle: number; file: DocFile; questions: Question[]; divergences: string[]; discardedPatches: Array<{ role: string; file: string; reason: string }> };
+      s.questions.push(...v.questions.map((q) => ({ ...q, status: 'pending' as const, answer: null })));
+      s.stageAlignment = { ...(s.stageAlignment ?? {}), [v.file]: v.divergences };
+      if (s.staleBy) delete s.staleBy[v.file];
+      s.discarded.push(...v.discardedPatches.map((x) => ({ cycle: v.cycle, ...x, file: docName(x.file) })));
       s.status = 'drafting';
       s.status = computeStatus(s);
       break;
@@ -274,9 +308,13 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     case RefineEvent.DocsReorganized:
       s.reorganized = docNames(d.hashes as Record<string, string> | undefined) ?? {};
       break;
-    case RefineEvent.FindingsReported:
-      s.findings = (d.findings as FindingRow[] | undefined) ?? [];
+    case RefineEvent.FindingsReported: {
+      const findings = (d.findings as FindingRow[] | undefined) ?? [];
+      // A stage review names the documents it covers: the findings of the others stay until a review covers them.
+      const covered = d.files as DocFile[] | undefined;
+      s.findings = covered ? [...s.findings.filter((f) => !covered.includes(f.doc)), ...findings] : findings;
       break;
+    }
     case RefineEvent.DocMoveUndone: {
       const m = s.moves.find((x) => x.moveId === String(d.moveId));
       if (m) m.status = 'undone';
@@ -295,11 +333,21 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     }
     case RefineEvent.Created:
       s.mode = (d.mode as RefineState['mode']) ?? null;
+      s.stages = d.stages === true;
+      break;
+    case RefineEvent.ConfidentialityAnswered:
+      s.confidential = d.confidential === true;
+      break;
+    case RefineEvent.StageAdvanced:
+      s.doneStages = [...new Set([...(s.doneStages ?? []), docName(d.doc)])];
+      s.stageStartCycle = Number(d.cycle);
       break;
     case RefineEvent.DocEdited:
       if (s.status === 'evaluating') s.editedInCycle = true;
       if (hasDerivation(s)) s.stale = true;
       if (s.readiness) s.readiness.outdated = true;
+      s.outdatedDocs = [...new Set([...(s.outdatedDocs ?? []), docName(d.file)])];
+      markStaleStages(s, docName(d.file));
       break;
     case RefineEvent.BacklogEnabled: {
       // `acFloor`: the highest criterion id in the draft before the briefing move removed this draft's own spec.json.
@@ -347,9 +395,22 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     case RefineEvent.ConflictsDerived:
       if (s.backlog) s.backlog = { ...s.backlog, conflicts: { inputHash: String(d.inputHash), pairs: d.pairs as ConflictMap['pairs'] } };
       break;
-    case RefineEvent.DocsScored:
-      s.readiness = { ...(d as unknown as Omit<Readiness, 'outdated' | 'docs'>), docs: docNames(d.docs as Record<string, DocScore> | null), outdated: false };
+    case RefineEvent.DocsScored: {
+      // A score without a file list is a full one, as journals from before the per-document score wrote it.
+      const files = (d.files as DocFile[] | undefined) ?? DOC_STAGES;
+      const scored = docNames(d.docs as Record<string, DocScore> | null);
+      // A failed score keeps the scores held and the outdated marks, so the next score still asks for the documents it missed.
+      if (!scored && d.available === false && d.skipped === undefined) {
+        s.readiness = { ...(d as unknown as Omit<Readiness, 'outdated' | 'docs'>), docs: s.readiness?.docs ?? null, outdated: (s.outdatedDocs ?? []).length > 0 };
+        break;
+      }
+      const docs = scored && { ...(s.readiness?.docs ?? {}), ...scored };
+      const held = Object.values(docs ?? {}).map((doc) => doc!.score);
+      const average = docs ? held.reduce((sum, v) => sum + v, 0) / held.length : (d.average as number | null);
+      s.outdatedDocs = (s.outdatedDocs ?? []).filter((file) => !files.includes(file));
+      s.readiness = { ...(d as unknown as Omit<Readiness, 'outdated' | 'docs' | 'average'>), docs, average, outdated: s.outdatedDocs.length > 0 };
       break;
+    }
     case RefineEvent.StartedRun:
       s.status = 'started';
       s.runId = String(d.runId);

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeSecret } from '../../server/core/secrets.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
 import { createNewProject, draftPaths, readDoc, renderBriefMd, writeDoc } from '../../server/refine/draft.js';
+import { RefineEvent } from '../../server/refine/events.js';
 import { ConflictError, programEntries, RefineSession } from '../../server/refine/session.js';
 import type { BacklogState } from '../../server/refine/state.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
@@ -32,6 +33,18 @@ beforeEach(async () => {
   calls.length = 0;
 });
 afterEach(() => fs.rm(root, { recursive: true, force: true }));
+
+describe('RefineSession confidentiality answer', () => {
+  it('a new project starts unanswered in the stages, and the owner answer is journaled', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    expect(s.state.stages).toBe(true);
+    expect(s.state.confidential).toBeUndefined();
+    await s.answerConfidentiality(false);
+    expect(s.state.confidential).toBe(false);
+    expect(s.events.at(-1)?.type).toBe(RefineEvent.ConfidentialityAnswered);
+    await s.close();
+  });
+});
 
 describe('RefineSession', () => {
   it('backlog mode moves the brief to the target project docs/briefing.md, and a reopen finishes an interrupted move', async () => {
@@ -567,12 +580,99 @@ describe('RefineSession round limit', () => {
   });
 });
 
+describe('RefineSession stages', () => {
+  it('steps through the five documents in order, and refuses a step once every document is done', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    for (let i = 0; i < 5; i += 1) await s.continueStage();
+    expect(s.state.doneStages).toEqual(['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md']);
+    await expect(s.continueStage()).rejects.toBeInstanceOf(ConflictError);
+    await s.close();
+  });
+
+  it('refuses a step in a session that has no stages', async () => {
+    const c = await RefineSession.create(deps(), 'continue');
+    await expect(c.continueStage()).rejects.toBeInstanceOf(ConflictError);
+    await c.close();
+  });
+
+  it('counts the rounds of an evaluation from the stage it runs in, so the next stage starts with its own rounds', async () => {
+    const s = await RefineSession.create({ ...deps(), limits: { max: 1 } }, 'new-project');
+    await s.evaluate();
+    await expect(s.evaluate()).rejects.toBeInstanceOf(ConflictError);
+    await s.continueStage();
+    await s.evaluate();
+    expect(s.state.cycle).toBe(2);
+    await s.close();
+  });
+});
+
+describe('RefineSession stage review', () => {
+  it('reviews one stage at a time, and the rounds of that stage count against its limit', async () => {
+    const s = await RefineSession.create({ ...deps(), limits: { max: 1 } }, 'new-project');
+    await s.evaluateStage('flow.md');
+    expect(s.state.cycle).toBe(1);
+    expect(() => s.evaluateStage('flow.md')).toThrow(ConflictError);
+    await s.continueStage();
+    await s.evaluateStage('project.md');
+    expect(s.state.cycle).toBe(2);
+    await s.close();
+  });
+
+  it('a stage review is refused at once in a session that has no stages', async () => {
+    const c = await RefineSession.create(deps(), 'continue');
+    expect(() => c.evaluateStage('flow.md')).toThrow(ConflictError);
+    await c.close();
+  });
+
+  it('a stage review of a document that is not the current stage is refused at once, and starts nothing', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    expect(() => s.evaluateStage('project.md')).toThrow(ConflictError);
+    expect(s.busy).toBe(false);
+    await s.continueStage();
+    expect(() => s.evaluateStage('flow.md')).toThrow(ConflictError);
+    await s.close();
+  });
+
+  it('a stage review cannot start while another evaluation runs, and the running one ends normally', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    const first = s.evaluateStage('flow.md');
+    expect(() => s.evaluateStage('project.md')).toThrow(ConflictError);
+    await first;
+    expect(s.busy).toBe(false);
+    await s.close();
+  });
+});
+
+describe('RefineSession briefing decisions', () => {
+  it('a save of the briefing that leaves out its decisions keeps the section the owner answered', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    await s.saveDoc('briefing.md', '# Briefing\n\n## Decisões\n\n- Qual o prazo?\n  Answer: Trinta dias\n');
+    await s.saveDoc('briefing.md', '# Briefing novo\n\n## Objetivos\n\nVender online.\n');
+    const briefing = (await s.snapshot()).docs['briefing.md'];
+    expect(briefing).toContain('# Briefing novo');
+    expect(briefing).toContain('Answer: Trinta dias');
+    await s.close();
+  });
+});
+
 describe('RefineSession document score', () => {
-  const scored = { available: true, model: 'jev-1.13.0', average: 0.9, docs: null, usage: null };
+  const ALL_DOCS = ['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md'];
+  const scored = { available: true, model: 'jev-1.13.0', average: 0.9, docs: Object.fromEntries(ALL_DOCS.map((file) => [file, { score: 0.9, checks: { complete: 0.9, concrete: 0.9, consistent: 0.9, scoped: 0.9 } }])), usage: null };
+
+  it('scores one document on request, and journals only that document', async () => {
+    const scoreDocs = vi.fn(async (_docs: Record<string, string>, _files?: readonly string[]) => scored);
+    const s = await RefineSession.create({ ...deps(), scoreDocs }, 'new-project');
+    await s.answerConfidentiality(false);
+    await s.score('stack.md');
+    expect(scoreDocs.mock.calls[0]![1]).toEqual(['stack.md']);
+    expect(s.state.readiness).toMatchObject({ available: true });
+    await s.close();
+  });
 
   it('scores the documents without spending a round, and keeps a current score', async () => {
     const scoreDocs = vi.fn(async () => scored);
     const s = await RefineSession.create({ ...deps(), scoreDocs }, 'new-project');
+    await s.answerConfidentiality(false);
     await s.score();
     expect(s.state).toMatchObject({ cycle: 0, readiness: { available: true, average: 0.9, outdated: false } });
     await s.score();
@@ -587,6 +687,7 @@ describe('RefineSession document score', () => {
   it('an evaluation journals the score of the documents, not only the manual score', async () => {
     const scoreDocs = vi.fn(async () => scored);
     const s = await RefineSession.create({ ...deps(), scoreDocs }, 'new-project');
+    await s.answerConfidentiality(false);
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO))];
     script['refine/sm'] = [refineOut(green(SM))];

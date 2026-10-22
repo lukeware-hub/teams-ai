@@ -11,6 +11,20 @@ const patch = (patchId: string) => ({ patchId, role: 'sm', file: 'briefing.md', 
 const derived = { project: makeProject(), spec: { ...makeSpec(), status: 'refining', specHash: null } };
 const cycle = (n: number) => [{ type: RefineEvent.CycleStarted, data: { cycle: n, draftHash: 'h' } }, { type: RefineEvent.Derived, data: { cycle: n, ...derived } }];
 
+describe('confidentiality answer and document stages', () => {
+  it('a session created with the document stages is marked; an older one is not', () => {
+    expect(reduceRefineEvents([{ type: RefineEvent.Created, data: { mode: 'new-project', stages: true } }]).stages).toBe(true);
+    expect(reduceRefineEvents([{ type: RefineEvent.Created, data: { mode: 'new-project' } }]).stages).toBe(false);
+    expect(reduceRefineEvents([{ type: RefineEvent.Created, data: {} }]).mode).toBeNull();
+  });
+
+  it('the owner answer on confidentiality is kept; without an answer it stays undefined', () => {
+    expect(reduceRefineEvents([]).confidential).toBeUndefined();
+    expect(reduceRefineEvents([{ type: RefineEvent.ConfidentialityAnswered, data: { confidential: true } }]).confidential).toBe(true);
+    expect(reduceRefineEvents([{ type: RefineEvent.ConfidentialityAnswered, data: { confidential: false } }]).confidential).toBe(false);
+  });
+});
+
 describe('reduceRefineEvents moves and findings', () => {
   it('folds a move into the list with its status, and an undo marks it undone', () => {
     const row = { moveId: 'move-po-c1-0', role: 'po', cycle: 1, from: 'project.md', to: 'flow.md', reason: 'r', quote: 'q', text: 't', removedAt: 0, removed: 'q\n', insertAt: 3, inserted: '\nt\n', fromHash: 'a', toHash: 'b' };
@@ -27,6 +41,15 @@ describe('reduceRefineEvents moves and findings', () => {
 });
 
 describe('reduceRefineEvents', () => {
+  it('a stage review adds its questions and leaves the checklist and the stuck count of the last full round alone', () => {
+    const red = [...cycle(1), { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: [...allGreen.slice(0, 7), item('sm.no-open-questions', false)], questions: [], discardedPatches: [] } }];
+    const before = reduceRefineEvents(red);
+    const after = reduceRefineEvents([...red, { type: RefineEvent.StageReviewed, data: { cycle: 2, file: 'project.md', questions: [q('po-s2-0', true)], divergences: [], discardedPatches: [] } }]);
+    expect(after.checklist).toEqual(before.checklist);
+    expect(after.stuck).toEqual(before.stuck);
+    expect(after.questions).toEqual([expect.objectContaining({ questionId: 'po-s2-0', status: 'pending' })]);
+  });
+
   it('evaluates into answering when questions or patches are pending', () => {
     const s = reduceRefineEvents([
       { type: RefineEvent.Created, data: { projectId: 'p', specId: 's', mode: 'new-project' } },
@@ -217,6 +240,76 @@ describe('reduceRefineEvents legacy brief.md', () => {
   });
 });
 
+describe('reduceRefineEvents findings of a stage', () => {
+  const finding = (doc: string, text: string) => ({ cycle: 1, role: 'po', doc, severity: 'advice', quote: 'q', text, fix: 'f' });
+
+  it('a review replaces the findings of the documents it names, and keeps the findings of the others', () => {
+    const s = reduceRefineEvents([
+      { type: RefineEvent.FindingsReported, data: { cycle: 1, findings: [finding('project.md', 'do projeto'), finding('stack.md', 'da pilha')] } },
+      { type: RefineEvent.FindingsReported, data: { cycle: 2, files: ['flow.md'], findings: [finding('flow.md', 'do fluxo')] } },
+    ]);
+    expect(s.findings.map((f) => f.text).sort()).toEqual(['da pilha', 'do fluxo', 'do projeto']);
+  });
+
+  it('a review without a list of documents replaces all the findings, as a full round does', () => {
+    const s = reduceRefineEvents([
+      { type: RefineEvent.FindingsReported, data: { cycle: 1, findings: [finding('project.md', 'do projeto')] } },
+      { type: RefineEvent.FindingsReported, data: { cycle: 2, findings: [finding('stack.md', 'da pilha')] } },
+    ]);
+    expect(s.findings.map((f) => f.text)).toEqual(['da pilha']);
+  });
+});
+
+describe('document scores per document', () => {
+  const docScore = (score: number) => ({ score, checks: { complete: score, concrete: score, consistent: score, scoped: score } });
+  const scoredDocs = (docs: Record<string, number>, files?: string[]) => ({
+    type: RefineEvent.DocsScored,
+    data: { cycle: 1, ...(files ? { files } : {}), available: true, model: 'jev-1.13.0', usage: null, average: null, docs: Object.fromEntries(Object.entries(docs).map(([file, score]) => [file, docScore(score)])) },
+  });
+  const edited = (file: string) => ({ type: RefineEvent.DocEdited, data: { file, hash: 'h', source: 'human' } });
+
+  it('a partial score keeps the scores of the other documents and averages the ones it holds', () => {
+    const s = reduceRefineEvents([scoredDocs({ 'flow.md': 0.5, 'project.md': 0.9 }, ['flow.md', 'project.md']), scoredDocs({ 'stack.md': 0.7 }, ['stack.md'])]);
+    expect(Object.keys(s.readiness!.docs!).sort()).toEqual(['flow.md', 'project.md', 'stack.md']);
+    expect(s.readiness!.average).toBeCloseTo((0.5 + 0.9 + 0.7) / 3);
+  });
+
+  it('a failed score keeps the scores of the other documents, and leaves the edited document outdated', () => {
+    const failed = { type: RefineEvent.DocsScored, data: { cycle: 2, files: ['stack.md'], available: false, model: null, average: null, docs: null, usage: null } };
+    const s = reduceRefineEvents([scoredDocs({ 'flow.md': 0.5, 'stack.md': 0.7 }, ['flow.md', 'stack.md']), edited('stack.md'), failed]);
+    expect(Object.keys(s.readiness!.docs!).sort()).toEqual(['flow.md', 'stack.md']);
+    expect(s.outdatedDocs).toEqual(['stack.md']);
+    expect(s.readiness).toMatchObject({ available: false, average: null, outdated: true });
+  });
+
+  it('an edit marks only that document outdated, and its own score clears the mark', () => {
+    const before = [scoredDocs({ 'flow.md': 0.5, 'stack.md': 0.7 }, ['flow.md', 'stack.md']), edited('stack.md')];
+    const outdated = reduceRefineEvents(before);
+    expect(outdated.outdatedDocs).toEqual(['stack.md']);
+    expect(outdated.readiness!.outdated).toBe(true);
+    const rescored = reduceRefineEvents([...before, scoredDocs({ 'stack.md': 0.8 }, ['stack.md'])]);
+    expect(rescored.outdatedDocs).toEqual([]);
+    expect(rescored.readiness!.outdated).toBe(false);
+  });
+
+  it('a score without a file list covers all five documents, as older journals do', () => {
+    const all = Object.fromEntries(['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md'].map((file) => [file, 0.9]));
+    expect(reduceRefineEvents([edited('flow.md'), scoredDocs(all)]).outdatedDocs).toEqual([]);
+  });
+});
+
+describe('stage progress', () => {
+  it('a step records the document it leaves and the round it leaves from; the same document is recorded once', () => {
+    const s = reduceRefineEvents([
+      { type: RefineEvent.StageAdvanced, data: { doc: 'flow.md', cycle: 2 } },
+      { type: RefineEvent.StageAdvanced, data: { doc: 'flow.md', cycle: 2 } },
+      { type: RefineEvent.StageAdvanced, data: { doc: 'project.md', cycle: 3 } },
+    ]);
+    expect(s.doneStages).toEqual(['flow.md', 'project.md']);
+    expect(s.stageStartCycle).toBe(3);
+  });
+});
+
 describe('canStart', () => {
   type Input = Parameters<typeof canStart>[0];
   const base: Input = { status: 'answering', mode: 'new-spec', derived: {}, backlog: null };
@@ -236,9 +329,12 @@ describe('canStart', () => {
     expect(canStart({ ...base, mode: 'new-project' })).toBe(false);
   });
 
-  it('opens a backlog only once it is detailed', () => {
-    expect(canStart({ ...base, backlog: { enabled: true, detail: true } })).toBe(true);
-    expect(canStart({ ...base, backlog: { enabled: true, detail: false } })).toBe(false);
-    expect(canStart({ ...base, backlog: { enabled: true, detail: null } })).toBe(false);
+  it('opens a backlog only once it is detailed and has at least one item', () => {
+    const item = { key: 'base' };
+    expect(canStart({ ...base, backlog: { enabled: true, detail: true, items: [item] } })).toBe(true);
+    expect(canStart({ ...base, backlog: { enabled: true, detail: true, items: [] } })).toBe(false);
+    expect(canStart({ ...base, backlog: { enabled: true, detail: true } })).toBe(false);
+    expect(canStart({ ...base, backlog: { enabled: true, detail: false, items: [item] } })).toBe(false);
+    expect(canStart({ ...base, backlog: { enabled: true, detail: null, items: [item] } })).toBe(false);
   });
 });

@@ -19,6 +19,8 @@ import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.j
 import { lastEvaluationText, ProcessingBanner } from '../refine/ProcessingBanner.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
 import { StageBar } from '../refine/StageBar.js';
+import { StageSteps } from '../refine/StageSteps.js';
+import { currentStage, previousStage, stageViews } from '../refine/stage-view.js';
 import { ReadinessBanner } from '../refine/ReadinessBanner.js';
 import { DOC_LABEL as docLabel } from '../refine/doc-labels.js';
 import { stageAction, stageOf, stageTitle } from '../refine/stages.js';
@@ -45,24 +47,33 @@ const errorText = (text: string | null) => text
   .replaceAll('internal error', 'erro interno')
   .replace(/\b(documents_consistent|flow_covers_scope|validation_aligned|persistence_aligned|responses_aligned|health_aligned)\b/g, (id) => jevCheckLabel[id] ?? id) ?? null;
 const typeLabel: Record<string, string> = { feature: 'Feature', bug: 'Bug', maintenance: 'Manutenção', refactor: 'Refatoração' };
+
+/** The alignment line: the last stage review's divergences of the document, or else the full round's contradictions check. */
+const alignedLine = (divergences: string[] | undefined, check: { passed: boolean; detail: string } | undefined): string | null => {
+  if (divergences) return divergences.length === 0 ? 'Alinhado com os outros documentos.' : `Não alinhado com os outros documentos: ${divergences.join('; ')}`;
+  if (!check) return null;
+  return check.passed ? 'Alinhado com os outros documentos.' : `Não alinhado com os outros documentos: ${check.detail}`;
+};
 const docImpact: Record<DocFile, string> = {
-  'project.md': 'Visão, público, princípios e restrições que valem para todas as demandas do projeto. Gera o project.json.',
-  'briefing.md': 'O que esta demanda entrega: objetivos, escopo e critérios de aceite. Gera o spec.json.',
-  'stack.md': 'Tecnologias, dependências e restrições técnicas. Orienta o plano técnico e a implementação.',
-  'flow.md': 'Fluxos de uso e regras de negócio, passo a passo. Base dos critérios de aceite e dos testes.',
+  'project.md': 'O que o projeto é: visão, objetivos, o que ele precisa entregar e quem responde por cada parte. Gera o project.json.',
+  'briefing.md': 'Como o sistema funciona em detalhe, com o que entra, o que fica de fora e como saber que ficou pronto. Gera o spec.json.',
+  'stack.md': 'Tecnologias, versões e regras de uso: o que não usar e as boas práticas. Orienta o plano técnico e a implementação.',
+  'flow.md': 'O fluxo de negócio completo, como diagrama: estados, desvios, erros e quem age em cada passo. Base dos critérios de aceite e dos testes.',
   'design.md': 'Contrato visual: cores, tipografia, componentes e acessibilidade. Seguido pelo agente Front, que cuida da interface.',
 };
 /** Short text for the info icon on each document tab. */
 const docTip: Record<DocFile, string> = {
-  'project.md': 'Explica o que é o projeto, para quem ele serve e as regras que valem para todas as demandas.',
-  'briefing.md': 'Diz o que esta demanda deve entregar: objetivos, o que entra, o que fica de fora e como saber que ficou pronto.',
-  'stack.md': 'Lista as tecnologias, as dependências e os limites técnicos que os agentes precisam seguir.',
-  'flow.md': 'Mostra, passo a passo, como o usuário usa o sistema e as regras do negócio. Serve de base para os critérios de aceite e os testes.',
+  'project.md': 'Explica o que é o projeto, seus objetivos, o que ele precisa entregar e quem responde por cada parte.',
+  'briefing.md': 'Explica como o sistema funciona em detalhe, passo a passo, com o que entra, o que fica de fora e como saber que ficou pronto. As decisões respondidas ficam em "## Decisões" e são mantidas ao salvar ou anexar.',
+  'stack.md': 'Lista as tecnologias, as versões e as regras de uso: o que não usar e as boas práticas que os agentes precisam seguir.',
+  'flow.md': 'Mostra o fluxo de negócio completo em um diagrama: estados, desvios, erros e quem age em cada passo.',
   'design.md': 'Define o visual do projeto: cores, letras, componentes e acessibilidade. O agente Front segue este documento na interface.',
 };
 /** Backlog mode: the briefing is the target project's docs/briefing.md, one file for the whole backlog. */
 const briefingImpact = 'Briefing do projeto (docs/briefing.md): objetivos, prioridades, cortes e decisões que valem para todo o backlog. Os agentes seguem o que estiver escrito aqui.';
 const docName = (file: string) => docLabel[file.split('/').pop() as DocFile] ?? file;
+/** The design of a project without an interface: the document says so, and the Jev counts a part marked not applicable as present. */
+const NOT_APPLICABLE_DESIGN = 'Não se aplica: este projeto não tem interface.';
 /** Journal events that change a document or a decision: after one of them a new evaluation is not a repeat. */
 const CHANGE_EVENTS = new Set(['DOC_EDITED', 'PATCH_ACCEPTED', 'PATCH_REJECTED', 'QUESTION_ANSWERED', 'QUESTION_SKIPPED', 'BACKLOG_DETAIL_ENABLED']);
 const roleInfo: Record<'po' | 'sm', string> = {
@@ -191,6 +202,12 @@ export interface ViewProps {
   onDesignFromImages?(images: { data: string }[]): Promise<string | null>;
   onEvaluate(): void | Promise<unknown>;
   onEnableBacklog?(): void | Promise<unknown>;
+  /** The owner moves on from the current document's stage. */
+  onContinueStage?(): void | Promise<unknown>;
+  /** The owner asks the agents to review the document of the current stage. */
+  onEvaluateStage?(file: DocFile): void | Promise<unknown>;
+  /** The owner's answer on whether the project is confidential. */
+  onConfidential?(value: boolean): void | Promise<unknown>;
   /** Stage 2 of a new project: the whole backlog in one run, stopped by a question or an error and resumed by the next call. */
   onAnswer(id: string, text: string, docsAnswered: boolean): void | Promise<unknown>;
   onSkip(id: string): void | Promise<unknown>;
@@ -250,6 +267,7 @@ export function RefinementView(p: ViewProps) {
   }, [p.events]);
   const unchanged = st.cycle > 0 && !st.stale && !changedSince;
   const attachInput = useRef<HTMLInputElement>(null);
+  const docFileInput = useRef<HTMLInputElement>(null);
   const [answer, setAnswer] = useState('');
   const [docsAnswered, setDocsAnswered] = useState(false);
   const [reasons, setReasons] = useState<Record<string, string>>({});
@@ -297,10 +315,20 @@ export function RefinementView(p: ViewProps) {
   }, [current?.questionId]);
   const canStart = canStartRun(st, busy);
   // Past the lock round, another evaluation is refused by the server: the button says so instead of failing.
-  const atMax = snap.limits !== undefined && st.cycle >= snap.limits.max;
+  const atMax = snap.limits !== undefined && st.cycle - (st.stageStartCycle ?? 0) >= snap.limits.max;
   const backlogOn = st.backlog?.enabled === true;
   // A new project's refinement has two mandatory stages: the documents, then the backlog the program runs from.
   const newProject = st.mode === 'new-project';
+  const onStage = currentStage(st);
+  const noContradictions = st.checklist.find((c) => c.id === 'po.no-contradictions');
+  const stageDivergences = st.stageAlignment?.[tab];
+  const staleFrom = st.staleBy?.[tab] as DocFile | undefined;
+  const aligned = newProject ? alignedLine(stageDivergences, noContradictions) : null;
+  const openChecks = st.checklist.filter((c) => !c.passed).map((c) => c.id);
+  // A new project's owner sees the document of the stage they are on; Continuar moves the view along.
+  useEffect(() => {
+    if (newProject && onStage) setTab(onStage);
+  }, [onStage, newProject]);
   const stageStep = newProject ? stageAction(st) : null;
   // In stage 2 the backlog is what the person checks, so it leads the quality column.
   const backlogFirst = newProject && backlogOn;
@@ -395,6 +423,28 @@ export function RefinementView(p: ViewProps) {
       setSuggesting(false);
     }
   };
+  const readText = (f: File) =>
+    new Promise<string>((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result));
+      r.onerror = () => reject(r.error);
+      r.readAsText(f);
+    });
+  /** Replacing a document that holds text asks the owner first. */
+  const mayReplace = (doc: DocFile, question: string) => docs[doc].trim() === '' || window.confirm(question);
+  const markNotApplicable = () => {
+    if (!mayReplace('design.md', 'Substituir o texto do design por "Não se aplica"?')) return;
+    setDocs((d) => ({ ...d, 'design.md': NOT_APPLICABLE_DESIGN }));
+    p.onSaveDoc('design.md', NOT_APPLICABLE_DESIGN);
+  };
+  const attachDoc = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    const text = await readText(file).catch(() => null);
+    if (text === null || !mayReplace(tab, 'Substituir o texto deste documento pelo arquivo anexado?')) return;
+    setDocs((d) => ({ ...d, [tab]: text }));
+    p.onSaveDoc(tab, text);
+  };
   const tabButton = (f: DocFile) => (
     <span key={f} className="inline-flex items-center">
       <button
@@ -418,7 +468,20 @@ export function RefinementView(p: ViewProps) {
           </div>
         </div>
       </div>
-      {existing ? (
+      {newProject ? (
+        <>
+          {st.stages === true && st.confidential === undefined && (
+            <div className={notice} data-testid="confidential-ask">
+              <p className="m-0">Este projeto é confidencial? Sem resposta, nenhum documento vai ao Jev.</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button type="button" data-testid="confidential-yes" onClick={() => p.onConfidential?.(true)}>Sim, é confidencial</button>
+                <button type="button" data-testid="confidential-no" onClick={() => p.onConfidential?.(false)}>Não é confidencial</button>
+              </div>
+            </div>
+          )}
+          <StageSteps views={stageViews(st)} shown={tab} onSelect={setTab} />
+        </>
+      ) : existing ? (
         <div className="mb-4 flex flex-wrap gap-x-6 border-b border-line" role="tablist" aria-label="Documentos">
           <div className="flex flex-wrap items-center" data-testid="docs-group-spec">
             <span className={tabGroupLabel}>Spec</span>
@@ -452,6 +515,18 @@ export function RefinementView(p: ViewProps) {
             <input ref={attachInput} data-testid="attach-images" type="file" accept="image/png,image/jpeg" multiple hidden onChange={(e) => { void attach(e.target.files); e.target.value = ''; }} />
             </>
           )}
+          {newProject && (
+            <>
+              <button type="button" className="h-10 px-[0.8rem]" disabled={locked} onClick={() => docFileInput.current?.click()}>
+                Anexar arquivo
+                <Icon name="file" size={16} />
+              </button>
+              <input ref={docFileInput} data-testid="attach-doc" type="file" accept=".md,.txt,text/markdown,text/plain" hidden onChange={(e) => { void attachDoc(e.target.files); e.target.value = ''; }} />
+            </>
+          )}
+          {newProject && tab === 'design.md' && (
+            <button type="button" className="h-10 px-[0.8rem]" disabled={locked} onClick={markNotApplicable}>Não se aplica</button>
+          )}
           <button type="button" className="h-10 px-[0.8rem]" aria-label="Copiar documento" onClick={() => copyDoc(docs[tab] ?? '')}>
             Copiar
             <Icon name="copy" size={16} />
@@ -469,6 +544,31 @@ export function RefinementView(p: ViewProps) {
         }}
       />
       </div>
+      {newProject && (
+        <div className="mt-4 flex flex-wrap items-center gap-2" data-testid="stage-nav">
+          <button type="button" data-testid="stage-back" disabled={!previousStage(tab) || locked} onClick={() => setTab(previousStage(tab)!)}>Voltar</button>
+          {onStage ? (
+            <>
+              <ActionButton data-testid="stage-evaluate" disabled={locked || atMax} onClick={() => p.onEvaluateStage?.(onStage)} icon={<Icon name="check" size={16} />}>Avaliar esta etapa</ActionButton>
+              <ActionButton data-testid="stage-continue" className="primary" disabled={locked} onClick={() => p.onContinueStage?.()} icon={<Icon name="check" size={16} />}>Continuar</ActionButton>
+            </>
+          ) : (
+            <ActionButton data-testid="stage-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
+          )}
+        </div>
+      )}
+      {newProject && staleFrom && (
+        <p data-testid="doc-stale" className={notice}>{docLabel[staleFrom]} mudou depois desta etapa: avalie esta etapa de novo.</p>
+      )}
+      {newProject && st.outdatedDocs?.includes(tab) && (
+        <p data-testid="doc-outdated" className={notice}>{docLabel[tab]} mudou depois da última nota: clique em Avaliar com o Jev para medir de novo.</p>
+      )}
+      {aligned && (
+        <p data-testid="aligned" className="m-0 text-[0.8125rem] text-ink-soft">{aligned}</p>
+      )}
+      {newProject && openChecks.length > 0 && (
+        <p data-testid="gap-summary" className="m-0 text-[0.8125rem] text-ink-soft">Lacunas: {openChecks.join(', ')}</p>
+      )}
       {st.stale && (
         <p data-testid="stale" className={notice}>
           A lista de verificação está desatualizada: houve mudanças depois da última avaliação.
@@ -843,6 +943,9 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         }}
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}
+        onContinueStage={act(() => refineApi.continueStage(projectId, specId))}
+        onEvaluateStage={(f) => act(() => refineApi.evaluateStage(projectId, specId, f))()}
+        onConfidential={(v) => act(() => refineApi.confidential(projectId, specId, v))()}
         onAnswer={(id, t, d) => act(() => refineApi.answer(projectId, specId, id, t, d))()}
         onSkip={(id) => act(() => refineApi.skip(projectId, specId, id))()}
         onAccept={(id) => act(() => refineApi.accept(projectId, specId, id))()}
