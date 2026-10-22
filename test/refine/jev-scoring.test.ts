@@ -43,13 +43,21 @@ describe('createJevScorer', () => {
     expect(flow.questions.complete!.criteria.true).toContain('flow.md');
   });
 
+  it('scores only the documents asked for, and averages over them', async () => {
+    const sent = stubJev(() => 0.9);
+    const result = await scorer()(TEXTS, ['stack.md', 'flow.md']);
+    expect(sent).toHaveLength(2);
+    expect(Object.keys(result.docs!).sort()).toEqual(['flow.md', 'stack.md']);
+    expect(result.average).toBeCloseTo(0.9);
+  });
+
   it('scores a document as the mean of its four checks, and the average as the mean of the five documents', async () => {
     const values: Record<string, number> = { complete: 0.8, concrete: 0.6, consistent: 1, scoped: 0.4 };
     stubJev((_state, check) => values[check]!);
     const result = await scorer()(TEXTS);
     expect(result).toMatchObject({ available: true, model: 'jev-1.13.0' });
-    for (const id of SCORE_CHECKS) expect(result.docs!['flow.md'].checks[id]).toBeCloseTo(values[id]!);
-    expect(result.docs!['flow.md'].score).toBeCloseTo(0.7);
+    for (const id of SCORE_CHECKS) expect(result.docs!['flow.md']!.checks[id]).toBeCloseTo(values[id]!);
+    expect(result.docs!['flow.md']!.score).toBeCloseTo(0.7);
     expect(result.average).toBeCloseTo(0.7);
   });
 
@@ -58,16 +66,23 @@ describe('createJevScorer', () => {
     const [first, second] = splitSections([{ title: 'flow.md', text: long }], 32_000).map((w) => w.length);
     stubJev((state) => (state.includes('(continued)') ? 0.2 : 0.9));
     const result = await scorer()({ ...TEXTS, 'flow.md': long });
-    expect(result.docs!['flow.md'].checks.concrete).toBeCloseTo((0.9 * first! + 0.2 * second!) / (first! + second!));
+    expect(result.docs!['flow.md']!.checks.concrete).toBeCloseTo((0.9 * first! + 0.2 * second!) / (first! + second!));
   });
 
   it('takes the best window for completeness, and the worst for contradictions and foreign content, since one window can show a gap or a fault', async () => {
     const long = 'x'.repeat(40_000);
     stubJev((state) => (state.includes('(continued)') ? 0.2 : 0.9));
     const result = await scorer()({ ...TEXTS, 'flow.md': long });
-    expect(result.docs!['flow.md'].checks.complete).toBeCloseTo(0.9);
-    expect(result.docs!['flow.md'].checks.consistent).toBeCloseTo(0.2);
-    expect(result.docs!['flow.md'].checks.scoped).toBeCloseTo(0.2);
+    expect(result.docs!['flow.md']!.checks.complete).toBeCloseTo(0.9);
+    expect(result.docs!['flow.md']!.checks.consistent).toBeCloseTo(0.2);
+    expect(result.docs!['flow.md']!.checks.scoped).toBeCloseTo(0.2);
+  });
+
+  it('scores an empty document alone as zero, with no request, as a stage whose document is still blank would', async () => {
+    const sent = stubJev(() => 0.9);
+    const result = await scorer()({ ...TEXTS, 'stack.md': '   ' }, ['stack.md']);
+    expect(sent).toHaveLength(0);
+    expect(result).toMatchObject({ available: true, model: null, average: 0, docs: { 'stack.md': { score: 0 } } });
   });
 
   it('gives an empty document a zero score without asking the Jev about it', async () => {

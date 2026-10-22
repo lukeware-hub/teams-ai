@@ -55,7 +55,7 @@ async function main(): Promise<void> {
     results[name] = record;
     console.log(`${name}: average ${percent(record.average)}, available ${record.available}, tokens in ${record.usage?.inputTokens ?? '-'} out ${record.usage?.outputTokens ?? '-'}, cost US$ ${record.usage?.costUsd ?? '-'}`);
     for (const file of Object.keys(record.docs ?? {}) as DocFile[]) {
-      const doc = record.docs![file];
+      const doc = record.docs![file]!;
       console.log(`  ${file.padEnd(10)} ${percent(doc.score).padStart(4)}  ${SCORE_CHECKS.map((id) => `${id} ${percent(doc.checks[id])}`).join('  ')}`);
     }
   }

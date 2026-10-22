@@ -16,13 +16,13 @@ export interface ScoreUsage {
   costUsd: number | null;
 }
 
-/** What the Jev answered for the five documents, or why it did not answer. */
+/** What the Jev answered for the documents asked for, or why it did not answer. */
 export interface DocsScoreRecord {
   available: boolean;
   model: string | null;
-  /** The mean of the five document scores, from 0 to 1; null when the Jev did not answer. */
+  /** The mean of the document scores held, from 0 to 1; null when the Jev did not answer. */
   average: number | null;
-  docs: Record<DocFile, DocScore> | null;
+  docs: Partial<Record<DocFile, DocScore>> | null;
   usage: ScoreUsage | null;
 }
 

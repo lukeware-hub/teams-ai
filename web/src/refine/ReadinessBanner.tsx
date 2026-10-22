@@ -58,14 +58,14 @@ export function ReadinessBanner({ readiness, canStart, startState, onScore, onSt
       <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">{view.detail}</p>
       {docs && (
         <ul className="m-0 grid list-none grid-cols-2 gap-2 p-0 sm:grid-cols-5" data-testid="readiness-docs">
-          {(Object.keys(DOC_LABEL) as DocFile[]).map((file) => (
+          {(Object.keys(DOC_LABEL) as DocFile[]).flatMap((file) => (docs[file] ? [{ file, doc: docs[file] }] : [])).map(({ file, doc }) => (
             <li key={file} className="flex flex-col gap-1 rounded-[var(--radius-lg)] bg-surface-sunken px-3 py-2.5">
               <span className="text-[0.8125rem] text-ink-soft">{DOC_LABEL[file]}</span>
-              <b className="text-[0.9375rem] font-semibold tabular-nums text-ink">{percentOf(docs[file].score)}%</b>
+              <b className="text-[0.9375rem] font-semibold tabular-nums text-ink">{percentOf(doc.score)}%</b>
               <ul className="m-0 flex list-none flex-col gap-0.5 p-0 text-[0.75rem] tabular-nums" data-testid={`readiness-checks-${file}`}>
                 {SCORE_CHECKS.map((id: ScoreCheck) => (
-                  <li key={id} className={docs[file].checks[id] < GOAL_SHARE ? 'font-semibold text-warn' : 'text-ink-soft'}>
-                    {CHECK_LABEL[id]} {percentOf(docs[file].checks[id])}%
+                  <li key={id} className={doc.checks[id] < GOAL_SHARE ? 'font-semibold text-warn' : 'text-ink-soft'}>
+                    {CHECK_LABEL[id]} {percentOf(doc.checks[id])}%
                   </li>
                 ))}
               </ul>

@@ -581,7 +581,18 @@ describe('RefineSession round limit', () => {
 });
 
 describe('RefineSession document score', () => {
-  const scored = { available: true, model: 'jev-1.13.0', average: 0.9, docs: null, usage: null };
+  const ALL_DOCS = ['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md'];
+  const scored = { available: true, model: 'jev-1.13.0', average: 0.9, docs: Object.fromEntries(ALL_DOCS.map((file) => [file, { score: 0.9, checks: { complete: 0.9, concrete: 0.9, consistent: 0.9, scoped: 0.9 } }])), usage: null };
+
+  it('scores one document on request, and journals only that document', async () => {
+    const scoreDocs = vi.fn(async (_docs: Record<string, string>, _files?: readonly string[]) => scored);
+    const s = await RefineSession.create({ ...deps(), scoreDocs }, 'new-project');
+    await s.answerConfidentiality(false);
+    await s.score('stack.md');
+    expect(scoreDocs.mock.calls[0]![1]).toEqual(['stack.md']);
+    expect(s.state.readiness).toMatchObject({ available: true });
+    await s.close();
+  });
 
   it('scores the documents without spending a round, and keeps a current score', async () => {
     const scoreDocs = vi.fn(async () => scored);

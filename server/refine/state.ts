@@ -8,6 +8,7 @@ import { RefineEvent, type Question } from './events.js';
 import { approvalKey } from './sections.js';
 import type { DocFile } from './draft.js';
 import type { PendingPatch } from './patches.js';
+import { DOC_STAGES } from './doc-stages.js';
 import type { DocScore, Readiness } from './readiness.js';
 
 export type RefineStatus = 'drafting' | 'evaluating' | 'answering' | 'ready' | 'error' | 'started';
@@ -129,6 +130,8 @@ export interface RefineState {
   stuck?: StuckRun;
   /** The Jev's latest score of the documents; a document change marks it outdated until the next score. */
   readiness?: Readiness;
+  /** The documents edited since their score was taken: each one's score is outdated until it is scored again. */
+  outdatedDocs?: DocFile[];
   /** When the latest evaluation started and ended (ISO times); `endedAt` stays null while it runs. */
   evaluation?: { startedAt: string; endedAt: string | null };
 }
@@ -308,6 +311,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       if (s.status === 'evaluating') s.editedInCycle = true;
       if (hasDerivation(s)) s.stale = true;
       if (s.readiness) s.readiness.outdated = true;
+      s.outdatedDocs = [...new Set([...(s.outdatedDocs ?? []), docName(d.file)])];
       break;
     case RefineEvent.BacklogEnabled: {
       // `acFloor`: the highest criterion id in the draft before the briefing move removed this draft's own spec.json.
@@ -355,9 +359,17 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     case RefineEvent.ConflictsDerived:
       if (s.backlog) s.backlog = { ...s.backlog, conflicts: { inputHash: String(d.inputHash), pairs: d.pairs as ConflictMap['pairs'] } };
       break;
-    case RefineEvent.DocsScored:
-      s.readiness = { ...(d as unknown as Omit<Readiness, 'outdated' | 'docs'>), docs: docNames(d.docs as Record<string, DocScore> | null), outdated: false };
+    case RefineEvent.DocsScored: {
+      // A score without a file list is a full one, as journals from before the per-document score wrote it.
+      const files = (d.files as DocFile[] | undefined) ?? DOC_STAGES;
+      const scored = docNames(d.docs as Record<string, DocScore> | null);
+      const docs = scored && { ...(s.readiness?.docs ?? {}), ...scored };
+      const held = Object.values(docs ?? {}).map((doc) => doc!.score);
+      const average = docs ? held.reduce((sum, v) => sum + v, 0) / held.length : (d.average as number | null);
+      s.outdatedDocs = (s.outdatedDocs ?? []).filter((file) => !files.includes(file));
+      s.readiness = { ...(d as unknown as Omit<Readiness, 'outdated' | 'docs' | 'average'>), docs, average, outdated: s.outdatedDocs.length > 0 };
       break;
+    }
     case RefineEvent.StartedRun:
       s.status = 'started';
       s.runId = String(d.runId);

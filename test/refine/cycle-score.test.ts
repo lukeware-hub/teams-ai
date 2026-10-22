@@ -33,7 +33,15 @@ async function newDraft() {
   return draft;
 }
 
-const scored = (average: number) => ({ available: true, model: 'jev-1.13.0', average, docs: null, usage: null });
+const FIVE = ['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md'];
+/** A score like the Jev's: each document asked for holds the same score. */
+const scored = (average: number, files: readonly string[] = FIVE) => ({
+  available: true,
+  model: 'jev-1.13.0',
+  average,
+  docs: Object.fromEntries(files.map((file) => [file, { score: average, checks: { complete: average, concrete: average, consistent: average, scoped: average } }])),
+  usage: null,
+});
 
 describe('recordScore', () => {
   it('keeps a current score, so the same documents are not sent again', async () => {
@@ -74,6 +82,28 @@ describe('recordScore', () => {
     expect(scoreDocs).not.toHaveBeenCalled();
     expect(journal.events.filter((e) => e.type === 'REFINE_DOCS_SCORED')).toHaveLength(1);
     expect(journal.state.readiness).toMatchObject({ skipped: 'confidential', available: false, average: null });
+  });
+
+  it('scores only the documents asked for, reads only those, and journals which they are', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    const scoreDocs = vi.fn(async (_docs: Record<string, string>, files?: readonly string[]) => scored(0.9, files));
+    await recordScore({ draft, journal, scoreDocs }, 1, false, ['stack.md']);
+    expect(Object.keys(scoreDocs.mock.calls[0]![0])).toEqual(['stack.md']);
+    expect(scoreDocs.mock.calls[0]![1]).toEqual(['stack.md']);
+    expect(journal.events.at(-1)).toMatchObject({ type: 'REFINE_DOCS_SCORED', data: { files: ['stack.md'] } });
+  });
+
+  it('keeps the asked documents current, and scores again only after one of them changed', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    const scoreDocs = vi.fn(async (_docs: Record<string, string>, files?: readonly string[]) => scored(0.9, files));
+    await recordScore({ draft, journal, scoreDocs }, 1, false, ['stack.md']);
+    await recordScore({ draft, journal, scoreDocs }, 1, false, ['stack.md']);
+    expect(scoreDocs).toHaveBeenCalledTimes(1);
+    await journal.fact(RefineEvent.DocEdited, { file: 'stack.md', hash: 'x', source: 'human' });
+    await recordScore({ draft, journal, scoreDocs }, 1, false, ['stack.md']);
+    expect(scoreDocs).toHaveBeenCalledTimes(2);
   });
 
   it('journals a failed score as unavailable, without throwing', async () => {

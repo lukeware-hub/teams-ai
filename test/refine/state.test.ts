@@ -231,6 +231,36 @@ describe('reduceRefineEvents legacy brief.md', () => {
   });
 });
 
+describe('document scores per document', () => {
+  const docScore = (score: number) => ({ score, checks: { complete: score, concrete: score, consistent: score, scoped: score } });
+  const scoredDocs = (docs: Record<string, number>, files?: string[]) => ({
+    type: RefineEvent.DocsScored,
+    data: { cycle: 1, ...(files ? { files } : {}), available: true, model: 'jev-1.13.0', usage: null, average: null, docs: Object.fromEntries(Object.entries(docs).map(([file, score]) => [file, docScore(score)])) },
+  });
+  const edited = (file: string) => ({ type: RefineEvent.DocEdited, data: { file, hash: 'h', source: 'human' } });
+
+  it('a partial score keeps the scores of the other documents and averages the ones it holds', () => {
+    const s = reduceRefineEvents([scoredDocs({ 'flow.md': 0.5, 'project.md': 0.9 }, ['flow.md', 'project.md']), scoredDocs({ 'stack.md': 0.7 }, ['stack.md'])]);
+    expect(Object.keys(s.readiness!.docs!).sort()).toEqual(['flow.md', 'project.md', 'stack.md']);
+    expect(s.readiness!.average).toBeCloseTo((0.5 + 0.9 + 0.7) / 3);
+  });
+
+  it('an edit marks only that document outdated, and its own score clears the mark', () => {
+    const before = [scoredDocs({ 'flow.md': 0.5, 'stack.md': 0.7 }, ['flow.md', 'stack.md']), edited('stack.md')];
+    const outdated = reduceRefineEvents(before);
+    expect(outdated.outdatedDocs).toEqual(['stack.md']);
+    expect(outdated.readiness!.outdated).toBe(true);
+    const rescored = reduceRefineEvents([...before, scoredDocs({ 'stack.md': 0.8 }, ['stack.md'])]);
+    expect(rescored.outdatedDocs).toEqual([]);
+    expect(rescored.readiness!.outdated).toBe(false);
+  });
+
+  it('a score without a file list covers all five documents, as older journals do', () => {
+    const all = Object.fromEntries(['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md'].map((file) => [file, 0.9]));
+    expect(reduceRefineEvents([edited('flow.md'), scoredDocs(all)]).outdatedDocs).toEqual([]);
+  });
+});
+
 describe('canStart', () => {
   type Input = Parameters<typeof canStart>[0];
   const base: Input = { status: 'answering', mode: 'new-spec', derived: {}, backlog: null };

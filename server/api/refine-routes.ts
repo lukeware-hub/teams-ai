@@ -1,4 +1,5 @@
 import { SECRET_NAME } from '../core/secrets.js';
+import { DOC_STAGES } from '../refine/doc-stages.js';
 import type { DocFile } from '../refine/draft.js';
 import type { SessionRegistry } from '../refine/registry.js';
 import type { SuggestFile } from '../refine/suggest.js';
@@ -218,6 +219,16 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       path: `${S}/confidential`,
       handler: wrap(async ({ params, body, json }) => {
         await (await get(params)).answerConfidentiality(flag(await body(SMALL_BODY_MAX), 'confidential'));
+        json(200, { ok: true });
+      }),
+    },
+    {
+      method: 'POST',
+      path: `${S}/docs/:file/score`,
+      handler: wrap(async ({ params, json }) => {
+        const file = params.file!;
+        if (!DOC_STAGES.includes(file as DocFile)) throw new HttpError(400, `unknown doc ${file}`);
+        await (await get(params)).score(file as DocFile);
         json(200, { ok: true });
       }),
     },

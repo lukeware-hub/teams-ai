@@ -96,6 +96,13 @@ beforeEach(async () => {
     }) as RunAgent,
     secretsDir: `${home}/secrets`,
     exec: execCommand,
+    scoreDocs: async (_docs, files = []) => ({
+      available: true,
+      model: 'fake-jev',
+      average: 0.8,
+      docs: Object.fromEntries(files.map((file) => [file, { score: 0.8, checks: { complete: 0.8, concrete: 0.8, consistent: 0.8, scoped: 0.8 } }])),
+      usage: null,
+    }),
     projectDir: async (projectId) => (registered.find((d) => d.includes(`/${projectId}/refine/`)) ?? null),
     control,
     runsDir: async () => `${home}/runs`,
@@ -541,6 +548,14 @@ describe('refine api', () => {
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/confidential', { confidential: 'sim' })).status).toBe(400);
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/confidential', { confidential: true })).status).toBe(200);
     expect((await snapshot()).state.confidential).toBe(true);
+  });
+
+  it('scores one named document of a new project, and refuses a name that is not a document', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    await call('POST', '/api/refine/hello-app/hello-app-001/confidential', { confidential: false });
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/docs/spec.json/score')).status).toBe(400);
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/docs/stack.md/score')).status).toBe(200);
+    expect((await snapshot()).state.readiness).toMatchObject({ available: true });
   });
 
   it('a score for a single spec is refused with 409, and the spec is left as it was', async () => {

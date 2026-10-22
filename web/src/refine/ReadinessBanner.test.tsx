@@ -22,6 +22,13 @@ describe('ReadinessBanner', () => {
     expect(p.onStart).toHaveBeenCalledOnce();
   });
 
+  it('shows the score of only the documents that have one, as a stage does before its documents are all scored', () => {
+    const one = { 'stack.md': { score: 0.8, checks: { complete: 0.8, concrete: 0.8, consistent: 0.8, scoped: 0.8 } } } as Readiness['docs'];
+    render(<ReadinessBanner {...props(scored(0.8, { docs: one }))} />);
+    expect(screen.getByTestId('readiness-docs').textContent).toContain('stack.md80%');
+    expect(screen.getByTestId('readiness-docs').textContent).not.toContain('briefing.md');
+  });
+
   it('keeps the start shut when the gate of the screen says no', () => {
     render(<ReadinessBanner {...props(scored(0.9), { canStart: false })} />);
     expect((screen.getByTestId('readiness-start') as HTMLButtonElement).disabled).toBe(true);

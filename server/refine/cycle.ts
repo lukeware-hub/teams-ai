@@ -61,7 +61,7 @@ export interface CycleDeps {
   /** R11.5.7: the measured confidence floor for answering a question routed `auto` from the docs; unset leaves every question with the human. */
   autoAnswerFloor?: number;
   /** The Jev's score of the five documents, journaled once per cycle of a new project or a backlog. */
-  scoreDocs?: (docs: Record<DocFile, string>) => Promise<DocsScoreRecord>;
+  scoreDocs?: (docs: Record<DocFile, string>, files?: readonly DocFile[]) => Promise<DocsScoreRecord>;
 }
 
 /** Main's outline, from its specs.json in the base copy, for a new draft's first outline; the draft's own state when main has none. */
@@ -111,17 +111,18 @@ export async function isConfidential(draft: Draft, state: RefineState): Promise<
   return base || state.backlog?.project?.confidential === true || (await readDerived(draft))?.project.confidential === true;
 }
 
-/** Journals the Jev's score of the five documents as they stand now; a current score is kept, and a confidential project is never sent. */
-export async function recordScore(deps: ScoreDeps, cycle: number, confidential: boolean): Promise<void> {
-  const current = deps.journal.state.readiness;
-  if (current && !current.outdated && (current.available || current.skipped)) return;
+/** Journals the Jev's score of the documents asked for (all five by default) as they stand now; a current score is kept, and a confidential project is never sent. */
+export async function recordScore(deps: ScoreDeps, cycle: number, confidential: boolean, files: readonly DocFile[] = REORGANIZED_FILES): Promise<void> {
+  const { readiness: current, outdatedDocs = [] } = deps.journal.state;
+  const covered = files.every((file) => current?.docs?.[file] !== undefined && !outdatedDocs.includes(file));
+  if (current && (current.skipped ? !current.outdated : covered)) return;
   if (confidential) {
     await deps.journal.fact(RefineEvent.DocsScored, { ...UNSCORED, cycle, skipped: 'confidential' });
     return;
   }
-  const docs = Object.fromEntries(await Promise.all(REORGANIZED_FILES.map(async (file) => [file, await readDoc(deps.draft, file)]))) as Record<DocFile, string>;
-  const scored = await deps.scoreDocs(docs).catch(() => UNSCORED);
-  await deps.journal.fact(RefineEvent.DocsScored, { cycle, ...scored });
+  const docs = Object.fromEntries(await Promise.all(files.map(async (file) => [file, await readDoc(deps.draft, file)]))) as Record<DocFile, string>;
+  const scored = await deps.scoreDocs(docs, files).catch(() => UNSCORED);
+  await deps.journal.fact(RefineEvent.DocsScored, { cycle, files, ...scored });
 }
 
 const BLANK_FILES = ['stack.md', 'flow.md'] as const;

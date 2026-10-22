@@ -411,13 +411,13 @@ export class RefineSession {
   }
 
   /** The Jev's score of the documents as they stand: no agent step and no round, so the screen can ask for it at any time. */
-  async score(): Promise<void> {
+  async score(file?: DocFile): Promise<void> {
     this.guard();
     const scoreDocs = this.deps.scoreDocs;
     if (!scoreDocs || !scoresDocs(this.state.mode)) throw new ConflictError('A nota do Jev vale só para o refinamento de um projeto novo ou de um backlog.');
     const scored = { draft: this.deps.draft, journal: this.journal, scoreDocs };
     const cycle = this.state.cycle;
-    this.running = (async () => recordScore(scored, cycle, await isConfidential(scored.draft, this.state)))().finally(() => {
+    this.running = (async () => recordScore(scored, cycle, await isConfidential(scored.draft, this.state), file ? [file] : undefined))().finally(() => {
       this.running = null;
     });
     await this.running;
