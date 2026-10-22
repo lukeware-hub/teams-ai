@@ -41,6 +41,15 @@ describe('reduceRefineEvents moves and findings', () => {
 });
 
 describe('reduceRefineEvents', () => {
+  it('a stage review adds its questions and leaves the checklist and the stuck count of the last full round alone', () => {
+    const red = [...cycle(1), { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: [...allGreen.slice(0, 7), item('sm.no-open-questions', false)], questions: [], discardedPatches: [] } }];
+    const before = reduceRefineEvents(red);
+    const after = reduceRefineEvents([...red, { type: RefineEvent.StageReviewed, data: { cycle: 2, questions: [q('po-s2-0', true)] } }]);
+    expect(after.checklist).toEqual(before.checklist);
+    expect(after.stuck).toEqual(before.stuck);
+    expect(after.questions).toEqual([expect.objectContaining({ questionId: 'po-s2-0', status: 'pending' })]);
+  });
+
   it('evaluates into answering when questions or patches are pending', () => {
     const s = reduceRefineEvents([
       { type: RefineEvent.Created, data: { projectId: 'p', specId: 's', mode: 'new-project' } },

@@ -71,7 +71,7 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
       ...(q.subject ? { subject: q.subject } : {}),
       cycle,
     }));
-    await journal.fact(RefineEvent.Evaluated, { cycle, checklist: [], questions, discardedPatches: [], questionRouting: {}, autoAnswerFloor: null, unverifiedContradictions: [] });
+    await journal.fact(RefineEvent.StageReviewed, { cycle, questions });
     if (deps.scoreDocs) await recordScore({ draft, journal, scoreDocs: deps.scoreDocs }, cycle, await isConfidential(draft, journal.state), [file]);
   } catch (err) {
     await journal.fact(RefineEvent.CycleFailed, { cycle, reason: err instanceof Error ? err.message : String(err) });

@@ -99,6 +99,17 @@ describe('runStageCycle', () => {
     expect(await readDoc(draft, 'project.md')).toContain('# Shop');
   });
 
+  it('a stage review leaves the checklist of the last full round as it was, and journals no full evaluation', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    const checked = { id: 'po.personas' as const, role: 'po' as const, passed: true, detail: 'ok' };
+    journal.state.checklist = [checked];
+    const runAgent = vi.fn(async () => answer([], [{ id: 'q1', text: 'Quem usa?', blocking: false, relatedAcIds: [], options: [] }]));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
+    expect(journal.state.checklist).toEqual([checked]);
+    expect(journal.events.some((e) => e.type === RefineEvent.Evaluated)).toBe(false);
+  });
+
   it('a question without choices or subject is recorded without them', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();

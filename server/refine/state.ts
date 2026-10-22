@@ -256,6 +256,14 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       s.status = computeStatus(s);
       break;
     }
+    case RefineEvent.StageReviewed: {
+      // A stage review asks questions only; the checklist and the stuck count stay as the last full round left them.
+      const v = d as unknown as { questions: Question[] };
+      s.questions.push(...v.questions.map((q) => ({ ...q, status: 'pending' as const, answer: null })));
+      s.status = 'drafting';
+      s.status = computeStatus(s);
+      break;
+    }
     case RefineEvent.CycleFailed:
       s.error = String(d.reason);
       s.status = 'error';
