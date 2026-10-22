@@ -58,7 +58,7 @@ The owner reads each question alone, so it must make sense without the rest of t
 - When the answer is a choice, put the choices in `options`, never in the text: two or three, each with a short `label` and a `detail` of one sentence on what changes if it is chosen. The label is a whole decision in the words the docs will hold (for example "Guardar a data no banco"), never a bare verb such as "Separar" or "Manter": the owner's answer is recorded as the label alone.
 - Mark at most one option `recommended: true`, and end its `detail` with the reason in one sentence.
 - An open question (a name, a number, a free text) has no `options`.
-- Follow the voice in `PRODUCT.md`: direct, simple, no acronyms and no abbreviations.
+- Write direct, simple text: no acronyms and no abbreviations.
 
 ### Reviewing a backlog (PO)
 
