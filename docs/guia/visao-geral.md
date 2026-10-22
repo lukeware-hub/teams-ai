@@ -9,7 +9,7 @@ O Teams AI transforma a descrição de um serviço em um serviço testado e publ
 Cada entrega do projeto se chama **spec**. O caminho é sempre o mesmo:
 
 1. **Descrever**: você escreve o que o serviço deve fazer (veja "criar-spec").
-2. **Refinar**: os agentes leem a descrição, fazem perguntas e você responde. Quando a lista de verificação fica toda atendida, a spec está pronta (veja "refinamento").
+2. **Refinar**: os agentes leem a descrição, fazem perguntas e você responde. Quando a lista de verificação fica toda atendida, a spec está pronta (veja "refinamento"). Em um projeto novo, os cinco documentos são revisados em etapas, uma de cada vez.
 3. **Executar**: você clica em Iniciar análise e os agentes desenvolvem, testam e publicam o serviço (veja "execucao").
 4. **Validar**: você testa o serviço publicado e clica em Concluir especificação, ou em Relatar problema para os agentes corrigirem (veja "validacao").
 
