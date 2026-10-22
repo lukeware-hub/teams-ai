@@ -27,7 +27,7 @@ export const RefineEvent = {
   DocMoveUndone: 'DOC_MOVE_UNDONE',
   /** A full pass of the documents against the charter ended: `{cycle, hashes}` of each document as it stood, so the next pass reads only what changed. */
   DocsReorganized: 'DOCS_REORGANIZED',
-  /** The findings of one cycle whose quotes the documents show; they replace the earlier list. */
+  /** The findings of one cycle whose quotes the documents show; they replace the earlier list, or with `files` only those of the documents named. */
   FindingsReported: 'FINDINGS_REPORTED',
   QuestionAnswered: 'QUESTION_ANSWERED',
   QuestionSkipped: 'QUESTION_SKIPPED',

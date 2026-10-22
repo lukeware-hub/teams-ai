@@ -12,7 +12,7 @@ import { RefineEvent, type Question } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
 import { jevHint, unavailable, type JevValidationResult, type ValidationDocs } from './jev-validation.js';
 import { reorganizePack } from './packs.js';
-import { applyPatch, checkPatch, patchId, unifiedDiff } from './patches.js';
+import { applyPatch, checkPatch, docOf, patchId, unifiedDiff } from './patches.js';
 import { jevGoals } from './readiness.js';
 
 /** The role that reviews a stage's document: the one that owns it. */
@@ -41,15 +41,21 @@ export interface StageCycleDeps {
 /** The stage document and the documents before it: the only ones a review compares, and the only ones it may move text into. */
 const scopeOf = (file: DocFile): DocFile[] => [file, ...earlierDocs(file)];
 
-/** A document name as a proposal gives it, with or without its `docs/` folder. */
-const docOf = (name: string): string => name.replace(/^docs\//, '');
+/** The document a proposal names: its path, its bare name, or a bare name written under `docs/`. */
+const namedDoc = (name: string, specId: string): DocFile | undefined => docOf(name, specId) ?? docOf(name.replace(/^docs\//, ''), specId);
 
 /** Whether a proposal names a document of the scope. */
-const inScope = (name: string, scope: readonly DocFile[]): boolean => scope.some((file) => docOf(name) === file);
+const inScope = (name: string, specId: string, scope: readonly DocFile[]): boolean => {
+  const file = namedDoc(name, specId);
+  return file !== undefined && scope.includes(file);
+};
 
 /** Moves of a stage go forward only: out of its own document and into a later one. */
-const forwardMoves = (file: DocFile, moves: readonly DocMoveProposal[]): DocMoveProposal[] =>
-  moves.filter((m) => docOf(m.from) === file && DOC_STAGES.indexOf(docOf(m.to) as DocFile) > DOC_STAGES.indexOf(file));
+const forwardMoves = (file: DocFile, specId: string, moves: readonly DocMoveProposal[]): DocMoveProposal[] =>
+  moves.filter((m) => {
+    const to = namedDoc(m.to, specId);
+    return namedDoc(m.from, specId) === file && to !== undefined && DOC_STAGES.indexOf(to) > DOC_STAGES.indexOf(file);
+  });
 
 /** The review of one stage's document: the owner reads it against the charter, the documents before it as digests, and the Jev's goals and hints as context. */
 export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: string; principles: readonly string[]; file: DocFile; docs: Record<DocFile, string>; goals?: readonly string[]; jev?: string }): ContextPackInput {
@@ -58,7 +64,7 @@ export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: 
     ? [DIGEST_NOTE, ...earlier.map((f) => `### ${f} (context only, a digest)\n${docDigest(input.docs[f], STAGE_DIGEST_CHARS)}`)].join('\n\n')
     : '(no document before this stage)';
   const feedback = [
-    `You review only docs/${input.file}, the document of this stage. Read it line by line against the document charter in your instructions.`,
+    `You review only ${input.file}, the document of this stage. Read it line by line against the document charter in your instructions.`,
     '- Propose changes to this document only, as docPatch entries. Touch no other document.',
     '- Return an empty checklist: this stage does not evaluate the checklist.',
     '- List in findings only the problems between this document and the documents before it, each quoting one of them; list in contradictions only the disagreements between them, quoting both sides.',
@@ -99,7 +105,7 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
       return;
     }
     const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];
-    await applyMoves(journal, draft, cycle, docs, { specId: draft.specId, projectBriefing: false, asked: titlesOf(journal.state.questions.filter((q) => q.status === 'pending').map((q) => q.text)) }, [{ role, moves: forwardMoves(file, reorganized.value.moves ?? []), limit: STAGE_MAX_MOVES }], discardedPatches);
+    await applyMoves(journal, draft, cycle, docs, { specId: draft.specId, projectBriefing: false, asked: titlesOf(journal.state.questions.filter((q) => q.status === 'pending').map((q) => q.text)) }, [{ role, moves: forwardMoves(file, draft.specId, reorganized.value.moves ?? []), limit: STAGE_MAX_MOVES }], discardedPatches);
     let n = 0;
     // Every patch is checked against the documents as the moves left them, and only the stage document may change.
     const propose = async (patches: ReadonlyArray<{ file: string; find: string; replace: string; reason: string }>) => {
@@ -127,9 +133,13 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
       ...(q.subject ? { subject: q.subject } : {}),
       cycle,
     }));
-    const findings = (review.value.findings ?? []).filter((f) => inScope(f.doc, scope) && docs[f.doc].includes(f.quote)).map(({ doc, severity, quote, text, fix }) => ({ cycle, role, doc, severity, quote, text, fix }));
-    await journal.fact(RefineEvent.FindingsReported, { cycle, findings });
-    const divergences = (review.value.contradictions ?? []).filter((c) => inScope(c.a.file, scope) && inScope(c.b.file, scope)).map((c) => c.fact);
+    // A finding keeps the document it names, as the stage knows it, and stands only when its quote is in that document.
+    const findings = (review.value.findings ?? []).flatMap(({ doc, severity, quote, text, fix }) => {
+      const named = namedDoc(doc, draft.specId);
+      return named !== undefined && scope.includes(named) && docs[named].includes(quote) ? [{ cycle, role, doc: named, severity, quote, text, fix }] : [];
+    });
+    await journal.fact(RefineEvent.FindingsReported, { cycle, files: scope, findings });
+    const divergences = (review.value.contradictions ?? []).filter((c) => inScope(c.a.file, draft.specId, scope) && inScope(c.b.file, draft.specId, scope)).map((c) => c.fact);
     await journal.fact(RefineEvent.StageReviewed, { cycle, file, questions, divergences, discardedPatches });
     if (deps.scoreDocs) await recordScore({ draft, journal, scoreDocs: deps.scoreDocs }, cycle, await isConfidential(draft, journal.state), [file]);
   } catch (err) {

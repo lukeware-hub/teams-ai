@@ -114,7 +114,7 @@ export interface RefineState {
   moves: MoveRow[];
   /** The hash of each document as the last reorganization pass left it; a document whose hash differs is read again. */
   reorganized: Partial<Record<DocFile, string>>;
-  /** The findings of the last cycle whose quotes the documents show, replaced every cycle. */
+  /** The findings whose quotes the documents show: a full round replaces them all, a stage review only those of the documents it covers. */
   findings: FindingRow[];
   discarded: Array<{ cycle: number; role: string; file: string; reason: string }>;
   error: string | null;
@@ -308,9 +308,13 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     case RefineEvent.DocsReorganized:
       s.reorganized = docNames(d.hashes as Record<string, string> | undefined) ?? {};
       break;
-    case RefineEvent.FindingsReported:
-      s.findings = (d.findings as FindingRow[] | undefined) ?? [];
+    case RefineEvent.FindingsReported: {
+      const findings = (d.findings as FindingRow[] | undefined) ?? [];
+      // A stage review names the documents it covers: the findings of the others stay until a review covers them.
+      const covered = d.files as DocFile[] | undefined;
+      s.findings = covered ? [...s.findings.filter((f) => !covered.includes(f.doc)), ...findings] : findings;
       break;
+    }
     case RefineEvent.DocMoveUndone: {
       const m = s.moves.find((x) => x.moveId === String(d.moveId));
       if (m) m.status = 'undone';
@@ -395,6 +399,11 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       // A score without a file list is a full one, as journals from before the per-document score wrote it.
       const files = (d.files as DocFile[] | undefined) ?? DOC_STAGES;
       const scored = docNames(d.docs as Record<string, DocScore> | null);
+      // A failed score keeps the scores held and the outdated marks, so the next score still asks for the documents it missed.
+      if (!scored && d.available === false && d.skipped === undefined) {
+        s.readiness = { ...(d as unknown as Omit<Readiness, 'outdated' | 'docs'>), docs: s.readiness?.docs ?? null, outdated: (s.outdatedDocs ?? []).length > 0 };
+        break;
+      }
       const docs = scored && { ...(s.readiness?.docs ?? {}), ...scored };
       const held = Object.values(docs ?? {}).map((doc) => doc!.score);
       const average = docs ? held.reduce((sum, v) => sum + v, 0) / held.length : (d.average as number | null);

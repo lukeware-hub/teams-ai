@@ -624,6 +624,15 @@ describe('RefineSession stage review', () => {
     await c.close();
   });
 
+  it('a stage review of a document that is not the current stage is refused at once, and starts nothing', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    expect(() => s.evaluateStage('project.md')).toThrow(ConflictError);
+    expect(s.busy).toBe(false);
+    await s.continueStage();
+    expect(() => s.evaluateStage('flow.md')).toThrow(ConflictError);
+    await s.close();
+  });
+
   it('a stage review cannot start while another evaluation runs, and the running one ends normally', async () => {
     const s = await RefineSession.create(deps(), 'new-project');
     const first = s.evaluateStage('flow.md');

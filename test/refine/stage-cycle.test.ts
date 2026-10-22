@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { applyRefineEvent, emptyRefineState } from '../../server/refine/state.js';
 import { createNewProject, draftPaths, readDoc, writeDoc } from '../../server/refine/draft.js';
 import { RefineEvent } from '../../server/refine/events.js';
-import { runStageCycle } from '../../server/refine/stage-cycle.js';
+import { runStageCycle, stageReviewPack } from '../../server/refine/stage-cycle.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
 
 /** A journal that folds each fact into its state, as the session's journal does. */
@@ -165,6 +165,50 @@ describe('runStageCycle', () => {
     await runStageCycle({ draft, journal, runAgent: passes(answer([]), review) as never, principles: () => [] }, 1, 'project.md');
     expect(journal.state.findings).toEqual([expect.objectContaining({ doc: 'project.md', quote: '# Shop' })]);
     expect(journal.state.stageAlignment).toEqual({ 'project.md': [] });
+  });
+
+  it('a finding that cites a document by its spec folder path is kept under the document name', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    await writeDoc(draft, 'briefing.md', '# Briefing\n\nO pedido fecha em dois dias.\n');
+    const finding = { doc: `docs/specs/${draft.specId}/briefing.md`, severity: 'advice', quote: 'O pedido fecha em dois dias.', text: 'texto', fix: 'corrigir' };
+    await runStageCycle({ draft, journal, runAgent: vi.fn(async () => answer([], [], [], [finding])) as never, principles: () => [] }, 1, 'stack.md');
+    expect(journal.state.findings).toEqual([expect.objectContaining({ doc: 'briefing.md', quote: 'O pedido fecha em dois dias.' })]);
+  });
+
+  it('a forward move cited from the briefing in its spec folder is applied', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    await writeDoc(draft, 'briefing.md', '# Briefing\n\nRegra de prazo: trinta dias.\n');
+    await writeDoc(draft, 'stack.md', '# Pilha\n\nNode.js.\n');
+    const move = { from: `docs/specs/${draft.specId}/briefing.md`, to: 'docs/stack.md', quote: 'Regra de prazo: trinta dias.', text: 'Regra de prazo: trinta dias.', reason: 'r' };
+    await runStageCycle({ draft, journal, runAgent: passes(answer([], [], [], [], [move]), answer([])) as never, principles: () => [] }, 1, 'briefing.md');
+    expect(journal.events.some((e) => e.type === RefineEvent.DocMoved)).toBe(true);
+  });
+
+  it('the review names its document by the bare name, which a patch may cite', () => {
+    const docs = { 'flow.md': '# Fluxo', 'project.md': '# Shop', 'briefing.md': '# Briefing', 'stack.md': '# Stack', 'design.md': '# Design' };
+    const pack = stageReviewPack({ role: 'po', specHash: 'h', principles: [], file: 'briefing.md', docs });
+    expect(pack.feedback).toMatch(/^You review only briefing\.md,/);
+  });
+
+  it('a patch that cites the stage document by its bare name is proposed', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    await writeDoc(draft, 'briefing.md', '# Briefing\n\nO pedido fecha em dois dias.\n');
+    const patch = { file: 'briefing.md', find: 'O pedido fecha em dois dias.', replace: 'O pedido fecha em três dias.', reason: 'prazo' };
+    await runStageCycle({ draft, journal, runAgent: passes(answer([]), answer([patch])) as never, principles: () => [] }, 1, 'briefing.md');
+    expect(journal.events.find((e) => e.type === RefineEvent.PatchProposed)?.data).toMatchObject({ file: 'briefing.md' });
+  });
+
+  it('a stage review keeps the findings of the documents it does not cover, and replaces those of the documents it covers', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    await writeDoc(draft, 'flow.md', '# Fluxo\n\nO cliente paga.\n');
+    const finding = (doc: string, quote: string, text: string) => ({ doc, severity: 'advice', quote, text, fix: 'corrigir' });
+    await runStageCycle({ draft, journal, runAgent: vi.fn(async () => answer([], [], [], [finding('project.md', '# Shop', 'do projeto')])) as never, principles: () => [] }, 1, 'briefing.md');
+    await runStageCycle({ draft, journal, runAgent: vi.fn(async () => answer([], [], [], [finding('flow.md', 'O cliente paga.', 'do fluxo')])) as never, principles: () => [] }, 2, 'flow.md');
+    expect(journal.state.findings.map((f) => f.text).sort()).toEqual(['do fluxo', 'do projeto']);
   });
 
   it('the Jev reads the stage with the documents before it, and the first stage is not sent to it', async () => {

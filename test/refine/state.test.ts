@@ -240,6 +240,26 @@ describe('reduceRefineEvents legacy brief.md', () => {
   });
 });
 
+describe('reduceRefineEvents findings of a stage', () => {
+  const finding = (doc: string, text: string) => ({ cycle: 1, role: 'po', doc, severity: 'advice', quote: 'q', text, fix: 'f' });
+
+  it('a review replaces the findings of the documents it names, and keeps the findings of the others', () => {
+    const s = reduceRefineEvents([
+      { type: RefineEvent.FindingsReported, data: { cycle: 1, findings: [finding('project.md', 'do projeto'), finding('stack.md', 'da pilha')] } },
+      { type: RefineEvent.FindingsReported, data: { cycle: 2, files: ['flow.md'], findings: [finding('flow.md', 'do fluxo')] } },
+    ]);
+    expect(s.findings.map((f) => f.text).sort()).toEqual(['da pilha', 'do fluxo', 'do projeto']);
+  });
+
+  it('a review without a list of documents replaces all the findings, as a full round does', () => {
+    const s = reduceRefineEvents([
+      { type: RefineEvent.FindingsReported, data: { cycle: 1, findings: [finding('project.md', 'do projeto')] } },
+      { type: RefineEvent.FindingsReported, data: { cycle: 2, findings: [finding('stack.md', 'da pilha')] } },
+    ]);
+    expect(s.findings.map((f) => f.text)).toEqual(['da pilha']);
+  });
+});
+
 describe('document scores per document', () => {
   const docScore = (score: number) => ({ score, checks: { complete: score, concrete: score, consistent: score, scoped: score } });
   const scoredDocs = (docs: Record<string, number>, files?: string[]) => ({
@@ -252,6 +272,14 @@ describe('document scores per document', () => {
     const s = reduceRefineEvents([scoredDocs({ 'flow.md': 0.5, 'project.md': 0.9 }, ['flow.md', 'project.md']), scoredDocs({ 'stack.md': 0.7 }, ['stack.md'])]);
     expect(Object.keys(s.readiness!.docs!).sort()).toEqual(['flow.md', 'project.md', 'stack.md']);
     expect(s.readiness!.average).toBeCloseTo((0.5 + 0.9 + 0.7) / 3);
+  });
+
+  it('a failed score keeps the scores of the other documents, and leaves the edited document outdated', () => {
+    const failed = { type: RefineEvent.DocsScored, data: { cycle: 2, files: ['stack.md'], available: false, model: null, average: null, docs: null, usage: null } };
+    const s = reduceRefineEvents([scoredDocs({ 'flow.md': 0.5, 'stack.md': 0.7 }, ['flow.md', 'stack.md']), edited('stack.md'), failed]);
+    expect(Object.keys(s.readiness!.docs!).sort()).toEqual(['flow.md', 'stack.md']);
+    expect(s.outdatedDocs).toEqual(['stack.md']);
+    expect(s.readiness).toMatchObject({ available: false, average: null, outdated: true });
   });
 
   it('an edit marks only that document outdated, and its own score clears the mark', () => {

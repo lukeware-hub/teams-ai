@@ -269,10 +269,17 @@ export class RefineSession {
     if (rounds >= this.limits().max) throw new ConflictError(`o refinamento já tem ${rounds} rodadas nesta etapa, o limite de ${this.limits().max}: revise os documentos e inicie a análise, ou ajuste TEAMS_AI_REFINE_MAX_ROUNDS`);
   }
 
+  /** The first document whose stage the owner has not moved on from. */
+  private currentStage(): DocFile | undefined {
+    return DOC_STAGES.find((file) => !(this.state.doneStages ?? []).includes(file));
+  }
+
   /** One review of the current stage's document: only that document changes and its score is taken. */
   evaluateStage(file: DocFile): Promise<void> {
     this.ensureCanEvaluate();
     if (this.state.stages !== true) throw new ConflictError('só um refinamento de projeto novo tem etapas');
+    const current = this.currentStage();
+    if (file !== current) throw new ConflictError(current ? `a etapa atual é ${current}, não ${file}` : 'todas as etapas já foram concluídas');
     this.guardRounds();
     const ctl = (this.abortCtl = new AbortController());
     const run = this.timedStage(ctl, file).finally(() => {
@@ -297,7 +304,7 @@ export class RefineSession {
   async continueStage(): Promise<void> {
     this.guard();
     if (this.state.stages !== true) throw new ConflictError('só um refinamento de projeto novo tem etapas');
-    const doc = DOC_STAGES.find((file) => !(this.state.doneStages ?? []).includes(file));
+    const doc = this.currentStage();
     if (!doc) throw new ConflictError('todas as etapas já foram concluídas');
     await this.journal.fact(RefineEvent.StageAdvanced, { doc, cycle: this.state.cycle });
   }
