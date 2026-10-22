@@ -81,7 +81,7 @@ export function jevHint(validation?: JevValidationResult): string {
   return scores.length ? `Automatic and often wrong, never a verdict. Scores (probability of yes): ${scores.join(', ')}.` : '(not available)';
 }
 
-const unavailable = (): JevValidationResult => ({ available: false, decision: 'review', consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false });
+export const unavailable = (): JevValidationResult => ({ available: false, decision: 'review', consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false });
 
 /** The Jev over OpenRouter, configured as the decisions are. */
 export function openJev(cfg: Config, apiKey: string): JevOpenRouterBackend {
@@ -98,6 +98,19 @@ export function openJev(cfg: Config, apiKey: string): JevOpenRouterBackend {
   });
 }
 
+/** Tells the Jev which part of the documents it sees, when they come in more than one window; empty for a single window. */
+export function windowNote(part: number, parts: number): string {
+  return parts > 1 ? `You see part ${part} of ${parts} of the documents. Judge only what is in this part and do not penalize what lies outside it. ` : '';
+}
+
+/** Tells the Jev which documents exist yet when some are still empty; empty when all five are written. */
+export function absentDocsNote(docs: ValidationDocs): string {
+  const names = ['project', 'briefing', 'stack', 'flow', 'design'] as const;
+  const present = names.filter((n) => docs[n].trim() !== '');
+  if (present.length === names.length) return '';
+  return `Only these documents exist yet: ${present.map((n) => `${n}.md`).join(', ') || 'none'}. Judge only them and do not penalize a document that does not exist yet. `;
+}
+
 /** Runs independent Jev consistency checks before Claude derives the specification. */
 export function createJevValidator(cfg: Config, secrets: () => Promise<Record<string, string>>): (docs: ValidationDocs) => Promise<JevValidationResult> {
   return async (docs) => {
@@ -109,7 +122,7 @@ export function createJevValidator(cfg: Config, secrets: () => Promise<Record<st
     const clean = Object.fromEntries(Object.entries(docs).map(([name, text]) => [name, redactSecrets(text, secretValues)])) as unknown as ValidationDocs;
     const windows = splitWindows(clean, MAX_STATE_CHARS);
     // Each window sees only part of the documents, so a check must not fail for what lies outside it.
-    const scope = windows.length > 1 ? (part: number) => `You see part ${part} of ${windows.length} of the documents. Judge only what is in this part and do not penalize what lies outside it. ` : () => '';
+    const scope = (part: number) => `${windowNote(part, windows.length)}${absentDocsNote(clean)}`;
     const results = await Promise.all(windows.map((state, i) => jev.evaluate({
       state,
       questions: Object.fromEntries(Object.entries(CHECKS).map(([id, check]) => [id, {

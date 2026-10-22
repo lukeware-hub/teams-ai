@@ -17,7 +17,7 @@ import { isConfidential, recordScore, runCycle, type CycleDeps, type RunAgent } 
 import { DOC_STAGES } from './doc-stages.js';
 import { runStageCycle } from './stage-cycle.js';
 import { scoresDocs } from './readiness.js';
-import { recordDecision, withDecisions } from './decisions.js';
+import { decisionsSpan, recordDecision, withDecisions } from './decisions.js';
 import { maxCriterionInDraft } from './detail-cycle.js';
 import { designTemplate, flowTemplate, moveBriefingToProject, readDerived, readDoc, readMainSpec, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
 import { DRAFT_HASH, RefineEvent } from './events.js';
@@ -286,7 +286,7 @@ export class RefineSession {
   private async timedStage(ctl: AbortController, file: DocFile): Promise<void> {
     await this.journal.fact(RefineEvent.EvaluationStarted, {});
     try {
-      const deps = { draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, frontAgent: this.deps.frontAgent, scoreDocs: this.deps.scoreDocs, principles: () => this.state.derived?.project.principles ?? [], signal: ctl.signal };
+      const deps = { draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, frontAgent: this.deps.frontAgent, scoreDocs: this.deps.scoreDocs, validateDocs: this.deps.validateDocs, principles: () => this.state.derived?.project.principles ?? [], signal: ctl.signal };
       await runStageCycle(deps, this.state.cycle + 1, file);
     } finally {
       await this.journal.fact(RefineEvent.EvaluationEnded, {});
@@ -310,8 +310,17 @@ export class RefineSession {
 
   async saveDoc(file: DocFile, text: string): Promise<void> {
     this.guard();
-    await writeDoc(this.deps.draft, file, text);
-    await this.journal.fact(RefineEvent.DocEdited, { file, hash: sha256(text), source: 'human' });
+    const saved = file === 'briefing.md' ? await this.keepDecisions(text) : text;
+    await writeDoc(this.deps.draft, file, saved);
+    await this.journal.fact(RefineEvent.DocEdited, { file, hash: sha256(saved), source: 'human' });
+  }
+
+  /** The briefing's `## Decisões` section stays when a save leaves it out, so an answered question is never lost by an edit. */
+  private async keepDecisions(text: string): Promise<string> {
+    if (decisionsSpan(text)) return text;
+    const current = await readDoc(this.deps.draft, 'briefing.md');
+    const span = decisionsSpan(current);
+    return span ? `${text.trimEnd()}\n\n${current.slice(span.start, span.end).trim()}\n` : text;
   }
 
   /** "Sugerir": the agent's version of `file` written from flow.md; nothing is saved, the human reviews it in the editor. */

@@ -64,7 +64,7 @@ const docImpact: Record<DocFile, string> = {
 /** Short text for the info icon on each document tab. */
 const docTip: Record<DocFile, string> = {
   'project.md': 'Explica o que é o projeto, seus objetivos, o que ele precisa entregar e quem responde por cada parte.',
-  'briefing.md': 'Explica como o sistema funciona em detalhe, passo a passo, com o que entra, o que fica de fora e como saber que ficou pronto.',
+  'briefing.md': 'Explica como o sistema funciona em detalhe, passo a passo, com o que entra, o que fica de fora e como saber que ficou pronto. As decisões respondidas ficam em "## Decisões" e são mantidas ao salvar ou anexar.',
   'stack.md': 'Lista as tecnologias, as versões e as regras de uso: o que não usar e as boas práticas que os agentes precisam seguir.',
   'flow.md': 'Mostra o fluxo de negócio completo em um diagrama: estados, desvios, erros e quem age em cada passo.',
   'design.md': 'Define o visual do projeto: cores, letras, componentes e acessibilidade. O agente Front segue este documento na interface.',
@@ -72,6 +72,8 @@ const docTip: Record<DocFile, string> = {
 /** Backlog mode: the briefing is the target project's docs/briefing.md, one file for the whole backlog. */
 const briefingImpact = 'Briefing do projeto (docs/briefing.md): objetivos, prioridades, cortes e decisões que valem para todo o backlog. Os agentes seguem o que estiver escrito aqui.';
 const docName = (file: string) => docLabel[file.split('/').pop() as DocFile] ?? file;
+/** The design of a project without an interface: the document says so, and the Jev counts a part marked not applicable as present. */
+const NOT_APPLICABLE_DESIGN = 'Não se aplica: este projeto não tem interface.';
 /** Journal events that change a document or a decision: after one of them a new evaluation is not a repeat. */
 const CHANGE_EVENTS = new Set(['DOC_EDITED', 'PATCH_ACCEPTED', 'PATCH_REJECTED', 'QUESTION_ANSWERED', 'QUESTION_SKIPPED', 'BACKLOG_DETAIL_ENABLED']);
 const roleInfo: Record<'po' | 'sm', string> = {
@@ -428,11 +430,18 @@ export function RefinementView(p: ViewProps) {
       r.onerror = () => reject(r.error);
       r.readAsText(f);
     });
+  /** Replacing a document that holds text asks the owner first. */
+  const mayReplace = (doc: DocFile, question: string) => docs[doc].trim() === '' || window.confirm(question);
+  const markNotApplicable = () => {
+    if (!mayReplace('design.md', 'Substituir o texto do design por "Não se aplica"?')) return;
+    setDocs((d) => ({ ...d, 'design.md': NOT_APPLICABLE_DESIGN }));
+    p.onSaveDoc('design.md', NOT_APPLICABLE_DESIGN);
+  };
   const attachDoc = async (files: FileList | null) => {
     const file = files?.[0];
     if (!file) return;
     const text = await readText(file).catch(() => null);
-    if (text === null) return;
+    if (text === null || !mayReplace(tab, 'Substituir o texto deste documento pelo arquivo anexado?')) return;
     setDocs((d) => ({ ...d, [tab]: text }));
     p.onSaveDoc(tab, text);
   };
@@ -514,6 +523,9 @@ export function RefinementView(p: ViewProps) {
               </button>
               <input ref={docFileInput} data-testid="attach-doc" type="file" accept=".md,.txt,text/markdown,text/plain" hidden onChange={(e) => { void attachDoc(e.target.files); e.target.value = ''; }} />
             </>
+          )}
+          {newProject && tab === 'design.md' && (
+            <button type="button" className="h-10 px-[0.8rem]" disabled={locked} onClick={markNotApplicable}>Não se aplica</button>
           )}
           <button type="button" className="h-10 px-[0.8rem]" aria-label="Copiar documento" onClick={() => copyDoc(docs[tab] ?? '')}>
             Copiar

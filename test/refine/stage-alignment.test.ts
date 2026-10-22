@@ -5,7 +5,7 @@ import { reduceRefineEvents } from '../../server/refine/state.js';
 const created = { type: RefineEvent.Created, data: { projectId: 'shop', specId: 'shop-002', mode: 'new-project', stages: true } };
 const advanced = (doc: string) => ({ type: RefineEvent.StageAdvanced, data: { doc, cycle: 0 } });
 const edited = (file: string) => ({ type: RefineEvent.DocEdited, data: { file, source: 'main', hash: 'h' } });
-const reviewed = (file: string, divergences: string[]) => ({ type: RefineEvent.StageReviewed, data: { cycle: 1, file, questions: [], divergences } });
+const reviewed = (file: string, divergences: string[]) => ({ type: RefineEvent.StageReviewed, data: { cycle: 1, file, questions: [], divergences, discardedPatches: [] } });
 
 describe('stage alignment and stale stages', () => {
   it('a stage review records what it found against the documents before it, and an empty list is aligned', () => {

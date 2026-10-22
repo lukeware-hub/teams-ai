@@ -270,10 +270,11 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     }
     case RefineEvent.StageReviewed: {
       // A stage review asks questions only; the checklist and the stuck count stay as the last full round left them.
-      const v = d as unknown as { file: DocFile; questions: Question[]; divergences: string[] };
+      const v = d as unknown as { cycle: number; file: DocFile; questions: Question[]; divergences: string[]; discardedPatches: Array<{ role: string; file: string; reason: string }> };
       s.questions.push(...v.questions.map((q) => ({ ...q, status: 'pending' as const, answer: null })));
       s.stageAlignment = { ...(s.stageAlignment ?? {}), [v.file]: v.divergences };
       if (s.staleBy) delete s.staleBy[v.file];
+      s.discarded.push(...v.discardedPatches.map((x) => ({ cycle: v.cycle, ...x, file: docName(x.file) })));
       s.status = 'drafting';
       s.status = computeStatus(s);
       break;

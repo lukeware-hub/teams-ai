@@ -634,6 +634,18 @@ describe('RefineSession stage review', () => {
   });
 });
 
+describe('RefineSession briefing decisions', () => {
+  it('a save of the briefing that leaves out its decisions keeps the section the owner answered', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    await s.saveDoc('briefing.md', '# Briefing\n\n## Decisões\n\n- Qual o prazo?\n  Answer: Trinta dias\n');
+    await s.saveDoc('briefing.md', '# Briefing novo\n\n## Objetivos\n\nVender online.\n');
+    const briefing = (await s.snapshot()).docs['briefing.md'];
+    expect(briefing).toContain('# Briefing novo');
+    expect(briefing).toContain('Answer: Trinta dias');
+    await s.close();
+  });
+});
+
 describe('RefineSession document score', () => {
   const ALL_DOCS = ['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md'];
   const scored = { available: true, model: 'jev-1.13.0', average: 0.9, docs: Object.fromEntries(ALL_DOCS.map((file) => [file, { score: 0.9, checks: { complete: 0.9, concrete: 0.9, consistent: 0.9, scoped: 0.9 } }])), usage: null };

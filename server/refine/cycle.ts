@@ -143,13 +143,13 @@ const REORGANIZE_MAX_MOVES = 20;
 const REORGANIZED_FILES: readonly DocFile[] = ['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md'];
 
 /** The titles a question quotes in double quotes, normalized: the section a pending question is about. */
-const titlesOf = (texts: readonly string[]) => texts.flatMap((t) => [...t.matchAll(/"([^"]{4,})"/g)].map((m) => norm(m[1]!)));
+export const titlesOf = (texts: readonly string[]) => texts.flatMap((t) => [...t.matchAll(/"([^"]{4,})"/g)].map((m) => norm(m[1]!)));
 
 /** Texts of the questions waiting for the owner, the ones of this cycle's reorganization included. */
 const askedTexts = (s: RefineState, pending: ReadonlyArray<{ text: string }>) => [...s.questions.filter((q) => q.status === 'pending').map((q) => q.text), ...pending.map((q) => q.text)];
 
 /** Applies the moves role by role (Front, PO, SM), each against the documents as the earlier ones left them; a refused move is discarded with its reason. */
-async function applyMoves(
+export async function applyMoves(
   journal: CycleJournal,
   draft: Draft,
   cycle: number,

@@ -96,6 +96,45 @@ describe('a new project refines its documents in five stages', () => {
     expect(screen.getByTestId('doc-stale').textContent).toContain('flow.md');
   });
 
+  it('keeps the document when the owner does not confirm that a file replaces its text', async () => {
+    const handlers = renderView(stageSnap({ doneStages: ['flow.md'] }));
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    fireEvent.change(screen.getByTestId('attach-doc'), { target: { files: [new File(['# Novo'], 'novo.md', { type: 'text/markdown' })] } });
+    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    expect(handlers.onSaveDoc).not.toHaveBeenCalled();
+    expect((screen.getByTestId('doc-project.md') as HTMLTextAreaElement).value).toBe('# Hello');
+    confirm.mockRestore();
+  });
+
+  it('marks the design as not applicable, after the owner confirms that it replaces the text', () => {
+    const handlers = renderView(stageSnap({ doneStages: ['flow.md', 'project.md', 'briefing.md', 'stack.md'] }));
+    fireEvent.click(screen.getByTestId('stage-design.md'));
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Não se aplica' }));
+    expect(handlers.onSaveDoc).toHaveBeenCalledWith('design.md', expect.stringContaining('Não se aplica'));
+    confirm.mockRestore();
+  });
+
+  it('leaves the design as it is when the owner does not confirm the replacement', () => {
+    const handlers = renderView(stageSnap({ doneStages: ['flow.md', 'project.md', 'briefing.md', 'stack.md'] }));
+    fireEvent.click(screen.getByTestId('stage-design.md'));
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Não se aplica' }));
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(handlers.onSaveDoc).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
+  it('marks an empty design as not applicable without asking', () => {
+    const snap = stageSnap({ doneStages: ['flow.md'] });
+    const handlers = renderView({ ...snap, docs: { ...snap.docs, 'design.md': '' } });
+    fireEvent.click(screen.getByTestId('stage-design.md'));
+    const confirm = vi.spyOn(window, 'confirm').mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Não se aplica' }));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(handlers.onSaveDoc).toHaveBeenCalledWith('design.md', expect.stringContaining('Não se aplica'));
+  });
+
   it('says when the document changed after its score', () => {
     renderView(stageSnap({ outdatedDocs: ['flow.md'] }));
     expect(screen.getByTestId('doc-outdated').textContent).toContain('flow.md');
@@ -107,6 +146,7 @@ describe('a new project refines its documents in five stages', () => {
   });
 
   it('attaches a text file to the document on show, and saves it', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const handlers = renderView(stageSnap({ doneStages: ['flow.md'] }));
     const file = new File(['# Projeto novo'], 'projeto.md', { type: 'text/markdown' });
     fireEvent.change(screen.getByTestId('attach-doc'), { target: { files: [file] } });

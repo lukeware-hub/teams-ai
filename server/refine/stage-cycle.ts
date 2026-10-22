@@ -1,17 +1,31 @@
 import type { z } from 'zod';
-import type { RefineOutput } from '../agents/outputs.js';
+import type { DocMoveProposal, RefineOutput } from '../agents/outputs.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
+import { sha256 } from '../contracts/hash.js';
 import { outputContract } from '../orchestrator/steps.js';
 import type { StepOutcome } from '../runner/step.js';
-import { isConfidential, recordScore, type CycleJournal, type RunAgent, type ScoreDeps } from './cycle.js';
+import { applyMoves, isConfidential, recordScore, titlesOf, type CycleJournal, type RunAgent, type ScoreDeps } from './cycle.js';
+import { DIGEST_NOTE, docDigest } from './docs-view.js';
 import { DOC_STAGES, earlierDocs } from './doc-stages.js';
 import { draftHash, readDoc, type Draft, type DocFile } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
+import { jevHint, unavailable, type JevValidationResult, type ValidationDocs } from './jev-validation.js';
+import { reorganizePack } from './packs.js';
 import { applyPatch, checkPatch, patchId, unifiedDiff } from './patches.js';
+import { jevGoals } from './readiness.js';
 
 /** The role that reviews a stage's document: the one that owns it. */
 const OWNER: Record<DocFile, 'po' | 'sm' | 'front'> = { 'project.md': 'po', 'briefing.md': 'po', 'stack.md': 'sm', 'flow.md': 'po', 'design.md': 'front' };
+
+/** The key of each document in the Jev's validation input. */
+const VALIDATION_KEY: Record<DocFile, keyof ValidationDocs> = { 'project.md': 'project', 'briefing.md': 'briefing', 'stack.md': 'stack', 'flow.md': 'flow', 'design.md': 'design' };
+
+/** How much of each earlier document the review reads: every heading, with the start of its section. */
+const STAGE_DIGEST_CHARS = 2000;
+
+/** The most passages one stage moves; a stage moves a few lines forward, never whole sections. */
+const STAGE_MAX_MOVES = 3;
 
 export interface StageCycleDeps {
   draft: Draft;
@@ -19,53 +33,91 @@ export interface StageCycleDeps {
   runAgent: RunAgent;
   frontAgent?: RunAgent;
   scoreDocs?: ScoreDeps['scoreDocs'];
+  validateDocs?: (docs: ValidationDocs) => Promise<JevValidationResult>;
   principles: () => readonly string[];
   signal?: AbortSignal;
 }
 
-/** Whether a contradiction names a file the review compares: its own document or one before it. */
-const inScope = (name: string, scope: readonly DocFile[]): boolean => scope.some((file) => name === file || name.endsWith(`/${file}`));
+/** The stage document and the documents before it: the only ones a review compares, and the only ones it may move text into. */
+const scopeOf = (file: DocFile): DocFile[] => [file, ...earlierDocs(file)];
 
-/** The review of one stage's document: the owner reads it against the charter; the documents before it are context only. */
-export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: string; principles: readonly string[]; file: DocFile; docs: Record<DocFile, string> }): ContextPackInput {
+/** A document name as a proposal gives it, with or without its `docs/` folder. */
+const docOf = (name: string): string => name.replace(/^docs\//, '');
+
+/** Whether a proposal names a document of the scope. */
+const inScope = (name: string, scope: readonly DocFile[]): boolean => scope.some((file) => docOf(name) === file);
+
+/** Moves of a stage go forward only: out of its own document and into a later one. */
+const forwardMoves = (file: DocFile, moves: readonly DocMoveProposal[]): DocMoveProposal[] =>
+  moves.filter((m) => docOf(m.from) === file && DOC_STAGES.indexOf(docOf(m.to) as DocFile) > DOC_STAGES.indexOf(file));
+
+/** The review of one stage's document: the owner reads it against the charter, the documents before it as digests, and the Jev's goals and hints as context. */
+export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: string; principles: readonly string[]; file: DocFile; docs: Record<DocFile, string>; goals?: readonly string[]; jev?: string }): ContextPackInput {
   const earlier = earlierDocs(input.file);
-  const context = earlier.length > 0 ? earlier.map((f) => `### ${f} (context only)\n${input.docs[f]}`).join('\n\n') : '(no document before this stage)';
+  const context = earlier.length > 0
+    ? [DIGEST_NOTE, ...earlier.map((f) => `### ${f} (context only, a digest)\n${docDigest(input.docs[f], STAGE_DIGEST_CHARS)}`)].join('\n\n')
+    : '(no document before this stage)';
   const feedback = [
     `You review only docs/${input.file}, the document of this stage. Read it line by line against the document charter in your instructions.`,
-    '- Propose changes to this document only, as docPatch entries. Move nothing and touch no other document.',
-    '- Return an empty checklist and empty findings: this stage does not evaluate the checklist.',
-    '- List in contradictions only the disagreements between this document and the documents before it, quoting both sides.',
+    '- Propose changes to this document only, as docPatch entries. Touch no other document.',
+    '- Return an empty checklist: this stage does not evaluate the checklist.',
+    '- List in findings only the problems between this document and the documents before it, each quoting one of them; list in contradictions only the disagreements between them, quoting both sides.',
     '- Ask a question only when the document cannot be completed without the owner; mark it blocking only when the stage cannot continue without the answer.',
     '- Write everything in Brazilian Portuguese. Do not edit any file.',
+    ...(input.goals?.length ? ['### Jev goals for this document (checks below 80%)', input.goals.join('\n')] : []),
+    ...(input.jev ? [input.jev] : []),
     context,
     `### ${input.file} (this stage)\n${input.docs[input.file]}`,
   ].join('\n\n');
   return { kind: 'refine', role: input.role, specHash: input.specHash, principles: [...input.principles], outputContract: outputContract('refine'), criteria: [], feedback, budgetTokens: 60_000 };
 }
 
-/** One review of a stage's document: the owner proposes changes to that document only and asks what the owner must decide, then the document's score is taken. No derivation and no checklist. */
+/** One review of a stage's document, in two passes: the reorganization of that document (its moves go forward only), then the owner's review, which asks what the owner must decide and lists findings and contradictions against the documents before it. Then the document's score is taken. */
 export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: DocFile): Promise<void> {
   const { draft, journal } = deps;
   const hash = await draftHash(draft);
   await journal.fact(RefineEvent.CycleStarted, { cycle, draftHash: hash });
   try {
     const docs = Object.fromEntries(await Promise.all(DOC_STAGES.map(async (f) => [f, await readDoc(draft, f)]))) as Record<DocFile, string>;
+    const scope = scopeOf(file);
+    // The stage's own key: a change to a later document leaves the review's key as it was.
+    const specHash = sha256(JSON.stringify(scope.map((f) => [f, docs[f]])));
     const role = OWNER[file];
     const run = role === 'front' && deps.frontAgent ? deps.frontAgent : deps.runAgent;
-    const pack = fitPackBudget(stageReviewPack({ role, specHash: hash, principles: deps.principles(), file, docs }));
-    const out = (await run({ kind: 'refine', role, pack, cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, { journal, stepDir: draft.steps, specHash: hash, signal: deps.signal })) as StepOutcome<z.infer<typeof RefineOutput>>;
-    if (!out.ok) {
-      await journal.fact(RefineEvent.CycleFailed, { cycle, reason: `stage review failed: ${out.failure}: ${out.errors.join('; ')}` });
+    const call = async (pack: ContextPackInput) => (await run({ kind: 'refine', role, pack, cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, { journal, stepDir: draft.steps, specHash, signal: deps.signal })) as StepOutcome<z.infer<typeof RefineOutput>>;
+    const goals = jevGoals(journal.state.readiness).filter((g) => g.startsWith(`- ${file} (`));
+    // The Jev reads the stage with the documents before it; the first stage has none to compare with, so it is not asked.
+    let jev: JevValidationResult | undefined;
+    if (deps.validateDocs && earlierDocs(file).length > 0 && !(await isConfidential(draft, journal.state))) {
+      const partial = Object.fromEntries(DOC_STAGES.map((f) => [VALIDATION_KEY[f], scope.includes(f) ? docs[f] : ''])) as unknown as ValidationDocs;
+      jev = await deps.validateDocs(partial).catch(() => unavailable());
+      await journal.fact(RefineEvent.DocsValidated, { cycle, backend: 'jev', ...jev });
+    }
+    const reorganized = await call(fitPackBudget({ ...reorganizePack({ jevGoals: goals, specHash, principles: deps.principles(), specId: draft.specId, projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], changed: [file] }), role }));
+    if (!reorganized.ok) {
+      await journal.fact(RefineEvent.CycleFailed, { cycle, reason: `stage review failed: ${reorganized.failure}: ${reorganized.errors.join('; ')}` });
       return;
     }
+    const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];
+    await applyMoves(journal, draft, cycle, docs, { specId: draft.specId, projectBriefing: false, asked: titlesOf(journal.state.questions.filter((q) => q.status === 'pending').map((q) => q.text)) }, [{ role, moves: forwardMoves(file, reorganized.value.moves ?? []), limit: STAGE_MAX_MOVES }], discardedPatches);
     let n = 0;
-    for (const p of out.value.docPatch) {
-      const check = checkPatch(p, draft.specId, docs);
-      if (!check.ok || check.file !== file) continue;
-      await journal.fact(RefineEvent.PatchProposed, { patchId: patchId(role, cycle, n++), role, file, find: p.find, replace: p.replace, reason: p.reason, diff: unifiedDiff(file, docs[file], applyPatch(docs[file], p)!), cycle });
+    // Every patch is checked against the documents as the moves left them, and only the stage document may change.
+    const propose = async (patches: ReadonlyArray<{ file: string; find: string; replace: string; reason: string }>) => {
+      for (const p of patches) {
+        const check = checkPatch(p, draft.specId, docs);
+        if (!check.ok || check.file !== file) continue;
+        await journal.fact(RefineEvent.PatchProposed, { patchId: patchId(role, cycle, n++), role, file, find: p.find, replace: p.replace, reason: p.reason, diff: unifiedDiff(file, docs[file], applyPatch(docs[file], p)!), cycle });
+      }
+    };
+    await propose(reorganized.value.docPatch);
+    const review = await call(fitPackBudget(stageReviewPack({ role, specHash, principles: deps.principles(), file, docs, goals, jev: jev ? jevHint(jev) : undefined })));
+    if (!review.ok) {
+      await journal.fact(RefineEvent.CycleFailed, { cycle, reason: `stage review failed: ${review.failure}: ${review.errors.join('; ')}` });
+      return;
     }
+    await propose(review.value.docPatch);
     // Front asks no questions: only the PO and the SM put one to the owner.
-    const questions: Question[] = role === 'front' ? [] : out.value.questions.map((q, i) => ({
+    const questions: Question[] = role === 'front' ? [] : [...reorganized.value.questions, ...review.value.questions].map((q, i) => ({
       questionId: `${role}-s${cycle}-${i}`,
       role,
       text: q.text,
@@ -75,9 +127,10 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
       ...(q.subject ? { subject: q.subject } : {}),
       cycle,
     }));
-    const scope = [file, ...earlierDocs(file)];
-    const divergences = (out.value.contradictions ?? []).filter((c) => inScope(c.a.file, scope) && inScope(c.b.file, scope)).map((c) => c.fact);
-    await journal.fact(RefineEvent.StageReviewed, { cycle, file, questions, divergences });
+    const findings = (review.value.findings ?? []).filter((f) => inScope(f.doc, scope) && docs[f.doc].includes(f.quote)).map(({ doc, severity, quote, text, fix }) => ({ cycle, role, doc, severity, quote, text, fix }));
+    await journal.fact(RefineEvent.FindingsReported, { cycle, findings });
+    const divergences = (review.value.contradictions ?? []).filter((c) => inScope(c.a.file, scope) && inScope(c.b.file, scope)).map((c) => c.fact);
+    await journal.fact(RefineEvent.StageReviewed, { cycle, file, questions, divergences, discardedPatches });
     if (deps.scoreDocs) await recordScore({ draft, journal, scoreDocs: deps.scoreDocs }, cycle, await isConfidential(draft, journal.state), [file]);
   } catch (err) {
     await journal.fact(RefineEvent.CycleFailed, { cycle, reason: err instanceof Error ? err.message : String(err) });
