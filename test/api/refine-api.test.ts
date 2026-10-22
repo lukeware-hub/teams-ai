@@ -536,6 +536,13 @@ describe('refine api', () => {
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/moves/move-po-c1-0/undo')).status).toBe(409);
   });
 
+  it('the owner answers whether a new project is confidential; a value that is not a boolean is refused', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/confidential', { confidential: 'sim' })).status).toBe(400);
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/confidential', { confidential: true })).status).toBe(200);
+    expect((await snapshot()).state.confidential).toBe(true);
+  });
+
   it('a score for a single spec is refused with 409, and the spec is left as it was', async () => {
     await specDraft();
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/score')).status).toBe(409);

@@ -12,11 +12,19 @@ const P = '/api';
 const IMAGES_BODY_MAX = 28 * 1024 * 1024;
 /** A document may hold a long spec, so it saves up to 5 MB. */
 const DOC_BODY_MAX = 5 * 1024 * 1024;
+/** A small JSON body, such as one flag. */
+const SMALL_BODY_MAX = 1024;
 
 const str = (v: unknown, field: string, optional = false): string => {
   const x = (v as Record<string, unknown> | null)?.[field];
   if (x === undefined && optional) return '';
   if (typeof x !== 'string') throw new HttpError(400, `${field} must be a string`);
+  return x;
+};
+
+const flag = (v: unknown, field: string): boolean => {
+  const x = (v as Record<string, unknown> | null)?.[field];
+  if (typeof x !== 'boolean') throw new HttpError(400, `${field} must be a boolean`);
   return x;
 };
 
@@ -202,6 +210,14 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       path: `${S}/score`,
       handler: wrap(async ({ params, json }) => {
         await (await get(params)).score();
+        json(200, { ok: true });
+      }),
+    },
+    {
+      method: 'POST',
+      path: `${S}/confidential`,
+      handler: wrap(async ({ params, body, json }) => {
+        await (await get(params)).answerConfidentiality(flag(await body(SMALL_BODY_MAX), 'confidential'));
         json(200, { ok: true });
       }),
     },
