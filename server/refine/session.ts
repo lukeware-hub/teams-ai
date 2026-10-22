@@ -289,7 +289,7 @@ export class RefineSession {
     const docs = Object.fromEntries(await Promise.all(DOC_FILES.map(async (f) => [f, await readDoc(this.deps.draft, f)]))) as Record<DocFile, string>;
     if (docs['flow.md'].trim() === '' || docs['flow.md'] === flowTemplate()) throw new ConflictError('Preencha o flow.md antes de pedir uma sugestão.');
     const specHash = sha256(`${file}\n${DOC_FILES.map((f) => docs[f]).join('\n')}`);
-    return this.runSuggest(SUGGEST_ROLE[file], fitPackBudget(suggestPack({ file, projectId: this.deps.draft.projectId, specHash, docs })), specHash);
+    return this.runSuggest(SUGGEST_ROLE[file], fitPackBudget(suggestPack({ file, projectId: this.deps.draft.projectId, specHash, docs, earlierOnly: this.state.stages === true })), specHash);
   }
 
   /** "Anexar imagem": the agent's design.md adjusted from template images; nothing is saved and the images are deleted after the step. */

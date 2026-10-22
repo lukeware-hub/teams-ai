@@ -310,6 +310,7 @@ export function RefinementView(p: ViewProps) {
   const newProject = st.mode === 'new-project';
   const onStage = currentStage(st);
   const noContradictions = st.checklist.find((c) => c.id === 'po.no-contradictions');
+  const openChecks = st.checklist.filter((c) => !c.passed).map((c) => c.id);
   // A new project's owner sees the document of the stage they are on; Continuar moves the view along.
   useEffect(() => {
     if (newProject && onStage) setTab(onStage);
@@ -534,6 +535,9 @@ export function RefinementView(p: ViewProps) {
       )}
       {newProject && noContradictions && (
         <p data-testid="aligned" className="m-0 text-[0.8125rem] text-ink-soft">{noContradictions.passed ? 'Alinhado com os outros documentos.' : `Não alinhado com os outros documentos: ${noContradictions.detail}`}</p>
+      )}
+      {newProject && openChecks.length > 0 && (
+        <p data-testid="gap-summary" className="m-0 text-[0.8125rem] text-ink-soft">Lacunas: {openChecks.join(', ')}</p>
       )}
       {st.stale && (
         <p data-testid="stale" className={notice}>

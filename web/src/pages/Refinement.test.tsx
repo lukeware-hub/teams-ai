@@ -106,6 +106,11 @@ describe('a new project refines its documents in five stages', () => {
     expect(handlers.onSaveDoc).not.toHaveBeenCalled();
     read.mockRestore();
   });
+
+  it('lists the checks still open beside the stage, so the owner sees what is left', () => {
+    renderView(stageSnap({ checklist: [{ id: 'sm.tasks-feasible', role: 'sm', passed: false, detail: 'falta a tarefa' }] }));
+    expect(screen.getByTestId('gap-summary').textContent).toContain('sm.tasks-feasible');
+  });
 });
 
 describe('the round limit counts the rounds of the current stage', () => {

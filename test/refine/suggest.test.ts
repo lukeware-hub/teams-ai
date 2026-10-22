@@ -12,6 +12,15 @@ const docs: Record<DocFile, string> = {
 const pack = (file: 'design.md' | 'briefing.md') => suggestPack({ file, projectId: 'shop', specHash: 'sha256:' + 'a'.repeat(64), docs }).feedback ?? '';
 
 describe('suggestPack (Sugerir)', () => {
+  it('a stage suggestion reads only the documents before its stage, and the rest reads all the others', () => {
+    const spec = { file: 'stack.md' as const, projectId: 'shop', specHash: 'sha256:' + 'a'.repeat(64), docs };
+    const staged = suggestPack({ ...spec, earlierOnly: true }).feedback ?? '';
+    expect(staged).toContain('### flow.md');
+    expect(staged).toContain('### briefing.md');
+    expect(staged).not.toContain('### design.md');
+    expect(suggestPack(spec).feedback ?? '').toContain('### design.md');
+  });
+
   it('shows the other four documents, the precedence and the decision rule', () => {
     const feedback = pack('design.md');
     for (const other of ['### project.md', '### briefing.md', '### stack.md', '### flow.md']) expect(feedback).toContain(other);
