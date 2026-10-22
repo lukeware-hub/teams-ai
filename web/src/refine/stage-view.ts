@@ -15,6 +15,7 @@ export interface StageInput {
   doneStages?: string[];
   readiness?: { docs?: Partial<Record<DocFile, { score: number }>> | null } | null;
   outdatedDocs?: string[];
+  staleBy?: Record<string, string>;
 }
 
 /** The five documents in stage order, each with its state, its score and whether that score is outdated. */
@@ -24,7 +25,7 @@ export function stageViews(st: StageInput): StageView[] {
     doc,
     state: (st.doneStages ?? []).includes(doc) ? 'done' : doc === current ? 'current' : 'todo',
     score: st.readiness?.docs?.[doc]?.score ?? null,
-    outdated: (st.outdatedDocs ?? []).includes(doc),
+    outdated: (st.outdatedDocs ?? []).includes(doc) || doc in (st.staleBy ?? {}),
   }));
 }
 

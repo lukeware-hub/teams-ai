@@ -23,6 +23,9 @@ export interface StageCycleDeps {
   signal?: AbortSignal;
 }
 
+/** Whether a contradiction names a file the review compares: its own document or one before it. */
+const inScope = (name: string, scope: readonly DocFile[]): boolean => scope.some((file) => name === file || name.endsWith(`/${file}`));
+
 /** The review of one stage's document: the owner reads it against the charter; the documents before it are context only. */
 export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: string; principles: readonly string[]; file: DocFile; docs: Record<DocFile, string> }): ContextPackInput {
   const earlier = earlierDocs(input.file);
@@ -31,6 +34,7 @@ export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: 
     `You review only docs/${input.file}, the document of this stage. Read it line by line against the document charter in your instructions.`,
     '- Propose changes to this document only, as docPatch entries. Move nothing and touch no other document.',
     '- Return an empty checklist and empty findings: this stage does not evaluate the checklist.',
+    '- List in contradictions only the disagreements between this document and the documents before it, quoting both sides.',
     '- Ask a question only when the document cannot be completed without the owner; mark it blocking only when the stage cannot continue without the answer.',
     '- Write everything in Brazilian Portuguese. Do not edit any file.',
     context,
@@ -71,7 +75,9 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
       ...(q.subject ? { subject: q.subject } : {}),
       cycle,
     }));
-    await journal.fact(RefineEvent.StageReviewed, { cycle, questions });
+    const scope = [file, ...earlierDocs(file)];
+    const divergences = (out.value.contradictions ?? []).filter((c) => inScope(c.a.file, scope) && inScope(c.b.file, scope)).map((c) => c.fact);
+    await journal.fact(RefineEvent.StageReviewed, { cycle, file, questions, divergences });
     if (deps.scoreDocs) await recordScore({ draft, journal, scoreDocs: deps.scoreDocs }, cycle, await isConfidential(draft, journal.state), [file]);
   } catch (err) {
     await journal.fact(RefineEvent.CycleFailed, { cycle, reason: err instanceof Error ? err.message : String(err) });

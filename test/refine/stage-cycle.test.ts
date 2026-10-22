@@ -33,9 +33,9 @@ async function newDraft() {
 }
 
 /** The owner's answer for one stage: a change to the project document, a change to another document, and a question. */
-const answer = (docPatch: unknown[], questions: unknown[] = []) => ({
+const answer = (docPatch: unknown[], questions: unknown[] = [], contradictions: unknown[] = []) => ({
   ok: true,
-  value: { specHash: 'draft', checklist: [], questions, docPatch, contradictions: [], findings: [], moves: [] },
+  value: { specHash: 'draft', checklist: [], questions, docPatch, contradictions, findings: [], moves: [] },
   summary: { usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, costUsd: 0, durationMs: 0, numTurns: 0, rateLimit: null },
   sandboxDisabled: false,
 });
@@ -108,6 +108,23 @@ describe('runStageCycle', () => {
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
     expect(journal.state.checklist).toEqual([checked]);
     expect(journal.events.some((e) => e.type === RefineEvent.Evaluated)).toBe(false);
+  });
+
+  it('a stage review journals only the contradictions between its document and the documents before it', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    const contradiction = (fact: string, a: string, b: string) => ({ fact, a: { file: a, quote: 'x' }, b: { file: b, quote: 'y' }, fix: 'z' });
+    const runAgent = vi.fn(async () => answer([], [], [contradiction('o prazo diverge', 'docs/project.md', 'flow.md'), contradiction('a pilha diverge', 'docs/stack.md', 'docs/flow.md')]));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
+    expect(journal.state.stageAlignment).toEqual({ 'project.md': ['o prazo diverge'] });
+  });
+
+  it('a review without a contradictions list is aligned', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    const runAgent = vi.fn(async () => ({ ...answer([], []), value: { specHash: 'draft', checklist: [], questions: [], docPatch: [], findings: [], moves: [] } }));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
+    expect(journal.state.stageAlignment).toEqual({ 'project.md': [] });
   });
 
   it('a question without choices or subject is recorded without them', async () => {

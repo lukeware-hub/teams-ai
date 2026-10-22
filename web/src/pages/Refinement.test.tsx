@@ -82,6 +82,20 @@ describe('a new project refines its documents in five stages', () => {
     expect((screen.getByTestId('stage-evaluate') as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('says whether the document agrees with the earlier ones, from its last stage review', () => {
+    renderView(stageSnap({ doneStages: ['flow.md'], stageAlignment: { 'project.md': ['o prazo diverge do fluxo'] } }));
+    expect(screen.getByTestId('aligned').textContent).toBe('Não alinhado com os outros documentos: o prazo diverge do fluxo');
+    cleanup();
+    renderView(stageSnap({ doneStages: ['flow.md'], stageAlignment: { 'project.md': [] } }));
+    expect(screen.getByTestId('aligned').textContent).toBe('Alinhado com os outros documentos.');
+  });
+
+  it('tells the owner which earlier document changed after a stage was done', () => {
+    renderView(stageSnap({ doneStages: ['flow.md', 'project.md'], staleBy: { 'project.md': 'flow.md' } }));
+    fireEvent.click(screen.getByTestId('stage-project.md'));
+    expect(screen.getByTestId('doc-stale').textContent).toContain('flow.md');
+  });
+
   it('says when the document changed after its score', () => {
     renderView(stageSnap({ outdatedDocs: ['flow.md'] }));
     expect(screen.getByTestId('doc-outdated').textContent).toContain('flow.md');

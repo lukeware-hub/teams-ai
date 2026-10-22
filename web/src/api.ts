@@ -394,6 +394,8 @@ export interface RefineState {
   stages?: boolean;
   confidential?: boolean;
   outdatedDocs?: string[];
+  stageAlignment?: Record<string, string[]>;
+  staleBy?: Record<string, string>;
   /** When the latest evaluation started and ended (ISO times); `endedAt` stays null while it runs. */
   evaluation?: { startedAt: string; endedAt: string | null };
 }

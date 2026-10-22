@@ -47,6 +47,13 @@ const errorText = (text: string | null) => text
   .replaceAll('internal error', 'erro interno')
   .replace(/\b(documents_consistent|flow_covers_scope|validation_aligned|persistence_aligned|responses_aligned|health_aligned)\b/g, (id) => jevCheckLabel[id] ?? id) ?? null;
 const typeLabel: Record<string, string> = { feature: 'Feature', bug: 'Bug', maintenance: 'Manutenção', refactor: 'Refatoração' };
+
+/** The alignment line: the last stage review's divergences of the document, or else the full round's contradictions check. */
+const alignedLine = (divergences: string[] | undefined, check: { passed: boolean; detail: string } | undefined): string | null => {
+  if (divergences) return divergences.length === 0 ? 'Alinhado com os outros documentos.' : `Não alinhado com os outros documentos: ${divergences.join('; ')}`;
+  if (!check) return null;
+  return check.passed ? 'Alinhado com os outros documentos.' : `Não alinhado com os outros documentos: ${check.detail}`;
+};
 const docImpact: Record<DocFile, string> = {
   'project.md': 'O que o projeto é: visão, objetivos, o que ele precisa entregar e quem responde por cada parte. Gera o project.json.',
   'briefing.md': 'Como o sistema funciona em detalhe, com o que entra, o que fica de fora e como saber que ficou pronto. Gera o spec.json.',
@@ -312,6 +319,9 @@ export function RefinementView(p: ViewProps) {
   const newProject = st.mode === 'new-project';
   const onStage = currentStage(st);
   const noContradictions = st.checklist.find((c) => c.id === 'po.no-contradictions');
+  const stageDivergences = st.stageAlignment?.[tab];
+  const staleFrom = st.staleBy?.[tab] as DocFile | undefined;
+  const aligned = newProject ? alignedLine(stageDivergences, noContradictions) : null;
   const openChecks = st.checklist.filter((c) => !c.passed).map((c) => c.id);
   // A new project's owner sees the document of the stage they are on; Continuar moves the view along.
   useEffect(() => {
@@ -535,11 +545,14 @@ export function RefinementView(p: ViewProps) {
           )}
         </div>
       )}
+      {newProject && staleFrom && (
+        <p data-testid="doc-stale" className={notice}>{docLabel[staleFrom]} mudou depois desta etapa: avalie esta etapa de novo.</p>
+      )}
       {newProject && st.outdatedDocs?.includes(tab) && (
         <p data-testid="doc-outdated" className={notice}>{docLabel[tab]} mudou depois da última nota: clique em Avaliar com o Jev para medir de novo.</p>
       )}
-      {newProject && noContradictions && (
-        <p data-testid="aligned" className="m-0 text-[0.8125rem] text-ink-soft">{noContradictions.passed ? 'Alinhado com os outros documentos.' : `Não alinhado com os outros documentos: ${noContradictions.detail}`}</p>
+      {aligned && (
+        <p data-testid="aligned" className="m-0 text-[0.8125rem] text-ink-soft">{aligned}</p>
       )}
       {newProject && openChecks.length > 0 && (
         <p data-testid="gap-summary" className="m-0 text-[0.8125rem] text-ink-soft">Lacunas: {openChecks.join(', ')}</p>

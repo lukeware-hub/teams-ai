@@ -136,6 +136,10 @@ export interface RefineState {
   doneStages?: DocFile[];
   /** The round the current stage began at; its rounds count from here. */
   stageStartCycle?: number;
+  /** What the last stage review of each document found against the documents before it; an empty list is aligned. */
+  stageAlignment?: Partial<Record<DocFile, string[]>>;
+  /** A stage the owner moved on from, whose earlier document changed after it: that document's name, until the stage is reviewed again. */
+  staleBy?: Partial<Record<DocFile, DocFile>>;
   /** When the latest evaluation started and ended (ISO times); `endedAt` stays null while it runs. */
   evaluation?: { startedAt: string; endedAt: string | null };
 }
@@ -230,6 +234,14 @@ const docName = (file: unknown): DocFile => (file === 'brief.md' ? 'briefing.md'
 const docNames = <T>(rows: Record<string, T> | null | undefined): Record<DocFile, T> | null =>
   rows ? (Object.fromEntries(Object.entries(rows).filter(([k]) => !(k === 'brief.md' && 'briefing.md' in rows)).map(([k, v]) => [docName(k), v])) as Record<DocFile, T>) : null;
 
+/** Marks each stage the owner moved on from after an edited document, until that stage is reviewed again. */
+function markStaleStages(s: RefineState, edited: DocFile): void {
+  const index = DOC_STAGES.indexOf(edited);
+  if (index < 0) return;
+  const later = DOC_STAGES.slice(index + 1).filter((doc) => (s.doneStages ?? []).includes(doc));
+  if (later.length > 0) s.staleBy = { ...(s.staleBy ?? {}), ...Object.fromEntries(later.map((doc) => [doc, edited])) };
+}
+
 export function applyRefineEvent(s: RefineState, e: { type: string; at?: string; data: Record<string, unknown> }): void {
   const d = e.data;
   switch (e.type) {
@@ -258,8 +270,10 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     }
     case RefineEvent.StageReviewed: {
       // A stage review asks questions only; the checklist and the stuck count stay as the last full round left them.
-      const v = d as unknown as { questions: Question[] };
+      const v = d as unknown as { file: DocFile; questions: Question[]; divergences: string[] };
       s.questions.push(...v.questions.map((q) => ({ ...q, status: 'pending' as const, answer: null })));
+      s.stageAlignment = { ...(s.stageAlignment ?? {}), [v.file]: v.divergences };
+      if (s.staleBy) delete s.staleBy[v.file];
       s.status = 'drafting';
       s.status = computeStatus(s);
       break;
@@ -328,6 +342,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       if (hasDerivation(s)) s.stale = true;
       if (s.readiness) s.readiness.outdated = true;
       s.outdatedDocs = [...new Set([...(s.outdatedDocs ?? []), docName(d.file)])];
+      markStaleStages(s, docName(d.file));
       break;
     case RefineEvent.BacklogEnabled: {
       // `acFloor`: the highest criterion id in the draft before the briefing move removed this draft's own spec.json.
