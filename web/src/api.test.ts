@@ -12,4 +12,17 @@ describe('refineApi.scoreDoc', () => {
     expect(String(fetchSpy.mock.calls[0]![0])).toContain('/refine/shop/shop-002/docs/stack.md/score');
     expect(fetchSpy.mock.calls[0]![1]).toMatchObject({ method: 'POST' });
   });
+
+  it('posts the owner step to the next stage of a refinement', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    await expect(refineApi.continueStage('shop', 'shop-002')).resolves.toEqual({ ok: true });
+    expect(String(fetchSpy.mock.calls[0]![0])).toContain('/refine/shop/shop-002/stage/continue');
+  });
+
+  it('posts the owner answer on confidentiality with its value', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    await expect(refineApi.confidential('shop', 'shop-002', true)).resolves.toEqual({ ok: true });
+    expect(String(fetchSpy.mock.calls[0]![0])).toContain('/refine/shop/shop-002/confidential');
+    expect(JSON.parse(String(fetchSpy.mock.calls[0]![1]!.body))).toEqual({ confidential: true });
+  });
 });

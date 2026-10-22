@@ -132,6 +132,10 @@ export interface RefineState {
   readiness?: Readiness;
   /** The documents edited since their score was taken: each one's score is outdated until it is scored again. */
   outdatedDocs?: DocFile[];
+  /** The documents the owner moved on from, in order. */
+  doneStages?: DocFile[];
+  /** The round the current stage began at; its rounds count from here. */
+  stageStartCycle?: number;
   /** When the latest evaluation started and ended (ISO times); `endedAt` stays null while it runs. */
   evaluation?: { startedAt: string; endedAt: string | null };
 }
@@ -306,6 +310,10 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       break;
     case RefineEvent.ConfidentialityAnswered:
       s.confidential = d.confidential === true;
+      break;
+    case RefineEvent.StageAdvanced:
+      s.doneStages = [...new Set([...(s.doneStages ?? []), docName(d.doc)])];
+      s.stageStartCycle = Number(d.cycle);
       break;
     case RefineEvent.DocEdited:
       if (s.status === 'evaluating') s.editedInCycle = true;

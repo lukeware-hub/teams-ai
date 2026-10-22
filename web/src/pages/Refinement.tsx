@@ -297,7 +297,7 @@ export function RefinementView(p: ViewProps) {
   }, [current?.questionId]);
   const canStart = canStartRun(st, busy);
   // Past the lock round, another evaluation is refused by the server: the button says so instead of failing.
-  const atMax = snap.limits !== undefined && st.cycle >= snap.limits.max;
+  const atMax = snap.limits !== undefined && st.cycle - (st.stageStartCycle ?? 0) >= snap.limits.max;
   const backlogOn = st.backlog?.enabled === true;
   // A new project's refinement has two mandatory stages: the documents, then the backlog the program runs from.
   const newProject = st.mode === 'new-project';

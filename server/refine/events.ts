@@ -2,6 +2,8 @@ export const RefineEvent = {
   Created: 'REFINE_CREATED',
   /** The owner's answer to whether the project is confidential: `{confidential}`. */
   ConfidentialityAnswered: 'REFINE_CONFIDENTIALITY_ANSWERED',
+  /** The owner moved on from a document's stage: `{doc, cycle}`; the rounds of the next stage count from `cycle`. */
+  StageAdvanced: 'REFINE_STAGE_ADVANCED',
   DocEdited: 'DOC_EDITED',
   CycleStarted: 'REFINE_CYCLE_STARTED',
   DocsValidated: 'REFINE_DOCS_VALIDATED',

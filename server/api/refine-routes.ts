@@ -233,6 +233,14 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       }),
     },
     {
+      method: 'POST',
+      path: `${S}/stage/continue`,
+      handler: wrap(async ({ params, json }) => {
+        await (await get(params)).continueStage();
+        json(200, { ok: true });
+      }),
+    },
+    {
       method: 'GET',
       path: `${S}/program`,
       handler: wrap(async ({ params, json }) => json(200, { program: await registry.program(params.projectId!, params.specId!) })),

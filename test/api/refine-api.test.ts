@@ -550,6 +550,12 @@ describe('refine api', () => {
     expect((await snapshot()).state.confidential).toBe(true);
   });
 
+  it('the owner steps to the next stage of a new project, and the step is kept in the session', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/stage/continue')).status).toBe(200);
+    expect((await snapshot()).state.doneStages).toEqual(['flow.md']);
+  });
+
   it('scores one named document of a new project, and refuses a name that is not a document', async () => {
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     await call('POST', '/api/refine/hello-app/hello-app-001/confidential', { confidential: false });

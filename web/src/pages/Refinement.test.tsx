@@ -35,6 +35,20 @@ const base = (over: Partial<Snapshot['state']>): Snapshot => ({
 const on = () => ({ onSaveDoc: vi.fn(), onEvaluate: vi.fn(), onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn() });
 const event = (seq: number, type: string, data: Record<string, unknown>): StoredEvent => ({ seq, at: '', runId: 'hello-app/hello-001', specHash: 'draft', type, kind: 'fact', data });
 
+describe('the round limit counts the rounds of the current stage', () => {
+  it('refuses a new evaluation once the stage has used its rounds', () => {
+    const snap = { ...base({ cycle: 2, stageStartCycle: 1 }), limits: { max: 1 } };
+    render(<MemoryRouter><RefinementView snap={snap} busy={false} {...on()} /></MemoryRouter>);
+    expect((screen.getByTestId('evaluate') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('lets a new stage evaluate, since the rounds of the stages before it do not count', () => {
+    const snap = { ...base({ cycle: 2, stageStartCycle: 2 }), limits: { max: 1 } };
+    render(<MemoryRouter><RefinementView snap={snap} busy={false} {...on()} /></MemoryRouter>);
+    expect((screen.getByTestId('evaluate') as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
 describe('RefinementView start with the score banner', () => {
   const readyBacklog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {}, flowHeadings: [] } as never;
   const scoreReady = { cycle: 1, available: true, model: 'jev-1.13.0', average: 0.9, docs: null, usage: null, outdated: false } as never;

@@ -261,6 +261,18 @@ describe('document scores per document', () => {
   });
 });
 
+describe('stage progress', () => {
+  it('a step records the document it leaves and the round it leaves from; the same document is recorded once', () => {
+    const s = reduceRefineEvents([
+      { type: RefineEvent.StageAdvanced, data: { doc: 'flow.md', cycle: 2 } },
+      { type: RefineEvent.StageAdvanced, data: { doc: 'flow.md', cycle: 2 } },
+      { type: RefineEvent.StageAdvanced, data: { doc: 'project.md', cycle: 3 } },
+    ]);
+    expect(s.doneStages).toEqual(['flow.md', 'project.md']);
+    expect(s.stageStartCycle).toBe(3);
+  });
+});
+
 describe('canStart', () => {
   type Input = Parameters<typeof canStart>[0];
   const base: Input = { status: 'answering', mode: 'new-spec', derived: {}, backlog: null };

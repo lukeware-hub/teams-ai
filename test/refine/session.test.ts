@@ -580,6 +580,32 @@ describe('RefineSession round limit', () => {
   });
 });
 
+describe('RefineSession stages', () => {
+  it('steps through the five documents in order, and refuses a step once every document is done', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    for (let i = 0; i < 5; i += 1) await s.continueStage();
+    expect(s.state.doneStages).toEqual(['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md']);
+    await expect(s.continueStage()).rejects.toBeInstanceOf(ConflictError);
+    await s.close();
+  });
+
+  it('refuses a step in a session that has no stages', async () => {
+    const c = await RefineSession.create(deps(), 'continue');
+    await expect(c.continueStage()).rejects.toBeInstanceOf(ConflictError);
+    await c.close();
+  });
+
+  it('counts the rounds of an evaluation from the stage it runs in, so the next stage starts with its own rounds', async () => {
+    const s = await RefineSession.create({ ...deps(), limits: { max: 1 } }, 'new-project');
+    await s.evaluate();
+    await expect(s.evaluate()).rejects.toBeInstanceOf(ConflictError);
+    await s.continueStage();
+    await s.evaluate();
+    expect(s.state.cycle).toBe(2);
+    await s.close();
+  });
+});
+
 describe('RefineSession document score', () => {
   const ALL_DOCS = ['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md'];
   const scored = { available: true, model: 'jev-1.13.0', average: 0.9, docs: Object.fromEntries(ALL_DOCS.map((file) => [file, { score: 0.9, checks: { complete: 0.9, concrete: 0.9, consistent: 0.9, scoped: 0.9 } }])), usage: null };

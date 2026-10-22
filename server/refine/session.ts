@@ -14,6 +14,7 @@ import type { Hit } from '../knowledge/retrieval.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import { EventStore, type StoredEvent } from '../store/event-store.js';
 import { isConfidential, recordScore, runCycle, type CycleDeps, type RunAgent } from './cycle.js';
+import { DOC_STAGES } from './doc-stages.js';
 import { scoresDocs } from './readiness.js';
 import { recordDecision, withDecisions } from './decisions.js';
 import { maxCriterionInDraft } from './detail-cycle.js';
@@ -261,6 +262,15 @@ export class RefineSession {
     return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, secrets, tokens, busy: this.busy, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits() };
   }
 
+  /** The owner moves on from the current document's stage; the rounds of the next stage count from here. */
+  async continueStage(): Promise<void> {
+    this.guard();
+    if (this.state.stages !== true) throw new ConflictError('só um refinamento de projeto novo tem etapas');
+    const doc = DOC_STAGES.find((file) => !(this.state.doneStages ?? []).includes(file));
+    if (!doc) throw new ConflictError('todas as etapas já foram concluídas');
+    await this.journal.fact(RefineEvent.StageAdvanced, { doc, cycle: this.state.cycle });
+  }
+
   /** The owner's answer on confidentiality; a stage session sends no document to the Jev until it comes. */
   async answerConfidentiality(confidential: boolean): Promise<void> {
     this.guard();
@@ -340,7 +350,8 @@ export class RefineSession {
 
   async evaluate(): Promise<void> {
     this.ensureCanEvaluate();
-    if (this.state.cycle >= this.limits().max) throw new ConflictError(`o refinamento já tem ${this.state.cycle} rodadas, o limite de ${this.limits().max}: revise os documentos e inicie a análise, ou ajuste TEAMS_AI_REFINE_MAX_ROUNDS`);
+    const rounds = this.state.cycle - (this.state.stageStartCycle ?? 0);
+    if (rounds >= this.limits().max) throw new ConflictError(`o refinamento já tem ${rounds} rodadas nesta etapa, o limite de ${this.limits().max}: revise os documentos e inicie a análise, ou ajuste TEAMS_AI_REFINE_MAX_ROUNDS`);
     const ctl = (this.abortCtl = new AbortController());
     // Set at once, so no other action slips in while the floor is read.
     this.running = this.timedChain(ctl).finally(() => {
