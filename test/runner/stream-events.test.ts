@@ -74,6 +74,14 @@ describe('summarizeStream step profile', () => {
     expect(profile.toolResultChars).toBe(2);
   });
 
+  it('counts skill calls by skill name', () => {
+    const call = (id: string, skill: string) => JSON.stringify({ type: 'assistant', message: { id, content: [{ type: 'tool_use', id, name: 'Skill', input: { skill } }] } });
+    const text = [call('m1', 'teams-ai-dev:test-driven-development'), call('m2', 'teams-ai-dev:test-driven-development'), call('m3', 'teams-ai-dev:systematic-debugging')].join('\n');
+    const profile = summarizeStream(parseStreamJson(text)).profile!;
+    expect(profile.toolCalls).toEqual({ Skill: 3 });
+    expect(profile.skills).toEqual({ 'teams-ai-dev:test-driven-development': 2, 'teams-ai-dev:systematic-debugging': 1 });
+  });
+
   it('flags a tool result that says the sandbox could not start', () => {
     const text = [
       JSON.stringify({ type: 'system', subtype: 'init', session_id: 's' }),
