@@ -73,9 +73,5 @@ export function jevVerdict(r: Readiness | undefined): JevVerdict {
   return percentOf(r.average) >= READY_PERCENT ? 'ready' : 'below';
 }
 
-/** A backlog start waits for a current score at or above the minimum; no score and a confidential project never block it. */
-export const jevBlocksStart = (backlogEnabled: boolean, r: Readiness | undefined): boolean =>
-  backlogEnabled && ['unavailable', 'outdated', 'below'].includes(jevVerdict(r));
-
 /** The sessions whose documents the Jev scores: a new project and a backlog, not a single spec or its continuation. */
 export const scoresDocs = (mode: string | null): boolean => mode === 'new-project' || mode === 'backlog';

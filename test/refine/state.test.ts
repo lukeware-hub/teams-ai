@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { approvalPatch } from '../../server/refine/adjustments.js';
 import { RefineEvent } from '../../server/refine/events.js';
-import { jevOpens, released, reduceRefineEvents } from '../../server/refine/state.js';
+import { canStart, reduceRefineEvents } from '../../server/refine/state.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 
 const item = (id: string, passed: boolean) => ({ id, role: id.startsWith('po') ? 'po' : 'sm', passed, detail: '' });
@@ -217,19 +217,28 @@ describe('reduceRefineEvents legacy brief.md', () => {
   });
 });
 
-describe('jevOpens', () => {
-  const limits = { release: 5, max: 50 };
-  type Input = Parameters<typeof jevOpens>[0];
-  const ready = { available: true, model: 'm', average: 0.85, docs: null, usage: null, cycle: 2, outdated: false } as NonNullable<Input['readiness']>;
-  const base: Input = { status: 'answering', stale: false, cycle: 2, derived: {}, questions: [], patches: [], backlog: null, readiness: ready };
+describe('canStart', () => {
+  type Input = Parameters<typeof canStart>[0];
+  const base: Input = { status: 'answering', mode: 'new-spec', derived: {}, backlog: null };
 
-  it('opens the start at the Jev goal before the release round, and nothing else waits for the owner', () => {
-    expect(jevOpens(base)).toBe(true);
+  it('opens with checks failing, a low Jev score, a blocking question, a pending approval or a stale list', () => {
+    const waiting = { ...base, stale: true, cycle: 2, questions: [{ status: 'pending', blocking: true }], patches: [{ status: 'pending', replace: '## Decisões' }] };
+    expect(canStart(waiting)).toBe(true);
   });
 
-  it('does not open for a score below the goal, and a blocking question still waits for the owner', () => {
-    expect(jevOpens({ ...base, readiness: { ...ready, average: 0.5 } })).toBe(false);
-    expect(jevOpens({ ...base, questions: [{ status: 'pending', blocking: true }] })).toBe(false);
-    expect(released(base, limits)).toBe(false);
+  it('stays shut while the agents evaluate or a run started', () => {
+    expect(canStart({ ...base, status: 'evaluating' })).toBe(false);
+    expect(canStart({ ...base, status: 'started' })).toBe(false);
+  });
+
+  it('needs something derived to start from', () => {
+    expect(canStart({ ...base, derived: null })).toBe(false);
+    expect(canStart({ ...base, mode: 'new-project' })).toBe(false);
+  });
+
+  it('opens a backlog only once it is detailed', () => {
+    expect(canStart({ ...base, backlog: { enabled: true, detail: true } })).toBe(true);
+    expect(canStart({ ...base, backlog: { enabled: true, detail: false } })).toBe(false);
+    expect(canStart({ ...base, backlog: { enabled: true, detail: null } })).toBe(false);
   });
 });

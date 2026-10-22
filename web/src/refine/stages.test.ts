@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { stageAction, stageOf, stageTitle, staleBlocksStart, type StageInput } from './stages.js';
+import { stageAction, stageOf, stageTitle, type StageInput } from './stages.js';
 
 const base: StageInput = { status: 'drafting', stale: false, backlog: null };
 const outline = { enabled: true, detail: false, items: [{}] };
@@ -37,11 +37,8 @@ describe('stageOf', () => {
 });
 
 describe('stageAction', () => {
-  it('offers the start at the round limit even when the list is stale, through staleBlocksStart', () => {
-    const limits = { max: 10 };
-    const ready = { ...base, status: 'ready' as const, stale: true, backlog: { enabled: true, detail: true } } as StageInput;
-    expect(stageAction({ ...ready, stale: staleBlocksStart({ stale: true, cycle: 10 }, limits) })).toBe('start');
-    expect(stageAction({ ...ready, stale: staleBlocksStart({ stale: true, cycle: 9 }, limits) })).toBe('evaluate');
+  it('a stale list is not offered the start, even with a detailed backlog', () => {
+    expect(stageAction({ status: 'ready', stale: true, backlog: detailed })).toBe('evaluate');
   });
   it('evaluates the documents until they are ready and fresh', () => {
     expect(stageAction(base)).toBe('evaluate');
@@ -80,13 +77,5 @@ describe('stageTitle', () => {
   it('names what a running evaluation is doing', () => {
     expect(stageTitle({ ...base, status: 'evaluating' })).toBe('Avaliando os documentos');
     expect(stageTitle({ status: 'evaluating', stale: false, backlog: outline })).toBe('Avaliando o backlog');
-  });
-});
-
-describe('released stages', () => {
-  it('a released spec with checks failing offers the start and marks documents done', () => {
-    const st: StageInput = { status: 'answering', stale: false, released: true, backlog: { enabled: true, detail: true, items: [] } };
-    expect(stageAction(st)).toBe('start');
-    expect(stageOf(st).map((s) => s.state)).toEqual(['done', 'done', 'active']);
   });
 });

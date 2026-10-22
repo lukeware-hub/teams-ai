@@ -8,7 +8,7 @@ import { RefineEvent, type Question } from './events.js';
 import { approvalKey } from './sections.js';
 import type { DocFile } from './draft.js';
 import type { PendingPatch } from './patches.js';
-import { jevVerdict, type DocScore, type Readiness } from './readiness.js';
+import type { DocScore, Readiness } from './readiness.js';
 
 export type RefineStatus = 'drafting' | 'evaluating' | 'answering' | 'ready' | 'error' | 'started';
 export interface QuestionRow extends Question {
@@ -186,41 +186,24 @@ export function computeStatus(s: RefineState): RefineStatus {
   return pendingAny ? 'answering' : 'drafting';
 }
 
-/** Rounds after which Executar opens with checks still failing, and the rounds after which Reavaliar stops (TEAMS_AI_REFINE_*). */
+/** The round after which Reavaliar stops (TEAMS_AI_REFINE_MAX_ROUNDS). */
 export interface RefineLimits {
-  release: number;
   max: number;
 }
 
-/** Past the release round, a spec with no pending human decision may start even while a check still fails. */
-/** The part of the state the release reads; the page's state shape carries the same fields. */
-export interface ReleaseInput {
+/** The part of the state the start reads; the page's state shape carries the same fields. */
+export interface StartInput {
   status: RefineStatus;
-  stale: boolean;
-  cycle: number;
+  mode?: string | null;
   derived: unknown;
-  questions: ReadonlyArray<{ status: string; blocking: boolean }>;
-  patches: ReadonlyArray<{ status: string; replace: string }>;
   backlog?: { enabled: boolean; detail?: boolean | null } | null;
-  readiness?: Readiness | null;
 }
 
-/** Nothing waits for the owner: a derived, current list with no blocking question or approval pending. */
-function clear(s: ReleaseInput): boolean {
-  if (s.status === 'evaluating' || s.status === 'started' || s.status === 'error') return false;
-  if (s.stale || !s.derived) return false;
-  if (s.questions.some((q) => q.status === 'pending' && q.blocking)) return false;
-  if (s.patches.some((p) => p.status === 'pending' && isApproval(p))) return false;
-  return !s.backlog?.enabled || s.backlog.detail === true;
-}
-
-export function released(s: ReleaseInput, limits: RefineLimits): boolean {
-  return s.cycle >= limits.release && clear(s);
-}
-
-/** The Jev at the goal opens the start the same way the release round does: the score never blocks by itself. */
-export function jevOpens(s: ReleaseInput): boolean {
-  return jevVerdict(s.readiness ?? undefined) === 'ready' && clear(s);
+/** The start is open unless the agents evaluate or a run started: checks, questions and the Jev only advise. */
+export function canStart(s: StartInput): boolean {
+  if (s.status === 'evaluating' || s.status === 'started') return false;
+  if (s.backlog?.enabled) return s.backlog.detail === true;
+  return s.mode !== 'new-project' && Boolean(s.derived);
 }
 
 /** Something was derived from the docs (one spec or a backlog), so editing the docs makes it stale. */

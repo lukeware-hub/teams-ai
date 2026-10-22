@@ -42,7 +42,7 @@ const renderView = (snap: Snapshot, h = handlers()) => {
 };
 
 describe('a new project refines in two mandatory stages', () => {
-  it('offers one evaluation once the documents are ready, and no start until the backlog is detailed', () => {
+  it('offers one evaluation once the documents are ready, and a start that stays disabled until something is derived', () => {
     const h = renderView(project({}));
     expect(screen.queryByTestId('plan-backlog')).toBeNull();
     expect(screen.getByTestId('evaluate').textContent).toBe('Reavaliar');
@@ -51,20 +51,22 @@ describe('a new project refines in two mandatory stages', () => {
     expect(screen.getByText('Reavaliar sem mudanças')).toBeTruthy();
     expect(h.onEvaluate).not.toHaveBeenCalled();
     expect(screen.queryByTestId('enable-backlog')).toBeNull();
-    expect(screen.queryByTestId('start')).toBeNull();
+    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('shows no second action while the evaluation runs, the backlog included', () => {
+  it('locks the start together with Reavaliar while the evaluation runs, the backlog included', () => {
     renderView(project({ status: 'evaluating', backlog: backlogOutline as never }));
     expect(screen.queryByTestId('plan-backlog')).toBeNull();
-    expect(screen.queryByTestId('start')).toBeNull();
+    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('evaluate') as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByText(/Próximo passo/)).toBeNull();
   });
 
-  it('offers no stage button while a blocking question is pending: the question comes first', () => {
+  it('keeps both buttons while a blocking question is pending: the question comes first, and the start waits for the detailed backlog', () => {
     renderView(project({ status: 'answering', backlog: backlogOutline as never, questions: [question(true) as never] }));
     expect(screen.queryByTestId('plan-backlog')).toBeNull();
-    expect(screen.queryByTestId('evaluate')).toBeNull();
+    expect((screen.getByTestId('evaluate') as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/O backlog depende desta resposta/)).toBeTruthy();
   });
 

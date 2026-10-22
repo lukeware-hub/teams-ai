@@ -23,14 +23,12 @@ export interface StageInput {
   stale: boolean;
   backlog?: { enabled: boolean; detail?: boolean | null; items: unknown[] } | null;
   questions?: ReadonlyArray<{ status: string; blocking: boolean }> | null;
-  /** Past the release round with checks still failing: the start is open anyway. */
-  released?: boolean;
 }
 
 /** The three steps: documents until ready, the backlog until every item is detailed and covered, then execution. Pure. */
 export function stageOf(st: StageInput): Stage[] {
   const backlogOn = st.backlog?.enabled === true;
-  const ready = (st.status === 'ready' || st.released === true) && !st.stale;
+  const ready = st.status === 'ready' && !st.stale;
   const executionDone = st.status === 'started';
   const documentsDone = backlogOn || ready;
   const backlogDone = executionDone || (backlogOn && st.backlog?.detail === true && ready);
@@ -42,15 +40,10 @@ export function stageOf(st: StageInput): Stage[] {
   return (Object.keys(STAGE_LABELS) as StageKey[]).map((key) => ({ key, label: STAGE_LABELS[key], state: states[key] }));
 }
 
-/** A stale list blocks the start only below the round limit: at the limit the owner starts from the documents as they are. */
-export function staleBlocksStart(st: { stale: boolean; cycle: number }, limits?: { max: number }): boolean {
-  return st.stale && !(limits !== undefined && st.cycle >= limits.max);
-}
-
 /** The one step to offer now, so the buttons and the bar cannot disagree. */
 export function stageAction(st: StageInput): StageAction {
   if (st.status === 'started') return 'started';
-  const ready = (st.status === 'ready' || st.released === true) && !st.stale;
+  const ready = st.status === 'ready' && !st.stale;
   if (ready && st.backlog?.enabled === true && st.backlog.detail === true) return 'start';
   if (st.questions?.some((q) => q.status === 'pending' && q.blocking)) return 'answer';
   return 'evaluate';

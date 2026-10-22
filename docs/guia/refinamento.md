@@ -24,9 +24,9 @@ Etapa 1, Refinar documentos:
 
 Backlog: a avaliação que vem depois dos documentos prontos monta o esboço das specs e gera a spec e o pré-plano de cada item que mudou. Cada avaliação gasta chamadas dos agentes. Uma avaliação roda no máximo quatro rodadas seguidas: para quando precisa de você (uma pergunta ou um erro) ou quando o backlog está pronto. Ao começar o backlog, o briefing passa a ser o `docs/briefing.md` do projeto.
 
-Executar: quando o backlog estiver pronto, clique em **Iniciar análise** para os agentes desenvolverem. A análise nunca começa sozinha.
+Executar: clique em **Iniciar análise** para os agentes desenvolverem. O botão fica livre a qualquer momento, exceto enquanto os agentes estão avaliando, e nenhuma nota ou lista de verificação o trava. A análise nunca começa sozinha.
 
-Limites de rodadas (variáveis no `.env`): depois de 5 rodadas (`TEAMS_AI_REFINE_RELEASE_ROUNDS`), **Iniciar análise** libera mesmo com critérios ainda reprovados, com um aviso que os lista. Ao chegar em 50 (`TEAMS_AI_REFINE_MAX_ROUNDS`), **Reavaliar** para e pede uma decisão sua. Se o mesmo critério falhar três rodadas seguidas, uma pergunta bloqueante aparece com a divergência.
+Limite de rodadas (variável no `.env`): ao chegar em 50 (`TEAMS_AI_REFINE_MAX_ROUNDS`), **Reavaliar** para e pede uma decisão sua; **Iniciar análise** continua livre. Se o mesmo critério falhar três rodadas seguidas, uma pergunta bloqueante aparece com a divergência.
 
 ## Movimentos de conteúdo
 
@@ -40,7 +40,7 @@ Se a spec depende de uma chave de outro serviço, a seção **Segredos** guarda 
 
 ## O Jev
 
-O Jev é uma verificação extra dos documentos, feita por outro serviço. Os pontos que ele aponta são conselhos: ajuste o que fizer sentido e reavalie. Projetos marcados como confidenciais não enviam documentos ao Jev.
+O Jev é uma verificação extra dos documentos, feita por outro serviço. Os pontos que ele aponta são conselhos: ajuste o que fizer sentido e reavalie. Uma nota abaixo de 80% não impede o início: a análise pode começar mesmo assim. Projetos marcados como confidenciais não enviam documentos ao Jev.
 
 ## Backlog
 

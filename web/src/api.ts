@@ -400,8 +400,8 @@ export interface Snapshot {
   seq?: number;
   /** When the latest evaluation began (ISO time), or null before any. */
   evaluatingSince?: string | null;
-  /** Rounds after which Executar opens with checks failing, and the rounds after which Reavaliar stops. */
-  limits?: { release: number; max: number };
+  /** The round after which Reavaliar stops. */
+  limits?: { max: number };
 }
 export interface DraftRow {
   projectId: string;

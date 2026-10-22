@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { refineApi, type Snapshot, type StoredEvent } from '../api.js';
@@ -41,6 +41,15 @@ describe('RefinementPage start with the score banner', () => {
     renderPage();
     await screen.findByTestId('start');
     expect(screen.queryByTestId('readiness-start')).toBeNull();
+  });
+
+  it('asks the Jev for the score from the banner', async () => {
+    journal.events = [];
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue(withScore(undefined));
+    const score = vi.spyOn(refineApi, 'score').mockResolvedValue(undefined as never);
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Avaliar com o Jev' }));
+    expect(score).toHaveBeenCalledWith('hello-app', 'hello-001');
   });
 });
 

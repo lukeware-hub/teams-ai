@@ -20,7 +20,7 @@ const VIEW: Record<JevVerdict, { tone: Tone; title: string; detail: string }> = 
   skipped: { tone: 'neutral', title: 'Projeto confidencial', detail: 'O Jev não lê os documentos deste projeto, então não há nota.' },
   unavailable: { tone: 'bad', title: 'O Jev não respondeu', detail: 'Confira a chave do OpenRouter e clique em Avaliar com o Jev.' },
   outdated: { tone: 'warn', title: 'Os documentos mudaram depois da nota', detail: 'Clique em Avaliar com o Jev para medir de novo.' },
-  below: { tone: 'warn', title: 'Ainda não está pronto para desenvolver', detail: `Mínimo ${READY_PERCENT}%. Melhore os documentos e avalie de novo.` },
+  below: { tone: 'warn', title: 'Ainda não está pronto para desenvolver', detail: `Mínimo recomendado ${READY_PERCENT}%. Você pode iniciar mesmo assim, ou melhorar os documentos e reavaliar.` },
   ready: { tone: 'good', title: 'Pronto para desenvolver', detail: `Nota acima do mínimo de ${READY_PERCENT}%.` },
 };
 
@@ -79,7 +79,7 @@ export function ReadinessBanner({ readiness, canStart, startState, onScore, onSt
             Avaliar com o Jev
           </ActionButton>
         )}
-        {(verdict === 'ready' || (verdict === 'below' && canStart)) && (
+        {(verdict === 'ready' || verdict === 'below') && (
           <ActionButton data-testid="readiness-start" className="primary" busy={startState.busy} disabled={!canStart} onClick={onStart} icon={<Icon name="play" size={16} />}>
             {startState.label}
           </ActionButton>

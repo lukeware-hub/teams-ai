@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { UNSCORED, jevBlocksStart, jevVerdict, percentOf, scoresDocs, type Readiness } from '../../server/refine/readiness.js';
+import { UNSCORED, jevVerdict, percentOf, scoresDocs, type Readiness } from '../../server/refine/readiness.js';
 
 const scored = (average: number, over: Partial<Readiness> = {}): Readiness => ({ ...UNSCORED, available: true, average, cycle: 1, outdated: false, ...over });
 const unanswered: Readiness = { ...UNSCORED, cycle: 1, outdated: false };
@@ -31,24 +31,6 @@ describe('jevVerdict', () => {
   it('splits a current score at the ready percentage', () => {
     expect(jevVerdict(scored(0.79))).toBe('below');
     expect(jevVerdict(scored(0.8))).toBe('ready');
-  });
-});
-
-describe('jevBlocksStart', () => {
-  it('blocks a backlog start that is below, outdated or unavailable', () => {
-    expect(jevBlocksStart(true, scored(0.79))).toBe(true);
-    expect(jevBlocksStart(true, scored(0.95, { outdated: true }))).toBe(true);
-    expect(jevBlocksStart(true, unanswered)).toBe(true);
-  });
-
-  it('lets a backlog start through at the ready percentage, without a score, and for a confidential project', () => {
-    expect(jevBlocksStart(true, scored(0.8))).toBe(false);
-    expect(jevBlocksStart(true, undefined)).toBe(false);
-    expect(jevBlocksStart(true, { ...unanswered, skipped: 'confidential' })).toBe(false);
-  });
-
-  it('never blocks a start that has no backlog', () => {
-    expect(jevBlocksStart(false, scored(0.1))).toBe(false);
   });
 });
 

@@ -206,6 +206,13 @@ describe('RefinementView backlog mode', () => {
     expect(decodeURIComponent((screen.getByTestId('download-briefing-json') as HTMLAnchorElement).href)).toContain('"doc": "briefing.md"');
   });
 
+  it('lets the owner start with checks still failing, and names them in the next step', () => {
+    const failing = green(ALL).map((c) => (c.id === 'sm.tasks-feasible' ? { ...c, passed: false } : c));
+    render(<MemoryRouter><RefinementView snap={base({ status: 'ready', questions: [], patches: [], checklist: failing })} busy={false} {...on()} /></MemoryRouter>);
+    expect(screen.getByText(/Critérios ainda reprovados: sm\.tasks-feasible/)).toBeTruthy();
+    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('shows the backlog and keeps Start disabled even when the session is ready', () => {
     render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog })} busy={false} {...on()} /></MemoryRouter>);
     expect(screen.getByTestId('item-base')).toBeTruthy();
@@ -240,7 +247,7 @@ describe('RefinementView backlog mode', () => {
     expect(screen.getByTestId('evaluate').compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('in detail mode draws the coverage tree, finds question criteria in the item specs, and keeps Start disabled', () => {
+  it('in detail mode draws the coverage tree, finds question criteria in the item specs, and leaves Start open with the question pending', () => {
     const REV = `sha256:${'2'.repeat(64)}`;
     const spec = { specId: 'hello-001-base', type: 'feature', objectives: ['o'], features: [], acceptanceCriteria: [{ id: 'AC-007', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] };
     const preplan = { specId: 'hello-001-base', specRev: REV, inputHash: 'h', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-007'], dependsOn: [] }], risks: [] };
@@ -250,7 +257,7 @@ describe('RefinementView backlog mode', () => {
     expect(screen.getByTestId('spec-tree')).toBeTruthy();
     const criteria = container.querySelector('.question-criteria') as HTMLElement;
     expect(criteria.querySelector('[aria-label^="AC-007: dado o serviço no ar, quando GET /health, então 200"]')).toBeTruthy();
-    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('enables Start for a detailed, ready backlog and asks the page to start the program', () => {
@@ -307,7 +314,7 @@ describe('RefinementView backlog mode', () => {
 });
 
 describe('RefinementView', () => {
-  it('shows the blocking question first without a skip button, patches with accept/reject, and disables Start while answering', () => {
+  it('shows the blocking question first without a skip button, patches with accept/reject, and leaves Start open while answering', () => {
     const h = on();
     render(
       <MemoryRouter>
@@ -322,7 +329,7 @@ describe('RefinementView', () => {
     fireEvent.click(screen.getByTestId('accept-sm-c1-0'));
     expect(h.onAccept).toHaveBeenCalledWith('sm-c1-0');
     expect(screen.getByText(/find not found in project.md/)).toBeTruthy();
-    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(false);
     expect(screen.getByText('Reavaliar')).toBeTruthy();
   });
 
@@ -384,7 +391,7 @@ describe('RefinementView', () => {
     expect(screen.getByText(/As sugestões abaixo são opcionais; aceitar uma pede nova avaliação\./)).toBeTruthy();
   });
 
-  it('saves a doc on blur, enables Start only when ready and not stale, and shows secrets rows', () => {
+  it('saves a doc on blur, enables Start when ready, keeps it open when stale, and shows secrets rows', () => {
     const h = on();
     const { rerender } = render(
       <MemoryRouter>
@@ -405,7 +412,7 @@ describe('RefinementView', () => {
       </MemoryRouter>,
     );
     expect(screen.getByTestId('stale')).toBeTruthy();
-    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('locks the editor and the evaluate button while evaluating and leaves cycle errors to the page alert', () => {

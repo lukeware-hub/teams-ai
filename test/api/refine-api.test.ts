@@ -397,13 +397,7 @@ describe('refine api', () => {
     for (const q of (await snapshot()).state.questions) {
       await call('POST', `${url}/answers`, { questionId: q.questionId, text: q.text.includes('JSON') ? 'Sim, application/json.' : 'Hello.' });
     }
-    // Plan 90: the answers went into the briefing, so the backlog is evaluated again before it starts; no spec cites them.
-    expect((await call('POST', `${url}/start`)).status).toBe(409);
-    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
-    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
-    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
-    await call('POST', `${url}/evaluate`);
-    await settle();
+    // The start needs no new evaluation after the answers: the item spec freezes them.
     expect((await call('POST', `${url}/start`)).status).toBe(200);
     const file = `${home}/ws/hello-app/refine/hello-app-001/docs/specs/base/spec.json`;
     expect(JSON.parse(await fs.readFile(file, 'utf8')).decisions).toEqual([{ question: 'O health responde em JSON?', answer: 'Sim, application/json.' }]);
@@ -427,13 +421,7 @@ describe('refine api', () => {
     spawnShouldFail = false;
     const [q] = (await snapshot()).state.questions;
     await call('POST', `${url}/answers`, { questionId: q.questionId, text: 'Sim, application/json.' });
-    // Plan 90: the answers went into the briefing, so the backlog is evaluated again before it starts; no spec cites them.
-    expect((await call('POST', `${url}/start`)).status).toBe(409);
-    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
-    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
-    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
-    await call('POST', `${url}/evaluate`);
-    await settle();
+    // The start needs no new evaluation after the answer: the item spec freezes it.
     expect((await call('POST', `${url}/start`)).status).toBe(200);
     const frozen = JSON.parse(await fs.readFile(`${home}/ws/hello-app/refine/hello-app-001/docs/specs/base/spec.json`, 'utf8'));
     expect(frozen).toMatchObject({ status: 'running', specVersion: 1, decisions: [{ question: 'O health responde em JSON?', answer: 'Sim, application/json.' }] });
@@ -706,9 +694,9 @@ describe('refine api', () => {
     expect((await (await fetch(`${base()}/api/refine/hello-app/hello-app-001`)).json()).secrets).toEqual([{ name: 'DB_URL', present: false, hint: null, uses: [{ dependency: 'db', purpose: 'p' }], mentions: [] }]);
   });
 
-  it('start freezes the spec, spawns run --draft with the draft root, registers it, and refuses when stale', async () => {
+  it('start freezes the spec, spawns run --draft with the draft root, registers it, and does not wait for a stale list', async () => {
     await specDraft();
-    expect((await call('POST', '/api/refine/hello-app/hello-app-001/start')).status).toBe(409);
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/start')).status).toBe(409); // nothing derived yet
     script['derive/po'] = [derived];
     script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
@@ -716,13 +704,7 @@ describe('refine api', () => {
     await settle();
     expect((await snapshot()).state.status).toBe('ready');
     await call('PUT', '/api/refine/hello-app/hello-app-001/docs/briefing.md', { text: '## Objectives\n- changed' });
-    expect((await call('POST', '/api/refine/hello-app/hello-app-001/start')).status).toBe(409); // stale
-    expect(spawns).toHaveLength(0);
-    script['derive/po'] = [derived];
-    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
-    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
-    await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
-    await settle();
+    expect((await snapshot()).state.stale).toBe(true);
     const started = await call('POST', '/api/refine/hello-app/hello-app-001/start');
     expect(started.status).toBe(200);
     expect(await started.json()).toEqual({ runId: 'hello-app--hello-app-001--run-1' });

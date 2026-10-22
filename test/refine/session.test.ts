@@ -403,11 +403,10 @@ describe('RefineSession', () => {
     expect(s.state.stale).toBe(false);
     await expect(s.syncWithMain(async () => [{ file: 'project.md', hash: 'h' }])).rejects.toThrow(/Avalie de novo/);
     expect(s.state.stale).toBe(true);
-    await expect(s.freeze()).rejects.toBeInstanceOf(ConflictError);
   });
 
-  it('a stale list does not block the start at the round limit', async () => {
-    const s = await RefineSession.create({ ...deps(), limits: { release: 1, max: 1 } }, 'new-spec');
+  it('a stale list does not block the start', async () => {
+    const s = await RefineSession.create(deps(), 'new-spec');
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO))];
     script['refine/sm'] = [refineOut(green(SM))];
@@ -416,14 +415,16 @@ describe('RefineSession', () => {
     await expect(s.freeze()).resolves.toBeDefined();
   });
 
-  it('a stale list still blocks the start below the round limit', async () => {
-    const s = await RefineSession.create({ ...deps(), limits: { release: 1, max: 5 } }, 'new-spec');
-    script['derive/po'] = [derived];
-    script['refine/po'] = [refineOut(green(PO))];
-    script['refine/sm'] = [refineOut(green(SM))];
-    await s.evaluate();
-    await expect(s.syncWithMain(async () => [{ file: 'project.md', hash: 'h' }])).rejects.toThrow(/Avalie de novo/);
+  it('refuses a start before anything was derived', async () => {
+    const s = await RefineSession.create(deps(), 'new-spec');
     await expect(s.freeze()).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it('refuses a backlog start while an evaluation holds the session', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    s.state.backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {}, flowHeadings: [] } as never;
+    s.state.status = 'evaluating';
+    await expect(s.freezeProgram()).rejects.toThrow('session cannot start now (evaluating)');
   });
 
   it('writes custom secret names without marking the spec stale', async () => {
@@ -501,7 +502,7 @@ describe('programEntries', () => {
 
 describe('RefineSession round limit', () => {
   it('refuses a new evaluation once the lock round is reached', async () => {
-    const s = await RefineSession.create({ ...deps(), limits: { release: 0, max: 0 } }, 'new-spec');
+    const s = await RefineSession.create({ ...deps(), limits: { max: 0 } }, 'new-spec');
     await expect(s.evaluate()).rejects.toBeInstanceOf(ConflictError);
   });
 });

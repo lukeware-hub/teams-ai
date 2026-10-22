@@ -121,30 +121,21 @@ describe('ProgramStatus', () => {
 });
 
 describe('canStartRun', () => {
-  const state = (over: Record<string, unknown> = {}) => ({ status: 'ready', stale: false, backlog: undefined, ...over }) as never;
-  it('a single spec starts when ready and not stale', () => {
-    expect(canStartRun(state(), false)).toBe(true);
-    expect(canStartRun(state({ stale: true }), false)).toBe(false);
-    expect(canStartRun(state({ status: 'answering' }), false)).toBe(false);
+  const state = (over: Record<string, unknown> = {}) => ({ status: 'ready', mode: 'new-spec', derived: {}, backlog: undefined, ...over }) as never;
+  it('is never locked by a check, a question, a suggestion, a stale list or the Jev', () => {
+    const waiting = { status: 'answering', stale: true, cycle: 2, questions: [{ status: 'pending', blocking: true }], patches: [{ status: 'pending' }], readiness: { average: 0.5 } };
+    expect(canStartRun(state(waiting), false)).toBe(true);
+  });
+  it('stays shut while a request is busy, while the agents evaluate, after a start, or with nothing derived', () => {
     expect(canStartRun(state(), true)).toBe(false);
+    expect(canStartRun(state({ status: 'evaluating' }), false)).toBe(false);
+    expect(canStartRun(state({ status: 'started' }), false)).toBe(false);
+    expect(canStartRun(state({ derived: null }), false)).toBe(false);
   });
-  it('a stale list blocks the start only below the round limit', () => {
-    const limits = { release: 5, max: 10 };
-    expect(canStartRun(state({ stale: true, cycle: 9 }), false, limits)).toBe(false);
-    expect(canStartRun(state({ stale: true, cycle: 10 }), false, limits)).toBe(true);
-  });
-  it('a backlog starts only once detailed, ready and current', () => {
+  it('a new project starts only with its backlog, and a backlog only once detailed', () => {
+    expect(canStartRun(state({ mode: 'new-project' }), false)).toBe(false);
+    expect(canStartRun(state({ mode: 'new-project', backlog: { enabled: true, detail: true } }), false)).toBe(true);
     expect(canStartRun(state({ backlog: { enabled: true, detail: false } }), false)).toBe(false);
     expect(canStartRun(state({ backlog: { enabled: true, detail: true } }), false)).toBe(true);
-    expect(canStartRun(state({ backlog: { enabled: true, detail: true }, stale: true }), false)).toBe(false);
-    expect(canStartRun(state({ backlog: { enabled: true, detail: true }, status: 'started' }), false)).toBe(false);
-  });
-  it('opens past the release round with checks still failing, unless a person owes a decision', () => {
-    const limits = { release: 5, max: 10 };
-    const past = state({ status: 'answering', cycle: 5, derived: {}, questions: [], patches: [] });
-    expect(canStartRun(state({ status: 'answering', cycle: 4, derived: {}, questions: [], patches: [] }), false, limits)).toBe(false);
-    expect(canStartRun(past, false, limits)).toBe(true);
-    expect(canStartRun(state({ status: 'answering', cycle: 5, derived: {}, questions: [{ status: 'pending', blocking: true }], patches: [] }), false, limits)).toBe(false);
-    expect(canStartRun(state({ status: 'answering', cycle: 5, derived: {}, questions: [], patches: [], stale: true }), false, limits)).toBe(false);
   });
 });

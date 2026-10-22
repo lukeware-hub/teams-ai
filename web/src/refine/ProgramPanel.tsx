@@ -4,8 +4,7 @@ import { refineApi, runApi, type ProgramView, type ProgramViewItem, type RefineS
 import { ActionButton } from '../components/ActionButton.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
-import { jevOpens, released, type RefineLimits } from '@server/refine/state';
-import { staleBlocksStart } from './stages.js';
+import { canStart, type StartInput } from '@server/refine/state';
 import { explainStop, phaseTitle } from '../run/selectors.js';
 import { action, panel, sectionHeading, sectionTitle } from '../pages/project-shared.js';
 
@@ -37,7 +36,6 @@ const PILL = {
 // Rank, spec, status, cost and action share fixed columns so every row lines up; below lg status, cost and action wrap under the title.
 const ROW = 'grid grid-cols-[2.5rem_minmax(0,1fr)_8rem_5.5rem_9rem] items-center gap-x-4 gap-y-2 border-b border-line px-3 py-[0.9rem] last:border-b-0 max-lg:grid-cols-[2rem_minmax(0,1fr)]';
 
-/** Can the refinement start a run: one spec when ready, a backlog only once it is detailed (the program runs its planned specs). */
 /** Why an item failed or waits: what happened, who has to act and what to do, with the orchestrator's own words one click away. */
 export function ItemReason({ status, reason }: { status: ProgramViewItem['status']; reason: string }) {
   const bad = status === 'failed' || status === 'blocked';
@@ -56,14 +54,9 @@ export function ItemReason({ status, reason }: { status: ProgramViewItem['status
   );
 }
 
-export function canStartRun(st: Pick<RefineState, 'status' | 'stale' | 'backlog' | 'mode' | 'cycle' | 'readiness' | 'derived' | 'questions' | 'patches'>, busy: boolean, limits?: RefineLimits): boolean {
-  const open = st.status === 'ready' || (limits !== undefined && released(st as RefineState, limits)) || jevOpens(st as RefineState);
-  // A stale list blocks the start only below the round limit: at the limit the owner starts from the documents as they are.
-  const staleBlocks = staleBlocksStart(st, limits);
-  if (!open || staleBlocks || busy) return false;
-  // A new project starts only after its stage 2, the backlog it runs from.
-  if (st.mode === 'new-project' && !st.backlog?.enabled) return false;
-  return st.backlog?.enabled ? st.backlog.detail === true : true;
+/** The start is never locked by a check or the Jev: only a running evaluation or a missing spec or backlog keeps it shut. */
+export function canStartRun(st: StartInput, busy: boolean): boolean {
+  return !busy && canStart(st);
 }
 
 /** The program that runs the backlog: every spec with where it stands, the run to follow and why one failed or waits. */
