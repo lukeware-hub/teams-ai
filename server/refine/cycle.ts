@@ -102,8 +102,11 @@ export interface ScoreDeps {
   scoreDocs: NonNullable<CycleDeps['scoreDocs']>;
 }
 
-/** A confidential project's documents never leave for the OpenRouter; its record decides. */
+/** A confidential project's documents never leave for the OpenRouter; the owner's answer or its records decide. */
 export async function isConfidential(draft: Draft, state: RefineState): Promise<boolean> {
+  if (state.confidential === true) return true;
+  // A stage session stays confidential until the owner answers, so no document goes to the Jev unasked.
+  if (state.stages === true && state.confidential === undefined) return true;
   const base = Project.safeParse(JSON.parse((await readBase(draft, 'project.json')) ?? 'null')).data?.confidential === true;
   return base || state.backlog?.project?.confidential === true || (await readDerived(draft))?.project.confidential === true;
 }

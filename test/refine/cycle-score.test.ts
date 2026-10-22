@@ -7,7 +7,7 @@ import { isConfidential, recordScore } from '../../server/refine/cycle.js';
 import { createNewProject, draftPaths } from '../../server/refine/draft.js';
 import { RefineEvent } from '../../server/refine/events.js';
 import { applyRefineEvent, emptyRefineState } from '../../server/refine/state.js';
-import { makeProject } from '../fixtures/contracts.js';
+import { makeProject, makeSpec } from '../fixtures/contracts.js';
 
 /** A journal that folds each fact into its state, as the session's journal does. */
 function foldingJournal() {
@@ -104,5 +104,25 @@ describe('isConfidential', () => {
 
   it('is not confidential when no record says so', async () => {
     expect(await isConfidential(await withBase(false), outline(false))).toBe(false);
+  });
+
+  it('is confidential when the derived project says so', async () => {
+    const draft = await newDraft();
+    await writeFile(draft.projectJson, JSON.stringify(makeProject({ confidential: true })));
+    await writeFile(draft.specJson, JSON.stringify(makeSpec()));
+    expect(await isConfidential(draft, emptyRefineState())).toBe(true);
+  });
+
+  it('a stage session with no answer is confidential, so no document reaches the Jev before the owner answers', async () => {
+    expect(await isConfidential(await newDraft(), { ...emptyRefineState(), stages: true })).toBe(true);
+  });
+
+  it('the owner answer that the project is confidential holds, even with no record', async () => {
+    expect(await isConfidential(await newDraft(), { ...emptyRefineState(), stages: true, confidential: true })).toBe(true);
+  });
+
+  it('the owner answer that the project is not confidential lets the records decide, and a record that says yes still wins', async () => {
+    expect(await isConfidential(await withBase(false), { ...emptyRefineState(), stages: true, confidential: false })).toBe(false);
+    expect(await isConfidential(await withBase(true), { ...emptyRefineState(), stages: true, confidential: false })).toBe(true);
   });
 });

@@ -1,5 +1,7 @@
 export const RefineEvent = {
   Created: 'REFINE_CREATED',
+  /** The owner's answer to whether the project is confidential: `{confidential}`. */
+  ConfidentialityAnswered: 'REFINE_CONFIDENTIALITY_ANSWERED',
   DocEdited: 'DOC_EDITED',
   CycleStarted: 'REFINE_CYCLE_STARTED',
   DocsValidated: 'REFINE_DOCS_VALIDATED',

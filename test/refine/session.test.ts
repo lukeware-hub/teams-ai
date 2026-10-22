@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeSecret } from '../../server/core/secrets.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
 import { createNewProject, draftPaths, readDoc, renderBriefMd, writeDoc } from '../../server/refine/draft.js';
+import { RefineEvent } from '../../server/refine/events.js';
 import { ConflictError, programEntries, RefineSession } from '../../server/refine/session.js';
 import type { BacklogState } from '../../server/refine/state.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
@@ -32,6 +33,18 @@ beforeEach(async () => {
   calls.length = 0;
 });
 afterEach(() => fs.rm(root, { recursive: true, force: true }));
+
+describe('RefineSession confidentiality answer', () => {
+  it('a new project starts unanswered in the stages, and the owner answer is journaled', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    expect(s.state.stages).toBe(true);
+    expect(s.state.confidential).toBeUndefined();
+    await s.answerConfidentiality(false);
+    expect(s.state.confidential).toBe(false);
+    expect(s.events.at(-1)?.type).toBe(RefineEvent.ConfidentialityAnswered);
+    await s.close();
+  });
+});
 
 describe('RefineSession', () => {
   it('backlog mode moves the brief to the target project docs/briefing.md, and a reopen finishes an interrupted move', async () => {
@@ -573,6 +586,7 @@ describe('RefineSession document score', () => {
   it('scores the documents without spending a round, and keeps a current score', async () => {
     const scoreDocs = vi.fn(async () => scored);
     const s = await RefineSession.create({ ...deps(), scoreDocs }, 'new-project');
+    await s.answerConfidentiality(false);
     await s.score();
     expect(s.state).toMatchObject({ cycle: 0, readiness: { available: true, average: 0.9, outdated: false } });
     await s.score();
@@ -587,6 +601,7 @@ describe('RefineSession document score', () => {
   it('an evaluation journals the score of the documents, not only the manual score', async () => {
     const scoreDocs = vi.fn(async () => scored);
     const s = await RefineSession.create({ ...deps(), scoreDocs }, 'new-project');
+    await s.answerConfidentiality(false);
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO))];
     script['refine/sm'] = [refineOut(green(SM))];

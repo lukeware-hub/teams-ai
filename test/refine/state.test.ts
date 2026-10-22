@@ -11,6 +11,20 @@ const patch = (patchId: string) => ({ patchId, role: 'sm', file: 'briefing.md', 
 const derived = { project: makeProject(), spec: { ...makeSpec(), status: 'refining', specHash: null } };
 const cycle = (n: number) => [{ type: RefineEvent.CycleStarted, data: { cycle: n, draftHash: 'h' } }, { type: RefineEvent.Derived, data: { cycle: n, ...derived } }];
 
+describe('confidentiality answer and document stages', () => {
+  it('a session created with the document stages is marked; an older one is not', () => {
+    expect(reduceRefineEvents([{ type: RefineEvent.Created, data: { mode: 'new-project', stages: true } }]).stages).toBe(true);
+    expect(reduceRefineEvents([{ type: RefineEvent.Created, data: { mode: 'new-project' } }]).stages).toBe(false);
+    expect(reduceRefineEvents([{ type: RefineEvent.Created, data: {} }]).mode).toBeNull();
+  });
+
+  it('the owner answer on confidentiality is kept; without an answer it stays undefined', () => {
+    expect(reduceRefineEvents([]).confidential).toBeUndefined();
+    expect(reduceRefineEvents([{ type: RefineEvent.ConfidentialityAnswered, data: { confidential: true } }]).confidential).toBe(true);
+    expect(reduceRefineEvents([{ type: RefineEvent.ConfidentialityAnswered, data: { confidential: false } }]).confidential).toBe(false);
+  });
+});
+
 describe('reduceRefineEvents moves and findings', () => {
   it('folds a move into the list with its status, and an undo marks it undone', () => {
     const row = { moveId: 'move-po-c1-0', role: 'po', cycle: 1, from: 'project.md', to: 'flow.md', reason: 'r', quote: 'q', text: 't', removedAt: 0, removed: 'q\n', insertAt: 3, inserted: '\nt\n', fromHash: 'a', toHash: 'b' };

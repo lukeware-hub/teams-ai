@@ -121,6 +121,10 @@ export interface RefineState {
   backlog: BacklogState | null;
   /** How the session was created; null on drafts from before it was kept. */
   mode: 'new-project' | 'new-spec' | 'continue' | 'backlog' | null;
+  /** Created with the document stages: its confidentiality is unknown, so no document goes to the Jev, until the owner answers. */
+  stages?: boolean;
+  /** The owner's answer on confidentiality; undefined until it comes. */
+  confidential?: boolean;
   /** The checks failing in the last rounds in a row, and how many rounds they have failed together. */
   stuck?: StuckRun;
   /** The Jev's latest score of the documents; a document change marks it outdated until the next score. */
@@ -295,6 +299,10 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     }
     case RefineEvent.Created:
       s.mode = (d.mode as RefineState['mode']) ?? null;
+      s.stages = d.stages === true;
+      break;
+    case RefineEvent.ConfidentialityAnswered:
+      s.confidential = d.confidential === true;
       break;
     case RefineEvent.DocEdited:
       if (s.status === 'evaluating') s.editedInCycle = true;

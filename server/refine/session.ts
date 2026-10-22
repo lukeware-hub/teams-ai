@@ -196,7 +196,7 @@ export class RefineSession {
 
   static async create(deps: SessionDeps, mode: 'new-project' | 'new-spec' | 'continue' | 'backlog'): Promise<RefineSession> {
     const s = await RefineSession.open(deps);
-    await s.journal.fact(RefineEvent.Created, { projectId: deps.draft.projectId, specId: deps.draft.specId, mode });
+    await s.journal.fact(RefineEvent.Created, { projectId: deps.draft.projectId, specId: deps.draft.specId, mode, stages: mode === 'new-project' });
     return s;
   }
 
@@ -259,6 +259,12 @@ export class RefineSession {
       tokens.costUsd += Number(e.data.costUsd ?? 0);
     }
     return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, secrets, tokens, busy: this.busy, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits() };
+  }
+
+  /** The owner's answer on confidentiality; a stage session sends no document to the Jev until it comes. */
+  async answerConfidentiality(confidential: boolean): Promise<void> {
+    this.guard();
+    await this.journal.fact(RefineEvent.ConfidentialityAnswered, { confidential });
   }
 
   async saveDoc(file: DocFile, text: string): Promise<void> {
