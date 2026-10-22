@@ -1175,6 +1175,20 @@ The save explanation is a **statement of system behavior**, so it is `meta` with
 
 **Each panel scrolls its own body with its header pinned** — never the whole column, and never the page behind a fixed panel.
 
+### 26.5 New project: document stages
+
+A new project shows its five documents as stages, in this order: `flow.md`, `project.md`, `briefing.md`, `stack.md`, `design.md`. For a new project the stages replace the tabs of §26.1. A spec, a continued spec and an imported backlog keep the tabs.
+
+| Element | Spec |
+|---|---|
+| Stage steps | An ordered list above the editor, labelled `Etapas dos documentos`. Each step shows its number, its file name in `ui`, and its state as text: `Feito`, `Atual` or `Pendente`. The current step has `aria-current="step"`. A step whose document changed after its note also shows `desatualizado`. State is never colour alone (§30.5). |
+| Confidentiality | A row above the editor until the owner answers: `Projeto confidencial?` with `Sim, é confidencial` and `Não é confidencial`. Until an answer, no document goes to the Jev and no score is taken. |
+| Attach | `Anexar arquivo` above the editor. The file is read as text and replaces the document. A file that cannot be read leaves the document as it was. |
+| Alignment | A line under the editor: `Alinhado com os outros documentos.`, or `Não alinhado com os outros documentos:` followed by the divergence. It appears when the checklist has the contradictions check. |
+| Stage actions | One row below the editor: `Voltar` (secondary, disabled on the first stage or while a run is on), `Avaliar esta etapa` (secondary, disabled while a run is on or the stage has used its rounds), `Continuar` (primary). After the last stage, `Continuar` becomes `Quebrar o backlog`. |
+
+`Avaliar esta etapa` reviews only the current stage's document. The earlier documents are context only, and no other document changes. The stage's rounds count against `TEAMS_AI_REFINE_MAX_ROUNDS` from the stage's first round.
+
 ## 27. Projects, Run, Status
 
 Not yet pinned by a reference. Until one exists, they inherit Part I and §25 without invention:
@@ -1249,7 +1263,7 @@ The user-provided reference images 2 and 3 are the approved visual target for `/
 ### 30.2 Documents panel
 
 - Use the blue document tile, `Área de trabalho` eyebrow, `Documentos do projeto` title, and `Editável` state chip.
-- Keep the five document tabs visible with horizontal scrolling when necessary: `project.md`, `briefing.md`, `stack.md`, `flow.md`, and `design.md`.
+- Keep the five document tabs visible with horizontal scrolling when necessary: `project.md`, `briefing.md`, `stack.md`, `flow.md`, and `design.md`. A new project shows the same five documents as stages, in the order of §26.5, in place of the tabs.
 - The editor is a quiet bordered surface with readable monospace text, line-number treatment when available, and a copy affordance in the upper-right corner.
 - Keep the automatic-save hint below the editor. The `Avaliar`/`Reavaliar` action moved to the review panel's actions row (§30.3) and keeps the approved blue-violet action treatment.
 
@@ -1280,3 +1294,7 @@ The user-provided reference images 2 and 3 are the approved visual target for `/
 ### 30.6 Jev role in refinement
 
 Jev is an advisory assistant, never a hard gate for derivation. Its document consistency checks must be recorded in the refinement journal and passed to Claude, PO, and SM as review context. A low-confidence or negative Jev finding may create guidance, but it must not create `CycleFailed`, fail a checklist item, prevent derivation, disable `Reavaliar`, or require a document edit before the next cycle; it is only noted in the item's detail.
+
+A stage review (§26.5) scores only its own document, and it scores nothing until the owner has answered the confidentiality question. A stage review that fails records its reason and changes nothing.
+
+**Divergence, not yet resolved:** the rule above says Jev never blocks, but a full round fails when Jev is unavailable and the project is not confidential (`server/refine/cycle.ts:306-309`). The owner decides whether the code or this section changes.
