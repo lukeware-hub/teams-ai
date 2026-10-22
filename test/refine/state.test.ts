@@ -250,9 +250,12 @@ describe('canStart', () => {
     expect(canStart({ ...base, mode: 'new-project' })).toBe(false);
   });
 
-  it('opens a backlog only once it is detailed', () => {
-    expect(canStart({ ...base, backlog: { enabled: true, detail: true } })).toBe(true);
-    expect(canStart({ ...base, backlog: { enabled: true, detail: false } })).toBe(false);
-    expect(canStart({ ...base, backlog: { enabled: true, detail: null } })).toBe(false);
+  it('opens a backlog only once it is detailed and has at least one item', () => {
+    const item = { key: 'base' };
+    expect(canStart({ ...base, backlog: { enabled: true, detail: true, items: [item] } })).toBe(true);
+    expect(canStart({ ...base, backlog: { enabled: true, detail: true, items: [] } })).toBe(false);
+    expect(canStart({ ...base, backlog: { enabled: true, detail: true } })).toBe(false);
+    expect(canStart({ ...base, backlog: { enabled: true, detail: false, items: [item] } })).toBe(false);
+    expect(canStart({ ...base, backlog: { enabled: true, detail: null, items: [item] } })).toBe(false);
   });
 });

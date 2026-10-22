@@ -202,13 +202,13 @@ export interface StartInput {
   status: RefineStatus;
   mode?: string | null;
   derived: unknown;
-  backlog?: { enabled: boolean; detail?: boolean | null } | null;
+  backlog?: { enabled: boolean; detail?: boolean | null; items?: unknown[] } | null;
 }
 
 /** The start is open unless the agents evaluate or a run started: checks, questions and the Jev only advise. */
 export function canStart(s: StartInput): boolean {
   if (s.status === 'evaluating' || s.status === 'started') return false;
-  if (s.backlog?.enabled) return s.backlog.detail === true;
+  if (s.backlog?.enabled) return s.backlog.detail === true && (s.backlog.items?.length ?? 0) > 0;
   return s.mode !== 'new-project' && Boolean(s.derived);
 }
 
