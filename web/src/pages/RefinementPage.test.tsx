@@ -35,6 +35,18 @@ describe('RefinementPage start with the score banner', () => {
     expect(screen.queryByTestId('start')).toBeNull();
   });
 
+  it('sends the owner step to the next stage, and the confidentiality answer, to the API', async () => {
+    const page = snapshot(1);
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...page, state: { ...page.state, mode: 'new-project', stages: true, confidential: undefined } as never });
+    const conf = vi.spyOn(refineApi, 'confidential').mockResolvedValue({ ok: true });
+    const cont = vi.spyOn(refineApi, 'continueStage').mockResolvedValue({ ok: true });
+    renderPage();
+    fireEvent.click(await screen.findByTestId('confidential-yes'));
+    await waitFor(() => expect(conf).toHaveBeenCalledWith('hello-app', 'hello-001', true));
+    fireEvent.click(await screen.findByTestId('stage-continue'));
+    await waitFor(() => expect(cont).toHaveBeenCalledWith('hello-app', 'hello-001'));
+  });
+
   it('keeps the review panel start while the score is missing', async () => {
     journal.events = [];
     vi.spyOn(refineApi, 'snapshot').mockResolvedValue(withScore(undefined));

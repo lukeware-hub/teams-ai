@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { api, type Item, type Snapshot, type Status } from '../api.js';
@@ -32,8 +32,81 @@ const base = (over: Partial<Snapshot['state']>): Snapshot => ({
     ...over,
   },
 });
-const on = () => ({ onSaveDoc: vi.fn(), onEvaluate: vi.fn(), onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn() });
+const on = () => ({ onSaveDoc: vi.fn(), onEvaluate: vi.fn(), onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn(), onContinueStage: vi.fn(), onConfidential: vi.fn(), onEnableBacklog: vi.fn() });
 const event = (seq: number, type: string, data: Record<string, unknown>): StoredEvent => ({ seq, at: '', runId: 'hello-app/hello-001', specHash: 'draft', type, kind: 'fact', data });
+
+describe('a new project refines its documents in five stages', () => {
+  const stageSnap = (over: Partial<Snapshot['state']>) => base({ mode: 'new-project', ...over });
+  const renderView = (snap: Snapshot) => {
+    const handlers = on();
+    render(<MemoryRouter><RefinementView snap={snap} busy={false} {...handlers} /></MemoryRouter>);
+    return handlers;
+  };
+
+  it('shows the five stages, marks the one the owner is on, and shows the document of the stage picked', () => {
+    renderView(stageSnap({ doneStages: ['flow.md'] }));
+    expect(screen.getByTestId('stage-project.md').getAttribute('aria-current')).toBe('step');
+    expect((screen.getByTestId('doc-project.md') as HTMLTextAreaElement).value).toBe('# Hello');
+    fireEvent.click(screen.getByTestId('stage-flow.md'));
+    expect((screen.getByTestId('doc-flow.md') as HTMLTextAreaElement).value).toBe('# Flow');
+  });
+
+  it('asks once whether the project is confidential, and passes the answer to the owner', () => {
+    const handlers = renderView(stageSnap({ stages: true }));
+    fireEvent.click(screen.getByTestId('confidential-no'));
+    expect(handlers.onConfidential).toHaveBeenCalledWith(false);
+  });
+
+  it('moves on with Continuar, goes back with Voltar, and breaks the backlog once every stage is done', () => {
+    const handlers = renderView(stageSnap({ doneStages: ['flow.md'] }));
+    fireEvent.click(screen.getByTestId('stage-continue'));
+    expect(handlers.onContinueStage).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByTestId('stage-back'));
+    expect((screen.getByTestId('doc-flow.md') as HTMLTextAreaElement).value).toBe('# Flow');
+    cleanup();
+    const all = ['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md'];
+    const done = renderView(stageSnap({ doneStages: all }));
+    fireEvent.click(screen.getByTestId('stage-backlog'));
+    expect(done.onEnableBacklog).toHaveBeenCalledTimes(1);
+  });
+
+  it('says when the document changed after its score', () => {
+    renderView(stageSnap({ outdatedDocs: ['flow.md'] }));
+    expect(screen.getByTestId('doc-outdated').textContent).toContain('flow.md');
+  });
+
+  it('tells whether the document agrees with the others, from the contradictions check', () => {
+    renderView(stageSnap({ checklist: [{ id: 'po.no-contradictions', role: 'po', passed: false, detail: 'porta divergente' }] }));
+    expect(screen.getByTestId('aligned').textContent).toContain('porta divergente');
+  });
+
+  it('attaches a text file to the document on show, and saves it', async () => {
+    const handlers = renderView(stageSnap({ doneStages: ['flow.md'] }));
+    const file = new File(['# Projeto novo'], 'projeto.md', { type: 'text/markdown' });
+    fireEvent.change(screen.getByTestId('attach-doc'), { target: { files: [file] } });
+    await waitFor(() => expect((screen.getByTestId('doc-project.md') as HTMLTextAreaElement).value).toBe('# Projeto novo'));
+    expect(handlers.onSaveDoc).toHaveBeenCalledWith('project.md', '# Projeto novo');
+  });
+
+  it('says yes to confidentiality from the notice, and the attach button opens the file picker', () => {
+    const handlers = renderView(stageSnap({ stages: true }));
+    fireEvent.click(screen.getByTestId('confidential-yes'));
+    expect(handlers.onConfidential).toHaveBeenCalledWith(true);
+    fireEvent.click(screen.getByRole('button', { name: /Anexar arquivo/ }));
+  });
+
+  it('ignores a change without a file, and keeps the document when the file cannot be read', async () => {
+    const handlers = renderView(stageSnap({ doneStages: ['flow.md'] }));
+    fireEvent.change(screen.getByTestId('attach-doc'), { target: { files: [] } });
+    const read = vi.spyOn(FileReader.prototype, 'readAsText').mockImplementation(function (this: FileReader) {
+      this.onerror?.(new ProgressEvent('error') as ProgressEvent<FileReader>);
+    });
+    fireEvent.change(screen.getByTestId('attach-doc'), { target: { files: [new File(['x'], 'x.md')] } });
+    await waitFor(() => expect(read).toHaveBeenCalled());
+    expect(handlers.onSaveDoc).not.toHaveBeenCalled();
+    read.mockRestore();
+  });
+});
 
 describe('the round limit counts the rounds of the current stage', () => {
   it('refuses a new evaluation once the stage has used its rounds', () => {
