@@ -181,6 +181,13 @@ describe('refinePack moves and findings', () => {
     expect(feedback).toContain('read each of the five documents line by line');
   });
 
+  it('the move rule follows the charter: product goals stay in project.md, a step explained in words stays in the briefing', () => {
+    const feedback = refinePack({ ...base, role: 'po' }).feedback ?? '';
+    expect(feedback).toContain('a goal or a deliverable named at product level stays in project.md');
+    expect(feedback).toContain('a written explanation of a step that flow.md draws stays in the briefing');
+    expect(feedback).toContain('that flow.md does not draw moves to flow.md');
+  });
+
   it('holds a move of a piece a pending question names until the owner answers, as the code does', () => {
     const feedback = refinePack({ ...base, role: 'po' }).feedback ?? '';
     expect(feedback).toContain('a piece that a pending question names in double quotes is not moved until the owner answers it');
