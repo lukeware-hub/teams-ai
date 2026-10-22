@@ -1,5 +1,5 @@
 import type { DocFile } from '@server/refine/draft';
-import { GOAL_SHARE, jevVerdict, percentOf, READY_PERCENT, SCORE_CHECKS, type JevVerdict, type Readiness, type ScoreCheck } from '@server/refine/readiness';
+import { jevVerdict, meetsGoal, percentOf, READY_PERCENT, SCORE_CHECKS, type JevVerdict, type Readiness, type ScoreCheck } from '@server/refine/readiness';
 import { ActionButton } from '../components/ActionButton.js';
 import { Icon } from '../components/Icons.js';
 import { DOC_LABEL } from './doc-labels.js';
@@ -64,7 +64,7 @@ export function ReadinessBanner({ readiness, canStart, startState, onScore, onSt
               <b className="text-[0.9375rem] font-semibold tabular-nums text-ink">{percentOf(doc.score)}%</b>
               <ul className="m-0 flex list-none flex-col gap-0.5 p-0 text-[0.75rem] tabular-nums" data-testid={`readiness-checks-${file}`}>
                 {SCORE_CHECKS.map((id: ScoreCheck) => (
-                  <li key={id} className={doc.checks[id] < GOAL_SHARE ? 'font-semibold text-warn' : 'text-ink-soft'}>
+                  <li key={id} className={meetsGoal(doc.checks[id]) ? 'text-ink-soft' : 'font-semibold text-warn'}>
                     {CHECK_LABEL[id]} {percentOf(doc.checks[id])}%
                   </li>
                 ))}
