@@ -14,7 +14,7 @@ interface Props {
 /** The five stages of a new project's documents, in order: where the owner is, each score, and what is outdated. */
 export function StageSteps({ views, shown, onSelect }: Props) {
   return (
-    <ol className="m-0 mb-4 grid list-none grid-cols-2 gap-2 p-0 sm:grid-cols-5" aria-label="Etapas dos documentos">
+    <ol className="m-0 mb-4 grid list-none grid-cols-2 gap-2 p-0" aria-label="Etapas dos documentos">
       {views.map((view, index) => (
         <li key={view.doc} className="flex flex-col gap-1">
           <span id={`stage-state-${view.doc}`} className="text-[0.75rem] text-ink-soft">{index + 1} · {STATE_LABEL[view.state]}</span>
