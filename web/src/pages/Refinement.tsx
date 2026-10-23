@@ -974,7 +974,7 @@ export function RefinementView(p: ViewProps) {
                 {!score && <p className={`m-0 ${muted}`}>Sem nota do Jev ainda.</p>}
                 {score && scoreOutdated && <p className={`m-0 ${muted}`}>Nota anterior à última edição.</p>}
                 {jevBlocked && <p className={`m-0 ${muted}`}>Responda se o projeto é confidencial para usar o Jev.</p>}
-                <ActionButton data-testid="score-doc" className="secondary h-10 justify-self-start" disabled={locked || jevBlocked || (score !== undefined && !scoreOutdated)} title={score && !scoreOutdated ? 'A nota já está atual' : undefined} onClick={() => p.onScoreDoc?.(file)} icon={<Icon name="check" size={16} />}>
+                <ActionButton data-testid="score-doc" className="secondary h-10 w-full" disabled={locked || jevBlocked || (score !== undefined && !scoreOutdated)} title={score && !scoreOutdated ? 'A nota já está atual' : undefined} onClick={() => p.onScoreDoc?.(file)} icon={<Icon name="check" size={16} />}>
                   Validar com o Jev
                 </ActionButton>
               </>
@@ -1020,7 +1020,7 @@ export function RefinementView(p: ViewProps) {
             {confidentialProject ? (
               <p className={`m-0 ${muted}`}>Projeto confidencial: o Jev não lê os documentos.</p>
             ) : needsScore && (
-              <ActionButton data-testid="score-all" className="secondary h-10 justify-self-start" disabled={locked || (stageSession && st.confidential === undefined)} onClick={() => p.onScoreAll?.()} icon={<Icon name="check" size={16} />}>
+              <ActionButton data-testid="score-all" className="secondary h-10 w-full" disabled={locked || (stageSession && st.confidential === undefined)} onClick={() => p.onScoreAll?.()} icon={<Icon name="check" size={16} />}>
                 Validar com o Jev
               </ActionButton>
             )}
