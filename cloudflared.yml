@@ -1,0 +1,4 @@
+# Used by `task tunnel:start`: every request that reaches the tunnel goes to the Teams AI UI on this machine.
+protocol: http2
+ingress:
+  - service: http://localhost:8787

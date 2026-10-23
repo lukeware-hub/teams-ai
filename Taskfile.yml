@@ -1,6 +1,10 @@
 # https://taskfile.dev - run `task` to list every command.
 version: '3'
 
+vars:
+  TUNNEL: teams-ai
+  TUNNEL_HOST: teamsai.lukeware.com.br
+
 tasks:
   default:
     desc: List all tasks
@@ -189,6 +193,27 @@ tasks:
     prompt: This removes ALL teams-ai data, including Claude and GitHub logins. Continue?
     cmds:
       - docker compose down -v
+
+  # ---- Public address (Cloudflare tunnel) ----
+  # The default cloudflared config names a missing tunnel, so each command passes this repo's config.
+  tunnel:setup:
+    desc: Create the Cloudflare tunnel and its public name once (needs `cloudflared tunnel login`)
+    cmds:
+      - cloudflared tunnel --config cloudflared.yml info {{.TUNNEL}} || cloudflared tunnel --config cloudflared.yml create {{.TUNNEL}}
+      - cloudflared tunnel --config cloudflared.yml route dns --overwrite-dns {{.TUNNEL}} {{.TUNNEL_HOST}}
+
+  tunnel:start:
+    desc: Start the Cloudflare tunnel in the background (Windows; protect the address with Cloudflare Access first)
+    platforms: [windows]
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tunnel.ps1 start {{.TUNNEL}}
+      - echo "Public address https://{{.TUNNEL_HOST}}"
+
+  tunnel:stop:
+    desc: Stop the Cloudflare tunnel (Windows)
+    platforms: [windows]
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tunnel.ps1 stop {{.TUNNEL}}
 
   # ---- Development (run inside WSL2 Ubuntu or any Linux, see README) ----
   install:

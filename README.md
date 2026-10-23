@@ -414,6 +414,9 @@ Run `task --list` for the current list. Docker tasks work in any terminal; devel
 | `task down` | Stops the platform, keeps data |
 | `task restart` | Restarts the orchestrator |
 | `task ps` / `task logs` / `task logs:dind` | Status and logs |
+| `task tunnel:setup` | Creates the Cloudflare tunnel and its public name (once) |
+| `task tunnel:start` | Starts the Cloudflare tunnel in the background (Windows); protect the address with Cloudflare Access first |
+| `task tunnel:stop` | Stops the Cloudflare tunnel (Windows) |
 | `task shell` | Shell inside the container |
 | `task login:claude` / `task login:gh` | Login inside the container |
 | `task cli -- <args>` | Runs the teams-ai CLI in the container |

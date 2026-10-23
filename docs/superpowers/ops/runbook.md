@@ -19,6 +19,15 @@ not run live against real volumes.
 - Never use `task reset`: it deletes every volume, including the logins.
 - The UI listens on `127.0.0.1:8787` only, and the API accepts only `Host: localhost`, `127.0.0.1` or `[::1]`.
 
+## Public address (Cloudflare tunnel)
+- The tunnel `teams-ai` serves `https://teamsai.lukeware.com.br` and forwards it to `http://localhost:8787`, so the platform must be running first.
+- The API has no login of its own, so anyone who can reach the address gets full API access. Cloudflare Access must allow the address before the tunnel starts.
+- Access policy: in the Cloudflare Zero Trust dashboard, add a self-hosted application for `teamsai.lukeware.com.br` and allow only the people who need it.
+- One-time setup: `task tunnel:setup` creates the tunnel and its public name. It needs `cloudflared tunnel login`, which this machine already has.
+- Start in the background with `task tunnel:start`; it waits until the tunnel connects. Stop with `task tunnel:stop`.
+- The connector log is `cloudflared.log` in the project folder. The tasks run on Windows only.
+- The API accepts the tunnel host only when `TEAMS_AI_ALLOWED_HOSTS` in `.env` lists it. After adding it, recreate the orchestrator with `docker compose up -d --no-deps teams-ai`, using the image the platform already runs in `TEAMS_AI_IMAGE`.
+
 ## Runs
 - Start a run from the UI (Start), or `task cli -- run --project <dir> --spec <id>`.
 - Stop a run: Stop in the UI; it finishes the step in flight, then ends.
