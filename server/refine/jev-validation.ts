@@ -13,8 +13,6 @@ export interface ValidationDocs {
 
 export interface JevValidationResult {
   available: boolean;
-  decision: 'approved' | 'review' | 'blocked';
-  consistent: boolean | null;
   confidence: number | null;
   model: string | null;
   checks: Record<string, number>;
@@ -67,18 +65,8 @@ export const stageChecks = (stage: string): Record<string, { instructions: strin
 
 export function summarizeJevChecks(checks: Record<string, number>, model: string | null, stateTruncated = false): JevValidationResult {
   const values = Object.values(checks).filter((value) => Number.isFinite(value));
-  if (values.length === 0) return { available: true, decision: 'review', consistent: null, confidence: null, model, checks, stateTruncated };
-  const weakest = Math.min(...values);
-  const decision = weakest < 0.5 ? 'blocked' : weakest < 0.8 ? 'review' : 'approved';
-  return {
-    available: true,
-    decision,
-    consistent: decision === 'approved',
-    confidence: Math.min(...values.map((value) => Math.max(value, 1 - value))),
-    model,
-    checks,
-    stateTruncated,
-  };
+  const confidence = values.length === 0 ? null : Math.min(...values.map((value) => Math.max(value, 1 - value)));
+  return { available: true, confidence, model, checks, stateTruncated };
 }
 
 /** The documents cut at line breaks into windows of at most `max` characters; a window that starts mid-document says which one. */
@@ -91,7 +79,7 @@ export function jevHint(validation?: JevValidationResult): string {
   return scores.length ? `Automatic and often wrong, never a verdict. Scores (probability of yes): ${scores.join(', ')}.` : '(not available)';
 }
 
-export const unavailable = (): JevValidationResult => ({ available: false, decision: 'review', consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false });
+export const unavailable = (): JevValidationResult => ({ available: false, confidence: null, model: null, checks: {}, stateTruncated: false });
 
 /** The Jev over OpenRouter, configured as the decisions are. */
 export function openJev(cfg: Config, apiKey: string): JevOpenRouterBackend {

@@ -380,6 +380,39 @@ describe('refinement cycle suggestions that still wait for the owner', () => {
     expect(review.pack.feedback).toContain('### Pending suggestions');
     expect(review.pack.feedback).toContain('"TODO: port." → fill in the port');
   });
+
+  it('the full round gives the agents no Jev goal, even when a check is weak', async () => {
+    const spec = makeSpec();
+    const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
+    const docs = path.join(root, 'docs');
+    await mkdir(docs, { recursive: true });
+    const draft = {
+      projectId: 'shop', specId: spec.specId, root, docs,
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'briefing.md'),
+      stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
+      specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
+    };
+    await writeFile(draft.briefMd, '# Brief\n\nTexto.\n');
+    await Promise.all([draft.projectMd, draft.stackMd, draft.flowMd, draft.designMd].map((f) => writeFile(f, '# doc')));
+    const events: Array<{ type: string; data: Record<string, unknown> }> = [];
+    const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'r', specHash: 'h', type, kind: 'fact', data } as never; } } as never as Parameters<typeof runCycle>[0]['journal'];
+    journal.state.readiness = { available: true, model: 'jev', average: 0.5, usage: null, outdated: false, cycle: 1, docs: { 'briefing.md': { score: 0.5, checks: { complete: 0.19, concrete: 0.9, consistent: 0.9, scoped: 0.9 } } } } as never;
+    const ok = (value: unknown) => ({ ok: true, value, summary: {} });
+    const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
+    const runAgent = vi.fn(async (req: { kind: string; role: string }) => {
+      if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
+      if (String((req as { pack?: { feedback?: string } }).pack?.feedback).startsWith('REORGANIZE:')) return ok({ checklist: [], questions: [], docPatch: [], moves: [] });
+      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [] });
+      return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
+    });
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [] }, 2);
+    const feedbacks = runAgent.mock.calls.map((c) => String((c[0] as { pack?: { feedback?: string } }).pack?.feedback ?? ''));
+    expect(feedbacks.some((text) => text.length > 0)).toBe(true);
+    for (const text of feedbacks) {
+      expect(text).not.toContain('Jev goals');
+      expect(text).not.toContain('JEV GOALS');
+    }
+  });
 });
 
 describe('refinement cycle repeated design.md headings', () => {

@@ -669,6 +669,10 @@ describe('RefinementView', () => {
     expect(stageNow([event(1, 'REFINE_DOCS_VALIDATED', { cycle: 1, available: false, stage: 'briefing.md' })], 1).stage).not.toMatch(/não continua/);
   });
 
+  it('shows no Jev verdict of 80% in a full round either: its status names no threshold', () => {
+    expect(stageNow([event(1, 'REFINE_DOCS_VALIDATED', { cycle: 1, available: true, decision: 'review' })], 1).stage).not.toMatch(/pontos/);
+  });
+
   it('shows the demand type, bug details, and downloadable derived JSON', () => {
     render(
       <MemoryRouter>

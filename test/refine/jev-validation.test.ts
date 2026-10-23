@@ -3,14 +3,15 @@ import { loadConfig } from '../../server/config/config.js';
 import { createJevValidator, splitWindows, summarizeJevChecks } from '../../server/refine/jev-validation.js';
 
 describe('Jev refinement validation', () => {
-  it('approves only when every independent check clears the threshold', () => {
+  it('reports the lowest check as confidence, with no verdict of its own', () => {
     const result = summarizeJevChecks({ flow: 0.91, validation: 0.84, persistence: 0.88 }, 'typesafe/jev-1.13');
-    expect(result).toMatchObject({ available: true, decision: 'approved', consistent: true, confidence: 0.84 });
+    expect(result).toMatchObject({ available: true, confidence: 0.84, checks: { flow: 0.91, validation: 0.84, persistence: 0.88 } });
+    expect(result).not.toHaveProperty('decision');
   });
 
-  it('routes an uncertain result to review and a clear contradiction to blocked', () => {
-    expect(summarizeJevChecks({ flow: 0.72, validation: 0.86 }, 'jev').decision).toBe('review');
-    expect(summarizeJevChecks({ flow: 0.49, validation: 0.95 }, 'jev').decision).toBe('blocked');
+  it('keeps every check as it is, with no verdict at any level', () => {
+    expect(summarizeJevChecks({ flow: 0.72, validation: 0.86 }, 'jev')).not.toHaveProperty('decision');
+    expect(summarizeJevChecks({ flow: 0.49, validation: 0.95 }, 'jev')).not.toHaveProperty('decision');
   });
 
   it('sends independent Noul checks with explicit criteria in one request', async () => {
@@ -24,7 +25,7 @@ describe('Jev refinement validation', () => {
     }) as typeof fetch;
     try {
       const result = await createJevValidator(loadConfig({}), async () => ({ OPENROUTER_API_KEY: 'secret-key' }))({ project: 'P', briefing: 'B', stack: 'S', flow: 'F', design: 'D' });
-      expect(result.decision).toBe('approved');
+      expect(result).not.toHaveProperty('decision');
       expect(Object.keys(request!.questions)).toHaveLength(6);
       expect((request!.questions.documents_consistent as { criteria: { true: string; false: string } }).criteria.true).toContain('All five');
       expect(request!.state).toContain('design.md:\nD');
@@ -61,7 +62,7 @@ describe('Jev refinement validation', () => {
       const big = 'x'.repeat(40_000);
       const result = await createJevValidator(loadConfig({}), async () => ({ OPENROUTER_API_KEY: 'secret-key' }))({ project: 'P', briefing: 'B', stack: big, flow: 'F', design: 'D' });
       expect(states).toHaveLength(2);
-      expect(result).toMatchObject({ decision: 'blocked', stateTruncated: false });
+      expect(result).toMatchObject({ stateTruncated: false });
       expect(result.checks).toMatchObject({ documents_consistent: 0.3, flow_covers_scope: 0.9, health_aligned: 0.9 });
     } finally {
       globalThis.fetch = originalFetch;

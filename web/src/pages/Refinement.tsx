@@ -174,11 +174,9 @@ export function stageNow(events: StoredEvent[], cycle: number): { stage: string;
 
 function currentClaudeStage(events: StoredEvent[], cycle: number, jevEvent: StoredEvent | undefined, derived: boolean): string {
   if (!jevEvent) return 'Jev está validando os cinco documentos do projeto.';
-  // A stage's preflight is information only: its decision names no verdict, and a stage goes on without the Jev.
+  // The status says whether the Jev answered, never a verdict on the documents.
   const stage = jevEvent.data.stage !== undefined;
   if (jevEvent.data.available === false) return stage ? 'Jev indisponível: confira a chave do OpenRouter. A etapa segue sem a nota dele.' : 'Jev indisponível: confira a chave do OpenRouter. A avaliação não continua sem ele.';
-  if (!stage && jevEvent.data.decision === 'blocked') return 'Jev encontrou pontos importantes para revisão; PO e SM vão avaliá-los.';
-  if (!stage && jevEvent.data.decision === 'review') return 'Jev encontrou pontos para revisão; Claude está analisando os documentos.';
 
   const active = runningSteps(events, cycle);
   if (active.some((step) => step.kind === 'backlog')) return 'PO está quebrando os documentos em backlog, com épicos e prioridades.';

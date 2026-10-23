@@ -35,7 +35,7 @@ import { PATCH_FILES, patchOwners, reorganizeGroups, reorganizePack, refinePack 
 import { applyPatch, checkPatch, COVERED_REASON, patchId, unifiedDiff } from './patches.js';
 import { planMove } from './moves.js';
 import { applyRefineEvent, nextStuck, STUCK_ROUNDS, type BacklogState, type RefineState } from './state.js';
-import { jevGoals, scoresDocs, UNSCORED, type DocsScoreRecord } from './readiness.js';
+import { scoresDocs, UNSCORED, type DocsScoreRecord } from './readiness.js';
 
 export type RunAgent = <K extends StepKind>(
   req: AgentStepRequest<K>,
@@ -296,10 +296,10 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   // A confidential project never sends its docs to the OpenRouter: Jev is skipped and the agents run without its findings.
   const confidential = await isConfidential(draft, journal.state);
   if (deps.validateDocs && confidential) {
-    jevValidation = { available: true, decision: 'review', consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false };
+    jevValidation = { available: true, confidence: null, model: null, checks: {}, stateTruncated: false };
     await journal.fact(RefineEvent.DocsValidated, { cycle, backend: 'jev', ...jevValidation, skipped: 'confidential' });
   } else if (deps.validateDocs) {
-    jevValidation = await deps.validateDocs({ project: docs['project.md'], briefing: docs['briefing.md'], stack: docs['stack.md'], flow: docs['flow.md'], design: docs['design.md'] }).catch(() => ({ available: false, decision: 'review' as const, consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false }));
+    jevValidation = await deps.validateDocs({ project: docs['project.md'], briefing: docs['briefing.md'], stack: docs['stack.md'], flow: docs['flow.md'], design: docs['design.md'] }).catch(() => ({ available: false, confidence: null, model: null, checks: {}, stateTruncated: false }));
     const validation = jevValidation;
     await journal.fact(RefineEvent.DocsValidated, { cycle, backend: 'jev', ...validation });
     // Jev findings are advisory (passed to Claude, PO, and SM), but Jev itself is required: no agent runs without it.
@@ -431,7 +431,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         {
           kind: 'refine',
           role: 'po',
-          pack: fitPackBudget(reorganizePack({ jevGoals: jevGoals(journal.state.readiness), specHash: hash, principles: deps.principles(), specId: draft.specId, projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], changed: group, projectBriefing: backlogMode })),
+          pack: fitPackBudget(reorganizePack({ specHash: hash, principles: deps.principles(), specId: draft.specId, projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], changed: group, projectBriefing: backlogMode })),
           cwd: draft.root,
           phase: 'refine',
           taskId: null,
@@ -452,7 +452,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   let frontReview: z.infer<typeof RefineOutput> | null = null;
   if (deps.frontAgent) {
     const askFront = () => deps.frontAgent!({ kind: 'refine', role: 'front',
-      pack: fitPackBudget(refinePack({ jevGoals: jevGoals(journal.state.readiness), role: 'front', specHash: hash, principles: deps.principles(), specId: draft.specId,
+      pack: fitPackBudget(refinePack({ role: 'front', specHash: hash, principles: deps.principles(), specId: draft.specId,
         projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'],
         derived, backlog, retrieval: [], history: journal.state.questions,
         rejected: journal.state.patches.filter((p) => p.status === 'rejected'), pending: journal.state.patches.filter((p) => p.status === 'pending'), findings: journal.state.findings, undoneMoves: journal.state.moves.filter((m) => m.status === 'undone'), jevValidation, projectBriefing: backlogMode, cycle })),
@@ -473,7 +473,6 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         kind: 'refine',
         role,
         pack: fitPackBudget(refinePack({
-          jevGoals: jevGoals(journal.state.readiness),
           role,
           specHash: hash,
           principles: deps.principles(),
