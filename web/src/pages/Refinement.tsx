@@ -1,6 +1,6 @@
 import { Fragment, memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, refineApi, type AcceptanceCriterion, type ChecklistItem, type Snapshot, type StoredEvent } from '../api.js';
+import { api, refineApi, type AcceptanceCriterion, type ChecklistItem, type PatchRow, type QuestionRow, type Snapshot, type StoredEvent } from '../api.js';
 import { docToJson } from '../refine/docJson.js';
 import { applyBatch, type LiveSnapshot } from '../refine/reducer.js';
 import { useJournal } from '../useSse.js';
@@ -26,6 +26,12 @@ import { DOC_LABEL as docLabel } from '../refine/doc-labels.js';
 import { stageAction, stageOf, stageTitle } from '../refine/stages.js';
 import { SpecTree } from '../refine/SpecTree.js';
 import { Workspace } from '../components/Workspace.js';
+import { Stepper } from '../components/Stepper.js';
+import { WizardShell } from '../components/WizardShell.js';
+import { DocScoreInset, ScoreChecks } from '../refine/DocScoreView.js';
+import { docPatches, docQuestions, initialStep, nextStep as nextWizardStep, pendingCount, prevStep, stepParam, unfiledQuestions, wizardNodes, type WizardStep } from '../refine/wizard.js';
+import { DOC_STAGES } from '@server/refine/doc-stages';
+import { percentOf } from '@server/refine/readiness';
 
 type DocFile = 'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md';
 const questionText = (text: string) => text.startsWith('What counts as valid client data?')
@@ -122,7 +128,8 @@ function LazyDetails({ className, summary, body }: { className: string; summary:
 
 const panelCard = 'edge-lit min-w-0 rounded-xl border border-line bg-surface p-5 shadow-card';
 // The checklist panel styles the headings and lists inside it; disclosures bring their own box.
-const qualityCard = `${panelCard} [&_details_pre]:max-h-48 [&_details_pre]:overflow-auto [&_details_pre]:text-[0.7rem] [&_details_pre]:text-ink-soft [&_details_summary]:flex [&_details_summary]:cursor-pointer [&_details_summary]:items-center [&_details_summary]:justify-between [&_details_summary_svg]:text-accent-text [&_h4]:mx-0 [&_h4]:mt-5 [&_h4]:mb-[0.7rem] [&_h4]:flex [&_h4]:items-center [&_h4]:gap-[0.55rem] [&_h4]:text-[0.8rem] [&_h4]:tracking-[0.06em] [&_h4]:text-ink [&_h4]:uppercase [&_h4>svg]:text-ink-soft [&_h5]:mx-0 [&_h5]:mt-4 [&_h5]:mb-[0.45rem] [&_h5]:text-[0.72rem] [&_h5]:tracking-[0.08em] [&_h5]:text-ink-soft [&_h5]:uppercase [&_ul]:pl-[1.1rem] [&_ul]:text-[0.8rem] [&_ul]:leading-[1.45]`;
+const qualityStyles = `[&_details_pre]:max-h-48 [&_details_pre]:overflow-auto [&_details_pre]:text-[0.7rem] [&_details_pre]:text-ink-soft [&_details_summary]:flex [&_details_summary]:cursor-pointer [&_details_summary]:items-center [&_details_summary]:justify-between [&_details_summary_svg]:text-accent-text [&_h4]:mx-0 [&_h4]:mt-5 [&_h4]:mb-[0.7rem] [&_h4]:flex [&_h4]:items-center [&_h4]:gap-[0.55rem] [&_h4]:text-[0.8rem] [&_h4]:tracking-[0.06em] [&_h4]:text-ink [&_h4]:uppercase [&_h4>svg]:text-ink-soft [&_h5]:mx-0 [&_h5]:mt-4 [&_h5]:mb-[0.45rem] [&_h5]:text-[0.72rem] [&_h5]:tracking-[0.08em] [&_h5]:text-ink-soft [&_h5]:uppercase [&_ul]:pl-[1.1rem] [&_ul]:text-[0.8rem] [&_ul]:leading-[1.45]`;
+const qualityCard = `${panelCard} ${qualityStyles}`;
 const fileBox = 'my-2 rounded-lg border border-line bg-surface p-[0.85rem] text-[0.8rem]';
 // The status chip drops under the title when the panel is too narrow for both.
 const panelHeading = 'mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2';
@@ -203,10 +210,16 @@ export interface ViewProps {
   onDesignFromImages?(images: { data: string }[]): Promise<string | null>;
   onEvaluate(): void | Promise<unknown>;
   onEnableBacklog?(): void | Promise<unknown>;
-  /** The owner moves on from the current document's stage. */
-  onContinueStage?(): void | Promise<unknown>;
-  /** The owner asks the agents to review the document of the current stage. */
+  /** The owner moves on from a document's stage; `false` says the server refused. */
+  onContinueStage?(doc?: DocFile): void | boolean | Promise<unknown>;
+  /** The owner asks the agents to review the document of a stage. */
   onEvaluateStage?(file: DocFile): void | Promise<unknown>;
+  /** The owner asks for the review of a stage again, from the text that was passed to it. */
+  onReprocessStage?(file: DocFile): void | Promise<unknown>;
+  /** The owner asks the Jev for the score of one document. */
+  onScoreDoc?(file: DocFile): void | Promise<unknown>;
+  /** The owner asks the Jev for the score of all five documents. */
+  onScoreAll?(): void | Promise<unknown>;
   /** The owner's answer on whether the project is confidential. */
   onConfidential?(value: boolean): void | Promise<unknown>;
   /** Stage 2 of a new project: the whole backlog in one run, stopped by a question or an error and resumed by the next call. */
@@ -260,6 +273,22 @@ export function RefinementView(p: ViewProps) {
   const [docs, setDocs] = useState(snap.docs);
   const [suggesting, setSuggesting] = useState(false);
   const [askRe, setAskRe] = useState(false);
+  // A new project is refined one document per screen; the step lives in the address, so a reload opens the same screen.
+  const [step, setStep] = useState<WizardStep>(() => initialStep(snap.state, new URLSearchParams(window.location.search).get('etapa')));
+  // The backlog and its run keep their own screen, named in the address; a project already running opens on it.
+  const [view, setView] = useState<'docs' | 'backlog'>(() => (snap.state.status === 'started' || new URLSearchParams(window.location.search).get('vista') === 'backlog' ? 'backlog' : 'docs'));
+  const openView = (next: 'docs' | 'backlog') => {
+    setView(next);
+    const url = new URL(window.location.href);
+    if (next === 'backlog') url.searchParams.set('vista', 'backlog');
+    else url.searchParams.delete('vista');
+    window.history.replaceState(null, '', url);
+  };
+  const stepMoved = useRef(false);
+  const stepHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (stepMoved.current) stepHeading.current?.focus();
+  }, [step]);
   // Nothing changed since the last evaluation: a new one would spend the same calls on the same documents.
   const changedSince = useMemo(() => {
     const events = p.events ?? [];
@@ -438,13 +467,13 @@ export function RefinementView(p: ViewProps) {
     setDocs((d) => ({ ...d, 'design.md': NOT_APPLICABLE_DESIGN }));
     p.onSaveDoc('design.md', NOT_APPLICABLE_DESIGN);
   };
-  const attachDoc = async (files: FileList | null) => {
+  const attachDoc = async (files: FileList | null, doc: DocFile = tab) => {
     const file = files?.[0];
     if (!file) return;
     const text = await readText(file).catch(() => null);
-    if (text === null || !mayReplace(tab, 'Substituir o texto deste documento pelo arquivo anexado?')) return;
-    setDocs((d) => ({ ...d, [tab]: text }));
-    p.onSaveDoc(tab, text);
+    if (text === null || !mayReplace(doc, 'Substituir o texto deste documento pelo arquivo anexado?')) return;
+    setDocs((d) => ({ ...d, [doc]: text }));
+    p.onSaveDoc(doc, text);
   };
   const tabButton = (f: DocFile) => (
     <span key={f} className="inline-flex items-center">
@@ -458,6 +487,16 @@ export function RefinementView(p: ViewProps) {
       <InfoTip text={backlogOn && f === 'briefing.md' ? briefingImpact : docTip[f]} label={docLabel[f]} />
     </span>
   );
+  /** Asked until the owner answers: a stage session sends no document to the Jev before. */
+  const confidentialAsk = st.stages === true && st.confidential === undefined ? (
+    <div className={notice} data-testid="confidential-ask">
+      <p className="m-0">Este projeto é confidencial? Sem resposta, nenhum documento vai ao Jev.</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button type="button" data-testid="confidential-yes" onClick={() => p.onConfidential?.(true)}>Sim, é confidencial</button>
+        <button type="button" data-testid="confidential-no" onClick={() => p.onConfidential?.(false)}>Não é confidencial</button>
+      </div>
+    </div>
+  ) : null;
   const docsTitle = existing ? (st.mode === 'continue' ? 'Continuação da spec' : 'Spec nova') : 'Documentos do projeto';
   const docsPanel = (
     <section className={panelCard}>
@@ -471,15 +510,11 @@ export function RefinementView(p: ViewProps) {
       </div>
       {newProject ? (
         <>
-          {st.stages === true && st.confidential === undefined && (
-            <div className={notice} data-testid="confidential-ask">
-              <p className="m-0">Este projeto é confidencial? Sem resposta, nenhum documento vai ao Jev.</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button type="button" data-testid="confidential-yes" onClick={() => p.onConfidential?.(true)}>Sim, é confidencial</button>
-                <button type="button" data-testid="confidential-no" onClick={() => p.onConfidential?.(false)}>Não é confidencial</button>
-              </div>
-            </div>
-          )}
+          <button type="button" data-testid="open-wizard" className="secondary mb-4 h-10 justify-self-start" onClick={() => openView('docs')}>
+            <Icon name="arrow-left" size={16} />
+            Documentos por etapa
+          </button>
+          {confidentialAsk}
           <StageSteps views={stageViews(st)} shown={tab} onSelect={setTab} />
         </>
       ) : existing ? (
@@ -588,35 +623,13 @@ export function RefinementView(p: ViewProps) {
       {p.startState?.label ?? 'Iniciar análise'}
     </ActionButton>
   );
-  const reviewPanel = (
-    <section className={panelCard}>
-      <div className={panelHeading}>
-        <div className="flex min-w-0 items-center gap-3">
-          <span className={`${headingTile} text-[color:var(--tile-violet-ink)] [background:var(--tile-violet)]`}><Icon name="clipboard" size={26} /></span>
-          <div><span className={eyebrow}>Refinamento</span>
-          <h2 className={panelTitle}>Área de revisão</h2>
-          </div>
-        </div>
-        <Tipped text="Quantas perguntas dos agentes e sugestões de documento ainda esperam a sua decisão.">
-          <span className={`count-pill ${openCount > 0 ? 'tone-warn' : 'tone-good'}`}>{openCount === 1 ? '1 pendência em aberto' : `${openCount} pendências em aberto`}</span>
-        </Tipped>
-      </div>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        {newProject && !p.hideStart && startButton}
-        {showEvaluate && (
-        <ActionButton data-testid="evaluate" className={`${newProject && stageStep !== 'evaluate' ? 'secondary' : 'primary'} min-w-40 flex-auto`} busy={evaluating} disabled={locked || atMax} onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
-          {st.cycle === 0 ? 'Avaliar' : 'Reavaliar'}
-        </ActionButton>
-        )}
-        {askRe && (
-          <ConfirmDialog title="Reavaliar sem mudanças" confirmLabel="Reavaliar mesmo assim" onConfirm={() => { setAskRe(false); void p.onEvaluate(); }} onCancel={() => setAskRe(false)}>
-            <p>Nada mudou desde a última avaliação. Reavaliar gasta de novo as chamadas dos agentes (cerca de US$ 0,7) e pode dar um veredito diferente sobre os mesmos documentos.</p>
-          </ConfirmDialog>
-        )}
-      </div>
-      {!newProject && !p.hideStart && startButton}
-      {nextStep !== null && <p className="m-0 mb-4 flex items-start gap-[0.6rem] rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-[0.8125rem] leading-[1.45] text-ink [&_svg]:flex-none [&_svg]:text-accent-text"><Icon name="lightbulb" size={20} /><span><b>Próximo passo:</b> {nextStep}{optional}</span></p>}
-      {evaluating ? null : current ? (
+  const reevaluateDialog = askRe ? (
+    <ConfirmDialog title="Reavaliar sem mudanças" confirmLabel="Reavaliar mesmo assim" onConfirm={() => { setAskRe(false); void p.onEvaluate(); }} onCancel={() => setAskRe(false)}>
+      <p>Nada mudou desde a última avaliação. Reavaliar gasta de novo as chamadas dos agentes (cerca de US$ 0,7) e pode dar um veredito diferente sobre os mesmos documentos.</p>
+    </ConfirmDialog>
+  ) : null;
+  /** One pending question with its options, answer box and actions; `remaining` counts the open ones, this included. */
+  const questionCard = (current: QuestionRow, remaining: number) => (
         <div className="rounded-lg border border-line bg-surface-sunken p-4">
           <div className="flex flex-wrap items-center gap-[0.35rem]">
             <span className={badge(current.role)}>{current.role.toUpperCase()}</span>
@@ -686,14 +699,11 @@ export function RefinementView(p: ViewProps) {
               </ActionButton>
             )}
           </div>
-          <small className="mt-2 block text-ink-soft">{pending.length === 1 ? 'Esta é a última pergunta em aberto.' : pending.length === 2 ? 'Mais 1 pergunta depois desta.' : `Mais ${pending.length - 1} perguntas depois desta.`}</small>
+          <small className="mt-2 block text-ink-soft">{remaining === 1 ? 'Esta é a última pergunta em aberto.' : remaining === 2 ? 'Mais 1 pergunta depois desta.' : `Mais ${remaining - 1} perguntas depois desta.`}</small>
         </div>
-      ) : (
-        <p className={muted}>Nenhuma pergunta em aberto.</p>
-      )}
-      {(evaluating ? [] : st.patches)
-        .filter((x) => x.status === 'pending')
-        .map((x, i) => (
+  );
+  /** One pending suggestion with its diff, reason box and the two decisions. */
+  const patchCard = (x: PatchRow, i: number) => (
           <div key={x.patchId} className="mt-4 rounded-lg border border-line bg-surface p-[0.85rem]">
             <div className="flex flex-wrap items-center gap-[0.45rem] text-[0.82rem] text-ink">
               <span className={badge(x.role)}>{x.role === 'front' ? 'FRONT' : x.role.toUpperCase()}</span>
@@ -719,7 +729,35 @@ export function RefinementView(p: ViewProps) {
             </ActionButton>
             </div>
           </div>
-        ))}
+  );
+  const reviewPanel = (
+    <section className={panelCard}>
+      <div className={panelHeading}>
+        <div className="flex min-w-0 items-center gap-3">
+          <span className={`${headingTile} text-[color:var(--tile-violet-ink)] [background:var(--tile-violet)]`}><Icon name="clipboard" size={26} /></span>
+          <div><span className={eyebrow}>Refinamento</span>
+          <h2 className={panelTitle}>Área de revisão</h2>
+          </div>
+        </div>
+        <Tipped text="Quantas perguntas dos agentes e sugestões de documento ainda esperam a sua decisão.">
+          <span className={`count-pill ${openCount > 0 ? 'tone-warn' : 'tone-good'}`}>{openCount === 1 ? '1 pendência em aberto' : `${openCount} pendências em aberto`}</span>
+        </Tipped>
+      </div>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        {newProject && !p.hideStart && startButton}
+        {showEvaluate && (
+        <ActionButton data-testid="evaluate" className={`${newProject && stageStep !== 'evaluate' ? 'secondary' : 'primary'} min-w-40 flex-auto`} busy={evaluating} disabled={locked || atMax} onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
+          {st.cycle === 0 ? 'Avaliar' : 'Reavaliar'}
+        </ActionButton>
+        )}
+        {reevaluateDialog}
+      </div>
+      {!newProject && !p.hideStart && startButton}
+      {nextStep !== null && <p className="m-0 mb-4 flex items-start gap-[0.6rem] rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-[0.8125rem] leading-[1.45] text-ink [&_svg]:flex-none [&_svg]:text-accent-text"><Icon name="lightbulb" size={20} /><span><b>Próximo passo:</b> {nextStep}{optional}</span></p>}
+      {evaluating ? null : current ? questionCard(current, pending.length) : (
+        <p className={muted}>Nenhuma pergunta em aberto.</p>
+      )}
+      {(evaluating ? [] : st.patches).filter((x) => x.status === 'pending').map(patchCard)}
       {st.discarded.map((d, i) => (
         <p key={i} className={notice}>
           Uma sugestão do {d.role.toUpperCase()} para {docName(d.file)} não pôde ser aplicada e foi descartada ({d.reason}).
@@ -749,8 +787,9 @@ export function RefinementView(p: ViewProps) {
       </details>
     </section>
   );
-  const qualityPanel = (
-    <section className={qualityCard}>
+  /** The verification blocks (usage, checklist, generated files, tasks, secrets); the panel and the final review give it their own box. */
+  const qualityBlock = (boxClass: string) => (
+    <section className={boxClass}>
       <div className={panelHeading}>
         <div className="flex min-w-0 items-center gap-3">
           <span className={`${headingTile} text-[color:var(--tile-good-ink)] [background:var(--tile-good)]`}><Icon name="shield" size={26} /></span>
@@ -841,6 +880,222 @@ export function RefinementView(p: ViewProps) {
       </ul>
     </section>
   );
+  const qualityPanel = qualityBlock(qualityCard);
+  const goTo = (next: WizardStep | null) => {
+    if (next === null) return;
+    // The editor of this screen unmounts, so its text is saved before the step changes.
+    if (step !== 'review' && !locked && docs[step] !== snap.docs[step]) p.onSaveDoc(step, docs[step] ?? '');
+    stepMoved.current = true;
+    setStep(next);
+    const url = new URL(window.location.href);
+    url.searchParams.set('etapa', stepParam(next));
+    window.history.replaceState(null, '', url);
+  };
+  const stageSession = st.stages === true;
+  const doneStages = st.doneStages ?? [];
+  const confidentialProject = st.confidential === true || st.readiness?.skipped === 'confidential';
+  const usageLine = `${snap.tokens.steps} chamadas · ${snap.tokens.inputTokens + snap.tokens.outputTokens} tokens · US$ ${snap.tokens.costUsd.toFixed(2)}`;
+  const outdatedDocs = st.outdatedDocs ?? [];
+  const stageScreen = (file: DocFile) => {
+    const score = st.readiness?.docs?.[file];
+    const scoreOutdated = outdatedDocs.includes(file);
+    const questions = docQuestions(st, file);
+    const patches = docPatches(st, file);
+    const divergences = st.stageAlignment?.[file];
+    const alignment = file === 'flow.md'
+      ? 'Primeira etapa: não há documento anterior.'
+      : divergences
+        ? divergences.length === 0 ? 'Alinhado com os documentos anteriores.' : `Não alinhado com os documentos anteriores: ${divergences.join('; ')}`
+        : stageSession ? 'Ainda não revisado pelos agentes.' : null;
+    const cause = st.staleBy?.[file] as DocFile | undefined;
+    const discarded = st.discarded.filter((d) => d.file.split('/').pop() === file);
+    const count = pendingCount(st, file);
+    const jevBlocked = stageSession && st.confidential === undefined;
+    return (
+      <div className="grid gap-6 @3xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+        <div className="grid min-w-0 content-start gap-3">
+          <header className="grid gap-1">
+            <p className="m-0 text-[0.75rem] font-semibold tracking-[0.07em] text-ink-soft uppercase">Etapa {DOC_STAGES.indexOf(file) + 1} de {DOC_STAGES.length}</p>
+            <h2 ref={stepHeading} tabIndex={-1} className="m-0 text-[1.25rem] font-semibold text-ink outline-none">{docLabel[file]}</h2>
+            <p data-testid="doc-impact" className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">{backlogOn && file === 'briefing.md' ? briefingImpact : docImpact[file]}</p>
+          </header>
+          {confidentialAsk}
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="secondary h-10 px-[0.8rem]" disabled={locked} onClick={() => docFileInput.current?.click()}>
+              Anexar arquivo
+              <Icon name="file" size={16} />
+            </button>
+            <input ref={docFileInput} data-testid="attach-doc" type="file" accept=".md,.txt,text/markdown,text/plain" hidden onChange={(e) => { void attachDoc(e.target.files, file); e.target.value = ''; }} />
+            {file !== 'flow.md' && p.onSuggestDoc && (
+              <ActionButton data-testid="suggest" className="secondary h-10 px-[0.8rem]" busy={suggesting} disabled={locked} title="Gera este documento a partir do flow.md" onClick={() => suggest(file)} icon={<Icon name="lightbulb" size={16} />}>
+                {suggesting ? 'Sugerindo…' : 'Sugerir'}
+              </ActionButton>
+            )}
+            {file === 'design.md' && p.onDesignFromImages && (
+              <>
+                <button type="button" className="secondary h-10 px-[0.8rem]" disabled={locked || suggesting} title="Ajusta o design.md pelas cores, fontes e alinhamentos de imagens de exemplo; as imagens são apagadas depois" onClick={() => attachInput.current?.click()}>
+                  Anexar imagem
+                  <Icon name="file" size={16} />
+                </button>
+                <input ref={attachInput} data-testid="attach-images" type="file" accept="image/png,image/jpeg" multiple hidden onChange={(e) => { void attach(e.target.files); e.target.value = ''; }} />
+              </>
+            )}
+            {file === 'design.md' && (
+              <button type="button" className="secondary h-10 px-[0.8rem]" disabled={locked} onClick={markNotApplicable}>Não se aplica</button>
+            )}
+            <button type="button" className="secondary h-10 px-[0.8rem]" aria-label="Copiar documento" onClick={() => copyDoc(docs[file] ?? '')}>
+              Copiar
+              <Icon name="copy" size={16} />
+            </button>
+          </div>
+          <textarea
+            className="min-h-[clamp(22rem,60vh,40rem)] w-full resize-y bg-surface-sunken p-4 font-mono text-[0.8125rem] leading-[1.6]"
+            aria-label={`${docLabel[file]} editor`}
+            data-testid={`doc-${file}`}
+            value={docs[file] ?? ''}
+            readOnly={locked}
+            onChange={(e) => setDocs({ ...docs, [file]: e.target.value })}
+            onBlur={() => {
+              if (!locked && docs[file] !== snap.docs[file]) p.onSaveDoc(file, docs[file] ?? '');
+            }}
+          />
+          <span className="inline-flex items-start gap-[0.45rem] text-[0.8125rem] leading-[1.35] text-ink-soft"><Icon name="info" size={18} />As alterações são salvas automaticamente ao sair do editor.</span>
+        </div>
+        <aside className="grid min-w-0 content-start gap-4 border-line @max-3xl:border-t @max-3xl:pt-6 @3xl:border-l @3xl:pl-6" aria-label="Revisão da etapa">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="m-0 text-[1rem] font-semibold text-ink">Revisão da etapa</h3>
+            <span className={`count-pill ${count > 0 ? 'tone-warn' : 'tone-good'}`}>{count === 1 ? '1 pendência' : `${count} pendências`}</span>
+          </div>
+          {locked && <p className="m-0 text-[0.8125rem] text-ink-soft" role="status">Avaliação em andamento.</p>}
+          <DocScoreInset label={docLabel[file]} doc={score}>
+            {confidentialProject ? (
+              <p className={`m-0 ${muted}`}>Projeto confidencial: o Jev não lê os documentos.</p>
+            ) : (
+              <>
+                {!score && <p className={`m-0 ${muted}`}>Sem nota do Jev ainda.</p>}
+                {score && scoreOutdated && <p className={`m-0 ${muted}`}>Nota anterior à última edição.</p>}
+                {jevBlocked && <p className={`m-0 ${muted}`}>Responda se o projeto é confidencial para usar o Jev.</p>}
+                <ActionButton data-testid="score-doc" className="secondary h-10 justify-self-start" disabled={locked || jevBlocked || (score !== undefined && !scoreOutdated)} title={score && !scoreOutdated ? 'A nota já está atual' : undefined} onClick={() => p.onScoreDoc?.(file)} icon={<Icon name="check" size={16} />}>
+                  Validar com o Jev
+                </ActionButton>
+              </>
+            )}
+          </DocScoreInset>
+          {alignment && <p data-testid="aligned" className="m-0 text-[0.8125rem] text-ink-soft">{alignment}</p>}
+          {cause && <p data-testid="doc-stale" className={notice}>{docLabel[cause]} mudou depois desta revisão: processe esta etapa de novo.</p>}
+          {!locked && questions[0] && questionCard(questions[0], questions.length)}
+          {!locked && patches.map(patchCard)}
+          {discarded.map((d, i) => <p key={i} className={notice}>Uma sugestão do {d.role.toUpperCase()} não pôde ser aplicada e foi descartada ({d.reason}).</p>)}
+          {count === 0 && !locked && <p className={`m-0 ${muted}`}>Nenhuma pendência neste documento.</p>}
+        </aside>
+      </div>
+    );
+  };
+  const finalScreen = () => {
+    const unfiled = unfiledQuestions(st);
+    const byDoc = DOC_STAGES.map((file) => ({ file, count: pendingCount(st, file) })).filter((x) => x.count > 0);
+    const needsScore = DOC_STAGES.some((file) => !st.readiness?.docs?.[file] || outdatedDocs.includes(file));
+    return (
+      <div className="grid gap-6 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="grid min-w-0 content-start gap-5">
+          <header className="grid gap-1">
+            <p className="m-0 text-[0.75rem] font-semibold tracking-[0.07em] text-ink-soft uppercase">Etapa final</p>
+            <h2 ref={stepHeading} tabIndex={-1} className="m-0 text-[1.25rem] font-semibold text-ink outline-none">Revisão final</h2>
+            <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Veja as notas, as pendências e o que foi verificado. Nada aqui bloqueia o próximo passo.</p>
+          </header>
+          <div className="grid gap-2 rounded-lg bg-surface-sunken px-3 py-2.5" data-testid="final-scores">
+            <p className="m-0 text-[0.8125rem] text-ink-soft">Notas do Jev</p>
+            {DOC_STAGES.map((file) => {
+              const score = st.readiness?.docs?.[file];
+              return (
+                <div key={file} className="grid gap-0.5 border-t border-line pt-2 first-of-type:border-0 first-of-type:pt-0">
+                  <p className="m-0 flex flex-wrap items-baseline gap-2 text-[0.875rem] text-ink">
+                    <b>{docLabel[file]}</b>
+                    <span className="tabular-nums">{score ? `${percentOf(score.score)}%` : 'sem nota'}</span>
+                    {score && outdatedDocs.includes(file) && <span className="text-[0.75rem] text-warn">desatualizada</span>}
+                  </p>
+                  {score && <ScoreChecks doc={score} />}
+                </div>
+              );
+            })}
+            {confidentialProject ? (
+              <p className={`m-0 ${muted}`}>Projeto confidencial: o Jev não lê os documentos.</p>
+            ) : needsScore && (
+              <ActionButton data-testid="score-all" className="secondary h-10 justify-self-start" disabled={locked || (stageSession && st.confidential === undefined)} onClick={() => p.onScoreAll?.()} icon={<Icon name="check" size={16} />}>
+                Validar com o Jev
+              </ActionButton>
+            )}
+          </div>
+          <div className="grid gap-3" data-testid="final-pending">
+            <h3 className="m-0 text-[1rem] font-semibold text-ink">Pendências</h3>
+            {byDoc.map(({ file, count }) => (
+              <div key={file} className="flex flex-wrap items-center justify-between gap-3 text-[0.875rem] text-ink">
+                <span>{docLabel[file]}: {count === 1 ? '1 pendência' : `${count} pendências`}</span>
+                <button type="button" className="secondary h-10 px-3" onClick={() => goTo(file)}>Abrir etapa</button>
+              </div>
+            ))}
+            {!locked && unfiled[0] && questionCard(unfiled[0], unfiled.length)}
+            {byDoc.length === 0 && unfiled.length === 0 && <p className={`m-0 ${muted}`}>Nenhuma pendência.</p>}
+          </div>
+        </div>
+        <div className="min-w-0 border-line @max-3xl:border-t @max-3xl:pt-6 @3xl:border-l @3xl:pl-6">{qualityBlock(`grid min-w-0 content-start ${qualityStyles}`)}</div>
+      </div>
+    );
+  };
+  const wizardActions = step === 'review' ? (
+    <>
+      <ActionButton data-testid="evaluate" className="secondary" busy={evaluating} disabled={locked || atMax} title="Se tudo passar, o backlog começa a ser montado" onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
+        Avaliar tudo
+      </ActionButton>
+      {backlogOn ? (
+        <ActionButton data-testid="open-backlog" className="primary" onClick={() => openView('backlog')} icon={<Icon name="arrow-right" size={16} />}>Abrir backlog e execução</ActionButton>
+      ) : (
+        <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
+      )}
+    </>
+  ) : (
+    <>
+      <ActionButton data-testid="wizard-process" className="secondary" busy={evaluating} disabled={locked || atMax} title={atMax ? `Limite de ${snap.limits?.max} rodadas nesta etapa` : undefined} onClick={() => (stageSession ? p.onEvaluateStage?.(step) : p.onEvaluate())} icon={<Icon name="check" size={16} />}>
+        Processar com agentes
+      </ActionButton>
+      {(st.passedStages ?? []).includes(step) && (
+        <ActionButton data-testid="wizard-reprocess" className="secondary" disabled={locked || atMax} title="Volta ao texto que você entregou e processa de novo" onClick={() => p.onReprocessStage?.(step)} icon={<Icon name="refresh" size={16} />}>
+          Reprocessar
+        </ActionButton>
+      )}
+      <ActionButton
+        data-testid="wizard-continue"
+        className="primary"
+        disabled={locked}
+        onClick={async () => {
+          if (stageSession && !doneStages.includes(step)) {
+            const result = await p.onContinueStage?.(step);
+            if (result === false) return;
+          }
+          goTo(nextWizardStep(step));
+        }}
+        icon={<Icon name="arrow-right" size={16} />}
+      >
+        Continuar
+      </ActionButton>
+    </>
+  );
+  if (newProject && view === 'docs') {
+    return (
+      <div className="min-h-0 min-w-0 lg:overflow-y-auto" data-testid="stage-wizard">
+        <WizardShell
+          stepper={<Stepper steps={wizardNodes(st, step)} ariaLabel="Etapas dos documentos" onSelect={(key) => goTo(key as WizardStep)} />}
+          stepKey={step}
+          meta={usageLine}
+          back={{ onClick: () => goTo(prevStep(step)), disabled: prevStep(step) === null, reason: 'Esta é a primeira etapa' }}
+          actions={wizardActions}
+        >
+          {step === 'review' ? finalScreen() : stageScreen(step)}
+        </WizardShell>
+        {reevaluateDialog}
+      </div>
+    );
+  }
   return (
     <Workspace
       columns="lg:grid-cols-[minmax(0,1.08fr)_minmax(0,1fr)_minmax(0,1fr)]"
@@ -913,13 +1168,13 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   const executing = starting || (following && program?.status !== 'finished');
   const startLabel = { label: starting ? 'Iniciando…' : executing ? 'Em execução' : 'Iniciar análise', busy: executing };
   // The banner offers the start once the score is ready, so the review panel does not repeat it.
-  const bannerStarts = scoresDocs(snap.state.mode ?? null) && !['evaluating', 'started'].includes(snap.state.status) && jevVerdict(snap.state.readiness) === 'scored';
+  const bannerStarts = scoresDocs(snap.state.mode ?? null) && snap.state.mode !== 'new-project' && !['evaluating', 'started'].includes(snap.state.status) && jevVerdict(snap.state.readiness) === 'scored';
   return (
     <main className="flex flex-col gap-4 lg:h-full lg:min-h-0">
       <header className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></Link><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span></header>
       <MoveNotice moves={snap.state.moves ?? []} onUndo={(moveId) => act(() => refineApi.undoMove(projectId, specId, moveId))()} docName={docName} />
       {snap.state.mode === 'new-project' && <StageBar stages={stageOf(snap.state)} />}
-      {scoresDocs(snap.state.mode ?? null) && !['evaluating', 'started'].includes(snap.state.status) && (
+      {scoresDocs(snap.state.mode ?? null) && snap.state.mode !== 'new-project' && !['evaluating', 'started'].includes(snap.state.status) && (
         <ReadinessBanner readiness={snap.state.readiness} canStart={canStartRun(snap.state, false)} startState={startLabel} onScore={act(() => refineApi.score(projectId, specId))} onStart={startRun} />
       )}
       {snap.state.status === 'evaluating' && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} since={snap.state.evaluation?.startedAt} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}
@@ -944,7 +1199,10 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         }}
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}
-        onContinueStage={act(() => refineApi.continueStage(projectId, specId))}
+        onContinueStage={(doc) => refineApi.continueStage(projectId, specId, doc).then(() => true, (e: Error) => (setError(e.message), false))}
+        onReprocessStage={(f) => act(() => refineApi.reprocessStage(projectId, specId, f))()}
+        onScoreDoc={(f) => act(() => refineApi.scoreDoc(projectId, specId, f))()}
+        onScoreAll={act(() => refineApi.score(projectId, specId))}
         onEvaluateStage={(f) => act(() => refineApi.evaluateStage(projectId, specId, f))()}
         onConfidential={(v) => act(() => refineApi.confidential(projectId, specId, v))()}
         onAnswer={(id, t, d) => act(() => refineApi.answer(projectId, specId, id, t, d))()}

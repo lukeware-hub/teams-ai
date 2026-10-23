@@ -1,8 +1,12 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Snapshot } from '../api.js';
 import { RefinementView } from './Refinement.js';
+
+// These tests are about the backlog screen of a new project, which keeps the review panel.
+beforeEach(() => window.history.replaceState(null, '', '/?vista=backlog'));
+afterEach(() => window.history.replaceState(null, '', '/'));
 
 const green = (ids: string[]) => ids.map((id) => ({ id, role: (id.startsWith('po') ? 'po' : 'sm') as 'po' | 'sm', passed: true, detail: 'ok' }));
 const ALL = ['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions', 'sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions'];

@@ -1,0 +1,98 @@
+import { describe, expect, it } from 'vitest';
+import { docPatches, docQuestions, initialStep, nextStep, parseStep, pendingCount, prevStep, stepParam, unfiledQuestions, wizardNodes } from './wizard.js';
+
+const question = (questionId: string, over: Record<string, unknown> = {}) => ({ questionId, role: 'po', text: 'q', blocking: false, relatedAcIds: [], cycle: 1, status: 'pending', answer: null, ...over });
+const patch = (patchId: string, file: string, status = 'pending') => ({ patchId, role: 'po', file, find: 'a', replace: 'b', reason: 'r', diff: '', cycle: 1, status, decision: null });
+const state = (over: Record<string, unknown> = {}) => ({ stages: true, doneStages: [], questions: [], patches: [], ...over }) as never;
+
+describe('step names in the address', () => {
+  it('reads a document, the review, and nothing else', () => {
+    expect(parseStep('flow.md')).toBe('flow.md');
+    expect(parseStep('revisao')).toBe('review');
+    expect(parseStep('brief.md')).toBeNull();
+    expect(parseStep(null)).toBeNull();
+    expect(stepParam('review')).toBe('revisao');
+    expect(stepParam('stack.md')).toBe('stack.md');
+  });
+});
+
+describe('initialStep', () => {
+  it('opens the step named in the address', () => {
+    expect(initialStep(state({ doneStages: ['flow.md'] }), 'stack.md')).toBe('stack.md');
+  });
+
+  it('opens the first document not done, or the review when all are done', () => {
+    expect(initialStep(state({ doneStages: ['flow.md'] }), null)).toBe('project.md');
+    expect(initialStep(state({ doneStages: ['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md'] }), null)).toBe('review');
+  });
+
+  it('opens the first document of a project that records no stages', () => {
+    expect(initialStep(state({ stages: undefined, doneStages: undefined }), null)).toBe('flow.md');
+  });
+});
+
+describe('wizardNodes', () => {
+  it('has the five documents and the review, with no score on any node', () => {
+    const nodes = wizardNodes(state(), 'flow.md');
+    expect(nodes.map((n) => n.key)).toEqual(['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md', 'review']);
+    expect(nodes.at(-1)!.label).toBe('Revisão');
+    expect(nodes.every((n) => !/%/.test(n.label + (n.marker ?? '')))).toBe(true);
+  });
+
+  it('marks done from the journal in a stage session, and the current one active', () => {
+    const nodes = wizardNodes(state({ doneStages: ['flow.md', 'briefing.md'] }), 'project.md');
+    expect(nodes.map((n) => n.state)).toEqual(['done', 'active', 'done', 'todo', 'todo', 'todo']);
+  });
+
+  it('marks done by position when the project records no stages', () => {
+    const nodes = wizardNodes(state({ stages: undefined, doneStages: undefined }), 'briefing.md');
+    expect(nodes.map((n) => n.state)).toEqual(['done', 'done', 'active', 'todo', 'todo', 'todo']);
+  });
+
+  it('flags a document that changed after its score or after an earlier document changed', () => {
+    const nodes = wizardNodes(state({ outdatedDocs: ['stack.md'], staleBy: { 'design.md': 'flow.md' } }), 'flow.md');
+    expect(nodes.find((n) => n.key === 'stack.md')!.marker).toBe('desatualizado');
+    expect(nodes.find((n) => n.key === 'design.md')!.marker).toBe('desatualizado');
+    expect(nodes.find((n) => n.key === 'flow.md')!.marker).toBeUndefined();
+  });
+});
+
+describe('moving between steps', () => {
+  it('goes from the last document to the review, and stops at both ends', () => {
+    expect(nextStep('design.md')).toBe('review');
+    expect(nextStep('review')).toBeNull();
+    expect(prevStep('flow.md')).toBeNull();
+    expect(prevStep('review')).toBe('design.md');
+    expect(prevStep('project.md')).toBe('flow.md');
+  });
+});
+
+describe('what is pending for one document', () => {
+  const st = state({
+    questions: [
+      question('a', { file: 'project.md' }),
+      question('b', { file: 'project.md', blocking: true }),
+      question('c', { file: 'flow.md' }),
+      question('d'),
+      question('e', { file: 'project.md', status: 'answered' }),
+    ],
+    patches: [patch('p1', 'project.md'), patch('p2', 'flow.md'), patch('p3', 'project.md', 'accepted')],
+  });
+
+  it('lists the pending questions of the document, blocking first', () => {
+    expect(docQuestions(st, 'project.md').map((q) => q.questionId)).toEqual(['b', 'a']);
+  });
+
+  it('lists the pending patches of the document', () => {
+    expect(docPatches(st, 'project.md').map((p) => p.patchId)).toEqual(['p1']);
+  });
+
+  it('keeps the questions with no document apart, as general ones', () => {
+    expect(unfiledQuestions(st).map((q) => q.questionId)).toEqual(['d']);
+  });
+
+  it('counts the pending questions and patches of the document', () => {
+    expect(pendingCount(st, 'project.md')).toBe(3);
+    expect(pendingCount(st, 'stack.md')).toBe(0);
+  });
+});

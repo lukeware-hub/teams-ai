@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { refineApi, type Snapshot, type StoredEvent } from '../api.js';
 import { RefinementPage } from './Refinement.js';
 
@@ -19,58 +19,66 @@ const snapshot = (seq: number): Snapshot => ({
   state: { status: 'error', stale: false, cycle: 1, derived: null, checklist: [], questions: [], patches: [{ ...patch, status: 'pending', decision: null }], discarded: [], moves: [], error: 'sm refine failed', runId: null },
 });
 
-describe('RefinementPage start with the score banner', () => {
-  const withScore = (readiness: unknown): Snapshot => {
+describe('RefinementPage of a new project', () => {
+  const stageState = (over: Record<string, unknown> = {}): Snapshot => {
     const s = snapshot(1);
-    const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {}, flowHeadings: [] };
-    return { ...s, state: { ...s.state, status: 'ready', mode: 'new-project', error: null, patches: [], questions: [], backlog, readiness } as never };
+    return { ...s, state: { ...s.state, status: 'answering', error: null, patches: [], mode: 'new-project', stages: true, ...over } as never };
   };
   const renderPage = () => render(<MemoryRouter initialEntries={['/refine/hello-app/hello-001']}><Routes><Route path="/refine/:projectId/:specId" element={<RefinementPage />} /></Routes></MemoryRouter>);
+  afterEach(() => window.history.replaceState(null, '', '/'));
 
-  it('shows one start, in the banner, when the score is ready', async () => {
-    journal.events = [];
-    vi.spyOn(refineApi, 'snapshot').mockResolvedValue(withScore({ cycle: 1, available: true, model: 'jev-1.13.0', average: 0.9, docs: null, usage: null, outdated: false }));
-    renderPage();
-    await screen.findByTestId('readiness-start');
-    expect(screen.queryByTestId('start')).toBeNull();
-  });
-
-  it('sends the owner step to the next stage, and the confidentiality answer, to the API', async () => {
-    const page = snapshot(1);
-    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...page, state: { ...page.state, mode: 'new-project', stages: true, confidential: undefined } as never });
+  it('sends the confidentiality answer, and the owner step to the next stage, to the API', async () => {
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageState());
     const conf = vi.spyOn(refineApi, 'confidential').mockResolvedValue({ ok: true });
     const cont = vi.spyOn(refineApi, 'continueStage').mockResolvedValue({ ok: true });
     renderPage();
     fireEvent.click(await screen.findByTestId('confidential-yes'));
     await waitFor(() => expect(conf).toHaveBeenCalledWith('hello-app', 'hello-001', true));
-    fireEvent.click(await screen.findByTestId('stage-continue'));
-    await waitFor(() => expect(cont).toHaveBeenCalledWith('hello-app', 'hello-001'));
+    fireEvent.click(await screen.findByTestId('wizard-continue'));
+    await waitFor(() => expect(cont).toHaveBeenCalledWith('hello-app', 'hello-001', 'flow.md'));
   });
 
-  it('sends the review of the current stage document to the API', async () => {
-    const page = snapshot(1);
-    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...page, state: { ...page.state, mode: 'new-project', stages: true, confidential: undefined } as never });
+  it('sends the review of the stage document to the API', async () => {
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageState());
     const review = vi.spyOn(refineApi, 'evaluateStage').mockResolvedValue({ ok: true });
     renderPage();
-    fireEvent.click(await screen.findByTestId('stage-evaluate'));
+    fireEvent.click(await screen.findByTestId('wizard-process'));
     await waitFor(() => expect(review).toHaveBeenCalledWith('hello-app', 'hello-001', 'flow.md'));
   });
 
-  it('keeps the review panel start while the score is missing', async () => {
+  it('sends the reprocess of the stage document to the API', async () => {
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageState({ passedStages: ['flow.md'] }));
+    const again = vi.spyOn(refineApi, 'reprocessStage').mockResolvedValue({ ok: true });
+    renderPage();
+    fireEvent.click(await screen.findByTestId('wizard-reprocess'));
+    await waitFor(() => expect(again).toHaveBeenCalledWith('hello-app', 'hello-001', 'flow.md'));
+  });
+
+  it('asks the Jev for the score of the document on screen', async () => {
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageState({ confidential: false }));
+    const score = vi.spyOn(refineApi, 'scoreDoc').mockResolvedValue({ ok: true });
+    renderPage();
+    fireEvent.click(await screen.findByTestId('score-doc'));
+    await waitFor(() => expect(score).toHaveBeenCalledWith('hello-app', 'hello-001', 'flow.md'));
+  });
+
+  it('asks the Jev for the scores of all five documents from the final review', async () => {
+    window.history.replaceState(null, '', '/?etapa=revisao');
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageState({ confidential: false }));
+    const score = vi.spyOn(refineApi, 'score').mockResolvedValue(undefined as never);
+    renderPage();
+    fireEvent.click(await screen.findByTestId('score-all'));
+    await waitFor(() => expect(score).toHaveBeenCalledWith('hello-app', 'hello-001'));
+  });
+
+  it('keeps the start in the review panel of the backlog screen, where no score banner stands', async () => {
+    window.history.replaceState(null, '', '/?vista=backlog');
     journal.events = [];
-    vi.spyOn(refineApi, 'snapshot').mockResolvedValue(withScore(undefined));
+    const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {}, flowHeadings: [] };
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageState({ status: 'ready', backlog, readiness: { cycle: 1, available: true, model: 'jev-1.13.0', average: 0.9, docs: null, usage: null, outdated: false } }));
     renderPage();
     await screen.findByTestId('start');
     expect(screen.queryByTestId('readiness-start')).toBeNull();
-  });
-
-  it('asks the Jev for the score from the banner', async () => {
-    journal.events = [];
-    vi.spyOn(refineApi, 'snapshot').mockResolvedValue(withScore(undefined));
-    const score = vi.spyOn(refineApi, 'score').mockResolvedValue(undefined as never);
-    renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Avaliar com o Jev' }));
-    expect(score).toHaveBeenCalledWith('hello-app', 'hello-001');
   });
 });
 

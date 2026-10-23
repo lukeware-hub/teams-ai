@@ -392,6 +392,8 @@ export interface RefineState {
   readiness?: Readiness;
   /** The documents the owner moved on from, in order, and the round the current stage began at. */
   doneStages?: string[];
+  /** The documents whose passed text is kept, so a stage can be reprocessed from it. */
+  passedStages?: string[];
   stageStartCycle?: number;
   stages?: boolean;
   confidential?: boolean;
@@ -458,7 +460,8 @@ export const refineApi = {
   start: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/start`).then((r) => json<{ runId: string; program?: ProgramView }>(r)),
   score: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/score`).then((r) => json<{ ok: true }>(r)),
   scoreDoc: (p: string, s: string, file: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/score`).then((r) => json<{ ok: true }>(r)),
-  continueStage: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/stage/continue`).then((r) => json<{ ok: true }>(r)),
+  continueStage: (p: string, s: string, doc?: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/stage/continue`, doc ? { doc } : undefined).then((r) => json<{ ok: true }>(r)),
+  reprocessStage: (p: string, s: string, file: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/reprocess`).then((r) => json<{ ok: true }>(r)),
   evaluateStage: (p: string, s: string, file: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/evaluate`).then((r) => json<{ ok: true }>(r)),
   confidential: (p: string, s: string, confidential: boolean) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/confidential`, { confidential }).then((r) => json<{ ok: true }>(r)),
   program: (p: string, s: string) => fetch(`${R}/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/program`).then((r) => json<{ program: ProgramView | null }>(r)),
