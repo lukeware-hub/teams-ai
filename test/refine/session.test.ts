@@ -624,12 +624,19 @@ describe('RefineSession stage review', () => {
     await c.close();
   });
 
-  it('a stage review of a document that is not the current stage is refused at once, and starts nothing', async () => {
+  it('a stage review may start on any document of a stage session, not only the current one', async () => {
     const s = await RefineSession.create(deps(), 'new-project');
-    expect(() => s.evaluateStage('project.md')).toThrow(ConflictError);
-    expect(s.busy).toBe(false);
-    await s.continueStage();
-    expect(() => s.evaluateStage('flow.md')).toThrow(ConflictError);
+    await s.evaluateStage('project.md');
+    expect(s.state.cycle).toBe(1);
+    await s.close();
+  });
+
+  it('continues the named document, and refuses one that is already done or outside the five', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    await s.continueStage('briefing.md');
+    expect(s.state.doneStages).toEqual(['briefing.md']);
+    await expect(s.continueStage('briefing.md')).rejects.toBeInstanceOf(ConflictError);
+    await expect(s.continueStage('brief.md' as never)).rejects.toBeInstanceOf(ConflictError);
     await s.close();
   });
 

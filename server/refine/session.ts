@@ -274,12 +274,10 @@ export class RefineSession {
     return DOC_STAGES.find((file) => !(this.state.doneStages ?? []).includes(file));
   }
 
-  /** One review of the current stage's document: only that document changes and its score is taken. */
+  /** One review of a stage's document, the current one or any other: only that document changes. */
   evaluateStage(file: DocFile): Promise<void> {
     this.ensureCanEvaluate();
     if (this.state.stages !== true) throw new ConflictError('só um refinamento de projeto novo tem etapas');
-    const current = this.currentStage();
-    if (file !== current) throw new ConflictError(current ? `a etapa atual é ${current}, não ${file}` : 'todas as etapas já foram concluídas');
     this.guardRounds();
     const ctl = (this.abortCtl = new AbortController());
     const run = this.timedStage(ctl, file).finally(() => {
@@ -300,13 +298,15 @@ export class RefineSession {
     }
   }
 
-  /** The owner moves on from the current document's stage; the rounds of the next stage count from here. */
-  async continueStage(): Promise<void> {
+  /** The owner moves on from a document's stage, the named one or else the current one; the rounds of the next stage count from here. */
+  async continueStage(doc?: DocFile): Promise<void> {
     this.guard();
     if (this.state.stages !== true) throw new ConflictError('só um refinamento de projeto novo tem etapas');
-    const doc = this.currentStage();
-    if (!doc) throw new ConflictError('todas as etapas já foram concluídas');
-    await this.journal.fact(RefineEvent.StageAdvanced, { doc, cycle: this.state.cycle });
+    const target = doc ?? this.currentStage();
+    if (!target) throw new ConflictError('todas as etapas já foram concluídas');
+    if (!DOC_STAGES.includes(target)) throw new ConflictError(`${target} não é uma etapa do refinamento`);
+    if ((this.state.doneStages ?? []).includes(target)) throw new ConflictError(`a etapa ${target} já foi concluída`);
+    await this.journal.fact(RefineEvent.StageAdvanced, { doc: target, cycle: this.state.cycle });
   }
 
   /** The owner's answer on confidentiality; a stage session sends no document to the Jev until it comes. */

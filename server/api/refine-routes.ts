@@ -247,9 +247,11 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     {
       method: 'POST',
       path: `${S}/stage/continue`,
-      handler: wrap(async ({ params, json }) => {
-        await (await get(params)).continueStage();
-        json(200, { ok: true });
+      handler: wrap(async (ctx) => {
+        const doc = str(await optionalBody(ctx), 'doc', true);
+        if (doc && !DOC_STAGES.includes(doc as DocFile)) throw new HttpError(400, `unknown doc ${doc}`);
+        await (await get(ctx.params)).continueStage(doc ? (doc as DocFile) : undefined);
+        ctx.json(200, { ok: true });
       }),
     },
     {
