@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { suggestPack } from '../../server/refine/suggest.js';
+import { reshapePack, suggestPack } from '../../server/refine/suggest.js';
 import type { DocFile } from '../../server/refine/draft.js';
 
 const docs: Record<DocFile, string> = {
@@ -40,5 +40,26 @@ describe('suggestPack (Sugerir)', () => {
     expect(feedback).toContain('### current briefing.md\n# Briefing\n\n## Decisões');
     expect(feedback).toContain('### project.md');
     expect(feedback).not.toContain('### briefing.md');
+  });
+});
+
+describe('reshapePack (Reformatar)', () => {
+  const current = '# Briefing\n\nTexto solto do dono.';
+  const reshape = (file: 'briefing.md' | 'stack.md') => reshapePack({ file, projectId: 'shop', specHash: 'sha256:' + 'a'.repeat(64), current });
+
+  it('reads only the file and its template, and runs as a read-only role', () => {
+    expect(reshape('briefing.md').role).toBe('po');
+    expect(reshape('stack.md').role).toBe('sm');
+    const feedback = reshape('briefing.md').feedback ?? '';
+    expect(feedback).toContain(`### current briefing.md\n${current}`);
+    expect(feedback).toContain('## Acceptance criteria');
+    expect(feedback).not.toContain('### project.md');
+    expect(feedback).toContain('Do not edit any file.');
+  });
+
+  it('keeps the recorded decisions word for word and marks a section that does not apply', () => {
+    const feedback = reshape('briefing.md').feedback ?? '';
+    expect(feedback).toContain('"## Decisões" and "## Ajuste aprovado" word for word');
+    expect(feedback).toContain('"- (not applicable)"');
   });
 });

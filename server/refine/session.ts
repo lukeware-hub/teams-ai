@@ -15,6 +15,7 @@ import type { Workspace } from '../orchestrator/workspace.js';
 import { EventStore, type StoredEvent } from '../store/event-store.js';
 import { isConfidential, recordScore, runCycle, type CycleDeps, type RunAgent } from './cycle.js';
 import { DOC_STAGES } from './doc-stages.js';
+import { reshapeBackup } from './reshape.js';
 import { runStageCycle } from './stage-cycle.js';
 import { scoresDocs } from './readiness.js';
 import { decisionsSpan, recordDecision, withDecisions } from './decisions.js';
@@ -586,6 +587,19 @@ export class RefineSession {
     await this.journal.fact(RefineEvent.DocEdited, { file: row.from, hash: sha256(restored.from), source: 'undo' });
     await this.journal.fact(RefineEvent.DocEdited, { file: row.to, hash: sha256(restored.to), source: 'undo' });
     await this.journal.fact(RefineEvent.DocMoveUndone, { moveId });
+  }
+
+  /** Puts back the text a reshape replaced, when the document has not changed since. */
+  async undoReshape(reshapeId: string): Promise<void> {
+    this.guard();
+    const row = this.state.reshapes.find((r) => r.reshapeId === reshapeId);
+    if (!row) throw new NotFoundError(`unknown reshape ${reshapeId}`);
+    if (row.status !== 'applied') throw new ConflictError(`reshape ${reshapeId} already undone`);
+    if (sha256(await readDoc(this.deps.draft, row.file)) !== row.afterHash) throw new ConflictError('Esta reorganização não pode ser desfeita: o arquivo mudou depois dela.');
+    const before = await fs.readFile(reshapeBackup(this.deps.draft, reshapeId), 'utf8');
+    await writeDoc(this.deps.draft, row.file, before);
+    await this.journal.fact(RefineEvent.DocEdited, { file: row.file, hash: sha256(await readDoc(this.deps.draft, row.file)), source: 'undo' });
+    await this.journal.fact(RefineEvent.DocReshapeUndone, { reshapeId });
   }
 
   async writeSecret(name: string, value: string): Promise<void> {

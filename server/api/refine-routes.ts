@@ -192,6 +192,14 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       }),
     },
     {
+      method: 'POST',
+      path: `${S}/reshapes/:reshapeId/undo`,
+      handler: wrap(async ({ params, json }) => {
+        await (await get(params)).undoReshape(params.reshapeId!);
+        json(200, { ok: true });
+      }),
+    },
+    {
       method: 'PUT',
       path: `${S}/secrets/:name`,
       handler: wrap(async ({ params, body, json }) => {

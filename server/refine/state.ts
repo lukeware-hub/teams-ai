@@ -54,6 +54,15 @@ export interface MoveRow {
   toHash: string;
   status: 'applied' | 'undone';
 }
+/** A stage document rewritten in its template's shape; undo puts back the text kept on disk, while the document is unchanged. */
+export interface ReshapeRow {
+  reshapeId: string;
+  file: DocFile;
+  cycle: number;
+  role: 'po' | 'sm' | 'front';
+  afterHash: string;
+  status: 'applied' | 'undone';
+}
 /** One backlog item's derived spec; `spec` is null when the last attempt failed (`issues` says why). */
 export interface SpecRow {
   inputHash: string;
@@ -112,6 +121,7 @@ export interface RefineState {
   questions: QuestionRow[];
   patches: PatchRow[];
   moves: MoveRow[];
+  reshapes: ReshapeRow[];
   /** The hash of each document as the last reorganization pass left it; a document whose hash differs is read again. */
   reorganized: Partial<Record<DocFile, string>>;
   /** The findings whose quotes the documents show: a full round replaces them all, a stage review only those of the documents it covers. */
@@ -173,6 +183,7 @@ export const emptyRefineState = (): RefineState => ({
   questions: [],
   patches: [],
   moves: [],
+  reshapes: [],
   reorganized: {},
   findings: [],
   discarded: [],
@@ -320,6 +331,14 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     case RefineEvent.DocMoveUndone: {
       const m = s.moves.find((x) => x.moveId === String(d.moveId));
       if (m) m.status = 'undone';
+      break;
+    }
+    case RefineEvent.DocReshaped:
+      s.reshapes.push({ ...(d as unknown as Omit<ReshapeRow, 'status'>), status: 'applied' });
+      break;
+    case RefineEvent.DocReshapeUndone: {
+      const r = s.reshapes.find((x) => x.reshapeId === String(d.reshapeId));
+      if (r) r.status = 'undone';
       break;
     }
     case RefineEvent.QuestionAnswered:

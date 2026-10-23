@@ -295,6 +295,14 @@ export interface MoveRow {
   text: string;
   status: 'applied' | 'undone';
 }
+/** A stage document the agents rewrote in its template's shape; the owner can undo it while the document is unchanged. */
+export interface ReshapeRow {
+  reshapeId: string;
+  file: string;
+  cycle: number;
+  role: 'po' | 'sm' | 'front';
+  status: 'applied' | 'undone';
+}
 export interface BacklogViewItem {
   key: string;
   title: string;
@@ -389,6 +397,7 @@ export interface RefineState {
   questions: QuestionRow[];
   patches: PatchRow[];
   moves: MoveRow[];
+  reshapes: ReshapeRow[];
   discarded: Array<{ cycle: number; role: string; file: string; reason: string }>;
   error: string | null;
   runId: string | null;
@@ -455,6 +464,7 @@ export const refineApi = {
   suggestDesignFromImages: (p: string, s: string, images: { data: string }[]) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/design.md/images`, { images }).then((r) => json<{ text: string }>(r)),
   enableBacklog: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/backlog`).then((r) => json<{ ok: true }>(r)),
   undoMove: (p: string, s: string, moveId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/moves/${encodeURIComponent(moveId)}/undo`).then((r) => json<{ ok: true }>(r)),
+  undoReshape: (p: string, s: string, reshapeId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/reshapes/${encodeURIComponent(reshapeId)}/undo`).then((r) => json<{ ok: true }>(r)),
   evaluate: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/evaluate`).then((r) => json<{ state: string }>(r)),
   answer: (p: string, s: string, questionId: string, text: string, docsAnswered = false) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/answers`, { questionId, text, docsAnswered }).then((r) => json<{ ok: true }>(r)),
   skip: (p: string, s: string, questionId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/questions/${encodeURIComponent(questionId)}/skip`).then((r) => json<{ ok: true }>(r)),

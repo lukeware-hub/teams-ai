@@ -10,6 +10,7 @@ import { ConflictError, programEntries, RefineSession } from '../../server/refin
 import type { BacklogState } from '../../server/refine/state.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 import { calls, makeFakeRunAgent, type Script } from '../fixtures/fake-run-agent.js';
+import { LOOSE_BRIEF, SHAPED_BRIEF } from '../fixtures/briefing-shape.js';
 
 let root = '';
 let ws: Workspace;
@@ -644,6 +645,33 @@ describe('RefineSession stage review', () => {
     await s.continueStage();
     await s.evaluateStage('project.md');
     expect(s.state.cycle).toBe(2);
+    await s.close();
+  });
+
+  it('reshapes the stage document into its template, and undo puts back the text it had', async () => {
+    await writeDoc(draft(), 'briefing.md', LOOSE_BRIEF);
+    const s = await RefineSession.create(deps(), 'new-project');
+    script['suggest/po'] = [{ text: SHAPED_BRIEF }];
+    script['refine/po'] = [refineOut(green(PO))];
+    await s.evaluateStage('briefing.md');
+    expect(s.state.reshapes).toMatchObject([{ reshapeId: 'reshape-c1', file: 'briefing.md', status: 'applied' }]);
+    expect(await readDoc(draft(), 'briefing.md')).toBe(SHAPED_BRIEF);
+    await s.undoReshape('reshape-c1');
+    expect(s.state.reshapes[0]!.status).toBe('undone');
+    expect(await readDoc(draft(), 'briefing.md')).toBe(LOOSE_BRIEF);
+    await expect(s.undoReshape('reshape-c1')).rejects.toBeInstanceOf(ConflictError);
+    await s.close();
+  });
+
+  it('refuses to undo a reshape once the document changed after it', async () => {
+    await writeDoc(draft(), 'briefing.md', LOOSE_BRIEF);
+    const s = await RefineSession.create(deps(), 'new-project');
+    script['suggest/po'] = [{ text: SHAPED_BRIEF }];
+    script['refine/po'] = [refineOut(green(PO))];
+    await s.evaluateStage('briefing.md');
+    await s.saveDoc('briefing.md', `${await readDoc(draft(), 'briefing.md')}\nEditado pelo dono.\n`);
+    await expect(s.undoReshape('reshape-c1')).rejects.toThrow(/mudou depois dela/);
+    expect(s.state.reshapes[0]!.status).toBe('applied');
     await s.close();
   });
 

@@ -58,6 +58,10 @@ Quando um agente encontra um trecho no documento errado (por exemplo, a ordem de
 
 A cada avaliação, cada documento alterado desde a última avaliação é lido por inteiro e conferido contra as regras de cada documento. Um trecho que claramente pertence a outro documento é movido. Um trecho que pode ficar em mais de um lugar não é movido: vira uma pergunta, com as opções para você escolher. Documentos que não mudaram não são lidos de novo.
 
+## Formato do modelo
+
+Ao processar uma etapa, o documento da etapa é reescrito no formato do seu modelo: as seções do modelo, na mesma ordem, com os textos de exemplo trocados pelo conteúdo real. Um texto que está em outra seção vai para a seção a que pertence, e nenhum fato é apagado. O aviso no topo da tela traz **Desfazer**, que devolve o texto anterior enquanto o documento não mudou depois da reescrita. As decisões já registradas no briefing.md não são alteradas.
+
 ## Segredos
 
 Se a spec depende de uma chave de outro serviço, a seção **Segredos** guarda o valor. Ela não bloqueia a spec: sem a chave salva, a spec fica pronta, mas o serviço que depende dela pode não funcionar até a chave ser salva. Os agentes nunca veem o valor.

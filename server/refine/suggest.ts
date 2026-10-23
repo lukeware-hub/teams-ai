@@ -10,7 +10,7 @@ export type SuggestFile = Exclude<DocFile, 'flow.md'>;
 /** Read-only roles only: a suggestion returns text and must never touch the draft (Front may edit and run Bash). */
 export const SUGGEST_ROLE: Record<SuggestFile, 'po' | 'sm'> = { 'project.md': 'po', 'briefing.md': 'po', 'stack.md': 'sm', 'design.md': 'po' };
 
-const TEMPLATE: Record<SuggestFile, (projectId: string) => string> = { 'project.md': projectTemplate, 'briefing.md': briefTemplate, 'stack.md': stackTemplate, 'design.md': designTemplate };
+export const TEMPLATE: Record<SuggestFile, (projectId: string) => string> ={ 'project.md': projectTemplate, 'briefing.md': briefTemplate, 'stack.md': stackTemplate, 'design.md': designTemplate };
 
 /** Every document of the refinement draft. */
 export const DOC_FILES: DocFile[] = ['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md'];
@@ -29,6 +29,21 @@ export function suggestPack(input: { file: SuggestFile; projectId: string; specH
     '- Write the content in Brazilian Portuguese. Do not edit any file.',
     viewed,
     `### current ${input.file}\n${input.docs[input.file].trim() || '(empty)'}`,
+    `### template\n${TEMPLATE[input.file](input.projectId)}`,
+  ].join('\n\n');
+  return { kind: 'suggest', role: SUGGEST_ROLE[input.file], specHash: input.specHash, principles: [], outputContract: outputContract('suggest'), criteria: [], feedback, budgetTokens: 30_000 };
+}
+
+/** Reformatar: one step that rewrites `file` in the shape of its template, from its own text only. */
+export function reshapePack(input: { file: SuggestFile; projectId: string; specHash: string; current: string }): ContextPackInput {
+  const feedback = [
+    `Write the complete docs/${input.file} in \`text\`, in the shape of the template below.`,
+    '- Keep every heading of the template, in its order, and add no other heading: fold the text under any other heading into the template section it belongs to.',
+    '- Replace each placeholder of the template, the text between < and >, with the real content of the current file; a line with no real content is removed; a section with no content gets "- (none)"; a section that does not apply gets "- (not applicable)".',
+    '- Keep every fact of the current file: reword only to fit the shape; never drop, invent or change a fact.',
+    '- Keep the sections "## Decisões" and "## Ajuste aprovado" word for word.',
+    '- Write the content in Brazilian Portuguese. Do not edit any file.',
+    `### current ${input.file}\n${input.current.trim() || '(empty)'}`,
     `### template\n${TEMPLATE[input.file](input.projectId)}`,
   ].join('\n\n');
   return { kind: 'suggest', role: SUGGEST_ROLE[input.file], specHash: input.specHash, principles: [], outputContract: outputContract('suggest'), criteria: [], feedback, budgetTokens: 30_000 };

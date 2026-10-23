@@ -11,6 +11,7 @@ import type { RunAgent } from '../../server/refine/cycle.js';
 import { openProjectKnowledge } from '../../server/knowledge/project-docs.js';
 import { KnowledgeIndex } from '../../server/knowledge/retrieval.js';
 import { SessionRegistry } from '../../server/refine/registry.js';
+import { LOOSE_BRIEF, SHAPED_BRIEF } from '../fixtures/briefing-shape.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 import { calls, makeFakeRunAgent, type Script } from '../fixtures/fake-run-agent.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';
@@ -556,6 +557,19 @@ describe('refine api', () => {
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/docs/flow.md/evaluate')).status).toBe(202);
     for (let i = 0; i < 200 && (await snapshot()).busy; i += 1) await new Promise((r) => setTimeout(r, 20));
     expect((await snapshot()).busy).toBe(false);
+  });
+
+  it('undo of a reshape puts the stage document back and answers 200; a second undo is refused with 409', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    await call('PUT', '/api/refine/hello-app/hello-app-001/docs/briefing.md', { text: LOOSE_BRIEF });
+    script['suggest/po'] = [{ text: SHAPED_BRIEF }];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/docs/briefing.md/evaluate')).status).toBe(202);
+    for (let i = 0; i < 200 && (await snapshot()).busy; i += 1) await new Promise((r) => setTimeout(r, 20));
+    expect((await snapshot()).state.reshapes).toMatchObject([{ reshapeId: 'reshape-c1', status: 'applied' }]);
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/reshapes/reshape-c1/undo')).status).toBe(200);
+    expect((await snapshot()).docs['briefing.md']).toBe(LOOSE_BRIEF);
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/reshapes/reshape-c1/undo')).status).toBe(409);
   });
 
   it('a stage review is refused with 409 in a spec, which has no stages', async () => {

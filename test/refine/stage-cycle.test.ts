@@ -8,6 +8,7 @@ import { RefineEvent } from '../../server/refine/events.js';
 import { runStageCycle, stageReviewPack } from '../../server/refine/stage-cycle.js';
 import { PackTooLargeError } from '../../server/refine/fit-pack.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
+import { LOOSE_BRIEF, SHAPED_BRIEF } from '../fixtures/briefing-shape.js';
 
 /** A journal that folds each fact into its state, as the session's journal does. */
 function foldingJournal() {
@@ -46,6 +47,116 @@ const passes = (reorg: unknown, review: unknown) => vi.fn(async (req: { pack: { 
 
 const REORGANIZE_FAILED = 'A reorganização de project.md não devolveu o resultado em formato válido. Clique em Reavaliar.';
 const REVIEW_FAILED = 'A revisão de project.md não devolveu o resultado em formato válido. Clique em Reavaliar.';
+
+/** A reshape answer: the whole document as the agent writes it back. */
+const reshaped = (text: string) => ({ ...answer([]), value: { specHash: 'draft', text } });
+/** The agent answers a reshape (kind suggest) with `suggest`, and every review (kind refine) with an empty answer. */
+const agentFor = (suggest: () => unknown) => vi.fn(async (req: { kind: string }) => (req.kind === 'suggest' ? suggest() : answer([])));
+type Agent = ReturnType<typeof agentFor>;
+const suggestCalls = (runAgent: Agent) => runAgent.mock.calls.filter(([req]) => req.kind === 'suggest');
+/** The feedback of the owner's review of the briefing, which carries the document as the stage now holds it. */
+const reviewFeedback = (runAgent: Agent) => runAgent.mock.calls.map(([req]) => (req as { pack?: { feedback?: string } }).pack?.feedback ?? '').find((f) => f.includes('### briefing.md (this stage)')) ?? '';
+const stageReviewed = (journal: ReturnType<typeof foldingJournal>) => journal.events.find((e) => e.type === RefineEvent.StageReviewed)?.data;
+
+describe('runStageCycle reshapes the stage document to its template', () => {
+  it('rewrites the document in the template shape, and the review reads the new text', async () => {
+    const draft = await newDraft();
+    await writeDoc(draft, 'briefing.md', LOOSE_BRIEF);
+    const journal = foldingJournal();
+    const runAgent = agentFor(() => reshaped(SHAPED_BRIEF));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    expect(await readDoc(draft, 'briefing.md')).toBe(SHAPED_BRIEF);
+    expect(journal.events.find((e) => e.type === RefineEvent.DocReshaped)?.data).toMatchObject({ file: 'briefing.md', cycle: 1, role: 'po' });
+    expect(reviewFeedback(runAgent)).toContain(SHAPED_BRIEF);
+    expect(reviewFeedback(runAgent)).not.toContain('Regras de negócio');
+  });
+
+  it('sends no document that already follows the template', async () => {
+    const draft = await newDraft();
+    await writeDoc(draft, 'briefing.md', SHAPED_BRIEF);
+    const journal = foldingJournal();
+    const runAgent = agentFor(() => reshaped(LOOSE_BRIEF));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    expect(suggestCalls(runAgent)).toHaveLength(0);
+    expect(await readDoc(draft, 'briefing.md')).toBe(SHAPED_BRIEF);
+  });
+
+  it('sends no document that is still the untouched template', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    const runAgent = agentFor(() => reshaped(SHAPED_BRIEF));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    expect(suggestCalls(runAgent)).toHaveLength(0);
+  });
+
+  it('never reshapes the flow document', async () => {
+    const draft = await newDraft();
+    await writeDoc(draft, 'flow.md', '# Fluxo\n\nTexto solto.\n');
+    const journal = foldingJournal();
+    const runAgent = agentFor(() => reshaped('# Fluxo\n'));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'flow.md');
+    expect(suggestCalls(runAgent)).toHaveLength(0);
+    expect(await readDoc(draft, 'flow.md')).toBe('# Fluxo\n\nTexto solto.\n');
+  });
+
+  it('asks once more, with the reason, when the first reshape breaks the template', async () => {
+    const draft = await newDraft();
+    await writeDoc(draft, 'briefing.md', LOOSE_BRIEF);
+    const journal = foldingJournal();
+    const answers = [reshaped(LOOSE_BRIEF), reshaped(SHAPED_BRIEF)];
+    const runAgent = agentFor(() => answers.shift());
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    expect(suggestCalls(runAgent)).toHaveLength(2);
+    expect(suggestCalls(runAgent)[1]![0]).toMatchObject({ pack: { feedback: expect.stringContaining('as seções não seguem o modelo') } });
+    expect(await readDoc(draft, 'briefing.md')).toBe(SHAPED_BRIEF);
+  });
+
+  it('keeps the file as it was when the reshape is refused twice, and the review says why', async () => {
+    const draft = await newDraft();
+    await writeDoc(draft, 'briefing.md', LOOSE_BRIEF);
+    const journal = foldingJournal();
+    const runAgent = agentFor(() => reshaped(LOOSE_BRIEF));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    expect(suggestCalls(runAgent)).toHaveLength(2);
+    expect(await readDoc(draft, 'briefing.md')).toBe(LOOSE_BRIEF);
+    expect(stageReviewed(journal)).toMatchObject({ discardedPatches: [{ role: 'po', file: 'briefing.md', reason: expect.stringMatching(/^Não reorganizei briefing\.md no modelo: as seções não seguem/) }] });
+  });
+
+  it('a reshape that fails does not stop the review, and changes nothing', async () => {
+    const draft = await newDraft();
+    await writeDoc(draft, 'briefing.md', LOOSE_BRIEF);
+    const journal = foldingJournal();
+    const runAgent = agentFor(() => { throw new Error('agent down'); });
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    expect(journal.events.some((e) => e.type === RefineEvent.CycleFailed)).toBe(false);
+    expect(stageReviewed(journal)).toMatchObject({ discardedPatches: [{ role: 'po', file: 'briefing.md', reason: expect.stringMatching(/o agente parou/) }] });
+    expect(await readDoc(draft, 'briefing.md')).toBe(LOOSE_BRIEF);
+  });
+
+  it('keeps the text a person wrote while the reshape was running', async () => {
+    const draft = await newDraft();
+    await writeDoc(draft, 'briefing.md', LOOSE_BRIEF);
+    const journal = foldingJournal();
+    const runAgent = agentFor(async () => {
+      await writeDoc(draft, 'briefing.md', '# Mudou\n');
+      return reshaped(SHAPED_BRIEF);
+    });
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    expect(await readDoc(draft, 'briefing.md')).toBe('# Mudou\n');
+    expect(journal.events.some((e) => e.type === RefineEvent.DocReshaped)).toBe(false);
+    expect(stageReviewed(journal)).toMatchObject({ discardedPatches: [{ role: 'po', file: 'briefing.md', reason: expect.stringMatching(/mudou durante a reorganização/) }] });
+  });
+
+  it('drops a pending patch that the reshape takes away', async () => {
+    const draft = await newDraft();
+    await writeDoc(draft, 'briefing.md', LOOSE_BRIEF);
+    const journal = foldingJournal();
+    journal.state.patches.push({ patchId: 'po-c0-0', role: 'po', file: 'briefing.md', find: '- Pedido só com pagamento.', replace: '- Pedido pago.', reason: 'r', diff: '', cycle: 0, status: 'pending', decision: null } as never);
+    const runAgent = agentFor(() => reshaped(SHAPED_BRIEF));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    expect(journal.events.find((e) => e.type === RefineEvent.PatchDropped)?.data).toMatchObject({ patchId: 'po-c0-0' });
+  });
+});
 
 describe('runStageCycle', () => {
   it('proposes changes to the stage document only and records the questions, with no score taken', async () => {
@@ -318,7 +429,7 @@ describe('runStageCycle', () => {
     await writeDoc(draft, 'briefing.md', '# Briefing\n\nFIM-DO-BRIEFING');
     const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
-    const review = (runAgent.mock.calls[1]![0] as { pack: { feedback: string } }).pack.feedback;
+    const review = runAgent.mock.calls.map(([req]) => (req as { pack: { feedback: string } }).pack.feedback).find((f) => f.includes('### briefing.md (this stage)'))!;
     expect(review).not.toContain('FIM-DO-PROJETO');
     expect(review).toContain('FIM-DO-BRIEFING');
     expect(review).toContain('(context only, a digest)');

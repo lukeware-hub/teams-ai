@@ -149,6 +149,15 @@ export const titlesOf = (texts: readonly string[]) => texts.flatMap((t) => [...t
 /** Texts of the questions waiting for the owner, the ones of this cycle's reorganization included. */
 const askedTexts = (s: RefineState, pending: ReadonlyArray<{ text: string }>) => [...s.questions.filter((q) => q.status === 'pending').map((q) => q.text), ...pending.map((q) => q.text)];
 
+/** A pending suggestion whose quoted text no longer stands in its document leaves the list now, as after an accepted patch. */
+export async function dropCoveredPatches(journal: CycleJournal, docs: Record<DocFile, string>, files: readonly DocFile[]): Promise<void> {
+  for (const p of journal.state.patches) {
+    if (p.status === 'pending' && files.includes(p.file) && applyPatch(docs[p.file], p) === null) {
+      await journal.fact(RefineEvent.PatchDropped, { patchId: p.patchId, reason: COVERED_REASON });
+    }
+  }
+}
+
 /** Applies the moves role by role (Front, PO, SM), each against the documents as the earlier ones left them; a refused move is discarded with its reason. */
 export async function applyMoves(
   journal: CycleJournal,
@@ -199,12 +208,7 @@ export async function applyMoves(
         moveId: `move-${role}-c${cycle}-${index++}`, role, cycle, from, to, reason: move.reason, quote: move.quote, text: move.text.trim(),
         removedAt: cut.removedAt, removed: cut.removed, insertAt: put.insertAt, inserted: put.inserted, fromHash, toHash,
       });
-      // A pending suggestion that quoted the moved text no longer applies: it leaves the list now, as after an accepted patch.
-      for (const p of journal.state.patches) {
-        if (p.status === 'pending' && (p.file === from || p.file === to) && applyPatch(docs[p.file], p) === null) {
-          await journal.fact(RefineEvent.PatchDropped, { patchId: p.patchId, reason: COVERED_REASON });
-        }
-      }
+      await dropCoveredPatches(journal, docs, [from, to]);
     }
   }
 }

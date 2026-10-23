@@ -25,6 +25,14 @@ describe('confidentiality answer and document stages', () => {
   });
 });
 
+describe('reduceRefineEvents reshapes', () => {
+  it('folds a reshape into the list with its status, and an undo marks it undone', () => {
+    const row = { reshapeId: 'reshape-c1', file: 'briefing.md', cycle: 1, role: 'po', afterHash: 'h' };
+    const s = reduceRefineEvents([{ type: RefineEvent.DocReshaped, data: row }, { type: RefineEvent.DocReshapeUndone, data: { reshapeId: 'reshape-c1' } }]);
+    expect(s.reshapes).toEqual([{ ...row, status: 'undone' }]);
+  });
+});
+
 describe('reduceRefineEvents moves and findings', () => {
   it('folds a move into the list with its status, and an undo marks it undone', () => {
     const row = { moveId: 'move-po-c1-0', role: 'po', cycle: 1, from: 'project.md', to: 'flow.md', reason: 'r', quote: 'q', text: 't', removedAt: 0, removed: 'q\n', insertAt: 3, inserted: '\nt\n', fromHash: 'a', toHash: 'b' };
