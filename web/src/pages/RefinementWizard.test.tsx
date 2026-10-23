@@ -261,7 +261,12 @@ describe('the actions of the editor', () => {
   it('attaches a text file to the document on screen, and saves it', async () => {
     const handlers = show(base({ doneStages: ['flow.md'] }));
     fireEvent.change(screen.getByTestId('attach-doc'), { target: { files: [new File(['# Projeto novo'], 'projeto.md', { type: 'text/markdown' })] } });
-    fireEvent.click(await screen.findByTestId('stage-confirm'));
+    const dialog = await screen.findByTestId('stage-confirm');
+    expect(dialog.className).toContain('primary');
+    expect(dialog.className).not.toContain('confirm-danger');
+    expect(dialog.textContent).toContain('Anexar');
+    expect(document.querySelector('.confirm-icon')!.className).toContain('is-accent');
+    fireEvent.click(dialog);
     await waitFor(() => expect(editor('project.md').value).toBe('# Projeto novo'));
     expect(handlers.onSaveDoc).toHaveBeenCalledWith('project.md', '# Projeto novo');
   });
@@ -293,6 +298,7 @@ describe('the actions of the editor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
     expect(handlers.onSaveDoc).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Não se aplica' }));
+    expect(screen.getByTestId('stage-confirm').className).not.toContain('confirm-danger');
     fireEvent.click(screen.getByTestId('stage-confirm'));
     expect(handlers.onSaveDoc).toHaveBeenCalledWith('design.md', expect.stringContaining('Não se aplica'));
   });

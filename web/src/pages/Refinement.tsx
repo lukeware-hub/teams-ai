@@ -273,7 +273,7 @@ export function RefinementView(p: ViewProps) {
   const [docs, setDocs] = useState(snap.docs);
   const [suggesting, setSuggesting] = useState(false);
   const [askRe, setAskRe] = useState(false);
-  const [ask, setAsk] = useState<{ title: string; text: string; confirmLabel: string; tone?: 'danger' | 'accent'; icon?: 'trash' | 'refresh'; onConfirm: () => void } | null>(null);
+  const [ask, setAsk] = useState<{ title: string; text: string; confirmLabel: string; tone?: 'danger' | 'accent'; icon?: 'trash' | 'refresh' | 'file' | 'check'; onConfirm: () => void } | null>(null);
   // A new project is refined one document per screen; the step lives in the address, so a reload opens the same screen.
   const [step, setStep] = useState<WizardStep>(() => initialStep(snap.state, new URLSearchParams(window.location.search).get('etapa')));
   // The backlog and its run keep their own screen, named in the address; a project already running opens on it.
@@ -468,11 +468,11 @@ export function RefinementView(p: ViewProps) {
     </ConfirmDialog>
   ) : null;
   /** Replacing a document that holds text asks the owner first; an empty one is replaced at once. */
-  const replaceDoc = (doc: DocFile, title: string, text: string, apply: () => void) => {
+  const replaceDoc = (doc: DocFile, dialog: { title: string; text: string; confirmLabel: string; icon: 'file' | 'check' }, apply: () => void) => {
     if (docs[doc].trim() === '') apply();
-    else setAsk({ title, text, confirmLabel: 'Substituir', onConfirm: apply });
+    else setAsk({ ...dialog, tone: 'accent', onConfirm: apply });
   };
-  const markNotApplicable = () => replaceDoc('design.md', 'Marcar o design como não se aplica', 'O texto do design será substituído por "Não se aplica".', () => {
+  const markNotApplicable = () => replaceDoc('design.md', { title: 'Marcar o design como não se aplica', text: 'O texto do design será trocado por "Não se aplica".', confirmLabel: 'Marcar', icon: 'check' }, () => {
     setDocs((d) => ({ ...d, 'design.md': NOT_APPLICABLE_DESIGN }));
     p.onSaveDoc('design.md', NOT_APPLICABLE_DESIGN);
   });
@@ -481,7 +481,7 @@ export function RefinementView(p: ViewProps) {
     if (!file) return;
     const text = await readText(file).catch(() => null);
     if (text === null) return;
-    replaceDoc(doc, 'Substituir o texto do documento', 'O texto deste documento será substituído pelo arquivo anexado.', () => {
+    replaceDoc(doc, { title: 'Anexar o arquivo', text: 'O texto atual deste documento será trocado pelo arquivo anexado.', confirmLabel: 'Anexar', icon: 'file' }, () => {
       setDocs((d) => ({ ...d, [doc]: text }));
       p.onSaveDoc(doc, text);
     });
