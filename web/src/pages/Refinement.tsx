@@ -45,7 +45,8 @@ const jevCheckLabel: Record<string, string> = {
   health_aligned: 'health check divergente',
 };
 const errorText = (text: string | null) => text
-  ?.replace(/^Jev bloqueou a derivação:/, 'O Jev encontrou pontos para revisão:')
+  ?.replace(/^.*(OAuth session expired|Failed to authenticate).*$/s, 'A sessão do Claude expirou. Entre de novo no Claude em Configurações e processe de novo.')
+  ?.replace(/^Jev bloqueou a derivação:/,'O Jev encontrou pontos para revisão:')
   ?.replace(/\binterrupted\b/gi, 'A avaliação foi interrompida. Clique em Reavaliar para tentar novamente.')
   .replaceAll('failed', 'falhou')
   .replaceAll('timeout', 'tempo limite excedido')

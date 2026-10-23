@@ -83,6 +83,16 @@ describe('RefinementPage of a new project', () => {
   });
 });
 
+describe('RefinementPage errors', () => {
+  it('tells the owner to sign in to Claude again when the Claude session expired', async () => {
+    journal.events = [];
+    const s = snapshot(1);
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...s, state: { ...s.state, status: 'error', error: 'stage review failed: auth: Failed to authenticate: OAuth session expired and could not be refreshed' } as never });
+    render(<MemoryRouter initialEntries={['/refine/hello-app/hello-001']}><Routes><Route path="/refine/:projectId/:specId" element={<RefinementPage />} /></Routes></MemoryRouter>);
+    expect((await screen.findByRole('alert')).textContent).toBe('A sessão do Claude expirou. Entre de novo no Claude em Configurações e processe de novo.');
+  });
+});
+
 describe('RefinementPage journal replay', () => {
   it('applies only the events after the snapshot, so a reload after a failed cycle shows each patch once', async () => {
     journal.events = [event(1, 'REFINE_CYCLE_STARTED', { cycle: 1, draftHash: 'h' }), event(2, 'PATCH_PROPOSED', patch), event(3, 'REFINE_CYCLE_FAILED', { cycle: 1, reason: 'sm refine failed' })];
