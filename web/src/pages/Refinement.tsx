@@ -919,7 +919,7 @@ export function RefinementView(p: ViewProps) {
             <p data-testid="doc-impact" className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">{backlogOn && file === 'briefing.md' ? briefingImpact : docImpact[file]}</p>
           </header>
           {confidentialAsk}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="grid grid-cols-1 gap-2 *:w-full @3xl:flex @3xl:flex-wrap @3xl:items-center @3xl:*:w-auto" data-testid="editor-actions">
             <button type="button" className="secondary h-10 px-[0.8rem]" disabled={locked} onClick={() => docFileInput.current?.click()}>
               Anexar arquivo
               <Icon name="file" size={16} />
