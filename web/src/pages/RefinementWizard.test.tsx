@@ -131,14 +131,24 @@ describe('processing a stage', () => {
     expect(handlers.onEvaluate).toHaveBeenCalledTimes(1);
   });
 
-  it('offers Reprocessar only when the passed text is kept, and reprocesses this document', () => {
+  it('has one button that processes the first time and reprocesses once the passed text is kept', () => {
+    const first = show(base({ doneStages: ['flow.md'] }));
+    expect(screen.getByTestId('wizard-process').textContent).toContain('Processar com agentes');
+    expect(screen.queryByText('Reprocessar')).toBeNull();
+    fireEvent.click(screen.getByTestId('wizard-process'));
+    expect(first.onEvaluateStage).toHaveBeenCalledWith('project.md');
     cleanup();
-    show(base({ doneStages: ['flow.md'] }));
-    expect(screen.queryByTestId('wizard-reprocess')).toBeNull();
-    cleanup();
-    const handlers = show(base({ doneStages: ['flow.md'], passedStages: ['project.md'] }));
-    fireEvent.click(screen.getByTestId('wizard-reprocess'));
-    expect(handlers.onReprocessStage).toHaveBeenCalledWith('project.md');
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const again = show(base({ doneStages: ['flow.md'], passedStages: ['project.md'] }));
+    expect(screen.getByTestId('wizard-process').textContent).toContain('Reprocessar');
+    fireEvent.click(screen.getByTestId('wizard-process'));
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(again.onReprocessStage).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    fireEvent.click(screen.getByTestId('wizard-process'));
+    expect(again.onReprocessStage).toHaveBeenCalledWith('project.md');
+    expect(again.onEvaluateStage).not.toHaveBeenCalled();
+    confirm.mockRestore();
   });
 
   it('waits while a run is on, and says why when the rounds of the stage are used up', () => {

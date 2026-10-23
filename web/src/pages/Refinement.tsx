@@ -1041,6 +1041,8 @@ export function RefinementView(p: ViewProps) {
       </div>
     );
   };
+  // After the first processing the text passed is kept, so the one button of the stage reprocesses from it.
+  const reprocess = step !== 'review' && (st.passedStages ?? []).includes(step);
   const wizardActions = step === 'review' ? (
     <>
       <ActionButton data-testid="evaluate" className="secondary" busy={evaluating} disabled={locked || atMax} title="Se tudo passar, o backlog começa a ser montado" onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
@@ -1054,14 +1056,13 @@ export function RefinementView(p: ViewProps) {
     </>
   ) : (
     <>
-      <ActionButton data-testid="wizard-process" className="secondary" busy={evaluating} disabled={locked || atMax} title={atMax ? `Limite de ${snap.limits?.max} rodadas nesta etapa` : undefined} onClick={() => (stageSession ? p.onEvaluateStage?.(step) : p.onEvaluate())} icon={<Icon name="check" size={16} />}>
-        Processar com agentes
+      <ActionButton data-testid="wizard-process" className="secondary" busy={evaluating} disabled={locked || atMax} title={atMax ? `Limite de ${snap.limits?.max} rodadas nesta etapa` : undefined} onClick={() => {
+          if (!reprocess) return stageSession ? p.onEvaluateStage?.(step) : p.onEvaluate();
+          // Going back to the passed text drops the edits and the suggestions accepted since.
+          if (window.confirm('Reprocessar volta ao texto que você entregou e descarta as edições feitas depois. Continuar?')) return p.onReprocessStage?.(step);
+        }} icon={<Icon name={reprocess ? 'refresh' : 'check'} size={16} />}>
+        {reprocess ? 'Reprocessar' : 'Processar com agentes'}
       </ActionButton>
-      {(st.passedStages ?? []).includes(step) && (
-        <ActionButton data-testid="wizard-reprocess" className="secondary" disabled={locked || atMax} title="Volta ao texto que você entregou e processa de novo" onClick={() => p.onReprocessStage?.(step)} icon={<Icon name="refresh" size={16} />}>
-          Reprocessar
-        </ActionButton>
-      )}
       <ActionButton
         data-testid="wizard-continue"
         className="primary"
