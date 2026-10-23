@@ -4,7 +4,7 @@ import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { sha256 } from '../contracts/hash.js';
 import { outputContract } from '../orchestrator/steps.js';
 import type { StepOutcome } from '../runner/step.js';
-import { applyMoves, isConfidential, recordScore, titlesOf, type CycleJournal, type RunAgent, type ScoreDeps } from './cycle.js';
+import { applyMoves, isConfidential, titlesOf, type CycleJournal, type RunAgent } from './cycle.js';
 import { DIGEST_NOTE, docDigest } from './docs-view.js';
 import { DOC_STAGES, earlierDocs } from './doc-stages.js';
 import { draftHash, readDoc, type Draft, type DocFile } from './draft.js';
@@ -31,7 +31,6 @@ export interface StageCycleDeps {
   journal: CycleJournal;
   runAgent: RunAgent;
   frontAgent?: RunAgent;
-  scoreDocs?: ScoreDeps['scoreDocs'];
   validateDocs?: (docs: ValidationDocs, stage?: string) => Promise<JevValidationResult>;
   principles: () => readonly string[];
   signal?: AbortSignal;
@@ -138,7 +137,6 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     await journal.fact(RefineEvent.FindingsReported, { cycle, files: scope, findings });
     const divergences = (review.value.contradictions ?? []).filter((c) => inScope(c.a.file, draft.specId, scope) && inScope(c.b.file, draft.specId, scope)).map((c) => c.fact);
     await journal.fact(RefineEvent.StageReviewed, { cycle, file, questions, divergences, discardedPatches });
-    if (deps.scoreDocs) await recordScore({ draft, journal, scoreDocs: deps.scoreDocs }, cycle, await isConfidential(draft, journal.state), [file]);
   } catch (err) {
     await journal.fact(RefineEvent.CycleFailed, { cycle, reason: err instanceof Error ? err.message : String(err) });
   }

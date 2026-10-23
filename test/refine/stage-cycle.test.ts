@@ -44,7 +44,7 @@ const answer = (docPatch: unknown[], questions: unknown[] = [], contradictions: 
 const passes = (reorg: unknown, review: unknown) => vi.fn(async (req: { pack: { feedback?: string } }, _opts: unknown) => ((req.pack.feedback ?? '').includes('(reorganize in full)') ? reorg : review));
 
 describe('runStageCycle', () => {
-  it('proposes changes to the stage document only, records the questions, and takes that document’s score', async () => {
+  it('proposes changes to the stage document only and records the questions, with no score taken', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();
     const runAgent = passes(answer([]), answer(
@@ -54,14 +54,13 @@ describe('runStageCycle', () => {
       ],
       [{ id: 'q1', text: 'Qual o prazo?', blocking: true, relatedAcIds: [], options: [{ label: 'Trinta dias', detail: 'prazo curto', recommended: true }, { label: 'Sessenta dias', detail: 'prazo longo' }], subject: 'Prazo de entrega' }],
     ));
-    const scoreDocs = vi.fn(async (_docs: Record<string, string>, files?: readonly string[]) => ({ available: true, model: 'jev', average: 0.8, docs: Object.fromEntries((files ?? []).map((f) => [f, { score: 0.8, checks: { complete: 0.8, concrete: 0.8, consistent: 0.8, scoped: 0.8 } }])), usage: null }));
-    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], scoreDocs }, 1, 'project.md');
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
     const proposed = journal.events.filter((e) => e.type === RefineEvent.PatchProposed);
     expect(proposed).toHaveLength(1);
     expect(proposed[0]!.data).toMatchObject({ file: 'project.md', role: 'po', cycle: 1 });
     expect(journal.state.questions).toEqual([expect.objectContaining({ questionId: 'po-s1-0', text: 'Qual o prazo?', blocking: true, status: 'pending' })]);
-    expect(scoreDocs.mock.calls[0]![1]).toEqual(['project.md']);
-    expect(journal.state.readiness).toMatchObject({ available: true });
+    expect(journal.events.some((e) => e.type === RefineEvent.DocsScored)).toBe(false);
+    expect(journal.state.readiness).toBeUndefined();
   });
 
   it('a design document is reviewed by Front, and only when Front is wired; the other documents by their owner', async () => {

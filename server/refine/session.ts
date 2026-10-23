@@ -291,7 +291,7 @@ export class RefineSession {
   private async timedStage(ctl: AbortController, file: DocFile): Promise<void> {
     await this.journal.fact(RefineEvent.EvaluationStarted, {});
     try {
-      const deps = { draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, frontAgent: this.deps.frontAgent, scoreDocs: this.deps.scoreDocs, validateDocs: this.deps.validateDocs, principles: () => this.state.derived?.project.principles ?? [], signal: ctl.signal };
+      const deps = { draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, frontAgent: this.deps.frontAgent, validateDocs: this.deps.validateDocs, principles: () => this.state.derived?.project.principles ?? [], signal: ctl.signal };
       await runStageCycle(deps, this.state.cycle + 1, file);
     } finally {
       await this.journal.fact(RefineEvent.EvaluationEnded, {});
