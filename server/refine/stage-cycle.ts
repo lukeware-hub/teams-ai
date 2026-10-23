@@ -4,6 +4,7 @@ import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { sha256 } from '../contracts/hash.js';
 import { outputContract } from '../orchestrator/steps.js';
 import type { StepOutcome } from '../runner/step.js';
+import { failureMessage, internalErrorMessage, retryOnSchema, withNote } from './agent-failure.js';
 import { applyMoves, isConfidential, titlesOf, type CycleJournal, type RunAgent } from './cycle.js';
 import { DIGEST_NOTE, docDigest } from './docs-view.js';
 import { DOC_STAGES, earlierDocs } from './doc-stages.js';
@@ -97,9 +98,11 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
       jev = await deps.validateDocs(partial, file).catch(() => unavailable());
       await journal.fact(RefineEvent.DocsValidated, { cycle, backend: 'jev', stage: file, ...jev });
     }
-    const reorganized = await call(fitPackBudget({ ...reorganizePack({ specHash, principles: deps.principles(), specId: draft.specId, projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], changed: [file] }), role }));
+    // The model now and then gives an answer the schema rejects: one more try, told what was wrong, before the stage gives up.
+    const askOnce = (pack: ContextPackInput) => retryOnSchema((note) => call(withNote(pack, note)));
+    const reorganized = await askOnce(fitPackBudget({ ...reorganizePack({ specHash, principles: deps.principles(), specId: draft.specId, projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], changed: [file] }), role }));
     if (!reorganized.ok) {
-      await journal.fact(RefineEvent.CycleFailed, { cycle, reason: `stage review failed: ${reorganized.failure}: ${reorganized.errors.join('; ')}` });
+      await journal.fact(RefineEvent.CycleFailed, { cycle, ...failureMessage(`A reorganização de ${file}`, reorganized.failure, reorganized.errors) });
       return;
     }
     const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];
@@ -119,9 +122,9 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     const score = journal.state.readiness?.docs?.[file];
     const indexed = score && !confidential && docs[file].trim() !== '' && !(journal.state.outdatedDocs ?? []).includes(file);
     const index = indexed ?Object.entries(score.checks).map(([id, value]) => `${id} ${value.toFixed(2)}`).join(', ') : undefined;
-    const review = await call(fitPackBudget(stageReviewPack({ role, specHash, principles: deps.principles(), file, docs, jev: jev ? jevHint(jev) : undefined, index })));
+    const review = await askOnce(fitPackBudget(stageReviewPack({ role, specHash, principles: deps.principles(), file, docs, jev: jev ? jevHint(jev) : undefined, index })));
     if (!review.ok) {
-      await journal.fact(RefineEvent.CycleFailed, { cycle, reason: `stage review failed: ${review.failure}: ${review.errors.join('; ')}` });
+      await journal.fact(RefineEvent.CycleFailed, { cycle, ...failureMessage(`A revisão de ${file}`, review.failure, review.errors) });
       return;
     }
     await propose(review.value.docPatch);
@@ -145,6 +148,6 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     const divergences = (review.value.contradictions ?? []).filter((c) => inScope(c.a.file, draft.specId, scope) && inScope(c.b.file, draft.specId, scope)).map((c) => c.fact);
     await journal.fact(RefineEvent.StageReviewed, { cycle, file, questions, divergences, discardedPatches });
   } catch (err) {
-    await journal.fact(RefineEvent.CycleFailed, { cycle, reason: err instanceof Error ? err.message : String(err) });
+    await journal.fact(RefineEvent.CycleFailed, { cycle, ...internalErrorMessage(`A revisão de ${file}`, err) });
   }
 }

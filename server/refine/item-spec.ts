@@ -32,7 +32,7 @@ export function allocateCriteria(criteria: readonly AcceptanceCriterion[], previ
   return { ok: true, criteria: criteria.map((c, i) => ({ ...c, id: ids[i]! })), highWater: high };
 }
 
-export type ItemSpecCheck = { ok: true; spec: Spec; highWater: number } | { ok: false; issues: string[] };
+export type ItemSpecCheck = { ok: true; spec: Spec; highWater: number } | { ok: false; issues: string[]; detail?: string[] };
 
 /** The orchestrator, not the agent, owns the item spec's id, status, version, hash, provenance and criterion ids. */
 export function postProcessItemSpec(out: ItemSpec, ctx: { specId: string; previous: Spec | null; highWater: number; provenance: SpecProvenance }): ItemSpecCheck {
@@ -49,6 +49,6 @@ export function postProcessItemSpec(out: ItemSpec, ctx: { specId: string; previo
     validationReports: [],
     derivedFrom: ctx.provenance,
   });
-  if (!parsed.success) return { ok: false, issues: parsed.error.issues.map((i) => `spec ${key}.${i.path.join('.')}: ${i.message}`) };
+  if (!parsed.success) return { ok: false, issues: parsed.error.issues.map((i) => `a spec não passou na validação (${i.path.join('.') || 'raiz'})`), detail: parsed.error.issues.map((i) => `spec ${key}.${i.path.join('.')}: ${i.message}`) };
   return { ok: true, spec: parsed.data, highWater: allocated.highWater };
 }

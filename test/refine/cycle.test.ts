@@ -1019,7 +1019,7 @@ describe('refinement cycle unexpected errors', () => {
     const { draft, journal, events, runAgent, root } = await setup('# Brief\n');
     runAgent.mockRejectedValue(new Error('disk full'));
     await expect(runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [] }, 1)).rejects.toThrow('disk full');
-    expect(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data).toEqual({ cycle: 1, reason: 'disk full' });
+    expect(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data).toEqual({ cycle: 1, reason: 'A avaliação parou por um erro interno. Clique em Reavaliar.', detail: 'disk full' });
   });
 });
 

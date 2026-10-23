@@ -268,6 +268,34 @@ function toolActivity(events: readonly StreamEvent[]): Pick<StepProfile, 'toolCa
   return { toolCalls, ...(Object.keys(skills).length > 0 ? { skills } : {}), toolResultChars, ...(sandboxInitFailed ? { sandboxInitFailed } : {}) };
 }
 
+/** The text of every agent message in the run, in order: the final result can hold only the last part of an answer. */
+function agentText(events: readonly StreamEvent[]): string {
+  let text = '';
+  for (const e of events) {
+    const content = (e as { message?: { content?: unknown } }).message?.content;
+    if (e.type !== 'assistant' || !Array.isArray(content)) continue;
+    for (const block of content as Array<{ type?: string; text?: unknown }>) {
+      if (block?.type === 'text' && typeof block.text === 'string') text += block.text;
+    }
+  }
+  return text;
+}
+
+/** The answer across the agent's messages, for a run whose final result holds only its last part: a JSON object that ends the text, with nothing but whitespace and code fences after it. */
+function answerAcrossMessages(events: readonly StreamEvent[]): Record<string, unknown> | null {
+  const text = agentText(events);
+  const end = text.lastIndexOf('}');
+  if (end === -1 || text.slice(end + 1).replace(/```/g, '').trim() !== '') return null;
+  for (let start = text.indexOf('{'); start !== -1 && start < end; start = text.indexOf('{', start + 1)) {
+    try {
+      return JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
+    } catch {
+      // This brace does not open the answer; a later one may.
+    }
+  }
+  return null;
+}
+
 export function summarizeStream(parsed: ParsedStream): ResultSummary {
   const compactions = parsed.events.filter((e) => e.type === 'system' && e.subtype === 'compact_boundary').length;
   const sessionId = parsed.events.find((e) => typeof e.session_id === 'string')?.session_id ?? null;
@@ -297,7 +325,7 @@ export function summarizeStream(parsed: ParsedStream): ResultSummary {
   }
   const r = result.data;
   const hasStructuredOutput = r.structured_output !== undefined && r.structured_output !== null;
-  const fromText = hasStructuredOutput ? null : extractJsonObject(r.result ?? null);
+  const fromText = hasStructuredOutput ? null : extractJsonObject(r.result ?? null) ?? answerAcrossMessages(parsed.events);
   const structuredOutput = r.structured_output ?? fromText;
   const structuredSource = hasStructuredOutput ? 'structured_output' : fromText ? 'text' : null;
   return {

@@ -4,6 +4,13 @@ import { extractJsonObject, parseStreamJson, summarizeStream } from '../../serve
 
 const fixture = (name: string) => readFileSync(new URL(`../fixtures/stream/${name}.ndjson`, import.meta.url), 'utf8');
 
+/** The answer summarized from the agent's messages in order; the last one is the final result. */
+const answerOf = (messages: string[]) =>
+  summarizeStream(parseStreamJson([
+    ...messages.map((text) => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text }] } })),
+    JSON.stringify({ type: 'result', subtype: 'success', is_error: false, num_turns: messages.length, result: messages[messages.length - 1], structured_output: null }),
+  ].join('\n'))).structuredOutput;
+
 describe('parseStreamJson', () => {
   it('parses one event per line', () => {
     const parsed = parseStreamJson(fixture('success'));
@@ -25,6 +32,33 @@ describe('parseStreamJson', () => {
 });
 
 describe('summarizeStream', () => {
+  it('reads the answer from the agent messages when the final result holds only its last part', () => {
+    const events = [
+      { type: 'assistant', message: { content: [{ type: 'text', text: '{"specHash":"x","moves":[{"' }] } },
+      { type: 'assistant', message: { content: [{ type: 'text', text: 'from":"docs/flow.md"}]}' }] } },
+      { type: 'result', subtype: 'success', is_error: false, num_turns: 2, result: 'from":"docs/flow.md"}]}', structured_output: null },
+    ];
+    const summary = summarizeStream(parseStreamJson(events.map((e) => JSON.stringify(e)).join('\n')));
+    expect(summary.structuredOutput).toEqual({ specHash: 'x', moves: [{ from: 'docs/flow.md' }] });
+    expect(summary.structuredSource).toBe('text');
+  });
+
+  it('takes the answer from split messages, not from an earlier complete object', () => {
+    expect(answerOf(['{"a":1}', '{"b":', '2}'])).toEqual({ b: 2 });
+  });
+
+  it('reads a split answer that comes after a code block with braces', () => {
+    expect(answerOf(['```ts\nconst x = {y: 1};\n```\n{"a":', '1}'])).toEqual({ a: 1 });
+  });
+
+  it('takes no answer from an earlier object that the final prose withdraws', () => {
+    expect(answerOf(['{"verdict":"approve"}', 'Não aprovado.'])).toBeNull();
+  });
+
+  it('takes no answer when no message holds an object', () => {
+    expect(answerOf(['Vou revisar os documentos.', 'Pronto.'])).toBeNull();
+  });
+
   it('extracts usage, cost, turns and the result text from a success', () => {
     const summary = summarizeStream(parseStreamJson(fixture('success')));
     expect(summary).toEqual({

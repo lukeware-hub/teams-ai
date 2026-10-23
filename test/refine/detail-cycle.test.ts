@@ -445,7 +445,7 @@ describe('backlog detailing in the refinement cycle', () => {
     const from = agent.calls.length;
     await run(agent, 2);
     expect(agent.kinds(from)).toEqual(['spec', 'spec', 'spec']);
-    expect(String(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason)).toMatch(/quota/);
+    expect(String(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason)).toMatch(/limite de uso do Claude/);
     expect(events.filter((e) => e.type === 'SPEC_DERIVED' && e.data.spec !== null)).toHaveLength(2);
   });
 
@@ -481,6 +481,17 @@ describe('backlog detailing in the refinement cycle', () => {
     expect(journal.state.backlog?.conflicts).toBeUndefined();
     expect(journal.state.status).toBe('ready');
     expect(events.filter((e) => e.type === 'REFINE_CYCLE_FAILED')).toEqual([]);
+  });
+
+  it('stops the run with the quota reason when the SM conflict call hits the quota', async () => {
+    const { journal, run } = await setup();
+    const agent = fakeAgent(() => OUTLINE, (req) => (req.kind === 'conflicts' ? { ok: false, failure: 'quota', errors: ['janela de 5 horas'], summary: {}, sandboxDisabled: false } : undefined));
+    await run(agent, 1);
+    await journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    await run(agent, 2);
+    expect(journal.state.status).toBe('error');
+    expect(journal.state.error).toMatch(/limite de uso do Claude/);
+    expect(journal.state.error).not.toContain('[object Object]');
   });
 
   it('removes the files of an item the outline no longer has', async () => {
@@ -532,7 +543,7 @@ describe('backlog detailing failure paths', () => {
     await run(agent, 2);
     expect(callsAfterError).toBe(0);
     expect(agent.kinds(from).every((k) => k === 'spec')).toBe(true);
-    expect(String(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason)).toMatch(/disco cheio/);
+    expect(String(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.detail)).toMatch(/disco cheio/);
   });
 
   it('records the valid items of a batch before retrying the invalid one', async () => {
@@ -672,10 +683,10 @@ describe('backlog detailing checked by the Jev', () => {
     expect(env.journal.state.status).toBe('ready');
   });
 
-  it("keeps a flagged spec's first answer when its retry stops on quota, while the cycle fails as interrupted", async () => {
+  it("keeps a flagged spec's first answer when its retry stops on quota, while the cycle fails on the quota", async () => {
     const env = await detailWith((req) => (req.kind !== 'spec' ? undefined : retried(req) ? quota : withExtra(req)), jev('pagamento'));
     expect(env.journal.state.backlog?.specs?.caso?.spec?.features).toEqual(['caso', 'pagamento']);
-    expect(String(env.events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason)).toMatch(/interrompido/);
+    expect(String(env.events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason)).toMatch(/limite de uso do Claude/);
   });
 
   // Plan 85 review: a rejected item earlier in the batch found the run stopped and left before the flagged one.
@@ -687,7 +698,7 @@ describe('backlog detailing checked by the Jev', () => {
       const keys = [...String(req.pack.feedback).matchAll(/^## Item ([a-z0-9-]+):/gm)].map((m) => m[1]!);
       return ok({ specHash: H, specs: keys.map((k) => (k === 'caso' ? { ...itemSpec(k), type: 'bug' } : k === 'triagem' ? extra(k) : itemSpec(k))) });
     }, jev('pagamento'));
-    expect(String(env.events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason)).toMatch(/interrompido/);
+    expect(String(env.events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason)).toMatch(/limite de uso do Claude/);
     expect(env.journal.state.backlog?.specs?.triagem?.spec?.features).toEqual(['triagem', 'pagamento']);
   });
 

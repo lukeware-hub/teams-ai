@@ -9,6 +9,7 @@ import { computeSpecHash, Spec } from '../contracts/spec.js';
 import { preplanFlags, specFlags } from '../decide/decisions/detail-check.js';
 import { AC_ID } from '../contracts/patterns.js';
 import { adjusted } from './adjustments.js';
+import { failureMessage, internalErrorMessage } from './agent-failure.js';
 import { isStarted } from './coverage.js';
 import type { StepOutcome } from '../runner/step.js';
 import { validatePreplan } from '../validators/preplan.js';
@@ -29,13 +30,12 @@ const STOPPING = new Set(['quota', 'auth']);
 
 type Item = BacklogState['items'][number];
 type Ctx = Parameters<CycleDeps['runAgent']>[1];
-export type DetailResult = { ok: true; backlog: BacklogState } | { ok: false; reason: string };
-/** What an answer came to: recorded when it has no issues; `flagged` marks a valid answer the Jev flagged and nothing recorded. */
-type Verdict = { issues: string[]; flagged?: boolean };
+export type DetailResult = { ok: true; backlog: BacklogState } | { ok: false; reason: string; detail?: string };
+/** What an answer came to: recorded when it has no issues; `flagged` marks a valid answer the Jev flagged and nothing recorded; `detail` is what a retry tells the agent when it differs from the owner's `issues`. */
+type Verdict = { issues: string[]; flagged?: boolean; detail?: string[] };
 
 const itemDir = (draft: Draft, specId: string) => path.posix.join(draft.docs, 'specs', specId);
 const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
-const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** Pairs of two distinct items of this backlog, each pair once whatever its order. */
 function uniquePairs(pairs: ConflictsOutput['pairs'], keys: ReadonlySet<string>): ConflictsOutput['pairs'] {
@@ -114,7 +114,7 @@ export async function detailBacklog(deps: CycleDeps, input: { cycle: number; has
   try {
     return await detail(deps, input);
   } catch (err) {
-    return { ok: false, reason: `detalhamento falhou (${message(err)})` };
+    return { ok: false, ...internalErrorMessage('O detalhamento dos itens', err) };
   }
 }
 
@@ -127,17 +127,19 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
   const specs: Record<string, SpecRow> = { ...input.backlog.specs };
   const preplans: Record<string, PreplanRow> = { ...input.backlog.preplans };
   let highWater = Math.max(input.backlog.acHighWater ?? 0, await maxCriterionInDraft(draft));
-  let stopped: string | null = null;
+  let stopped = null as { reason: string; detail?: string } | null;
+  /** The run's stop, read through a call so each check sees its current value. */
+  const haltedResult = (): DetailResult | null => (stopped ? { ok: false, ...stopped } : null);
   const governor = new Governor(DETAIL_CONCURRENCY);
 
   /** Runs one call unless the run already stopped; records the stop on a quota or auth failure. */
   const call = async <T>(run: () => Promise<StepOutcome<T>>): Promise<StepOutcome<T> | null> => {
     const release = await governor.acquire();
     try {
-      if (deps.signal?.aborted) stopped ??= 'interrompido';
+      if (deps.signal?.aborted) stopped ??= { reason: 'O detalhamento foi interrompido. Clique em Reavaliar.' };
       if (stopped) return null;
       const out = await run();
-      if (!out.ok && STOPPING.has(out.failure)) stopped ??= `${out.failure}: ${out.errors.join('; ')}`;
+      if (!out.ok && STOPPING.has(out.failure)) stopped ??= failureMessage('O detalhamento dos itens', out.failure, out.errors);
       return out;
     } finally {
       release();
@@ -155,8 +157,11 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     accept: (item: Item, entry: E | undefined, review: boolean) => Promise<Verdict>,
     fail: (item: Item, issues: string[]) => Promise<void>,
   ): Promise<void> => {
-    const outcome = (out: StepOutcome<T>, item: Item, review: boolean): Promise<Verdict> =>
-      out.ok ? accept(item, entry(out.value, item.key), review) : Promise.resolve({ issues: [`${out.failure}: ${out.errors.join('; ')}`] });
+    const outcome = (out: StepOutcome<T>, item: Item, review: boolean): Promise<Verdict> => {
+      if (out.ok) return accept(item, entry(out.value, item.key), review);
+      const { reason, detail } = failureMessage('O agente deste item', out.failure, out.errors);
+      return Promise.resolve({ issues: [reason], detail: [detail] });
+    };
     await Promise.all(batches(todo).map(async (batch) => {
       try {
         const out = await run(batch, {});
@@ -167,14 +172,16 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
           if (first.issues.length > 0) rejected.push([item, first]);
         }
         for (const [item, first] of rejected) {
-          const solo = await run([item], { [item.key]: first.issues });
+          const solo = await run([item], { [item.key]: first.detail ?? first.issues });
           let again = solo && (await outcome(solo, item, false));
           if (first.flagged && (!again || again.issues.length > 0)) again = await outcome(out, item, false);
           if (!again) continue;
-          if (again.issues.length > 0) await fail(item, again.issues);
+          // A quota or auth stop is reported once, by the cycle, not as this item's issue.
+          const stoppedBy = solo && !solo.ok && STOPPING.has(solo.failure);
+          if (again.issues.length > 0 && !stoppedBy) await fail(item, again.issues);
         }
       } catch (err) {
-        stopped ??= message(err);
+        stopped ??= internalErrorMessage('O detalhamento dos itens', err);
       }
     }));
   };
@@ -216,18 +223,18 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     await journal.fact(RefineEvent.PreplanDerived, { cycle, key: i.key, inputHash: pre.data.inputHash, specRev: rev, preplan: pre.data, issues: [] });
   }
   const acceptSpec = async (item: Item, entry: ItemSpec | undefined, review: boolean): Promise<Verdict> => {
-    if (!entry) return { issues: ['o agente não devolveu a spec deste item'] };
+    if (!entry) return { issues: ['o agente não devolveu a spec deste item'], detail: ['the answer has no spec for this item'] };
     const inputHash = specHash.get(item.key)!;
     const processed = () => postProcessItemSpec(entry, { specId: idOf(item.key), previous: previous.get(item.key) ?? null, highWater, provenance: { backlogKey: item.key, inputHash, docsHash: hash, sources: sourceHashes(item, docs) } });
     if (review && decider) {
       const dry = processed();
-      if (!dry.ok) return { issues: dry.issues };
+      if (!dry.ok) return { issues: dry.issues, detail: dry.detail };
       const flags = await specFlags({ item, sections: citedSections(item, docs), spec: dry.spec }, decider, dctx);
       if (flags.length > 0) return { issues: flags, flagged: true };
     }
     // Numbered after the Jev's answer, so a batch running beside this one never takes the same criterion numbers.
     const r = processed();
-    if (!r.ok) return { issues: r.issues };
+    if (!r.ok) return { issues: r.issues, detail: r.detail };
     highWater = r.highWater;
     const rev = computeSpecHash(r.spec);
     specs[item.key] = { inputHash, specId: r.spec.specId, rev, spec: r.spec, issues: [], cycle };
@@ -253,16 +260,17 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
   }, ctx) as Promise<StepOutcome<SpecDetailOutput>>);
   const specTodo = items.filter((i) => !kept.has(i.key) && (!specs[i.key] || specs[i.key]!.inputHash !== specHash.get(i.key) || specs[i.key]!.spec === null));
   await runBatches(specTodo, runSpecs, (v: SpecDetailOutput, key) => v.specs.find((s) => s.key === key), acceptSpec, failSpec);
-  if (stopped) return { ok: false, reason: `detalhamento interrompido (${stopped})` };
+  const haltSpecs = haltedResult();
+  if (haltSpecs) return haltSpecs;
 
   // Pre-plans, for the specs that are valid now.
   const planHash = new Map(items.filter((i) => specs[i.key]?.rev).map((i) => [i.key, planHashOf(i, specs[i.key]!.rev!)]));
   const acceptPreplan = async (item: Item, entry: ItemPreplan | undefined, review: boolean): Promise<Verdict> => {
-    if (!entry) return { issues: ['o agente não devolveu o pré-plano desta spec'] };
+    if (!entry) return { issues: ['o agente não devolveu o pré-plano desta spec'], detail: ['the answer has no pre-plan for this spec'] };
     const row = specs[item.key]!;
     const spec = row.spec!;
     const parsed = Preplan.safeParse({ specId: spec.specId, specRev: row.rev, inputHash: planHash.get(item.key), modules: entry.modules, tasks: entry.tasks, risks: entry.risks });
-    if (!parsed.success) return { issues: parsed.error.issues.map((i) => `preplan ${item.key}.${i.path.join('.')}: ${i.message}`) };
+    if (!parsed.success) return { issues: parsed.error.issues.map((i) => `o pré-plano não passou na validação (${i.path.join('.') || 'raiz'})`), detail: parsed.error.issues.map((i) => `preplan ${i.path.join('.')}: ${i.message}`) };
     const rules = validatePreplan(parsed.data, spec);
     if (rules.length > 0) return { issues: rules };
     if (review && decider) {
@@ -287,7 +295,8 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
   }, ctx) as Promise<StepOutcome<PreplanOutput>>);
   const preplanTodo = items.filter((i) => !kept.has(i.key) && planHash.has(i.key) && (!preplans[i.key] || preplans[i.key]!.inputHash !== planHash.get(i.key) || preplans[i.key]!.preplan === null));
   await runBatches(preplanTodo, runPreplans, (v: PreplanOutput, key) => v.preplans.find((p) => p.key === key), acceptPreplan, failPreplan);
-  if (stopped) return { ok: false, reason: `detalhamento interrompido (${stopped})` };
+  const haltPreplans = haltedResult();
+  if (haltPreplans) return haltPreplans;
 
   // The SM's conflict map, made again only when a pre-plan changed. A failed call leaves none: the program then runs one spec at a time.
   let conflicts = input.backlog.conflicts;
@@ -298,7 +307,8 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
       kind: 'conflicts', role: 'sm', cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle,
       pack: fitConflictsPack({ specHash: hash, principles: deps.principles(), items: planned }),
     }, ctx) as Promise<StepOutcome<ConflictsOutput>>);
-    if (stopped) return { ok: false, reason: `detalhamento interrompido (${stopped})` };
+    const haltConflicts = haltedResult();
+    if (haltConflicts) return haltConflicts;
     if (items.length < 2 || out?.ok) {
       conflicts = { inputHash: conflictsHash, pairs: out?.ok ? uniquePairs(out.value.pairs, new Set(items.map((i) => i.key))) : [] };
       await journal.fact(RefineEvent.ConflictsDerived, { ...conflicts });

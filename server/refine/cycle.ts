@@ -12,6 +12,7 @@ import { routeQuestion } from '../decide/decisions/question-routing.js';
 import type { AgentStepRequest } from '../orchestrator/steps.js';
 import type { StepOutcome } from '../runner/step.js';
 import { adjustmentsDue, approvalPatch, approvedAdjustments, isAdjustment, type DueAdjustment } from './adjustments.js';
+import { failureMessage, internalErrorMessage, retryOnSchema, withNote } from './agent-failure.js';
 import { mergeChecklist, type ChecklistItem } from './checklist.js';
 import { verifyContradictions } from './contradictions.js';
 import { norm, parseDecisions } from './decisions.js';
@@ -270,7 +271,7 @@ export async function runCycle(deps: CycleDeps, cycle: number): Promise<void> {
     await runCycleSteps(deps, cycle);
   } catch (err) {
     // Any error fails the cycle, so the session never stays in `evaluating`; documents beyond the pack cap are an expected failure.
-    await deps.journal.fact(RefineEvent.CycleFailed, { cycle, reason: redactSecrets(err instanceof Error ? err.message : String(err)) });
+    await deps.journal.fact(RefineEvent.CycleFailed, { cycle, ...internalErrorMessage('A avaliação', err) });
     if (!(err instanceof PackTooLargeError)) throw err;
   }
 }
@@ -291,7 +292,11 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   // The five docs by the names backlog items cite them with.
   const backlogDocs = docs;
   const previous = await readDerived(draft);
-  const fail = (reason: string) => journal.fact(RefineEvent.CycleFailed, { cycle, reason });
+  const fail = (reason: string, detail?: string) => journal.fact(RefineEvent.CycleFailed, { cycle, reason, ...(detail ? { detail } : {}) });
+  const failAgent = (stage: string, out: Extract<StepOutcome<unknown>, { ok: false }>) => {
+    const { reason, detail } = failureMessage(stage, out.failure, out.errors);
+    return fail(reason, detail);
+  };
   let jevValidation: JevValidationResult | undefined;
   // A confidential project never sends its docs to the OpenRouter: Jev is skipped and the agents run without its findings.
   const confidential = await isConfidential(draft, journal.state);
@@ -345,7 +350,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           ctx,
         );
         if (!out.ok) {
-          await fail(`backlog failed: ${out.failure}: ${out.errors.join('; ')}`);
+          await failAgent('O backlog', out);
           return;
         }
         const checked = postProcessBacklog(out.value as BacklogOutput, previous, backlogDocs, approvedAdjustments(docs['briefing.md']), started);
@@ -377,7 +382,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       // The recorded decider journals the Jev's checks of the detailing (R11.5a item 3).
       const detailed = await detailBacklog({ ...deps, decider }, { cycle, hash, docs: backlogDocs, backlog, ctx });
       if (!detailed.ok) {
-        await fail(detailed.reason);
+        await fail(detailed.reason, detailed.detail);
         return;
       }
       backlog = detailed.backlog;
@@ -400,14 +405,14 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       ctx,
     );
     if (!d.ok) {
-      await fail(`derive failed: ${d.failure}: ${d.errors.join('; ')}`);
+      await failAgent('A derivação dos documentos', d);
       return;
     }
     // A sibling spec of the same project (copied into the draft from main) may already use higher ids (R11.8).
     const floor = await maxCriterionInDraft(draft);
     const checked = postProcessDerived(d.value as DeriveOutput, previous?.spec ?? null, draft.specId, floor, parseDecisions(docs['briefing.md']));
     if (!checked.ok) {
-      await fail(`derive: ${checked.issues.join('; ')}`);
+      await fail('A derivação dos documentos não passou na validação. Clique em Reavaliar.', checked.issues.join('; '));
       return;
     }
     checked.value.project = await keepBaseProject(draft, checked.value.project);
@@ -440,7 +445,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         ctx,
       )) as StepOutcome<z.infer<typeof RefineOutput>>;
       if (!out.ok) {
-        await fail(`reorganize failed: ${out.failure}: ${out.errors.join('; ')}`);
+        await failAgent('A reorganização dos documentos', out);
         return;
       }
       await applyMoves(journal, draft, cycle, docs, { specId: draft.specId, projectBriefing: backlogMode, asked: titlesOf(askedTexts(journal.state, reorgQuestions)) }, [{ role: 'po', moves: out.value.moves ?? [], limit: REORGANIZE_MAX_MOVES }], discardedPatches);
@@ -451,16 +456,15 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   // Front's review waits for the moves: its patches are checked after them.
   let frontReview: z.infer<typeof RefineOutput> | null = null;
   if (deps.frontAgent) {
-    const askFront = () => deps.frontAgent!({ kind: 'refine', role: 'front',
-      pack: fitPackBudget(refinePack({ role: 'front', specHash: hash, principles: deps.principles(), specId: draft.specId,
+    const askFront = (note: string | null) => deps.frontAgent!({ kind: 'refine', role: 'front',
+      pack: withNote(fitPackBudget(refinePack({ role: 'front', specHash: hash, principles: deps.principles(), specId: draft.specId,
         projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'],
         derived, backlog, retrieval: [], history: journal.state.questions,
-        rejected: journal.state.patches.filter((p) => p.status === 'rejected'), pending: journal.state.patches.filter((p) => p.status === 'pending'), findings: journal.state.findings, undoneMoves: journal.state.moves.filter((m) => m.status === 'undone'), jevValidation, projectBriefing: backlogMode, cycle })),
+        rejected: journal.state.patches.filter((p) => p.status === 'rejected'), pending: journal.state.patches.filter((p) => p.status === 'pending'), findings: journal.state.findings, undoneMoves: journal.state.moves.filter((m) => m.status === 'undone'), jevValidation, projectBriefing: backlogMode, cycle })), note),
       cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, ctx);
-    let review = await askFront();
     // The model now and then drops a required field of one suggestion. The suggestions are advice, so one more try, and then the cycle goes on without them instead of failing.
-    if (!review.ok && review.failure === 'schema') review = await askFront();
-    if (!review.ok && review.failure !== 'schema') { await fail(`front validation failed: ${review.failure}: ${review.errors.join('; ')}`); return; }
+    const review = await retryOnSchema((note) => askFront(note));
+    if (!review.ok && review.failure !== 'schema') { await failAgent('A revisão do Front', review); return; }
     if (!review.ok) discardedPatches.push({ role: 'front', file: 'design.md', reason: 'O agente Front respondeu fora do formato duas vezes, então as sugestões visuais deste ciclo foram puladas. Use Reavaliar para tentar de novo.' });
     frontReview = review.ok ? (review.value as z.infer<typeof RefineOutput>) : null;
   }
@@ -504,11 +508,11 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     );
   const [po, sm] = (await Promise.all([step('po'), step('sm')])) as [StepOutcome<z.infer<typeof RefineOutput>>, StepOutcome<z.infer<typeof RefineOutput>>];
   if (!po.ok) {
-    await fail(`po refine failed: ${po.failure}: ${po.errors.join('; ')}`);
+    await failAgent('A revisão do PO', po);
     return;
   }
   if (!sm.ok) {
-    await fail(`sm refine failed: ${sm.failure}: ${sm.errors.join('; ')}`);
+    await failAgent('A revisão do SM', sm);
     return;
   }
   // The reviewers read these documents, so the quotes they copy are checked against them, even when a move below takes that text away.

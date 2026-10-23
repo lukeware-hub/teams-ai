@@ -58,6 +58,7 @@ describe('postProcessItemSpec', () => {
   it('reports what the spec contract rejects, with paths', () => {
     const r = postProcessItemSpec(out({ type: 'bug' }), { specId: 'kayron-001-opme', previous: null, highWater: 0, provenance });
     expect(r).toMatchObject({ ok: false });
-    if (!r.ok) expect(r.issues.join('\n')).toMatch(/bug/);
+    if (!r.ok) expect((r.detail ?? []).join('\n')).toMatch(/bug/);
+    if (!r.ok) expect(r.issues.join('\n')).toMatch(/não passou na validação/);
   });
 });

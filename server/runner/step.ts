@@ -401,7 +401,7 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
   });
   if (!validation.ok) {
     const errors = [...validation.errors];
-    if (raw.summary.structuredOutput === null) {
+    if (raw.summary.structuredOutput === null && jsonFromResultText(raw.summary.resultText) === null) {
       // Without this the only trace of a prose-only answer is "expected object, received null".
       const text = redactSecrets((raw.summary.resultText ?? '').slice(0, 4000));
       // The parse error can quote part of the answer, so it is redacted like the answer.

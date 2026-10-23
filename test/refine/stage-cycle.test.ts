@@ -6,6 +6,7 @@ import { applyRefineEvent, emptyRefineState } from '../../server/refine/state.js
 import { createNewProject, draftPaths, readDoc, writeDoc } from '../../server/refine/draft.js';
 import { RefineEvent } from '../../server/refine/events.js';
 import { runStageCycle, stageReviewPack } from '../../server/refine/stage-cycle.js';
+import { PackTooLargeError } from '../../server/refine/fit-pack.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
 
 /** A journal that folds each fact into its state, as the session's journal does. */
@@ -42,6 +43,9 @@ const answer = (docPatch: unknown[], questions: unknown[] = [], contradictions: 
 
 /** The reorganization pass gets its answer; the owner's review gets the other. */
 const passes = (reorg: unknown, review: unknown) => vi.fn(async (req: { pack: { feedback?: string } }, _opts: unknown) => ((req.pack.feedback ?? '').includes('(reorganize in full)') ? reorg : review));
+
+const REORGANIZE_FAILED = 'A reorganização de project.md não devolveu o resultado em formato válido. Clique em Reavaliar.';
+const REVIEW_FAILED = 'A revisão de project.md não devolveu o resultado em formato válido. Clique em Reavaliar.';
 
 describe('runStageCycle', () => {
   it('proposes changes to the stage document only and records the questions, with no score taken', async () => {
@@ -88,7 +92,7 @@ describe('runStageCycle', () => {
     const journal = foldingJournal();
     const runAgent = vi.fn(async () => ({ ok: false, failure: 'schema', errors: ['bad json'], summary: undefined, sandboxDisabled: false }));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
-    expect(journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data).toMatchObject({ cycle: 1, reason: 'stage review failed: schema: bad json' });
+    expect(journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data).toMatchObject({ cycle: 1, reason: REORGANIZE_FAILED, detail: 'bad json' });
     expect(journal.events.some((e) => e.type === RefineEvent.PatchProposed)).toBe(false);
   });
 
@@ -97,7 +101,7 @@ describe('runStageCycle', () => {
     const journal = foldingJournal();
     const runAgent = vi.fn(async () => { throw new Error('agent down'); });
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
-    expect(journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data).toMatchObject({ cycle: 1, reason: 'agent down' });
+    expect(journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data).toMatchObject({ cycle: 1, reason: 'A revisão de project.md parou por um erro interno. Clique em Reavaliar.', detail: 'agent down' });
     expect(await readDoc(draft, 'project.md')).toContain('# Shop');
   });
 
@@ -134,7 +138,55 @@ describe('runStageCycle', () => {
     const journal = foldingJournal();
     const failed = { ok: false, failure: 'schema', errors: ['bad json'], summary: undefined, sandboxDisabled: false };
     await runStageCycle({ draft, journal, runAgent: passes(answer([]), failed) as never, principles: () => [] }, 1, 'project.md');
-    expect(journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data).toMatchObject({ cycle: 1, reason: 'stage review failed: schema: bad json' });
+    expect(journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data).toMatchObject({ cycle: 1, reason: REVIEW_FAILED, detail: 'bad json' });
+  });
+
+  it('a schema failure is tried once more, and the stage goes on when the retry answers', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    const failed = { ok: false, failure: 'schema', errors: ['bad json'], summary: undefined, sandboxDisabled: false };
+    const runAgent = vi.fn().mockResolvedValueOnce(failed).mockResolvedValue(answer([]));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
+    expect(runAgent).toHaveBeenCalledTimes(3);
+    expect(journal.events.some((e) => e.type === RefineEvent.CycleFailed)).toBe(false);
+  });
+
+  it('a stage that fails twice on the schema stops with a plain reason, and the raw answer stays out of it', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    const failed = { ok: false, failure: 'schema', errors: ['no JSON object in the agent result: from":"docs/flow.md"'], summary: undefined, sandboxDisabled: false };
+    const runAgent = vi.fn(async () => failed);
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
+    expect(runAgent).toHaveBeenCalledTimes(2);
+    const data = journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data;
+    expect(data).toMatchObject({ cycle: 1, reason: REORGANIZE_FAILED });
+    expect(String(data?.reason)).not.toContain('from":');
+  });
+
+  it('a review that fails the schema is tried once more, and the retried answer is the one recorded', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    const failed = { ok: false, failure: 'schema', errors: ['bad json'], summary: undefined, sandboxDisabled: false };
+    const retried = answer(
+      [{ file: 'docs/project.md', find: '# Shop', replace: '# Shop Online', reason: 'nome' }],
+      [{ id: 'q1', text: 'Qual o prazo?', blocking: true, relatedAcIds: [], options: [], subject: 'Prazo de entrega' }],
+    );
+    const reviews = [failed, retried];
+    const runAgent = vi.fn(async (req: { pack: { feedback?: string } }) => ((req.pack.feedback ?? '').includes('(reorganize in full)') ? answer([]) : reviews.shift()));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
+    expect(journal.events.some((e) => e.type === RefineEvent.CycleFailed)).toBe(false);
+    expect(journal.events.filter((e) => e.type === RefineEvent.PatchProposed)).toHaveLength(1);
+    expect(journal.events.find((e) => e.type === RefineEvent.StageReviewed)?.data).toMatchObject({ questions: [expect.objectContaining({ text: 'Qual o prazo?' })] });
+    expect(String(runAgent.mock.calls[2]?.[0]?.pack?.feedback)).toContain('did not match the output schema: bad json');
+  });
+
+  it('a pack that is too large fails the stage with its own message', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    const message = 'Reduza ou divida o conteúdo dos documentos.';
+    const runAgent = vi.fn(async () => { throw new PackTooLargeError(message); });
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
+    expect(journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data).toMatchObject({ cycle: 1, reason: message, detail: message });
   });
 
   it('a move out of the stage document into a later one is never applied backward: only forward moves of the stage are passed on', async () => {
@@ -356,6 +408,6 @@ describe('runStageCycle', () => {
     const journal = foldingJournal();
     const runAgent = vi.fn(async () => { throw 'agent stopped'; });
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
-    expect(journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data).toMatchObject({ cycle: 1, reason: 'agent stopped' });
+    expect(journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data).toMatchObject({ cycle: 1, reason: 'A revisão de project.md parou por um erro interno. Clique em Reavaliar.', detail: 'agent stopped' });
   });
 });
