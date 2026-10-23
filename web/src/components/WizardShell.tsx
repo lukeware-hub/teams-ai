@@ -15,7 +15,7 @@ interface Props {
 /** One panel, one screen per step: the stepper on top, the screen, and Voltar on the left with the step's actions on the right. */
 export function WizardShell({ stepper, stepKey, meta, back, actions, children }: Props) {
   return (
-    <section className="@container edge-lit mx-auto w-full max-w-[1120px] min-w-0 overflow-hidden rounded-2xl border border-line bg-surface shadow-card" data-testid="wizard">
+    <section className="@container edge-lit w-full min-w-0 overflow-hidden rounded-2xl border border-line bg-surface shadow-card" data-testid="wizard">
       <div className="border-b border-line px-6 py-5 @max-2xl:px-4">{stepper}</div>
       <div key={stepKey} className="step-in min-w-0 px-6 py-6 @max-2xl:px-4 @max-2xl:py-5">{children}</div>
       <footer className="border-t border-line px-6 py-4 @max-2xl:px-4">
