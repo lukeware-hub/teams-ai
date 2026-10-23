@@ -240,6 +240,17 @@ describe('reduceRefineEvents legacy brief.md', () => {
   });
 });
 
+describe('reduceRefineEvents passed stages', () => {
+  it('records the documents whose passed text is kept, once each, with the legacy name read as the briefing', () => {
+    const s = reduceRefineEvents([
+      { type: RefineEvent.StagePassed, data: { file: 'project.md', hash: 'h1' } },
+      { type: RefineEvent.StagePassed, data: { file: 'project.md', hash: 'h2' } },
+      { type: RefineEvent.StagePassed, data: { file: 'brief.md', hash: 'h3' } },
+    ]);
+    expect(s.passedStages).toEqual(['project.md', 'briefing.md']);
+  });
+});
+
 describe('reduceRefineEvents stage questions', () => {
   const question = (questionId: string, text: string) => ({ questionId, role: 'po', text, blocking: false, relatedAcIds: [], cycle: 1, options: [] });
 

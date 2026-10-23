@@ -624,6 +624,36 @@ describe('RefineSession stage review', () => {
     await c.close();
   });
 
+  it('keeps the text the owner passed the first time a stage is processed, and not the later ones', async () => {
+    const d = deps();
+    const s = await RefineSession.create(d, 'new-project');
+    await writeDoc(d.draft, 'project.md', '# Entregue\n');
+    await s.evaluateStage('project.md');
+    expect(s.state.passedStages).toEqual(['project.md']);
+    await writeDoc(d.draft, 'project.md', '# Mudou depois\n');
+    await s.evaluateStage('project.md');
+    expect(await fs.readFile(path.join(d.draft.root, 'passed', 'project.md'), 'utf8')).toBe('# Entregue\n');
+    await s.close();
+  });
+
+  it('reprocesses a stage from the text that was passed: the document goes back to it and the review runs again', async () => {
+    const d = deps();
+    const s = await RefineSession.create(d, 'new-project');
+    await writeDoc(d.draft, 'project.md', '# Entregue\n');
+    await s.evaluateStage('project.md');
+    await writeDoc(d.draft, 'project.md', '# Mudou\n');
+    await s.reprocessStage('project.md');
+    expect(await readDoc(d.draft, 'project.md')).toBe('# Entregue\n');
+    expect(s.state.cycle).toBe(2);
+    await s.close();
+  });
+
+  it('refuses to reprocess a stage that has no passed text yet', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    expect(() => s.reprocessStage('project.md')).toThrow(ConflictError);
+    await s.close();
+  });
+
   it('a stage review may start on any document of a stage session, not only the current one', async () => {
     const s = await RefineSession.create(deps(), 'new-project');
     await s.evaluateStage('project.md');

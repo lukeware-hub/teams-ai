@@ -6,6 +6,8 @@ export const RefineEvent = {
   ConfidentialityAnswered: 'REFINE_CONFIDENTIALITY_ANSWERED',
   /** The owner moved on from a document's stage: `{doc, cycle}`; the rounds of the next stage count from `cycle`. */
   StageAdvanced: 'REFINE_STAGE_ADVANCED',
+  /** The text the owner passed to a stage was kept the first time the stage was processed: `{file, hash}`; Reprocessar goes back to it. */
+  StagePassed: 'REFINE_STAGE_PASSED',
   StageReviewed: 'REFINE_STAGE_REVIEWED',
   DocEdited: 'DOC_EDITED',
   CycleStarted: 'REFINE_CYCLE_STARTED',

@@ -134,6 +134,8 @@ export interface RefineState {
   outdatedDocs?: DocFile[];
   /** The documents the owner moved on from, in order. */
   doneStages?: DocFile[];
+  /** The documents whose passed text is kept, so a stage can be reprocessed from it. */
+  passedStages?: DocFile[];
   /** The round the current stage began at; its rounds count from here. */
   stageStartCycle?: number;
   /** What the last stage review of each document found against the documents before it; an empty list is aligned. */
@@ -341,6 +343,9 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     case RefineEvent.StageAdvanced:
       s.doneStages = [...new Set([...(s.doneStages ?? []), docName(d.doc)])];
       s.stageStartCycle = Number(d.cycle);
+      break;
+    case RefineEvent.StagePassed:
+      s.passedStages = [...new Set([...(s.passedStages ?? []), docName(d.file)])];
       break;
     case RefineEvent.DocEdited:
       if (s.status === 'evaluating') s.editedInCycle = true;

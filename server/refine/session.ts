@@ -276,11 +276,21 @@ export class RefineSession {
 
   /** One review of a stage's document, the current one or any other: only that document changes. */
   evaluateStage(file: DocFile): Promise<void> {
+    return this.startStage(file, false);
+  }
+
+  /** The review of a stage again, from the text the owner passed: the document goes back to it first. */
+  reprocessStage(file: DocFile): Promise<void> {
+    if (!(this.state.passedStages ?? []).includes(file)) throw new ConflictError(`não há texto entregue de ${file} para reprocessar`);
+    return this.startStage(file, true);
+  }
+
+  private startStage(file: DocFile, restore: boolean): Promise<void> {
     this.ensureCanEvaluate();
     if (this.state.stages !== true) throw new ConflictError('só um refinamento de projeto novo tem etapas');
     this.guardRounds();
     const ctl = (this.abortCtl = new AbortController());
-    const run = this.timedStage(ctl, file).finally(() => {
+    const run = this.timedStage(ctl, file, restore).finally(() => {
       this.running = null;
       this.abortCtl = null;
     });
@@ -288,9 +298,26 @@ export class RefineSession {
     return run;
   }
 
-  private async timedStage(ctl: AbortController, file: DocFile): Promise<void> {
+  /** Keeps the text passed to a stage the first time it is processed; a reprocess puts that text back in the document. */
+  private async keepPassedText(file: DocFile, restore: boolean): Promise<void> {
+    const kept = path.posix.join(this.deps.draft.root, 'passed', file);
+    if (restore) {
+      const text = await fs.readFile(kept, 'utf8');
+      await writeDoc(this.deps.draft, file, text);
+      await this.journal.fact(RefineEvent.DocEdited, { file, hash: sha256(text), source: 'human' });
+      return;
+    }
+    if ((this.state.passedStages ?? []).includes(file)) return;
+    const text = await readDoc(this.deps.draft, file);
+    await fs.mkdir(path.posix.dirname(kept), { recursive: true });
+    await fs.writeFile(kept, text);
+    await this.journal.fact(RefineEvent.StagePassed, { file, hash: sha256(text) });
+  }
+
+  private async timedStage(ctl: AbortController, file: DocFile, restore: boolean): Promise<void> {
     await this.journal.fact(RefineEvent.EvaluationStarted, {});
     try {
+      await this.keepPassedText(file, restore);
       const deps = { draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, frontAgent: this.deps.frontAgent, validateDocs: this.deps.validateDocs, principles: () => this.state.derived?.project.principles ?? [], signal: ctl.signal };
       await runStageCycle(deps, this.state.cycle + 1, file);
     } finally {
