@@ -18,12 +18,11 @@ import { jevVerdict, scoresDocs } from '@server/refine/readiness';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { lastEvaluationText, ProcessingBanner } from '../refine/ProcessingBanner.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
-import { StageBar } from '../refine/StageBar.js';
 import { StageSteps } from '../refine/StageSteps.js';
 import { currentStage, previousStage, stageViews } from '../refine/stage-view.js';
 import { ReadinessBanner } from '../refine/ReadinessBanner.js';
 import { DOC_LABEL as docLabel } from '../refine/doc-labels.js';
-import { stageAction, stageOf, stageTitle } from '../refine/stages.js';
+import { stageAction, stageTitle } from '../refine/stages.js';
 import { SpecTree } from '../refine/SpecTree.js';
 import { Workspace } from '../components/Workspace.js';
 import { Stepper } from '../components/Stepper.js';
@@ -912,8 +911,8 @@ export function RefinementView(p: ViewProps) {
     const count = pendingCount(st, file);
     const jevBlocked = stageSession && st.confidential === undefined;
     return (
-      <div className="grid gap-6 @3xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-        <div className="grid min-w-0 content-start gap-3">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 @3xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-3">
           <header className="grid gap-1">
             <p className="m-0 text-[0.75rem] font-semibold tracking-[0.07em] text-ink-soft uppercase">Etapa {DOC_STAGES.indexOf(file) + 1} de {DOC_STAGES.length}</p>
             <h2 ref={stepHeading} tabIndex={-1} className="m-0 text-[1.25rem] font-semibold text-ink outline-none">{docLabel[file]}</h2>
@@ -961,7 +960,7 @@ export function RefinementView(p: ViewProps) {
           />
           <span className="inline-flex items-start gap-[0.45rem] text-[0.8125rem] leading-[1.35] text-ink-soft"><Icon name="info" size={18} />As alterações são salvas automaticamente ao sair do editor.</span>
         </div>
-        <aside className="grid min-w-0 content-start gap-4 border-line @max-3xl:border-t @max-3xl:pt-6 @3xl:border-l @3xl:pl-6" aria-label="Revisão da etapa">
+        <aside className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-4 border-line @max-3xl:border-t @max-3xl:pt-6 @3xl:border-l @3xl:pl-6" aria-label="Revisão da etapa">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="m-0 text-[1rem] font-semibold text-ink">Revisão da etapa</h3>
             <span className={`count-pill ${count > 0 ? 'tone-warn' : 'tone-good'}`}>{count === 1 ? '1 pendência' : `${count} pendências`}</span>
@@ -996,8 +995,8 @@ export function RefinementView(p: ViewProps) {
     const byDoc = DOC_STAGES.map((file) => ({ file, count: pendingCount(st, file) })).filter((x) => x.count > 0);
     const needsScore = DOC_STAGES.some((file) => !st.readiness?.docs?.[file] || outdatedDocs.includes(file));
     return (
-      <div className="grid gap-6 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <div className="grid min-w-0 content-start gap-5">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-5">
           <header className="grid gap-1">
             <p className="m-0 text-[0.75rem] font-semibold tracking-[0.07em] text-ink-soft uppercase">Etapa final</p>
             <h2 ref={stepHeading} tabIndex={-1} className="m-0 text-[1.25rem] font-semibold text-ink outline-none">Revisão final</h2>
@@ -1038,7 +1037,7 @@ export function RefinementView(p: ViewProps) {
             {byDoc.length === 0 && unfiled.length === 0 && <p className={`m-0 ${muted}`}>Nenhuma pendência.</p>}
           </div>
         </div>
-        <div className="min-w-0 border-line @max-3xl:border-t @max-3xl:pt-6 @3xl:border-l @3xl:pl-6">{qualityBlock(`grid min-w-0 content-start ${qualityStyles}`)}</div>
+        <div className="min-w-0 border-line @max-3xl:border-t @max-3xl:pt-6 @3xl:border-l @3xl:pl-6">{qualityBlock(`grid min-w-0 grid-cols-[minmax(0,1fr)] content-start ${qualityStyles}`)}</div>
       </div>
     );
   };
@@ -1173,7 +1172,6 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
     <main className="flex flex-col gap-4 lg:h-full lg:min-h-0">
       <header className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></Link><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span></header>
       <MoveNotice moves={snap.state.moves ?? []} onUndo={(moveId) => act(() => refineApi.undoMove(projectId, specId, moveId))()} docName={docName} />
-      {snap.state.mode === 'new-project' && <StageBar stages={stageOf(snap.state)} />}
       {scoresDocs(snap.state.mode ?? null) && snap.state.mode !== 'new-project' && !['evaluating', 'started'].includes(snap.state.status) && (
         <ReadinessBanner readiness={snap.state.readiness} canStart={canStartRun(snap.state, false)} startState={startLabel} onScore={act(() => refineApi.score(projectId, specId))} onStart={startRun} />
       )}
