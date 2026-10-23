@@ -16,7 +16,7 @@ const snapshot = (seq: number): Snapshot => ({
   docs: { 'project.md': '# Hello', 'briefing.md': 'a', 'stack.md': '# Stack', 'flow.md': '# Flow', 'design.md': '# Design' },
   secrets: [],
   tokens: { inputTokens: 0, outputTokens: 0, costUsd: 0, steps: 0 },
-  state: { status: 'error', stale: false, cycle: 1, derived: null, checklist: [], questions: [], patches: [{ ...patch, status: 'pending', decision: null }], discarded: [], moves: [], error: 'sm refine failed', runId: null },
+  state: { status: 'error', stale: false, cycle: 1, derived: null, checklist: [], questions: [], patches: [{ ...patch, status: 'pending', decision: null }], discarded: [], moves: [], reshapes: [], error: 'sm refine failed', runId: null },
 });
 
 describe('RefinementPage of a new project', () => {

@@ -26,7 +26,7 @@ const base = (over: Partial<Snapshot['state']>): Snapshot => ({
     ],
     patches: [{ patchId: 'sm-c1-0', role: 'sm', file: 'briefing.md', find: 'a', replace: 'b', reason: 'clearer', diff: '--- briefing.md\n-a\n+b\n', cycle: 1, status: 'pending', decision: null }],
     discarded: [{ cycle: 1, role: 'po', file: 'docs/project.md', reason: 'find not found in project.md' }],
-    moves: [],
+    moves: [], reshapes: [],
     error: null,
     runId: null,
     ...over,

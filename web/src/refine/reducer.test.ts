@@ -8,7 +8,7 @@ const snap: Snapshot = {
   docs: { 'project.md': '', 'briefing.md': '', 'stack.md': '', 'flow.md': '', 'design.md': '' },
   secrets: [],
   tokens: { inputTokens: 0, outputTokens: 0, costUsd: 0, steps: 0 },
-  state: { status: 'drafting', stale: false, cycle: 0, derived: null, checklist: [], questions: [], patches: [], discarded: [], moves: [], error: null, runId: null },
+  state: { status: 'drafting', stale: false, cycle: 0, derived: null, checklist: [], questions: [], patches: [], discarded: [], moves: [], reshapes: [], error: null, runId: null },
 };
 const ev = (seq: number, type: string, data: Record<string, unknown>) => ({ seq, at: '', runId: 'p/s', specHash: 'draft', type, kind: 'fact' as const, data });
 

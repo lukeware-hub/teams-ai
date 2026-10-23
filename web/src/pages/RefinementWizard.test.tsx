@@ -10,7 +10,7 @@ const base = (over: Record<string, unknown> = {}): Snapshot => ({
   docs: { 'project.md': '# Hello', 'briefing.md': '## Objectives', 'stack.md': '# Stack', 'flow.md': '# Flow', 'design.md': '# Design' },
   secrets: [],
   tokens: { inputTokens: 10, outputTokens: 5, costUsd: 0.02, steps: 3 },
-  state: { status: 'answering', stale: false, cycle: 1, derived: null, checklist: [], questions: [], patches: [], discarded: [], moves: [], error: null, runId: null, mode: 'new-project', stages: true, ...over } as Snapshot['state'],
+  state: { status: 'answering', stale: false, cycle: 1, derived: null, checklist: [], questions: [], patches: [], discarded: [], moves: [], reshapes: [], error: null, runId: null, mode: 'new-project', stages: true, ...over } as Snapshot['state'],
 });
 const checks = (value: number) => ({ complete: value, concrete: value, consistent: value, scoped: value });
 const scored = (docs: Record<string, number>) => ({ cycle: 1, available: true, model: 'jev', average: 0.5, usage: null, outdated: false, docs: Object.fromEntries(Object.entries(docs).map(([file, score]) => [file, { score, checks: { complete: 0.44, concrete: 0.72, consistent: 0.84, scoped: 0.6 } }])) });
