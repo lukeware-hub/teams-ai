@@ -997,7 +997,7 @@ export function RefinementView(p: ViewProps) {
           {cause && <p data-testid="doc-stale" className={notice}>{docLabel[cause]} mudou depois desta revisão: processe esta etapa de novo.</p>}
           {!locked && questions[0] && questionCard(questions[0], questions.length)}
           {!locked && patches.map(patchCard)}
-          {discarded.map((d, i) => <p key={i} className={notice}>Uma sugestão do {d.role.toUpperCase()} não pôde ser aplicada e foi descartada ({d.reason}).</p>)}
+          {discarded.map((d, i) => <p key={i} className={`m-0 ${notice}`}>Uma sugestão do {d.role.toUpperCase()} não pôde ser aplicada e foi descartada ({d.reason}).</p>)}
           {count === 0 && !locked && <p className={`m-0 ${muted}`}>Nenhuma pendência neste documento.</p>}
         </aside>
       </div>
