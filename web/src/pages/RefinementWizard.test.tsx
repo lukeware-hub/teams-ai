@@ -218,6 +218,13 @@ describe('the Jev score of the document', () => {
     expect(document.body.textContent).not.toMatch(/Mínimo|Pronto para|Ainda não está pronto/);
   });
 
+  it('explains the score and each check on the info icon beside it, in plain words', () => {
+    show(base({ doneStages: ['flow.md'], confidential: false, readiness: scored({ 'project.md': 0.65 }) }));
+    fireEvent.focus(screen.getByRole('button', { name: /^Nota do Jev:/ }));
+    const tip = screen.getByText(/^A nota do Jev é a média/);
+    for (const check of ['completo:', 'concreto:', 'consistente:', 'escopo:']) expect(tip.textContent).toContain(check);
+  });
+
   it('asks the Jev for the score of this document when it has none', () => {
     const handlers = show(base({ doneStages: ['flow.md'], confidential: false }));
     fireEvent.click(screen.getByTestId('score-doc'));
