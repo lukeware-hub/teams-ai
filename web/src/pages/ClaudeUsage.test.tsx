@@ -14,6 +14,7 @@ const scoped = (over: Partial<UsageLimit> = {}): UsageLimit => ({ kind: 'weekly_
 const plan = (...limits: UsageLimit[]): ClaudeUsage => ({ available: true, plan: 'Max (5x)', limits });
 
 beforeEach(() => {
+  sessionStorage.clear();
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(NOW);
 });
@@ -112,5 +113,17 @@ describe('ClaudeUsagePanel', () => {
     });
     expect(claude).toHaveBeenCalledTimes(2);
     expect(screen.getByText('84% usado')).toBeTruthy();
+  });
+
+  it('shows the last reading at once after a reload, before the next read answers', async () => {
+    const claude = vi.spyOn(usageApi, 'claude').mockResolvedValueOnce(plan(session())).mockReturnValueOnce(new Promise(() => {}));
+    const before = render(<ClaudeUsagePanel />);
+    await screen.findByText('84% usado');
+    before.unmount();
+
+    render(<ClaudeUsagePanel />);
+    expect(screen.getByText('84% usado')).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(claude).toHaveBeenCalledTimes(2);
   });
 });

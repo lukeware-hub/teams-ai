@@ -91,8 +91,28 @@ function UsageBody({ usage, now }: { usage: ClaudeUsage; now: Date }) {
   );
 }
 
+const STORE_KEY = 'claude-usage';
+
+/** The last reading kept in this tab, so a reload shows the numbers at once. */
+function lastReading(): ClaudeUsage | null {
+  try {
+    const raw = sessionStorage.getItem(STORE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function keepReading(next: ClaudeUsage) {
+  try {
+    sessionStorage.setItem(STORE_KEY, JSON.stringify(next));
+  } catch {
+    // Blocked storage only loses the instant reload.
+  }
+}
+
 export function ClaudeUsagePanel() {
-  const [usage, setUsage] = useState<ClaudeUsage | null>(null);
+  const [usage, setUsage] = useState<ClaudeUsage | null>(lastReading);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let active = true;
@@ -101,6 +121,7 @@ export function ClaudeUsagePanel() {
         .then((next) => {
           if (!active) return;
           setUsage(next);
+          keepReading(next);
           setFailed(false);
         })
         .catch(() => {
