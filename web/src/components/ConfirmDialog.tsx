@@ -6,7 +6,11 @@ import { Icon } from './Icons.js';
  * A compact confirmation for a destructive action. Focus starts on Cancel (the safe answer), Escape and a click on the
  * backdrop cancel, Tab cycles inside, and focus returns to whatever opened it.
  */
-export function ConfirmDialog({ title, subject, confirmLabel, onConfirm, onCancel, children }: { title: string; subject?: string; confirmLabel: string; onConfirm: () => void | Promise<void>; onCancel: () => void; children: ReactNode }) {
+/**
+ * `danger` (the default) is for an action that destroys something; `accent` is for a process action that only runs the
+ * agents again, so its tile and confirm take the accent colour and the icon names the action.
+ */
+export function ConfirmDialog({ title, subject, confirmLabel, tone = 'danger', icon = 'trash', confirmTestId = 'delete-confirm', onConfirm, onCancel, children }: { title: string; subject?: string; confirmLabel: string; tone?: 'danger' | 'accent'; icon?: 'trash' | 'refresh'; confirmTestId?: string; onConfirm: () => void | Promise<void>; onCancel: () => void; children: ReactNode }) {
   const titleId = useId();
   const box = useRef<HTMLDivElement>(null);
   const cancelButton = useRef<HTMLButtonElement>(null);
@@ -53,8 +57,8 @@ export function ConfirmDialog({ title, subject, confirmLabel, onConfirm, onCance
       }}
     >
       <div ref={box} className="confirm" role="alertdialog" aria-modal="true" aria-labelledby={titleId}>
-        <span className="confirm-icon" aria-hidden="true">
-          <Icon name="trash" size={22} />
+        <span className={`confirm-icon${tone === 'accent' ? ' is-accent' : ''}`} aria-hidden="true">
+          <Icon name={icon} size={22} />
         </span>
         <h2 id={titleId}>{title}</h2>
         {subject ? <code className="confirm-subject">{subject}</code> : null}
@@ -63,7 +67,7 @@ export function ConfirmDialog({ title, subject, confirmLabel, onConfirm, onCance
           <button ref={cancelButton} type="button" className="confirm-cancel" data-testid="delete-cancel" aria-label="Cancelar" onClick={() => cancel.current()}>
             <Icon name="close" size={16} />
           </button>
-          <ActionButton className="confirm-danger" data-testid="delete-confirm" onClick={onConfirm} icon={<Icon name="trash" size={16} />}>
+          <ActionButton className={tone === 'accent' ? 'primary' : 'confirm-danger'} data-testid={confirmTestId} onClick={onConfirm} icon={<Icon name={icon} size={16} />}>
             {confirmLabel}
           </ActionButton>
         </div>

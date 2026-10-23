@@ -321,6 +321,7 @@ td.num { color: var(--ink); font-weight: 500; }
 .confirm-actions button { height: 2.5rem; border-radius: 10px; font-size: 0.875rem; font-weight: 600; transition: background-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease; }
 .confirm-actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .confirm-cancel { min-width: auto; padding: 0; border-color: var(--line-strong); color: var(--ink); background: var(--surface); }
+.confirm-icon.is-accent { color: var(--accent-text); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); }
 .confirm-danger { border-color: transparent; color: var(--on-bad); background: var(--bad); box-shadow: 0 1px 2px rgb(0 0 0 / 0.2), inset 0 1px 0 rgb(255 255 255 / 0.18); }
 .confirm-danger:hover:not(:disabled) { background: var(--bad); filter: brightness(0.93); }
 .confirm-danger:focus-visible { outline-color: var(--bad); }

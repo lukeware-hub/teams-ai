@@ -273,7 +273,7 @@ export function RefinementView(p: ViewProps) {
   const [docs, setDocs] = useState(snap.docs);
   const [suggesting, setSuggesting] = useState(false);
   const [askRe, setAskRe] = useState(false);
-  const [ask, setAsk] = useState<{ title: string; text: string; confirmLabel: string; onConfirm: () => void } | null>(null);
+  const [ask, setAsk] = useState<{ title: string; text: string; confirmLabel: string; tone?: 'danger' | 'accent'; icon?: 'trash' | 'refresh'; onConfirm: () => void } | null>(null);
   // A new project is refined one document per screen; the step lives in the address, so a reload opens the same screen.
   const [step, setStep] = useState<WizardStep>(() => initialStep(snap.state, new URLSearchParams(window.location.search).get('etapa')));
   // The backlog and its run keep their own screen, named in the address; a project already running opens on it.
@@ -463,7 +463,7 @@ export function RefinementView(p: ViewProps) {
     });
   /** The question of the system dialog, with what to do once the owner confirms. */
   const askDialog = ask ? (
-    <ConfirmDialog title={ask.title} confirmLabel={ask.confirmLabel} onConfirm={() => { const go = ask.onConfirm; setAsk(null); go(); }} onCancel={() => setAsk(null)}>
+    <ConfirmDialog title={ask.title} confirmLabel={ask.confirmLabel} tone={ask.tone} icon={ask.icon} confirmTestId="stage-confirm" onConfirm={() => { const go = ask.onConfirm; setAsk(null); go(); }} onCancel={() => setAsk(null)}>
       {ask.text}
     </ConfirmDialog>
   ) : null;
@@ -636,7 +636,7 @@ export function RefinementView(p: ViewProps) {
     </ActionButton>
   );
   const reevaluateDialog = askRe ? (
-    <ConfirmDialog title="Reavaliar sem mudanças" confirmLabel="Reavaliar mesmo assim" onConfirm={() => { setAskRe(false); void p.onEvaluate(); }} onCancel={() => setAskRe(false)}>
+    <ConfirmDialog title="Reavaliar sem mudanças" confirmLabel="Reavaliar mesmo assim" tone="accent" icon="refresh" confirmTestId="reevaluate-confirm" onConfirm={() => { setAskRe(false); void p.onEvaluate(); }} onCancel={() => setAskRe(false)}>
       <p>Nada mudou desde a última avaliação. Reavaliar gasta de novo as chamadas dos agentes (cerca de US$ 0,7) e pode dar um veredito diferente sobre os mesmos documentos.</p>
     </ConfirmDialog>
   ) : null;
@@ -1072,7 +1072,7 @@ export function RefinementView(p: ViewProps) {
       <ActionButton data-testid="wizard-process" className="secondary" busy={evaluating} disabled={locked || atMax} title={atMax ? `Limite de ${snap.limits?.max} rodadas nesta etapa` : undefined} onClick={() => {
           if (!reprocess) return stageSession ? p.onEvaluateStage?.(step) : p.onEvaluate();
           // Going back to the passed text drops the edits and the suggestions accepted since.
-          setAsk({ title: 'Reprocessar a etapa', text: 'Reprocessar volta ao texto que você entregou e descarta as edições e as sugestões aceitas depois.', confirmLabel: 'Reprocessar', onConfirm: () => void p.onReprocessStage?.(step) });
+          setAsk({ title: 'Reprocessar a etapa', text: 'Reprocessar volta ao texto que você entregou e descarta as edições e as sugestões aceitas depois.', confirmLabel: 'Reprocessar', tone: 'accent', icon: 'refresh', onConfirm: () => void p.onReprocessStage?.(step) });
         }} icon={<Icon name={reprocess ? 'refresh' : 'check'} size={16} />}>
         {reprocess ? 'Reprocessar' : 'Processar com agentes'}
       </ActionButton>
