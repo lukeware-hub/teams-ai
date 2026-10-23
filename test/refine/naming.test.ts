@@ -55,6 +55,12 @@ describe('suggestName', () => {
   it('fails with the step errors when the agent fails', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'naming-'));
     const runAgent = async () => ({ ok: false, failure: 'quota', errors: ['5-hour window'], summary: {}, sandboxDisabled: false });
-    await expect(suggestName({ runAgent: runAgent as never, workspacesRoot: root }, { kind: 'spec', name: '', description: 'login', projectId: 'p', taken: [] })).rejects.toThrow('quota: 5-hour window');
+    await expect(suggestName({ runAgent: runAgent as never, workspacesRoot: root }, { kind: 'spec', name: '', description: 'login', projectId: 'p', taken: [] })).rejects.toMatchObject({ message: expect.stringContaining('limite de uso do Claude'), detail: '5-hour window' });
+  });
+
+  it('a schema failure asks to try again, since a suggestion has no revaluate button', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'naming-'));
+    const runAgent = async () => ({ ok: false, failure: 'schema', errors: ['bad json'], summary: {}, sandboxDisabled: false });
+    await expect(suggestName({ runAgent: runAgent as never, workspacesRoot: root }, { kind: 'spec', name: '', description: 'login', projectId: 'p', taken: [] })).rejects.toMatchObject({ message: 'A sugestão de nome não devolveu o resultado em formato válido. Tente de novo.', detail: 'bad json' });
   });
 });

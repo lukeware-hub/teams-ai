@@ -9,6 +9,7 @@ import { outputContract } from '../orchestrator/steps.js';
 import type { StepOutcome } from '../runner/step.js';
 import type { RunAgent } from './cycle.js';
 import { fitPackBudget } from './fit-pack.js';
+import { ownerFailure, TRY_AGAIN } from './agent-failure.js';
 
 export type NameKind = 'project' | 'spec';
 
@@ -79,7 +80,7 @@ export async function suggestName(deps: { runAgent: RunAgent; workspacesRoot: st
       { kind: 'name', role: 'po', pack: fitPackBudget(namePack({ ...input, specHash })), cwd, phase: 'refine', taskId: null, attempt: 1, model: deps.model },
       { journal: { allocStepSeq: () => ++seq, fact: async () => undefined } as never, stepDir: (n) => path.join(cwd, 'steps', stepId(n)), specHash },
     )) as StepOutcome<NameOutput>;
-    if (!out.ok) throw new Error(`name suggestion failed: ${out.failure}: ${out.errors.join('; ')}`);
+    if (!out.ok) throw ownerFailure('A sugestão de nome', out.failure, out.errors, TRY_AGAIN);
     const id = uniqueId(out.value.id, input.taken);
     if (input.kind === 'spec') return { id };
     const first = out.value.firstSpecId && out.value.firstSpecId !== id ? out.value.firstSpecId : `${id}-core`;

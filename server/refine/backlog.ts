@@ -86,13 +86,32 @@ function keepPreviousKeys(items: readonly BacklogItem[], previous: BacklogState 
 
 const valueAt = (root: unknown, path: readonly PropertyKey[]): unknown => path.reduce<unknown>((v, k) => (v as Record<PropertyKey, unknown> | undefined)?.[k], root);
 
+/** One schema issue in Portuguese for the owner; `received` is the value a size limit refused. */
+function plainIssue(scope: string, issue: { code: string; path: readonly PropertyKey[] }, received: unknown): string {
+  const where = `${scope}.${issue.path.map(String).join('.')}`;
+  switch (issue.code) {
+    case 'too_big':
+      return `${where}: passa do máximo permitido${typeof received === 'string' ? ` (recebido: "${received}")` : ''}`;
+    case 'too_small':
+      return `${where}: abaixo do mínimo permitido`;
+    case 'invalid_type':
+      return `${where}: tipo de valor errado`;
+    case 'invalid_value':
+      return `${where}: valor fora das opções aceitas`;
+    case 'unrecognized_keys':
+      return `${where}: campo não reconhecido`;
+    default:
+      return `${where}: valor inválido`;
+  }
+}
+
 /** The orchestrator, not the agent, owns key stability, validity and rank, keeps every started item (R11.7.5) and adds the adjustments the owner approved (R11.7.4). */
 export function postProcessBacklog(out: { project: unknown; backlog: unknown }, previous: BacklogState | null, docs: Partial<BacklogDocs>, approved: readonly string[] = [], started: readonly BacklogItem[] = []): BacklogCheck {
   const project = Project.safeParse(out.project);
   const backlog = Backlog.safeParse(out.backlog);
   const issues = [
-    ...(project.success ? [] : project.error.issues.map((i) => `project.${i.path.join('.')}: ${i.message}`)),
-    ...(backlog.success ? [] : backlog.error.issues.map((i) => `backlog.${i.path.join('.')}: ${i.message}${i.code === 'too_big' ? ` (got "${String(valueAt(out.backlog, i.path))}")` : ''}`)),
+    ...(project.success ? [] : project.error.issues.map((i) => plainIssue('project', i, valueAt(out.project, i.path)))),
+    ...(backlog.success ? [] : backlog.error.issues.map((i) => plainIssue('backlog', i, valueAt(out.backlog, i.path)))),
   ];
   if (!project.success || !backlog.success) return { ok: false, issues };
   const items = keepPreviousKeys(backlog.data.items.filter((i) => !isAdjustment(i.key)), previous);

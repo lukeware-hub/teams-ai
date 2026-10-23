@@ -7,6 +7,7 @@ import { runCycle } from '../../server/refine/cycle.js';
 import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
 import { retireDropped } from '../../server/refine/detail-cycle.js';
 import { withQuotaWait } from '../../server/refine/quota-wait.js';
+import { PackTooLargeError } from '../../server/refine/fit-pack.js';
 import { restoreFromBase } from '../../server/refine/draft.js';
 import { RefineEvent } from '../../server/refine/events.js';
 import { applyPatch } from '../../server/refine/patches.js';
@@ -492,6 +493,38 @@ describe('backlog detailing in the refinement cycle', () => {
     expect(journal.state.status).toBe('error');
     expect(journal.state.error).toMatch(/limite de uso do Claude/);
     expect(journal.state.error).not.toContain('[object Object]');
+  });
+
+  it('fails the cycle with the backlog reason, and keeps the agent error as the detail', async () => {
+    const { events, run } = await setup();
+    const agent = fakeAgent(() => OUTLINE, (req) => (req.kind === 'backlog' ? { ok: false, failure: 'timeout', errors: ['sem resposta'], summary: {}, sandboxDisabled: false } : undefined));
+    await run(agent, 1);
+    expect(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data).toMatchObject({ cycle: 1, reason: 'O backlog passou do tempo limite. Clique em Reavaliar.', detail: 'sem resposta' });
+  });
+
+  it('fails a timed-out spec batch once for each item, with no retry item by item', async () => {
+    const { journal, events, run } = await setup();
+    const agent = fakeAgent(() => OUTLINE, (req) => (req.kind === 'spec' ? { ok: false, failure: 'timeout', errors: ['sem resposta'], summary: {}, sandboxDisabled: false } : undefined));
+    await run(agent, 1);
+    await journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    const from = agent.calls.length;
+    await run(agent, 2);
+    expect(agent.kinds(from).filter((k) => k === 'spec')).toHaveLength(3);
+    expect(journal.state.backlog?.specs?.caso?.issues).toEqual(['O agente deste item passou do tempo limite. Clique em Reavaliar.']);
+    expect(events.filter((e) => e.type === 'REFINE_CYCLE_FAILED')).toEqual([]);
+  });
+
+  it('fails the cycle with the oversized-pack message, which says what to do', async () => {
+    const { journal, events, run } = await setup();
+    const message = 'Reduza ou divida o conteúdo dos documentos.';
+    const agent = fakeAgent(() => OUTLINE, (req) => {
+      if (req.kind === 'spec') throw new PackTooLargeError(message);
+      return undefined;
+    });
+    await run(agent, 1);
+    await journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    await run(agent, 2);
+    expect(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data).toMatchObject({ cycle: 2, reason: message, detail: message });
   });
 
   it('removes the files of an item the outline no longer has', async () => {

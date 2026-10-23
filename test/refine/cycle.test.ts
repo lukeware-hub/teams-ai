@@ -65,6 +65,44 @@ describe('refinement cycle Jev advisory', () => {
   });
 });
 
+describe('refinement cycle: owner reasons for a failed agent step', () => {
+  const TIMEOUT = { ok: false, failure: 'timeout', errors: ['sem resposta'], summary: {}, sandboxDisabled: false };
+  /** Runs one cycle of a new project; `hook` may replace the answer of a step, and returns the failure the cycle recorded. */
+  async function failingCycle(hook: (req: { kind: string; role: string; pack?: { feedback?: string } }) => unknown) {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
+    const ws = { projectId: 'shop', root, repo: `${root}/repo`, worktrees: `${root}/wt`, graph: `${root}/g`, knowledgeDb: `${root}/k.sqlite`, secrets: `${root}/secrets`, runs: `${root}/runs` } as Workspace;
+    const draft = draftPaths(ws, 'shop-002');
+    await createNewProject(draft, 'Shop');
+    await writeFile(draft.flowMd, '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n');
+    const events: Array<{ type: string; data: Record<string, unknown> }> = [];
+    const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'shop/shop-002', specHash: 'draft', type, kind: 'fact' as const, data }; } };
+    const ok = (value: unknown) => ({ ok: true, value, summary: {} });
+    const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
+    const runAgent = vi.fn(async (req: { kind: string; role: string; pack?: { feedback?: string } }) => {
+      const replaced = hook(req);
+      if (replaced !== undefined) return replaced;
+      if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...makeSpec(), specId: 'shop-002', acceptanceCriteria: [{ id: 'AC-001', given: 'g', when: 'w', then: 't2', smoke: false }] } });
+      if (String(req.pack?.feedback).startsWith('REORGANIZE:')) return ok({ checklist: [], questions: [], docPatch: [], moves: [] });
+      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [] });
+      return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
+    });
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [] }, 1);
+    return events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data;
+  }
+
+  it('names the derivation when the derive step times out', async () => {
+    expect(await failingCycle((req) => (req.kind === 'derive' ? TIMEOUT : undefined))).toMatchObject({ reason: 'A derivação dos documentos passou do tempo limite. Clique em Reavaliar.', detail: 'sem resposta' });
+  });
+
+  it('names the PO review when the PO review times out', async () => {
+    expect(await failingCycle((req) => (req.kind === 'refine' && req.role === 'po' && !String(req.pack?.feedback).startsWith('REORGANIZE:') ? TIMEOUT : undefined))).toMatchObject({ reason: 'A revisão do PO passou do tempo limite. Clique em Reavaliar.', detail: 'sem resposta' });
+  });
+
+  it('names the SM review when the SM review times out', async () => {
+    expect(await failingCycle((req) => (req.kind === 'refine' && req.role === 'sm' ? TIMEOUT : undefined))).toMatchObject({ reason: 'A revisão do SM passou do tempo limite. Clique em Reavaliar.', detail: 'sem resposta' });
+  });
+});
+
 describe('refinement cycle: moves, findings and template fills', () => {
   const MOVED = 'O cliente confirma o pedido antes do pagamento.';
   /** Runs one cycle of a new project whose project.md holds MOVED; flow.md is a diagram unless `blankFlow` keeps the blank template. */

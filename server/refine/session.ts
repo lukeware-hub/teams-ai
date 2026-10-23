@@ -25,6 +25,7 @@ import { applyPatch, COVERED_REASON } from './patches.js';
 import { restoreMove } from './moves.js';
 import { buildSpecsIndex } from './specs-index.js';
 import { fitPackBudget } from './fit-pack.js';
+import { ownerFailure, TRY_AGAIN } from './agent-failure.js';
 import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
 import { allGreen, applyRefineEvent, canStart, emptyRefineState, type BacklogState, type RefineLimits, type RefineState } from './state.js';
 import { refineLimits } from './limits.js';
@@ -395,7 +396,7 @@ export class RefineSession {
       { kind: 'suggest', role, pack, cwd: this.deps.draft.root, phase: 'refine', taskId: null, attempt: 1 },
       { journal: this.journal, stepDir: this.deps.draft.steps, specHash },
     )) as StepOutcome<SuggestOutput>;
-    if (!out.ok) throw new Error(`suggestion failed: ${out.failure}: ${out.errors.join('; ')}`);
+    if (!out.ok) throw ownerFailure('A sugestão do documento', out.failure, out.errors, TRY_AGAIN);
     return out.value.text;
   }
 

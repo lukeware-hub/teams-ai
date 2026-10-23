@@ -151,6 +151,35 @@ describe('RefineSession', () => {
     expect(s.state.discarded).toEqual([expect.objectContaining({ role: 'front', reason: expect.stringContaining('fora do formato duas vezes') })]);
   });
 
+  it('tells the Front what was wrong in its retry', async () => {
+    const seen: string[] = [];
+    const schemaOnce = frontSchemaFailures(1);
+    const frontAgent = (async (req: Parameters<typeof schemaOnce>[0], ctx: Parameters<typeof schemaOnce>[1]) => {
+      if (req.role === 'front') seen.push(String((req as { pack?: { feedback?: string } }).pack?.feedback));
+      return schemaOnce(req, ctx);
+    }) as typeof schemaOnce;
+    const s = await RefineSession.create({ ...deps(), frontAgent }, 'new-spec');
+    script['derive/po'] = [derived];
+    script['refine/front'] = [refineOut([], [], [{ file: 'docs/design.md', find: '# Design', replace: '# Product design', reason: 'define the visual contract' }])];
+    script['refine/po'] = [refineOut(green(PO))];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await s.evaluate();
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).not.toContain('did not match the output schema');
+    expect(seen[1]).toContain('did not match the output schema: docPatch.3.reason');
+  });
+
+  it('stops the evaluation with the Front reason when the Front times out', async () => {
+    const frontAgent = (async () => ({ ok: false, failure: 'timeout', errors: ['sem resposta'], summary: {}, sandboxDisabled: false })) as never;
+    const s = await RefineSession.create({ ...deps(), frontAgent }, 'new-spec');
+    script['derive/po'] = [derived];
+    script['refine/po'] = [refineOut(green(PO))];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await s.evaluate();
+    expect(s.state.status).toBe('error');
+    expect(s.state.error).toBe('A revisão do Front passou do tempo limite. Clique em Reavaliar.');
+  });
+
   it('continues after a Jev advisory without requiring a document edit', async () => {
     let validations = 0;
     const s = await RefineSession.create({

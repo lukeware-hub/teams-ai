@@ -166,6 +166,11 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
       try {
         const out = await run(batch, {});
         if (!out) return;
+        // A batch that gave no answer fails each item once: a retry alone would fail the same way, and a stop is reported by the cycle.
+        if (!out.ok && out.failure !== 'schema') {
+          if (!STOPPING.has(out.failure)) for (const item of batch) await fail(item, (await outcome(out, item, false)).issues);
+          return;
+        }
         const rejected: Array<[Item, Verdict]> = [];
         for (const item of batch) {
           const first = await outcome(out, item, true);

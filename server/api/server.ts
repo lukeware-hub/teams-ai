@@ -4,6 +4,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import type { LicenseGuard } from './license-guard.js';
 import { ALLOWED_HOSTS_ENV, applySecurityHeaders, crossSite, isJsonContentType, parseAllowedHosts } from './security.js';
+import { OwnerError } from '../core/owner-error.js';
 
 export interface SseWriter {
   send(event: string, data: unknown, id?: string): void;
@@ -213,8 +214,10 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
       await match.route.handler({ req, res, params: match.params, body: (maxBytes) => readBody(req, maxBytes), json, sse });
     } catch (err) {
       const status = err instanceof HttpError ? err.status : 500;
-      if (!(err instanceof HttpError)) log(`${req.method} ${url.pathname} failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);
-      if (!res.headersSent) json(status, { error: err instanceof HttpError ? err.message : 'internal error' });
+      if (err instanceof OwnerError) log(`${req.method} ${url.pathname} failed: ${err.detail}`);
+      else if (!(err instanceof HttpError)) log(`${req.method} ${url.pathname} failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);
+      const shown = err instanceof HttpError || err instanceof OwnerError ? err.message : 'internal error';
+      if (!res.headersSent) json(status, { error: shown });
       else done(status);
     }
   });

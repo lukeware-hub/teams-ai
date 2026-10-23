@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { failureMessage, internalErrorMessage, retryOnSchema, withNote } from '../../server/refine/agent-failure.js';
+import { failureMessage, internalErrorMessage, ownerFailure, retryOnSchema, TRY_AGAIN, withNote } from '../../server/refine/agent-failure.js';
+import { OwnerError } from '../../server/core/owner-error.js';
 import { PackTooLargeError } from '../../server/refine/fit-pack.js';
 
 describe('failureMessage', () => {
@@ -61,6 +62,20 @@ describe('retryOnSchema', () => {
     const attempt = vi.fn(async () => quota);
     expect(await retryOnSchema(attempt as never)).toBe(quota);
     expect(attempt).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ownerFailure', () => {
+  it('is an OwnerError with the plain reason as message and the raw errors as detail', () => {
+    const err = ownerFailure('A sugestão de nome', 'schema', ['bad json'], TRY_AGAIN);
+    expect(err).toBeInstanceOf(OwnerError);
+    expect(err.name).toBe('OwnerError');
+    expect(err.message).toBe('A sugestão de nome não devolveu o resultado em formato válido. Tente de novo.');
+    expect(err.detail).toBe('bad json');
+  });
+
+  it('asks to revaluate by default, as the refinement stages do', () => {
+    expect(ownerFailure('A revisão do PO', 'timeout', []).message).toBe('A revisão do PO passou do tempo limite. Clique em Reavaliar.');
   });
 });
 

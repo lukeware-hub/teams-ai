@@ -86,7 +86,7 @@ describe('postProcessBacklog', () => {
     const long = 'a'.repeat(41);
     const out = postProcessBacklog(raw([item('a', { dependsOn: [long] })]), null, {});
     expect(out).toMatchObject({ ok: false });
-    if (!out.ok) expect(out.issues).toEqual([`backlog.items.0.dependsOn.0: Too big: expected string to have <=40 characters (got "${long}")`]);
+    if (!out.ok) expect(out.issues).toEqual([`backlog.items.0.dependsOn.0: passa do máximo permitido (recebido: "${long}")`]);
   });
 
   it('reports rule violations, including flow sections no item cites', () => {
