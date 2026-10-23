@@ -23,6 +23,8 @@ import { licenseGuard } from './api/license-guard.js';
 import { licenseRoutes } from './api/license-routes.js';
 import { onboardingRoutes } from './api/onboarding-routes.js';
 import { settingsRoutes } from './api/settings-routes.js';
+import { usageRoutes } from './api/usage-routes.js';
+import { createClaudeUsage } from './usage/claude-usage.js';
 import { defaultRunControl, isAlive, type RunControlDeps } from './api/run-control.js';
 import { opsRoutes } from './api/ops-routes.js';
 import { runRoutes } from './api/run-routes.js';
@@ -175,6 +177,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
         }),
         ...chatRoutes({ chat }),
         ...settingsRoutes({}),
+        ...usageRoutes({ claude: createClaudeUsage({ exec: execCommand, hostEnv: io.env, authMode: async () => (await readUserConfig()).cfg.claude.auth, now: () => Date.now() }) }),
       ],
       staticDir: hasDist ? staticDir : null,
       log: io.stderr,

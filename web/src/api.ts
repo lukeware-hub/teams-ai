@@ -1,5 +1,6 @@
 import type { Divergence } from '@server/refine/checklist';
 import type { Readiness } from '@server/refine/readiness';
+import type { ClaudeUsage } from '@server/usage/claude-usage';
 export type ItemName = 'claude' | 'githubOwner' | 'ghLogin' | 'githubToken' | 'openrouterKey';
 export type LicenseView =
   | { state: 'missing' }
@@ -51,6 +52,10 @@ export const settingsApi = {
   agents: (projectId: string) => fetch(`${S}/agents/${projectId}`).then((r) => json<{ agents: AgentRow[] }>(r)),
   setAgent: (projectId: string, role: string, choice: AgentChoice) =>
     fetch(`${S}/agents/${projectId}/${role}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(choice) }).then((r) => json<{ setting: AgentSetting | null }>(r)),
+};
+
+export const usageApi = {
+  claude: () => fetch('/api/usage/claude').then((r) => json<ClaudeUsage>(r)),
 };
 
 export interface SpecRow {

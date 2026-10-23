@@ -7,6 +7,7 @@ import { OwnerCard } from '../components/OwnerCard.js';
 import { SecretCard } from '../components/SecretCard.js';
 import { Select } from '../components/Select.js';
 import { SettingsCollapse } from '../components/SettingsCollapse.js';
+import { ClaudeUsagePanel } from './ClaudeUsage.js';
 import { emptyState, panel, row, rowActions, rowId, rows, sectionTitle } from './project-shared.js';
 
 const ROLE_LABELS: Record<string, string> = { sm: 'Scrum Master', po: 'Product Owner', front: 'Front-end', dev: 'Desenvolvedor', test: 'Testes', sec: 'Segurança', devops: 'DevOps', env: 'Ambiente' };
@@ -173,6 +174,7 @@ export function SettingsPage() {
         </div>
       </header>
       <EnvironmentSettings />
+      <ClaudeUsagePanel />
       {error ? <p className="error">{error}</p> : null}
       {projects === null && !error ? <Loading /> : null}
       {projects?.length === 0 ? (

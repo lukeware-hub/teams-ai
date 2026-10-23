@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, refineApi, runApi, settingsApi, type Item, type ProjectRow, type Status } from '../api.js';
+import { api, refineApi, runApi, settingsApi, usageApi, type Item, type ProjectRow, type Status } from '../api.js';
 import { SettingsPage } from './Settings.js';
 
 afterEach(() => {
@@ -27,6 +27,7 @@ const envStatus = (over: Partial<Status['items']> = {}): Status => ({
 function mockEnv() {
   vi.spyOn(api, 'status').mockResolvedValue(envStatus());
   vi.spyOn(api, 'organizations').mockResolvedValue({ organizations: ['acme'], owner: 'acme' });
+  vi.spyOn(usageApi, 'claude').mockResolvedValue({ available: false, reason: 'not-logged-in' });
 }
 
 async function openModelsCollapse() {
@@ -54,6 +55,7 @@ describe('SettingsPage', () => {
     render(<MemoryRouter><SettingsPage /></MemoryRouter>);
 
     expect(await screen.findByRole('heading', { name: 'Ambiente' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Seu uso' })).toBeTruthy();
     for (const title of ['Login do GitHub CLI', 'Token do GitHub', 'Organização do GitHub', 'Login do Claude', 'Chave do OpenRouter (Jev)']) {
       expect(screen.getByText(title, { selector: '.settings-collapse-title' })).toBeTruthy();
     }

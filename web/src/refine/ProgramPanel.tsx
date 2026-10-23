@@ -66,7 +66,7 @@ const fmtCost = (v: number) => `US$ ${v.toFixed(2)}`;
 export const prLabel = (pr: { number: number; url: string }): string => `${/github\.com\/[^/]+\/([^/]+)\/pull\//.exec(pr.url)?.[1] ?? 'PR'}#${pr.number}`;
 
 /** The time of day as HH:MM. */
-const hhmm = (d: Date) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+export const hhmm = (d: Date) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
 /** Why a run waits, and until when the Claude quota lets it go on. */
 export function pauseText(pause: NonNullable<ProgramViewItem['pause']>): string {

@@ -24,16 +24,27 @@ export function hasStaticCredential(hostEnv: NodeJS.ProcessEnv): boolean {
   return hasOauthToken(hostEnv) || hasApiKey(hostEnv);
 }
 
-/** expiresAt (epoch ms) of the host's stored login, or null when there is no readable credential. */
-export async function hostTokenExpiresAt(hostEnv: NodeJS.ProcessEnv): Promise<number | null> {
+/** The stored claude.ai login (the oauth block of the host's credential file), or null when there is none. */
+async function hostOauth(hostEnv: NodeJS.ProcessEnv): Promise<{ expiresAt?: unknown; rateLimitTier?: unknown } | null> {
   if (!hostEnv.HOME) return null;
   try {
     const raw = await fs.readFile(path.join(hostEnv.HOME, '.claude', '.credentials.json'), 'utf8');
-    const at = (JSON.parse(raw) as { claudeAiOauth?: { expiresAt?: unknown } }).claudeAiOauth?.expiresAt;
-    return typeof at === 'number' ? at : null;
+    return (JSON.parse(raw) as { claudeAiOauth?: { expiresAt?: unknown; rateLimitTier?: unknown } }).claudeAiOauth ?? null;
   } catch {
     return null;
   }
+}
+
+/** expiresAt (epoch ms) of the host's stored login, or null when there is no readable credential. */
+export async function hostTokenExpiresAt(hostEnv: NodeJS.ProcessEnv): Promise<number | null> {
+  const at = (await hostOauth(hostEnv))?.expiresAt;
+  return typeof at === 'number' ? at : null;
+}
+
+/** The plan tier of the host's stored login, e.g. default_claude_max_5x, or null when there is none. */
+export async function hostRateLimitTier(hostEnv: NodeJS.ProcessEnv): Promise<string | null> {
+  const tier = (await hostOauth(hostEnv))?.rateLimitTier;
+  return typeof tier === 'string' ? tier : null;
 }
 
 /**
