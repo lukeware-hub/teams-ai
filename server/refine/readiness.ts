@@ -33,7 +33,7 @@ export interface Readiness extends DocsScoreRecord {
   outdated: boolean;
 }
 
-/** The minimum score, in whole percent, that makes a project ready to develop. */
+/** The percent a check must reach to pass in the goals of a full round; the owner has not decided it for a project. */
 export const READY_PERCENT = 80;
 
 export const UNSCORED: DocsScoreRecord = { available: false, model: null, average: null, docs: null, usage: null };
@@ -63,15 +63,15 @@ export function jevGoals(r: Readiness | undefined): string[] {
   });
 }
 
-export type JevVerdict = 'none' | 'skipped' | 'unavailable' | 'outdated' | 'below' | 'ready';
+export type JevVerdict = 'none' | 'skipped' | 'unavailable' | 'outdated' | 'scored';
 
-/** The verdict of the latest score: none before any, skipped for a confidential project, outdated once a document changed. */
+/** The verdict of the latest score: none before any, skipped for a confidential project, outdated once a document changed, else scored. */
 export function jevVerdict(r: Readiness | undefined): JevVerdict {
   if (!r) return 'none';
   if (r.skipped) return 'skipped';
   if (!r.available || r.average === null) return 'unavailable';
   if (r.outdated) return 'outdated';
-  return percentOf(r.average) >= READY_PERCENT ? 'ready' : 'below';
+  return 'scored';
 }
 
 /** The sessions whose documents the Jev scores: a new project and a backlog, not a single spec or its continuation. */

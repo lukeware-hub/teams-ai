@@ -660,6 +660,15 @@ describe('RefinementView', () => {
     expect(stageNow([event(1, 'REFINE_DOCS_VALIDATED', { cycle: 1, available: false })], 1).jevDown).toBe(true);
   });
 
+  it('shows no Jev verdict of 80% in a stage: its preflight decision leaves the status to the stage review', () => {
+    for (const decision of ['review', 'blocked']) {
+      const text = stageNow([event(1, 'REFINE_DOCS_VALIDATED', { cycle: 1, available: true, stage: 'briefing.md', decision })], 1).stage;
+      expect(text).not.toMatch(/pontos/);
+      expect(text).not.toMatch(/derivação/);
+    }
+    expect(stageNow([event(1, 'REFINE_DOCS_VALIDATED', { cycle: 1, available: false, stage: 'briefing.md' })], 1).stage).not.toMatch(/não continua/);
+  });
+
   it('shows the demand type, bug details, and downloadable derived JSON', () => {
     render(
       <MemoryRouter>

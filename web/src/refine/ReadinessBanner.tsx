@@ -1,5 +1,5 @@
 import type { DocFile } from '@server/refine/draft';
-import { jevVerdict, meetsGoal, percentOf, READY_PERCENT, SCORE_CHECKS, type JevVerdict, type Readiness, type ScoreCheck } from '@server/refine/readiness';
+import { jevVerdict, percentOf, SCORE_CHECKS, type JevVerdict, type Readiness, type ScoreCheck } from '@server/refine/readiness';
 import { ActionButton } from '../components/ActionButton.js';
 import { Icon } from '../components/Icons.js';
 import { DOC_LABEL } from './doc-labels.js';
@@ -15,13 +15,15 @@ const CHIP: Record<Tone, string> = {
   neutral: 'border-line bg-surface-muted text-ink-soft',
 };
 
+/** A score is information: no minimum is set yet, so it judges nothing and locks nothing. */
+const SCORED = { tone: 'neutral' as Tone, title: 'Nota dos documentos', detail: 'O Jev mede quanto cada documento cobre as checagens. A nota não bloqueia nenhuma etapa nem o início.' };
+
 const VIEW: Record<JevVerdict, { tone: Tone; title: string; detail: string }> = {
   none: { tone: 'neutral', title: 'Sem nota do Jev', detail: 'Clique em Avaliar com o Jev para a nota dos cinco documentos.' },
   skipped: { tone: 'neutral', title: 'Projeto confidencial', detail: 'O Jev não lê os documentos deste projeto, então não há nota.' },
   unavailable: { tone: 'bad', title: 'O Jev não respondeu', detail: 'Confira a chave do OpenRouter e clique em Avaliar com o Jev.' },
   outdated: { tone: 'warn', title: 'Os documentos mudaram depois da nota', detail: 'Clique em Avaliar com o Jev para medir de novo.' },
-  below: { tone: 'warn', title: 'Ainda não está pronto para desenvolver', detail: `Mínimo recomendado ${READY_PERCENT}%. Você pode iniciar mesmo assim, ou melhorar os documentos e reavaliar.` },
-  ready: { tone: 'good', title: 'Pronto para desenvolver', detail: `Nota acima do mínimo de ${READY_PERCENT}%.` },
+  scored: SCORED,
 };
 
 interface Props {
@@ -36,14 +38,16 @@ interface Props {
 export function ReadinessBanner({ readiness, canStart, startState, onScore, onStart }: Props) {
   const verdict = jevVerdict(readiness);
   const view = VIEW[verdict];
-  const scoredNow = verdict === 'ready' || verdict === 'below';
+  const scoredNow = verdict === 'scored';
   const percent = scoredNow && readiness?.average != null ? percentOf(readiness.average) : null;
   const docs = scoredNow ? readiness?.docs ?? null : null;
+  // Every document scored and current: asking again would change nothing, so the score button is not offered.
+  const complete = docs !== null && (Object.keys(DOC_LABEL) as DocFile[]).every((file) => docs[file] !== undefined);
   return (
     <section className="flex flex-col gap-4 rounded-tile border border-line bg-surface p-5 shadow-card" aria-label="Nota do Jev" data-testid="readiness-banner">
       <div className="flex flex-wrap items-start gap-3.5">
         <span className={`grid size-12 shrink-0 place-items-center rounded-tile border ${CHIP[view.tone]}`}>
-          <Icon name={verdict === 'ready' ? 'check' : 'info'} size={20} />
+          <Icon name="info" size={20} />
         </span>
         <div className="min-w-0 flex-1">
           <p className="m-0 text-[0.75rem] font-semibold tracking-[0.07em] text-ink-soft">Avaliação dos documentos</p>
@@ -64,7 +68,7 @@ export function ReadinessBanner({ readiness, canStart, startState, onScore, onSt
               <b className="text-[0.9375rem] font-semibold tabular-nums text-ink">{percentOf(doc.score)}%</b>
               <ul className="m-0 flex list-none flex-col gap-0.5 p-0 text-[0.75rem] tabular-nums" data-testid={`readiness-checks-${file}`}>
                 {SCORE_CHECKS.map((id: ScoreCheck) => (
-                  <li key={id} className={meetsGoal(doc.checks[id]) ? 'text-ink-soft' : 'font-semibold text-warn'}>
+                  <li key={id} className="text-ink-soft">
                     {CHECK_LABEL[id]} {percentOf(doc.checks[id])}%
                   </li>
                 ))}
@@ -74,12 +78,12 @@ export function ReadinessBanner({ readiness, canStart, startState, onScore, onSt
         </ul>
       )}
       <div className="flex flex-wrap gap-2">
-        {verdict !== 'skipped' && verdict !== 'ready' && (
-          <ActionButton className="secondary" disabled={verdict === 'below'} onClick={onScore} icon={<Icon name="check" size={16} />}>
+        {verdict !== 'skipped' && !complete && (
+          <ActionButton className="secondary" onClick={onScore} icon={<Icon name="check" size={16} />}>
             Avaliar com o Jev
           </ActionButton>
         )}
-        {(verdict === 'ready' || verdict === 'below') && (
+        {verdict === 'scored' && (
           <ActionButton data-testid="readiness-start" className="primary" busy={startState.busy} disabled={!canStart} onClick={onStart} icon={<Icon name="play" size={16} />}>
             {startState.label}
           </ActionButton>

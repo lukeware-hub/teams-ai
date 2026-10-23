@@ -5,7 +5,7 @@ const scored = (average: number, over: Partial<Readiness> = {}): Readiness => ({
 const unanswered: Readiness = { ...UNSCORED, cycle: 1, outdated: false };
 
 describe('percentOf', () => {
-  it('rounds to a whole percent, so 79.6% is 80 and counts as ready', () => {
+  it('rounds to a whole percent, so 79.6% is 80', () => {
     expect(percentOf(0.796)).toBe(80);
     expect(percentOf(0.794)).toBe(79);
   });
@@ -28,9 +28,9 @@ describe('jevVerdict', () => {
     expect(jevVerdict(scored(0.95, { outdated: true }))).toBe('outdated');
   });
 
-  it('splits a current score at the ready percentage', () => {
-    expect(jevVerdict(scored(0.79))).toBe('below');
-    expect(jevVerdict(scored(0.8))).toBe('ready');
+  it('reports a current score as scored, whatever its value, since no minimum is decided yet', () => {
+    expect(jevVerdict(scored(0.1))).toBe('scored');
+    expect(jevVerdict(scored(0.95))).toBe('scored');
   });
 });
 

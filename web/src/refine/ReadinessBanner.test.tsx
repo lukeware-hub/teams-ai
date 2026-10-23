@@ -11,15 +11,13 @@ const props = (readiness: Readiness | undefined, over: Partial<{ canStart: boole
 const button = (name: string) => screen.queryByRole('button', { name }) as HTMLButtonElement | null;
 
 describe('ReadinessBanner', () => {
-  it('says ready at the minimum, with the score and the five documents, and starts the project from its own button', () => {
-    const p = props(scored(0.8));
-    render(<ReadinessBanner {...p} />);
-    expect(screen.getByText('Pronto para desenvolver')).toBeTruthy();
-    expect(screen.getByTestId('readiness-score').textContent).toBe('Nota do Jev 80%');
-    expect(screen.getByTestId('readiness-docs').textContent).toContain('briefing.md80%');
-    expect(button('Avaliar com o Jev')).toBeNull();
-    fireEvent.click(screen.getByTestId('readiness-start'));
-    expect(p.onStart).toHaveBeenCalledOnce();
+  it('shows the score as information, with no verdict against a minimum', () => {
+    render(<ReadinessBanner {...props(scored(0.79))} />);
+    expect(screen.getByText('Nota dos documentos')).toBeTruthy();
+    expect(screen.queryByText(/Mínimo/)).toBeNull();
+    expect(screen.queryByText(/Pronto para desenvolver|Ainda não está pronto/)).toBeNull();
+    expect(screen.getByTestId('readiness-score').textContent).toBe('Nota do Jev 79%');
+    expect(screen.getByTestId('readiness-docs').textContent).toContain('briefing.md79%');
   });
 
   it('shows the score of only the documents that have one, as a stage does before its documents are all scored', () => {
@@ -34,18 +32,29 @@ describe('ReadinessBanner', () => {
     expect((screen.getByTestId('readiness-start') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('says below the minimum, and keeps the score button off, since the same documents would score the same', () => {
+  it('hides the score button once all five documents hold a current score, since asking again would change nothing', () => {
     render(<ReadinessBanner {...props(scored(0.79))} />);
-    expect(screen.getByText('Ainda não está pronto para desenvolver')).toBeTruthy();
-    expect(screen.getByTestId('readiness-score').textContent).toBe('Nota do Jev 79%');
-    expect(button('Avaliar com o Jev')!.disabled).toBe(true);
+    expect(button('Avaliar com o Jev')).toBeNull();
   });
 
-  it('starts below the minimum once the screen allows it, since the score never blocks by itself', () => {
-    const p = props(scored(0.79));
+  it('keeps the score button for a partial score, so the missing documents can be scored', () => {
+    const one = { 'stack.md': { score: 0.8, checks: { complete: 0.8, concrete: 0.8, consistent: 0.8, scoped: 0.8 } } } as Readiness['docs'];
+    render(<ReadinessBanner {...props(scored(0.8, { docs: one }))} />);
+    expect(button('Avaliar com o Jev')!.disabled).toBe(false);
+  });
+
+  it('offers the start once there is a score, whatever its value, and starts the project from its own button', () => {
+    const p = props(scored(0.5));
     render(<ReadinessBanner {...p} />);
     fireEvent.click(screen.getByTestId('readiness-start'));
     expect(p.onStart).toHaveBeenCalledOnce();
+  });
+
+  it('shows each check with its percent and no warning colour', () => {
+    render(<ReadinessBanner {...props(scored(0.5))} />);
+    const checks = screen.getByTestId('readiness-checks-briefing.md');
+    expect(checks.textContent).toContain('completo 50%');
+    expect(checks.querySelector('.text-warn')).toBeNull();
   });
 
   it('asks for a first score when there is none', () => {

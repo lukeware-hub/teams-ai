@@ -222,7 +222,7 @@ describe('runStageCycle', () => {
     expect(validate).toHaveBeenCalledWith(expect.anything(), 'briefing.md');
     expect(sent.project).toContain('# Shop');
     expect(sent).toMatchObject({ stack: '', design: '' });
-    expect(journal.events.some((e) => e.type === RefineEvent.DocsValidated)).toBe(true);
+    expect(journal.events.find((e) => e.type === RefineEvent.DocsValidated)?.data).toMatchObject({ stage: 'briefing.md' });
     await runStageCycle({ draft, journal, runAgent: runAgent as never, validateDocs: validate as never, principles: () => [] }, 2, 'flow.md');
     expect(validate).toHaveBeenCalledTimes(1);
   });
@@ -273,15 +273,18 @@ describe('runStageCycle', () => {
     expect(review).toContain('(context only, a digest)');
   });
 
-  it('the Jev goals of this document reach its review', async () => {
+  it('the Jev scores set no goal for a stage: they do not reach its review', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();
     journal.state.readiness = { available: true, model: 'jev', average: 0.5, usage: null, outdated: false, skipped: false, docs: { 'briefing.md': { score: 0.5, checks: { complete: 0.5, concrete: 0.9, consistent: 0.9, scoped: 0.9 } } } } as never;
     const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    const reorganization = (runAgent.mock.calls[0]![0] as { pack: { feedback: string } }).pack.feedback;
     const review = (runAgent.mock.calls[1]![0] as { pack: { feedback: string } }).pack.feedback;
-    expect(review).toContain('### Jev goals for this document');
-    expect(review).toContain('- briefing.md (50%)');
+    for (const text of [reorganization, review]) {
+      expect(text).not.toContain('### Jev goals');
+      expect(text).not.toContain('JEV GOALS');
+    }
   });
 
   it('a move that cuts a passage a pending question asks about is refused, whatever its target', async () => {

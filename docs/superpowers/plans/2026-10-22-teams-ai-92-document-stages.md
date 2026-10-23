@@ -145,7 +145,7 @@ Each phase ends with `task check` green, a commit and a push.
 ## Decisions made by the plan (the user may redirect)
 
 - Cross-document alignment reuses the existing Jev preflight check and the PO contradiction check, scoped to the earlier documents plus the stage document. No fifth card line.
-- A stage is done when the user continues; the Jev line (all four checks at or above 80%) is shown as a goal, never as a gate and never as 100%.
+- A stage is done when the user continues. The Jev score is information only: no goal, no gate and no threshold per stage. The owner has not decided the 80% minimum (2026-10-22), so it is not used.
 - The round limit counts per stage.
 - Stages apply to new projects only.
 - Two deliveries: the stage view first, the stage cycle second.

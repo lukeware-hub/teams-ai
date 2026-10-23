@@ -64,7 +64,7 @@ Se a spec depende de uma chave de outro serviço, a seção **Segredos** guarda 
 
 ## O Jev
 
-O Jev é uma verificação extra dos documentos, feita por outro serviço. Os pontos que ele aponta são conselhos: ajuste o que fizer sentido e reavalie. Uma nota abaixo de 80% não impede o início: a análise pode começar mesmo assim. Projetos marcados como confidenciais não enviam documentos ao Jev.
+O Jev é uma verificação extra dos documentos, feita por outro serviço. Os pontos que ele aponta são conselhos: ajuste o que fizer sentido e reavalie. A nota não impede o início: a análise pode começar a qualquer momento. Projetos marcados como confidenciais não enviam documentos ao Jev.
 
 ## Backlog
 

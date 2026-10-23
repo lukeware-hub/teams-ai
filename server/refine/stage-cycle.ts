@@ -13,7 +13,6 @@ import { fitPackBudget } from './fit-pack.js';
 import { jevHint, unavailable, type JevValidationResult, type ValidationDocs } from './jev-validation.js';
 import { reorganizePack } from './packs.js';
 import { applyPatch, checkPatch, docOf, patchId, unifiedDiff } from './patches.js';
-import { jevGoals } from './readiness.js';
 
 /** The role that reviews a stage's document: the one that owns it. */
 const OWNER: Record<DocFile, 'po' | 'sm' | 'front'> = { 'project.md': 'po', 'briefing.md': 'po', 'stack.md': 'sm', 'flow.md': 'po', 'design.md': 'front' };
@@ -57,8 +56,8 @@ const forwardMoves = (file: DocFile, specId: string, moves: readonly DocMoveProp
     return namedDoc(m.from, specId) === file && to !== undefined && DOC_STAGES.indexOf(to) > DOC_STAGES.indexOf(file);
   });
 
-/** The review of one stage's document: the owner reads it against the charter, the documents before it as digests, and the Jev's goals and hints as context. */
-export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: string; principles: readonly string[]; file: DocFile; docs: Record<DocFile, string>; goals?: readonly string[]; jev?: string }): ContextPackInput {
+/** The review of one stage's document: the owner reads it against the charter, the documents before it as digests, and the Jev's hints as context. */
+export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: string; principles: readonly string[]; file: DocFile; docs: Record<DocFile, string>; jev?: string }): ContextPackInput {
   const earlier = earlierDocs(input.file);
   const context = earlier.length > 0
     ? [DIGEST_NOTE, ...earlier.map((f) => `### ${f} (context only, a digest)\n${docDigest(input.docs[f], STAGE_DIGEST_CHARS)}`)].join('\n\n')
@@ -70,7 +69,6 @@ export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: 
     '- List in findings only the problems between this document and the documents before it, each quoting one of them; list in contradictions only the disagreements between them, quoting both sides.',
     '- Ask a question only when the document cannot be completed without the owner; mark it blocking only when the stage cannot continue without the answer.',
     '- Write everything in Brazilian Portuguese. Do not edit any file.',
-    ...(input.goals?.length ? ['### Jev goals for this document (checks below 80%)', input.goals.join('\n')] : []),
     ...(input.jev ? [input.jev] : []),
     context,
     `### ${input.file} (this stage)\n${input.docs[input.file]}`,
@@ -91,15 +89,14 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     const role = OWNER[file];
     const run = role === 'front' && deps.frontAgent ? deps.frontAgent : deps.runAgent;
     const call = async (pack: ContextPackInput) => (await run({ kind: 'refine', role, pack, cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, { journal, stepDir: draft.steps, specHash, signal: deps.signal })) as StepOutcome<z.infer<typeof RefineOutput>>;
-    const goals = jevGoals(journal.state.readiness).filter((g) => g.startsWith(`- ${file} (`));
     // The Jev reads the stage with the documents before it; the first stage has none to compare with, so it is not asked.
     let jev: JevValidationResult | undefined;
     if (deps.validateDocs && earlierDocs(file).length > 0 && !(await isConfidential(draft, journal.state))) {
       const partial = Object.fromEntries(DOC_STAGES.map((f) => [VALIDATION_KEY[f], scope.includes(f) ? docs[f] : ''])) as unknown as ValidationDocs;
       jev = await deps.validateDocs(partial, file).catch(() => unavailable());
-      await journal.fact(RefineEvent.DocsValidated, { cycle, backend: 'jev', ...jev });
+      await journal.fact(RefineEvent.DocsValidated, { cycle, backend: 'jev', stage: file, ...jev });
     }
-    const reorganized = await call(fitPackBudget({ ...reorganizePack({ jevGoals: goals, specHash, principles: deps.principles(), specId: draft.specId, projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], changed: [file] }), role }));
+    const reorganized = await call(fitPackBudget({ ...reorganizePack({ specHash, principles: deps.principles(), specId: draft.specId, projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], changed: [file] }), role }));
     if (!reorganized.ok) {
       await journal.fact(RefineEvent.CycleFailed, { cycle, reason: `stage review failed: ${reorganized.failure}: ${reorganized.errors.join('; ')}` });
       return;
@@ -116,7 +113,7 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
       }
     };
     await propose(reorganized.value.docPatch);
-    const review = await call(fitPackBudget(stageReviewPack({ role, specHash, principles: deps.principles(), file, docs, goals, jev: jev ? jevHint(jev) : undefined })));
+    const review = await call(fitPackBudget(stageReviewPack({ role, specHash, principles: deps.principles(), file, docs, jev: jev ? jevHint(jev) : undefined })));
     if (!review.ok) {
       await journal.fact(RefineEvent.CycleFailed, { cycle, reason: `stage review failed: ${review.failure}: ${review.errors.join('; ')}` });
       return;

@@ -174,9 +174,11 @@ export function stageNow(events: StoredEvent[], cycle: number): { stage: string;
 
 function currentClaudeStage(events: StoredEvent[], cycle: number, jevEvent: StoredEvent | undefined, derived: boolean): string {
   if (!jevEvent) return 'Jev está validando os cinco documentos do projeto.';
-  if (jevEvent.data.available === false) return 'Jev indisponível: confira a chave do OpenRouter. A avaliação não continua sem ele.';
-  if (jevEvent.data.decision === 'blocked') return 'Jev encontrou pontos importantes para revisão; PO e SM vão avaliá-los.';
-  if (jevEvent.data.decision === 'review') return 'Jev encontrou pontos para revisão; Claude está analisando os documentos.';
+  // A stage's preflight is information only: its decision names no verdict, and a stage goes on without the Jev.
+  const stage = jevEvent.data.stage !== undefined;
+  if (jevEvent.data.available === false) return stage ? 'Jev indisponível: confira a chave do OpenRouter. A etapa segue sem a nota dele.' : 'Jev indisponível: confira a chave do OpenRouter. A avaliação não continua sem ele.';
+  if (!stage && jevEvent.data.decision === 'blocked') return 'Jev encontrou pontos importantes para revisão; PO e SM vão avaliá-los.';
+  if (!stage && jevEvent.data.decision === 'review') return 'Jev encontrou pontos para revisão; Claude está analisando os documentos.';
 
   const active = runningSteps(events, cycle);
   if (active.some((step) => step.kind === 'backlog')) return 'PO está quebrando os documentos em backlog, com épicos e prioridades.';
@@ -189,6 +191,7 @@ function currentClaudeStage(events: StoredEvent[], cycle: number, jevEvent: Stor
   if (roles.includes('po') && roles.includes('sm')) return 'PO e SM estão revisando objetivos, critérios e fluxos em paralelo.';
   if (roles.includes('po')) return 'PO está revisando objetivos, critérios e o fluxo de negócio.';
   if (roles.includes('sm')) return 'SM está revisando stack, tarefas, validação e viabilidade.';
+  if (stage) return 'Jev respondeu; Claude está analisando o documento da etapa.';
   if (!derived) return 'Jev validou os documentos; Claude está iniciando a derivação dos arquivos.';
   return 'Derivação concluída; Claude está preparando a revisão do PO e do SM.';
 }
@@ -912,7 +915,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   const executing = starting || (following && program?.status !== 'finished');
   const startLabel = { label: starting ? 'Iniciando…' : executing ? 'Em execução' : 'Iniciar análise', busy: executing };
   // The banner offers the start once the score is ready, so the review panel does not repeat it.
-  const bannerStarts = scoresDocs(snap.state.mode ?? null) && !['evaluating', 'started'].includes(snap.state.status) && ['ready', 'below'].includes(jevVerdict(snap.state.readiness));
+  const bannerStarts = scoresDocs(snap.state.mode ?? null) && !['evaluating', 'started'].includes(snap.state.status) && jevVerdict(snap.state.readiness) === 'scored';
   return (
     <main className="flex flex-col gap-4 lg:h-full lg:min-h-0">
       <header className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></Link><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span></header>
