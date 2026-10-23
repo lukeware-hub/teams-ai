@@ -56,7 +56,7 @@ const forwardMoves = (file: DocFile, specId: string, moves: readonly DocMoveProp
   });
 
 /** The review of one stage's document: the owner reads it against the charter, the documents before it as digests, and the Jev's hints as context. */
-export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: string; principles: readonly string[]; file: DocFile; docs: Record<DocFile, string>; jev?: string }): ContextPackInput {
+export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: string; principles: readonly string[]; file: DocFile; docs: Record<DocFile, string>; jev?: string; index?: string }): ContextPackInput {
   const earlier = earlierDocs(input.file);
   const context = earlier.length > 0
     ? [DIGEST_NOTE, ...earlier.map((f) => `### ${f} (context only, a digest)\n${docDigest(input.docs[f], STAGE_DIGEST_CHARS)}`)].join('\n\n')
@@ -69,6 +69,7 @@ export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: 
     '- Ask a question only when the document cannot be completed without the owner; mark it blocking only when the stage cannot continue without the answer.',
     '- Write everything in Brazilian Portuguese. Do not edit any file.',
     ...(input.jev ? [input.jev] : []),
+    ...(input.index ? ['### Jev index of this document (information only)', `Scores of ${input.file}, probability of yes: ${input.index}. They show where the Jev doubts the document; they are not a goal, a minimum or a verdict, and they can be wrong. Do not change the document only to raise a number.`] : []),
     context,
     `### ${input.file} (this stage)\n${input.docs[input.file]}`,
   ].join('\n\n');
@@ -90,7 +91,8 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     const call = async (pack: ContextPackInput) => (await run({ kind: 'refine', role, pack, cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, { journal, stepDir: draft.steps, specHash, signal: deps.signal })) as StepOutcome<z.infer<typeof RefineOutput>>;
     // The Jev reads the stage with the documents before it; the first stage has none to compare with, so it is not asked.
     let jev: JevValidationResult | undefined;
-    if (deps.validateDocs && earlierDocs(file).length > 0 && !(await isConfidential(draft, journal.state))) {
+    const confidential = await isConfidential(draft, journal.state);
+    if (deps.validateDocs && earlierDocs(file).length > 0 && !confidential) {
       const partial = Object.fromEntries(DOC_STAGES.map((f) => [VALIDATION_KEY[f], scope.includes(f) ? docs[f] : ''])) as unknown as ValidationDocs;
       jev = await deps.validateDocs(partial, file).catch(() => unavailable());
       await journal.fact(RefineEvent.DocsValidated, { cycle, backend: 'jev', stage: file, ...jev });
@@ -112,7 +114,12 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
       }
     };
     await propose(reorganized.value.docPatch);
-    const review = await call(fitPackBudget(stageReviewPack({ role, specHash, principles: deps.principles(), file, docs, jev: jev ? jevHint(jev) : undefined })));
+    // The document's last Jev scores, while they are current and the document has text, go to the review as an index; they set no goal.
+    // A confidential project gets no Jev finding, and a blank document's zeros were never answered by the Jev.
+    const score = journal.state.readiness?.docs?.[file];
+    const indexed = score && !confidential && docs[file].trim() !== '' && !(journal.state.outdatedDocs ?? []).includes(file);
+    const index = indexed ?Object.entries(score.checks).map(([id, value]) => `${id} ${value.toFixed(2)}`).join(', ') : undefined;
+    const review = await call(fitPackBudget(stageReviewPack({ role, specHash, principles: deps.principles(), file, docs, jev: jev ? jevHint(jev) : undefined, index })));
     if (!review.ok) {
       await journal.fact(RefineEvent.CycleFailed, { cycle, reason: `stage review failed: ${review.failure}: ${review.errors.join('; ')}` });
       return;
