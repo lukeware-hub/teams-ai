@@ -273,6 +273,7 @@ export function RefinementView(p: ViewProps) {
   const [docs, setDocs] = useState(snap.docs);
   const [suggesting, setSuggesting] = useState(false);
   const [askRe, setAskRe] = useState(false);
+  const [ask, setAsk] = useState<{ title: string; text: string; confirmLabel: string; onConfirm: () => void } | null>(null);
   // A new project is refined one document per screen; the step lives in the address, so a reload opens the same screen.
   const [step, setStep] = useState<WizardStep>(() => initialStep(snap.state, new URLSearchParams(window.location.search).get('etapa')));
   // The backlog and its run keep their own screen, named in the address; a project already running opens on it.
@@ -460,20 +461,30 @@ export function RefinementView(p: ViewProps) {
       r.onerror = () => reject(r.error);
       r.readAsText(f);
     });
-  /** Replacing a document that holds text asks the owner first. */
-  const mayReplace = (doc: DocFile, question: string) => docs[doc].trim() === '' || window.confirm(question);
-  const markNotApplicable = () => {
-    if (!mayReplace('design.md', 'Substituir o texto do design por "Não se aplica"?')) return;
+  /** The question of the system dialog, with what to do once the owner confirms. */
+  const askDialog = ask ? (
+    <ConfirmDialog title={ask.title} confirmLabel={ask.confirmLabel} onConfirm={() => { const go = ask.onConfirm; setAsk(null); go(); }} onCancel={() => setAsk(null)}>
+      {ask.text}
+    </ConfirmDialog>
+  ) : null;
+  /** Replacing a document that holds text asks the owner first; an empty one is replaced at once. */
+  const replaceDoc = (doc: DocFile, title: string, text: string, apply: () => void) => {
+    if (docs[doc].trim() === '') apply();
+    else setAsk({ title, text, confirmLabel: 'Substituir', onConfirm: apply });
+  };
+  const markNotApplicable = () => replaceDoc('design.md', 'Marcar o design como não se aplica', 'O texto do design será substituído por "Não se aplica".', () => {
     setDocs((d) => ({ ...d, 'design.md': NOT_APPLICABLE_DESIGN }));
     p.onSaveDoc('design.md', NOT_APPLICABLE_DESIGN);
-  };
+  });
   const attachDoc = async (files: FileList | null, doc: DocFile = tab) => {
     const file = files?.[0];
     if (!file) return;
     const text = await readText(file).catch(() => null);
-    if (text === null || !mayReplace(doc, 'Substituir o texto deste documento pelo arquivo anexado?')) return;
-    setDocs((d) => ({ ...d, [doc]: text }));
-    p.onSaveDoc(doc, text);
+    if (text === null) return;
+    replaceDoc(doc, 'Substituir o texto do documento', 'O texto deste documento será substituído pelo arquivo anexado.', () => {
+      setDocs((d) => ({ ...d, [doc]: text }));
+      p.onSaveDoc(doc, text);
+    });
   };
   const tabButton = (f: DocFile) => (
     <span key={f} className="inline-flex items-center">
@@ -614,6 +625,7 @@ export function RefinementView(p: ViewProps) {
       <div className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-3">
         <span className="inline-flex items-start gap-[0.45rem] text-[0.8125rem] leading-[1.35] text-ink-soft"><Icon name="info" size={18} />As alterações são salvas automaticamente ao sair do editor.</span>
       </div>
+      {askDialog}
     </section>
   );
   // A new project offers one step at a time: the start, or the evaluation, never two primary actions.
@@ -1060,7 +1072,7 @@ export function RefinementView(p: ViewProps) {
       <ActionButton data-testid="wizard-process" className="secondary" busy={evaluating} disabled={locked || atMax} title={atMax ? `Limite de ${snap.limits?.max} rodadas nesta etapa` : undefined} onClick={() => {
           if (!reprocess) return stageSession ? p.onEvaluateStage?.(step) : p.onEvaluate();
           // Going back to the passed text drops the edits and the suggestions accepted since.
-          if (window.confirm('Reprocessar volta ao texto que você entregou e descarta as edições feitas depois. Continuar?')) return p.onReprocessStage?.(step);
+          setAsk({ title: 'Reprocessar a etapa', text: 'Reprocessar volta ao texto que você entregou e descarta as edições e as sugestões aceitas depois.', confirmLabel: 'Reprocessar', onConfirm: () => void p.onReprocessStage?.(step) });
         }} icon={<Icon name={reprocess ? 'refresh' : 'check'} size={16} />}>
         {reprocess ? 'Reprocessar' : 'Processar com agentes'}
       </ActionButton>
@@ -1094,6 +1106,7 @@ export function RefinementView(p: ViewProps) {
           {step === 'review' ? finalScreen() : stageScreen(step)}
         </WizardShell>
         {reevaluateDialog}
+        {askDialog}
       </div>
     );
   }

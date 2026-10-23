@@ -49,9 +49,9 @@ describe('RefinementPage of a new project', () => {
   it('sends the reprocess of the stage document to the API', async () => {
     vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageState({ passedStages: ['flow.md'] }));
     const again = vi.spyOn(refineApi, 'reprocessStage').mockResolvedValue({ ok: true });
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     renderPage();
     fireEvent.click(await screen.findByTestId('wizard-process'));
+    fireEvent.click(await screen.findByTestId('delete-confirm'));
     await waitFor(() => expect(again).toHaveBeenCalledWith('hello-app', 'hello-001', 'flow.md'));
   });
 

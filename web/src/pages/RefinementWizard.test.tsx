@@ -138,16 +138,17 @@ describe('processing a stage', () => {
     fireEvent.click(screen.getByTestId('wizard-process'));
     expect(first.onEvaluateStage).toHaveBeenCalledWith('project.md');
     cleanup();
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const confirm = vi.spyOn(window, 'confirm');
     const again = show(base({ doneStages: ['flow.md'], passedStages: ['project.md'] }));
     expect(screen.getByTestId('wizard-process').textContent).toContain('Reprocessar');
     fireEvent.click(screen.getByTestId('wizard-process'));
-    expect(confirm).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
     expect(again.onReprocessStage).not.toHaveBeenCalled();
-    confirm.mockReturnValue(true);
     fireEvent.click(screen.getByTestId('wizard-process'));
+    fireEvent.click(screen.getByTestId('delete-confirm'));
     expect(again.onReprocessStage).toHaveBeenCalledWith('project.md');
     expect(again.onEvaluateStage).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
     confirm.mockRestore();
   });
 
@@ -257,21 +258,19 @@ describe('the confidentiality question', () => {
 
 describe('the actions of the editor', () => {
   it('attaches a text file to the document on screen, and saves it', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const handlers = show(base({ doneStages: ['flow.md'] }));
     fireEvent.change(screen.getByTestId('attach-doc'), { target: { files: [new File(['# Projeto novo'], 'projeto.md', { type: 'text/markdown' })] } });
+    fireEvent.click(await screen.findByTestId('delete-confirm'));
     await waitFor(() => expect(editor('project.md').value).toBe('# Projeto novo'));
     expect(handlers.onSaveDoc).toHaveBeenCalledWith('project.md', '# Projeto novo');
   });
 
   it('keeps the document when the owner does not confirm that a file replaces its text', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     const handlers = show(base({ doneStages: ['flow.md'] }));
     fireEvent.change(screen.getByTestId('attach-doc'), { target: { files: [new File(['# Novo'], 'novo.md', { type: 'text/markdown' })] } });
-    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancelar' }));
     expect(handlers.onSaveDoc).not.toHaveBeenCalled();
     expect(editor('project.md').value).toBe('# Hello');
-    confirm.mockRestore();
   });
 
   it('ignores a change without a file, and keeps the document when the file cannot be read', async () => {
@@ -289,23 +288,20 @@ describe('the actions of the editor', () => {
   it('marks the design as not applicable after the owner confirms, and leaves it when they do not', () => {
     open('?etapa=design.md');
     const handlers = show(base());
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     fireEvent.click(screen.getByRole('button', { name: 'Não se aplica' }));
-    expect(confirm).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
     expect(handlers.onSaveDoc).not.toHaveBeenCalled();
-    confirm.mockReturnValue(true);
     fireEvent.click(screen.getByRole('button', { name: 'Não se aplica' }));
+    fireEvent.click(screen.getByTestId('delete-confirm'));
     expect(handlers.onSaveDoc).toHaveBeenCalledWith('design.md', expect.stringContaining('Não se aplica'));
-    confirm.mockRestore();
   });
 
   it('marks an empty design as not applicable without asking', () => {
     open('?etapa=design.md');
     const snap = base();
     const handlers = show({ ...snap, docs: { ...snap.docs, 'design.md': '' } });
-    const confirm = vi.spyOn(window, 'confirm').mockClear();
     fireEvent.click(screen.getByRole('button', { name: 'Não se aplica' }));
-    expect(confirm).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(handlers.onSaveDoc).toHaveBeenCalledWith('design.md', expect.stringContaining('Não se aplica'));
   });
 
