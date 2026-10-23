@@ -251,6 +251,8 @@ export interface QuestionRow {
   answer: string | null;
   answeredBy?: 'po' | 'sm' | null;
   subject?: string;
+  /** The document of a stage review's question; absent for a question of a full round. */
+  file?: 'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md';
   options?: Array<{ label: string; detail: string; recommended?: boolean }>;
 }
 export interface PatchRow {

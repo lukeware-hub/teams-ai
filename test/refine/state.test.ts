@@ -240,6 +240,31 @@ describe('reduceRefineEvents legacy brief.md', () => {
   });
 });
 
+describe('reduceRefineEvents stage questions', () => {
+  const question = (questionId: string, text: string) => ({ questionId, role: 'po', text, blocking: false, relatedAcIds: [], cycle: 1, options: [] });
+
+  it('stamps each question of a stage review with its document', () => {
+    const s = reduceRefineEvents([
+      { type: RefineEvent.StageReviewed, data: { cycle: 1, file: 'project.md', questions: [question('po-s1-0', 'Quem usa?')], divergences: [], discardedPatches: [] } },
+    ]);
+    expect(s.questions).toEqual([expect.objectContaining({ questionId: 'po-s1-0', file: 'project.md' })]);
+  });
+
+  it('names a legacy brief.md question as the briefing', () => {
+    const s = reduceRefineEvents([
+      { type: RefineEvent.StageReviewed, data: { cycle: 1, file: 'brief.md', questions: [question('po-s1-0', 'Qual o prazo?')], divergences: [], discardedPatches: [] } },
+    ]);
+    expect(s.questions[0]!.file).toBe('briefing.md');
+  });
+
+  it('leaves a question of a full round unfiled, as a general question', () => {
+    const s = reduceRefineEvents([
+      { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: [], questions: [question('po-c1-0', 'Quem aprova?')], discardedPatches: [], unverifiedContradictions: [] } },
+    ]);
+    expect(s.questions[0]).not.toHaveProperty('file');
+  });
+});
+
 describe('reduceRefineEvents findings of a stage', () => {
   const finding = (doc: string, text: string) => ({ cycle: 1, role: 'po', doc, severity: 'advice', quote: 'q', text, fix: 'f' });
 

@@ -1,3 +1,5 @@
+import type { DocFile } from './draft.js';
+
 export const RefineEvent = {
   Created: 'REFINE_CREATED',
   /** The owner's answer to whether the project is confidential: `{confidential}`. */
@@ -62,6 +64,8 @@ export interface Question {
   cycle: number;
   /** A short topic that names the decision heading in the briefing; the question text is the heading when absent. */
   subject?: string;
+  /** The document of a stage review's question; absent for a question of a full round. */
+  file?: DocFile;
   /** The choices the owner can pick from; none for an open question. */
   options?: QuestionChoice[];
   /** The validator message a system question answers; its text is plain, so a repeat is recognized on this. */
