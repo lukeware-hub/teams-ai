@@ -45,4 +45,19 @@ describe('settings routes', () => {
     expect((await put(`${base()}/Bad_Id/dev`, { mode: 'auto' })).status).toBe(400);
     expect((await fetch(`${base()}/Bad_Id`)).status).toBe(400);
   });
+
+  it('gives a project its time limit in minutes, 20 by default, and saves a new one', async () => {
+    const url = `http://127.0.0.1:${api.port}/api/settings/step-timeout/demo`;
+    expect(await (await fetch(url)).json()).toEqual({ timeoutMinutes: 60 });
+    expect((await put(url, { timeoutMinutes: 45 })).status).toBe(200);
+    expect(await (await fetch(url)).json()).toEqual({ timeoutMinutes: 45 });
+  });
+
+  it('refuses a time limit that is not a whole number of minutes a timer can hold, and keeps the old one', async () => {
+    const url = `http://127.0.0.1:${api.port}/api/settings/step-timeout/demo`;
+    for (const body of [{}, { timeoutMinutes: 0 }, { timeoutMinutes: 1.5 }, { timeoutMinutes: '45' }, { timeoutMinutes: 35_792 }]) {
+      expect((await put(url, body)).status).toBe(400);
+    }
+    expect(await (await fetch(url)).json()).toEqual({ timeoutMinutes: 60 });
+  });
 });

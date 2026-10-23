@@ -77,13 +77,20 @@ export async function setAgentSetting(projectId: string, role: Role, setting: Ag
   });
 }
 
-/** Drops a project's agent settings, so a project created later under the same id starts on automatic. */
-export async function removeAgentSettings(projectId: string, home?: string): Promise<Config> {
+/** Sets the time limit of each agent step of one project, in ms; its other settings stay. */
+export async function setStepTimeout(projectId: string, timeoutMs: number, home?: string): Promise<Config> {
+  return updateUserConfig(home, (raw, cfg) => ({ ...raw, stepTimeouts: { ...cfg.stepTimeouts, [projectId]: timeoutMs } }));
+}
+
+/** Drops a project's agent settings and time limit, so a project created later under the same id starts on the defaults. */
+export async function removeProjectSettings(projectId: string, home?: string): Promise<Config> {
   return updateUserConfig(home, (raw, cfg) => {
-    if (!(projectId in cfg.agentSettings)) return undefined;
+    if (!(projectId in cfg.agentSettings) && !(projectId in cfg.stepTimeouts)) return undefined;
     const agentSettings = { ...cfg.agentSettings };
+    const stepTimeouts = { ...cfg.stepTimeouts };
     delete agentSettings[projectId];
-    return { ...raw, agentSettings };
+    delete stepTimeouts[projectId];
+    return { ...raw, agentSettings, stepTimeouts };
   });
 }
 

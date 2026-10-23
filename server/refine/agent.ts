@@ -23,6 +23,8 @@ export interface AgentWiring {
   runStep?: typeof runStepFn;
   /** The agent settings of one project, read per step so a change applies to the next step. */
   agentSettings?: (projectId: string) => Promise<Partial<Record<Role, AgentSetting>>>;
+  /** The step budget of one project, read per step so a time limit changed in Settings applies to the next step. */
+  stepBudget?: (projectId: string) => Promise<Config['budgets']['step']>;
 }
 
 /** From the second cycle on, `laterCycleModels` wins over `stepModels`. */
@@ -41,12 +43,13 @@ export async function makeRunAgent(w: AgentWiring): Promise<RunAgent & { resetQu
     const { ANTHROPIC_API_KEY: apiKey, ...secrets } = await loadSecrets(w.secretsDir);
     if (w.cfg.claude.auth === 'api-key' && !apiKey) throw new Error('claude.auth is "api-key" but the secret ANTHROPIC_API_KEY is not set');
     const settings = ctx.projectId && w.agentSettings ? await w.agentSettings(ctx.projectId) : {};
+    const caps = ctx.projectId && w.stepBudget ? await w.stepBudget(ctx.projectId) : w.cfg.budgets.step;
     return runAgentStep(req, {
       agentSetting: (role) => settings[role],
       runStep: w.runStep ?? runStepFn,
       stepDeps: {
         binary,
-        caps: w.cfg.budgets.step,
+        caps,
         accounting,
         claudeJsonPath: w.claudeJsonPath ?? expandHome('~/.claude.json'),
         settingsDir: path.posix.join(req.cwd, 'settings'),

@@ -52,6 +52,9 @@ export const settingsApi = {
   agents: (projectId: string) => fetch(`${S}/agents/${projectId}`).then((r) => json<{ agents: AgentRow[] }>(r)),
   setAgent: (projectId: string, role: string, choice: AgentChoice) =>
     fetch(`${S}/agents/${projectId}/${role}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(choice) }).then((r) => json<{ setting: AgentSetting | null }>(r)),
+  stepTimeout: (projectId: string) => fetch(`${S}/step-timeout/${projectId}`).then((r) => json<{ timeoutMinutes: number }>(r)),
+  setStepTimeout: (projectId: string, timeoutMinutes: number) =>
+    fetch(`${S}/step-timeout/${projectId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ timeoutMinutes }) }).then((r) => json<{ timeoutMinutes: number }>(r)),
 };
 
 export const usageApi = {

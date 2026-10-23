@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConfigError } from '../../server/config/config.js';
-import { GITHUB_OWNER, addProject, readUserConfig, removeAgentSettings, setAgentSetting, setGithubOwner, userConfigFile } from '../../server/onboarding/config-store.js';
+import { GITHUB_OWNER, addProject, readUserConfig, removeProjectSettings, setAgentSetting, setGithubOwner, setStepTimeout, userConfigFile } from '../../server/onboarding/config-store.js';
 
 let home = '';
 afterEach(async () => {
@@ -136,11 +136,22 @@ describe('config store', () => {
     expect(cfg.agentSettings).toEqual({ demo: { dev: { model: 'claude-opus-5-5', effort: 'high' } }, other: { dev: { model: 'claude-sonnet-5-5', effort: 'max' } } });
   });
 
-  it('removeAgentSettings drops one project settings and keeps the others', async () => {
+  it('setStepTimeout sets the time limit of one project and keeps the others', async () => {
+    home = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-home-'));
+    await setStepTimeout('demo', 45 * 60_000, home);
+    await setStepTimeout('other', 10 * 60_000, home);
+    expect((await readUserConfig(home)).cfg.stepTimeouts).toEqual({ demo: 45 * 60_000, other: 10 * 60_000 });
+  });
+
+  it('removeProjectSettings drops one project agent settings and time limit and keeps the others', async () => {
     home = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-home-'));
     await setAgentSetting('demo', 'dev', { model: 'claude-opus-5-5', effort: 'high' }, home);
     await setAgentSetting('other', 'dev', { model: 'claude-sonnet-5-5', effort: 'max' }, home);
-    await removeAgentSettings('demo', home);
-    expect((await readUserConfig(home)).cfg.agentSettings).toEqual({ other: { dev: { model: 'claude-sonnet-5-5', effort: 'max' } } });
+    await setStepTimeout('demo', 45 * 60_000, home);
+    await setStepTimeout('other', 10 * 60_000, home);
+    await removeProjectSettings('demo', home);
+    const { cfg } = await readUserConfig(home);
+    expect(cfg.agentSettings).toEqual({ other: { dev: { model: 'claude-sonnet-5-5', effort: 'max' } } });
+    expect(cfg.stepTimeouts).toEqual({ other: 10 * 60_000 });
   });
 });

@@ -111,4 +111,39 @@ describe('SettingsPage', () => {
     expect(await screen.findByText('Não foi possível salvar. Tente novamente.')).toBeTruthy();
     await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
   });
+
+  it('shows the time limit of a project in minutes and saves a new one', async () => {
+    mockEnv();
+    vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
+    vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents });
+    vi.spyOn(settingsApi, 'stepTimeout').mockResolvedValue({ timeoutMinutes: 20 });
+    const setStepTimeout = vi.spyOn(settingsApi, 'setStepTimeout').mockResolvedValue({ timeoutMinutes: 45 });
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
+
+    fireEvent.click(await screen.findByText('Tempo limite', { selector: '.settings-collapse-title' }));
+    const minutes = (await screen.findByLabelText('Minutos por passo')) as HTMLInputElement;
+    await waitFor(() => expect(minutes.value).toBe('20'));
+    const save = screen.getByRole('button', { name: 'Salvar' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.change(minutes, { target: { value: '45' } });
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    await waitFor(() => expect(setStepTimeout).toHaveBeenCalledWith('demo', 45));
+  });
+
+  it('does not save a time limit that is not a whole number of minutes', async () => {
+    mockEnv();
+    vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
+    vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents });
+    vi.spyOn(settingsApi, 'stepTimeout').mockResolvedValue({ timeoutMinutes: 20 });
+    const setStepTimeout = vi.spyOn(settingsApi, 'setStepTimeout').mockResolvedValue({ timeoutMinutes: 20 });
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
+
+    fireEvent.click(await screen.findByText('Tempo limite', { selector: '.settings-collapse-title' }));
+    const minutes = (await screen.findByLabelText('Minutos por passo')) as HTMLInputElement;
+    await waitFor(() => expect(minutes.value).toBe('20'));
+    fireEvent.change(minutes, { target: { value: '1.5' } });
+    expect((screen.getByRole('button', { name: 'Salvar' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(setStepTimeout).not.toHaveBeenCalled();
+  });
 });

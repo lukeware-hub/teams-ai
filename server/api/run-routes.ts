@@ -7,7 +7,7 @@ import type { Config, Role } from '../config/config.js';
 import { AnyPlan } from '../contracts/plan.js';
 import { loadSecretValues } from '../core/secrets.js';
 import { redactSecrets } from '../core/redact.js';
-import { addProject, removeAgentSettings, removeProjectDirs } from '../onboarding/config-store.js';
+import { addProject, removeProjectDirs, removeProjectSettings } from '../onboarding/config-store.js';
 import { repoName } from '../core/ids.js';
 import type { Graphify } from '../knowledge/graphify.js';
 import { buildProjectGraph } from '../knowledge/project-graph.js';
@@ -368,7 +368,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           if (row && (row.projectId === projectId || (row.projectId === '' && specIds.has(row.specId)))) await fs.rm(path.join(runs, runId), { recursive: true, force: true });
         }
         await removeProjectDirs(dirs, deps.home);
-        await removeAgentSettings(projectId, deps.home);
+        await removeProjectSettings(projectId, deps.home);
         await deps.clearChat?.(projectId);
         await teardownProject(deps.exec ?? execCommand, projectId, [...new Set(services)]); // frees the ports; no daemon means nothing runs
         await releaseDeployPort(path.dirname(ws.root), projectId);

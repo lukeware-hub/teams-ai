@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AGENT_EFFORTS, AGENT_MODELS, api, refineApi, runApi, settingsApi, type AgentChoice, type AgentEffort, type AgentModel, type AgentRow, type AgentSetting, type Item, type ItemName, type ProjectRow, type Status } from '../api.js';
+import { ActionButton } from '../components/ActionButton.js';
+import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { LoginCard } from '../components/LoginCard.js';
@@ -17,6 +19,8 @@ const DEFAULT_PICK: AgentSetting = { model: 'claude-sonnet-5-5', effort: 'medium
 const SAVE_ERROR = 'Não foi possível salvar. Tente novamente.';
 const HELP_AGENTS = 'Automático deixa o orquestrador escolher o modelo e o esforço de cada tarefa. Manual fixa os dois para o agente em todos os seus passos, inclusive os de arquitetura. Manual ignora o limite de esforço por modelo e pode gastar mais cota.';
 const HELP_ENV = 'Estas conexões valem para todo o Teams AI neste computador. Elas são as mesmas do status do ambiente.';
+const HELP_TIMEOUT = 'Tempo máximo que cada passo de um agente pode levar neste projeto. Passado esse tempo, o passo para e a revisão pede para reavaliar. Vale para o refinamento e para as execuções.';
+const TIMEOUT_LOAD_ERROR = 'Não foi possível carregar o tempo limite.';
 
 function AgentLine({ projectId, row: agent, onFailed }: { projectId: string; row: AgentRow; onFailed: () => void }) {
   const label = ROLE_LABELS[agent.role] ?? agent.role;
@@ -129,6 +133,62 @@ function EnvironmentSettings() {
   );
 }
 
+function StepTimeoutCard({ projectId }: { projectId: string }) {
+  const [minutes, setMinutes] = useState('');
+  const [saved, setSaved] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    settingsApi.stepTimeout(projectId).then((r) => {
+      if (!active) return;
+      setSaved(r.timeoutMinutes);
+      setMinutes(String(r.timeoutMinutes));
+    }).catch(() => {
+      if (active) setError(TIMEOUT_LOAD_ERROR);
+    });
+    return () => {
+      active = false;
+    };
+  }, [projectId]);
+  const value = Number(minutes);
+  const valid = Number.isInteger(value) && value >= 1;
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await settingsApi.setStepTimeout(projectId, value);
+      setSaved(r.timeoutMinutes);
+      setMinutes(String(r.timeoutMinutes));
+    } catch {
+      setError(SAVE_ERROR);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <div className={`${sectionTitle} mb-3`}>
+        <h3 className="m-0 flex-[0_1_auto] text-[1rem] font-semibold leading-[1.3]">Minutos por passo</h3>
+        <InfoTip label="Tempo limite" text={HELP_TIMEOUT} />
+      </div>
+      <form
+        className="grid max-w-[24rem] grid-cols-[minmax(0,1fr)_auto] items-end gap-[0.7rem]"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <input className="w-full min-w-0" aria-label="Minutos por passo" type="number" min={1} step={1} value={minutes} onChange={(e) => setMinutes(e.target.value)} />
+        <ActionButton type="submit" className="primary-button" busy={busy} disabled={!valid || value === saved} icon={<Icon name="check" size={16} />}>
+          Salvar
+        </ActionButton>
+      </form>
+      {error ? <p className="error">{error}</p> : null}
+    </>
+  );
+}
+
 export function SettingsPage() {
   const [projects, setProjects] = useState<Array<Pick<ProjectRow, 'projectId' | 'name'>> | null>(null);
   const [projectId, setProjectId] = useState('');
@@ -217,6 +277,9 @@ export function SettingsPage() {
               <ul className={`${rows} [&>li]:border-accent-line`}>{agents.map((agent) => <AgentLine key={`${projectId}/${agent.role}`} projectId={projectId} row={agent} onFailed={saveFailed} />)}</ul>
             </SettingsCollapse>
           )}
+          <SettingsCollapse title="Tempo limite">
+            <StepTimeoutCard key={projectId} projectId={projectId} />
+          </SettingsCollapse>
         </section>
       ) : null}
     </main>

@@ -92,10 +92,13 @@ const pinnedModel = z
   .refine((m) => !/latest|auto/i.test(m), { message: 'decision model must be pinned (no latest/auto alias)' });
 
 export const StepBudget = z.object({
-  timeoutMs: positive.default(20 * 60_000),
+  timeoutMs: positive.default(60 * 60_000),
   maxTurns: positive.default(60),
   maxOutputTokens: positive.default(40_000),
 });
+
+/** The longest timer Node runs: a longer one fires at once. */
+export const TIMER_MAX_MS = 2 ** 31 - 1;
 
 const RolesSchema = z
   .object(Object.fromEntries(ROLES.map((r) => [r, RoleProfile.default(CLAUDE_DEFAULTS[r])])) as Record<
@@ -117,6 +120,8 @@ export const Config = z.object({
   roles: RolesSchema.prefault({}),
   /** Per project id, per role: the manual model and effort; a role absent here runs on the automatic choice. */
   agentSettings: z.record(z.string().min(1), z.partialRecord(z.enum(ROLES), AgentSetting)).default({}),
+  /** Per project id: the time limit of each agent step in ms, set in Settings; a project absent here takes `budgets.step.timeoutMs`. */
+  stepTimeouts: z.record(z.string().min(1), positive.max(TIMER_MAX_MS)).default({}),
   budgets: z
     .object({
       step: StepBudget.prefault({}),
@@ -237,6 +242,12 @@ export type Config = z.infer<typeof Config>;
 /** The model `routing.stepModels` gives a step; a services plan is a plan, so it falls back to the plan's model. */
 export const stepModelFor = (routing: Config['routing'], kind: StepKind): string | undefined =>
   routing.stepModels[kind] ?? (kind === 'services-plan' ? routing.stepModels.plan : undefined);
+
+/** The step budget one project runs with: its time limit from Settings, else `budgets.step`. */
+export function stepBudgetFor(cfg: Config, projectId?: string): Config['budgets']['step'] {
+  if (projectId === undefined || !Object.hasOwn(cfg.stepTimeouts, projectId)) return cfg.budgets.step;
+  return { ...cfg.budgets.step, timeoutMs: cfg.stepTimeouts[projectId] };
+}
 
 export class ConfigError extends Error {}
 
