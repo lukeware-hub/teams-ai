@@ -86,6 +86,7 @@ was implemented. Web UI block A (`2026-09-24-run-api-execution-ui-design.md`) is
 | 91 | [`2026-10-20-teams-ai-91-jev-document-scores.md`](2026-10-20-teams-ai-91-jev-document-scores.md) | In progress — the Jev scores each document (four checks, the five documents averaged), the refinement shows a score banner, and the score blocks nothing: the owner has not decided a minimum. |
 | 92 | [`2026-10-22-teams-ai-92-document-stages.md`](2026-10-22-teams-ai-92-document-stages.md) | Built on the branch, with unit tests: refinement in five document stages, the stage view and the stage cycle. Open for the owner: the Chrome check of the stage view, the real Jev calibration and the per-stage token measurement, the deploy by clean export, and the merge or PR. |
 | 93 | [`2026-10-23-teams-ai-93-claude-usage-panel.md`](2026-10-23-teams-ai-93-claude-usage-panel.md) | Done: the settings page shows the Claude plan usage, read through the Claude Code command. Deployed by clean export and checked in Chrome at desktop and phone width, light and dark. |
+| 94 | [`2026-10-24-teams-ai-94-score-doubts.md`](2026-10-24-teams-ai-94-score-doubts.md) | Built on the branch, with unit tests: the Jev score keeps the places it doubts, and the stage review gets one line per doubt. Open for the owner: the full suites and build, the real effect on a throwaway project, and the merge or PR. |
 
 Plans 17 and 19 never existed (not a gap in this audit - no file was ever created at those numbers).
 

@@ -98,6 +98,26 @@ describe('createJevScorer', () => {
     expect(flow.reduce((sum, w) => sum + w.size, 0)).toBeGreaterThan(40_000);
   });
 
+  it('doubts each window below the cut with the headings that bound it, and the whole document once for completeness', async () => {
+    // The window breaks at the line that does not fit: the heading "## Meio" opens the second window.
+    const long = ['## Início', 'x'.repeat(31_900), 'y'.repeat(79), '## Meio', 'z'.repeat(1_000)].join('\n');
+    stubJev((state, check) => (check === 'consistent' && state.includes('(continued)') ? 0.2 : check === 'complete' ? 0.5 : 0.9));
+    const result = await scorer()({ ...TEXTS, 'flow.md': long });
+    expect(result.docs!['flow.md']!.doubts).toEqual([
+      { check: 'complete', value: 0.5, part: null },
+      { check: 'consistent', value: 0.2, part: { index: 2, of: 2, from: '## Meio', to: null } },
+    ]);
+  });
+
+  it('doubts a single window below the cut with no place, and lists no doubt above the cut', async () => {
+    stubJev((_state, check) => (check === 'scoped' ? 0.4 : 0.9));
+    const result = await scorer()(TEXTS);
+    expect(result.docs!['flow.md']!.doubts).toEqual([{ check: 'scoped', value: 0.4, part: null }]);
+    expect(result.docs!['briefing.md']!.doubts).toEqual([{ check: 'scoped', value: 0.4, part: null }]);
+    stubJev(() => 0.9);
+    expect((await scorer()(TEXTS)).docs!['flow.md']!.doubts).toEqual([]);
+  });
+
   it('scores an empty document alone as zero, with no request, as a stage whose document is still blank would', async () => {
     const sent = stubJev(() => 0.9);
     const result = await scorer()({ ...TEXTS, 'stack.md': '   ' }, ['stack.md']);

@@ -511,6 +511,36 @@ describe('runStageCycle', () => {
     expect((runAgent.mock.calls[1]![0] as { pack: { feedback: string } }).pack.feedback).not.toContain('Jev index');
   });
 
+  it('gives the review one line per doubt, naming the place in the document', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    journal.state.readiness = { available: true, model: 'jev', average: 0.5, usage: null, outdated: false, docs: { 'briefing.md': { score: 0.5, checks: { complete: 0.5, concrete: 0.9, consistent: 0.2, scoped: 0.4 }, doubts: [
+      { check: 'consistent', value: 0.2, part: { index: 2, of: 2, from: '## Escopo', to: null } },
+      { check: 'scoped', value: 0.4, part: null },
+    ] } } } as never;
+    const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    const review = (runAgent.mock.calls[1]![0] as { pack: { feedback: string } }).pack.feedback;
+    expect(review).toContain('### Where the Jev doubts this document (information only)');
+    expect(review).toContain('- consistent 0.20 in part 2 of 2, from "## Escopo": find two statements that disagree');
+    expect(review).toContain('- scoped 0.40 in the whole document: find content the charter gives to another document');
+  });
+
+  it('gives the review no doubt line for a confidential or an outdated score', async () => {
+    const readiness = { available: true, model: 'jev', average: 0.5, usage: null, outdated: false, docs: { 'briefing.md': { score: 0.5, checks: { complete: 0.5, concrete: 0.9, consistent: 0.2, scoped: 0.4 }, doubts: [{ check: 'scoped', value: 0.4, part: null }] } } };
+    const confidential = foldingJournal();
+    confidential.state.confidential = true;
+    confidential.state.readiness = readiness as never;
+    const outdated = foldingJournal();
+    outdated.state.outdatedDocs = ['briefing.md'];
+    outdated.state.readiness = { ...readiness, outdated: true } as never;
+    for (const journal of [confidential, outdated]) {
+      const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
+      await runStageCycle({ draft: await newDraft(), journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+      expect((runAgent.mock.calls[1]![0] as { pack: { feedback: string } }).pack.feedback).not.toContain('Where the Jev doubts');
+    }
+  });
+
   it('a move that cuts a passage a pending question asks about is refused, whatever its target', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();

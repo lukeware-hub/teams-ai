@@ -223,6 +223,14 @@ describe('reduceRefineEvents document score', () => {
     const skipped = { type: RefineEvent.DocsScored, data: { cycle: 1, available: false, model: null, average: null, docs: null, usage: null, skipped: 'confidential' } };
     expect(reduceRefineEvents([skipped]).readiness).toMatchObject({ skipped: 'confidential', available: false, average: null });
   });
+
+  it('keeps the doubts of each document with its score, and a score journaled before doubts has none', () => {
+    const doubt = { check: 'consistent', value: 0.2, part: { index: 2, of: 2, from: '## Meio', to: null } };
+    const withDoubts = { type: RefineEvent.DocsScored, data: { cycle: 1, files: ['flow.md'], available: true, model: 'jev', average: 0.5, usage: null, docs: { 'flow.md': { score: 0.5, checks: { complete: 0.5, concrete: 0.5, consistent: 0.2, scoped: 0.5 }, doubts: [doubt] } } } };
+    const before = { type: RefineEvent.DocsScored, data: { cycle: 1, files: ['flow.md'], available: true, model: 'jev', average: 0.5, usage: null, docs: { 'flow.md': { score: 0.5, checks: { complete: 0.5, concrete: 0.5, consistent: 0.2, scoped: 0.5 } } } } };
+    expect(reduceRefineEvents([withDoubts]).readiness!.docs!['flow.md']!.doubts).toEqual([doubt]);
+    expect(reduceRefineEvents([before]).readiness!.docs!['flow.md']!.doubts).toBeUndefined();
+  });
 });
 
 describe('reduceRefineEvents legacy brief.md', () => {

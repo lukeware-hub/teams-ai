@@ -15,6 +15,7 @@ import { jevHint, unavailable, type JevValidationResult, type ValidationDocs } f
 import { reorganizePack } from './packs.js';
 import { reshapeAll } from './reshape.js';
 import { applyPatch, checkPatch, docOf, patchId, unifiedDiff } from './patches.js';
+import { SCORE_CHECKS, type DocScore, type ScoreCheck, type ScoreDoubt } from './readiness.js';
 
 /** The role that reviews a stage's document: the one that owns it. */
 const OWNER: Record<DocFile, 'po' | 'sm' | 'front'> = { 'project.md': 'po', 'briefing.md': 'po', 'stack.md': 'sm', 'flow.md': 'po', 'design.md': 'front' };
@@ -57,8 +58,34 @@ const forwardMoves = (file: DocFile, specId: string, moves: readonly DocMoveProp
     return namedDoc(m.from, specId) === file && to !== undefined && DOC_STAGES.indexOf(to) > DOC_STAGES.indexOf(file);
   });
 
+/** What the review looks for in each place the Jev doubts, one sentence per check. */
+const LOOK_FOR: Record<ScoreCheck, string> = {
+  complete: 'compare the document with the parts its purpose requires; add a missing part, or write that it does not apply',
+  concrete: 'replace vague words, placeholders and open questions with exact values, names, limits or observable behavior',
+  consistent: 'find two statements that disagree, or something the text says it declares or lists that it does not declare',
+  scoped: 'find content the charter gives to another document; if an earlier document lacks it, ask the owner where it goes, and never delete content that no other document holds',
+};
+
+/** The place a doubt names in its document: the whole document, or the part with the headings that bound it. */
+const placeOf = (doubt: ScoreDoubt): string => {
+  if (!doubt.part) return 'the whole document';
+  const { index, of, from, to } = doubt.part;
+  return `part ${index} of ${of}${from ? `, from "${from}"` : ''}${to ? `, up to "${to}"` : ''}`;
+};
+
+/** The Jev's scores of a document for the review, with one line per place it doubts; information only, never a goal. */
+function jevIndex(file: DocFile, score: DocScore): string[] {
+  const checks = SCORE_CHECKS.map((id) => `${id} ${score.checks[id].toFixed(2)}`).join(', ');
+  const doubts = (score.doubts ?? []).map((d) => `- ${d.check} ${d.value.toFixed(2)} in ${placeOf(d)}: ${LOOK_FOR[d.check]}.`);
+  return [
+    '### Jev index of this document (information only)',
+    `Scores of ${file}, probability of yes: ${checks}. They show where the Jev doubts the document; they are not a goal, a minimum or a verdict, and they can be wrong. Do not change the document only to raise a number.`,
+    ...(doubts.length ? [`### Where the Jev doubts this document (information only)\nRead these places first. The Jev can be wrong: change only what you can quote as wrong.\n${doubts.join('\n')}`] : []),
+  ];
+}
+
 /** The review of one stage's document: the owner reads it against the charter, the documents before it as digests, and the Jev's hints as context. */
-export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: string; principles: readonly string[]; file: DocFile; docs: Record<DocFile, string>; jev?: string; index?: string }): ContextPackInput {
+export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: string; principles: readonly string[]; file: DocFile; docs: Record<DocFile, string>; jev?: string; score?: DocScore }): ContextPackInput {
   const earlier = earlierDocs(input.file);
   const context = earlier.length > 0
     ? [DIGEST_NOTE, ...earlier.map((f) => `### ${f} (context only, a digest)\n${docDigest(input.docs[f], STAGE_DIGEST_CHARS)}`)].join('\n\n')
@@ -71,7 +98,7 @@ export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: 
     '- Ask a question only when the document cannot be completed without the owner; mark it blocking only when the stage cannot continue without the answer.',
     '- Write everything in Brazilian Portuguese. Do not edit any file.',
     ...(input.jev ? [input.jev] : []),
-    ...(input.index ? ['### Jev index of this document (information only)', `Scores of ${input.file}, probability of yes: ${input.index}. They show where the Jev doubts the document; they are not a goal, a minimum or a verdict, and they can be wrong. Do not change the document only to raise a number.`] : []),
+    ...(input.score ? jevIndex(input.file, input.score) : []),
     context,
     `### ${input.file} (this stage)\n${input.docs[input.file]}`,
   ].join('\n\n');
@@ -123,9 +150,8 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     // The document's last Jev scores, while they are current and the document has text, go to the review as an index; they set no goal.
     // A confidential project gets no Jev finding, and a blank document's zeros were never answered by the Jev.
     const score = journal.state.readiness?.docs?.[file];
-    const indexed = score && !confidential && docs[file].trim() !== '' && !(journal.state.outdatedDocs ?? []).includes(file);
-    const index = indexed ?Object.entries(score.checks).map(([id, value]) => `${id} ${value.toFixed(2)}`).join(', ') : undefined;
-    const review = await askOnce(fitPackBudget(stageReviewPack({ role, specHash, principles: deps.principles(), file, docs, jev: jev ? jevHint(jev) : undefined, index })));
+    const indexed = score !== undefined && !confidential && docs[file].trim() !== '' && !(journal.state.outdatedDocs ?? []).includes(file);
+    const review = await askOnce(fitPackBudget(stageReviewPack({ role, specHash, principles: deps.principles(), file, docs, jev: jev ? jevHint(jev) : undefined, score: indexed ? score : undefined })));
     if (!review.ok) {
       await journal.fact(RefineEvent.CycleFailed, { cycle, ...failureMessage(`A revisão de ${file}`, review.failure, review.errors) });
       return;

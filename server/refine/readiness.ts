@@ -4,11 +4,22 @@ import type { DocFile } from './draft.js';
 export const SCORE_CHECKS = ['complete', 'concrete', 'consistent', 'scoped'] as const;
 export type ScoreCheck = (typeof SCORE_CHECKS)[number];
 
-/** One document's score: the mean of its four checks, each from 0 to 1. */
+/** A place the Jev doubts: `part` is the window's place in its document, or null for the whole document. */
+export interface ScoreDoubt {
+  check: ScoreCheck;
+  value: number;
+  part: { index: number; of: number; from: string | null; to: string | null } | null;
+}
+
+/** One document's score: the mean of its four checks, each from 0 to 1, and the places the Jev doubts. */
 export interface DocScore {
   score: number;
   checks: Record<ScoreCheck, number>;
+  doubts?: ScoreDoubt[];
 }
+
+/** A check below this value is doubted. */
+export const DOUBT_BELOW = 0.6;
 
 export interface ScoreUsage {
   inputTokens: number;

@@ -4,7 +4,7 @@ import { redactSecrets } from '../core/redact.js';
 import { splitSections } from '../decide/windows.js';
 import type { DocFile } from './draft.js';
 import { MAX_STATE_CHARS, openJev } from './jev-validation.js';
-import { SCORE_CHECKS, UNSCORED, type DocScore, type DocsScoreRecord, type ScoreCheck, type ScoreUsage } from './readiness.js';
+import { DOUBT_BELOW, SCORE_CHECKS, UNSCORED, type DocScore, type DocsScoreRecord, type ScoreCheck, type ScoreDoubt, type ScoreUsage } from './readiness.js';
 import { DOC_FILES } from './suggest.js';
 
 interface Question {
@@ -60,6 +60,21 @@ export interface WindowAnswer {
 
 const headingOf = (text: string): string | null => text.split('\n').find((line) => line.startsWith('#'))?.trim() ?? null;
 
+/** The places the Jev doubts in one document: each window below the cut, and the whole document once when no window reaches the cut for completeness. */
+function doubtsOf(rows: WindowAnswer[]): ScoreDoubt[] {
+  return SCORE_CHECKS.flatMap((check): ScoreDoubt[] => {
+    if (check === 'complete') {
+      const best = Math.max(...rows.map((r) => r.checks.complete));
+      return best < DOUBT_BELOW ? [{ check, value: best, part: null }] : [];
+    }
+    return rows.flatMap((row, i) => {
+      if (row.checks[check] >= DOUBT_BELOW) return [];
+      const part = rows.length === 1 ? null : { index: row.part, of: row.parts, from: row.firstHeading, to: rows[i + 1]?.firstHeading ?? null };
+      return [{ check, value: row.checks[check], part }];
+    });
+  });
+}
+
 /** The Jev's score of the documents asked for (all five by default): one request per window of each document, four yes-or-no checks in each request. */
 export function createJevScorer(cfg: Config, secrets: () => Promise<Record<string, string>>, onWindow?: (window: WindowAnswer) => void): (docs: Record<DocFile, string>, files?: readonly DocFile[]) => Promise<DocsScoreRecord> {
   return async (docs, files = DOC_FILES) => {
@@ -85,27 +100,26 @@ export function createJevScorer(cfg: Config, secrets: () => Promise<Record<strin
     }));
     const answered = results.flatMap((r) => (r.ok ? [r] : []));
     if (answered.length < results.length) return UNSCORED;
-    if (onWindow) {
-      windows.forEach((w, i) => {
-        const answers = answered[i]!.answers;
-        const checks = Object.fromEntries(SCORE_CHECKS.map((id) => [id, (answers[id] as { value: number }).value])) as Record<ScoreCheck, number>;
-        onWindow({ file: w.file, part: w.part, parts: w.parts, size: w.state.length, firstHeading: headingOf(w.state), checks });
-      });
-    }
+    if (answered.some((r) => SCORE_CHECKS.some((id) => r.answers[id]?.type !== 'noul'))) return UNSCORED;
+    const reports: WindowAnswer[] = windows.map((w, i) => ({
+      file: w.file,
+      part: w.part,
+      parts: w.parts,
+      size: w.state.length,
+      firstHeading: headingOf(w.state),
+      checks: Object.fromEntries(SCORE_CHECKS.map((id) => [id, (answered[i]!.answers[id] as { value: number }).value])) as Record<ScoreCheck, number>,
+    }));
+    reports.forEach((report) => onWindow?.(report));
     const docScores = {} as Partial<Record<DocFile, DocScore>>;
     for (const file of files) {
-      const mine = windows.flatMap((w, i) => (w.file === file ? [{ size: w.state.length, answers: answered[i]!.answers }] : []));
+      const mine = reports.filter((r) => r.file === file);
       if (mine.length === 0) {
         docScores[file] = { score: 0, checks: { ...NO_CHECKS } };
         continue;
       }
       const checks = {} as Record<ScoreCheck, number>;
-      for (const id of SCORE_CHECKS) {
-        const answers = mine.map((m) => m.answers[id]);
-        if (answers.some((a) => a?.type !== 'noul')) return UNSCORED;
-        checks[id] = COMBINE[id](answers.map((a, j) => ({ value: (a as { value: number }).value, size: mine[j]!.size })));
-      }
-      docScores[file] = { score: mean(SCORE_CHECKS.map((id) => checks[id])), checks };
+      for (const id of SCORE_CHECKS) checks[id] = COMBINE[id](mine.map((r) => ({ value: r.checks[id], size: r.size })));
+      docScores[file] = { score: mean(SCORE_CHECKS.map((id) => checks[id])), checks, doubts: doubtsOf(mine) };
     }
     const usage = answered.reduce<ScoreUsage>(
       (sum, r) => ({
