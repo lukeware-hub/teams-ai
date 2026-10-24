@@ -156,6 +156,24 @@ describe('runStageCycle reshapes the stage document to its template', () => {
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
     expect(journal.events.find((e) => e.type === RefineEvent.PatchDropped)?.data).toMatchObject({ patchId: 'po-c0-0' });
   });
+
+  it('does not reshape again a document whose reshape the owner undid, until the owner changes the text', async () => {
+    const draft = await newDraft();
+    await writeDoc(draft, 'briefing.md', LOOSE_BRIEF);
+    const journal = foldingJournal();
+    const runAgent = agentFor(() => reshaped(SHAPED_BRIEF));
+    const deps = { draft, journal, runAgent: runAgent as never, principles: () => [] };
+    await runStageCycle(deps, 1, 'briefing.md');
+    await writeDoc(draft, 'briefing.md', LOOSE_BRIEF);
+    await journal.fact(RefineEvent.DocReshapeUndone, { reshapeId: 'reshape-c1' });
+    await runStageCycle(deps, 2, 'briefing.md');
+    expect(suggestCalls(runAgent)).toHaveLength(1);
+    expect(await readDoc(draft, 'briefing.md')).toBe(LOOSE_BRIEF);
+    await writeDoc(draft, 'briefing.md', '# Mudou\n\nTexto solto.\n');
+    await runStageCycle(deps, 3, 'briefing.md');
+    expect(suggestCalls(runAgent)).toHaveLength(2);
+    expect(await readDoc(draft, 'briefing.md')).toBe(SHAPED_BRIEF);
+  });
 });
 
 describe('runStageCycle', () => {

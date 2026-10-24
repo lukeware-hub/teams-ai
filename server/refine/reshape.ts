@@ -8,6 +8,7 @@ import { dropCoveredPatches, type CycleJournal, type RunAgent } from './cycle.js
 import { readDoc, writeDoc, type Draft, type DocFile } from './draft.js';
 import { RefineEvent } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
+import type { ReshapeRow } from './state.js';
 import { reshapePack, SUGGEST_ROLE, TEMPLATE, type SuggestFile } from './suggest.js';
 import { isUntouched, shapeProblem } from './template-shape.js';
 
@@ -21,6 +22,14 @@ export interface ReshapeDeps {
   signal?: AbortSignal;
 }
 
+/** Whether the owner undid a reshape of `file` and the text is still the one that undo put back. */
+async function undoneLayout(draft: Draft, reshapes: ReadonlyArray<ReshapeRow>, file: DocFile, text: string): Promise<boolean> {
+  for (const row of reshapes) {
+    if (row.file === file && row.status === 'undone' && (await fs.readFile(reshapeBackup(draft, row.reshapeId), 'utf8')) === text) return true;
+  }
+  return false;
+}
+
 /** Rewrites a stage document in its template's shape before the review reads it; a refused reshape leaves the document as it was and says why. */
 export async function reshapeStage(deps: ReshapeDeps, cycle: number, file: DocFile, docs: Record<DocFile, string>, discarded: Array<{ role: string; file: string; reason: string }>): Promise<void> {
   if (file === 'flow.md') return;
@@ -28,6 +37,8 @@ export async function reshapeStage(deps: ReshapeDeps, cycle: number, file: DocFi
   const before = docs[file];
   // Still the template itself, or already in its shape: nothing to rewrite.
   if (isUntouched(file, before, draft.projectId) || shapeProblem(file, before, before, draft.projectId) === null) return;
+  // The owner undid this layout: the text stays as the owner left it until the owner changes it.
+  if (await undoneLayout(draft, journal.state.reshapes, file, before)) return;
   const role = SUGGEST_ROLE[file];
   const refuse = (reason: string) => {
     discarded.push({ role, file, reason: `Não reorganizei ${file} no modelo: ${reason}.` });
