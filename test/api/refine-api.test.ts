@@ -42,6 +42,13 @@ const settle = async () => {
   }
   await new Promise((r) => setTimeout(r, 30)); // the session clears `busy` a tick after the last event lands
 };
+/** The Spec Kit preparation a wizard backlog's start waits for; the registry fakes `specify`, and one item takes four steps. */
+const prepareSpeckit = async (url: string) => {
+  script['speckit/dev'] = Array.from({ length: 4 }, () => ({ status: 'done', summary: 'ok', files: [] }));
+  expect((await call('POST', `${url}/speckit`)).status).toBe(202);
+  await settle();
+  expect((await snapshot()).state.speckit).toMatchObject({ status: 'done', stale: false });
+};
 const HELLO_PROJECT = makeProject({ projectId: 'hello-app' });
 const derived = { project: HELLO_PROJECT, spec: { ...makeSpec(), status: 'refining', specHash: null } };
 const PO = ['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions'].map((id) => ({ id, passed: true, detail: 'ok' }));
@@ -96,7 +103,7 @@ beforeEach(async () => {
       });
     }) as RunAgent,
     secretsDir: `${home}/secrets`,
-    exec: execCommand,
+    exec: (spec) => (spec.bin === 'specify' ? Promise.resolve({ exitCode: 0, signal: null, stdout: '', stderr: '', timedOut: false, durationMs: 1, truncated: false }) : execCommand(spec)),
     scoreDocs: async (_docs, files = []) => ({
       available: true,
       model: 'fake-jev',
@@ -284,6 +291,7 @@ describe('refine api', () => {
     const dir = `${home}/ws/hello-app/refine/hello-app-001/docs/specs/base`;
     expect(JSON.parse(await fs.readFile(`${dir}/spec.json`, 'utf8')).status).toBe('planned');
     // Detailed and ready: Start now starts the program, which freezes and launches the first item.
+    await prepareSpeckit(url);
     const started = await call('POST', `${url}/start`);
     expect(started.status).toBe(200);
     const body = await started.json();
@@ -358,6 +366,7 @@ describe('refine api', () => {
     await call('POST', `${url}/evaluate`);
     await settle();
     spawnShouldFail = true;
+    await prepareSpeckit(url);
     const failed = await call('POST', `${url}/start`);
     expect(failed.status).toBe(500);
     expect(JSON.stringify(await failed.json())).toMatch(/nenhuma run/);
@@ -383,6 +392,7 @@ describe('refine api', () => {
     await settle();
     const file = `${home}/ws/hello-app/refine/hello-app-001/docs/specs/base/spec.json`;
     await fs.writeFile(file, JSON.stringify({ ...JSON.parse(await fs.readFile(file, 'utf8')), status: 'retired' }));
+    await prepareSpeckit(url);
     expect((await call('POST', `${url}/start`)).status).toBe(200);
     expect(JSON.parse(await fs.readFile(file, 'utf8'))).toMatchObject({ status: 'running', specVersion: 1 });
   });
@@ -406,6 +416,7 @@ describe('refine api', () => {
       await call('POST', `${url}/answers`, { questionId: q.questionId, text: q.text.includes('JSON') ? 'Sim, application/json.' : 'Hello.' });
     }
     // The start needs no new evaluation after the answers: the item spec freezes them.
+    await prepareSpeckit(url);
     expect((await call('POST', `${url}/start`)).status).toBe(200);
     const file = `${home}/ws/hello-app/refine/hello-app-001/docs/specs/base/spec.json`;
     expect(JSON.parse(await fs.readFile(file, 'utf8')).decisions).toEqual([{ question: 'O health responde em JSON?', answer: 'Sim, application/json.' }]);
@@ -425,11 +436,13 @@ describe('refine api', () => {
     await call('POST', `${url}/evaluate`);
     await settle();
     spawnShouldFail = true;
+    await prepareSpeckit(url);
     expect((await call('POST', `${url}/start`)).status).toBe(500);
     spawnShouldFail = false;
     const [q] = (await snapshot()).state.questions;
     await call('POST', `${url}/answers`, { questionId: q.questionId, text: 'Sim, application/json.' });
     // The start needs no new evaluation after the answer: the item spec freezes it.
+    await prepareSpeckit(url);
     expect((await call('POST', `${url}/start`)).status).toBe(200);
     const frozen = JSON.parse(await fs.readFile(`${home}/ws/hello-app/refine/hello-app-001/docs/specs/base/spec.json`, 'utf8'));
     expect(frozen).toMatchObject({ status: 'running', specVersion: 1, decisions: [{ question: 'O health responde em JSON?', answer: 'Sim, application/json.' }] });
@@ -448,11 +461,16 @@ describe('refine api', () => {
     await call('POST', `${url}/evaluate`);
     await settle();
     expect((await snapshot()).state.status).toBe('ready');
+    // A wizard backlog starts from its Spec Kit preparation: before it, the start says so.
+    const early = await call('POST', `${url}/start`);
+    expect(early.status).toBe(409);
+    expect(JSON.stringify(await early.json())).toMatch(/Spec Kit/);
     // Neither the timer nor a new cycle starts the program: the person's Iniciar does.
     await registry.tickPrograms();
     await registry.tickPrograms();
     expect(spawns).toHaveLength(0);
     expect((await snapshot()).state.status).toBe('ready');
+    await prepareSpeckit(url);
     expect((await call('POST', `${url}/start`)).status).toBe(200);
     expect((await snapshot()).state.status).toBe('started');
     expect(spawns).toHaveLength(1);
@@ -495,6 +513,7 @@ describe('refine api', () => {
     expect(ready.patches.filter((p: { status: string }) => p.status === 'pending')).toHaveLength(1);
     await registry.tickPrograms();
     expect(spawns).toHaveLength(0);
+    await prepareSpeckit(url);
     expect((await call('POST', `${url}/start`)).status).toBe(200);
     const started = (await snapshot()).state;
     expect(started.status).toBe('started');
@@ -615,6 +634,7 @@ describe('refine api', () => {
     expect(planned.error).toBeNull();
     expect(planned.status).toBe('ready');
     expect(planned.backlog).toMatchObject({ enabled: true, detail: true, specs: { base: { specId: 'base' } }, preplans: { base: { preplan: { tasks: [{ id: 'P1' }] } } } });
+    await prepareSpeckit(url);
     expect((await call('POST', `${url}/start`)).status).toBe(200);
     expect((await snapshot()).state.status).toBe('started');
   });

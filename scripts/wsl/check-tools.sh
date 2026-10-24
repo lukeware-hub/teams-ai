@@ -16,13 +16,14 @@ version_of() {
     gitleaks) gitleaks version 2>/dev/null ;;
     osv-scanner) osv-scanner --version 2>/dev/null | head -1 | awk '{print $NF}' ;;
     graphify) pipx list --short 2>/dev/null | awk '/^graphifyy /{print $2}' ;;
+    specify) pipx list --short 2>/dev/null | awk '/^specify-cli /{print $2}' ;;
     nvidia-smi) nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1 ;;
     llama-server) llama-server --version 2>&1 | head -1 ;;
     *) echo "" ;;
   esac
 }
 
-tools=(node npm git claude gh docker gitleaks osv-scanner graphify nvidia-smi llama-server)
+tools=(node npm git claude gh docker gitleaks osv-scanner graphify specify nvidia-smi llama-server)
 first=1
 printf '{"host":{"kernel":"%s","distro":"%s","onLinuxFs":%s},"tools":[' \
   "$(uname -r)" "${WSL_DISTRO_NAME:-unknown}" \

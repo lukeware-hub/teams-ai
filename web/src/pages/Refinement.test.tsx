@@ -59,7 +59,7 @@ describe('RefinementView start with the score banner', () => {
   const readyNewProject = (over: Partial<Snapshot['state']>) => base({ status: 'ready', mode: 'new-project', stale: false, questions: [], patches: [], backlog: readyBacklog, ...over });
 
   it('leaves the start to the banner when the banner offers it', () => {
-    render(<MemoryRouter><RefinementView snap={readyNewProject({ readiness: scoreReady })} busy={false} events={[]} {...on()} hideStart /></MemoryRouter>);
+    render(<MemoryRouter><RefinementView snap={readyNewProject({ readiness: scoreReady, mode: 'new-spec' })} busy={false} events={[]} {...on()} hideStart /></MemoryRouter>);
     expect(screen.queryByTestId('start')).toBeNull();
   });
 

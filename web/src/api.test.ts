@@ -26,6 +26,13 @@ describe('refineApi.scoreDoc', () => {
     expect(fetchSpy.mock.calls[0]![1]).toMatchObject({ method: 'POST' });
   });
 
+  it('posts the Spec Kit preparation, which the server answers with 202', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 202 }));
+    await expect(refineApi.speckit('shop', 'shop-002')).resolves.toEqual({ ok: true });
+    expect(String(fetchSpy.mock.calls[0]![0])).toContain('/refine/shop/shop-002/speckit');
+    expect(fetchSpy.mock.calls[0]![1]).toMatchObject({ method: 'POST' });
+  });
+
   it('posts the owner answer on confidentiality with its value', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     await expect(refineApi.confidential('shop', 'shop-002', true)).resolves.toEqual({ ok: true });

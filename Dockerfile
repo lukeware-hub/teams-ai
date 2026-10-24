@@ -38,6 +38,9 @@ RUN PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install graphifyy==0.9.
 # agent-reach is the browser and search CLI the agents call (role settings allow it); pinned to a commit, installed from the repository, not PyPI.
 RUN PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install https://github.com/Panniantong/agent-reach/archive/94f06c1969dfc1834001269d79d3ad0972d9dee6.zip
 
+# Spec Kit (`specify`) prepares the spec, plan and tasks of each backlog item in stage 7; release v1.2.3, pinned to its commit.
+RUN PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install https://github.com/github/spec-kit/archive/5ea8b1cf0a38699340a38e00d02770308997d8c0.zip
+
 COPY package*.json ./
 RUN npm ci --omit=optional --no-audit --no-fund
 # Version recorded in docs/superpowers/spikes/2026-09-23-cli-findings.md.

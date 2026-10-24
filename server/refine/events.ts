@@ -52,6 +52,14 @@ export const RefineEvent = {
   PreplanDerived: 'PREPLAN_DERIVED',
   /** The SM's map of items that change the same code and never run together: `{inputHash, pairs}`. */
   ConflictsDerived: 'CONFLICTS_DERIVED',
+  /** "Preparar Spec Kit" started: `{total}` steps, the constitution plus three per backlog item. */
+  SpeckitStarted: 'SPECKIT_STARTED',
+  /** One Spec Kit command finished: `{command, itemKey?, files}`. */
+  SpeckitStepDone: 'SPECKIT_STEP_DONE',
+  /** The Spec Kit preparation finished: `{inputHash}` of the documents and item specs it read. */
+  SpeckitDone: 'SPECKIT_DONE',
+  /** The Spec Kit preparation stopped: `{reason}`, in plain words for the owner. */
+  SpeckitFailed: 'SPECKIT_FAILED',
   /** One System 1 decision of Gate 1; same type and record shape as the run journal, so the eval harness reads both. */
   DecisionMade: 'DECISION_MADE',
 } as const;

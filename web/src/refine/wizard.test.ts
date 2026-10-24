@@ -6,9 +6,11 @@ const patch = (patchId: string, file: string, status = 'pending') => ({ patchId,
 const state = (over: Record<string, unknown> = {}) => ({ stages: true, doneStages: [], questions: [], patches: [], ...over }) as never;
 
 describe('step names in the address', () => {
-  it('reads a document, the review, and nothing else', () => {
+  it('reads a document, the review, the backlog, and nothing else', () => {
     expect(parseStep('flow.md')).toBe('flow.md');
     expect(parseStep('revisao')).toBe('review');
+    expect(parseStep('backlog')).toBe('backlog');
+    expect(stepParam('backlog')).toBe('backlog');
     expect(parseStep('brief.md')).toBeNull();
     expect(parseStep(null)).toBeNull();
     expect(stepParam('review')).toBe('revisao');
@@ -32,21 +34,22 @@ describe('initialStep', () => {
 });
 
 describe('wizardNodes', () => {
-  it('has the five documents and the review, with no score on any node', () => {
+  it('has the five documents, the review and the backlog, with no score on any node', () => {
     const nodes = wizardNodes(state(), 'flow.md');
-    expect(nodes.map((n) => n.key)).toEqual(['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md', 'review']);
-    expect(nodes.at(-1)!.label).toBe('Revisão');
+    expect(nodes.map((n) => n.key)).toEqual(['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md', 'review', 'backlog']);
+    expect(nodes.at(-2)!.label).toBe('Revisão');
+    expect(nodes.at(-1)!.label).toBe('Backlog');
     expect(nodes.every((n) => !/%/.test(n.label + (n.marker ?? '')))).toBe(true);
   });
 
   it('marks done from the journal in a stage session, and the current one active', () => {
     const nodes = wizardNodes(state({ doneStages: ['flow.md', 'briefing.md'] }), 'project.md');
-    expect(nodes.map((n) => n.state)).toEqual(['done', 'active', 'done', 'todo', 'todo', 'todo']);
+    expect(nodes.map((n) => n.state)).toEqual(['done', 'active', 'done', 'todo', 'todo', 'todo', 'todo']);
   });
 
   it('marks done by position when the project records no stages', () => {
     const nodes = wizardNodes(state({ stages: undefined, doneStages: undefined }), 'briefing.md');
-    expect(nodes.map((n) => n.state)).toEqual(['done', 'done', 'active', 'todo', 'todo', 'todo']);
+    expect(nodes.map((n) => n.state)).toEqual(['done', 'done', 'active', 'todo', 'todo', 'todo', 'todo']);
   });
 
   it('flags a document that changed after its score or after an earlier document changed', () => {
@@ -58,10 +61,12 @@ describe('wizardNodes', () => {
 });
 
 describe('moving between steps', () => {
-  it('goes from the last document to the review, and stops at both ends', () => {
+  it('goes from the last document to the review and then the backlog, and stops at both ends', () => {
     expect(nextStep('design.md')).toBe('review');
-    expect(nextStep('review')).toBeNull();
+    expect(nextStep('review')).toBe('backlog');
+    expect(nextStep('backlog')).toBeNull();
     expect(prevStep('flow.md')).toBeNull();
+    expect(prevStep('backlog')).toBe('review');
     expect(prevStep('review')).toBe('design.md');
     expect(prevStep('project.md')).toBe('flow.md');
   });

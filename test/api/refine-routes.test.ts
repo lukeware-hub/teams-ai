@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { refineRoutes } from '../../server/api/refine-routes.js';
+import { ConflictError } from '../../server/refine/session.js';
 
 describe('refine routes', () => {
   it('reprocesses the named document from its passed text, and refuses a name outside the five', async () => {
@@ -21,6 +22,20 @@ describe('refine routes', () => {
     await route.handler({ params: { projectId: 'shop', specId: 'shop-002' }, body: async () => ({ doc: 'briefing.md' }), json } as never);
     expect(continueStage).toHaveBeenCalledWith('briefing.md');
     await expect(route.handler({ params: { projectId: 'shop', specId: 'shop-002' }, body: async () => ({ doc: 'brief.md' }), json } as never)).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('starts the Spec Kit preparation in the background with 202, and a refusal is 409', async () => {
+    const log = vi.fn();
+    const runSpeckit = vi.fn(() => Promise.reject(new Error('journal down')));
+    const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ runSpeckit })) } as never, log });
+    const route = routes.find((r) => r.method === 'POST' && r.path.endsWith('/speckit'))!;
+    const json = vi.fn();
+    await route.handler({ params: { projectId: 'shop', specId: 'shop-002' }, json } as never);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(json).toHaveBeenCalledWith(202, { ok: true });
+    expect(log).toHaveBeenCalledWith('refine shop/shop-002: journal down');
+    const refused = refineRoutes({ registry: { get: vi.fn(async () => ({ runSpeckit: () => { throw new ConflictError('evaluation in progress'); } })) } as never });
+    await expect(refused.find((r) => r.path.endsWith('/speckit'))!.handler({ params: { projectId: 'shop', specId: 'shop-002' }, json } as never)).rejects.toMatchObject({ status: 409 });
   });
 
   it('a stage review that fails after its answer is logged, and the answer stays 202', async () => {

@@ -132,6 +132,14 @@ describe('dev output JSON Schema carries the status-dependent requirements', () 
     expect(done.required).toContain('commitMessage');
     expect(gap.required).toContain('question');
   });
+  it('a Spec Kit step answers done with the files it wrote, or blocked with a reason', () => {
+    const HASH = 'sha256:' + 'a'.repeat(64);
+    expect(OUTPUT_SCHEMAS.speckit.safeParse({ specHash: HASH, status: 'done', summary: 'ok', files: ['specs/login/spec.md'] }).success).toBe(true);
+    expect(OUTPUT_SCHEMAS.speckit.safeParse({ specHash: HASH, status: 'blocked', summary: 'parou', files: [], reason: 'sem template' }).success).toBe(true);
+    expect(OUTPUT_SCHEMAS.speckit.safeParse({ specHash: HASH, status: 'blocked', summary: 'parou', files: [] }).success).toBe(false);
+    expect(OUTPUT_SCHEMAS.speckit.safeParse({ specHash: HASH, status: 'spec-gap', summary: 'x', files: [] }).success).toBe(false);
+  });
+
   it('spec-gap and replan are step kinds with their own schemas', () => {
     const HASH = 'sha256:' + 'a'.repeat(64);
     expect(STEP_KINDS).toContain('spec-gap');

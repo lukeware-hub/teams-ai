@@ -139,4 +139,10 @@ describe('canStartRun', () => {
     expect(canStartRun(state({ backlog: { enabled: true, detail: false, items: [item] } }), false)).toBe(false);
     expect(canStartRun(state({ backlog: { enabled: true, detail: true, items: [] } }), false)).toBe(false);
   });
+  it('a wizard backlog starts only after a current Spec Kit preparation', () => {
+    const wizard = { mode: 'new-project', stages: true, backlog: { enabled: true, detail: true, items: [{ key: 'base' }] } };
+    expect(canStartRun(state(wizard), false)).toBe(false);
+    expect(canStartRun(state({ ...wizard, speckit: { status: 'done', steps: [], stale: true } }), false)).toBe(false);
+    expect(canStartRun(state({ ...wizard, speckit: { status: 'done', steps: [], stale: false } }), false)).toBe(true);
+  });
 });

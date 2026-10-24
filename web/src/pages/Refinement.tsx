@@ -17,6 +17,7 @@ import { MoveNotice } from '../refine/MoveNotice.js';
 import { ReshapeNotice } from '../refine/ReshapeNotice.js';
 import { jevVerdict, scoresDocs } from '@server/refine/readiness';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
+import { SpeckitStatus } from '../refine/SpeckitStatus.js';
 import { lastEvaluationText, ProcessingBanner } from '../refine/ProcessingBanner.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
 import { StageSteps } from '../refine/StageSteps.js';
@@ -29,7 +30,7 @@ import { Workspace } from '../components/Workspace.js';
 import { Stepper } from '../components/Stepper.js';
 import { WizardShell } from '../components/WizardShell.js';
 import { DocScoreInset, ScoreChecks } from '../refine/DocScoreView.js';
-import { docPatches, docQuestions, initialStep, nextStep as nextWizardStep, pendingCount, prevStep, stepParam, unfiledQuestions, wizardNodes, type WizardStep } from '../refine/wizard.js';
+import { docPatches, docQuestions, initialStep, isDocStep, nextStep as nextWizardStep, pendingCount, prevStep, stepParam, unfiledQuestions, wizardNodes, type WizardStep } from '../refine/wizard.js';
 import { DOC_STAGES } from '@server/refine/doc-stages';
 import { percentOf } from '@server/refine/readiness';
 
@@ -211,6 +212,8 @@ export interface ViewProps {
   onDesignFromImages?(images: { data: string }[]): Promise<string | null>;
   onEvaluate(): void | Promise<unknown>;
   onEnableBacklog?(): void | Promise<unknown>;
+  /** Stage 7: the owner asks the Spec Kit to prepare the spec, plan and tasks of every backlog item. */
+  onPrepareSpeckit?(): void | Promise<unknown>;
   /** The owner moves on from a document's stage; `false` says the server refused. */
   onContinueStage?(doc?: DocFile): void | boolean | Promise<unknown>;
   /** The owner asks the agents to review the document of a stage. */
@@ -276,16 +279,11 @@ export function RefinementView(p: ViewProps) {
   const [askRe, setAskRe] = useState(false);
   const [ask, setAsk] = useState<{ title: string; text: string; confirmLabel: string; tone?: 'danger' | 'accent'; icon?: 'trash' | 'refresh' | 'file' | 'check'; onConfirm: () => void } | null>(null);
   // A new project is refined one document per screen; the step lives in the address, so a reload opens the same screen.
-  const [step, setStep] = useState<WizardStep>(() => initialStep(snap.state, new URLSearchParams(window.location.search).get('etapa')));
-  // The backlog and its run keep their own screen, named in the address; a project already running opens on it.
-  const [view, setView] = useState<'docs' | 'backlog'>(() => (snap.state.status === 'started' || new URLSearchParams(window.location.search).get('vista') === 'backlog' ? 'backlog' : 'docs'));
-  const openView = (next: 'docs' | 'backlog') => {
-    setView(next);
-    const url = new URL(window.location.href);
-    if (next === 'backlog') url.searchParams.set('vista', 'backlog');
-    else url.searchParams.delete('vista');
-    window.history.replaceState(null, '', url);
-  };
+  // A project already running, or an old `vista=backlog` address, opens on stage 7.
+  const [step, setStep] = useState<WizardStep>(() => {
+    const query = new URLSearchParams(window.location.search);
+    return snap.state.status === 'started' || query.get('vista') === 'backlog' ? 'backlog' : initialStep(snap.state, query.get('etapa'));
+  });
   const stepMoved = useRef(false);
   const stepHeading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
@@ -369,6 +367,17 @@ export function RefinementView(p: ViewProps) {
       <MemoBacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} onEnable={newProject ? undefined : p.onEnableBacklog} mandatory={newProject} />
       {st.backlog?.detail && <MemoSpecTree backlog={st.backlog} evaluating={evaluating} />}
     </>
+  );
+  const backlogTitles = new Map((st.backlog?.items ?? []).map((i) => [i.key, i.title]));
+  const speckit = st.speckit;
+  const speckitRunning = speckit?.status === 'running';
+  // Only a wizard session must prepare with the Spec Kit before it starts; the server holds the same rule.
+  const speckitReady = st.stages !== true || (speckit?.status === 'done' && !speckit.stale);
+  const backlogStageHeading = (
+    <header className="grid gap-1">
+      <h2 ref={stepHeading} tabIndex={-1} className="m-0 text-[1.25rem] font-semibold text-ink outline-none">Preparar o desenvolvimento</h2>
+      <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Os agentes quebram os cinco documentos em specs, e o Spec Kit monta a spec, o plano e as tarefas de cada uma. Quando tudo estiver pronto, o desenvolvimento começa já com isso feito.</p>
+    </header>
   );
   // Backlog mode lists specs, not one spec: the generated index replaces spec.json and the tasks of a single spec.
   const specsIndex = useMemo(() => (backlogOn && (st.backlog?.items.length ?? 0) > 0 ? buildSpecsIndex(snap.specId, st.backlog as never) : null), [backlogOn, snap.specId, st.backlog]);
@@ -522,10 +531,6 @@ export function RefinementView(p: ViewProps) {
       </div>
       {newProject ? (
         <>
-          <button type="button" data-testid="open-wizard" className="secondary mb-4 h-10 justify-self-start" onClick={() => openView('docs')}>
-            <Icon name="arrow-left" size={16} />
-            Documentos por etapa
-          </button>
           {confidentialAsk}
           <StageSteps views={stageViews(st)} shown={tab} onSelect={setTab} />
         </>
@@ -897,11 +902,12 @@ export function RefinementView(p: ViewProps) {
   const goTo = (next: WizardStep | null) => {
     if (next === null) return;
     // The editor of this screen unmounts, so its text is saved before the step changes.
-    if (step !== 'review' && !locked && docs[step] !== snap.docs[step]) p.onSaveDoc(step, docs[step] ?? '');
+    if (isDocStep(step) && !locked && docs[step] !== snap.docs[step]) p.onSaveDoc(step, docs[step] ?? '');
     stepMoved.current = true;
     setStep(next);
     const url = new URL(window.location.href);
     url.searchParams.set('etapa', stepParam(next));
+    url.searchParams.delete('vista');
     window.history.replaceState(null, '', url);
   };
   const stageSession = st.stages === true;
@@ -1056,14 +1062,35 @@ export function RefinementView(p: ViewProps) {
     );
   };
   // After the first processing the text passed is kept, so the one button of the stage reprocesses from it.
-  const reprocess = step !== 'review' && (st.passedStages ?? []).includes(step);
-  const wizardActions = step === 'review' ? (
+  const reprocess = isDocStep(step) && (st.passedStages ?? []).includes(step);
+  const backlogScreen = () => (
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6" data-testid="backlog-stage">
+      {backlogStageHeading}
+      {backlogOn && st.stages === true && <SpeckitStatus speckit={speckit} titles={backlogTitles} />}
+      {backlogBlock}
+    </div>
+  );
+  const prepareButton = (
+    <ActionButton data-testid="speckit-prepare" className={speckitReady ? 'secondary' : 'primary'} busy={speckitRunning} disabled={locked || speckitRunning || !st.backlog?.detail} title={st.backlog?.detail ? undefined : 'Espere o backlog ficar detalhado'} onClick={() => p.onPrepareSpeckit?.()} icon={<Icon name={speckit ? 'refresh' : 'play'} size={16} />}>
+      {speckitRunning ? 'Preparando…' : speckit ? 'Preparar de novo' : 'Preparar com o Spec Kit'}
+    </ActionButton>
+  );
+  const developButton = (
+    <ActionButton data-testid="start" className="primary" busy={p.startState?.busy ?? false} disabled={!canStart || !speckitReady} onClick={p.onStart} icon={<Icon name="play" size={16} />}>
+      {p.startState?.busy ? p.startState.label : 'Iniciar desenvolvimento'}
+    </ActionButton>
+  );
+  const wizardActions = step === 'backlog' ? (
+    !backlogOn ? (
+      <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
+    ) : st.stages === true ? <>{prepareButton}{developButton}</> : developButton
+  ) : step === 'review' ? (
     <>
       <ActionButton data-testid="evaluate" className="secondary" busy={evaluating} disabled={locked || atMax} title="Se tudo passar, o backlog começa a ser montado" onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
         Avaliar tudo
       </ActionButton>
       {backlogOn ? (
-        <ActionButton data-testid="open-backlog" className="primary" onClick={() => openView('backlog')} icon={<Icon name="arrow-right" size={16} />}>Abrir backlog e execução</ActionButton>
+        <ActionButton data-testid="open-backlog" className="primary" onClick={() => goTo('backlog')} icon={<Icon name="arrow-right" size={16} />}>Abrir backlog e execução</ActionButton>
       ) : (
         <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
       )}
@@ -1094,7 +1121,7 @@ export function RefinementView(p: ViewProps) {
       </ActionButton>
     </>
   );
-  if (newProject && view === 'docs') {
+  if (newProject) {
     return (
       <div className="min-h-0 min-w-0 lg:overflow-y-auto" data-testid="stage-wizard">
         <WizardShell
@@ -1104,7 +1131,7 @@ export function RefinementView(p: ViewProps) {
           back={{ onClick: () => goTo(prevStep(step)), disabled: prevStep(step) === null, reason: 'Esta é a primeira etapa' }}
           actions={wizardActions}
         >
-          {step === 'review' ? finalScreen() : stageScreen(step)}
+          {step === 'backlog' ? backlogScreen() : step === 'review' ? finalScreen() : stageScreen(step)}
         </WizardShell>
         {reevaluateDialog}
         {askDialog}
@@ -1237,6 +1264,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         }}
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}
+        onPrepareSpeckit={act(() => refineApi.speckit(projectId, specId))}
         onContinueStage={(doc) => refineApi.continueStage(projectId, specId, doc).then(() => true, (e: Error) => (setError(e.message), false))}
         onReprocessStage={(f) => act(() => refineApi.reprocessStage(projectId, specId, f))()}
         onScoreDoc={(f) => act(() => refineApi.scoreDoc(projectId, specId, f))()}

@@ -8,7 +8,7 @@ import { ID_PATTERNS } from '../core/ids.js';
 import { Project, ServiceName } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 
-export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'gaps', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'gaps', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select', 'speckit'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -322,6 +322,13 @@ export type SuggestOutput = z.infer<typeof SuggestOutput>;
 export const AnswerOutput = z.object({ specHash, answer: z.string().min(1).nullable() });
 export type AnswerOutput = z.infer<typeof AnswerOutput>;
 
+/** One Spec Kit command run in the staging folder: the files it wrote, or why it could not finish. */
+export const SpeckitOutput = z.discriminatedUnion('status', [
+  z.object({ specHash, status: z.literal('done'), summary: z.string().min(1), files: z.array(z.string().min(1)) }),
+  z.object({ specHash, status: z.literal('blocked'), summary: z.string().min(1), files: z.array(z.string().min(1)), reason: z.string().min(1) }),
+]);
+export type SpeckitOutput = z.infer<typeof SpeckitOutput>;
+
 export const SkillSelectionOutput = z.discriminatedUnion('action', [
   z.object({ specHash, action: z.literal('reuse'), skill: z.object({ id: skillId, repository: z.string().url(), commit: z.string().regex(/^[a-f0-9]{40}$/), license: z.string().min(1), sourcePath: z.string().optional() }), reason: z.string().min(1) }),
   z.object({ specHash, action: z.literal('create'), draft: SkillDraft, reason: z.string().min(1) }),
@@ -366,6 +373,7 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   answer: AnswerOutput,
   chat: ChatOutput,
   'skill-select': SkillSelectionOutput,
+  speckit: SpeckitOutput,
 };
 
 export type OutputOf<K extends StepKind> = z.infer<(typeof OUTPUT_SCHEMAS)[K]>;

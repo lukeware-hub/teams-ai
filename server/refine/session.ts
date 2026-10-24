@@ -8,6 +8,8 @@ import type { StepOutcome } from '../runner/step.js';
 import type { Project } from '../contracts/project.js';
 import { freezeSpec, providedSecretNames, Spec, type ExternalDependency } from '../contracts/spec.js';
 import { writeFileAtomic } from '../core/atomic-write.js';
+import { OwnerError } from '../core/owner-error.js';
+import { execCommand, type Exec } from '../exec/command.js';
 import { loadSecrets, SECRET_NAME, writeSecret } from '../core/secrets.js';
 import type { ProgramEntry } from '../program/controller.js';
 import type { Hit } from '../knowledge/retrieval.js';
@@ -28,9 +30,10 @@ import { buildSpecsIndex } from './specs-index.js';
 import { fitPackBudget } from './fit-pack.js';
 import { ownerFailure, TRY_AGAIN } from './agent-failure.js';
 import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
-import { allGreen, applyRefineEvent, canStart, emptyRefineState, type BacklogState, type RefineLimits, type RefineState } from './state.js';
+import { allGreen, applyRefineEvent, canStart, emptyRefineState, speckitPending, type BacklogState, type RefineLimits, type RefineState } from './state.js';
 import { refineLimits } from './limits.js';
 import { isStarted } from './coverage.js';
+import { prepareSpeckit, SPECKIT_STAGE, speckitSteps } from './speckit.js';
 
 export type { RunAgent } from './cycle.js';
 const MAX_IMAGES = 4;
@@ -97,6 +100,8 @@ export interface SessionDeps {
   decider?: CycleDeps['decider'];
   /** Read at each evaluation, so a floor set in the config reaches drafts already open. */
   autoAnswerFloor?: () => Promise<number | undefined>;
+  /** Runs `specify init` for the Spec Kit preparation; the real command when absent. */
+  exec?: Exec;
 }
 /** The external dependencies the specs declare: every backlog spec, or the single derived spec while the backlog has none yet. */
 export function declaredDependencies(state: RefineState): ExternalDependency[] {
@@ -191,6 +196,8 @@ export class RefineSession {
     if (journal.state.status === 'evaluating') await journal.fact(RefineEvent.CycleFailed, { cycle: journal.state.cycle, reason: 'interrupted' });
     // A restart in a pause between two cycles of one click: its end would be the restart, so its record is void.
     if (journal.state.evaluation?.endedAt === null) await journal.fact(RefineEvent.EvaluationEnded, { interrupted: true });
+    // A Spec Kit preparation cut by a restart is failed too; the owner runs it again.
+    if (journal.state.speckit?.status === 'running') await journal.fact(RefineEvent.SpeckitFailed, { reason: 'interrupted' });
     // A crash between enabling backlog mode and moving the briefing: finish the move.
     if (journal.state.backlog?.enabled) await moveBriefingToProject(deps.draft);
     // A continued spec carries its JSON from main before any cycle has derived one.
@@ -422,6 +429,36 @@ export class RefineSession {
     // The detailing is part of the one process: every evaluation of the backlog details its changed items.
     await this.journal.fact(RefineEvent.BacklogDetailEnabled, {});
     await moveBriefingToProject(this.deps.draft);
+  }
+
+  /** "Preparar Spec Kit": the constitution, and a spec, plan and tasks for each item of the detailed backlog. */
+  runSpeckit(): Promise<void> {
+    this.guard();
+    const backlog = this.state.backlog;
+    if (!backlog?.enabled || !backlog.detail || backlog.items.length === 0 || backlog.items.some((i) => !backlog.specs?.[i.key]?.spec)) {
+      throw new ConflictError('Detalhe o backlog antes de preparar o Spec Kit: cada item precisa da sua spec.');
+    }
+    const ctl = (this.abortCtl = new AbortController());
+    const run = this.timedSpeckit(ctl, backlog).finally(() => {
+      this.running = null;
+      this.abortCtl = null;
+    });
+    this.running = run;
+    return run;
+  }
+
+  /** The journal keeps the preparation's start, each step and its end; a failure is journaled for the owner, never thrown. */
+  private async timedSpeckit(ctl: AbortController, backlog: BacklogState): Promise<void> {
+    const items = buildSpecsIndex(this.deps.draft.specId, backlog).specs;
+    await this.journal.fact(RefineEvent.SpeckitStarted, { total: speckitSteps(items).length });
+    try {
+      const inputHash = await prepareSpeckit({ draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, exec: this.deps.exec ?? execCommand, signal: ctl.signal }, items);
+      await this.journal.fact(RefineEvent.SpeckitDone, { inputHash });
+    } catch (err) {
+      const reason = err instanceof OwnerError ? err.message : `${SPECKIT_STAGE} parou por um erro interno. ${TRY_AGAIN}`;
+      const detail = err instanceof OwnerError ? err.detail : String(err instanceof Error ? err.message : err).slice(0, 1000);
+      await this.journal.fact(RefineEvent.SpeckitFailed, { reason, detail });
+    }
   }
 
   async evaluate(): Promise<void> {
@@ -665,6 +702,8 @@ export class RefineSession {
     const onMain = Object.fromEntries(await Promise.all(specs.map(async (s) => [s.specId, (await readMainSpec(this.deps.draft, s.specId))?.status] as const)));
     if (this.starting) throw new ConflictError('a start is already in progress');
     if (!backlog.detail) throw new ConflictError('Detalhe as specs do backlog antes de iniciar: o início a partir do backlog usa as specs planejadas.');
+    // A running evaluation is the reason that comes first; the Spec Kit preparation is the next.
+    if (this.state.status !== 'evaluating' && speckitPending(this.state)) throw new ConflictError('Prepare o Spec Kit antes de iniciar: a preparação ainda não foi feita, falhou ou os documentos mudaram depois dela.');
     if (!canStart(this.state)) throw new ConflictError(`session cannot start now (${this.state.status})`);
     // Built before the start lock, so a refused start leaves the session free to try again.
     const entries = programEntries(this.deps.draft.specId, backlog, onMain);

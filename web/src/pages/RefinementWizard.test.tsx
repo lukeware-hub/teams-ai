@@ -396,13 +396,22 @@ describe('the final review', () => {
     expect(handlers.onEnableBacklog).toHaveBeenCalledTimes(1);
   });
 
-  it('opens the backlog screen when the backlog exists, and comes back to the documents from it', () => {
+  it('opens stage 7 when the backlog exists, and comes back to the review from it', () => {
     open('?etapa=revisao');
     show(reviewSnap({ backlog: { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} } }));
     fireEvent.click(screen.getByTestId('open-backlog'));
-    expect(screen.queryByTestId('stage-wizard')).toBeNull();
-    expect(window.location.search).toContain('vista=backlog');
-    fireEvent.click(screen.getByTestId('open-wizard'));
+    expect(screen.getByTestId('backlog-stage')).toBeTruthy();
     expect(screen.getByTestId('stage-wizard')).toBeTruthy();
+    expect(window.location.search).toContain('etapa=backlog');
+    fireEvent.click(screen.getByTestId('wizard-back'));
+    expect(screen.queryByTestId('backlog-stage')).toBeNull();
+    expect(window.location.search).toContain('etapa=revisao');
+  });
+
+  it('offers to break the backlog on stage 7 when it does not exist yet', () => {
+    open('?etapa=backlog');
+    const handlers = show(reviewSnap());
+    fireEvent.click(screen.getByTestId('enable-backlog'));
+    expect(handlers.onEnableBacklog).toHaveBeenCalledTimes(1);
   });
 });

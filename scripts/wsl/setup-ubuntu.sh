@@ -56,6 +56,9 @@ echo "== graphify"
 pipx ensurepath >/dev/null 2>&1 || true
 pipx list 2>/dev/null | grep -q graphifyy || pipx install graphifyy
 
+echo "== spec kit"
+pipx list 2>/dev/null | grep -q specify-cli || pipx install https://github.com/github/spec-kit/archive/5ea8b1cf0a38699340a38e00d02770308997d8c0.zip
+
 echo "== docker (Docker Desktop WSL integration)"
 if ! have docker; then
   echo "docker not found: enable 'WSL integration' for this distro in Docker Desktop settings" >&2

@@ -389,4 +389,54 @@ describe('canStart', () => {
     expect(canStart({ ...base, backlog: { enabled: true, detail: false, items: [item] } })).toBe(false);
     expect(canStart({ ...base, backlog: { enabled: true, detail: null, items: [item] } })).toBe(false);
   });
+
+  it('a wizard backlog starts only once its Spec Kit preparation is done and current', () => {
+    const wizard = { ...base, mode: 'new-project', stages: true, backlog: { enabled: true, detail: true, items: [{ key: 'base' }] } };
+    expect(canStart(wizard)).toBe(false);
+    expect(canStart({ ...wizard, speckit: { status: 'running', stale: false } })).toBe(false);
+    expect(canStart({ ...wizard, speckit: { status: 'failed', stale: false } })).toBe(false);
+    expect(canStart({ ...wizard, speckit: { status: 'done', stale: true } })).toBe(false);
+    expect(canStart({ ...wizard, speckit: { status: 'done', stale: false } })).toBe(true);
+  });
+
+  it('an imported backlog and a session without stages need no Spec Kit preparation', () => {
+    const backlog = { enabled: true, detail: true, items: [{ key: 'base' }] };
+    expect(canStart({ ...base, mode: 'backlog', backlog })).toBe(true);
+    expect(canStart({ ...base, mode: 'new-project', stages: false, backlog })).toBe(true);
+  });
+});
+
+describe('Spec Kit preparation state', () => {
+  const started = { type: RefineEvent.SpeckitStarted, data: { total: 4 } };
+
+  it('follows a run from its start through each step to its end', () => {
+    const s = reduceRefineEvents([
+      started,
+      { type: RefineEvent.SpeckitStepDone, data: { command: 'constitution', files: ['.specify/memory/constitution.md'] } },
+      { type: RefineEvent.SpeckitStepDone, data: { command: 'specify', itemKey: 'login', files: ['specs/login/spec.md'] } },
+    ]);
+    expect(s.speckit).toEqual({ status: 'running', steps: [{ command: 'constitution' }, { command: 'specify', itemKey: 'login' }], total: 4, stale: false });
+    const done = reduceRefineEvents([started, { type: RefineEvent.SpeckitDone, data: { inputHash: 'h' } }]);
+    expect(done.speckit).toMatchObject({ status: 'done', stale: false });
+  });
+
+  it('keeps the reason of a failed run, and a new run starts clean', () => {
+    const failed = reduceRefineEvents([started, { type: RefineEvent.SpeckitFailed, data: { reason: 'interrupted' } }]);
+    expect(failed.speckit).toMatchObject({ status: 'failed', error: 'interrupted' });
+    const again = reduceRefineEvents([started, { type: RefineEvent.SpeckitFailed, data: { reason: 'x' } }, started]);
+    expect(again.speckit).toEqual({ status: 'running', steps: [], total: 4, stale: false });
+  });
+
+  it('goes stale when a document or a backlog derivation changes after it', () => {
+    const done = [started, { type: RefineEvent.SpeckitDone, data: { inputHash: 'h' } }];
+    for (const e of [
+      { type: RefineEvent.DocEdited, data: { file: 'stack.md', hash: 'x', source: 'human' } },
+      { type: RefineEvent.BacklogDerived, data: { project: null, epics: [], items: [], cycle: 2 } },
+      { type: RefineEvent.SpecDerived, data: { key: 'login', specId: 'login', inputHash: 'i', rev: null, spec: null, issues: [], cycle: 2 } },
+      { type: RefineEvent.PreplanDerived, data: { key: 'login', inputHash: 'i', specRev: 'r', preplan: null, issues: [], cycle: 2 } },
+    ]) {
+      expect(reduceRefineEvents([{ type: RefineEvent.BacklogEnabled, data: {} }, ...done, e]).speckit?.stale, e.type).toBe(true);
+    }
+    expect(reduceRefineEvents([{ type: RefineEvent.DocEdited, data: { file: 'stack.md', hash: 'x' } }]).speckit).toBeUndefined();
+  });
 });

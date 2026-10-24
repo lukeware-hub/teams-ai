@@ -299,6 +299,70 @@ describe('phase 0', () => {
     await resumed.close();
   });
 
+  describe('the Spec Kit preparation of the draft', () => {
+    const speckit = {
+      '.specify/memory/constitution.md': '# Constitution\n',
+      '.claude/skills/speckit-plan/SKILL.md': '# Plan skill\n',
+      'specs/hello-001/tasks.md': '# Tasks\n',
+      'CLAUDE.md': '# From Spec Kit\n',
+      'notes.txt': 'not published\n',
+    };
+    const stage = async () => {
+      for (const [rel, text] of Object.entries(speckit)) {
+        const file = path.join(remote.root, 'draft', 'speckit', rel);
+        await fs.mkdir(path.dirname(file), { recursive: true });
+        await fs.writeFile(file, text);
+      }
+    };
+
+    it('reaches a new repository with the docs', { timeout: 60_000 }, async () => {
+      await stage();
+      const origin = path.join(remote.root, 'empty-sk.git');
+      await fs.mkdir(origin);
+      await git(origin, ['init', '--bare', '-b', 'main'], execCommand);
+      const repo = path.join(remote.root, 'fresh-sk').replace(/\\/g, '/');
+      const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
+      let created = false;
+      exec.onArgs('gh', ['repo', 'view'], () => (created ? { stdout: JSON.stringify({ nameWithOwner: 'o/hello-app', url: 'https://github.example/o/hello-app' }) } : { exitCode: 1, stderr: 'Could not resolve to a Repository' }));
+      exec.onArgs('gh', ['repo', 'create'], async () => {
+        created = true;
+        await git(repo, ['remote', 'add', 'origin', origin], execCommand);
+        await git(repo, ['push', '-q', '-u', 'origin', 'main'], execCommand);
+        return { stdout: 'https://github.example/o/hello-app\n' };
+      });
+      new FakeGh().install(exec);
+      const run = await Run.create(deps(exec, repo), 'hello-001-r1');
+      expect(await run.executePhase0()).toEqual({ ok: true });
+      const show = (rel: string) => git(repo, ['show', `origin/main:${rel}`], execCommand);
+      for (const rel of ['.specify/memory/constitution.md', '.claude/skills/speckit-plan/SKILL.md', 'specs/hello-001/tasks.md', 'CLAUDE.md']) expect(await show(rel), rel).toBe(speckit[rel as keyof typeof speckit].trim());
+      await expect(show('notes.txt')).rejects.toThrow();
+      expect(await show('docs/specs/hello-001/spec.json')).toContain('"specHash"');
+      await run.close();
+    });
+
+    it('reaches an existing repository through the docs PR, never over a file main already has', { timeout: 60_000 }, async () => {
+      await remote.cleanup();
+      remote = await makeRemote({ 'README.md': 'seed', 'CLAUDE.md': '# Main rules\n', '.claude/settings.json': '{"main":true}\n' });
+      draftDocs = path.join(remote.root, 'draft', 'docs');
+      await fs.mkdir(path.join(draftDocs, 'specs', 'hello-001'), { recursive: true });
+      await fs.writeFile(path.join(draftDocs, 'specs', 'hello-001', 'spec.json'), JSON.stringify(spec));
+      await stage();
+      const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
+      exec.onArgs('gh', ['repo', 'view'], () => ({ stdout: JSON.stringify({ nameWithOwner: 'o/hello-app', url: remote.origin }) }));
+      new FakeGh().install(exec);
+      const run = await Run.create(deps(exec, remote.repo), 'hello-001-r1');
+      expect(await run.executePhase0()).toEqual({ ok: true });
+      const show = (rel: string) => git(remote.repo, ['show', `origin/main:${rel}`], execCommand);
+      expect(await show('CLAUDE.md')).toBe('# Main rules');
+      expect(await show('.claude/settings.json')).toBe('{"main":true}');
+      expect(await show('.claude/skills/speckit-plan/SKILL.md')).toBe('# Plan skill');
+      expect(await show('.specify/memory/constitution.md')).toBe('# Constitution');
+      expect(await show('specs/hello-001/tasks.md')).toBe('# Tasks');
+      await expect(show('notes.txt')).rejects.toThrow();
+      await run.close();
+    });
+  });
+
   it('records PHASE_FAILED instead of throwing when gh repo create fails', { timeout: 60_000 }, async () => {
     const wsRepo = path.join(remote.root, 'fresh-repo-2').replace(/\\/g, '/');
     const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));

@@ -102,6 +102,9 @@ function serviceRule(ctx: ServiceContext, platform: readonly PlatformService[], 
   ].join(' ');
 }
 
+/** The Spec Kit files the refinement may have published to the repository; the dev agents follow them when present. */
+export const SPECKIT_RULE = 'When the repository has .specify/memory/constitution.md and specs/*/tasks.md (made by Spec Kit), follow that constitution and the spec, plan and tasks of the feature this task belongs to.';
+
 export function devPack(
   base: PackBase,
   task: PlanTask,
@@ -111,7 +114,7 @@ export function devPack(
   const shared = common(base, 'dev', role);
   return {
     ...shared,
-    principles: opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [...shared.principles, e2eSuiteRules(opts.e2eSuite)] : shared.principles,
+    principles: [...shared.principles, SPECKIT_RULE, ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : [])],
     task,
     criteria: criteriaOf(base.spec, task.criteriaRefs),
     decisions: base.spec.decisions,

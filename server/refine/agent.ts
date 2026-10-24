@@ -32,6 +32,9 @@ export function refineStepModel(routing: Config['routing'], kind: StepKind, cycl
   return (cycle > 1 ? routing.laterCycleModels[kind] : undefined) ?? routing.stepModels[kind];
 }
 
+/** Where a step's settings go: a Spec Kit step works in the folder that is published, so its settings sit beside it. */
+export const refineSettingsDir = (req: { kind: StepKind; cwd: string }): string => (req.kind === 'speckit' ? `${req.cwd}-settings` : path.posix.join(req.cwd, 'settings'));
+
 /** One governor, breaker and ledger for every refinement session of the UI process (spec §2). */
 export async function makeRunAgent(w: AgentWiring): Promise<RunAgent & { resetQuota(): void }> {
   const agents = await loadAgents(w.agentsDir);
@@ -52,7 +55,7 @@ export async function makeRunAgent(w: AgentWiring): Promise<RunAgent & { resetQu
         caps,
         accounting,
         claudeJsonPath: w.claudeJsonPath ?? expandHome('~/.claude.json'),
-        settingsDir: path.posix.join(req.cwd, 'settings'),
+        settingsDir: refineSettingsDir(req),
         workspacesRoot: w.workspacesRoot,
         agentPluginsRoot: agentPluginsRoot(),
         skillsRoot: expandHome('~/.teams-ai/skills'),

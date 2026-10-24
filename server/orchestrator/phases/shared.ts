@@ -141,8 +141,8 @@ export async function docsWorktree(deps: PhaseDeps, branch: string, opts: { keep
   await createWorktree(deps.ws.repo, dir, branch, 'origin/main', deps.exec, { reset: !opts.keepCommits });
   if (!confirmed) await deps.journal.confirm(Intent.WorktreeCreate, key, {});
   // The phases write into this checkout of main, where a symbolic link could point anywhere on this machine.
-  const links = (await git(dir, ['ls-files', '-s', '--', 'docs', '.github'], deps.exec)).split('\n').filter((l) => l.startsWith('120000 '));
-  if (links.length > 0) throw new Error(`main has symbolic links in docs/ or .github/, which teams-ai never writes through: ${links.map((l) => l.split('\t')[1]).join(', ')}`);
+  const links = (await git(dir, ['ls-files', '-s', '--', 'docs', '.github', '.specify', '.claude', 'specs', 'CLAUDE.md'], deps.exec)).split('\n').filter((l) => l.startsWith('120000 '));
+  if (links.length > 0) throw new Error(`main has symbolic links in docs/, .github/ or the Spec Kit files, which teams-ai never writes through:${links.map((l) => l.split('\t')[1]).join(', ')}`);
   return dir;
 }
 

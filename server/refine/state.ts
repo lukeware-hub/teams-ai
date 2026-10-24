@@ -154,6 +154,8 @@ export interface RefineState {
   staleBy?: Partial<Record<DocFile, DocFile>>;
   /** When the latest evaluation started and ended (ISO times); `endedAt` stays null while it runs. */
   evaluation?: { startedAt: string; endedAt: string | null };
+  /** The Spec Kit preparation of a detailed backlog; stale once a document or the backlog changes after it. */
+  speckit?: { status: 'running' | 'done' | 'failed'; steps: Array<{ command: string; itemKey?: string }>; total?: number; error?: string; stale: boolean };
 }
 
 export interface StuckRun {
@@ -227,13 +229,23 @@ export interface StartInput {
   mode?: string | null;
   derived: unknown;
   backlog?: { enabled: boolean; detail?: boolean | null; items?: unknown[] } | null;
+  stages?: boolean;
+  speckit?: { status: string; stale: boolean } | null;
 }
+
+/** A new project built in the wizard starts only from a current Spec Kit preparation; an imported backlog and other sessions need none. */
+export const speckitPending = (s: StartInput): boolean => s.stages === true && s.mode === 'new-project' && !(s.speckit?.status === 'done' && !s.speckit.stale);
 
 /** The start is open unless the agents evaluate or a run started: checks, questions and the Jev only advise. */
 export function canStart(s: StartInput): boolean {
   if (s.status === 'evaluating' || s.status === 'started') return false;
-  if (s.backlog?.enabled) return s.backlog.detail === true && (s.backlog.items?.length ?? 0) > 0;
+  if (s.backlog?.enabled) return s.backlog.detail === true && (s.backlog.items?.length ?? 0) > 0 && !speckitPending(s);
   return s.mode !== 'new-project' && Boolean(s.derived);
+}
+
+/** A document or the backlog changed, so the Spec Kit preparation no longer matches them. */
+function markSpeckitStale(s: RefineState): void {
+  if (s.speckit) s.speckit.stale = true;
 }
 
 /** Something was derived from the docs (one spec or a backlog), so editing the docs makes it stale. */
@@ -372,6 +384,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       if (s.readiness) s.readiness.outdated = true;
       s.outdatedDocs = [...new Set([...(s.outdatedDocs ?? []), docName(d.file)])];
       markStaleStages(s, docName(d.file));
+      markSpeckitStale(s);
       break;
     case RefineEvent.BacklogEnabled: {
       // `acFloor`: the highest criterion id in the draft before the briefing move removed this draft's own spec.json.
@@ -398,6 +411,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
         specs: keep(prev?.specs, keys),
         preplans: keep(prev?.preplans, keys),
       };
+      markSpeckitStale(s);
       break;
     }
     case RefineEvent.BacklogDetailEnabled:
@@ -409,12 +423,14 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
         const row: SpecRow = { inputHash: String(d.inputHash), specId: String(d.specId), rev: (d.rev as string | null) ?? null, spec: (d.spec as Spec | null) ?? null, issues: (d.issues as string[]) ?? [], cycle: Number(d.cycle) };
         s.backlog = { ...s.backlog, specs: { ...s.backlog.specs, [String(d.key)]: row }, acHighWater: Math.max(s.backlog.acHighWater ?? 0, Number(d.highWater ?? 0)) };
       }
+      markSpeckitStale(s);
       break;
     case RefineEvent.PreplanDerived:
       if (s.backlog) {
         const row: PreplanRow = { inputHash: String(d.inputHash), specRev: String(d.specRev), preplan: (d.preplan as Preplan | null) ?? null, issues: (d.issues as string[]) ?? [], cycle: Number(d.cycle) };
         s.backlog = { ...s.backlog, preplans: { ...s.backlog.preplans, [String(d.key)]: row } };
       }
+      markSpeckitStale(s);
       break;
     case RefineEvent.ConflictsDerived:
       if (s.backlog) s.backlog = { ...s.backlog, conflicts: { inputHash: String(d.inputHash), pairs: d.pairs as ConflictMap['pairs'] } };
@@ -435,6 +451,18 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       s.readiness = { ...(d as unknown as Omit<Readiness, 'outdated' | 'docs' | 'average'>), docs, average, outdated: s.outdatedDocs.length > 0 };
       break;
     }
+    case RefineEvent.SpeckitStarted:
+      s.speckit = { status: 'running', steps: [], ...(d.total === undefined ? {} : { total: Number(d.total) }), stale: false };
+      break;
+    case RefineEvent.SpeckitStepDone:
+      s.speckit?.steps.push({ command: String(d.command), ...(d.itemKey === undefined ? {} : { itemKey: String(d.itemKey) }) });
+      break;
+    case RefineEvent.SpeckitDone:
+      if (s.speckit) s.speckit.status = 'done';
+      break;
+    case RefineEvent.SpeckitFailed:
+      if (s.speckit) s.speckit = { ...s.speckit, status: 'failed', error: String(d.reason) };
+      break;
     case RefineEvent.StartedRun:
       s.status = 'started';
       s.runId = String(d.runId);

@@ -47,6 +47,7 @@ export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docs
       await fs.mkdir(ws.repo, { recursive: true });
       if (!(await isRepo(ws.repo))) await git(ws.repo, ['init', '-b', 'main'], deps.exec);
       await fs.cp(opts.docsDir, path.join(ws.repo, 'docs'), { recursive: true, force: true });
+      await overlaySpeckit(opts.docsDir, ws.repo);
       const key = docsCommitKey(deps, 0);
       const message = `docs: ${project.projectId} ${spec.specId} v${version}`;
       if (!journal.isConfirmed(Intent.DocsCommit, key)) {
@@ -105,6 +106,7 @@ export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docs
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.copyFile(source, target);
   }
+  await overlaySpeckit(opts.docsDir, wt);
   return commitAndMergeDocs(deps, 0, branch, wt, `docs(${spec.specId}): spec v${version}`);
 }
 
@@ -165,6 +167,25 @@ async function cloneOrCreate(deps: PhaseDeps & { ghExec: Exec }, service: string
 }
 
 const exists = (p: string) => fs.access(p).then(() => true, () => false);
+
+/** What the draft's Spec Kit preparation publishes at the repository root. */
+const SPECKIT_ENTRIES = ['.specify', '.claude/skills', 'specs', 'CLAUDE.md'];
+
+/** Copies the draft's Spec Kit preparation into `repo`, only the files it lacks, so an existing CLAUDE.md or .claude stays. */
+async function overlaySpeckit(docsDir: string, repo: string): Promise<void> {
+  const source = path.join(path.dirname(docsDir), 'speckit');
+  for (const entry of SPECKIT_ENTRIES) {
+    const stat = await fs.lstat(path.join(source, entry)).catch(() => null);
+    const files = stat?.isDirectory() ? (await listFiles(path.join(source, entry))).map((rel) => `${entry}/${rel}`) : stat?.isFile() ? [entry] : [];
+    for (const rel of files) {
+      const target = path.join(repo, rel);
+      // lstat, so a link main holds counts as present and is never written through.
+      if (await fs.lstat(target).then(() => true, () => false)) continue;
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.copyFile(path.join(source, rel), target);
+    }
+  }
+}
 const read = (p: string) => fs.readFile(p, 'utf8').catch(() => null);
 
 /** Whether main's copy of a spec says its run started or it was delivered (R11.7.5). */

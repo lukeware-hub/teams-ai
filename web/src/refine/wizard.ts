@@ -6,15 +6,18 @@ import { DOC_LABEL } from './doc-labels.js';
 type State = Snapshot['state'];
 type DocFile = (typeof DOC_STAGES)[number];
 
-/** One screen per document, then the final review. */
-export type WizardStep = DocFile | 'review';
-export const WIZARD_STEPS: readonly WizardStep[] = [...DOC_STAGES, 'review'];
+/** One screen per document, then the final review, then the backlog. */
+export type WizardStep = DocFile | 'review' | 'backlog';
+export const WIZARD_STEPS: readonly WizardStep[] = [...DOC_STAGES, 'review', 'backlog'];
 
-/** The step as the address writes it: the document name, or `revisao` for the review. */
+export const isDocStep = (step: WizardStep): step is DocFile => step !== 'review' && step !== 'backlog';
+
+/** The step as the address writes it: the document name, `revisao` for the review, `backlog` for the backlog. */
 export const stepParam = (step: WizardStep): string => (step === 'review' ? 'revisao' : step);
 
 export function parseStep(value: string | null): WizardStep | null {
   if (value === 'revisao') return 'review';
+  if (value === 'backlog') return 'backlog';
   return (DOC_STAGES as readonly string[]).includes(value ?? '') ? (value as DocFile) : null;
 }
 
@@ -35,12 +38,12 @@ export function wizardNodes(st: Pick<State, 'stages' | 'doneStages' | 'outdatedD
   const done = new Set(st.doneStages ?? []);
   const at = WIZARD_STEPS.indexOf(current);
   return WIZARD_STEPS.map((step, index) => {
-    const doc = step === 'review' ? null : step;
+    const doc = isDocStep(step) ? step : null;
     const outdated = doc !== null && (st.outdatedDocs?.includes(doc) === true || st.staleBy?.[doc] !== undefined);
     const isDone = doc !== null && (st.stages === true ? done.has(doc) : index < at);
     return {
       key: step,
-      label: doc ? DOC_LABEL[doc] : 'Revisão',
+      label: doc ? DOC_LABEL[doc] : step === 'review' ? 'Revisão' : 'Backlog',
       state: step === current ? 'active' : isDone ? 'done' : 'todo',
       ...(outdated ? { marker: 'desatualizado' } : {}),
     };
