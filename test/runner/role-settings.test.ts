@@ -45,6 +45,7 @@ describe('buildRoleSettings', () => {
     expect(buildRoleSettings('devops', { allowedDomains: [] }).permissions.allow).not.toContain('Bash(npm:*)');
     // Every role may run only the Agent Reach CLI from Bash, besides its own rules.
     expect(buildRoleSettings('sm', { allowedDomains: [] }).permissions.allow).toEqual(['Skill', 'Bash(agent-reach:*)']);
+    expect(buildRoleSettings('po', { allowedDomains: [] }).permissions.allow).toEqual(['Skill', 'Bash(agent-reach:*)']);
     expect(buildRoleSettings('env', { allowedDomains: [] }).permissions.allow).toEqual(['Bash(agent-reach:*)']);
   });
 

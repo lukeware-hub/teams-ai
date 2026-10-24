@@ -17,7 +17,7 @@ const EDITING = [...READ_ONLY, 'Edit', 'Write'] as const;
 /** Spec §3.4: agents only edit files and return JSON; Bash only where a role must run the suite. */
 export const ROLE_TOOL_POLICY: Record<Role, { allowed: readonly string[] }> = {
   sm: { allowed: [...READ_ONLY, 'Bash', 'Skill'] },
-  po: { allowed: [...READ_ONLY, 'Bash'] },
+  po: { allowed: [...READ_ONLY, 'Bash', 'Skill'] },
   front: { allowed: [...EDITING, 'Bash', 'Skill'] },
   dev: { allowed: [...EDITING, 'Bash', 'Skill'] },
   test: { allowed: [...EDITING, 'Bash', 'Skill'] },

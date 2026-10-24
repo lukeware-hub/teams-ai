@@ -13,7 +13,8 @@ describe('skill catalog', () => {
       expect(skill.repository).not.toMatch(/latest/i);
     }
     expect(skillsForRole('front').map((s) => s.id)).toEqual(expect.arrayContaining(['impeccable', 'taste-skill', 'ui-ux-pro-max', 'web-asset-generator', 'playwright-cli']));
-    expect(skillsForRole('sm').map((s) => s.id)).toEqual(['find-skills']);
+    expect(skillsForRole('sm').map((s) => s.id)).toEqual(['superpowers', 'find-skills']);
+    expect(skillsForRole('po').map((s) => s.id)).toEqual(['superpowers']);
   });
 
   it('installs the claude-code-setup skill for the dev role only, as a native skill', () => {

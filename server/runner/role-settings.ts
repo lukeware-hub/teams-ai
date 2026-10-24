@@ -58,7 +58,7 @@ const AGENT_REACH_ALLOW = ['Bash(agent-reach:*)'] as const;
 // `find` is deliberately absent (audit H3): `-exec` runs any command; use ls/grep.
 const ROLE_ALLOW: Record<Role, readonly string[]> = {
   sm: ['Skill'],
-  po: [],
+  po: ['Skill'],
   front: ['Skill', ...EDIT_TOOLS, ...SUITE_BASH],
   dev: ['Skill', ...EDIT_TOOLS, ...SUITE_BASH],
   test: ['Skill', ...EDIT_TOOLS, ...SUITE_BASH],

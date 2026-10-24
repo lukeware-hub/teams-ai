@@ -41,6 +41,8 @@ describe('loadAgents', () => {
     expect(agents.dev.tools).toContain('Bash');
     expect(agents.devops.tools).toContain('Bash');
     expect(agents.sec.tools).toEqual(['Read', 'Grep', 'Glob', 'Bash', 'Skill']);
+    // The PO refines the documents with the same skills the other refining roles use.
+    expect(agents.po.tools).toEqual(['Read', 'Grep', 'Glob', 'Bash', 'Skill']);
     // The environment agent only reads and may run Bash just for the Agent Reach CLI (see role-settings.ts).
     expect(agents.env.tools).toEqual(['Read', 'Grep', 'Glob', 'Bash']);
     // sm's frontmatter now states its real default model (server/config/config.ts CLAUDE_DEFAULTS); this

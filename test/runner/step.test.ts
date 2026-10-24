@@ -381,7 +381,8 @@ describe('runStep', () => {
     const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
     expect(captured.argv[captured.argv.indexOf('--tools') + 1]).toBe('Read,Grep,Glob,Bash');
     const settings = JSON.parse(await fs.readFile(captured.argv[captured.argv.indexOf('--settings') + 1], 'utf8'));
-    expect(settings.permissions.allow).toEqual(['Bash(agent-reach:*)', 'Bash(graphify query:*)']);
+    // The PO role's Skill permission is listed, but the chat's tools leave the Skill tool out, so the chat cannot call it.
+    expect(settings.permissions.allow).toEqual(['Skill', 'Bash(agent-reach:*)', 'Bash(graphify query:*)']);
     expect(settings.sandbox.filesystem.denyRead).toContain('/ws/*/repo');
     expect(settings.permissions.deny).toContain('Read(//ws/*/repo)');
     expect(stepCaps('chat', deps.caps).maxTurns).toBe(6);
