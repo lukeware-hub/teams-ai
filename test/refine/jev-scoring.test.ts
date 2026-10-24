@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { DOCUMENT_PURPOSE } from '../../server/agents/document-charter.js';
 import { loadConfig } from '../../server/config/config.js';
 import { splitSections } from '../../server/decide/windows.js';
-import { createJevScorer } from '../../server/refine/jev-scoring.js';
+import { createJevScorer, type WindowAnswer } from '../../server/refine/jev-scoring.js';
 import type { DocFile } from '../../server/refine/draft.js';
 import { SCORE_CHECKS, UNSCORED } from '../../server/refine/readiness.js';
 
@@ -76,6 +76,26 @@ describe('createJevScorer', () => {
     expect(result.docs!['flow.md']!.checks.complete).toBeCloseTo(0.9);
     expect(result.docs!['flow.md']!.checks.consistent).toBeCloseTo(0.2);
     expect(result.docs!['flow.md']!.checks.scoped).toBeCloseTo(0.2);
+  });
+
+  it('reports each answered window with its place, size, opening heading and answers, and changes no score', async () => {
+    const long = `## Overview\n${'x'.repeat(40_000)}`;
+    const values: Record<string, number> = { complete: 0.8, concrete: 0.6, consistent: 1, scoped: 0.4 };
+    stubJev((_state, check) => values[check]!);
+    const plain = await scorer()({ ...TEXTS, 'flow.md': long });
+    const reported: WindowAnswer[] = [];
+    const result = await createJevScorer(loadConfig({}), KEY, (w) => {
+      reported.push(w);
+    })({ ...TEXTS, 'flow.md': long });
+    expect(result).toEqual(plain);
+    expect(reported).toHaveLength(6);
+    const flow = reported.filter((w) => w.file === 'flow.md');
+    expect(flow.map((w) => w.part)).toEqual([1, 2]);
+    expect(flow.every((w) => w.parts === 2)).toBe(true);
+    expect(flow[0]!.firstHeading).toBe('## Overview');
+    expect(flow[1]!.firstHeading).toBeNull();
+    expect(flow[0]!.checks).toEqual(values);
+    expect(flow.reduce((sum, w) => sum + w.size, 0)).toBeGreaterThan(40_000);
   });
 
   it('scores an empty document alone as zero, with no request, as a stage whose document is still blank would', async () => {

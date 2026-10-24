@@ -48,8 +48,20 @@ const COMBINE: Record<ScoreCheck, (rows: Array<{ value: number; size: number }>)
   scoped: (rows) => Math.min(...rows.map((r) => r.value)),
 };
 
+/** One answered window, for diagnosis: its place, its size, the heading it opens with and its four answers. */
+export interface WindowAnswer {
+  file: DocFile;
+  part: number;
+  parts: number;
+  size: number;
+  firstHeading: string | null;
+  checks: Record<ScoreCheck, number>;
+}
+
+const headingOf = (text: string): string | null => text.split('\n').find((line) => line.startsWith('#'))?.trim() ?? null;
+
 /** The Jev's score of the documents asked for (all five by default): one request per window of each document, four yes-or-no checks in each request. */
-export function createJevScorer(cfg: Config, secrets: () => Promise<Record<string, string>>): (docs: Record<DocFile, string>, files?: readonly DocFile[]) => Promise<DocsScoreRecord> {
+export function createJevScorer(cfg: Config, secrets: () => Promise<Record<string, string>>, onWindow?: (window: WindowAnswer) => void): (docs: Record<DocFile, string>, files?: readonly DocFile[]) => Promise<DocsScoreRecord> {
   return async (docs, files = DOC_FILES) => {
     const values = await secrets();
     const key = values.OPENROUTER_API_KEY;
@@ -61,7 +73,7 @@ export function createJevScorer(cfg: Config, secrets: () => Promise<Record<strin
       if (text.trim() === '') return [];
       const parts = splitSections([{ title: file, text }], MAX_STATE_CHARS);
       // Each window sees only part of its document, so a check must not fail for what lies outside it.
-      return parts.map((state, i) => ({ file, state, scope: parts.length > 1 ? `You see part ${i + 1} of ${parts.length} of ${file}. Judge only what is in this part and do not penalize what lies outside it. ` : '' }));
+      return parts.map((state, i) => ({ file, state, part: i + 1, parts: parts.length, scope: parts.length > 1 ? `You see part ${i + 1} of ${parts.length} of ${file}. Judge only what is in this part and do not penalize what lies outside it. ` : '' }));
     });
     const results = await Promise.all(windows.map((w) => {
       const asked = questions(w.file);
@@ -73,6 +85,13 @@ export function createJevScorer(cfg: Config, secrets: () => Promise<Record<strin
     }));
     const answered = results.flatMap((r) => (r.ok ? [r] : []));
     if (answered.length < results.length) return UNSCORED;
+    if (onWindow) {
+      windows.forEach((w, i) => {
+        const answers = answered[i]!.answers;
+        const checks = Object.fromEntries(SCORE_CHECKS.map((id) => [id, (answers[id] as { value: number }).value])) as Record<ScoreCheck, number>;
+        onWindow({ file: w.file, part: w.part, parts: w.parts, size: w.state.length, firstHeading: headingOf(w.state), checks });
+      });
+    }
     const docScores = {} as Partial<Record<DocFile, DocScore>>;
     for (const file of files) {
       const mine = windows.flatMap((w, i) => (w.file === file ? [{ size: w.state.length, answers: answered[i]!.answers }] : []));
