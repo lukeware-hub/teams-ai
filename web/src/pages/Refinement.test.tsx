@@ -218,6 +218,14 @@ describe('RefinementView backlog mode', () => {
     expect(screen.getByTestId('download-project-json')).toBeTruthy();
   });
 
+  it('offers project.json from project.md before the evaluation, and keeps specs.json waiting for it', () => {
+    render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog: { ...backlog, items: [] } })} busy={false} {...on()} /></MemoryRouter>);
+    const project = screen.getByTestId('download-project-json') as HTMLAnchorElement;
+    expect(decodeURIComponent(project.href)).toContain('"doc": "project.md"');
+    expect(screen.queryByTestId('download-specs-json')).toBeNull();
+    expect(screen.getAllByText('Aguardando avaliação').length).toBe(1);
+  });
+
   it('offers the base docs as JSON, briefing.json from briefing.md', () => {
     render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog })} busy={false} {...on()} /></MemoryRouter>);
     for (const name of ['flow-json', 'briefing-json', 'stack-json', 'design-json']) expect(screen.getByTestId(`download-${name}`)).toBeTruthy();

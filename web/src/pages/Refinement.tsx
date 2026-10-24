@@ -381,7 +381,8 @@ export function RefinementView(p: ViewProps) {
   );
   // Backlog mode lists specs, not one spec: the generated index replaces spec.json and the tasks of a single spec.
   const specsIndex = useMemo(() => (backlogOn && (st.backlog?.items.length ?? 0) > 0 ? buildSpecsIndex(snap.specId, st.backlog as never) : null), [backlogOn, snap.specId, st.backlog]);
-  const projectJson = backlogOn ? st.backlog?.project ?? null : st.derived?.project ?? null;
+  // project.md is written in an earlier stage, so project.json is offered from it until the evaluation derives the project.
+  const projectJson = (backlogOn ? st.backlog?.project : st.derived?.project) ?? (snap.docs['project.md']?.trim() ? docToJson('project.md', snap.docs['project.md']) : null);
   // The base docs as JSON, by the names the generated files use; briefing.md is the brief in backlog mode.
   const docFiles = [
     { doc: 'flow.md', name: 'flow.json', text: snap.docs['flow.md'] },
