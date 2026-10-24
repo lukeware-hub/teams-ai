@@ -9,7 +9,8 @@ export function applyBatch(snap: LiveSnapshot, events: StoredEvent[]): LiveSnaps
   let docsDirty = snap.docsDirty === true;
   for (const e of events) {
     applyRefineEvent(state as never, e);
-    if (e.type === 'REFINE_EVALUATED' || (e.type === 'DOC_EDITED' && (e.data.source === 'patch' || e.data.source === 'main' || e.data.source === 'decision'))) docsDirty = true;
+    // An edit the owner made in this page is already on screen; every other edit changed a document the page must read again.
+    if (e.type === 'REFINE_EVALUATED' || (e.type === 'DOC_EDITED' && e.data.source !== 'human')) docsDirty = true;
   }
   return { ...snap, state, docsDirty };
 }

@@ -1137,19 +1137,41 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const applied = useRef(0);
-  const { events } = useJournal(snap ? refineApi.events(projectId, specId) : null);
-  const load = () =>
-    refineApi
+  const { events, reopened } = useJournal(snap ? refineApi.events(projectId, specId) : null);
+  // One snapshot read at a time: a request made during a read is answered by one more read after it, so a burst costs two reads.
+  const reading = useRef<Promise<void> | null>(null);
+  const rereadQueued = useRef(false);
+  const load = (): void => {
+    if (reading.current) {
+      rereadQueued.current = true;
+      return;
+    }
+    reading.current = refineApi
       .snapshot(projectId, specId)
       .then((s) => {
         // The snapshot already holds every event up to its seq: the replay applies only the ones after it.
         applied.current = s.seq ?? 0;
         setSnap({ ...s, docsDirty: false });
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e: Error) => setError(e.message))
+      .finally(() => {
+        reading.current = null;
+        if (rereadQueued.current) {
+          rereadQueued.current = false;
+          load();
+        }
+      });
+  };
   useEffect(() => {
-    void load();
+    load();
   }, [projectId, specId]);
+  // A stream that was reopened may have missed document changes, so the snapshot is read again.
+  const lastReopen = useRef(0);
+  useEffect(() => {
+    if (reopened === lastReopen.current) return;
+    lastReopen.current = reopened;
+    load();
+  }, [reopened]);
   // The program ledger moves with the runs, not with the refinement journal: poll it while a started backlog is on screen.
   const following = snap?.state.status === 'started' && snap.state.backlog?.enabled === true;
   const { program, phases } = useProgram(projectId, specId, following);
@@ -1163,8 +1185,9 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
     // A started backlog opens its execution screen, which follows every spec with its own run link.
     const started = fresh.filter((e) => e.type === 'REFINE_STARTED_RUN').pop();
     if (started) navigate(next.state.backlog?.enabled ? programPath : `/runs/${String(started.data.runId)}`);
-    if (next.docsDirty) void load();
-    else setSnap(next);
+    // The status moves at once; a document the server changed is read again on top of it.
+    setSnap(next);
+    if (next.docsDirty) load();
   }, [events, snap]);
   const now = useMemo(() => stageNow(events, snap?.state.cycle ?? 0), [events, snap?.state.cycle]);
   if (!snap) return (

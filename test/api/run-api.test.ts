@@ -708,6 +708,8 @@ async function readSse(url: string, lastId: string | null, until: (events: Array
       if (i < 0) break;
       const block = buf.slice(0, i);
       buf = buf.slice(i + 2);
+      // A comment block (the stream's first frame and its pings) is not an event.
+      if (block.startsWith(':')) continue;
       const get = (k: string) => block.split('\n').find((l) => l.startsWith(`${k}: `))?.slice(k.length + 2) ?? null;
       events.push({ event: get('event') ?? 'message', id: get('id'), data: get('data') ?? '' });
     }

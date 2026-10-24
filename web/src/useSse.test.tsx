@@ -1,10 +1,14 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useJournal, useSse } from './useSse.js';
 
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
+  static CLOSED = 2;
   closed = false;
+  readyState = 0;
+  onopen: ((e: Event) => void) | null = null;
+  onerror: ((e: Event) => void) | null = null;
   listeners: Record<string, (e: MessageEvent) => void> = {};
   constructor(readonly url: string) {
     FakeEventSource.instances.push(this);
@@ -80,5 +84,26 @@ describe('useJournal reconnection (audit M5)', () => {
     await waitFor(() => expect(result.current.ended).toBe(true));
     expect(result.current.events).toHaveLength(300);
     expect(renders - before).toBeLessThan(100); // one render per event would be 300
+  });
+  it('opens the stream again once the browser gives up, and counts the reopen', async () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() => useJournal('/api/x/events'));
+    const first = FakeEventSource.instances[0]!;
+    first.onopen?.({} as Event);
+    // A stream the browser is still retrying is left to the browser.
+    first.readyState = 0;
+    first.onerror?.({} as Event);
+    expect(FakeEventSource.instances).toHaveLength(1);
+    first.readyState = FakeEventSource.CLOSED;
+    act(() => first.onerror?.({} as Event));
+    expect(result.current.error).toBe('connection lost; retrying');
+    await act(async () => {
+      vi.advanceTimersByTime(2_000);
+    });
+    expect(FakeEventSource.instances).toHaveLength(2);
+    act(() => FakeEventSource.instances[1]!.onopen?.({} as Event));
+    vi.useRealTimers();
+    await waitFor(() => expect(result.current.reopened).toBe(1));
+    expect(result.current.error).toBeNull();
   });
 });

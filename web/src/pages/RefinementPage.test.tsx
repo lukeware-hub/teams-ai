@@ -1,11 +1,11 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { refineApi, type Snapshot, type StoredEvent } from '../api.js';
 import { RefinementPage } from './Refinement.js';
 
-const journal = vi.hoisted(() => ({ events: [] as unknown[] }));
-vi.mock('../useSse.js', () => ({ useJournal: (url: string | null) => ({ events: url ? journal.events : [], ended: false, error: null }) }));
+const journal = vi.hoisted(() => ({ events: [] as unknown[], reopened: 0 }));
+vi.mock('../useSse.js', () => ({ useJournal: (url: string | null) => ({ events: url ? journal.events : [], ended: false, error: null, reopened: journal.reopened }) }));
 
 const event = (seq: number, type: string, data: Record<string, unknown>): StoredEvent => ({ seq, at: '', runId: 'hello-app/hello-001', specHash: 'draft', type, kind: 'fact', data });
 const patch = { patchId: 'sm-c1-0', role: 'sm' as const, file: 'briefing.md' as const, find: 'a', replace: 'b', reason: 'clearer', diff: '--- briefing.md\n-a\n+b\n', cycle: 1 };
@@ -135,5 +135,54 @@ describe('RefinementPage journal replay', () => {
     render(<MemoryRouter initialEntries={['/refine/hello-app/hello-001']}><Routes><Route path="/refine/:projectId/:specId" element={<RefinementPage />} /></Routes></MemoryRouter>);
     expect(await screen.findByTestId('evaluation-timer')).toBeTruthy();
     expect(screen.queryByText(/Avaliando os documentos/)).toBeNull();
+  });
+});
+
+describe('RefinementPage keeps the documents and the status live', () => {
+  const renderLive = () => (
+    <MemoryRouter initialEntries={['/refine/hello-app/hello-001']}><Routes><Route path="/refine/:projectId/:specId" element={<RefinementPage />} /></Routes></MemoryRouter>
+  );
+  const edited = (seq: number, source: string) => event(seq, 'DOC_EDITED', { file: 'design.md', hash: `h${seq}`, source });
+  const answering = (): Snapshot => {
+    const s = snapshot(1);
+    return { ...s, state: { ...s.state, status: 'answering', error: null, patches: [] } as never };
+  };
+  afterEach(() => {
+    journal.events = [];
+    journal.reopened = 0;
+  });
+
+  it('reads the snapshot once for a burst of document edits, and once more when edits arrive during that read', async () => {
+    const read = vi.spyOn(refineApi, 'snapshot').mockResolvedValueOnce(answering());
+    const pending: Array<(s: Snapshot) => void> = [];
+    read.mockImplementation(() => new Promise<Snapshot>((resolve) => pending.push(resolve)));
+    const { rerender } = render(renderLive());
+    await screen.findByText(/hello-001 rascunho/);
+    journal.events = [edited(2, 'reshape'), edited(3, 'move')];
+    rerender(renderLive());
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+    journal.events = [...journal.events, edited(4, 'undo')];
+    rerender(renderLive());
+    expect(read).toHaveBeenCalledTimes(2);
+    await act(async () => pending[0]!(snapshot(4)));
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(3));
+  });
+
+  it('shows a patch that arrives with a document edit even when reading the document fails', async () => {
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValueOnce(answering()).mockRejectedValueOnce(new Error('offline'));
+    const { rerender } = render(renderLive());
+    await screen.findByText(/hello-001 rascunho/);
+    journal.events = [event(2, 'PATCH_PROPOSED', { ...patch, patchId: 'sm-c2-0' }), edited(3, 'reshape')];
+    rerender(renderLive());
+    expect(await screen.findByTestId('accept-sm-c2-0')).toBeTruthy();
+  });
+
+  it('reads the snapshot again when the event stream was reopened', async () => {
+    const read = vi.spyOn(refineApi, 'snapshot').mockResolvedValue(answering());
+    const { rerender } = render(renderLive());
+    await screen.findByText(/hello-001 rascunho/);
+    journal.reopened = 1;
+    rerender(renderLive());
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
   });
 });

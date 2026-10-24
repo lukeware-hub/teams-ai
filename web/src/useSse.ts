@@ -19,6 +19,7 @@ export function useJournal(url: string | null) {
   const [events, setEvents] = useState<StoredEvent[]>([]);
   const [ended, setEnded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reopened, setReopened] = useState(0);
   useEffect(() => {
     if (!url) return;
     setEvents([]);
@@ -37,22 +38,43 @@ export function useJournal(url: string | null) {
         return fresh.length === 0 ? list : [...list, ...fresh];
       });
     };
-    const source = new EventSource(url);
-    source.addEventListener('journal', (e) => {
-      pending.push(JSON.parse((e as MessageEvent).data) as StoredEvent);
-      timer ??= setTimeout(flush, 50);
-    });
-    source.addEventListener('end', () => {
-      flush();
-      setEnded(true);
-      source.close();
-    });
-    source.onerror = () => setError('connection lost; retrying');
-    source.onopen = () => setError(null);
+    let source: EventSource | null = null;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let wait = 2_000;
+    let opens = 0;
+    // The browser retries a dropped stream by itself; one it has given up on (CLOSED) is opened again, waiting longer each time.
+    const open = () => {
+      const current = new EventSource(url);
+      source = current;
+      current.addEventListener('journal', (e) => {
+        pending.push(JSON.parse((e as MessageEvent).data) as StoredEvent);
+        timer ??= setTimeout(flush, 50);
+      });
+      current.addEventListener('end', () => {
+        flush();
+        setEnded(true);
+        current.close();
+      });
+      current.onopen = () => {
+        setError(null);
+        wait = 2_000;
+        opens += 1;
+        // An open after the first may have missed document changes: the page reads the documents again.
+        if (opens > 1) setReopened((n) => n + 1);
+      };
+      current.onerror = () => {
+        if (current.readyState !== EventSource.CLOSED) return;
+        setError('connection lost; retrying');
+        retry = setTimeout(open, wait);
+        wait = Math.min(wait * 2, 30_000);
+      };
+    };
+    open();
     return () => {
       clearTimeout(timer);
-      source.close();
+      clearTimeout(retry);
+      source?.close();
     };
   }, [url]);
-  return { events, ended, error };
+  return { events, ended, error, reopened };
 }

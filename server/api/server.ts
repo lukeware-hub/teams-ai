@@ -71,7 +71,7 @@ export interface ApiDeps {
   /** Concurrent SSE streams, in total and per remote address (audit M5). */
   maxSse?: { total: number; perAddress: number };
   /** Audit M5: an event stream is closed after `lifetimeMs` in total or `idleMs` without an event (defaults 30 min / 10 min). */
-  sseTimeouts?: { lifetimeMs: number; idleMs: number };
+  sseTimeouts?: { lifetimeMs: number; idleMs: number; heartbeatMs?: number };
   guard?: LicenseGuard;
 }
 
@@ -137,7 +137,7 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
   const host = deps.host ?? process.env.HOST ?? '127.0.0.1';
   const allowedHosts = (deps.allowedHosts ?? parseAllowedHosts(process.env[ALLOWED_HOSTS_ENV])).map((h) => h.toLowerCase());
   const maxSse = deps.maxSse ?? { total: 200, perAddress: 50 };
-  const sseTimeouts = deps.sseTimeouts ?? { lifetimeMs: 30 * 60_000, idleMs: 10 * 60_000 };
+  const sseTimeouts = { heartbeatMs: 20_000, lifetimeMs: 30 * 60_000, idleMs: 10 * 60_000, ...deps.sseTimeouts };
   let sseTotal = 0;
   const ssePerAddress = new Map<string, number>();
   const server = http.createServer(async (req, res) => {
@@ -195,9 +195,16 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
       const idle = setTimeout(expire, sseTimeouts.idleMs);
       lifetime.unref();
       idle.unref();
+      // A comment frame keeps a quiet stream open through proxies; unlike a message it does not reset the idle timer.
+      res.write(': ok\n\n');
+      const heartbeat = setInterval(() => {
+        if (open()) res.write(': ping\n\n');
+      }, sseTimeouts.heartbeatMs);
+      heartbeat.unref();
       res.once('close', () => {
         clearTimeout(lifetime);
         clearTimeout(idle);
+        clearInterval(heartbeat);
       });
       return {
         send: (event, data, id) => {

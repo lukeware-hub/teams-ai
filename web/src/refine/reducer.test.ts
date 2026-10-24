@@ -24,6 +24,10 @@ describe('applyToSnapshot', () => {
     expect(applyToSnapshot(snap, ev(4, 'DOC_EDITED', { file: 'project.md', hash: 'z', source: 'human' })).docsDirty).toBe(false);
     // R11.10 (plan 90): an answer the orchestrator wrote into the briefing reloads it too.
     expect(applyToSnapshot(snap, ev(5, 'DOC_EDITED', { file: 'briefing.md', hash: 'w', source: 'decision' })).docsDirty).toBe(true);
+    // The server rewrites and moves document text on every cycle: each of these changed a document the page shows.
+    for (const source of ['reshape', 'move', 'undo', 'autofill']) {
+      expect(applyToSnapshot(snap, ev(6, 'DOC_EDITED', { file: 'design.md', hash: 'v', source })).docsDirty).toBe(true);
+    }
   });
 
   it('turns the backlog on and keeps what a backlog cycle derived', () => {

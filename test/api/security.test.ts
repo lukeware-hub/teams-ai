@@ -169,6 +169,27 @@ describe('SSE limits (audit M5)', () => {
     expect(await (await fetch(url('/api/stream'))).text()).toContain('event: reconnect');
   });
 
+  it('keeps a quiet stream alive with comment frames, and ends it when idle even while pings arrive', async () => {
+    const quiet: Route = { method: 'GET', path: '/api/quiet', handler: async ({ sse }) => void sse() };
+    api = await startApi({ routes: [...routes, quiet], host: '127.0.0.1', sseTimeouts: { lifetimeMs: 10_000, idleMs: 10_000, heartbeatMs: 20 } }, 0);
+    const reader = (await fetch(url('/api/quiet'))).body!.getReader();
+    const decoder = new TextDecoder();
+    let text = '';
+    while (!text.includes(': ping')) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value);
+    }
+    expect(text.startsWith(': ok\n\n')).toBe(true);
+    expect(text).toContain(': ping');
+    await reader.cancel();
+    await api.close();
+    api = await startApi({ routes: [...routes, quiet], host: '127.0.0.1', sseTimeouts: { lifetimeMs: 10_000, idleMs: 60, heartbeatMs: 10 } }, 0);
+    const idle = await (await fetch(url('/api/quiet'))).text();
+    expect(idle).toContain(': ping');
+    expect(idle).toContain('event: reconnect');
+  });
+
   it('caps streams per remote address', async () => {
     api = await startApi({ routes, host: '127.0.0.1', maxSse: { total: 100, perAddress: 1 } }, 0);
     const a = await fetch(url('/api/stream'));
