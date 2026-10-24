@@ -43,18 +43,18 @@ function AgentLine({ projectId, row: agent, onFailed }: { projectId: string; row
     <li className={row}>
       <span className={rowId}>{label}</span>
       <span className="text-[0.8125rem] text-ink-soft">{manual ? `${MODEL_LABELS[pick.model]} · ${EFFORT_LABELS[pick.effort]}` : 'Orquestrador escolhe'}</span>
-      <div className={rowActions}>
+      <div className={`${rowActions} max-md:flex-col max-md:gap-3`}>
         {manual ? (
           <>
-            <Select wrapperClassName="w-[8.5rem]" aria-label={`Modelo de ${label}`} value={pick.model} onChange={(e) => changePick({ ...pick, model: e.target.value as AgentModel })}>
+            <Select wrapperClassName="w-full md:w-[8.5rem]" aria-label={`Modelo de ${label}`} value={pick.model} onChange={(e) => changePick({ ...pick, model: e.target.value as AgentModel })}>
               {AGENT_MODELS.map((m) => <option key={m} value={m}>{MODEL_LABELS[m]}</option>)}
             </Select>
-            <Select wrapperClassName="w-[8.5rem]" aria-label={`Esforço de ${label}`} value={pick.effort} onChange={(e) => changePick({ ...pick, effort: e.target.value as AgentEffort })}>
+            <Select wrapperClassName="w-full md:w-[8.5rem]" aria-label={`Esforço de ${label}`} value={pick.effort} onChange={(e) => changePick({ ...pick, effort: e.target.value as AgentEffort })}>
               {AGENT_EFFORTS.map((e) => <option key={e} value={e}>{EFFORT_LABELS[e]}</option>)}
             </Select>
           </>
         ) : null}
-        <Select wrapperClassName="w-[10rem]" aria-label={`Modo de ${label}`} value={manual ? 'manual' : 'auto'} onChange={(e) => changeMode(e.target.value)}>
+        <Select wrapperClassName="w-full md:w-[10rem]" aria-label={`Modo de ${label}`} value={manual ? 'manual' : 'auto'} onChange={(e) => changeMode(e.target.value)}>
           <option value="auto">Automático</option>
           <option value="manual">Manual</option>
         </Select>
