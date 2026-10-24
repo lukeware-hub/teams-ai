@@ -25,6 +25,7 @@ import { onboardingRoutes } from './api/onboarding-routes.js';
 import { settingsRoutes } from './api/settings-routes.js';
 import { usageRoutes } from './api/usage-routes.js';
 import { createClaudeUsage } from './usage/claude-usage.js';
+import { jevCostUsd } from './usage/jev-cost.js';
 import { defaultRunControl, isAlive, type RunControlDeps } from './api/run-control.js';
 import { opsRoutes } from './api/ops-routes.js';
 import { runRoutes } from './api/run-routes.js';
@@ -177,7 +178,13 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
         }),
         ...chatRoutes({ chat }),
         ...settingsRoutes({}),
-        ...usageRoutes({ claude: createClaudeUsage({ exec: execCommand, hostEnv: io.env, authMode: async () => (await readUserConfig()).cfg.claude.auth, now: () => Date.now() }) }),
+        ...usageRoutes({
+          claude: createClaudeUsage({ exec: execCommand, hostEnv: io.env, authMode: async () => (await readUserConfig()).cfg.claude.auth, now: () => Date.now() }),
+          jev: async () => {
+            const { paths } = (await readUserConfig()).cfg;
+            return jevCostUsd(expandHome(paths.workspaces), expandHome(paths.runs));
+          },
+        }),
       ],
       staticDir: hasDist ? staticDir : null,
       log: io.stderr,

@@ -7,7 +7,7 @@ const view: ClaudeUsage = { available: false, reason: 'not-logged-in' };
 let api: { port: number; close(): Promise<void> };
 
 beforeEach(async () => {
-  api = await startApi({ routes: usageRoutes({ claude: async () => view }) }, 0);
+  api = await startApi({ routes: usageRoutes({ claude: async () => view, jev: async () => 0.75 }) }, 0);
 });
 afterEach(async () => {
   await api.close();
@@ -18,5 +18,11 @@ describe('usage routes', () => {
     const res = await fetch(`http://127.0.0.1:${api.port}/api/usage/claude`);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual(view);
+  });
+
+  it('answers the Jev total cost as json', async () => {
+    const res = await fetch(`http://127.0.0.1:${api.port}/api/usage/jev`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ costUsd: 0.75 });
   });
 });
