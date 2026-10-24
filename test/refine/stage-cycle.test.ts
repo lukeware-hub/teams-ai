@@ -107,7 +107,7 @@ describe('runStageCycle reshapes the stage document to its template', () => {
     const runAgent = agentFor(() => answers.shift());
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
     expect(suggestCalls(runAgent)).toHaveLength(2);
-    expect(suggestCalls(runAgent)[1]![0]).toMatchObject({ pack: { feedback: expect.stringContaining('as seções não seguem o modelo') } });
+    expect(suggestCalls(runAgent)[1]![0]).toMatchObject({ pack: { feedback: expect.stringContaining('faltam seções do modelo ou elas estão fora de ordem') } });
     expect(await readDoc(draft, 'briefing.md')).toBe(SHAPED_BRIEF);
   });
 
@@ -119,7 +119,7 @@ describe('runStageCycle reshapes the stage document to its template', () => {
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
     expect(suggestCalls(runAgent)).toHaveLength(2);
     expect(await readDoc(draft, 'briefing.md')).toBe(LOOSE_BRIEF);
-    expect(stageReviewed(journal)).toMatchObject({ discardedPatches: [{ role: 'po', file: 'briefing.md', reason: expect.stringMatching(/^Não reorganizei briefing\.md no modelo: as seções não seguem/) }] });
+    expect(stageReviewed(journal)).toMatchObject({ discardedPatches: [{ role: 'po', file: 'briefing.md', reason: expect.stringMatching(/^Não reorganizei briefing\.md no modelo: faltam seções do modelo ou elas estão fora de ordem/) }] });
   });
 
   it('a reshape that fails does not stop the review, and changes nothing', async () => {

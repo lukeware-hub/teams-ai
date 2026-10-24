@@ -10,13 +10,23 @@ describe('shapeProblem', () => {
     expect(shapeProblem('briefing.md', SHAPED_BRIEF, SHAPED_BRIEF, 'shop')).toBeNull();
   });
 
-  it('refuses a heading the template lacks', () => {
-    expect(shapeProblem('briefing.md', LOOSE_BRIEF, SHAPED_BRIEF, 'shop')).toMatch(/seções não seguem o modelo, na mesma ordem/);
+  it('accepts sections the template lacks after its headings', () => {
+    const extra = `${SHAPED_BRIEF}\n## Regras de negócio\n\n- Pedido só com pagamento.\n`;
+    expect(shapeProblem('briefing.md', extra, extra, 'shop')).toBeNull();
+  });
+
+  it('refuses a section the template lacks placed before its headings', () => {
+    expect(shapeProblem('briefing.md', LOOSE_BRIEF, SHAPED_BRIEF, 'shop')).toMatch(/faltam seções do modelo ou elas estão fora de ordem/);
+  });
+
+  it('refuses a template heading missing from the text', () => {
+    const missing = SHAPED_BRIEF.replace('## Features\n\n- Carrinho de compras.\n\n', '');
+    expect(shapeProblem('briefing.md', missing, SHAPED_BRIEF, 'shop')).toMatch(/faltam seções do modelo/);
   });
 
   it('refuses the template headings out of their order', () => {
     const swapped = SHAPED_BRIEF.replace('## Type\n\nfeature\n\n## Objectives\n\n- Vender online.\n\n', '## Objectives\n\n- Vender online.\n\n## Type\n\nfeature\n\n');
-    expect(shapeProblem('briefing.md', swapped, SHAPED_BRIEF, 'shop')).toMatch(/seções não seguem o modelo/);
+    expect(shapeProblem('briefing.md', swapped, SHAPED_BRIEF, 'shop')).toMatch(/faltam seções do modelo/);
   });
 
   it('refuses a placeholder of the template left in the text', () => {
@@ -41,7 +51,7 @@ describe('shapeProblem', () => {
 
   it('compares the subsections of a design too', () => {
     const design = designTemplate().replace('### Typography', '### Tipografia');
-    expect(shapeProblem('design.md', design, design, 'shop')).toMatch(/seções não seguem o modelo/);
+    expect(shapeProblem('design.md', design, design, 'shop')).toMatch(/faltam seções do modelo/);
   });
 });
 

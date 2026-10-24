@@ -8,7 +8,7 @@ import { dropCoveredPatches, type CycleJournal, type RunAgent } from './cycle.js
 import { readDoc, writeDoc, type Draft, type DocFile } from './draft.js';
 import { RefineEvent } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
-import { reshapePack, SUGGEST_ROLE } from './suggest.js';
+import { reshapePack, SUGGEST_ROLE, TEMPLATE, type SuggestFile } from './suggest.js';
 import { isUntouched, shapeProblem } from './template-shape.js';
 
 /** The text a reshape replaced, kept on disk until the reshape is undone. */
@@ -72,4 +72,9 @@ export async function reshapeStage(deps: ReshapeDeps, cycle: number, file: DocFi
   await journal.fact(RefineEvent.DocEdited, { file, hash: afterHash, source: 'reshape' });
   await journal.fact(RefineEvent.DocReshaped, { reshapeId, file, cycle, role, afterHash });
   await dropCoveredPatches(journal, docs, [file]);
+}
+
+/** Puts every document in its template's layout on every cycle, so a document moved out of place comes back. */
+export async function reshapeAll(deps: ReshapeDeps, cycle: number, docs: Record<DocFile, string>, discarded: Array<{ role: string; file: string; reason: string }>): Promise<void> {
+  for (const file of Object.keys(TEMPLATE) as SuggestFile[]) await reshapeStage(deps, cycle, file, docs, discarded);
 }

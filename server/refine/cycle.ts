@@ -33,6 +33,7 @@ import { plainOutlineQuestion } from './question-choices.js';
 import { buildSpecsIndex, outlineOfIndex, specIdOf, type SpecsIndex } from './specs-index.js';
 import type { JevValidationResult, ValidationDocs } from './jev-validation.js';
 import { PATCH_FILES, patchOwners, reorganizeGroups, reorganizePack, refinePack } from './packs.js';
+import { reshapeAll } from './reshape.js';
 import { applyPatch, checkPatch, COVERED_REASON, patchId, unifiedDiff } from './patches.js';
 import { planMove } from './moves.js';
 import { applyRefineEvent, nextStuck, STUCK_ROUNDS, type BacklogState, type RefineState } from './state.js';
@@ -430,6 +431,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const notReady = !backlogMode && deps.decider ? await notReadyCriteria(criteria, decider!, dctx) : null;
 
   const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];
+  // Every document takes its template's layout first, so the reorganization pass reads the layout the documents must keep.
+  await reshapeAll({ draft, journal, runAgent: deps.runAgent, signal: deps.signal }, cycle, docs, discardedPatches);
   // The reorganization pass reads every changed document in full against the charter and moves what is misplaced, before any review reads them.
   // A document whose hash is the one the last pass left is skipped; the first pass reads all five.
   const changed = REORGANIZED_FILES.filter((f) => sha256(docs[f]) !== journal.state.reorganized[f]);

@@ -13,7 +13,7 @@ import { RefineEvent, type Question } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
 import { jevHint, unavailable, type JevValidationResult, type ValidationDocs } from './jev-validation.js';
 import { reorganizePack } from './packs.js';
-import { reshapeStage } from './reshape.js';
+import { reshapeAll } from './reshape.js';
 import { applyPatch, checkPatch, docOf, patchId, unifiedDiff } from './patches.js';
 
 /** The role that reviews a stage's document: the one that owns it. */
@@ -108,8 +108,8 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     }
     const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];
     await applyMoves(journal, draft, cycle, docs, { specId: draft.specId, projectBriefing: false, asked: titlesOf(journal.state.questions.filter((q) => q.status === 'pending').map((q) => q.text)) }, [{ role, moves: forwardMoves(file, draft.specId, reorganized.value.moves ?? []), limit: STAGE_MAX_MOVES }], discardedPatches);
-    // The document takes its template's shape before the review, so the review and its patches read that text.
-    await reshapeStage({ draft, journal, runAgent: deps.runAgent, signal: deps.signal }, cycle, file, docs, discardedPatches);
+    // Every document takes its template's layout before the review, so the review and its patches read that text.
+    await reshapeAll({ draft, journal, runAgent: deps.runAgent, signal: deps.signal }, cycle, docs, discardedPatches);
     let n = 0;
     // Every patch is checked against the documents as the moves and the reshape left them, and only the stage document may change.
     const propose = async (patches: ReadonlyArray<{ file: string; find: string; replace: string; reason: string }>) => {

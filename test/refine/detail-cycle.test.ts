@@ -8,7 +8,7 @@ import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
 import { retireDropped } from '../../server/refine/detail-cycle.js';
 import { withQuotaWait } from '../../server/refine/quota-wait.js';
 import { PackTooLargeError } from '../../server/refine/fit-pack.js';
-import { restoreFromBase } from '../../server/refine/draft.js';
+import { briefTemplate, designTemplate, projectTemplate, restoreFromBase, stackTemplate } from '../../server/refine/draft.js';
 import { RefineEvent } from '../../server/refine/events.js';
 import { applyPatch } from '../../server/refine/patches.js';
 import { programEntries } from '../../server/refine/session.js';
@@ -16,7 +16,9 @@ import { applyRefineEvent, emptyRefineState } from '../../server/refine/state.js
 import { makeProject } from '../fixtures/contracts.js';
 
 const H = `sha256:${'a'.repeat(64)}`;
-const FLOW = ['# Fluxo', '', '```mermaid', '%% 1. Caso', '  A --> B', '%% 2. Triagem', '  B --> C', '%% 3. OPME', '  C --> D', '%% 4. Faturamento', '  D --> E', '```', ''].join('\n');
+// A template with every placeholder filled in: a document that already follows its layout.
+const filled = (template: string) => template.replace(/<[^<>\n]+>/g, '(none)');
+const FLOW =['# Fluxo', '', '```mermaid', '%% 1. Caso', '  A --> B', '%% 2. Triagem', '  B --> C', '%% 3. OPME', '  C --> D', '%% 4. Faturamento', '  D --> E', '```', ''].join('\n');
 const item = (key: string, epic: string, heading: string, over: Partial<BacklogItem> = {}): BacklogItem => ({
   key, title: `Item ${key}`, epic, scope: `Entrega ${key}`, priority: 'P1', rationale: 'valor', dependsOn: [], sources: [{ doc: 'flow.md', heading }], size: 'M', ...over,
 });
@@ -85,11 +87,11 @@ async function setup(existing?: string) {
     stackMd: `${docs}/stack.md`, flowMd: `${docs}/flow.md`, designMd: `${docs}/design.md`,
     specJson: `${docs}/specs/big-001/spec.json`, events: `${root}/events.ndjson`, steps: (seq: number) => `${root}/steps/${seq}`,
   };
-  await writeFile(draft.projectMd, '# Projeto\n\n## Personas\n\n- Médico');
-  await writeFile(draft.briefingMd, '# Briefing\n\n## Objectives\n\n- tudo');
-  await writeFile(draft.stackMd, '# Stack\n\n- Node 22');
+  await writeFile(draft.projectMd, filled(projectTemplate('big')));
+  await writeFile(draft.briefingMd, filled(briefTemplate()));
+  await writeFile(draft.stackMd, filled(stackTemplate()));
   await writeFile(draft.flowMd, FLOW);
-  await writeFile(draft.designMd, '# Design');
+  await writeFile(draft.designMd, filled(designTemplate()));
   const events: Array<{ type: string; data: Record<string, unknown> }> = [];
   let seq = 0;
   const journal = {
@@ -181,6 +183,16 @@ describe('backlog detailing in the refinement cycle', () => {
   });
 
   // R11.10 (plan 87): the dependencies feed the pre-plan only, so one the outline adds re-derives no spec.
+  it('puts a document that left its layout back in the layout on the next cycle', async () => {
+    const { events, run, draft } = await setup();
+    const layout = filled(projectTemplate('big'));
+    await writeFile(draft.projectMd, layout.replace('## Stack', '## Entregas'));
+    const agent = fakeAgent(() => OUTLINE, (req) => (req.kind === 'suggest' ? ok({ specHash: H, text: layout }) : undefined));
+    await run(agent, 1);
+    expect(events.some((e) => e.type === RefineEvent.DocReshaped && e.data.file === 'project.md')).toBe(true);
+    expect((await readFile(draft.projectMd, 'utf8')).trim()).toBe(layout.trim());
+  });
+
   it('re-derives only the pre-plan of an item whose dependencies changed', async () => {
     const { journal, run, draft } = await setup();
     let outline = OUTLINE;
@@ -190,7 +202,7 @@ describe('backlog detailing in the refinement cycle', () => {
     await run(agent, 2);
     outline = OUTLINE.map((i) => (i.key === 'fat' ? { ...i, dependsOn: ['opme', 'triagem'] } : i));
     // A section no item cites: the outline runs again and nothing it cites changed.
-    await writeFile(draft.designMd, '# Design\n\n- Cores da clínica');
+    await writeFile(draft.designMd, `${filled(designTemplate())}\n- Cores da clínica\n`);
     const from = agent.calls.length;
     await run(agent, 3);
     expect(agent.kinds(from)).toEqual(['backlog', 'preplan', 'conflicts', 'refine', 'refine', 'refine']);

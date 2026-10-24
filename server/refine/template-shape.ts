@@ -29,11 +29,14 @@ export function isUntouched(file: SuggestFile, text: string, projectId: string):
   return text.split('\n').every((line) => line.trim() === '' || /^#\s/.test(line) || model.has(line.trim()));
 }
 
+/** The template's headings open the text, in their order; the sections the template lacks come after them. */
+const opensWith = (heads: string[], model: string[]): boolean => model.every((head, i) => heads[i] === head);
+
 /** Why `text` does not follow the template of `file`, in plain words; null when it does. `before` is the text it replaces. */
 export function shapeProblem(file: SuggestFile, text: string, before: string, projectId: string): string | null {
   const template = TEMPLATE[file](projectId);
   if (text.trim() === '') return 'o texto ficou vazio';
-  if (shape(text).join('\n') !== shape(template).join('\n')) return 'as seções não seguem o modelo, na mesma ordem';
+  if (!opensWith(shape(text), shape(template))) return 'faltam seções do modelo ou elas estão fora de ordem';
   const placeholder = [...new Set(template.match(/<[^<>\n]+>/g) ?? [])].find((p) => text.includes(p));
   if (placeholder) return `ainda tem o texto do modelo: ${placeholder}`;
   if (managedBlocks(before).some((block) => !text.includes(block))) return 'mudou o texto de decisões já registradas';

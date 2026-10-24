@@ -38,7 +38,7 @@ export function suggestPack(input: { file: SuggestFile; projectId: string; specH
 export function reshapePack(input: { file: SuggestFile; projectId: string; specHash: string; current: string }): ContextPackInput {
   const feedback = [
     `Write the complete docs/${input.file} in \`text\`, in the shape of the template below.`,
-    '- Keep every heading of the template, in its order, and add no other heading: fold the text under any other heading into the template section it belongs to.',
+    '- Keep every heading of the template, in its order, at the top of the text. Sections the template does not have go after them, at the end, each under its own heading; never fold them into a template section.',
     '- Replace each placeholder of the template, the text between < and >, with the real content of the current file; a line with no real content is removed; a section with no content gets "- (none)"; a section that does not apply gets "- (not applicable)".',
     '- Keep every fact of the current file: reword only to fit the shape; never drop, invent or change a fact.',
     '- Keep the sections "## Decisões" and "## Ajuste aprovado" word for word.',
