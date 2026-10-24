@@ -253,7 +253,7 @@ export function ProjectsView(p: {
               <li className={row} key={`${d.projectId}/${d.specId}`}>
                 <span className={rowId}>{d.projectId} / {d.specId}</span>
                 {chip(d.state)}
-                <span className={rowActions}>
+                <span className={`${rowActions} max-lg:flex-col max-lg:[&>*]:w-full max-lg:[&>*]:!ml-0`}>
                   <button type="button" className={action.danger} data-testid={`delete-${d.projectId}-${d.specId}`} aria-label={`Excluir refinamento de ${d.projectId} / ${d.specId}`} onClick={() => setPendingDeleteDraft({ projectId: d.projectId, specId: d.specId })}>
                     Excluir
                     <Icon name="trash" size={14} />
