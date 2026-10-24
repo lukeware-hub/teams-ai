@@ -1,7 +1,8 @@
 # Starts or stops one Cloudflare tunnel connector in the background (Windows only).
 param(
   [Parameter(Mandatory)][ValidateSet('start', 'stop')][string]$Action,
-  [Parameter(Mandatory)][string]$Tunnel
+  [Parameter(Mandatory)][string]$Tunnel,
+  [Parameter(Mandatory)][string]$PublicHost
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -28,6 +29,12 @@ if ($Action -eq 'stop') {
 if ((Get-Connector).Count -gt 0) {
   Write-Output "Tunnel $Tunnel is already running."
   exit 0
+}
+
+# Refuses to start unless Cloudflare Access answers first: without it the API is open to anyone with the address.
+$headers = (curl.exe -s -o NUL -D - -m 15 "https://$PublicHost/") | Out-String
+if ($headers -notmatch '(?im)^location:.*cloudflareaccess\.com') {
+  throw "Cloudflare Access does not protect $PublicHost, so the tunnel was not started. Create the Access application first."
 }
 
 # A missing tunnel only prints to stderr, which the log does not keep, so check it here.

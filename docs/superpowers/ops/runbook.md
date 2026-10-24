@@ -21,7 +21,7 @@ not run live against real volumes.
 
 ## Public address (Cloudflare tunnel)
 - The tunnel `teams-ai` serves `https://teamsai.lukeware.com.br` and forwards it to `http://localhost:8787`, so the platform must be running first.
-- The API has no login of its own, so anyone who can reach the address gets full API access. Cloudflare Access must allow the address before the tunnel starts.
+- The API has no login of its own, so anyone who can reach the address gets full API access. `task tunnel:start` refuses to start the tunnel until Cloudflare Access protects the address.
 - Access policy: in the Cloudflare Zero Trust dashboard, add a self-hosted application for `teamsai.lukeware.com.br` and allow only the people who need it.
 - One-time setup: `task tunnel:setup` creates the tunnel and its public name. It needs `cloudflared tunnel login`, which this machine already has.
 - Start in the background with `task tunnel:start`; it waits until the tunnel connects. Stop with `task tunnel:stop`.

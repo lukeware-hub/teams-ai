@@ -203,17 +203,17 @@ tasks:
       - cloudflared tunnel --config cloudflared.yml route dns --overwrite-dns {{.TUNNEL}} {{.TUNNEL_HOST}}
 
   tunnel:start:
-    desc: Start the Cloudflare tunnel in the background (Windows; protect the address with Cloudflare Access first)
+    desc: Start the Cloudflare tunnel in the background (Windows); it refuses to start until Cloudflare Access protects the address
     platforms: [windows]
     cmds:
-      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tunnel.ps1 start {{.TUNNEL}}
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tunnel.ps1 start {{.TUNNEL}} {{.TUNNEL_HOST}}
       - echo "Public address https://{{.TUNNEL_HOST}}"
 
   tunnel:stop:
     desc: Stop the Cloudflare tunnel (Windows)
     platforms: [windows]
     cmds:
-      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tunnel.ps1 stop {{.TUNNEL}}
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tunnel.ps1 stop {{.TUNNEL}} {{.TUNNEL_HOST}}
 
   # ---- Development (run inside WSL2 Ubuntu or any Linux, see README) ----
   install:

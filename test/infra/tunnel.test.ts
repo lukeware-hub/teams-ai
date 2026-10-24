@@ -10,6 +10,7 @@ describe('Cloudflare tunnel tasks', () => {
   it('has the setup, start and stop tasks, and start and stop run on Windows only', () => {
     expect(taskfile.tasks['tunnel:setup']).toBeDefined();
     for (const name of ['tunnel:start', 'tunnel:stop']) expect(taskfile.tasks[name].platforms, name).toEqual(['windows']);
+    expect(JSON.stringify(taskfile.tasks['tunnel:start'].cmds)).toContain('{{.TUNNEL_HOST}}');
   });
 
   it('forwards the tunnel to the port the UI publishes on the host', () => {
