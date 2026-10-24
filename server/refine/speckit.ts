@@ -8,11 +8,13 @@ import { absoluteRule } from '../runner/role-settings.js';
 import type { StepOutcome } from '../runner/step.js';
 import { ownerFailure, TRY_AGAIN } from './agent-failure.js';
 import type { CycleJournal, RunAgent } from './cycle.js';
-import { readDoc, type Draft } from './draft.js';
+import { docToJson } from './doc-json.js';
+import { readDoc, type DocFile, type Draft } from './draft.js';
 import { RefineEvent } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
-import { itemPreplanPath, itemSpecPath, speckitPack, type SpeckitCommand, type SpeckitItem } from './speckit-pack.js';
-import { DOC_FILES } from './suggest.js';
+import { SPECKIT_INPUTS, speckitPack, type SpeckitCommand, type SpeckitInput, type SpeckitItem } from './speckit-pack.js';
+import { buildSpecsIndex } from './specs-index.js';
+import type { BacklogState } from './state.js';
 
 export const SPECKIT_NOT_INSTALLED = 'O Spec Kit não está instalado neste ambiente.';
 export const SPECKIT_STAGE = 'A preparação do Spec Kit';
@@ -24,6 +26,8 @@ const SPECKIT_BASH = ['Bash(bash:*)', 'Bash(.specify/scripts/bash/*:*)', 'Bash(c
 
 /** The staging folder Spec Kit works in; Phase 0 publishes it to the repository. */
 export const speckitDir = (draft: Pick<Draft, 'root'>): string => path.posix.join(draft.root, 'speckit');
+/** Where the JSON inputs go: beside the staging folder, so they are never published. */
+export const speckitInputDir = (draft: Pick<Draft, 'root'>): string => path.posix.join(draft.root, 'speckit-input');
 
 export interface SpeckitDeps {
   draft: Draft;
@@ -40,12 +44,26 @@ export function speckitSteps(items: readonly SpeckitItem[]): Step[] {
   return [{ command: 'constitution' }, ...items.flatMap((item) => (['specify', 'plan', 'tasks'] as const).map((command) => ({ command, item })))];
 }
 
-/** The hash of what the preparation reads: the five documents and each item's spec and pre-plan. */
-async function inputHash(draft: Draft, items: readonly SpeckitItem[]): Promise<string> {
-  const docs = await Promise.all(DOC_FILES.map((file) => readDoc(draft, file)));
-  const files = items.flatMap((i) => [itemSpecPath(draft.docs, i.specId), itemPreplanPath(draft.docs, i.specId)]);
-  const specs = await Promise.all(files.map((file) => fs.readFile(file, 'utf8').catch(() => '')));
-  return sha256([...docs, ...specs].join('\n'));
+/** Writes the six JSON inputs into a fresh input folder and answers the hash of their text. */
+async function writeInputs(draft: Draft, backlog: BacklogState): Promise<string> {
+  const doc = async (file: DocFile) => docToJson(file, await readDoc(draft, file));
+  const index = buildSpecsIndex(draft.specId, backlog);
+  // The specs index the page offers, with each item's spec and preplan, so the item commands read one file.
+  const specs = { ...index, specs: index.specs.map((e) => ({ ...e, spec: backlog.specs?.[e.key]?.spec ?? null, preplan: backlog.preplans?.[e.key]?.preplan ?? null })) };
+  const values: Record<SpeckitInput, unknown> = {
+    'specs.json': specs,
+    'project.json': backlog.project ?? (await doc('project.md')),
+    'flow.json': await doc('flow.md'),
+    'briefing.json': await doc('briefing.md'),
+    'stack.json': await doc('stack.md'),
+    'design.json': await doc('design.md'),
+  };
+  const dir = speckitInputDir(draft);
+  await fs.rm(dir, { recursive: true, force: true });
+  await fs.mkdir(dir, { recursive: true });
+  const texts = SPECKIT_INPUTS.map((file) => `${JSON.stringify(values[file], null, 2)}\n`);
+  await Promise.all(SPECKIT_INPUTS.map((file, i) => fs.writeFile(path.posix.join(dir, file), texts[i]!)));
+  return sha256(texts.join(''));
 }
 
 async function initSpeckit(exec: Exec, cwd: string): Promise<void> {
@@ -58,8 +76,9 @@ async function initSpeckit(exec: Exec, cwd: string): Promise<void> {
 /** One command as an agent step; the files it wrote, or the owner's reason it stopped. */
 async function runCommand(deps: SpeckitDeps, step: Step, hash: string): Promise<string[]> {
   const specHash = sha256(`speckit\n${step.command}\n${step.item?.key ?? ''}\n${hash}`);
-  const pack = fitPackBudget(speckitPack({ command: step.command, specHash, docsDir: deps.draft.docs, item: step.item }));
-  const extraAllow = [...SPECKIT_BASH, `Read(${absoluteRule(deps.draft.docs)}/**)`];
+  const inputDir = speckitInputDir(deps.draft);
+  const pack = fitPackBudget(speckitPack({ command: step.command, specHash, inputDir, item: step.item }));
+  const extraAllow = [...SPECKIT_BASH, `Read(${absoluteRule(inputDir)}/**)`];
   const out = (await deps.runAgent<'speckit'>(
     { kind: 'speckit', role: 'dev', pack, cwd: speckitDir(deps.draft), phase: 'refine', taskId: null, attempt: 1, extraAllow },
     { journal: deps.journal, stepDir: deps.draft.steps, specHash, signal: deps.signal },
@@ -70,14 +89,14 @@ async function runCommand(deps: SpeckitDeps, step: Step, hash: string): Promise<
   return out.value.files;
 }
 
-/** Runs Spec Kit in a fresh staging folder over the detailed backlog; answers the hash of what it read. */
-export async function prepareSpeckit(deps: SpeckitDeps, items: readonly SpeckitItem[]): Promise<string> {
+/** Runs Spec Kit in a fresh staging folder over the detailed backlog; answers the hash of the inputs it read. */
+export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState): Promise<string> {
   const dir = speckitDir(deps.draft);
-  const hash = await inputHash(deps.draft, items);
+  const hash = await writeInputs(deps.draft, backlog);
   await fs.rm(dir, { recursive: true, force: true });
   await fs.mkdir(dir, { recursive: true });
   await initSpeckit(deps.exec, dir);
-  for (const step of speckitSteps(items)) {
+  for (const step of speckitSteps(buildSpecsIndex(deps.draft.specId, backlog).specs)) {
     if (deps.signal?.aborted) throw new OwnerError(`${SPECKIT_STAGE} foi interrompida.`, 'aborted');
     const files = await runCommand(deps, step, hash);
     await deps.journal.fact(RefineEvent.SpeckitStepDone, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}), files });

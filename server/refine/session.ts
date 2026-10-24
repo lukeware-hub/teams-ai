@@ -452,7 +452,7 @@ export class RefineSession {
     const items = buildSpecsIndex(this.deps.draft.specId, backlog).specs;
     await this.journal.fact(RefineEvent.SpeckitStarted, { total: speckitSteps(items).length });
     try {
-      const inputHash = await prepareSpeckit({ draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, exec: this.deps.exec ?? execCommand, signal: ctl.signal }, items);
+      const inputHash = await prepareSpeckit({ draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, exec: this.deps.exec ?? execCommand, signal: ctl.signal }, backlog);
       await this.journal.fact(RefineEvent.SpeckitDone, { inputHash });
     } catch (err) {
       const reason = err instanceof OwnerError ? err.message : `${SPECKIT_STAGE} parou por um erro interno. ${TRY_AGAIN}`;

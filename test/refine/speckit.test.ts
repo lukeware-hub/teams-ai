@@ -11,7 +11,7 @@ import { ConflictError, RefineJournal, RefineSession, type RunAgent } from '../.
 import { speckitPack } from '../../server/refine/speckit-pack.js';
 import { SPECKIT_NOT_INSTALLED } from '../../server/refine/speckit.js';
 import { canStart } from '../../server/refine/state.js';
-import { makeSpec } from '../fixtures/contracts.js';
+import { makeProject, makeSpec } from '../fixtures/contracts.js';
 
 let root = '';
 let ws: Workspace;
@@ -65,24 +65,26 @@ beforeEach(async () => {
 afterEach(() => fs.rm(root, { recursive: true, force: true }));
 
 describe('speckitPack', () => {
-  const docs = '/w/refine/hello-001/docs';
+  const inputs = '/w/refine/hello-001/speckit-input';
+  const item = { key: 'login', specId: 'login', title: 'Entrar' };
 
-  it('tells the agent to read the skill of its command and names the documents by absolute path', () => {
-    const p = speckitPack({ command: 'constitution', specHash: 'sha256:x', docsDir: docs });
+  it('tells the agent to read the skill of its command and names the six JSON inputs by absolute path', () => {
+    const p = speckitPack({ command: 'constitution', specHash: 'sha256:x', inputDir: inputs });
     expect(p).toMatchObject({ kind: 'speckit', role: 'dev' });
     expect(p.feedback).toContain('.claude/skills/speckit-constitution/SKILL.md');
-    for (const file of ['project.md', 'stack.md', 'design.md']) expect(p.feedback).toContain(`${docs}/${file}`);
+    for (const file of ['specs.json', 'project.json', 'flow.json', 'briefing.json', 'stack.json', 'design.json']) expect(p.feedback).toContain(`${inputs}/${file}`);
+    expect(p.feedback).not.toContain('/docs/');
     expect(p.feedback).toContain('Quality rules');
   });
 
-  it('points an item command at its spec, its pre-plan and its own feature directory', () => {
-    const specify = speckitPack({ command: 'specify', specHash: 'sha256:x', docsDir: docs, item: { key: 'login', specId: 'login', title: 'Entrar' } });
-    expect(specify.feedback).toContain(`${docs}/specs/login/spec.json`);
-    expect(specify.feedback).toContain('SPECIFY_FEATURE_DIRECTORY=specs/login');
-    expect(specify.feedback).toContain(`${docs}/flow.md`);
-    const plan = speckitPack({ command: 'plan', specHash: 'sha256:x', docsDir: docs, item: { key: 'login', specId: 'login', title: 'Entrar' } });
-    expect(plan.feedback).toContain(`${docs}/specs/login/preplan.json`);
-    expect(plan.feedback).toContain('.claude/skills/speckit-plan/SKILL.md');
+  it('points an item command at its entry in specs.json and its own feature directory', () => {
+    for (const command of ['specify', 'plan', 'tasks'] as const) {
+      const p = speckitPack({ command, specHash: 'sha256:x', inputDir: inputs, item });
+      expect(p.feedback, command).toContain(`${inputs}/specs.json`);
+      expect(p.feedback, command).toContain('"login"');
+      expect(p.feedback, command).toContain('SPECIFY_FEATURE_DIRECTORY=specs/login');
+      expect(p.feedback, command).toContain(`.claude/skills/speckit-${command}/SKILL.md`);
+    }
   });
 });
 
@@ -99,7 +101,7 @@ describe('RefineSession.runSpeckit', () => {
     const order = agentCalls.map((r) => `${r.pack.feedback!.match(/speckit-(\w+)\/SKILL/)![1]}:${r.pack.feedback!.match(/SPECIFY_FEATURE_DIRECTORY=specs\/(\w+)/)?.[1] ?? ''}`);
     expect(order).toEqual(['constitution:', 'specify:login', 'plan:login', 'tasks:login', 'specify:cart', 'plan:cart', 'tasks:cart']);
     expect(agentCalls.every((r) => r.kind === 'speckit' && r.role === 'dev' && r.cwd === `${draft().root}/speckit` && r.taskId === null)).toBe(true);
-    expect(agentCalls[0]!.extraAllow).toEqual(expect.arrayContaining(['Bash(bash:*)', 'Bash(.specify/scripts/bash/*:*)', `Read(//${draft().docs.replace(/^\/+/, '')}/**)`]));
+    expect(agentCalls[0]!.extraAllow).toEqual(expect.arrayContaining(['Bash(bash:*)', 'Bash(.specify/scripts/bash/*:*)', `Read(//${`${draft().root}/speckit-input`.replace(/^\/+/, '')}/**)`]));
     const types = s.events.map((e) => e.type).filter((t) => t.startsWith('SPECKIT_'));
     expect(types).toEqual([RefineEvent.SpeckitStarted, ...Array(7).fill(RefineEvent.SpeckitStepDone), RefineEvent.SpeckitDone]);
     expect(s.events.find((e) => e.type === RefineEvent.SpeckitStarted)!.data).toEqual({ total: 7 });
@@ -183,11 +185,40 @@ describe('RefineSession.runSpeckit', () => {
     await reopened.close();
   });
 
-  it('keeps the briefing in backlog mode readable to the pack', async () => {
+  it('writes the six JSON inputs outside the published folder, fresh on each run, and hashes them', async () => {
     const s = await detailedSession();
-    await writeDoc(draft(), 'briefing.md', '# Briefing\n');
+    const dir = `${draft().root}/speckit-input`;
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(`${dir}/old.json`, '{}');
+    await writeDoc(draft(), 'briefing.md', '# Briefing\n\n## Objetivo\n\nVender\n');
     await s.runSpeckit();
-    expect(agentCalls[1]!.pack.feedback).toContain(`${draft().docs}/briefing.md`);
+    expect((await fs.readdir(dir)).sort()).toEqual(['briefing.json', 'design.json', 'flow.json', 'project.json', 'specs.json', 'stack.json']);
+    const read = async (file: string) => JSON.parse(await fs.readFile(`${dir}/${file}`, 'utf8'));
+    expect(await read('briefing.json')).toEqual({ doc: 'briefing.md', sections: [{ level: 1, heading: 'Briefing', body: '' }, { level: 2, heading: 'Objetivo', body: 'Vender' }] });
+    // No derived project yet: project.md converted the same way.
+    expect((await read('project.json')).doc).toBe('project.md');
+    const specs = await read('specs.json');
+    expect(specs).toMatchObject({ version: 1, draftId: 'hello-001' });
+    expect(specs.specs.map((e: { key: string }) => e.key)).toEqual(['login', 'cart']);
+    expect(specs.specs[0]).toMatchObject({ specId: 'login', spec: { specId: 'login' }, preplan: { tasks: [] } });
+    expect(specs.specs[1].preplan).toBeNull();
+    await expect(fs.access(`${draft().root}/speckit/specs.json`)).rejects.toThrow();
+    const first = s.events.find((e) => e.type === RefineEvent.SpeckitDone)!.data.inputHash;
+    await s.saveDoc('stack.md', '# Stack\n\nGo\n');
+    await s.runSpeckit();
+    expect(s.events.filter((e) => e.type === RefineEvent.SpeckitDone).at(-1)!.data.inputHash).not.toBe(first);
     await s.close();
+  });
+
+  it('a derived project is project.json as it was derived', async () => {
+    const s = await detailedSession();
+    await s.close();
+    const journal = await RefineJournal.open(draft().events, { projectId: 'hello-app', specId: 'hello-001' });
+    await journal.fact(RefineEvent.BacklogDerived, { project: makeProject({ projectId: 'hello-app' }), epics: [], items: [item('login', 1), item('cart', 2)], cycle: 2 });
+    await journal.close();
+    const reopened = await RefineSession.open(deps());
+    await reopened.runSpeckit();
+    expect(JSON.parse(await fs.readFile(`${draft().root}/speckit-input/project.json`, 'utf8'))).toMatchObject({ projectId: 'hello-app' });
+    await reopened.close();
   });
 });
