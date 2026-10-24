@@ -23,6 +23,7 @@ const REASONS: Record<UnavailableReason, string> = {
 };
 
 const startOfDay = (at: Date) => new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime();
+const usd = (value: number) => `US$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
 
 /** hoje, amanhã, or the weekday of a day within the week. */
 function dayName(at: Date, now: Date): string {
@@ -114,9 +115,16 @@ function keepReading(next: ClaudeUsage) {
 export function ClaudeUsagePanel() {
   const [usage, setUsage] = useState<ClaudeUsage | null>(lastReading);
   const [failed, setFailed] = useState(false);
+  const [jev, setJev] = useState<number | null>(null);
   useEffect(() => {
     let active = true;
     const read = () => {
+      // The Jev total is optional: when it cannot be read, the line is left out and the plan still shows.
+      void usageApi.jev()
+        .then((next) => {
+          if (active) setJev(next.costUsd);
+        })
+        .catch(() => {});
       void usageApi.claude()
         .then((next) => {
           if (!active) return;
@@ -144,6 +152,12 @@ export function ClaudeUsagePanel() {
         <InfoTip label="Seu uso" text={HELP} />
       </div>
       {usage ? <UsageBody usage={usage} now={now} /> : failed ? <p className="error">{REASONS.failed}</p> : <Loading />}
+      {jev !== null && (
+        <p className="m-0 flex items-baseline justify-between gap-3 border-t border-line pt-3 text-[0.9375rem] text-ink" data-testid="jev-cost">
+          <span>Custo Jev <span className="text-[0.8125rem] text-ink-soft">· total desde sempre</span></span>
+          <b className="font-semibold tabular-nums">{usd(jev)}</b>
+        </p>
+      )}
     </section>
   );
 }

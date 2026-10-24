@@ -59,6 +59,7 @@ export const settingsApi = {
 
 export const usageApi = {
   claude: () => fetch('/api/usage/claude').then((r) => json<ClaudeUsage>(r)),
+  jev: () => fetch('/api/usage/jev').then((r) => json<{ costUsd: number }>(r)),
 };
 
 export interface SpecRow {

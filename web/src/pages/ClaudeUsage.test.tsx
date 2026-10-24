@@ -17,6 +17,7 @@ beforeEach(() => {
   sessionStorage.clear();
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(NOW);
+  vi.spyOn(usageApi, 'jev').mockResolvedValue({ costUsd: 0.00714 });
 });
 
 afterEach(() => {
@@ -50,6 +51,23 @@ describe('ClaudeUsagePanel', () => {
     await screen.findByText('97% usado');
     expect(screen.getByRole('progressbar', { name: 'Sessão atual' }).firstElementChild?.className).toContain('bg-bad');
     expect(screen.getByRole('progressbar', { name: 'Esta semana' }).firstElementChild?.className).toContain('bg-warn');
+  });
+
+  it('shows the Jev total cost across all projects under the limits', async () => {
+    vi.spyOn(usageApi, 'claude').mockResolvedValue(plan(session(), weekly()));
+    render(<ClaudeUsagePanel />);
+
+    expect(await screen.findByText('Custo Jev')).toBeTruthy();
+    expect(screen.getByText('US$ 0,0071')).toBeTruthy();
+  });
+
+  it('leaves the Jev total out when it cannot be read, and keeps the plan', async () => {
+    vi.spyOn(usageApi, 'jev').mockRejectedValue(new Error('offline'));
+    vi.spyOn(usageApi, 'claude').mockResolvedValue(plan(session(), weekly()));
+    render(<ClaudeUsagePanel />);
+
+    expect(await screen.findByText('84% usado')).toBeTruthy();
+    expect(screen.queryByText('Custo Jev')).toBeNull();
   });
 
   it('says the week is on pace when the share used stays under the share of the week gone', async () => {
