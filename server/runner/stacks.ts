@@ -7,6 +7,8 @@ const REGISTRIES: Record<StackKind, readonly string[]> = {
   python: ['pypi.org', 'files.pythonhosted.org'],
   go: ['proxy.golang.org', 'sum.golang.org'],
   rust: ['crates.io', 'index.crates.io', 'static.crates.io'],
+  // Flutter runs only in its gate image and in the install step there; no agent step runs it.
+  flutter: [],
   other: [],
 };
 
@@ -57,19 +59,23 @@ export function stackEnv(cwd: string): Record<string, string> {
     BUF_CACHE_DIR: path.posix.join(tools, 'buf-cache'),
     XDG_CACHE_HOME: path.posix.join(tools, 'cache'),
     PYTHONPATH: path.posix.join(tools, 'py'),
+    // Flutter's pub packages and Gradle's wrapper and dependencies, so the install step's downloads reach the gates.
+    PUB_CACHE: path.posix.join(tools, 'pub-cache'),
+    GRADLE_USER_HOME: path.posix.join(tools, 'gradle'),
     PIP_DISABLE_PIP_VERSION_CHECK: '1',
     PYTHONPYCACHEPREFIX: path.posix.join(tools, 'pycache'),
     PYTEST_ADDOPTS: '-p no:cacheprovider',
   };
 }
 
-export type StackKind = 'node' | 'python' | 'go' | 'rust' | 'other';
+export type StackKind = 'node' | 'python' | 'go' | 'rust' | 'flutter' | 'other';
 
 const STACK_PATTERNS: Record<Exclude<StackKind, 'other'>, RegExp> = {
   node: /\b(node|nodejs|typescript|javascript|npm|pnpm|yarn|bun|deno|express)\b/i,
   python: /\b(python|pip|uv|django|flask|fastapi|poetry)\b/i,
   go: /\b(go|golang|gin|echo|fiber)\b/i,
   rust: /\b(rust|cargo|axum|actix|rocket)\b/i,
+  flutter: /\b(flutter|dart)\b/i,
 };
 
 /** The stack a free text names (the plan's stack, optionally with the gate image); the earliest mention wins. */

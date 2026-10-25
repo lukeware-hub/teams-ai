@@ -80,6 +80,20 @@ describe('dockerArgs', () => {
     expect(plainTag).not.toBe(tag);
   });
 
+  it('adds the Android toolchain to a flutter gate image, and only the gates copy the project packages into its pub cache', async () => {
+    const built = new FakeExec().onArgs('docker', ['image', 'inspect'], () => ({ exitCode: 1 }));
+    const tag = await prepareGateImage('node:22-bookworm', built.exec, { android: true });
+    expect(tag).toMatch(/^teams-ai-gate:node-22-bookworm-android-[a-f0-9]{12}$/);
+    const stdin = built.calls.find((c) => c.args[0] === 'build')!.stdin!;
+    for (const piece of ['openjdk-17-jdk-headless', 'flutter_linux_3.47.8-stable.tar.xz', 'sha256sum -c', 'ndk;28.2.13676358', 'cd /opt/flutter/packages/flutter_tools && dart pub get']) expect(stdin).toContain(piece);
+    const ctx = { worktree: '/w', image: tag, junitPath: 'j', cpus: 1, memory: '1g', timeoutMs: 1, secrets: {}, containerName: 'c' };
+    const build = { name: 'build', command: 'flutter build apk --debug', blocking: true, network: 'none' as const, secrets: [] };
+    const gateCommand = dockerArgs(build, ctx).args.at(-1)!;
+    expect(gateCommand).toContain('cp -rn /work/.tools/pub-cache/hosted /opt/pub-cache/');
+    expect(gateCommand.endsWith('flutter build apk --debug')).toBe(true);
+    expect(dockerArgs({ ...build, name: 'install', network: 'egress' }, ctx).args.at(-1)).toBe('flutter build apk --debug');
+  });
+
 
   it('runs the command offline in a named, init-managed, non-root container with limits and read-only .git', () => {
     const { args, env } = dockerArgs(gate({ name: 'unit-test', command: 'npm test' }), ctx);

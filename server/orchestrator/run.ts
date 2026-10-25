@@ -130,7 +130,7 @@ function assertApiKey(deps: RunDeps): void {
 }
 
 /** A cold Go or Rust build in a fresh worktree is slow, and parallel tasks compile their tools at the same time (live: three Rust installs passed 10 minutes). */
-const buildTimeoutMs = (plan: Plan): number => ((['go', 'rust'] as const).includes(stackKind(plan.stack) as 'go') ? 25 * 60_000 : 10 * 60_000);
+const buildTimeoutMs = (plan: Plan): number => ((['go', 'rust', 'flutter'] as const).includes(stackKind(plan.stack) as 'go') ? 25 * 60_000 : 10 * 60_000);
 
 /** The plan when it has one repository; a services plan is read per service instead. */
 const singlePlan = (plan: AnyPlan | null): Plan | undefined => (plan && !('services' in plan) ? plan : undefined);
@@ -400,6 +400,8 @@ export class Run {
   private async installDeps(view: ServiceView, worktree: string): Promise<GateResult | null> {
     const command = view.plan.commands.install;
     if (!command) return null;
+    // Flutter's tools exist only in its gate image, so its install runs there, never on the host.
+    if (stackKind(view.plan.stack) === 'flutter') return this.installInGate(view);
     const present = await fs.access(path.join(worktree, 'node_modules')).then(() => true, () => false);
     const marker = path.join(worktree, 'node_modules', INSTALLED_AT);
     const installedAt = await fs.readFile(marker, 'utf8').then((s) => s.trim(), () => null);
@@ -436,18 +438,23 @@ export class Run {
   /** The plan's install command in the offline-by-default gate container, never on the host: an imported plan is not agent-written here. */
   private async installInGate(view: ServiceView): Promise<GateResult | null> {
     const p = view.plan;
-    const ctx = { worktree: this.wsOf(view).repo, image: await this.gateImage(p.gateImage), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: buildTimeoutMs(p), secrets: {}, containerName: `teams-ai-${this.runId}-deploy${view.service ? `-${view.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite };
+    const ctx = { worktree: this.wsOf(view).repo, image: await this.gateImageOf(p), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: buildTimeoutMs(p), secrets: {}, containerName: `teams-ai-${this.runId}-deploy${view.service ? `-${view.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite };
     const r = await runGate({ name: 'install', command: p.commands.install, blocking: true, network: 'egress', secrets: [] }, ctx, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
     return r.passed ? null : r;
   }
 
   private readonly gateImages = new Map<string, Promise<string>>();
 
-  /** The image every gate, smoke and e2e container of one stack runs, prepared once per run, image and browser need (jq, rustfmt and clippy for rust, Chromium for a front e2e). */
-  private gateImage(image: string, browser = false): Promise<string> {
-    const key = `${browser}:${image}`;
+  /** The gate image of a plan: its toolchain, plus Chromium for a front e2e and the Android SDK for Flutter. */
+  private gateImageOf(plan: Plan, browser = false): Promise<string> {
+    return this.gateImage(plan.gateImage, { browser, android: stackKind(plan.stack) === 'flutter' });
+  }
+
+  /** The image every gate, smoke and e2e container of one stack runs, prepared once per run and flavour (jq, rustfmt and clippy for rust, Chromium, the Android SDK). */
+  private gateImage(image: string, flavour: { browser?: boolean; android?: boolean } = {}): Promise<string> {
+    const key = `${flavour.browser ? 'browser' : ''}|${flavour.android ? 'android' : ''}|${image}`;
     let ready = this.gateImages.get(key);
-    if (!ready) this.gateImages.set(key, (ready = prepareGateImage(image, this.deps.exec, { browser })));
+    if (!ready) this.gateImages.set(key, (ready = prepareGateImage(image, this.deps.exec, flavour)));
     return ready;
   }
 
@@ -464,7 +471,7 @@ export class Run {
         plan.gates.filter((g) => g.blocking && g.name !== E2E_GATE), // the e2e gate runs in Phase 5 only
         {
           worktree,
-          image: await this.gateImage(plan.gateImage),
+          image: await this.gateImageOf(plan),
           junitPath: plan.junitPath,
           coveragePath: plan.coveragePath,
           cacheDir,
@@ -616,14 +623,14 @@ export class Run {
       target: this.deps.target,
       smoke: async (contextDir, url, gateUrl, gateNetwork, scope) => {
         const p = scope?.plan ?? singlePlan(this.plan)!;
-        const r = await runSmoke(p, scope?.spec ?? this.deps.spec, { worktree: contextDir, image: await this.gateImage(p.gateImage), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: gateSecrets(this.deps.spec, this.deps.secrets, this.environmentNames()), containerName: `teams-ai-${this.runId}-smoke${scope ? `-${scope.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : gateReachableUrl(url), { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) }, scope?.urls);
+        const r = await runSmoke(p, scope?.spec ?? this.deps.spec, { worktree: contextDir, image: await this.gateImageOf(p), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: gateSecrets(this.deps.spec, this.deps.secrets, this.environmentNames()), containerName: `teams-ai-${this.runId}-smoke${scope ? `-${scope.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : gateReachableUrl(url), { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) }, scope?.urls);
         // The gate's output is the only clue the fix task gets about why a smoke test is missing or failing.
         const tail = r.ok || !r.result ? '' : `\n\nsmoke gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
       },
       e2e: async (contextDir, url, gateUrl, gateNetwork, scope) => {
         const p = scope?.plan ?? singlePlan(this.plan)!;
-        const r = await runE2e(p, scope?.spec ?? this.deps.spec, { worktree: contextDir, image: await this.gateImage(p.gateImage, p.deploy.kind === 'front'), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: gateSecrets(this.deps.spec, this.deps.secrets, this.environmentNames()), containerName: `teams-ai-${this.runId}-e2e${scope ? `-${scope.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) }, scope?.urls);
+        const r = await runE2e(p, scope?.spec ?? this.deps.spec, { worktree: contextDir, image: await this.gateImageOf(p, p.deploy.kind === 'front'), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: gateSecrets(this.deps.spec, this.deps.secrets, this.environmentNames()), containerName: `teams-ai-${this.runId}-e2e${scope ? `-${scope.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) }, scope?.urls);
         const tail = r.ok || !r.result ? '' : `\n\ne2e gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
       },

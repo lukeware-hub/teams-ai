@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { STACK_BASH, UNCOMMITTED_BUILD_DIRS, copyCargoRoot, stackDomains, stackEnv } from '../../server/runner/stacks.js';
+import { STACK_BASH, UNCOMMITTED_BUILD_DIRS, copyCargoRoot, stackDomains, stackEnv, stackKind } from '../../server/runner/stacks.js';
 
 describe('stacks', () => {
   it('reaches only the registries of the run stack, plus npm', () => {
@@ -29,7 +29,13 @@ describe('stacks', () => {
 
   it('keeps every cache inside the worktree', () => {
     const env = stackEnv('/w/t1');
-    for (const key of ['GOPATH', 'GOCACHE', 'CARGO_HOME', 'PIP_CACHE_DIR', 'PYTHONPYCACHEPREFIX', 'PYTHONPATH', 'BUF_CACHE_DIR', 'XDG_CACHE_HOME']) expect(env[key]).toMatch(/^\/w\/t1\/\.tools\//);
+    for (const key of ['GOPATH', 'GOCACHE', 'CARGO_HOME', 'PIP_CACHE_DIR', 'PYTHONPYCACHEPREFIX', 'PYTHONPATH', 'BUF_CACHE_DIR', 'XDG_CACHE_HOME', 'PUB_CACHE', 'GRADLE_USER_HOME']) expect(env[key]).toMatch(/^\/w\/t1\/\.tools\//);
+  });
+
+  it('reads a Flutter project as the flutter stack, even on a node gate image', () => {
+    expect(stackKind('Flutter app, Android only')).toBe('flutter');
+    expect(stackKind('dart 3 package')).toBe('flutter');
+    expect(stackKind('Flutter app node:22-bookworm')).toBe('flutter');
   });
 
   it('copies the binaries and records cargo install leaves, so a seeded root sees the tools installed', async () => {

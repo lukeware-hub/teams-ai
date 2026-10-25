@@ -28,7 +28,7 @@ type Step = Record<string, unknown>;
 const planStack = (plan: Plan): StackKind => stackKind(`${plan.stack} ${plan.gateImage}`);
 
 // Docker image name and the setup action's own version key, per stack.
-const SETUP: Record<Exclude<StackKind, 'other'>, { image: string; key: string }> = {
+const SETUP: Record<Exclude<StackKind, 'other' | 'flutter'>, { image: string; key: string }> = {
   node: { image: 'node', key: 'node-version' },
   python: { image: 'python', key: 'python-version' },
   go: { image: 'golang', key: 'go-version' },
@@ -40,7 +40,8 @@ const toolVersion = (plan: Plan, image: string): string | undefined => new RegEx
 
 function setupStep(plan: Plan): Step[] {
   const kind = planStack(plan);
-  if (kind === 'other') return [];
+  // A Flutter CI needs its own setup action (Flutter and the Android SDK), which does not exist yet.
+  if (kind === 'other' || kind === 'flutter') return [];
   const { image, key } = SETUP[kind];
   const version = toolVersion(plan, image);
   return [{ uses: ACTIONS[kind], ...(version ? { with: { [key]: version } } : {}) }];
