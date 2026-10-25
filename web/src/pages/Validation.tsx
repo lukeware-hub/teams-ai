@@ -205,6 +205,15 @@ function ServiceControls({ service, status, starting, canStart, onStart, onReche
 }
 
 
+/** A mobile run's build: the file the owner downloads and installs. No service runs, so there is no port and no status. */
+function ArtifactDownload({ runId, artifact }: { runId: string; artifact: string }) {
+  return (
+    <div className={SERVICE.controls}>
+      <a data-testid="download-artifact" className="primary" href={runApi.artifactUrl(runId)} download={artifact}>Baixar {artifact}</a>
+    </div>
+  );
+}
+
 /** A services run: one line per service with its state and its link, then one recheck and one start for them all. */
 function ServiceList({ services, status, starting, canStart, onStart, onRecheck }: { services: NonNullable<Report['services']> } & ControlProps) {
   const checking = status === null;
@@ -434,12 +443,14 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                   <>
                     <section className="card">
                       <div className={RUN_UI.panelHead}>
-                        <h2>{report.services ? 'Serviços publicados' : 'Serviço publicado'}</h2>
+                        <h2>{report.services ? 'Serviços publicados' : report.service?.kind === 'mobile' ? 'Aplicativo gerado' : 'Serviço publicado'}</h2>
                       </div>
                       {report.service ? (
                         <>
                           {report.services ? (
                             <ServiceList services={report.services} status={serviceStatus} starting={startingService} canStart={specStatus === 'awaiting-validation'} onStart={onStartService} onRecheck={onRecheckService} />
+                          ) : report.service.kind === 'mobile' ? (
+                            <ArtifactDownload runId={report.runId} artifact={report.service.artifact ?? ''} />
                           ) : (
                             <ServiceControls service={report.service} status={serviceStatus} starting={startingService} canStart={specStatus === 'awaiting-validation'} onStart={onStartService} onRecheck={onRecheckService} />
                           )}

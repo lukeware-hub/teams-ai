@@ -7,7 +7,7 @@ const LEGACY_PORTS = { from: 3000, to: 3019 } as const;
 export interface ServiceInfo {
   url: string;
   port?: number;
-  kind?: 'api' | 'front';
+  kind?: 'api' | 'front' | 'mobile';
   docsPath?: string;
 }
 

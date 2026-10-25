@@ -573,6 +573,22 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     },
     {
       method: 'GET',
+      path: `${P}/runs/:runId/artifact`,
+      handler: async ({ params, res }) => {
+        const idx = await index();
+        const runId = safe(params.runId!);
+        const evs = await events(runsDir(idx), runId);
+        const deployed = [...evs].reverse().find((e) => e.type === 'DEPLOY_VERIFIED')?.data;
+        if (deployed?.kind !== 'mobile' || typeof deployed.artifact !== 'string') throw new HttpError(404, 'this run has no mobile artifact');
+        const name = path.basename(deployed.artifact);
+        const data = await fs.readFile(path.join(runsDir(idx), runId, 'artifacts', name)).catch(() => null);
+        if (data === null) throw new HttpError(404, 'the artifact is no longer in the run folder');
+        res.writeHead(200, { 'content-type': 'application/vnd.android.package-archive', 'content-disposition': `attachment; filename="${name}"`, 'content-length': String(data.length) });
+        res.end(data);
+      },
+    },
+    {
+      method: 'GET',
       path: `${P}/runs/:runId`,
       handler: async ({ params, json }) => {
         const idx = await index();

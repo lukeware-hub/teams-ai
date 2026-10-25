@@ -182,7 +182,7 @@ export function validateWorkflow(kind: 'ci' | 'release', text: string, plan: Pla
     for (const prefix of ['actions/checkout@', 'docker/setup-buildx-action@', 'docker/login-action@', 'docker/build-push-action@']) {
       if (!uses.some((u) => u.startsWith(prefix))) errors.push(`release is missing ${prefix}vN`);
     }
-    if (!text.includes('ghcr.io') || !text.includes(plan.deploy.image)) errors.push(`release must push ghcr.io/<owner>/${plan.deploy.image}`);
+    if (plan.deploy.image !== undefined && (!text.includes('ghcr.io') || !text.includes(plan.deploy.image))) errors.push(`release must push ghcr.io/<owner>/${plan.deploy.image}`);
     if (!text.includes('secrets.GITHUB_TOKEN')) errors.push('release must log in with GITHUB_TOKEN');
     if (!text.includes('type=sha') || !text.includes('type=raw,value=latest')) errors.push('release must tag the commit sha and latest');
   }

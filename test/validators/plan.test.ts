@@ -37,8 +37,9 @@ describe('validatePlan', () => {
 
   it('rejects a deploy port another project already uses', () => {
     const p = makePlan(spec);
-    expect(validatePlan(p, spec, { firstSpec: true, takenPorts: [p.deploy.port] })).toEqual(expect.arrayContaining([expect.stringContaining(`deploy.port ${p.deploy.port} is already used`)]));
-    expect(validatePlan(p, spec, { firstSpec: true, takenPorts: [p.deploy.port + 1] }).join()).not.toContain('already used');
+    const port = p.deploy.port!;
+    expect(validatePlan(p, spec, { firstSpec: true, takenPorts: [port] })).toEqual(expect.arrayContaining([expect.stringContaining(`deploy.port ${port} is already used`)]));
+    expect(validatePlan(p, spec, { firstSpec: true, takenPorts: [port + 1] }).join()).not.toContain('already used');
   });
 
   it('rejects a task that names a service in a single-repository plan', () => {

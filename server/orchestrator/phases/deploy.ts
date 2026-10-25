@@ -16,6 +16,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { ReviewOutput } from '../../agents/outputs.js';
 import type { StoredEvent } from '../../store/event-store.js';
+import { runArtifact } from './artifact.js';
 
 /** `retryEnvironment`: a missing variable was created, so the same attempt runs again without a fix task. */
 export type Phase5Result = { ok: true; url: string; smoke: SmokeRow[]; healthcheck: string; e2e?: E2eRow[] } | { ok: false; reason: string; fixTask?: PlanTask; retryEnvironment?: true };
@@ -43,6 +44,7 @@ const planGap = (stage: DeployStage, detail: string) => (stage === 'smoke' && de
 
 export function deployIntent(deps: PhaseDeps, tag: string): DeploymentIntent {
   const p = deps.plan!;
+  if (p.deploy.image === undefined || p.deploy.healthcheckPath === undefined) throw new Error('deployIntent needs a container plan: a mobile plan has no image or healthcheck');
   return { projectId: deps.project.projectId, image: p.deploy.image, tag, port: deployPort(deps), healthcheckPath: p.deploy.healthcheckPath, manifests: [...p.deploy.manifests], secretNames: deps.secretNames ? deps.secretNames() : [...new Set(deps.spec.externalDependencies.flatMap((d) => d.secretNames))], contextDir: deps.ws.repo, ...(p.delivery?.compose ? { compose: p.delivery.compose } : {}) };
 }
 
@@ -205,7 +207,9 @@ export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fix
   const done = deps.journal.events.find((e) => e.type === OrchEvent.DeployVerified && e.data.attempt === attempt);
   if (done) return { ok: true, url: String(done.data.url), smoke: done.data.smoke as SmokeRow[], healthcheck: String(done.data.healthcheck), ...(done.data.e2e ? { e2e: done.data.e2e as E2eRow[] } : {}) };
   if (!deps.journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 5)) await deps.journal.fact(OrchEvent.PhaseStarted, { phase: 5 });
-  const tag = await checkoutMain(deps); let intent = deployIntent(deps, tag); const envRerun = opts.envRerun ?? 0; const key = `deploy-${attempt}${envRerun > 0 ? `-e${envRerun}` : ''}`;
+  const tag = await checkoutMain(deps);
+  if (deps.plan!.deploy.kind === 'mobile') return runArtifact(deps, attempt);
+  let intent = deployIntent(deps, tag); const envRerun = opts.envRerun ?? 0; const key = `deploy-${attempt}${envRerun > 0 ? `-e${envRerun}` : ''}`;
   await deps.environment?.prepare({ service: null, dir: deps.ws.repo, plan: deps.plan }, null);
   const failed = async (stage: DeployStage, detail: string, rolledBack: boolean, rollbackHealthy: boolean | null, previous: string | null): Promise<Phase5Result> => {
     await deps.journal.fact(OrchEvent.DeployFailed, { attempt, stage, detail, rolledBack, rollbackHealthy, tag });

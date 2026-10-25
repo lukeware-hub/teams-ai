@@ -65,6 +65,15 @@ describe('ValidationView', () => {
     expect(screen.queryByTestId('gaps')).toBeNull();
   });
 
+  it('offers a mobile run its artifact to download, with no service to check', () => {
+    const mobile = { ...report, service: { url: '', healthcheck: 'artifact', smoke: [], kind: 'mobile' as const, artifact: 'app-debug.apk' } };
+    render(<MemoryRouter><ValidationView detail={detail({ report: mobile })} specStatus="awaiting-validation" onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
+    const link = screen.getByTestId('download-artifact') as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('/api/runs/hello-001-r1/artifact');
+    expect(link.getAttribute('download')).toBe('app-debug.apk');
+    expect(screen.queryByTestId('service-online')).toBeNull();
+  });
+
   it('lists the security findings and hides the section when there are none', () => {
     const sec = { taskId: 'T1', file: 'src/a.ts', line: 3, severity: 'high' as const, category: 'injection', problem: 'user input reaches a shell', fix: 'use execFile' };
     const withSec = { ...detail(), report: { ...report, securityFindings: [sec] } };

@@ -454,6 +454,20 @@ describe('start, resume, stop', () => {
     expect(await (await fetch(base() + '/api/runs/hello-001-r1/service')).json()).toMatchObject({ online: false, status: null });
   });
 
+  it('serves the artifact of a mobile run as a download, and refuses a run without one', async () => {
+    const deployed = { type: 'DEPLOY_VERIFIED', data: { attempt: 1, url: '', smoke: [], healthcheck: 'artifact', kind: 'mobile', artifact: 'app-debug.apk' } };
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), deployed], state('running'));
+    await fs.mkdir(path.join(runs, 'hello-001-r1', 'artifacts'), { recursive: true });
+    await fs.writeFile(path.join(runs, 'hello-001-r1', 'artifacts', 'app-debug.apk'), 'APK');
+    const res = await fetch(base() + '/api/runs/hello-001-r1/artifact');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('application/vnd.android.package-archive');
+    expect(res.headers.get('content-disposition')).toBe('attachment; filename="app-debug.apk"');
+    expect(await res.text()).toBe('APK');
+    await writeRun(runs, 'hello-001-r2', [started('hello-001-r2'), { type: 'DEPLOY_VERIFIED', data: { attempt: 1, url: 'http://dind:3000', smoke: [], healthcheck: 'HTTP 200', tag: 't' } }], state('running'));
+    expect((await fetch(base() + '/api/runs/hello-001-r2/artifact')).status).toBe(404);
+  });
+
   it('service status is 404 for a run that never deployed', async () => {
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'));
     expect((await fetch(base() + '/api/runs/hello-001-r1/service')).status).toBe(404);

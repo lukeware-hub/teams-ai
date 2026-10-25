@@ -55,6 +55,8 @@ export interface PhaseDeps {
   /** Phase 2 requires a coverage gate clearing the line-coverage floor (roadmap R10.2). */
   requireCoverage?: boolean;
   requireFrozenScope?: boolean;
+  /** Where a mobile plan's artifact is kept: the run's own folder, next to its journal. */
+  artifactsDir?: string;
   exec: Exec;
   runAgent: <K extends StepKind>(req: AgentStepRequest<K>) => Promise<StepOutcome<OutputOf<K>>>;
   mergeQueue: MergeQueue;

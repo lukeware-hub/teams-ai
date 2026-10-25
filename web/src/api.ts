@@ -183,7 +183,7 @@ export interface Report {
   specId: string;
   specHash: string;
   result: 'awaiting-validation' | 'verification-failed' | 'deploy-failed';
-  service: { url: string; healthcheck: string; smoke: SmokeRow[]; e2e?: Array<{ acId: string; testId: string | null; status: string; reason?: string }>; port?: number; healthcheckPath?: string; kind?: 'api' | 'front'; docsPath?: string } | null;
+  service: { url: string; healthcheck: string; smoke: SmokeRow[]; e2e?: Array<{ acId: string; testId: string | null; status: string; reason?: string }>; port?: number; healthcheckPath?: string; kind?: 'api' | 'front' | 'mobile'; docsPath?: string; artifact?: string } | null;
   /** Every service of a services run; `service` is the first one. */
   services?: Array<{ service: string; url: string; healthcheck: string; port?: number; healthcheckPath?: string; kind?: 'api' | 'front'; docsPath?: string }>;
   deploy: { attempts: number; lastFailure: { attempt: number; stage: string; detail: string; rolledBack: boolean; rollbackHealthy: boolean | null; service?: string } | null };
@@ -230,6 +230,7 @@ export const runApi = {
   startRun: (projectId: string, specId: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/runs`).then((r) => json<StartedRun>(r)),
   resumeRun: (runId: string) => jsonPost(`/runs/${encodeURIComponent(runId)}/resume`).then((r) => json<{ runId: string }>(r)),
   serviceStatus: (runId: string) => fetch(`${R}/runs/${encodeURIComponent(runId)}/service`).then((r) => json<ServiceStatus>(r)),
+  artifactUrl: (runId: string) => `${R}/runs/${encodeURIComponent(runId)}/artifact`,
   deployAgain: (projectId: string, specId: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/deploy`).then((r) => json<{ runId: string }>(r)),
   complete: (projectId: string, specId: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/complete`).then((r) => json<{ runId: string }>(r)),
   reportProblem: (projectId: string, specId: string, report: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/continue`, { report }).then((r) => json<{ sessionId: string }>(r)),

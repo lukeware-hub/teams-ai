@@ -127,15 +127,27 @@ export const Plan = z.object({
   gates: z.array(Gate).min(1),
   frozenPaths: z.array(RepoPath).min(1),
   tasks: z.array(PlanTask).min(1),
-  deploy: z.object({
-    image: z.string().min(1),
-    port: z.number().int().min(1).max(65535),
-    healthcheckPath: z.string().startsWith('/'),
-    manifests: z.array(RepoPath),
-    /** What the validation page offers: `api` opens the docs path (Swagger), `front` opens the app. */
-    kind: z.enum(['api', 'front']).optional(),
-    docsPath: z.string().startsWith('/').optional(),
-  }),
+  deploy: z
+    .object({
+      image: z.string().min(1).optional(),
+      port: z.number().int().min(1).max(65535).optional(),
+      healthcheckPath: z.string().startsWith('/').optional(),
+      manifests: z.array(RepoPath),
+      /** What the validation page offers: `api` opens the docs path (Swagger), `front` opens the app, `mobile` offers the artifact. */
+      kind: z.enum(['api', 'front', 'mobile']).optional(),
+      docsPath: z.string().startsWith('/').optional(),
+      /** Mobile only: the repository-relative file the build writes and the owner downloads (for example the debug APK). */
+      artifact: RepoPath.optional(),
+    })
+    .superRefine((deploy, ctx) => {
+      if (deploy.kind === 'mobile') {
+        if (!deploy.artifact) ctx.addIssue({ code: 'custom', path: ['artifact'], message: 'deploy.artifact is required for a mobile plan' });
+        return;
+      }
+      for (const field of ['image', 'port', 'healthcheckPath'] as const) {
+        if (deploy[field] === undefined) ctx.addIssue({ code: 'custom', path: [field], message: `deploy.${field} is required unless deploy.kind is mobile` });
+      }
+    }),
   /** Optional; absent means no delivery contract. See `Delivery`. */
   delivery: Delivery.optional(),
   /** Criteria with no testable observable behavior over the service interface; the e2e gate skips them (roadmap R8.4). */

@@ -69,7 +69,9 @@ export function devopsOwnerErrors(tasks: readonly Pick<PlanTask, 'id' | 'owner' 
 /** Oldest release of a tool that still works with the gate images' toolchains, as [major, minor]. */
 const TOOL_FLOORS: Record<string, [number, number]> = { 'cargo-tarpaulin': [0, 37] };
 
-export function validatePlan(plan: Plan, spec: Spec, opts: PlanCheckOptions): string[] {
+export function validatePlan(plan: Plan, spec: Spec, requested: PlanCheckOptions): string[] {
+  // A mobile plan ships an artifact, not a container: no delivery files, no compose and no e2e suite over HTTP.
+  const opts = plan.deploy.kind === 'mobile' ? { ...requested, requireDelivery: false, requireE2e: false } : requested;
   // `service` belongs to a services plan; a run of this project would never find the repository it names.
   const named = plan.tasks.filter((t) => t.service !== undefined).map((t) => `task ${t.id} names service ${t.service}, but this project keeps its code in the project repository; remove service`);
   return [...named, ...planWideErrors(plan, spec, opts), ...repositoryErrors(plan, spec, opts)];
@@ -90,11 +92,15 @@ export function validateServicesPlan(plan: ServicesPlan, spec: Spec, opts: Servi
       errors.push(`service ${name} has no task`);
       continue;
     }
-    const other = ports.get(view.deploy.port);
-    if (other !== undefined) errors.push(`services ${other} and ${name} both use deploy.port ${view.deploy.port}`);
-    ports.set(view.deploy.port, name);
-    const assigned = opts.ports?.[name];
-    if (assigned && view.deploy.port !== assigned) errors.push(`service ${name}: deploy.port ${view.deploy.port} is not ${assigned}, the port the orchestrator assigned it`);
+    // A mobile service runs no container, so it takes no port.
+    const port = view.deploy.port;
+    if (port !== undefined) {
+      const other = ports.get(port);
+      if (other !== undefined) errors.push(`services ${other} and ${name} both use deploy.port ${port}`);
+      ports.set(port, name);
+      const assigned = opts.ports?.[name];
+      if (assigned && port !== assigned) errors.push(`service ${name}: deploy.port ${port} is not ${assigned}, the port the orchestrator assigned it`);
+    }
     // A service answers only for the criteria its own tasks deliver (a smoke criterion asks for its commands.smoke).
     const share = specShare(spec, view.tasks);
     const own = { ...opts, firstSpec: opts.newServices.has(name), repoFiles: opts.repoFiles?.[name] };
@@ -173,7 +179,7 @@ function repositoryErrors(plan: Plan, spec: Spec, opts: PlanCheckOptions, scaffo
   if (!IMAGE_REFERENCE.test(plan.gateImage)) errors.push(`gateImage ${JSON.stringify(plan.gateImage)} is not a plain image reference (name, optional :tag and @sha256 digest)`);
   if (/(^|[:/-])alpine(\d|[.:-]|$)/i.test(plan.gateImage)) errors.push(`gateImage ${plan.gateImage} is Alpine (musl); use a glibc-based image such as node:22-bookworm, golang:1.26-bookworm, python:3.12-bookworm or rust:1-bookworm`);
 
-  if (opts.takenPorts?.includes(plan.deploy.port)) errors.push(`deploy.port ${plan.deploy.port} is already used by another project; use the port the orchestrator assigned`);
+  if (plan.deploy.port !== undefined && opts.takenPorts?.includes(plan.deploy.port)) errors.push(`deploy.port ${plan.deploy.port} is already used by another project; use the port the orchestrator assigned`);
   if (opts.repoFiles) errors.push(...gateFileErrors(plan, opts.repoFiles));
   errors.push(...gateTerminationErrors(plan));
   // A gate may only read the secrets the spec declares; the platform's (GitHub token, API keys) never reach a gate container.
