@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { approvalPatch } from '../../server/refine/adjustments.js';
 import { RefineEvent } from '../../server/refine/events.js';
-import { canStart, reduceRefineEvents } from '../../server/refine/state.js';
+import { canStart, finishedSteps, reduceRefineEvents } from '../../server/refine/state.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 
 const item = (id: string, passed: boolean) => ({ id, role: id.startsWith('po') ? 'po' : 'sm', passed, detail: '' });
@@ -477,5 +477,17 @@ describe('Spec Kit preparation state', () => {
       expect(reduceRefineEvents([{ type: RefineEvent.BacklogEnabled, data: {} }, ...done, e]).speckit?.stale, e.type).toBe(true);
     }
     expect(reduceRefineEvents([{ type: RefineEvent.DocEdited, data: { file: 'stack.md', hash: 'x' } }]).speckit).toBeUndefined();
+  });
+
+  it('a failed preparation resumes its finished steps only on the same inputs and while no document changed since', () => {
+    const failed = { status: 'failed' as const, stale: false, inputHash: 'h1', steps: [{ command: 'constitution' }, { command: 'specify', itemKey: 'login' }] };
+    expect([...finishedSteps(failed, 'h1')]).toEqual(['constitution|', 'specify|login']);
+    expect(finishedSteps(failed, 'h2').size).toBe(0);
+    expect(finishedSteps({ ...failed, stale: true }, 'h1').size).toBe(0);
+    expect(finishedSteps({ ...failed, status: 'running' as const }, 'h1').size).toBe(0);
+    // Started before inputs were recorded: no hash, so only the stale flag can tell it still matches.
+    const legacy = { status: 'failed' as const, stale: false, steps: failed.steps };
+    expect(finishedSteps(legacy, 'anything').size).toBe(2);
+    expect(finishedSteps({ ...legacy, stale: true }, 'anything').size).toBe(0);
   });
 });

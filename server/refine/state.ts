@@ -274,7 +274,9 @@ function markStaleStages(s: RefineState, edited: DocFile): void {
 
 /** The steps a preparation of the same inputs finished before it failed; a new run skips them and keeps their files. */
 export function finishedSteps(speckit: RefineState['speckit'], inputHash: string): Set<string> {
-  if (speckit?.status !== 'failed' || speckit.inputHash !== inputHash) return new Set();
+  if (speckit?.status !== 'failed' || speckit.stale) return new Set();
+  // A preparation started before its inputs were recorded has no hash: a document edit would have marked it stale, so it still matches.
+  if (speckit.inputHash !== undefined && speckit.inputHash !== inputHash) return new Set();
   return new Set(speckit.steps.map((step) => stepKey(step.command, step.itemKey)));
 }
 
