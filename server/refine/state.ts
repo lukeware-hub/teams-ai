@@ -10,6 +10,7 @@ import type { DocFile } from './draft.js';
 import type { PendingPatch } from './patches.js';
 import { DOC_STAGES } from './doc-stages.js';
 import type { DocScore, Readiness } from './readiness.js';
+import { stepKey } from './speckit-steps.js';
 
 export type RefineStatus = 'drafting' | 'evaluating' | 'answering' | 'ready' | 'error' | 'started';
 export interface QuestionRow extends Question {
@@ -155,7 +156,7 @@ export interface RefineState {
   /** When the latest evaluation started and ended (ISO times); `endedAt` stays null while it runs. */
   evaluation?: { startedAt: string; endedAt: string | null };
   /** The Spec Kit preparation of a detailed backlog; stale once a document or the backlog changes after it. */
-  speckit?: { status: 'running' | 'done' | 'failed'; startedAt?: string; current?: { command: string; itemKey?: string; startedAt?: string }; steps: Array<{ command: string; itemKey?: string; startedAt?: string; endedAt?: string }>; total?: number; error?: string; stale: boolean; features?: Record<string, string> };
+  speckit?: { status: 'running' | 'done' | 'failed'; startedAt?: string; current?: { command: string; itemKey?: string; startedAt?: string }; steps: Array<{ command: string; itemKey?: string; startedAt?: string; endedAt?: string }>; total?: number; error?: string; stale: boolean; features?: Record<string, string>; inputHash?: string };
 }
 
 export interface StuckRun {
@@ -269,6 +270,12 @@ function markStaleStages(s: RefineState, edited: DocFile): void {
   if (index < 0) return;
   const later = DOC_STAGES.slice(index + 1).filter((doc) => (s.doneStages ?? []).includes(doc));
   if (later.length > 0) s.staleBy = { ...(s.staleBy ?? {}), ...Object.fromEntries(later.map((doc) => [doc, edited])) };
+}
+
+/** The steps a preparation of the same inputs finished before it failed; a new run skips them and keeps their files. */
+export function finishedSteps(speckit: RefineState['speckit'], inputHash: string): Set<string> {
+  if (speckit?.status !== 'failed' || speckit.inputHash !== inputHash) return new Set();
+  return new Set(speckit.steps.map((step) => stepKey(step.command, step.itemKey)));
 }
 
 export function applyRefineEvent(s: RefineState, e: { type: string; at?: string; data: Record<string, unknown> }): void {
@@ -455,16 +462,28 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       s.readiness = { ...(d as unknown as Omit<Readiness, 'outdated' | 'docs' | 'average'>), docs, average, outdated: s.outdatedDocs.length > 0 };
       break;
     }
-    case RefineEvent.SpeckitStarted:
-      s.speckit = { status: 'running', steps: [], ...(d.total === undefined ? {} : { total: Number(d.total) }), ...(e.at === undefined ? {} : { startedAt: e.at }), stale: false };
+    case RefineEvent.SpeckitStarted: {
+      // A failed preparation of the same inputs keeps the steps it finished: the run that follows skips them (finishedSteps).
+      const resumed = finishedSteps(s.speckit, String(d.inputHash)).size > 0;
+      s.speckit = {
+        status: 'running',
+        steps: resumed ? s.speckit!.steps : [],
+        ...(resumed && s.speckit?.features ? { features: s.speckit.features } : {}),
+        ...(d.inputHash === undefined ? {} : { inputHash: String(d.inputHash) }),
+        ...(d.total === undefined ? {} : { total: Number(d.total) }),
+        ...(e.at === undefined ? {} : { startedAt: e.at }),
+        stale: false,
+      };
       break;
+    }
     case RefineEvent.SpeckitStepStarted:
       if (s.speckit) s.speckit.current = { command: String(d.command), ...(d.itemKey === undefined ? {} : { itemKey: String(d.itemKey) }), ...(e.at === undefined ? {} : { startedAt: e.at }) };
       break;
     case RefineEvent.SpeckitStepDone: {
       // A finished step keeps its start and end, so the owner sees how long each command took.
       const began = s.speckit?.current?.startedAt;
-      s.speckit?.steps.push({ command: String(d.command), ...(d.itemKey === undefined ? {} : { itemKey: String(d.itemKey) }), ...(began === undefined ? {} : { startedAt: began }), ...(e.at === undefined ? {} : { endedAt: e.at }) });
+      // A blocked step is not finished: its questions are on record, and the run that follows runs it again.
+      if (d.blocked !== true) s.speckit?.steps.push({ command: String(d.command), ...(d.itemKey === undefined ? {} : { itemKey: String(d.itemKey) }), ...(began === undefined ? {} : { startedAt: began }), ...(e.at === undefined ? {} : { endedAt: e.at }) });
       if (s.speckit) delete s.speckit.current;
       // The feature folder Spec Kit numbered for the item, which the dev agents of that spec follow.
       if (s.speckit && d.featureDir !== undefined) s.speckit.features = { ...s.speckit.features, [String(d.itemKey)]: String(d.featureDir) };

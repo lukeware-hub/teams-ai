@@ -12,7 +12,7 @@ import { readDoc, type Draft } from './draft.js';
 import { RefineEvent } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
 import { SPECKIT_INPUTS, speckitPack, type SpeckitInput } from './speckit-pack.js';
-import { speckitSteps, type Step } from './speckit-steps.js';
+import { speckitSteps, stepKey, type Step } from './speckit-steps.js';
 import { renderSpecsMd } from './specs-md.js';
 import { buildSpecsIndex, specIdOf } from './specs-index.js';
 import { loadEvents } from '../store/event-store.js';
@@ -57,9 +57,9 @@ export async function speckitFeatureOf(draftRoot: string, specId: string): Promi
   return key ? state.speckit?.features?.[key] : undefined;
 }
 
-/** Writes the six Markdown inputs into a fresh input folder and answers the hash of their text. */
-async function writeInputs(draft: Draft, backlog: BacklogState): Promise<string> {
-  const texts: Record<SpeckitInput, string> = {
+/** The text of the six Markdown inputs, as Spec Kit reads them. */
+async function inputTexts(draft: Draft, backlog: BacklogState): Promise<Record<SpeckitInput, string>> {
+  return {
     'project.md': await readDoc(draft, 'project.md'),
     'flow.md': await readDoc(draft, 'flow.md'),
     'briefing.md': await readDoc(draft, 'briefing.md'),
@@ -67,11 +67,21 @@ async function writeInputs(draft: Draft, backlog: BacklogState): Promise<string>
     'design.md': await readDoc(draft, 'design.md'),
     'specs.md': renderSpecsMd(draft.specId, backlog),
   };
+}
+
+const hashOf = (texts: Record<SpeckitInput, string>): string => sha256(SPECKIT_INPUTS.map((file) => texts[file]).join('\n'));
+
+/** The hash of the six inputs as they are now. A failed preparation on the same hash resumes; any other starts over. */
+export async function speckitInputHash(draft: Draft, backlog: BacklogState): Promise<string> {
+  return hashOf(await inputTexts(draft, backlog));
+}
+
+/** Writes the six Markdown inputs into a fresh input folder. */
+async function writeInputs(draft: Draft, texts: Record<SpeckitInput, string>): Promise<void> {
   const dir = speckitInputDir(draft);
   await fs.rm(dir, { recursive: true, force: true });
   await fs.mkdir(dir, { recursive: true });
   await Promise.all(SPECKIT_INPUTS.map((file) => fs.writeFile(path.posix.join(dir, file), texts[file])));
-  return sha256(SPECKIT_INPUTS.map((file) => texts[file]).join('\n'));
 }
 
 const sameText = (text: string): string => text.trim().replace(/\s+/g, ' ').toLowerCase();
@@ -111,20 +121,29 @@ async function runCommand(deps: SpeckitDeps, step: Step, hash: string): Promise<
   return out.value;
 }
 
-/** Runs Spec Kit in a fresh staging folder over the detailed backlog; answers the hash of the inputs it read. */
-export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState): Promise<string> {
+/**
+ * Runs Spec Kit over the detailed backlog and answers the hash of the inputs it read. `finished` holds the steps of an earlier
+ * preparation of the same inputs that stopped: they run no more, and their files stay in the staging folder.
+ */
+export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState, finished: ReadonlySet<string> = new Set()): Promise<string> {
   const dir = speckitDir(deps.draft);
-  const hash = await writeInputs(deps.draft, backlog);
-  await fs.rm(dir, { recursive: true, force: true });
-  await fs.mkdir(dir, { recursive: true });
-  await initSpeckit(deps.exec, dir);
+  const texts = await inputTexts(deps.draft, backlog);
+  const hash = hashOf(texts);
+  await writeInputs(deps.draft, texts);
+  const resume = finished.size > 0 && (await fs.access(dir).then(() => true, () => false));
+  if (!resume) {
+    await fs.rm(dir, { recursive: true, force: true });
+    await fs.mkdir(dir, { recursive: true });
+    await initSpeckit(deps.exec, dir);
+  }
   for (const step of speckitSteps(buildSpecsIndex(deps.draft.specId, backlog).specs)) {
     if (deps.signal?.aborted) throw new OwnerError(`${SPECKIT_STAGE} foi interrompida.`, 'aborted');
+    if (resume && finished.has(stepKey(step.command, step.item?.key))) continue;
     await deps.journal.fact(RefineEvent.SpeckitStepStarted, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}) });
     const result = await runCommand(deps, step, hash);
     const asked = newQuestions(deps.journal.state, result.questions, step.item?.key);
     const featureDir = step.command === 'specify' ? await featureDirOf(dir, result.files) : undefined;
-    await deps.journal.fact(RefineEvent.SpeckitStepDone, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}), files: result.files, ...(featureDir ? { featureDir } : {}), ...(asked.length > 0 ? { questions: asked } : {}) });
+    await deps.journal.fact(RefineEvent.SpeckitStepDone, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}), files: result.files, ...(featureDir ? { featureDir } : {}), ...(asked.length > 0 ? { questions: asked } : {}), ...(result.status === 'blocked' ? { blocked: true } : {}) });
     // The questions of a blocked step are on record before it stops, so the owner can answer them.
     if (result.status === 'blocked') throw new OwnerError(`O Spec Kit parou em ${stepName(step)}: ${result.reason}`, result.summary);
   }

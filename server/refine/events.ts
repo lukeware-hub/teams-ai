@@ -52,7 +52,7 @@ export const RefineEvent = {
   PreplanDerived: 'PREPLAN_DERIVED',
   /** The SM's map of items that change the same code and never run together: `{inputHash, pairs}`. */
   ConflictsDerived: 'CONFLICTS_DERIVED',
-  /** "Preparar Spec Kit" started: `{total}` steps, the constitution plus three per backlog item. */
+  /** "Preparar Spec Kit" started: `{total, inputHash, resumed}`: the steps (the constitution plus three per backlog item), the hash of the six inputs, and the finished steps it skips. */
   SpeckitStarted: 'SPECKIT_STARTED',
   /** One Spec Kit command started: `{command, itemKey?}`, so the owner sees what runs now. */
   SpeckitStepStarted: 'SPECKIT_STEP_STARTED',

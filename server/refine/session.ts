@@ -30,10 +30,10 @@ import { buildSpecsIndex } from './specs-index.js';
 import { fitPackBudget } from './fit-pack.js';
 import { ownerFailure, TRY_AGAIN } from './agent-failure.js';
 import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
-import { allGreen, applyRefineEvent, canStart, emptyRefineState, speckitPending, type BacklogState, type RefineLimits, type RefineState } from './state.js';
+import { allGreen, applyRefineEvent, canStart, emptyRefineState, finishedSteps, speckitPending, type BacklogState, type RefineLimits, type RefineState } from './state.js';
 import { refineLimits } from './limits.js';
 import { isStarted } from './coverage.js';
-import { prepareSpeckit, SPECKIT_STAGE } from './speckit.js';
+import { prepareSpeckit, speckitInputHash, SPECKIT_STAGE } from './speckit.js';
 import { speckitSteps } from './speckit-steps.js';
 
 export type { RunAgent } from './cycle.js';
@@ -451,10 +451,13 @@ export class RefineSession {
   /** The journal keeps the preparation's start, each step and its end; a failure is journaled for the owner, never thrown. */
   private async timedSpeckit(ctl: AbortController, backlog: BacklogState): Promise<void> {
     const items = buildSpecsIndex(this.deps.draft.specId, backlog).specs;
-    await this.journal.fact(RefineEvent.SpeckitStarted, { total: speckitSteps(items).length });
+    const inputHash = await speckitInputHash(this.deps.draft, backlog);
+    // A preparation that failed on these same inputs keeps the steps it finished: this run skips them.
+    const finished = finishedSteps(this.journal.state.speckit, inputHash);
+    await this.journal.fact(RefineEvent.SpeckitStarted, { total: speckitSteps(items).length, inputHash, resumed: finished.size });
     try {
-      const inputHash = await prepareSpeckit({ draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, exec: this.deps.exec ?? execCommand, signal: ctl.signal }, backlog);
-      await this.journal.fact(RefineEvent.SpeckitDone, { inputHash });
+      const hash = await prepareSpeckit({ draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, exec: this.deps.exec ?? execCommand, signal: ctl.signal }, backlog, finished);
+      await this.journal.fact(RefineEvent.SpeckitDone, { inputHash: hash });
     } catch (err) {
       const reason = err instanceof OwnerError ? err.message : `${SPECKIT_STAGE} parou por um erro interno. ${TRY_AGAIN}`;
       const detail = err instanceof OwnerError ? err.detail : String(err instanceof Error ? err.message : err).slice(0, 1000);

@@ -105,7 +105,7 @@ describe('RefineSession.runSpeckit', () => {
     expect(agentCalls[0]!.extraAllow).toEqual(expect.arrayContaining(['Bash(bash:*)', 'Bash(.specify/scripts/bash/*:*)', `Read(//${`${draft().root}/speckit-input`.replace(/^\/+/, '')}/**)`]));
     const types = s.events.map((e) => e.type).filter((t) => t.startsWith('SPECKIT_'));
     expect(types).toEqual([RefineEvent.SpeckitStarted, ...Array.from({ length: 9 }, () => [RefineEvent.SpeckitStepStarted, RefineEvent.SpeckitStepDone]).flat(), RefineEvent.SpeckitDone]);
-    expect(s.events.find((e) => e.type === RefineEvent.SpeckitStarted)!.data).toEqual({ total: 9 });
+    expect(s.events.find((e) => e.type === RefineEvent.SpeckitStarted)!.data).toMatchObject({ total: 9, resumed: 0, inputHash: expect.any(String) });
     expect(s.events.find((e) => e.type === RefineEvent.SpeckitStepStarted && e.data.command === 'plan')!.data).toEqual({ command: 'plan', itemKey: 'login' });
     expect(s.events.find((e) => e.type === RefineEvent.SpeckitStepDone && e.data.command === 'plan')!.data).toEqual({ command: 'plan', itemKey: 'login', files: ['out-4-speckit.md'] });
     expect(s.state.speckit).toMatchObject({ status: 'done', stale: false, total: 9 });
@@ -153,7 +153,8 @@ describe('RefineSession.runSpeckit', () => {
     await s.runSpeckit();
     expect(s.state.speckit).toMatchObject({ status: 'failed' });
     expect(s.state.questions).toEqual([expect.objectContaining({ text: 'Qual o prazo de retenção?', blocking: true, status: 'pending', origin: 'speckit' })]);
-    expect(s.state.speckit?.steps.at(-1)).toMatchObject({ command: 'plan' });
+    // The blocked plan is not finished: the last finished step is the clarify before it.
+    expect(s.state.speckit?.steps.at(-1)).toMatchObject({ command: 'clarify' });
     await s.close();
   });
 
@@ -166,8 +167,41 @@ describe('RefineSession.runSpeckit', () => {
     expect(agentCalls).toHaveLength(4);
     answer = () => null;
     await s.runSpeckit();
-    expect(s.state.speckit).toMatchObject({ status: 'failed', steps: [] });
+    // The second run resumes at the plan: the constitution and the first item's specify and clarify stay finished.
+    expect(agentCalls).toHaveLength(5);
+    expect(s.state.speckit).toMatchObject({ status: 'failed' });
+    expect(s.state.speckit!.steps).toHaveLength(3);
     expect(s.state.speckit?.error).toContain('Spec Kit');
+    await s.close();
+  });
+
+  const stepOf = (r: { pack: { feedback?: string } }): string => `${r.pack.feedback!.match(/speckit-(\w+)\/SKILL/)![1]}:${r.pack.feedback!.match(/"## (\w+):/)?.[1] ?? ''}`;
+
+  it('a preparation that failed on the same inputs resumes at its failed step, and runs no finished step again', async () => {
+    answer = (req) => (req.pack.feedback!.includes('speckit-plan/SKILL') ? { status: 'blocked', summary: 'parou', files: [], reason: 'o plano não fecha' } : { status: 'done', summary: 'ok', files: [] });
+    const s = await detailedSession();
+    await s.runSpeckit();
+    const before = agentCalls.length;
+    answer = () => ({ status: 'done', summary: 'ok', files: [] });
+    await s.runSpeckit();
+    expect(agentCalls.slice(before).map(stepOf)).toEqual(['plan:login', 'tasks:login', 'specify:cart', 'clarify:cart', 'plan:cart', 'tasks:cart']);
+    expect(s.state.speckit).toMatchObject({ status: 'done', total: 9 });
+    expect(s.state.speckit!.steps).toHaveLength(9);
+    expect(canStart(s.state)).toBe(true);
+    await s.close();
+  });
+
+  it('a preparation whose inputs changed after the failure starts over from the constitution', async () => {
+    answer = (req) => (req.pack.feedback!.includes('speckit-plan/SKILL') ? { status: 'blocked', summary: 'parou', files: [], reason: 'o plano não fecha' } : { status: 'done', summary: 'ok', files: [] });
+    const s = await detailedSession();
+    await s.runSpeckit();
+    await s.saveDoc('stack.md', '# Stack\n\nNode 24\n');
+    answer = () => ({ status: 'done', summary: 'ok', files: [] });
+    const before = agentCalls.length;
+    await s.runSpeckit();
+    expect(agentCalls.slice(before).map(stepOf)[0]).toBe('constitution:');
+    expect(agentCalls.length - before).toBe(9);
+    expect(s.state.speckit).toMatchObject({ status: 'done' });
     await s.close();
   });
 
