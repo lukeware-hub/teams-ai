@@ -104,9 +104,19 @@ function serviceRule(ctx: ServiceContext, platform: readonly PlatformService[], 
   ].join(' ');
 }
 
-/** The Spec Kit files the refinement may have published to the repository; the dev agents follow them when present. */
+/**
+ * The Spec Kit files the refinement published to the repository. The pack names them and the agent reads them: principles
+ * are never dropped for the budget, so pasting the files in would push the pack over it.
+ */
 export const speckitRule = (featureDir?: string): string =>
-  `When the repository has .specify/memory/constitution.md and specs/*/tasks.md (made by Spec Kit), follow that constitution and the spec, plan and tasks of the feature this task belongs to.${featureDir ? ` This spec's feature is ${featureDir}: follow ${featureDir}/spec.md, ${featureDir}/plan.md and ${featureDir}/tasks.md.` : ''}`;
+  `When the repository has .specify/memory/constitution.md (made by Spec Kit), read it and the spec, plan and tasks of the feature this task belongs to before you change any file, then follow them. ${featureDir ? `This spec's feature is ${featureDir}: read ${featureDir}/spec.md, ${featureDir}/plan.md and ${featureDir}/tasks.md.` : 'That feature is the one under specs/*/ that this task belongs to: read its spec.md, plan.md and specs/*/tasks.md.'}`;
+
+/** The project's six documents in the repository's docs folder; a service repository holds none of them, so the rule does not apply there. */
+export const sourceDocsRule =
+  'When the repository has docs/project.md, read docs/project.md, docs/stack.md, docs/flow.md, docs/design.md and docs/briefing.md (when present) before you change any file: they are the owner\'s source of truth, and a document wins over the code when they disagree.';
+
+/** What every task that builds or judges code reads first: the Spec Kit files and the six documents. */
+const sourceRules = (base: PackBase): string[] => [speckitRule(base.speckitFeature), sourceDocsRule];
 
 export function devPack(
   base: PackBase,
@@ -117,7 +127,7 @@ export function devPack(
   const shared = common(base, 'dev', role);
   return {
     ...shared,
-    principles: [...shared.principles, speckitRule(base.speckitFeature), ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : [])],
+    principles: [...shared.principles, ...sourceRules(base), ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : [])],
     task,
     criteria: criteriaOf(base.spec, task.criteriaRefs),
     decisions: base.spec.decisions,
@@ -155,7 +165,8 @@ export function reviewPack(
   if (opts.junit.length > REVIEW_JUNIT_LINES) results.push(`- ... ${opts.junit.length - REVIEW_JUNIT_LINES} more`);
   // The merge gates already ran the suite on this exact diff: the reviewer reads their result instead of re-running it (R11.13 slice 2).
   const changeSet = `Changed files:\n${opts.changedFiles.join('\n')}\n\nDiff stat:\n${opts.diffStat}\n\nThe JUnit report (reports/junit.xml) is gate output the orchestrator never commits: do not ask for it.\n\nThe compose service healthcheck and its "image: \${TEAMS_AI_IMAGE:-...}" line are the orchestrator's deploy contract (it tags, verifies and rolls back the image through them): never ask to remove them.\n\nGate test results (the merge gates already ran the suite on this diff; do not re-run it):\n${results.join('\n') || '- none reported'}\n\nDiff against origin/main:\n${opts.diff}`;
-  return { ...common(base, 'review', 'test'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), decisions: base.spec.decisions, code: opts.code, feedback, changeSet };
+  const shared = common(base, 'review', 'test');
+  return { ...shared, principles: [...shared.principles, ...sourceRules(base)], task, criteria: criteriaOf(base.spec, task.criteriaRefs), decisions: base.spec.decisions, code: opts.code, feedback, changeSet };
 }
 
 /**
@@ -169,7 +180,8 @@ export function securityPack(
   opts: { diffStat: string; changedFiles: readonly string[]; diff: string; code: CodeContext },
 ): ContextPackInput {
   const changeSet = `Changed files:\n${opts.changedFiles.join('\n')}\n\nDiff stat:\n${opts.diffStat}\n\nDiff against origin/main:\n${opts.diff}`;
-  return { ...common(base, 'security', 'sec'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), code: opts.code, changeSet };
+  const shared = common(base, 'security', 'sec');
+  return { ...shared, principles: [...shared.principles, ...sourceRules(base)], task, criteria: criteriaOf(base.spec, task.criteriaRefs), code: opts.code, changeSet };
 }
 
 export function techSpecPack(base: PackBase, opts: { feedback: string | null }): ContextPackInput {

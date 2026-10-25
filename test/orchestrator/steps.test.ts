@@ -8,7 +8,7 @@ import { Governor } from '../../server/budget/governor.js';
 import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
 import { buildContextPack } from '../../server/knowledge/context-pack.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
-import { devPack, devResumePrompt, fixTasksPack, outputContract, planPack, planRules, readmePack, replanPack, reportPack, reviewPack, runAgentStep, securityPack, servicesPlanRules, speckitRule, specGapPack, techSpecPack, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
+import { devPack, devResumePrompt, fixTasksPack, outputContract, planPack, planRules, readmePack, replanPack, reportPack, reviewPack, runAgentStep, securityPack, servicesPlanRules, sourceDocsRule, speckitRule, specGapPack, techSpecPack, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
 import { servicePlans } from '../../server/contracts/plan.js';
 import { saveSession } from '../../server/runner/session-store.js';
 import type { StepOutcome } from '../../server/runner/step.js';
@@ -140,18 +140,29 @@ describe('packs', () => {
     expect(rules).toContain('keeps the data of earlier runs');
     expect(rules).toContain('Never skip a test');
     expect(devPack(base, { ...task, affectedPaths: ['test/e2e/**'] }, opts).principles.join('\n')).toContain('Never skip a test');
-    expect(devPack(base, { ...task, affectedPaths: ['src/app.mjs'] }, opts).principles).toEqual([...base.project.principles, speckitRule()]);
-    expect(devPack(base, suiteTask, { ...opts, e2eSuite: undefined }).principles).toEqual([...base.project.principles, speckitRule()]);
+    expect(devPack(base, { ...task, affectedPaths: ['src/app.mjs'] }, opts).principles).toEqual([...base.project.principles, speckitRule(), sourceDocsRule]);
+    expect(devPack(base, suiteTask, { ...opts, e2eSuite: undefined }).principles).toEqual([...base.project.principles, speckitRule(), sourceDocsRule]);
   });
 
-  it('tells every dev task to follow the Spec Kit constitution and tasks when the repository has them', () => {
+  it('tells every dev task to read the Spec Kit files and the six documents before it changes a file', () => {
     const p = devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null });
     expect(p.principles).toContain(speckitRule());
     expect(speckitRule()).toContain('.specify/memory/constitution.md');
     expect(speckitRule()).toContain('specs/*/tasks.md');
+    expect(p.principles).toContain(sourceDocsRule);
+    expect(sourceDocsRule).toContain('docs/briefing.md');
     const known = devPack({ ...base, speckitFeature: 'specs/003-login' }, task, { code: { source: 'none' }, handoffs: [], feedback: null });
     expect(known.principles).toContain(speckitRule('specs/003-login'));
     expect(speckitRule('specs/003-login')).toContain('specs/003-login/tasks.md');
+  });
+
+  it('the reviewers and the security step read the Spec Kit files and the six documents too', () => {
+    const feature = { ...base, speckitFeature: 'specs/003-login' };
+    const review = { diffStat: '', changedFiles: [], diff: '', junit: [], code: { source: 'none' as const }, profile: 'standard' as const };
+    const security = { diffStat: '', changedFiles: [], diff: '', code: { source: 'none' as const } };
+    const rules = [...base.project.principles, speckitRule('specs/003-login'), sourceDocsRule];
+    expect(reviewPack(feature, task, review).principles).toEqual(rules);
+    expect(securityPack(feature, task, security).principles).toEqual(rules);
   });
 
   // R11.7.6: the Dev and the Test engineer read the owner's answers the frozen spec carries.
