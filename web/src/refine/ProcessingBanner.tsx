@@ -5,7 +5,7 @@ import { processingText } from './BacklogPanel.js';
 import { formatDuration } from '../run/selectors.js';
 import { runningStepLabel, type RunningStep } from './running-steps.js';
 
-const evaluationInfo = 'Cada clique em Avaliar abre uma rodada: o Jev confere a consistência dos documentos, o Claude gera o spec.json e o project.json, os agentes PO, SM e Front revisam e sugerem ajustes, e o Jev também aponta critérios ainda não prontos, descarta perguntas repetidas e sinaliza contradições com o histórico.';
+const evaluationInfo = 'Cada clique em Avaliar abre uma rodada: o Jev confere a consistência dos documentos, o Claude gera as specs, os agentes PO, SM e Front revisam e sugerem ajustes, e o Jev também aponta critérios ainda não prontos, descarta perguntas repetidas e sinaliza contradições com o histórico.';
 
 /** The time from `since` to `now` as mm:ss, or h:mm:ss from an hour on. */
 export function elapsedText(since: string, now: number): string {

@@ -1,7 +1,6 @@
 import { Fragment, memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, refineApi, type AcceptanceCriterion, type ChecklistItem, type PatchRow, type QuestionRow, type Snapshot, type StoredEvent } from '../api.js';
-import { docToJson } from '../refine/docJson.js';
 import { applyBatch, type LiveSnapshot } from '../refine/reducer.js';
 import { useJournal } from '../useSse.js';
 import { ActionButton } from '../components/ActionButton.js';
@@ -9,7 +8,8 @@ import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
-import { buildSpecsIndex } from '@server/refine/specs-index';
+import { renderSpecMd } from '@server/refine/spec-md';
+import { renderSpecsMd } from '@server/refine/specs-md';
 import { allGreen, isApproval } from '@server/refine/state';
 import type { Divergence, DivergenceSide } from '@server/refine/checklist';
 import { BacklogPanel } from '../refine/BacklogPanel.js';
@@ -30,7 +30,7 @@ import { Workspace } from '../components/Workspace.js';
 import { Stepper } from '../components/Stepper.js';
 import { WizardShell } from '../components/WizardShell.js';
 import { DocScoreInset, ScoreChecks } from '../refine/DocScoreView.js';
-import { docPatches, docQuestions, initialStep, isDocStep, nextStep as nextWizardStep, pendingCount, prevStep, stepParam, unfiledQuestions, wizardNodes, type WizardStep } from '../refine/wizard.js';
+import { docPatches, docQuestions, initialStep, isDocStep, nextStep as nextWizardStep, pendingCount, prevStep, speckitQuestions, stepParam, unfiledQuestions, wizardNodes, type WizardStep } from '../refine/wizard.js';
 import { DOC_STAGES } from '@server/refine/doc-stages';
 import { percentOf } from '@server/refine/readiness';
 
@@ -63,8 +63,8 @@ const alignedLine = (divergences: string[] | undefined, check: { passed: boolean
   return check.passed ? 'Alinhado com os outros documentos.' : `Não alinhado com os outros documentos: ${check.detail}`;
 };
 const docImpact: Record<DocFile, string> = {
-  'project.md': 'O que o projeto é: visão, objetivos, o que ele precisa entregar e quem responde por cada parte. Gera o project.json.',
-  'briefing.md': 'Como o sistema funciona em detalhe, com o que entra, o que fica de fora e como saber que ficou pronto. Gera o spec.json.',
+  'project.md': 'O que o projeto é: visão, objetivos, o que ele precisa entregar e quem responde por cada parte.',
+  'briefing.md': 'Como o sistema funciona em detalhe, com o que entra, o que fica de fora e como saber que ficou pronto. Dele saem as specs.',
   'stack.md': 'Tecnologias, versões e regras de uso: o que não usar e as boas práticas. Orienta o plano técnico e a implementação.',
   'flow.md': 'O fluxo de negócio completo, como diagrama: estados, desvios, erros e quem age em cada passo. Base dos critérios de aceite e dos testes.',
   'design.md': 'Contrato visual: cores, tipografia, componentes e acessibilidade. Seguido pelo agente Front, que cuida da interface.',
@@ -111,7 +111,7 @@ const checkDetail = (detail: string) => {
 const criterionText = (c: AcceptanceCriterion) => `${c.id}: dado ${c.given}, quando ${c.when}, então ${c.then}`;
 const jevInfo = 'O Jev é obrigatório no refinamento. Ele confere se os cinco documentos estão consistentes entre si e classifica e decide pontos da avaliação: critérios de aceite ainda não prontos, perguntas repetidas e contradições com o histórico do projeto. Sem ele, a avaliação não inicia. Ajuste o que fizer sentido e reavalie.';
 const patchInfo = 'Mudança proposta por um agente: linhas com - saem e linhas com + entram. Aceitar aplica a mudança no documento; Rejeitar a descarta, e o motivo opcional fica no histórico.';
-const jsonDownload = (value: unknown) => `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(value, null, 2))}`;
+const mdDownload = (text: string) => `data:text/markdown;charset=utf-8,${encodeURIComponent(text)}`;
 
 // Skip re-rendering the 59-spec backlog on each tab click: its props stay the same.
 const MemoBacklogPanel = memo(BacklogPanel);
@@ -191,7 +191,7 @@ function currentClaudeStage(events: StoredEvent[], cycle: number, jevEvent: Stor
   if (active.some((step) => step.kind === 'backlog')) return 'PO está quebrando os documentos em backlog, com épicos e prioridades.';
   if (active.some((step) => step.kind === 'spec')) return 'PO está detalhando a spec de cada item do backlog.';
   if (active.some((step) => step.kind === 'preplan')) return 'SM está fazendo o pré-plano de cada spec.';
-  if (active.some((step) => step.kind === 'derive')) return 'Claude está derivando project.json e spec.json a partir dos cinco documentos.';
+  if (active.some((step) => step.kind === 'derive')) return 'Claude está derivando as specs a partir dos cinco documentos.';
   if (active.some((step) => step.kind === 'answer')) return 'PO e SM estão respondendo, a partir dos documentos, as perguntas que eles já resolvem.';
   const roles = active.filter((step) => step.kind === 'refine').map((step) => step.role);
   if (roles.includes('front')) return 'Front está revisando o contrato visual, responsividade e acessibilidade.';
@@ -379,17 +379,13 @@ export function RefinementView(p: ViewProps) {
       <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Os agentes quebram os cinco documentos em specs, e o Spec Kit monta a spec, o plano e as tarefas de cada uma. Quando tudo estiver pronto, o desenvolvimento começa já com isso feito.</p>
     </header>
   );
-  // Backlog mode lists specs, not one spec: the generated index replaces spec.json and the tasks of a single spec.
-  const specsIndex = useMemo(() => (backlogOn && (st.backlog?.items.length ?? 0) > 0 ? buildSpecsIndex(snap.specId, st.backlog as never) : null), [backlogOn, snap.specId, st.backlog]);
-  // project.md is written in an earlier stage, so project.json is offered from it until the evaluation derives the project.
-  const projectJson = (backlogOn ? st.backlog?.project : st.derived?.project) ?? (snap.docs['project.md']?.trim() ? docToJson('project.md', snap.docs['project.md']) : null);
-  // The base docs as JSON, by the names the generated files use; briefing.md is the brief in backlog mode.
-  const docFiles = [
-    { doc: 'flow.md', name: 'flow.json', text: snap.docs['flow.md'] },
-    { doc: 'briefing.md', name: 'briefing.json', text: snap.docs['briefing.md'] },
-    { doc: 'stack.md', name: 'stack.json', text: snap.docs['stack.md'] },
-    { doc: 'design.md', name: 'design.json', text: snap.docs['design.md'] },
-  ];
+  // A wizard project and a backlog list markdown files only: specs.md, written by the evaluation, and the five documents.
+  const mdFiles = backlogOn || newProject;
+  const legacyFiles = !mdFiles;
+  const specsMd = useMemo(() => (backlogOn && (st.backlog?.items.length ?? 0) > 0 ? renderSpecsMd(snap.specId, st.backlog as never) : ''), [backlogOn, snap.specId, st.backlog]);
+  const baseDocs = (['project.md', 'flow.md', 'briefing.md', 'stack.md', 'design.md'] as DocFile[]).map((doc) => ({ doc, text: snap.docs[doc] }));
+  // A wizard project lists specs.md; the single-spec flow lists the spec it derived, also as Markdown.
+  const specFile = mdFiles ? { name: 'specs.md', text: specsMd } : { name: 'spec.md', text: st.derived ? renderSpecMd(st.derived.spec as never) : '' };
   // A detailed backlog numbers criteria across its item specs, so a question may cite any of them; a single-spec
   // derivation left in the journal from before backlog mode no longer counts.
   const criteria = backlogOn ? Object.values(st.backlog?.specs ?? {}).flatMap((row) => row.spec?.acceptanceCriteria ?? []) : st.derived?.spec.acceptanceCriteria ?? [];
@@ -851,8 +847,8 @@ export function RefinementView(p: ViewProps) {
         </details>
       </div>
       {!backlogFirst && backlogBlock}
-      <h4><Icon name="file" size={20} />Arquivos gerados<InfoTip text="Versão estruturada dos documentos, gerada pelo Claude a cada avaliação. O project.json descreve o projeto; o spec.json, esta demanda, com tarefas e critérios de aceite." /></h4>
-      {!backlogOn && (
+      <h4><Icon name="file" size={20} />Arquivos gerados<InfoTip text={mdFiles ? "Os cinco documentos e o specs.md, que o Claude gera a cada avaliação. O Spec Kit parte desses seis arquivos para criar a spec, o plano e as tarefas de cada item." : "Os cinco documentos e o spec.md, a demanda que o Claude deriva a cada avaliação, com critérios de aceite e tarefas."} /></h4>
+      {legacyFiles && (
         <>
       {st.derived?.spec && <p data-testid="spec-type">Tipo da demanda: <strong>{typeLabel[st.derived.spec.type] ?? st.derived.spec.type}</strong></p>}
       {st.derived?.spec.type === 'bug' && st.derived.spec.bug && (
@@ -863,17 +859,13 @@ export function RefinementView(p: ViewProps) {
           <span>Como reproduzir: {st.derived.spec.bug.reproduction}</span>
         </div>
       )}
-      <LazyDetails className={fileBox} summary={<><span>spec.json</span>{st.derived ? <a data-testid="download-spec-json" href={jsonDownload(st.derived.spec)} download="spec.json" aria-label="Baixar spec.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</>} body={() => st.derived ? <pre className="whitespace-pre-wrap break-words">{JSON.stringify(st.derived.spec, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>} />
         </>
       )}
-      {backlogOn && (
-        <LazyDetails key="specs" className={fileBox} summary={<><span>specs.json</span>{specsIndex ? <a data-testid="download-specs-json" href={jsonDownload(specsIndex)} download="specs.json" aria-label="Baixar specs.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</>} body={() => specsIndex ? <pre className="whitespace-pre-wrap break-words">{JSON.stringify(specsIndex, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>} />
-      )}
-      <LazyDetails className={fileBox} summary={<><span>project.json</span>{projectJson ? <a data-testid="download-project-json" href={jsonDownload(projectJson)} download="project.json" aria-label="Baixar project.json" onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</>} body={() => projectJson ? <pre className="whitespace-pre-wrap break-words">{JSON.stringify(projectJson, null, 2)}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>} />
-      {docFiles.map(({ doc, name, text }) => (
-        <LazyDetails key={name} className={fileBox} summary={<><span>{name}</span><a data-testid={`download-${name.replace('.', '-')}`} href={jsonDownload(docToJson(doc, text))} download={name} aria-label={`Baixar ${name}`} onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a></>} body={() => <pre className="whitespace-pre-wrap break-words">{JSON.stringify(docToJson(doc, text), null, 2)}</pre>} />
+      <LazyDetails key={specFile.name} className={fileBox} summary={<><span>{specFile.name}</span>{specFile.text ? <a data-testid={`download-${specFile.name.replace('.', '-')}`} href={mdDownload(specFile.text)} download={specFile.name} aria-label={`Baixar ${specFile.name}`} onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</>} body={() => specFile.text ? <pre className="whitespace-pre-wrap break-words">{specFile.text}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>} />
+      {baseDocs.map(({ doc, text }) => (
+        <LazyDetails key={doc} className={fileBox} summary={<><span>{doc}</span><a data-testid={`download-${doc.replace('.', '-')}`} href={mdDownload(text ?? '')} download={doc} aria-label={`Baixar ${doc}`} onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a></>} body={() => <pre className="whitespace-pre-wrap break-words">{text}</pre>} />
       ))}
-      {!backlogOn && (
+      {legacyFiles && (
         <>
       <h4><Icon name="list" size={20} />Tarefas<InfoTip text="Tarefas descritas no briefing, extraídas a cada avaliação. Na execução, o SM as usa para montar o plano de trabalho." /></h4>
       <ul className="m-0">
@@ -1064,10 +1056,12 @@ export function RefinementView(p: ViewProps) {
   };
   // After the first processing the text passed is kept, so the one button of the stage reprocesses from it.
   const reprocess = isDocStep(step) && (st.passedStages ?? []).includes(step);
+  const speckitAsked = speckitQuestions(st);
   const backlogScreen = () => (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6" data-testid="backlog-stage">
       {backlogStageHeading}
       {backlogOn && st.stages === true && <SpeckitStatus speckit={speckit} titles={backlogTitles} />}
+      {!locked && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
       {backlogBlock}
     </div>
   );

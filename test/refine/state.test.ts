@@ -399,6 +399,15 @@ describe('canStart', () => {
     expect(canStart({ ...wizard, speckit: { status: 'done', stale: false } })).toBe(true);
   });
 
+  it('a pending blocking question of Spec Kit keeps a wizard start shut; an answered or advisory one does not', () => {
+    const ready = { ...base, mode: 'new-project', stages: true, backlog: { enabled: true, detail: true, items: [{ key: 'base' }] }, speckit: { status: 'done', stale: false } };
+    const q = (over: Record<string, unknown>) => ({ status: 'pending', blocking: true, origin: 'speckit', ...over });
+    expect(canStart({ ...ready, questions: [q({})] })).toBe(false);
+    expect(canStart({ ...ready, questions: [q({ status: 'answered' })] })).toBe(true);
+    expect(canStart({ ...ready, questions: [q({ blocking: false })] })).toBe(true);
+    expect(canStart({ ...ready, questions: [q({ origin: undefined })] })).toBe(true);
+  });
+
   it('an imported backlog and a session without stages need no Spec Kit preparation', () => {
     const backlog = { enabled: true, detail: true, items: [{ key: 'base' }] };
     expect(canStart({ ...base, mode: 'backlog', backlog })).toBe(true);
@@ -418,6 +427,19 @@ describe('Spec Kit preparation state', () => {
     expect(s.speckit).toEqual({ status: 'running', steps: [{ command: 'constitution' }, { command: 'specify', itemKey: 'login' }], total: 4, stale: false });
     const done = reduceRefineEvents([started, { type: RefineEvent.SpeckitDone, data: { inputHash: 'h' } }]);
     expect(done.speckit).toMatchObject({ status: 'done', stale: false });
+  });
+
+  it('records the questions of a Spec Kit step as pending questions marked with their origin and item', () => {
+    const asked = { questionId: 'speckit-1', role: 'po', text: 'Qual moeda?', blocking: true, relatedAcIds: [], cycle: 2, origin: 'speckit', itemKey: 'cart' };
+    const s = reduceRefineEvents([started, { type: RefineEvent.SpeckitStepDone, data: { command: 'specify', itemKey: 'cart', files: [], questions: [asked] } }]);
+    expect(s.questions).toEqual([{ ...asked, status: 'pending', answer: null }]);
+    expect(s.status).toBe('answering');
+  });
+
+  it('keeps the feature directory of each item a specify step reports', () => {
+    const s = reduceRefineEvents([started, { type: RefineEvent.SpeckitStepDone, data: { command: 'specify', itemKey: 'cart', files: [], featureDir: 'specs/002-cart' } }]);
+    expect(s.speckit?.features).toEqual({ cart: 'specs/002-cart' });
+    expect(reduceRefineEvents([started]).speckit?.features).toBeUndefined();
   });
 
   it('keeps the reason of a failed run, and a new run starts clean', () => {

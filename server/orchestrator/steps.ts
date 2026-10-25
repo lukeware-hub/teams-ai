@@ -37,6 +37,8 @@ export interface PackBase {
   budgetTokens: number;
   /** Set when the step works in a service's repository, which holds none of the project's docs. */
   service?: ServiceContext;
+  /** The Spec Kit feature folder of this spec (`specs/NNN-name`), when the refinement prepared one. */
+  speckitFeature?: string;
 }
 
 /** What a step in a service's repository needs from the project and cannot read there (R12.6). */
@@ -103,7 +105,8 @@ function serviceRule(ctx: ServiceContext, platform: readonly PlatformService[], 
 }
 
 /** The Spec Kit files the refinement may have published to the repository; the dev agents follow them when present. */
-export const SPECKIT_RULE = 'When the repository has .specify/memory/constitution.md and specs/*/tasks.md (made by Spec Kit), follow that constitution and the spec, plan and tasks of the feature this task belongs to.';
+export const speckitRule = (featureDir?: string): string =>
+  `When the repository has .specify/memory/constitution.md and specs/*/tasks.md (made by Spec Kit), follow that constitution and the spec, plan and tasks of the feature this task belongs to.${featureDir ? ` This spec's feature is ${featureDir}: follow ${featureDir}/spec.md, ${featureDir}/plan.md and ${featureDir}/tasks.md.` : ''}`;
 
 export function devPack(
   base: PackBase,
@@ -114,7 +117,7 @@ export function devPack(
   const shared = common(base, 'dev', role);
   return {
     ...shared,
-    principles: [...shared.principles, SPECKIT_RULE, ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : [])],
+    principles: [...shared.principles, speckitRule(base.speckitFeature), ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : [])],
     task,
     criteria: criteriaOf(base.spec, task.criteriaRefs),
     decisions: base.spec.decisions,

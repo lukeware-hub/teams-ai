@@ -322,10 +322,14 @@ export type SuggestOutput = z.infer<typeof SuggestOutput>;
 export const AnswerOutput = z.object({ specHash, answer: z.string().min(1).nullable() });
 export type AnswerOutput = z.infer<typeof AnswerOutput>;
 
-/** One Spec Kit command run in the staging folder: the files it wrote, or why it could not finish. */
+/** A point Spec Kit left open for the owner, as the [NEEDS CLARIFICATION] markers and clarify questions; a bad one is dropped alone. */
+const SpeckitQuestion = z.object({ text: z.string().min(1), blocking: z.boolean(), itemKey: z.string().optional(), options: keepValid(QuestionChoice.extend({ detail: z.string().default('') })).optional() });
+const speckitCommon = { specHash, summary: z.string().min(1), files: z.array(z.string().min(1)), questions: keepValid(SpeckitQuestion) };
+
+/** One Spec Kit command run in the staging folder: the files it wrote and the questions it left open, or why it could not finish. */
 export const SpeckitOutput = z.discriminatedUnion('status', [
-  z.object({ specHash, status: z.literal('done'), summary: z.string().min(1), files: z.array(z.string().min(1)) }),
-  z.object({ specHash, status: z.literal('blocked'), summary: z.string().min(1), files: z.array(z.string().min(1)), reason: z.string().min(1) }),
+  z.object({ ...speckitCommon, status: z.literal('done') }),
+  z.object({ ...speckitCommon, status: z.literal('blocked'), reason: z.string().min(1) }),
 ]);
 export type SpeckitOutput = z.infer<typeof SpeckitOutput>;
 

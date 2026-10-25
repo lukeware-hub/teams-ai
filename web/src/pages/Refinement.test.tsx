@@ -18,7 +18,7 @@ const base = (over: Partial<Snapshot['state']>): Snapshot => ({
     status: 'answering',
     stale: false,
     cycle: 1,
-    derived: { spec: { type: 'feature', acceptanceCriteria: [], externalDependencies: [{ name: 'db', secretNames: ['DB_URL'] }] }, project: {} },
+    derived: { spec: { specId: 'hello-001', type: 'feature', objectives: ['Hello'], features: [], outOfScope: [], acceptanceCriteria: [], externalDependencies: [{ name: 'db', secretNames: ['DB_URL'] }] }, project: {} },
     checklist: green(ALL),
     questions: [
       { questionId: 'po-c1-0', role: 'po', text: 'Port?', blocking: true, relatedAcIds: ['AC-001'], cycle: 1, status: 'pending', answer: null },
@@ -208,28 +208,21 @@ describe('RefinementView backlog mode', () => {
     expect(h.onEnableBacklog).toHaveBeenCalledOnce();
   });
 
-  it('offers specs.json instead of spec.json and tasks, and project.json from the backlog run', () => {
-    const withProject = { ...backlog, project: { projectId: 'hello-app' } };
-    render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog: withProject })} busy={false} {...on()} /></MemoryRouter>);
-    const specs = screen.getByTestId('download-specs-json') as HTMLAnchorElement;
-    expect(decodeURIComponent(specs.href)).toContain('"specId": "hello-001-base"');
-    expect(screen.queryByTestId('download-spec-json')).toBeNull();
-    expect(screen.queryByText(/Nenhuma tarefa gerada/)).toBeNull();
-    expect(screen.getByTestId('download-project-json')).toBeTruthy();
-  });
-
-  it('offers project.json from project.md before the evaluation, and keeps specs.json waiting for it', () => {
-    render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog: { ...backlog, items: [] } })} busy={false} {...on()} /></MemoryRouter>);
-    const project = screen.getByTestId('download-project-json') as HTMLAnchorElement;
-    expect(decodeURIComponent(project.href)).toContain('"doc": "project.md"');
-    expect(screen.queryByTestId('download-specs-json')).toBeNull();
-    expect(screen.getAllByText('Aguardando avaliação').length).toBe(1);
-  });
-
-  it('offers the base docs as JSON, briefing.json from briefing.md', () => {
+  it('lists only markdown files in backlog mode: specs.md instead of spec.json and tasks, and the five documents', () => {
     render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog })} busy={false} {...on()} /></MemoryRouter>);
-    for (const name of ['flow-json', 'briefing-json', 'stack-json', 'design-json']) expect(screen.getByTestId(`download-${name}`)).toBeTruthy();
-    expect(decodeURIComponent((screen.getByTestId('download-briefing-json') as HTMLAnchorElement).href)).toContain('"doc": "briefing.md"');
+    const specs = screen.getByTestId('download-specs-md') as HTMLAnchorElement;
+    expect(specs.getAttribute('download')).toBe('specs.md');
+    expect(decodeURIComponent(specs.href)).toContain('Fundação');
+    for (const doc of ['project-md', 'flow-md', 'briefing-md', 'stack-md', 'design-md']) expect(screen.getByTestId(`download-${doc}`)).toBeTruthy();
+    for (const json of ['spec-json', 'specs-json', 'project-json', 'flow-json', 'briefing-json', 'stack-json', 'design-json']) expect(screen.queryByTestId(`download-${json}`)).toBeNull();
+    expect(screen.queryByText(/Nenhuma tarefa gerada/)).toBeNull();
+  });
+
+  it('keeps specs.md waiting for the evaluation, with the documents already offered', () => {
+    render(<MemoryRouter><RefinementView snap={base({ ...ready, backlog: { ...backlog, items: [] } })} busy={false} {...on()} /></MemoryRouter>);
+    expect(screen.queryByTestId('download-specs-md')).toBeNull();
+    expect(screen.getAllByText('Aguardando avaliação').length).toBe(1);
+    expect(decodeURIComponent((screen.getByTestId('download-project-md') as HTMLAnchorElement).href)).toContain('# Hello');
   });
 
   it.each([
@@ -521,7 +514,7 @@ describe('RefinementView', () => {
       event(2, 'REFINE_DOCS_VALIDATED', { cycle: 1, available: true }),
       event(3, 'STEP_STARTED', { stepId: 'step-1', kind: 'derive', role: 'po', attempt: 1 }),
     ];
-    expect(stageNow(events, 1).stage).toMatch(/derivando project\.json e spec\.json/);
+    expect(stageNow(events, 1).stage).toMatch(/derivando as specs/);
   });
 
   it('flags Jev as down when it is unavailable', () => {
@@ -552,7 +545,7 @@ describe('RefinementView', () => {
             derived: {
               project: {},
               spec: {
-                type: 'bug',
+                specId: 'todo-001', type: 'bug', objectives: ['Listar'], features: [], outOfScope: [],
                 bug: { actual: '500', expected: '200', reproduction: 'GET /todos' },
                 acceptanceCriteria: [],
                 externalDependencies: [],
@@ -565,11 +558,11 @@ describe('RefinementView', () => {
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByRole('button', { name: 'briefing.md' }));
-    expect(screen.getByTestId('doc-impact').textContent).toContain('spec.json');
+    expect(screen.getByTestId('doc-impact').textContent).toContain('as specs');
     expect(screen.getByTestId('spec-type').textContent).toContain('Bug');
     expect(screen.getByTestId('bug-details').textContent).toContain('GET /todos');
-    expect(screen.getByTestId('download-spec-json').getAttribute('download')).toBe('spec.json');
-    expect(screen.getByTestId('download-project-json').getAttribute('download')).toBe('project.json');
+    expect(screen.getByTestId('download-spec-md').getAttribute('download')).toBe('spec.md');
+    expect(screen.getByTestId('download-project-md').getAttribute('download')).toBe('project.md');
   });
 });
 
@@ -648,10 +641,10 @@ describe('RefinementView: Sugerir', () => {
 });
 
 describe('RefinementView file previews', () => {
-  it('builds a JSON preview only after its file is opened', () => {
+  it('builds a Markdown preview only after its file is opened', () => {
     const { container } = render(<MemoryRouter><RefinementView snap={base({ status: 'answering' })} busy={false} {...on()} /></MemoryRouter>);
     expect(container.querySelectorAll('details pre')).toHaveLength(0);
-    const details = screen.getByText('flow.json').closest('details')!;
+    const details = screen.getByTestId('download-flow-md').closest('details')!;
     details.open = true;
     fireEvent(details, new Event('toggle'));
     expect(container.querySelectorAll('details pre').length).toBeGreaterThan(0);

@@ -107,6 +107,14 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(h.onStart).toHaveBeenCalledTimes(1);
   });
 
+  it('shows the questions the Spec Kit asked, for the owner to answer, and keeps the start locked while one blocks', () => {
+    const asked = { ...question(true), questionId: 'speckit-abc', origin: 'speckit', itemKey: 'base', text: 'Qual banco de dados?' };
+    renderView(wizard({ status: 'answering', speckit: speckit() as never, questions: [asked as never] }), handlersWithSpeckit());
+    expect(screen.getByText('Qual banco de dados?')).toBeTruthy();
+    expect(screen.getByTestId('answer')).toBeTruthy();
+    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('shows only the locked start once the program has started', () => {
     renderView(wizard({ status: 'started', speckit: speckit() as never }), handlersWithSpeckit());
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);

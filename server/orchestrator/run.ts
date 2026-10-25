@@ -84,6 +84,8 @@ export interface RunDeps {
   claudeJsonPath?: string;
   /** Spec (refinement) §4: docs to put on main before Phase 1 (`run --draft`). */
   bootstrap?: { docsDir: string; owner: string | undefined };
+  /** The Spec Kit feature folder of this spec, when its refinement prepared one. */
+  speckitFeature?: string;
   target?: DeployTarget;
   /** Runs gates and smoke; absent means docker over `exec`. */
   gateExecutor?: GateExecutor;
@@ -493,6 +495,7 @@ export class Run {
     techSpecExcerpt: this.techSpecText.slice(0, 6000),
     retrieval: this.deps.knowledge?.search(this.deps.spec.objectives.join(' '), { k: 5, specId: this.deps.spec.specId }) ?? [],
     budgetTokens: 12_000,
+    speckitFeature: this.deps.speckitFeature,
   });
 
   private codeFor(view: ServiceView) {

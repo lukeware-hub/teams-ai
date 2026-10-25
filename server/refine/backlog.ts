@@ -7,6 +7,7 @@ import { adjustmentItems, isAdjustment } from './adjustments.js';
 import { buildWithDocs, DIGEST_NOTE } from './docs-view.js';
 import type { BacklogDocs } from './details.js';
 import { jevHint, type JevValidationResult } from './jev-validation.js';
+import { itemLines } from './specs-md.js';
 import type { BacklogState } from './state.js';
 
 const RULES = [
@@ -137,7 +138,7 @@ export function renderBacklogMd(backlog: Pick<BacklogState, 'epics' | 'items'>):
     parts.push(`## ${epic.title}`, '', '| # | Prioridade | Spec | Tamanho | Depende de |', '|---|---|---|---|---|');
     for (const i of items) parts.push(`| ${i.rank} | ${i.priority} | ${i.key} | ${i.size} | ${i.dependsOn.map((d) => byKey.get(d)?.key ?? d).join(', ') || '-'} |`);
     parts.push('');
-    for (const i of items) parts.push(`### ${i.key}: ${i.title}`, '', `- Escopo: ${i.scope}`, `- Por quê: ${i.rationale}`, `- Origem: ${i.sources.map((s) => `${s.doc} › ${s.heading}`).join('; ')}`, '');
+    for (const i of items) parts.push(`### ${i.key}: ${i.title}`, '', ...itemLines(i), '');
   }
   return parts.join('\n');
 }

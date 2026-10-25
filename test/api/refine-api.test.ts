@@ -42,9 +42,9 @@ const settle = async () => {
   }
   await new Promise((r) => setTimeout(r, 30)); // the session clears `busy` a tick after the last event lands
 };
-/** The Spec Kit preparation a wizard backlog's start waits for; the registry fakes `specify`, and one item takes four steps. */
+/** The Spec Kit preparation a wizard backlog's start waits for; the registry fakes `specify`, and one item takes five steps. */
 const prepareSpeckit = async (url: string) => {
-  script['speckit/dev'] = Array.from({ length: 4 }, () => ({ status: 'done', summary: 'ok', files: [] }));
+  script['speckit/dev'] = Array.from({ length: 5 }, () => ({ status: 'done', summary: 'ok', files: [], questions: [] }));
   expect((await call('POST', `${url}/speckit`)).status).toBe(202);
   await settle();
   expect((await snapshot()).state.speckit).toMatchObject({ status: 'done', stale: false });

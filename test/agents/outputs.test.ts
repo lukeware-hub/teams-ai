@@ -138,6 +138,10 @@ describe('dev output JSON Schema carries the status-dependent requirements', () 
     expect(OUTPUT_SCHEMAS.speckit.safeParse({ specHash: HASH, status: 'blocked', summary: 'parou', files: [], reason: 'sem template' }).success).toBe(true);
     expect(OUTPUT_SCHEMAS.speckit.safeParse({ specHash: HASH, status: 'blocked', summary: 'parou', files: [] }).success).toBe(false);
     expect(OUTPUT_SCHEMAS.speckit.safeParse({ specHash: HASH, status: 'spec-gap', summary: 'x', files: [] }).success).toBe(false);
+    const parsed = OUTPUT_SCHEMAS.speckit.parse({ specHash: HASH, status: 'done', summary: 'ok', files: [] }) as unknown as { questions: unknown[] };
+    expect(parsed.questions).toEqual([]);
+    const asked = OUTPUT_SCHEMAS.speckit.parse({ specHash: HASH, status: 'done', summary: 'ok', files: [], questions: [{ text: 'Qual moeda?', blocking: true, itemKey: 'cart', options: [{ label: 'Real', recommended: true }] }] }) as unknown as { questions: unknown[] };
+    expect(asked.questions).toEqual([{ text: 'Qual moeda?', blocking: true, itemKey: 'cart', options: [{ label: 'Real', detail: '', recommended: true }] }]);
   });
 
   it('spec-gap and replan are step kinds with their own schemas', () => {

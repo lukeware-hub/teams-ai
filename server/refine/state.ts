@@ -155,7 +155,7 @@ export interface RefineState {
   /** When the latest evaluation started and ended (ISO times); `endedAt` stays null while it runs. */
   evaluation?: { startedAt: string; endedAt: string | null };
   /** The Spec Kit preparation of a detailed backlog; stale once a document or the backlog changes after it. */
-  speckit?: { status: 'running' | 'done' | 'failed'; steps: Array<{ command: string; itemKey?: string }>; total?: number; error?: string; stale: boolean };
+  speckit?: { status: 'running' | 'done' | 'failed'; steps: Array<{ command: string; itemKey?: string }>; total?: number; error?: string; stale: boolean; features?: Record<string, string> };
 }
 
 export interface StuckRun {
@@ -231,10 +231,14 @@ export interface StartInput {
   backlog?: { enabled: boolean; detail?: boolean | null; items?: unknown[] } | null;
   stages?: boolean;
   speckit?: { status: string; stale: boolean } | null;
+  questions?: ReadonlyArray<{ status: string; blocking: boolean; origin?: string }>;
 }
 
-/** A new project built in the wizard starts only from a current Spec Kit preparation; an imported backlog and other sessions need none. */
-export const speckitPending = (s: StartInput): boolean => s.stages === true && s.mode === 'new-project' && !(s.speckit?.status === 'done' && !s.speckit.stale);
+/** A blocking question Spec Kit left open that the owner has not answered yet. */
+const speckitAsks = (s: StartInput): boolean => (s.questions ?? []).some((q) => q.origin === 'speckit' && q.blocking && q.status === 'pending');
+
+/** A new project built in the wizard starts only from a current Spec Kit preparation with its blocking questions answered; other sessions need none. */
+export const speckitPending = (s: StartInput): boolean => s.stages === true && s.mode === 'new-project' && (!(s.speckit?.status === 'done' && !s.speckit.stale) || speckitAsks(s));
 
 /** The start is open unless the agents evaluate or a run started: checks, questions and the Jev only advise. */
 export function canStart(s: StartInput): boolean {
@@ -454,9 +458,15 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     case RefineEvent.SpeckitStarted:
       s.speckit = { status: 'running', steps: [], ...(d.total === undefined ? {} : { total: Number(d.total) }), stale: false };
       break;
-    case RefineEvent.SpeckitStepDone:
+    case RefineEvent.SpeckitStepDone: {
       s.speckit?.steps.push({ command: String(d.command), ...(d.itemKey === undefined ? {} : { itemKey: String(d.itemKey) }) });
+      // The feature folder Spec Kit numbered for the item, which the dev agents of that spec follow.
+      if (s.speckit && d.featureDir !== undefined) s.speckit.features = { ...s.speckit.features, [String(d.itemKey)]: String(d.featureDir) };
+      const asked = (d.questions as Question[] | undefined) ?? [];
+      s.questions.push(...asked.map((q) => ({ ...q, status: 'pending' as const, answer: null })));
+      if (asked.length > 0) s.status = computeStatus(s);
       break;
+    }
     case RefineEvent.SpeckitDone:
       if (s.speckit) s.speckit.status = 'done';
       break;

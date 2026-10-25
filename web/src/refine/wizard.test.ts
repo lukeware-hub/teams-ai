@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { docPatches, docQuestions, initialStep, nextStep, parseStep, pendingCount, prevStep, stepParam, unfiledQuestions, wizardNodes } from './wizard.js';
+import { docPatches, docQuestions, initialStep, nextStep, parseStep, pendingCount, prevStep, speckitQuestions, stepParam, unfiledQuestions, wizardNodes } from './wizard.js';
 
 const question = (questionId: string, over: Record<string, unknown> = {}) => ({ questionId, role: 'po', text: 'q', blocking: false, relatedAcIds: [], cycle: 1, status: 'pending', answer: null, ...over });
 const patch = (patchId: string, file: string, status = 'pending') => ({ patchId, role: 'po', file, find: 'a', replace: 'b', reason: 'r', diff: '', cycle: 1, status, decision: null });
@@ -99,5 +99,13 @@ describe('what is pending for one document', () => {
   it('counts the pending questions and patches of the document', () => {
     expect(pendingCount(st, 'project.md')).toBe(3);
     expect(pendingCount(st, 'stack.md')).toBe(0);
+  });
+});
+
+describe('the questions the Spec Kit asks', () => {
+  it('go to stage 7, blocking first, and stay out of the unfiled ones of the review', () => {
+    const st = state({ questions: [question('a'), question('s1', { origin: 'speckit' }), question('s2', { origin: 'speckit', blocking: true }), question('s3', { origin: 'speckit', status: 'answered' })] });
+    expect(speckitQuestions(st).map((q) => q.questionId)).toEqual(['s2', 's1']);
+    expect(unfiledQuestions(st).map((q) => q.questionId)).toEqual(['a']);
   });
 });

@@ -703,7 +703,7 @@ export class RefineSession {
     if (this.starting) throw new ConflictError('a start is already in progress');
     if (!backlog.detail) throw new ConflictError('Detalhe as specs do backlog antes de iniciar: o início a partir do backlog usa as specs planejadas.');
     // A running evaluation is the reason that comes first; the Spec Kit preparation is the next.
-    if (this.state.status !== 'evaluating' && speckitPending(this.state)) throw new ConflictError('Prepare o Spec Kit antes de iniciar: a preparação ainda não foi feita, falhou ou os documentos mudaram depois dela.');
+    if (this.state.status !== 'evaluating' && speckitPending(this.state)) throw new ConflictError('Prepare o Spec Kit antes de iniciar: a preparação ainda não foi feita, falhou, os documentos mudaram depois dela ou há uma pergunta obrigatória dela sem resposta.');
     if (!canStart(this.state)) throw new ConflictError(`session cannot start now (${this.state.status})`);
     // Built before the start lock, so a refused start leaves the session free to try again.
     const entries = programEntries(this.deps.draft.specId, backlog, onMain);

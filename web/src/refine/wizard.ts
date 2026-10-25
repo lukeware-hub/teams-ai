@@ -56,9 +56,13 @@ const pendingQuestions = (st: Pick<State, 'questions'>) => st.questions.filter((
 export const docQuestions = (st: Pick<State, 'questions'>, file: DocFile): QuestionRow[] =>
   pendingQuestions(st).filter((q) => q.file === file).sort((a, b) => Number(b.blocking) - Number(a.blocking));
 
-/** The pending questions that name no document: the ones a full round asked. */
+/** The pending questions that name no document: the ones a full round asked. The Spec Kit's belong to stage 7. */
 export const unfiledQuestions = (st: Pick<State, 'questions'>): QuestionRow[] =>
-  pendingQuestions(st).filter((q) => q.file === undefined).sort((a, b) => Number(b.blocking) - Number(a.blocking));
+  pendingQuestions(st).filter((q) => q.file === undefined && q.origin !== 'speckit').sort((a, b) => Number(b.blocking) - Number(a.blocking));
+
+/** The pending questions the Spec Kit asked while it prepared the development, blocking ones first. */
+export const speckitQuestions = (st: Pick<State, 'questions'>): QuestionRow[] =>
+  pendingQuestions(st).filter((q) => q.origin === 'speckit').sort((a, b) => Number(b.blocking) - Number(a.blocking));
 
 export const docPatches = (st: Pick<State, 'patches'>, file: DocFile): PatchRow[] => st.patches.filter((p) => p.status === 'pending' && p.file === file);
 

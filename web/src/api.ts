@@ -263,6 +263,10 @@ export interface QuestionRow {
   /** The document of a stage review's question; absent for a question of a full round. */
   file?: 'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md';
   options?: Array<{ label: string; detail: string; recommended?: boolean }>;
+  /** Set on a question Spec Kit left open during its preparation. */
+  origin?: 'speckit';
+  /** The backlog item a Spec Kit question is about. */
+  itemKey?: string;
 }
 export interface PatchRow {
   patchId: string;
@@ -421,7 +425,7 @@ export interface RefineState {
   /** When the latest evaluation started and ended (ISO times); `endedAt` stays null while it runs. */
   evaluation?: { startedAt: string; endedAt: string | null };
   /** The Spec Kit preparation of a detailed backlog; stale once a document or the backlog changes after it. */
-  speckit?: { status: 'running' | 'done' | 'failed'; steps: Array<{ command: string; itemKey?: string }>; total?: number; error?: string; stale: boolean };
+  speckit?: { status: 'running' | 'done' | 'failed'; steps: Array<{ command: string; itemKey?: string }>; total?: number; error?: string; stale: boolean; features?: Record<string, string> };
 }
 export interface Snapshot {
   projectId: string;

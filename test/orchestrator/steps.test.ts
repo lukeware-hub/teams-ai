@@ -8,7 +8,7 @@ import { Governor } from '../../server/budget/governor.js';
 import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
 import { buildContextPack } from '../../server/knowledge/context-pack.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
-import { devPack, devResumePrompt, fixTasksPack, outputContract, planPack, planRules, readmePack, replanPack, reportPack, reviewPack, runAgentStep, securityPack, servicesPlanRules, SPECKIT_RULE, specGapPack, techSpecPack, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
+import { devPack, devResumePrompt, fixTasksPack, outputContract, planPack, planRules, readmePack, replanPack, reportPack, reviewPack, runAgentStep, securityPack, servicesPlanRules, speckitRule, specGapPack, techSpecPack, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
 import { servicePlans } from '../../server/contracts/plan.js';
 import { saveSession } from '../../server/runner/session-store.js';
 import type { StepOutcome } from '../../server/runner/step.js';
@@ -140,15 +140,18 @@ describe('packs', () => {
     expect(rules).toContain('keeps the data of earlier runs');
     expect(rules).toContain('Never skip a test');
     expect(devPack(base, { ...task, affectedPaths: ['test/e2e/**'] }, opts).principles.join('\n')).toContain('Never skip a test');
-    expect(devPack(base, { ...task, affectedPaths: ['src/app.mjs'] }, opts).principles).toEqual([...base.project.principles, SPECKIT_RULE]);
-    expect(devPack(base, suiteTask, { ...opts, e2eSuite: undefined }).principles).toEqual([...base.project.principles, SPECKIT_RULE]);
+    expect(devPack(base, { ...task, affectedPaths: ['src/app.mjs'] }, opts).principles).toEqual([...base.project.principles, speckitRule()]);
+    expect(devPack(base, suiteTask, { ...opts, e2eSuite: undefined }).principles).toEqual([...base.project.principles, speckitRule()]);
   });
 
   it('tells every dev task to follow the Spec Kit constitution and tasks when the repository has them', () => {
     const p = devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null });
-    expect(p.principles).toContain(SPECKIT_RULE);
-    expect(SPECKIT_RULE).toContain('.specify/memory/constitution.md');
-    expect(SPECKIT_RULE).toContain('specs/*/tasks.md');
+    expect(p.principles).toContain(speckitRule());
+    expect(speckitRule()).toContain('.specify/memory/constitution.md');
+    expect(speckitRule()).toContain('specs/*/tasks.md');
+    const known = devPack({ ...base, speckitFeature: 'specs/003-login' }, task, { code: { source: 'none' }, handoffs: [], feedback: null });
+    expect(known.principles).toContain(speckitRule('specs/003-login'));
+    expect(speckitRule('specs/003-login')).toContain('specs/003-login/tasks.md');
   });
 
   // R11.7.6: the Dev and the Test engineer read the owner's answers the frozen spec carries.

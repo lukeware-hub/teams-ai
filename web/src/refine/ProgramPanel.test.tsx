@@ -144,5 +144,6 @@ describe('canStartRun', () => {
     expect(canStartRun(state(wizard), false)).toBe(false);
     expect(canStartRun(state({ ...wizard, speckit: { status: 'done', steps: [], stale: true } }), false)).toBe(false);
     expect(canStartRun(state({ ...wizard, speckit: { status: 'done', steps: [], stale: false } }), false)).toBe(true);
+    expect(canStartRun(state({ ...wizard, speckit: { status: 'done', steps: [], stale: false }, questions: [{ status: 'pending', blocking: true, origin: 'speckit' }] }), false)).toBe(false);
   });
 });

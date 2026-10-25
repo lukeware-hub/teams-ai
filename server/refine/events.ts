@@ -84,6 +84,10 @@ export interface Question {
   options?: QuestionChoice[];
   /** The validator message a system question answers; its text is plain, so a repeat is recognized on this. */
   rule?: string;
+  /** Set on a question Spec Kit left open during its preparation. */
+  origin?: 'speckit';
+  /** The backlog item a Spec Kit question is about. */
+  itemKey?: string;
 }
 /** The journal's specHash field before a spec is frozen. */
 export const DRAFT_HASH = 'draft';
