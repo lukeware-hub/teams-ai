@@ -338,11 +338,12 @@ export function RefinementView(p: ViewProps) {
   const jevAdvisory = st.error?.startsWith('Jev bloqueou') ?? false;
   const pending = [...st.questions.filter((q) => q.status === 'pending')].sort((a, b) => Number(b.blocking) - Number(a.blocking));
   const current = pending[0];
+  const speckitAsked = speckitQuestions(st);
   // A new question on screen starts with an empty answer and no mark, so neither reaches the wrong question.
   useEffect(() => {
     setAnswer('');
     setDocsAnswered(false);
-  }, [current?.questionId]);
+  }, [current?.questionId, speckitAsked[0]?.questionId, step]);
   const canStart = canStartRun(st, busy);
   // Past the lock round, another evaluation is refused by the server: the button says so instead of failing.
   const atMax = snap.limits !== undefined && st.cycle - (st.stageStartCycle ?? 0) >= snap.limits.max;
@@ -647,8 +648,9 @@ export function RefinementView(p: ViewProps) {
   const questionCard = (current: QuestionRow, remaining: number) => (
         <div className="rounded-lg border border-line bg-surface-sunken p-4">
           <div className="flex flex-wrap items-center gap-[0.35rem]">
-            <span className={badge(current.role)}>{current.role.toUpperCase()}</span>
-            <InfoTip text={roleInfo[current.role]} />
+            {current.origin === 'speckit'
+              ? <><span className={badge('po')}>SPEC KIT</span><InfoTip text="Pergunta do Spec Kit, que prepara a spec, o plano e as tarefas de cada item do backlog." /></>
+              : <><span className={badge(current.role)}>{current.role.toUpperCase()}</span><InfoTip text={roleInfo[current.role]} /></>}
             {current.blocking && <Tipped text="Pergunta que bloqueia o avanço: precisa de resposta antes de seguir."><span className="tag ml-0">Obrigatória</span></Tipped>}
           </div>
           <p className="text-justify">{questionText(current.text)}</p>
@@ -1056,12 +1058,11 @@ export function RefinementView(p: ViewProps) {
   };
   // After the first processing the text passed is kept, so the one button of the stage reprocesses from it.
   const reprocess = isDocStep(step) && (st.passedStages ?? []).includes(step);
-  const speckitAsked = speckitQuestions(st);
   const backlogScreen = () => (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6" data-testid="backlog-stage">
       {backlogStageHeading}
-      {backlogOn && st.stages === true && <SpeckitStatus speckit={speckit} titles={backlogTitles} />}
-      {!locked && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
+      {backlogOn && st.stages === true && <SpeckitStatus speckit={speckit} titles={backlogTitles} waiting={speckitAsked.some((q) => q.blocking)} />}
+      {!locked && !speckitRunning && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
       {backlogBlock}
     </div>
   );

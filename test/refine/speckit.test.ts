@@ -146,6 +146,16 @@ describe('RefineSession.runSpeckit', () => {
     await s.close();
   });
 
+  it('keeps the questions of a blocked step on record, so the owner can answer them before a re-run', async () => {
+    answer = (req) => (req.pack.feedback!.includes('speckit-plan/SKILL') ? { status: 'blocked', summary: 'parou', files: [], reason: 'o plano não fecha', questions: [{ text: 'Qual o prazo de retenção?', blocking: true }] } : { status: 'done', summary: 'ok', files: [] });
+    const s = await detailedSession();
+    await s.runSpeckit();
+    expect(s.state.speckit).toMatchObject({ status: 'failed' });
+    expect(s.state.questions).toEqual([expect.objectContaining({ text: 'Qual o prazo de retenção?', blocking: true, status: 'pending', origin: 'speckit' })]);
+    expect(s.state.speckit?.steps.at(-1)).toMatchObject({ command: 'plan' });
+    await s.close();
+  });
+
   it('stops at the first step that fails or that the agent reports blocked', async () => {
     answer = (req) => (req.pack.feedback!.includes('speckit-plan/SKILL') ? { status: 'blocked', summary: 'parou', files: [], reason: 'o plano não fecha' } : { status: 'done', summary: 'ok', files: [] });
     const s = await detailedSession();
@@ -237,7 +247,7 @@ describe('RefineSession.runSpeckit', () => {
     await journal.fact(RefineEvent.SpeckitStarted, { total: 7 });
     await journal.close();
     const reopened = await RefineSession.open(deps());
-    expect(reopened.state.speckit).toMatchObject({ status: 'failed', error: 'interrupted' });
+    expect(reopened.state.speckit).toMatchObject({ status: 'failed', error: 'A preparação foi interrompida quando o servidor reiniciou.' });
     await reopened.close();
   });
 

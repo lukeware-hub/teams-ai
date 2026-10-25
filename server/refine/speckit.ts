@@ -102,7 +102,9 @@ async function initSpeckit(exec: Exec, cwd: string): Promise<void> {
 }
 
 /** One command as an agent step; the files it wrote, or the owner's reason it stopped. */
-async function runCommand(deps: SpeckitDeps, step: Step, hash: string): Promise<Pick<SpeckitOutput, 'files' | 'questions'>> {
+const stepName = (step: Step): string => `/speckit-${step.command}${step.item ? ` de ${step.item.key}` : ''}`;
+
+async function runCommand(deps: SpeckitDeps, step: Step, hash: string): Promise<SpeckitOutput> {
   const specHash = sha256(`speckit\n${step.command}\n${step.item?.key ?? ''}\n${hash}`);
   const inputDir = speckitInputDir(deps.draft);
   const pack = fitPackBudget(speckitPack({ command: step.command, specHash, inputDir, item: step.item }));
@@ -111,9 +113,7 @@ async function runCommand(deps: SpeckitDeps, step: Step, hash: string): Promise<
     { kind: 'speckit', role: 'dev', pack, cwd: speckitDir(deps.draft), phase: 'refine', taskId: null, attempt: 1, extraAllow },
     { journal: deps.journal, stepDir: deps.draft.steps, specHash, signal: deps.signal },
   )) as StepOutcome<SpeckitOutput>;
-  const name = `/speckit-${step.command}${step.item ? ` de ${step.item.key}` : ''}`;
-  if (!out.ok) throw ownerFailure(`${SPECKIT_STAGE} (${name})`, out.failure, out.errors, TRY_AGAIN);
-  if (out.value.status === 'blocked') throw new OwnerError(`O Spec Kit parou em ${name}: ${out.value.reason}`, out.value.summary);
+  if (!out.ok) throw ownerFailure(`${SPECKIT_STAGE} (${stepName(step)})`, out.failure, out.errors, TRY_AGAIN);
   return out.value;
 }
 
@@ -126,10 +126,12 @@ export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState): 
   await initSpeckit(deps.exec, dir);
   for (const step of speckitSteps(buildSpecsIndex(deps.draft.specId, backlog).specs)) {
     if (deps.signal?.aborted) throw new OwnerError(`${SPECKIT_STAGE} foi interrompida.`, 'aborted');
-    const { files, questions } = await runCommand(deps, step, hash);
-    const asked = newQuestions(deps.journal.state, questions, step.item?.key);
-    const featureDir = step.command === 'specify' ? await featureDirOf(dir, files) : undefined;
-    await deps.journal.fact(RefineEvent.SpeckitStepDone, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}), files, ...(featureDir ? { featureDir } : {}), ...(asked.length > 0 ? { questions: asked } : {}) });
+    const result = await runCommand(deps, step, hash);
+    const asked = newQuestions(deps.journal.state, result.questions, step.item?.key);
+    const featureDir = step.command === 'specify' ? await featureDirOf(dir, result.files) : undefined;
+    await deps.journal.fact(RefineEvent.SpeckitStepDone, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}), files: result.files, ...(featureDir ? { featureDir } : {}), ...(asked.length > 0 ? { questions: asked } : {}) });
+    // The questions of a blocked step are on record before it stops, so the owner can answer them.
+    if (result.status === 'blocked') throw new OwnerError(`O Spec Kit parou em ${stepName(step)}: ${result.reason}`, result.summary);
   }
   return hash;
 }

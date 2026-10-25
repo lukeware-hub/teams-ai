@@ -115,6 +115,20 @@ describe('stage 7 of a new project prepares the development', () => {
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('says the start waits for a blocking Spec Kit question, even when the preparation is done', () => {
+    const asked = { ...question(true), questionId: 'speckit-xyz', origin: 'speckit', text: 'Qual banco de dados?' };
+    renderView(wizard({ speckit: speckit() as never, questions: [asked as never] }), handlersWithSpeckit());
+    expect(screen.getByTestId('speckit-waiting')).toBeTruthy();
+    expect(screen.queryByTestId('speckit-done')).toBeNull();
+    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('hides the Spec Kit question while the preparation runs, since the server refuses the answer then', () => {
+    const asked = { ...question(false), questionId: 'speckit-xyz', origin: 'speckit', text: 'Qual banco de dados?' };
+    renderView(wizard({ speckit: speckit({ status: 'running', steps: [], total: 3 }) as never, questions: [asked as never] }), handlersWithSpeckit());
+    expect(screen.queryByText('Qual banco de dados?')).toBeNull();
+  });
+
   it('shows only the locked start once the program has started', () => {
     renderView(wizard({ status: 'started', speckit: speckit() as never }), handlersWithSpeckit());
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
