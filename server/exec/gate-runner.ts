@@ -93,17 +93,19 @@ const isRustImage = (image: string) => /(^|\/)rust[:@]|^teams-ai-gate:rust-/.tes
 
 /**
  * Gates run offline, so every tool a gate command uses must already be in the image. The plan rules promise jq,
- * which no official toolchain image ships, and the rust image also lacks rustfmt and clippy; each gate image gets
- * one derived image with what it misses, built once and reused. A failed build keeps the original image so the gate reports its own error.
+ * which no official toolchain image ships, the rust image also lacks rustfmt and clippy, and a front plan's e2e
+ * drives Chromium; each gate image gets one derived image with what it misses, built once and reused. A failed build
+ * keeps the original image so the gate reports its own error.
  */
-export async function prepareGateImage(image: string, exec: Exec): Promise<string> {
+export async function prepareGateImage(image: string, exec: Exec, opts: { browser?: boolean } = {}): Promise<string> {
   // The image comes from an agent-written plan and lands in a Dockerfile built with network: only a plain reference passes.
   if (!IMAGE_REFERENCE.test(image)) throw new Error(`gate image ${JSON.stringify(image)} is not a plain image reference`);
-  // The hash keeps two different images from sharing one derived tag.
-  const tag = `teams-ai-gate:${image.replace(/[^a-zA-Z0-9_.-]/g, '-').slice(0, 100)}-${createHash('sha256').update(image).digest('hex').slice(0, 12)}`;
+  // The hash keeps two different images, and the browser variant of one, from sharing one derived tag.
+  const tag = `teams-ai-gate:${image.replace(/[^a-zA-Z0-9_.-]/g, '-').slice(0, 100)}${opts.browser ? '-browser' : ''}-${createHash('sha256').update(opts.browser ? `${image}+browser` : image).digest('hex').slice(0, 12)}`;
   if ((await exec({ bin: 'docker', args: ['image', 'inspect', tag], timeoutMs: 60_000 })).exitCode === 0) return tag;
   const steps = ['RUN command -v jq >/dev/null || (apt-get update && apt-get install -y --no-install-recommends jq && rm -rf /var/lib/apt/lists/*)'];
   if (isRustImage(image)) steps.push('RUN rustup component add rustfmt clippy');
+  if (opts.browser) steps.push('RUN apt-get update && apt-get install -y --no-install-recommends chromium fonts-liberation && rm -rf /var/lib/apt/lists/*');
   const built = await exec({ bin: 'docker', args: ['build', '-t', tag, '-'], stdin: `FROM ${image}\n${steps.join('\n')}\n`, timeoutMs: 15 * 60_000 });
   return built.exitCode === 0 ? tag : image;
 }

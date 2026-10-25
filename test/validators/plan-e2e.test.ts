@@ -58,9 +58,17 @@ describe('validatePlan requireE2e', () => {
   });
 
   it('rejects an e2e command that installs a browser or system packages', () => {
-    for (const e2e of ['npx playwright install --with-deps chromium && npx playwright test e2e/api.e2e.test.ts', 'apt-get install -y curl && npx vitest run e2e/api.e2e.test.ts', 'npx playwright test e2e/api.e2e.test.ts', 'npx cypress run --spec e2e/api.e2e.test.ts']) {
+    for (const e2e of ['npx playwright install --with-deps chromium && npx playwright test e2e/api.e2e.test.ts', 'apt-get install -y curl && npx vitest run e2e/api.e2e.test.ts']) {
       expect(check(plan({ e2e })).join()).toContain('must not install a browser');
     }
+    expect(check(plan({ e2e: 'npx cypress run --spec e2e/api.e2e.test.ts' })).join()).toContain('must not drive a browser other than Playwright');
+  });
+
+  it('runs Playwright only in a front plan, whose gate image carries Chromium', () => {
+    const e2e = 'npx playwright test e2e/api.e2e.test.ts';
+    const front = { ...makePlan(spec).deploy, kind: 'front' as const };
+    expect(check(plan({ e2e }, { deploy: front }))).toEqual([]);
+    expect(check(plan({ e2e })).join()).toContain('runs Playwright only for a front plan');
   });
 
   it('rejects a plan without delivery.e2eSuite', () => {

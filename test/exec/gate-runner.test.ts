@@ -69,6 +69,17 @@ describe('dockerArgs', () => {
     expect(goBuild.stdin).not.toContain('rustup');
   });
 
+  it('adds Chromium only to the gate image of a front plan, under a tag of its own', async () => {
+    const withBrowser = new FakeExec().onArgs('docker', ['image', 'inspect'], () => ({ exitCode: 1 }));
+    const tag = await prepareGateImage('node:22-bookworm', withBrowser.exec, { browser: true });
+    expect(tag).toMatch(/^teams-ai-gate:node-22-bookworm-browser-[a-f0-9]{12}$/);
+    expect(withBrowser.calls.find((c) => c.args[0] === 'build')!.stdin).toContain('chromium');
+    const plain = new FakeExec().onArgs('docker', ['image', 'inspect'], () => ({ exitCode: 1 }));
+    const plainTag = await prepareGateImage('node:22-bookworm', plain.exec);
+    expect(plain.calls.find((c) => c.args[0] === 'build')!.stdin).not.toContain('chromium');
+    expect(plainTag).not.toBe(tag);
+  });
+
 
   it('runs the command offline in a named, init-managed, non-root container with limits and read-only .git', () => {
     const { args, env } = dockerArgs(gate({ name: 'unit-test', command: 'npm test' }), ctx);

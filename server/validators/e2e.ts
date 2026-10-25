@@ -4,8 +4,11 @@ import { E2E_GATE, e2eCommand } from '../exec/e2e.js';
 
 const DISARMED = /\|\|\s*(true|exit\s+0|:)/;
 
-// The gate runs without root, apt or a browser, so a command that installs one can never pass.
-const BROWSER_INSTALL = /\bapt(-get)?\b|--with-deps|\b(playwright|puppeteer|cypress|selenium|chromium)\b/i;
+// The gate runs without root, apt or network, so a command that installs anything can never pass.
+const INSTALL = /\bapt(-get)?\b|--with-deps|\bplaywright install\b/;
+// Only Playwright drives a browser in the gate, and only a front plan's gate image carries Chromium.
+const OTHER_BROWSER = /\b(puppeteer|cypress|selenium)\b/i;
+const PLAYWRIGHT_TEST = /\bplaywright test\b/;
 
 /** R8.4: the post-deploy e2e gate exists, blocks, runs the delivery e2e suite and is not the smoke command. */
 export function validateE2e(plan: Plan): string[] {
@@ -15,7 +18,9 @@ export function validateE2e(plan: Plan): string[] {
   const command = e2eCommand(plan);
   if (!command) return [...errors, 'commands.e2e is required (post-deploy e2e suite, not the smoke command)'];
   if (DISARMED.test(command)) errors.push(`e2e command must not be disarmed: ${command}`);
-  if (BROWSER_INSTALL.test(command)) errors.push(`e2e command must not install a browser or system packages (the gate has no root, apt or browser; test over HTTP): ${command}`);
+  if (INSTALL.test(command)) errors.push(`e2e command must not install a browser or system packages (the gate has no root, apt or network): ${command}`);
+  if (OTHER_BROWSER.test(command)) errors.push(`e2e command must not drive a browser other than Playwright: ${command}`);
+  if (PLAYWRIGHT_TEST.test(command) && plan.deploy.kind !== 'front') errors.push(`e2e command runs Playwright only for a front plan (deploy.kind front), since only its gate image carries Chromium: ${command}`);
   if (plan.commands.smoke && command.trim() === plan.commands.smoke.trim()) errors.push('commands.e2e must differ from commands.smoke');
   const suite = plan.delivery?.e2eSuite;
   if (!suite) errors.push('delivery.e2eSuite is required when the e2e gate is required');

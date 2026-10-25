@@ -443,10 +443,11 @@ export class Run {
 
   private readonly gateImages = new Map<string, Promise<string>>();
 
-  /** The image every gate, smoke and e2e container of one stack runs, prepared once per run and image (jq, plus rustfmt and clippy for rust). */
-  private gateImage(image: string): Promise<string> {
-    let ready = this.gateImages.get(image);
-    if (!ready) this.gateImages.set(image, (ready = prepareGateImage(image, this.deps.exec)));
+  /** The image every gate, smoke and e2e container of one stack runs, prepared once per run, image and browser need (jq, rustfmt and clippy for rust, Chromium for a front e2e). */
+  private gateImage(image: string, browser = false): Promise<string> {
+    const key = `${browser}:${image}`;
+    let ready = this.gateImages.get(key);
+    if (!ready) this.gateImages.set(key, (ready = prepareGateImage(image, this.deps.exec, { browser })));
     return ready;
   }
 
@@ -622,7 +623,7 @@ export class Run {
       },
       e2e: async (contextDir, url, gateUrl, gateNetwork, scope) => {
         const p = scope?.plan ?? singlePlan(this.plan)!;
-        const r = await runE2e(p, scope?.spec ?? this.deps.spec, { worktree: contextDir, image: await this.gateImage(p.gateImage), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: gateSecrets(this.deps.spec, this.deps.secrets, this.environmentNames()), containerName: `teams-ai-${this.runId}-e2e${scope ? `-${scope.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) }, scope?.urls);
+        const r = await runE2e(p, scope?.spec ?? this.deps.spec, { worktree: contextDir, image: await this.gateImage(p.gateImage, p.deploy.kind === 'front'), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: gateSecrets(this.deps.spec, this.deps.secrets, this.environmentNames()), containerName: `teams-ai-${this.runId}-e2e${scope ? `-${scope.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) }, scope?.urls);
         const tail = r.ok || !r.result ? '' : `\n\ne2e gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
       },
