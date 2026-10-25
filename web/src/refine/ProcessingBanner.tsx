@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import type { BacklogView } from '../api.js';
 import { InfoTip } from '../components/InfoTip.js';
@@ -24,11 +25,10 @@ export function lastEvaluationText(evaluation: { startedAt: string; endedAt: str
   return Number.isNaN(ms) ? '—' : formatDuration(ms);
 }
 
-/** The evaluation in progress, shown at the top of the refinement page on every tab. */
-export function ProcessingBanner({ backlog, cycle, stage, jevDown, running = [], title = 'Avaliação em andamento', since = null }: { backlog: BacklogView | null | undefined; cycle: number; stage: string; jevDown: boolean; running?: RunningStep[]; title?: string; since?: string | null }) {
-  const items = backlog?.items ?? [];
-  const specs = items.filter((i) => backlog?.specs?.[i.key]?.spec).length;
-  const preplans = Object.values(backlog?.preplans ?? {}).filter((row) => row.preplan).length;
+const tones = { good: 'border-good-line bg-good-soft text-good', bad: 'border-bad-line bg-bad-soft text-bad' } as const;
+
+/** A process in progress in a colored box: a spinner, its title, the time since `since`, and its lines. */
+export function ProcessBox({ title, since = null, tone = 'good', testId, children }: { title: ReactNode; since?: string | null; tone?: keyof typeof tones; testId: string; children: ReactNode }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!since) return;
@@ -37,20 +37,32 @@ export function ProcessingBanner({ backlog, cycle, stage, jevDown, running = [],
     return () => clearInterval(tick);
   }, [since]);
   return (
-    <div className={`flex items-center gap-[0.7rem] rounded-lg border px-[0.8rem] py-[0.7rem] [&_.info-tip]:text-current ${jevDown ? 'border-bad-line bg-bad-soft text-bad' : 'border-good-line bg-good-soft text-good'}`} role="status" aria-live="polite" data-testid="processing-banner">
+    <div className={`flex items-center gap-[0.7rem] rounded-lg border px-[0.8rem] py-[0.7rem] [&_.info-tip]:text-current ${tones[tone]}`} role="status" aria-live="polite" data-testid={testId}>
       <span className="button-spinner" aria-hidden="true" />
       <div className="grid flex-1 gap-[0.15rem]">
-        <b className="text-[0.8125rem]">{title} <InfoTip text={evaluationInfo} /></b>
-        <span className="text-[0.75rem] leading-[1.35]">Rodada {cycle} · {stage}</span>
+        <b className="text-[0.8125rem]">{title}</b>
         {since && <span className="text-[0.75rem] leading-[1.35] tabular-nums" data-testid="evaluation-timer">Tempo: {elapsedText(since, now)}</span>}
-        {running.length > 0 && <span className="text-[0.75rem] leading-[1.35]" data-testid="running-models">Em uso agora: {running.map(runningStepLabel).join('; ')}</span>}
-        {backlog?.enabled && <span className="text-[0.75rem] leading-[1.35]">{processingText(backlog)}</span>}
-        {backlog?.detail && (
-          <span className="flex items-center gap-2 text-[0.75rem] leading-[1.35]" data-testid="detail-progress">
-            <span className="button-spinner" aria-hidden="true" />Detalhando… {specs}/{items.length} specs · {preplans}/{items.length} pré-planos
-          </span>
-        )}
+        {children}
       </div>
     </div>
+  );
+}
+
+/** The evaluation in progress, shown at the top of the refinement page on every tab. */
+export function ProcessingBanner({ backlog, cycle, stage, jevDown, running = [], title = 'Avaliação em andamento', since = null }: { backlog: BacklogView | null | undefined; cycle: number; stage: string; jevDown: boolean; running?: RunningStep[]; title?: string; since?: string | null }) {
+  const items = backlog?.items ?? [];
+  const specs = items.filter((i) => backlog?.specs?.[i.key]?.spec).length;
+  const preplans = Object.values(backlog?.preplans ?? {}).filter((row) => row.preplan).length;
+  return (
+    <ProcessBox title={<>{title} <InfoTip text={evaluationInfo} /></>} since={since} tone={jevDown ? 'bad' : 'good'} testId="processing-banner">
+      <span className="text-[0.75rem] leading-[1.35]">Rodada {cycle} · {stage}</span>
+      {running.length > 0 && <span className="text-[0.75rem] leading-[1.35]" data-testid="running-models">Em uso agora: {running.map(runningStepLabel).join('; ')}</span>}
+      {backlog?.enabled && <span className="text-[0.75rem] leading-[1.35]">{processingText(backlog)}</span>}
+      {backlog?.detail && (
+        <span className="flex items-center gap-2 text-[0.75rem] leading-[1.35]" data-testid="detail-progress">
+          <span className="button-spinner" aria-hidden="true" />Detalhando… {specs}/{items.length} specs · {preplans}/{items.length} pré-planos
+        </span>
+      )}
+    </ProcessBox>
   );
 }

@@ -54,6 +54,8 @@ export const RefineEvent = {
   ConflictsDerived: 'CONFLICTS_DERIVED',
   /** "Preparar Spec Kit" started: `{total}` steps, the constitution plus three per backlog item. */
   SpeckitStarted: 'SPECKIT_STARTED',
+  /** One Spec Kit command started: `{command, itemKey?}`, so the owner sees what runs now. */
+  SpeckitStepStarted: 'SPECKIT_STEP_STARTED',
   /** One Spec Kit command finished: `{command, itemKey?, files}`. */
   SpeckitStepDone: 'SPECKIT_STEP_DONE',
   /** The Spec Kit preparation finished: `{inputHash}` of the documents and item specs it read. */

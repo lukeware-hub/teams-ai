@@ -1,14 +1,14 @@
 import type { Snapshot } from '../api.js';
 import { Icon } from '../components/Icons.js';
+import { ProcessBox } from './ProcessingBanner.js';
 
 type Speckit = Snapshot['state']['speckit'];
+type Command = { command: string; itemKey?: string };
 
 const COMMAND = { constitution: 'Constituição do projeto', specify: 'Spec', clarify: 'Esclarecimento', plan: 'Plano', tasks: 'Tarefas' } as Record<string, string>;
 
-/** The step the Spec Kit finished last, as the owner reads it. */
-function lastStep(speckit: NonNullable<Speckit>, titles: Map<string, string>): string | null {
-  const step = speckit.steps.at(-1);
-  if (!step) return null;
+/** One Spec Kit command as the owner reads it: what it makes, and the backlog item it is about. */
+function commandName(step: Command, titles: Map<string, string>): string {
   const what = COMMAND[step.command] ?? step.command;
   return step.itemKey ? `${what} de ${titles.get(step.itemKey) ?? step.itemKey}` : what;
 }
@@ -22,14 +22,21 @@ export function SpeckitStatus({ speckit, titles, waiting = false }: { speckit: S
   if (speckit.status === 'running') {
     const done = speckit.steps.length;
     const total = speckit.total ?? done;
-    const last = lastStep(speckit, titles);
+    const current = speckit.current ? `: ${commandName(speckit.current, titles)}` : '';
     return (
-      <div className="grid gap-2" data-testid="speckit-running" aria-live="polite">
-        <p className={`${line} text-ink`}>Preparando: {done} de {total} etapas{last ? `. Última: ${last}.` : '.'}</p>
-        <div role="progressbar" aria-label="Preparação do Spec Kit" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} className="h-1.5 overflow-hidden rounded-full bg-surface-muted">
-          <div className="h-full rounded-full bg-accent transition-[width] duration-300 ease-out" style={{ width: `${total > 0 ? Math.round((done / total) * 100) : 0}%` }} />
+      <ProcessBox title="Preparação do Spec Kit em andamento" since={speckit.startedAt} testId="speckit-running">
+        <span className="text-[0.75rem] leading-[1.35]">Etapa {Math.min(done + 1, total)} de {total}{current}</span>
+        <div role="progressbar" aria-label="Preparação do Spec Kit" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} className="h-1.5 overflow-hidden rounded-full bg-good-line">
+          <div className="h-full rounded-full bg-good transition-[width] duration-300 ease-out" style={{ width: `${total > 0 ? Math.round((done / total) * 100) : 0}%` }} />
         </div>
-      </div>
+        {done > 0 && (
+          <ol className="m-0 grid max-h-56 list-none gap-1 overflow-y-auto p-0 text-[0.75rem] leading-[1.35]" data-testid="speckit-steps">
+            {speckit.steps.map((step, i) => (
+              <li key={i} className="flex items-start gap-1.5"><Icon name="check" size={14} />{commandName(step, titles)}</li>
+            ))}
+          </ol>
+        )}
+      </ProcessBox>
     );
   }
   if (speckit.stale) return <p className={`${line} text-warn`} data-testid="speckit-stale"><Icon name="alert" size={20} /><span>Os documentos ou o backlog mudaram depois da preparação. Prepare de novo antes de iniciar.</span></p>;

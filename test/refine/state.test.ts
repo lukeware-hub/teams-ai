@@ -449,6 +449,14 @@ describe('Spec Kit preparation state', () => {
     expect(again.speckit).toEqual({ status: 'running', steps: [], total: 4, stale: false });
   });
 
+  it('shows the command running now, and when the run began', () => {
+    const begun = { type: RefineEvent.SpeckitStarted, at: '2026-10-25T10:00:00Z', data: { total: 4 } };
+    const running = reduceRefineEvents([begun, { type: RefineEvent.SpeckitStepStarted, data: { command: 'specify', itemKey: 'login' } }]);
+    expect(running.speckit).toMatchObject({ startedAt: '2026-10-25T10:00:00Z', current: { command: 'specify', itemKey: 'login' } });
+    const finished = reduceRefineEvents([begun, { type: RefineEvent.SpeckitStepStarted, data: { command: 'specify', itemKey: 'login' } }, { type: RefineEvent.SpeckitStepDone, data: { command: 'specify', itemKey: 'login', files: [] } }]);
+    expect(finished.speckit?.current).toBeUndefined();
+  });
+
   it('goes stale when a document or a backlog derivation changes after it', () => {
     const done = [started, { type: RefineEvent.SpeckitDone, data: { inputHash: 'h' } }];
     for (const e of [

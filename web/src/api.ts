@@ -425,7 +425,7 @@ export interface RefineState {
   /** When the latest evaluation started and ended (ISO times); `endedAt` stays null while it runs. */
   evaluation?: { startedAt: string; endedAt: string | null };
   /** The Spec Kit preparation of a detailed backlog; stale once a document or the backlog changes after it. */
-  speckit?: { status: 'running' | 'done' | 'failed'; steps: Array<{ command: string; itemKey?: string }>; total?: number; error?: string; stale: boolean; features?: Record<string, string> };
+  speckit?: { status: 'running' | 'done' | 'failed'; startedAt?: string; current?: { command: string; itemKey?: string }; steps: Array<{ command: string; itemKey?: string }>; total?: number; error?: string; stale: boolean; features?: Record<string, string> };
 }
 export interface Snapshot {
   projectId: string;

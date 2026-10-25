@@ -78,9 +78,16 @@ describe('stage 7 of a new project prepares the development', () => {
   it('shows the progress while the Spec Kit prepares', () => {
     renderView(wizard({ speckit: speckit({ status: 'running', total: 4, steps: [{ command: 'constitution' }, { command: 'specify', itemKey: 'base' }] }) as never }), handlersWithSpeckit());
     expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('2');
-    expect(screen.getByTestId('speckit-running').textContent).toContain('2 de 4');
+    expect(screen.getByTestId('speckit-running').textContent).toContain('Etapa 3 de 4');
     expect((screen.getByTestId('speckit-prepare') as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('shows the command running now, the time it has run, and each finished step in green', () => {
+    renderView(wizard({ speckit: speckit({ status: 'running', startedAt: new Date().toISOString(), total: 4, steps: [{ command: 'constitution' }], current: { command: 'specify', itemKey: 'base' } }) as never }), handlersWithSpeckit());
+    expect(screen.getByTestId('speckit-running').textContent).toContain('Etapa 2 de 4: Spec de Base');
+    expect(screen.getByTestId('evaluation-timer')).toBeTruthy();
+    expect(screen.getByTestId('speckit-steps').textContent).toBe('Constituição do projeto');
   });
 
   it('says why a failed preparation stopped, and lets the owner try again', () => {

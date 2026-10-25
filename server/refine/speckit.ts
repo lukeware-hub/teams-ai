@@ -126,6 +126,7 @@ export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState): 
   await initSpeckit(deps.exec, dir);
   for (const step of speckitSteps(buildSpecsIndex(deps.draft.specId, backlog).specs)) {
     if (deps.signal?.aborted) throw new OwnerError(`${SPECKIT_STAGE} foi interrompida.`, 'aborted');
+    await deps.journal.fact(RefineEvent.SpeckitStepStarted, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}) });
     const result = await runCommand(deps, step, hash);
     const asked = newQuestions(deps.journal.state, result.questions, step.item?.key);
     const featureDir = step.command === 'specify' ? await featureDirOf(dir, result.files) : undefined;

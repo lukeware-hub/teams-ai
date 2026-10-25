@@ -104,8 +104,9 @@ describe('RefineSession.runSpeckit', () => {
     expect(agentCalls.every((r) => r.kind === 'speckit' && r.role === 'dev' && r.cwd === `${draft().root}/speckit` && r.taskId === null)).toBe(true);
     expect(agentCalls[0]!.extraAllow).toEqual(expect.arrayContaining(['Bash(bash:*)', 'Bash(.specify/scripts/bash/*:*)', `Read(//${`${draft().root}/speckit-input`.replace(/^\/+/, '')}/**)`]));
     const types = s.events.map((e) => e.type).filter((t) => t.startsWith('SPECKIT_'));
-    expect(types).toEqual([RefineEvent.SpeckitStarted, ...Array(9).fill(RefineEvent.SpeckitStepDone), RefineEvent.SpeckitDone]);
+    expect(types).toEqual([RefineEvent.SpeckitStarted, ...Array.from({ length: 9 }, () => [RefineEvent.SpeckitStepStarted, RefineEvent.SpeckitStepDone]).flat(), RefineEvent.SpeckitDone]);
     expect(s.events.find((e) => e.type === RefineEvent.SpeckitStarted)!.data).toEqual({ total: 9 });
+    expect(s.events.find((e) => e.type === RefineEvent.SpeckitStepStarted && e.data.command === 'plan')!.data).toEqual({ command: 'plan', itemKey: 'login' });
     expect(s.events.find((e) => e.type === RefineEvent.SpeckitStepDone && e.data.command === 'plan')!.data).toEqual({ command: 'plan', itemKey: 'login', files: ['out-4-speckit.md'] });
     expect(s.state.speckit).toMatchObject({ status: 'done', stale: false, total: 9 });
     expect(s.state.speckit!.steps).toHaveLength(9);
