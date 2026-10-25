@@ -155,7 +155,7 @@ export interface RefineState {
   /** When the latest evaluation started and ended (ISO times); `endedAt` stays null while it runs. */
   evaluation?: { startedAt: string; endedAt: string | null };
   /** The Spec Kit preparation of a detailed backlog; stale once a document or the backlog changes after it. */
-  speckit?: { status: 'running' | 'done' | 'failed'; startedAt?: string; current?: { command: string; itemKey?: string }; steps: Array<{ command: string; itemKey?: string }>; total?: number; error?: string; stale: boolean; features?: Record<string, string> };
+  speckit?: { status: 'running' | 'done' | 'failed'; startedAt?: string; current?: { command: string; itemKey?: string; startedAt?: string }; steps: Array<{ command: string; itemKey?: string; startedAt?: string; endedAt?: string }>; total?: number; error?: string; stale: boolean; features?: Record<string, string> };
 }
 
 export interface StuckRun {
@@ -459,10 +459,12 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       s.speckit = { status: 'running', steps: [], ...(d.total === undefined ? {} : { total: Number(d.total) }), ...(e.at === undefined ? {} : { startedAt: e.at }), stale: false };
       break;
     case RefineEvent.SpeckitStepStarted:
-      if (s.speckit) s.speckit.current = { command: String(d.command), ...(d.itemKey === undefined ? {} : { itemKey: String(d.itemKey) }) };
+      if (s.speckit) s.speckit.current = { command: String(d.command), ...(d.itemKey === undefined ? {} : { itemKey: String(d.itemKey) }), ...(e.at === undefined ? {} : { startedAt: e.at }) };
       break;
     case RefineEvent.SpeckitStepDone: {
-      s.speckit?.steps.push({ command: String(d.command), ...(d.itemKey === undefined ? {} : { itemKey: String(d.itemKey) }) });
+      // A finished step keeps its start and end, so the owner sees how long each command took.
+      const began = s.speckit?.current?.startedAt;
+      s.speckit?.steps.push({ command: String(d.command), ...(d.itemKey === undefined ? {} : { itemKey: String(d.itemKey) }), ...(began === undefined ? {} : { startedAt: began }), ...(e.at === undefined ? {} : { endedAt: e.at }) });
       if (s.speckit) delete s.speckit.current;
       // The feature folder Spec Kit numbered for the item, which the dev agents of that spec follow.
       if (s.speckit && d.featureDir !== undefined) s.speckit.features = { ...s.speckit.features, [String(d.itemKey)]: String(d.featureDir) };

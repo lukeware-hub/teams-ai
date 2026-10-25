@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CommandError, type CommandSpec, type Exec } from '../../server/exec/command.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
 import type { AgentStepRequest } from '../../server/orchestrator/steps.js';
@@ -235,7 +235,8 @@ describe('RefineSession.runSpeckit', () => {
     exec = (spec) => new Promise((resolve) => (release = () => resolve({ exitCode: 0, signal: null, stdout: '', stderr: '', timedOut: false, durationMs: 1, truncated: spec.args.length < 0 })));
     const first = s.runSpeckit();
     expect(() => s.runSpeckit()).toThrow(ConflictError);
-    await new Promise((r) => setTimeout(r, 20));
+    // The preparation first writes its inputs, so the command starts a little after the call: wait for it rather than a fixed time.
+    await vi.waitFor(() => expect(release).toBeDefined());
     release();
     await first;
     await s.close();

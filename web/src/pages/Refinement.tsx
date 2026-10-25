@@ -9,6 +9,8 @@ import { Icon } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { renderSpecMd } from '@server/refine/spec-md';
+import { buildSpecsIndex } from '@server/refine/specs-index';
+import { speckitSteps } from '@server/refine/speckit-steps';
 import { renderSpecsMd } from '@server/refine/specs-md';
 import { allGreen, isApproval } from '@server/refine/state';
 import type { Divergence, DivergenceSide } from '@server/refine/checklist';
@@ -384,6 +386,8 @@ export function RefinementView(p: ViewProps) {
   const mdFiles = backlogOn || newProject;
   const legacyFiles = !mdFiles;
   const specsMd = useMemo(() => (backlogOn && (st.backlog?.items.length ?? 0) > 0 ? renderSpecsMd(snap.specId, st.backlog as never) : ''), [backlogOn, snap.specId, st.backlog]);
+  // Every Spec Kit step in order, so the stage 7 box lists the ones still to come.
+  const speckitPlan = useMemo(() => (backlogOn ? speckitSteps(buildSpecsIndex(snap.specId, st.backlog as never).specs).map(({ command, item }) => ({ command, itemKey: item?.key })) : []), [backlogOn, snap.specId, st.backlog]);
   const baseDocs = (['project.md', 'flow.md', 'briefing.md', 'stack.md', 'design.md'] as DocFile[]).map((doc) => ({ doc, text: snap.docs[doc] }));
   // A wizard project lists specs.md; the single-spec flow lists the spec it derived, also as Markdown.
   const specFile = mdFiles ? { name: 'specs.md', text: specsMd } : { name: 'spec.md', text: st.derived ? renderSpecMd(st.derived.spec as never) : '' };
@@ -1061,7 +1065,7 @@ export function RefinementView(p: ViewProps) {
   const backlogScreen = () => (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6" data-testid="backlog-stage">
       {backlogStageHeading}
-      {backlogOn && st.stages === true && <SpeckitStatus speckit={speckit} titles={backlogTitles} waiting={speckitAsked.some((q) => q.blocking)} />}
+      {backlogOn && st.stages === true && <SpeckitStatus speckit={speckit} titles={backlogTitles} plan={speckitPlan} waiting={speckitAsked.some((q) => q.blocking)} />}
       {!locked && !speckitRunning && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
       {backlogBlock}
     </div>

@@ -11,7 +11,8 @@ import type { CycleJournal, RunAgent } from './cycle.js';
 import { readDoc, type Draft } from './draft.js';
 import { RefineEvent } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
-import { SPECKIT_INPUTS, speckitPack, type SpeckitCommand, type SpeckitInput, type SpeckitItem } from './speckit-pack.js';
+import { SPECKIT_INPUTS, speckitPack, type SpeckitInput } from './speckit-pack.js';
+import { speckitSteps, type Step } from './speckit-steps.js';
 import { renderSpecsMd } from './specs-md.js';
 import { buildSpecsIndex, specIdOf } from './specs-index.js';
 import { loadEvents } from '../store/event-store.js';
@@ -37,13 +38,6 @@ export interface SpeckitDeps {
   runAgent: RunAgent;
   exec: Exec;
   signal?: AbortSignal;
-}
-
-type Step = { command: SpeckitCommand; item?: SpeckitItem };
-
-/** Spec Kit's own flow: the constitution once, then specify, clarify, plan and tasks for each item in rank order (1 + 4N steps). */
-export function speckitSteps(items: readonly SpeckitItem[]): Step[] {
-  return [{ command: 'constitution' }, ...items.flatMap((item) => (['specify', 'clarify', 'plan', 'tasks'] as const).map((command) => ({ command, item })))];
 }
 
 /** The feature folder a specify step made: the spec.md it reports, or else the one Spec Kit recorded in .specify/feature.json. */

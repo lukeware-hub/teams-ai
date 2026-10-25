@@ -457,6 +457,15 @@ describe('Spec Kit preparation state', () => {
     expect(finished.speckit?.current).toBeUndefined();
   });
 
+  it('keeps the start and the end of each finished step', () => {
+    const s = reduceRefineEvents([
+      { type: RefineEvent.SpeckitStarted, at: '2026-10-25T10:00:00Z', data: { total: 4 } },
+      { type: RefineEvent.SpeckitStepStarted, at: '2026-10-25T10:00:01Z', data: { command: 'constitution' } },
+      { type: RefineEvent.SpeckitStepDone, at: '2026-10-25T10:02:06Z', data: { command: 'constitution', files: [] } },
+    ]);
+    expect(s.speckit?.steps).toEqual([{ command: 'constitution', startedAt: '2026-10-25T10:00:01Z', endedAt: '2026-10-25T10:02:06Z' }]);
+  });
+
   it('goes stale when a document or a backlog derivation changes after it', () => {
     const done = [started, { type: RefineEvent.SpeckitDone, data: { inputHash: 'h' } }];
     for (const e of [

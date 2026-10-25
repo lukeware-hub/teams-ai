@@ -33,7 +33,8 @@ import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type Sugges
 import { allGreen, applyRefineEvent, canStart, emptyRefineState, speckitPending, type BacklogState, type RefineLimits, type RefineState } from './state.js';
 import { refineLimits } from './limits.js';
 import { isStarted } from './coverage.js';
-import { prepareSpeckit, SPECKIT_STAGE, speckitSteps } from './speckit.js';
+import { prepareSpeckit, SPECKIT_STAGE } from './speckit.js';
+import { speckitSteps } from './speckit-steps.js';
 
 export type { RunAgent } from './cycle.js';
 const MAX_IMAGES = 4;

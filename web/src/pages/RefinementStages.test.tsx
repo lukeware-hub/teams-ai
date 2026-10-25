@@ -83,11 +83,15 @@ describe('stage 7 of a new project prepares the development', () => {
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('shows the command running now, the time it has run, and each finished step in green', () => {
-    renderView(wizard({ speckit: speckit({ status: 'running', startedAt: new Date().toISOString(), total: 4, steps: [{ command: 'constitution' }], current: { command: 'specify', itemKey: 'base' } }) as never }), handlersWithSpeckit());
-    expect(screen.getByTestId('speckit-running').textContent).toContain('Etapa 2 de 4: Spec de Base');
+  it('lists every step in order: the finished ones with their time, the running one, and the ones to come', () => {
+    const finished = { command: 'constitution', startedAt: '2026-10-25T10:00:00Z', endedAt: '2026-10-25T10:01:05Z' };
+    renderView(wizard({ speckit: speckit({ status: 'running', startedAt: new Date().toISOString(), total: 5, steps: [finished], current: { command: 'specify', itemKey: 'base' } }) as never }), handlersWithSpeckit());
+    expect(screen.getByTestId('speckit-running').textContent).toContain('Etapa 2 de 5: Spec de Base');
     expect(screen.getByTestId('evaluation-timer')).toBeTruthy();
-    expect(screen.getByTestId('speckit-steps').textContent).toBe('Constituição do projeto');
+    const rows = [...screen.getByTestId('speckit-steps').querySelectorAll('li')];
+    expect(rows.map((row) => row.dataset.state)).toEqual(['done', 'running', 'pending', 'pending', 'pending']);
+    expect(rows[0]!.textContent).toContain('1 min 5 s');
+    expect(rows[2]!.textContent).toContain('Esclarecimento de Base');
   });
 
   it('says why a failed preparation stopped, and lets the owner try again', () => {
