@@ -97,6 +97,8 @@ export const CHAT_TOOLS: readonly string[] = ['Read', 'Grep', 'Glob', 'Bash'];
 export const CHAT_MAX_TURNS = 6;
 export const stepCaps = (kind: StepKind, caps: ProcessCaps): ProcessCaps => (kind === 'chat' ? { ...caps, maxTurns: Math.min(caps.maxTurns, CHAT_MAX_TURNS) } : caps);
 
+/** Longest rejected answer quoted in an error: the journal keeps it, the screen never shows it. */
+const ANSWER_CHARS = 300;
 const QUOTA_TEXT = /usage limit|rate limit|out of .*quota/i;
 const AUTH_TEXT = /not logged in|authentication|failed to authenticate|oauth session expired|could not be refreshed|invalid api key|please run (claude login|\/login)/i;
 
@@ -393,7 +395,8 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
   }
 
   const schema = OUTPUT_SCHEMAS[req.kind];
-  const validation = validateAgentOutput(schema, raw.summary.structuredOutput ?? jsonFromResultText(raw.summary.resultText), {
+  const answer = raw.summary.structuredOutput ?? jsonFromResultText(raw.summary.resultText);
+  const validation = validateAgentOutput(schema, answer, {
     expectedSpecHash: req.expectedSpecHash,
     refs: req.refs as ((value: { specHash: string }) => References) | undefined,
     refContext: typeof req.refContext === 'function' ? await req.refContext() : req.refContext,
@@ -407,6 +410,8 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
       // The parse error can quote part of the answer, so it is redacted like the answer.
       const parse = jsonParseError(raw.summary.resultText);
       errors.push(`no JSON object in the agent result (subtype=${raw.summary.subtype ?? 'none'}, terminal=${raw.summary.terminalReason ?? 'none'}, turns=${raw.summary.numTurns}${parse ? `, JSON.parse: ${redactSecrets(parse)}` : ''}): ${text || '(empty)'}`);
+    } else {
+      errors.push(`answer: ${redactSecrets(JSON.stringify(answer).slice(0, ANSWER_CHARS))}`);
     }
     return { ok: false, failure: 'schema', errors, summary: raw.summary, sandboxDisabled: false };
   }

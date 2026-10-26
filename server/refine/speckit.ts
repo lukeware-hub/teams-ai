@@ -6,7 +6,7 @@ import { OwnerError } from '../core/owner-error.js';
 import type { Exec } from '../exec/command.js';
 import { absoluteRule } from '../runner/role-settings.js';
 import type { StepOutcome } from '../runner/step.js';
-import { ownerFailure, TRY_AGAIN } from './agent-failure.js';
+import { ownerFailure, retryOnSchema, TRY_AGAIN, withNote } from './agent-failure.js';
 import type { CycleJournal, RunAgent } from './cycle.js';
 import { readDoc, type Draft } from './draft.js';
 import { RefineEvent } from './events.js';
@@ -127,9 +127,11 @@ async function runCommand(deps: SpeckitDeps, step: Step, hash: string): Promise<
   const inputDir = speckitInputDir(deps.draft);
   const pack = fitPackBudget(speckitPack({ command: step.command, specHash, inputDir, item: step.item }));
   const extraAllow = [...SPECKIT_BASH, `Read(${absoluteRule(inputDir)}/**)`];
-  const out = (await deps.runAgent<'speckit'>(
-    { kind: 'speckit', role: 'dev', pack, cwd: speckitDir(deps.draft), phase: 'refine', taskId: null, attempt: 1, extraAllow },
-    { journal: deps.journal, stepDir: deps.draft.steps, specHash, signal: deps.signal },
+  const out = (await retryOnSchema((note) =>
+    deps.runAgent<'speckit'>(
+      { kind: 'speckit', role: 'dev', pack: withNote(pack, note), cwd: speckitDir(deps.draft), phase: 'refine', taskId: null, attempt: 1, extraAllow },
+      { journal: deps.journal, stepDir: deps.draft.steps, specHash, signal: deps.signal },
+    ),
   )) as StepOutcome<SpeckitOutput>;
   if (!out.ok) throw ownerFailure(`${SPECKIT_STAGE} (${stepName(step)})`, out.failure, out.errors, TRY_AGAIN);
   return out.value;

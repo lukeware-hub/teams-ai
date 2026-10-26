@@ -178,11 +178,30 @@ describe('RefineSession.runSpeckit', () => {
     expect(agentCalls).toHaveLength(4);
     answer = () => null;
     await s.runSpeckit();
-    // The second run resumes at the plan: the constitution and the first item's specify and clarify stay finished.
-    expect(agentCalls).toHaveLength(5);
+    // The second run resumes at the plan: the constitution and the first item's specify and clarify stay finished, and the plan is asked twice.
+    expect(agentCalls).toHaveLength(6);
     expect(s.state.speckit).toMatchObject({ status: 'failed' });
     expect(s.state.speckit!.steps).toHaveLength(3);
     expect(s.state.speckit?.error).toContain('Spec Kit');
+    await s.close();
+  });
+
+  it('asks a step again once when its answer fails the output schema, with the error in the note', async () => {
+    answer = (req) => (agentCalls.length === 1 ? null : done(req));
+    const s = await detailedSession();
+    await s.runSpeckit();
+    expect(agentCalls[1]!.pack.feedback).toContain('did not match the output schema: bad json');
+    expect(s.state.speckit).toMatchObject({ status: 'done' });
+    await s.close();
+  });
+
+  it('stops with the format reason when the answer fails the output schema twice', async () => {
+    answer = () => null;
+    const s = await detailedSession();
+    await s.runSpeckit();
+    expect(agentCalls).toHaveLength(2);
+    expect(s.state.speckit).toMatchObject({ status: 'failed' });
+    expect(s.state.speckit?.error).toContain('não devolveu o resultado em formato válido');
     await s.close();
   });
 

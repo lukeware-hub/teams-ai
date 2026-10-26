@@ -78,6 +78,22 @@ describe('runStep', () => {
     expect(rec.usage.cacheWriteTokens).toBe(2892);
   });
 
+  it('quotes the answer the schema rejected, with its secret redacted', async () => {
+    const rejected = { ...okValue, status: 'finished', summary: 'token=sk-secret-123' };
+    const bad = await writeStream('rejected.ndjson', [
+      init,
+      { type: 'result', subtype: 'success', is_error: false, duration_ms: 5, num_turns: 1, result: JSON.stringify(rejected), structured_output: rejected, session_id: 's' },
+    ]);
+    withFake({ FAKE_CLAUDE_FIXTURE: bad });
+    const outcome = await runStep(request(), deps);
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) {
+      const text = outcome.errors.join(' ');
+      expect(text).toContain('"status":"finished"');
+      expect(text).not.toContain('sk-secret-123');
+    }
+  });
+
   it('accepts structured output that satisfies the contract', async () => {
     const ok = await writeStream('ok.ndjson', [
       init,
