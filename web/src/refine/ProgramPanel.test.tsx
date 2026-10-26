@@ -135,12 +135,12 @@ describe('canStartRun', () => {
   it('a new project starts only with its backlog, and a backlog only once detailed and with items', () => {
     const item = { key: 'base' };
     expect(canStartRun(state({ mode: 'new-project' }), false)).toBe(false);
-    expect(canStartRun(state({ mode: 'new-project', backlog: { enabled: true, detail: true, items: [item] } }), false)).toBe(true);
+    expect(canStartRun(state({ mode: 'new-project', backlog: { enabled: true, detail: true, items: [item], preplans: { base: { preplan: {} } } } }), false)).toBe(true);
     expect(canStartRun(state({ backlog: { enabled: true, detail: false, items: [item] } }), false)).toBe(false);
     expect(canStartRun(state({ backlog: { enabled: true, detail: true, items: [] } }), false)).toBe(false);
   });
   it('a wizard backlog starts only after a current Spec Kit preparation', () => {
-    const wizard = { mode: 'new-project', stages: true, backlog: { enabled: true, detail: true, items: [{ key: 'base' }] } };
+    const wizard = { mode: 'new-project', stages: true, backlog: { enabled: true, detail: true, items: [{ key: 'base' }], preplans: { base: { preplan: {} } } } };
     expect(canStartRun(state(wizard), false)).toBe(false);
     expect(canStartRun(state({ ...wizard, speckit: { status: 'done', steps: [], stale: true } }), false)).toBe(false);
     expect(canStartRun(state({ ...wizard, speckit: { status: 'done', steps: [], stale: false } }), false)).toBe(true);

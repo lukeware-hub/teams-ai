@@ -3,7 +3,7 @@ import type { Preplan } from '../contracts/preplan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
 import type { ChecklistItem } from './checklist.js';
-import { coverageGaps } from './coverage.js';
+import { coverageGaps, isStarted } from './coverage.js';
 import { RefineEvent, type Question, type QuoteEvidence, type SpeckitTriage } from './events.js';
 import { approvalKey } from './sections.js';
 import type { DocFile } from './draft.js';
@@ -239,7 +239,7 @@ export interface StartInput {
   status: RefineStatus;
   mode?: string | null;
   derived: unknown;
-  backlog?: { enabled: boolean; detail?: boolean | null; items?: unknown[] } | null;
+  backlog?: { enabled: boolean; detail?: boolean | null; items?: ReadonlyArray<{ key: string }>; specs?: Record<string, { spec: { status?: string } | null }>; preplans?: Record<string, { preplan: unknown }> } | null;
   stages?: boolean;
   speckit?: { status: string; stale: boolean; inputHash?: string } | null;
   questions?: ReadonlyArray<{ status: string; blocking: boolean; origin?: string }>;
@@ -254,10 +254,13 @@ const speckitInputsChanged = (s: StartInput, inputHash: string | undefined): boo
 /** A new project built in the wizard starts only from a current Spec Kit preparation with its blocking questions answered; other sessions need none. */
 export const speckitPending = (s: StartInput, inputHash?: string): boolean => s.stages === true && s.mode === 'new-project' && (!(s.speckit?.status === 'done' && !s.speckit.stale) || speckitInputsChanged(s, inputHash) || speckitAsks(s));
 
+/** A backlog item still without a pre-plan; a started or delivered spec was planned by its own run and needs none. */
+const preplanMissing = (b: NonNullable<StartInput['backlog']>): boolean => (b.items ?? []).some((i) => !isStarted(b.specs?.[i.key]?.spec?.status) && !b.preplans?.[i.key]?.preplan);
+
 /** The start is open unless the agents evaluate or a run started: checks, questions and the Jev only advise. */
 export function canStart(s: StartInput): boolean {
   if (s.status === 'evaluating' || s.status === 'started') return false;
-  if (s.backlog?.enabled) return s.backlog.detail === true && (s.backlog.items?.length ?? 0) > 0 && !speckitPending(s);
+  if (s.backlog?.enabled) return s.backlog.detail === true && (s.backlog.items?.length ?? 0) > 0 && !preplanMissing(s.backlog) && !speckitPending(s);
   return s.mode !== 'new-project' && Boolean(s.derived);
 }
 

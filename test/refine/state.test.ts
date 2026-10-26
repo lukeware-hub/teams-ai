@@ -383,6 +383,8 @@ describe('stage progress', () => {
 describe('canStart', () => {
   type Input = Parameters<typeof canStart>[0];
   const base: Input = { status: 'answering', mode: 'new-spec', derived: {}, backlog: null };
+  /** A detailed backlog of one item with its pre-plan. */
+  const planned = { enabled: true, detail: true, items: [{ key: 'base' }], preplans: { base: { preplan: {} } } };
 
   it('opens with checks failing, a low Jev score, a blocking question, a pending approval or a stale list', () => {
     const waiting = { ...base, stale: true, cycle: 2, questions: [{ status: 'pending', blocking: true }], patches: [{ status: 'pending', replace: '## Decisões' }] };
@@ -401,7 +403,7 @@ describe('canStart', () => {
 
   it('opens a backlog only once it is detailed and has at least one item', () => {
     const item = { key: 'base' };
-    expect(canStart({ ...base, backlog: { enabled: true, detail: true, items: [item] } })).toBe(true);
+    expect(canStart({ ...base, backlog: planned })).toBe(true);
     expect(canStart({ ...base, backlog: { enabled: true, detail: true, items: [] } })).toBe(false);
     expect(canStart({ ...base, backlog: { enabled: true, detail: true } })).toBe(false);
     expect(canStart({ ...base, backlog: { enabled: true, detail: false, items: [item] } })).toBe(false);
@@ -409,7 +411,7 @@ describe('canStart', () => {
   });
 
   it('a wizard backlog starts only once its Spec Kit preparation is done and current', () => {
-    const wizard = { ...base, mode: 'new-project', stages: true, backlog: { enabled: true, detail: true, items: [{ key: 'base' }] } };
+    const wizard = { ...base, mode: 'new-project', stages: true, backlog: planned };
     expect(canStart(wizard)).toBe(false);
     expect(canStart({ ...wizard, speckit: { status: 'running', stale: false } })).toBe(false);
     expect(canStart({ ...wizard, speckit: { status: 'failed', stale: false } })).toBe(false);
@@ -418,7 +420,7 @@ describe('canStart', () => {
   });
 
   it('a pending blocking question of Spec Kit keeps a wizard start shut; an answered or advisory one does not', () => {
-    const ready = { ...base, mode: 'new-project', stages: true, backlog: { enabled: true, detail: true, items: [{ key: 'base' }] }, speckit: { status: 'done', stale: false } };
+    const ready = { ...base, mode: 'new-project', stages: true, backlog: planned, speckit: { status: 'done', stale: false } };
     const q = (over: Record<string, unknown>) => ({ status: 'pending', blocking: true, origin: 'speckit', ...over });
     expect(canStart({ ...ready, questions: [q({})] })).toBe(false);
     expect(canStart({ ...ready, questions: [q({ status: 'answered' })] })).toBe(true);
@@ -427,9 +429,26 @@ describe('canStart', () => {
   });
 
   it('an imported backlog and a session without stages need no Spec Kit preparation', () => {
-    const backlog = { enabled: true, detail: true, items: [{ key: 'base' }] };
-    expect(canStart({ ...base, mode: 'backlog', backlog })).toBe(true);
-    expect(canStart({ ...base, mode: 'new-project', stages: false, backlog })).toBe(true);
+    expect(canStart({ ...base, mode: 'backlog', backlog: planned })).toBe(true);
+    expect(canStart({ ...base, mode: 'new-project', stages: false, backlog: planned })).toBe(true);
+  });
+
+  it('a backlog with an item still without a pre-plan stays shut', () => {
+    const items = [{ key: 'login' }, { key: 'cart' }];
+    expect(canStart({ ...base, backlog: { enabled: true, detail: true, items, preplans: { login: { preplan: {} } } } })).toBe(false);
+    expect(canStart({ ...base, backlog: { enabled: true, detail: true, items, preplans: { login: { preplan: {} }, cart: { preplan: null } } } })).toBe(false);
+  });
+
+  it('a backlog opens once every item has its pre-plan, and a started or delivered spec needs none', () => {
+    const backlog = { enabled: true, detail: true, items: [{ key: 'login' }, { key: 'cart' }], preplans: { login: { preplan: {} } } };
+    expect(canStart({ ...base, backlog: { ...backlog, preplans: { ...backlog.preplans, cart: { preplan: {} } } } })).toBe(true);
+    expect(canStart({ ...base, backlog: { ...backlog, specs: { cart: { spec: { status: 'done' } } } } })).toBe(true);
+    expect(canStart({ ...base, backlog: { ...backlog, specs: { cart: { spec: { status: 'planned' } } } } })).toBe(false);
+  });
+
+  it('a single spec needs no pre-plan', () => {
+    expect(canStart(base)).toBe(true);
+    expect(canStart({ ...base, mode: 'continue' })).toBe(true);
   });
 });
 

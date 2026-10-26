@@ -101,9 +101,9 @@ async function detailedSession(decider?: Pick<Decider, 'decide'>, extra: { speck
     await fs.mkdir(`${draft().docs}/specs/${key}`, { recursive: true });
     await fs.writeFile(`${draft().docs}/specs/${key}/spec.json`, JSON.stringify(spec));
     await journal.fact(RefineEvent.SpecDerived, { key, specId: key, inputHash: 'i', rev: 'r', spec, issues: [], cycle: 1 });
+    await fs.writeFile(`${draft().docs}/specs/${key}/preplan.json`, '{"tasks":[]}');
+    await journal.fact(RefineEvent.PreplanDerived, { key, inputHash: 'i', specRev: 'r', preplan: { tasks: [] }, issues: [], cycle: 1 });
   }
-  await fs.writeFile(`${draft().docs}/specs/login/preplan.json`, '{"tasks":[]}');
-  await journal.fact(RefineEvent.PreplanDerived, { key: 'login', inputHash: 'i', specRev: 'r', preplan: { tasks: [] }, issues: [], cycle: 1 });
   await journal.close();
   return RefineSession.open({ ...deps(), decider, ...extra });
 }
