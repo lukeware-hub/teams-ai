@@ -403,6 +403,22 @@ describe('phase 0', () => {
         await orders.cleanup();
       }
     });
+
+    it('fails without publishing while the staging folder lacks the feature the refinement prepared, and publishes once it holds it', { timeout: 60_000 }, async () => {
+      const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
+      exec.onArgs('gh', ['repo', 'view'], () => ({ stdout: JSON.stringify({ nameWithOwner: 'o/hello-app', url: remote.origin }) }));
+      const gh = new FakeGh().install(exec);
+      const run = await Run.create(deps(exec, remote.repo, { speckitFeature: 'specs/hello-001' }), 'hello-001-r1');
+      const failed = await run.executePhase0();
+      expect(failed.ok).toBe(false);
+      if (!failed.ok) expect(failed.reason).toContain('specs/hello-001');
+      expect(run.journal.events.some((e) => e.type === OrchEvent.PhaseFailed && e.data.phase === 0)).toBe(true);
+      expect(gh.prs).toHaveLength(0);
+      await stage();
+      expect(await run.executePhase0()).toEqual({ ok: true });
+      expect(await git(remote.repo, ['show', 'origin/main:specs/hello-001/tasks.md'], execCommand)).toBe('# Tasks');
+      await run.close();
+    });
   });
 
   it('records PHASE_FAILED instead of throwing when gh repo create fails', { timeout: 60_000 }, async () => {

@@ -25,6 +25,14 @@ async function githubLogin(gh: (args: string[]) => Promise<CommandResult>): Prom
 export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docsDir: string; owner: string | undefined }): Promise<PhaseResult> {
   const { journal, ws, spec, project } = deps;
   if (!journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 0)) await journal.fact(OrchEvent.PhaseStarted, { phase: 0 });
+  // A spec its refinement prepared with Spec Kit never reaches main without its feature folder.
+  const feature = deps.packBase().speckitFeature;
+  const staging = speckitStaging(opts.docsDir);
+  if (feature && !(await exists(path.join(staging, feature)))) {
+    const reason = `the Spec Kit files of ${feature} that the refinement prepared are not in ${staging}`;
+    await journal.fact(OrchEvent.PhaseFailed, { phase: 0, reason });
+    return { ok: false, reason };
+  }
   const gh = (args: string[]) => deps.ghExec({ bin: 'gh', args, cwd: ws.root, timeoutMs: 60_000 });
   const owner = opts.owner ?? (await githubLogin(gh).catch((err: Error) => err));
   if (owner instanceof Error) {
@@ -185,9 +193,12 @@ const SPECKIT_ENTRIES = [
 /** The source documents a service's repository holds beside the Spec Kit files. */
 const SERVICE_DOCS = ['project.md', 'stack.md', 'flow.md', 'design.md', 'briefing.md'];
 
+/** The draft's Spec Kit staging folder, beside its docs. */
+const speckitStaging = (docsDir: string): string => path.join(path.dirname(docsDir), 'speckit');
+
 /** Copies the draft's Spec Kit preparation into `repo`; a link the repository holds is never written through. */
 async function overlaySpeckit(docsDir: string, repo: string): Promise<void> {
-  const source = path.join(path.dirname(docsDir), 'speckit');
+  const source = speckitStaging(docsDir);
   for (const { entry, replace } of SPECKIT_ENTRIES) {
     const stat = await fs.lstat(path.join(source, entry)).catch(() => null);
     const files = stat?.isDirectory() ? (await listFiles(path.join(source, entry))).map((rel) => `${entry}/${rel}`) : stat?.isFile() ? [entry] : [];
