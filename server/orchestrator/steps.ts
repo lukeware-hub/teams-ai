@@ -118,7 +118,7 @@ function serviceRule(ctx: ServiceContext, platform: readonly PlatformService[], 
  * are never dropped for the budget, so pasting the files in would push the pack over it.
  */
 export const speckitRule = (featureDir?: string): string =>
-  `When the repository has .specify/memory/constitution.md (made by Spec Kit), read it and the spec, plan and tasks of the feature this task belongs to before you change any file, then follow them. ${featureDir ? `This spec's feature is ${featureDir}: read ${featureDir}/spec.md, ${featureDir}/plan.md and ${featureDir}/tasks.md.` : 'That feature is the one under specs/*/ that this task belongs to: read its spec.md, plan.md and specs/*/tasks.md.'}`;
+  `When the repository has .specify/memory/constitution.md (made by Spec Kit), read it before you change any file, then follow it. ${featureDir ? `This spec's feature is ${featureDir}: read ${featureDir}/spec.md, ${featureDir}/plan.md and ${featureDir}/tasks.md too, and follow them.` : 'This spec has no Spec Kit feature: the features under specs/ belong to other specs, so none of them is the spec, plan or tasks of this task.'}`;
 
 /** The project's five documents in the repository's docs folder; a service repository holds none of them, so the rule does not apply there. */
 export const sourceDocsRule = (specId: string): string =>

@@ -131,12 +131,16 @@ async function initSpeckit(exec: Exec, cwd: string): Promise<void> {
 /** One command as an agent step; the files it wrote, or the owner's reason it stopped. */
 const stepName = (step: Step): string => `/speckit-${step.command}${step.item ? ` de ${step.item.key}` : ''}`;
 
-/** A finished step counts as done only when every file it reports is in the staging folder, and a specify step has its feature folder. */
+const onDisk = (file: string): Promise<boolean> => fs.access(file).then(() => true, () => false);
+
+/** A finished step counts as done only when every file it reports is in the staging folder, and a specify step has its feature folder there. */
 async function checkOnDisk(staging: string, step: Step, files: readonly string[], featureDir: string | undefined): Promise<void> {
-  const found = await Promise.all(files.map((file) => fs.access(path.resolve(staging, file)).then(() => true, () => false)));
+  const found = await Promise.all(files.map((file) => onDisk(path.resolve(staging, file))));
   const missing = files.filter((_, i) => !found[i]);
   if (missing.length > 0) throw new OwnerError(`O Spec Kit não gravou os arquivos que ${stepName(step)} informou. ${TRY_AGAIN}`, missing.join(', '));
-  if (step.command === 'specify' && !featureDir) throw new OwnerError(`O Spec Kit não criou a pasta da feature em ${stepName(step)}. ${TRY_AGAIN}`, 'no specs/<feature>/spec.md reported and no .specify/feature.json');
+  if (step.command === 'specify' && !(featureDir && (await onDisk(path.resolve(staging, featureDir))))) {
+    throw new OwnerError(`O Spec Kit não criou a pasta da feature em ${stepName(step)}. ${TRY_AGAIN}`, featureDir ? `${featureDir} is not in the staging folder` : 'no specs/<feature>/spec.md reported and no .specify/feature.json');
+  }
 }
 
 /** The reported files that still hold a Spec Kit marker of an open point; a folder reads as empty. */
@@ -184,7 +188,7 @@ export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState, f
   const texts = await inputTexts(deps.draft, backlog);
   const hash = hashOf(texts);
   await writeInputs(deps.draft, texts);
-  const resume = finished.size > 0 && (await fs.access(dir).then(() => true, () => false));
+  const resume = finished.size > 0 && (await onDisk(dir));
   if (!resume) {
     await fs.rm(dir, { recursive: true, force: true });
     await fs.mkdir(dir, { recursive: true });

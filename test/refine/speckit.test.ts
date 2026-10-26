@@ -541,6 +541,23 @@ describe('RefineSession.runSpeckit', () => {
     await s.close();
   });
 
+  it('a specify step whose feature folder is not on disk fails, and records no feature', async () => {
+    answer = async (req) => {
+      if (stepOf(req) !== 'specify:cart') return done(req);
+      // Spec Kit recorded a folder it never made, and the step reports no file.
+      await fs.mkdir(`${req.cwd}/.specify`, { recursive: true });
+      await fs.writeFile(`${req.cwd}/.specify/feature.json`, '{"feature_directory":"specs/002-cart"}');
+      return { status: 'done', summary: 'ok', files: [] };
+    };
+    const s = await detailedSession();
+    await s.runSpeckit();
+    expect(s.state.speckit).toMatchObject({ status: 'failed' });
+    expect(s.state.speckit?.error).toContain('não criou a pasta da feature em /speckit-specify de cart');
+    expect(s.events.find((e) => e.type === RefineEvent.SpeckitFailed)!.data.detail).toContain('specs/002-cart');
+    expect(s.state.speckit?.features).toEqual({ login: 'specs/login' });
+    await s.close();
+  });
+
   it('a step that leaves a [NEEDS CLARIFICATION] marker in a file it wrote stops the preparation with its questions on record, and a re-run resumes at it', async () => {
     answer = async (req) => {
       if (stepOf(req) !== 'clarify:login') return done(req);
