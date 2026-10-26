@@ -29,6 +29,17 @@ const runAgent: RunAgent = (async (req: AgentStepRequest<'speckit'>, ctx: { spec
   return out === null ? { ok: false, failure: 'schema', errors: ['bad json'], summary } : { ok: true, value: { specHash: ctx.specHash, questions: [], ...(out as object) }, summary };
 }) as never;
 const deps = () => ({ ws, draft: draft(), runAgent, exec: (spec: CommandSpec) => exec(spec), secretsDir: `${root}/secrets`, retrieval: () => [] });
+const isSpecify = (req: AgentStepRequest<'speckit'>) => req.pack.feedback!.includes('speckit-specify/SKILL');
+/** A finished step that wrote `files` in the staging folder, as a working agent does. */
+async function wrote(req: AgentStepRequest<'speckit'>, files: string[]) {
+  for (const file of files) {
+    await fs.mkdir(path.dirname(`${req.cwd}/${file}`), { recursive: true });
+    await fs.writeFile(`${req.cwd}/${file}`, 'x');
+  }
+  return { status: 'done', summary: 'ok', files };
+}
+/** A finished step with nothing else to report: a specify step writes the spec.md of its item's feature folder. */
+const done = (req: AgentStepRequest<'speckit'>) => wrote(req, isSpecify(req) ? [`specs/${req.pack.feedback!.match(/"## (\w+):/)![1]}/spec.md`] : []);
 const item = (key: string, rank: number) => ({ key, title: `Item ${key}`, epic: 'core', priority: 'must', rank, size: 'S', scope: 's', rationale: 'r', dependsOn: [], sources: [] });
 
 /** A wizard session whose backlog of two items is detailed. */
@@ -60,7 +71,7 @@ beforeEach(async () => {
     execCalls.push(spec);
     return { exitCode: 0, signal: null, stdout: '', stderr: '', timedOut: false, durationMs: 1, truncated: false };
   };
-  answer = (req) => ({ status: 'done', summary: 'feito', files: [`out-${agentCalls.length}-${req.pack.kind}.md`] });
+  answer = (req) => (isSpecify(req) ? done(req) : wrote(req, [`out-${agentCalls.length}-${req.pack.kind}.md`]));
 });
 afterEach(() => fs.rm(root, { recursive: true, force: true }));
 
@@ -148,7 +159,7 @@ describe('RefineSession.runSpeckit', () => {
   });
 
   it('keeps the questions of a blocked step on record, so the owner can answer them before a re-run', async () => {
-    answer = (req) => (req.pack.feedback!.includes('speckit-plan/SKILL') ? { status: 'blocked', summary: 'parou', files: [], reason: 'o plano não fecha', questions: [{ text: 'Qual o prazo de retenção?', blocking: true }] } : { status: 'done', summary: 'ok', files: [] });
+    answer = (req) => (req.pack.feedback!.includes('speckit-plan/SKILL') ? { status: 'blocked', summary: 'parou', files: [], reason: 'o plano não fecha', questions: [{ text: 'Qual o prazo de retenção?', blocking: true }] } : done(req));
     const s = await detailedSession();
     await s.runSpeckit();
     expect(s.state.speckit).toMatchObject({ status: 'failed' });
@@ -159,7 +170,7 @@ describe('RefineSession.runSpeckit', () => {
   });
 
   it('stops at the first step that fails or that the agent reports blocked', async () => {
-    answer = (req) => (req.pack.feedback!.includes('speckit-plan/SKILL') ? { status: 'blocked', summary: 'parou', files: [], reason: 'o plano não fecha' } : { status: 'done', summary: 'ok', files: [] });
+    answer = (req) => (req.pack.feedback!.includes('speckit-plan/SKILL') ? { status: 'blocked', summary: 'parou', files: [], reason: 'o plano não fecha' } : done(req));
     const s = await detailedSession();
     await s.runSpeckit();
     expect(s.state.speckit).toMatchObject({ status: 'failed' });
@@ -178,11 +189,11 @@ describe('RefineSession.runSpeckit', () => {
   const stepOf = (r: { pack: { feedback?: string } }): string => `${r.pack.feedback!.match(/speckit-(\w+)\/SKILL/)![1]}:${r.pack.feedback!.match(/"## (\w+):/)?.[1] ?? ''}`;
 
   it('a preparation that failed on the same inputs resumes at its failed step, and runs no finished step again', async () => {
-    answer = (req) => (req.pack.feedback!.includes('speckit-plan/SKILL') ? { status: 'blocked', summary: 'parou', files: [], reason: 'o plano não fecha' } : { status: 'done', summary: 'ok', files: [] });
+    answer = (req) => (req.pack.feedback!.includes('speckit-plan/SKILL') ? { status: 'blocked', summary: 'parou', files: [], reason: 'o plano não fecha' } : done(req));
     const s = await detailedSession();
     await s.runSpeckit();
     const before = agentCalls.length;
-    answer = () => ({ status: 'done', summary: 'ok', files: [] });
+    answer = done;
     await s.runSpeckit();
     expect(agentCalls.slice(before).map(stepOf)).toEqual(['plan:login', 'tasks:login', 'specify:cart', 'clarify:cart', 'plan:cart', 'tasks:cart']);
     expect(s.state.speckit).toMatchObject({ status: 'done', total: 9 });
@@ -192,11 +203,11 @@ describe('RefineSession.runSpeckit', () => {
   });
 
   it('a preparation whose inputs changed after the failure starts over from the constitution', async () => {
-    answer = (req) => (req.pack.feedback!.includes('speckit-plan/SKILL') ? { status: 'blocked', summary: 'parou', files: [], reason: 'o plano não fecha' } : { status: 'done', summary: 'ok', files: [] });
+    answer = (req) => (req.pack.feedback!.includes('speckit-plan/SKILL') ? { status: 'blocked', summary: 'parou', files: [], reason: 'o plano não fecha' } : done(req));
     const s = await detailedSession();
     await s.runSpeckit();
     await s.saveDoc('stack.md', '# Stack\n\nNode 24\n');
-    answer = () => ({ status: 'done', summary: 'ok', files: [] });
+    answer = done;
     const before = agentCalls.length;
     await s.runSpeckit();
     expect(agentCalls.slice(before).map(stepOf)[0]).toBe('constitution:');
@@ -207,11 +218,11 @@ describe('RefineSession.runSpeckit', () => {
 
   it('asks the owner the questions Spec Kit leaves open, once each, and a blocking one holds the start until answered', async () => {
     const choice = { label: 'Real', detail: '', recommended: true };
-    answer = (req) => {
+    answer = async (req) => {
       if (req.pack.feedback!.includes('speckit-specify/SKILL') && req.pack.feedback!.includes('"## login:')) {
-        return { status: 'done', summary: 'ok', files: [], questions: [{ text: 'Qual moeda?', blocking: true, options: [choice] }, { text: '  qual   MOEDA? ', blocking: false }, { text: 'Precisa de 2FA?', blocking: false }] };
+        return { ...(await done(req)), questions: [{ text: 'Qual moeda?', blocking: true, options: [choice] }, { text: '  qual   MOEDA? ', blocking: false }, { text: 'Precisa de 2FA?', blocking: false }] };
       }
-      return { status: 'done', summary: 'ok', files: [] };
+      return done(req);
     };
     const s = await detailedSession();
     await s.runSpeckit();
@@ -245,7 +256,7 @@ describe('RefineSession.runSpeckit', () => {
     answer = (req) => {
       const fb = req.pack.feedback!;
       if (!fb.includes('speckit-specify/SKILL')) return { status: 'done', summary: 'ok', files: [] };
-      if (fb.includes('"## login:')) return { status: 'done', summary: 'ok', files: ['specs/001-login-page/spec.md', 'specs/001-login-page/checklists/requirements.md'] };
+      if (fb.includes('"## login:')) return wrote(req, ['specs/001-login-page/spec.md', 'specs/001-login-page/checklists/requirements.md']);
       return fs.writeFile(`${req.cwd}/.specify/feature.json`, '{"feature_directory":"specs/002-cart"}').then(() => ({ status: 'done', summary: 'ok', files: [] }));
     };
     exec = async (spec) => {
@@ -258,6 +269,29 @@ describe('RefineSession.runSpeckit', () => {
     await s.close();
     expect(await speckitFeatureOf(draft().root, 'cart')).toBe('specs/002-cart');
     expect(await speckitFeatureOf(draft().root, 'other')).toBeUndefined();
+  });
+
+  it('a step that reports a file it never wrote fails, and does not count as done', async () => {
+    answer = (req) => (stepOf(req) === 'plan:login' ? { status: 'done', summary: 'ok', files: ['specs/login/plan.md'] } : done(req));
+    const s = await detailedSession();
+    await s.runSpeckit();
+    expect(s.state.speckit).toMatchObject({ status: 'failed' });
+    expect(s.state.speckit?.error).toContain('/speckit-plan de login');
+    expect(s.events.find((e) => e.type === RefineEvent.SpeckitFailed)!.data.detail).toBe('specs/login/plan.md');
+    expect(s.state.speckit?.steps.at(-1)).toMatchObject({ command: 'clarify', itemKey: 'login' });
+    expect(canStart(s.state)).toBe(false);
+    await s.close();
+  });
+
+  it('a specify step that leaves no feature folder fails, and does not count as done', async () => {
+    answer = (req) => (stepOf(req) === 'specify:cart' ? wrote(req, ['notes.md']) : done(req));
+    const s = await detailedSession();
+    await s.runSpeckit();
+    expect(s.state.speckit).toMatchObject({ status: 'failed' });
+    expect(s.state.speckit?.error).toContain('/speckit-specify de cart');
+    expect(s.state.speckit?.steps.at(-1)).toMatchObject({ command: 'tasks', itemKey: 'login' });
+    expect(s.state.speckit?.features).toEqual({ login: 'specs/login' });
+    await s.close();
   });
 
   it('refuses before the backlog is detailed and while a preparation runs', async () => {

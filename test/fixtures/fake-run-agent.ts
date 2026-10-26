@@ -1,3 +1,5 @@
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import type { RunAgent } from '../../server/refine/session.js';
 
 export type Script = Record<string, unknown[]>; // `${kind}/${role}` → outputs per call
@@ -20,6 +22,11 @@ export function makeFakeRunAgent(script: Script): RunAgent {
     await ctx.journal.fact('STEP_FINISHED', { stepId: `s${seq}`, kind: req.kind, taskId: null, attempt: req.attempt, ok: next !== undefined, failure: next === undefined ? 'schema' : null, usage, costUsd: 0.01, durationMs: 1, numTurns: 1 });
     const summary = { usage, costUsd: 0.01, durationMs: 1, numTurns: 1, rateLimit: null };
     if (next === undefined) return { ok: false, failure: 'schema', errors: ['no scripted output'], summary, sandboxDisabled: false } as never;
+    // A Spec Kit agent writes the files it reports in its staging folder.
+    for (const file of req.kind === 'speckit' ? (next as { files: string[] }).files : []) {
+      await fs.mkdir(path.dirname(path.join(req.cwd, file)), { recursive: true });
+      await fs.writeFile(path.join(req.cwd, file), 'x');
+    }
     return { ok: true, value: { ...(next as object), specHash: ctx.specHash }, summary } as never;
   }) as RunAgent;
 }

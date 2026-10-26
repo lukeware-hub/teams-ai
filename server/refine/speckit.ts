@@ -108,6 +108,14 @@ async function initSpeckit(exec: Exec, cwd: string): Promise<void> {
 /** One command as an agent step; the files it wrote, or the owner's reason it stopped. */
 const stepName = (step: Step): string => `/speckit-${step.command}${step.item ? ` de ${step.item.key}` : ''}`;
 
+/** A finished step counts as done only when every file it reports is in the staging folder, and a specify step has its feature folder. */
+async function checkOnDisk(staging: string, step: Step, files: readonly string[], featureDir: string | undefined): Promise<void> {
+  const found = await Promise.all(files.map((file) => fs.access(path.resolve(staging, file)).then(() => true, () => false)));
+  const missing = files.filter((_, i) => !found[i]);
+  if (missing.length > 0) throw new OwnerError(`O Spec Kit não gravou os arquivos que ${stepName(step)} informou. ${TRY_AGAIN}`, missing.join(', '));
+  if (step.command === 'specify' && !featureDir) throw new OwnerError(`O Spec Kit não criou a pasta da feature em ${stepName(step)}. ${TRY_AGAIN}`, 'no specs/<feature>/spec.md reported and no .specify/feature.json');
+}
+
 async function runCommand(deps: SpeckitDeps, step: Step, hash: string): Promise<SpeckitOutput> {
   const specHash = sha256(`speckit\n${step.command}\n${step.item?.key ?? ''}\n${hash}`);
   const inputDir = speckitInputDir(deps.draft);
@@ -141,8 +149,9 @@ export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState, f
     if (resume && finished.has(stepKey(step.command, step.item?.key))) continue;
     await deps.journal.fact(RefineEvent.SpeckitStepStarted, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}) });
     const result = await runCommand(deps, step, hash);
-    const asked = newQuestions(deps.journal.state, result.questions, step.item?.key);
     const featureDir = step.command === 'specify' ? await featureDirOf(dir, result.files) : undefined;
+    if (result.status === 'done') await checkOnDisk(dir, step, result.files, featureDir);
+    const asked = newQuestions(deps.journal.state, result.questions, step.item?.key);
     await deps.journal.fact(RefineEvent.SpeckitStepDone, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}), files: result.files, ...(featureDir ? { featureDir } : {}), ...(asked.length > 0 ? { questions: asked } : {}), ...(result.status === 'blocked' ? { blocked: true } : {}) });
     // The questions of a blocked step are on record before it stops, so the owner can answer them.
     if (result.status === 'blocked') throw new OwnerError(`O Spec Kit parou em ${stepName(step)}: ${result.reason}`, result.summary);
