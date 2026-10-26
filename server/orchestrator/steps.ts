@@ -373,12 +373,14 @@ export function skillSelectPack(base: PackBase, task: PlanTask, opts: { role: Ro
   };
 }
 
-export function uiCheckPack(base: PackBase, task: PlanTask, opts: { serviceUrl: string }): ContextPackInput {
+export function uiCheckPack(base: PackBase, fronts: readonly PlanTask[], opts: { serviceUrl: string }): ContextPackInput {
+  const shared = common(base, 'ui-check', 'test');
+  const screens = fronts.map((t) => `- ${t.id} ${t.title}: ${t.description} (paths: ${t.affectedPaths.join(', ')}; criteria: ${t.criteriaRefs.join(', ') || 'none'})`);
   return {
-    ...common(base, 'ui-check', 'test'),
-    task,
-    criteria: criteriaOf(base.spec, task.criteriaRefs),
-    feedback: `The service is already deployed at ${opts.serviceUrl}. Set SERVICE_URL to that address. This is a browser check of front-owned screens, not the HTTP e2e suite. Use Playwright when the binary is available; otherwise fetch the HTML at SERVICE_URL and judge layout, contrast, focus and touch targets. Never start, build or restart containers. Return decision "changes" only for a defect you observed.`,
+    ...shared,
+    principles: [...shared.principles, ...sourceRules(base)],
+    criteria: criteriaOf(base.spec, fronts.flatMap((t) => t.criteriaRefs)),
+    feedback: `The service is already deployed at ${opts.serviceUrl}. Set SERVICE_URL to that address. This is a browser check of front-owned screens, not the HTTP e2e suite: check the screens of every front task below against its acceptance criteria and docs/design.md when the repository has it. Use Playwright when the binary is available; otherwise fetch the HTML at SERVICE_URL and judge layout, contrast, focus and touch targets. Never start, build or restart containers. Return decision "changes" only for a defect you observed.\n\nFront tasks:\n${screens.join('\n')}`,
   };
 }
 

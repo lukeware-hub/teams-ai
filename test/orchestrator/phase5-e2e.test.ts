@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execCommand } from '../../server/exec/command.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
 import { runPhase5, type PhaseDeps } from '../../server/orchestrator/phases/index.js';
+import { sourceDocsRule } from '../../server/orchestrator/steps.js';
+import type { ContextPackInput } from '../../server/knowledge/context-pack.js';
 import { makeFrozenSpec, makePlan, makePlanTask, makeProject } from '../fixtures/contracts.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 
@@ -120,6 +122,31 @@ describe('Phase 5 e2e gate', () => {
     expect(ui).toHaveLength(1);
     expect(ui[0]).toMatchObject({ kind: 'ui-check', role: 'test', extraEnv: { SERVICE_URL: 'http://127.0.0.1:3000' } });
     expect(journal.events.some((e) => e.type === OrchEvent.UiChecked)).toBe(true);
+  });
+
+  it('gives the UI check every front task with its criteria, and the source rules that name docs/design.md', async () => {
+    const frontPlan = makePlan(spec, {
+      commands: plan.commands,
+      delivery: plan.delivery,
+      tasks: [
+        makePlanTask({ id: 'T2-list-screen', owner: 'front', criteriaRefs: ['AC-001'], affectedPaths: ['web/src/list/**'] }),
+        makePlanTask({ id: 'T3-form-screen', owner: 'front', criteriaRefs: ['AC-002'], affectedPaths: ['web/src/form/**'] }),
+      ],
+    });
+    const { deps } = setup({ smokeOk: true, e2eOk: true, plan: frontPlan });
+    const packs: ContextPackInput[] = [];
+    deps.packBase = () => ({ spec, project, specHash: HASH, assumptions: [], budgetTokens: 8000 });
+    deps.runAgent = (async (req) => {
+      packs.push(req.pack);
+      return { ok: true, value: { specHash: HASH, decision: 'approve', criteria: [], findings: [] }, summary: { found: true, isError: false, subtype: 'success', numTurns: 1, durationMs: 1, costUsd: 0, usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 }, sessionId: null, resultText: null, structuredOutput: null, structuredSource: null, terminalReason: null, apiErrorStatus: null, rateLimit: null, compactions: 0 } };
+    }) as PhaseDeps['runAgent'];
+    await runPhase5(deps, 1);
+    expect(packs).toHaveLength(1);
+    expect(packs[0]!.criteria.map((c) => c.id)).toEqual(['AC-001', 'AC-002']);
+    expect(packs[0]!.principles).toContain(sourceDocsRule(spec.specId));
+    expect(packs[0]!.feedback).toContain('T2-list-screen');
+    expect(packs[0]!.feedback).toContain('T3-form-screen');
+    expect(packs[0]!.feedback).toContain('docs/design.md');
   });
 
   it('a failing UI check plans a front deploy-fix and does not replace the HTTP e2e rows', async () => {

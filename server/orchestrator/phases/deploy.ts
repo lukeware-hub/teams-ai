@@ -161,7 +161,9 @@ export function uiAlreadyChecked(events: readonly StoredEvent[], frontIds: reado
 
 /** `defect` is a UI finding for the front Dev; `error` means the check never ran, so nothing is rolled back. */
 async function runUiCheck(deps: PhaseDeps, opts: { url: string; plan: Plan; ws: Workspace; attempt: number; service?: string | null }): Promise<{ defect: string | null; error: string | null }> {
-  const front = opts.plan.tasks.find((t) => t.owner === 'front');
+  const fronts = opts.plan.tasks.filter((t) => t.owner === 'front');
+  // The first front task names the step; the pack carries every front task.
+  const [front] = fronts;
   if (!front) return { defect: null, error: null };
   // Front tasks include the deploy-fix tasks of a failed UI check, which are not in the plan.
   const frontIds = [...deps.journal.state.tasks].filter(([, t]) => t.def.owner === 'front').map(([id]) => id);
@@ -170,7 +172,7 @@ async function runUiCheck(deps: PhaseDeps, opts: { url: string; plan: Plan; ws: 
   const check = (cwd: string) => deps.runAgent<'ui-check'>({
     kind: 'ui-check',
     role: 'test',
-    pack: uiCheckPack(deps.packBase(), front, { serviceUrl: opts.url }),
+    pack: uiCheckPack(deps.packBase(), fronts, { serviceUrl: opts.url }),
     cwd,
     phase: 'phase5',
     taskId: front.id,
