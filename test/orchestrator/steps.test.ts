@@ -193,6 +193,16 @@ describe('packs', () => {
     expect(devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }).decisions).toBeUndefined();
   });
 
+  it("dev and review packs carry the spec's features, out-of-scope items and external dependencies", () => {
+    const scoped: PackBase = { ...base, spec: { ...spec, externalDependencies: [{ name: 'Mail', purpose: 'sends receipts', secretNames: ['SMTP_PASSWORD'] }] } };
+    const review = { diffStat: '', changedFiles: [], diff: '', junit: [], code: { source: 'none' as const }, profile: 'standard' as const };
+    const expected = ['feature: Create a todo', 'feature: List todos', 'out of scope: Authentication', 'external dependency: Mail: sends receipts (secrets: SMTP_PASSWORD)'];
+    for (const p of [devPack(scoped, task, { code: { source: 'none' }, handoffs: [], feedback: null }), reviewPack(scoped, task, review)]) {
+      expect(p.objectives).toEqual(expected);
+      expect(buildContextPack(p).text).toContain('- out of scope: Authentication');
+    }
+  });
+
   it('review pack puts the diff and impact radius in feedback and code', () => {
     const junit = [{ id: 'test::[AC-001] adds', name: '[AC-001] adds', classname: 'test', status: 'passed' as const, acIds: ['AC-001'] }];
     const p = reviewPack(base, task, { diffStat: ' src/a.ts | 2 +-', changedFiles: ['src/a.ts'], diff: '+const a = 1;', junit, code: { source: 'graph', affected: [] }, profile: 'standard' });

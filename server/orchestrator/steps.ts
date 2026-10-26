@@ -60,6 +60,15 @@ function criteriaOf(spec: Spec, ids: readonly string[]) {
   return spec.acceptanceCriteria.filter((c) => ids.includes(c.id));
 }
 
+/** What the spec ships, leaves out and depends on, for the builder and its reviewer. */
+function scopeOf(spec: Spec): string[] {
+  return [
+    ...spec.features.map((f) => `feature: ${f}`),
+    ...spec.outOfScope.map((o) => `out of scope: ${o}`),
+    ...spec.externalDependencies.map((d) => `external dependency: ${d.name}: ${d.purpose} (secrets: ${d.secretNames.join(', ') || 'none'})`),
+  ];
+}
+
 /** Longest gate-result list a review pack carries; the rest is a count. */
 const REVIEW_JUNIT_LINES = 200;
 
@@ -161,6 +170,7 @@ export function devPack(
     task,
     criteria: criteriaOf(base.spec, task.criteriaRefs),
     decisions: base.spec.decisions,
+    objectives: scopeOf(base.spec),
     handoffs: opts.handoffs,
     code: opts.code,
     feedback: opts.feedback ?? undefined,
@@ -196,7 +206,7 @@ export function reviewPack(
   // The merge gates already ran the suite on this exact diff: the reviewer reads their result instead of re-running it (R11.13 slice 2).
   const changeSet = `Changed files:\n${opts.changedFiles.join('\n')}\n\nDiff stat:\n${opts.diffStat}\n\nThe JUnit report (reports/junit.xml) is gate output the orchestrator never commits: do not ask for it.\n\nThe compose service healthcheck and its "image: \${TEAMS_AI_IMAGE:-...}" line are the orchestrator's deploy contract (it tags, verifies and rolls back the image through them): never ask to remove them.\n\nGate test results (the merge gates already ran the suite on this diff; do not re-run it):\n${results.join('\n') || '- none reported'}\n\nDiff against origin/main:\n${opts.diff}`;
   const shared = common(base, 'review', 'test');
-  return { ...shared, principles: [...shared.principles, ...sourceRules(base)], task, criteria: criteriaOf(base.spec, task.criteriaRefs), decisions: base.spec.decisions, code: opts.code, feedback, changeSet };
+  return { ...shared, principles: [...shared.principles, ...sourceRules(base)], task, criteria: criteriaOf(base.spec, task.criteriaRefs), decisions: base.spec.decisions, objectives: scopeOf(base.spec), code: opts.code, feedback, changeSet };
 }
 
 /**
