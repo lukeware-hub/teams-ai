@@ -20,6 +20,7 @@ import { ReshapeNotice } from '../refine/ReshapeNotice.js';
 import { jevVerdict, scoresDocs } from '@server/refine/readiness';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { SpeckitStatus } from '../refine/SpeckitStatus.js';
+import { AgentAnswers } from '../refine/AgentAnswers.js';
 import { lastEvaluationText, ProcessingBanner } from '../refine/ProcessingBanner.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
 import { StageSteps } from '../refine/StageSteps.js';
@@ -32,7 +33,7 @@ import { Workspace } from '../components/Workspace.js';
 import { Stepper } from '../components/Stepper.js';
 import { WizardShell } from '../components/WizardShell.js';
 import { DocScoreInset, ScoreChecks } from '../refine/DocScoreView.js';
-import { docPatches, docQuestions, initialStep, isDocStep, nextStep as nextWizardStep, pendingCount, prevStep, speckitQuestions, stepParam, unfiledQuestions, wizardNodes, type WizardStep } from '../refine/wizard.js';
+import { docPatches, docQuestions, initialStep, isDocStep, nextStep as nextWizardStep, pendingCount, prevStep, speckitAnswered, speckitQuestions, stepParam, unfiledQuestions, wizardNodes, type WizardStep } from '../refine/wizard.js';
 import { DOC_STAGES } from '@server/refine/doc-stages';
 import { percentOf } from '@server/refine/readiness';
 
@@ -156,6 +157,7 @@ const secretTip = (s: Snapshot['secrets'][number]): string => {
 const secretEntry = 'grid items-center gap-2';
 const secretInput = 'm-0 w-full min-w-0';
 const secretSave = 'm-0 min-w-[5.4rem] max-[720px]:w-full';
+const neutralBadge = 'badge px-2 py-[0.15rem] text-[0.6875rem] font-bold tracking-[0.04em] bg-surface-muted text-ink';
 const badge = (role: string) => `badge px-2 py-[0.15rem] text-[0.6875rem] font-bold tracking-[0.04em] ${role === 'po' ? 'bg-info-soft text-ink' : role === 'sm' ? 'bg-warn-soft text-warn' : ''}`;
 
 /** Re-checks the OpenRouter connection and links to the onboarding step where a new key is entered. */
@@ -343,6 +345,7 @@ export function RefinementView(p: ViewProps) {
   const pending = [...st.questions.filter((q) => q.status === 'pending')].sort((a, b) => Number(b.blocking) - Number(a.blocking));
   const current = pending[0];
   const speckitAsked = speckitQuestions(st);
+  const agentAnswers = speckitAnswered(st);
   // A new question on screen starts with an empty answer and no mark, so neither reaches the wrong question.
   useEffect(() => {
     setAnswer('');
@@ -653,11 +656,14 @@ export function RefinementView(p: ViewProps) {
         <div className="rounded-lg border border-line bg-surface-sunken p-4">
           <div className="flex flex-wrap items-center gap-[0.35rem]">
             {current.origin === 'speckit'
-              ? <><span className={badge('po')}>SPEC KIT</span><InfoTip text="Pergunta do Spec Kit, que prepara a spec, o plano e as tarefas de cada item do backlog." /></>
+              ? <><span className={neutralBadge}>SPEC KIT</span><InfoTip text="Pergunta do Spec Kit, que prepara a spec, o plano e as tarefas de cada item do backlog." /></>
               : <><span className={badge(current.role)}>{current.role.toUpperCase()}</span><InfoTip text={roleInfo[current.role]} /></>}
             {current.blocking && <Tipped text="Pergunta que bloqueia o avanço: precisa de resposta antes de seguir."><span className="tag ml-0">Obrigatória</span></Tipped>}
           </div>
-          <p className="text-justify">{questionText(current.text)}</p>
+          {current.origin === 'speckit' && current.itemKey && <p className="m-0 text-[0.8125rem] font-semibold text-ink-soft">Sobre o item {backlogTitles.get(current.itemKey) ?? current.itemKey}</p>}
+          {current.origin === 'speckit' && current.context && <p className="m-0 leading-normal text-ink-soft">{current.context}</p>}
+          <p className="m-0">{questionText(current.text)}</p>
+          {current.blocking && <p className="m-0 text-[0.8125rem] text-warn">{current.origin === 'speckit' ? 'Bloqueia o início do desenvolvimento até você responder.' : 'Bloqueia o avanço até você responder.'}</p>}
           {current.relatedAcIds.length > 0 && (
             <small className="question-criteria block leading-[1.6] text-ink-soft [&_.info-tip]:ml-[0.15rem]">
               Critérios de aceite:{' '}
@@ -692,13 +698,13 @@ export function RefinementView(p: ViewProps) {
           <label className="mt-4 mb-[0.4rem] block text-[0.8125rem] font-semibold text-ink-soft" htmlFor="refinement-answer">Sua resposta</label>
           <textarea id="refinement-answer" data-testid="answer" className="min-h-28 w-full resize-y p-4 text-[0.9rem] leading-normal" value={answer} onChange={(e) => setAnswer(e.target.value)} />
           {/* A long label wraps under its text, so the checkbox and the tip sit on the first line. */}
-          <div className="mt-3 mb-4 flex items-start gap-[0.35rem] text-[0.8125rem] leading-5 text-ink-soft [&_.info-tip]:mt-[0.1rem]">
+          {current.origin !== 'speckit' && <div className="mt-3 mb-4 flex items-start gap-[0.35rem] text-[0.8125rem] leading-5 text-ink-soft [&_.info-tip]:mt-[0.1rem]">
             <label className="inline-flex cursor-pointer items-start gap-2">
               <input type="checkbox" className="m-0 mt-0.5 size-4 flex-none cursor-pointer" data-testid="docs-answered" checked={docsAnswered} onChange={(e) => setDocsAnswered(e.target.checked)} />
               Os documentos já respondiam esta pergunta
             </label>
             <InfoTip text="Marque quando a resposta já estava nos documentos: essas marcas medem quando o Jev pode responder sozinho." />
-          </div>
+          </div>}
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <ActionButton
               className="primary"
@@ -1066,6 +1072,7 @@ export function RefinementView(p: ViewProps) {
       {backlogStageHeading}
       {backlogOn && st.stages === true && <SpeckitStatus speckit={speckit} titles={backlogTitles} plan={speckitPlan} waiting={speckitAsked.some((q) => q.blocking)} />}
       {!locked && !speckitRunning && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
+      {agentAnswers.length > 0 && <AgentAnswers rows={agentAnswers} titles={backlogTitles} />}
       {backlogBlock}
     </div>
   );
@@ -1075,14 +1082,22 @@ export function RefinementView(p: ViewProps) {
     </ActionButton>
   );
   const developButton = (
-    <ActionButton data-testid="start" className="primary" busy={p.startState?.busy ?? false} disabled={!canStart || !speckitReady} onClick={p.onStart} icon={<Icon name="play" size={16} />}>
+    <ActionButton data-testid="start" className={speckitReady && canStart ? 'primary' : 'secondary'} busy={p.startState?.busy ?? false} disabled={!canStart || !speckitReady} onClick={p.onStart} icon={<Icon name="play" size={16} />}>
       {p.startState?.busy ? p.startState.label : 'Iniciar desenvolvimento'}
     </ActionButton>
   );
+  // What the start waits for, in plain words, while it cannot start: the one primary action is the next step.
+  const startReason = canStart && speckitReady ? undefined
+    : speckitRunning ? 'A preparação do Spec Kit está em andamento.'
+    : !st.backlog?.detail ? 'Detalhe o backlog antes de iniciar.'
+    : speckitAsked.some((q) => q.blocking) ? 'Responda a pergunta obrigatória do Spec Kit.'
+    : !speckitReady && st.stages === true ? (speckit?.stale ? 'Os documentos mudaram: prepare o Spec Kit de novo.' : 'Prepare o Spec Kit antes de iniciar.')
+    : undefined;
+  const startNote = startReason ? <span className="self-center text-[0.8125rem] text-ink-soft" data-testid="start-reason">{startReason}</span> : null;
   const wizardActions = step === 'backlog' ? (
     !backlogOn ? (
       <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
-    ) : st.stages === true ? <>{prepareButton}{developButton}</> : developButton
+    ) : st.stages === true ? <>{prepareButton}{developButton}{startNote}</> : <>{developButton}{startNote}</>
   ) : step === 'review' ? (
     <>
       <ActionButton data-testid="evaluate" className="secondary" busy={evaluating} disabled={locked || atMax} title="Se tudo passar, o backlog começa a ser montado" onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>

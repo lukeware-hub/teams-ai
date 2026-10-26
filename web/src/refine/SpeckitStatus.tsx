@@ -51,18 +51,24 @@ export function SpeckitStatus({ speckit, titles, plan = [], waiting = false }: {
     return (
       <ProcessBox title="Preparação do Spec Kit em andamento" since={speckit.startedAt} testId="speckit-running">
         <span className="text-[0.75rem] leading-[1.35]">Etapa {Math.min(done + 1, total)} de {total}{current}</span>
-        <div role="progressbar" aria-label="Preparação do Spec Kit" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} className="h-1.5 overflow-hidden rounded-full bg-good-line">
-          <div className="h-full rounded-full bg-good transition-[width] duration-300 ease-out" style={{ width: `${total > 0 ? Math.round((done / total) * 100) : 0}%` }} />
+        <div role="progressbar" aria-label="Preparação do Spec Kit" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} className="h-1.5 overflow-hidden rounded-full bg-accent-line">
+          <div className="h-full rounded-full bg-accent transition-[width] duration-300 ease-out" style={{ width: `${total > 0 ? Math.round((done / total) * 100) : 0}%` }} />
         </div>
-        <ol className="m-0 grid max-h-96 list-none gap-1 overflow-y-auto p-0 text-[0.75rem] leading-[1.35]" data-testid="speckit-steps">
-          {rowsOf(speckit, plan).map(({ step, state }, i) => (
-            <li key={i} data-state={state} className={`flex items-center gap-2 ${state === 'pending' ? 'text-ink-faint' : ''}`}>
-              <span className="grid size-4 flex-none place-items-center">{rowIcon[state]}</span>
-              <span className="min-w-0 flex-1">{commandName(step, titles)}</span>
-              <span className="flex-none tabular-nums">{state === 'running' ? 'em andamento' : durationOf(step)}</span>
-            </li>
-          ))}
-        </ol>
+        <details className="group" data-testid="speckit-log">
+          <summary className="flex cursor-pointer list-none items-center gap-[0.35rem] text-[0.75rem] font-semibold [&::-webkit-details-marker]:hidden">
+            <span className="transition-transform group-open:rotate-90"><Icon name="chevron-right" size={14} /></span>
+            Ver as {total} etapas
+          </summary>
+          <ol className="m-0 mt-[0.35rem] grid max-h-96 list-none gap-1 overflow-y-auto p-0 text-[0.75rem] leading-[1.35]" data-testid="speckit-steps">
+            {rowsOf(speckit, plan).map(({ step, state }, i) => (
+              <li key={i} data-state={state} className={`flex items-center gap-2 ${state === 'pending' ? 'text-ink-soft' : ''}`}>
+                <span className="grid size-4 flex-none place-items-center">{rowIcon[state]}</span>
+                <span className="min-w-0 flex-1">{commandName(step, titles)}</span>
+                <span className="flex-none tabular-nums">{state === 'running' ? 'em andamento' : state === 'done' ? `Feito${durationOf(step) ? ` · ${durationOf(step)}` : ''}` : ''}</span>
+              </li>
+            ))}
+          </ol>
+        </details>
       </ProcessBox>
     );
   }

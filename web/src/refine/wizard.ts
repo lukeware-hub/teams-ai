@@ -64,6 +64,10 @@ export const unfiledQuestions = (st: Pick<State, 'questions'>): QuestionRow[] =>
 export const speckitQuestions = (st: Pick<State, 'questions'>): QuestionRow[] =>
   pendingQuestions(st).filter((q) => q.origin === 'speckit').sort((a, b) => Number(b.blocking) - Number(a.blocking));
 
+/** The Spec Kit questions the PO or SM answered from the documents, in the order of the list. */
+export const speckitAnswered = (st: Pick<State, 'questions'>): QuestionRow[] =>
+  st.questions.filter((q) => q.origin === 'speckit' && q.status === 'answered' && q.answeredBy);
+
 export const docPatches = (st: Pick<State, 'patches'>, file: DocFile): PatchRow[] => st.patches.filter((p) => p.status === 'pending' && p.file === file);
 
 export const pendingCount = (st: Pick<State, 'questions' | 'patches'>, file: DocFile): number => docQuestions(st, file).length + docPatches(st, file).length;

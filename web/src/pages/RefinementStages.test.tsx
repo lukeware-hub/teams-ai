@@ -126,6 +126,38 @@ describe('stage 7 of a new project prepares the development', () => {
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('a Spec Kit question shows its item and its context, and drops the document checkbox', () => {
+    const asked = { ...question(true), questionId: 'speckit-abc', origin: 'speckit', itemKey: 'base', context: 'Sem prazo, o link fica aberto.', text: 'Por quanto tempo vale o link?' };
+    renderView(wizard({ speckit: speckit() as never, questions: [asked as never] }), handlersWithSpeckit());
+    expect(screen.getByText('Sobre o item Base')).toBeTruthy();
+    expect(screen.getByText('Sem prazo, o link fica aberto.')).toBeTruthy();
+    expect(screen.getByText('Bloqueia o início do desenvolvimento até você responder.')).toBeTruthy();
+    expect(screen.queryByTestId('docs-answered')).toBeNull();
+  });
+
+  it('lists the questions the PO and the SM answered from the documents, closed, with the quote of their document', () => {
+    const answered = { ...question(true, 'answered'), questionId: 'speckit-xyz', origin: 'speckit', itemKey: 'base', text: 'Qual o prazo?', answer: '90 dias', answeredBy: 'sm', evidence: [{ file: 'briefing.md', heading: 'Regras', quote: 'O link vale por 90 dias.' }] };
+    renderView(wizard({ speckit: speckit() as never, questions: [answered as never] }), handlersWithSpeckit());
+    const list = screen.getByTestId('agent-answers') as HTMLDetailsElement;
+    expect(list.open).toBe(false);
+    expect(list.textContent).toContain('Respondidas pelo PO e pelo SM (1)');
+    expect(list.textContent).toContain('briefing.md › Regras');
+    expect(list.textContent).toContain('O link vale por 90 dias.');
+  });
+
+  it('Iniciar is primary only once the preparation is ready, and says what it waits for', () => {
+    renderView(wizard({ speckit: undefined as never }), handlersWithSpeckit());
+    expect((screen.getByTestId('start') as HTMLButtonElement).className).not.toContain('primary');
+    expect(screen.getByTestId('start-reason').textContent).toContain('Prepare o Spec Kit antes de iniciar.');
+  });
+
+  it('the steps of a running preparation sit behind a closed list, and a finished step says Feito', () => {
+    renderView(wizard({ speckit: speckit({ status: 'running', total: 3, steps: [{ command: 'constitution' }], current: { command: 'specify', itemKey: 'base' } }) as never }), handlersWithSpeckit());
+    expect((screen.getByTestId('speckit-log') as HTMLDetailsElement).open).toBe(false);
+    expect(screen.getByTestId('speckit-steps').textContent).toContain('Feito');
+    expect(screen.getByTestId('start-reason').textContent).toContain('em andamento');
+  });
+
   it('says the start waits for a blocking Spec Kit question, even when the preparation is done', () => {
     const asked = { ...question(true), questionId: 'speckit-xyz', origin: 'speckit', text: 'Qual banco de dados?' };
     renderView(wizard({ speckit: speckit() as never, questions: [asked as never] }), handlersWithSpeckit());

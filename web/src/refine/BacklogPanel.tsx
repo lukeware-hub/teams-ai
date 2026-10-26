@@ -5,7 +5,7 @@ import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 
 const SIZE = { S: 'pequena', M: 'média', L: 'grande' } as const;
-const HELP = 'Os agentes quebram os cinco documentos em specs organizadas em épicos e priorizadas de P0 (base de tudo) a P3 (depois). Cada avaliação gera a spec (PO) e o pré-plano com tarefas (SM) de cada item e refaz só o que os documentos mudaram. Para mudar prioridade ou cortes, escreva no briefing.md e avalie de novo.';
+const HELP = 'Os agentes quebram os documentos em specs por épico, de P0 (base) a P3 (depois). Cada avaliação refaz só o que mudou. Para mudar prioridades, edite o briefing.md e avalie de novo.';
 
 /** Where a detailed item stands: delivered or running as main has it, spec and current pre-plan, a failed attempt, or still being derived. */
 function itemStatus(backlog: BacklogView, key: string): 'entregue' | 'em execução' | 'planejada' | 'em refinamento' | 'erro' {

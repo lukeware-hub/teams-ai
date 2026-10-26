@@ -268,6 +268,10 @@ export interface QuestionRow {
   origin?: 'speckit';
   /** The backlog item a Spec Kit question is about. */
   itemKey?: string;
+  /** The plain words the owner reads about a Spec Kit question: what it is about and why it needs a decision. */
+  context?: string;
+  /** The quotes of the documents that back an answer the PO or SM gave. */
+  evidence?: Array<{ file: string; heading: string; quote: string }>;
 }
 export interface PatchRow {
   patchId: string;
