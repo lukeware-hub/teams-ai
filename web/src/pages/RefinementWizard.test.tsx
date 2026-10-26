@@ -368,6 +368,17 @@ describe('the final review', () => {
     expect(screen.queryByText('Consumo de IA no refinamento')).toBeNull();
   });
 
+  it('shows the backlog and its coverage on stage 7 only', () => {
+    const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} };
+    open('?etapa=revisao');
+    show(reviewSnap({ backlog }));
+    expect(screen.queryByTestId('spec-tree')).toBeNull();
+    cleanup();
+    open('?etapa=backlog');
+    show(reviewSnap({ backlog }));
+    expect(screen.getByTestId('spec-tree')).toBeTruthy();
+  });
+
   it('asks the Jev for the scores of all five documents when some have none', () => {
     open('?etapa=revisao');
     const handlers = show(reviewSnap({ confidential: false }));

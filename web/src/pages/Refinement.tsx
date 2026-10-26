@@ -365,8 +365,6 @@ export function RefinementView(p: ViewProps) {
     if (newProject && onStage) setTab(onStage);
   }, [onStage, newProject]);
   const stageStep = newProject ? stageAction(st) : null;
-  // In stage 2 the backlog is what the person checks, so it leads the quality column.
-  const backlogFirst = newProject && backlogOn;
   const backlogBlock = (
     <>
       <MemoBacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} onEnable={newProject ? undefined : p.onEnableBacklog} mandatory={newProject} />
@@ -843,7 +841,6 @@ export function RefinementView(p: ViewProps) {
           </div>
         </dl>
       </div>
-      {backlogFirst && backlogBlock}
       <div className={`grid gap-[0.3rem] ${evaluating ? 'opacity-60' : ''}`} aria-busy={evaluating || undefined}>
         <details className="group">
           <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span className="flex-1">Produto (PO)</span></summary>
@@ -854,7 +851,7 @@ export function RefinementView(p: ViewProps) {
           <Checklist items={st.checklist} role="sm" />
         </details>
       </div>
-      {!backlogFirst && backlogBlock}
+      {!newProject && backlogBlock}
       <h4><Icon name="file" size={20} />Arquivos gerados<InfoTip text={mdFiles ? "Os cinco documentos e o specs.md, que o Claude gera a cada avaliação. O Spec Kit parte desses seis arquivos para criar a spec, o plano e as tarefas de cada item." : "Os cinco documentos e o spec.md, a demanda que o Claude deriva a cada avaliação, com critérios de aceite e tarefas."} /></h4>
       {legacyFiles && (
         <>
