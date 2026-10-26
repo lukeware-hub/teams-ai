@@ -433,6 +433,50 @@ describe('canStart', () => {
   });
 });
 
+describe('Spec Kit triage state', () => {
+  const started = { type: RefineEvent.SpeckitStarted, data: { total: 4 } };
+  const asked = { questionId: 'speckit-1', role: 'po', text: 'Qual o prazo?', blocking: true, relatedAcIds: [], cycle: 2, origin: 'speckit', itemKey: 'login' };
+  const planDone = { type: RefineEvent.SpeckitStepDone, data: { command: 'plan', itemKey: 'login', files: [], questions: [asked] } };
+  const evidence = [{ file: 'briefing.md', heading: 'Regras', quote: 'O link vale por 90 dias depois do envio.' }];
+  const result = (over: Record<string, unknown> = {}) => ({ questionId: 'speckit-1', subject: 'Prazo', context: 'Item Entrar.', text: 'Por quanto tempo vale o link?', options: [], ...over });
+  const triaged = (results: object[], extra: Record<string, unknown> = {}) => ({ type: RefineEvent.SpeckitTriaged, data: { results, ...extra } });
+
+  it('fills in the card of a pending question, and records the answer the documents settle with who gave it and its evidence', () => {
+    const s = reduceRefineEvents([started, planDone, triaged([result({ answer: { text: '90 dias', by: 'sm', evidence } })])]);
+    expect(s.questions).toEqual([expect.objectContaining({ questionId: 'speckit-1', text: 'Por quanto tempo vale o link?', subject: 'Prazo', context: 'Item Entrar.', status: 'answered', answer: '90 dias', answeredBy: 'sm', evidence })]);
+  });
+
+  it('keeps a question without an answer pending, with its card and no options when the card has none', () => {
+    const s = reduceRefineEvents([started, planDone, triaged([result()])]);
+    expect(s.questions[0]).toMatchObject({ status: 'pending', text: 'Por quanto tempo vale o link?', context: 'Item Entrar.' });
+    expect(s.questions[0]!.options).toBeUndefined();
+  });
+
+  it('never changes a question the owner has already answered', () => {
+    const s = reduceRefineEvents([started, planDone, { type: RefineEvent.QuestionAnswered, data: { questionId: 'speckit-1', text: 'Um dia' } }, triaged([result({ answer: { text: '90 dias', by: 'po', evidence } })])]);
+    expect(s.questions[0]).toMatchObject({ status: 'answered', answer: 'Um dia', answeredBy: null, text: 'Qual o prazo?' });
+  });
+
+  it('removes the finished entry of the step when an answer came with its rework, so a resume runs the step again', () => {
+    const rework = { command: 'plan', itemKey: 'login' };
+    const answered = reduceRefineEvents([started, planDone, triaged([result({ answer: { text: '90 dias', by: 'sm', evidence } })], { rework })]);
+    expect(answered.speckit!.steps).toEqual([]);
+    const cardOnly = reduceRefineEvents([started, planDone, triaged([result()], { rework })]);
+    expect(cardOnly.speckit!.steps).toEqual([{ command: 'plan', itemKey: 'login' }]);
+  });
+
+  it('a stale mark keeps a finished preparation from standing, until it runs again', () => {
+    const s = reduceRefineEvents([started, { type: RefineEvent.SpeckitDone, data: { inputHash: 'h' } }, { type: RefineEvent.SpeckitStale, data: {} }]);
+    expect(s.speckit).toMatchObject({ status: 'done', stale: true });
+  });
+
+  it('an answer the owner gives later has no one who answered it from the documents, and no evidence', () => {
+    const s = reduceRefineEvents([started, planDone, triaged([result({ answer: { text: '90 dias', by: 'sm', evidence } })]), { type: RefineEvent.QuestionAnswered, data: { questionId: 'speckit-1', text: 'Outro prazo' } }]);
+    expect(s.questions[0]).toMatchObject({ status: 'answered', answer: 'Outro prazo', answeredBy: null });
+    expect(s.questions[0]!.evidence).toBeUndefined();
+  });
+});
+
 describe('Spec Kit preparation state', () => {
   const started = { type: RefineEvent.SpeckitStarted, data: { total: 4 } };
 

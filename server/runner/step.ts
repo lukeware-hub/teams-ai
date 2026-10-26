@@ -95,7 +95,17 @@ const READ_ONLY_KINDS: readonly string[] = ['review', 'ui-check', 'refine', 'sug
 export const CHAT_TOOLS: readonly string[] = ['Read', 'Grep', 'Glob', 'Bash'];
 /** A search or two and the answer: a chat that loops is cut short instead of spending the step budget. */
 export const CHAT_MAX_TURNS = 6;
-export const stepCaps = (kind: StepKind, caps: ProcessCaps): ProcessCaps => (kind === 'chat' ? { ...caps, maxTurns: Math.min(caps.maxTurns, CHAT_MAX_TURNS) } : caps);
+/** A Spec Kit answer reads the six documents it was sent, and answers in a few turns at most. */
+export const ANSWER_TOOLS: readonly string[] = ['Read', 'Grep', 'Glob'];
+export const ANSWER_MAX_TURNS = 4;
+/** The tools a kind gets whatever its role allows. */
+const KIND_TOOLS: Partial<Record<StepKind, readonly string[]>> = { chat: CHAT_TOOLS, 'speckit-answer': ANSWER_TOOLS };
+/** The turn cap a kind has below its role's. */
+const KIND_TURNS: Partial<Record<StepKind, number>> = { chat: CHAT_MAX_TURNS, 'speckit-answer': ANSWER_MAX_TURNS };
+export const stepCaps = (kind: StepKind, caps: ProcessCaps): ProcessCaps => {
+  const turns = KIND_TURNS[kind];
+  return turns === undefined ? caps : { ...caps, maxTurns: Math.min(caps.maxTurns, turns) };
+};
 
 /** Longest rejected answer quoted in an error: the journal keeps it, the screen never shows it. */
 const ANSWER_CHARS = 300;
@@ -325,7 +335,8 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
   if (req.resume && req.sessionStore) await restoreSession(req.sessionStore, home);
   // A review, a UI check and a refinement never edit the files they judge (R11.13 slice 2).
   // The chat searches its own guide and history with the tools of CHAT_TOOLS only; its Bash rules allow graphify queries and nothing else.
-  const agent = READ_ONLY_KINDS.includes(req.kind) ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : req.kind === 'chat' ? { ...req.agent, tools: [...CHAT_TOOLS] } : req.agent;
+  const kindTools = KIND_TOOLS[req.kind];
+  const agent = READ_ONLY_KINDS.includes(req.kind) ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : kindTools ? { ...req.agent, tools: [...kindTools] } : req.agent;
   const catalogNote = refs.length > 0 ? `Reference catalog (search it with Grep; never load it whole): ${refs.join(', ')}` : '';
   const systemExtra = [req.systemExtra, catalogNote].filter(Boolean).join('\n\n');
   const agentWithExtra = systemExtra ? { ...agent, body: `${agent.body}\n\n${systemExtra}` } : agent;

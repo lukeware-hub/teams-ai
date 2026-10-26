@@ -20,6 +20,8 @@ import { buildSpecsIndex, specIdOf } from './specs-index.js';
 import { loadEvents } from '../store/event-store.js';
 import { reduceRefineEvents, type BacklogState, type RefineState } from './state.js';
 import type { Question } from './events.js';
+import { decisionsOf } from './decisions.js';
+import { answererOf, makeAnswerer, type Answerer } from './speckit-answers.js';
 
 export const SPECKIT_NOT_INSTALLED = 'O Spec Kit não está instalado neste ambiente.';
 export const SPECKIT_STAGE = 'A preparação do Spec Kit';
@@ -90,14 +92,17 @@ async function writeInputs(draft: Draft, texts: Record<SpeckitInput, string>): P
 const sameText = (text: string): string => text.trim().replace(/\s+/g, ' ').toLowerCase();
 
 /** The questions of one step as refine questions, leaving out any already asked or answered, so a re-run never asks again. */
-function newQuestions(state: Pick<RefineState, 'questions' | 'cycle'>, asked: SpeckitOutput['questions'], itemKey: string | undefined): Question[] {
+function newQuestions(state: Pick<RefineState, 'questions' | 'cycle'>, asked: SpeckitOutput['questions'], itemKey: string | undefined, role: 'po' | 'sm'): Question[] {
   const seen = new Set(state.questions.map((q) => sameText(q.text)));
+  const ids = new Set(state.questions.map((q) => q.questionId));
   return asked.flatMap((q) => {
     const key = sameText(q.text);
-    if (seen.has(key)) return [];
+    const questionId = `speckit-${sha256(key).slice(7, 19)}`;
+    // An id is kept even when the owner's card rewords the question, so the same question is never asked twice.
+    if (seen.has(key) || ids.has(questionId)) return [];
     seen.add(key);
     const about = q.itemKey ?? itemKey;
-    return [{ questionId: `speckit-${sha256(key).slice(7, 19)}`, role: 'po' as const, text: q.text.trim(), blocking: q.blocking, relatedAcIds: [], cycle: state.cycle, origin: 'speckit' as const, ...(about ? { itemKey: about } : {}), ...(q.options?.length ? { options: q.options } : {}) }];
+    return [{ questionId, role, text: q.text.trim(), blocking: q.blocking, relatedAcIds: [], cycle: state.cycle, origin: 'speckit' as const, ...(about ? { itemKey: about } : {}), ...(q.options?.length ? { options: q.options } : {}) }];
   });
 }
 
@@ -157,7 +162,8 @@ async function droppedCriteria(staging: string, step: Step, featureDir: string |
 async function runCommand(deps: SpeckitDeps, step: Step, hash: string): Promise<SpeckitOutput> {
   const specHash = sha256(`speckit\n${step.command}\n${step.item?.key ?? ''}\n${hash}`);
   const inputDir = speckitInputDir(deps.draft);
-  const pack = fitPackBudget(speckitPack({ command: step.command, specHash, inputDir, item: step.item }));
+  const decisions = decisionsOf(deps.journal.state.questions.filter((q) => q.origin === 'speckit' && q.answeredBy));
+  const pack = fitPackBudget(speckitPack({ command: step.command, specHash, inputDir, item: step.item, decisions }));
   const extraAllow = [...SPECKIT_BASH, `Read(${absoluteRule(inputDir)}/**)`];
   const out = (await retryOnSchema((note) =>
     deps.runAgent<'speckit'>(
@@ -185,22 +191,48 @@ export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState, f
     await initSpeckit(deps.exec, dir);
   }
   const decider = deps.decider && recorded(deps.decider, deps.journal, deps.journal.state.cycle);
-  for (const step of speckitSteps(buildSpecsIndex(deps.draft.specId, backlog).specs)) {
+  const items = buildSpecsIndex(deps.draft.specId, backlog).specs;
+  const answerer = makeAnswerer({ draft: deps.draft, journal: deps.journal, runAgent: deps.runAgent, texts, hash, titles: new Map(items.map((i): [string, string] => [i.key, i.title])), stagingDir: dir, signal: deps.signal });
+  // Questions an earlier preparation left unanswered are tried first. An answer to a finished step's question leaves that step stale.
+  const swept = await answerer.triage(deps.journal.state.questions.filter((q) => q.origin === 'speckit' && q.status === 'pending' && q.context === undefined));
+  if (swept > 0 && resume) await deps.journal.fact(RefineEvent.SpeckitStale, {});
+  for (const step of speckitSteps(items)) {
     if (deps.signal?.aborted) throw new OwnerError(`${SPECKIT_STAGE} foi interrompida.`, 'aborted');
     if (resume && finished.has(stepKey(step.command, step.item?.key))) continue;
+    await runStep(deps, { step, hash, backlog, decider, answerer });
+  }
+  return hash;
+}
+
+/**
+ * One Spec Kit command, then the answers to the questions it left. An answer changes the files of its step, so a step other than
+ * a specify runs once more with it; an answer that comes after that, or with a stop, leaves the preparation stale.
+ */
+async function runStep(deps: SpeckitDeps, run: { step: Step; hash: string; backlog: BacklogState; decider: Pick<Decider, 'decide'> | undefined; answerer: Answerer }): Promise<void> {
+  const { step, hash, backlog, decider, answerer } = run;
+  const dir = speckitDir(deps.draft);
+  // A specify step makes a new feature folder on every run, so its answers reach the steps after it instead.
+  const rework = step.command === 'specify' ? undefined : { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}) };
+  let answered = 0;
+  for (let round = 1; ; round++) {
     await deps.journal.fact(RefineEvent.SpeckitStepStarted, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}) });
     const result = await runCommand(deps, step, hash);
     const featureDir = step.command === 'specify' ? await featureDirOf(dir, result.files) : undefined;
     if (result.status === 'done') await checkOnDisk(dir, step, result.files, featureDir);
     const open = result.status === 'done' ? await openMarkers(dir, result.files) : [];
     const dropped = result.status === 'done' ? await droppedCriteria(dir, step, featureDir ?? (step.item && deps.journal.state.speckit?.features?.[step.item.key]), backlog) : undefined;
-    const fresh = newQuestions(deps.journal.state, result.questions, step.item?.key);
+    const fresh = newQuestions(deps.journal.state, result.questions, step.item?.key, answererOf(step.command));
     const asked = decider ? await dropRepeats(fresh, deps.journal.state.questions, decider, await isConfidential(deps.draft, deps.journal.state)) : fresh;
     await deps.journal.fact(RefineEvent.SpeckitStepDone, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}), files: result.files, ...(featureDir ? { featureDir } : {}), ...(asked.length > 0 ? { questions: asked } : {}), ...(result.status === 'blocked' || open.length > 0 || dropped ? { blocked: true } : {}) });
-    // The questions of a blocked step are on record before it stops, so the owner can answer them.
+    // The questions of a step are on record and answered before the step stops, so the owner sees what is left.
+    const count = await answerer.triage(asked, round === 1 ? rework : undefined);
+    answered += count;
+    if (count > 0 && round === 1 && rework) continue;
+    const stopped = result.status === 'blocked' || open.length > 0 || Boolean(dropped);
+    if ((count > 0 && round > 1) || (stopped && answered > 0)) await deps.journal.fact(RefineEvent.SpeckitStale, {});
     if (result.status === 'blocked') throw new OwnerError(`O Spec Kit parou em ${stepName(step)}: ${result.reason}`, result.summary);
     if (open.length > 0) throw new OwnerError(`O Spec Kit deixou pontos em aberto ([NEEDS CLARIFICATION]) em ${stepName(step)}. Responda às perguntas dele ou tente de novo.`, open.join(', '));
     if (dropped) throw new OwnerError(`O Spec Kit deixou critérios de aceite de fora em ${stepName(step)}. ${TRY_AGAIN}`, dropped);
+    return;
   }
-  return hash;
 }

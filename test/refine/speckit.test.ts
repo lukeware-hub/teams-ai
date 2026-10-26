@@ -19,13 +19,21 @@ let root = '';
 let ws: Workspace;
 let execCalls: CommandSpec[];
 let agentCalls: Array<AgentStepRequest<'speckit'>>;
+let docCalls: Array<AgentStepRequest<'speckit-answer'>>;
 let exec: Exec;
 let answer: (req: AgentStepRequest<'speckit'>) => unknown;
+/** What the PO or SM answers from the six documents; null is a failed call. */
+let answerFromDocs: (req: AgentStepRequest<'speckit-answer'>) => unknown;
 
 const draft = () => draftPaths(ws, 'hello-001');
 const usage = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
 const summary = { usage, costUsd: 0, durationMs: 1, numTurns: 1, rateLimit: null };
-const runAgent: RunAgent = (async (req: AgentStepRequest<'speckit'>, ctx: { specHash: string }) => {
+const runAgent: RunAgent = (async (req: AgentStepRequest<'speckit'> | AgentStepRequest<'speckit-answer'>, ctx: { specHash: string }) => {
+  if (req.kind === 'speckit-answer') {
+    docCalls.push(req);
+    const out = answerFromDocs(req);
+    return out === null ? { ok: false, failure: 'schema', errors: ['bad json'], summary } : { ok: true, value: { specHash: ctx.specHash, results: [], ...(out as object) }, summary };
+  }
   agentCalls.push(req);
   const out = await answer(req);
   return out === null ? { ok: false, failure: 'schema', errors: ['bad json'], summary } : { ok: true, value: { specHash: ctx.specHash, questions: [], ...(out as object) }, summary };
@@ -64,6 +72,16 @@ const askItems = (asks: Record<string, Array<{ text: string; blocking: boolean }
   return { ...(await done(req)), questions: key ? asks[key] : [] };
 };
 
+/** The questions the PO or SM was asked: each line of its pack names the question id and its text. */
+const askedOf = (req: AgentStepRequest<'speckit-answer'>) => [...req.pack.feedback!.matchAll(/^- (speckit-\w+) \(item: .*?\): (.*)$/gm)].map((m) => ({ questionId: m[1]!, text: m[2]! }));
+/** A line of the briefing, which the answers cite. */
+const LINK = 'O link de recuperação de senha vale por 90 dias depois do envio.';
+/** The answers the documents give to every question asked: the number of the briefing line, and the card written for each. */
+const answersIn = (req: AgentStepRequest<'speckit-answer'>) => ({
+  results: askedOf(req).map((q) => ({ questionId: q.questionId, answer: '90 dias', evidence: [{ source: 'briefing.md', quote: LINK }], card: { subject: 'Prazo do link', context: 'Item Entrar. Sem prazo, o link fica aberto.', text: `Reescrita: ${q.text}`, options: [] } })),
+});
+const planLogin = (r: AgentStepRequest<'speckit'>) => r.pack.feedback!.includes('speckit-plan/SKILL') && r.pack.feedback!.includes('"## login:');
+
 /** A wizard session whose backlog of two items is detailed. */
 async function detailedSession(decider?: Pick<Decider, 'decide'>): Promise<RefineSession> {
   const created = await RefineSession.create(deps(), 'new-project');
@@ -94,6 +112,8 @@ beforeEach(async () => {
     return { exitCode: 0, signal: null, stdout: '', stderr: '', timedOut: false, durationMs: 1, truncated: false };
   };
   answer = done;
+  answerFromDocs = () => null;
+  docCalls = [];
 });
 afterEach(() => fs.rm(root, { recursive: true, force: true }));
 
@@ -121,10 +141,113 @@ describe('speckitPack', () => {
     }
   });
 
+  it('gives the answers taken from the documents as provisional decisions the files must follow', () => {
+    const decisions = [{ question: 'Qual o prazo?', answer: '90 dias', by: 'sm' as const }];
+    const p = speckitPack({ command: 'plan', specHash: 'sha256:x', inputDir: inputs, item, decisions });
+    expect(p.decisions).toEqual(decisions);
+    expect(p.feedback).toContain('provisional');
+  });
+
   it('tells every item command to keep the acceptance criterion ids', () => {
     for (const command of ['specify', 'clarify', 'plan', 'tasks'] as const) {
       expect(speckitPack({ command, specHash: 'sha256:x', inputDir: inputs, item }).feedback, command).toContain('acceptance criterion ids');
     }
+  });
+});
+
+describe('RefineSession.runSpeckit answers from the documents', () => {
+  /** The briefing holds the line the answers cite. */
+  const briefing = (s: RefineSession) => s.saveDoc('briefing.md', `## Regras\n\n${LINK}\n`);
+
+  it('a question the PO answers from the documents is not asked to the owner, and the next step reads the answer as a decision', async () => {
+    answer = askItems({ login: [{ text: 'Qual o prazo do link?', blocking: true }] });
+    answerFromDocs = answersIn;
+    const s = await detailedSession();
+    await briefing(s);
+    await s.runSpeckit();
+    expect(s.state.questions).toEqual([expect.objectContaining({ origin: 'speckit', status: 'answered', answer: '90 dias', answeredBy: 'po', text: 'Reescrita: Qual o prazo do link?' })]);
+    expect(canStart(s.state)).toBe(true);
+    const clarify = agentCalls.find((r) => r.pack.feedback!.includes('speckit-clarify/SKILL'));
+    expect(clarify!.pack.decisions).toEqual([expect.objectContaining({ question: 'Reescrita: Qual o prazo do link?', answer: '90 dias', by: 'po' })]);
+    await s.close();
+  });
+
+  it('an answer to a question of the plan makes the plan run once more with the answer, and the step is recorded once', async () => {
+    let plans = 0;
+    answer = async (req) => {
+      if (!planLogin(req)) return done(req);
+      plans += 1;
+      return { ...(await done(req)), questions: plans === 1 ? [{ text: 'Qual o prazo do link?', blocking: true }] : [] };
+    };
+    answerFromDocs = answersIn;
+    const s = await detailedSession();
+    await briefing(s);
+    await s.runSpeckit();
+    const plan = agentCalls.filter(planLogin);
+    expect(plan).toHaveLength(2);
+    expect(plan[1]!.pack.decisions).toEqual([expect.objectContaining({ answer: '90 dias', by: 'sm' })]);
+    expect(s.state.questions).toEqual([expect.objectContaining({ status: 'answered', answeredBy: 'sm' })]);
+    expect(s.state.speckit!.steps.filter((st) => st.command === 'plan' && st.itemKey === 'login')).toHaveLength(1);
+    expect(s.state.speckit).toMatchObject({ status: 'done', stale: false });
+    expect(canStart(s.state)).toBe(true);
+    await s.close();
+  });
+
+  it('an answer that arrives after a re-run leaves the preparation stale, and a question asked again in its own words adds no row', async () => {
+    let plans = 0;
+    const first = { text: 'Qual o prazo do link?', blocking: true };
+    const second = { text: 'Qual o limite de envios?', blocking: true };
+    answer = async (req) => {
+      if (!planLogin(req)) return done(req);
+      plans += 1;
+      return { ...(await done(req)), questions: plans === 1 ? [first] : [first, second] };
+    };
+    answerFromDocs = answersIn;
+    const s = await detailedSession();
+    await briefing(s);
+    await s.runSpeckit();
+    expect(s.state.questions.map((q) => q.status)).toEqual(['answered', 'answered']);
+    expect(s.state.speckit?.stale).toBe(true);
+    expect(canStart(s.state)).toBe(false);
+    await s.close();
+  });
+
+  it('a question the PO cannot answer from the documents reaches the owner with the card the PO wrote', async () => {
+    answer = askItems({ login: [{ text: 'Qual o prazo do link?', blocking: true }] });
+    answerFromDocs = (req) => ({ results: askedOf(req).map((q) => ({ questionId: q.questionId, answer: null, evidence: [], card: { subject: 'Prazo do link', context: 'Item Entrar. Sem prazo, o link fica aberto.', text: `Para o dono: ${q.text}`, options: [] } })) });
+    const s = await detailedSession();
+    await briefing(s);
+    await s.runSpeckit();
+    expect(s.state.questions).toEqual([expect.objectContaining({ status: 'pending', text: 'Para o dono: Qual o prazo do link?', context: 'Item Entrar. Sem prazo, o link fica aberto.' })]);
+    expect(s.state.speckit?.status).toBe('done');
+    expect(canStart(s.state)).toBe(false);
+    await s.close();
+  });
+
+  it('two failed answers in a row stop the answers for that run, and the questions stay with the owner', async () => {
+    answer = async (req) => (req.pack.feedback!.includes('"## login:') ? { ...(await done(req)), questions: [{ text: `Pergunta de ${req.pack.feedback!.match(/speckit-(\w+)\/SKILL/)![1]}?`, blocking: false }] } : done(req));
+    const s = await detailedSession();
+    await briefing(s);
+    await s.runSpeckit();
+    // Each failed answer is retried once: two calls for each of the first two questions, and none after the stop.
+    expect(docCalls).toHaveLength(4);
+    expect(s.state.questions.map((q) => q.status)).toEqual(['pending', 'pending', 'pending', 'pending']);
+    expect(s.state.speckit?.status).toBe('done');
+    await s.close();
+  });
+
+  it('the questions an earlier preparation left unanswered are answered at the start of the next one', async () => {
+    answer = askItems({ login: [{ text: 'Qual o prazo do link?', blocking: false }] });
+    const s = await detailedSession();
+    await briefing(s);
+    await s.runSpeckit();
+    expect(s.state.questions).toHaveLength(1);
+    expect(s.state.questions[0]!.context).toBeUndefined();
+    answerFromDocs = answersIn;
+    await s.runSpeckit();
+    expect(s.state.questions).toEqual([expect.objectContaining({ status: 'answered', answer: '90 dias', answeredBy: 'po' })]);
+    expect(s.state.speckit).toMatchObject({ status: 'done', stale: false });
+    await s.close();
   });
 });
 

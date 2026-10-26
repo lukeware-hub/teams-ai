@@ -66,6 +66,10 @@ export const RefineEvent = {
   SpeckitDone: 'SPECKIT_DONE',
   /** The Spec Kit preparation stopped: `{reason}`, in plain words for the owner. */
   SpeckitFailed: 'SPECKIT_FAILED',
+  /** The PO or SM read the questions of a Spec Kit step: `{results, rework?}`; `rework` names the step to run again after an answer. */
+  SpeckitTriaged: 'SPECKIT_TRIAGED',
+  /** The Spec Kit preparation no longer stands: an answer came after its files were written, so the next run starts over. */
+  SpeckitStale: 'SPECKIT_STALE',
   /** One System 1 decision of Gate 1; same type and record shape as the run journal, so the eval harness reads both. */
   DecisionMade: 'DECISION_MADE',
 } as const;
@@ -94,6 +98,23 @@ export interface Question {
   origin?: 'speckit';
   /** The backlog item a Spec Kit question is about. */
   itemKey?: string;
+  /** The plain words the owner reads about a Spec Kit question: what it is about and why it needs a decision. */
+  context?: string;
+}
+/** A quote of one of the six documents that backs an answer: the file, the heading above the quote, and the quote. */
+export interface QuoteEvidence {
+  file: string;
+  heading: string;
+  quote: string;
+}
+/** A Spec Kit question as the PO or SM left it: its card for the owner, and the answer when the documents settle it. */
+export interface SpeckitTriage {
+  questionId: string;
+  subject: string;
+  context: string;
+  text: string;
+  options: QuestionChoice[];
+  answer?: { text: string; by: 'po' | 'sm'; evidence: QuoteEvidence[] };
 }
 /** The journal's specHash field before a spec is frozen. */
 export const DRAFT_HASH = 'draft';

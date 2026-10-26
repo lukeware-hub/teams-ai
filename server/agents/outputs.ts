@@ -8,7 +8,7 @@ import { ID_PATTERNS } from '../core/ids.js';
 import { Project, ServiceName } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 
-export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'gaps', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select', 'speckit', 'converge'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'gaps', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select', 'speckit', 'speckit-answer', 'converge'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -334,6 +334,19 @@ export const SpeckitOutput = z.discriminatedUnion('status', [
 ]);
 export type SpeckitOutput = z.infer<typeof SpeckitOutput>;
 
+/** A quote the PO or SM takes from one of the six documents; the server checks it against the text the agent was sent. */
+const AnswerEvidence = z.object({ source: z.string().min(1), quote: z.string().min(1) });
+/** The answer to one Spec Kit question with the card the owner reads; `answer` is null when the documents do not settle it. */
+const SpeckitAnswerResult = z.object({
+  questionId: z.string().min(1),
+  answer: z.string().min(1).nullable(),
+  evidence: keepValid(AnswerEvidence),
+  card: z.object({ subject: z.string().min(1).max(80), context: z.string().min(1), text: z.string().min(1), options: keepValid(QuestionChoice).optional() }),
+});
+/** One result per question the PO or SM was asked; a malformed result is dropped alone, so its question stays with the owner. */
+export const SpeckitAnswerOutput = z.object({ specHash, results: keepValid(SpeckitAnswerResult) });
+export type SpeckitAnswerOutput = z.infer<typeof SpeckitAnswerOutput>;
+
 /** Spec Kit's convergence: the code is checked against the feature's spec, plan and tasks; gaps come back as appended task ids. */
 export const ConvergeOutput = z.discriminatedUnion('status', [
   z.object({ specHash, status: z.literal('converged'), summary: z.string().min(1) }),
@@ -386,6 +399,7 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   chat: ChatOutput,
   'skill-select': SkillSelectionOutput,
   speckit: SpeckitOutput,
+  'speckit-answer': SpeckitAnswerOutput,
   converge: ConvergeOutput,
 };
 

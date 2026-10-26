@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Plan } from '../../server/contracts/plan.js';
 import { makeFrozenSpec, makePlan, makePlanTask, makeServicesPlan } from '../fixtures/contracts.js';
-import { ConvergeOutput, DevOutput, EnvironmentVariable, OUTPUT_SCHEMAS, PlanOutput, RefineOutput, ReviewOutput, SecurityOutput, ServicesPlanOutput, STEP_KINDS, blockingFindings, toJsonSchema } from '../../server/agents/outputs.js';
+import { ConvergeOutput, DevOutput, EnvironmentVariable, OUTPUT_SCHEMAS, PlanOutput, RefineOutput, ReviewOutput, SecurityOutput, ServicesPlanOutput, SpeckitAnswerOutput, STEP_KINDS, blockingFindings, toJsonSchema } from '../../server/agents/outputs.js';
 
 const HASH = `sha256:${'a'.repeat(64)}`;
 
@@ -14,6 +14,12 @@ describe('output contracts', () => {
       for (const branch of branches) expect(branch.required, kind).toContain('specHash');
     }
     expect(Object.keys(OUTPUT_SCHEMAS).sort()).toEqual([...STEP_KINDS].sort());
+  });
+
+  it('a Spec Kit answer keeps each valid result, and drops a malformed one on its own', () => {
+    const card = { subject: 'Prazo', context: 'Item Entrar.', text: 'Por quanto tempo?', options: [] };
+    const parsed = SpeckitAnswerOutput.parse({ specHash: HASH, results: [{ questionId: 'speckit-1', answer: null, evidence: [], card }, { questionId: 'speckit-2', answer: '90 dias' }] });
+    expect(parsed.results.map((r) => r.questionId)).toEqual(['speckit-1']);
   });
 
   it('a converge answer is converged, or names the Spec Kit task ids it appended', () => {

@@ -4,7 +4,7 @@ import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
 import type { ChecklistItem } from './checklist.js';
 import { coverageGaps } from './coverage.js';
-import { RefineEvent, type Question } from './events.js';
+import { RefineEvent, type Question, type QuoteEvidence, type SpeckitTriage } from './events.js';
 import { approvalKey } from './sections.js';
 import type { DocFile } from './draft.js';
 import type { PendingPatch } from './patches.js';
@@ -18,6 +18,8 @@ export interface QuestionRow extends Question {
   answer: string | null;
   /** The role that answered it from the docs (R11.5.7); null when the human did. */
   answeredBy?: 'po' | 'sm' | null;
+  /** The quotes of the documents that back an answer the PO or SM gave. */
+  evidence?: QuoteEvidence[];
 }
 export interface PatchRow extends PendingPatch {
   cycle: number;
@@ -388,6 +390,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
         q.status = e.type === RefineEvent.QuestionAnswered ? 'answered' : 'skipped';
         q.answer = (d.text as string | undefined) ?? null;
         q.answeredBy = (d.by as 'po' | 'sm' | undefined) ?? null;
+        q.evidence = d.evidence as QuoteEvidence[] | undefined;
       }
       s.status = computeStatus(s);
       break;
@@ -512,6 +515,24 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       if (asked.length > 0) s.status = computeStatus(s);
       break;
     }
+    case RefineEvent.SpeckitTriaged: {
+      const results = d.results as SpeckitTriage[];
+      for (const r of results) {
+        const q = s.questions.find((x) => x.questionId === r.questionId);
+        // The card and the answer fill only a question still pending: an answer the owner gave always stands.
+        if (!q || q.status !== 'pending') continue;
+        Object.assign(q, { subject: r.subject, context: r.context, text: r.text, options: r.options.length > 0 ? r.options : undefined });
+        if (r.answer) Object.assign(q, { status: 'answered', answer: r.answer.text, answeredBy: r.answer.by, evidence: r.answer.evidence });
+      }
+      // An answer changes the files of its step, so the step counts as finished only once it runs again.
+      const rework = d.rework as { command: string; itemKey?: string } | undefined;
+      if (rework && s.speckit && results.some((r) => r.answer)) s.speckit.steps = s.speckit.steps.filter((st) => stepKey(st.command, st.itemKey) !== stepKey(rework.command, rework.itemKey));
+      s.status = computeStatus(s);
+      break;
+    }
+    case RefineEvent.SpeckitStale:
+      markSpeckitStale(s);
+      break;
     case RefineEvent.SpeckitDone:
       if (s.speckit) s.speckit.status = 'done';
       break;

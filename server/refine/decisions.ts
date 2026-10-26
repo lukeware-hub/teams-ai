@@ -48,9 +48,14 @@ export function decisionsSpan(doc: string): { start: number; end: number } | nul
   return { start: offset(section.line), end: Math.min(offset(section.line + section.text.split('\n').length), doc.length) };
 }
 
+/** The answered questions as decisions, in row order. */
+export function decisionsOf(rows: readonly QuestionRow[]): SpecDecision[] {
+  return rows.flatMap((q) => (q.status === 'answered' && q.answer ? [{ question: q.text, answer: q.answer, ...(q.answeredBy ? { by: q.answeredBy } : {}) }] : []));
+}
+
 /** The spec with each answered question recorded as a decision; a later answer to the same question replaces the earlier one. */
 export function withDecisions(spec: Spec, rows: readonly QuestionRow[]): Spec {
-  const answered: SpecDecision[] = rows.flatMap((q) => (q.status === 'answered' && q.answer ? [{ question: q.text, answer: q.answer, ...(q.answeredBy ? { by: q.answeredBy } : {}) }] : []));
+  const answered = decisionsOf(rows);
   if (answered.length === 0) return spec;
   const byQuestion = new Map((spec.decisions ?? []).map((d) => [norm(d.question), d]));
   for (const d of answered) byQuestion.set(norm(d.question), d);
