@@ -149,7 +149,7 @@ export async function docsWorktree(deps: PhaseDeps, branch: string, opts: { keep
 }
 
 /** A docs worktree from the current main: one left by a failed or interrupted attempt holds an older main, so it goes unless its commit is confirmed. */
-export async function freshDocsWorktree(deps: PhaseDeps, branch: string, phase: 0 | 1 | 2 | 6 | 7): Promise<string> {
+export async function freshDocsWorktree(deps: PhaseDeps, branch: string, phase: DocsPhase): Promise<string> {
   if (!deps.journal.isConfirmed(Intent.DocsCommit, docsCommitKey(deps, phase))) await removeWorktree(deps.ws.repo, worktreeDir(deps.ws, branch), deps.exec);
   return docsWorktree(deps, branch);
 }
@@ -160,7 +160,10 @@ export async function currentDocs(worktree: string): Promise<DocsInput> {
   return { readme: await read('README.md'), runbook: await read('RUNBOOK.md'), apiDocs: await read('API.md') };
 }
 
-export const docsCommitKey = (deps: PhaseDeps, phase: 0 | 1 | 2 | 6 | 7) => `${deps.spec.specId}-${phase}${deps.service ? `-${deps.service}` : ''}`;
+/** The phase a docs commit belongs to; Spec Kit's convergence rounds take 8 and 9. */
+export type DocsPhase = 0 | 1 | 2 | 6 | 7 | 8 | 9;
+
+export const docsCommitKey = (deps: PhaseDeps, phase: DocsPhase) => `${deps.spec.specId}-${phase}${deps.service ? `-${deps.service}` : ''}`;
 
 /** Commits the docs and returns the head sha with the files the commit touched (none when there was nothing to commit). */
 export async function commitDocs(worktree: string, message: string, exec: Exec): Promise<{ sha: string; files: string[] }> {
@@ -170,7 +173,7 @@ export async function commitDocs(worktree: string, message: string, exec: Exec):
   return { sha: committed, files };
 }
 
-export async function commitAndMergeDocs(deps: PhaseDeps, phase: 0 | 1 | 2 | 6 | 7, branch: string, worktree: string, title: string): Promise<PhaseResult> {
+export async function commitAndMergeDocs(deps: PhaseDeps, phase: DocsPhase, branch: string, worktree: string, title: string): Promise<PhaseResult> {
   const key = docsCommitKey(deps, phase);
   if (!deps.journal.isConfirmed(Intent.DocsCommit, key)) {
     const baseSha = await git(worktree, ['rev-parse', 'HEAD'], deps.exec);

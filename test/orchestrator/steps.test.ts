@@ -8,7 +8,7 @@ import { Governor } from '../../server/budget/governor.js';
 import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
 import { buildContextPack } from '../../server/knowledge/context-pack.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
-import { devPack, devResumePrompt, fixTasksPack, outputContract, planPack, planRules, readmePack, replanPack, reportPack, reviewPack, runAgentStep, securityPack, servicesPlanRules, sourceDocsRule, speckitRule, specGapPack, techSpecPack, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
+import { devPack, devResumePrompt, fixTasksPack, outputContract, planPack, planRules, readmePack, replanPack, reportPack, reviewPack, runAgentStep, securityPack, servicesPlanRules, sourceDocsRule, speckitImplementRule, speckitRule, specGapPack, techSpecPack, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
 import { servicePlans } from '../../server/contracts/plan.js';
 import { saveSession } from '../../server/runner/session-store.js';
 import type { StepOutcome } from '../../server/runner/step.js';
@@ -142,6 +142,19 @@ describe('packs', () => {
     expect(devPack(base, { ...task, affectedPaths: ['test/e2e/**'] }, opts).principles.join('\n')).toContain('Never skip a test');
     expect(devPack(base, { ...task, affectedPaths: ['src/app.mjs'] }, opts).principles).toEqual([...base.project.principles, speckitRule(), sourceDocsRule(spec.specId)]);
     expect(devPack(base, suiteTask, { ...opts, e2eSuite: undefined }).principles).toEqual([...base.project.principles, speckitRule(), sourceDocsRule(spec.specId)]);
+  });
+
+  it('a dev task of Spec Kit tasks runs /speckit-implement on its ids only and never edits tasks.md', () => {
+    const own = makePlanTask({ id: 'T1', criteriaRefs: [spec.acceptanceCriteria[0]!.id], speckitTasks: ['T001', 'T002'] });
+    const speckit = { feature: 'specs/003-login', ids: ['T001', 'T002'] };
+    const p = devPack({ ...base, speckitFeature: speckit.feature }, own, { code: { source: 'none' }, handoffs: [], feedback: null, speckit });
+    const rule = speckitImplementRule(speckit.feature, speckit.ids);
+    expect(p.principles).toContain(rule);
+    expect(rule).toContain('/speckit-implement');
+    expect(rule).toContain('T001, T002');
+    expect(rule).toContain('Never change tasks.md');
+    const plain = devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null });
+    expect(plain.principles.join('\n')).not.toContain('/speckit-implement');
   });
 
   it('tells every dev task to read the Spec Kit files and the six documents before it changes a file', () => {

@@ -61,4 +61,4 @@ Status: pending. A builder has no structured field for a departure from the task
 
 ## 9. Spec Kit: `tasks.md` shows the delivered tasks
 
-Status: pending. Spec Kit stops at tasks (`server/refine/speckit-steps.ts:9-11`), and no code updates `tasks.md` when a task merges, so the repository never shows what was delivered. Decide the form first, then add a step that marks each delivered entry.
+Status: done. When a spec's tasks have merged, the orchestrator marks each delivered Spec Kit task `[X]` in `tasks.md` (`server/orchestrator/phases/speckit.ts`), in the same docs change as the convergence verdict, so the repository shows what was delivered.

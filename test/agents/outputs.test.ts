@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Plan } from '../../server/contracts/plan.js';
 import { makeFrozenSpec, makePlan, makePlanTask, makeServicesPlan } from '../fixtures/contracts.js';
-import { DevOutput, EnvironmentVariable, OUTPUT_SCHEMAS, PlanOutput, RefineOutput, ReviewOutput, SecurityOutput, ServicesPlanOutput, STEP_KINDS, blockingFindings, toJsonSchema } from '../../server/agents/outputs.js';
+import { ConvergeOutput, DevOutput, EnvironmentVariable, OUTPUT_SCHEMAS, PlanOutput, RefineOutput, ReviewOutput, SecurityOutput, ServicesPlanOutput, STEP_KINDS, blockingFindings, toJsonSchema } from '../../server/agents/outputs.js';
 
 const HASH = `sha256:${'a'.repeat(64)}`;
 
@@ -14,6 +14,14 @@ describe('output contracts', () => {
       for (const branch of branches) expect(branch.required, kind).toContain('specHash');
     }
     expect(Object.keys(OUTPUT_SCHEMAS).sort()).toEqual([...STEP_KINDS].sort());
+  });
+
+  it('a converge answer is converged, or names the Spec Kit task ids it appended', () => {
+    const appended = { specHash: HASH, status: 'tasks-appended', appended: ['T042'], summary: 'login has no logout' };
+    expect(ConvergeOutput.safeParse({ specHash: HASH, status: 'converged', summary: 'all built' }).success).toBe(true);
+    expect(ConvergeOutput.safeParse(appended).success).toBe(true);
+    expect(ConvergeOutput.safeParse({ ...appended, appended: [] }).success).toBe(false);
+    expect(ConvergeOutput.safeParse({ ...appended, appended: ['task-42'] }).success).toBe(false);
   });
 
   it('a new plan names every task id with a slug; a stored plan with bare ids still loads', () => {

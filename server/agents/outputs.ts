@@ -8,7 +8,7 @@ import { ID_PATTERNS } from '../core/ids.js';
 import { Project, ServiceName } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 
-export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'gaps', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select', 'speckit'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'gaps', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select', 'speckit', 'converge'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -333,6 +333,13 @@ export const SpeckitOutput = z.discriminatedUnion('status', [
 ]);
 export type SpeckitOutput = z.infer<typeof SpeckitOutput>;
 
+/** Spec Kit's convergence: the code is checked against the feature's spec, plan and tasks; gaps come back as appended task ids. */
+export const ConvergeOutput = z.discriminatedUnion('status', [
+  z.object({ specHash, status: z.literal('converged'), summary: z.string().min(1) }),
+  z.object({ specHash, status: z.literal('tasks-appended'), appended: z.array(z.string().regex(/^T\d+$/)).min(1), summary: z.string().min(1) }),
+]);
+export type ConvergeOutput = z.infer<typeof ConvergeOutput>;
+
 export const SkillSelectionOutput = z.discriminatedUnion('action', [
   z.object({ specHash, action: z.literal('reuse'), skill: z.object({ id: skillId, repository: z.string().url(), commit: z.string().regex(/^[a-f0-9]{40}$/), license: z.string().min(1), sourcePath: z.string().optional() }), reason: z.string().min(1) }),
   z.object({ specHash, action: z.literal('create'), draft: SkillDraft, reason: z.string().min(1) }),
@@ -378,6 +385,7 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   chat: ChatOutput,
   'skill-select': SkillSelectionOutput,
   speckit: SpeckitOutput,
+  converge: ConvergeOutput,
 };
 
 export type OutputOf<K extends StepKind> = z.infer<(typeof OUTPUT_SCHEMAS)[K]>;

@@ -118,16 +118,29 @@ export const sourceDocsRule = (specId: string): string =>
 /** What every task that builds or judges code reads first: the Spec Kit files and the six documents. */
 const sourceRules = (base: PackBase): string[] => [speckitRule(base.speckitFeature), sourceDocsRule(base.spec.specId)];
 
+/** The Spec Kit tasks a plan task builds, and the feature folder whose tasks.md lists them. */
+export interface SpeckitTasks {
+  feature: string;
+  ids: readonly string[];
+}
+
+/** The Spec Kit scripts the skills run; the allow-list names only them, not any bash command. */
+export const SPECKIT_ALLOW = ['Bash(bash .specify/scripts/bash/*:*)', 'Bash(.specify/scripts/bash/*:*)'] as const;
+
+/** A dev task runs the Spec Kit implement skill on its own ids; the orchestrator, not the Dev, marks tasks.md. */
+export const speckitImplementRule = (feature: string, ids: readonly string[]): string =>
+  `This task builds the Spec Kit task${ids.length > 1 ? 's' : ''} ${ids.join(', ')} of ${feature}/tasks.md. Run the Spec Kit command /speckit-implement in this worktree: read .claude/skills/speckit-implement/SKILL.md with the Read tool and follow it, with the user input ${ids.join(', ')}, so only these tasks are built and only within this task's affected paths. Never change tasks.md (the orchestrator marks it after the spec's tasks merge), never change .claude/, .specify/ or an ignore file, never ask a question in the chat (take the most reasonable choice and name it in the summary), and skip every git step and hook the skill names: the orchestrator commits.`;
+
 export function devPack(
   base: PackBase,
   task: PlanTask,
-  opts: { code: CodeContext; handoffs: readonly HandoffSummary[]; feedback: string | null; e2eSuite?: string },
+  opts: { code: CodeContext; handoffs: readonly HandoffSummary[]; feedback: string | null; e2eSuite?: string; speckit?: SpeckitTasks },
   role: Role = 'dev',
 ): ContextPackInput {
   const shared = common(base, 'dev', role);
   return {
     ...shared,
-    principles: [...shared.principles, ...sourceRules(base), ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : [])],
+    principles: [...shared.principles, ...sourceRules(base), ...(opts.speckit ? [speckitImplementRule(opts.speckit.feature, opts.speckit.ids)] : []), ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : [])],
     task,
     criteria: criteriaOf(base.spec, task.criteriaRefs),
     decisions: base.spec.decisions,
@@ -381,7 +394,22 @@ export function environmentPack(base: PackBase, opts: { unknown: Readonly<Record
   ].filter((p) => p !== '').join('\n\n') };
 }
 
-export function fixTasksPack(base: PackBase, opts: { failedTests: readonly string[]; tails: string; uncoveredAcs: readonly string[]; blocked: ReadonlyArray<{ taskId: string; reason: string; service?: string }>; plan: Pick<Plan, 'tasks' | 'gates'>; services?: readonly string[]; boundaries: readonly string[]; feedback: string | null }): ContextPackInput {
+/** The Spec Kit convergence: the agent checks the code against the feature and appends only the gaps it finds. */
+export function convergePack(base: PackBase, opts: { feature: string }): ContextPackInput {
+  const feedback = [
+    `Run the Spec Kit command /speckit-converge in this folder for the feature ${opts.feature}: read .claude/skills/speckit-converge/SKILL.md with the Read tool and follow it.`,
+    `The feature's spec, plan and tasks are ${opts.feature}/spec.md, ${opts.feature}/plan.md and ${opts.feature}/tasks.md; the rest of this folder is the code.`,
+    'Append only: the one file you write is tasks.md, with a Convergence section at its end. Never change code, the spec, the plan or a task already in tasks.md, and never renumber an id.',
+    'Skip every git step and hook the skill names: the orchestrator commits.',
+    'Never stop to ask a question in the chat; take the most reasonable choice.',
+    'Write the appended tasks in Brazilian Portuguese; keep the template headings and ids.',
+    'Answer status converged when nothing is missing, and leave tasks.md unchanged. Answer status tasks-appended with `appended` set to the ids you appended (T### each) when gaps were found.',
+  ].join('\n\n');
+  const shared = common(base, 'converge', 'dev');
+  return { ...shared, principles: [...shared.principles, ...sourceRules(base)], criteria: base.spec.acceptanceCriteria, feedback };
+}
+
+export function fixTasksPack(base: PackBase, opts: { failedTests: readonly string[]; tails: string; uncoveredAcs: readonly string[]; blocked: ReadonlyArray<{ taskId: string; reason: string; service?: string }>; plan: Pick<Plan, 'tasks' | 'gates'>; services?: readonly string[]; boundaries: readonly string[]; feedback: string | null; convergence?: string }): ContextPackInput {
   const feedback = [
     'Integrated verification on main failed. Plan 1 to 3 fix tasks. Ids are assigned by the orchestrator.',
     `Failed tests:\n${opts.failedTests.map((t) => `- ${t}`).join('\n') || '- none'}`,
@@ -393,6 +421,7 @@ export function fixTasksPack(base: PackBase, opts: { failedTests: readonly strin
     `Module boundaries:\n${opts.boundaries.map((b) => `- ${b}`).join('\n')}`,
     OWNER_RULE,
     opts.services ? `Each task names its service, one of: ${opts.services.join(', ')}. A task changes only that service's repository.` : '',
+    opts.convergence ? `Spec Kit convergence found these tasks of tasks.md the code does not build yet. Each fix task lists the ids it builds in speckitTasks, and every id below needs one:\n${opts.convergence}` : '',
     opts.feedback ? `Previous answer was rejected:\n${opts.feedback}` : '',
   ].filter(Boolean).join('\n\n');
   return { ...common(base, 'fix-tasks', 'sm'), criteria: base.spec.acceptanceCriteria, feedback };

@@ -95,15 +95,15 @@ function deliveryFixTasks(items: readonly MissingItem[], existing: number, depen
 const blockedTasks = (deps: PhaseDeps) => [...deps.tasks!()].filter((t) => t.state === 'blocked').map((t) => ({ taskId: t.def.id, reason: blockReason(deps.journal.events, t.def.id), ...(t.def.service ? { service: t.def.service } : {}) }));
 
 /** Fix tasks join the plan they fix and must keep it valid: one repository's plan, or the whole services plan. */
-function fixTaskErrors(deps: PhaseDeps, fixTasks: readonly PlanTask[]): string[] {
+function fixTaskErrors(deps: PhaseDeps, fixTasks: readonly PlanTask[], speckitTasks?: readonly string[]): string[] {
   const services = deps.services;
-  if (!services) return validatePlan({ ...deps.plan!, tasks: [...deps.plan!.tasks, ...fixTasks] }, deps.spec, { firstSpec: deps.firstSpec, generatedSecretNames: deps.generatedSecretNames });
+  if (!services) return validatePlan({ ...deps.plan!, tasks: [...deps.plan!.tasks, ...fixTasks] }, deps.spec, { firstSpec: deps.firstSpec, generatedSecretNames: deps.generatedSecretNames, speckitTasks });
   const newServices = new Set(services.repos.filter((r) => r.firstSpec).map((r) => r.service!));
   return validateServicesPlan({ ...services.plan, tasks: [...services.plan.tasks, ...fixTasks] }, deps.spec, { services: Object.keys(services.plan.services), newServices, generatedSecretNames: deps.generatedSecretNames });
 }
 
 /** Asks the SM for 1 to 3 fix tasks; `planned` are fix tasks this round already holds, so the new ids come after theirs. */
-async function smFixTasks(deps: PhaseDeps, repos: ServiceRepo[], input: { failedTests: string[]; tails: string; uncoveredAcs: string[]; cwd: string; planned?: PlanTask[] }): Promise<{ tasks: PlanTask[] } | { reason: string }> {
+export async function smFixTasks(deps: PhaseDeps, repos: ServiceRepo[], input: { failedTests: string[]; tails: string; uncoveredAcs: string[]; cwd: string; planned?: PlanTask[]; convergence?: string; speckitTasks?: readonly string[] }): Promise<{ tasks: PlanTask[] } | { reason: string }> {
   const services = deps.services;
   // The SM plans across every service: their tasks and test gates.
   const base = services ? { tasks: services.plan.tasks, gates: repos.flatMap((r) => r.plan.gates) } : deps.plan!;
@@ -112,12 +112,12 @@ async function smFixTasks(deps: PhaseDeps, repos: ServiceRepo[], input: { failed
   const plan = { ...base, tasks: [...base.tasks, ...planned] };
   let feedback: string | null = null;
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const out = await deps.runAgent<'fix-tasks'>({ kind: 'fix-tasks', role: 'sm', pack: fixTasksPack(deps.packBase(), { failedTests: input.failedTests, tails: input.tails, uncoveredAcs: input.uncoveredAcs, blocked: blockedTasks(deps), plan, ...(services ? { services: Object.keys(services.plan.services) } : {}), boundaries: deps.boundaries ? await deps.boundaries() : [], feedback }), cwd: input.cwd, phase: 'phase4', taskId: null, attempt }) as StepOutcome<FixTasksOutput>;
+    const out = await deps.runAgent<'fix-tasks'>({ kind: 'fix-tasks', role: 'sm', pack: fixTasksPack(deps.packBase(), { failedTests: input.failedTests, tails: input.tails, uncoveredAcs: input.uncoveredAcs, blocked: blockedTasks(deps), plan, ...(services ? { services: Object.keys(services.plan.services) } : {}), boundaries: deps.boundaries ? await deps.boundaries() : [], feedback, convergence: input.convergence }), cwd: input.cwd, phase: 'phase4', taskId: null, attempt }) as StepOutcome<FixTasksOutput>;
     if (!out.ok) { if (await pauseForFailure(deps, out.failure)) return { reason: PAUSED_AUTH }; feedback = out.errors.join('\n'); continue; }
     // Ids are assigned here and must stay unique across rounds and resumes.
     const existing = [...deps.journal.state.tasks.keys()].filter((id) => id.startsWith('T900-fix-')).length + planned.length;
     const fixTasks = out.value.tasks.map((t, i) => ({ ...t, id: `T900-fix-${existing + i + 1}`, origin: 'fix' as const }));
-    const errors = fixTaskErrors(deps, [...planned, ...fixTasks]);
+    const errors = fixTaskErrors(deps, [...planned, ...fixTasks], input.speckitTasks);
     if (errors.length) { feedback = errors.join('\n'); continue; }
     return { tasks: fixTasks };
   }

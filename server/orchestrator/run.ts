@@ -35,6 +35,7 @@ export { CrashInjected };
 import { taskMergeSteps, type MergeStepsDeps } from './merge-steps.js';
 import { PAUSED_AUTH, ensureServiceRepos, runPhase0, runWorkflowBootstrap, runPhase1, runPhase2, runPhase4, runPhase5, runServicesPhase5, runPhase6, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, MAX_ENV_RERUNS, type PhaseDeps, type PhaseResult } from './phases/index.js';
 import { withMainSnapshot } from './phases/shared.js';
+import { planSpecKitGaps, runSpecKitRound } from './phases/speckit.js';
 import { reconcile } from './reconcile.js';
 import { resolveDocs, validateDocs, type DocsAnswer } from '../validators/docs.js';
 import { mintEnvironment, prepareEnvironment, type EnvironmentHost } from '../environment/service.js';
@@ -759,9 +760,40 @@ export class Run {
     // Every task of a new repository depends on its scaffold, fix tasks included: verifying without it only spends tokens.
     const scaffold = this.plan.tasks.find((t) => t.id === scaffoldId(t.service ?? null) && this.journal.state.tasks.get(t.id)?.state === 'blocked');
     if (scaffold) return this.finish('blocked', `${scaffold.id} is blocked and every other task of its repository depends on it`);
+    const speckit = await this.convergeSpecKit();
+    if (speckit !== 'done') return speckit;
     // Unit harnesses without a deployment target exercise Phases 0–3 only; production deps always provide one.
     if (!this.deps.target) return this.finish('complete');
     return this.postPhases();
+  }
+
+  /** Spec Kit's convergence after the build: round one marks the merged tasks and checks the code; the gaps it appends are built, then round two checks again. */
+  private async convergeSpecKit(): Promise<ExecuteResult | 'done'> {
+    for (const round of [1, 2] as const) {
+      const r = await runSpecKitRound(this.phaseDeps(), round);
+      if (r.kind === 'paused') return 'paused:auth';
+      if (r.kind === 'failed') return this.finish('phase-failed', r.reason);
+      if (r.kind === 'done') return 'done';
+      // The second round is the verdict: gaps it still finds are journaled and the verification runs as usual.
+      if (round === 2) {
+        await this.journal.fact(OrchEvent.SpecKitGap, { appended: r.appended });
+        return 'done';
+      }
+      const gaps = await planSpecKitGaps(this.phaseDeps(), round, r.appended);
+      if (gaps.kind === 'paused') return 'paused:auth';
+      if (gaps.kind === 'failed') return this.finish('phase-failed', gaps.reason);
+      const back = await this.runFixTasks(gaps.tasks);
+      if (back !== 'merged' && back !== 'blocked') return back;
+    }
+    return 'done';
+  }
+
+  /** Fix tasks join the run ready to build; a blocked or merged outcome leaves the next verification to decide. */
+  private async runFixTasks(tasks: PlanTask[]): Promise<ExecuteResult | 'merged'> {
+    for (const t of tasks) if (this.journal.state.tasks.get(t.id)?.state === 'planned') await this.journal.fact(RunEvent.TaskStateChanged, { taskId: t.id, to: 'ready' });
+    const r = await this.loop({ final: false });
+    if (r !== 'complete') return r; // loop() already journaled RUN_FINISHED for a non-complete outcome
+    return tasks.every((t) => this.journal.state.tasks.get(t.id)?.state === 'merged') ? 'merged' : 'blocked';
   }
 
   /** Spec (run API) §5: a signal drains — in-flight steps finish, nothing new starts. Idempotent. */
@@ -845,18 +877,12 @@ export class Run {
   }
 
   private async postPhases(): Promise<ExecuteResult> {
-    const runFix = async (tasks: PlanTask[]): Promise<ExecuteResult | 'merged'> => {
-      for (const t of tasks) if (this.journal.state.tasks.get(t.id)?.state === 'planned') await this.journal.fact(RunEvent.TaskStateChanged, { taskId: t.id, to: 'ready' });
-      const r = await this.loop({ final: false });
-      if (r !== 'complete') return r; // loop() already journaled RUN_FINISHED for a non-complete outcome
-      return tasks.every((t) => this.journal.state.tasks.get(t.id)?.state === 'merged') ? 'merged' : 'blocked';
-    };
     let result: 'awaiting-validation' | 'verification-failed' | 'deploy-failed' = 'awaiting-validation';
     let reason: string | undefined;
     let p4 = await runPhase4(this.phaseDeps(), 1);
     if (!p4.ok && p4.reason === PAUSED_AUTH) return 'paused:auth';
     if (!p4.ok && p4.fixTasks) {
-      const back = await runFix(p4.fixTasks);
+      const back = await this.runFixTasks(p4.fixTasks);
       if (back !== 'merged' && back !== 'blocked') return back;
       // Fix tasks are best effort; the second verification round is the verdict. A fix task that blocked
       // (e.g. the SM diagnosed a toolchain problem the Dev found nothing to change for) must not end the
@@ -871,7 +897,7 @@ export class Run {
         if (!p5.fixTask) { result = 'deploy-failed'; reason = p5.reason; break; }
         // Same rule as Phase 4: the fix task is best effort and the next deploy attempt is the verdict.
         // A drain, a deadlock or a login pause already ended the run inside the loop, as in Phase 4.
-        const back = await runFix([p5.fixTask]); if (back !== 'merged' && back !== 'blocked') return back;
+        const back = await this.runFixTasks([p5.fixTask]); if (back !== 'merged' && back !== 'blocked') return back;
       }
     }
     const p6 = await runPhase6({ ...this.phaseDeps(), runId: this.runId, accounting: this.accounting, result });
