@@ -144,6 +144,9 @@ function planWideErrors(plan: Pick<Plan, 'specId' | 'specHash' | 'tasks' | 'e2eE
       if (!acIds.has(ref)) errors.push(`task ${task.id} references unknown acceptance criterion ${ref}`);
       covered.add(ref);
     }
+    // Only the scaffold, devops infrastructure and orchestrator fix tasks may deliver no criterion.
+    const infra = task.owner === 'devops' || task.origin !== 'plan' || task.id === scaffoldId(task.service ?? null);
+    if (task.criteriaRefs.length === 0 && !infra) errors.push(`task ${task.id} has no acceptance criterion; list the criteria it delivers in criteriaRefs (only the scaffold and tasks owned by devops may have none)`);
   }
   for (const ac of acIds) {
     if (!covered.has(ac)) errors.push(`acceptance criterion ${ac} is not covered by any task`);

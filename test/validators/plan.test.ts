@@ -98,6 +98,21 @@ describe('validatePlan', () => {
     );
   });
 
+  it('rejects a task with no acceptance criterion unless it is the scaffold, devops infrastructure or a fix task', () => {
+    const errors = validatePlan(
+      withTasks([
+        makePlanTask({ id: 'T0-scaffold' }),
+        makePlanTask({ id: 'T1-a', criteriaRefs: ['AC-001', 'AC-002'], dependsOn: ['T0-scaffold'] }),
+        makePlanTask({ id: 'T2-b', dependsOn: ['T0-scaffold'] }),
+        makePlanTask({ id: 'T900-fix-1', origin: 'fix', dependsOn: ['T0-scaffold'] }),
+        devops,
+      ]),
+      spec,
+      { firstSpec: true },
+    );
+    expect(errors).toEqual(['task T2-b has no acceptance criterion; list the criteria it delivers in criteriaRefs (only the scaffold and tasks owned by devops may have none)']);
+  });
+
   it('reports a three-task cycle with its path', () => {
     const errors = validatePlan(
       withTasks([
@@ -242,7 +257,7 @@ describe('validatePlan: a devops task only touches infra', () => {
     }
   });
   it('a dev task may touch anything', () => {
-    const task = makePlanTask({ id: 'T900-fix-1', owner: 'dev', dependsOn: ['T0-scaffold'], affectedPaths: ['tests/unit/plataforma/persistencia-volume.test.ts'] });
+    const task = makePlanTask({ id: 'T900-fix-1', owner: 'dev', criteriaRefs: ['AC-001'], dependsOn: ['T0-scaffold'], affectedPaths: ['tests/unit/plataforma/persistencia-volume.test.ts'] });
     expect(validatePlan(withTasks([...makePlan(spec).tasks, task]), spec, { firstSpec: true })).toEqual([]);
   });
 });
@@ -264,7 +279,7 @@ describe('validatePlan: devops-only criteria need a smoke flag', () => {
 
 describe('validatePlan: no task lists a frozen path', () => {
   const frozen = (paths: string[]) => (extra: Plan['tasks']): Plan => ({ ...makePlan(spec), frozenPaths: paths, tasks: [...makePlan(spec).tasks, ...extra] });
-  const task = (affectedPaths: string[]) => makePlanTask({ id: 'T4-generate', dependsOn: ['T0-scaffold'], affectedPaths });
+  const task = (affectedPaths: string[]) => makePlanTask({ id: 'T4-generate', criteriaRefs: ['AC-001'], dependsOn: ['T0-scaffold'], affectedPaths });
 
   it('rejects a task that lists a file or a directory under a frozen glob', () => {
     for (const p of ['gen/kayron/v1/', 'gen/kayron/v1/api.pb.go', 'gen/**/*.go']) {
