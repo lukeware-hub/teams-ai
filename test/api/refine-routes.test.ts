@@ -24,6 +24,16 @@ describe('refine routes', () => {
     await expect(route.handler({ params: { projectId: 'shop', specId: 'shop-002' }, body: async () => ({ doc: 'brief.md' }), json } as never)).rejects.toMatchObject({ status: 400 });
   });
 
+  it('closes the final review of a refinement', async () => {
+    const closeReview = vi.fn(async () => undefined);
+    const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ closeReview })) } as never, log: vi.fn() });
+    const route = routes.find((r) => r.method === 'POST' && r.path.endsWith('/review/close'))!;
+    const json = vi.fn();
+    await route.handler({ params: { projectId: 'shop', specId: 'shop-002' }, json } as never);
+    expect(closeReview).toHaveBeenCalledTimes(1);
+    expect(json).toHaveBeenCalledWith(200, { ok: true });
+  });
+
   it('starts the Spec Kit preparation in the background with 202, and a refusal is 409', async () => {
     const log = vi.fn();
     const runSpeckit = vi.fn(() => Promise.reject(new Error('journal down')));

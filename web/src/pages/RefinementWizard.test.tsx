@@ -16,7 +16,7 @@ const checks = (value: number) => ({ complete: value, concrete: value, consisten
 const scored = (docs: Record<string, number>) => ({ cycle: 1, available: true, model: 'jev', average: 0.5, usage: null, outdated: false, docs: Object.fromEntries(Object.entries(docs).map(([file, score]) => [file, { score, checks: { complete: 0.44, concrete: 0.72, consistent: 0.84, scoped: 0.6 } }])) });
 const question = (questionId: string, over: Record<string, unknown> = {}) => ({ questionId, role: 'po', text: `Pergunta ${questionId}?`, blocking: false, relatedAcIds: [], cycle: 1, status: 'pending', answer: null, ...over });
 const patch = (patchId: string, file: string) => ({ patchId, role: 'po', file, find: 'a', replace: 'b', reason: 'mais claro', diff: '--- x\n-a\n+b\n', cycle: 1, status: 'pending', decision: null });
-const on = () => ({ onSaveDoc: vi.fn(), onEvaluate: vi.fn(), onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn(), onContinueStage: vi.fn(() => true), onEvaluateStage: vi.fn(), onReprocessStage: vi.fn(), onScoreDoc: vi.fn(), onScoreAll: vi.fn(), onConfidential: vi.fn(), onEnableBacklog: vi.fn() });
+const on = () => ({ onSaveDoc: vi.fn(), onEvaluate: vi.fn(), onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn(), onContinueStage: vi.fn(() => true), onCloseReview: vi.fn(() => true), onEvaluateStage: vi.fn(), onReprocessStage: vi.fn(), onScoreDoc: vi.fn(), onScoreAll: vi.fn(), onConfidential: vi.fn(), onEnableBacklog: vi.fn() });
 const show = (snap: Snapshot, handlers = on(), busy = false) => {
   render(<MemoryRouter><RefinementView snap={snap} busy={busy} {...handlers} /></MemoryRouter>);
   return handlers;
@@ -396,16 +396,33 @@ describe('the final review', () => {
     expect(handlers.onEnableBacklog).toHaveBeenCalledTimes(1);
   });
 
-  it('opens stage 7 when the backlog exists, and comes back to the review from it', () => {
+  it('opens stage 7 when the backlog exists, and comes back to the review from it', async () => {
     open('?etapa=revisao');
     show(reviewSnap({ backlog: { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} } }));
     fireEvent.click(screen.getByTestId('open-backlog'));
-    expect(screen.getByTestId('backlog-stage')).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId('backlog-stage')).toBeTruthy());
     expect(screen.getByTestId('stage-wizard')).toBeTruthy();
     expect(window.location.search).toContain('etapa=backlog');
     fireEvent.click(screen.getByTestId('wizard-back'));
     expect(screen.queryByTestId('backlog-stage')).toBeNull();
     expect(window.location.search).toContain('etapa=revisao');
+  });
+
+  it('closes the review on the server when the owner opens the backlog', async () => {
+    open('?etapa=revisao');
+    const handlers = show(reviewSnap({ backlog: { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} } }));
+    fireEvent.click(screen.getByTestId('open-backlog'));
+    await waitFor(() => expect(screen.getByTestId('backlog-stage')).toBeTruthy());
+    expect(handlers.onCloseReview).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the review done once closed, and does not close it again', () => {
+    open('?etapa=revisao');
+    const handlers = show(reviewSnap({ reviewClosed: true, backlog: { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} } }));
+    fireEvent.click(screen.getByTestId('open-backlog'));
+    expect(screen.getByTestId('backlog-stage')).toBeTruthy();
+    expect(screen.getByTestId('step-review').closest('li')!.className).toContain('is-done');
+    expect(handlers.onCloseReview).not.toHaveBeenCalled();
   });
 
   it('offers to break the backlog on stage 7 when it does not exist yet', () => {

@@ -19,6 +19,12 @@ describe('refineApi.scoreDoc', () => {
     expect(String(fetchSpy.mock.calls[0]![0])).toContain('/refine/shop/shop-002/stage/continue');
   });
 
+  it('posts the close of the final review to the refinement', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    await expect(refineApi.closeReview('shop', 'shop-002')).resolves.toEqual({ ok: true });
+    expect(String(fetchSpy.mock.calls[0]![0])).toContain('/refine/shop/shop-002/review/close');
+  });
+
   it('posts the review of one stage document, which the server answers with 202', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 202 }));
     await expect(refineApi.evaluateStage('shop', 'shop-002', 'flow.md')).resolves.toEqual({ ok: true });

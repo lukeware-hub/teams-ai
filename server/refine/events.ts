@@ -8,6 +8,8 @@ export const RefineEvent = {
   StageAdvanced: 'REFINE_STAGE_ADVANCED',
   /** The text the owner passed to a stage was kept the first time the stage was processed: `{file, hash}`; Reprocessar goes back to it. */
   StagePassed: 'REFINE_STAGE_PASSED',
+  /** The owner moved on from the final review to the backlog: `{}`. */
+  ReviewClosed: 'REFINE_REVIEW_CLOSED',
   StageReviewed: 'REFINE_STAGE_REVIEWED',
   DocEdited: 'DOC_EDITED',
   CycleStarted: 'REFINE_CYCLE_STARTED',

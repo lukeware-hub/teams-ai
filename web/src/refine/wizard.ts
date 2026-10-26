@@ -34,13 +34,13 @@ export const prevStep = (step: WizardStep): WizardStep | null => WIZARD_STEPS[WI
 export const nextStep = (step: WizardStep): WizardStep | null => WIZARD_STEPS[WIZARD_STEPS.indexOf(step) + 1] ?? null;
 
 /** The stepper's nodes: state only, never a score. A stage session reads done from the journal; a project with no stages reads it from the position. */
-export function wizardNodes(st: Pick<State, 'stages' | 'doneStages' | 'outdatedDocs' | 'staleBy'>, current: WizardStep): StepperStep[] {
+export function wizardNodes(st: Pick<State, 'stages' | 'doneStages' | 'outdatedDocs' | 'staleBy' | 'reviewClosed'>, current: WizardStep): StepperStep[] {
   const done = new Set(st.doneStages ?? []);
   const at = WIZARD_STEPS.indexOf(current);
   return WIZARD_STEPS.map((step, index) => {
     const doc = isDocStep(step) ? step : null;
     const outdated = doc !== null && (st.outdatedDocs?.includes(doc) === true || st.staleBy?.[doc] !== undefined);
-    const isDone = doc !== null && (st.stages === true ? done.has(doc) : index < at);
+    const isDone = (doc !== null && (st.stages === true ? done.has(doc) : index < at)) || (step === 'review' && st.reviewClosed === true);
     return {
       key: step,
       label: doc ? DOC_LABEL[doc] : step === 'review' ? 'Revisão' : 'Backlog',

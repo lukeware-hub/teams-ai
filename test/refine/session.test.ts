@@ -625,6 +625,17 @@ describe('RefineSession stages', () => {
     await c.close();
   });
 
+  it('closes the final review once, and refuses it in a session that has no stages', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    await s.closeReview();
+    expect(s.state.reviewClosed).toBe(true);
+    await expect(s.closeReview()).rejects.toBeInstanceOf(ConflictError);
+    await s.close();
+    const c = await RefineSession.create(deps(), 'continue');
+    await expect(c.closeReview()).rejects.toBeInstanceOf(ConflictError);
+    await c.close();
+  });
+
   it('counts the rounds of an evaluation from the stage it runs in, so the next stage starts with its own rounds', async () => {
     const s = await RefineSession.create({ ...deps(), limits: { max: 1 } }, 'new-project');
     await s.evaluate();

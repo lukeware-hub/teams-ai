@@ -47,6 +47,12 @@ describe('wizardNodes', () => {
     expect(nodes.map((n) => n.state)).toEqual(['done', 'active', 'done', 'todo', 'todo', 'todo', 'todo']);
   });
 
+  it('marks the review done once the owner has closed it', () => {
+    const all = ['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md'];
+    expect(wizardNodes(state({ doneStages: all }), 'review').map((n) => n.state).at(-2)).toBe('active');
+    expect(wizardNodes(state({ doneStages: all, reviewClosed: true }), 'backlog').map((n) => n.state).at(-2)).toBe('done');
+  });
+
   it('marks done by position when the project records no stages', () => {
     const nodes = wizardNodes(state({ stages: undefined, doneStages: undefined }), 'briefing.md');
     expect(nodes.map((n) => n.state)).toEqual(['done', 'done', 'active', 'todo', 'todo', 'todo', 'todo']);

@@ -218,6 +218,8 @@ export interface ViewProps {
   onPrepareSpeckit?(): void | Promise<unknown>;
   /** The owner moves on from a document's stage; `false` says the server refused. */
   onContinueStage?(doc?: DocFile): void | boolean | Promise<unknown>;
+  /** The owner moves on from the final review to the backlog; `false` says the server refused. */
+  onCloseReview?(): void | boolean | Promise<unknown>;
   /** The owner asks the agents to review the document of a stage. */
   onEvaluateStage?(file: DocFile): void | Promise<unknown>;
   /** The owner asks for the review of a stage again, from the text that was passed to it. */
@@ -1090,7 +1092,20 @@ export function RefinementView(p: ViewProps) {
         Avaliar tudo
       </ActionButton>
       {backlogOn ? (
-        <ActionButton data-testid="open-backlog" className="primary" onClick={() => goTo('backlog')} icon={<Icon name="arrow-right" size={16} />}>Abrir backlog e execução</ActionButton>
+        <ActionButton
+          data-testid="open-backlog"
+          className="primary"
+          onClick={async () => {
+            if (stageSession && !st.reviewClosed) {
+              const result = await p.onCloseReview?.();
+              if (result === false) return;
+            }
+            goTo('backlog');
+          }}
+          icon={<Icon name="arrow-right" size={16} />}
+        >
+          Abrir backlog e execução
+        </ActionButton>
       ) : (
         <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
       )}
@@ -1266,6 +1281,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}
         onPrepareSpeckit={act(() => refineApi.speckit(projectId, specId))}
         onContinueStage={(doc) => refineApi.continueStage(projectId, specId, doc).then(() => true, (e: Error) => (setError(e.message), false))}
+        onCloseReview={() => refineApi.closeReview(projectId, specId).then(() => true, (e: Error) => (setError(e.message), false))}
         onReprocessStage={(f) => act(() => refineApi.reprocessStage(projectId, specId, f))()}
         onScoreDoc={(f) => act(() => refineApi.scoreDoc(projectId, specId, f))()}
         onScoreAll={act(() => refineApi.score(projectId, specId))}

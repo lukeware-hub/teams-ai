@@ -346,6 +346,14 @@ export class RefineSession {
     await this.journal.fact(RefineEvent.StageAdvanced, { doc: target, cycle: this.state.cycle });
   }
 
+  /** The owner moves on from the final review to the backlog; the review then shows as done. */
+  async closeReview(): Promise<void> {
+    this.guard();
+    if (this.state.stages !== true) throw new ConflictError('só um refinamento de projeto novo tem etapas');
+    if (this.state.reviewClosed) throw new ConflictError('a revisão já foi concluída');
+    await this.journal.fact(RefineEvent.ReviewClosed, {});
+  }
+
   /** The owner's answer on confidentiality; a stage session sends no document to the Jev until it comes. */
   async answerConfidentiality(confidential: boolean): Promise<void> {
     this.guard();

@@ -291,6 +291,14 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       }),
     },
     {
+      method: 'POST',
+      path: `${S}/review/close`,
+      handler: wrap(async (ctx) => {
+        await (await get(ctx.params)).closeReview();
+        ctx.json(200, { ok: true });
+      }),
+    },
+    {
       method: 'GET',
       path: `${S}/program`,
       handler: wrap(async ({ params, json }) => json(200, { program: await registry.program(params.projectId!, params.specId!) })),

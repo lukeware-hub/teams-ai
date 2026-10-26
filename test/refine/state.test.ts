@@ -373,6 +373,11 @@ describe('stage progress', () => {
     expect(s.doneStages).toEqual(['flow.md', 'project.md']);
     expect(s.stageStartCycle).toBe(3);
   });
+
+  it('the final review is closed once the owner moves on to the backlog', () => {
+    expect(reduceRefineEvents([]).reviewClosed).toBeUndefined();
+    expect(reduceRefineEvents([{ type: RefineEvent.ReviewClosed, data: {} }]).reviewClosed).toBe(true);
+  });
 });
 
 describe('canStart', () => {
