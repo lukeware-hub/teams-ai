@@ -678,15 +678,31 @@ export class Run {
 
   private async loadAdrs(): Promise<void> {
     const list = await this.gitLocked(['ls-tree', '--name-only', 'origin/main', 'docs/adr/']).catch(() => '');
-    this.adrs = [];
+    // Filled aside and swapped in whole, so a step building its pack meanwhile never reads a partial list.
+    const adrs: typeof this.adrs = [];
     for (const rel of list.split('\n').filter((l) => l.endsWith('.md'))) {
       const text = await this.gitLocked(['show', `origin/main:${rel}`]).catch(() => '');
       const id = /ADR-\d{3}/.exec(rel)?.[0] ?? rel;
-      this.adrs.push({ id, title: text.split('\n')[0]?.replace(/^#\s*/, '') ?? id, text: text.slice(0, 4000) });
+      adrs.push({ id, title: text.split('\n')[0]?.replace(/^#\s*/, '') ?? id, text: text.slice(0, 4000) });
     }
+    this.adrs = adrs;
   }
 
-  /** What a step in a service's repository cannot read there: where every service answers, and the design doc. */
+  /** The origin/main commit the ADRs and the design doc were last read from. */
+  private sharedDocsAt: string | null = null;
+
+  /** Reads the ADRs and the design doc again when the project's main moved, so a step never gets the copy from the run's start. */
+  private async loadSharedDocs(): Promise<void> {
+    // A failed fetch keeps the last copy: the run goes on without it.
+    await gitFetch(this.deps.ws.repo, this.deps.exec).catch(() => undefined);
+    const head = await this.gitLocked(['rev-parse', 'origin/main']).catch(() => '');
+    if (head === this.sharedDocsAt) return;
+    this.sharedDocsAt = head;
+    await this.loadAdrs();
+    this.design = await this.gitLocked(['show', 'origin/main:docs/design.md']).then((text) => text.slice(0, 6000)).catch(() => null);
+  }
+
+  /** What a step in a service's repository cannot read there: where every service answers. */
   private async loadServiceContext(plan: AnyPlan): Promise<void> {
     if (singlePlan(plan)) return;
     const registry = await registeredPorts(expandHome(this.deps.cfg.paths.workspaces));
@@ -695,7 +711,6 @@ export class Run {
       const port = registry[portKey(this.deps.project.projectId, s)] ?? planned.get(s);
       return port ? [[s, `http://${s}:${port}`]] : [];
     }));
-    this.design = await this.gitLocked(['show', 'origin/main:docs/design.md']).then((text) => text.slice(0, 6000)).catch(() => null);
   }
 
   /** Phase 0: the docs reach main (a draft) or are fetched, then every service gets its repository; public so tests can drive it without scripting Phases 1–3. */
@@ -723,7 +738,7 @@ export class Run {
     const phase1 = await runPhase1(this.phaseDeps());
     if (!phase1.ok) return phase1.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase1.reason);
     this.techSpecText = phase1.techSpecText ?? '';
-    await this.loadAdrs();
+    await this.loadSharedDocs();
     const phase2 = await runPhase2(this.phaseDeps(), this.techSpecText);
     if (!phase2.ok) return phase2.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase2.reason);
     this.plan = phase2.plan!;
@@ -868,6 +883,8 @@ export class Run {
   private async loop(opts: { final: boolean } = { final: true }): Promise<ExecuteResult> {
     const { cfg } = this.deps;
     for (;;) {
+      // Every task step starts from an iteration, so each one sees the shared docs main holds now.
+      await this.loadSharedDocs();
       const state = this.journal.state;
       if (state.status === 'paused:auth') {
         await Promise.allSettled(this.inflight.values());

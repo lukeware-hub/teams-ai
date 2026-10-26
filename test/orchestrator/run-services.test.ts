@@ -10,7 +10,7 @@ import { Run, type RunDeps } from '../../server/orchestrator/run.js';
 import { RunEvent } from '../../server/pipeline/run-state.js';
 import { CI_PATH, RELEASE_PATH } from '../../server/orchestrator/workflows.js';
 import { serviceWorkspace, type Workspace } from '../../server/orchestrator/workspace.js';
-import type { StepOutcome, StepRequest } from '../../server/runner/step.js';
+import type { StepDeps, StepOutcome, StepRequest } from '../../server/runner/step.js';
 import type { ResultSummary } from '../../server/runner/stream-events.js';
 import { makeFrozenSpec, makePlanTask, makeProject, makeServicesPlan } from '../fixtures/contracts.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
@@ -165,6 +165,42 @@ describe('Run with a services plan', () => {
     expect(await run.execute()).toBe('complete');
     expect(prompts.get('front:dev:T2-reserve-stock')).toContain('Primary color #0b5fff.');
     expect(prompts.get('dev:dev:T1-publish-order')).not.toContain('Primary color #0b5fff.');
+  });
+
+  /** Another writer, such as the owner or another spec's run, puts these files on the project's main. */
+  async function pushToProjectMain(files: Record<string, string>): Promise<void> {
+    const clone = path.join(projectRemote.root, 'other-writer');
+    await git(projectRemote.root, ['clone', '-q', projectRemote.origin, clone]);
+    for (const [rel, text] of Object.entries(files)) {
+      await fs.mkdir(path.dirname(path.join(clone, rel)), { recursive: true });
+      await fs.writeFile(path.join(clone, rel), text);
+    }
+    await git(clone, ['add', '-A']);
+    await git(clone, ['commit', '-q', '-m', 'docs: shared documents']);
+    await git(clone, ['push', '-q', 'origin', 'main']);
+  }
+
+  it('gives a later task the design doc and the decision records main holds when it starts, not the copies read when the run started', async () => {
+    const front = { ...plan, tasks: plan.tasks.map((t) => (t.id === 'T2-reserve-stock' ? { ...t, owner: 'front' as const } : t)) };
+    await fs.writeFile(path.join(projectRemote.repo, 'docs', 'specs', 'spec-001', 'plan.json'), JSON.stringify(front));
+    await fs.writeFile(path.join(projectRemote.repo, 'docs', 'design.md'), '# Design\n\nPrimary color #0b5fff.\n');
+    await git(projectRemote.repo, ['add', '-A']);
+    await git(projectRemote.repo, ['commit', '-q', '-m', 'docs: design']);
+    await git(projectRemote.repo, ['push', '-q', 'origin', 'main']);
+    const base = await deps();
+    const runStep = (async (req: StepRequest, stepDeps: StepDeps) => {
+      // The shared documents change on main while the first task runs.
+      if (req.kind === 'dev' && req.taskId === 'T1-publish-order' && req.attempt === 1) {
+        await pushToProjectMain({ 'docs/design.md': '# Design\n\nPrimary color #e11d48.\n', 'docs/adr/ADR-002-cache.md': '# ADR-002 cache\n\nCache stock reads for five seconds.\n' });
+      }
+      return base.runStep(req, stepDeps);
+    }) as RunDeps['runStep'];
+    const run = await Run.create({ ...base, runStep });
+    expect(await run.execute()).toBe('complete');
+    const later = prompts.get('front:dev:T2-reserve-stock');
+    expect(later).toContain('Primary color #e11d48.');
+    expect(later).toContain('Cache stock reads for five seconds.');
+    await run.close();
   });
 
   it("retries every blocked task of the run on a human's resume, such as one a sandbox the platform has since fixed had blocked", async () => {
