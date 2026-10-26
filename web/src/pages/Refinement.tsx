@@ -1237,8 +1237,8 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   return (
     <main className="flex flex-col gap-4 lg:h-full lg:min-h-0">
       <header className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></Link><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span></header>
-      <MoveNotice moves={snap.state.moves ?? []} onUndo={(moveId) => act(() => refineApi.undoMove(projectId, specId, moveId))()} docName={docName} />
-      <ReshapeNotice reshapes={snap.state.reshapes ?? []} onUndo={(reshapeId) => act(() => refineApi.undoReshape(projectId, specId, reshapeId))()} docName={docName} />
+      <MoveNotice moves={snap.state.moves ?? []} onUndo={(moveId) => act(() => refineApi.undoMove(projectId, specId, moveId))()} onClose={(moveId) => act(() => refineApi.closeNotice(projectId, specId, moveId))()} docName={docName} />
+      <ReshapeNotice reshapes={snap.state.reshapes ?? []} onUndo={(reshapeId) => act(() => refineApi.undoReshape(projectId, specId, reshapeId))()} onClose={(reshapeId) => act(() => refineApi.closeNotice(projectId, specId, reshapeId))()} docName={docName} />
       {scoresDocs(snap.state.mode ?? null) && snap.state.mode !== 'new-project' && !['evaluating', 'started'].includes(snap.state.status) && (
         <ReadinessBanner readiness={snap.state.readiness} canStart={canStartRun(snap.state, false)} startState={startLabel} onScore={act(() => refineApi.score(projectId, specId))} onStart={startRun} />
       )}

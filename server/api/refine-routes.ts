@@ -200,6 +200,14 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       }),
     },
     {
+      method: 'POST',
+      path: `${S}/notices/:noticeId/close`,
+      handler: wrap(async ({ params, json }) => {
+        await (await get(params)).closeNotice(params.noticeId!);
+        json(200, { ok: true });
+      }),
+    },
+    {
       method: 'PUT',
       path: `${S}/secrets/:name`,
       handler: wrap(async ({ params, body, json }) => {

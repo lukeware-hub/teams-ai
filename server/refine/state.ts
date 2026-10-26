@@ -54,6 +54,8 @@ export interface MoveRow {
   fromHash: string;
   toHash: string;
   status: 'applied' | 'undone';
+  /** The owner closed this move's notice; it stays hidden. */
+  closed?: boolean;
 }
 /** A stage document rewritten in its template's shape; undo puts back the text kept on disk, while the document is unchanged. */
 export interface ReshapeRow {
@@ -63,6 +65,8 @@ export interface ReshapeRow {
   role: 'po' | 'sm' | 'front';
   afterHash: string;
   status: 'applied' | 'undone';
+  /** The owner closed this reshape's notice; it stays hidden. */
+  closed?: boolean;
 }
 /** One backlog item's derived spec; `spec` is null when the last attempt failed (`issues` says why). */
 export interface SpecRow {
@@ -364,6 +368,12 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     case RefineEvent.DocReshapeUndone: {
       const r = s.reshapes.find((x) => x.reshapeId === String(d.reshapeId));
       if (r) r.status = 'undone';
+      break;
+    }
+    case RefineEvent.NoticeClosed: {
+      const id = String(d.noticeId);
+      const row = s.moves.find((x) => x.moveId === id) ?? s.reshapes.find((x) => x.reshapeId === id);
+      if (row) row.closed = true;
       break;
     }
     case RefineEvent.QuestionAnswered:

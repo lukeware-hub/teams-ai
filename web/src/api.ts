@@ -303,6 +303,7 @@ export interface MoveRow {
   quote: string;
   text: string;
   status: 'applied' | 'undone';
+  closed?: boolean;
 }
 /** A stage document the agents rewrote in its template's shape; the owner can undo it while the document is unchanged. */
 export interface ReshapeRow {
@@ -311,6 +312,7 @@ export interface ReshapeRow {
   cycle: number;
   role: 'po' | 'sm' | 'front';
   status: 'applied' | 'undone';
+  closed?: boolean;
 }
 export interface BacklogViewItem {
   key: string;
@@ -476,6 +478,7 @@ export const refineApi = {
   enableBacklog: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/backlog`).then((r) => json<{ ok: true }>(r)),
   undoMove: (p: string, s: string, moveId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/moves/${encodeURIComponent(moveId)}/undo`).then((r) => json<{ ok: true }>(r)),
   undoReshape: (p: string, s: string, reshapeId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/reshapes/${encodeURIComponent(reshapeId)}/undo`).then((r) => json<{ ok: true }>(r)),
+  closeNotice: (p: string, s: string, noticeId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/notices/${encodeURIComponent(noticeId)}/close`).then((r) => json<{ ok: true }>(r)),
   evaluate: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/evaluate`).then((r) => json<{ state: string }>(r)),
   answer: (p: string, s: string, questionId: string, text: string, docsAnswered = false) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/answers`, { questionId, text, docsAnswered }).then((r) => json<{ ok: true }>(r)),
   skip: (p: string, s: string, questionId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/questions/${encodeURIComponent(questionId)}/skip`).then((r) => json<{ ok: true }>(r)),

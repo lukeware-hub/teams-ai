@@ -563,6 +563,21 @@ describe('refine api', () => {
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/moves/move-po-c1-0/undo')).status).toBe(409);
   });
 
+  it('closing the notice of a move keeps it closed in the snapshot and leaves the move applied; an unknown notice is refused with 404', async () => {
+    await specDraft();
+    const MOVED = 'O cliente confirma o pedido antes do pagamento.';
+    await call('PUT', '/api/refine/hello-app/hello-app-001/docs/project.md', { text: `# Hello\n\n## Visão\n\nLoja.\n\n${MOVED}\n` });
+    await call('PUT', '/api/refine/hello-app/hello-app-001/docs/flow.md', { text: '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n' });
+    script['derive/po'] = [derived];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [], moves: [{ from: 'docs/project.md', to: 'docs/flow.md', quote: MOVED, text: MOVED, reason: 'ordem de passos' }] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
+    await settle();
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/notices/move-po-c1-0/close')).status).toBe(200);
+    expect((await snapshot()).state.moves).toMatchObject([{ moveId: 'move-po-c1-0', status: 'applied', closed: true }]);
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/notices/move-po-c9-9/close')).status).toBe(404);
+  });
+
   it('the owner answers whether a new project is confidential; a value that is not a boolean is refused', async () => {
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/confidential', { confidential: 'sim' })).status).toBe(400);

@@ -33,6 +33,8 @@ export const RefineEvent = {
   DocReshaped: 'DOC_RESHAPED',
   /** The owner undid a reshape: `{reshapeId}`. */
   DocReshapeUndone: 'DOC_RESHAPE_UNDONE',
+  /** The owner closed the notice of a move or a reshape, so it stays hidden: `{noticeId}`. */
+  NoticeClosed: 'REFINE_NOTICE_CLOSED',
   /** A full pass of the documents against the charter ended: `{cycle, hashes}` of each document as it stood, so the next pass reads only what changed. */
   DocsReorganized: 'DOCS_REORGANIZED',
   /** The findings of one cycle whose quotes the documents show; they replace the earlier list, or with `files` only those of the documents named. */

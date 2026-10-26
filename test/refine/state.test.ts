@@ -40,6 +40,19 @@ describe('reduceRefineEvents moves and findings', () => {
     expect(s.moves).toEqual([{ ...row, status: 'undone' }]);
   });
 
+  it('a close hides the notice of a move or a reshape, and the change stays applied', () => {
+    const move = { moveId: 'move-po-c1-0', role: 'po', cycle: 1, from: 'project.md', to: 'flow.md', reason: 'r', quote: 'q', text: 't', removedAt: 0, removed: 'q\n', insertAt: 3, inserted: '\nt\n', fromHash: 'a', toHash: 'b' };
+    const reshape = { reshapeId: 'reshape-c1', file: 'briefing.md', cycle: 1, role: 'po', afterHash: 'h' };
+    const s = reduceRefineEvents([
+      { type: RefineEvent.DocMoved, data: move },
+      { type: RefineEvent.DocReshaped, data: reshape },
+      { type: RefineEvent.NoticeClosed, data: { noticeId: 'move-po-c1-0' } },
+      { type: RefineEvent.NoticeClosed, data: { noticeId: 'reshape-c1' } },
+    ]);
+    expect(s.moves).toEqual([{ ...move, status: 'applied', closed: true }]);
+    expect(s.reshapes).toEqual([{ ...reshape, status: 'applied', closed: true }]);
+  });
+
   it('replaces the findings with those of each cycle, so a cycle without findings clears the list', () => {
     const finding = { cycle: 1, role: 'sm', doc: 'flow.md', severity: 'advice', quote: 'q', text: 't', fix: 'f' };
     const kept = reduceRefineEvents([{ type: RefineEvent.FindingsReported, data: { cycle: 1, findings: [finding] } }]);

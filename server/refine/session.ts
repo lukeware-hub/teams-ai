@@ -643,6 +643,13 @@ export class RefineSession {
     await this.journal.fact(RefineEvent.DocReshapeUndone, { reshapeId });
   }
 
+  /** Hides the notice of a move or a reshape for good; the change itself stays. */
+  async closeNotice(noticeId: string): Promise<void> {
+    const known = this.state.moves.some((m) => m.moveId === noticeId) || this.state.reshapes.some((r) => r.reshapeId === noticeId);
+    if (!known) throw new NotFoundError(`unknown notice ${noticeId}`);
+    await this.journal.fact(RefineEvent.NoticeClosed, { noticeId });
+  }
+
   async writeSecret(name: string, value: string): Promise<void> {
     this.guardStarting();
     if (!SECRET_NAME.test(name)) throw new NotFoundError(`invalid secret name ${name}`);
