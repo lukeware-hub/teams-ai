@@ -5,6 +5,9 @@ import { describe, expect, it } from 'vitest';
 import { chooseSpecId, failedDecision, loadRunDeps, main, markAwaitingValidation, startsAsDraft } from '../server/cli.js';
 import { loadConfig } from '../server/config/config.js';
 import type { RunControlDeps, SpawnArgs } from '../server/api/run-control.js';
+import type { RunDeps } from '../server/orchestrator/run.js';
+import { RefineEvent } from '../server/refine/events.js';
+import { RefineJournal } from '../server/refine/session.js';
 import { makeRemote } from './fixtures/git-remote.js';
 import { writeRun } from './fixtures/runs/write-run.js';
 
@@ -227,7 +230,8 @@ describe('ui decider failure', () => {
 });
 
 describe('loadRunDeps', () => {
-  it('indexes the docs of the project folder, so the run can retrieve them', async () => {
+  /** Loads the run deps of spec hello-001 from a project folder that `fill` completes, and returns what `read` takes from them before everything is removed. */
+  async function fromRunDeps<T>(fill: (projectDir: string) => Promise<void>, read: (deps: RunDeps) => T): Promise<T> {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-cli-deps-home-'));
     const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-cli-deps-project-'));
     const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
@@ -243,20 +247,40 @@ describe('loadRunDeps', () => {
       await fs.mkdir(path.join(projectDir, 'docs', 'specs', 'hello-001'), { recursive: true });
       await fs.writeFile(path.join(projectDir, 'docs', 'project.json'), project);
       await fs.writeFile(path.join(projectDir, 'docs', 'specs', 'hello-001', 'spec.json'), spec);
-      await fs.writeFile(path.join(projectDir, 'docs', 'specs', 'hello-001', 'spec.md'), '# Spec 1\nThe quota uses marker zebracorn-7741.\n');
+      await fill(projectDir);
       await fs.mkdir(path.join(home, 'ws', 'hello-app'), { recursive: true });
       await fs.cp(remote.repo, path.join(home, 'ws', 'hello-app', 'repo'), { recursive: true });
 
       const deps = await loadRunDeps({ argv: [], env: {}, stdout: () => {}, stderr: () => {} }, projectDir, 'hello-001', { dryRun: true, complete: true });
-      const hits = deps.knowledge!.search('zebracorn');
-      deps.knowledge!.close();
-
-      expect(hits.map((h) => h.docId)).toEqual(['docs/specs/hello-001/spec.md']);
+      try {
+        return read(deps);
+      } finally {
+        deps.knowledge!.close();
+      }
     } finally {
       for (const [key, value] of Object.entries(saved)) if (value === undefined) delete process.env[key]; else process.env[key] = value;
       await remote.cleanup();
       await fs.rm(home, { recursive: true, force: true });
       await fs.rm(projectDir, { recursive: true, force: true });
     }
+  }
+
+  it('indexes the docs of the project folder, so the run can retrieve them', async () => {
+    const hits = await fromRunDeps((dir) => fs.writeFile(path.join(dir, 'docs', 'specs', 'hello-001', 'spec.md'), '# Spec 1\nThe quota uses marker zebracorn-7741.\n'), (deps) => deps.knowledge!.search('zebracorn'));
+    expect(hits.map((h) => h.docId)).toEqual(['docs/specs/hello-001/spec.md']);
+  });
+
+  it('gives the run of a spec the Spec Kit feature folder that the preparation of its draft recorded for that spec', async () => {
+    const feature = await fromRunDeps(async (draftRoot) => {
+      // The draft journal of a backlog whose preparation made a feature folder for each item, the spec's own last.
+      const journal = await RefineJournal.open(path.join(draftRoot, 'events.ndjson'), { projectId: 'hello-app', specId: path.basename(draftRoot) });
+      const item = (key: string, rank: number) => ({ key, title: key, epic: 'core', priority: 'must', rank, size: 'S', scope: 's', rationale: 'r', dependsOn: [], sources: [] });
+      await journal.fact(RefineEvent.BacklogEnabled, { keyIds: true });
+      await journal.fact(RefineEvent.BacklogDerived, { project: null, epics: [], items: [item('login', 1), item('hello-001', 2)], cycle: 1 });
+      await journal.fact(RefineEvent.SpeckitStarted, { total: 9 });
+      for (const key of ['login', 'hello-001']) await journal.fact(RefineEvent.SpeckitStepDone, { command: 'specify', itemKey: key, files: [`specs/${key}/spec.md`], featureDir: `specs/${key}` });
+      await journal.close();
+    }, (deps) => deps.speckitFeature);
+    expect(feature).toBe('specs/hello-001');
   });
 });

@@ -714,6 +714,22 @@ describe('RefineSession.runSpeckit', () => {
     await s.close();
   });
 
+  it('an abort stops the preparation before its next step, with the interrupted message, and no later step runs', async () => {
+    const s = await detailedSession();
+    let aborted: Promise<void> | undefined;
+    answer = (req) => {
+      // The abort comes while clarify runs: that step still finishes, and none starts after it.
+      if (stepOf(req) === 'clarify:login') aborted = s.abort();
+      return done(req);
+    };
+    await s.runSpeckit();
+    await aborted;
+    expect(agentCalls.map(stepOf)).toEqual(['constitution:', 'specify:login', 'clarify:login']);
+    expect(s.state.speckit).toMatchObject({ status: 'failed', error: 'A preparação do Spec Kit foi interrompida.', detail: 'aborted' });
+    expect(s.state.speckit?.steps.at(-1)).toMatchObject({ command: 'clarify', itemKey: 'login' });
+    await s.close();
+  });
+
   it('a preparation cut by a restart reopens as failed', async () => {
     const s = await detailedSession();
     await s.close();
@@ -722,6 +738,31 @@ describe('RefineSession.runSpeckit', () => {
     await journal.close();
     const reopened = await RefineSession.open(deps());
     expect(reopened.state.speckit).toMatchObject({ status: 'failed', error: 'A preparação foi interrompida quando o servidor reiniciou.' });
+    await reopened.close();
+  });
+
+  it('a preparation cut by a restart resumes on the same inputs at the step it was running, and runs no finished step again', async () => {
+    const s = await detailedSession();
+    let cut!: () => void;
+    const planning = new Promise<void>((resolve) => (cut = resolve));
+    answer = (req) => {
+      if (stepOf(req) !== 'plan:login') return done(req);
+      cut();
+      // The server stops while the plan runs, so the plan never answers.
+      return new Promise(() => undefined);
+    };
+    void s.runSpeckit();
+    await planning;
+    await s.close();
+    const reopened = await RefineSession.open(deps());
+    expect(reopened.state.speckit).toMatchObject({ status: 'failed', error: 'A preparação foi interrompida quando o servidor reiniciou.' });
+    answer = done;
+    const before = agentCalls.length;
+    await reopened.runSpeckit();
+    expect(agentCalls.slice(before).map(stepOf)).toEqual(['plan:login', 'tasks:login', 'specify:cart', 'clarify:cart', 'plan:cart', 'tasks:cart']);
+    expect(execCalls).toHaveLength(1);
+    expect(reopened.state.speckit).toMatchObject({ status: 'done', total: 9 });
+    expect(reopened.state.speckit!.steps).toHaveLength(9);
     await reopened.close();
   });
 
