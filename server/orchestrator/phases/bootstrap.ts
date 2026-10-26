@@ -111,13 +111,19 @@ export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docs
 }
 
 /** R12.3: every service of the project gets its GitHub repository and a clone in its workspace before planning. */
-export async function ensureServiceRepos(deps: PhaseDeps & { ghExec: Exec }, owner: string | undefined): Promise<PhaseResult> {
+export async function ensureServiceRepos(deps: PhaseDeps & { ghExec: Exec }, owner: string | undefined, docsDir?: string): Promise<PhaseResult> {
   for (const service of deps.project.services ?? []) {
     const { repo } = serviceWorkspace(deps.ws, service);
     try {
-      if (await ready(repo, deps.exec)) continue;
-      await cloneOrCreate(deps, service, repo, owner);
-      await gitFetch(repo, deps.exec);
+      if (!(await ready(repo, deps.exec))) {
+        await cloneOrCreate(deps, service, repo, owner);
+        await gitFetch(repo, deps.exec);
+      }
+      // Every preparation reaches the repository, not only the first one: a re-preparation changes the files it publishes.
+      if (docsDir !== undefined) {
+        const published = await publishServiceDocs(deps, service, docsDir);
+        if (!published.ok) return { ok: false, reason: `service ${service}: ${published.reason}` };
+      }
     } catch (err) {
       if ((err as { fatal?: boolean }).fatal) throw err; // CrashInjected (test hook) must still kill the process
       const reason = `service ${service}: ${(err as Error).message}`;
@@ -168,23 +174,50 @@ async function cloneOrCreate(deps: PhaseDeps & { ghExec: Exec }, service: string
 
 const exists = (p: string) => fs.access(p).then(() => true, () => false);
 
-/** What the draft's Spec Kit preparation publishes at the repository root. */
-const SPECKIT_ENTRIES = ['.specify', '.claude/skills', 'specs', 'CLAUDE.md'];
+/** What the draft's Spec Kit preparation publishes at the repository root; `replace` says a new preparation overwrites what the repository holds. */
+const SPECKIT_ENTRIES = [
+  { entry: '.specify', replace: true },
+  { entry: 'specs', replace: true },
+  { entry: '.claude/skills', replace: false },
+  { entry: 'CLAUDE.md', replace: false },
+];
 
-/** Copies the draft's Spec Kit preparation into `repo`, only the files it lacks, so an existing CLAUDE.md or .claude stays. */
+/** The source documents a service's repository holds beside the Spec Kit files. */
+const SERVICE_DOCS = ['project.md', 'stack.md', 'flow.md', 'design.md', 'briefing.md'];
+
+/** Copies the draft's Spec Kit preparation into `repo`; a link the repository holds is never written through. */
 async function overlaySpeckit(docsDir: string, repo: string): Promise<void> {
   const source = path.join(path.dirname(docsDir), 'speckit');
-  for (const entry of SPECKIT_ENTRIES) {
+  for (const { entry, replace } of SPECKIT_ENTRIES) {
     const stat = await fs.lstat(path.join(source, entry)).catch(() => null);
     const files = stat?.isDirectory() ? (await listFiles(path.join(source, entry))).map((rel) => `${entry}/${rel}`) : stat?.isFile() ? [entry] : [];
     for (const rel of files) {
       const target = path.join(repo, rel);
-      // lstat, so a link main holds counts as present and is never written through.
-      if (await fs.lstat(target).then(() => true, () => false)) continue;
+      // lstat, so a link main holds is never written through; a file main holds stays unless its entry is replaced.
+      const held = await fs.lstat(target).catch(() => null);
+      if (held?.isSymbolicLink() || (held !== null && !replace)) continue;
       await fs.mkdir(path.dirname(target), { recursive: true });
       await fs.copyFile(path.join(source, rel), target);
     }
   }
+}
+
+/** Publishes the Spec Kit files and the source documents to a service's repository, through a docs PR as the project's docs go. */
+async function publishServiceDocs(deps: PhaseDeps, service: string, docsDir: string): Promise<PhaseResult> {
+  const ws = serviceWorkspace(deps.ws, service);
+  const sdeps: PhaseDeps = { ...deps, ws, service, mergeDeps: { ...deps.mergeDeps, ws } };
+  const branch = `docs/${deps.spec.specId}-${service}-sources`;
+  const resumed = deps.journal.isConfirmed(Intent.DocsCommit, docsCommitKey(sdeps, 0));
+  const wt = await docsWorktree(sdeps, branch, { keepCommits: resumed });
+  if (!resumed) {
+    for (const file of SERVICE_DOCS) {
+      if (!(await exists(path.join(docsDir, file)))) continue;
+      await fs.mkdir(path.join(wt, 'docs'), { recursive: true });
+      await fs.copyFile(path.join(docsDir, file), path.join(wt, 'docs', file));
+    }
+    await overlaySpeckit(docsDir, wt);
+  }
+  return commitAndMergeDocs(sdeps, 0, branch, wt, `docs(${deps.spec.specId}): Spec Kit and source documents`);
 }
 const read = (p: string) => fs.readFile(p, 'utf8').catch(() => null);
 

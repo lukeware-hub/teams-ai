@@ -54,3 +54,11 @@ Status: pending.
 - Resource limits (CPU and memory) on the platform containers.
 
 Public deploy target: out of scope for now (the owner works locally).
+
+## 8. Spec Kit: a builder records its deviation from the plan or Spec Kit
+
+Status: pending. A builder has no structured field for a departure from the task, `plan.md` or `tasks.md` (`server/agents/outputs.ts:145-160`), and review has no category for a plan contradiction (`server/agents/outputs.ts:168-176`). Add a deviation field to the dev output and a matching review category, both journaled.
+
+## 9. Spec Kit: `tasks.md` shows the delivered tasks
+
+Status: pending. Spec Kit stops at tasks (`server/refine/speckit-steps.ts:9-11`), and no code updates `tasks.md` when a task merges, so the repository never shows what was delivered. Decide the form first, then add a step that marks each delivered entry.

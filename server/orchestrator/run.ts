@@ -703,7 +703,7 @@ export class Run {
     // Phases 1 and 2 read the docs from origin/main; a later run must see what was merged since the last one.
     const docs = this.deps.bootstrap ? await runPhase0({ ...this.phaseDeps(), ghExec: this.deps.ghExec }, this.deps.bootstrap) : await gitFetch(this.deps.ws.repo, this.deps.exec).then((): PhaseResult => ({ ok: true }));
     if (!docs.ok) return docs;
-    return ensureServiceRepos({ ...this.phaseDeps(), ghExec: this.deps.ghExec }, this.deps.bootstrap?.owner ?? this.deps.project.github.owner ?? this.deps.cfg.github.owner);
+    return ensureServiceRepos({ ...this.phaseDeps(), ghExec: this.deps.ghExec }, this.deps.bootstrap?.owner ?? this.deps.project.github.owner ?? this.deps.cfg.github.owner, this.deps.bootstrap?.docsDir);
   }
 
   /** R8.3: CI and release workflows land on main of a bootstrapped repository, and of every new service's; public for tests. */

@@ -57,7 +57,7 @@ describe('phase 0', () => {
       const d = deps(exec, remote.repo, { project: makeProject({ projectId: 'hello-app', services: ['orders-api'] }) });
       const run = await Run.create(d, 'hello-001-r1');
       expect(await run.executePhase0()).toEqual({ ok: true });
-      expect(await git(serviceWorkspace(d.ws, 'orders-api').repo, ['ls-tree', '--name-only', 'origin/main'], execCommand)).toBe('src');
+      expect(await git(serviceWorkspace(d.ws, 'orders-api').repo, ['ls-tree', '--name-only', 'origin/main'], execCommand)).toBe('docs\nsrc');
       await run.close();
     } finally {
       await orders.cleanup();
@@ -360,6 +360,48 @@ describe('phase 0', () => {
       expect(await show('specs/hello-001/tasks.md')).toBe('# Tasks');
       await expect(show('notes.txt')).rejects.toThrow();
       await run.close();
+    });
+
+    it('replaces the Spec Kit files main holds, and keeps the CLAUDE.md main has', { timeout: 60_000 }, async () => {
+      await remote.cleanup();
+      remote = await makeRemote({ 'README.md': 'seed', 'CLAUDE.md': '# Main rules\n', '.specify/memory/constitution.md': '# Old constitution\n', 'specs/hello-001/tasks.md': '# Old tasks\n' });
+      draftDocs = path.join(remote.root, 'draft', 'docs');
+      await fs.mkdir(path.join(draftDocs, 'specs', 'hello-001'), { recursive: true });
+      await fs.writeFile(path.join(draftDocs, 'specs', 'hello-001', 'spec.json'), JSON.stringify(spec));
+      await stage();
+      const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
+      exec.onArgs('gh', ['repo', 'view'], () => ({ stdout: JSON.stringify({ nameWithOwner: 'o/hello-app', url: remote.origin }) }));
+      new FakeGh().install(exec);
+      const run = await Run.create(deps(exec, remote.repo), 'hello-001-r1');
+      expect(await run.executePhase0()).toEqual({ ok: true });
+      const show = (rel: string) => git(remote.repo, ['show', `origin/main:${rel}`], execCommand);
+      expect(await show('.specify/memory/constitution.md')).toBe('# Constitution');
+      expect(await show('specs/hello-001/tasks.md')).toBe('# Tasks');
+      expect(await show('CLAUDE.md')).toBe('# Main rules');
+      await run.close();
+    });
+
+    it('publishes the Spec Kit files and the source documents to each service repository', { timeout: 60_000 }, async () => {
+      const orders = await makeRemote({ 'src/index.ts': 'x' });
+      try {
+        await stage();
+        await fs.writeFile(path.join(draftDocs, 'stack.md'), '# Stack\n');
+        const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
+        exec.onArgs('gh', ['repo', 'view'], (s) => ({ stdout: JSON.stringify(s.args[2] === 'o/orders-api' ? { nameWithOwner: 'o/orders-api', url: orders.origin } : { nameWithOwner: 'o/hello-app', url: remote.origin }) }));
+        new FakeGh().install(exec);
+        const d = deps(exec, remote.repo, { project: makeProject({ projectId: 'hello-app', services: ['orders-api'] }) });
+        const run = await Run.create(d, 'hello-001-r1');
+        expect(await run.executePhase0()).toEqual({ ok: true });
+        const show = (rel: string) => git(serviceWorkspace(d.ws, 'orders-api').repo, ['show', `origin/main:${rel}`], execCommand);
+        expect(await show('.specify/memory/constitution.md')).toBe('# Constitution');
+        expect(await show('specs/hello-001/tasks.md')).toBe('# Tasks');
+        expect(await show('CLAUDE.md')).toBe('# From Spec Kit');
+        expect(await show('docs/stack.md')).toBe('# Stack');
+        await expect(show('notes.txt')).rejects.toThrow();
+        await run.close();
+      } finally {
+        await orders.cleanup();
+      }
     });
   });
 
