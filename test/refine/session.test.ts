@@ -23,7 +23,18 @@ const PO = ['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.
 const SM = ['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions'];
 const refineOut = (checklist: unknown[], questions: unknown[] = [], docPatch: unknown[] = [], moves?: unknown[]) => ({ checklist, questions, docPatch, ...(moves ? { moves } : {}) });
 const draft = () => draftPaths(ws, 'hello-001');
-const deps = () => ({ ws, draft: draft(), runAgent: makeFakeRunAgent(script), secretsDir, retrieval: () => [] });
+/** `specify init` of the Spec Kit preparation, which succeeds without running. */
+const specifyInit = async () => ({ exitCode: 0, signal: null, stdout: '', stderr: '', timedOut: false, durationMs: 1, truncated: false });
+const deps = () => ({ ws, draft: draft(), runAgent: makeFakeRunAgent(script), secretsDir, retrieval: () => [], exec: specifyInit });
+
+/** The Spec Kit preparation every start needs: each step of the spec's one item writes its file with the spec's criterion ids. */
+async function prepare(s: RefineSession): Promise<void> {
+  const own: Record<string, string> = { specify: 'spec.md', plan: 'plan.md', tasks: 'tasks.md' };
+  const content = s.state.derived!.spec.acceptanceCriteria.map((c) => c.id).join(', ');
+  script['speckit/dev'] = ['constitution', 'specify', 'clarify', 'plan', 'tasks'].map((command) => ({ status: 'done', summary: 'ok', files: own[command] ? [`specs/hello-001/${own[command]}`] : [], questions: [], content }));
+  await s.runSpeckit();
+  expect(s.state.speckit).toMatchObject({ status: 'done', stale: false });
+}
 
 beforeEach(async () => {
   root = (await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'))).replace(/\\/g, '/');
@@ -293,6 +304,7 @@ describe('RefineSession', () => {
     await s.evaluate();
     expect(s.state.status).toBe('ready');
     await s.answer('po-c1-0', '8080');
+    await prepare(s);
     const { spec } = await s.freeze();
     expect(spec.decisions).toEqual([{ question: 'Port?', answer: '8080' }]);
     expect(JSON.parse(await fs.readFile(draft().specJson, 'utf8')).decisions).toEqual([{ question: 'Port?', answer: '8080' }]);
@@ -455,12 +467,61 @@ describe('RefineSession', () => {
     script['refine/sm'] = [refineOut(green(SM))];
     await s.evaluate();
     await expect(s.syncWithMain(async () => [{ file: 'project.md', hash: 'h' }])).rejects.toThrow(/Avalie de novo/);
+    await prepare(s);
+    expect(s.state.stale).toBe(true);
     await expect(s.freeze()).resolves.toBeDefined();
   });
 
   it('refuses a start before anything was derived', async () => {
     const s = await RefineSession.create(deps(), 'new-spec');
     await expect(s.freeze()).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it('prepares the Spec Kit of a single spec once it is derived, and refuses before', async () => {
+    const s = await RefineSession.create(deps(), 'new-spec');
+    expect(() => s.runSpeckit()).toThrow('Avalie a spec antes de preparar o Spec Kit.');
+    script['derive/po'] = [derived];
+    script['refine/po'] = [refineOut(green(PO))];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await s.evaluate();
+    await prepare(s);
+    expect(s.state.speckit?.features).toEqual({ 'hello-001': 'specs/hello-001' });
+  });
+
+  it('a single spec starts only from a current Spec Kit preparation, and a document written without its journal entry shuts it by the input hash', async () => {
+    const s = await RefineSession.create(deps(), 'new-spec');
+    script['derive/po'] = [derived];
+    script['refine/po'] = [refineOut(green(PO))];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await s.evaluate();
+    await expect(s.freeze()).rejects.toThrow('Prepare o Spec Kit antes de iniciar');
+    await prepare(s);
+    const before = await readDoc(draft(), 'stack.md');
+    await writeDoc(draft(), 'stack.md', '# Stack\n\nNode 24\n');
+    expect(s.state.speckit).toMatchObject({ status: 'done', stale: false });
+    await expect(s.freeze()).rejects.toThrow('Prepare o Spec Kit antes de iniciar');
+    await writeDoc(draft(), 'stack.md', before);
+    await expect(s.freeze()).resolves.toBeDefined();
+  });
+
+  it("an owner's answer after the preparation leaves it stale, so the start waits for a new one", async () => {
+    const s = await RefineSession.create(deps(), 'new-spec');
+    script['derive/po'] = [derived];
+    script['refine/po'] = [refineOut(green(PO), [{ id: 'q', text: 'Port?', blocking: false, relatedAcIds: [] }])];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await s.evaluate();
+    await prepare(s);
+    await s.answer('po-c1-0', '8080');
+    expect(s.state.speckit?.stale).toBe(true);
+    await expect(s.freeze()).rejects.toThrow('Prepare o Spec Kit antes de iniciar');
+  });
+
+  it('an imported backlog starts only from a current Spec Kit preparation', async () => {
+    const s = await RefineSession.create(deps(), 'backlog');
+    await s.enableBacklog();
+    const item = { key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S', rank: 1 };
+    s.state.backlog = { ...s.state.backlog!, detail: true, items: [item], specs: { base: { spec: makeSpec({ specId: 'base' }) } }, preplans: { base: { preplan: { tasks: [] } } } } as never;
+    await expect(s.freezeProgram()).rejects.toThrow('Prepare o Spec Kit antes de iniciar');
   });
 
   it('refuses a backlog start while an evaluation holds the session', async () => {

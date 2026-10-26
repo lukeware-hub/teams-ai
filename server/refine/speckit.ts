@@ -13,12 +13,12 @@ import { isConfidential, MAX_DEDUP_PAIRS, recorded, type CycleJournal, type RunA
 import { CONSTITUTION, readDoc, speckitBaseDir, type Draft } from './draft.js';
 import { RefineEvent } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
-import { SPECKIT_INPUTS, speckitFeatureDir, speckitPack, type SpeckitCommand, type SpeckitInput } from './speckit-pack.js';
-import { itemSteps, speckitSteps, stepKey, type Step } from './speckit-steps.js';
+import { SPECKIT_INPUTS, speckitFeatureDir, speckitPack, type SpeckitCommand, type SpeckitInput, type SpeckitItem } from './speckit-pack.js';
+import { itemSteps, speckitItems, speckitSteps, stepKey, type Step } from './speckit-steps.js';
+import { renderSpecMd } from './spec-md.js';
 import { renderSpecsMd } from './specs-md.js';
-import { buildSpecsIndex, specIdOf } from './specs-index.js';
 import { loadEvents } from '../store/event-store.js';
-import { reduceRefineEvents, type BacklogState, type QuestionRow, type RefineState } from './state.js';
+import { reduceRefineEvents, type QuestionRow, type RefineState } from './state.js';
 import type { Question } from './events.js';
 import { decisionsOf } from './decisions.js';
 import { answererOf, makeAnswerer, type Answerer } from './speckit-answers.js';
@@ -56,17 +56,20 @@ const exists = (file: string): Promise<boolean> => fs.access(file).then(() => tr
 /** How many rounds a step runs when the answers to its questions come in: a round that gets answers runs again with them. */
 const MAX_STEP_ROUNDS = 3;
 
+/** The part of the session a preparation reads: the detailed backlog, or the single spec it derived. */
+export type SpeckitSource = Pick<RefineState, 'backlog' | 'derived' | 'featureKey'>;
+
 /** The Spec Kit feature folder of one spec of a draft, when its preparation made one; read by a run of that spec. */
 export async function speckitFeatureOf(draftRoot: string, specId: string): Promise<string | undefined> {
   const events = await loadEvents(path.join(draftRoot, 'events.ndjson')).catch(() => []);
   const state = reduceRefineEvents(events);
-  const key = state.backlog?.items.find((i) => specIdOf(path.basename(draftRoot), i.key, state.backlog?.keyIds) === specId)?.key;
+  const key = speckitItems(path.basename(draftRoot), state).find((i) => i.specId === specId)?.key;
   return key ? state.speckit?.features?.[key] : undefined;
 }
 
 /** The answerer of a preparation: the six inputs as read now, the item titles, and the staging folder the answering agent may not read. */
-function answererFor(deps: Pick<SpeckitDeps, 'draft' | 'journal' | 'runAgent' | 'signal'>, texts: Record<SpeckitInput, string>, backlog: BacklogState, research: boolean): Answerer {
-  const titles = new Map(buildSpecsIndex(deps.draft.specId, backlog).specs.map((i): [string, string] => [i.key, i.title]));
+function answererFor(deps: Pick<SpeckitDeps, 'draft' | 'journal' | 'runAgent' | 'signal'>, texts: Record<SpeckitInput, string>, items: readonly SpeckitItem[], research: boolean): Answerer {
+  const titles = new Map(items.map((i): [string, string] => [i.key, i.title]));
   return makeAnswerer({ draft: deps.draft, journal: deps.journal, runAgent: deps.runAgent, texts, hash: hashOf(texts), titles, stagingDir: speckitDir(deps.draft), signal: deps.signal, research });
 }
 
@@ -74,32 +77,43 @@ function answererFor(deps: Pick<SpeckitDeps, 'draft' | 'journal' | 'runAgent' | 
 const untriaged = (questions: readonly QuestionRow[]): QuestionRow[] => questions.filter((q) => q.origin === 'speckit' && q.status === 'pending' && q.context === undefined);
 
 /** "Pedir ao PO e ao SM": the PO and the SM read the questions nobody has read yet; returns how many they answered. */
-export async function answerUntriaged(deps: Pick<SpeckitDeps, 'draft' | 'journal' | 'runAgent' | 'signal' | 'research'>, backlog: BacklogState): Promise<number> {
-  const texts = await inputTexts(deps.draft, backlog);
+export async function answerUntriaged(deps: Pick<SpeckitDeps, 'draft' | 'journal' | 'runAgent' | 'signal' | 'research'>, source: SpeckitSource): Promise<number> {
+  const texts = await inputTexts(deps.draft, source);
   const research = await researchAllowed(deps);
-  return answererFor(deps, texts, backlog, research).triage(untriaged(deps.journal.state.questions));
+  return answererFor(deps, texts, speckitItems(deps.draft.specId, source), research).triage(untriaged(deps.journal.state.questions));
 }
 
 /** The web search is allowed only when the owner turned it on and the project is not confidential. */
 const researchAllowed = async (deps: Pick<SpeckitDeps, 'draft' | 'journal' | 'research'>): Promise<boolean> => deps.research === true && !(await isConfidential(deps.draft, deps.journal.state));
 
+/** specs.md: the backlog's items, or the single spec as the section of its one item, with the spec's own headings one level down. */
+function specsMdOf(draftId: string, source: SpeckitSource): string {
+  if (source.backlog?.enabled) return renderSpecsMd(draftId, source.backlog);
+  const [item] = speckitItems(draftId, source);
+  const body = renderSpecMd(source.derived!.spec).split('\n').slice(1).map((line) => (line.startsWith('#') ? `#${line}` : line));
+  return ['# Specs', '', `## ${item!.key}: ${item!.title}`, ...body].join('\n');
+}
+
+/** The acceptance criteria an item's files keep: its backlog spec's, or the single spec's. */
+const criteriaOf = (source: SpeckitSource, key: string) => (source.backlog?.enabled ? source.backlog.specs?.[key]?.spec : source.derived?.spec)?.acceptanceCriteria ?? [];
+
 /** The text of the six Markdown inputs, as Spec Kit reads them. */
-async function inputTexts(draft: Draft, backlog: BacklogState): Promise<Record<SpeckitInput, string>> {
+async function inputTexts(draft: Draft, source: SpeckitSource): Promise<Record<SpeckitInput, string>> {
   return {
     'project.md': await readDoc(draft, 'project.md'),
     'flow.md': await readDoc(draft, 'flow.md'),
     'briefing.md': await readDoc(draft, 'briefing.md'),
     'stack.md': await readDoc(draft, 'stack.md'),
     'design.md': await readDoc(draft, 'design.md'),
-    'specs.md': renderSpecsMd(draft.specId, backlog),
+    'specs.md': specsMdOf(draft.specId, source),
   };
 }
 
 const hashOf = (texts: Record<SpeckitInput, string>): string => sha256(SPECKIT_INPUTS.map((file) => texts[file]).join('\n'));
 
 /** The hash of the six inputs as they are now. A failed preparation on the same hash resumes; any other starts over. */
-export async function speckitInputHash(draft: Draft, backlog: BacklogState): Promise<string> {
-  return hashOf(await inputTexts(draft, backlog));
+export async function speckitInputHash(draft: Draft, source: SpeckitSource): Promise<string> {
+  return hashOf(await inputTexts(draft, source));
 }
 
 /** Writes the six Markdown inputs into a fresh input folder. */
@@ -171,20 +185,22 @@ async function openMarkers(staging: string, files: readonly string[]): Promise<s
 const CRITERIA_FILE: Partial<Record<SpeckitCommand, string>> = { specify: 'spec.md', clarify: 'spec.md', plan: 'plan.md', tasks: 'tasks.md' };
 
 /** The item step's own file and the criterion ids it leaves out, as "<file>: <ids>"; undefined when it keeps them all. */
-async function droppedCriteria(staging: string, step: Step, backlog: BacklogState): Promise<string | undefined> {
+async function droppedCriteria(staging: string, step: Step, source: SpeckitSource): Promise<string | undefined> {
   const name = CRITERIA_FILE[step.command];
   if (!name) return undefined;
   const file = `${speckitFeatureDir(step.item!.key)}/${name}`;
   const text = await fs.readFile(path.posix.join(staging, file), 'utf8').catch(() => '');
   // A whole-word match, so AC-100 never counts as kept by AC-1000.
-  const dropped = (backlog.specs?.[step.item!.key]?.spec?.acceptanceCriteria ?? []).map((c) => c.id).filter((id) => !new RegExp(`\\b${id}\\b`).test(text));
+  const dropped = criteriaOf(source, step.item!.key).map((c) => c.id).filter((id) => !new RegExp(`\\b${id}\\b`).test(text));
   return dropped.length > 0 ? `${file}: ${dropped.join(', ')}` : undefined;
 }
 
 async function runCommand(deps: SpeckitDeps, step: Step, hash: string, adjust: boolean): Promise<SpeckitOutput> {
   const specHash = sha256(`speckit\n${step.command}\n${step.item?.key ?? ''}\n${hash}`);
   const inputDir = speckitInputDir(deps.draft);
-  const decisions = decisionsOf(deps.journal.state.questions.filter((q) => q.origin === 'speckit' && q.answeredBy));
+  // A backlog writes the owner's answers into briefing.md; a single spec keeps every answer in the journal, as its freeze reads them.
+  const single = !deps.journal.state.backlog?.enabled;
+  const decisions = decisionsOf(deps.journal.state.questions.filter((q) => single || (q.origin === 'speckit' && q.answeredBy)));
   const pack = fitPackBudget(speckitPack({ command: step.command, specHash, inputDir, item: step.item, decisions, adjust }));
   const extraAllow = [...SPECKIT_BASH, `Read(${absoluteRule(inputDir)}/**)`];
   // An item step works in its own feature folder, which the environment names, and never persists the feature pointer.
@@ -204,7 +220,7 @@ interface RunContext {
   deps: SpeckitDeps;
   hash: string;
   texts: Record<SpeckitInput, string>;
-  backlog: BacklogState;
+  source: SpeckitSource;
   decider: Pick<Decider, 'decide'> | undefined;
   answerer: Answerer;
   /** The keys of the steps an earlier preparation finished on the basis they have now: they run no more. */
@@ -239,22 +255,23 @@ async function runOne(run: RunContext, step: Step): Promise<void> {
   if (run.deps.signal?.aborted) throw new OwnerError(`${SPECKIT_STAGE} foi interrompida.`, 'aborted');
   const key = stepKey(step.command, step.item?.key);
   if (run.reused.has(key)) return;
-  await runStep(run.deps, { step, hash: run.hash, texts: run.texts, backlog: run.backlog, decider: run.decider, answerer: run.answerer, adjust: run.adjust.has(key) });
+  await runStep(run.deps, { step, hash: run.hash, texts: run.texts, source: run.source, decider: run.decider, answerer: run.answerer, adjust: run.adjust.has(key) });
 }
 
 /**
- * Runs Spec Kit over the detailed backlog and answers the hash of the inputs it read. A step an earlier preparation finished on the
- * same basis is kept as it is; the others run, on the files they have from that preparation when they have any. The constitution
- * runs alone, unless the project keeps main's, then each backlog item runs its four commands in order, and up to `agents` items run at once.
+ * Runs Spec Kit over the detailed backlog, or the single spec as one item, and answers the hash of the inputs it read. A step an
+ * earlier preparation finished on the same basis is kept as it is; the others run, on the files they have from that preparation or
+ * from main when they have any. The constitution runs alone, unless the project keeps main's, then each item runs its four commands
+ * in order, and up to `agents` items run at once.
  */
-export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState): Promise<string> {
+export async function prepareSpeckit(deps: SpeckitDeps, source: SpeckitSource): Promise<string> {
   const dir = speckitDir(deps.draft);
-  const texts = await inputTexts(deps.draft, backlog);
+  const texts = await inputTexts(deps.draft, source);
   const hash = hashOf(texts);
   await writeInputs(deps.draft, texts);
-  const items = buildSpecsIndex(deps.draft.specId, backlog).specs;
+  const items = speckitItems(deps.draft.specId, source);
   const decider = deps.decider && recorded(deps.decider, deps.journal, deps.journal.state.cycle);
-  const answerer = answererFor(deps, texts, backlog, await researchAllowed(deps));
+  const answerer = answererFor(deps, texts, items, await researchAllowed(deps));
   // The steps an earlier preparation left are read before this one clears them.
   const earlier = deps.journal.state.speckit?.steps ?? [];
   const plan = speckitSteps(items);
@@ -278,9 +295,11 @@ export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState): 
     // Main's constitution counts as done, so the constitution step never writes over it.
     reused.add(stepKey('constitution'));
     carried.unshift({ command: 'constitution' });
+    // An item whose file main holds, as a continued spec's, updates that file in the same feature folder instead of writing it anew.
+    for (const step of plan) if (step.item && (await exists(path.resolve(dir, outputOf(step)!)))) adjust.add(stepKey(step.command, step.item.key));
   }
   if (carried.length > 0) await deps.journal.fact(RefineEvent.SpeckitReused, { steps: carried });
-  const run: RunContext = { deps, hash, texts, backlog, decider, answerer, reused, adjust };
+  const run: RunContext = { deps, hash, texts, source, decider, answerer, reused, adjust };
   await runOne(run, { command: 'constitution' });
   const lanes = items.map(itemSteps);
   const halt: { failed: boolean; error?: unknown } = { failed: false };
@@ -310,8 +329,8 @@ export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState): 
  * One Spec Kit command, then the answers to the questions it left. An answer changes the files of its step, so a step other than
  * a specify runs again with it, up to MAX_STEP_ROUNDS rounds; an answer still unresolved after that, or a stop, leaves the preparation stale.
  */
-async function runStep(deps: SpeckitDeps, run: { step: Step; hash: string; texts: Record<SpeckitInput, string>; backlog: BacklogState; decider: Pick<Decider, 'decide'> | undefined; answerer: Answerer; adjust: boolean }): Promise<void> {
-  const { step, hash, texts, backlog, decider, answerer, adjust } = run;
+async function runStep(deps: SpeckitDeps, run: { step: Step; hash: string; texts: Record<SpeckitInput, string>; source: SpeckitSource; decider: Pick<Decider, 'decide'> | undefined; answerer: Answerer; adjust: boolean }): Promise<void> {
+  const { step, hash, texts, source, decider, answerer, adjust } = run;
   const dir = speckitDir(deps.draft);
   // A specify step makes a new feature folder on every run, so its answers reach the steps after it instead.
   const rework = step.command === 'specify' ? undefined : { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}) };
@@ -328,7 +347,7 @@ async function runStep(deps: SpeckitDeps, run: { step: Step; hash: string; texts
       throw err;
     }
     const open = result.status === 'done' ? await openMarkers(dir, result.files) : [];
-    const dropped = result.status === 'done' ? await droppedCriteria(dir, step, backlog) : undefined;
+    const dropped = result.status === 'done' ? await droppedCriteria(dir, step, source) : undefined;
     const fresh = newQuestions(deps.journal.state, result.questions, step, answererOf(step.command));
     const asked = decider ? await dropRepeats(fresh, deps.journal.state.questions, decider, await isConfidential(deps.draft, deps.journal.state)) : fresh;
     // The basis is the one this round's files were written from, with the questions it asks counted as pending, as they are on record.

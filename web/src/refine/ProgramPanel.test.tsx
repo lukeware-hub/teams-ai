@@ -121,7 +121,9 @@ describe('ProgramStatus', () => {
 });
 
 describe('canStartRun', () => {
-  const state = (over: Record<string, unknown> = {}) => ({ status: 'ready', mode: 'new-spec', derived: {}, backlog: undefined, ...over }) as never;
+  /** A current Spec Kit preparation, which every start needs. */
+  const prepared = { status: 'done', steps: [], stale: false };
+  const state = (over: Record<string, unknown> = {}) => ({ status: 'ready', mode: 'new-spec', derived: {}, backlog: undefined, speckit: prepared, ...over }) as never;
   it('is never locked by a check, a question, a suggestion, a stale list or the Jev', () => {
     const waiting = { status: 'answering', stale: true, cycle: 2, questions: [{ status: 'pending', blocking: true }], patches: [{ status: 'pending' }], readiness: { average: 0.5 } };
     expect(canStartRun(state(waiting), false)).toBe(true);
@@ -139,11 +141,13 @@ describe('canStartRun', () => {
     expect(canStartRun(state({ backlog: { enabled: true, detail: false, items: [item] } }), false)).toBe(false);
     expect(canStartRun(state({ backlog: { enabled: true, detail: true, items: [] } }), false)).toBe(false);
   });
-  it('a wizard backlog starts only after a current Spec Kit preparation', () => {
-    const wizard = { mode: 'new-project', stages: true, backlog: { enabled: true, detail: true, items: [{ key: 'base' }], preplans: { base: { preplan: {} } } } };
-    expect(canStartRun(state(wizard), false)).toBe(false);
-    expect(canStartRun(state({ ...wizard, speckit: { status: 'done', steps: [], stale: true } }), false)).toBe(false);
-    expect(canStartRun(state({ ...wizard, speckit: { status: 'done', steps: [], stale: false } }), false)).toBe(true);
-    expect(canStartRun(state({ ...wizard, speckit: { status: 'done', steps: [], stale: false }, questions: [{ status: 'pending', blocking: true, origin: 'speckit' }] }), false)).toBe(false);
+  it('a wizard backlog, an imported backlog, a new spec and a continued spec start only after a current Spec Kit preparation', () => {
+    const backlog = { enabled: true, detail: true, items: [{ key: 'base' }], preplans: { base: { preplan: {} } } };
+    for (const session of [{ mode: 'new-project', backlog }, { mode: 'backlog', backlog }, { mode: 'new-spec' }, { mode: 'continue' }]) {
+      expect(canStartRun(state({ ...session, speckit: undefined }), false), session.mode).toBe(false);
+      expect(canStartRun(state({ ...session, speckit: { ...prepared, stale: true } }), false), session.mode).toBe(false);
+      expect(canStartRun(state(session), false), session.mode).toBe(true);
+      expect(canStartRun(state({ ...session, questions: [{ status: 'pending', blocking: true, origin: 'speckit' }] }), false), session.mode).toBe(false);
+    }
   });
 });

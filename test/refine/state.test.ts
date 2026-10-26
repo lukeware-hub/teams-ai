@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { approvalPatch } from '../../server/refine/adjustments.js';
 import { RefineEvent } from '../../server/refine/events.js';
-import { canStart, reduceRefineEvents } from '../../server/refine/state.js';
+import { canStart, reduceRefineEvents, speckitPending } from '../../server/refine/state.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 
 const item = (id: string, passed: boolean) => ({ id, role: id.startsWith('po') ? 'po' : 'sm', passed, detail: '' });
@@ -382,7 +382,9 @@ describe('stage progress', () => {
 
 describe('canStart', () => {
   type Input = Parameters<typeof canStart>[0];
-  const base: Input = { status: 'answering', mode: 'new-spec', derived: {}, backlog: null };
+  /** A current Spec Kit preparation, which every start needs. */
+  const prepared = { status: 'done', stale: false };
+  const base: Input = { status: 'answering', mode: 'new-spec', derived: {}, backlog: null, speckit: prepared };
   /** A detailed backlog of one item with its pre-plan. */
   const planned = { enabled: true, detail: true, items: [{ key: 'base' }], preplans: { base: { preplan: {} } } };
 
@@ -410,27 +412,31 @@ describe('canStart', () => {
     expect(canStart({ ...base, backlog: { enabled: true, detail: null, items: [item] } })).toBe(false);
   });
 
-  it('a wizard backlog starts only once its Spec Kit preparation is done and current', () => {
-    const wizard = { ...base, mode: 'new-project', stages: true, backlog: planned };
-    expect(canStart(wizard)).toBe(false);
-    expect(canStart({ ...wizard, speckit: { status: 'running', stale: false } })).toBe(false);
-    expect(canStart({ ...wizard, speckit: { status: 'failed', stale: false } })).toBe(false);
-    expect(canStart({ ...wizard, speckit: { status: 'done', stale: true } })).toBe(false);
-    expect(canStart({ ...wizard, speckit: { status: 'done', stale: false } })).toBe(true);
+  it('a wizard backlog, an imported backlog, a new spec, a continued spec and an older draft start only once their Spec Kit preparation is done and current', () => {
+    const sessions: Input[] = [{ ...base, mode: 'new-project', backlog: planned }, { ...base, mode: 'backlog', backlog: planned }, base, { ...base, mode: 'continue' }, { ...base, mode: null }];
+    for (const session of sessions) {
+      expect(canStart({ ...session, speckit: undefined }), String(session.mode)).toBe(false);
+      expect(canStart({ ...session, speckit: { status: 'running', stale: false } }), String(session.mode)).toBe(false);
+      expect(canStart({ ...session, speckit: { status: 'failed', stale: false } }), String(session.mode)).toBe(false);
+      expect(canStart({ ...session, speckit: { status: 'done', stale: true } }), String(session.mode)).toBe(false);
+      expect(canStart(session), String(session.mode)).toBe(true);
+    }
   });
 
-  it('a pending blocking question of Spec Kit keeps a wizard start shut; an answered or advisory one does not', () => {
-    const ready = { ...base, mode: 'new-project', stages: true, backlog: planned, speckit: { status: 'done', stale: false } };
+  it('a pending blocking question of Spec Kit keeps the start shut; an answered or advisory one does not', () => {
     const q = (over: Record<string, unknown>) => ({ status: 'pending', blocking: true, origin: 'speckit', ...over });
-    expect(canStart({ ...ready, questions: [q({})] })).toBe(false);
-    expect(canStart({ ...ready, questions: [q({ status: 'answered' })] })).toBe(true);
-    expect(canStart({ ...ready, questions: [q({ blocking: false })] })).toBe(true);
-    expect(canStart({ ...ready, questions: [q({ origin: undefined })] })).toBe(true);
+    for (const ready of [{ ...base, mode: 'new-project', backlog: planned }, base]) {
+      expect(canStart({ ...ready, questions: [q({})] })).toBe(false);
+      expect(canStart({ ...ready, questions: [q({ status: 'answered' })] })).toBe(true);
+      expect(canStart({ ...ready, questions: [q({ blocking: false })] })).toBe(true);
+      expect(canStart({ ...ready, questions: [q({ origin: undefined })] })).toBe(true);
+    }
   });
 
-  it('an imported backlog and a session without stages need no Spec Kit preparation', () => {
-    expect(canStart({ ...base, mode: 'backlog', backlog: planned })).toBe(true);
-    expect(canStart({ ...base, mode: 'new-project', stages: false, backlog: planned })).toBe(true);
+  it('the inputs changed since the preparation began shut the start, as the hash taken at the start says', () => {
+    const recorded = { ...base, speckit: { ...prepared, inputHash: 'h1' } };
+    expect(speckitPending(recorded, 'h1')).toBe(false);
+    expect(speckitPending(recorded, 'h2')).toBe(true);
   });
 
   it('a backlog with an item still without a pre-plan stays shut', () => {
@@ -574,6 +580,18 @@ describe('Spec Kit preparation state', () => {
       expect(reduceRefineEvents([{ type: RefineEvent.BacklogEnabled, data: {} }, ...done, e]).speckit?.stale, e.type).toBe(true);
     }
     expect(reduceRefineEvents([{ type: RefineEvent.DocEdited, data: { file: 'stack.md', hash: 'x' } }]).speckit).toBeUndefined();
+  });
+
+  it("goes stale when a single spec is derived again or the owner answers a question, but not on an answer the PO or the SM took from the documents", () => {
+    const done = [started, { type: RefineEvent.SpeckitDone, data: { inputHash: 'h' } }];
+    expect(reduceRefineEvents([...done, ...cycle(2)]).speckit?.stale).toBe(true);
+    expect(reduceRefineEvents([...done, { type: RefineEvent.QuestionAnswered, data: { questionId: 'q', text: 'Real' } }]).speckit?.stale).toBe(true);
+    expect(reduceRefineEvents([...done, { type: RefineEvent.QuestionAnswered, data: { questionId: 'q', text: 'Real', by: 'po' } }]).speckit?.stale).toBe(false);
+  });
+
+  it('keeps the backlog key a continued spec came from, which names its feature folder', () => {
+    expect(reduceRefineEvents([{ type: RefineEvent.Created, data: { mode: 'continue', featureKey: 'login' } }]).featureKey).toBe('login');
+    expect(reduceRefineEvents([{ type: RefineEvent.Created, data: { mode: 'new-spec' } }]).featureKey).toBeUndefined();
   });
 
   it('a new preparation keeps only the steps it reuses, marked as reused, and drops the rest', () => {

@@ -139,6 +139,8 @@ export interface RefineState {
   backlog: BacklogState | null;
   /** How the session was created; null on drafts from before it was kept. */
   mode: 'new-project' | 'new-spec' | 'continue' | 'backlog' | null;
+  /** The backlog key a continued spec came from, which names its Spec Kit feature folder; absent when it came from no backlog. */
+  featureKey?: string;
   /** Created with the document stages: its confidentiality is unknown, so no document goes to the Jev, until the owner answers. */
   stages?: boolean;
   /** The owner's answer on confidentiality; undefined until it comes. */
@@ -165,7 +167,7 @@ export interface RefineState {
   evaluation?: { startedAt: string; endedAt: string | null };
   /** The PO and the SM are answering the open Spec Kit questions now (true from their start until their end). */
   speckitAnswering?: boolean;
-  /** The Spec Kit preparation of a detailed backlog; stale once a document or the backlog changes after it. */
+  /** The Spec Kit preparation of a detailed backlog or a single spec; stale once a document, the backlog, the spec or an owner's answer changes after it. */
   speckit?: { status: 'running' | 'done' | 'failed'; startedAt?: string; running?: Array<{ command: string; itemKey?: string; startedAt?: string }>; steps: Array<{ command: string; itemKey?: string; startedAt?: string; endedAt?: string; basis?: string; reused?: boolean }>; total?: number; error?: string; detail?: string; stale: boolean; features?: Record<string, string>; inputHash?: string };
 }
 
@@ -240,7 +242,6 @@ export interface StartInput {
   mode?: string | null;
   derived: unknown;
   backlog?: { enabled: boolean; detail?: boolean | null; items?: ReadonlyArray<{ key: string }>; specs?: Record<string, { spec: { status?: string } | null }>; preplans?: Record<string, { preplan: unknown }> } | null;
-  stages?: boolean;
   speckit?: { status: string; stale: boolean; inputHash?: string } | null;
   questions?: ReadonlyArray<{ status: string; blocking: boolean; origin?: string }>;
 }
@@ -251,16 +252,16 @@ const speckitAsks = (s: StartInput): boolean => (s.questions ?? []).some((q) => 
 /** The inputs' hash as they are now differs from the one the preparation recorded at its start, which catches a document written without its journal entry. */
 const speckitInputsChanged = (s: StartInput, inputHash: string | undefined): boolean => inputHash !== undefined && s.speckit?.inputHash !== undefined && s.speckit.inputHash !== inputHash;
 
-/** A new project built in the wizard starts only from a current Spec Kit preparation with its blocking questions answered; other sessions need none. */
-export const speckitPending = (s: StartInput, inputHash?: string): boolean => s.stages === true && s.mode === 'new-project' && (!(s.speckit?.status === 'done' && !s.speckit.stale) || speckitInputsChanged(s, inputHash) || speckitAsks(s));
+/** Every start needs a current Spec Kit preparation with its blocking questions answered. */
+export const speckitPending = (s: StartInput, inputHash?: string): boolean => !(s.speckit?.status === 'done' && !s.speckit.stale) || speckitInputsChanged(s, inputHash) || speckitAsks(s);
 
 /** A backlog item still without a pre-plan; a started or delivered spec was planned by its own run and needs none. */
 const preplanMissing = (b: NonNullable<StartInput['backlog']>): boolean => (b.items ?? []).some((i) => !isStarted(b.specs?.[i.key]?.spec?.status) && !b.preplans?.[i.key]?.preplan);
 
-/** The start is open unless the agents evaluate or a run started: checks, questions and the Jev only advise. */
+/** The start is open unless the agents evaluate, a run started or the Spec Kit preparation is not current: checks, other questions and the Jev only advise. */
 export function canStart(s: StartInput): boolean {
-  if (s.status === 'evaluating' || s.status === 'started') return false;
-  if (s.backlog?.enabled) return s.backlog.detail === true && (s.backlog.items?.length ?? 0) > 0 && !preplanMissing(s.backlog) && !speckitPending(s);
+  if (s.status === 'evaluating' || s.status === 'started' || speckitPending(s)) return false;
+  if (s.backlog?.enabled) return s.backlog.detail === true && (s.backlog.items?.length ?? 0) > 0 && !preplanMissing(s.backlog);
   return s.mode !== 'new-project' && Boolean(s.derived);
 }
 
@@ -302,6 +303,8 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       break;
     case RefineEvent.Derived:
       s.derived = { project: d.project as Project, spec: d.spec as Spec };
+      // A single spec's preparation read the spec derived before.
+      markSpeckitStale(s);
       break;
     case RefineEvent.PatchProposed:
       s.patches.push({ ...(d as unknown as PendingPatch & { cycle: number }), file: docName(d.file), status: 'pending', decision: null });
@@ -392,12 +395,15 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
         q.answeredBy = (d.by as 'po' | 'sm' | undefined) ?? null;
         q.evidence = d.evidence as QuoteEvidence[] | undefined;
       }
+      // The owner's answer is a decision the Spec Kit files must follow; an answer the PO or the SM took from the documents comes with a new derivation.
+      if (e.type === RefineEvent.QuestionAnswered && d.by === undefined) markSpeckitStale(s);
       s.status = computeStatus(s);
       break;
     }
     case RefineEvent.Created:
       s.mode = (d.mode as RefineState['mode']) ?? null;
       s.stages = d.stages === true;
+      if (d.featureKey !== undefined) s.featureKey = String(d.featureKey);
       break;
     case RefineEvent.ConfidentialityAnswered:
       s.confidential = d.confidential === true;

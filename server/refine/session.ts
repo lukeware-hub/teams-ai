@@ -213,7 +213,9 @@ export class RefineSession {
 
   static async create(deps: SessionDeps, mode: 'new-project' | 'new-spec' | 'continue' | 'backlog'): Promise<RefineSession> {
     const s = await RefineSession.open(deps);
-    await s.journal.fact(RefineEvent.Created, { projectId: deps.draft.projectId, specId: deps.draft.specId, mode, stages: mode === 'new-project' });
+    // A continued spec keeps the backlog key that names its Spec Kit feature folder, which its next derivation no longer carries.
+    const featureKey = mode === 'continue' ? s.state.derived?.spec.derivedFrom?.backlogKey : undefined;
+    await s.journal.fact(RefineEvent.Created, { projectId: deps.draft.projectId, specId: deps.draft.specId, mode, stages: mode === 'new-project', ...(featureKey ? { featureKey } : {}) });
     return s;
   }
 
@@ -445,15 +447,16 @@ export class RefineSession {
     await moveBriefingToProject(this.deps.draft);
   }
 
-  /** "Preparar Spec Kit": the constitution, and a spec, plan and tasks for each item of the detailed backlog. */
+  /** "Preparar Spec Kit": the constitution, and a spec, plan and tasks for each item of the detailed backlog, or for the single spec. */
   runSpeckit(): Promise<void> {
     this.guard();
     const backlog = this.state.backlog;
-    if (!backlog?.enabled || !backlog.detail || backlog.items.length === 0 || backlog.items.some((i) => !backlog.specs?.[i.key]?.spec)) {
+    if (backlog?.enabled && (!backlog.detail || backlog.items.length === 0 || backlog.items.some((i) => !backlog.specs?.[i.key]?.spec))) {
       throw new ConflictError('Detalhe o backlog antes de preparar o Spec Kit: cada item precisa da sua spec.');
     }
+    if (!backlog?.enabled && !this.state.derived) throw new ConflictError('Avalie a spec antes de preparar o Spec Kit.');
     const ctl = (this.abortCtl = new AbortController());
-    const run = this.timedSpeckit(ctl, backlog).finally(() => {
+    const run = this.timedSpeckit(ctl).finally(() => {
       this.running = null;
       this.abortCtl = null;
     });
@@ -464,10 +467,9 @@ export class RefineSession {
   /** "Pedir ao PO e ao SM": the PO and the SM answer the Spec Kit questions nobody has read yet; a new answer leaves the preparation stale. */
   askSpeckitAnswers(): Promise<void> {
     this.guard();
-    const backlog = this.state.backlog;
-    if (!backlog) return Promise.resolve();
+    if (!this.state.backlog) return Promise.resolve();
     const ctl = (this.abortCtl = new AbortController());
-    const run = this.timedAnswers(ctl, backlog).finally(() => {
+    const run = this.timedAnswers(ctl).finally(() => {
       this.running = null;
       this.abortCtl = null;
     });
@@ -476,10 +478,10 @@ export class RefineSession {
   }
 
   /** The journal keeps the start and the end of the answers, so the page shows them while they run. */
-  private async timedAnswers(ctl: AbortController, backlog: BacklogState): Promise<void> {
+  private async timedAnswers(ctl: AbortController): Promise<void> {
     await this.journal.fact(RefineEvent.SpeckitAnswersStarted, {});
     try {
-      const answered = await answerUntriaged({ draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, signal: ctl.signal, research: (await this.deps.speckitResearch?.()) === true }, backlog);
+      const answered = await answerUntriaged({ draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, signal: ctl.signal, research: (await this.deps.speckitResearch?.()) === true }, this.state);
       if (answered > 0 && this.state.speckit) await this.journal.fact(RefineEvent.SpeckitStale, {});
     } finally {
       await this.journal.fact(RefineEvent.SpeckitAnswersDone, {});
@@ -487,10 +489,10 @@ export class RefineSession {
   }
 
   /** The journal keeps the preparation's start, each step and its end; a failure is journaled for the owner, never thrown. */
-  private async timedSpeckit(ctl: AbortController, backlog: BacklogState): Promise<void> {
+  private async timedSpeckit(ctl: AbortController): Promise<void> {
     try {
       const agents = (await this.deps.speckitAgents?.()) ?? 1;
-      const hash = await prepareSpeckit({ draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, exec: this.deps.exec ?? execCommand, decider: this.deps.decider, signal: ctl.signal, agents, research: (await this.deps.speckitResearch?.()) === true }, backlog);
+      const hash = await prepareSpeckit({ draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, exec: this.deps.exec ?? execCommand, decider: this.deps.decider, signal: ctl.signal, agents, research: (await this.deps.speckitResearch?.()) === true }, this.state);
       await this.journal.fact(RefineEvent.SpeckitDone, { inputHash: hash });
     } catch (err) {
       const reason = err instanceof OwnerError ? err.message : `${SPECKIT_STAGE} parou por um erro interno. ${TRY_AGAIN}`;
@@ -712,14 +714,22 @@ export class RefineSession {
     return this.deps.limits ?? refineLimits();
   }
 
+  /** Refuses a start whose Spec Kit preparation is not current for the inputs as they are on disk; a running evaluation is the reason that comes first. */
+  private refuseWithoutSpeckit(inputHash: string): void {
+    if (this.state.status !== 'evaluating' && speckitPending(this.state, inputHash)) throw new ConflictError('Prepare o Spec Kit antes de iniciar: a preparação ainda não foi feita, falhou, os documentos mudaram depois dela ou há uma pergunta obrigatória dela sem resposta.');
+  }
+
   /** Spec (refinement) §3.6 steps 1–2. */
   async freeze(): Promise<{ spec: Spec; project: Project }> {
     if (this.state.backlog?.enabled) throw new ConflictError('O início a partir do backlog ainda não está disponível: por enquanto o backlog serve para organizar e priorizar.');
     if (this.state.status === 'started') throw new ConflictError('session already started a run');
     if (this.starting) throw new ConflictError('a start is already in progress');
     if (this.running) await this.running;
+    const inputHash = this.state.derived && (await speckitInputHash(this.deps.draft, this.state));
     // Another freeze may have passed the same checks while this one awaited the running cycle.
     if (this.starting) throw new ConflictError('a start is already in progress');
+    // A spec not derived yet is refused below; a derived one needs its Spec Kit preparation first.
+    if (inputHash) this.refuseWithoutSpeckit(inputHash);
     if (!canStart(this.state)) throw new ConflictError(`session cannot start now (${this.state.status})`);
     this.starting = true;
     try {
@@ -747,11 +757,10 @@ export class RefineSession {
     // Each item's status on main, which the start's sync just brought into the base copy (R11.7.2).
     const specs = buildSpecsIndex(this.deps.draft.specId, backlog).specs;
     const onMain = Object.fromEntries(await Promise.all(specs.map(async (s) => [s.specId, (await readMainSpec(this.deps.draft, s.specId))?.status] as const)));
-    const inputHash = await speckitInputHash(this.deps.draft, backlog);
+    const inputHash = await speckitInputHash(this.deps.draft, this.state);
     if (this.starting) throw new ConflictError('a start is already in progress');
     if (!backlog.detail) throw new ConflictError('Detalhe as specs do backlog antes de iniciar: o início a partir do backlog usa as specs planejadas.');
-    // A running evaluation is the reason that comes first; the Spec Kit preparation is the next.
-    if (this.state.status !== 'evaluating' && speckitPending(this.state, inputHash)) throw new ConflictError('Prepare o Spec Kit antes de iniciar: a preparação ainda não foi feita, falhou, os documentos mudaram depois dela ou há uma pergunta obrigatória dela sem resposta.');
+    this.refuseWithoutSpeckit(inputHash);
     if (!canStart(this.state)) throw new ConflictError(`session cannot start now (${this.state.status})`);
     // Built before the start lock, so a refused start leaves the session free to try again.
     const entries = programEntries(this.deps.draft.specId, backlog, onMain);

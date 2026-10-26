@@ -13,7 +13,7 @@ import { speckitPack } from '../../server/refine/speckit-pack.js';
 import { SPECKIT_NOT_INSTALLED, speckitFeatureOf } from '../../server/refine/speckit.js';
 import { canStart } from '../../server/refine/state.js';
 import { loadEvents } from '../../server/store/event-store.js';
-import { makeSpec } from '../fixtures/contracts.js';
+import { makeProject, makeSpec } from '../fixtures/contracts.js';
 
 let root = '';
 let ws: Workspace;
@@ -46,7 +46,7 @@ const runAgent: RunAgent = (async (req: AgentStepRequest<'speckit'> | AgentStepR
   return out === null ? { ok: false, failure: 'schema', errors: ['bad json'], summary } : { ok: true, value: { specHash: ctx.specHash, questions: [], ...(out as object) }, summary };
 }) as never;
 const deps = () => ({ ws, draft: draft(), runAgent, exec: (spec: CommandSpec) => exec(spec), secretsDir: `${root}/secrets`, retrieval: () => [] });
-const stepOf = (r: { pack: { feedback?: string } }): string => `${r.pack.feedback!.match(/speckit-(\w+)\/SKILL/)![1]}:${r.pack.feedback!.match(/"## (\w+):/)?.[1] ?? ''}`;
+const stepOf = (r: { pack: { feedback?: string } }): string => `${r.pack.feedback!.match(/speckit-(\w+)\/SKILL/)![1]}:${r.pack.feedback!.match(/"## ([\w-]+):/)?.[1] ?? ''}`;
 /** The criterion ids of the spec each item has, which a working agent keeps in every file it writes. */
 const CRITERIA = makeSpec().acceptanceCriteria.map((c) => c.id).join(', ');
 /** The file each item command writes in its feature folder. */
@@ -106,6 +106,16 @@ async function detailedSession(decider?: Pick<Decider, 'decide'>, extra: { speck
   }
   await journal.close();
   return RefineSession.open({ ...deps(), decider, ...extra });
+}
+
+/** A new spec whose spec is derived, named by the draft's id. */
+async function singleSession(): Promise<RefineSession> {
+  const created = await RefineSession.create(deps(), 'new-spec');
+  await created.close();
+  const journal = await RefineJournal.open(draft().events, { projectId: 'hello-app', specId: 'hello-001' });
+  await journal.fact(RefineEvent.Derived, { cycle: 1, project: makeProject(), spec: makeSpec({ specId: 'hello-001' }) });
+  await journal.close();
+  return RefineSession.open(deps());
 }
 
 beforeEach(async () => {
@@ -1000,5 +1010,75 @@ describe('RefineSession.runSpeckit for a project that already uses Spec Kit', ()
     expect(reopened.state.speckit).toMatchObject({ status: 'done', total: 5 });
     for (const [rel, text] of Object.entries(MAIN)) expect(await staged(rel), rel).toBe(text);
     await reopened.close();
+  });
+});
+
+describe('RefineSession.runSpeckit for a single spec', () => {
+  it('prepares a new spec as one item named by its id, from the spec it derived, and gives the run of that spec its feature folder', async () => {
+    const s = await singleSession();
+    await s.runSpeckit();
+    expect(agentCalls.map(stepOf)).toEqual(['constitution:', 'specify:hello-001', 'clarify:hello-001', 'plan:hello-001', 'tasks:hello-001']);
+    const specs = await fs.readFile(`${draft().root}/speckit-input/specs.md`, 'utf8');
+    expect(specs).toContain('## hello-001: Users can manage todo items\n');
+    expect(specs).toContain('### Critérios de aceite\n\n- AC-001: Dado no todos exist');
+    expect(s.state.speckit).toMatchObject({ status: 'done', stale: false, total: 5, features: { 'hello-001': 'specs/hello-001' } });
+    expect(canStart(s.state)).toBe(true);
+    await s.close();
+    expect(await speckitFeatureOf(draft().root, 'hello-001')).toBe('specs/hello-001');
+  });
+
+  it("an owner's answer leaves the preparation stale, and the next one hands the answer to the steps it changes as a decision", async () => {
+    answer = askItems({ 'hello-001': [{ text: 'Qual moeda?', blocking: true }] });
+    const s = await singleSession();
+    await s.runSpeckit();
+    const [asked] = s.state.questions;
+    expect(canStart(s.state)).toBe(false);
+    await s.answer(asked!.questionId, 'Real');
+    expect(s.state.speckit?.stale).toBe(true);
+    answer = done;
+    const before = agentCalls.length;
+    await s.runSpeckit();
+    const rerun = agentCalls.slice(before);
+    expect(rerun.map(stepOf)).toEqual(['clarify:hello-001', 'plan:hello-001', 'tasks:hello-001']);
+    for (const r of rerun) expect(r.pack.decisions).toEqual([{ question: 'Qual moeda?', answer: 'Real' }]);
+    expect(canStart(s.state)).toBe(true);
+    await s.close();
+  });
+});
+
+describe('RefineSession.runSpeckit for a continued spec', () => {
+  /** Main's constitution and the feature folder the spec's backlog made, named by the item key the spec came from. */
+  const MAIN = { '.specify/memory/constitution.md': '# Main constitution\n', 'specs/login/spec.md': CRITERIA, 'specs/login/plan.md': CRITERIA, 'specs/login/tasks.md': CRITERIA };
+  const fromBacklog = { backlogKey: 'login', inputHash: `sha256:${'a'.repeat(64)}`, docsHash: `sha256:${'b'.repeat(64)}`, sources: [{ doc: 'flow.md' as const, heading: 'Entrar', hash: null }] };
+
+  it('updates the feature folder main holds for it, under the same name, even after a new derivation drops where the spec came from', async () => {
+    for (const [rel, text] of Object.entries(MAIN)) {
+      const file = path.posix.join(speckitBaseDir(draft()), rel);
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(file, text);
+    }
+    await fs.writeFile(draft().projectJson, JSON.stringify(makeProject()));
+    await fs.writeFile(draft().specJson, JSON.stringify(makeSpec({ specId: 'hello-001', derivedFrom: fromBacklog })));
+    const s = await RefineSession.create(deps(), 'continue');
+    await s.runSpeckit();
+    // Main's constitution stays, and every command of the spec updates the files main holds in its own folder.
+    expect(agentCalls.map(stepOf)).toEqual(['specify:login', 'clarify:login', 'plan:login', 'tasks:login']);
+    for (const r of agentCalls) {
+      expect(r.pack.feedback, stepOf(r)).toContain('Its files from an earlier run are already in this folder');
+      expect(r.extraEnv, stepOf(r)).toEqual({ SPECIFY_FEATURE_DIRECTORY: 'specs/login', SPECIFY_FEATURE_NO_PERSIST: '1' });
+    }
+    expect(s.state.speckit?.features).toEqual({ login: 'specs/login' });
+    expect(await fs.readdir(`${draft().root}/speckit/specs`)).toEqual(['login']);
+    await s.close();
+    const journal = await RefineJournal.open(draft().events, { projectId: 'hello-app', specId: 'hello-001' });
+    await journal.fact(RefineEvent.Derived, { cycle: 1, project: makeProject(), spec: makeSpec({ specId: 'hello-001' }) });
+    await journal.close();
+    const again = await RefineSession.open(deps());
+    expect(again.state.speckit?.stale).toBe(true);
+    await again.runSpeckit();
+    expect(again.state.speckit).toMatchObject({ status: 'done', stale: false, features: { login: 'specs/login' } });
+    expect(await fs.readdir(`${draft().root}/speckit/specs`)).toEqual(['login']);
+    await again.close();
+    expect(await speckitFeatureOf(draft().root, 'hello-001')).toBe('specs/login');
   });
 });
