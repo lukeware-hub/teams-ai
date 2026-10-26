@@ -294,6 +294,29 @@ describe('RefineSession.runSpeckit', () => {
     await s.close();
   });
 
+  it('a step that leaves a [NEEDS CLARIFICATION] marker in a file it wrote stops the preparation with its questions on record, and a re-run resumes at it', async () => {
+    answer = async (req) => {
+      if (stepOf(req) !== 'clarify:login') return done(req);
+      await fs.writeFile(`${req.cwd}/specs/login/spec.md`, '- FR-001: reter os dados por [NEEDS CLARIFICATION: prazo de retenção]\n');
+      return { status: 'done', summary: 'ok', files: ['specs/login/spec.md'], questions: [{ text: 'Qual o prazo de retenção?', blocking: false }] };
+    };
+    const s = await detailedSession();
+    await s.runSpeckit();
+    expect(s.state.speckit).toMatchObject({ status: 'failed' });
+    expect(s.state.speckit?.error).toContain('/speckit-clarify de login');
+    expect(s.events.find((e) => e.type === RefineEvent.SpeckitFailed)!.data.detail).toBe('specs/login/spec.md');
+    expect(s.state.questions).toEqual([expect.objectContaining({ text: 'Qual o prazo de retenção?', origin: 'speckit', status: 'pending' })]);
+    expect(s.state.speckit?.steps.at(-1)).toMatchObject({ command: 'specify', itemKey: 'login' });
+    expect(canStart(s.state)).toBe(false);
+    const before = agentCalls.length;
+    answer = done;
+    await s.runSpeckit();
+    expect(agentCalls.slice(before).map(stepOf)[0]).toBe('clarify:login');
+    expect(s.state.speckit).toMatchObject({ status: 'done' });
+    expect(canStart(s.state)).toBe(true);
+    await s.close();
+  });
+
   it('refuses before the backlog is detailed and while a preparation runs', async () => {
     const plain = await RefineSession.create(deps(), 'new-project');
     expect(() => plain.runSpeckit()).toThrow(ConflictError);

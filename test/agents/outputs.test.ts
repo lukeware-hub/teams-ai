@@ -147,6 +147,13 @@ describe('dev output JSON Schema carries the status-dependent requirements', () 
     expect(asked.questions).toEqual([{ text: 'Qual moeda?', blocking: true, itemKey: 'cart', options: [{ label: 'Real', detail: '', recommended: true }] }]);
   });
 
+  it('a Spec Kit question with a malformed flag or an empty text fails the step, so a blocking question is never dropped', () => {
+    const HASH = 'sha256:' + 'a'.repeat(64);
+    const step = (question: object) => OUTPUT_SCHEMAS.speckit.safeParse({ specHash: HASH, status: 'done', summary: 'ok', files: [], questions: [{ text: 'Qual moeda?', blocking: true }, question] }).success;
+    expect(step({ text: 'Qual prazo?', blocking: 'sim' })).toBe(false);
+    expect(step({ text: '', blocking: true })).toBe(false);
+  });
+
   it('spec-gap and replan are step kinds with their own schemas', () => {
     const HASH = 'sha256:' + 'a'.repeat(64);
     expect(STEP_KINDS).toContain('spec-gap');

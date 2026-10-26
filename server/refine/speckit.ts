@@ -116,6 +116,12 @@ async function checkOnDisk(staging: string, step: Step, files: readonly string[]
   if (step.command === 'specify' && !featureDir) throw new OwnerError(`O Spec Kit não criou a pasta da feature em ${stepName(step)}. ${TRY_AGAIN}`, 'no specs/<feature>/spec.md reported and no .specify/feature.json');
 }
 
+/** The reported files that still hold a Spec Kit marker of an open point; a folder reads as empty. */
+async function openMarkers(staging: string, files: readonly string[]): Promise<string[]> {
+  const texts = await Promise.all(files.map((file) => fs.readFile(path.resolve(staging, file), 'utf8').catch(() => '')));
+  return files.filter((_, i) => texts[i]!.includes('[NEEDS CLARIFICATION:'));
+}
+
 async function runCommand(deps: SpeckitDeps, step: Step, hash: string): Promise<SpeckitOutput> {
   const specHash = sha256(`speckit\n${step.command}\n${step.item?.key ?? ''}\n${hash}`);
   const inputDir = speckitInputDir(deps.draft);
@@ -151,10 +157,12 @@ export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState, f
     const result = await runCommand(deps, step, hash);
     const featureDir = step.command === 'specify' ? await featureDirOf(dir, result.files) : undefined;
     if (result.status === 'done') await checkOnDisk(dir, step, result.files, featureDir);
+    const open = result.status === 'done' ? await openMarkers(dir, result.files) : [];
     const asked = newQuestions(deps.journal.state, result.questions, step.item?.key);
-    await deps.journal.fact(RefineEvent.SpeckitStepDone, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}), files: result.files, ...(featureDir ? { featureDir } : {}), ...(asked.length > 0 ? { questions: asked } : {}), ...(result.status === 'blocked' ? { blocked: true } : {}) });
+    await deps.journal.fact(RefineEvent.SpeckitStepDone, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}), files: result.files, ...(featureDir ? { featureDir } : {}), ...(asked.length > 0 ? { questions: asked } : {}), ...(result.status === 'blocked' || open.length > 0 ? { blocked: true } : {}) });
     // The questions of a blocked step are on record before it stops, so the owner can answer them.
     if (result.status === 'blocked') throw new OwnerError(`O Spec Kit parou em ${stepName(step)}: ${result.reason}`, result.summary);
+    if (open.length > 0) throw new OwnerError(`O Spec Kit deixou pontos em aberto ([NEEDS CLARIFICATION]) em ${stepName(step)}. Responda às perguntas dele ou tente de novo.`, open.join(', '));
   }
   return hash;
 }
