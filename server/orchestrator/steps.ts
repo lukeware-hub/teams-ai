@@ -305,7 +305,7 @@ export function servicesPlanRules(opts: ServicesPack): string {
 
 export function planPack(
   base: PackBase,
-  opts: { techSpecText: string; preplan?: Preplan | null; godNodes: ReadonlyArray<{ label: string; edges: number }>; feedback: string | null; firstSpec?: boolean; requireDelivery?: boolean; requireSecurityTooling?: boolean; requireE2e?: boolean; requireCoverage?: boolean; deployPort?: number | null; services?: ServicesPack },
+  opts: { techSpecText: string; preplan?: Preplan | null; godNodes: ReadonlyArray<{ label: string; edges: number }>; feedback: string | null; firstSpec?: boolean; requireDelivery?: boolean; requireSecurityTooling?: boolean; requireE2e?: boolean; requireCoverage?: boolean; deployPort?: number | null; services?: ServicesPack; speckit?: { feature: string; plan: string; tasks: string } },
 ): ContextPackInput {
   const human = (base.spec.tasks ?? []).map((t) => `- ${t.title}: ${t.description}`);
   const nodes = opts.godNodes.map((n) => `- ${n.label} (${n.edges} edges)`);
@@ -314,6 +314,7 @@ export function planPack(
     opts.services ? servicesPlanRules(opts.services) : '',
     !opts.services && opts.deployPort ? `deploy.port is exactly ${opts.deployPort}: the orchestrator assigned it so no two projects share a host port; the service listens on PORT=${opts.deployPort} and docker-compose publishes "${opts.deployPort}:${opts.deployPort}"` : '',
     opts.preplan ? `Pre-plan reviewed at refinement time (context only: follow the real repository, not this; cover at least its acceptance criteria):\n${JSON.stringify(opts.preplan, null, 2)}` : '',
+    opts.speckit ? `Spec Kit plan and tasks of this spec (${opts.speckit.feature}): follow plan.md where the plan rules allow, and give every task of tasks.md a plan task that lists its id (T001, ...) in speckitTasks; a tasks.md task that no plan task lists fails the plan.\n\n${opts.speckit.feature}/plan.md:\n${opts.speckit.plan}\n\n${opts.speckit.feature}/tasks.md:\n${opts.speckit.tasks}` : '',
     human.length > 0 ? `Human-defined tasks (derive dependencies, keep them):\n${human.join('\n')}` : '',
     nodes.length > 0 ? `Central modules of the current code (graph god-nodes):\n${nodes.join('\n')}` : '',
     opts.feedback ?? '',

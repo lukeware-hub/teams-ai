@@ -75,6 +75,8 @@ export const PlanTask = z.object({
   origin: z.enum(['plan', 'fix', 'deploy-fix']).default('plan'),
   /** The service whose repository the task changes; only in a services plan. */
   service: ServiceName.optional(),
+  /** The ids of the Spec Kit tasks.md tasks (T001, ...) this task does. */
+  speckitTasks: z.array(z.string().min(1)).optional(),
 });
 export type PlanTask = z.infer<typeof PlanTask>;
 

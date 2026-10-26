@@ -209,6 +209,30 @@ describe('Phase 2', () => {
     expect(deviation?.data.missingCriteria).toEqual([spec.acceptanceCriteria[0]!.id]);
   });
 
+  it('feeds the Spec Kit plan.md and tasks.md to the plan step and rejects a plan that leaves a tasks.md task out', async () => {
+    const feature = 'specs/001-todo';
+    await fs.mkdir(path.join(remote.repo, feature), { recursive: true });
+    await fs.writeFile(path.join(remote.repo, feature, 'plan.md'), '# Plano\nUse Express.');
+    await fs.writeFile(path.join(remote.repo, feature, 'tasks.md'), '- [ ] T001 Criar o projeto\n- [ ] T002 [P] [US1] Criar a rota\n');
+    await git(remote.repo, ['add', '-A']);
+    await git(remote.repo, ['commit', '-q', '-m', 'speckit']);
+    await git(remote.repo, ['push', '-q', 'origin', 'main']);
+    const plan = makePlan(spec);
+    const covered = { ...plan, tasks: plan.tasks.map((t, i) => (i === 0 ? { ...t, speckitTasks: ['T001', 'T002'] } : t)) };
+    // The fake agent applies the step's semantic checks: the first plan lists no Spec Kit task, the second lists both.
+    const agent: Agent = async (req) => {
+      const value = calls.length === 1 ? plan : covered;
+      const errors = (req.semantic ?? []).flatMap((check) => (check as (v: unknown) => string[])(value));
+      return errors.length > 0 ? { ok: false, failure: 'schema', errors, summary, sandboxDisabled: false } : ok(value);
+    };
+    const d = deps(agent);
+    const r = await runPhase2({ ...d, packBase: () => ({ ...d.packBase(), speckitFeature: feature }) }, '# Tech spec');
+    expect(calls[0]!.pack.feedback).toContain('Use Express.');
+    expect(calls[0]!.pack.feedback).toContain('T002 [P] [US1] Criar a rota');
+    expect(calls[1]!.pack.feedback).toContain('Spec Kit task T002 of tasks.md has no plan task');
+    expect(r.ok).toBe(true);
+  });
+
   it('asks a project of services for a services plan with a scaffold per new service and a port per service', async () => {
     const services = ['orders-api', 'inventory-api'];
     const shop = makeProject({ projectId: 'shop', services, platform: [{ name: 'nats', image: 'nats:2.10.22-alpine' }] });

@@ -28,6 +28,8 @@ export interface PlanCheckOptions {
   repoFiles?: ReadonlySet<string>;
   /** Secrets the environment creates for every project (`environment.generatedSecrets`): a gate may read them without the spec declaring them. */
   generatedSecretNames?: readonly string[];
+  /** The task ids of the spec's Spec Kit tasks.md; each needs a plan task that lists it in speckitTasks. */
+  speckitTasks?: readonly string[];
 }
 
 export interface ServicesPlanCheckOptions extends Omit<PlanCheckOptions, 'firstSpec' | 'repoFiles'> {
@@ -112,7 +114,7 @@ export function validateServicesPlan(plan: ServicesPlan, spec: Spec, opts: Servi
 const smokeCriteria = (spec: Spec): string[] => spec.acceptanceCriteria.filter((ac) => ac.smoke).map((ac) => ac.id);
 
 /** The spec the plan answers, the task graph across every repository, criteria coverage and e2e exemptions. */
-function planWideErrors(plan: Pick<Plan, 'specId' | 'specHash' | 'tasks' | 'e2eExemptions'>, spec: Spec, opts: Pick<PlanCheckOptions, 'requireE2e'>): string[] {
+function planWideErrors(plan: Pick<Plan, 'specId' | 'specHash' | 'tasks' | 'e2eExemptions'>, spec: Spec, opts: Pick<PlanCheckOptions, 'requireE2e' | 'speckitTasks'>): string[] {
   const errors: string[] = [];
 
   if (spec.specHash === null) errors.push('spec is not frozen');
@@ -145,6 +147,10 @@ function planWideErrors(plan: Pick<Plan, 'specId' | 'specHash' | 'tasks' | 'e2eE
   }
   for (const ac of acIds) {
     if (!covered.has(ac)) errors.push(`acceptance criterion ${ac} is not covered by any task`);
+  }
+  const planned = new Set(plan.tasks.flatMap((t) => t.speckitTasks ?? []));
+  for (const id of opts.speckitTasks ?? []) {
+    if (!planned.has(id)) errors.push(`Spec Kit task ${id} of tasks.md has no plan task; list it in speckitTasks of the task that does it`);
   }
 
   // A criterion only ever touched by devops tasks (manifests, Dockerfile) has no unit/integration test to

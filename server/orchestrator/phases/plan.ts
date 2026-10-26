@@ -38,7 +38,8 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
   const max = deps.maxPhaseAttempts ?? 3;
   const names = deps.project.services ?? [];
   const services = names.length > 0 ? await servicesContext(deps, names) : null;
-  const require = { requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e, generatedSecretNames: deps.generatedSecretNames, requireCoverage: deps.requireCoverage, requireFrozenScope: deps.requireFrozenScope };
+  const speckit = await speckitFiles(worktree, deps.packBase().speckitFeature);
+  const require = { requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e, generatedSecretNames: deps.generatedSecretNames, requireCoverage: deps.requireCoverage, requireFrozenScope: deps.requireFrozenScope, speckitTasks: speckit ? speckitTaskIds(speckit.tasks) : undefined };
   const single = services
     ? null
     : { repoFiles: new Set((await git(worktree, ['ls-files'], deps.exec)).split('\n').filter((f) => f !== '')), ports: deps.workspacesRoot ? await assignDeployPort(deps.workspacesRoot, deps.ws.projectId, deps.exec) : { port: null, taken: [] as number[] } };
@@ -51,7 +52,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
       ? await deps.runAgent<'services-plan'>({
           kind: 'services-plan',
           role: 'sm',
-          pack: planPack(deps.packBase(), { techSpecText, preplan, godNodes: [], feedback, ...require, services: { names, newServices: services.newServices, ports: services.ports, platform: deps.project.platform ?? [], files: Object.fromEntries(Object.entries(services.repoFiles).map(([s, files]) => [s, [...files].sort()])) } }),
+          pack: planPack(deps.packBase(), { techSpecText, preplan, godNodes: [], feedback, ...require, services: { names, newServices: services.newServices, ports: services.ports, platform: deps.project.platform ?? [], files: Object.fromEntries(Object.entries(services.repoFiles).map(([s, files]) => [s, [...files].sort()])) }, speckit }),
           cwd: worktree,
           phase: 'phase2',
           taskId: null,
@@ -61,7 +62,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
       : await deps.runAgent<'plan'>({
           kind: 'plan',
           role: 'sm',
-          pack: planPack(deps.packBase(), { techSpecText, preplan, godNodes: await deps.godNodes(), feedback, firstSpec: deps.firstSpec, ...require, deployPort: single!.ports.port }),
+          pack: planPack(deps.packBase(), { techSpecText, preplan, godNodes: await deps.godNodes(), feedback, firstSpec: deps.firstSpec, ...require, deployPort: single!.ports.port, speckit }),
           cwd: worktree,
           phase: 'phase2',
           taskId: null,
@@ -125,6 +126,16 @@ async function servicesContext(deps: PhaseDeps, names: readonly string[]) {
   }
   return { repoFiles, newServices, ports, takenPorts: takenPorts ?? [] };
 }
+
+/** The Spec Kit plan.md and tasks.md of this spec on main, when its refinement prepared a feature folder. */
+async function speckitFiles(worktree: string, feature: string | undefined) {
+  if (!feature) return undefined;
+  const read = (file: string) => fs.readFile(path.join(worktree, feature, file), 'utf8');
+  return { feature, plan: await read('plan.md'), tasks: await read('tasks.md') };
+}
+
+/** The task ids of a Spec Kit tasks.md, each at the start of a checklist line such as `- [ ] T001 [P] Create the model`. */
+const speckitTaskIds = (tasks: string): string[] => [...new Set([...tasks.matchAll(/^\s*- \[[ xX]\] (T\d+)\b/gm)].map((m) => m[1]!))];
 
 async function journalTasks(deps: PhaseDeps, plan: AnyPlan): Promise<void> {
   for (const task of plan.tasks) {
