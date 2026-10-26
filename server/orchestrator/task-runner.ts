@@ -31,12 +31,13 @@ import { TERMINAL_STATES, assertTransition, type TaskState } from '../pipeline/t
 import type { StepOutcome } from '../runner/step.js';
 import { decideOnFailure, type Failure, type FailureKind, type PolicyConfig } from '../scheduler/retry-policy.js';
 import { redactSecrets } from '../core/redact.js';
+import { normalizePath } from '../core/paths.js';
 import { checkScope } from '../validators/diff-guard.js';
 import { devopsOwnerErrors } from '../validators/plan.js';
 import type { RefContext } from '../validators/references.js';
 import { Intent, OrchEvent, type Journal } from './events.js';
 import { withMainSnapshot } from './phases/shared.js';
-import { SPECKIT_ALLOW, devPack, devResumePrompt, replanPack, reviewPack, securityPack, skillSelectPack, specGapPack, type AgentStepRequest, type PackBase } from './steps.js';
+import { SPECKIT_ALLOW, devPack, devResumePrompt, replanPack, reviewPack, securityPack, skillSelectPack, sourceFiles, specGapPack, type AgentStepRequest, type PackBase } from './steps.js';
 import { olderLiveRun, worktreeDir, type Workspace } from './workspace.js';
 import { acceptReuseSkill, assignSkill, capabilityKey, createDraftSkill, syncSkill } from '../skills/store.js';
 
@@ -327,6 +328,7 @@ export class TaskRunner {
     const speckit = feature && task.def.speckitTasks?.length ? { feature, ids: task.def.speckitTasks } : undefined;
     const env = { ...(this.deps.testDatabaseUrl ? { DATABASE_URL: this.deps.testDatabaseUrl } : {}), ...(speckit ? { SPECIFY_FEATURE_DIRECTORY: speckit.feature } : {}) };
     const pack = devPack(this.deps.packBase(), task.def, { code: await this.deps.code(this.worktree, task.def), handoffs: this.deps.handoffs(), feedback, e2eSuite: this.deps.plan.delivery?.e2eSuite, speckit }, owner);
+    const sources = await sourceFiles(this.worktree, feature, this.deps.spec.specId);
     const overrides = await this.stepOverrides(owner, attempt);
     const outcome = await this.deps.runAgent<'dev'>({
       kind: 'dev',
@@ -352,6 +354,9 @@ export class TaskRunner {
       if (SANDBOX_INIT_FAILURE.test(value.reason) || outcome.summary.profile?.sandboxInitFailed) return this.fail('environment', value.reason, 'dev-sandbox-init');
       return this.block(value.reason);
     }
+    // A source file the list leaves out sends the step back; an absolute path counts by its ending.
+    const unread = sources.filter((f) => !value.filesRead.some((r) => `/${normalizePath(r)}`.endsWith(`/${f}`)));
+    if (unread.length > 0) return this.fail('schema', `filesRead leaves out source files this worktree holds; read each one before changing code, then list it: ${unread.join(', ')}`);
     this.specGapRounds = 0;
     await this.deleteFiles(value.deletedFiles ?? []);
     // Gate artifacts (the JUnit report) are written by the orchestrator, not by the Dev, and are never committed.

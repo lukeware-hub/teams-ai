@@ -118,6 +118,23 @@ export const sourceDocsRule = (specId: string): string =>
 /** What every task that builds or judges code reads first: the Spec Kit files and the six documents. */
 const sourceRules = (base: PackBase): string[] => [speckitRule(base.speckitFeature), sourceDocsRule(base.spec.specId)];
 
+/** A builder lists what it read, so the orchestrator can check it against the files the source rules name. */
+export const FILES_READ_RULE = 'On a done result, list in filesRead, as repository paths, every file the rules above told you to read; a done result that leaves out one this repository holds is sent back.';
+
+/** The files the source rules tell a builder to read that the worktree at `dir` holds; each rule applies only when its first file is there. */
+export async function sourceFiles(dir: string, featureDir: string | undefined, specId: string): Promise<string[]> {
+  const has = (file: string): Promise<boolean> => fs.access(path.join(dir, file)).then(() => true, () => false);
+  const ownBriefing = `docs/specs/${specId}/briefing.md`;
+  const rules = [
+    ['.specify/memory/constitution.md', ...(featureDir ? ['spec.md', 'plan.md', 'tasks.md'].map((f) => `${featureDir}/${f}`) : [])],
+    ['docs/project.md', 'docs/stack.md', 'docs/flow.md', 'docs/design.md', (await has(ownBriefing)) ? ownBriefing : 'docs/briefing.md'],
+  ];
+  const named: string[] = [];
+  for (const files of rules) if (await has(files[0]!)) named.push(...files);
+  const held = await Promise.all(named.map(has));
+  return named.filter((_, i) => held[i]);
+}
+
 /** The Spec Kit tasks a plan task builds, and the feature folder whose tasks.md lists them. */
 export interface SpeckitTasks {
   feature: string;
@@ -140,7 +157,7 @@ export function devPack(
   const shared = common(base, 'dev', role);
   return {
     ...shared,
-    principles: [...shared.principles, ...sourceRules(base), ...(opts.speckit ? [speckitImplementRule(opts.speckit.feature, opts.speckit.ids)] : []), ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : [])],
+    principles: [...shared.principles, ...sourceRules(base), FILES_READ_RULE, ...(opts.speckit ? [speckitImplementRule(opts.speckit.feature, opts.speckit.ids)] : []), ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : [])],
     task,
     criteria: criteriaOf(base.spec, task.criteriaRefs),
     decisions: base.spec.decisions,

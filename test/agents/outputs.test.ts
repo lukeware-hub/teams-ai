@@ -51,6 +51,12 @@ describe('output contracts', () => {
     expect(DevOutput.safeParse({ specHash: HASH, status: 'spec-gap', summary: 's', changedFiles: [] }).success).toBe(false);
   });
 
+  it('dev output keeps the files a done result lists as read, and reads an answer without them as none', () => {
+    const done = { specHash: HASH, status: 'done', summary: 's', commitMessage: 'feat: x', changedFiles: ['src/a.ts'] };
+    expect(DevOutput.parse({ ...done, filesRead: ['docs/project.md'] })).toMatchObject({ filesRead: ['docs/project.md'] });
+    expect(DevOutput.parse(done)).toMatchObject({ filesRead: [] });
+  });
+
   it('review output carries evidence claims per criterion and a decision', () => {
     const ok = ReviewOutput.safeParse({
       specHash: HASH,

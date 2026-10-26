@@ -8,7 +8,7 @@ import { commitAll, createWorktree, git, headSha } from '../../server/git/git.js
 import { MergeQueue, type MergeOutcome, type MergeSteps } from '../../server/git/merge-queue.js';
 import { buildContextPack } from '../../server/knowledge/context-pack.js';
 import { Intent, Journal, OrchEvent } from '../../server/orchestrator/events.js';
-import type { AgentStepRequest } from '../../server/orchestrator/steps.js';
+import { FILES_READ_RULE, type AgentStepRequest } from '../../server/orchestrator/steps.js';
 import { TaskRunner, type TaskRunnerDeps } from '../../server/orchestrator/task-runner.js';
 import { RunEvent } from '../../server/pipeline/run-state.js';
 import type { StepOutcome } from '../../server/runner/step.js';
@@ -144,6 +144,38 @@ describe('TaskRunner: implementing', () => {
     expect(await git(r.worktree, ['show', '--stat', '-1', '--format='])).toContain('old.ts');
     const event = journal.events.find((e) => e.type === OrchEvent.DevCommitted)!.data as { changedFiles: string[] };
     expect(event.changedFiles).toContain('src/old.ts');
+  });
+
+  it('sends a done Dev back, without spending an attempt, while filesRead leaves out a source file the worktree holds', async () => {
+    await journal.close();
+    await remote.cleanup();
+    const read = ['.specify/memory/constitution.md', 'specs/003-login/spec.md', 'specs/003-login/plan.md', 'specs/003-login/tasks.md', 'docs/project.md', 'docs/design.md', 'docs/briefing.md'];
+    remote = await makeRemote({
+      'docs/project.json': JSON.stringify(project),
+      'docs/specs/spec-001/spec.json': JSON.stringify(spec),
+      ...Object.fromEntries(read.map((f) => [f, `# ${f}\n`])),
+    });
+    journal = await Journal.open({ file: path.join(remote.root, 'events.ndjson'), runId: 'spec-001-r1', specHash: HASH });
+    await journal.fact(RunEvent.TaskPlanned, { task: T1 });
+    await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T1', to: 'ready' });
+    let devCalls = 0;
+    const agent: Agent = async (req) => {
+      const done = await devDone()(req);
+      if (req.kind !== 'dev') return done;
+      devCalls += 1;
+      // The first answer skips the design doc; the second lists every file, one as an absolute path.
+      const filesRead = devCalls === 1 ? read.filter((f) => f !== 'docs/design.md') : [path.join(req.cwd, read[0]!), ...read.slice(1)];
+      return ok({ specHash: HASH, status: 'done', summary: 'did T1', changedFiles: ['src/a.ts'], commitMessage: 'feat: T1', filesRead });
+    };
+    const packBase = () => ({ spec, project, specHash: HASH, assumptions: [], budgetTokens: 8000, speckitFeature: 'specs/003-login' });
+    const r = new TaskRunner('T1', deps({ agent, packBase }));
+    await r.advance();
+    expect(state()).toMatchObject({ state: 'implementing', attempts: 0 });
+    expect(journal.lastFeedback('T1')).toContain('docs/design.md');
+    expect(journal.lastFeedback('T1')).not.toContain('docs/project.md');
+    expect(agentCalls[0]!.pack.principles).toContain(FILES_READ_RULE);
+    await r.advance();
+    expect(state()).toMatchObject({ state: 'validating', attempts: 0 });
   });
 
   it('refuses to delete the worktree .git file or anything under .git', async () => {
