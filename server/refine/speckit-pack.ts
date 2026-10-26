@@ -24,8 +24,8 @@ function argumentsOf(command: SpeckitCommand, inputDir: string, item: SpeckitIte
   }
   const entry = `The backlog item is the section "## ${item!.key}: ${item!.title}" of ${input('specs.md')}`;
   if (command === 'specify') return `${entry}. Specify it from that section, keeping its acceptance criterion ids, with the other five files as context.`;
-  if (command === 'clarify') return `${entry}. Clarify the current feature against that section and the other five files.`;
-  if (command === 'plan') return `${entry}. Plan the current feature with ${input('stack.md')}, ${input('design.md')} and the item's pre-plan in that section.`;
+  if (command === 'clarify') return `${entry}. Clarify the current feature against that section and the other five files, keeping its acceptance criterion ids.`;
+  if (command === 'plan') return `${entry}. Plan the current feature with ${input('stack.md')}, ${input('design.md')} and the item's pre-plan in that section, keeping its acceptance criterion ids.`;
   return `${entry}. Break the plan of the current feature into tasks, keeping the acceptance criterion ids.`;
 }
 

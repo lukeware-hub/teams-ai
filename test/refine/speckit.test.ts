@@ -31,17 +31,24 @@ const runAgent: RunAgent = (async (req: AgentStepRequest<'speckit'>, ctx: { spec
   return out === null ? { ok: false, failure: 'schema', errors: ['bad json'], summary } : { ok: true, value: { specHash: ctx.specHash, questions: [], ...(out as object) }, summary };
 }) as never;
 const deps = () => ({ ws, draft: draft(), runAgent, exec: (spec: CommandSpec) => exec(spec), secretsDir: `${root}/secrets`, retrieval: () => [] });
-const isSpecify = (req: AgentStepRequest<'speckit'>) => req.pack.feedback!.includes('speckit-specify/SKILL');
+const stepOf = (r: { pack: { feedback?: string } }): string => `${r.pack.feedback!.match(/speckit-(\w+)\/SKILL/)![1]}:${r.pack.feedback!.match(/"## (\w+):/)?.[1] ?? ''}`;
+/** The criterion ids of the spec each item has, which a working agent keeps in every file it writes. */
+const CRITERIA = makeSpec().acceptanceCriteria.map((c) => c.id).join(', ');
+/** The file each item command writes in its feature folder. */
+const OWN_FILE: Record<string, string> = { specify: 'spec.md', clarify: 'spec.md', plan: 'plan.md', tasks: 'tasks.md' };
 /** A finished step that wrote `files` in the staging folder, as a working agent does. */
 async function wrote(req: AgentStepRequest<'speckit'>, files: string[]) {
   for (const file of files) {
     await fs.mkdir(path.dirname(`${req.cwd}/${file}`), { recursive: true });
-    await fs.writeFile(`${req.cwd}/${file}`, 'x');
+    await fs.writeFile(`${req.cwd}/${file}`, CRITERIA);
   }
   return { status: 'done', summary: 'ok', files };
 }
-/** A finished step with nothing else to report: a specify step writes the spec.md of its item's feature folder. */
-const done = (req: AgentStepRequest<'speckit'>) => wrote(req, isSpecify(req) ? [`specs/${req.pack.feedback!.match(/"## (\w+):/)![1]}/spec.md`] : []);
+/** A finished step with nothing else to report: an item step writes its own file in the item's feature folder. */
+const done = (req: AgentStepRequest<'speckit'>) => {
+  const [command, key] = stepOf(req).split(':');
+  return wrote(req, key ? [`specs/${key}/${OWN_FILE[command!]}`] : []);
+};
 const item = (key: string, rank: number) => ({ key, title: `Item ${key}`, epic: 'core', priority: 'must', rank, size: 'S', scope: 's', rationale: 'r', dependsOn: [], sources: [] });
 
 /** A Jev that calls each pair a repeat when `repeat` says so; null leaves the pair unanswered. The pair reads "Question A: ...\nQuestion B: ...". */
@@ -86,7 +93,7 @@ beforeEach(async () => {
     execCalls.push(spec);
     return { exitCode: 0, signal: null, stdout: '', stderr: '', timedOut: false, durationMs: 1, truncated: false };
   };
-  answer = (req) => (isSpecify(req) ? done(req) : wrote(req, [`out-${agentCalls.length}-${req.pack.kind}.md`]));
+  answer = done;
 });
 afterEach(() => fs.rm(root, { recursive: true, force: true }));
 
@@ -113,6 +120,12 @@ describe('speckitPack', () => {
       expect(p.feedback, command).toContain(`.claude/skills/speckit-${command}/SKILL.md`);
     }
   });
+
+  it('tells every item command to keep the acceptance criterion ids', () => {
+    for (const command of ['specify', 'clarify', 'plan', 'tasks'] as const) {
+      expect(speckitPack({ command, specHash: 'sha256:x', inputDir: inputs, item }).feedback, command).toContain('acceptance criterion ids');
+    }
+  });
 });
 
 describe('RefineSession.runSpeckit', () => {
@@ -133,7 +146,7 @@ describe('RefineSession.runSpeckit', () => {
     expect(types).toEqual([RefineEvent.SpeckitStarted, ...Array.from({ length: 9 }, () => [RefineEvent.SpeckitStepStarted, RefineEvent.SpeckitStepDone]).flat(), RefineEvent.SpeckitDone]);
     expect(s.events.find((e) => e.type === RefineEvent.SpeckitStarted)!.data).toMatchObject({ total: 9, resumed: 0, inputHash: expect.any(String) });
     expect(s.events.find((e) => e.type === RefineEvent.SpeckitStepStarted && e.data.command === 'plan')!.data).toEqual({ command: 'plan', itemKey: 'login' });
-    expect(s.events.find((e) => e.type === RefineEvent.SpeckitStepDone && e.data.command === 'plan')!.data).toEqual({ command: 'plan', itemKey: 'login', files: ['out-4-speckit.md'] });
+    expect(s.events.find((e) => e.type === RefineEvent.SpeckitStepDone && e.data.command === 'plan')!.data).toEqual({ command: 'plan', itemKey: 'login', files: ['specs/login/plan.md'] });
     expect(s.state.speckit).toMatchObject({ status: 'done', stale: false, total: 9 });
     expect(s.state.speckit!.steps).toHaveLength(9);
     expect(canStart(s.state)).toBe(true);
@@ -219,8 +232,6 @@ describe('RefineSession.runSpeckit', () => {
     expect(s.state.speckit?.error).toContain('não devolveu o resultado em formato válido');
     await s.close();
   });
-
-  const stepOf = (r: { pack: { feedback?: string } }): string => `${r.pack.feedback!.match(/speckit-(\w+)\/SKILL/)![1]}:${r.pack.feedback!.match(/"## (\w+):/)?.[1] ?? ''}`;
 
   it('a preparation that failed on the same inputs resumes at its failed step, and runs no finished step again', async () => {
     answer = (req) => (req.pack.feedback!.includes('speckit-plan/SKILL') ? { status: 'blocked', summary: 'parou', files: [], reason: 'o plano não fecha' } : done(req));
@@ -349,11 +360,16 @@ describe('RefineSession.runSpeckit', () => {
   });
 
   it('keeps the feature directory Spec Kit numbered for each item, from the files or else from .specify/feature.json', async () => {
-    answer = (req) => {
-      const fb = req.pack.feedback!;
-      if (!fb.includes('speckit-specify/SKILL')) return { status: 'done', summary: 'ok', files: [] };
-      if (fb.includes('"## login:')) return wrote(req, ['specs/001-login-page/spec.md', 'specs/001-login-page/checklists/requirements.md']);
-      return fs.writeFile(`${req.cwd}/.specify/feature.json`, '{"feature_directory":"specs/002-cart"}').then(() => ({ status: 'done', summary: 'ok', files: [] }));
+    const folders: Record<string, string> = { login: 'specs/001-login-page', cart: 'specs/002-cart' };
+    answer = async (req) => {
+      const [command, key] = stepOf(req).split(':');
+      if (stepOf(req) === 'specify:login') return wrote(req, ['specs/001-login-page/spec.md', 'specs/001-login-page/checklists/requirements.md']);
+      // The cart's specify reports no file, so its folder comes from .specify/feature.json.
+      if (stepOf(req) === 'specify:cart') {
+        await wrote(req, ['specs/002-cart/spec.md']);
+        return fs.writeFile(`${req.cwd}/.specify/feature.json`, '{"feature_directory":"specs/002-cart"}').then(() => ({ status: 'done', summary: 'ok', files: [] }));
+      }
+      return wrote(req, key ? [`${folders[key]}/${OWN_FILE[command!]}`] : []);
     };
     exec = async (spec) => {
       await fs.mkdir(`${spec.cwd}/.specify`, { recursive: true });
@@ -410,6 +426,30 @@ describe('RefineSession.runSpeckit', () => {
     expect(agentCalls.slice(before).map(stepOf)[0]).toBe('clarify:login');
     expect(s.state.speckit).toMatchObject({ status: 'done' });
     expect(canStart(s.state)).toBe(true);
+    await s.close();
+  });
+
+  it('a step whose own file leaves out an acceptance criterion id of its item stops the preparation, and a re-run resumes at it', async () => {
+    answer = async (req) => {
+      if (stepOf(req) !== 'tasks:login') return done(req);
+      // An id counts only as a whole word: AC-0021 is not AC-002.
+      await fs.writeFile(`${req.cwd}/specs/login/tasks.md`, '- T001 [AC-001] criar a rota\n- T002 [AC-0021] listar\n');
+      return { status: 'done', summary: 'ok', files: ['specs/login/tasks.md'], questions: [{ text: 'Listar por data?', blocking: false }] };
+    };
+    const s = await detailedSession();
+    await s.runSpeckit();
+    expect(s.state.speckit).toMatchObject({ status: 'failed' });
+    expect(s.state.speckit?.error).toContain('critérios de aceite');
+    expect(s.state.speckit?.error).toContain('/speckit-tasks de login');
+    expect(s.events.find((e) => e.type === RefineEvent.SpeckitFailed)!.data.detail).toBe('specs/login/tasks.md: AC-002');
+    expect(s.state.questions).toEqual([expect.objectContaining({ text: 'Listar por data?', origin: 'speckit', status: 'pending' })]);
+    expect(s.state.speckit?.steps.at(-1)).toMatchObject({ command: 'plan', itemKey: 'login' });
+    expect(canStart(s.state)).toBe(false);
+    const before = agentCalls.length;
+    answer = done;
+    await s.runSpeckit();
+    expect(agentCalls.slice(before).map(stepOf)[0]).toBe('tasks:login');
+    expect(s.state.speckit).toMatchObject({ status: 'done' });
     await s.close();
   });
 

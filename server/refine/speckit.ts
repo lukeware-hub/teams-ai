@@ -13,7 +13,7 @@ import { isConfidential, MAX_DEDUP_PAIRS, recorded, type CycleJournal, type RunA
 import { readDoc, type Draft } from './draft.js';
 import { RefineEvent } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
-import { SPECKIT_INPUTS, speckitPack, type SpeckitInput } from './speckit-pack.js';
+import { SPECKIT_INPUTS, speckitPack, type SpeckitCommand, type SpeckitInput } from './speckit-pack.js';
 import { speckitSteps, stepKey, type Step } from './speckit-steps.js';
 import { renderSpecsMd } from './specs-md.js';
 import { buildSpecsIndex, specIdOf } from './specs-index.js';
@@ -140,6 +140,20 @@ async function openMarkers(staging: string, files: readonly string[]): Promise<s
   return files.filter((_, i) => texts[i]!.includes('[NEEDS CLARIFICATION:'));
 }
 
+/** The file each item command leaves in its feature folder, which must keep every acceptance criterion id of the item's spec. */
+const CRITERIA_FILE: Partial<Record<SpeckitCommand, string>> = { specify: 'spec.md', clarify: 'spec.md', plan: 'plan.md', tasks: 'tasks.md' };
+
+/** The item step's own file and the criterion ids it leaves out, as "<file>: <ids>"; undefined when it keeps them all. */
+async function droppedCriteria(staging: string, step: Step, featureDir: string | undefined, backlog: BacklogState): Promise<string | undefined> {
+  const name = CRITERIA_FILE[step.command];
+  if (!name) return undefined;
+  const file = `${featureDir}/${name}`;
+  const text = featureDir ? await fs.readFile(path.posix.join(staging, file), 'utf8').catch(() => '') : '';
+  // A whole-word match, so AC-100 never counts as kept by AC-1000.
+  const dropped = (backlog.specs?.[step.item!.key]?.spec?.acceptanceCriteria ?? []).map((c) => c.id).filter((id) => !new RegExp(`\\b${id}\\b`).test(text));
+  return dropped.length > 0 ? `${file}: ${dropped.join(', ')}` : undefined;
+}
+
 async function runCommand(deps: SpeckitDeps, step: Step, hash: string): Promise<SpeckitOutput> {
   const specHash = sha256(`speckit\n${step.command}\n${step.item?.key ?? ''}\n${hash}`);
   const inputDir = speckitInputDir(deps.draft);
@@ -179,12 +193,14 @@ export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState, f
     const featureDir = step.command === 'specify' ? await featureDirOf(dir, result.files) : undefined;
     if (result.status === 'done') await checkOnDisk(dir, step, result.files, featureDir);
     const open = result.status === 'done' ? await openMarkers(dir, result.files) : [];
+    const dropped = result.status === 'done' ? await droppedCriteria(dir, step, featureDir ?? (step.item && deps.journal.state.speckit?.features?.[step.item.key]), backlog) : undefined;
     const fresh = newQuestions(deps.journal.state, result.questions, step.item?.key);
     const asked = decider ? await dropRepeats(fresh, deps.journal.state.questions, decider, await isConfidential(deps.draft, deps.journal.state)) : fresh;
-    await deps.journal.fact(RefineEvent.SpeckitStepDone, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}), files: result.files, ...(featureDir ? { featureDir } : {}), ...(asked.length > 0 ? { questions: asked } : {}), ...(result.status === 'blocked' || open.length > 0 ? { blocked: true } : {}) });
+    await deps.journal.fact(RefineEvent.SpeckitStepDone, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}), files: result.files, ...(featureDir ? { featureDir } : {}), ...(asked.length > 0 ? { questions: asked } : {}), ...(result.status === 'blocked' || open.length > 0 || dropped ? { blocked: true } : {}) });
     // The questions of a blocked step are on record before it stops, so the owner can answer them.
     if (result.status === 'blocked') throw new OwnerError(`O Spec Kit parou em ${stepName(step)}: ${result.reason}`, result.summary);
     if (open.length > 0) throw new OwnerError(`O Spec Kit deixou pontos em aberto ([NEEDS CLARIFICATION]) em ${stepName(step)}. Responda às perguntas dele ou tente de novo.`, open.join(', '));
+    if (dropped) throw new OwnerError(`O Spec Kit deixou critérios de aceite de fora em ${stepName(step)}. ${TRY_AGAIN}`, dropped);
   }
   return hash;
 }
