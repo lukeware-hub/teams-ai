@@ -55,6 +55,9 @@ export const settingsApi = {
   stepTimeout: (projectId: string) => fetch(`${S}/step-timeout/${projectId}`).then((r) => json<{ timeoutMinutes: number }>(r)),
   setStepTimeout: (projectId: string, timeoutMinutes: number) =>
     fetch(`${S}/step-timeout/${projectId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ timeoutMinutes }) }).then((r) => json<{ timeoutMinutes: number }>(r)),
+  speckitAgents: () => fetch(`${S}/speckit-agents`).then((r) => json<{ agents: number }>(r)),
+  setSpeckitAgents: (agents: number) =>
+    fetch(`${S}/speckit-agents`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agents }) }).then((r) => json<{ agents: number }>(r)),
 };
 
 export const usageApi = {

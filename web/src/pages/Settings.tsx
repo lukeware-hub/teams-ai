@@ -21,6 +21,8 @@ const HELP_AGENTS = 'Automático deixa o orquestrador escolher o modelo e o esfo
 const HELP_ENV = 'Estas conexões valem para todo o Teams AI neste computador. Elas são as mesmas do status do ambiente.';
 const HELP_TIMEOUT = 'Tempo máximo que cada passo de um agente pode levar neste projeto. Passado esse tempo, o passo para e a revisão pede para reavaliar. Vale para o refinamento e para as execuções.';
 const TIMEOUT_LOAD_ERROR = 'Não foi possível carregar o tempo limite.';
+const HELP_SPECKIT_AGENTS = 'Quantos agentes preparam os itens do backlog ao mesmo tempo, cada um com o modelo e o esforço dos papéis acima. Vale a partir da próxima preparação. Vai de 1 a 5.';
+const SPECKIT_AGENTS_LOAD_ERROR = 'Não foi possível carregar os agentes em paralelo.';
 
 function AgentLine({ projectId, row: agent, onFailed }: { projectId: string; row: AgentRow; onFailed: () => void }) {
   const label = ROLE_LABELS[agent.role] ?? agent.role;
@@ -189,6 +191,65 @@ function StepTimeoutCard({ projectId }: { projectId: string }) {
   );
 }
 
+function SpeckitAgentsPanel() {
+  const [minAgents, setMinAgents] = useState('');
+  const [saved, setSaved] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    settingsApi.speckitAgents().then((r) => {
+      if (!active) return;
+      setSaved(r.agents);
+      setMinAgents(String(r.agents));
+    }).catch(() => {
+      if (active) setError(SPECKIT_AGENTS_LOAD_ERROR);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+  const value = Number(minAgents);
+  const valid = Number.isInteger(value) && value >= 1 && value <= 5;
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await settingsApi.setSpeckitAgents(value);
+      setSaved(r.agents);
+      setMinAgents(String(r.agents));
+    } catch {
+      setError(SAVE_ERROR);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className={`${panel} gap-3`} aria-labelledby="speckit-agents-title">
+      <div className={sectionTitle}>
+        <h2 className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="speckit-agents-title">Preparação do Spec Kit</h2>
+        <InfoTip label="Agentes em paralelo" text={HELP_SPECKIT_AGENTS} />
+      </div>
+      <form
+        className="grid max-w-[24rem] grid-cols-[minmax(0,1fr)_auto] items-end gap-[0.7rem]"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <label className="grid gap-1.5">
+          <span className="text-[0.8125rem] font-semibold text-ink-soft">Agentes em paralelo</span>
+          <input className="w-full min-w-0" type="number" min={1} max={5} step={1} value={minAgents} onChange={(e) => setMinAgents(e.target.value)} />
+        </label>
+        <ActionButton type="submit" className="primary-button" busy={busy} disabled={!valid || value === saved} icon={<Icon name="check" size={16} />}>
+          Salvar
+        </ActionButton>
+      </form>
+      {error ? <p className="error">{error}</p> : null}
+    </section>
+  );
+}
+
 export function SettingsPage() {
   const [projects, setProjects] = useState<Array<Pick<ProjectRow, 'projectId' | 'name'>> | null>(null);
   const [projectId, setProjectId] = useState('');
@@ -234,6 +295,7 @@ export function SettingsPage() {
         </div>
       </header>
       <EnvironmentSettings />
+      <SpeckitAgentsPanel />
       <ClaudeUsagePanel />
       {error ? <p className="error">{error}</p> : null}
       {projects === null && !error ? <Loading /> : null}

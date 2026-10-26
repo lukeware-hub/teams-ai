@@ -77,6 +77,11 @@ export async function setAgentSetting(projectId: string, role: Role, setting: Ag
   });
 }
 
+/** Sets how many agents prepare the Spec Kit items at once; the other settings stay. */
+export async function setSpeckitAgents(agents: number, home?: string): Promise<Config> {
+  return updateUserConfig(home, (raw, cfg) => ({ ...raw, concurrency: { ...cfg.concurrency, speckitAgents: agents } }));
+}
+
 /** Sets the time limit of each agent step of one project, in ms; its other settings stay. */
 export async function setStepTimeout(projectId: string, timeoutMs: number, home?: string): Promise<Config> {
   return updateUserConfig(home, (raw, cfg) => ({ ...raw, stepTimeouts: { ...cfg.stepTimeouts, [projectId]: timeoutMs } }));

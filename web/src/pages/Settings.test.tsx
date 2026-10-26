@@ -25,6 +25,7 @@ const envStatus = (over: Partial<Status['items']> = {}): Status => ({
 });
 
 function mockEnv() {
+  vi.spyOn(settingsApi, 'speckitAgents').mockResolvedValue({ agents: 5 });
   vi.spyOn(api, 'status').mockResolvedValue(envStatus());
   vi.spyOn(api, 'organizations').mockResolvedValue({ organizations: ['acme'], owner: 'acme' });
   vi.spyOn(usageApi, 'claude').mockResolvedValue({ available: false, reason: 'not-logged-in' });
@@ -123,12 +124,30 @@ describe('SettingsPage', () => {
     fireEvent.click(await screen.findByText('Tempo limite', { selector: '.settings-collapse-title' }));
     const minutes = (await screen.findByLabelText('Minutos por passo')) as HTMLInputElement;
     await waitFor(() => expect(minutes.value).toBe('20'));
-    const save = screen.getByRole('button', { name: 'Salvar' }) as HTMLButtonElement;
+    const save = within(minutes.closest('form')!).getByRole('button', { name: 'Salvar' }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
     fireEvent.change(minutes, { target: { value: '45' } });
     expect(save.disabled).toBe(false);
     fireEvent.click(save);
     await waitFor(() => expect(setStepTimeout).toHaveBeenCalledWith('demo', 45));
+  });
+
+  it('shows how many agents prepare the Spec Kit and saves a count from 1 to 5', async () => {
+    mockEnv();
+    vi.spyOn(runApi, 'projects').mockResolvedValue([]);
+    const setSpeckitAgents = vi.spyOn(settingsApi, 'setSpeckitAgents').mockResolvedValue({ agents: 2 });
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
+
+    const card = await screen.findByRole('region', { name: 'Preparação do Spec Kit' });
+    const agents = within(card).getByLabelText('Agentes em paralelo') as HTMLInputElement;
+    await waitFor(() => expect(agents.value).toBe('5'));
+    const save = within(card).getByRole('button', { name: 'Salvar' }) as HTMLButtonElement;
+    fireEvent.change(agents, { target: { value: '6' } });
+    expect(save.disabled).toBe(true);
+    fireEvent.change(agents, { target: { value: '2' } });
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    await waitFor(() => expect(setSpeckitAgents).toHaveBeenCalledWith(2));
   });
 
   it('does not save a time limit that is not a whole number of minutes', async () => {
@@ -143,7 +162,7 @@ describe('SettingsPage', () => {
     const minutes = (await screen.findByLabelText('Minutos por passo')) as HTMLInputElement;
     await waitFor(() => expect(minutes.value).toBe('20'));
     fireEvent.change(minutes, { target: { value: '1.5' } });
-    expect((screen.getByRole('button', { name: 'Salvar' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(minutes.closest('form')!).getByRole('button', { name: 'Salvar' }) as HTMLButtonElement).disabled).toBe(true);
     expect(setStepTimeout).not.toHaveBeenCalled();
   });
 });

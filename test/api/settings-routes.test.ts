@@ -60,4 +60,19 @@ describe('settings routes', () => {
     }
     expect(await (await fetch(url)).json()).toEqual({ timeoutMinutes: 60 });
   });
+
+  it('gives the Spec Kit preparation 5 agents by default, and saves a count from 1 to 5', async () => {
+    const url = `http://127.0.0.1:${api.port}/api/settings/speckit-agents`;
+    expect(await (await fetch(url)).json()).toEqual({ agents: 5 });
+    expect((await put(url, { agents: 2 })).status).toBe(200);
+    expect(await (await fetch(url)).json()).toEqual({ agents: 2 });
+  });
+
+  it('refuses a Spec Kit agent count outside 1 to 5 or not a whole number, and keeps the old one', async () => {
+    const url = `http://127.0.0.1:${api.port}/api/settings/speckit-agents`;
+    for (const body of [{}, { agents: 0 }, { agents: 6 }, { agents: 2.5 }, { agents: '3' }]) {
+      expect((await put(url, body)).status).toBe(400);
+    }
+    expect(await (await fetch(url)).json()).toEqual({ agents: 5 });
+  });
 });

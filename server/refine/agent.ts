@@ -25,6 +25,8 @@ export interface AgentWiring {
   agentSettings?: (projectId: string) => Promise<Partial<Record<Role, AgentSetting>>>;
   /** The step budget of one project, read per step so a time limit changed in Settings applies to the next step. */
   stepBudget?: (projectId: string) => Promise<Config['budgets']['step']>;
+  /** The agents that prepare the Spec Kit items at once; the governor admits that many steps, read per step. */
+  speckitAgents?: () => Promise<number>;
 }
 
 /** From the second cycle on, `laterCycleModels` wins over `stepModels`. */
@@ -43,6 +45,7 @@ export async function makeRunAgent(w: AgentWiring): Promise<RunAgent & { resetQu
   const accounting = new Accounting();
   const binary = { bin: w.hostEnv.CLAUDE_BIN ?? 'claude', prefixArgs: [], env: {}, requireSandboxTools: process.platform === 'linux' };
   const run: RunAgent = async (req, ctx) => {
+    if (w.speckitAgents) governor.setLimit(Math.max(w.cfg.concurrency.maxClaudeProcesses, await w.speckitAgents()));
     const { ANTHROPIC_API_KEY: apiKey, ...secrets } = await loadSecrets(w.secretsDir);
     if (w.cfg.claude.auth === 'api-key' && !apiKey) throw new Error('claude.auth is "api-key" but the secret ANTHROPIC_API_KEY is not set');
     const settings = ctx.projectId && w.agentSettings ? await w.agentSettings(ctx.projectId) : {};
