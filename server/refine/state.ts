@@ -237,15 +237,18 @@ export interface StartInput {
   derived: unknown;
   backlog?: { enabled: boolean; detail?: boolean | null; items?: unknown[] } | null;
   stages?: boolean;
-  speckit?: { status: string; stale: boolean } | null;
+  speckit?: { status: string; stale: boolean; inputHash?: string } | null;
   questions?: ReadonlyArray<{ status: string; blocking: boolean; origin?: string }>;
 }
 
 /** A blocking question Spec Kit left open that the owner has not answered yet. */
 const speckitAsks = (s: StartInput): boolean => (s.questions ?? []).some((q) => q.origin === 'speckit' && q.blocking && q.status === 'pending');
 
+/** The inputs' hash as they are now differs from the one the preparation recorded at its start, which catches a document written without its journal entry. */
+const speckitInputsChanged = (s: StartInput, inputHash: string | undefined): boolean => inputHash !== undefined && s.speckit?.inputHash !== undefined && s.speckit.inputHash !== inputHash;
+
 /** A new project built in the wizard starts only from a current Spec Kit preparation with its blocking questions answered; other sessions need none. */
-export const speckitPending = (s: StartInput): boolean => s.stages === true && s.mode === 'new-project' && (!(s.speckit?.status === 'done' && !s.speckit.stale) || speckitAsks(s));
+export const speckitPending = (s: StartInput, inputHash?: string): boolean => s.stages === true && s.mode === 'new-project' && (!(s.speckit?.status === 'done' && !s.speckit.stale) || speckitInputsChanged(s, inputHash) || speckitAsks(s));
 
 /** The start is open unless the agents evaluate or a run started: checks, questions and the Jev only advise. */
 export function canStart(s: StartInput): boolean {

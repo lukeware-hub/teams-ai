@@ -719,10 +719,11 @@ export class RefineSession {
     // Each item's status on main, which the start's sync just brought into the base copy (R11.7.2).
     const specs = buildSpecsIndex(this.deps.draft.specId, backlog).specs;
     const onMain = Object.fromEntries(await Promise.all(specs.map(async (s) => [s.specId, (await readMainSpec(this.deps.draft, s.specId))?.status] as const)));
+    const inputHash = await speckitInputHash(this.deps.draft, backlog);
     if (this.starting) throw new ConflictError('a start is already in progress');
     if (!backlog.detail) throw new ConflictError('Detalhe as specs do backlog antes de iniciar: o início a partir do backlog usa as specs planejadas.');
     // A running evaluation is the reason that comes first; the Spec Kit preparation is the next.
-    if (this.state.status !== 'evaluating' && speckitPending(this.state)) throw new ConflictError('Prepare o Spec Kit antes de iniciar: a preparação ainda não foi feita, falhou, os documentos mudaram depois dela ou há uma pergunta obrigatória dela sem resposta.');
+    if (this.state.status !== 'evaluating' && speckitPending(this.state, inputHash)) throw new ConflictError('Prepare o Spec Kit antes de iniciar: a preparação ainda não foi feita, falhou, os documentos mudaram depois dela ou há uma pergunta obrigatória dela sem resposta.');
     if (!canStart(this.state)) throw new ConflictError(`session cannot start now (${this.state.status})`);
     // Built before the start lock, so a refused start leaves the session free to try again.
     const entries = programEntries(this.deps.draft.specId, backlog, onMain);

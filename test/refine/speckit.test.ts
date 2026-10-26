@@ -164,6 +164,18 @@ describe('RefineSession.runSpeckit', () => {
     await s.close();
   });
 
+  it('a document written without its journal entry, as a crash between the two leaves it, shuts the start by the input hash recorded at the start of the preparation', async () => {
+    const s = await detailedSession();
+    await s.runSpeckit();
+    const before = await fs.readFile(draft().stackMd, 'utf8');
+    await writeDoc(draft(), 'stack.md', '# Stack\n\nNode 24\n');
+    expect(s.state.speckit).toMatchObject({ status: 'done', stale: false });
+    await expect(s.freezeProgram()).rejects.toThrow('Prepare o Spec Kit antes de iniciar');
+    await writeDoc(draft(), 'stack.md', before);
+    await expect(s.freezeProgram()).resolves.toHaveLength(2);
+    await s.close();
+  });
+
   it('says plainly when Spec Kit is not installed, and runs no agent', async () => {
     exec = async () => {
       throw new CommandError('cannot run specify: spawn specify ENOENT');
