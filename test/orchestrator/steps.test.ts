@@ -157,12 +157,14 @@ describe('packs', () => {
     expect(plain.principles.join('\n')).not.toContain('/speckit-implement');
   });
 
-  it('tells every dev task to read the Spec Kit files and the six documents before it changes a file', () => {
+  it('tells every dev task to read the Spec Kit files and the five documents before it changes a file', () => {
     const p = devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null });
     expect(p.principles).toContain(speckitRule());
     expect(speckitRule()).toContain('.specify/memory/constitution.md');
     expect(speckitRule()).toContain('specs/*/tasks.md');
     expect(p.principles).toContain(sourceDocsRule(spec.specId));
+    for (const doc of ['docs/project.md', 'docs/stack.md', 'docs/flow.md', 'docs/design.md', 'briefing.md']) expect(sourceDocsRule(spec.specId)).toContain(doc);
+    expect(sourceDocsRule(spec.specId)).not.toContain('specs.md');
     const known = devPack({ ...base, speckitFeature: 'specs/003-login' }, task, { code: { source: 'none' }, handoffs: [], feedback: null });
     expect(known.principles).toContain(speckitRule('specs/003-login'));
     expect(speckitRule('specs/003-login')).toContain('specs/003-login/tasks.md');
@@ -174,7 +176,7 @@ describe('packs', () => {
     expect(rules).toContain('docs/briefing.md');
   });
 
-  it('the reviewers and the security step read the Spec Kit files and the six documents too', () => {
+  it('the reviewers and the security step read the Spec Kit files and the five documents too', () => {
     const feature = { ...base, speckitFeature: 'specs/003-login' };
     const review = { diffStat: '', changedFiles: [], diff: '', junit: [], code: { source: 'none' as const }, profile: 'standard' as const };
     const security = { diffStat: '', changedFiles: [], diff: '', code: { source: 'none' as const } };

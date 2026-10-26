@@ -120,11 +120,11 @@ function serviceRule(ctx: ServiceContext, platform: readonly PlatformService[], 
 export const speckitRule = (featureDir?: string): string =>
   `When the repository has .specify/memory/constitution.md (made by Spec Kit), read it and the spec, plan and tasks of the feature this task belongs to before you change any file, then follow them. ${featureDir ? `This spec's feature is ${featureDir}: read ${featureDir}/spec.md, ${featureDir}/plan.md and ${featureDir}/tasks.md.` : 'That feature is the one under specs/*/ that this task belongs to: read its spec.md, plan.md and specs/*/tasks.md.'}`;
 
-/** The project's six documents in the repository's docs folder; a service repository holds none of them, so the rule does not apply there. */
+/** The project's five documents in the repository's docs folder; a service repository holds none of them, so the rule does not apply there. */
 export const sourceDocsRule = (specId: string): string =>
   `When the repository has docs/project.md, read docs/project.md, docs/stack.md, docs/flow.md, docs/design.md and the briefing when present (docs/specs/${specId}/briefing.md, or docs/briefing.md when the spec has none) before you change any file: they are the owner's source of truth, and a document wins over the code when they disagree.`;
 
-/** What every task that builds or judges code reads first: the Spec Kit files and the six documents. */
+/** What every task that builds or judges code reads first: the Spec Kit files and the five documents. */
 const sourceRules = (base: PackBase): string[] => [speckitRule(base.speckitFeature), sourceDocsRule(base.spec.specId)];
 
 /** A builder lists what it read, so the orchestrator can check it against the files the source rules name. */
