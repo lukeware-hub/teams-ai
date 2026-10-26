@@ -181,6 +181,15 @@ describe('packs', () => {
     expect(rules).toContain('docs/briefing.md');
   });
 
+  it('a builder pack that drops the ADRs and the tech spec for budget still names where to read them', () => {
+    const long = 'x'.repeat(40_000);
+    const big: PackBase = { ...base, adrs: [{ id: 'ADR-001', title: 'stack', text: long }], techSpecExcerpt: long, budgetTokens: 2000 };
+    const pack = buildContextPack(devPack(big, task, { code: { source: 'none' }, handoffs: [], feedback: null }));
+    expect(pack.dropped).toEqual(expect.arrayContaining(['adrs', 'tech-spec']));
+    expect(pack.text).toContain('docs/adr/');
+    expect(pack.text).toContain(`docs/specs/${spec.specId}/tech-spec.md`);
+  });
+
   it('the reviewers and the security step read the Spec Kit files and the five documents too', () => {
     const feature = { ...base, speckitFeature: 'specs/003-login' };
     const review = { diffStat: '', changedFiles: [], diff: '', junit: [], code: { source: 'none' as const }, profile: 'standard' as const };

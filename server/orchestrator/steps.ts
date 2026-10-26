@@ -120,9 +120,9 @@ function serviceRule(ctx: ServiceContext, platform: readonly PlatformService[], 
 export const speckitRule = (featureDir?: string): string =>
   `When the repository has .specify/memory/constitution.md (made by Spec Kit), read it before you change any file, then follow it. ${featureDir ? `This spec's feature is ${featureDir}: read ${featureDir}/spec.md, ${featureDir}/plan.md and ${featureDir}/tasks.md too, and follow them.` : 'This spec has no Spec Kit feature: the features under specs/ belong to other specs, so none of them is the spec, plan or tasks of this task.'}`;
 
-/** The project's five documents in the repository's docs folder; a service repository holds none of them, so the rule does not apply there. */
+/** The project's five documents in the repository's docs folder, and where the ADRs and tech spec the budget drops live; a service repository holds none of them, so the rule does not apply there. */
 export const sourceDocsRule = (specId: string): string =>
-  `When the repository has docs/project.md, read docs/project.md, docs/stack.md, docs/flow.md, docs/design.md and the briefing when present (docs/specs/${specId}/briefing.md, or docs/briefing.md when the spec has none) before you change any file: they are the owner's source of truth, and a document wins over the code when they disagree.`;
+  `When the repository has docs/project.md, read docs/project.md, docs/stack.md, docs/flow.md, docs/design.md and the briefing when present (docs/specs/${specId}/briefing.md, or docs/briefing.md when the spec has none) before you change any file: they are the owner's source of truth, and a document wins over the code when they disagree. When this pack's note says adrs or tech-spec were dropped for budget, read the ADRs in docs/adr/ or the technical spec docs/specs/${specId}/tech-spec.md in their place.`;
 
 /** What every task that builds or judges code reads first: the Spec Kit files and the five documents. */
 const sourceRules = (base: PackBase): string[] => [speckitRule(base.speckitFeature), sourceDocsRule(base.spec.specId)];
