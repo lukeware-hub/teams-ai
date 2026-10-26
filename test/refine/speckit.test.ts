@@ -12,6 +12,7 @@ import { ConflictError, RefineJournal, RefineSession, type RunAgent } from '../.
 import { speckitPack } from '../../server/refine/speckit-pack.js';
 import { SPECKIT_NOT_INSTALLED, speckitFeatureOf } from '../../server/refine/speckit.js';
 import { canStart } from '../../server/refine/state.js';
+import { loadEvents } from '../../server/store/event-store.js';
 import { makeSpec } from '../fixtures/contracts.js';
 
 let root = '';
@@ -325,6 +326,17 @@ describe('RefineSession.runSpeckit', () => {
     await s.runSpeckit();
     expect(jevs.decide).toHaveBeenCalled();
     for (const [, , , ctx] of jevs.decide.mock.calls) expect(ctx).toEqual({ confidential: true });
+    await s.close();
+  });
+
+  it('records each Jev answer on the spec as a DECISION_MADE, so evals can read it', async () => {
+    answer = askItems({ login: [{ text: 'Qual moeda?', blocking: false }], cart: [{ text: 'Em que moeda cobramos?', blocking: false }] });
+    const s = await detailedSession(jev(() => false) as never);
+    await s.runSpeckit();
+    const made = (await loadEvents(draft().events)).filter((e) => e.type === 'DECISION_MADE').map((e) => e.data as { cycle: number; record: { decisionId: string } });
+    const dedup = made.filter((m) => m.record.decisionId === 'question-dedup');
+    expect(dedup.length).toBeGreaterThan(0);
+    expect(dedup.every((m) => m.cycle === s.state.cycle)).toBe(true);
     await s.close();
   });
 

@@ -83,7 +83,7 @@ export const MAX_DEDUP_PAIRS = 20;
 const MAX_HISTORY_CHUNKS = 5;
 
 /** Journals every decision the wrapped decider answers as DECISION_MADE (spec 10A.4), so evals can read Gate 1 too. */
-function recorded(decider: Pick<Decider, 'decide'>, journal: Pick<Journal, 'fact'>, cycle: number): Pick<Decider, 'decide'> {
+export function recorded(decider: Pick<Decider, 'decide'>, journal: Pick<Journal, 'fact'>, cycle: number): Pick<Decider, 'decide'> {
   return {
     decide: async (id, state, questions, ctx) => {
       const started = Date.now();

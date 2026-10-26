@@ -9,7 +9,7 @@ import type { Exec } from '../exec/command.js';
 import { absoluteRule } from '../runner/role-settings.js';
 import type { StepOutcome } from '../runner/step.js';
 import { ownerFailure, retryOnSchema, TRY_AGAIN, withNote } from './agent-failure.js';
-import { isConfidential, MAX_DEDUP_PAIRS, type CycleJournal, type RunAgent } from './cycle.js';
+import { isConfidential, MAX_DEDUP_PAIRS, recorded, type CycleJournal, type RunAgent } from './cycle.js';
 import { readDoc, type Draft } from './draft.js';
 import { RefineEvent } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
@@ -170,6 +170,7 @@ export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState, f
     await fs.mkdir(dir, { recursive: true });
     await initSpeckit(deps.exec, dir);
   }
+  const decider = deps.decider && recorded(deps.decider, deps.journal, deps.journal.state.cycle);
   for (const step of speckitSteps(buildSpecsIndex(deps.draft.specId, backlog).specs)) {
     if (deps.signal?.aborted) throw new OwnerError(`${SPECKIT_STAGE} foi interrompida.`, 'aborted');
     if (resume && finished.has(stepKey(step.command, step.item?.key))) continue;
@@ -179,7 +180,7 @@ export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState, f
     if (result.status === 'done') await checkOnDisk(dir, step, result.files, featureDir);
     const open = result.status === 'done' ? await openMarkers(dir, result.files) : [];
     const fresh = newQuestions(deps.journal.state, result.questions, step.item?.key);
-    const asked = deps.decider ? await dropRepeats(fresh, deps.journal.state.questions, deps.decider, await isConfidential(deps.draft, deps.journal.state)) : fresh;
+    const asked = decider ? await dropRepeats(fresh, deps.journal.state.questions, decider, await isConfidential(deps.draft, deps.journal.state)) : fresh;
     await deps.journal.fact(RefineEvent.SpeckitStepDone, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}), files: result.files, ...(featureDir ? { featureDir } : {}), ...(asked.length > 0 ? { questions: asked } : {}), ...(result.status === 'blocked' || open.length > 0 ? { blocked: true } : {}) });
     // The questions of a blocked step are on record before it stops, so the owner can answer them.
     if (result.status === 'blocked') throw new OwnerError(`O Spec Kit parou em ${stepName(step)}: ${result.reason}`, result.summary);
