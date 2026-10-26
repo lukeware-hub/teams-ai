@@ -53,6 +53,11 @@ describe('decisions config', () => {
     expect(() => loadConfig({ decisions: { autoAnswerFloor: 1.5 } })).toThrow(ConfigError);
   });
 
+  it('the internet suggestions for Spec Kit questions are on by default and can be turned off', () => {
+    expect(DEFAULT_CONFIG.decisions.speckitResearch).toBe(true);
+    expect(loadConfig({ decisions: { speckitResearch: false } }).decisions.speckitResearch).toBe(false);
+  });
+
   it('local backend is off by default and points at a llama.cpp server on this host', () => {
     expect(DEFAULT_CONFIG.decisions.local).toEqual({ enabled: false, baseUrl: 'http://127.0.0.1:8080', timeoutMs: 30_000, nProbs: 20 });
     expect(() => loadConfig({ decisions: { local: { baseUrl: 'not a url' } } })).toThrow(ConfigError);
