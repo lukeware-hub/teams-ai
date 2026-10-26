@@ -278,6 +278,16 @@ describe('RefineSession.runSpeckit answers from the documents', () => {
   });
 });
 
+const CHOICES = [{ label: 'Sim', detail: 'Usa o prazo de 90 dias.', recommended: true }, { label: 'Não', detail: 'Mantém o link aberto.' }];
+/** Cards for every question asked, with no answer and no choices: the questions the owner then gets choices for. */
+const cardsWithoutAnswer = (req: AgentStepRequest<'speckit-answer'>) => ({
+  results: askedOf(req).map((q) => ({ questionId: q.questionId, answer: null, evidence: [], card: { subject: 'Prazo do link', context: 'Item Entrar. Sem prazo, o link fica aberto.', text: q.text, options: [] } })),
+});
+/** The same cards, each with the choices, and still no answer. */
+const choicesIn = (choices: typeof CHOICES) => (req: AgentStepRequest<'speckit-answer'>) => ({
+  results: askedOf(req).map((q) => ({ questionId: q.questionId, answer: null, evidence: [], card: { subject: 'Prazo do link', context: 'Item Entrar. Sem prazo, o link fica aberto.', text: q.text, options: choices } })),
+});
+
 describe('RefineSession.askSpeckitAnswers', () => {
   /** A preparation whose answerer could not answer: its questions keep no card, which is what the button finds. */
   async function unreadPreparation(): Promise<RefineSession> {
@@ -309,6 +319,43 @@ describe('RefineSession.askSpeckitAnswers', () => {
     const run = s.runSpeckit();
     expect(() => s.askSpeckitAnswers()).toThrow(ConflictError);
     await run;
+    await s.close();
+  });
+
+  /** A preparation whose open question already has its card, with no answer and no choices. */
+  async function cardedPreparation(): Promise<RefineSession> {
+    const s = await unreadPreparation();
+    answerFromDocs = cardsWithoutAnswer;
+    await s.askSpeckitAnswers();
+    return s;
+  }
+
+  it('gives choices to an open question that has a card, and journals no answer', async () => {
+    const s = await cardedPreparation();
+    answerFromDocs = choicesIn(CHOICES);
+    await s.askSpeckitOptions();
+    expect(s.state.questions).toEqual([expect.objectContaining({ status: 'pending', options: CHOICES })]);
+    await s.close();
+  });
+
+  it('answers are not refused while the choices of the open questions are being written', async () => {
+    const s = await cardedPreparation();
+    answerFromDocs = choicesIn(CHOICES);
+    const choices = s.askSpeckitOptions();
+    expect(s.busy).toBe(false);
+    const answers = s.askSpeckitAnswers();
+    await Promise.all([choices, answers]);
+    await s.close();
+  });
+
+  it('abort stops the choices job before it calls an agent, and waits for it', async () => {
+    const s = await cardedPreparation();
+    answerFromDocs = choicesIn(CHOICES);
+    const calls = docCalls.length;
+    const job = s.askSpeckitOptions();
+    await s.abort();
+    await job;
+    expect(docCalls.length).toBe(calls);
     await s.close();
   });
 

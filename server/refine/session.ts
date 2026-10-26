@@ -178,6 +178,9 @@ const MAX_CHAIN_CYCLES = 4;
 export class RefineSession {
   private running: Promise<void> | null = null;
   private abortCtl: AbortController | null = null;
+  /** The choices job runs beside the answers, so it has its own slot and never makes the session busy. */
+  private optionsRun: Promise<void> | null = null;
+  private optionsAbort: AbortController | null = null;
   /** Set synchronously by `freeze()`, before any await, so a second concurrent `start` never slips
    *  through the window between freezing the spec and the run being marked started. */
   private starting = false;
@@ -477,27 +480,20 @@ export class RefineSession {
     return run;
   }
 
-  /** "Gerar opções": the choices of the open questions that have none, without answering them; the page shows the same busy state. */
+  /** "Gerar opções": the choices of the open questions that have none, without answering them; it runs beside the answers and never makes the session busy. */
   askSpeckitOptions(): Promise<void> {
     this.guard();
     if (!this.state.backlog) return Promise.resolve();
-    const ctl = (this.abortCtl = new AbortController());
-    const run = this.timedOptions(ctl).finally(() => {
-      this.running = null;
-      this.abortCtl = null;
-    });
-    this.running = run;
-    return run;
-  }
-
-  /** The journal keeps the start and the end of the choices, as it does for the answers; a choice changes no file, so the preparation stays current. */
-  private async timedOptions(ctl: AbortController): Promise<void> {
-    await this.journal.fact(RefineEvent.SpeckitAnswersStarted, {});
-    try {
-      await optionsForOpen({ draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, signal: ctl.signal }, this.state);
-    } finally {
-      await this.journal.fact(RefineEvent.SpeckitAnswersDone, {});
+    if (this.optionsRun === null) {
+      const ctl = (this.optionsAbort = new AbortController());
+      this.optionsRun = optionsForOpen({ draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, signal: ctl.signal }, this.state)
+        .then(() => undefined)
+        .finally(() => {
+          this.optionsRun = null;
+          this.optionsAbort = null;
+        });
     }
+    return this.optionsRun;
   }
 
   /** The journal keeps the start and the end of the answers, so the page shows them while they run. */
@@ -612,7 +608,9 @@ export class RefineSession {
   /** Kills the agent processes of a running evaluation and waits for the cycle to wind down. */
   async abort(): Promise<void> {
     this.abortCtl?.abort();
+    this.optionsAbort?.abort();
     await this.running?.catch(() => undefined);
+    await this.optionsRun?.catch(() => undefined);
   }
 
   /** The question a reply is for: pending, or answered by the PO or the SM, which the owner may replace when `replaceAgent` says so. */
