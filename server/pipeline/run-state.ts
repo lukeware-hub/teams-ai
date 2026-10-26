@@ -34,6 +34,7 @@ export interface ReducibleEvent {
 
 export const RunEvent = {
   TaskPlanned: 'TASK_PLANNED',
+  TaskRedefined: 'TASK_REDEFINED',
   TaskStateChanged: 'TASK_STATE_CHANGED',
   AttemptConsumed: 'ATTEMPT_CONSUMED',
   InfraRetry: 'INFRA_RETRY',
@@ -75,6 +76,12 @@ export function applyEvent(state: RunState, event: ReducibleEvent): void {
     case RunEvent.TaskPlanned: {
       const planned = TaskPlannedData.parse(event.data).task;
       addTask(state, planned, false, planned.id === scaffoldId(planned.service ?? null));
+      return;
+    }
+    case RunEvent.TaskRedefined: {
+      // Only the definition changes: the task keeps its state and attempts.
+      const task = TaskPlannedData.parse(event.data).task;
+      getTask(state, task.id).def = task;
       return;
     }
     case RunEvent.TaskStateChanged: {

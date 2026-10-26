@@ -9,7 +9,8 @@ import { runPhase1, runPhase2, type PhaseDeps } from '../../server/orchestrator/
 import type { AgentStepRequest } from '../../server/orchestrator/steps.js';
 import type { StepOutcome } from '../../server/runner/step.js';
 import type { ResultSummary } from '../../server/runner/stream-events.js';
-import { makeFrozenSpec, makePlan, makeProject, makeServicesPlan } from '../fixtures/contracts.js';
+import { makeFrozenSpec, makePlan, makePlanTask, makeProject, makeServicesPlan } from '../fixtures/contracts.js';
+import { RunEvent } from '../../server/pipeline/run-state.js';
 import { serviceWorkspace } from '../../server/orchestrator/workspace.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
 import { FakeGh } from '../fixtures/fake-gh.js';
@@ -188,6 +189,22 @@ describe('Phase 2', () => {
     await git(remote.repo, ['fetch', '-q', 'origin']);
     expect(JSON.parse(await git(remote.repo, ['show', 'origin/main:docs/specs/spec-001/plan.json'])).specHash).toBe(fresh.specHash);
   });
+
+  it('gives a task id the journal held from an earlier version of the spec the definition of the new plan, once', async () => {
+    const file = path.join(remote.root, 'events.ndjson');
+    await journal.close();
+    const earlier = await Journal.open({ file, runId: 'r1', specHash: `sha256:${'0'.repeat(64)}` });
+    await earlier.fact(RunEvent.TaskPlanned, { task: makePlanTask({ id: 'T1-create', title: 'Old definition' }) });
+    await earlier.close();
+    journal = await Journal.open({ file, runId: 'r1', specHash: HASH });
+    const plan = makePlan(spec);
+    expect((await runPhase2(deps(async () => ok(plan)), '# Tech spec')).ok).toBe(true);
+    expect(journal.state.tasks.get('T1-create')!.def).toEqual(plan.tasks.find((t) => t.id === 'T1-create'));
+    // A later resume under the same version keeps what the journal holds.
+    expect((await runPhase2(deps(async () => ok(plan)), '# Tech spec')).ok).toBe(true);
+    expect(journal.events.filter((e) => e.type === RunEvent.TaskRedefined)).toHaveLength(1);
+  });
+
   it('passes a preplan.json on main as context and journals which of its criteria the real plan dropped', async () => {
     await git(remote.repo, ['fetch', '-q', 'origin']);
     await fs.writeFile(path.join(remote.repo, 'docs', 'specs', 'spec-001', 'preplan.json'), JSON.stringify({

@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import { assignDeployPort, portKey } from '../../deploy/port-registry.js';
 import path from 'node:path';
 import type { OutputOf } from '../../agents/outputs.js';
-import { parseAnyPlan, type AnyPlan, type Plan, type ServicesPlan } from '../../contracts/plan.js';
+import { parseAnyPlan, type AnyPlan, type Plan, type PlanTask, type ServicesPlan } from '../../contracts/plan.js';
 import type { StepOutcome } from '../../runner/step.js';
 import { canonicalJson } from '../../contracts/hash.js';
 import { RunEvent } from '../../pipeline/run-state.js';
@@ -140,5 +140,11 @@ const speckitTaskIds = (tasks: string): string[] => [...new Set([...tasks.matchA
 async function journalTasks(deps: PhaseDeps, plan: AnyPlan): Promise<void> {
   for (const task of plan.tasks) {
     if (!deps.journal.state.tasks.has(task.id)) await deps.journal.fact(RunEvent.TaskPlanned, { task });
+    // A spec frozen again gives a task id the journal already holds its new definition.
+    else if (!definedForVersion(deps, task.id)) await deps.journal.fact(RunEvent.TaskRedefined, { task });
   }
 }
+
+/** True when the journal recorded this task's definition under the current spec version. */
+const definedForVersion = (deps: PhaseDeps, taskId: string): boolean =>
+  deps.journal.events.some((e) => (e.type === RunEvent.TaskPlanned || e.type === RunEvent.TaskRedefined) && e.specHash === deps.specHash && (e.data.task as PlanTask).id === taskId);
