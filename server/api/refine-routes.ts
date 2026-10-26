@@ -269,6 +269,15 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     },
     {
       method: 'POST',
+      path: `${S}/speckit/options`,
+      handler: wrap(async ({ params, json }) => {
+        const s = await get(params);
+        s.askSpeckitOptions().catch(logRunFailure(params));
+        json(202, { ok: true });
+      }),
+    },
+    {
+      method: 'POST',
       path: `${S}/docs/:file/evaluate`,
       handler: wrap(async ({ params, json }) => {
         const file = params.file!;

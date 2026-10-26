@@ -33,7 +33,7 @@ import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type Sugges
 import { allGreen, applyRefineEvent, canStart, emptyRefineState, speckitPending, type BacklogState, type RefineLimits, type RefineState } from './state.js';
 import { refineLimits } from './limits.js';
 import { isStarted } from './coverage.js';
-import { answerUntriaged, prepareSpeckit, speckitInputHash, SPECKIT_STAGE } from './speckit.js';
+import { answerUntriaged, optionsForOpen, prepareSpeckit, speckitInputHash, SPECKIT_STAGE } from './speckit.js';
 
 export type { RunAgent } from './cycle.js';
 const MAX_IMAGES = 4;
@@ -475,6 +475,29 @@ export class RefineSession {
     });
     this.running = run;
     return run;
+  }
+
+  /** "Gerar opções": the choices of the open questions that have none, without answering them; the page shows the same busy state. */
+  askSpeckitOptions(): Promise<void> {
+    this.guard();
+    if (!this.state.backlog) return Promise.resolve();
+    const ctl = (this.abortCtl = new AbortController());
+    const run = this.timedOptions(ctl).finally(() => {
+      this.running = null;
+      this.abortCtl = null;
+    });
+    this.running = run;
+    return run;
+  }
+
+  /** The journal keeps the start and the end of the choices, as it does for the answers; a choice changes no file, so the preparation stays current. */
+  private async timedOptions(ctl: AbortController): Promise<void> {
+    await this.journal.fact(RefineEvent.SpeckitAnswersStarted, {});
+    try {
+      await optionsForOpen({ draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, signal: ctl.signal }, this.state);
+    } finally {
+      await this.journal.fact(RefineEvent.SpeckitAnswersDone, {});
+    }
   }
 
   /** The journal keeps the start and the end of the answers, so the page shows them while they run. */

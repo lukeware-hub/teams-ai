@@ -83,6 +83,15 @@ export async function answerUntriaged(deps: Pick<SpeckitDeps, 'draft' | 'journal
   return answererFor(deps, texts, speckitItems(deps.draft.specId, source), research).triage(untriaged(deps.journal.state.questions));
 }
 
+/** The pending questions that have a card but no choices; their answers are never applied when choices are asked for. */
+const withoutOptions = (questions: readonly QuestionRow[]): QuestionRow[] => questions.filter((q) => q.origin === 'speckit' && q.status === 'pending' && q.context !== undefined && (q.options ?? []).length === 0);
+
+/** "Gerar opções": the PO and the SM give choices to the open questions that have none; returns how many got choices. */
+export async function optionsForOpen(deps: Pick<SpeckitDeps, 'draft' | 'journal' | 'runAgent' | 'signal'>, source: SpeckitSource): Promise<number> {
+  const texts = await inputTexts(deps.draft, source);
+  return answererFor(deps, texts, speckitItems(deps.draft.specId, source), false).options(withoutOptions(deps.journal.state.questions));
+}
+
 /** The web search is allowed only when the owner turned it on and the project is not confidential. */
 const researchAllowed = async (deps: Pick<SpeckitDeps, 'draft' | 'journal' | 'research'>): Promise<boolean> => deps.research === true && !(await isConfidential(deps.draft, deps.journal.state));
 

@@ -150,6 +150,12 @@ describe('speckitPack', () => {
     expect(p.feedback).toContain('Quality rules');
   });
 
+  it('asks for options on a yes-or-no question or one that names alternatives, and none only for free text', () => {
+    const p = speckitPack({ command: 'constitution', specHash: 'sha256:x', inputDir: inputs });
+    expect(p.feedback).toContain('whenever the question is a yes-or-no question or names alternatives');
+    expect(p.feedback).toContain('free text, such as a name, a number or a date');
+  });
+
   it('points an item command at its section of specs.md and its own feature directory', () => {
     for (const command of ['specify', 'clarify', 'plan', 'tasks'] as const) {
       const p = speckitPack({ command, specHash: 'sha256:x', inputDir: inputs, item });

@@ -76,7 +76,7 @@ export function speckitAnswerPack(input: { specHash: string; role: 'po' | 'sm'; 
       `You are the ${input.role === 'po' ? 'product owner' : 'scrum master'} of this project. Answer the Spec Kit questions below only with what the six documents already state, in Brazilian Portuguese.`,
       'Every answer carries `evidence`: each quote copied word for word from one line of the file named in `source`. A quote that is not in the file, or that joins two lines, voids the answer.',
       'Return `answer: null` when the documents do not settle the question. Never choose what the documents leave open, and never invent a number, a date or a name.',
-      'Write the `card` the owner reads, in plain Brazilian Portuguese: `subject` three to eight words; `context` one to three short sentences that name the item, why the owner must decide, and what the documents say; `text` one question, with no acronym and no double quotes; `options` two or three choices with one marked `recommended`, only when the question has clear choices.',
+      'Write the `card` the owner reads, in plain Brazilian Portuguese: `subject` three to eight words; `context` one to three short sentences that name the item, why the owner must decide, and what the documents say; `text` one question, with no acronym and no double quotes; `options` two or three choices with one marked `recommended` whenever the question is a yes-or-no question or names alternatives, such as two places or two values; leave `options` empty only when the answer is free text, such as a name, a number or a date.',
       ...(digested ? [DIGEST_NOTE] : []),
       `### Questions\n${input.questions.map((q) => `- ${q.questionId} (item: ${q.itemTitle ?? 'sem item'}): ${q.text}`).join('\n')}`,
       ...SPECKIT_INPUTS.map((file) => `### ${file}\n${docs[file]}`),
@@ -124,6 +124,8 @@ export interface AnswerDeps {
 export interface Answerer {
   /** Journals a card for each question and returns how many were answered; a `rework` step runs again when one was. */
   triage(questions: readonly Question[], rework?: Rework): Promise<number>;
+  /** Journals choices for questions that already have a card, and returns how many got choices; no answer is journaled. */
+  options(questions: readonly Question[]): Promise<number>;
 }
 
 /** The step a re-run follows: its command, and its item when it has one. */
@@ -147,6 +149,15 @@ function triagedOf(results: SpeckitAnswerOutput['results'], chunk: readonly Ques
         ...(r.answer !== null && evidence !== null ? { answer: { text: r.answer, by: role, evidence } } : {}),
       },
     ];
+  });
+}
+
+/** The choices of each question the agent answered, with its card kept as it is; this call never journals an answer. */
+function optionsOf(results: SpeckitAnswerOutput['results'], chunk: readonly Question[]): SpeckitTriage[] {
+  return chunk.flatMap((q) => {
+    const r = results.find((x) => x.questionId === q.questionId);
+    if (!r) return [];
+    return [{ questionId: q.questionId, subject: q.subject ?? '', context: q.context ?? '', text: q.text, options: r.card.options ?? [] }];
   });
 }
 
@@ -183,7 +194,7 @@ async function withSuggestions(results: SpeckitTriage[], chunk: readonly Questio
 export function makeAnswerer(deps: AnswerDeps): Answerer {
   let failed = 0;
 
-  async function answer(role: 'po' | 'sm', chunk: readonly Question[], rework: Rework | undefined): Promise<number> {
+  async function answer(role: 'po' | 'sm', chunk: readonly Question[], rework: Rework | undefined, optionsOnly = false): Promise<number> {
     const specHash = sha256(`speckit-answer\n${role}\n${chunk.map((q) => q.questionId).join('\n')}\n${deps.hash}`);
     let pack: ContextPackInput;
     try {
@@ -205,10 +216,10 @@ export function makeAnswerer(deps: AnswerDeps): Answerer {
       return 0;
     }
     failed = 0;
-    let results = triagedOf(out.value.results, chunk, deps.texts, role);
-    if (deps.research) results = await withSuggestions(results, chunk, deps);
+    let results = optionsOnly ? optionsOf(out.value.results, chunk) : triagedOf(out.value.results, chunk, deps.texts, role);
+    if (deps.research && !optionsOnly) results = await withSuggestions(results, chunk, deps);
     await deps.journal.fact(RefineEvent.SpeckitTriaged, { results, ...(rework ? { rework } : {}) });
-    return results.filter((r) => r.answer).length;
+    return optionsOnly ? results.filter((r) => r.options.length > 0).length : results.filter((r) => r.answer).length;
   }
 
   return {
@@ -221,6 +232,17 @@ export function makeAnswerer(deps: AnswerDeps): Answerer {
         }
       }
       return answered;
+    },
+    /** Journals choices for the questions that already have a card, and returns how many got choices. */
+    async options(questions) {
+      let set = 0;
+      for (const role of ['po', 'sm'] as const) {
+        for (const chunk of chunksOf(questions.filter((q) => q.role === role), CHUNK)) {
+          if (failed >= MAX_FAILED_CALLS || deps.signal?.aborted) return set;
+          set += await answer(role, chunk, undefined, true);
+        }
+      }
+      return set;
     },
   };
 }

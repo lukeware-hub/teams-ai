@@ -37,6 +37,18 @@ function harness(reply: (req: Req) => unknown) {
   return { answerer, fact, runAgent };
 }
 
+describe('the choices of questions that already have a card', () => {
+  it('journals the choices, keeps the card as it is, and never journals an answer', async () => {
+    const q = { ...question('speckit-1'), subject: 'Prazo do link', context: 'Item Entrar. Sem prazo, o link fica aberto.' } as Question;
+    const choices = [{ label: 'Sim', detail: 'Usa o prazo de 90 dias.', recommended: true }, { label: 'Não', detail: 'Mantém o link aberto.' }];
+    const { answerer, fact } = harness(() => okOf({ results: [{ questionId: 'speckit-1', answer: '90 dias', evidence: [{ source: 'briefing.md', quote: LINK }], card: { ...card('Pergunta speckit-1?'), options: choices } }] }));
+    expect(await answerer.options([q])).toBe(1);
+    const triaged = fact.mock.calls.find(([type]) => type === RefineEvent.SpeckitTriaged)![1] as { results: Array<Record<string, unknown>> };
+    expect(triaged.results).toEqual([{ questionId: 'speckit-1', subject: 'Prazo do link', context: q.context, text: q.text, options: choices }]);
+    expect(triaged.results[0]).not.toHaveProperty('answer');
+  });
+});
+
 describe('verifyEvidence', () => {
   it('accepts a whole sentence of one of the six documents, with the heading the server finds above it', () => {
     expect(verifyEvidence(DOCS, [{ source: 'briefing.md', quote: LINK }], '90 dias')).toEqual([{ file: 'briefing.md', heading: 'Regras', quote: LINK }]);
@@ -87,6 +99,12 @@ describe('speckitAnswerPack', () => {
     expect(pack.feedback).toContain('- speckit-1 (item: Entrar): Qual o prazo?');
     expect(pack.feedback).toContain('Visão do produto.');
     expect(pack.feedback).toContain('answer: null');
+  });
+
+  it('asks for options on a yes-or-no question or one that names alternatives, and none only for free text', () => {
+    const pack = speckitAnswerPack({ specHash: 'sha256:x', role: 'po', questions: [{ questionId: 'speckit-1', text: 'Qual o prazo?', itemTitle: 'Entrar' }], texts: DOCS });
+    expect(pack.feedback).toContain('whenever the question is a yes-or-no question or names alternatives');
+    expect(pack.feedback).toContain('free text, such as a name, a number or a date');
   });
 });
 
