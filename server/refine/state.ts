@@ -166,7 +166,7 @@ export interface RefineState {
   /** The PO and the SM are answering the open Spec Kit questions now (true from their start until their end). */
   speckitAnswering?: boolean;
   /** The Spec Kit preparation of a detailed backlog; stale once a document or the backlog changes after it. */
-  speckit?: { status: 'running' | 'done' | 'failed'; startedAt?: string; current?: { command: string; itemKey?: string; startedAt?: string }; steps: Array<{ command: string; itemKey?: string; startedAt?: string; endedAt?: string }>; total?: number; error?: string; stale: boolean; features?: Record<string, string>; inputHash?: string };
+  speckit?: { status: 'running' | 'done' | 'failed'; startedAt?: string; running?: Array<{ command: string; itemKey?: string; startedAt?: string }>; steps: Array<{ command: string; itemKey?: string; startedAt?: string; endedAt?: string; basis?: string; reused?: boolean }>; total?: number; error?: string; stale: boolean; features?: Record<string, string>; inputHash?: string };
 }
 
 export interface StuckRun {
@@ -285,13 +285,8 @@ function markStaleStages(s: RefineState, edited: DocFile): void {
   if (later.length > 0) s.staleBy = { ...(s.staleBy ?? {}), ...Object.fromEntries(later.map((doc) => [doc, edited])) };
 }
 
-/** The steps a preparation of the same inputs finished before it failed; a new run skips them and keeps their files. */
-export function finishedSteps(speckit: RefineState['speckit'], inputHash: string): Set<string> {
-  if (speckit?.status !== 'failed' || speckit.stale) return new Set();
-  // A preparation started before its inputs were recorded has no hash: a document edit would have marked it stale, so it still matches.
-  if (speckit.inputHash !== undefined && speckit.inputHash !== inputHash) return new Set();
-  return new Set(speckit.steps.map((step) => stepKey(step.command, step.itemKey)));
-}
+/** The step a Spec Kit event names: its command and its backlog item. */
+const speckitKey = (d: Record<string, unknown>): string => stepKey(String(d.command), d.itemKey === undefined ? undefined : String(d.itemKey));
 
 export function applyRefineEvent(s: RefineState, e: { type: string; at?: string; data: Record<string, unknown> }): void {
   const d = e.data;
@@ -487,33 +482,36 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       s.readiness = { ...(d as unknown as Omit<Readiness, 'outdated' | 'docs' | 'average'>), docs, average, outdated: s.outdatedDocs.length > 0 };
       break;
     }
-    case RefineEvent.SpeckitStarted: {
-      // A failed preparation of the same inputs keeps the steps it finished: the run that follows skips them (finishedSteps).
-      const resumed = finishedSteps(s.speckit, String(d.inputHash)).size > 0;
+    case RefineEvent.SpeckitStarted:
+      // A new run starts with no step done; the steps of an earlier run it keeps follow (SpeckitReused).
       s.speckit = {
         status: 'running',
-        steps: resumed ? s.speckit!.steps : [],
-        ...(resumed && s.speckit?.features ? { features: s.speckit.features } : {}),
+        steps: [],
+        ...(s.speckit?.features ? { features: s.speckit.features } : {}),
         ...(d.inputHash === undefined ? {} : { inputHash: String(d.inputHash) }),
         ...(d.total === undefined ? {} : { total: Number(d.total) }),
         ...(e.at === undefined ? {} : { startedAt: e.at }),
         stale: false,
       };
       break;
-    }
+    case RefineEvent.SpeckitReused:
+      if (s.speckit) s.speckit.steps = ((d.steps as Array<{ command: string; itemKey?: string; startedAt?: string; endedAt?: string; basis?: string }> | undefined) ?? []).map((step) => ({ ...step, reused: true }));
+      break;
     case RefineEvent.SpeckitStepStarted:
-      if (s.speckit) s.speckit.current = { command: String(d.command), ...(d.itemKey === undefined ? {} : { itemKey: String(d.itemKey) }), ...(e.at === undefined ? {} : { startedAt: e.at }) };
+      if (s.speckit) s.speckit.running = [...(s.speckit.running ?? []).filter((r) => stepKey(r.command, r.itemKey) !== speckitKey(d)), { command: String(d.command), ...(d.itemKey === undefined ? {} : { itemKey: String(d.itemKey) }), ...(e.at === undefined ? {} : { startedAt: e.at }) }];
       break;
     case RefineEvent.SpeckitStepDone: {
       // A finished step keeps its start and end, so the owner sees how long each command took.
-      const began = s.speckit?.current?.startedAt;
+      const key = speckitKey(d);
+      const began = s.speckit?.running?.find((r) => stepKey(r.command, r.itemKey) === key)?.startedAt;
+      if (s.speckit?.running) s.speckit.running = s.speckit.running.filter((r) => stepKey(r.command, r.itemKey) !== key);
       // A blocked step is not finished: its questions are on record, and the run that follows runs it again.
-      if (d.blocked !== true) s.speckit?.steps.push({ command: String(d.command), ...(d.itemKey === undefined ? {} : { itemKey: String(d.itemKey) }), ...(began === undefined ? {} : { startedAt: began }), ...(e.at === undefined ? {} : { endedAt: e.at }) });
-      if (s.speckit) delete s.speckit.current;
-      // The feature folder Spec Kit numbered for the item, which the dev agents of that spec follow.
+      if (d.blocked !== true) s.speckit?.steps.push({ command: String(d.command), ...(d.itemKey === undefined ? {} : { itemKey: String(d.itemKey) }), ...(began === undefined ? {} : { startedAt: began }), ...(e.at === undefined ? {} : { endedAt: e.at }), ...(d.basis === undefined ? {} : { basis: String(d.basis) }) });
+      // The feature folder of the item, which the dev agents of that spec follow.
       if (s.speckit && d.featureDir !== undefined) s.speckit.features = { ...s.speckit.features, [String(d.itemKey)]: String(d.featureDir) };
       const asked = (d.questions as Question[] | undefined) ?? [];
-      s.questions.push(...asked.map((q) => ({ ...q, status: 'pending' as const, answer: null })));
+      // Two steps that ask the same question at once leave it on record once.
+      for (const q of asked) if (!s.questions.some((x) => x.questionId === q.questionId)) s.questions.push({ ...q, status: 'pending' as const, answer: null });
       if (asked.length > 0) s.status = computeStatus(s);
       break;
     }
@@ -542,11 +540,15 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       s.speckitAnswering = false;
       break;
     case RefineEvent.SpeckitDone:
-      if (s.speckit) s.speckit.status = 'done';
+      if (s.speckit) {
+        s.speckit.status = 'done';
+        delete s.speckit.running;
+      }
       break;
     case RefineEvent.SpeckitFailed:
       // A failure before the preparation started still shows, with no step done.
       s.speckit = { steps: [], stale: false, ...s.speckit, status: 'failed', error: String(d.reason) };
+      delete s.speckit.running;
       break;
     case RefineEvent.StartedRun:
       s.status = 'started';

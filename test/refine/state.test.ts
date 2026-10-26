@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { approvalPatch } from '../../server/refine/adjustments.js';
 import { RefineEvent } from '../../server/refine/events.js';
-import { canStart, finishedSteps, reduceRefineEvents } from '../../server/refine/state.js';
+import { canStart, reduceRefineEvents } from '../../server/refine/state.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 
 const item = (id: string, passed: boolean) => ({ id, role: id.startsWith('po') ? 'po' : 'sm', passed, detail: '' });
@@ -520,9 +520,9 @@ describe('Spec Kit preparation state', () => {
   it('shows the command running now, and when the run began', () => {
     const begun = { type: RefineEvent.SpeckitStarted, at: '2026-10-25T10:00:00Z', data: { total: 4 } };
     const running = reduceRefineEvents([begun, { type: RefineEvent.SpeckitStepStarted, data: { command: 'specify', itemKey: 'login' } }]);
-    expect(running.speckit).toMatchObject({ startedAt: '2026-10-25T10:00:00Z', current: { command: 'specify', itemKey: 'login' } });
+    expect(running.speckit).toMatchObject({ startedAt: '2026-10-25T10:00:00Z', running: [{ command: 'specify', itemKey: 'login' }] });
     const finished = reduceRefineEvents([begun, { type: RefineEvent.SpeckitStepStarted, data: { command: 'specify', itemKey: 'login' } }, { type: RefineEvent.SpeckitStepDone, data: { command: 'specify', itemKey: 'login', files: [] } }]);
-    expect(finished.speckit?.current).toBeUndefined();
+    expect(finished.speckit?.running).toEqual([]);
   });
 
   it('keeps the start and the end of each finished step', () => {
@@ -547,15 +547,45 @@ describe('Spec Kit preparation state', () => {
     expect(reduceRefineEvents([{ type: RefineEvent.DocEdited, data: { file: 'stack.md', hash: 'x' } }]).speckit).toBeUndefined();
   });
 
-  it('a failed preparation resumes its finished steps only on the same inputs and while no document changed since', () => {
-    const failed = { status: 'failed' as const, stale: false, inputHash: 'h1', steps: [{ command: 'constitution' }, { command: 'specify', itemKey: 'login' }] };
-    expect([...finishedSteps(failed, 'h1')]).toEqual(['constitution|', 'specify|login']);
-    expect(finishedSteps(failed, 'h2').size).toBe(0);
-    expect(finishedSteps({ ...failed, stale: true }, 'h1').size).toBe(0);
-    expect(finishedSteps({ ...failed, status: 'running' as const }, 'h1').size).toBe(0);
-    // Started before inputs were recorded: no hash, so only the stale flag can tell it still matches.
-    const legacy = { status: 'failed' as const, stale: false, steps: failed.steps };
-    expect(finishedSteps(legacy, 'anything').size).toBe(2);
-    expect(finishedSteps({ ...legacy, stale: true }, 'anything').size).toBe(0);
+  it('a new preparation keeps only the steps it reuses, marked as reused, and drops the rest', () => {
+    const earlier = [
+      { type: RefineEvent.SpeckitStarted, data: { total: 4 } },
+      { type: RefineEvent.SpeckitStepDone, data: { command: 'constitution', files: [], basis: 'b0' } },
+      { type: RefineEvent.SpeckitStepDone, data: { command: 'specify', itemKey: 'login', files: [], basis: 'b1' } },
+      { type: RefineEvent.SpeckitFailed, data: { reason: 'x' } },
+    ];
+    const s = reduceRefineEvents([...earlier, { type: RefineEvent.SpeckitStarted, data: { total: 4, inputHash: 'h2' } }, { type: RefineEvent.SpeckitReused, data: { steps: [{ command: 'constitution', basis: 'b0' }] } }]);
+    expect(s.speckit).toEqual({ status: 'running', steps: [{ command: 'constitution', basis: 'b0', reused: true }], total: 4, inputHash: 'h2', stale: false });
+  });
+
+  it('a new preparation that names no reused step, as an earlier journal starts, keeps no step', () => {
+    const s = reduceRefineEvents([{ type: RefineEvent.SpeckitStarted, data: { total: 4 } }, { type: RefineEvent.SpeckitStepDone, data: { command: 'constitution', files: [], basis: 'b0' } }, { type: RefineEvent.SpeckitFailed, data: { reason: 'x' } }, { type: RefineEvent.SpeckitStarted, data: { total: 4 } }]);
+    expect(s.speckit?.steps).toEqual([]);
+  });
+
+  it('shows every step that runs at once, and removes each one when it finishes', () => {
+    const begun = [
+      { type: RefineEvent.SpeckitStarted, at: '2026-10-25T10:00:00Z', data: { total: 4 } },
+      { type: RefineEvent.SpeckitStepStarted, at: '2026-10-25T10:00:01Z', data: { command: 'specify', itemKey: 'login' } },
+      { type: RefineEvent.SpeckitStepStarted, at: '2026-10-25T10:00:02Z', data: { command: 'specify', itemKey: 'cart' } },
+    ];
+    const running = reduceRefineEvents(begun);
+    expect(running.speckit?.running).toEqual([
+      { command: 'specify', itemKey: 'login', startedAt: '2026-10-25T10:00:01Z' },
+      { command: 'specify', itemKey: 'cart', startedAt: '2026-10-25T10:00:02Z' },
+    ]);
+    const one = reduceRefineEvents([...begun, { type: RefineEvent.SpeckitStepDone, at: '2026-10-25T10:01:00Z', data: { command: 'specify', itemKey: 'login', files: [] } }]);
+    expect(one.speckit?.running).toEqual([{ command: 'specify', itemKey: 'cart', startedAt: '2026-10-25T10:00:02Z' }]);
+    expect(one.speckit?.steps).toEqual([{ command: 'specify', itemKey: 'login', startedAt: '2026-10-25T10:00:01Z', endedAt: '2026-10-25T10:01:00Z' }]);
+  });
+
+  it('records a question that two steps asked at once only once', () => {
+    const asked = { questionId: 'speckit-1', role: 'po', text: 'Qual moeda?', blocking: false, relatedAcIds: [], cycle: 2, origin: 'speckit' };
+    const s = reduceRefineEvents([
+      { type: RefineEvent.SpeckitStarted, data: { total: 4 } },
+      { type: RefineEvent.SpeckitStepDone, data: { command: 'specify', itemKey: 'login', files: [], questions: [{ ...asked, itemKey: 'login' }] } },
+      { type: RefineEvent.SpeckitStepDone, data: { command: 'specify', itemKey: 'cart', files: [], questions: [{ ...asked, itemKey: 'cart' }] } },
+    ]);
+    expect(s.questions.map((q) => q.questionId)).toEqual(['speckit-1']);
   });
 });

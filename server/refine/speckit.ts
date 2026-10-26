@@ -13,8 +13,8 @@ import { isConfidential, MAX_DEDUP_PAIRS, recorded, type CycleJournal, type RunA
 import { readDoc, type Draft } from './draft.js';
 import { RefineEvent } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
-import { SPECKIT_INPUTS, speckitPack, type SpeckitCommand, type SpeckitInput } from './speckit-pack.js';
-import { speckitSteps, stepKey, type Step } from './speckit-steps.js';
+import { SPECKIT_INPUTS, speckitFeatureDir, speckitPack, type SpeckitCommand, type SpeckitInput } from './speckit-pack.js';
+import { itemSteps, speckitSteps, stepKey, type Step } from './speckit-steps.js';
 import { renderSpecsMd } from './specs-md.js';
 import { buildSpecsIndex, specIdOf } from './specs-index.js';
 import { loadEvents } from '../store/event-store.js';
@@ -22,6 +22,7 @@ import { reduceRefineEvents, type BacklogState, type QuestionRow, type RefineSta
 import type { Question } from './events.js';
 import { decisionsOf } from './decisions.js';
 import { answererOf, makeAnswerer, type Answerer } from './speckit-answers.js';
+import { stepBasis, type BasisQuestion } from './speckit-basis.js';
 
 export const SPECKIT_NOT_INSTALLED = 'O Spec Kit não está instalado neste ambiente.';
 export const SPECKIT_STAGE = 'A preparação do Spec Kit';
@@ -43,16 +44,15 @@ export interface SpeckitDeps {
   exec: Exec;
   decider?: Pick<Decider, 'decide'>;
   signal?: AbortSignal;
+  /** How many backlog items prepare at once; one when absent. */
+  agents?: number;
 }
 
-/** The feature folder a specify step made: the spec.md it reports, or else the one Spec Kit recorded in .specify/feature.json. */
-async function featureDirOf(staging: string, files: readonly string[]): Promise<string | undefined> {
-  const folder = (file: string, pattern: RegExp) => pattern.exec(file.replace(/\\/g, '/'))?.[1];
-  const reported = files.map((f) => folder(f, /(?:^|\/)(specs\/[^/]+)\/spec\.md$/)).find(Boolean);
-  if (reported) return reported;
-  const recorded = await fs.readFile(path.posix.join(staging, '.specify', 'feature.json'), 'utf8').then((t) => (JSON.parse(t) as { feature_directory?: string }).feature_directory, () => undefined);
-  return recorded ? folder(recorded, /(?:^|\/)(specs\/[^/]+)\/?$/) : undefined;
-}
+/** Whether a file or folder exists. */
+const exists = (file: string): Promise<boolean> => fs.access(file).then(() => true, () => false);
+
+/** How many rounds a step runs when the answers to its questions come in: a round that gets answers runs again with them. */
+const MAX_STEP_ROUNDS = 3;
 
 /** The Spec Kit feature folder of one spec of a draft, when its preparation made one; read by a run of that spec. */
 export async function speckitFeatureOf(draftRoot: string, specId: string): Promise<string | undefined> {
@@ -107,7 +107,7 @@ async function writeInputs(draft: Draft, texts: Record<SpeckitInput, string>): P
 const sameText = (text: string): string => text.trim().replace(/\s+/g, ' ').toLowerCase();
 
 /** The questions of one step as refine questions, leaving out any already asked or answered, so a re-run never asks again. */
-function newQuestions(state: Pick<RefineState, 'questions' | 'cycle'>, asked: SpeckitOutput['questions'], itemKey: string | undefined, role: 'po' | 'sm'): Question[] {
+function newQuestions(state: Pick<RefineState, 'questions' | 'cycle'>, asked: SpeckitOutput['questions'], step: Step, role: 'po' | 'sm'): Question[] {
   const seen = new Set(state.questions.map((q) => sameText(q.text)));
   const ids = new Set(state.questions.map((q) => q.questionId));
   return asked.flatMap((q) => {
@@ -116,8 +116,8 @@ function newQuestions(state: Pick<RefineState, 'questions' | 'cycle'>, asked: Sp
     // An id is kept even when the owner's card rewords the question, so the same question is never asked twice.
     if (seen.has(key) || ids.has(questionId)) return [];
     seen.add(key);
-    const about = q.itemKey ?? itemKey;
-    return [{ questionId, role, text: q.text.trim(), blocking: q.blocking, relatedAcIds: [], cycle: state.cycle, origin: 'speckit' as const, ...(about ? { itemKey: about } : {}), ...(q.options?.length ? { options: q.options } : {}) }];
+    const about = q.itemKey ?? step.item?.key;
+    return [{ questionId, role, text: q.text.trim(), blocking: q.blocking, relatedAcIds: [], cycle: state.cycle, origin: 'speckit' as const, command: step.command, ...(about ? { itemKey: about } : {}), ...(q.options?.length ? { options: q.options } : {}) }];
   });
 }
 
@@ -146,16 +146,13 @@ async function initSpeckit(exec: Exec, cwd: string): Promise<void> {
 /** One command as an agent step; the files it wrote, or the owner's reason it stopped. */
 const stepName = (step: Step): string => `/speckit-${step.command}${step.item ? ` de ${step.item.key}` : ''}`;
 
-const onDisk = (file: string): Promise<boolean> => fs.access(file).then(() => true, () => false);
-
-/** A finished step counts as done only when every file it reports is in the staging folder, and a specify step has its feature folder there. */
-async function checkOnDisk(staging: string, step: Step, files: readonly string[], featureDir: string | undefined): Promise<void> {
-  const found = await Promise.all(files.map((file) => onDisk(path.resolve(staging, file))));
+/** A finished step counts as done only when every file it reports is in the staging folder, and a specify step has its feature folder. */
+async function checkOnDisk(staging: string, step: Step, files: readonly string[]): Promise<void> {
+  const found = await Promise.all(files.map((file) => fs.access(path.resolve(staging, file)).then(() => true, () => false)));
   const missing = files.filter((_, i) => !found[i]);
   if (missing.length > 0) throw new OwnerError(`O Spec Kit não gravou os arquivos que ${stepName(step)} informou. ${TRY_AGAIN}`, missing.join(', '));
-  if (step.command === 'specify' && !(featureDir && (await onDisk(path.resolve(staging, featureDir))))) {
-    throw new OwnerError(`O Spec Kit não criou a pasta da feature em ${stepName(step)}. ${TRY_AGAIN}`, featureDir ? `${featureDir} is not in the staging folder` : 'no specs/<feature>/spec.md reported and no .specify/feature.json');
-  }
+  const spec = `${speckitFeatureDir(step.item?.key ?? '')}/spec.md`;
+  if (step.command === 'specify' && !(await exists(path.resolve(staging, spec)))) throw new OwnerError(`O Spec Kit não criou a pasta da feature em ${stepName(step)}. ${TRY_AGAIN}`, `no ${spec}`);
 }
 
 /** The reported files that still hold a Spec Kit marker of an open point; a folder reads as empty. */
@@ -168,25 +165,27 @@ async function openMarkers(staging: string, files: readonly string[]): Promise<s
 const CRITERIA_FILE: Partial<Record<SpeckitCommand, string>> = { specify: 'spec.md', clarify: 'spec.md', plan: 'plan.md', tasks: 'tasks.md' };
 
 /** The item step's own file and the criterion ids it leaves out, as "<file>: <ids>"; undefined when it keeps them all. */
-async function droppedCriteria(staging: string, step: Step, featureDir: string | undefined, backlog: BacklogState): Promise<string | undefined> {
+async function droppedCriteria(staging: string, step: Step, backlog: BacklogState): Promise<string | undefined> {
   const name = CRITERIA_FILE[step.command];
   if (!name) return undefined;
-  const file = `${featureDir}/${name}`;
-  const text = featureDir ? await fs.readFile(path.posix.join(staging, file), 'utf8').catch(() => '') : '';
+  const file = `${speckitFeatureDir(step.item!.key)}/${name}`;
+  const text = await fs.readFile(path.posix.join(staging, file), 'utf8').catch(() => '');
   // A whole-word match, so AC-100 never counts as kept by AC-1000.
   const dropped = (backlog.specs?.[step.item!.key]?.spec?.acceptanceCriteria ?? []).map((c) => c.id).filter((id) => !new RegExp(`\\b${id}\\b`).test(text));
   return dropped.length > 0 ? `${file}: ${dropped.join(', ')}` : undefined;
 }
 
-async function runCommand(deps: SpeckitDeps, step: Step, hash: string): Promise<SpeckitOutput> {
+async function runCommand(deps: SpeckitDeps, step: Step, hash: string, adjust: boolean): Promise<SpeckitOutput> {
   const specHash = sha256(`speckit\n${step.command}\n${step.item?.key ?? ''}\n${hash}`);
   const inputDir = speckitInputDir(deps.draft);
   const decisions = decisionsOf(deps.journal.state.questions.filter((q) => q.origin === 'speckit' && q.answeredBy));
-  const pack = fitPackBudget(speckitPack({ command: step.command, specHash, inputDir, item: step.item, decisions }));
+  const pack = fitPackBudget(speckitPack({ command: step.command, specHash, inputDir, item: step.item, decisions, adjust }));
   const extraAllow = [...SPECKIT_BASH, `Read(${absoluteRule(inputDir)}/**)`];
+  // An item step works in its own feature folder, which the environment names, and never persists the feature pointer.
+  const extraEnv = step.item ? { SPECIFY_FEATURE_DIRECTORY: speckitFeatureDir(step.item.key), SPECIFY_FEATURE_NO_PERSIST: '1' } : undefined;
   const out = (await retryOnSchema((note) =>
     deps.runAgent<'speckit'>(
-      { kind: 'speckit', role: 'dev', pack: withNote(pack, note), cwd: speckitDir(deps.draft), phase: 'refine', taskId: null, attempt: 1, extraAllow },
+      { kind: 'speckit', role: 'dev', pack: withNote(pack, note), cwd: speckitDir(deps.draft), phase: 'refine', taskId: null, attempt: 1, extraAllow, extraEnv },
       { journal: deps.journal, stepDir: deps.draft.steps, specHash, signal: deps.signal },
     ),
   )) as StepOutcome<SpeckitOutput>;
@@ -194,61 +193,138 @@ async function runCommand(deps: SpeckitDeps, step: Step, hash: string): Promise<
   return out.value;
 }
 
+/** What every step of one preparation shares. */
+interface RunContext {
+  deps: SpeckitDeps;
+  hash: string;
+  texts: Record<SpeckitInput, string>;
+  backlog: BacklogState;
+  decider: Pick<Decider, 'decide'> | undefined;
+  answerer: Answerer;
+  /** The keys of the steps an earlier preparation finished on the basis they have now: they run no more. */
+  reused: ReadonlySet<string>;
+  /** The keys of the steps an earlier preparation finished, which run again on the files they left. */
+  adjust: ReadonlySet<string>;
+}
+
+/** The file an item command leaves in its feature folder; the constitution has none to check, since init scaffolds its memory file. */
+const outputOf = (step: Step): string | undefined => (step.item ? `${speckitFeatureDir(step.item.key)}/${CRITERIA_FILE[step.command]}` : undefined);
+
+/** The keys of the steps whose recorded basis still matches the documents and the answers now, and whose file is still in the folder. */
+async function reusedSteps(dir: string, earlier: readonly { command: string; itemKey?: string; basis?: string }[], plan: readonly Step[], texts: Record<SpeckitInput, string>, questions: readonly BasisQuestion[]): Promise<Set<string>> {
+  const candidates = plan.flatMap((step) => {
+    const key = stepKey(step.command, step.item?.key);
+    const recorded = earlier.find((s) => stepKey(s.command, s.itemKey) === key)?.basis;
+    return recorded !== undefined && recorded === stepBasis(step, texts, questions) ? [{ key, file: outputOf(step) }] : [];
+  });
+  const present = await Promise.all(candidates.map(({ file }) => (file === undefined ? true : exists(path.resolve(dir, file)))));
+  return new Set(candidates.filter((_, i) => present[i]).map(({ key }) => key));
+}
+
+/** Drops the feature folders of the items no longer in the backlog, so Phase 0 never publishes them. */
+async function pruneFeatures(staging: string, items: readonly { key: string }[]): Promise<void> {
+  const current = new Set(items.map((item) => item.key));
+  const names = await fs.readdir(path.posix.join(staging, 'specs')).catch(() => [] as string[]);
+  await Promise.all(names.filter((name) => !current.has(name)).map((name) => fs.rm(path.posix.join(staging, 'specs', name), { recursive: true, force: true })));
+}
+
+/** One step of the preparation: refused once it is aborted, skipped when an earlier preparation still holds it, run otherwise. */
+async function runOne(run: RunContext, step: Step): Promise<void> {
+  if (run.deps.signal?.aborted) throw new OwnerError(`${SPECKIT_STAGE} foi interrompida.`, 'aborted');
+  const key = stepKey(step.command, step.item?.key);
+  if (run.reused.has(key)) return;
+  await runStep(run.deps, { step, hash: run.hash, texts: run.texts, backlog: run.backlog, decider: run.decider, answerer: run.answerer, adjust: run.adjust.has(key) });
+}
+
 /**
- * Runs Spec Kit over the detailed backlog and answers the hash of the inputs it read. `finished` holds the steps of an earlier
- * preparation of the same inputs that stopped: they run no more, and their files stay in the staging folder.
+ * Runs Spec Kit over the detailed backlog and answers the hash of the inputs it read. A step an earlier preparation finished on the
+ * same basis is kept as it is; the others run, on the files they have from that preparation when they have any. The constitution
+ * runs alone, then each backlog item runs its four commands in order, and up to `agents` items run at once.
  */
-export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState, finished: ReadonlySet<string> = new Set()): Promise<string> {
+export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState): Promise<string> {
   const dir = speckitDir(deps.draft);
   const texts = await inputTexts(deps.draft, backlog);
   const hash = hashOf(texts);
   await writeInputs(deps.draft, texts);
-  const resume = finished.size > 0 && (await onDisk(dir));
-  if (!resume) {
+  const items = buildSpecsIndex(deps.draft.specId, backlog).specs;
+  const decider = deps.decider && recorded(deps.decider, deps.journal, deps.journal.state.cycle);
+  const answerer = answererFor(deps, texts, backlog);
+  // The steps an earlier preparation left are read before this one clears them.
+  const earlier = deps.journal.state.speckit?.steps ?? [];
+  const plan = speckitSteps(items);
+  await deps.journal.fact(RefineEvent.SpeckitStarted, { total: plan.length, inputHash: hash });
+  // Questions an earlier preparation left unanswered are tried first: an answer changes the bases checked below.
+  await answerer.triage(untriaged(deps.journal.state.questions));
+  const keep = earlier.length > 0 && (await exists(dir));
+  const reused = keep ? await reusedSteps(dir, earlier, plan, texts, deps.journal.state.questions) : new Set<string>();
+  if (reused.size > 0) await deps.journal.fact(RefineEvent.SpeckitReused, { steps: earlier.filter((s) => reused.has(stepKey(s.command, s.itemKey))) });
+  const adjust = new Set(keep ? earlier.filter((s) => s.basis !== undefined).map((s) => stepKey(s.command, s.itemKey)) : []);
+  if (keep) await pruneFeatures(dir, items);
+  else {
     await fs.rm(dir, { recursive: true, force: true });
     await fs.mkdir(dir, { recursive: true });
     await initSpeckit(deps.exec, dir);
   }
-  const decider = deps.decider && recorded(deps.decider, deps.journal, deps.journal.state.cycle);
-  const items = buildSpecsIndex(deps.draft.specId, backlog).specs;
-  const answerer = answererFor(deps, texts, backlog);
-  // Questions an earlier preparation left unanswered are tried first. An answer to a finished step's question leaves that step stale.
-  const swept = await answerer.triage(untriaged(deps.journal.state.questions));
-  if (swept > 0 && resume) await deps.journal.fact(RefineEvent.SpeckitStale, {});
-  for (const step of speckitSteps(items)) {
-    if (deps.signal?.aborted) throw new OwnerError(`${SPECKIT_STAGE} foi interrompida.`, 'aborted');
-    if (resume && finished.has(stepKey(step.command, step.item?.key))) continue;
-    await runStep(deps, { step, hash, backlog, decider, answerer });
-  }
+  const run: RunContext = { deps, hash, texts, backlog, decider, answerer, reused, adjust };
+  await runOne(run, { command: 'constitution' });
+  const lanes = items.map(itemSteps);
+  const halt: { failed: boolean; error?: unknown } = { failed: false };
+  const worker = async (): Promise<void> => {
+    for (let lane = lanes.shift(); lane !== undefined; lane = lanes.shift()) {
+      for (const step of lane) {
+        if (halt.failed) return;
+        try {
+          await runOne(run, step);
+        } catch (error) {
+          // The first failure is the one reported: a later one, of a step that was already running, does not replace it.
+          if (!halt.failed) {
+            halt.failed = true;
+            halt.error = error;
+          }
+          return;
+        }
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(deps.agents ?? 1, lanes.length)) }, worker));
+  if (halt.failed) throw halt.error;
   return hash;
 }
 
 /**
  * One Spec Kit command, then the answers to the questions it left. An answer changes the files of its step, so a step other than
- * a specify runs once more with it; an answer that comes after that, or with a stop, leaves the preparation stale.
+ * a specify runs again with it, up to MAX_STEP_ROUNDS rounds; an answer still unresolved after that, or a stop, leaves the preparation stale.
  */
-async function runStep(deps: SpeckitDeps, run: { step: Step; hash: string; backlog: BacklogState; decider: Pick<Decider, 'decide'> | undefined; answerer: Answerer }): Promise<void> {
-  const { step, hash, backlog, decider, answerer } = run;
+async function runStep(deps: SpeckitDeps, run: { step: Step; hash: string; texts: Record<SpeckitInput, string>; backlog: BacklogState; decider: Pick<Decider, 'decide'> | undefined; answerer: Answerer; adjust: boolean }): Promise<void> {
+  const { step, hash, texts, backlog, decider, answerer, adjust } = run;
   const dir = speckitDir(deps.draft);
   // A specify step makes a new feature folder on every run, so its answers reach the steps after it instead.
   const rework = step.command === 'specify' ? undefined : { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}) };
   let answered = 0;
   for (let round = 1; ; round++) {
     await deps.journal.fact(RefineEvent.SpeckitStepStarted, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}) });
-    const result = await runCommand(deps, step, hash);
-    const featureDir = step.command === 'specify' ? await featureDirOf(dir, result.files) : undefined;
-    if (result.status === 'done') await checkOnDisk(dir, step, result.files, featureDir);
+    let result: SpeckitOutput;
+    try {
+      result = await runCommand(deps, step, hash, adjust);
+      if (result.status === 'done') await checkOnDisk(dir, step, result.files);
+    } catch (err) {
+      // A step that fails before it is recorded leaves the running list now, not when the whole preparation stops.
+      await deps.journal.fact(RefineEvent.SpeckitStepDone, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}), files: [], blocked: true });
+      throw err;
+    }
     const open = result.status === 'done' ? await openMarkers(dir, result.files) : [];
-    const dropped = result.status === 'done' ? await droppedCriteria(dir, step, featureDir ?? (step.item && deps.journal.state.speckit?.features?.[step.item.key]), backlog) : undefined;
-    const fresh = newQuestions(deps.journal.state, result.questions, step.item?.key, answererOf(step.command));
+    const dropped = result.status === 'done' ? await droppedCriteria(dir, step, backlog) : undefined;
+    const fresh = newQuestions(deps.journal.state, result.questions, step, answererOf(step.command));
     const asked = decider ? await dropRepeats(fresh, deps.journal.state.questions, decider, await isConfidential(deps.draft, deps.journal.state)) : fresh;
-    await deps.journal.fact(RefineEvent.SpeckitStepDone, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}), files: result.files, ...(featureDir ? { featureDir } : {}), ...(asked.length > 0 ? { questions: asked } : {}), ...(result.status === 'blocked' || open.length > 0 || dropped ? { blocked: true } : {}) });
+    // The basis is the one this round's files were written from, with the questions it asks counted as pending, as they are on record.
+    const pending = asked.filter((q) => !deps.journal.state.questions.some((x) => x.questionId === q.questionId)).map((q) => ({ ...q, status: 'pending', answer: null, answeredBy: null }));
+    await deps.journal.fact(RefineEvent.SpeckitStepDone, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}), files: result.files, ...(step.command === 'specify' && result.status === 'done' ? { featureDir: speckitFeatureDir(step.item!.key) } : {}), ...(asked.length > 0 ? { questions: asked } : {}), ...(result.status === 'blocked' || open.length > 0 || dropped ? { blocked: true } : {}), basis: stepBasis(step, texts, [...deps.journal.state.questions, ...pending]) });
     // The questions of a step are on record and answered before the step stops, so the owner sees what is left.
-    const count = await answerer.triage(asked, round === 1 ? rework : undefined);
+    const count = await answerer.triage(asked, rework);
     answered += count;
-    if (count > 0 && round === 1 && rework) continue;
+    if (count > 0 && rework && round < MAX_STEP_ROUNDS) continue;
     const stopped = result.status === 'blocked' || open.length > 0 || Boolean(dropped);
-    if ((count > 0 && round > 1) || (stopped && answered > 0)) await deps.journal.fact(RefineEvent.SpeckitStale, {});
+    if ((count > 0 && rework) || (stopped && answered > 0)) await deps.journal.fact(RefineEvent.SpeckitStale, {});
     if (result.status === 'blocked') throw new OwnerError(`O Spec Kit parou em ${stepName(step)}: ${result.reason}`, result.summary);
     if (open.length > 0) throw new OwnerError(`O Spec Kit deixou pontos em aberto ([NEEDS CLARIFICATION]) em ${stepName(step)}. Responda às perguntas dele ou tente de novo.`, open.join(', '));
     if (dropped) throw new OwnerError(`O Spec Kit deixou critérios de aceite de fora em ${stepName(step)}. ${TRY_AGAIN}`, dropped);

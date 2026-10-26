@@ -193,7 +193,7 @@ describe('RefineSession.runSpeckit answers from the documents', () => {
     await s.close();
   });
 
-  it('an answer that arrives after a re-run leaves the preparation stale, and a question asked again in its own words adds no row', async () => {
+  it('an answer that arrives after a re-run makes the step run again with it, and a question asked again in its own words adds no row', async () => {
     let plans = 0;
     const first = { text: 'Qual o prazo do link?', blocking: true };
     const second = { text: 'Qual o limite de envios?', blocking: true };
@@ -207,8 +207,10 @@ describe('RefineSession.runSpeckit answers from the documents', () => {
     await briefing(s);
     await s.runSpeckit();
     expect(s.state.questions.map((q) => q.status)).toEqual(['answered', 'answered']);
-    expect(s.state.speckit?.stale).toBe(true);
-    expect(canStart(s.state)).toBe(false);
+    // The plan ran three times: the second answer came in its second round, and the third round took it into the plan.
+    expect(plans).toBe(3);
+    expect(s.state.speckit?.stale).toBe(false);
+    expect(canStart(s.state)).toBe(true);
     await s.close();
   });
 
@@ -314,9 +316,9 @@ describe('RefineSession.runSpeckit', () => {
     expect(agentCalls[0]!.extraAllow).toEqual(expect.arrayContaining(['Bash(bash:*)', 'Bash(.specify/scripts/bash/*:*)', `Read(//${`${draft().root}/speckit-input`.replace(/^\/+/, '')}/**)`]));
     const types = s.events.map((e) => e.type).filter((t) => t.startsWith('SPECKIT_'));
     expect(types).toEqual([RefineEvent.SpeckitStarted, ...Array.from({ length: 9 }, () => [RefineEvent.SpeckitStepStarted, RefineEvent.SpeckitStepDone]).flat(), RefineEvent.SpeckitDone]);
-    expect(s.events.find((e) => e.type === RefineEvent.SpeckitStarted)!.data).toMatchObject({ total: 9, resumed: 0, inputHash: expect.any(String) });
+    expect(s.events.find((e) => e.type === RefineEvent.SpeckitStarted)!.data).toMatchObject({ total: 9, inputHash: expect.any(String) });
     expect(s.events.find((e) => e.type === RefineEvent.SpeckitStepStarted && e.data.command === 'plan')!.data).toEqual({ command: 'plan', itemKey: 'login' });
-    expect(s.events.find((e) => e.type === RefineEvent.SpeckitStepDone && e.data.command === 'plan')!.data).toEqual({ command: 'plan', itemKey: 'login', files: ['specs/login/plan.md'] });
+    expect(s.events.find((e) => e.type === RefineEvent.SpeckitStepDone && e.data.command === 'plan')!.data).toEqual({ command: 'plan', itemKey: 'login', files: ['specs/login/plan.md'], basis: expect.any(String) });
     expect(s.state.speckit).toMatchObject({ status: 'done', stale: false, total: 9 });
     expect(s.state.speckit!.steps).toHaveLength(9);
     expect(canStart(s.state)).toBe(true);
@@ -541,27 +543,14 @@ describe('RefineSession.runSpeckit', () => {
     expect(p.feedback).toContain('/w/in/briefing.md');
   });
 
-  it('keeps the feature directory Spec Kit numbered for each item, from the files or else from .specify/feature.json', async () => {
-    const folders: Record<string, string> = { login: 'specs/001-login-page', cart: 'specs/002-cart' };
-    answer = async (req) => {
-      const [command, key] = stepOf(req).split(':');
-      if (stepOf(req) === 'specify:login') return wrote(req, ['specs/001-login-page/spec.md', 'specs/001-login-page/checklists/requirements.md']);
-      // The cart's specify reports no file, so its folder comes from .specify/feature.json.
-      if (stepOf(req) === 'specify:cart') {
-        await wrote(req, ['specs/002-cart/spec.md']);
-        return fs.writeFile(`${req.cwd}/.specify/feature.json`, '{"feature_directory":"specs/002-cart"}').then(() => ({ status: 'done', summary: 'ok', files: [] }));
-      }
-      return wrote(req, key ? [`${folders[key]}/${OWN_FILE[command!]}`] : []);
-    };
-    exec = async (spec) => {
-      await fs.mkdir(`${spec.cwd}/.specify`, { recursive: true });
-      return { exitCode: 0, signal: null, stdout: '', stderr: '', timedOut: false, durationMs: 1, truncated: false };
-    };
+  it("names each item's feature folder after its key, and hands it to that item's steps in the environment", async () => {
     const s = await detailedSession();
     await s.runSpeckit();
-    expect(s.state.speckit?.features).toEqual({ login: 'specs/001-login-page', cart: 'specs/002-cart' });
+    expect(s.state.speckit?.features).toEqual({ login: 'specs/login', cart: 'specs/cart' });
+    expect(agentCalls.find((r) => stepOf(r) === 'specify:login')!.extraEnv).toEqual({ SPECIFY_FEATURE_DIRECTORY: 'specs/login', SPECIFY_FEATURE_NO_PERSIST: '1' });
+    expect(agentCalls.find((r) => stepOf(r) === 'constitution:')!.extraEnv).toBeUndefined();
     await s.close();
-    expect(await speckitFeatureOf(draft().root, 'cart')).toBe('specs/002-cart');
+    expect(await speckitFeatureOf(draft().root, 'cart')).toBe('specs/cart');
     expect(await speckitFeatureOf(draft().root, 'other')).toBeUndefined();
   });
 
@@ -591,7 +580,7 @@ describe('RefineSession.runSpeckit', () => {
   it('a specify step whose feature folder is not on disk fails, and records no feature', async () => {
     answer = async (req) => {
       if (stepOf(req) !== 'specify:cart') return done(req);
-      // Spec Kit recorded a folder it never made, and the step reports no file.
+      // Spec Kit recorded a folder it never made, and the step reports no file; the item's own folder is the one that counts.
       await fs.mkdir(`${req.cwd}/.specify`, { recursive: true });
       await fs.writeFile(`${req.cwd}/.specify/feature.json`, '{"feature_directory":"specs/002-cart"}');
       return { status: 'done', summary: 'ok', files: [] };
@@ -600,7 +589,7 @@ describe('RefineSession.runSpeckit', () => {
     await s.runSpeckit();
     expect(s.state.speckit).toMatchObject({ status: 'failed' });
     expect(s.state.speckit?.error).toContain('não criou a pasta da feature em /speckit-specify de cart');
-    expect(s.events.find((e) => e.type === RefineEvent.SpeckitFailed)!.data.detail).toContain('specs/002-cart');
+    expect(s.events.find((e) => e.type === RefineEvent.SpeckitFailed)!.data.detail).toContain('no specs/cart/spec.md');
     expect(s.state.speckit?.features).toEqual({ login: 'specs/login' });
     await s.close();
   });
@@ -707,6 +696,171 @@ describe('RefineSession.runSpeckit', () => {
     await s.saveDoc('stack.md', '# Stack\n\nGo\n');
     await s.runSpeckit();
     expect(s.events.filter((e) => e.type === RefineEvent.SpeckitDone).at(-1)!.data.inputHash).not.toBe(first);
+    await s.close();
+  });
+});
+
+describe('RefineSession.runSpeckit in parallel, and from an earlier run', () => {
+  /** The detailed session, reopened with the options given. */
+  async function detailedWith(extra: { speckitAgents?: () => Promise<number> }): Promise<RefineSession> {
+    const s = await detailedSession();
+    await s.close();
+    return RefineSession.open({ ...deps(), ...extra });
+  }
+  const pause = () => new Promise((resolve) => setTimeout(resolve, 5));
+
+  it('runs the items side by side, never more than the agents setting, and the constitution alone before them', async () => {
+    let active = 0;
+    let peak = 0;
+    const order: string[] = [];
+    answer = async (req) => {
+      const name = stepOf(req);
+      order.push(`start ${name}`);
+      active += 1;
+      peak = Math.max(peak, active);
+      await pause();
+      active -= 1;
+      order.push(`end ${name}`);
+      return done(req);
+    };
+    const s = await detailedWith({ speckitAgents: async () => 2 });
+    await s.runSpeckit();
+    expect(s.state.speckit).toMatchObject({ status: 'done', total: 9 });
+    expect(peak).toBe(2);
+    expect(order.slice(0, 2)).toEqual(['start constitution:', 'end constitution:']);
+    for (const key of ['login', 'cart']) {
+      expect(order.filter((line) => line.startsWith('start') && line.endsWith(`:${key}`))).toEqual([`start specify:${key}`, `start clarify:${key}`, `start plan:${key}`, `start tasks:${key}`]);
+    }
+    expect(s.state.speckit!.steps).toHaveLength(9);
+    await s.close();
+  });
+
+  it('a step that stops one item keeps the other from starting a new step, and the first error is reported', async () => {
+    answer = async (req) => {
+      if (stepOf(req) === 'specify:login') return { status: 'blocked', summary: 'parou', files: [], reason: 'o login não fecha' };
+      await pause();
+      return done(req);
+    };
+    const s = await detailedWith({ speckitAgents: async () => 2 });
+    await s.runSpeckit();
+    expect(s.state.speckit).toMatchObject({ status: 'failed' });
+    expect(s.state.speckit?.error).toContain('/speckit-specify de login');
+    expect(agentCalls.map(stepOf)).toEqual(['constitution:', 'specify:login', 'specify:cart']);
+    await s.close();
+  });
+
+  it('two items asking the same question at once leave one question on record', async () => {
+    answer = async (req) => {
+      const out = await done(req);
+      return stepOf(req).startsWith('specify') ? { ...out, questions: [{ text: 'Qual o prazo do link?', blocking: false }] } : out;
+    };
+    const s = await detailedWith({ speckitAgents: async () => 2 });
+    await s.runSpeckit();
+    expect(s.state.questions.map((q) => q.text)).toEqual(['Qual o prazo do link?']);
+    await s.close();
+  });
+
+  it('a second preparation of the same inputs runs no agent step and calls Spec Kit init no more', async () => {
+    const s = await detailedSession();
+    await s.runSpeckit();
+    const calls = agentCalls.length;
+    const inits = execCalls.length;
+    await s.runSpeckit();
+    expect(agentCalls).toHaveLength(calls);
+    expect(execCalls).toHaveLength(inits);
+    expect(s.state.speckit).toMatchObject({ status: 'done', total: 9 });
+    expect(s.state.speckit!.steps).toHaveLength(9);
+    expect(s.state.speckit!.steps.every((step) => step.reused)).toBe(true);
+    expect(canStart(s.state)).toBe(true);
+    await s.close();
+  });
+
+  it("after an owner's answer, the next preparation runs every step again, on the files it has", async () => {
+    let asks = true;
+    answer = async (req) => {
+      const out = await done(req);
+      if (asks && stepOf(req) === 'plan:login') {
+        asks = false;
+        return { ...out, questions: [{ text: 'Quantas tentativas?', blocking: false }] };
+      }
+      return out;
+    };
+    const s = await detailedSession();
+    await s.runSpeckit();
+    const question = s.state.questions.find((q) => q.text === 'Quantas tentativas?')!;
+    expect(question.status).toBe('pending');
+    await s.answer(question.questionId, '5 tentativas');
+    const before = agentCalls.length;
+    const inits = execCalls.length;
+    await s.runSpeckit();
+    expect(agentCalls.slice(before).map(stepOf)).toEqual(['constitution:', 'specify:login', 'clarify:login', 'plan:login', 'tasks:login', 'specify:cart', 'clarify:cart', 'plan:cart', 'tasks:cart']);
+    expect(agentCalls.slice(before).every((r) => r.pack.feedback!.includes('Its files from an earlier run'))).toBe(true);
+    expect(execCalls).toHaveLength(inits);
+    expect(s.state.speckit).toMatchObject({ status: 'done', total: 9 });
+    expect(s.state.speckit!.steps).toHaveLength(9);
+    await s.close();
+  });
+
+  it('an item removed from the backlog loses its feature folder from the staging folder', async () => {
+    const s = await detailedSession();
+    await s.runSpeckit();
+    await s.close();
+    const journal = await RefineJournal.open(draft().events, { projectId: 'hello-app', specId: 'hello-001' });
+    await journal.fact(RefineEvent.BacklogDerived, { project: null, epics: [], items: [item('login', 1)], cycle: 1 });
+    await journal.close();
+    const reopened = await RefineSession.open(deps());
+    await reopened.runSpeckit();
+    await expect(fs.access(`${draft().root}/speckit/specs/cart`)).rejects.toThrow();
+    await fs.access(`${draft().root}/speckit/specs/login`);
+    await reopened.close();
+  });
+
+  it('reports the first failure, not a later one of a step that was already running', async () => {
+    answer = async (req) => {
+      if (stepOf(req) === 'constitution:') return done(req);
+      if (stepOf(req) === 'specify:login') return { status: 'blocked', summary: 'parou', files: [], reason: 'o login não fecha' };
+      await pause();
+      return null;
+    };
+    const s = await detailedWith({ speckitAgents: async () => 2 });
+    await s.runSpeckit();
+    expect(s.state.speckit?.error).toContain('/speckit-specify de login');
+    await s.close();
+  });
+
+  it('a step whose file is gone from the folder runs again, even when its basis still matches', async () => {
+    const s = await detailedSession();
+    await s.runSpeckit();
+    await fs.rm(`${draft().root}/speckit/specs/login/plan.md`);
+    const calls = agentCalls.length;
+    await s.runSpeckit();
+    expect(agentCalls.slice(calls).map(stepOf)).toEqual(['plan:login']);
+    await s.close();
+  });
+
+  it('a question a step leaves pending does not make the next preparation run that step again', async () => {
+    answer = async (req) => {
+      const out = await done(req);
+      return stepOf(req) === 'clarify:login' ? { ...out, questions: [{ text: 'Qual o limite?', blocking: false }] } : out;
+    };
+    const s = await detailedSession();
+    await s.runSpeckit();
+    const calls = agentCalls.length;
+    await s.runSpeckit();
+    expect(agentCalls.slice(calls).map(stepOf)).toEqual([]);
+    await s.close();
+  });
+
+  it('shows the preparation as started before the questions an earlier one left are tried', async () => {
+    answer = askItems({ login: [{ text: 'Qual o prazo do link?', blocking: false }] });
+    const s = await detailedSession();
+    await s.runSpeckit();
+    const from = s.events.length;
+    answerFromDocs = answersIn;
+    await s.runSpeckit();
+    const types = s.events.slice(from).map((e) => e.type);
+    expect(types.indexOf(RefineEvent.SpeckitStarted)).toBeGreaterThanOrEqual(0);
+    expect(types.indexOf(RefineEvent.SpeckitStarted)).toBeLessThan(types.indexOf(RefineEvent.SpeckitTriaged));
     await s.close();
   });
 });

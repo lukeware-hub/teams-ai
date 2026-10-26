@@ -45,10 +45,12 @@ const settle = async () => {
 /** The Spec Kit preparation a wizard backlog's start waits for; the registry fakes `specify`, and one item takes five steps. */
 const prepareSpeckit = async (url: string) => {
   // Each item command writes its own file in the feature folder, keeping the criterion ids of the item's spec.
-  const specs = Object.values((await snapshot()).state.backlog.specs) as Array<{ spec: { acceptanceCriteria: Array<{ id: string }> } }>;
+  const backlog = (await snapshot()).state.backlog;
+  const specs = Object.values(backlog.specs) as Array<{ spec: { acceptanceCriteria: Array<{ id: string }> } }>;
   const content = specs.flatMap((s) => s.spec.acceptanceCriteria.map((c) => c.id)).join(', ');
+  const [key] = Object.keys(backlog.specs);
   const own: Record<string, string> = { specify: 'spec.md', plan: 'plan.md', tasks: 'tasks.md' };
-  script['speckit/dev'] = ['constitution', 'specify', 'clarify', 'plan', 'tasks'].map((command) => ({ status: 'done', summary: 'ok', files: own[command] ? [`specs/001-item/${own[command]}`] : [], questions: [], content }));
+  script['speckit/dev'] = ['constitution', 'specify', 'clarify', 'plan', 'tasks'].map((command) => ({ status: 'done', summary: 'ok', files: own[command] ? [`specs/${key}/${own[command]}`] : [], questions: [], content }));
   expect((await call('POST', `${url}/speckit`)).status).toBe(202);
   await settle();
   expect((await snapshot()).state.speckit).toMatchObject({ status: 'done', stale: false });

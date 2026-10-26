@@ -78,20 +78,30 @@ describe('stage 7 of a new project prepares the development', () => {
   it('shows the progress while the Spec Kit prepares', () => {
     renderView(wizard({ speckit: speckit({ status: 'running', total: 4, steps: [{ command: 'constitution' }, { command: 'specify', itemKey: 'base' }] }) as never }), handlersWithSpeckit());
     expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('2');
-    expect(screen.getByTestId('speckit-running').textContent).toContain('Etapa 3 de 4');
+    expect(screen.getByTestId('speckit-running').textContent).toContain('2 de 4 etapas concluídas · 0 em andamento');
     expect((screen.getByTestId('speckit-prepare') as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('lists every step in order: the finished ones with their time, the running one, and the ones to come', () => {
     const finished = { command: 'constitution', startedAt: '2026-10-25T10:00:00Z', endedAt: '2026-10-25T10:01:05Z' };
-    renderView(wizard({ speckit: speckit({ status: 'running', startedAt: new Date().toISOString(), total: 5, steps: [finished], current: { command: 'specify', itemKey: 'base' } }) as never }), handlersWithSpeckit());
-    expect(screen.getByTestId('speckit-running').textContent).toContain('Etapa 2 de 5: Spec de Base');
+    renderView(wizard({ speckit: speckit({ status: 'running', startedAt: new Date().toISOString(), total: 5, steps: [finished], running: [{ command: 'specify', itemKey: 'base' }] }) as never }), handlersWithSpeckit());
+    expect(screen.getByTestId('speckit-running').textContent).toContain('1 de 5 etapas concluídas · 1 em andamento');
     expect(screen.getByTestId('evaluation-timer')).toBeTruthy();
     const rows = [...screen.getByTestId('speckit-steps').querySelectorAll('li')];
     expect(rows.map((row) => row.dataset.state)).toEqual(['done', 'running', 'pending', 'pending', 'pending']);
     expect(rows[0]!.textContent).toContain('1 min 5 s');
     expect(rows[2]!.textContent).toContain('Esclarecimento de Base');
+  });
+
+  it('shows every step running at once with its spinner, and a step kept from an earlier run as reaproveitada', () => {
+    const kept = { command: 'constitution', reused: true };
+    renderView(wizard({ speckit: speckit({ status: 'running', startedAt: new Date().toISOString(), total: 5, steps: [kept], running: [{ command: 'specify', itemKey: 'base' }, { command: 'clarify', itemKey: 'base' }] }) as never }), handlersWithSpeckit());
+    expect(screen.getByTestId('speckit-running').textContent).toContain('1 de 5 etapas concluídas · 2 em andamento · 1 reaproveitada');
+    const rows = [...screen.getByTestId('speckit-steps').querySelectorAll('li')];
+    expect(rows.map((row) => row.dataset.state)).toEqual(['done', 'running', 'running', 'pending', 'pending']);
+    expect(rows[0]!.textContent).toContain('Reaproveitada');
+    expect(rows[1]!.textContent).toContain('em andamento');
   });
 
   it('says why a failed preparation stopped, and lets the owner try again', () => {
@@ -152,7 +162,7 @@ describe('stage 7 of a new project prepares the development', () => {
   });
 
   it('the steps of a running preparation sit behind a closed list, and a finished step says Feito', () => {
-    renderView(wizard({ speckit: speckit({ status: 'running', total: 3, steps: [{ command: 'constitution' }], current: { command: 'specify', itemKey: 'base' } }) as never }), handlersWithSpeckit());
+    renderView(wizard({ speckit: speckit({ status: 'running', total: 3, steps: [{ command: 'constitution' }], running: [{ command: 'specify', itemKey: 'base' }] }) as never }), handlersWithSpeckit());
     expect((screen.getByTestId('speckit-log') as HTMLDetailsElement).open).toBe(false);
     expect(screen.getByTestId('speckit-steps').textContent).toContain('Feito');
     expect(screen.getByTestId('start-reason').textContent).toContain('em andamento');

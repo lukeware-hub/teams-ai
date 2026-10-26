@@ -17,6 +17,9 @@ export interface SpeckitItem {
 export const SPECKIT_INPUTS = ['project.md', 'flow.md', 'briefing.md', 'stack.md', 'design.md', 'specs.md'] as const;
 export type SpeckitInput = (typeof SPECKIT_INPUTS)[number];
 
+/** The feature folder of one backlog item, named after its key, so every run and every parallel step finds the same one. */
+export const speckitFeatureDir = (key: string): string => path.posix.join('specs', key);
+
 /** The user input of one command: the constitution reads the project inputs, an item command its section of specs.md. */
 function argumentsOf(command: SpeckitCommand, inputDir: string, item: SpeckitItem | undefined): string {
   const input = (file: SpeckitInput) => path.posix.join(inputDir, file);
@@ -24,14 +27,18 @@ function argumentsOf(command: SpeckitCommand, inputDir: string, item: SpeckitIte
     return `Write the constitution of this project from the principles in ${input('project.md')}, the stack in ${input('stack.md')} and the visual contract in ${input('design.md')}, plus these rules:\n${QUALITY_RULES}`;
   }
   const entry = `The backlog item is the section "## ${item!.key}: ${item!.title}" of ${input('specs.md')}`;
-  if (command === 'specify') return `${entry}. Specify it from that section, keeping its acceptance criterion ids, with the other five files as context.`;
-  if (command === 'clarify') return `${entry}. Clarify the current feature against that section and the other five files, keeping its acceptance criterion ids.`;
-  if (command === 'plan') return `${entry}. Plan the current feature with ${input('stack.md')}, ${input('design.md')} and the item's pre-plan in that section, keeping its acceptance criterion ids.`;
-  return `${entry}. Break the plan of the current feature into tasks, keeping the acceptance criterion ids.`;
+  const folder = speckitFeatureDir(item!.key);
+  if (command === 'specify') return `${entry}. Specify it from that section, keeping its acceptance criterion ids, with the other five files as context. Its feature folder is ${folder}: write it there and nowhere else, never picking a number.`;
+  if (command === 'clarify') return `${entry}. Clarify the feature in ${folder} against that section and the other five files, keeping its acceptance criterion ids.`;
+  if (command === 'plan') return `${entry}. Plan the feature in ${folder} with ${input('stack.md')}, ${input('design.md')} and the item's pre-plan in that section, keeping its acceptance criterion ids.`;
+  return `${entry}. Break the plan in ${folder} into tasks, keeping the acceptance criterion ids.`;
 }
 
+/** The note of a step that runs again on the files of its earlier run, which are already in the staging folder. */
+const ADJUST_NOTE = `- Its files from an earlier run are already in this folder: read them first, keep what is still right, and change only what the owner's decisions and the changed documents require. Never copy the template over them, and never rewrite the constitution or a spec from scratch.`;
+
 /** One Spec Kit command run by an agent in the staging folder, where `specify init` put the skills it follows. */
-export function speckitPack(input: { command: SpeckitCommand; specHash: string; inputDir: string; item?: SpeckitItem; decisions?: readonly SpecDecision[] }): ContextPackInput {
+export function speckitPack(input: { command: SpeckitCommand; specHash: string; inputDir: string; item?: SpeckitItem; decisions?: readonly SpecDecision[]; adjust?: boolean }): ContextPackInput {
   const feedback = [
     `Run the Spec Kit command /speckit-${input.command} in this folder: read .claude/skills/speckit-${input.command}/SKILL.md with the Read tool and follow it, with the text under "### arguments" as the user input.`,
     `- Your inputs are these six Markdown files, read with the Read tool: ${SPECKIT_INPUTS.map((file) => path.posix.join(input.inputDir, file)).join(', ')}. specs.md lists the backlog items in order, each in its own section with its acceptance criteria and pre-plan. Every spec.md, plan.md and tasks.md you write is derived from these six files only.`,
@@ -43,6 +50,7 @@ export function speckitPack(input: { command: SpeckitCommand; specHash: string; 
     '- Write only under .specify/ and specs/ in this folder; never change .claude/ or the inputs.',
     '- Write the content in Brazilian Portuguese; keep the template headings, ids, code names and commands as they are.',
     '- Answer status done with the files you wrote in `files` (paths relative to this folder) and a one-sentence `summary`; answer status blocked with `reason` when the command cannot finish.',
+    ...(input.adjust ? [ADJUST_NOTE] : []),
     `### arguments\n${argumentsOf(input.command, input.inputDir, input.item)}`,
   ].join('\n\n');
   return { kind: 'speckit', role: 'dev', specHash: input.specHash, principles: [], outputContract: outputContract('speckit'), criteria: [], feedback, budgetTokens: 8_000, decisions: input.decisions };

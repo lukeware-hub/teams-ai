@@ -1,10 +1,11 @@
+import { stepKey } from '@server/refine/speckit-steps';
 import type { Snapshot } from '../api.js';
 import { Icon } from '../components/Icons.js';
 import { formatDuration } from '../run/selectors.js';
 import { ProcessBox } from './ProcessingBanner.js';
 
 type Speckit = Snapshot['state']['speckit'];
-type Command = { command: string; itemKey?: string; startedAt?: string; endedAt?: string };
+type Command = { command: string; itemKey?: string; startedAt?: string; endedAt?: string; reused?: boolean };
 type Row = { step: Command; state: 'done' | 'running' | 'pending' };
 
 const COMMAND = { constitution: 'Constituição do projeto', specify: 'Spec', clarify: 'Esclarecimento', plan: 'Plano', tasks: 'Tarefas' } as Record<string, string>;
@@ -22,13 +23,21 @@ function durationOf(step: Command): string {
   return Number.isNaN(ms) ? '' : formatDuration(ms);
 }
 
-/** Every step of the preparation in order: the finished ones, the running one, then the planned ones still to come. */
+/** What a finished row says: a step kept from an earlier run, or how long it took. */
+function doneLabel(step: Command): string {
+  if (step.reused) return 'Reaproveitada';
+  const time = durationOf(step);
+  return `Feito${time ? ` · ${time}` : ''}`;
+}
+
+/** Every step of the preparation: the finished ones, the running ones, then the planned ones still to come. */
 function rowsOf(speckit: NonNullable<Speckit>, plan: readonly Command[]): Row[] {
-  const ahead = plan.slice(speckit.steps.length + (speckit.current ? 1 : 0));
+  const running = speckit.running ?? [];
+  const started = new Set([...speckit.steps, ...running].map((step) => stepKey(step.command, step.itemKey)));
   return [
     ...speckit.steps.map((step): Row => ({ step, state: 'done' })),
-    ...(speckit.current ? [{ step: speckit.current, state: 'running' as const }] : []),
-    ...ahead.map((step): Row => ({ step, state: 'pending' })),
+    ...running.map((step): Row => ({ step, state: 'running' })),
+    ...plan.filter((step) => !started.has(stepKey(step.command, step.itemKey))).map((step): Row => ({ step, state: 'pending' })),
   ];
 }
 
@@ -47,10 +56,12 @@ export function SpeckitStatus({ speckit, titles, plan = [], waiting = false }: {
   if (speckit.status === 'running') {
     const done = speckit.steps.length;
     const total = speckit.total ?? done;
-    const current = speckit.current ? `: ${commandName(speckit.current, titles)}` : '';
+    const running = speckit.running?.length ?? 0;
+    const reused = speckit.steps.filter((step) => step.reused).length;
+    const summary = `${done} de ${total} etapas concluídas · ${running} em andamento${reused > 0 ? ` · ${reused} ${reused === 1 ? 'reaproveitada' : 'reaproveitadas'}` : ''}`;
     return (
       <ProcessBox title="Preparação do Spec Kit em andamento" since={speckit.startedAt} testId="speckit-running">
-        <span className="text-[0.75rem] leading-[1.35]">Etapa {Math.min(done + 1, total)} de {total}{current}</span>
+        <span className="text-[0.75rem] leading-[1.35]">{summary}</span>
         <div role="progressbar" aria-label="Preparação do Spec Kit" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} className="h-1.5 overflow-hidden rounded-full bg-accent-line">
           <div className="h-full rounded-full bg-accent transition-[width] duration-300 ease-out" style={{ width: `${total > 0 ? Math.round((done / total) * 100) : 0}%` }} />
         </div>
@@ -64,7 +75,7 @@ export function SpeckitStatus({ speckit, titles, plan = [], waiting = false }: {
               <li key={i} data-state={state} className={`flex items-center gap-2 ${state === 'pending' ? 'text-ink-soft' : ''}`}>
                 <span className="grid size-4 flex-none place-items-center">{rowIcon[state]}</span>
                 <span className="min-w-0 flex-1">{commandName(step, titles)}</span>
-                <span className="flex-none tabular-nums">{state === 'running' ? 'em andamento' : state === 'done' ? `Feito${durationOf(step) ? ` · ${durationOf(step)}` : ''}` : ''}</span>
+                <span className="flex-none tabular-nums">{state === 'running' ? 'em andamento' : state === 'done' ? doneLabel(step) : ''}</span>
               </li>
             ))}
           </ol>

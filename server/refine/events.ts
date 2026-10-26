@@ -1,3 +1,4 @@
+import type { SpeckitCommand } from './speckit-pack.js';
 import type { DocFile } from './draft.js';
 
 export const RefineEvent = {
@@ -56,8 +57,10 @@ export const RefineEvent = {
   PreplanDerived: 'PREPLAN_DERIVED',
   /** The SM's map of items that change the same code and never run together: `{inputHash, pairs}`. */
   ConflictsDerived: 'CONFLICTS_DERIVED',
-  /** "Preparar Spec Kit" started: `{total, inputHash, resumed}`: the steps (the constitution plus three per backlog item), the hash of the six inputs, and the finished steps it skips. */
+  /** "Preparar Spec Kit" started: `{total, inputHash}`: the steps (the constitution plus four per backlog item) and the hash of the six inputs. */
   SpeckitStarted: 'SPECKIT_STARTED',
+  /** The steps of an earlier preparation that this one keeps: `{steps}`, each with its command, item, basis and times. */
+  SpeckitReused: 'SPECKIT_REUSED',
   /** One Spec Kit command started: `{command, itemKey?}`, so the owner sees what runs now. */
   SpeckitStepStarted: 'SPECKIT_STEP_STARTED',
   /** One Spec Kit command finished: `{command, itemKey?, files}`. */
@@ -102,6 +105,8 @@ export interface Question {
   origin?: 'speckit';
   /** The backlog item a Spec Kit question is about. */
   itemKey?: string;
+  /** The Spec Kit command that asked a Spec Kit question. */
+  command?: SpeckitCommand;
   /** The plain words the owner reads about a Spec Kit question: what it is about and why it needs a decision. */
   context?: string;
 }
