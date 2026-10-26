@@ -218,6 +218,8 @@ export interface ViewProps {
   onEnableBacklog?(): void | Promise<unknown>;
   /** Stage 7: the owner asks the Spec Kit to prepare the spec, plan and tasks of every backlog item. */
   onPrepareSpeckit?(): void | Promise<unknown>;
+  /** "Pedir ao PO e ao SM": the PO and the SM answer the Spec Kit questions nobody has read yet, from the documents. */
+  onAskSpeckitAnswers?(): void | Promise<unknown>;
   /** The owner moves on from a document's stage; `false` says the server refused. */
   onContinueStage?(doc?: DocFile): void | boolean | Promise<unknown>;
   /** The owner moves on from the final review to the backlog; `false` says the server refused. */
@@ -1067,12 +1069,27 @@ export function RefinementView(p: ViewProps) {
   };
   // After the first processing the text passed is kept, so the one button of the stage reprocesses from it.
   const reprocess = isDocStep(step) && (st.passedStages ?? []).includes(step);
+  // "Pedir ao PO e ao SM": the questions nobody has read yet; the page shows the request while the PO and the SM work on it.
+  const unread = speckitAsked.filter((q) => q.context === undefined).length;
+  const answering = st.speckitAnswering === true;
+  const askAgents = backlogOn && st.stages === true && unread > 0 ? (
+    <div className="grid gap-2 rounded-lg border border-line bg-surface p-4" data-testid="ask-agents-block">
+      <p className="m-0 text-[0.875rem] text-ink">{unread === 1 ? '1 pergunta ainda não foi lida pelo PO e pelo SM.' : `${unread} perguntas ainda não foram lidas pelo PO e pelo SM.`}</p>
+      <p className="m-0 text-[0.8125rem] text-ink-soft">Eles leem os seis documentos e respondem o que já está resolvido. O resto fica com você.</p>
+      <div>
+        <ActionButton data-testid="ask-agents" className="secondary" busy={answering} disabled={locked || answering || speckitRunning} onClick={() => p.onAskSpeckitAnswers?.()} icon={<Icon name="send" size={16} />}>
+          {answering ? 'Perguntando ao PO e ao SM…' : 'Pedir ao PO e ao SM'}
+        </ActionButton>
+      </div>
+    </div>
+  ) : null;
   const backlogScreen = () => (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6" data-testid="backlog-stage">
       {backlogStageHeading}
       {backlogOn && st.stages === true && <SpeckitStatus speckit={speckit} titles={backlogTitles} plan={speckitPlan} waiting={speckitAsked.some((q) => q.blocking)} />}
+      {askAgents}
       {!locked && !speckitRunning && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
-      {agentAnswers.length > 0 && <AgentAnswers rows={agentAnswers} titles={backlogTitles} />}
+      {agentAnswers.length > 0 && <AgentAnswers rows={agentAnswers} titles={backlogTitles} locked={locked} onAnswer={(id, text) => p.onAnswer(id, text, false)} />}
       {backlogBlock}
     </div>
   );
@@ -1292,6 +1309,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}
         onPrepareSpeckit={act(() => refineApi.speckit(projectId, specId))}
+        onAskSpeckitAnswers={act(() => refineApi.askSpeckitAnswers(projectId, specId))}
         onContinueStage={(doc) => refineApi.continueStage(projectId, specId, doc).then(() => true, (e: Error) => (setError(e.message), false))}
         onCloseReview={() => refineApi.closeReview(projectId, specId).then(() => true, (e: Error) => (setError(e.message), false))}
         onReprocessStage={(f) => act(() => refineApi.reprocessStage(projectId, specId, f))()}

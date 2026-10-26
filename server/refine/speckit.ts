@@ -18,7 +18,7 @@ import { speckitSteps, stepKey, type Step } from './speckit-steps.js';
 import { renderSpecsMd } from './specs-md.js';
 import { buildSpecsIndex, specIdOf } from './specs-index.js';
 import { loadEvents } from '../store/event-store.js';
-import { reduceRefineEvents, type BacklogState, type RefineState } from './state.js';
+import { reduceRefineEvents, type BacklogState, type QuestionRow, type RefineState } from './state.js';
 import type { Question } from './events.js';
 import { decisionsOf } from './decisions.js';
 import { answererOf, makeAnswerer, type Answerer } from './speckit-answers.js';
@@ -60,6 +60,21 @@ export async function speckitFeatureOf(draftRoot: string, specId: string): Promi
   const state = reduceRefineEvents(events);
   const key = state.backlog?.items.find((i) => specIdOf(path.basename(draftRoot), i.key, state.backlog?.keyIds) === specId)?.key;
   return key ? state.speckit?.features?.[key] : undefined;
+}
+
+/** The answerer of a preparation: the six inputs as read now, the item titles, and the staging folder the answering agent may not read. */
+function answererFor(deps: Pick<SpeckitDeps, 'draft' | 'journal' | 'runAgent' | 'signal'>, texts: Record<SpeckitInput, string>, backlog: BacklogState): Answerer {
+  const titles = new Map(buildSpecsIndex(deps.draft.specId, backlog).specs.map((i): [string, string] => [i.key, i.title]));
+  return makeAnswerer({ draft: deps.draft, journal: deps.journal, runAgent: deps.runAgent, texts, hash: hashOf(texts), titles, stagingDir: speckitDir(deps.draft), signal: deps.signal });
+}
+
+/** The Spec Kit questions nobody has read yet: pending, and without the card the PO or the SM writes. */
+const untriaged = (questions: readonly QuestionRow[]): QuestionRow[] => questions.filter((q) => q.origin === 'speckit' && q.status === 'pending' && q.context === undefined);
+
+/** "Pedir ao PO e ao SM": the PO and the SM read the questions nobody has read yet; returns how many they answered. */
+export async function answerUntriaged(deps: Pick<SpeckitDeps, 'draft' | 'journal' | 'runAgent' | 'signal'>, backlog: BacklogState): Promise<number> {
+  const texts = await inputTexts(deps.draft, backlog);
+  return answererFor(deps, texts, backlog).triage(untriaged(deps.journal.state.questions));
 }
 
 /** The text of the six Markdown inputs, as Spec Kit reads them. */
@@ -196,9 +211,9 @@ export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState, f
   }
   const decider = deps.decider && recorded(deps.decider, deps.journal, deps.journal.state.cycle);
   const items = buildSpecsIndex(deps.draft.specId, backlog).specs;
-  const answerer = makeAnswerer({ draft: deps.draft, journal: deps.journal, runAgent: deps.runAgent, texts, hash, titles: new Map(items.map((i): [string, string] => [i.key, i.title])), stagingDir: dir, signal: deps.signal });
+  const answerer = answererFor(deps, texts, backlog);
   // Questions an earlier preparation left unanswered are tried first. An answer to a finished step's question leaves that step stale.
-  const swept = await answerer.triage(deps.journal.state.questions.filter((q) => q.origin === 'speckit' && q.status === 'pending' && q.context === undefined));
+  const swept = await answerer.triage(untriaged(deps.journal.state.questions));
   if (swept > 0 && resume) await deps.journal.fact(RefineEvent.SpeckitStale, {});
   for (const step of speckitSteps(items)) {
     if (deps.signal?.aborted) throw new OwnerError(`${SPECKIT_STAGE} foi interrompida.`, 'aborted');

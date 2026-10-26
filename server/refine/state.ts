@@ -163,6 +163,8 @@ export interface RefineState {
   staleBy?: Partial<Record<DocFile, DocFile>>;
   /** When the latest evaluation started and ended (ISO times); `endedAt` stays null while it runs. */
   evaluation?: { startedAt: string; endedAt: string | null };
+  /** The PO and the SM are answering the open Spec Kit questions now (true from their start until their end). */
+  speckitAnswering?: boolean;
   /** The Spec Kit preparation of a detailed backlog; stale once a document or the backlog changes after it. */
   speckit?: { status: 'running' | 'done' | 'failed'; startedAt?: string; current?: { command: string; itemKey?: string; startedAt?: string }; steps: Array<{ command: string; itemKey?: string; startedAt?: string; endedAt?: string }>; total?: number; error?: string; stale: boolean; features?: Record<string, string>; inputHash?: string };
 }
@@ -532,6 +534,12 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     }
     case RefineEvent.SpeckitStale:
       markSpeckitStale(s);
+      break;
+    case RefineEvent.SpeckitAnswersStarted:
+      s.speckitAnswering = true;
+      break;
+    case RefineEvent.SpeckitAnswersDone:
+      s.speckitAnswering = false;
       break;
     case RefineEvent.SpeckitDone:
       if (s.speckit) s.speckit.status = 'done';

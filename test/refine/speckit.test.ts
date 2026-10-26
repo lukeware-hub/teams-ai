@@ -251,6 +251,53 @@ describe('RefineSession.runSpeckit answers from the documents', () => {
   });
 });
 
+describe('RefineSession.askSpeckitAnswers', () => {
+  /** A preparation whose answerer could not answer: its questions keep no card, which is what the button finds. */
+  async function unreadPreparation(): Promise<RefineSession> {
+    answer = askItems({ login: [{ text: 'Qual o prazo do link?', blocking: true }] });
+    answerFromDocs = () => null;
+    const s = await detailedSession();
+    await s.saveDoc('briefing.md', `## Regras\n\n${LINK}\n`);
+    await s.runSpeckit();
+    return s;
+  }
+
+  it('asks the PO and the SM about the questions nobody has read yet; the answers make the preparation stale', async () => {
+    const s = await unreadPreparation();
+    expect(s.state.questions.filter((q) => q.origin === 'speckit' && q.context === undefined)).toHaveLength(1);
+    answerFromDocs = answersIn;
+    await s.askSpeckitAnswers();
+    expect(s.state.questions).toEqual([expect.objectContaining({ status: 'answered', answer: '90 dias', answeredBy: 'po' })]);
+    expect(s.state.speckit?.stale).toBe(true);
+    expect(canStart(s.state)).toBe(false);
+    expect(s.state.speckitAnswering).toBeFalsy();
+    const types = s.events.map((e) => e.type);
+    expect(types).toContain(RefineEvent.SpeckitAnswersStarted);
+    expect(types).toContain(RefineEvent.SpeckitAnswersDone);
+    await s.close();
+  });
+
+  it('refuses while a preparation runs', async () => {
+    const s = await unreadPreparation();
+    const run = s.runSpeckit();
+    expect(() => s.askSpeckitAnswers()).toThrow(ConflictError);
+    await run;
+    await s.close();
+  });
+
+  it('lets the owner replace an answer the PO or the SM gave, and refuses to replace the owner\'s own', async () => {
+    const s = await unreadPreparation();
+    answerFromDocs = answersIn;
+    await s.askSpeckitAnswers();
+    const id = s.state.questions[0]!.questionId;
+    await expect(s.skip(id)).rejects.toThrow(ConflictError);
+    await s.answer(id, 'Minha resposta');
+    expect(s.state.questions[0]).toMatchObject({ status: 'answered', answer: 'Minha resposta', answeredBy: null });
+    await expect(s.answer(id, 'De novo')).rejects.toThrow(ConflictError);
+    await s.close();
+  });
+});
+
 describe('RefineSession.runSpeckit', () => {
   it('initializes Spec Kit in a fresh staging folder, then runs the constitution and each item in rank order', async () => {
     const s = await detailedSession();

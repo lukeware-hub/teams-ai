@@ -158,6 +158,33 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(screen.getByTestId('start-reason').textContent).toContain('em andamento');
   });
 
+  it('offers to ask the PO and the SM about the questions nobody has read yet, and sends the request', () => {
+    const h = { ...handlersWithSpeckit(), onAskSpeckitAnswers: vi.fn() };
+    const unread = { ...question(true), questionId: 'speckit-u', origin: 'speckit', itemKey: 'base', text: 'Qual o prazo?' };
+    renderView(wizard({ speckit: speckit() as never, questions: [unread as never] }), h);
+    expect(screen.getByTestId('ask-agents-block').textContent).toContain('1 pergunta ainda não foi lida');
+    fireEvent.click(screen.getByTestId('ask-agents'));
+    expect(h.onAskSpeckitAnswers).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds the request while the PO and the SM answer', () => {
+    const unread = { ...question(true), questionId: 'speckit-u', origin: 'speckit', itemKey: 'base', text: 'Qual o prazo?' };
+    renderView(wizard({ speckit: speckit() as never, questions: [unread as never], speckitAnswering: true }), handlersWithSpeckit());
+    const button = screen.getByTestId('ask-agents') as HTMLButtonElement;
+    expect(button.textContent).toContain('Perguntando ao PO e ao SM');
+    expect(button.disabled).toBe(true);
+  });
+
+  it('lets the owner replace an answer the PO or the SM gave, with his own text', () => {
+    const h = handlersWithSpeckit();
+    const agent = { ...question(true, 'answered'), questionId: 'speckit-a', origin: 'speckit', itemKey: 'base', text: 'Qual o prazo?', answer: '90 dias', answeredBy: 'po', evidence: [{ file: 'briefing.md', heading: 'Regras', quote: 'O link vale por 90 dias.' }] };
+    renderView(wizard({ speckit: speckit() as never, questions: [agent as never] }), h);
+    fireEvent.click(screen.getByTestId('own-speckit-a'));
+    fireEvent.change(screen.getByTestId('own-answer-speckit-a'), { target: { value: '30 dias' } });
+    fireEvent.click(screen.getByTestId('save-own-speckit-a'));
+    expect(h.onAnswer).toHaveBeenCalledWith('speckit-a', '30 dias', false);
+  });
+
   it('says the start waits for a blocking Spec Kit question, even when the preparation is done', () => {
     const asked = { ...question(true), questionId: 'speckit-xyz', origin: 'speckit', text: 'Qual banco de dados?' };
     renderView(wizard({ speckit: speckit() as never, questions: [asked as never] }), handlersWithSpeckit());

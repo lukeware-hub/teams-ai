@@ -438,6 +438,8 @@ export interface RefineState {
   evaluation?: { startedAt: string; endedAt: string | null };
   /** The Spec Kit preparation of a detailed backlog; stale once a document or the backlog changes after it. */
   speckit?: { status: 'running' | 'done' | 'failed'; startedAt?: string; current?: { command: string; itemKey?: string; startedAt?: string }; steps: Array<{ command: string; itemKey?: string; startedAt?: string; endedAt?: string }>; total?: number; error?: string; stale: boolean; features?: Record<string, string> };
+  /** The PO and the SM are answering the open Spec Kit questions now. */
+  speckitAnswering?: boolean;
 }
 export interface Snapshot {
   projectId: string;
@@ -502,6 +504,7 @@ export const refineApi = {
   closeReview: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/review/close`).then((r) => json<{ ok: true }>(r)),
   reprocessStage: (p: string, s: string, file: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/reprocess`).then((r) => json<{ ok: true }>(r)),
   speckit: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/speckit`).then((r) => json<{ ok: true }>(r)),
+  askSpeckitAnswers: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/speckit/answers`).then((r) => json<{ ok: true }>(r)),
   evaluateStage: (p: string, s: string, file: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/evaluate`).then((r) => json<{ ok: true }>(r)),
   confidential: (p: string, s: string, confidential: boolean) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/confidential`, { confidential }).then((r) => json<{ ok: true }>(r)),
   program: (p: string, s: string) => fetch(`${R}/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/program`).then((r) => json<{ program: ProgramView | null }>(r)),

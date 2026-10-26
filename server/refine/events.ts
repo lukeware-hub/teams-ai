@@ -70,6 +70,10 @@ export const RefineEvent = {
   SpeckitTriaged: 'SPECKIT_TRIAGED',
   /** The Spec Kit preparation no longer stands: an answer came after its files were written, so the next run starts over. */
   SpeckitStale: 'SPECKIT_STALE',
+  /** The PO and the SM started answering the open Spec Kit questions, at the owner's request. */
+  SpeckitAnswersStarted: 'SPECKIT_ANSWERS_STARTED',
+  /** The PO and the SM stopped answering the open Spec Kit questions, whether they finished or were stopped. */
+  SpeckitAnswersDone: 'SPECKIT_ANSWERS_DONE',
   /** One System 1 decision of Gate 1; same type and record shape as the run journal, so the eval harness reads both. */
   DecisionMade: 'DECISION_MADE',
 } as const;

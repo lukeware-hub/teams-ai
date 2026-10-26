@@ -465,6 +465,12 @@ describe('Spec Kit triage state', () => {
     expect(cardOnly.speckit!.steps).toEqual([{ command: 'plan', itemKey: 'login' }]);
   });
 
+  it('flags the PO and the SM answering from its start until its end', () => {
+    const answering = { type: RefineEvent.SpeckitAnswersStarted, data: {} };
+    expect(reduceRefineEvents([started, answering]).speckitAnswering).toBe(true);
+    expect(reduceRefineEvents([started, answering, { type: RefineEvent.SpeckitAnswersDone, data: {} }]).speckitAnswering).toBe(false);
+  });
+
   it('a stale mark keeps a finished preparation from standing, until it runs again', () => {
     const s = reduceRefineEvents([started, { type: RefineEvent.SpeckitDone, data: { inputHash: 'h' } }, { type: RefineEvent.SpeckitStale, data: {} }]);
     expect(s.speckit).toMatchObject({ status: 'done', stale: true });

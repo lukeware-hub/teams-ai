@@ -204,6 +204,13 @@ describe('refine api', () => {
     expect(session.state.mode).toBe('backlog');
     expect(session.state.backlog?.enabled).toBe(true);
   });
+  it('asking the PO and the SM answers 202 at once, and a session with no backlog has nothing to ask', async () => {
+    expect((await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' })).status).toBe(200);
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/speckit/answers')).status).toBe(202);
+    await settle();
+    expect((await snapshot()).state.speckitAnswering).toBeFalsy();
+  });
+
   it('suggests a document from flow.md without saving it', async () => {
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     const url = '/api/refine/hello-app/hello-app-001/docs';

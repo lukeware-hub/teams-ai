@@ -33,7 +33,7 @@ import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type Sugges
 import { allGreen, applyRefineEvent, canStart, emptyRefineState, finishedSteps, speckitPending, type BacklogState, type RefineLimits, type RefineState } from './state.js';
 import { refineLimits } from './limits.js';
 import { isStarted } from './coverage.js';
-import { prepareSpeckit, speckitInputHash, SPECKIT_STAGE } from './speckit.js';
+import { answerUntriaged, prepareSpeckit, speckitInputHash, SPECKIT_STAGE } from './speckit.js';
 import { speckitSteps } from './speckit-steps.js';
 
 export type { RunAgent } from './cycle.js';
@@ -199,6 +199,8 @@ export class RefineSession {
     if (journal.state.evaluation?.endedAt === null) await journal.fact(RefineEvent.EvaluationEnded, { interrupted: true });
     // A Spec Kit preparation cut by a restart is failed too; the owner runs it again.
     if (journal.state.speckit?.status === 'running') await journal.fact(RefineEvent.SpeckitFailed, { reason: 'A preparação foi interrompida quando o servidor reiniciou.' });
+    // The answers of the PO and the SM cut by a restart end with it, so the page does not show them as running.
+    if (journal.state.speckitAnswering) await journal.fact(RefineEvent.SpeckitAnswersDone, {});
     // A crash between enabling backlog mode and moving the briefing: finish the move.
     if (journal.state.backlog?.enabled) await moveBriefingToProject(deps.draft);
     // A continued spec carries its JSON from main before any cycle has derived one.
@@ -456,6 +458,31 @@ export class RefineSession {
     return run;
   }
 
+  /** "Pedir ao PO e ao SM": the PO and the SM answer the Spec Kit questions nobody has read yet; a new answer leaves the preparation stale. */
+  askSpeckitAnswers(): Promise<void> {
+    this.guard();
+    const backlog = this.state.backlog;
+    if (!backlog) return Promise.resolve();
+    const ctl = (this.abortCtl = new AbortController());
+    const run = this.timedAnswers(ctl, backlog).finally(() => {
+      this.running = null;
+      this.abortCtl = null;
+    });
+    this.running = run;
+    return run;
+  }
+
+  /** The journal keeps the start and the end of the answers, so the page shows them while they run. */
+  private async timedAnswers(ctl: AbortController, backlog: BacklogState): Promise<void> {
+    await this.journal.fact(RefineEvent.SpeckitAnswersStarted, {});
+    try {
+      const answered = await answerUntriaged({ draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, signal: ctl.signal }, backlog);
+      if (answered > 0 && this.state.speckit) await this.journal.fact(RefineEvent.SpeckitStale, {});
+    } finally {
+      await this.journal.fact(RefineEvent.SpeckitAnswersDone, {});
+    }
+  }
+
   /** The journal keeps the preparation's start, each step and its end; a failure is journaled for the owner, never thrown. */
   private async timedSpeckit(ctl: AbortController, backlog: BacklogState): Promise<void> {
     try {
@@ -564,17 +591,19 @@ export class RefineSession {
     await this.running?.catch(() => undefined);
   }
 
-  private question(id: string) {
+  /** The question a reply is for: pending, or answered by the PO or the SM, which the owner may replace when `replaceAgent` says so. */
+  private question(id: string, replaceAgent = false) {
     const q = this.state.questions.find((x) => x.questionId === id);
     if (!q) throw new NotFoundError(`unknown question ${id}`);
-    if (q.status !== 'pending') throw new ConflictError(`question ${id} already ${q.status}`);
+    const replaceable = replaceAgent && q.status === 'answered' && Boolean(q.answeredBy);
+    if (q.status !== 'pending' && !replaceable) throw new ConflictError(`question ${id} already ${q.status}`);
     return q;
   }
 
   /** `docsAnswered`: the owner's mark that the documents already answered it, the label the routing eval reads. */
   async answer(questionId: string, text: string, docsAnswered = false): Promise<void> {
     this.guard();
-    const q = this.question(questionId);
+    const q = this.question(questionId, true);
     // R11.10 (plan 90): a backlog reads the owner's answer from the briefing; written first, a retry rewrites the same heading.
     if (this.state.backlog?.enabled) {
       const after = recordDecision(await readDoc(this.deps.draft, 'briefing.md'), q.text, text, q.subject);
