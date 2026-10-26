@@ -36,8 +36,8 @@ export const RUN_UI = {
   panelHead: `mb-[0.85rem] ${HEAD_ROW}`,
   cardTitle: 'flex items-center justify-between gap-4',
   boxList: 'm-0 list-none divide-y divide-line overflow-hidden rounded-lg border border-line p-0',
-  banner: 'card border-bad-line',
-  bannerTitle: 'mb-[0.9rem] flex items-center gap-2 text-bad [&_svg]:flex-none',
+  banner: 'card border-warn-line',
+  bannerTitle: 'mb-[0.9rem] flex items-center gap-2 text-warn [&_svg]:flex-none',
   bannerRows:
     'm-0 grid [&>div]:grid [&>div]:grid-cols-[9rem_minmax(0,1fr)] [&>div]:gap-3 [&>div]:border-t [&>div]:border-line [&>div]:py-[0.7rem] max-md:[&>div]:grid-cols-1 max-md:[&>div]:gap-1 [&_dt]:flex [&_dt]:items-center [&_dt]:gap-1 [&_dt]:self-start [&_dt]:pt-[0.1rem] [&_dt]:text-[0.8125rem] [&_dt]:font-semibold [&_dt]:text-ink-soft [&_dd]:m-0 [&_dd]:grid [&_dd]:min-w-0 [&_dd]:justify-items-start [&_dd]:gap-2 [&_dd]:text-ink [&_dd_p]:m-0',
   raw: 'm-0 rounded-md border border-line bg-surface-sunken px-[0.9rem] py-3 text-[0.78rem] leading-normal whitespace-pre-wrap text-ink wrap-anywhere',
@@ -336,7 +336,7 @@ function Facts({ rows }: { rows: Array<[string, ReactNode] | null> }) {
   );
 }
 
-const ACTIVITY_TONE: Record<string, string> = { bad: 'text-bad', good: 'text-good' };
+const ACTIVITY_TONE: Record<string, string> = { bad: 'text-warn', good: 'text-good' };
 
 /** Plain-language events, oldest first, each with its time and link. */
 function ActivityList({ items }: { items: ActivityItem[] }) {
@@ -648,7 +648,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
         {totalTasks ? (
           <div className="col-span-full flex items-center gap-4 border-t border-line pt-4 max-md:flex-col max-md:items-stretch max-md:gap-2">
             <div
-              className="run-progress-bar flex h-1.5 flex-1 gap-[2px] overflow-hidden rounded-full bg-surface-muted [&>.seg-active]:bg-accent [&>.seg-blocked]:bg-bad [&>.seg-merged]:bg-good [&>span]:h-full [&>span]:flex-none"
+              className="run-progress-bar flex h-1.5 flex-1 gap-[2px] overflow-hidden rounded-full bg-surface-muted [&>.seg-active]:bg-accent [&>.seg-blocked]:bg-warn [&>.seg-merged]:bg-good [&>span]:h-full [&>span]:flex-none"
               role="progressbar"
               aria-label="Tarefas mescladas"
               aria-valuemin={0}
@@ -673,7 +673,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                 </span>
               ) : null}
               {tally.blocked ? (
-                <span data-testid="task-blocked" className="text-bad">
+                <span data-testid="task-blocked" className="text-warn">
                   {tally.blocked} {tally.blocked === 1 ? 'bloqueada' : 'bloqueadas'}
                 </span>
               ) : null}

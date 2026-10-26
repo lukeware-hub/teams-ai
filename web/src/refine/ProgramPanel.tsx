@@ -39,7 +39,7 @@ const ROW = 'grid grid-cols-[2.5rem_minmax(0,1fr)_8rem_5.5rem_9rem] items-center
 /** Why an item failed or waits: what happened, who has to act and what to do, with the orchestrator's own words one click away. */
 export function ItemReason({ status, reason }: { status: ProgramViewItem['status']; reason: string }) {
   const bad = status === 'failed' || status === 'blocked';
-  const tone = bad ? 'text-bad' : status === 'partial' ? 'text-warn' : 'text-ink-soft';
+  const tone = bad || status === 'partial' ? 'text-warn' : 'text-ink-soft';
   const why = bad || status === 'partial' ? explainStop(reason) : null;
   if (!why) return <p className={`m-0 text-[0.8125rem] wrap-anywhere ${tone}`}>{reason}</p>;
   return (

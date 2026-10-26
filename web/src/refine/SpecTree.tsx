@@ -27,17 +27,17 @@ export function SpecTree({ backlog, evaluating = false }: { backlog: BacklogView
           count(criteria, 'critério', 'critérios'),
           count(tasks, 'tarefa', 'tarefas'),
         ].map((text) => <li key={text} className={`${stat} border-line bg-surface text-ink-soft`}>{text}</li>)}
-        <li className={`${stat} ${gaps.length === 0 ? 'border-good-line bg-good-soft text-good' : 'border-bad bg-bad-soft text-bad'}`}>{count(gaps.length, 'lacuna', 'lacunas')}</li>
+        <li className={`${stat} ${gaps.length === 0 ? 'border-good-line bg-good-soft text-good' : 'border-warn-line bg-warn-soft text-warn'}`}>{count(gaps.length, 'lacuna', 'lacunas')}</li>
       </ul>
       {!evaluating && gaps.length > 0 && (
-        <ul className="m-0 grid gap-1 rounded-md border border-bad bg-bad-soft py-[0.6rem] pr-[0.8rem] pl-[1.6rem] text-[0.8125rem] text-bad" data-testid="tree-gaps">
+        <ul className="m-0 grid gap-1 rounded-md border border-warn-line bg-warn-soft py-[0.6rem] pr-[0.8rem] pl-[1.6rem] text-[0.8125rem] text-warn" data-testid="tree-gaps">
           {gaps.map((g, n) => <li key={n}>{g}</li>)}
         </ul>
       )}
       {matrix.sections.length > 0 && (
         <ol className="m-0 grid list-none gap-3 p-0 text-[0.8125rem]">
           {matrix.sections.map((s, n) => (
-            <li key={n} data-testid={`tree-section-${n}`} className={s.items.length > 0 ? '' : 'text-bad'}>
+            <li key={n} data-testid={`tree-section-${n}`} className={s.items.length > 0 ? '' : 'text-warn'}>
               <details className="settings-collapse">
                 <summary className="settings-collapse-summary">
                   <Icon name="chevron-right" size={16} />
@@ -70,7 +70,7 @@ export function SpecTree({ backlog, evaluating = false }: { backlog: BacklogView
                   {item.criteria.map((c) => {
                     const full = spec?.acceptanceCriteria.find((a) => a.id === c.id);
                     return (
-                      <li key={c.id} data-testid={`tree-ac-${c.id}`} className={c.tasks.length > 0 ? '' : 'text-bad'}>
+                      <li key={c.id} data-testid={`tree-ac-${c.id}`} className={c.tasks.length > 0 ? '' : 'text-warn'}>
                         {c.id}{full && <InfoTip text={criterionText(full)} />} → {c.tasks.length > 0 ? c.tasks.map((t) => `${t} ${planned.find((x) => x.id === t)?.title ?? ''}`.trim()).join(', ') : 'sem tarefa'}
                       </li>
                     );

@@ -26,6 +26,8 @@ const fieldLabel = 'text-[0.8125rem] font-semibold text-ink-soft';
 interface Problem {
   title: string;
   message: string;
+  /** A connection or internal failure, shown in the red tone. */
+  unexpected?: boolean;
   /** Offered when sending the same question again can work. */
   retry?: () => unknown;
 }
@@ -38,6 +40,11 @@ export function plainError(message: string): string {
   if (OFFLINE.test(message)) return 'Não consegui falar com o Teams AI. Veja se ele continua rodando e tente de novo.';
   if (TECHNICAL.test(message)) return 'Algo deu errado do nosso lado e a resposta não saiu. Tente de novo em instantes.';
   return message;
+}
+
+/** A connection or internal failure: the only errors the chat shows in red. */
+export function isUnexpected(message: string): boolean {
+  return OFFLINE.test(message) || TECHNICAL.test(message);
 }
 
 const bubble = 'max-w-[48rem] rounded-lg px-4 py-2.5 text-[0.9375rem] leading-[1.5] wrap-anywhere';
@@ -89,14 +96,14 @@ export function ChatPage() {
   current.current = projectId;
 
   useEffect(() => {
-    runApi.projects().then((p) => { setProjects(p); setProjectId(p[0]?.projectId ?? ''); }).catch((e: Error) => { setProjects([]); setProblem({ title: 'Não consegui carregar os projetos', message: plainError(e.message) }); });
+    runApi.projects().then((p) => { setProjects(p); setProjectId(p[0]?.projectId ?? ''); }).catch((e: Error) => { setProjects([]); setProblem({ title: 'Não consegui carregar os projetos', message: plainError(e.message), unexpected: isUnexpected(e.message) }); });
   }, []);
   useEffect(() => {
     if (!projectId) return;
     let stale = false;
     setMessages(null);
     setProblem(null);
-    chatApi.messages(projectId).then((r) => !stale && setMessages(r.messages)).catch((e: Error) => { if (!stale) { setMessages([]); setProblem({ title: 'Não consegui carregar a conversa', message: plainError(e.message) }); } });
+    chatApi.messages(projectId).then((r) => !stale && setMessages(r.messages)).catch((e: Error) => { if (!stale) { setMessages([]); setProblem({ title: 'Não consegui carregar a conversa', message: plainError(e.message), unexpected: isUnexpected(e.message) }); } });
     return () => { stale = true; };
   }, [projectId]);
   useEffect(() => {
@@ -119,7 +126,7 @@ export function ChatPage() {
       if (current.current === asked) {
         // The question goes back to the box unless the person has already started the next one.
         setDraft((d) => (d.trim() === '' ? question : d));
-        setProblem({ title: 'Não consegui responder', message: plainError((e as Error).message), retry: () => send(question) });
+        setProblem({ title: 'Não consegui responder', message: plainError((e as Error).message), unexpected: isUnexpected((e as Error).message), retry: () => send(question) });
       }
     } finally {
       setAsking(null);
@@ -154,7 +161,7 @@ export function ChatPage() {
       await chatApi.clear(projectId);
       setMessages([]);
     } catch (e) {
-      setProblem({ title: 'Não consegui limpar a conversa', message: plainError((e as Error).message) });
+      setProblem({ title: 'Não consegui limpar a conversa', message: plainError((e as Error).message), unexpected: isUnexpected((e as Error).message) });
     }
     setConfirmClear(false);
   };
@@ -260,7 +267,7 @@ export function ChatPage() {
       )}
       {problem ? (
         <Dialog title={problem.title} onClose={() => setProblem(null)}>
-          <p className="m-0 text-[0.9375rem] text-ink">{problem.message}</p>
+          <p className={`m-0 text-[0.9375rem] ${problem.unexpected ? 'text-bad' : 'text-ink'}`}>{problem.message}</p>
           {problem.retry ? <p className="mt-2 mb-0 text-[0.8125rem] text-ink-soft">Sua pergunta não foi respondida. Tentar de novo envia ela outra vez.</p> : null}
           {problem.retry ? (
             <div className="mt-4 flex justify-end">

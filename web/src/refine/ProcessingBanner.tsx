@@ -25,7 +25,7 @@ export function lastEvaluationText(evaluation: { startedAt: string; endedAt: str
   return Number.isNaN(ms) ? '—' : formatDuration(ms);
 }
 
-const tones = { good: 'border-good-line bg-good-soft text-good', bad: 'border-bad-line bg-bad-soft text-bad' } as const;
+const tones = { good: 'border-good-line bg-good-soft text-good', bad: 'border-warn-line bg-warn-soft text-warn' } as const;
 
 /** A process in progress in a colored box: a spinner, its title, the time since `since`, and its lines. */
 export function ProcessBox({ title, since = null, tone = 'good', testId, children }: { title: ReactNode; since?: string | null; tone?: keyof typeof tones; testId: string; children: ReactNode }) {

@@ -266,7 +266,7 @@ function Checklist({ items, role }: { items: ChecklistItem[]; role: 'po' | 'sm' 
     <ul className="m-0 list-none rounded-lg border border-line bg-surface py-[0.55rem] pr-3 pl-[1.1rem] text-[0.8rem] leading-[1.45] text-justify">
       {own.map((i) => (
         <li key={i.id} className="grid grid-cols-[1rem_minmax(0,1fr)] gap-2 py-[0.4rem] text-[0.8125rem] text-ink">
-          <span className={`grid h-5 place-items-center ${i.passed ? 'text-good' : 'text-bad'}`} role="img" aria-label={i.passed ? 'Atendido' : 'Não atendido'}><Icon name={i.passed ? 'check' : 'close'} size={16} /></span>
+          <span className={`grid h-5 place-items-center ${i.passed ? 'text-good' : 'text-warn'}`} role="img" aria-label={i.passed ? 'Atendido' : 'Não atendido'}><Icon name={i.passed ? 'check' : 'close'} size={16} /></span>
           <div>{checkLabel[i.id] ?? i.id.slice(3)}<small className="mx-0 mt-[0.15rem] mb-0 block leading-[1.35] text-ink-soft">{checkDetail(i.detail)}</small>{i.divergences?.length ? <Divergences items={i.divergences} /> : null}</div>
         </li>
       ))}

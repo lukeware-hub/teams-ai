@@ -115,10 +115,10 @@ Never on text, a card, a border, a chip, a heading, or an icon.
 |---|---|---|---|---|
 | good | `#197044` | `#e7f7ee` | `#cce8da` | 5.50:1 |
 | bad | `#b8272c` | `#fdeceb` | `#f5cfcd` | 5.46:1 |
-| warn | `#96620d` | `#fff4e5` | `#f2dfbd` | 4.78:1 |
+| warn | `#7d5f00` | `#fff8db` | `#ecd98c` | 5.61:1 |
 | info | — | `#ddf4ff` | — | — |
 
-Display-only greens, which never carry text: `good-bright` ≈`#22c55e` (check glyph, confetti), `good-live` `#2f9e61` (pulsing session dot). `bad-ink` `#7a2426` for body text inside a failure block.
+Display-only greens, which never carry text: `good-bright` ≈`#22c55e` (check glyph, confetti), `good-live` `#2f9e61` (pulsing session dot). `bad-ink` `#7a2426` for body text inside an unexpected-error block.
 
 ### 3.5 Tints and washes
 
@@ -154,7 +154,7 @@ Terminal, a closed palette: `term-bg` `#14181f` · `term-line` `#2d3545` · `ter
 | `ink-faint` on `surface` | 3.12 | **non-text only** — gutter digits exempted |
 | white on `gradient-primary` | 5.64 (start) · 4.99 (end) | pass at both ends |
 | `violet` on `violet-soft` | 4.46 | pass — glyph only, 3:1 suffices |
-| `warn` on `warn-soft` | 4.78 | pass |
+| `warn` on `warn-soft` | 5.61 | pass |
 
 ### 3.8 Consolidation map
 
@@ -228,7 +228,7 @@ Contrast is measured on `surface` as it actually renders: blended over `bg` and 
 | `good-live` | `#35dcab` | The live dot and progress fills; same hue as `good`, a touch more saturated |
 | `bad` / `bad-soft` / `bad-ink` | `#ff7d8a` / `rgb(255 90 110 / 0.12)` / `#ffc0c7` | 6.06:1 |
 | `on-bad` | `#1c0a12` | Text on a `bad` fill — 7.76:1 |
-| `warn` / `warn-soft` | `#f4b860` / `rgb(245 175 70 / 0.12)` | 7.85:1 |
+| `warn` / `warn-soft` | `#f5d15c` / `rgb(245 209 92 / 0.12)` | 11.83:1 |
 | `violet` / `violet-soft` | `#c79bff` / `rgb(190 110 255 / 0.16)` | 7.86:1 |
 | `shadow-card` | `0 12px 40px -12px` near-black at 70%, plus a 1px top highlight | |
 | `shadow-accent` · `shadow-tile` | `0 8px 24px -6px` · `0 6px 18px -4px` violet | The glow; light uses `shadow-button` and none |
@@ -663,7 +663,7 @@ Shape: inline-flex, 6px gap, 5px/10px padding, `radius-pill`, `meta` size at wei
 | accent | `accent-ink` | `accent-soft` |
 | info | `ink` | `info-soft` |
 
-**Dot or icon?** A dot for a state that is simply on or off — `Atual`, `Concluído`. An icon where the chip names a capability or a count — `Editável` with a pencil, `0 em aberto` with a clock. Replaces nine implementations. Tone is assigned by the element's own state class — never by an ancestor. In code the tones are `tone-good`, `tone-bad`, `tone-warn` and `tone-neutral`; `tone-neutral` is the **accent** tone and marks work in progress (`em execução`, `finalizando`).
+**Dot or icon?** A dot for a state that is simply on or off — `Atual`, `Concluído`. An icon where the chip names a capability or a count — `Editável` with a pencil, `0 em aberto` with a clock. Replaces nine implementations. Tone is assigned by the element's own state class — never by an ancestor. In code the tones are `tone-good`, `tone-bad`, `tone-warn` and `tone-neutral`; `tone-bad` marks a handled failure and paints in the warn colour, so red stays for unexpected errors and destructive actions; `tone-neutral` is the **accent** tone and marks work in progress (`em execução`, `finalizando`).
 
 ### 11.5 Callout
 
@@ -673,7 +673,8 @@ Shape: 14px padding, 1px border, `radius-lg`, `body` size, 16px leading icon at 
 
 | Tone | Text | Ground | Border |
 |---|---|---|---|
-| error | `bad` | `bad-soft` | `bad-line` |
+| error (handled) | `warn` | `warn-soft` | `warn-line` |
+| error (unexpected) | `bad` | `bad-soft` | `bad-line` |
 | warning | `warn` | `warn-soft` | transparent |
 | success | `good` | `good-soft` | `good-line` |
 | guidance | `ink` with an `accent-ink` lead-in | `accent-soft` | `accent-line` |
@@ -690,7 +691,7 @@ Shape: 40px in-app (44px in the flow), 0/12px padding, 1px `line-strong`, `radiu
 | State | Treatment |
 |---|---|
 | focus | border `accent` + `ring-focus`, no offset jump |
-| error | border `bad` + ring in bad tone, message below in `meta` `bad` |
+| error | border `warn` + ring in warn tone, message below in `meta` `warn` |
 | disabled | ground `surface-sunken`, border `line`, text `ink-soft` |
 | read-only | ground `surface-sunken`, border `line`, text `ink` |
 
@@ -808,7 +809,7 @@ Every interactive component supports the full set. Half of these is half a compo
 | active | `brightness(.96)` |
 | disabled | 48% opacity, `not-allowed`, plus a reason where not obvious |
 | loading | label replaced, control disabled, control not removed |
-| error | `bad` border + ring, message naming problem and recovery |
+| error | `warn` border + ring, message naming problem and recovery |
 
 For anything rendering a collection, add **empty** and **skeleton**. Empty states teach the interface (§11.11). Loading uses skeletons shaped like the content, not a spinner in the middle of it.
 

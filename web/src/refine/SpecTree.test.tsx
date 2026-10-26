@@ -31,11 +31,11 @@ describe('SpecTree', () => {
   it('goes from the doc section to the spec, its criteria and the pre-plan tasks that cover them', () => {
     render(<SpecTree backlog={backlog} />);
     expect(within(screen.getByTestId('tree-section-0')).getByText('Abertura de caso')).toBeTruthy();
-    expect(screen.getByTestId('tree-section-1').className).toContain('text-bad');
+    expect(screen.getByTestId('tree-section-1').className).toContain('text-warn');
     const caso = within(screen.getByTestId('tree-caso'));
     expect(caso.getByText('k-caso')).toBeTruthy();
     expect(caso.getByLabelText(/AC-001: dado um paciente, quando abre o caso, então o caso existe/)).toBeTruthy();
     expect(caso.getByText(/P1 Cadastro do caso/)).toBeTruthy();
-    expect(caso.getByTestId('tree-ac-AC-002').className).toContain('text-bad');
+    expect(caso.getByTestId('tree-ac-AC-002').className).toContain('text-warn');
   });
 });

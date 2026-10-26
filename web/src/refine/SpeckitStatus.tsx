@@ -43,7 +43,7 @@ const line = 'm-0 flex items-start gap-2 text-[0.9375rem] leading-[1.5]';
 /** Where the Spec Kit preparation stands: not started, running, done, out of date or failed. `plan` is every step in order. */
 export function SpeckitStatus({ speckit, titles, plan = [], waiting = false }: { speckit: Speckit; titles: Map<string, string>; plan?: readonly Command[]; waiting?: boolean }) {
   if (!speckit) return <p className={`${line} text-ink-soft`} data-testid="speckit-idle">O Spec Kit ainda não preparou o desenvolvimento. Ele cria a constituição do projeto e a spec, o plano e as tarefas de cada item do backlog.</p>;
-  if (speckit.status === 'failed') return <p role="alert" className={`${line} text-bad`} data-testid="speckit-failed"><Icon name="alert" size={20} /><span>{speckit.error ?? 'A preparação falhou.'}</span></p>;
+  if (speckit.status === 'failed') return <p role="alert" className={`${line} text-warn`} data-testid="speckit-failed"><Icon name="alert" size={20} /><span>{speckit.error ?? 'A preparação falhou.'}</span></p>;
   if (speckit.status === 'running') {
     const done = speckit.steps.length;
     const total = speckit.total ?? done;

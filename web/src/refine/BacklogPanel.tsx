@@ -33,7 +33,7 @@ export const bkTone = {
   P3: 'bg-surface-muted text-ink-soft',
   planned: 'bg-good-soft text-good',
   refining: 'bg-surface-muted text-ink-soft',
-  error: 'bg-bad-soft text-bad',
+  error: 'bg-warn-soft text-warn',
 } as const;
 export const bkMeta = 'flex-none text-[0.75rem] text-ink-faint';
 const STATUS_TONE = { entregue: bkTone.planned, 'em execução': bkTone.planned, planejada: bkTone.planned, 'em refinamento': bkTone.refining, erro: bkTone.error } as const;
@@ -79,7 +79,7 @@ export function BacklogPanel({ backlog, evaluating, locked, onEnable, mandatory 
                     <p>Por quê: {i.rationale}</p>
                     {i.dependsOn.length > 0 && <p>Depende de: {i.dependsOn.map((d) => titles.get(d) ?? d).join(', ')}</p>}
                     <p>Origem: {i.sources.map((s) => `${s.doc} › ${s.heading}`).join('; ')}</p>
-                    {[...(backlog.specs?.[i.key]?.issues ?? []), ...(backlog.preplans?.[i.key]?.issues ?? [])].map((issue, n) => <p key={n} className="text-bad">Problema: {issue}</p>)}
+                    {[...(backlog.specs?.[i.key]?.issues ?? []), ...(backlog.preplans?.[i.key]?.issues ?? [])].map((issue, n) => <p key={n} className="text-warn">Problema: {issue}</p>)}
                   </div>
                 </details>
               </li>

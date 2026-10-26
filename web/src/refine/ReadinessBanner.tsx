@@ -11,7 +11,7 @@ const CHECK_LABEL: Record<ScoreCheck, string> = { complete: 'completo', concrete
 const CHIP: Record<Tone, string> = {
   good: 'border-good-line bg-good-soft text-good',
   warn: 'border-warn-line bg-warn-soft text-warn',
-  bad: 'border-bad-line bg-bad-soft text-bad',
+  bad: 'border-warn-line bg-warn-soft text-warn',
   neutral: 'border-line bg-surface-muted text-ink-soft',
 };
 

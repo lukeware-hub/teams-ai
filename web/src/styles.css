@@ -99,9 +99,9 @@
   --bad-line: #f5cfcd;
   --bad-ink: #7a2426;
   --on-bad: #ffffff;
-  --warn: #96620d;
-  --warn-soft: #fff4e5;
-  --warn-line: #f2dfbd;
+  --warn: #7d5f00;
+  --warn-soft: #fff8db;
+  --warn-line: #ecd98c;
   --info-soft: #e3f2fd;
   --term-bg: #14181f;
   --term-line: #2d3545;
@@ -184,9 +184,9 @@
   --bad-line: rgb(255 90 110 / 0.32);
   --bad-ink: #ffc0c7;
   --on-bad: #1c0a12;
-  --warn: #f4b860;
-  --warn-soft: rgb(245 175 70 / 0.12);
-  --warn-line: rgb(245 175 70 / 0.3);
+  --warn: #f5d15c;
+  --warn-soft: rgb(245 209 92 / 0.12);
+  --warn-line: rgb(245 209 92 / 0.3);
   --info-soft: rgb(80 140 255 / 0.14);
   --term-bg: #05040f;
   --term-line: rgb(168 156 255 / 0.14);
@@ -246,7 +246,7 @@ h3 { margin: 1.1rem 0 0.5rem; color: var(--ink-soft); font-size: 0.75rem; font-w
 .card-ok .dot { background: var(--good); }
 .detail { margin: 0.5rem 0; color: var(--ink-soft); }
 .hint { color: var(--ink-soft); font-size: 0.8125rem; }
-.error { padding: 0.6rem 0.8rem; border: 1px solid var(--bad-line); border-radius: var(--radius-md); color: var(--bad); background: var(--bad-soft); font-size: 0.875rem; }
+.error { padding: 0.6rem 0.8rem; border: 1px solid var(--warn-line); border-radius: var(--radius-md); color: var(--warn); background: var(--warn-soft); font-size: 0.875rem; }
 .output { min-width: 0; max-width: 100%; max-height: 14rem; padding: 0.75rem; overflow: auto; border-radius: var(--radius-md); color: var(--term-ink); background: var(--term-bg); font-family: var(--font-mono); font-size: 0.78rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .controls, form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 
@@ -274,7 +274,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
 /* Chips: one shape; tone comes from the element's own state class. */
 .status-chip, .status-pill, .test, .badge, .tag, .count-pill, .status-dot, .owner-chip { display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.15rem 0.6rem; border-radius: var(--radius-pill); color: var(--ink-soft); background: var(--surface-muted); font-size: 0.75rem; font-weight: 600; line-height: 1.5; white-space: nowrap; }
 .tone-good, .test-passed, .status-dot.ok, .card-ok .status-chip { color: var(--good); background: var(--good-soft); }
-.tone-bad, .test-failed { color: var(--bad); background: var(--bad-soft); }
+/* A handled failure uses the warning tone; red is for unexpected errors and destructive actions. */
+.tone-bad, .test-failed { color: var(--warn); background: var(--warn-soft); }
 .tone-warn, .tag, .status-dot.warn { color: var(--warn); background: var(--warn-soft); }
 .tone-neutral { color: var(--accent-ink); background: var(--accent-soft); }
 .tag { margin-left: 0.35rem; }
