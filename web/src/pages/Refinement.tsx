@@ -9,8 +9,7 @@ import { Icon } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { renderSpecMd } from '@server/refine/spec-md';
-import { buildSpecsIndex } from '@server/refine/specs-index';
-import { speckitSteps } from '@server/refine/speckit-steps';
+import { speckitItems, speckitSteps } from '@server/refine/speckit-steps';
 import { renderSpecsMd } from '@server/refine/specs-md';
 import { allGreen, isApproval } from '@server/refine/state';
 import type { Divergence, DivergenceSide } from '@server/refine/checklist';
@@ -376,11 +375,20 @@ export function RefinementView(p: ViewProps) {
       {st.backlog?.detail && <MemoSpecTree backlog={st.backlog} evaluating={evaluating} />}
     </>
   );
-  const backlogTitles = new Map((st.backlog?.items ?? []).map((i) => [i.key, i.title]));
+  // What the Spec Kit prepares: each backlog item, or the single spec as one item.
+  const speckitList = useMemo(() => speckitItems(snap.specId, st as never), [snap.specId, st.backlog, st.derived, st.featureKey]);
+  const itemTitles = new Map(speckitList.map((i) => [i.key, i.title]));
   const speckit = st.speckit;
   const speckitRunning = speckit?.status === 'running';
-  // Only a wizard session must prepare with the Spec Kit before it starts; the server holds the same rule.
-  const speckitReady = st.stages !== true || (speckit?.status === 'done' && !speckit.stale);
+  // Every session prepares with the Spec Kit before it starts; the server holds the same rule.
+  const speckitReady = speckit?.status === 'done' && !speckit.stale;
+  // What the Spec Kit preparation still owes the start, in plain words.
+  const speckitReason = speckitRunning ? 'A preparação do Spec Kit está em andamento.'
+    : speckitAsked.some((q) => q.blocking) ? 'Responda a pergunta obrigatória do Spec Kit.'
+    : !speckitReady ? (speckit?.stale ? 'Os documentos mudaram: prepare o Spec Kit de novo.' : 'Prepare o Spec Kit antes de iniciar.')
+    : undefined;
+  // The start would open with a current preparation, so the preparation is the next step.
+  const waitsForSpeckit = !canStart && canStartRun({ ...st, speckit: { status: 'done', stale: false }, questions: [] }, busy);
   const backlogStageHeading = (
     <header className="grid gap-1">
       <h2 ref={stepHeading} tabIndex={-1} className="m-0 text-[1.25rem] font-semibold text-ink outline-none">Preparar o desenvolvimento</h2>
@@ -391,8 +399,16 @@ export function RefinementView(p: ViewProps) {
   const mdFiles = backlogOn || newProject;
   const legacyFiles = !mdFiles;
   const specsMd = useMemo(() => (backlogOn && (st.backlog?.items.length ?? 0) > 0 ? renderSpecsMd(snap.specId, st.backlog as never) : ''), [backlogOn, snap.specId, st.backlog]);
-  // Every Spec Kit step in order, so the stage 7 box lists the ones still to come.
-  const speckitPlan = useMemo(() => (backlogOn ? speckitSteps(buildSpecsIndex(snap.specId, st.backlog as never).specs).map(({ command, item }) => ({ command, itemKey: item?.key })) : []), [backlogOn, snap.specId, st.backlog]);
+  // Every Spec Kit step in order, so the Spec Kit box lists the ones still to come.
+  const speckitPlan = useMemo(() => speckitSteps(speckitList).map(({ command, item }) => ({ command, itemKey: item?.key })), [speckitList]);
+  const speckitStatus = <SpeckitStatus speckit={speckit} titles={itemTitles} plan={speckitPlan} waiting={speckitAsked.some((q) => q.blocking)} />;
+  // A backlog prepares once it is detailed, a single spec once it is derived.
+  const preparable = backlogOn ? st.backlog?.detail === true : Boolean(st.derived);
+  const prepareButton = (
+    <ActionButton data-testid="speckit-prepare" className={speckitReady ? 'secondary' : 'primary'} busy={speckitRunning} disabled={locked || speckitRunning || !preparable} title={preparable ? undefined : backlogOn ? 'Espere o backlog ficar detalhado' : 'Avalie a spec antes de preparar'} onClick={() => p.onPrepareSpeckit?.()} icon={<Icon name={speckit ? 'refresh' : 'play'} size={16} />}>
+      {speckitRunning ? 'Preparando…' : speckit ? 'Preparar de novo' : 'Preparar com o Spec Kit'}
+    </ActionButton>
+  );
   const baseDocs = (['project.md', 'flow.md', 'briefing.md', 'stack.md', 'design.md'] as DocFile[]).map((doc) => ({ doc, text: snap.docs[doc] }));
   // A wizard project lists specs.md; the single-spec flow lists the spec it derived, also as Markdown.
   const specFile = mdFiles ? { name: 'specs.md', text: specsMd } : { name: 'spec.md', text: st.derived ? renderSpecMd(st.derived.spec as never) : '' };
@@ -428,6 +444,8 @@ export function RefinementView(p: ViewProps) {
         ? 'Aprove ou rejeite o ajuste proposto abaixo; as outras sugestões são opcionais.'
       : st.status === 'answering' && st.patches.some((x) => x.status === 'pending')
         ? 'Revise as sugestões de alteração abaixo e aceite ou rejeite cada uma.'
+        : waitsForSpeckit && speckitReason
+          ? speckitReason
         : st.backlog?.enabled && st.status === 'ready'
           ? st.backlog.detail
             ? pendingSuggestion
@@ -662,7 +680,7 @@ export function RefinementView(p: ViewProps) {
               : <><span className={badge(current.role)}>{current.role.toUpperCase()}</span><InfoTip text={roleInfo[current.role]} /></>}
             {current.blocking && <Tipped text="Pergunta que bloqueia o avanço: precisa de resposta antes de seguir."><span className="tag ml-0">Obrigatória</span></Tipped>}
           </div>
-          {current.origin === 'speckit' && current.itemKey && <p className="m-0 text-[0.8125rem] font-semibold text-ink-soft">Sobre o item {backlogTitles.get(current.itemKey) ?? current.itemKey}</p>}
+          {current.origin === 'speckit' && current.itemKey && <p className="m-0 text-[0.8125rem] font-semibold text-ink-soft">Sobre o item {itemTitles.get(current.itemKey) ?? current.itemKey}</p>}
           {current.origin === 'speckit' && current.context && <p className="m-0 leading-normal text-ink-soft">{current.context}</p>}
           <p className="m-0">{questionText(current.text)}</p>
           {current.blocking && <p className="m-0 text-[0.8125rem] text-warn">{current.origin === 'speckit' ? 'Bloqueia o início do desenvolvimento até você responder.' : 'Bloqueia o avanço até você responder.'}</p>}
@@ -781,6 +799,8 @@ export function RefinementView(p: ViewProps) {
         )}
         {reevaluateDialog}
       </div>
+      {/* The Spec Kit box and its button sit right before the start, as on the screen that prepares a new project's development. */}
+      {!newProject && <div className="mb-4 grid gap-3" data-testid="speckit-block">{speckitStatus}{prepareButton}</div>}
       {!newProject && !p.hideStart && startButton}
       {nextStep !== null && <p className="m-0 mb-4 flex items-start gap-[0.6rem] rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-[0.8125rem] leading-[1.45] text-ink [&_svg]:flex-none [&_svg]:text-accent-text"><Icon name="lightbulb" size={20} /><span><b>Próximo passo:</b> {nextStep}{optional}</span></p>}
       {evaluating ? null : current ? questionCard(current, pending.length) : (
@@ -1086,17 +1106,12 @@ export function RefinementView(p: ViewProps) {
   const backlogScreen = () => (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6" data-testid="backlog-stage">
       {backlogStageHeading}
-      {backlogOn && st.stages === true && <SpeckitStatus speckit={speckit} titles={backlogTitles} plan={speckitPlan} waiting={speckitAsked.some((q) => q.blocking)} />}
+      {backlogOn && speckitStatus}
       {askAgents}
       {!locked && !speckitRunning && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
-      {agentAnswers.length > 0 && <AgentAnswers rows={agentAnswers} titles={backlogTitles} locked={locked} onAnswer={(id, text) => p.onAnswer(id, text, false)} />}
+      {agentAnswers.length > 0 && <AgentAnswers rows={agentAnswers} titles={itemTitles} locked={locked} onAnswer={(id, text) => p.onAnswer(id, text, false)} />}
       {backlogBlock}
     </div>
-  );
-  const prepareButton = (
-    <ActionButton data-testid="speckit-prepare" className={speckitReady ? 'secondary' : 'primary'} busy={speckitRunning} disabled={locked || speckitRunning || !st.backlog?.detail} title={st.backlog?.detail ? undefined : 'Espere o backlog ficar detalhado'} onClick={() => p.onPrepareSpeckit?.()} icon={<Icon name={speckit ? 'refresh' : 'play'} size={16} />}>
-      {speckitRunning ? 'Preparando…' : speckit ? 'Preparar de novo' : 'Preparar com o Spec Kit'}
-    </ActionButton>
   );
   const developButton = (
     <ActionButton data-testid="start" className={speckitReady && canStart ? 'primary' : 'secondary'} busy={p.startState?.busy ?? false} disabled={!canStart || !speckitReady} onClick={p.onStart} icon={<Icon name="play" size={16} />}>
@@ -1105,16 +1120,13 @@ export function RefinementView(p: ViewProps) {
   );
   // What the start waits for, in plain words, while it cannot start: the one primary action is the next step.
   const startReason = canStart && speckitReady ? undefined
-    : speckitRunning ? 'A preparação do Spec Kit está em andamento.'
-    : !st.backlog?.detail ? 'Detalhe o backlog antes de iniciar.'
-    : speckitAsked.some((q) => q.blocking) ? 'Responda a pergunta obrigatória do Spec Kit.'
-    : !speckitReady && st.stages === true ? (speckit?.stale ? 'Os documentos mudaram: prepare o Spec Kit de novo.' : 'Prepare o Spec Kit antes de iniciar.')
-    : undefined;
+    : !speckitRunning && !st.backlog?.detail ? 'Detalhe o backlog antes de iniciar.'
+    : speckitReason;
   const startNote = startReason ? <span className="self-center text-[0.8125rem] text-ink-soft" data-testid="start-reason">{startReason}</span> : null;
   const wizardActions = step === 'backlog' ? (
     !backlogOn ? (
       <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
-    ) : st.stages === true ? <>{prepareButton}{developButton}{startNote}</> : <>{developButton}{startNote}</>
+    ) : <>{prepareButton}{developButton}{startNote}</>
   ) : step === 'review' ? (
     <>
       <ActionButton data-testid="evaluate" className="secondary" busy={evaluating} disabled={locked || atMax} title="Se tudo passar, o backlog começa a ser montado" onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>

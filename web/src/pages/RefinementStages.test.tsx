@@ -66,6 +66,13 @@ describe('stage 7 of a new project prepares the development', () => {
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('shows the Spec Kit box and its button to a project from before the document stages too', () => {
+    renderView(project({ backlog: backlogDetailed as never }), handlersWithSpeckit());
+    expect(screen.getByTestId('speckit-idle')).toBeTruthy();
+    expect((screen.getByTestId('speckit-prepare') as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByTestId('start-reason').textContent).toContain('Prepare o Spec Kit antes de iniciar.');
+  });
+
   it('asks for the preparation first, and keeps the start locked until it is done', () => {
     const h = handlersWithSpeckit();
     renderView(wizard({}), h);

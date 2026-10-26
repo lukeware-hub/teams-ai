@@ -421,6 +421,8 @@ export interface RefineState {
   runId: string | null;
   backlog?: BacklogView | null;
   mode?: 'new-project' | 'new-spec' | 'continue' | null;
+  /** The backlog key a continued spec came from, which names its Spec Kit feature folder. */
+  featureKey?: string;
   readiness?: Readiness;
   /** The documents the owner moved on from, in order, and the round the current stage began at. */
   doneStages?: string[];
