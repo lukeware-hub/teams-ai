@@ -6,7 +6,7 @@ import type { Decider } from '../../server/decide/decider.js';
 import { CommandError, type CommandSpec, type Exec } from '../../server/exec/command.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
 import type { AgentStepRequest } from '../../server/orchestrator/steps.js';
-import { createNewProject, draftPaths, writeDoc } from '../../server/refine/draft.js';
+import { createNewProject, draftPaths, speckitBaseDir, writeDoc } from '../../server/refine/draft.js';
 import { RefineEvent } from '../../server/refine/events.js';
 import { ConflictError, RefineJournal, RefineSession, type RunAgent } from '../../server/refine/session.js';
 import { speckitPack } from '../../server/refine/speckit-pack.js';
@@ -909,5 +909,55 @@ describe('RefineSession.runSpeckit in parallel, and from an earlier run', () => 
     expect(types.indexOf(RefineEvent.SpeckitStarted)).toBeGreaterThanOrEqual(0);
     expect(types.indexOf(RefineEvent.SpeckitStarted)).toBeLessThan(types.indexOf(RefineEvent.SpeckitTriaged));
     await s.close();
+  });
+});
+
+describe('RefineSession.runSpeckit for a project that already uses Spec Kit', () => {
+  /** Main's constitution and feature folders, where the draft keeps them; main's cart folder shares its name with a backlog item. */
+  const MAIN = { '.specify/memory/constitution.md': '# Main constitution\n', 'specs/001-orders/spec.md': '# Orders\n', 'specs/cart/spec.md': '# Main cart\n' };
+  const staged = (rel: string) => fs.readFile(`${draft().root}/speckit/${rel}`, 'utf8');
+
+  beforeEach(async () => {
+    for (const [rel, text] of Object.entries(MAIN)) {
+      const file = path.posix.join(speckitBaseDir(draft()), rel);
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(file, text);
+    }
+    // Spec Kit init scaffolds its template constitution, as the real command does.
+    exec = async (spec) => {
+      execCalls.push(spec);
+      await fs.mkdir(`${spec.cwd}/.specify/memory`, { recursive: true });
+      await fs.writeFile(`${spec.cwd}/.specify/memory/constitution.md`, '# [PROJECT_NAME] Constitution\n');
+      return { exitCode: 0, signal: null, stdout: '', stderr: '', timedOut: false, durationMs: 1, truncated: false };
+    };
+  });
+
+  it("keeps main's constitution and feature folders in the staging folder, and the constitution step does not run", async () => {
+    const s = await detailedSession();
+    await s.runSpeckit();
+    expect(agentCalls.map(stepOf)).toEqual(['specify:login', 'clarify:login', 'plan:login', 'tasks:login', 'specify:cart', 'clarify:cart', 'plan:cart', 'tasks:cart']);
+    expect(await staged('.specify/memory/constitution.md')).toBe(MAIN['.specify/memory/constitution.md']);
+    expect(await staged('specs/001-orders/spec.md')).toBe(MAIN['specs/001-orders/spec.md']);
+    expect(s.state.speckit).toMatchObject({ status: 'done', total: 9 });
+    expect(s.state.speckit!.steps).toHaveLength(9);
+    expect(s.state.speckit!.steps[0]).toEqual({ command: 'constitution', reused: true });
+    await s.close();
+  });
+
+  it("a later preparation does not run the constitution step either, and keeps main's folders as main has them", async () => {
+    const s = await detailedSession();
+    await s.runSpeckit();
+    await s.close();
+    // The cart item, whose steps rewrote main's cart folder, leaves the backlog.
+    const journal = await RefineJournal.open(draft().events, { projectId: 'hello-app', specId: 'hello-001' });
+    await journal.fact(RefineEvent.BacklogDerived, { project: null, epics: [], items: [item('login', 1)], cycle: 1 });
+    await journal.close();
+    const reopened = await RefineSession.open(deps());
+    const calls = agentCalls.length;
+    await reopened.runSpeckit();
+    expect(agentCalls.slice(calls).map(stepOf)).not.toContain('constitution:');
+    expect(reopened.state.speckit).toMatchObject({ status: 'done', total: 5 });
+    for (const [rel, text] of Object.entries(MAIN)) expect(await staged(rel), rel).toBe(text);
+    await reopened.close();
   });
 });

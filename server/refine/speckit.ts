@@ -10,7 +10,7 @@ import { absoluteRule } from '../runner/role-settings.js';
 import type { StepOutcome } from '../runner/step.js';
 import { ownerFailure, retryOnSchema, TRY_AGAIN, withNote } from './agent-failure.js';
 import { isConfidential, MAX_DEDUP_PAIRS, recorded, type CycleJournal, type RunAgent } from './cycle.js';
-import { readDoc, type Draft } from './draft.js';
+import { CONSTITUTION, readDoc, speckitBaseDir, type Draft } from './draft.js';
 import { RefineEvent } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
 import { SPECKIT_INPUTS, speckitFeatureDir, speckitPack, type SpeckitCommand, type SpeckitInput } from './speckit-pack.js';
@@ -245,7 +245,7 @@ async function runOne(run: RunContext, step: Step): Promise<void> {
 /**
  * Runs Spec Kit over the detailed backlog and answers the hash of the inputs it read. A step an earlier preparation finished on the
  * same basis is kept as it is; the others run, on the files they have from that preparation when they have any. The constitution
- * runs alone, then each backlog item runs its four commands in order, and up to `agents` items run at once.
+ * runs alone, unless the project keeps main's, then each backlog item runs its four commands in order, and up to `agents` items run at once.
  */
 export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState): Promise<string> {
   const dir = speckitDir(deps.draft);
@@ -263,7 +263,6 @@ export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState): 
   await answerer.triage(untriaged(deps.journal.state.questions));
   const keep = earlier.length > 0 && (await exists(dir));
   const reused = keep ? await reusedSteps(dir, earlier, plan, texts, deps.journal.state.questions) : new Set<string>();
-  if (reused.size > 0) await deps.journal.fact(RefineEvent.SpeckitReused, { steps: earlier.filter((s) => reused.has(stepKey(s.command, s.itemKey))) });
   const adjust = new Set(keep ? earlier.filter((s) => s.basis !== undefined).map((s) => stepKey(s.command, s.itemKey)) : []);
   if (keep) await pruneFeatures(dir, items);
   else {
@@ -271,6 +270,16 @@ export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState): 
     await fs.mkdir(dir, { recursive: true });
     await initSpeckit(deps.exec, dir);
   }
+  const carried = earlier.filter((s) => reused.has(stepKey(s.command, s.itemKey)));
+  const base = speckitBaseDir(deps.draft);
+  if (await exists(path.posix.join(base, CONSTITUTION))) {
+    // Main's constitution and feature folders go over a fresh scaffold, or back beside the files an earlier preparation left.
+    await fs.cp(base, dir, { recursive: true, force: !keep });
+    // Main's constitution counts as done, so the constitution step never writes over it.
+    reused.add(stepKey('constitution'));
+    carried.unshift({ command: 'constitution' });
+  }
+  if (carried.length > 0) await deps.journal.fact(RefineEvent.SpeckitReused, { steps: carried });
   const run: RunContext = { deps, hash, texts, backlog, decider, answerer, reused, adjust };
   await runOne(run, { command: 'constitution' });
   const lanes = items.map(itemSteps);

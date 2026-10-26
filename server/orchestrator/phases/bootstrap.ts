@@ -114,7 +114,7 @@ export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docs
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.copyFile(source, target);
   }
-  await overlaySpeckit(opts.docsDir, wt);
+  await overlaySpeckit(opts.docsDir, wt, path.join(path.dirname(opts.docsDir), '.base', 'speckit'));
   return commitAndMergeDocs(deps, 0, branch, wt, `docs(${spec.specId}): spec v${version}`);
 }
 
@@ -197,7 +197,7 @@ const SERVICE_DOCS = ['project.md', 'stack.md', 'flow.md', 'design.md', 'briefin
 const speckitStaging = (docsDir: string): string => path.join(path.dirname(docsDir), 'speckit');
 
 /** Copies the draft's Spec Kit preparation into `repo`; a link the repository holds is never written through. */
-async function overlaySpeckit(docsDir: string, repo: string): Promise<void> {
+async function overlaySpeckit(docsDir: string, repo: string, base?: string): Promise<void> {
   const source = speckitStaging(docsDir);
   for (const { entry, replace } of SPECKIT_ENTRIES) {
     const stat = await fs.lstat(path.join(source, entry)).catch(() => null);
@@ -207,6 +207,8 @@ async function overlaySpeckit(docsDir: string, repo: string): Promise<void> {
       // lstat, so a link main holds is never written through; a file main holds stays unless its entry is replaced.
       const held = await fs.lstat(target).catch(() => null);
       if (held?.isSymbolicLink() || (held !== null && !replace)) continue;
+      // A file still equal to `base`, main's copy when the draft began, leaves main's current copy as it is, changed or removed.
+      if (base && same(await read(path.join(source, rel)), await read(path.join(base, rel)))) continue;
       await fs.mkdir(path.dirname(target), { recursive: true });
       await fs.copyFile(path.join(source, rel), target);
     }

@@ -381,6 +381,34 @@ describe('phase 0', () => {
       await run.close();
     });
 
+    it("keeps main's copy of each Spec Kit file the preparation left as main had it when the draft began", { timeout: 60_000 }, async () => {
+      await remote.cleanup();
+      // Since the draft began, main changed its constitution and a feature, and removed another feature.
+      remote = await makeRemote({ 'README.md': 'seed', '.specify/memory/constitution.md': '# Constitution v2\n', 'specs/001-orders/spec.md': '# Orders v2\n' });
+      draftDocs = path.join(remote.root, 'draft', 'docs');
+      await fs.mkdir(path.join(draftDocs, 'specs', 'hello-001'), { recursive: true });
+      await fs.writeFile(path.join(draftDocs, 'specs', 'hello-001', 'spec.json'), JSON.stringify(spec));
+      const began = { '.specify/memory/constitution.md': '# Constitution v1\n', 'specs/001-orders/spec.md': '# Orders v1\n', 'specs/002-old/spec.md': '# Old\n' };
+      for (const [dir, files] of [['.base/speckit', began], ['speckit', { ...began, 'specs/hello-001/tasks.md': '# Tasks\n' }]] as const) {
+        for (const [rel, text] of Object.entries(files)) {
+          const file = path.join(remote.root, 'draft', dir, rel);
+          await fs.mkdir(path.dirname(file), { recursive: true });
+          await fs.writeFile(file, text);
+        }
+      }
+      const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
+      exec.onArgs('gh', ['repo', 'view'], () => ({ stdout: JSON.stringify({ nameWithOwner: 'o/hello-app', url: remote.origin }) }));
+      new FakeGh().install(exec);
+      const run = await Run.create(deps(exec, remote.repo), 'hello-001-r1');
+      expect(await run.executePhase0()).toEqual({ ok: true });
+      const show = (rel: string) => git(remote.repo, ['show', `origin/main:${rel}`], execCommand);
+      expect(await show('.specify/memory/constitution.md')).toBe('# Constitution v2');
+      expect(await show('specs/001-orders/spec.md')).toBe('# Orders v2');
+      await expect(show('specs/002-old/spec.md')).rejects.toThrow();
+      expect(await show('specs/hello-001/tasks.md')).toBe('# Tasks');
+      await run.close();
+    });
+
     it('publishes the Spec Kit files and the source documents to each service repository', { timeout: 60_000 }, async () => {
       const orders = await makeRemote({ 'src/index.ts': 'x' });
       try {

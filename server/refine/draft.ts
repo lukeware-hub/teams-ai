@@ -49,6 +49,12 @@ export const DOC_REL: Record<DocFile, (specId: string, projectBriefing?: boolean
 /** The project's refinement directory: one draft per spec, each with its own journal. */
 export const refineRoot = (ws: Pick<Workspace, 'root'>): string => path.posix.join(ws.root, 'refine');
 
+/** The Spec Kit constitution of a repository that already uses Spec Kit. */
+export const CONSTITUTION = '.specify/memory/constitution.md';
+
+/** Main's Spec Kit constitution and feature folders, kept beside the docs base when the draft began. */
+export const speckitBaseDir = (d: Pick<Draft, 'root'>): string => path.posix.join(d.root, '.base', 'speckit');
+
 /** Spec (refinement) §2: the draft lives beside the workspace, never inside the clone. */
 export function draftPaths(ws: Workspace, specId: string): Draft {
   const root = path.posix.join(refineRoot(ws), specId);
@@ -205,18 +211,23 @@ export async function createNewProject(d: Draft, name: string, description = '')
   await fs.writeFile(docPath(d, 'design.md'), designTemplate());
 }
 
-/** Every file under docs/ on main, as `docs/...` paths. */
-const mainDocFiles = async (repo: string, exec: Exec): Promise<string[]> =>
-  (await git(repo, ['ls-tree', '-r', '--name-only', 'origin/main', 'docs/'], exec)).split('\n').filter((f) => f !== '');
+/** Every file on main under the given paths, as repository paths. */
+const mainFiles = async (repo: string, exec: Exec, paths: readonly string[]): Promise<string[]> =>
+  (await git(repo, ['ls-tree', '-r', '--name-only', 'origin/main', ...paths], exec)).split('\n').filter((f) => f !== '');
 
-export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: { kind: 'new-spec'; description?: string } | { kind: 'continue'; report?: string; route?: RouteReport } | { kind: 'backlog' }): Promise<void> {
-  await gitFetch(repo, exec);
-  const files = await mainDocFiles(repo, exec);
+/** Writes each file of main under `root`, at its repository path. */
+async function copyFromMain(repo: string, exec: Exec, files: readonly string[], root: string): Promise<void> {
   for (const rel of files) {
-    const target = path.posix.join(d.root, rel);
+    const target = path.posix.join(root, rel);
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, await showFile(repo, 'origin/main', rel, exec));
   }
+}
+
+export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: { kind: 'new-spec'; description?: string } | { kind: 'continue'; report?: string; route?: RouteReport } | { kind: 'backlog' }): Promise<void> {
+  await gitFetch(repo, exec);
+  const files = await mainFiles(repo, exec, ['docs/']);
+  await copyFromMain(repo, exec, files, d.root);
   await fs.mkdir(path.dirname(d.briefMd), { recursive: true });
   if (!files.includes('docs/stack.md')) await fs.writeFile(d.stackMd, stackTemplate());
   if (!files.includes('docs/flow.md')) await fs.writeFile(d.flowMd, flowTemplate());
@@ -227,6 +238,9 @@ export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: {
   }
   // The docs as the session received them: the start publishes only what differs from this copy.
   await fs.cp(d.docs, d.base!, { recursive: true });
+  // A project that already uses Spec Kit: its preparation keeps main's constitution and feature folders.
+  const speckit = await mainFiles(repo, exec, [CONSTITUTION, 'specs/']);
+  if (speckit.includes(CONSTITUTION)) await copyFromMain(repo, exec, speckit, speckitBaseDir(d));
   // A backlog draft starts from the docs alone: its outline comes from the evaluation.
   if (mode.kind === 'backlog') return;
   if (mode.kind === 'new-spec') {
@@ -297,7 +311,7 @@ export async function syncWithMain(d: Draft, repo: string, exec: Exec): Promise<
   await gitFetch(repo, exec);
   const own = `specs/${d.specId}/`;
   const changed: Array<{ file: string; hash: string }> = [];
-  for (const rel of (await mainDocFiles(repo, exec)).map((f) => f.slice('docs/'.length)).filter((f) => !f.startsWith(own))) {
+  for (const rel of (await mainFiles(repo, exec, ['docs/'])).map((f) => f.slice('docs/'.length)).filter((f) => !f.startsWith(own))) {
     const main = await showFile(repo, 'origin/main', `docs/${rel}`, exec);
     const base = await readBase(d, rel);
     if (sameDoc(main, base)) continue;
