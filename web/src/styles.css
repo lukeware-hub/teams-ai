@@ -231,6 +231,8 @@ h3 { margin: 1.1rem 0 0.5rem; color: var(--ink-soft); font-size: 0.75rem; font-w
 
 @layer components {
 /* Surfaces */
+/* A section heading of the page's level, drawn like the browser's default h4: the global h3 style does not apply. */
+.section-title { font-size: 1em; font-weight: 700; color: inherit; letter-spacing: normal; text-transform: none; }
 .card { min-width: 0; padding: 1.25rem 1.35rem; border: 1px solid var(--line); border-radius: var(--radius-xl); background: var(--surface); box-shadow: var(--shadow-card); }
 .card header { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.85rem; padding-bottom: 0.85rem; border-bottom: 1px solid var(--line); }
 .card h2 { flex: 1; margin: 0; color: var(--ink); font-size: 1rem; font-weight: 650; letter-spacing: -0.01em; }

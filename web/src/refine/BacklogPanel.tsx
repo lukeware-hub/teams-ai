@@ -45,7 +45,7 @@ export function BacklogPanel({ backlog, evaluating, locked, onEnable, mandatory 
     if (!onEnable) return null;
     return (
       <div className="my-4 grid gap-3 rounded-lg border border-line bg-surface-sunken p-4" data-testid="backlog-off">
-        <h4 className="m-0 flex items-center gap-2"><Icon name="list" size={20} />Backlog<InfoTip text={HELP} /></h4>
+        <h3 className="section-title m-0 flex items-center gap-2"><Icon name="list" size={20} />Backlog<InfoTip text={HELP} /></h3>
         <p className="text-[0.8125rem] text-ink-soft">Quebre os documentos em specs organizadas e priorizadas, em vez de uma spec só.</p>
         <ActionButton className="secondary" data-testid="enable-backlog" disabled={locked} onClick={onEnable} icon={<Icon name="list" size={16} />}>Quebrar em backlog</ActionButton>
       </div>
@@ -55,7 +55,7 @@ export function BacklogPanel({ backlog, evaluating, locked, onEnable, mandatory 
   const epics = backlog.epics.map((e) => ({ ...e, items: backlog.items.filter((i) => i.epic === e.key).sort((a, b) => a.rank - b.rank) })).filter((e) => e.items.length > 0);
   return (
     <div className="my-4 grid gap-3" data-testid="backlog-on">
-      <h4 className="m-0 flex items-center gap-2"><Icon name="list" size={20} />Backlog{backlog.items.length > 0 ? ` · ${backlog.items.length} specs em ${epics.length} épicos` : ''}<InfoTip text={HELP} /></h4>
+      <h3 className="section-title m-0 flex items-center gap-2"><Icon name="list" size={20} />Backlog{backlog.items.length > 0 ? ` · ${backlog.items.length} specs em ${epics.length} épicos` : ''}<InfoTip text={HELP} /></h3>
       {backlog.items.length === 0 && !evaluating && <p className="text-[0.8125rem] text-ink-soft">{mandatory ? 'O esboço do backlog aparece aqui quando os documentos ficarem prontos.' :'O backlog aparece depois da próxima avaliação. Clique em Avaliar.'}</p>}
       {epics.map((epic) => (
         <details key={epic.key} className="group grid gap-[0.4rem]" data-testid={`epic-${epic.key}`}>

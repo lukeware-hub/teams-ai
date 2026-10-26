@@ -19,7 +19,7 @@ export function SpecTree({ backlog, evaluating = false }: { backlog: BacklogView
   const tasks = Object.values(backlog.preplans ?? {}).reduce((n, row) => n + (row.preplan?.tasks.length ?? 0), 0);
   return (
     <div className="my-4 grid gap-[0.6rem]" data-testid="spec-tree">
-      <h4 className="m-0 flex items-center gap-2"><Icon name="list" size={20} />Cobertura<InfoTip text={HELP} /></h4>
+      <h3 className="section-title m-0 flex items-center gap-2"><Icon name="list" size={20} />Cobertura<InfoTip text={HELP} /></h3>
       <ul className="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="Resumo da cobertura">
         {[
           count(matrix.sections.length, 'seção', 'seções'),
