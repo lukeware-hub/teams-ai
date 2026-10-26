@@ -458,12 +458,12 @@ export class RefineSession {
 
   /** The journal keeps the preparation's start, each step and its end; a failure is journaled for the owner, never thrown. */
   private async timedSpeckit(ctl: AbortController, backlog: BacklogState): Promise<void> {
-    const items = buildSpecsIndex(this.deps.draft.specId, backlog).specs;
-    const inputHash = await speckitInputHash(this.deps.draft, backlog);
-    // A preparation that failed on these same inputs keeps the steps it finished: this run skips them.
-    const finished = finishedSteps(this.journal.state.speckit, inputHash);
-    await this.journal.fact(RefineEvent.SpeckitStarted, { total: speckitSteps(items).length, inputHash, resumed: finished.size });
     try {
+      const items = buildSpecsIndex(this.deps.draft.specId, backlog).specs;
+      const inputHash = await speckitInputHash(this.deps.draft, backlog);
+      // A preparation that failed on these same inputs keeps the steps it finished: this run skips them.
+      const finished = finishedSteps(this.journal.state.speckit, inputHash);
+      await this.journal.fact(RefineEvent.SpeckitStarted, { total: speckitSteps(items).length, inputHash, resumed: finished.size });
       const hash = await prepareSpeckit({ draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, exec: this.deps.exec ?? execCommand, decider: this.deps.decider, signal: ctl.signal }, backlog, finished);
       await this.journal.fact(RefineEvent.SpeckitDone, { inputHash: hash });
     } catch (err) {

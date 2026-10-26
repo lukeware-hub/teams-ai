@@ -604,6 +604,16 @@ describe('RefineSession.runSpeckit', () => {
     await s.close();
   });
 
+  it('an error before the preparation starts is journaled as a failure the owner sees', async () => {
+    const s = await detailedSession();
+    await fs.rm(draft().stackMd);
+    await expect(s.runSpeckit()).resolves.toBeUndefined();
+    expect(s.state.speckit).toMatchObject({ status: 'failed', error: 'A preparação do Spec Kit parou por um erro interno. Tente de novo.' });
+    expect(s.events.find((e) => e.type === RefineEvent.SpeckitFailed)!.data.detail).toContain('ENOENT');
+    expect(agentCalls).toHaveLength(0);
+    await s.close();
+  });
+
   it('a preparation cut by a restart reopens as failed', async () => {
     const s = await detailedSession();
     await s.close();

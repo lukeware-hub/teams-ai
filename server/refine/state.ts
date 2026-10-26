@@ -537,7 +537,8 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       if (s.speckit) s.speckit.status = 'done';
       break;
     case RefineEvent.SpeckitFailed:
-      if (s.speckit) s.speckit = { ...s.speckit, status: 'failed', error: String(d.reason) };
+      // A failure before the preparation started still shows, with no step done.
+      s.speckit = { steps: [], stale: false, ...s.speckit, status: 'failed', error: String(d.reason) };
       break;
     case RefineEvent.StartedRun:
       s.status = 'started';
