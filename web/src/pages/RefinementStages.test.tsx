@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Snapshot } from '../api.js';
@@ -127,6 +127,14 @@ describe('stage 7 of a new project prepares the development', () => {
   it('lists the feature folder Spec Kit made for each item', () => {
     renderView(wizard({ speckit: speckit({ features: { base: 'specs/001-base' } }) as never }), handlersWithSpeckit());
     expect(screen.getByTestId('speckit-features').textContent).toContain('Base: specs/001-base');
+  });
+
+  it('shows the technical detail of a failed preparation under its reason, such as the stderr of a failed init', () => {
+    const stderr = '╭─ Error ─╮\n│ No such option: --integration │\n╰─────────╯';
+    renderView(wizard({ speckit: speckit({ status: 'failed', error: 'O Spec Kit não conseguiu preparar a pasta do projeto. Tente de novo.', detail: stderr }) as never }), handlersWithSpeckit());
+    const alert = screen.getByRole('alert');
+    expect(within(alert).getByText('Detalhe técnico')).toBeTruthy();
+    expect(alert.querySelector('pre')!.textContent).toBe(stderr);
   });
 
   it('warns that a preparation is out of date and keeps the start locked', () => {

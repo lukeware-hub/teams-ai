@@ -408,6 +408,15 @@ describe('RefineSession.runSpeckit', () => {
     await s.close();
   });
 
+  it('keeps the stderr tail of a failed init in the state, so the owner reads why it failed', async () => {
+    const stderr = "Usage: specify init [OPTIONS] [project_name]\nTry 'specify init --help' for help.\n╭─ Error ─╮\n│ No such option: --integration │\n╰─────────╯";
+    exec = async () => ({ exitCode: 2, signal: null, stdout: '', stderr, timedOut: false, durationMs: 1, truncated: false });
+    const s = await detailedSession();
+    await s.runSpeckit();
+    expect(s.state.speckit).toMatchObject({ status: 'failed', detail: stderr });
+    await s.close();
+  });
+
   it('keeps the questions of a blocked step on record, so the owner can answer them before a re-run', async () => {
     answer = (req) => (req.pack.feedback!.includes('speckit-plan/SKILL') ? { status: 'blocked', summary: 'parou', files: [], reason: 'o plano não fecha', questions: [{ text: 'Qual o prazo de retenção?', blocking: true }] } : done(req));
     const s = await detailedSession();

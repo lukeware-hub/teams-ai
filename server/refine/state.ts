@@ -546,8 +546,8 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       }
       break;
     case RefineEvent.SpeckitFailed:
-      // A failure before the preparation started still shows, with no step done.
-      s.speckit = { steps: [], stale: false, ...s.speckit, status: 'failed', error: String(d.reason), ...(d.detail ? { detail: String(d.detail) } : {}) };
+      // A failure before the preparation started still shows, with no step done and with only its own detail.
+      s.speckit = { steps: [], stale: false, ...s.speckit, status: 'failed', error: String(d.reason), detail: String(d.detail ?? '') };
       delete s.speckit.running;
       break;
     case RefineEvent.StartedRun:
