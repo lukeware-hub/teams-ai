@@ -517,6 +517,16 @@ describe('Spec Kit preparation state', () => {
     expect(again.speckit).toEqual({ status: 'running', steps: [], total: 4, stale: false });
   });
 
+  it('keeps the detail of a failed run, and marks the steps a resumed run of the same inputs reuses', () => {
+    const begun = { type: RefineEvent.SpeckitStarted, data: { total: 4, inputHash: 'h' } };
+    const specify = { type: RefineEvent.SpeckitStepDone, data: { command: 'specify', itemKey: 'cart', files: [], featureDir: 'specs/001-cart' } };
+    const failed = { type: RefineEvent.SpeckitFailed, data: { reason: 'stopped', detail: 'specs/001-cart/plan.md' } };
+    expect(reduceRefineEvents([begun, specify, failed]).speckit).toMatchObject({ status: 'failed', error: 'stopped', detail: 'specs/001-cart/plan.md' });
+    const reused = { type: RefineEvent.SpeckitReused, data: { steps: [{ command: 'specify', itemKey: 'cart' }] } };
+    const resumed = reduceRefineEvents([begun, specify, failed, begun, reused]).speckit;
+    expect(resumed).toEqual({ status: 'running', steps: [{ command: 'specify', itemKey: 'cart', reused: true }], features: { cart: 'specs/001-cart' }, inputHash: 'h', total: 4, stale: false });
+  });
+
   it('shows the command running now, and when the run began', () => {
     const begun = { type: RefineEvent.SpeckitStarted, at: '2026-10-25T10:00:00Z', data: { total: 4 } };
     const running = reduceRefineEvents([begun, { type: RefineEvent.SpeckitStepStarted, data: { command: 'specify', itemKey: 'login' } }]);

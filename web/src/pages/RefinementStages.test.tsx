@@ -111,6 +111,24 @@ describe('stage 7 of a new project prepares the development', () => {
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('shows the technical detail of a failed preparation under its reason', () => {
+    renderView(wizard({ speckit: speckit({ status: 'failed', error: 'O Spec Kit parou.', detail: 'specs/001-base/plan.md: AC-002' }) as never }), handlersWithSpeckit());
+    expect(screen.getByTestId('speckit-failed-detail').textContent).toContain('specs/001-base/plan.md: AC-002');
+  });
+
+  it('marks the steps a resumed preparation reused from the run that failed', () => {
+    const reused = { command: 'constitution', startedAt: '2026-10-25T10:00:00Z', endedAt: '2026-10-25T10:01:05Z', reused: true };
+    renderView(wizard({ speckit: speckit({ status: 'running', total: 5, steps: [reused, { command: 'specify', itemKey: 'base' }] }) as never }), handlersWithSpeckit());
+    const rows = [...screen.getByTestId('speckit-steps').querySelectorAll('li')];
+    expect(rows[0]!.textContent).toContain('Reaproveitada');
+    expect(rows[1]!.textContent).not.toContain('Reaproveitada');
+  });
+
+  it('lists the feature folder Spec Kit made for each item', () => {
+    renderView(wizard({ speckit: speckit({ features: { base: 'specs/001-base' } }) as never }), handlersWithSpeckit());
+    expect(screen.getByTestId('speckit-features').textContent).toContain('Base: specs/001-base');
+  });
+
   it('warns that a preparation is out of date and keeps the start locked', () => {
     renderView(wizard({ speckit: speckit({ stale: true }) as never }), handlersWithSpeckit());
     expect(screen.getByTestId('speckit-stale')).toBeTruthy();

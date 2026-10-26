@@ -166,7 +166,7 @@ export interface RefineState {
   /** The PO and the SM are answering the open Spec Kit questions now (true from their start until their end). */
   speckitAnswering?: boolean;
   /** The Spec Kit preparation of a detailed backlog; stale once a document or the backlog changes after it. */
-  speckit?: { status: 'running' | 'done' | 'failed'; startedAt?: string; running?: Array<{ command: string; itemKey?: string; startedAt?: string }>; steps: Array<{ command: string; itemKey?: string; startedAt?: string; endedAt?: string; basis?: string; reused?: boolean }>; total?: number; error?: string; stale: boolean; features?: Record<string, string>; inputHash?: string };
+  speckit?: { status: 'running' | 'done' | 'failed'; startedAt?: string; running?: Array<{ command: string; itemKey?: string; startedAt?: string }>; steps: Array<{ command: string; itemKey?: string; startedAt?: string; endedAt?: string; basis?: string; reused?: boolean }>; total?: number; error?: string; detail?: string; stale: boolean; features?: Record<string, string>; inputHash?: string };
 }
 
 export interface StuckRun {
@@ -547,7 +547,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       break;
     case RefineEvent.SpeckitFailed:
       // A failure before the preparation started still shows, with no step done.
-      s.speckit = { steps: [], stale: false, ...s.speckit, status: 'failed', error: String(d.reason) };
+      s.speckit = { steps: [], stale: false, ...s.speckit, status: 'failed', error: String(d.reason), ...(d.detail ? { detail: String(d.detail) } : {}) };
       delete s.speckit.running;
       break;
     case RefineEvent.StartedRun:

@@ -49,10 +49,51 @@ const rowIcon = {
 
 const line = 'm-0 flex items-start gap-2 text-[0.9375rem] leading-[1.5]';
 
-/** Where the Spec Kit preparation stands: not started, running, done, out of date or failed. `plan` is every step in order. */
-export function SpeckitStatus({ speckit, titles, plan = [], waiting = false }: { speckit: Speckit; titles: Map<string, string>; plan?: readonly Command[]; waiting?: boolean }) {
+/** The feature folder Spec Kit made for each item, behind a summary that counts them. */
+function FeatureFolders({ features, titles }: { features: Record<string, string>; titles: Map<string, string> }) {
+  const rows = Object.entries(features);
+  return (
+    <details className="text-[0.8125rem]" data-testid="speckit-features">
+      <summary className="w-fit cursor-pointer text-ink-soft">{rows.length === 1 ? '1 pasta de feature' : `${rows.length} pastas de feature`}</summary>
+      <ul className="m-0 mt-1 grid list-none gap-1 p-0">
+        {rows.map(([key, dir]) => <li key={key} className="wrap-anywhere">{titles.get(key) ?? key}: <code>{dir}</code></li>)}
+      </ul>
+    </details>
+  );
+}
+
+type Props = { speckit: Speckit; titles: Map<string, string>; plan?: readonly Command[]; waiting?: boolean };
+
+/** Where the Spec Kit preparation stands, with the feature folders it made so far. `plan` is every step in order. */
+export function SpeckitStatus(props: Props) {
+  const features = props.speckit?.features;
+  return (
+    <div className="grid gap-2">
+      <Status {...props} />
+      {features && <FeatureFolders features={features} titles={props.titles} />}
+    </div>
+  );
+}
+
+/** Where the Spec Kit preparation stands: not started, running, done, out of date or failed. */
+function Status({ speckit, titles, plan = [], waiting = false }: Props) {
   if (!speckit) return <p className={`${line} text-ink-soft`} data-testid="speckit-idle">O Spec Kit ainda não preparou o desenvolvimento. Ele cria a constituição do projeto e a spec, o plano e as tarefas de cada item do backlog.</p>;
-  if (speckit.status === 'failed') return <p role="alert" className={`${line} text-warn`} data-testid="speckit-failed"><Icon name="alert" size={20} /><span>{speckit.error ?? 'A preparação falhou.'}</span></p>;
+  if (speckit.status === 'failed') {
+    return (
+      <div role="alert" className={`${line} text-warn`} data-testid="speckit-failed">
+        <Icon name="alert" size={20} />
+        <div className="grid min-w-0 gap-1">
+          <span>{speckit.error ?? 'A preparação falhou.'}</span>
+          {speckit.detail && (
+            <details className="text-ink-soft">
+              <summary className="w-fit cursor-pointer text-[0.75rem]">Detalhe técnico</summary>
+              <pre className="m-0 max-h-48 overflow-auto text-[0.75rem] whitespace-pre-wrap wrap-anywhere" data-testid="speckit-failed-detail">{speckit.detail}</pre>
+            </details>
+          )}
+        </div>
+      </div>
+    );
+  }
   if (speckit.status === 'running') {
     const done = speckit.steps.length;
     const total = speckit.total ?? done;

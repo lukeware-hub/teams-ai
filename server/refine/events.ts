@@ -67,7 +67,7 @@ export const RefineEvent = {
   SpeckitStepDone: 'SPECKIT_STEP_DONE',
   /** The Spec Kit preparation finished: `{inputHash}` of the documents and item specs it read. */
   SpeckitDone: 'SPECKIT_DONE',
-  /** The Spec Kit preparation stopped: `{reason}`, in plain words for the owner. */
+  /** The Spec Kit preparation stopped: `{reason, detail?}`, the reason in plain words for the owner and its technical detail. */
   SpeckitFailed: 'SPECKIT_FAILED',
   /** The PO or SM read the questions of a Spec Kit step: `{results, rework?}`; `rework` names the step to run again after an answer. */
   SpeckitTriaged: 'SPECKIT_TRIAGED',
