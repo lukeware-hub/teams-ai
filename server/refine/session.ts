@@ -464,7 +464,7 @@ export class RefineSession {
     const finished = finishedSteps(this.journal.state.speckit, inputHash);
     await this.journal.fact(RefineEvent.SpeckitStarted, { total: speckitSteps(items).length, inputHash, resumed: finished.size });
     try {
-      const hash = await prepareSpeckit({ draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, exec: this.deps.exec ?? execCommand, signal: ctl.signal }, backlog, finished);
+      const hash = await prepareSpeckit({ draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, exec: this.deps.exec ?? execCommand, decider: this.deps.decider, signal: ctl.signal }, backlog, finished);
       await this.journal.fact(RefineEvent.SpeckitDone, { inputHash: hash });
     } catch (err) {
       const reason = err instanceof OwnerError ? err.message : `${SPECKIT_STAGE} parou por um erro interno. ${TRY_AGAIN}`;

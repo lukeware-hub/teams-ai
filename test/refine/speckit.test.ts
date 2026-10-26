@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Decider } from '../../server/decide/decider.js';
 import { CommandError, type CommandSpec, type Exec } from '../../server/exec/command.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
 import type { AgentStepRequest } from '../../server/orchestrator/steps.js';
@@ -42,8 +43,21 @@ async function wrote(req: AgentStepRequest<'speckit'>, files: string[]) {
 const done = (req: AgentStepRequest<'speckit'>) => wrote(req, isSpecify(req) ? [`specs/${req.pack.feedback!.match(/"## (\w+):/)![1]}/spec.md`] : []);
 const item = (key: string, rank: number) => ({ key, title: `Item ${key}`, epic: 'core', priority: 'must', rank, size: 'S', scope: 's', rationale: 'r', dependsOn: [], sources: [] });
 
+/** A Jev that calls each pair a repeat when `repeat` says so; null leaves the pair unanswered. The pair reads "Question A: ...\nQuestion B: ...". */
+const jev = (repeat: (pair: string) => boolean | null) => ({
+  decide: vi.fn(async (_id: string, pair: string, _questions: unknown, _ctx: { confidential: boolean }) => {
+    const same = repeat(pair);
+    return same === null ? { answered: false, reason: 'exhausted' } : { answered: true, answers: { q0: { type: 'noul', value: same ? 0.9 : 0.1 } }, backend: 'local', escalated: false };
+  }),
+});
+/** Each item's steps ask the questions given for that item. */
+const askItems = (asks: Record<string, Array<{ text: string; blocking: boolean }>>) => async (req: AgentStepRequest<'speckit'>) => {
+  const key = Object.keys(asks).find((k) => req.pack.feedback!.includes(`"## ${k}:`));
+  return { ...(await done(req)), questions: key ? asks[key] : [] };
+};
+
 /** A wizard session whose backlog of two items is detailed. */
-async function detailedSession(): Promise<RefineSession> {
+async function detailedSession(decider?: Pick<Decider, 'decide'>): Promise<RefineSession> {
   const created = await RefineSession.create(deps(), 'new-project');
   await created.enableBacklog();
   await created.close();
@@ -58,7 +72,7 @@ async function detailedSession(): Promise<RefineSession> {
   await fs.writeFile(`${draft().docs}/specs/login/preplan.json`, '{"tasks":[]}');
   await journal.fact(RefineEvent.PreplanDerived, { key: 'login', inputHash: 'i', specRev: 'r', preplan: { tasks: [] }, issues: [], cycle: 1 });
   await journal.close();
-  return RefineSession.open(deps());
+  return RefineSession.open({ ...deps(), decider });
 }
 
 beforeEach(async () => {
@@ -260,6 +274,57 @@ describe('RefineSession.runSpeckit', () => {
     await s.runSpeckit();
     expect(s.state.questions.filter((q) => q.origin === 'speckit')).toHaveLength(2);
     expect(canStart(s.state)).toBe(true);
+    await s.close();
+  });
+
+  it('drops a reworded question the Jev calls a repeat of one already asked', async () => {
+    answer = askItems({ login: [{ text: 'Qual moeda?', blocking: false }], cart: [{ text: 'Em que moeda cobramos?', blocking: false }, { text: 'Precisa de 2FA?', blocking: false }] });
+    const jevs = jev((pair) => /Question B: .*moeda/i.test(pair));
+    const s = await detailedSession(jevs as never);
+    await s.runSpeckit();
+    const asked = s.state.questions.filter((q) => q.origin === 'speckit').map((q) => q.text);
+    expect(asked).toHaveLength(2);
+    expect(asked).toContain('Precisa de 2FA?');
+    expect(asked.filter((t) => /moeda/i.test(t))).toHaveLength(1);
+    await s.close();
+  });
+
+  it('keeps both questions when the Jev gives no answer', async () => {
+    answer = askItems({ login: [{ text: 'Qual moeda?', blocking: false }], cart: [{ text: 'Em que moeda cobramos?', blocking: false }] });
+    const s = await detailedSession(jev(() => null) as never);
+    await s.runSpeckit();
+    expect(s.state.questions.filter((q) => q.origin === 'speckit')).toHaveLength(2);
+    await s.close();
+  });
+
+  it('keeps a blocking question that repeats a pending non-blocking one, so the start still waits for it', async () => {
+    answer = askItems({ login: [{ text: 'Qual moeda?', blocking: false }], cart: [{ text: 'Em que moeda cobramos?', blocking: true }] });
+    const s = await detailedSession(jev(() => true) as never);
+    await s.runSpeckit();
+    expect(s.state.questions.some((q) => q.origin === 'speckit' && q.blocking && /moeda/i.test(q.text))).toBe(true);
+    expect(canStart(s.state)).toBe(false);
+    await s.close();
+  });
+
+  it('drops an exact repeat without asking the Jev, on the first run and on a re-run', async () => {
+    answer = askItems({ login: [{ text: 'Qual moeda?', blocking: false }], cart: [{ text: '  qual   MOEDA? ', blocking: false }] });
+    const jevs = jev(() => true);
+    const s = await detailedSession(jevs as never);
+    await s.runSpeckit();
+    await s.runSpeckit();
+    expect(s.state.questions.filter((q) => q.origin === 'speckit')).toHaveLength(1);
+    expect(jevs.decide).not.toHaveBeenCalled();
+    await s.close();
+  });
+
+  it('sends the Jev the confidential flag, so a confidential project keeps its duplicate check local', async () => {
+    answer = askItems({ login: [{ text: 'Qual moeda?', blocking: false }], cart: [{ text: 'Em que moeda cobramos?', blocking: false }] });
+    const jevs = jev(() => false);
+    const s = await detailedSession(jevs as never);
+    await s.answerConfidentiality(true);
+    await s.runSpeckit();
+    expect(jevs.decide).toHaveBeenCalled();
+    for (const [, , , ctx] of jevs.decide.mock.calls) expect(ctx).toEqual({ confidential: true });
     await s.close();
   });
 

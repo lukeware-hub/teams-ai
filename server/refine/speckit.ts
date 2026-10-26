@@ -3,11 +3,13 @@ import path from 'node:path';
 import type { SpeckitOutput } from '../agents/outputs.js';
 import { sha256 } from '../contracts/hash.js';
 import { OwnerError } from '../core/owner-error.js';
+import type { Decider } from '../decide/decider.js';
+import { duplicatePairs } from '../decide/decisions/gate1.js';
 import type { Exec } from '../exec/command.js';
 import { absoluteRule } from '../runner/role-settings.js';
 import type { StepOutcome } from '../runner/step.js';
 import { ownerFailure, retryOnSchema, TRY_AGAIN, withNote } from './agent-failure.js';
-import type { CycleJournal, RunAgent } from './cycle.js';
+import { isConfidential, MAX_DEDUP_PAIRS, type CycleJournal, type RunAgent } from './cycle.js';
 import { readDoc, type Draft } from './draft.js';
 import { RefineEvent } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
@@ -37,6 +39,7 @@ export interface SpeckitDeps {
   journal: Pick<CycleJournal, 'allocStepSeq' | 'fact' | 'state'>;
   runAgent: RunAgent;
   exec: Exec;
+  decider?: Pick<Decider, 'decide'>;
   signal?: AbortSignal;
 }
 
@@ -96,6 +99,21 @@ function newQuestions(state: Pick<RefineState, 'questions' | 'cycle'>, asked: Sp
     const about = q.itemKey ?? itemKey;
     return [{ questionId: `speckit-${sha256(key).slice(7, 19)}`, role: 'po' as const, text: q.text.trim(), blocking: q.blocking, relatedAcIds: [], cycle: state.cycle, origin: 'speckit' as const, ...(about ? { itemKey: about } : {}), ...(q.options?.length ? { options: q.options } : {}) }];
   });
+}
+
+type Earlier = Pick<Question, 'text' | 'blocking'> & { status?: string };
+
+/** Drops a new question the Jev calls a repeat of an earlier one; a blocking one is kept against a pending non-blocking one. */
+async function dropRepeats(fresh: Question[], earlier: readonly Earlier[], decider: Pick<Decider, 'decide'>, confidential: boolean): Promise<Question[]> {
+  const pairs = fresh
+    .flatMap((q, i) => {
+      const before: Earlier[] = [...earlier, ...fresh.slice(0, i)];
+      return before.filter((e) => !(q.blocking && !e.blocking && (e.status ?? 'pending') === 'pending')).map((e) => ({ a: e.text, b: q.text, drop: q }));
+    })
+    .slice(0, MAX_DEDUP_PAIRS);
+  const dup = await duplicatePairs(pairs, decider, { confidential });
+  const dropped = new Set(dup ? pairs.filter((_, i) => dup[i]).map((p) => p.drop) : []);
+  return fresh.filter((q) => !dropped.has(q));
 }
 
 async function initSpeckit(exec: Exec, cwd: string): Promise<void> {
@@ -160,7 +178,8 @@ export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState, f
     const featureDir = step.command === 'specify' ? await featureDirOf(dir, result.files) : undefined;
     if (result.status === 'done') await checkOnDisk(dir, step, result.files, featureDir);
     const open = result.status === 'done' ? await openMarkers(dir, result.files) : [];
-    const asked = newQuestions(deps.journal.state, result.questions, step.item?.key);
+    const fresh = newQuestions(deps.journal.state, result.questions, step.item?.key);
+    const asked = deps.decider ? await dropRepeats(fresh, deps.journal.state.questions, deps.decider, await isConfidential(deps.draft, deps.journal.state)) : fresh;
     await deps.journal.fact(RefineEvent.SpeckitStepDone, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}), files: result.files, ...(featureDir ? { featureDir } : {}), ...(asked.length > 0 ? { questions: asked } : {}), ...(result.status === 'blocked' || open.length > 0 ? { blocked: true } : {}) });
     // The questions of a blocked step are on record before it stops, so the owner can answer them.
     if (result.status === 'blocked') throw new OwnerError(`O Spec Kit parou em ${stepName(step)}: ${result.reason}`, result.summary);

@@ -79,7 +79,7 @@ async function mainOutline(draft: Draft, before: BacklogState | null): Promise<B
   }
 }
 
-const MAX_DEDUP_PAIRS = 20;
+export const MAX_DEDUP_PAIRS = 20;
 const MAX_HISTORY_CHUNKS = 5;
 
 /** Journals every decision the wrapped decider answers as DECISION_MADE (spec 10A.4), so evals can read Gate 1 too. */
