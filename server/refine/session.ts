@@ -236,7 +236,7 @@ export class RefineSession {
   private guard(): void {
     if (this.state.status === 'started') throw new ConflictError('session already started a run');
     this.guardStarting();
-    if (this.busy) throw new ConflictError('evaluation in progress');
+    if (this.busy) throw new ConflictError('Já tem uma avaliação em andamento. Aguarde ela terminar e tente de novo.');
   }
 
   ensureCanEvaluate(): void {
