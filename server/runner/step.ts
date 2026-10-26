@@ -102,6 +102,8 @@ export const ANSWER_MAX_TURNS = 4;
 const KIND_TOOLS: Partial<Record<StepKind, readonly string[]>> = { chat: CHAT_TOOLS, 'speckit-answer': ANSWER_TOOLS };
 /** The turn cap a kind has below its role's. */
 const KIND_TURNS: Partial<Record<StepKind, number>> = { chat: CHAT_MAX_TURNS, 'speckit-answer': ANSWER_MAX_TURNS };
+/** The only folders of its working directory a kind's file tools may write: a Spec Kit step writes its own files, never the inputs or a CLAUDE.md. */
+const KIND_WRITE_DIRS: Partial<Record<StepKind, readonly string[]>> = { speckit: ['.specify', 'specs'] };
 export const stepCaps = (kind: StepKind, caps: ProcessCaps): ProcessCaps => {
   const turns = KIND_TURNS[kind];
   return turns === undefined ? caps : { ...caps, maxTurns: Math.min(caps.maxTurns, turns) };
@@ -331,7 +333,8 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
   // The reference catalogs of the role are searched with Grep, never installed: the agent is told where they are.
   const refs = deps.skillsRoot ? referenceDirs(deps.skillsRoot, req.role) : [];
   await ensureTrusted(req.cwd, path.join(home, '.claude.json'));
-  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: [...(req.extraAllow ?? []), ...refs.map((dir) => `Read(${absoluteRule(dir)}/**)`)], extraDenyRead: req.denyRead, protectedDirs: [deps.agentPluginsRoot, dynamicPluginDir(home), ...(req.protectedDirs ?? [])].filter((dir): dir is string => dir !== undefined), sandboxEnabled: deps.sandbox?.enabled, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });
+  const writeDirs = KIND_WRITE_DIRS[req.kind]?.map((dir) => path.join(req.cwd, dir));
+  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: [...(req.extraAllow ?? []), ...refs.map((dir) => `Read(${absoluteRule(dir)}/**)`)], extraDenyRead: req.denyRead, protectedDirs: [deps.agentPluginsRoot, dynamicPluginDir(home), ...(req.protectedDirs ?? [])].filter((dir): dir is string => dir !== undefined), writeDirs, sandboxEnabled: deps.sandbox?.enabled, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });
   if (req.resume && req.sessionStore) await restoreSession(req.sessionStore, home);
   // A review, a UI check and a refinement never edit the files they judge (R11.13 slice 2).
   // The chat searches its own guide and history with the tools of CHAT_TOOLS only; its Bash rules allow graphify queries and nothing else.

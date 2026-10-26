@@ -415,6 +415,21 @@ describe('runStep', () => {
     expect(stepCaps('speckit-answer', deps.caps).maxTurns).toBe(4);
   });
 
+  it('lets the file tools of a Spec Kit step write only under .specify/ and specs/ of its folder, so the inputs and a CLAUDE.md stay out of reach', async () => {
+    const capture = path.join(dir, 'capture.json');
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
+    const fileRules = async (): Promise<string[]> => {
+      const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
+      const settings = JSON.parse(await fs.readFile(captured.argv[captured.argv.indexOf('--settings') + 1], 'utf8'));
+      return (settings.permissions.allow as string[]).filter((rule) => /^(Edit|Write|MultiEdit)\b/.test(rule));
+    };
+    await runStep(request({ kind: 'speckit' }), deps);
+    expect(await fileRules()).toEqual([`Edit(${absoluteRule(path.join(dir, '.specify'))}/**)`, `Edit(${absoluteRule(path.join(dir, 'specs'))}/**)`]);
+    // Any other step of the role keeps the file tools its role allows.
+    await runStep(request(), deps);
+    expect(await fileRules()).toEqual(['Edit', 'Write', 'MultiEdit']);
+  });
+
   it('adds the step\'s own text to the end of the agent prompt, which is the part the API caches', async () => {
     const capture = path.join(dir, 'capture.json');
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });

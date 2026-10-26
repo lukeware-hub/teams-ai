@@ -87,6 +87,8 @@ export interface RoleSettingsInput {
   extraDenyRead?: readonly string[];
   /** Directories no tool of the step may write: the installed skill plugins, shared by every step. */
   protectedDirs?: readonly string[];
+  /** The only directories the step's file tools may write; when set, the role's file tools, which name no directory, are left out. */
+  writeDirs?: readonly string[];
 }
 
 export interface RoleSettings {
@@ -118,9 +120,12 @@ export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSet
     ...(input.extraDenyRead ?? []).map((d) => d.replace(/\/+$/, '')),
   ];
   const denyWrite = (input.protectedDirs ?? []).map((d) => d.replace(/\/+$/, ''));
+  // dontAsk denies every edit no rule allows, so a step held to some directories gets Edit rules for those in place of the bare file tools.
+  const roleAllow = input.writeDirs ? ROLE_ALLOW[role].filter((rule) => !(EDIT_TOOLS as readonly string[]).includes(rule)) : ROLE_ALLOW[role];
+  const writeAllow = (input.writeDirs ?? []).map((d) => `Edit(${absoluteRule(d)}/**)`);
   return {
     sandbox: { enabled: input.sandboxEnabled ?? true, network: { allowedDomains: [...input.allowedDomains] }, ...(denyRead.length + denyWrite.length > 0 ? { filesystem: { denyRead, denyWrite } } : {}) },
-    permissions: { allow: [...ROLE_ALLOW[role], ...AGENT_REACH_ALLOW, ...(input.extraAllow ?? [])], deny: [...new Set(deny)] },
+    permissions: { allow: [...roleAllow, ...writeAllow, ...AGENT_REACH_ALLOW, ...(input.extraAllow ?? [])], deny: [...new Set(deny)] },
   };
 }
 
