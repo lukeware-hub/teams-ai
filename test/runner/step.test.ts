@@ -406,6 +406,15 @@ describe('runStep', () => {
     expect(stepCaps('chat', { ...deps.caps, maxTurns: 3 }).maxTurns).toBe(3);
   });
 
+  it('gives a Spec Kit web search only WebSearch, and a turn cap of four', async () => {
+    const capture = path.join(dir, 'capture.json');
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
+    await runStep(request({ kind: 'speckit-research', role: 'po', agent: { ...devAgent, tools: [] }, extraAllow: ['WebSearch'] }), deps);
+    const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
+    expect(captured.argv[captured.argv.indexOf('--tools') + 1]).toBe('WebSearch');
+    expect(stepCaps('speckit-research', deps.caps).maxTurns).toBe(4);
+  });
+
   it('gives a Spec Kit answer only Read, Grep and Glob, and a turn cap of four', async () => {
     const capture = path.join(dir, 'capture.json');
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });

@@ -229,6 +229,8 @@ export const Config = z.object({
       perDecision: PerDecisionSchema.prefault({}),
       /** R11.5.7: the confidence at or above which a blocking refinement question Jev routes `auto` is answered from the docs; `measured` (the default) takes it from the project's labelled answers, `off` never answers. */
       autoAnswerFloor: z.union([unit, z.enum(['measured', 'off'])]).default('measured'),
+      /** Off by default: a Spec Kit question the documents leave open may get one suggestion from a web search, which the owner confirms. Never for a confidential project. */
+      speckitResearch: z.boolean().default(false),
     })
     .prefault({}),
   paths: z

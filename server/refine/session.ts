@@ -100,6 +100,8 @@ export interface SessionDeps {
   decider?: CycleDeps['decider'];
   /** Read at each evaluation, so a floor set in the config reaches drafts already open. */
   autoAnswerFloor?: () => Promise<number | undefined>;
+  /** Read at each preparation and each request, so the owner's setting applies to drafts already open. */
+  speckitResearch?: () => Promise<boolean>;
   /** Runs `specify init` for the Spec Kit preparation; the real command when absent. */
   exec?: Exec;
   /** How many backlog items the Spec Kit preparation runs at once, read when it starts; one when absent. */
@@ -477,7 +479,7 @@ export class RefineSession {
   private async timedAnswers(ctl: AbortController, backlog: BacklogState): Promise<void> {
     await this.journal.fact(RefineEvent.SpeckitAnswersStarted, {});
     try {
-      const answered = await answerUntriaged({ draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, signal: ctl.signal }, backlog);
+      const answered = await answerUntriaged({ draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, signal: ctl.signal, research: (await this.deps.speckitResearch?.()) === true }, backlog);
       if (answered > 0 && this.state.speckit) await this.journal.fact(RefineEvent.SpeckitStale, {});
     } finally {
       await this.journal.fact(RefineEvent.SpeckitAnswersDone, {});
@@ -488,7 +490,7 @@ export class RefineSession {
   private async timedSpeckit(ctl: AbortController, backlog: BacklogState): Promise<void> {
     try {
       const agents = (await this.deps.speckitAgents?.()) ?? 1;
-      const hash = await prepareSpeckit({ draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, exec: this.deps.exec ?? execCommand, decider: this.deps.decider, signal: ctl.signal, agents }, backlog);
+      const hash = await prepareSpeckit({ draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, exec: this.deps.exec ?? execCommand, decider: this.deps.decider, signal: ctl.signal, agents, research: (await this.deps.speckitResearch?.()) === true }, backlog);
       await this.journal.fact(RefineEvent.SpeckitDone, { inputHash: hash });
     } catch (err) {
       const reason = err instanceof OwnerError ? err.message : `${SPECKIT_STAGE} parou por um erro interno. ${TRY_AGAIN}`;

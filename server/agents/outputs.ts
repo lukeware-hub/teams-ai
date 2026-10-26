@@ -8,7 +8,7 @@ import { ID_PATTERNS } from '../core/ids.js';
 import { Project, ServiceName } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 
-export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'gaps', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select', 'speckit', 'speckit-answer', 'converge'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'gaps', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select', 'speckit', 'speckit-answer', 'speckit-research', 'converge'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -347,6 +347,12 @@ const SpeckitAnswerResult = z.object({
 export const SpeckitAnswerOutput = z.object({ specHash, results: keepValid(SpeckitAnswerResult) });
 export type SpeckitAnswerOutput = z.infer<typeof SpeckitAnswerOutput>;
 
+/** A suggestion a web search supports: the short answer, one sentence on what the source says, and the address the search returned. */
+const ResearchSuggestion = z.object({ label: z.string().min(1).max(120), detail: z.string().min(1), url: z.string().url() });
+/** One result per question the search was asked about; `suggestion` is null when no search result settles it. */
+export const SpeckitResearchOutput = z.object({ specHash, results: keepValid(z.object({ questionId: z.string().min(1), suggestion: ResearchSuggestion.nullable() })) });
+export type SpeckitResearchOutput = z.infer<typeof SpeckitResearchOutput>;
+
 /** Spec Kit's convergence: the code is checked against the feature's spec, plan and tasks; gaps come back as appended task ids. */
 export const ConvergeOutput = z.discriminatedUnion('status', [
   z.object({ specHash, status: z.literal('converged'), summary: z.string().min(1) }),
@@ -400,6 +406,7 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   'skill-select': SkillSelectionOutput,
   speckit: SpeckitOutput,
   'speckit-answer': SpeckitAnswerOutput,
+  'speckit-research': SpeckitResearchOutput,
   converge: ConvergeOutput,
 };
 

@@ -119,6 +119,8 @@ export interface ResultSummary {
   apiErrorStatus: number | null;
   /** Latest rate_limit_event in the stream (subscription usage windows). */
   rateLimit: RateLimitInfo | null;
+  /** The addresses a web search of this run returned, in order: the only addresses a suggestion may cite. Kept in memory, never journaled. */
+  webSearchUrls?: string[];
   compactions: number;
   profile?: StepProfile;
 }
@@ -268,6 +270,34 @@ function toolActivity(events: readonly StreamEvent[]): Pick<StepProfile, 'toolCa
   return { toolCalls, ...(Object.keys(skills).length > 0 ? { skills } : {}), toolResultChars, ...(sandboxInitFailed ? { sandboxInitFailed } : {}) };
 }
 
+/** The text of a tool result: a string, or the text parts of a list. */
+const resultText = (content: unknown): string =>
+  typeof content === 'string' ? content : Array.isArray(content) ? content.map((c: { text?: unknown }) => (typeof c?.text === 'string' ? c.text : '')).join('\n') : '';
+
+/** The addresses the web searches of the run returned, in order: the only addresses a suggestion may cite. */
+function searchedUrls(events: readonly StreamEvent[]): string[] {
+  const searches = new Set<string>();
+  const urls = new Set<string>();
+  for (const e of events) {
+    if (e.type !== 'assistant' && e.type !== 'user') continue;
+    const content = (e as { message?: { content?: unknown } }).message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content as Array<{ type?: string; id?: string; name?: string; tool_use_id?: string; content?: unknown }>) {
+      if (block?.type === 'tool_use' && block.name === 'WebSearch' && typeof block.id === 'string') searches.add(block.id);
+      if (block?.type === 'tool_result' && typeof block.tool_use_id === 'string' && searches.has(block.tool_use_id)) {
+        for (const m of resultText(block.content).matchAll(/https?:\/\/[^\s"'\\)\]>,<]+/g)) urls.add(m[0]);
+      }
+    }
+  }
+  return [...urls];
+}
+
+/** The searched addresses as a summary field: absent when the run searched nothing, like the skills it used. */
+const searchField = (events: readonly StreamEvent[]): { webSearchUrls?: string[] } => {
+  const urls = searchedUrls(events);
+  return urls.length > 0 ? { webSearchUrls: urls } : {};
+};
+
 /** The text of every agent message in the run, in order: the final result can hold only the last part of an answer. */
 function agentText(events: readonly StreamEvent[]): string {
   let text = '';
@@ -320,6 +350,7 @@ export function summarizeStream(parsed: ParsedStream): ResultSummary {
       apiErrorStatus: null,
       rateLimit,
       compactions,
+      ...searchField(parsed.events),
       profile: { thinkingTokens: 0, durationApiMs: 0, ...toolActivity(parsed.events) },
     };
   }
@@ -349,6 +380,7 @@ export function summarizeStream(parsed: ParsedStream): ResultSummary {
     apiErrorStatus: r.api_error_status ?? null,
     rateLimit,
     compactions,
+    ...searchField(parsed.events),
     profile: {
       thinkingTokens: (r.usage?.output_tokens_details as { thinking_tokens?: number } | undefined)?.thinking_tokens ?? 0,
       durationApiMs: r.duration_api_ms ?? 0,

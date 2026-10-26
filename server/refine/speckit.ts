@@ -46,6 +46,8 @@ export interface SpeckitDeps {
   signal?: AbortSignal;
   /** How many backlog items prepare at once; one when absent. */
   agents?: number;
+  /** The owner's setting: a question the documents leave open may get one web search suggestion, never for a confidential project. */
+  research?: boolean;
 }
 
 /** Whether a file or folder exists. */
@@ -63,19 +65,23 @@ export async function speckitFeatureOf(draftRoot: string, specId: string): Promi
 }
 
 /** The answerer of a preparation: the six inputs as read now, the item titles, and the staging folder the answering agent may not read. */
-function answererFor(deps: Pick<SpeckitDeps, 'draft' | 'journal' | 'runAgent' | 'signal'>, texts: Record<SpeckitInput, string>, backlog: BacklogState): Answerer {
+function answererFor(deps: Pick<SpeckitDeps, 'draft' | 'journal' | 'runAgent' | 'signal'>, texts: Record<SpeckitInput, string>, backlog: BacklogState, research: boolean): Answerer {
   const titles = new Map(buildSpecsIndex(deps.draft.specId, backlog).specs.map((i): [string, string] => [i.key, i.title]));
-  return makeAnswerer({ draft: deps.draft, journal: deps.journal, runAgent: deps.runAgent, texts, hash: hashOf(texts), titles, stagingDir: speckitDir(deps.draft), signal: deps.signal });
+  return makeAnswerer({ draft: deps.draft, journal: deps.journal, runAgent: deps.runAgent, texts, hash: hashOf(texts), titles, stagingDir: speckitDir(deps.draft), signal: deps.signal, research });
 }
 
 /** The Spec Kit questions nobody has read yet: pending, and without the card the PO or the SM writes. */
 const untriaged = (questions: readonly QuestionRow[]): QuestionRow[] => questions.filter((q) => q.origin === 'speckit' && q.status === 'pending' && q.context === undefined);
 
 /** "Pedir ao PO e ao SM": the PO and the SM read the questions nobody has read yet; returns how many they answered. */
-export async function answerUntriaged(deps: Pick<SpeckitDeps, 'draft' | 'journal' | 'runAgent' | 'signal'>, backlog: BacklogState): Promise<number> {
+export async function answerUntriaged(deps: Pick<SpeckitDeps, 'draft' | 'journal' | 'runAgent' | 'signal' | 'research'>, backlog: BacklogState): Promise<number> {
   const texts = await inputTexts(deps.draft, backlog);
-  return answererFor(deps, texts, backlog).triage(untriaged(deps.journal.state.questions));
+  const research = await researchAllowed(deps);
+  return answererFor(deps, texts, backlog, research).triage(untriaged(deps.journal.state.questions));
 }
+
+/** The web search is allowed only when the owner turned it on and the project is not confidential. */
+const researchAllowed = async (deps: Pick<SpeckitDeps, 'draft' | 'journal' | 'research'>): Promise<boolean> => deps.research === true && !(await isConfidential(deps.draft, deps.journal.state));
 
 /** The text of the six Markdown inputs, as Spec Kit reads them. */
 async function inputTexts(draft: Draft, backlog: BacklogState): Promise<Record<SpeckitInput, string>> {
@@ -248,7 +254,7 @@ export async function prepareSpeckit(deps: SpeckitDeps, backlog: BacklogState): 
   await writeInputs(deps.draft, texts);
   const items = buildSpecsIndex(deps.draft.specId, backlog).specs;
   const decider = deps.decider && recorded(deps.decider, deps.journal, deps.journal.state.cycle);
-  const answerer = answererFor(deps, texts, backlog);
+  const answerer = answererFor(deps, texts, backlog, await researchAllowed(deps));
   // The steps an earlier preparation left are read before this one clears them.
   const earlier = deps.journal.state.speckit?.steps ?? [];
   const plan = speckitSteps(items);

@@ -20,6 +20,9 @@ let ws: Workspace;
 let execCalls: CommandSpec[];
 let agentCalls: Array<AgentStepRequest<'speckit'>>;
 let docCalls: Array<AgentStepRequest<'speckit-answer'>>;
+/** The web searches the preparation asked for, and what each one returns. */
+let researchCalls: unknown[];
+let researchReply: (req: unknown) => unknown;
 let exec: Exec;
 let answer: (req: AgentStepRequest<'speckit'>) => unknown;
 /** What the PO or SM answers from the six documents; null is a failed call. */
@@ -29,6 +32,10 @@ const draft = () => draftPaths(ws, 'hello-001');
 const usage = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
 const summary = { usage, costUsd: 0, durationMs: 1, numTurns: 1, rateLimit: null };
 const runAgent: RunAgent = (async (req: AgentStepRequest<'speckit'> | AgentStepRequest<'speckit-answer'>, ctx: { specHash: string }) => {
+  if ((req as { kind: string }).kind === 'speckit-research') {
+    researchCalls.push(req);
+    return researchReply(req);
+  }
   if (req.kind === 'speckit-answer') {
     docCalls.push(req);
     const out = answerFromDocs(req);
@@ -83,7 +90,7 @@ const answersIn = (req: AgentStepRequest<'speckit-answer'>) => ({
 const planLogin = (r: AgentStepRequest<'speckit'>) => r.pack.feedback!.includes('speckit-plan/SKILL') && r.pack.feedback!.includes('"## login:');
 
 /** A wizard session whose backlog of two items is detailed. */
-async function detailedSession(decider?: Pick<Decider, 'decide'>): Promise<RefineSession> {
+async function detailedSession(decider?: Pick<Decider, 'decide'>, extra: { speckitResearch?: () => Promise<boolean> } = {}): Promise<RefineSession> {
   const created = await RefineSession.create(deps(), 'new-project');
   await created.enableBacklog();
   await created.close();
@@ -98,7 +105,7 @@ async function detailedSession(decider?: Pick<Decider, 'decide'>): Promise<Refin
   await fs.writeFile(`${draft().docs}/specs/login/preplan.json`, '{"tasks":[]}');
   await journal.fact(RefineEvent.PreplanDerived, { key: 'login', inputHash: 'i', specRev: 'r', preplan: { tasks: [] }, issues: [], cycle: 1 });
   await journal.close();
-  return RefineSession.open({ ...deps(), decider });
+  return RefineSession.open({ ...deps(), decider, ...extra });
 }
 
 beforeEach(async () => {
@@ -114,6 +121,8 @@ beforeEach(async () => {
   answer = done;
   answerFromDocs = () => null;
   docCalls = [];
+  researchCalls = [];
+  researchReply = () => ({ ok: false, failure: 'schema', errors: ['no search in this test'], summary });
 });
 afterEach(() => fs.rm(root, { recursive: true, force: true }));
 
@@ -296,6 +305,35 @@ describe('RefineSession.askSpeckitAnswers', () => {
     await s.answer(id, 'Minha resposta');
     expect(s.state.questions[0]).toMatchObject({ status: 'answered', answer: 'Minha resposta', answeredBy: null });
     await expect(s.answer(id, 'De novo')).rejects.toThrow(ConflictError);
+    await s.close();
+  });
+});
+
+describe('RefineSession.runSpeckit web search', () => {
+  /** The documents leave each question open, with its card: the web search is the one step left. */
+  const openWithCard = () => {
+    answerFromDocs = (req) => ({ results: askedOf(req).map((q) => ({ questionId: q.questionId, answer: null, evidence: [], card: { subject: 'Prazo', context: 'Item Entrar.', text: `Reescrita: ${q.text}`, options: [] } })) });
+  };
+
+  it('a confidential project gets no web search, even when the setting is on', async () => {
+    answer = askItems({ login: [{ text: 'Qual o prazo do link?', blocking: true }] });
+    openWithCard();
+    const s = await detailedSession(undefined, { speckitResearch: async () => true });
+    await s.runSpeckit();
+    expect(researchCalls).toHaveLength(0);
+    await s.close();
+  });
+
+  it('a project the owner marked not confidential gets one suggestion when the setting is on', async () => {
+    answer = askItems({ login: [{ text: 'Qual o prazo do link?', blocking: true }] });
+    openWithCard();
+    researchReply = (req) => ({ ok: true, value: { specHash: 'h', results: askedOf(req as never).map((q) => ({ questionId: q.questionId, suggestion: { label: '30 dias', detail: 'O guia diz 30 dias.', url: 'https://example.com/prazo' } })) }, summary: { ...summary, webSearchUrls: ['https://example.com/prazo'] } });
+    const s = await detailedSession(undefined, { speckitResearch: async () => true });
+    await s.answerConfidentiality(false);
+    await s.runSpeckit();
+    expect(researchCalls).toHaveLength(1);
+    expect(s.state.questions[0]!.options?.map((o) => o.label)).toEqual(['30 dias']);
+    expect(s.state.questions[0]!.status).toBe('pending');
     await s.close();
   });
 });
