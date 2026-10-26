@@ -62,3 +62,9 @@ Status: pending. A builder has no structured field for a departure from the task
 ## 9. Spec Kit: `tasks.md` shows the delivered tasks
 
 Status: done. When a spec's tasks have merged, the orchestrator marks each delivered Spec Kit task `[X]` in `tasks.md` (`server/orchestrator/phases/speckit.ts`), in the same docs change as the convergence verdict, so the repository shows what was delivered.
+
+## 10. Spec Kit: the PO and the SM answer the open questions from the documents
+
+Status: partly done. After each Spec Kit step, the PO answers the questions of `specify` and `clarify`, and the SM answers those of `constitution`, `plan` and `tasks`. They answer only from the six documents, and only with a quote that is found word for word in one of them (`server/refine/speckit-answers.ts`). The questions they cannot settle reach the owner with a card: the item, the context and the choices. The stage shows a button, "Pedir ao PO e ao SM", for the questions nobody has read yet, and the owner can replace any answer of an agent with his own.
+
+Not done: research on the internet. The spike in `docs/superpowers/spikes/2026-10-26-web-tools.md` showed that WebFetch reaches private addresses, so research stays off until the owner chooses one of the options in that record.
