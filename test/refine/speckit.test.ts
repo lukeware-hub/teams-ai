@@ -613,6 +613,19 @@ describe('RefineSession.runSpeckit', () => {
     await s.close();
   });
 
+  it('drops a question that repeats one asked long before, past the first questions on record', async () => {
+    const original = 'Qual moeda o pagamento usa?';
+    const repeat = 'Em que moeda o pagamento é cobrado?';
+    const others = Array.from({ length: 25 }, (_, i) => ({ text: `Qual o formato do campo ${i + 1}?`, blocking: false }));
+    answer = askItems({ login: [...others, { text: original, blocking: false }], cart: [{ text: repeat, blocking: false }] });
+    const s = await detailedSession(jev((pair) => pair === `Question A: ${original}\nQuestion B: ${repeat}`) as never);
+    await s.runSpeckit();
+    const asked = s.state.questions.filter((q) => q.origin === 'speckit').map((q) => q.text);
+    expect(asked).toContain(original);
+    expect(asked).not.toContain(repeat);
+    await s.close();
+  });
+
   it('keeps both questions when the Jev gives no answer', async () => {
     answer = askItems({ login: [{ text: 'Qual moeda?', blocking: false }], cart: [{ text: 'Em que moeda cobramos?', blocking: false }] });
     const s = await detailedSession(jev(() => null) as never);

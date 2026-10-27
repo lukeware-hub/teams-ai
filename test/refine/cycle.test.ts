@@ -885,6 +885,31 @@ describe('refinement cycle System 1 filters (decisions 2-4)', () => {
     expect(texts).not.toContain('What port does it listen on?');
     expect(texts.some((t) => t.includes('contradizer o histórico do projeto (spec-000 › Ports)'))).toBe(true);
   });
+
+  it('drops a new question with no criterion that repeats a recent earlier one', async () => {
+    const original = 'Em qual porta o serviço escuta?';
+    const repeat = 'Qual porta de rede o serviço usa para escutar?';
+    const { draft, journal, events } = await setup('# doc');
+    const row = (text: string, n: number) => ({ questionId: `po-c1-${n}`, role: 'po' as const, text, blocking: false, relatedAcIds: [], cycle: 1, status: 'answered' as const, answer: 'ok' });
+    journal.state.questions.push(...Array.from({ length: 25 }, (_, n) => row(`Qual o formato do campo ${n + 1}?`, n)), row(original, 25));
+    const ok = (value: unknown) => ({ ok: true, value, summary: {} });
+    const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
+    const runAgent = vi.fn(async (req: { kind: string; role: string; pack: { feedback?: string } }) => {
+      if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...makeSpec({ specId: 'big-001' }), status: 'refining', specHash: null } });
+      if (String(req.pack.feedback).startsWith('REORGANIZE:')) return ok({ checklist: [], questions: [], docPatch: [], moves: [] });
+      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [{ text: repeat, blocking: false, relatedAcIds: [] }], docPatch: [] });
+      return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
+    });
+    const decider = {
+      decide: async (id: string, state: string, questions: Record<string, unknown>) => {
+        const value = id === 'question-dedup' && state === `Question A: ${original}\nQuestion B: ${repeat}` ? 0.9 : 0.1;
+        return { answered: true as const, backend: 'jev' as const, escalated: false, answers: Object.fromEntries(Object.keys(questions).map((k) => [k, { type: 'noul' as const, value, probabilities: { yes: value, no: 1 - value }, confidence: 0.9 }])) };
+      },
+    };
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], decider }, 2);
+    const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
+    expect((evaluated.data.questions as Array<{ text: string }>).map((q) => q.text)).not.toContain(repeat);
+  });
 });
 
 

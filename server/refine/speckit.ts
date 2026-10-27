@@ -9,10 +9,11 @@ import type { Exec } from '../exec/command.js';
 import { absoluteRule } from '../runner/role-settings.js';
 import type { StepOutcome } from '../runner/step.js';
 import { ownerFailure, retryOnSchema, TRY_AGAIN, withNote } from './agent-failure.js';
-import { isConfidential, MAX_DEDUP_PAIRS, recorded, type CycleJournal, type RunAgent } from './cycle.js';
+import { isConfidential, recorded, type CycleJournal, type RunAgent } from './cycle.js';
 import { CONSTITUTION, readDoc, speckitBaseDir, type Draft } from './draft.js';
 import { RefineEvent } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
+import { questionPairs } from './question-pairs.js';
 import { SPECKIT_INPUTS, speckitFeatureDir, speckitPack, type SpeckitCommand, type SpeckitInput, type SpeckitItem } from './speckit-pack.js';
 import { itemSteps, speckitItems, speckitSteps, stepKey, type Step } from './speckit-steps.js';
 import { renderSpecMd } from './spec-md.js';
@@ -150,16 +151,14 @@ function newQuestions(state: Pick<RefineState, 'questions' | 'cycle'>, asked: Sp
   });
 }
 
-type Earlier = Pick<Question, 'text' | 'blocking'> & { status?: string };
+type Earlier = Pick<Question, 'text' | 'blocking' | 'relatedAcIds'> & { status?: string };
 
-/** Drops a new question the Jev calls a repeat of an earlier one; a blocking one is kept against a pending non-blocking one. */
+/** Drops a new question the Jev calls a repeat of one of the most similar earlier ones; a blocking one is kept against a pending non-blocking one. */
 async function dropRepeats(fresh: Question[], earlier: readonly Earlier[], decider: Pick<Decider, 'decide'>, confidential: boolean): Promise<Question[]> {
-  const pairs = fresh
-    .flatMap((q, i) => {
-      const before: Earlier[] = [...earlier, ...fresh.slice(0, i)];
-      return before.filter((e) => !(q.blocking && !e.blocking && (e.status ?? 'pending') === 'pending')).map((e) => ({ a: e.text, b: q.text, drop: q }));
-    })
-    .slice(0, MAX_DEDUP_PAIRS);
+  const pairs = questionPairs(fresh, (q, i) => {
+    const before: Earlier[] = [...earlier, ...fresh.slice(0, i)];
+    return before.filter((e) => !(q.blocking && !e.blocking && (e.status ?? 'pending') === 'pending'));
+  });
   const dup = await duplicatePairs(pairs, decider, { confidential });
   const dropped = new Set(dup ? pairs.filter((_, i) => dup[i]).map((p) => p.drop) : []);
   return fresh.filter((q) => !dropped.has(q));

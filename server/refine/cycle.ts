@@ -30,6 +30,7 @@ import { isStarted } from './coverage.js';
 import { DOC_REL, draftHash, flowTemplate, keepBaseProject, readBase, readDerived, readDoc, readMainSpec, stackTemplate, writeBacklogMd, writeDerived, writeDoc, writeProject, writeSpecsIndex, type DocFile, type Draft } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
 import { plainOutlineQuestion } from './question-choices.js';
+import { questionPairs } from './question-pairs.js';
 import { buildSpecsIndex, outlineOfIndex, specIdOf, type SpecsIndex } from './specs-index.js';
 import type { JevValidationResult, ValidationDocs } from './jev-validation.js';
 import { PATCH_FILES, patchOwners, reorganizeGroups, reorganizePack, refinePack } from './packs.js';
@@ -79,7 +80,6 @@ async function mainOutline(draft: Draft, before: BacklogState | null): Promise<B
   }
 }
 
-export const MAX_DEDUP_PAIRS = 20;
 const MAX_HISTORY_CHUNKS = 5;
 
 /** Journals every decision the wrapped decider answers as DECISION_MADE (spec 10A.4), so evals can read Gate 1 too. */
@@ -596,17 +596,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     merged.push(q);
   }
   if (deps.decider) {
-    // Decision 3: a new question that asks what an earlier one (new, pending or decided) already asks, on a shared AC.
-    const shares = (x: readonly string[], y: readonly string[]) => x.some((id) => y.includes(id));
-    const earlier = [...state.questions, ...merged];
-    const pairs: Array<{ a: string; b: string; drop: Question }> = [];
-    for (const q of merged) {
-      for (const e of earlier) {
-        if (pairs.length >= MAX_DEDUP_PAIRS) break;
-        if (e === q) break; // only earlier questions: `merged` follows `decided` in `earlier`
-        if (shares(e.relatedAcIds, q.relatedAcIds)) pairs.push({ a: e.text, b: q.text, drop: q });
-      }
-    }
+    // Decision 3: a new question that asks what one of its most similar earlier ones (pending, decided, or new before it) already asks.
+    const pairs = questionPairs(merged, (_, i) => [...state.questions, ...merged.slice(0, i)]);
     const dup = await duplicatePairs(pairs, decider!, dctx);
     const dropped = new Set(dup ? pairs.filter((_, i) => dup[i]).map((p) => p.drop) : []);
     for (let i = merged.length - 1; i >= 0; i--) if (dropped.has(merged[i]!)) merged.splice(i, 1);
