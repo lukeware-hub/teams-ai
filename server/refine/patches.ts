@@ -15,6 +15,8 @@ export interface PendingPatch {
   replace: string;
   reason: string;
   diff: string;
+  /** Whether the change adds or removes structure (a heading, a list item, a criterion id or a priority): see scope-guard.ts. Journaled only; nothing applies a patch because of it. */
+  scopeChange?: boolean;
 }
 export type PatchCheck = { ok: true; file: DocFile } | { ok: false; reason: string };
 

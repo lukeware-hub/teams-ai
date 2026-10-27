@@ -15,6 +15,7 @@ import { jevHint, unavailable, type JevValidationResult, type ValidationDocs } f
 import { reorganizePack } from './packs.js';
 import { reshapeAll } from './reshape.js';
 import { applyPatch, checkPatch, docOf, patchId, unifiedDiff } from './patches.js';
+import { patchChangesScope } from './scope-guard.js';
 import { SCORE_CHECKS, type DocScore, type ScoreCheck, type ScoreDoubt } from './readiness.js';
 
 /** The role that reviews a stage's document: the one that owns it. */
@@ -143,7 +144,7 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
       for (const p of patches) {
         const check = checkPatch(p, draft.specId, docs);
         if (!check.ok || check.file !== file) continue;
-        await journal.fact(RefineEvent.PatchProposed, { patchId: patchId(role, cycle, n++), role, file, find: p.find, replace: p.replace, reason: p.reason, diff: unifiedDiff(file, docs[file], applyPatch(docs[file], p)!), cycle });
+        await journal.fact(RefineEvent.PatchProposed, { patchId: patchId(role, cycle, n++), role, file, find: p.find, replace: p.replace, scopeChange: patchChangesScope(p.find, p.replace), reason: p.reason, diff: unifiedDiff(file, docs[file], applyPatch(docs[file], p)!), cycle });
       }
     };
     await propose(reorganized.value.docPatch);

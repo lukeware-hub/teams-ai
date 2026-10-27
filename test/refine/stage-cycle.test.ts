@@ -204,7 +204,8 @@ describe('runStageCycle', () => {
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
     const proposed = journal.events.filter((e) => e.type === RefineEvent.PatchProposed);
     expect(proposed).toHaveLength(1);
-    expect(proposed[0]!.data).toMatchObject({ file: 'project.md', role: 'po', cycle: 1 });
+    // The heading of the shop changes its name: a change of structure, journaled with the flag; nothing applies it because of the flag.
+    expect(proposed[0]!.data).toMatchObject({ file: 'project.md', role: 'po', cycle: 1, scopeChange: true });
     expect(journal.state.questions).toEqual([expect.objectContaining({ questionId: 'po-s1-0', text: 'Qual o prazo?', blocking: true, status: 'pending' })]);
     expect(journal.events.some((e) => e.type === RefineEvent.DocsScored)).toBe(false);
     expect(journal.state.readiness).toBeUndefined();

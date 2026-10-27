@@ -37,6 +37,7 @@ import type { JevValidationResult, ValidationDocs } from './jev-validation.js';
 import { PATCH_FILES, patchOwners, reorganizeGroups, reorganizePack, refinePack } from './packs.js';
 import { reshapeAll } from './reshape.js';
 import { applyPatch, checkPatch, COVERED_REASON, patchId, unifiedDiff } from './patches.js';
+import { patchChangesScope } from './scope-guard.js';
 import { planMove } from './moves.js';
 import { applyRefineEvent, nextStuck, STUCK_ROUNDS, type BacklogState, type RefineState } from './state.js';
 import { scoresDocs, UNSCORED, type DocsScoreRecord } from './readiness.js';
@@ -553,7 +554,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     }
     const after = applyPatch(docs[c.file], p)!;
     await journal.fact(RefineEvent.PatchProposed, {
-      patchId: patchId('front', cycle, frontIndex++), role: 'front', file: c.file, find: p.find, replace: p.replace,
+      patchId: patchId('front', cycle, frontIndex++), role: 'front', file: c.file, find: p.find, replace: p.replace, scopeChange: patchChangesScope(p.find, p.replace),
       reason: p.reason, diff: unifiedDiff(c.file, docs[c.file], after), cycle,
     });
   }
@@ -563,7 +564,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   for (const fix of uniqueHeadingFixes(docs['design.md'])) {
     if (journal.state.patches.some((p) => p.file === 'design.md' && p.find === fix.find && p.replace === fix.replace && (p.status === 'pending' || p.status === 'rejected'))) continue;
     await journal.fact(RefineEvent.PatchProposed, {
-      patchId: patchId('front', cycle, fixIndex++), role: 'front', file: 'design.md', ...fix,
+      patchId: patchId('front', cycle, fixIndex++), role: 'front', file: 'design.md', ...fix, scopeChange: patchChangesScope(fix.find, fix.replace),
       diff: unifiedDiff('design.md', docs['design.md'], applyPatch(docs['design.md'], fix)!), cycle,
     });
   }
@@ -692,6 +693,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         file: c.file,
         find: p.find,
         replace: p.replace,
+        scopeChange: patchChangesScope(p.find, p.replace),
         reason: p.reason,
         diff: unifiedDiff(c.file, docs[c.file], after),
         cycle,
@@ -703,7 +705,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   let next = state.patches.filter((p) => p.cycle === cycle && p.role === 'po').length;
   for (const a of due) {
     const p = approvalPatch(a);
-    await journal.fact(RefineEvent.PatchProposed, { patchId: patchId('po', cycle, next++), role: 'po', file: 'briefing.md', ...p, diff: unifiedDiff('briefing.md', docs['briefing.md'], applyPatch(docs['briefing.md'], p)!), cycle });
+    await journal.fact(RefineEvent.PatchProposed, { patchId: patchId('po', cycle, next++), role: 'po', file: 'briefing.md', ...p, scopeChange: patchChangesScope(p.find, p.replace), diff: unifiedDiff('briefing.md', docs['briefing.md'], applyPatch(docs['briefing.md'], p)!), cycle });
   }
 
   const checklist: ChecklistItem[] = mergeChecklist(po.value.checklist, sm.value.checklist);

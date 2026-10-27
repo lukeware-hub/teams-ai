@@ -190,6 +190,18 @@ describe('refine api', () => {
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/answers', { questionId: 'nope', text: 'x' })).status).toBe(404);
   });
 
+  it('a save with the hash the page read is written, and answers the hash of the file as saved', async () => {
+    expect((await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' })).status).toBe(200);
+    await settle();
+    const url = '/api/refine/hello-app/hello-app-001';
+    const saved = await call('PUT', `${url}/docs/project.md`, { text: '# Hello\n\n## Visão\n\nLoja.\n', baseHash: (await snapshot()).hashes['project.md'] });
+    expect(saved.status).toBe(200);
+    const { hash } = await saved.json();
+    const after = await snapshot();
+    expect(after.docs['project.md']).toBe('# Hello\n\n## Visão\n\nLoja.\n');
+    expect(hash).toBe(after.hashes['project.md']);
+  });
+
   it('starts the backlog of an imported project once, in backlog mode', async () => {
     hangAgent = true;
     remote = await makeRemote({
