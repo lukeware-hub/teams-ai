@@ -22,7 +22,7 @@ import { reduceRefineEvents, type QuestionRow, type RefineState } from './state.
 import type { Question } from './events.js';
 import { decisionsOf } from './decisions.js';
 import { answererOf, makeAnswerer, type Answerer } from './speckit-answers.js';
-import { stepBasis, type BasisQuestion } from './speckit-basis.js';
+import { stepBasis } from './speckit-basis.js';
 
 export const SPECKIT_NOT_INSTALLED = 'O Spec Kit não está instalado neste ambiente.';
 export const SPECKIT_STAGE = 'A preparação do Spec Kit';
@@ -120,7 +120,7 @@ async function inputTexts(draft: Draft, source: SpeckitSource): Promise<Record<S
 
 const hashOf = (texts: Record<SpeckitInput, string>): string => sha256(SPECKIT_INPUTS.map((file) => texts[file]).join('\n'));
 
-/** The hash of the six inputs as they are now. A failed preparation on the same hash resumes; any other starts over. */
+/** The hash of the six inputs as they are now, which the start compares with the one the last preparation read. */
 export async function speckitInputHash(draft: Draft, source: SpeckitSource): Promise<string> {
   return hashOf(await inputTexts(draft, source));
 }
@@ -232,7 +232,7 @@ interface RunContext {
   source: SpeckitSource;
   decider: Pick<Decider, 'decide'> | undefined;
   answerer: Answerer;
-  /** The keys of the steps an earlier preparation finished on the basis they have now: they run no more. */
+  /** The keys of the steps an earlier preparation finished whose files are still in the folder: they run no more. */
   reused: ReadonlySet<string>;
   /** The keys of the steps an earlier preparation finished, which run again on the files they left. */
   adjust: ReadonlySet<string>;
@@ -241,12 +241,11 @@ interface RunContext {
 /** The file an item command leaves in its feature folder; the constitution has none to check, since init scaffolds its memory file. */
 const outputOf = (step: Step): string | undefined => (step.item ? `${speckitFeatureDir(step.item.key)}/${CRITERIA_FILE[step.command]}` : undefined);
 
-/** The keys of the steps whose recorded basis still matches the documents and the answers now, and whose file is still in the folder. */
-async function reusedSteps(dir: string, earlier: readonly { command: string; itemKey?: string; basis?: string }[], plan: readonly Step[], texts: Record<SpeckitInput, string>, questions: readonly BasisQuestion[]): Promise<Set<string>> {
+/** The keys of the steps an earlier preparation finished whose file is still in the folder, so a new preparation continues after them. */
+async function reusedSteps(dir: string, earlier: readonly { command: string; itemKey?: string }[], plan: readonly Step[]): Promise<Set<string>> {
   const candidates = plan.flatMap((step) => {
     const key = stepKey(step.command, step.item?.key);
-    const recorded = earlier.find((s) => stepKey(s.command, s.itemKey) === key)?.basis;
-    return recorded !== undefined && recorded === stepBasis(step, texts, questions) ? [{ key, file: outputOf(step) }] : [];
+    return earlier.some((s) => stepKey(s.command, s.itemKey) === key) ? [{ key, file: outputOf(step) }] : [];
   });
   const present = await Promise.all(candidates.map(({ file }) => (file === undefined ? true : exists(path.resolve(dir, file)))));
   return new Set(candidates.filter((_, i) => present[i]).map(({ key }) => key));
@@ -269,9 +268,9 @@ async function runOne(run: RunContext, step: Step): Promise<void> {
 
 /**
  * Runs Spec Kit over the detailed backlog, or the single spec as one item, and answers the hash of the inputs it read. A step an
- * earlier preparation finished on the same basis is kept as it is; the others run, on the files they have from that preparation or
- * from main when they have any. The constitution runs alone, unless the project keeps main's, then each item runs its four commands
- * in order, and up to `agents` items run at once.
+ * earlier preparation finished is kept as it is while its file is in the folder; the others run, on the files they have from that
+ * preparation or from main when they have any. The constitution runs alone, unless the project keeps main's, then each item runs its
+ * four commands in order, and up to `agents` items run at once.
  */
 export async function prepareSpeckit(deps: SpeckitDeps, source: SpeckitSource): Promise<string> {
   const dir = speckitDir(deps.draft);
@@ -285,10 +284,10 @@ export async function prepareSpeckit(deps: SpeckitDeps, source: SpeckitSource): 
   const earlier = deps.journal.state.speckit?.steps ?? [];
   const plan = speckitSteps(items);
   await deps.journal.fact(RefineEvent.SpeckitStarted, { total: plan.length, inputHash: hash });
-  // Questions an earlier preparation left unanswered are tried first: an answer changes the bases checked below.
+  // Questions an earlier preparation left unanswered are tried first, so the steps that run read their answers.
   await answerer.triage(untriaged(deps.journal.state.questions));
   const keep = earlier.length > 0 && (await exists(dir));
-  const reused = keep ? await reusedSteps(dir, earlier, plan, texts, deps.journal.state.questions) : new Set<string>();
+  const reused = keep ? await reusedSteps(dir, earlier, plan) : new Set<string>();
   const adjust = new Set(keep ? earlier.filter((s) => s.basis !== undefined).map((s) => stepKey(s.command, s.itemKey)) : []);
   if (keep) await pruneFeatures(dir, items);
   else {
@@ -301,9 +300,11 @@ export async function prepareSpeckit(deps: SpeckitDeps, source: SpeckitSource): 
   if (await exists(path.posix.join(base, CONSTITUTION))) {
     // Main's constitution and feature folders go over a fresh scaffold, or back beside the files an earlier preparation left.
     await fs.cp(base, dir, { recursive: true, force: !keep });
-    // Main's constitution counts as done, so the constitution step never writes over it.
-    reused.add(stepKey('constitution'));
-    carried.unshift({ command: 'constitution' });
+    // Main's constitution counts as done, once, so the constitution step never writes over it.
+    if (!reused.has(stepKey('constitution'))) {
+      reused.add(stepKey('constitution'));
+      carried.unshift({ command: 'constitution' });
+    }
     // An item whose file main holds, as a continued spec's, updates that file in the same feature folder instead of writing it anew.
     for (const step of plan) if (step.item && (await exists(path.resolve(dir, outputOf(step)!)))) adjust.add(stepKey(step.command, step.item.key));
   }

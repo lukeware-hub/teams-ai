@@ -44,10 +44,7 @@ function dependsOn(q: BasisQuestion, step: Step): boolean {
   return asked < RANK[step.command] || (asked === RANK[step.command] && step.command !== 'specify');
 }
 
-/**
- * What a step of the Spec Kit preparation reads: its documents and the answers that can change it. A step whose basis still
- * matches the one it finished with writes the same files again, so a new preparation keeps them.
- */
+/** What a Spec Kit step reads, its documents and the answers that can change it, recorded with the step; a new preparation continues from the finished steps without comparing it. */
 export function stepBasis(step: Step, texts: Record<SpeckitInput, string>, questions: readonly BasisQuestion[]): string {
   const documents = step.item
     ? [texts['project.md'], texts['flow.md'], normalized(texts['briefing.md']), texts['stack.md'], texts['design.md'], sectionOf(texts['specs.md'], step.item.key)]

@@ -541,7 +541,7 @@ describe('RefineSession.runSpeckit', () => {
     await s.close();
   });
 
-  it('a preparation whose inputs changed after the failure starts over from the constitution', async () => {
+  it('a preparation whose inputs changed after the failure continues from the steps it finished, and runs only the rest', async () => {
     answer = (req) => (req.pack.feedback!.includes('speckit-plan/SKILL') ? { status: 'blocked', summary: 'parou', files: [], reason: 'o plano não fecha' } : done(req));
     const s = await detailedSession();
     await s.runSpeckit();
@@ -549,9 +549,27 @@ describe('RefineSession.runSpeckit', () => {
     answer = done;
     const before = agentCalls.length;
     await s.runSpeckit();
-    expect(agentCalls.slice(before).map(stepOf)[0]).toBe('constitution:');
-    expect(agentCalls.length - before).toBe(9);
-    expect(s.state.speckit).toMatchObject({ status: 'done' });
+    expect(agentCalls.slice(before).map(stepOf)).toEqual(['plan:login', 'tasks:login', 'specify:cart', 'clarify:cart', 'plan:cart', 'tasks:cart']);
+    expect(execCalls).toHaveLength(1);
+    expect(s.state.speckit).toMatchObject({ status: 'done', total: 9 });
+    expect(s.state.speckit!.steps.filter((step) => step.reused)).toHaveLength(3);
+    await s.close();
+  });
+
+  it('a step that stopped the preparation runs again after the inputs changed, even with its file in the folder', async () => {
+    answer = async (req) => {
+      if (stepOf(req) !== 'clarify:login') return done(req);
+      await fs.writeFile(`${req.cwd}/specs/login/spec.md`, '- FR-001: reter os dados por [NEEDS CLARIFICATION: prazo de retenção]\n');
+      return { status: 'done', summary: 'ok', files: ['specs/login/spec.md'] };
+    };
+    const s = await detailedSession();
+    await s.runSpeckit();
+    await s.saveDoc('stack.md', '# Stack\n\nNode 24\n');
+    answer = done;
+    const before = agentCalls.length;
+    await s.runSpeckit();
+    expect(agentCalls.slice(before).map(stepOf)).toEqual(['clarify:login', 'plan:login', 'tasks:login', 'specify:cart', 'clarify:cart', 'plan:cart', 'tasks:cart']);
+    expect(s.state.speckit).toMatchObject({ status: 'done', total: 9 });
     await s.close();
   });
 
@@ -926,7 +944,7 @@ describe('RefineSession.runSpeckit in parallel, and from an earlier run', () => 
     await s.close();
   });
 
-  it("after an owner's answer, the next preparation runs every step again, on the files it has", async () => {
+  it("after an owner's answer, the next preparation keeps every step it finished, and calls Spec Kit init no more", async () => {
     let asks = true;
     answer = async (req) => {
       const out = await done(req);
@@ -944,8 +962,7 @@ describe('RefineSession.runSpeckit in parallel, and from an earlier run', () => 
     const before = agentCalls.length;
     const inits = execCalls.length;
     await s.runSpeckit();
-    expect(agentCalls.slice(before).map(stepOf)).toEqual(['constitution:', 'specify:login', 'clarify:login', 'plan:login', 'tasks:login', 'specify:cart', 'clarify:cart', 'plan:cart', 'tasks:cart']);
-    expect(agentCalls.slice(before).every((r) => r.pack.feedback!.includes('Its files from an earlier run'))).toBe(true);
+    expect(agentCalls).toHaveLength(before);
     expect(execCalls).toHaveLength(inits);
     expect(s.state.speckit).toMatchObject({ status: 'done', total: 9 });
     expect(s.state.speckit!.steps).toHaveLength(9);
@@ -979,13 +996,15 @@ describe('RefineSession.runSpeckit in parallel, and from an earlier run', () => 
     await s.close();
   });
 
-  it('a step whose file is gone from the folder runs again, even when its basis still matches', async () => {
+  it('a finished step whose file is gone from the folder runs again, and no other step does, even after a document changed', async () => {
     const s = await detailedSession();
     await s.runSpeckit();
+    await s.saveDoc('stack.md', '# Stack\n\nNode 24\n');
     await fs.rm(`${draft().root}/speckit/specs/login/plan.md`);
     const calls = agentCalls.length;
     await s.runSpeckit();
     expect(agentCalls.slice(calls).map(stepOf)).toEqual(['plan:login']);
+    expect(agentCalls.at(-1)!.pack.feedback).toContain('Its files from an earlier run');
     await s.close();
   });
 
@@ -1061,6 +1080,7 @@ describe('RefineSession.runSpeckit for a project that already uses Spec Kit', ()
     await reopened.runSpeckit();
     expect(agentCalls.slice(calls).map(stepOf)).not.toContain('constitution:');
     expect(reopened.state.speckit).toMatchObject({ status: 'done', total: 5 });
+    expect(reopened.state.speckit!.steps).toHaveLength(5);
     for (const [rel, text] of Object.entries(MAIN)) expect(await staged(rel), rel).toBe(text);
     await reopened.close();
   });
@@ -1080,8 +1100,10 @@ describe('RefineSession.runSpeckit for a single spec', () => {
     expect(await speckitFeatureOf(draft().root, 'hello-001')).toBe('specs/hello-001');
   });
 
-  it("an owner's answer leaves the preparation stale, and the next one hands the answer to the steps it changes as a decision", async () => {
-    answer = askItems({ 'hello-001': [{ text: 'Qual moeda?', blocking: true }] });
+  it("an owner's answer leaves the preparation stale, and the next one hands the answer to the steps it still runs as a decision", async () => {
+    const asks = askItems({ 'hello-001': [{ text: 'Qual moeda?', blocking: true }] });
+    // The plan stops the first preparation, so the next one still runs it and the tasks after it.
+    answer = (req) => (stepOf(req) === 'plan:hello-001' ? { status: 'blocked', summary: 'parou', files: [], reason: 'o plano não fecha' } : asks(req));
     const s = await singleSession();
     await s.runSpeckit();
     const [asked] = s.state.questions;
@@ -1092,7 +1114,7 @@ describe('RefineSession.runSpeckit for a single spec', () => {
     const before = agentCalls.length;
     await s.runSpeckit();
     const rerun = agentCalls.slice(before);
-    expect(rerun.map(stepOf)).toEqual(['clarify:hello-001', 'plan:hello-001', 'tasks:hello-001']);
+    expect(rerun.map(stepOf)).toEqual(['plan:hello-001', 'tasks:hello-001']);
     for (const r of rerun) expect(r.pack.decisions).toEqual([{ question: 'Qual moeda?', answer: 'Real' }]);
     expect(canStart(s.state)).toBe(true);
     await s.close();
