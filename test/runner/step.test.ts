@@ -61,7 +61,7 @@ async function writeStream(name: string, events: object[]): Promise<string> {
   return file;
 }
 
-const okValue = { specHash: HASH, status: 'done', summary: 'did it', commitMessage: 'feat: x', changedFiles: ['src/a.ts'], filesRead: [] };
+const okValue = { specHash: HASH, status: 'done', summary: 'did it', commitMessage: 'feat: x', changedFiles: ['src/a.ts'], filesRead: [], deviations: [] };
 const init = { type: 'system', subtype: 'init', session_id: 's', model: 'claude-opus-5-5' };
 
 describe('runStep', () => {

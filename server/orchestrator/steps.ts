@@ -130,6 +130,9 @@ const sourceRules = (base: PackBase): string[] => [speckitRule(base.speckitFeatu
 /** A builder lists what it read, so the orchestrator can check it against the files the source rules name. */
 export const FILES_READ_RULE = 'On a done result, list in filesRead, as repository paths, every file the rules above told you to read; a done result that leaves out one this repository holds is sent back.';
 
+/** A departure from the task, plan.md or tasks.md is listed, so a contradiction never passes silently. */
+export const DEVIATIONS_RULE = 'On a done result, list in deviations, one sentence each, every departure from the task, from plan.md or from tasks.md; leave it empty when you followed all three.';
+
 /** The files the source rules tell a builder to read that the worktree at `dir` holds; each rule applies only when its first file is there. */
 export async function sourceFiles(dir: string, featureDir: string | undefined, specId: string): Promise<string[]> {
   const has = (file: string): Promise<boolean> => fs.access(path.join(dir, file)).then(() => true, () => false);
@@ -166,7 +169,7 @@ export function devPack(
   const shared = common(base, 'dev', role);
   return {
     ...shared,
-    principles: [...shared.principles, ...sourceRules(base), FILES_READ_RULE, ...(opts.speckit ? [speckitImplementRule(opts.speckit.feature, opts.speckit.ids)] : []), ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : [])],
+    principles: [...shared.principles, ...sourceRules(base), FILES_READ_RULE, DEVIATIONS_RULE, ...(opts.speckit ? [speckitImplementRule(opts.speckit.feature, opts.speckit.ids)] : []), ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : [])],
     task,
     criteria: criteriaOf(base.spec, task.criteriaRefs),
     decisions: base.spec.decisions,
@@ -200,7 +203,7 @@ export function reviewPack(
   task: PlanTask,
   opts: { diffStat: string; changedFiles: readonly string[]; diff: string; junit: readonly TestResult[]; code: CodeContext; profile: ReviewProfile },
 ): ContextPackInput {
-  const feedback = `Review profile: ${opts.profile}`;
+  const feedback = `Review profile: ${opts.profile}\n\nA finding that the change contradicts plan.md or tasks.md gets category "plan"; every other finding gets category "code".`;
   const results = opts.junit.slice(0, REVIEW_JUNIT_LINES).map((t) => `- ${t.id} [${t.status}]${t.acIds.length > 0 ? ` ${t.acIds.join(', ')}` : ''}`);
   if (opts.junit.length > REVIEW_JUNIT_LINES) results.push(`- ... ${opts.junit.length - REVIEW_JUNIT_LINES} more`);
   // The merge gates already ran the suite on this exact diff: the reviewer reads their result instead of re-running it (R11.13 slice 2).

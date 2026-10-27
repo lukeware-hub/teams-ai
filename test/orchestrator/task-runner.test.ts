@@ -43,7 +43,7 @@ const devDone = (message = 'feat: T1'): Agent => async (req) => {
   if (req.kind === 'ui-check' || req.kind === 'review') return approve();
   await fs.mkdir(path.join(req.cwd, 'src'), { recursive: true });
   await fs.writeFile(path.join(req.cwd, 'src', 'a.ts'), `// ${Date.now()}\n`);
-  return ok({ specHash: HASH, status: 'done', summary: 'did T1', changedFiles: ['src/a.ts'], commitMessage: message });
+  return ok({ specHash: HASH, status: 'done', summary: 'did T1', changedFiles: ['src/a.ts'], commitMessage: message, deviations: [] });
 };
 const approve = () => ok({ specHash: HASH, decision: 'approve', criteria: [{ id: 'AC-001', status: 'passed', evidence: ['sum::[AC-001] adds'] }], findings: [] });
 
@@ -111,7 +111,7 @@ describe('TaskRunner: implementing', () => {
       `intent:${Intent.Commit}`, `confirm:${Intent.Commit}`, `fact:${OrchEvent.DevCommitted}`, 'fact:TASK_STATE_CHANGED',
     ]);
     const sha = await headSha(r.worktree);
-    expect(journal.events.find((e) => e.type === OrchEvent.DevCommitted)!.data).toMatchObject({ taskId: 'T1', sha, changedFiles: ['src/a.ts'] });
+    expect(journal.events.find((e) => e.type === OrchEvent.DevCommitted)!.data).toMatchObject({ taskId: 'T1', sha, changedFiles: ['src/a.ts'], deviations: [] });
     expect(await git(r.worktree, ['log', '-1', '--format=%s'])).toBe('feat: T1');
     expect(agentCalls[0]).toMatchObject({ kind: 'dev', role: 'dev', taskId: 'T1', attempt: 1, cwd: r.worktree });
     expect(agentCalls[0]!.pack.feedback).toBeUndefined();

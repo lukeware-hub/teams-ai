@@ -154,7 +154,8 @@ const devCommon = {
 export const DevOutput = z.discriminatedUnion('status', [
   /** Deleted paths the Dev's own sandbox has no tool to remove (Bash's rm/git rm are denied); the orchestrator deletes them before committing. */
   /** `filesRead`: the source files the rules told the builder to read; the orchestrator checks it against the worktree. */
-  z.object({ ...devCommon, status: z.literal('done'), commitMessage: z.string().min(1), deletedFiles: z.array(z.string().min(1)).optional(), filesRead: z.array(z.string().min(1)).default([]) }),
+  /** `deviations`: each departure from the task, plan.md or tasks.md, one sentence each; empty when the builder followed all three. */
+  z.object({ ...devCommon, status: z.literal('done'), commitMessage: z.string().min(1), deletedFiles: z.array(z.string().min(1)).optional(), filesRead: z.array(z.string().min(1)).default([]), deviations: z.array(z.string().min(1)).default([]) }),
   z.object({ ...devCommon, status: z.literal('spec-gap'), question: z.string().min(1) }),
   /** The task cannot proceed for a reason outside its paths (deploy environment, missing access): no SM round, no attempt consumed. */
   z.object({ ...devCommon, status: z.literal('blocked'), reason: z.string().min(1) }),
@@ -173,6 +174,8 @@ export const ReviewOutput = z.object({
       severity: z.enum(['critical', 'important', 'minor']),
       problem: z.string().min(1),
       fix: z.string().min(1),
+      /** `plan`: the change contradicts plan.md or tasks.md, not only the code. */
+      category: z.enum(['code', 'plan']).default('code'),
     }),
   ),
 });

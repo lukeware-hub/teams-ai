@@ -57,7 +57,7 @@ Public deploy target: out of scope for now (the owner works locally).
 
 ## 8. Spec Kit: a builder records its deviation from the plan or Spec Kit
 
-Status: pending. A builder has no structured field for a departure from the task, `plan.md` or `tasks.md` (`server/agents/outputs.ts:145-160`), and review has no category for a plan contradiction (`server/agents/outputs.ts:168-176`). Add a deviation field to the dev output and a matching review category, both journaled.
+Status: done. The dev output lists its `deviations` (`server/agents/outputs.ts`), a review finding has a `category` (`plan` for a contradiction with `plan.md` or `tasks.md`), and the commit event `DEV_COMMITTED` journals the deviations.
 
 ## 9. Spec Kit: `tasks.md` shows the delivered tasks
 

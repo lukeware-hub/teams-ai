@@ -383,7 +383,7 @@ export class TaskRunner {
     }
     const markers = await this.markersLeft();
     if (markers) return this.fail('code', markers);
-    await this.deps.journal.fact(OrchEvent.DevCommitted, { taskId: this.taskId, sha, changedFiles: changed, summary: value.summary });
+    await this.deps.journal.fact(OrchEvent.DevCommitted, { taskId: this.taskId, sha, changedFiles: changed, summary: value.summary, deviations: value.deviations });
     await this.transition('validating');
   }
 

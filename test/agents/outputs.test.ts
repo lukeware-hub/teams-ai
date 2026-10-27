@@ -63,6 +63,15 @@ describe('output contracts', () => {
     expect(DevOutput.parse(done)).toMatchObject({ filesRead: [] });
   });
 
+  it('dev output keeps the deviations a done result lists, and a review finding is a code finding unless it says plan', () => {
+    const done = { specHash: HASH, status: 'done', summary: 's', commitMessage: 'feat: x', changedFiles: ['src/a.ts'] };
+    expect(DevOutput.parse(done)).toMatchObject({ deviations: [] });
+    expect(DevOutput.parse({ ...done, deviations: ['The field is called name, not title, as plan.md says.'] })).toMatchObject({ deviations: ['The field is called name, not title, as plan.md says.'] });
+    const finding = { file: 'src/a.ts', line: 3, severity: 'important', problem: 'p', fix: 'f' };
+    expect(ReviewOutput.shape.findings.element.parse(finding)).toMatchObject({ category: 'code' });
+    expect(ReviewOutput.shape.findings.element.parse({ ...finding, category: 'plan' })).toMatchObject({ category: 'plan' });
+  });
+
   it('review output carries evidence claims per criterion and a decision', () => {
     const ok = ReviewOutput.safeParse({
       specHash: HASH,
