@@ -292,6 +292,9 @@ function markStaleStages(s: RefineState, edited: DocFile): void {
 /** The step a Spec Kit event names: its command and its backlog item. */
 const speckitKey = (d: Record<string, unknown>): string => stepKey(String(d.command), d.itemKey === undefined ? undefined : String(d.itemKey));
 
+/** The newest reshape with this id, since an older id may name every document reshaped in its cycle. */
+export const newestReshape = (reshapes: ReadonlyArray<ReshapeRow>, reshapeId: string): ReshapeRow | undefined => [...reshapes].reverse().find((r) => r.reshapeId === reshapeId);
+
 export function applyRefineEvent(s: RefineState, e: { type: string; at?: string; data: Record<string, unknown> }): void {
   const d = e.data;
   switch (e.type) {
@@ -376,13 +379,13 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       s.reshapes.push({ ...(d as unknown as Omit<ReshapeRow, 'status'>), status: 'applied' });
       break;
     case RefineEvent.DocReshapeUndone: {
-      const r = s.reshapes.find((x) => x.reshapeId === String(d.reshapeId));
+      const r = newestReshape(s.reshapes, String(d.reshapeId));
       if (r) r.status = 'undone';
       break;
     }
     case RefineEvent.NoticeClosed: {
       const id = String(d.noticeId);
-      const row = s.moves.find((x) => x.moveId === id) ?? s.reshapes.find((x) => x.reshapeId === id);
+      const row = s.moves.find((x) => x.moveId === id) ?? newestReshape(s.reshapes, id);
       if (row) row.closed = true;
       break;
     }

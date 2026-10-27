@@ -30,7 +30,7 @@ import { buildSpecsIndex } from './specs-index.js';
 import { fitPackBudget } from './fit-pack.js';
 import { ownerFailure, TRY_AGAIN } from './agent-failure.js';
 import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
-import { allGreen, applyRefineEvent, canStart, emptyRefineState, speckitPending, type BacklogState, type RefineLimits, type RefineState } from './state.js';
+import { allGreen, applyRefineEvent, canStart, emptyRefineState, newestReshape, speckitPending, type BacklogState, type RefineLimits, type RefineState } from './state.js';
 import { refineLimits } from './limits.js';
 import { isStarted } from './coverage.js';
 import { answerUntriaged, optionsForOpen, prepareSpeckit, speckitInputHash, SPECKIT_STAGE } from './speckit.js';
@@ -692,7 +692,7 @@ export class RefineSession {
   /** Puts back the text a reshape replaced, when the document has not changed since. */
   async undoReshape(reshapeId: string): Promise<void> {
     this.guard();
-    const row = this.state.reshapes.find((r) => r.reshapeId === reshapeId);
+    const row = newestReshape(this.state.reshapes, reshapeId);
     if (!row) throw new NotFoundError(`unknown reshape ${reshapeId}`);
     if (row.status !== 'applied') throw new ConflictError(`reshape ${reshapeId} already undone`);
     if (sha256(await readDoc(this.deps.draft, row.file)) !== row.afterHash) throw new ConflictError('Esta reorganização não pode ser desfeita: o arquivo mudou depois dela.');

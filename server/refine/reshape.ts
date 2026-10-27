@@ -74,7 +74,8 @@ export async function reshapeStage(deps: ReshapeDeps, cycle: number, file: DocFi
     refuse('o texto mudou durante a reorganização');
     return;
   }
-  const reshapeId = `reshape-c${cycle}`;
+  // The id names the document, so each reshape of a cycle keeps its own backup.
+  const reshapeId = `reshape-c${cycle}-${path.posix.parse(file).name}`;
   await fs.mkdir(path.posix.dirname(reshapeBackup(draft, reshapeId)), { recursive: true });
   await fs.writeFile(reshapeBackup(draft, reshapeId), before);
   await writeDoc(draft, file, out.value.text);

@@ -2,11 +2,12 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { sha256 } from '../../server/contracts/hash.js';
 import { writeSecret } from '../../server/core/secrets.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
 import { createNewProject, draftPaths, readDoc, renderBriefMd, writeDoc } from '../../server/refine/draft.js';
 import { RefineEvent } from '../../server/refine/events.js';
-import { ConflictError, programEntries, RefineSession } from '../../server/refine/session.js';
+import { ConflictError, programEntries, RefineJournal, RefineSession } from '../../server/refine/session.js';
 import type { BacklogState } from '../../server/refine/state.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 import { calls, makeFakeRunAgent, type Script } from '../fixtures/fake-run-agent.js';
@@ -726,12 +727,12 @@ describe('RefineSession stage review', () => {
     script['suggest/po'] = [{ text: SHAPED_BRIEF }];
     script['refine/po'] = [refineOut(green(PO))];
     await s.evaluateStage('briefing.md');
-    expect(s.state.reshapes).toMatchObject([{ reshapeId: 'reshape-c1', file: 'briefing.md', status: 'applied' }]);
+    expect(s.state.reshapes).toMatchObject([{ reshapeId: 'reshape-c1-briefing', file: 'briefing.md', status: 'applied' }]);
     expect(await readDoc(draft(), 'briefing.md')).toBe(SHAPED_BRIEF);
-    await s.undoReshape('reshape-c1');
+    await s.undoReshape('reshape-c1-briefing');
     expect(s.state.reshapes[0]!.status).toBe('undone');
     expect(await readDoc(draft(), 'briefing.md')).toBe(LOOSE_BRIEF);
-    await expect(s.undoReshape('reshape-c1')).rejects.toBeInstanceOf(ConflictError);
+    await expect(s.undoReshape('reshape-c1-briefing')).rejects.toBeInstanceOf(ConflictError);
     await s.close();
   });
 
@@ -742,8 +743,26 @@ describe('RefineSession stage review', () => {
     script['refine/po'] = [refineOut(green(PO))];
     await s.evaluateStage('briefing.md');
     await s.saveDoc('briefing.md', `${await readDoc(draft(), 'briefing.md')}\nEditado pelo dono.\n`);
-    await expect(s.undoReshape('reshape-c1')).rejects.toThrow(/mudou depois dela/);
+    await expect(s.undoReshape('reshape-c1-briefing')).rejects.toThrow(/mudou depois dela/);
     expect(s.state.reshapes[0]!.status).toBe('applied');
+    await s.close();
+  });
+
+  it('undoes an id two reshapes of a cycle share on the newest, with the text kept under that id', async () => {
+    const d = draft();
+    await writeDoc(d, 'briefing.md', SHAPED_BRIEF);
+    const project = await readDoc(d, 'project.md');
+    // Before the id named the document, both reshapes had one id and the last one kept its text under it.
+    await fs.mkdir(path.posix.join(d.root, 'reshaped'), { recursive: true });
+    await fs.writeFile(path.posix.join(d.root, 'reshaped', 'reshape-c1.md'), LOOSE_BRIEF);
+    const journal = await RefineJournal.open(d.events, d);
+    for (const file of ['project.md', 'briefing.md'] as const) await journal.fact(RefineEvent.DocReshaped, { reshapeId: 'reshape-c1', file, cycle: 1, role: 'po', afterHash: sha256(await readDoc(d, file)) });
+    await journal.close();
+    const s = await RefineSession.open(deps());
+    await s.undoReshape('reshape-c1');
+    expect(await readDoc(d, 'briefing.md')).toBe(LOOSE_BRIEF);
+    expect(await readDoc(d, 'project.md')).toBe(project);
+    expect(s.state.reshapes.map((r) => r.status)).toEqual(['applied', 'undone']);
     await s.close();
   });
 

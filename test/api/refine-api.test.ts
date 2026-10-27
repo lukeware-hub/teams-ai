@@ -613,10 +613,10 @@ describe('refine api', () => {
     script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/docs/briefing.md/evaluate')).status).toBe(202);
     for (let i = 0; i < 200 && (await snapshot()).busy; i += 1) await new Promise((r) => setTimeout(r, 20));
-    expect((await snapshot()).state.reshapes).toMatchObject([{ reshapeId: 'reshape-c1', status: 'applied' }]);
-    expect((await call('POST', '/api/refine/hello-app/hello-app-001/reshapes/reshape-c1/undo')).status).toBe(200);
+    expect((await snapshot()).state.reshapes).toMatchObject([{ reshapeId: 'reshape-c1-briefing', status: 'applied' }]);
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/reshapes/reshape-c1-briefing/undo')).status).toBe(200);
     expect((await snapshot()).docs['briefing.md']).toBe(LOOSE_BRIEF);
-    expect((await call('POST', '/api/refine/hello-app/hello-app-001/reshapes/reshape-c1/undo')).status).toBe(409);
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/reshapes/reshape-c1-briefing/undo')).status).toBe(409);
   });
 
   it('a stage review is refused with 409 in a spec, which has no stages', async () => {

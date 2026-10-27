@@ -31,6 +31,23 @@ describe('reduceRefineEvents reshapes', () => {
     const s = reduceRefineEvents([{ type: RefineEvent.DocReshaped, data: row }, { type: RefineEvent.DocReshapeUndone, data: { reshapeId: 'reshape-c1' } }]);
     expect(s.reshapes).toEqual([{ ...row, status: 'undone' }]);
   });
+
+  // Before the id named the document, every reshape of one cycle had the same id.
+  const project = { reshapeId: 'reshape-c36', file: 'project.md', cycle: 36, role: 'po', afterHash: 'p' };
+  const briefing = { ...project, file: 'briefing.md', afterHash: 'b' };
+  const shared = [{ type: RefineEvent.DocReshaped, data: project }, { type: RefineEvent.DocReshaped, data: briefing }];
+
+  it('a close of an id two reshapes share closes the newest, so the notice the page shows goes away', () => {
+    const s = reduceRefineEvents([...shared, { type: RefineEvent.NoticeClosed, data: { noticeId: 'reshape-c36' } }]);
+    expect(s.reshapes).toEqual([{ ...project, status: 'applied' }, { ...briefing, status: 'applied', closed: true }]);
+    // The page shows the newest applied reshape, and only while it is not closed.
+    expect([...s.reshapes].reverse().find((r) => r.status === 'applied')).toMatchObject({ file: 'briefing.md', closed: true });
+  });
+
+  it('an undo of an id two reshapes share marks the newest', () => {
+    const s = reduceRefineEvents([...shared, { type: RefineEvent.DocReshapeUndone, data: { reshapeId: 'reshape-c36' } }]);
+    expect(s.reshapes).toEqual([{ ...project, status: 'applied' }, { ...briefing, status: 'undone' }]);
+  });
 });
 
 describe('reduceRefineEvents moves and findings', () => {

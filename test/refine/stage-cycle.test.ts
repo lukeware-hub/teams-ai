@@ -1,4 +1,4 @@
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -7,6 +7,7 @@ import { createNewProject, draftPaths, readDoc, writeDoc } from '../../server/re
 import { RefineEvent } from '../../server/refine/events.js';
 import { runStageCycle, stageReviewPack } from '../../server/refine/stage-cycle.js';
 import { PackTooLargeError } from '../../server/refine/fit-pack.js';
+import { reshapeBackup } from '../../server/refine/reshape.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
 import { LOOSE_BRIEF, SHAPED_BRIEF } from '../fixtures/briefing-shape.js';
 
@@ -165,7 +166,7 @@ describe('runStageCycle reshapes the stage document to its template', () => {
     const deps = { draft, journal, runAgent: runAgent as never, principles: () => [] };
     await runStageCycle(deps, 1, 'briefing.md');
     await writeDoc(draft, 'briefing.md', LOOSE_BRIEF);
-    await journal.fact(RefineEvent.DocReshapeUndone, { reshapeId: 'reshape-c1' });
+    await journal.fact(RefineEvent.DocReshapeUndone, { reshapeId: 'reshape-c1-briefing' });
     await runStageCycle(deps, 2, 'briefing.md');
     expect(suggestCalls(runAgent)).toHaveLength(1);
     expect(await readDoc(draft, 'briefing.md')).toBe(LOOSE_BRIEF);
@@ -173,6 +174,19 @@ describe('runStageCycle reshapes the stage document to its template', () => {
     await runStageCycle(deps, 3, 'briefing.md');
     expect(suggestCalls(runAgent)).toHaveLength(2);
     expect(await readDoc(draft, 'briefing.md')).toBe(SHAPED_BRIEF);
+  });
+
+  it('gives each document reshaped in one cycle its own id and its own kept text', async () => {
+    const draft = await newDraft();
+    const looseStack = '# Stack\n\n## Notas\n\n- Node 22, React, SQLite e Vitest.\n';
+    await writeDoc(draft, 'briefing.md', LOOSE_BRIEF);
+    await writeDoc(draft, 'stack.md', looseStack);
+    const journal = foldingJournal();
+    const answers = [reshaped(SHAPED_BRIEF), reshaped('# Stack\n\n## Runtime\n\n- Node 22.\n\n## Frameworks\n\n- React.\n\n## Storage\n\n- SQLite.\n\n## Tooling\n\n- Vitest.\n')];
+    await runStageCycle({ draft, journal, runAgent: agentFor(() => answers.shift()) as never, principles: () => [] }, 1, 'briefing.md');
+    expect(journal.state.reshapes.map((r) => [r.file, r.reshapeId])).toEqual([['briefing.md', 'reshape-c1-briefing'], ['stack.md', 'reshape-c1-stack']]);
+    expect(await readFile(reshapeBackup(draft, 'reshape-c1-briefing'), 'utf8')).toBe(LOOSE_BRIEF);
+    expect(await readFile(reshapeBackup(draft, 'reshape-c1-stack'), 'utf8')).toBe(looseStack);
   });
 });
 
