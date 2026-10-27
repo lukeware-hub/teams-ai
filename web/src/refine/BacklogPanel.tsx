@@ -54,11 +54,11 @@ export function BacklogPanel({ backlog, evaluating, locked, onEnable, mandatory 
   const titles = new Map(backlog.items.map((i) => [i.key, i.title]));
   const epics = backlog.epics.map((e) => ({ ...e, items: backlog.items.filter((i) => i.epic === e.key).sort((a, b) => a.rank - b.rank) })).filter((e) => e.items.length > 0);
   return (
-    <div className="my-4 grid gap-3" data-testid="backlog-on">
-      <h3 className="section-title m-0 flex items-center gap-2"><Icon name="list" size={20} />Backlog{backlog.items.length > 0 ? ` · ${backlog.items.length} specs em ${epics.length} épicos` : ''}<InfoTip text={HELP} /></h3>
+    <div className="my-4 grid gap-1" data-testid="backlog-on">
+      <h3 className="section-title m-0 mb-2 flex items-center gap-2"><Icon name="list" size={20} />Backlog{backlog.items.length > 0 ? ` · ${backlog.items.length} specs em ${epics.length} épicos` : ''}<InfoTip text={HELP} /></h3>
       {backlog.items.length === 0 && !evaluating && <p className="text-[0.8125rem] text-ink-soft">{mandatory ? 'O esboço do backlog aparece aqui quando os documentos ficarem prontos.' :'O backlog aparece depois da próxima avaliação. Clique em Avaliar.'}</p>}
       {epics.map((epic) => (
-        <details key={epic.key} className="group grid gap-[0.4rem]" data-testid={`epic-${epic.key}`}>
+        <details key={epic.key} className="group grid open:gap-[0.4rem]" data-testid={`epic-${epic.key}`}>
           <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] text-ink-soft [&::-webkit-details-marker]:hidden">
             <span className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span>
             <span className="min-w-0 flex-1 font-semibold wrap-anywhere">{epic.title}</span>

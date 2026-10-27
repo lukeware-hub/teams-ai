@@ -35,11 +35,11 @@ export function SpecTree({ backlog, evaluating = false }: { backlog: BacklogView
         </ul>
       )}
       {matrix.sections.length > 0 && (
-        <ol className="m-0 grid list-none gap-3 p-0 text-[0.8125rem]">
+        <ol className="m-0 grid list-none gap-1 p-0 text-[0.8125rem]">
           {matrix.sections.map((s, n) => (
             <li key={n} data-testid={`tree-section-${n}`} className={s.items.length > 0 ? '' : 'text-warn'}>
               <details className="settings-collapse">
-                <summary className="settings-collapse-summary">
+                <summary className="settings-collapse-summary py-[0.6rem]!">
                   <Icon name="chevron-right" size={16} />
                   <span className="settings-collapse-title wrap-anywhere">{s.heading}</span>
                   <span className="settings-collapse-meta">{count(s.items.length, 'item', 'itens')}</span>
