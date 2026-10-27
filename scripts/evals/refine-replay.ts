@@ -10,7 +10,9 @@ import { bands, clusterInterval, leaveOneItemOut, ownerAnswers, REPLAY } from '.
 import { MIN_READ_SECONDS } from '../../server/decide/evals.js';
 import { readInputTexts, readProposalSteps, ownerTexts, renderReplay, replayProposals } from '../../server/refine/evidence-replay.js';
 import { renderResolverReport, replayResolver } from '../../server/refine/resolver-replay.js';
+import { askCapLines } from '../../server/refine/ask-caps.js';
 import { loadEvents } from '../../server/store/event-store.js';
+import { existsSync } from 'node:fs';
 
 const [file, ...flags] = process.argv.slice(2);
 if (!file) {
@@ -35,6 +37,11 @@ if (audit !== undefined && (!Number.isInteger(audit) || audit < 1)) {
 }
 
 const pct = (share: number) => `${(100 * share).toFixed(1)}%`;
+if (!existsSync(file)) {
+  // loadEvents reads a missing file as an empty journal, which would print zeros as if they were the journal's.
+  console.error(`no journal at ${file}`);
+  process.exit(2);
+}
 const events = await loadEvents(file);
 const answers = ownerAnswers(events);
 console.log(`gates: read at least ${MIN_READ_SECONDS} s, long pause ${REPLAY.longPauseSeconds} s, z ${REPLAY.z}, bootstrap ${REPLAY.bootstrapRuns} runs, seed ${REPLAY.seed}`);
@@ -48,6 +55,9 @@ const loo = leaveOneItemOut(answers);
 console.log(loo ? `leave one item out: lowest ${pct(loo.lowest.share)} without ${loo.lowest.item}, highest ${pct(loo.highest.share)} without ${loo.highest.item}` : 'leave one item out: fewer than two items');
 console.log('');
 for (const line of renderResolverReport(replayResolver(events), { since, bins: flags.includes('--bins'), audit })) console.log(line);
+
+for (const line of askCapLines(events)) console.log(line);
+console.log('');
 
 if (flags.includes('--evidence')) {
   const root = path.dirname(file);
