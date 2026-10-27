@@ -21,10 +21,10 @@ const STOPWORDS = new Set(
 type Asked = Pick<Question, 'text' | 'relatedAcIds'>;
 
 /** The meaningful words of a text: three or more letters, without accents, and not a common Portuguese or English word. */
-const words = (text: string): Set<string> => new Set(normHeading(text).split(' ').filter((w) => /^[a-z]{3,}$/.test(w) && !STOPWORDS.has(w)));
+export const words = (text: string): Set<string> => new Set(normHeading(text).split(' ').filter((w) => /^[a-z]{3,}$/.test(w) && !STOPWORDS.has(w)));
 
 /** The share of words two texts have in common (Jaccard). */
-function overlap(a: Set<string>, b: Set<string>): number {
+export function overlap(a: Set<string>, b: Set<string>): number {
   const shared = [...a].filter((w) => b.has(w)).length;
   return shared === 0 ? 0 : shared / (a.size + b.size - shared);
 }

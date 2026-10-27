@@ -20,13 +20,13 @@ export interface JournalEvent {
   data: Record<string, unknown>;
 }
 
-interface Asked {
+export interface Asked {
   item: string;
   recommended: string;
 }
 
 /** The questions as the owner last saw them: a triage can re-decide the recommendation, so the newest definition before an answer counts. */
-function define(asked: Map<string, Asked>, question: Record<string, unknown>, item?: string): void {
+export function define(asked: Map<string, Asked>, question: Record<string, unknown>, item?: string): void {
   const questionId = String(question.questionId);
   const options = (question.options ?? []) as Array<{ label?: unknown; recommended?: unknown }>;
   const recommended = options.find((option) => option.recommended === true);
