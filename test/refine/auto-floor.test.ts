@@ -11,12 +11,15 @@ afterEach(() => rm(dir, { recursive: true, force: true }));
 /** Decisions on, with the floor setting given. */
 const cfg = (autoAnswerFloor: number | 'measured' | 'off' = 'measured', enabled = true) => loadConfig({ decisions: { enabled, autoAnswerFloor } });
 
-/** A refinement journal whose questions Jev routed `auto` at these confidences, each answered with the owner's mark when `docs` says so. */
-async function draft(specId: string, routes: Array<{ confidence: number; docs: boolean }>): Promise<void> {
+const BASE = Date.UTC(2026, 9, 27, 10, 0, 0);
+const at = (seconds: number): string => new Date(BASE + seconds * 1000).toISOString();
+
+/** A refinement journal whose questions Jev routed `auto` at these confidences, each answered with the owner's mark when `docs` says so, `gap` seconds apart. */
+async function draft(specId: string, routes: Array<{ confidence: number; docs: boolean }>, gap = 10): Promise<void> {
   const ids = routes.map((_, i) => `po-c1-${i}`);
   const lines = [
-    { seq: 1, at: '', runId: 'x', specHash: 'draft', type: 'REFINE_EVALUATED', kind: 'fact', data: { cycle: 1, questionRouting: Object.fromEntries(routes.map((r, i) => [ids[i], { route: 'auto', confidence: r.confidence, source: 'jev' }])) } },
-    ...routes.map((r, i) => ({ seq: i + 2, at: '', runId: 'x', specHash: 'draft', type: 'QUESTION_ANSWERED', kind: 'fact', data: { questionId: ids[i], text: 'a', ...(r.docs ? { docsAnswered: true } : {}) } })),
+    { seq: 1, at: at(0), runId: 'x', specHash: 'draft', type: 'REFINE_EVALUATED', kind: 'fact', data: { cycle: 1, questionRouting: Object.fromEntries(routes.map((r, i) => [ids[i], { route: 'auto', confidence: r.confidence, source: 'jev' }])) } },
+    ...routes.map((r, i) => ({ seq: i + 2, at: at((i + 1) * gap), runId: 'x', specHash: 'draft', type: 'QUESTION_ANSWERED', kind: 'fact', data: { questionId: ids[i], text: 'a', ...(r.docs ? { docsAnswered: true } : {}) } })),
   ];
   await mkdir(path.join(dir, specId), { recursive: true });
   await writeFile(path.join(dir, specId, 'events.ndjson'), `${lines.map((l) => JSON.stringify(l)).join('\n')}\n`);
@@ -36,6 +39,12 @@ describe('answerFloor', () => {
     await mkdir(path.join(dir, 'torn'));
     await writeFile(path.join(dir, 'torn', 'events.ndjson'), '{"seq":\n{"seq":2,"type":"QUESTION_ANSWERED"}\n');
     expect(await answerFloor(cfg(), dir)).toBeCloseTo(0.86);
+  });
+
+  it('labels nothing the owner answered in a burst, however many the documents answered', async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-floor-'));
+    await draft('burst', Array.from({ length: 30 }, (_, i) => ({ confidence: 0.99 - i * 0.005, docs: true })), 1);
+    expect(await answerFloor(cfg(), dir)).toBeUndefined();
   });
 
   it('stays off without enough labels, or for a Jev right only 86% of the time', async () => {

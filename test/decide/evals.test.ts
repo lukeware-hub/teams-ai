@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { measuredFloor, metrics, precisionNearFloor, routingSamples, samplesFromRecords, wilsonLower, type EvalSample, type JournaledDecision } from '../../server/decide/evals.js';
+import { isIndependentOwnerLabel, measuredFloor, metrics, precisionNearFloor, routingSamples, samplesFromRecords, wilsonLower, type EvalSample, type JournaledDecision } from '../../server/decide/evals.js';
+
+const clock = (s: number) => new Date(Date.UTC(2026, 9, 27, 10, 0, s)).toISOString();
 
 const sample = (over: Partial<EvalSample>): EvalSample => ({ decisionId: 'gate-triage', question: 'kind', probabilities: { code: 0.8, infra: 0.2 }, predicted: 'code', label: 'code', escalated: false, durationMs: 100, ...over });
 
@@ -39,16 +41,35 @@ describe('question routing eval', () => {
     const events = [
       { type: 'REFINE_EVALUATED', data: { questionRouting: { 'po-c1-0': { route: 'auto', confidence: 0.96, source: 'jev' }, 'po-c1-1': { route: 'human', confidence: 0.7, source: 'jev' }, 'sm-c1-0': { route: 'auto', confidence: 0.9, source: 'jev' }, 'po-c1-2': { route: 'auto', confidence: 0.97, source: 'local' } } } },
       // A route from the local model is no measured route, whatever the answer says.
-      { type: 'QUESTION_ANSWERED', data: { questionId: 'po-c1-2', text: 'x', docsAnswered: true } },
-      { type: 'QUESTION_ANSWERED', data: { questionId: 'po-c1-0', text: 'project.md › Execução', docsAnswered: true } },
-      { type: 'QUESTION_ANSWERED', data: { questionId: 'po-c1-1', text: '5 segundos' } },
+      { type: 'QUESTION_ANSWERED', at: clock(0), data: { questionId: 'po-c1-2', text: 'x', docsAnswered: true } },
+      { type: 'QUESTION_ANSWERED', at: clock(10), data: { questionId: 'po-c1-0', text: 'project.md › Execução', docsAnswered: true } },
+      { type: 'QUESTION_ANSWERED', at: clock(20), data: { questionId: 'po-c1-1', text: '5 segundos' } },
       // An answer a role gave from the docs carries no human label, so it never becomes a sample.
-      { type: 'QUESTION_ANSWERED', data: { questionId: 'sm-c1-0', text: 'stack.md diz Node 22.', by: 'sm' } },
+      { type: 'QUESTION_ANSWERED', at: clock(21), data: { questionId: 'sm-c1-0', text: 'stack.md diz Node 22.', by: 'sm' } },
     ];
     expect(routingSamples(events)).toEqual([
       { route: 'auto', confidence: 0.96, docsAnswered: true },
       { route: 'human', confidence: 0.7, docsAnswered: false },
     ]);
+  });
+
+  it('labels only answers the owner gave after time to read, so a bulk click or a first answer is no sample', () => {
+    const events = [
+      { type: 'REFINE_EVALUATED', data: { questionRouting: { a: { route: 'auto', confidence: 0.96, source: 'jev' }, b: { route: 'auto', confidence: 0.95, source: 'jev' }, c: { route: 'auto', confidence: 0.94, source: 'jev' } } } },
+      // The first answer of a journal has no earlier one to measure its pause from.
+      { type: 'QUESTION_ANSWERED', at: clock(0), data: { questionId: 'c', text: 'x' } },
+      // Read one second after the previous answer: a bulk click, not a label.
+      { type: 'QUESTION_ANSWERED', at: clock(1), data: { questionId: 'a', text: 'y' } },
+      { type: 'QUESTION_ANSWERED', at: clock(10), data: { questionId: 'b', text: 'z', docsAnswered: true } },
+    ];
+    expect(routingSamples(events)).toEqual([{ route: 'auto', confidence: 0.95, docsAnswered: true }]);
+  });
+
+  it('counts an owner answer as a label only from three seconds after the previous one, and never one a role marked', () => {
+    expect(isIndependentOwnerLabel({ gapSeconds: 3 })).toBe(true);
+    expect(isIndependentOwnerLabel({ gapSeconds: 2.9 })).toBe(false);
+    expect(isIndependentOwnerLabel({ gapSeconds: null })).toBe(false);
+    expect(isIndependentOwnerLabel({ by: 'po', gapSeconds: 60 })).toBe(false);
   });
 
   it('finds the lowest floor whose questions the documents answered at least 90% of the time, with 95% confidence', () => {

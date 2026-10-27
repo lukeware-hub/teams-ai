@@ -97,6 +97,8 @@ export interface DecisionAttempt {
   usage: BackendUsage | null;
   /** Redacted failure reason from the backend, for diagnosis (spec 10A.0 logging). */
   message: string | null;
+  /** The answers of a call below its threshold, kept for calibration; no decision used them. */
+  answers?: Answers;
 }
 
 /** One line per decision in the event store; later joined with the real outcome (spec 10A.4). */

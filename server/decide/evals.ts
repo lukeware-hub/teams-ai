@@ -96,17 +96,33 @@ export interface RoutingSample {
   docsAnswered: boolean;
 }
 
-type JournalEvent = { type: string; data: Record<string, unknown> };
+type JournalEvent = { type: string; at?: string; data: Record<string, unknown> };
 
-/** Joins every route of a refinement journal with the owner's answer to its question; an answer a role gave from the docs carries no label. */
+/** An owner answer comes at least this many seconds after the owner's previous one; a faster one may be a bulk click or a script. */
+export const MIN_READ_SECONDS = 3;
+
+/** An owner's own judgement, usable as a label: no role wrote it and it came after time to read. A null gap means no earlier answer. */
+export function isIndependentOwnerLabel(answer: { by?: unknown; gapSeconds: number | null }): boolean {
+  return answer.by === undefined && answer.gapSeconds !== null && answer.gapSeconds >= MIN_READ_SECONDS;
+}
+
+/** Joins every route of a refinement journal with the owner's answer to its question; only an independent owner answer labels it. */
 export function routingSamples(events: readonly JournalEvent[]): RoutingSample[] {
-  const answers = new Map(events.filter((e) => e.type === 'QUESTION_ANSWERED' && e.data.by === undefined).map((e) => [String(e.data.questionId), e.data.docsAnswered === true]));
+  const labels = new Map<string, { docsAnswered: boolean; independent: boolean }>();
+  let previous: number | null = null;
+  for (const e of events) {
+    if (e.type !== 'QUESTION_ANSWERED' || e.data.by !== undefined) continue;
+    const at = Date.parse(e.at ?? '');
+    const gapSeconds = previous === null || Number.isNaN(at) ? null : (at - previous) / 1000;
+    if (!Number.isNaN(at)) previous = at;
+    labels.set(String(e.data.questionId), { docsAnswered: e.data.docsAnswered === true, independent: isIndependentOwnerLabel({ gapSeconds }) });
+  }
   return events
     .filter((e) => e.type === 'REFINE_EVALUATED')
     .flatMap((e) => Object.entries((e.data.questionRouting ?? {}) as Record<string, { route: string; confidence: number | null; source?: string }>))
     // Only Jev's routes are measured: the floor is a floor on Jev's confidence.
-    .filter(([id, r]) => answers.has(id) && r.source === 'jev')
-    .map(([id, r]) => ({ route: r.route, confidence: r.confidence, docsAnswered: answers.get(id)! }));
+    .filter(([id, r]) => labels.get(id)?.independent === true && r.source === 'jev')
+    .map(([id, r]) => ({ route: r.route, confidence: r.confidence, docsAnswered: labels.get(id)!.docsAnswered }));
 }
 
 /** The one-sided 95% Wilson lower bound of a precision of `right` out of `n`: what the labels prove, not what they happen to show. */

@@ -56,12 +56,22 @@ describe('Decider', () => {
     const out = await d.decide('gate-triage', 's', questions, { confidential: false });
     expect(out).toMatchObject({ answered: true, backend: 'claude', escalated: true });
     expect(records[0]!.attempts).toEqual([
-      { backend: 'jev', outcome: 'low-confidence', confidence: 0.55, model: 'fake', usage: { inputTokens: 100, outputTokens: 10, costUsd: 0.00001 }, message: null },
+      { backend: 'jev', outcome: 'low-confidence', confidence: 0.55, model: 'fake', usage: { inputTokens: 100, outputTokens: 10, costUsd: 0.00001 }, message: null, answers: { kind: choiceAnswer('code', { code: 0.55, infra: 0.45 }) } },
       { backend: 'local', outcome: 'unavailable', confidence: null, model: null, usage: null, message: 'down' },
       { backend: 'claude', outcome: 'answered', confidence: null, model: 'opus', usage: { inputTokens: 100, outputTokens: 10, costUsd: 0.00001 }, message: null },
     ]);
     // Both calls that returned cost tokens; the low-confidence one is not free.
     expect(records[0]!.usage).toEqual({ inputTokens: 200, outputTokens: 20, costUsd: 0.00002 });
+  });
+
+  it('hands the full record to the call that asked, and keeps the answers of a call below its threshold', async () => {
+    const jev = new FakeBackend('jev', [ok({ kind: choiceAnswer('infra', { infra: 0.6, code: 0.4 }) }, 'typesafe/jev-1.13')]);
+    const { d, records } = decider({ jev });
+    const seen: DecisionRecord[] = [];
+    const out = await d.decide('gate-triage', 'docker: Cannot connect', questions, { confidential: false, onRecord: (r) => seen.push(r) });
+    expect(out).toEqual({ answered: false, reason: 'exhausted' });
+    expect(seen).toEqual(records);
+    expect(seen[0]!.attempts[0]).toMatchObject({ backend: 'jev', outcome: 'low-confidence', confidence: 0.6, answers: { kind: choiceAnswer('infra', { infra: 0.6, code: 0.4 }) } });
   });
 
   it('falls through jev → local → claude when the earlier backends are unavailable or invalid', async () => {

@@ -7,6 +7,7 @@ import { redactSecrets } from '../core/redact.js';
 import type { Hit } from '../knowledge/retrieval.js';
 import type { Journal } from '../orchestrator/events.js';
 import type { Decider } from '../decide/decider.js';
+import type { DecisionRecord } from '../decide/types.js';
 import { contradictedChunks, duplicatePairs, duplicatePatches, notReadyCriteria } from '../decide/decisions/gate1.js';
 import { routeQuestion } from '../decide/decisions/question-routing.js';
 import type { AgentStepRequest } from '../orchestrator/steps.js';
@@ -82,16 +83,17 @@ async function mainOutline(draft: Draft, before: BacklogState | null): Promise<B
 
 const MAX_HISTORY_CHUNKS = 5;
 
-/** Journals every decision the wrapped decider answers as DECISION_MADE (spec 10A.4), so evals can read Gate 1 too. */
+/** Journals every decision the wrapped decider makes as DECISION_MADE (spec 10A.4): the full record when the decider gives one, so the attempts, usage and low-confidence answers of a call stay. */
 export function recorded(decider: Pick<Decider, 'decide'>, journal: Pick<Journal, 'fact'>, cycle: number): Pick<Decider, 'decide'> {
   return {
     decide: async (id, state, questions, ctx) => {
       const started = Date.now();
-      const outcome = await decider.decide(id, state, questions, ctx);
-      const record = outcome.answered
+      const captured: { record?: DecisionRecord } = {};
+      const outcome = await decider.decide(id, state, questions, { ...ctx, onRecord: (record) => (captured.record = record) });
+      const base = captured.record ?? (outcome.answered
         ? { decisionId: id, backend: outcome.backend, escalated: outcome.escalated, answers: outcome.answers, durationMs: Date.now() - started }
-        : { decisionId: id, backend: null, escalated: false, answers: null, durationMs: Date.now() - started, unanswered: outcome.reason, ...(outcome.reason === 'error' ? { error: outcome.message } : {}) };
-      await journal.fact(RefineEvent.DecisionMade, { cycle, record });
+        : { decisionId: id, backend: null, escalated: false, answers: null, durationMs: Date.now() - started, ...(outcome.reason === 'error' ? { error: outcome.message } : {}) });
+      await journal.fact(RefineEvent.DecisionMade, { cycle, record: outcome.answered ? base : { ...base, unanswered: outcome.reason } });
       return outcome;
     },
   };

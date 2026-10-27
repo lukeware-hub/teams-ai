@@ -661,7 +661,7 @@ describe('RefineSession.runSpeckit', () => {
     await s.answerConfidentiality(true);
     await s.runSpeckit();
     expect(jevs.decide).toHaveBeenCalled();
-    for (const [, , , ctx] of jevs.decide.mock.calls) expect(ctx).toEqual({ confidential: true });
+    for (const [, , , ctx] of jevs.decide.mock.calls) expect(ctx).toMatchObject({ confidential: true });
     await s.close();
   });
 

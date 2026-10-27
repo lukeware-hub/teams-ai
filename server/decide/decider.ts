@@ -34,6 +34,8 @@ export interface DeciderDeps {
 
 export interface DecideContext {
   confidential: boolean;
+  /** Gets the full record of this call, the one `onDecision` gets too; a caller that journals decisions keeps it. */
+  onRecord?: (record: DecisionRecord) => void;
 }
 
 const ZERO_USAGE: BackendUsage = { inputTokens: 0, outputTokens: 0, costUsd: null };
@@ -69,7 +71,7 @@ export class Decider {
     const skipped = (backend: BackendName, outcome: AttemptOutcome): DecisionAttempt => ({ backend, outcome, confidence: null, model: null, usage: null, message: null });
 
     const emit = (outcome: DecisionOutcome, backend: BackendName | null, model: string | null) => {
-      this.deps.onDecision?.({
+      const record: DecisionRecord = {
         decisionId: id,
         backend,
         model,
@@ -81,7 +83,9 @@ export class Decider {
         stateTruncated: truncated,
         durationMs: this.clock().getTime() - started.getTime(),
         at: started.toISOString(),
-      });
+      };
+      this.deps.onDecision?.(record);
+      ctx.onRecord?.(record);
       return outcome;
     };
 
@@ -125,7 +129,7 @@ export class Decider {
         attempts.push(answered('answered', confidence));
         return emit({ answered: true, answers: result.answers, backend: name, escalated: false }, name, result.model);
       }
-      attempts.push(answered('low-confidence', confidence));
+      attempts.push({ ...answered('low-confidence', confidence), answers: result.answers });
     }
     return emit({ answered: false, reason: 'exhausted' }, null, null);
   }
