@@ -12,7 +12,8 @@ import { draftHash, readDoc, type Draft, type DocFile } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
 import { jevHint, unavailable, type JevValidationResult, type ValidationDocs } from './jev-validation.js';
-import { reorganizePack } from './packs.js';
+import { historyBlocks, reorganizePack } from './packs.js';
+import type { PatchRow, QuestionRow } from './state.js';
 import { reshapeAll } from './reshape.js';
 import { applyPatch, checkPatch, docOf, patchId, unifiedDiff } from './patches.js';
 import { patchChangesScope } from './scope-guard.js';
@@ -86,7 +87,7 @@ function jevIndex(file: DocFile, score: DocScore): string[] {
 }
 
 /** The review of one stage's document: the owner reads it against the charter, the documents before it as digests, and the Jev's hints as context. */
-export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: string; principles: readonly string[]; file: DocFile; docs: Record<DocFile, string>; jev?: string; score?: DocScore }): ContextPackInput {
+export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: string; principles: readonly string[]; file: DocFile; docs: Record<DocFile, string>; jev?: string; score?: DocScore; specId: string; history: readonly QuestionRow[]; rejected: readonly PatchRow[] }): ContextPackInput {
   const earlier = earlierDocs(input.file);
   const context = earlier.length > 0
     ? [DIGEST_NOTE, ...earlier.map((f) => `### ${f} (context only, a digest)\n${docDigest(input.docs[f], STAGE_DIGEST_CHARS)}`)].join('\n\n')
@@ -102,6 +103,7 @@ export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: 
     ...(input.score ? jevIndex(input.file, input.score) : []),
     context,
     `### ${input.file} (this stage)\n${input.docs[input.file]}`,
+    ...historyBlocks({ specId: input.specId, decisions: [], history: input.history, rejected: input.rejected }),
   ].join('\n\n');
   return { kind: 'refine', role: input.role, specHash: input.specHash, principles: [...input.principles], outputContract: outputContract('refine'), criteria: [], feedback, budgetTokens: 60_000 };
 }
@@ -152,7 +154,7 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     // A confidential project gets no Jev finding, and a blank document's zeros were never answered by the Jev.
     const score = journal.state.readiness?.docs?.[file];
     const indexed = score !== undefined && !confidential && docs[file].trim() !== '' && !(journal.state.outdatedDocs ?? []).includes(file);
-    const review = await askOnce(fitPackBudget(stageReviewPack({ role, specHash, principles: deps.principles(), file, docs, jev: jev ? jevHint(jev) : undefined, score: indexed ? score : undefined })));
+    const review = await askOnce(fitPackBudget(stageReviewPack({ role, specHash, principles: deps.principles(), file, docs, jev: jev ? jevHint(jev) : undefined, score: indexed ? score : undefined, specId: draft.specId, history: journal.state.questions, rejected: journal.state.patches.filter((p) => p.status === 'rejected') })));
     if (!review.ok) {
       await journal.fact(RefineEvent.CycleFailed, { cycle, ...failureMessage(`A revisão de ${file}`, review.failure, review.errors) });
       return;

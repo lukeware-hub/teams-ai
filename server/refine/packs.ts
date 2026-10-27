@@ -130,6 +130,34 @@ export function reorganizePack(input: {
   };
 }
 
+/** The owner's answers, skips and open questions and the patches rejected so far: every review shows them, so no role asks or proposes them again. */
+export function historyBlocks(input: {
+  specId: string;
+  projectBriefing?: boolean;
+  decisions: ReadonlyArray<{ question: string; answer: string }>;
+  history: readonly QuestionRow[];
+  rejected: readonly PatchRow[];
+}): string[] {
+  const rel = (file: keyof typeof DOC_REL) => DOC_REL[file](input.specId, input.projectBriefing);
+  const answered = [
+    ...input.decisions.map((d) => `- ${d.question}\n  answer: ${d.answer}`),
+    ...input.history.filter((q) => q.status === 'answered').map((q) => `- [${q.role}] ${q.text}\n  answer: ${q.answer}`),
+  ];
+  const skipped = input.history.filter((q) => q.status === 'skipped').map((q) => `- [${q.role}] ${q.text}`);
+  const openQuestions = input.history.filter((q) => q.status === 'pending').map((q) => `- [${q.role}] ${q.text}`);
+  const rejected = input.rejected.map((p) => `- ${rel(p.file)}: "${p.find.slice(0, 80)}" → rejected${p.decision ? `: ${p.decision}` : ''}`);
+  return [
+    '### Answered questions (do not ask again)',
+    answered.join('\n') || '(none)',
+    '### Skipped questions',
+    skipped.join('\n') || '(none)',
+    '### Open questions (waiting for the owner: do not ask again, not even reworded)',
+    openQuestions.join('\n') || '(none)',
+    '### Rejected patches (do not propose again)',
+    rejected.join('\n') || '(none)',
+  ];
+}
+
 /** Spec (refinement) §3.2 step 2: what PO and SM see on every cycle. */
 export function refinePack(input: {
   role: 'po' | 'sm' | 'front';
@@ -164,12 +192,6 @@ export function refinePack(input: {
   const detail = input.backlog?.detail === true && !input.derived.spec;
   const rel = (file: keyof typeof DOC_REL) => DOC_REL[file](input.specId, input.projectBriefing);
   const brief = 'briefing.md';
-  // A continued spec's decisions are answers too (R11.7.1).
-  const recorded = (input.derived.spec?.decisions ?? []).map((d) => `- ${d.question}\n  answer: ${d.answer}`);
-  const answered = [...recorded, ...input.history.filter((q) => q.status === 'answered').map((q) => `- [${q.role}] ${q.text}\n  answer: ${q.answer}`)];
-  const skipped = input.history.filter((q) => q.status === 'skipped').map((q) => `- [${q.role}] ${q.text}`);
-  const openQuestions = input.history.filter((q) => q.status === 'pending').map((q) => `- [${q.role}] ${q.text}`);
-  const rejected = input.rejected.map((p) => `- ${rel(p.file)}: "${p.find.slice(0, 80)}" → rejected${p.decision ? `: ${p.decision}` : ''}`);
   const pending = (input.pending ?? []).map((p) => `- ${rel(p.file)}: "${p.find.slice(0, 80)}" → ${clip(p.reason, 120)}`);
   const undone = (input.undoneMoves ?? []).map((m) => `- ${rel(m.from)} → ${rel(m.to)}: "${m.quote.slice(0, 80)}"`);
   const findingLines = (input.findings ?? []).filter((f) => DOC_OWNERS[f.doc].includes(input.role)).map((f) => `- [${f.role}] ${f.doc} (${f.severity}): "${clip(f.quote, 120)}" → ${clip(f.text, 200)} Fix: ${clip(f.fix, 200)}`).join('\n');
@@ -218,14 +240,8 @@ export function refinePack(input: {
             '### derived backlog (the docs broken into prioritized specs; review it, do not rewrite it)',
             JSON.stringify({ epics: input.backlog?.epics ?? [], items: (input.backlog?.items ?? []).map(({ rank, ...item }) => ({ rank, ...item })) }, null, 2),
           ]),
-    '### Answered questions (do not ask again)',
-    answered.join('\n') || '(none)',
-    '### Skipped questions',
-    skipped.join('\n') || '(none)',
-    '### Open questions (waiting for the owner: do not ask again, not even reworded)',
-    openQuestions.join('\n') || '(none)',
-    '### Rejected patches (do not propose again)',
-    rejected.join('\n') || '(none)',
+    // A continued spec's decisions are answers too (R11.7.1).
+    ...historyBlocks({ specId: input.specId, projectBriefing: input.projectBriefing, decisions: input.derived.spec?.decisions ?? [], history: input.history, rejected: input.rejected }),
     '### Moves the owner undid (do not propose them again)',
     undone.join('\n') || '(none)',
     '### Pending suggestions (already proposed, waiting for the owner: do not propose them again, not even reworded)',

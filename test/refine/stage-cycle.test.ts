@@ -383,8 +383,33 @@ describe('runStageCycle', () => {
 
   it('the review names its document by the bare name, which a patch may cite', () => {
     const docs = { 'flow.md': '# Fluxo', 'project.md': '# Shop', 'briefing.md': '# Briefing', 'stack.md': '# Stack', 'design.md': '# Design' };
-    const pack = stageReviewPack({ role: 'po', specHash: 'h', principles: [], file: 'briefing.md', docs });
+    const pack = stageReviewPack({ role: 'po', specHash: 'h', principles: [], file: 'briefing.md', docs, specId: 'shop-002', history: [], rejected: [] });
     expect(pack.feedback).toMatch(/^You review only briefing\.md,/);
+  });
+
+  it('the review pack carries the answers, skips and open questions of the draft, and the patches it rejected', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    const question = (questionId: string, role: 'po' | 'sm', text: string) => ({ questionId, role, text, blocking: false, relatedAcIds: [], cycle: 1 });
+    await journal.fact(RefineEvent.StageReviewed, { cycle: 1, file: 'project.md', questions: [question('po-s1-0', 'po', 'Quem usa?'), question('sm-s1-0', 'sm', 'Qual porta?'), question('po-s1-1', 'po', 'Qual prazo?')], divergences: [], discardedPatches: [] });
+    await journal.fact(RefineEvent.QuestionAnswered, { questionId: 'po-s1-0', text: 'Equipe interna' });
+    await journal.fact(RefineEvent.QuestionSkipped, { questionId: 'sm-s1-0' });
+    await journal.fact(RefineEvent.PatchProposed, { patchId: 'po-c1-0', role: 'po', file: 'briefing.md', find: 'velho', replace: 'novo', reason: 'r', diff: '', cycle: 1, scopeChange: false });
+    await journal.fact(RefineEvent.PatchRejected, { patchId: 'po-c1-0', reason: 'não' });
+    const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 2, 'briefing.md');
+    const feedback = runAgent.mock.calls.map(([req]) => (req as { pack?: { feedback?: string } }).pack?.feedback ?? '').find((f) => f.includes('### briefing.md (this stage)')) ?? '';
+    expect(feedback).toContain('### Answered questions (do not ask again)\n\n- [po] Quem usa?\n  answer: Equipe interna');
+    expect(feedback).toContain('### Skipped questions\n\n- [sm] Qual porta?');
+    expect(feedback).toContain('### Open questions (waiting for the owner: do not ask again, not even reworded)\n\n- [po] Qual prazo?');
+    expect(feedback).toContain('### Rejected patches (do not propose again)\n\n- docs/specs/shop-002/briefing.md: "velho" → rejected: não');
+  });
+
+  it('a stage review pack says none under each history heading when the draft has no history', () => {
+    const docs = { 'flow.md': '# Fluxo', 'project.md': '# Shop', 'briefing.md': '# Briefing', 'stack.md': '# Stack', 'design.md': '# Design' };
+    const feedback = stageReviewPack({ role: 'po', specHash: 'h', principles: [], file: 'briefing.md', docs, specId: 'shop-002', history: [], rejected: [] }).feedback ?? '';
+    expect(feedback).toContain('### Answered questions (do not ask again)\n\n(none)');
+    expect(feedback).toContain('### Rejected patches (do not propose again)\n\n(none)');
   });
 
   it('a patch that cites the stage document by its bare name is proposed', async () => {
